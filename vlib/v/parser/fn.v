@@ -100,16 +100,16 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 pub fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
 	for p.tok.kind != .rpar {
-		is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-		is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
-		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 		if is_mut {
 			p.next()
 		}
 		e := p.expr(0)
 		args << ast.CallArg{
 			is_mut: is_mut
-			share: table.sharetype_from_flags(is_shared, is_atomic_or_rw)
+			share: table.sharetype_from_flags(is_shared, is_atomic)
 			expr: e
 		}
 		if p.tok.kind != .rpar {
@@ -151,9 +151,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
-		is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-		is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
-		rec_mut = p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
+		is_shared := p.tok.kind == .key_shared
+		is_atomic := p.tok.kind == .key_atomic
+		rec_mut = p.tok.kind == .key_mut || is_shared || is_atomic
 		if rec_mut {
 			p.next() // `mut`
 		}
@@ -179,8 +179,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if is_shared {
 			rec_type = rec_type.set_flag(.shared_f)
 		}
-		if is_atomic_or_rw {
-			rec_type = rec_type.set_flag(.atomic_or_rw)
+		if is_atomic {
+			rec_type = rec_type.set_flag(.atomic_f)
 		}
 		args << table.Arg{
 			name: rec_name
@@ -400,9 +400,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
 			arg_name := 'arg_$arg_no'
-			is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-			is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
-			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
+			is_shared := p.tok.kind == .key_shared
+			is_atomic := p.tok.kind == .key_atomic
+			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 			if is_mut {
 				p.next()
 			}
@@ -416,13 +416,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				if !arg_type.has_flag(.generic) {
 					if is_shared {
 						p.check_fn_shared_arguments(arg_type, pos)
-					} else if is_atomic_or_rw {
+					} else if is_atomic {
 						p.check_fn_atomic_arguments(arg_type, pos)
 					} else {
 						p.check_fn_mutable_arguments(arg_type, pos)
 					}
-				} else if is_shared || is_atomic_or_rw {
-					p.error_with_pos('generic object cannot be `atomic`, `shared` or `rwshared`', pos)
+				} else if is_shared || is_atomic {
+					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
 				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
@@ -432,8 +432,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				if is_shared {
 					arg_type = arg_type.set_flag(.shared_f)
 				}
-				if is_atomic_or_rw {
-					arg_type = arg_type.set_flag(.atomic_or_rw)
+				if is_atomic {
+					arg_type = arg_type.set_flag(.atomic_f)
 				}
 			}
 			if is_variadic {
@@ -456,9 +456,9 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
-			is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-			is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
-			mut is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
+			is_shared := p.tok.kind == .key_shared
+			is_atomic := p.tok.kind == .key_atomic
+			mut is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 			if is_mut {
 				p.next()
 			}
@@ -485,20 +485,20 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				if !typ.has_flag(.generic) {
 					if is_shared {
 						p.check_fn_shared_arguments(typ, pos)
-					} else if is_atomic_or_rw {
+					} else if is_atomic {
 						p.check_fn_atomic_arguments(typ, pos)
 					} else {
 						p.check_fn_mutable_arguments(typ, pos)
 					}
-				} else if is_shared || is_atomic_or_rw {
-					p.error_with_pos('generic object cannot be `atomic`, `shared` or `rwshared`', pos)
+				} else if is_shared || is_atomic {
+					p.error_with_pos('generic object cannot be `atomic` or `shared`', pos)
 				}
 				typ = typ.set_nr_muls(1)
 				if is_shared {
 					typ = typ.set_flag(.shared_f)
 				}
-				if is_atomic_or_rw {
-					typ = typ.set_flag(.atomic_or_rw)
+				if is_atomic {
+					typ = typ.set_flag(.atomic_f)
 				}
 			}
 			if is_variadic {

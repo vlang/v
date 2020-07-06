@@ -59,10 +59,8 @@ mut:
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared            bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_rwshared          bool
 	optionals            []string // to avoid duplicates TODO perf, use map
 	shareds              []int // types with hidden mutex for which decl has been emitted
-	rwshareds            []int // same with hidden rwmutex
 	inside_ternary       int // ?: comma separated statements on a single line
 	inside_map_postfix   bool // inside map++/-- postfix expr
 	inside_map_infix     bool // inside map<</+=/-= infix expr
@@ -408,22 +406,16 @@ fn (mut g Gen) register_optional(t table.Type) string {
 }
 
 fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
-	is_rw := t.has_flag(.atomic_or_rw)
-	prefix := if is_rw { 'rw' } else { '' }
-	sh_typ :=  '__${prefix}shared__$base'
+	sh_typ :=  '__shared__$base'
 	t_idx := t.idx()
-	if (is_rw && t_idx in g.rwshareds) || (!is_rw && t_idx in g.shareds) {
+	if t_idx in g.shareds {
 		return sh_typ
 	}
-	mtx_typ := if is_rw { 'sync__RwMutex' } else { 'sync__Mutex' }
+	mtx_typ := 'sync__RwMutex'
 	g.hotcode_definitions.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
-	if is_rw {
-		g.rwshareds << t_idx
-	} else {
-		g.shareds << t_idx
-	}
+	g.shareds << t_idx
 	return sh_typ
 }
 
@@ -1192,11 +1184,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			blank_assign = ident.kind == .blank_ident
 			if ident.info is ast.IdentVar {
 				share := (ident.info as ast.IdentVar).share
-				if share in [.shared_t, .rwshared_t] {
+				if share == .shared_t {
 					var_type = var_type.set_flag(.shared_f)
 				}
-				if share in [.atomic_t, .rwshared_t] {
-					var_type = var_type.set_flag(.atomic_or_rw)
+				if share == .atomic_t {
+					var_type = var_type.set_flag(.atomic_f)
 				}
 			}
 		}
@@ -1327,7 +1319,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write('*($styp*)')
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
-			g.is_rwshared = var_type.has_flag(.atomic_or_rw)
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
@@ -1353,7 +1344,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(' })')
 				g.is_array_set = false
 			}
-			g.is_rwshared = false
 			g.is_shared = false
 		}
 		g.right_is_opt = false
@@ -2073,17 +2063,10 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 	mut lock_prefixes := []byte{len: 0, cap: node.lockeds.len}
 	for id in node.lockeds {
 		name := id.name
-		// fields of `id` itself have no valid information, so look up type(flags) in scope
-		obj := g.file.scope.innermost(id.pos.pos).find(name) or {
-			verror('cgen: unable to get type for lock variable $name')
-			ast.ScopeObject{}
-		}
-		typ := if obj is ast.Var { (*(obj as ast.Var)).typ } else { table.Type(0) }
 		deref := if id.is_mut { '->' } else { '.' }
-		lock_prefix := if node.is_rlock { `r` } else { if typ.has_flag(.atomic_or_rw) { `w` } else { `m` } }
+		lock_prefix := if node.is_rlock { `r` } else { `w` }
 		lock_prefixes << lock_prefix // keep for unlock
-		mut_prefix := if lock_prefix == `m` { '' } else { 'Rw' }
-		g.writeln('sync__${mut_prefix}Mutex_${lock_prefix:c}_lock(${name}${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_lock(${name}${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
@@ -2092,9 +2075,7 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		mut_prefix := if lock_prefix == `m` { '' } else { 'Rw' }
-		unlock_type := if lock_prefix == `m` { '' } else { '${lock_prefix:c}_' }
-		g.writeln('sync__${mut_prefix}Mutex_${unlock_type}unlock(${name}${deref}mtx);')
+		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock(${name}${deref}mtx);')
 	}
 }
 
@@ -2237,7 +2218,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
-		if !g.is_assign_lhs && (ident_var.share == .shared_t || ident_var.share == .rwshared_t) {
+		if !g.is_assign_lhs && ident_var.share == .shared_t {
 			g.write('${name}.val')
 			return
 		}
@@ -2763,7 +2744,6 @@ const (
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
-	mut share_prefix := '' // 'rw' for `rwshared`
 	if styp in skip_struct_init {
 		g.go_back_out(3)
 		return
@@ -2775,10 +2755,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 		if g.is_shared {
 			mut shared_typ := struct_init.typ.set_flag(.shared_f)
-			if g.is_rwshared {
-				shared_typ = shared_typ.set_flag(.atomic_or_rw)
-				share_prefix = 'rw'
-			}
 			shared_styp = g.typ(shared_typ)
 			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ($styp){')
 		} else {
@@ -2883,7 +2859,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write(', .mtx = sync__new_${share_prefix}mutex()}')
+		g.write(', .mtx = sync__new_rwmutex()}')
 		if is_amp {
 			g.write(', sizeof($shared_styp))')
 		}

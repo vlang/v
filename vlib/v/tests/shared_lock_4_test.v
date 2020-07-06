@@ -6,7 +6,7 @@ mut:
 	a int
 }
 
-fn (rwshared x St) f(shared z St) {
+fn (shared x St) f(shared z St) {
 	for _ in 0..reads_per_thread {
 		rlock x { // other instances may read at the same time
 			time.sleep_ms(1)
@@ -26,7 +26,7 @@ const (
 
 fn test_shared_lock() {
 	// object with separate read/write lock
-	rwshared x := &St{
+	shared x := &St{
 		a: 5
 	}
 	shared z := &St{

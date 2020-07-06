@@ -514,7 +514,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_mut, .key_shared, .key_atomic, .key_rwshared, .key_static, .mul {
+		.name, .key_mut, .key_shared, .key_atomic, .key_static, .mul {
 			if p.tok.kind == .name {
 				if p.tok.lit == 'sql' {
 					return p.sql_stmt()
@@ -783,9 +783,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 
 pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
-	is_shared := p.tok.kind in [.key_shared, .key_rwshared]
-	is_atomic_or_rw := p.tok.kind in [.key_rwshared, .key_atomic]
-	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic_or_rw
+	is_shared := p.tok.kind == .key_shared
+	is_atomic := p.tok.kind == .key_atomic
+	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
 		p.next()
 	}
@@ -823,7 +823,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			info: ast.IdentVar{
 				is_mut: is_mut
 				is_static: is_static
-				share: table.sharetype_from_flags(is_shared, is_atomic_or_rw)
+				share: table.sharetype_from_flags(is_shared, is_atomic)
 			}
 		}
 	} else {

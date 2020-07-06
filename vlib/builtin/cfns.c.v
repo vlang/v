@@ -402,6 +402,7 @@ fn C.pthread_mutex_unlock(voidptr) int
 
 fn C.pthread_rwlockattr_init(voidptr) int
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
+fn C.pthread_rwlockattr_setpshared(voidptr, int) int
 fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int

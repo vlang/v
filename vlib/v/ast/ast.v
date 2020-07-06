@@ -450,7 +450,6 @@ pub:
 pub mut:
 	lockeds  []Ident // `x`, `y` in `lock x, y {`
 	is_expr  bool
-	is_rw    bool // `rwshared` needs special special handling even in `lock` case
 	typ      table.Type
 }
 
