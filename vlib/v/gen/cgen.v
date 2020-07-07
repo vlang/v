@@ -3976,7 +3976,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
 			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
 			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
-			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
+			table.Enum { g.gen_str_for_enum(it, typ, styp, str_fn_name) }
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
 			table.MultiReturn { g.gen_str_for_multi_return(it, styp, str_fn_name) }
@@ -4026,11 +4026,15 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
-	s := util.no_dots(styp)
+fn (mut g Gen) gen_str_for_enum(info table.Enum, typ table.Type, styp, str_fn_name string) {
+	s, derefs := if !typ.is_ptr() { 
+		util.no_dots(styp), ''
+	} else {
+		util.no_dots(g.typ(typ.set_nr_muls(0))), '*'.repeat(typ.nr_muls())
+	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
-	g.auto_str_funcs.writeln('\tswitch(it) {')
+	g.auto_str_funcs.writeln('\tswitch(${derefs}it) {')
 	for val in info.vals {
 		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos_lit("$val");')
 	}
