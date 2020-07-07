@@ -88,13 +88,19 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
-	html_name := '${p.cur_fn_name}.html'
+
+	fn_path := p.cur_fn_name.split('_')
+	html_name := '${fn_path.last()}.html'
+
+
 	// Looking next to the vweb program
 	dir := os.dir(p.scanner.file_path)
-	mut path := os.join_path(dir, html_name)
+	mut path := os.join_path(dir, fn_path.join('/'))
+	path += '.html'
 	if !os.exists(path) {
 		// can be in `templates/`
-		path = os.join_path(dir, 'templates', html_name)
+		path = os.join_path(dir, 'templates', fn_path.join('/'))
+		path += '.html'
 		if !os.exists(path) {
 			p.error('vweb HTML template "$html_name" not found')
 		}
