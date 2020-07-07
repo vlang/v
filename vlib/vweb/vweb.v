@@ -331,24 +331,28 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	// Call the right action
 	println('route matching...')
 	//t := time.ticks()
-	mut action := ''
+	//mut action := ''
 	mut route_words := []string{}
 	mut ok := true
 	mut url_words := vals[1][1..].split('/')
+
+	println(url_words)
 
 	if url_words.len == 0 {
 		app.index()
 		conn.close() or {}
 		return
+	} else {
+		if url_words.last().contains('?') {
+			tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
+			url_words[url_words.len - 1] = url_words.last().all_before('?')
+			for data in tmp_query {
+				if data.len == 2 {
+					app.vweb.query[data[0]] = data[1]
+				}
+			}
+		}
 	}
-
-	tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
-	url_words[url_words.len - 1] = url_words.last().all_before('?')
-
-	for data in tmp_query {
-		app.vweb.query[data[0]] = data[1]
-	}
-
 	mut vars := []string{cap: route_words.len}
 
 	$for method in T {
