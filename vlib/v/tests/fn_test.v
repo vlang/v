@@ -186,6 +186,7 @@ fn test_cross_assign_anon_fn() {
 	one, two = two, one
 	foo := two(0, true) + one(0, true)
 	assert foo == 'onetwo'
+	
 	mut three := cross_assign_anon_fn_three
 	mut four := cross_assign_anon_fn_four
 	three, four = four, three
@@ -195,9 +196,17 @@ fn test_cross_assign_anon_fn() {
 	foo3 += foo5
 	assert foo2 == 'threefour'
 	assert foo3 == 'threefour'
+	
 	mut five := cross_assign_anon_fn_five
 	mut six := cross_assign_anon_fn_six
 	five, six = six, five
-	foo6 := six(1,2,3) + five(1,2,3)
+	foo6 := six(1, 2, 3) + five(1, 2, 3)
 	assert foo6 == 'fivesix'
+	
+	one, two, three, four, five, six = two, one, four, three, six, five
+	mut foo7, _ := three()
+	foo8, _ := four()
+	foo7 += foo8
+	foo9 := one(0, true) + two(0, true) + foo7 + five(1, 2, 3) + six(1, 2, 3)
+	assert foo9 == 'onetwothreefourfivesix'
 }
