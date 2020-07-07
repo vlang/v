@@ -64,7 +64,28 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		}
 		end_pos := p.prev_tok.position()
 		p.inside_if = false
-		stmts := p.parse_block()
+		
+		p.open_scope()
+		// smartcast when using `is`
+		if cond is ast.InfixExpr {
+			infix := cond as ast.InfixExpr
+			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
+				// Register shadow variable or `as` variable with actual type
+				left_ident := infix.left as ast.Ident
+				right_type := infix.right as ast.Type
+				p.scope.register('it', ast.Var{
+					name: 'it'
+					typ: right_type.typ.to_ptr()
+					pos: left_ident.pos
+					is_used: true
+					is_mut: left_ident.is_mut
+				})
+			}
+		}
+		stmts := p.parse_block_no_scope(false)
+		// close scope opened for smartcast
+		p.close_scope()
+
 		if is_or {
 			p.close_scope()
 		}
