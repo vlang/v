@@ -435,7 +435,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
 				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type &&
 					expr_type_sym.kind != .placeholder {
-					c.error('!cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
+					c.error('cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
@@ -2121,22 +2121,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			to_type_sym := c.table.get_type_symbol(node.typ)
 			if to_type_sym.kind == .sum_type {
 				if node.expr_type in [table.any_int_type, table.any_flt_type] {
-					node.expr_type = c.promote_num(
-						node.expr_type,
-						if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type },
-					)
+					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
 				}
 				if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
-					c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
+					c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`',
+						node.pos)
 				}
-			}
-			else if node.typ == table.string_type && !(from_type_sym.kind in [.byte, .byteptr] ||
+			} else if node.typ == table.string_type && !(from_type_sym.kind in [.byte, .byteptr] ||
 				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
 					node.pos)
-			}
-			else if node.expr_type == table.string_type {
+			} else if node.expr_type == table.string_type {
 				if to_type_sym.kind !in [.alias] {
 					mut error_msg := 'cannot cast a string'
 					if node.expr is ast.StringLiteral {

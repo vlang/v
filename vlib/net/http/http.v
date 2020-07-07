@@ -420,3 +420,7 @@ fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
 	}
 	return parse_response(sb.str())
 }
+
+pub fn (req &Request) referer() string {
+	return req.headers['Referer']
+}
