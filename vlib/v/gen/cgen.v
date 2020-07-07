@@ -2287,12 +2287,18 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		// smartcast
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.right is ast.Type {
+			if infix.right is ast.Type && infix.left is ast.Ident {
+				left_type := infix.left_type
 				right_type := infix.right as ast.Type
 				it_type := g.typ(right_type.typ)
-				g.write(' \t$it_type* it = ($it_type*)')
+				g.write('\t$it_type* it = ($it_type*)')
 				g.expr(infix.left)
-				g.writeln('.obj;')
+				if left_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.writeln('obj;')
 			}
 		}
 		g.stmts(branch.stmts)
