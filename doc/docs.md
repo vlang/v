@@ -710,13 +710,23 @@ struct Point {
     y int
 }
 
-p := Point{
+mut p := Point{
     x: 10
     y: 20
 }
 
 println(p.x) // Struct fields are accessed using a dot
+
+// Alternative literal syntax for structs with 3 fields or fewer
+p = Point{10, 20}
+assert p.x == 10
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
 ```
+
+Omitting the struct name also works for function arguments.
 
 <p>&nbsp;</p>
 
@@ -724,7 +734,6 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
- // Alternative initialization syntax for structs with 3 fields or fewer
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
