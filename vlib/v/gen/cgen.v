@@ -2494,8 +2494,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if fn_return_is_optional {
 			tmp := g.new_tmp_var()
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('$styp $tmp;')
-			g.writeln('${tmp}.ok = true;')
+			g.writeln('$styp $tmp = {.ok = true};')
 			g.writeln('return $tmp;')
 		} else {
 			g.writeln('return;')
@@ -2508,7 +2507,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		mut is_regular_option := g.typ(node.types[0]) == 'Option'
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
-			g.write('/*opt promotion*/ Option $tmp = ')
+			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
@@ -2527,7 +2526,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_type = g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp = g.new_tmp_var()
-			g.write('$opt_type $opt_tmp;')
+			g.writeln('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
@@ -2596,8 +2595,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp := g.new_tmp_var()
-			g.write('$opt_type $opt_tmp;')
-			g.write('/*:)$return_sym.name*/opt_ok2(&($styp[]) { ')
+			g.writeln('$opt_type $opt_tmp;')
+			g.write('opt_ok2(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
