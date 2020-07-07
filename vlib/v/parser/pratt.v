@@ -16,7 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.eat_comments()
 	// Prefix
 	match p.tok.kind {
-		.key_mut, .key_shared, .key_rwshared, .key_atomic, .key_static {
+		.key_mut, .key_shared, .key_atomic, .key_static {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}
@@ -166,6 +166,22 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_fn {
 			// Anonymous function
 			node = p.anon_fn()
+			// its a call
+			// NOTE: this could be moved to just before the pratt loop
+			// then anything can be a call, eg. `index[2]()` or `struct.field()`
+			// but this would take a bit of modification
+			if p.tok.kind == .lpar {
+				p.next()
+				pos := p.tok.position()
+				args := p.call_args()
+				p.check(.rpar)
+				node = ast.CallExpr{
+					name: 'anon'
+					left: node
+					args: args
+					pos: pos
+				}
+			}
 			return node
 		}
 		else {

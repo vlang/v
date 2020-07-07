@@ -78,25 +78,35 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 }
 
 fn (mut g Gen) comp_if(it ast.CompIf) {
+	if it.stmts.len == 0 && it.else_stmts.len == 0 {
+		return
+	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
+	g.empty_line = false
 	if it.is_not {
-		g.writeln('\n// \$if !$it.val {\n#ifndef ' + ifdef)
+		g.writeln('// \$if !$it.val {\n#ifndef ' + ifdef)
 	} else {
-		g.writeln('\n// \$if  $it.val {\n#ifdef ' + ifdef)
+		g.writeln('// \$if  $it.val {\n#ifdef ' + ifdef)
 	}
 	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
 	// in v1 this code would be completely excluded
-	g.defer_ifdef = if it.is_not { '\n#ifndef ' + ifdef } else { '\n#ifdef ' + ifdef }
+	g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
 	// println('comp if stmts $g.file.path:$it.pos.line_nr')
+	g.indent--
 	g.stmts(it.stmts)
+	g.indent++
 	g.defer_ifdef = ''
 	if it.has_else {
-		g.writeln('\n#else')
-		g.defer_ifdef = if it.is_not { '\n#ifdef ' + ifdef } else { '\n#ifndef ' + ifdef }
+		g.empty_line = false
+		g.writeln('#else')
+		g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
+		g.indent--
 		g.stmts(it.else_stmts)
+		g.indent++
 		g.defer_ifdef = ''
 	}
-	g.writeln('\n#endif\n// } $it.val\n')
+	g.empty_line = false
+	g.writeln('#endif\n// } $it.val')
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
@@ -105,7 +115,10 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 	vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
-	for method in sym.methods {
+	mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
+	methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
+	methods << methods_with_attrs
+	for method in methods { // sym.methods {
 		// if method.attrs.len == 0 {
 		// continue
 		// }

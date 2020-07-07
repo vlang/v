@@ -213,7 +213,6 @@ pub:
 pub struct AnonFn {
 pub:
 	decl      FnDecl
-	is_called bool
 pub mut:
 	typ       table.Type
 }
@@ -450,7 +449,6 @@ pub:
 pub mut:
 	lockeds  []Ident // `x`, `y` in `lock x, y {`
 	is_expr  bool
-	is_rw    bool // `rwshared` needs special special handling even in `lock` case
 	typ      table.Type
 }
 
@@ -897,6 +895,9 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
+		AnonFn {
+			return expr.decl.pos
+		}
 		ArrayInit {
 			return expr.pos
 		}

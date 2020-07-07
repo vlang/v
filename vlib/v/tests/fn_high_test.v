@@ -101,6 +101,17 @@ fn test_anon_fn() {
 	})
 }
 
+fn test_anon_fn_direct_call() {
+	fn(name string) {
+		println('hello $name')
+	}('from anon')
+	
+	b := fn(n int) int {
+		return 11+n
+	}(100)
+	assert b == 111
+}
+
 //
 // Test assigning functions (IdentFn)
 //

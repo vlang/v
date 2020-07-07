@@ -59,10 +59,8 @@ mut:
 	is_amp               bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql               bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared            bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_rwshared          bool
 	optionals            []string // to avoid duplicates TODO perf, use map
 	shareds              []int // types with hidden mutex for which decl has been emitted
-	rwshareds            []int // same with hidden rwmutex
 	inside_ternary       int // ?: comma separated statements on a single line
 	inside_map_postfix   bool // inside map++/-- postfix expr
 	inside_map_infix     bool // inside map<</+=/-= infix expr
@@ -177,40 +175,53 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	g.finish()
 	//
 	mut b := strings.new_builder(250000)
-	b.writeln(g.hashes())
-	b.writeln(g.comptime_defines.str())
+	b.write(g.hashes())
+	b.write(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
-	b.writeln(g.typedefs.str())
+	b.write(g.typedefs.str())
 	b.writeln('\n// V typedefs2:')
-	b.writeln(g.typedefs2.str())
+	b.write(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
-	b.writeln(g.cheaders.str())
+	b.write(g.cheaders.str())
 	b.writeln('\n// V includes:')
-	b.writeln(g.includes.str())
+	b.write(g.includes.str())
 	b.writeln('\n// Enum definitions:')
-	b.writeln(g.enum_typedefs.str())
+	b.write(g.enum_typedefs.str())
 	b.writeln('\n// V type definitions:')
-	b.writeln(g.type_definitions.str())
+	b.write(g.type_definitions.str())
 	b.writeln('\n// V Option_xxx definitions:')
-	b.writeln(g.options.str())
+	b.write(g.options.str())
 	b.writeln('\n// V json forward decls:')
-	b.writeln(g.json_forward_decls.str())
+	b.write(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
-	b.writeln(g.definitions.str())
-	b.writeln('\n// V profile counters:')
-	b.writeln(g.pcs_declarations.str())
-	b.writeln('\n// V interface table:')
-	b.writeln(g.interface_table())
-	b.writeln('\n// V gowrappers:')
-	b.writeln(g.gowrappers.str())
-	b.writeln('\n// V hotcode definitions:')
-	b.writeln(g.hotcode_definitions.str())
-	b.writeln('\n// V stringliterals:')
-	b.writeln(g.stringliterals.str())
-	b.writeln('\n// V auto str functions:')
-	b.writeln(g.auto_str_funcs.str())
+	b.write(g.definitions.str())
+	if g.pcs_declarations.len > 0 {
+		b.writeln('\n// V profile counters:')
+		b.write(g.pcs_declarations.str())
+	}
+	interface_table := g.interface_table()
+	if interface_table.len > 0 {
+		b.writeln('\n// V interface table:')
+		b.write(interface_table)
+	}
+	if g.gowrappers.len > 0 {
+		b.writeln('\n// V gowrappers:')
+		b.write(g.gowrappers.str())
+	}
+	if g.hotcode_definitions.len > 0 {
+		b.writeln('\n// V hotcode definitions:')
+		b.write(g.hotcode_definitions.str())
+	}
+	if g.stringliterals.len > 0 {
+		b.writeln('\n// V stringliterals:')
+		b.write(g.stringliterals.str())
+	}
+	if g.auto_str_funcs.len > 0 {
+		b.writeln('\n// V auto str functions:')
+		b.write(g.auto_str_funcs.str())
+	}
 	b.writeln('\n// V out')
-	b.writeln(g.out.str())
+	b.write(g.out.str())
 	b.writeln('\n// THE END.')
 	return b.str()
 }
@@ -395,23 +406,16 @@ fn (mut g Gen) register_optional(t table.Type) string {
 }
 
 fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
-	is_rw := t.has_flag(.atomic_or_rw)
-	prefix := if is_rw { 'rw' } else { '' }
-	sh_typ :=  '__${prefix}shared__$base'
+	sh_typ :=  '__shared__$base'
 	t_idx := t.idx()
-	if (is_rw && t_idx in g.rwshareds) || (!is_rw && t_idx in g.shareds) {
+	if t_idx in g.shareds {
 		return sh_typ
 	}
-	// TODO: These two should become different...
-	mtx_typ := if is_rw { 'sync__Mutex' } else { 'sync__Mutex' }
+	mtx_typ := 'sync__RwMutex'
 	g.hotcode_definitions.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
-	if is_rw {
-		g.rwshareds << t_idx
-	} else {
-		g.shareds << t_idx
-	}
+	g.shareds << t_idx
 	return sh_typ
 }
 
@@ -1180,11 +1184,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			blank_assign = ident.kind == .blank_ident
 			if ident.info is ast.IdentVar {
 				share := (ident.info as ast.IdentVar).share
-				if share in [.shared_t, .rwshared_t] {
+				if share == .shared_t {
 					var_type = var_type.set_flag(.shared_f)
 				}
-				if share in [.atomic_t, .rwshared_t] {
-					var_type = var_type.set_flag(.atomic_or_rw)
+				if share == .atomic_t {
+					var_type = var_type.set_flag(.atomic_f)
 				}
 			}
 		}
@@ -1206,18 +1210,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('{')
 				}
 				ret_styp := g.typ(val.decl.return_type)
-				if val.is_called {
-					g.write('$ret_styp $ident.name = ')
-					g.expr(*val)
-					g.write('()')
-				} else {
-					g.write('$ret_styp (*$ident.name) (')
-					def_pos := g.definitions.len
-					g.fn_args(val.decl.args, val.decl.is_variadic)
-					g.definitions.go_back(g.definitions.len - def_pos)
-					g.write(') = ')
-					g.expr(*val)
-				}
+				g.write('$ret_styp (*$ident.name) (')
+				def_pos := g.definitions.len
+				g.fn_args(val.decl.args, val.decl.is_variadic)
+				g.definitions.go_back(g.definitions.len - def_pos)
+				g.write(') = ')
+				g.expr(*val)
 				g.writeln(';')
 				if blank_assign {
 					g.write('}')
@@ -1315,7 +1313,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write('*($styp*)')
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
-			g.is_rwshared = var_type.has_flag(.atomic_or_rw)
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
@@ -1341,7 +1338,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.write(' })')
 				g.is_array_set = false
 			}
-			g.is_rwshared = false
 			g.is_shared = false
 		}
 		g.right_is_opt = false
@@ -2058,32 +2054,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 }
 
 fn (mut g Gen) lock_expr(node ast.LockExpr) {
+	mut lock_prefixes := []byte{len: 0, cap: node.lockeds.len}
 	for id in node.lockeds {
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		// TODO: use 3 different locking functions
-		if node.is_rlock {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
-		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
-		} else {
-			g.writeln('sync__Mutex_m_lock(${name}${deref}mtx);')
-		}
+		lock_prefix := if node.is_rlock { `r` } else { `w` }
+		lock_prefixes << lock_prefix // keep for unlock
+		g.writeln('sync__RwMutex_${lock_prefix:c}_lock(${name}${deref}mtx);')
 	}
 	g.stmts(node.stmts)
 	// unlock in reverse order
 	for i := node.lockeds.len-1; i >= 0; i-- {
 		id := node.lockeds[i]
+		lock_prefix := lock_prefixes[i]
 		name := id.name
 		deref := if id.is_mut { '->' } else { '.' }
-		// TODO: use 3 different unlocking functions
-		if node.is_rlock {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		} else if id.var_info().typ.has_flag(.atomic_or_rw) {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		} else {
-			g.writeln('sync__Mutex_unlock(${name}${deref}mtx);')
-		}
+		g.writeln('sync__RwMutex_${lock_prefix:c}_unlock(${name}${deref}mtx);')
 	}
 }
 
@@ -2226,7 +2212,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
-		if !g.is_assign_lhs && (ident_var.share == .shared_t || ident_var.share == .rwshared_t) {
+		if !g.is_assign_lhs && ident_var.share == .shared_t {
 			g.write('${name}.val')
 			return
 		}
@@ -2502,8 +2488,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		if fn_return_is_optional {
 			tmp := g.new_tmp_var()
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('$styp $tmp;')
-			g.writeln('${tmp}.ok = true;')
+			g.writeln('$styp $tmp = {.ok = true};')
 			g.writeln('return $tmp;')
 		} else {
 			g.writeln('return;')
@@ -2516,7 +2501,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		mut is_regular_option := g.typ(node.types[0]) == 'Option'
 		if optional_none || is_regular_option {
 			tmp := g.new_tmp_var()
-			g.write('/*opt promotion*/ Option $tmp = ')
+			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
 			styp := g.typ(g.fn_decl.return_type)
@@ -2535,7 +2520,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_type = g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp = g.new_tmp_var()
-			g.write('$opt_type $opt_tmp;')
+			g.writeln('$opt_type $opt_tmp;')
 			styp = g.base_type(g.fn_decl.return_type)
 			g.write('opt_ok2(&($styp/*X*/[]) { ')
 		} else {
@@ -2604,8 +2589,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
 			opt_tmp := g.new_tmp_var()
-			g.write('$opt_type $opt_tmp;')
-			g.write('/*:)$return_sym.name*/opt_ok2(&($styp[]) { ')
+			g.writeln('$opt_type $opt_tmp;')
+			g.write('opt_ok2(&($styp[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
@@ -2763,9 +2748,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
 		if g.is_shared {
 			mut shared_typ := struct_init.typ.set_flag(.shared_f)
-			if g.is_rwshared {
-				shared_typ = shared_typ.set_flag(.atomic_or_rw)
-			}
 			shared_styp = g.typ(shared_typ)
 			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ($styp){')
 		} else {
@@ -2870,7 +2852,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	g.write('}')
 	if g.is_shared {
-		g.write(', .mtx = sync__new_mutex()}')
+		g.write(', .mtx = sync__new_rwmutex()}')
 		if is_amp {
 			g.write(', sizeof($shared_styp))')
 		}
@@ -2985,7 +2967,7 @@ fn (mut g Gen) write_init_function() {
 	}
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
-	g.writeln(g.inits.str())
+	g.write(g.inits.str())
 	for mod_name in g.table.imports {
 		init_fn_name := '${mod_name}.init'
 		if _ := g.table.find_fn(init_fn_name) {

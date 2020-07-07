@@ -411,7 +411,7 @@ body {
 pre, code, pre code {
   color: #5c6e74;
   color: var(--code-default-text-color);
-  font-size: 0.9rem;
+  font-size: 0.948em;
   text-shadow: none;
   font-family: monospace;
   background-color: #edf2f7;

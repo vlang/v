@@ -435,7 +435,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
 				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type &&
 					expr_type_sym.kind != .placeholder {
-					c.error('!cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
+					c.error('cannot assign $expr_type_sym.kind `$expr_type_sym.name` as `$field_type_sym.name` for field `$info_field.name`',
 						field.pos)
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
@@ -552,11 +552,20 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					if (infix_expr.right is ast.IntegerLiteral &&
-						infix_expr.right.str() == '0') ||
-						(infix_expr.right is ast.FloatLiteral && infix_expr.right.str().f64() == 0.0) {
-						oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-						c.error('$oper by zero', right_pos)
+					match infix_expr.right as infix_right {
+						ast.FloatLiteral {
+							if infix_right.val.f64() == 0.0 {
+								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+								c.error('$oper by zero', infix_right.pos)
+							}
+						}
+						ast.IntegerLiteral {
+							if infix_right.val.int() == 0 {
+								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
+								c.error('$oper by zero', infix_right.pos)
+							}
+						}
+						else {}
 					}
 				}
 				return_type = promoted_type
@@ -876,7 +885,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
 				call_expr.pos)
 		} else if !method.is_variadic && call_expr.args.len > nr_args {
-			c.error('!too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $nr_args)',
+			c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $nr_args)',
 				call_expr.pos)
 			return method.return_type
 		}
@@ -1005,8 +1014,18 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	mut f := table.Fn{}
 	mut found := false
 	mut found_in_args := false
+	// anon fn direct call
+	if call_expr.left is ast.AnonFn {
+		// it was set to anon for checker errors, clear for gen
+		call_expr.name = ''
+		c.expr(call_expr.left)
+		anon_fn := call_expr.left as ast.AnonFn
+		anon_fn_sym := c.table.get_type_symbol(anon_fn.typ)
+		f = (anon_fn_sym.info as table.FnType).func
+		found = true
+	}
 	// try prefix with current module as it would have never gotten prefixed
-	if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
+	else if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -1149,9 +1168,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				if call_arg.share == .shared_t {
 					words = 'shared'
 					tok = 'shared'
-				} else if call_arg.share == .rwshared_t {
-					words = 'read/write shared'
-					tok = 'rwshared'
 				} else if call_arg.share == .atomic_t {
 					words = 'atomic'
 					tok = 'atomic'
@@ -1167,9 +1183,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 				if arg.typ.share() == .shared_t {
 					words = ' shared'
 					tok = 'shared'
-				} else if arg.typ.share() == .rwshared_t {
-					words = ' read/write shared'
-					tok = 'rwshared'
 				} else if arg.typ.share() == .atomic_t {
 					words = 'n atomic'
 					tok = 'atomic'
@@ -1533,7 +1546,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
-			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+			if assign_stmt.right_types.len == i {
+				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+			}
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		right_type := assign_stmt.right_types[i]
@@ -1563,11 +1578,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
-					if ident_var_info.share in [.shared_t, .rwshared_t] {
+					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
 					}
-					if ident_var_info.share in [.atomic_t, .rwshared_t] {
-						left_type = left_type.set_flag(.atomic_or_rw)
+					if ident_var_info.share == .atomic_t {
+						left_type = left_type.set_flag(.atomic_f)
 					}
 					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
@@ -2067,11 +2082,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
 			c.cur_fn = keep_fn
-			return if node.is_called {
-				node.decl.return_type
-			} else {
-				node.typ
-			}
+			return node.typ
 		}
 		ast.ArrayInit {
 			return c.array_init(mut node)
@@ -2081,12 +2092,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type_sym := c.table.get_type_symbol(node.expr_type)
 			type_sym := c.table.get_type_symbol(node.typ)
 			if expr_type_sym.kind == .sum_type {
-				info := expr_type_sym.info as table.SumType
 				if type_sym.kind == .placeholder {
 					// Unknown type used in the right part of `as`
 					c.error('unknown type `$type_sym.name`', node.pos)
 				}
-				if node.typ !in info.variants {
+				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
 					c.error('cannot cast `$expr_type_sym.name` to `$type_sym.name`', node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
@@ -2113,16 +2123,23 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CastExpr {
 			node.expr_type = c.expr(node.expr)
-			sym := c.table.get_type_symbol(node.expr_type)
-			if node.typ == table.string_type && !(sym.kind in [.byte, .byteptr] ||
-				(sym.kind == .array && sym.name == 'array_byte')) {
+			from_type_sym := c.table.get_type_symbol(node.expr_type)
+			to_type_sym := c.table.get_type_symbol(node.typ)
+			if to_type_sym.kind == .sum_type {
+				if node.expr_type in [table.any_int_type, table.any_flt_type] {
+					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
+				}
+				if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
+					c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`',
+						node.pos)
+				}
+			} else if node.typ == table.string_type && !(from_type_sym.kind in [.byte, .byteptr] ||
+				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
 					node.pos)
-			}
-			if node.expr_type == table.string_type {
-				cast_to_type_sym := c.table.get_type_symbol(node.typ)
-				if cast_to_type_sym.kind != .alias {
+			} else if node.expr_type == table.string_type {
+				if to_type_sym.kind !in [.alias] {
 					mut error_msg := 'cannot cast a string'
 					if node.expr is ast.StringLiteral {
 						str_lit := node.expr as ast.StringLiteral

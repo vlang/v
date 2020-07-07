@@ -1,6 +1,7 @@
 module testing
 
 import os
+import time
 import term
 import benchmark
 import sync
@@ -59,6 +60,13 @@ pub fn (mut ts TestSession) init() {
 }
 
 pub fn (mut ts TestSession) test() {
+	// Ensure that .tmp.c files generated from compiling _test.v files,
+	// are easy to delete at the end, *without* affecting the existing ones.
+	now := time.sys_mono_now()
+	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
+	os.mkdir_all(new_vtmp_dir)
+	os.setenv('VTMP', new_vtmp_dir, true)
+	//
 	ts.init()
 	mut remaining_files := []string{}
 	for dot_relative_file in ts.files {
@@ -99,6 +107,10 @@ pub fn (mut ts TestSession) test() {
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
 	eprintln(term.h_divider('-'))
+	// cleanup generated .tmp.c files after successfull tests:
+	if ts.benchmark.nfail == 0 {
+		os.rmdir_all(new_vtmp_dir)
+	}
 }
 
 pub fn (mut m TestMessageHandler) display_message() {

@@ -28,8 +28,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
 	if node.kind == .insert {
 		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
-	} else {
+	} else if node.kind == .update {
 		g.write('UPDATE `${util.strip_mod_name(node.table_name)}` SET ')
+	} else if node.kind == .delete {
+		g.write('DELETE FROM `${util.strip_mod_name(node.table_name)}` ')
 	}
 	if node.kind == .insert {
 		for i, field in node.fields {
@@ -61,8 +63,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			}
 		}
 		g.write(' WHERE ')
+	} else if node.kind == .delete {
+		g.write(' WHERE ')
 	}
-	if node.kind == .update {
+	if node.kind == .update || node.kind == .delete {
 		g.expr_to_sql(node.where_expr)
 	}
 	g.writeln('"));')
