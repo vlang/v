@@ -34,12 +34,8 @@ fn test_shared_array(){
 		}
 		time.sleep_ms(100)
 	}
-	mut s := 0
-	mut t := 0
 	rlock foo {
-		s = foo[0]
-		t = foo[1]
+		assert foo[0] == 100010
+		assert foo[1] == 350020
 	}
-	assert s == 100010
-	assert t == 350020
 }
