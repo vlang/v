@@ -8,6 +8,9 @@ import v.token
 import v.ast
 
 pub fn (c &Checker) check_basic(got, expected table.Type) bool {
+	if got == expected {
+		return true
+	}
 	t := c.table
 	got_idx := t.unalias_num_type(got).idx()
 	exp_idx := t.unalias_num_type(expected).idx()
@@ -99,41 +102,44 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	// TODO: there is a bug when casting sumtype the other way if its pointer
-	// so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-	// if got_type_sym.kind == .sum_type {
-	// sum_info := got_type_sym.info as table.SumType
-	// // TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
-	// if expected.set_nr_muls(0) in sum_info.variants {
-	// return true
-	// }
-	// }
-	if exp_type_sym.kind == .sum_type {
-		sum_info := exp_type_sym.info as table.SumType
-		// TODO: handle `match SumType { &PtrVariant {} }` currently just checking base
-		if got.set_nr_muls(0) in sum_info.variants {
-			return true
-		}
+	if c.check_sumtype_compatibility(got, expected) {
+		return true
 	}
 	// fn type
 	if got_type_sym.kind == .function && exp_type_sym.kind == .function {
-		got_info := got_type_sym.info as table.FnType
-		exp_info := exp_type_sym.info as table.FnType
-		got_fn := got_info.func
-		exp_fn := exp_info.func
-		// we are using check() to compare return type & args as they might include
-		// functions themselves. TODO: optimize, only use check() when needed
-		if got_fn.args.len == exp_fn.args.len && c.check_basic(got_fn.return_type, exp_fn.return_type) {
-			for i, got_arg in got_fn.args {
-				exp_arg := exp_fn.args[i]
-				if !c.check_basic(got_arg.typ, exp_arg.typ) {
-					return false
-				}
-			}
-			return true
-		}
+		return c.check_matching_function_symbols(got_type_sym, exp_type_sym)
 	}
 	return false
+}
+
+pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymbol, exp_type_sym &table.TypeSymbol) bool {
+	got_info := got_type_sym.info as table.FnType
+	exp_info := exp_type_sym.info as table.FnType
+	got_fn := got_info.func
+	exp_fn := exp_info.func
+	// we are using check() to compare return type & args as they might include
+	// functions themselves. TODO: optimize, only use check() when needed
+	if got_fn.args.len != exp_fn.args.len {
+		return false
+	}
+	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
+		return false
+	}
+	for i, got_arg in got_fn.args {
+		exp_arg := exp_fn.args[i]
+		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer()
+		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer()
+		if exp_arg_is_ptr != got_arg_is_ptr {
+			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
+			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
+			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			return false
+		}
+		if !c.check_basic(got_arg.typ, exp_arg.typ) {
+			return false
+		}
+	}
+	return true
 }
 
 [inline]
@@ -215,6 +221,9 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
 pub fn (c &Checker) check_types(got, expected table.Type) bool {
+	if got == expected {
+		return true
+	}
 	exp_idx := expected.idx()
 	got_idx := got.idx()
 	if exp_idx == got_idx {
@@ -336,4 +345,14 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 		}
 	}
 	return table.string_type
+}
+
+pub fn (c &Checker) check_sumtype_compatibility(a table.Type, b table.Type) bool {
+	if c.table.sumtype_has_variant(a, b) {
+		return true
+	}
+	if c.table.sumtype_has_variant(b, a) {
+		return true
+	}
+	return false
 }

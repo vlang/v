@@ -8,21 +8,22 @@ import json
 struct App {
 pub mut:
 	vweb vweb.Context
-	db sqlite.DB
+	db   sqlite.DB
 }
 
 fn main() {
 	vweb.run<App>(8081)
 }
 
-fn (mut app App) index_text() {
+/*
+fn (mut app App) index_text() vweb.Result {
 	app.vweb.text('Hello, world from vweb!')
+	return vweb.Result{}
 }
 
-/*
-fn (app &App) index_html() {
-	message := 'Hello, world from vweb!'
-	$vweb.html()
+fn (app &App) index_html() vweb.Result {
+	message := 'Hello, world from Vweb!'
+	return $vweb.html()
 }
 */
 
@@ -32,25 +33,27 @@ fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') 	or { panic(err) }
+	db := sqlite.connect('blog.db') or {
+		panic(err)
+	}
 	app.db = db
 }
 
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) new() vweb.Result{
+pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
-	if title == '' || text == ''  {
-		app.vweb.text('Empty text/titile')
+	if title == '' || text == '' {
+		app.vweb.text('Empty text/title')
 		return vweb.Result{}
 	}
-	article := Article{
+	article := Article {
 		title: title
 		text: text
 	}
@@ -58,7 +61,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	return app.vweb.redirect('/article/')
+	return app.vweb.redirect('/')
 }
 
 pub fn (mut app App) articles() {

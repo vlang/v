@@ -1,4 +1,0 @@
-fn main() {
-	a := 0.0
-	println(1.0/a)
-}

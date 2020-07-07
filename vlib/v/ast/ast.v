@@ -11,9 +11,9 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | Likely | MapInit | MatchExpr | None | OrExpr |
-	ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
-	StringLiteral | StructInit | Type | TypeOf
+	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None |
+	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
+	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompFor |
 	CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt |
@@ -213,7 +213,6 @@ pub:
 pub struct AnonFn {
 pub:
 	decl      FnDecl
-	is_called bool
 pub mut:
 	typ       table.Type
 }
@@ -232,6 +231,7 @@ pub:
 	receiver_pos  token.Position
 	is_method     bool
 	rec_mut       bool // is receiver mutable
+	rec_share     table.ShareType
 	language      table.Language
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
@@ -271,6 +271,7 @@ pub mut:
 pub struct CallArg {
 pub:
 	is_mut bool
+	share  table.ShareType
 	expr   Expr
 pub mut:
 	typ    table.Type
@@ -301,6 +302,7 @@ pub struct Var {
 pub:
 	name       string
 	expr       Expr
+	share      table.ShareType
 	is_mut     bool
 	is_arg     bool // fn args should not be autofreed
 pub mut:
@@ -344,6 +346,7 @@ pub mut:
 	is_mut      bool
 	is_static   bool
 	is_optional bool
+	share       table.ShareType
 }
 
 pub type IdentInfo = IdentFn | IdentVar
@@ -432,10 +435,21 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond    Expr
-	stmts   []Stmt
-	pos     token.Position
-	comment Comment
+	cond     Expr
+	stmts    []Stmt
+	pos      token.Position
+	comments []Comment
+}
+
+pub struct LockExpr {
+pub:
+	stmts    []Stmt
+	is_rlock bool
+	pos      token.Position
+pub mut:
+	lockeds  []Ident // `x`, `y` in `lock x, y {`
+	is_expr  bool
+	typ      table.Type
 }
 
 pub struct MatchExpr {
@@ -570,7 +584,8 @@ pub mut:
 // e.g. `[unsafe_fn]`
 pub struct Attr {
 pub:
-	name string
+	name      string
+	is_string bool // `['xxx']`
 }
 
 pub fn (attrs []Attr) contains(attr Attr) bool {
@@ -880,13 +895,16 @@ pub fn (expr Expr) is_blank_ident() bool {
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match mut expr {
+		AnonFn {
+			return expr.decl.pos
+		}
 		ArrayInit {
 			return expr.pos
 		}
 		AsCast {
 			return expr.pos
 		}
-			// ast.Ident { }
+		// ast.Ident { }
 		CastExpr {
 			return expr.pos
 		}
@@ -914,7 +932,7 @@ pub fn (expr Expr) position() token.Position {
 		IfExpr {
 			return expr.pos
 		}
-			// ast.IfGuardExpr { }
+		// ast.IfGuardExpr { }
 		IndexExpr {
 			return expr.pos
 		}
@@ -945,11 +963,11 @@ pub fn (expr Expr) position() token.Position {
 		PostfixExpr {
 			return expr.pos
 		}
-			// ast.None { }
+		// ast.None { }
 		PrefixExpr {
 			return expr.pos
 		}
-			// ast.ParExpr { }
+		// ast.ParExpr { }
 		SelectorExpr {
 			return expr.pos
 		}
@@ -962,14 +980,14 @@ pub fn (expr Expr) position() token.Position {
 		StringInterLiteral {
 			return expr.pos
 		}
-			// ast.Type { }
+		// ast.Type { }
 		StructInit {
 			return expr.pos
 		}
 		Likely {
 			return expr.pos
 		}
-			// ast.TypeOf { }
+		// ast.TypeOf { }
 		else {
 			return token.Position{}
 		}
@@ -980,29 +998,29 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }
 		AssignStmt { return stmt.pos }
-			/*
-			// Attr {
+		/*
+		// Attr {
 		// }
 		// Block {
 		// }
 		// BranchStmt {
 		// }
-			*/
+		*/
 		Comment { return stmt.pos }
 		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
-			/*
-			// DeferStmt {
+		/*
+		// DeferStmt {
 		// }
-			*/
+		*/
 		EnumDecl { return stmt.pos }
 		ExprStmt { return stmt.pos }
 		FnDecl { return stmt.pos }
 		ForCStmt { return stmt.pos }
 		ForInStmt { return stmt.pos }
 		ForStmt { return stmt.pos }
-			/*
-			// GlobalDecl {
+		/*
+		// GlobalDecl {
 		// }
 		// GoStmt {
 		// }
@@ -1012,23 +1030,23 @@ pub fn (stmt Stmt) position() token.Position {
 		// }
 		// HashStmt {
 		// }
-			*/
+		*/
 		Import { return stmt.pos }
-			/*
-			// InterfaceDecl {
+		/*
+		// InterfaceDecl {
 		// }
 		// Module {
 		// }
-			*/
+		*/
 		Return { return stmt.pos }
 		StructDecl { return stmt.pos }
-			/*
-			// TypeDecl {
+		/*
+		// TypeDecl {
 		// }
 		// UnsafeStmt {
 		// }
-			*/
-			//
+		*/
+		//
 		else { return token.Position{} }
 	}
 }

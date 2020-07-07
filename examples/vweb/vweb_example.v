@@ -42,6 +42,6 @@ pub fn (mut app App) text() vweb.Result {
 }
 
 pub fn (mut app App) cookie() vweb.Result {
-	app.vweb.set_cookie('cookie', 'test')
+	app.vweb.set_cookie(name:'cookie', value:'test')
 	return app.vweb.text('Headers: $app.vweb.headers')
 }

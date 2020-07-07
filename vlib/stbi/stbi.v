@@ -4,8 +4,6 @@
 
 module stbi
 
-// note we might need special case for this
-// import gl
 
 #flag -I @VROOT/thirdparty/stb_image
 #include "stb_image.h"
@@ -62,6 +60,7 @@ pub fn (img Image) free() {
 	C.stbi_image_free(img.data)
 }
 
+/*
 pub fn (img Image) tex_image_2d() {
 	mut rgb_flag := C.GL_RGB
 	if img.ext == 'png' {
@@ -70,6 +69,7 @@ pub fn (img Image) tex_image_2d() {
 	C.glTexImage2D(C.GL_TEXTURE_2D, 0, rgb_flag, img.width, img.height, 0,
 		rgb_flag, C.GL_UNSIGNED_BYTE,	img.data)
 }
+*/
 
 pub fn set_flip_vertically_on_load(val bool) {
 	C.stbi_set_flip_vertically_on_load(val)

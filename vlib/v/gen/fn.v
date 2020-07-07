@@ -241,6 +241,11 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	// NOTE: everything could be done this way
+	// see my comment in parser near anon_fn
+	if node.left is ast.AnonFn {
+		g.expr(node.left)
+	}
 	if node.should_be_skipped {
 		return
 	}
@@ -249,7 +254,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.inside_call = false
 	}
 	gen_or := node.or_block.kind != .absent
-	cur_line := if gen_or && g.is_assign_rhs {
+	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+	cur_line := if is_gen_or_and_assign_rhs {
 		line := g.go_before_stmt(0)
 		g.out.write(tabs[g.indent])
 		line
@@ -268,7 +274,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		g.write('\n\t$cur_line$tmp_opt')
+		if is_gen_or_and_assign_rhs {
+			g.write('\n$cur_line$tmp_opt')
+		}
 	}
 }
 
@@ -515,10 +523,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					g.write('*')
 				}
 				g.expr(expr)
-				if !typ.has_flag(.variadic) && sym.kind == .struct_ &&
-					styp != 'ptr' && !sym.has_method('str') {
-					g.write(', 0') // trailing 0 is initial struct indent count
-				}
 			}
 			g.write('))')
 		}

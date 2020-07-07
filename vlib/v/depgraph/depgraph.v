@@ -36,7 +36,6 @@ pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 		if dep !in d {
 			d << dep
 		}
-		//
 		else{}
 	}
 	o.set(name, d)

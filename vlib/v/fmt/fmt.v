@@ -278,7 +278,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('')
 		}
 		ast.Attr {
-			f.writeln('[$node.name]')
+			if node.is_string {
+				f.writeln("['$node.name']")
+			} else {
+				f.writeln('[$node.name]')
+			}
 		}
 		ast.Block {
 			f.writeln('{')
@@ -421,7 +425,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('interface $it.name {')
 			for method in it.methods {
 				f.write('\t')
-				f.writeln(method.str(f.table).after('fn '))
+				f.writeln(method.stringify(f.table).after('fn '))
 			}
 			f.writeln('}\n')
 		}
@@ -697,9 +701,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	match node {
 		ast.AnonFn {
 			f.fn_decl(node.decl)
-			if node.is_called {
-				f.write('()')
-			}
 		}
 		ast.ArrayInit {
 			f.array_init(node)
@@ -834,6 +835,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.IntegerLiteral {
 			f.write(node.val)
+		}
+		ast.LockExpr {
+			f.lock_expr(node)
 		}
 		ast.MapInit {
 			if node.keys.len == 0 {
@@ -1070,9 +1074,13 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 	match or_block.kind {
 		.absent {}
 		.block {
-			f.writeln(' or {')
-			f.stmts(or_block.stmts)
-			f.write('}')
+			if or_block.stmts.len == 0 {
+				f.write(' or { }')
+			} else {
+				f.writeln(' or {')
+				f.stmts(or_block.stmts)
+				f.write('}')
+			}
 		}
 		.propagate {
 			f.write('?')
@@ -1127,7 +1135,7 @@ pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bo
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
-	s := node.str(f.table)
+	s := node.stringify(f.table)
 	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')
@@ -1164,14 +1172,28 @@ pub fn (mut f Fmt) short_module(name string) string {
 	return '${aname}.$symname'
 }
 
+pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
+	f.write('lock ')
+	for i, v in lex.lockeds {
+		if i > 0 {
+			f.write(', ')
+		}
+		f.expr(v)
+	}
+	f.write(' {')
+	f.writeln('')
+	f.stmts(lex.stmts)
+	f.write('}')
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else &&
 		it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		if branch.comment.text != '' {
-			f.comment(branch.comment)
+		if branch.comments.len > 0 {
+			f.comments(branch.comments, true, .keep)
 		}
 		if i == 0 {
 			f.write('if ')
@@ -1283,9 +1305,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	} else if it.cond is ast.SelectorExpr {
 		// `x.y as z`
 		// if ident.name != it.var_name && it.var_name != '' {
-		if it.var_name != '' {
-			f.write(' as $it.var_name')
-		}
+	}
+	if it.var_name != '' && f.it_name != it.var_name {
+		f.write(' as $it.var_name')
 	}
 	f.writeln(' {')
 	f.indent++
@@ -1354,8 +1376,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 
 pub fn (mut f Fmt) remove_new_line() {
 	mut i := 0
-	for i = f.out.len - 1; i >= 0; i--
-	 {
+	for i = f.out.len - 1; i >= 0; i-- {
 		if !f.out.buf[i].is_space() { // != `\n` {
 			break
 		}

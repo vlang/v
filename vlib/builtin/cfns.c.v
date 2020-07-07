@@ -389,11 +389,24 @@ fn C.ReleaseMutex(voidptr) bool
 fn C.CreateEvent(int, bool, bool, byteptr) voidptr
 fn C.SetEvent(voidptr) int
 
+fn C.InitializeSRWLock(voidptr)
+fn C.AcquireSRWLockShared(voidptr)
+fn C.AcquireSRWLockExclusive(voidptr)
+fn C.ReleaseSRWLockShared(voidptr)
+fn C.ReleaseSRWLockExclusive(voidptr)
 
 // pthread.h
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
+
+fn C.pthread_rwlockattr_init(voidptr) int
+fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
+fn C.pthread_rwlockattr_setpshared(voidptr, int) int
+fn C.pthread_rwlock_init(voidptr, voidptr) int
+fn C.pthread_rwlock_rdlock(voidptr) int
+fn C.pthread_rwlock_wrlock(voidptr) int
+fn C.pthread_rwlock_unlock(voidptr) int
 
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int

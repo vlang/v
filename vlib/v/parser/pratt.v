@@ -16,7 +16,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	p.eat_comments()
 	// Prefix
 	match p.tok.kind {
-		.key_mut, .key_static {
+		.key_mut, .key_shared, .key_atomic, .key_static {
 			node = p.name_expr()
 			p.is_stmt_ident = is_stmt_ident
 		}
@@ -78,6 +78,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.key_if {
 			node = p.if_expr()
+		}
+		.key_lock, .key_rlock {
+			node = p.lock_expr()
 		}
 		.lsbr {
 			if p.expecting_type {
@@ -163,6 +166,22 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_fn {
 			// Anonymous function
 			node = p.anon_fn()
+			// its a call
+			// NOTE: this could be moved to just before the pratt loop
+			// then anything can be a call, eg. `index[2]()` or `struct.field()`
+			// but this would take a bit of modification
+			if p.tok.kind == .lpar {
+				p.next()
+				pos := p.tok.position()
+				args := p.call_args()
+				p.check(.rpar)
+				node = ast.CallExpr{
+					name: 'anon'
+					left: node
+					args: args
+					pos: pos
+				}
+			}
 			return node
 		}
 		else {
@@ -239,54 +258,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)
-
-	if op in [.div, .mod] {
-		oper := if op == .div { 'division' } else { 'modulo' }
-		match right {
-			ast.FloatLiteral {
-				if it.val.f64() == 0.0 {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			ast.Ident {
-				if p.is_var_zero(right.name) {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			ast.IntegerLiteral {
-				if it.val.int() == 0 {
-					p.error_with_pos('$oper by zero', right.pos)
-				}
-			}
-			else {}
-		}
-	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
 	}
-}
-
-fn (mut p Parser) is_var_zero(name string) bool {
-	var := p.scope.find_var(name) or {
-		return false
-	}
-	match var.expr {
-		ast.FloatLiteral {
-			if it.val.f64() == 0.0 {
-				return true
-			}
-		}
-		ast.IntegerLiteral {
-			if it.val.int() == 0 {
-				return true
-			}
-		}
-		else {}
-	}
-	return false
 }
 
 fn (mut p Parser) prefix_expr() ast.PrefixExpr {
@@ -299,12 +276,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := ast.Expr{}
-	if op == .minus {
-		right = p.expr(token.Precedence.call)
-	} else {
-		right = p.expr(token.Precedence.prefix)
-	}
+	right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
 	p.is_amp = false
 	return ast.PrefixExpr{
 		op: op

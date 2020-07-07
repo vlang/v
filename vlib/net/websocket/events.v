@@ -1,6 +1,6 @@
 module websocket
 
-fn (ws &Client) send_message_event(msg Message) {
+fn (ws &Client) send_message_event(msg &Message) {
 	ws.eb.publish('on_message', ws, msg)
 	l.d('sending on_message event')
 }

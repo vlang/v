@@ -156,9 +156,9 @@ pub fn get_text(url string) string {
 
 pub fn url_encode_form_data(data map[string]string) string {
 	mut pieces := []string{}
-	for _key, _value in data {
-		key := urllib.query_escape(_key)
-		value := urllib.query_escape(_value)
+	for key_, value_ in data {
+		key := urllib.query_escape(key_)
+		value := urllib.query_escape(value_)
 		pieces << '$key=$value'
 	}
 	return pieces.join('&')
@@ -419,4 +419,8 @@ fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
 	client.close() or {
 	}
 	return parse_response(sb.str())
+}
+
+pub fn (req &Request) referer() string {
+	return req.headers['Referer']
 }

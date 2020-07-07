@@ -563,6 +563,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.IntegerLiteral {
 			g.write(it.val)
 		}
+		ast.LockExpr {
+			g.gen_lock_expr(it)
+		}
 		ast.MapInit {
 			g.gen_map_init_expr(it)
 		}
@@ -1192,6 +1195,10 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	g.write(name)
 }
 
+fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
+	// TODO: implement this
+}
+
 fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 	type_sym := g.table.get_type_symbol(node.typ)
 
@@ -1320,6 +1327,12 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write(g.typ(it.right_type))
 		if it.op == .not_is { g.write(')') }
 	} else {
+		both_are_int := int(it.left_type) in table.integer_type_idxs && int(it.right_type) in table.integer_type_idxs
+
+		if it.op == .div && both_are_int {
+			g.write('parseInt(')
+		}
+
 		g.expr(it.left)
 
 		// in js == is non-strict & === is strict, always do strict
@@ -1332,6 +1345,11 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		}
 
 		g.expr(it.right)
+
+		// Int division: 2.5 -> 2 by prepending |0
+		if it.op == .div && both_are_int {
+			g.write(',10)')
+		}
 	}
 }
 

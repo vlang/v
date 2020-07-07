@@ -98,23 +98,8 @@ pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 	return typ
 }
 
-pub fn (mut p Parser) parse_type() table.Type {
-	// optional
-	mut is_optional := false
-	if p.tok.kind == .question {
-		p.next()
-		is_optional = true
-	}
-	mut nr_muls := 0
-	if p.tok.kind == .key_mut {
-		nr_muls++
-		p.next()
-	}
-	// &Type
-	for p.tok.kind == .amp {
-		nr_muls++
-		p.next()
-	}
+// Parses any language indicators on a type.
+pub fn (mut p Parser) parse_language() table.Language {
 
 	language := if p.tok.lit == 'C' {
 		table.Language.c
@@ -128,6 +113,40 @@ pub fn (mut p Parser) parse_type() table.Type {
 		p.next()
 		p.check(.dot)
 	}
+
+	return language
+}
+
+pub fn (mut p Parser) parse_type() table.Type {
+	// optional
+	mut is_optional := false
+	if p.tok.kind == .question {
+		line_nr := p.tok.line_nr
+		p.next()
+		is_optional = true
+
+		if p.tok.line_nr > line_nr {
+			mut typ := table.void_type
+			if is_optional {
+				typ = typ.set_flag(.optional)
+			}
+			return typ
+		}
+	}
+	is_shared := p.tok.kind == .key_shared
+	is_atomic := p.tok.kind == .key_atomic
+
+	mut nr_muls := 0
+	if p.tok.kind == .key_mut || is_shared || is_atomic {
+		nr_muls++
+		p.next()
+	}
+	// &Type
+	for p.tok.kind == .amp {
+		nr_muls++
+		p.next()
+	}
+	language := p.parse_language()
 	mut typ := table.void_type
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
@@ -138,6 +157,12 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	if is_optional {
 		typ = typ.set_flag(.optional)
+	}
+	if is_shared {
+		typ = typ.set_flag(.shared_f)
+	}
+	if is_atomic {
+		typ = typ.set_flag(.atomic_f)
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
