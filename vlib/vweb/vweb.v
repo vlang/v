@@ -49,7 +49,7 @@ pub:
 	// TODO Response
 pub mut:
 	form map[string]string
-	get map[string]string
+	query map[string]string
 	headers string // response headers
 	done bool
 	page_gen_start i64
@@ -336,20 +336,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut ok := true
 	mut url_words := vals[1][1..].split('/')
 
-  if url_words.len == 0 {
+	if url_words.len == 0 {
 		app.index()
 		conn.close() or {}
 		return
 	}
-  
-	tmp_get := url_words.last().all_after('?').split('&').map(it.split('='))
+
+	tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
 	url_words[url_words.len - 1] = url_words.last().all_before('?')
 
-	for data in tmp_get {
-		app.vweb.get[data[0]] = data[1]
-  }
-
-
+	for data in tmp_query {
+		app.vweb.query[data[0]] = data[1]
+	}
 
 	mut vars := []string{cap: route_words.len}
 
