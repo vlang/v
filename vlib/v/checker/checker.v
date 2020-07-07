@@ -2673,10 +2673,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
 				left_ident := infix.left as ast.Ident
 				right_type := infix.right as ast.Type
-				ident_info := left_ident.info
-				if ident_info is ast.IdentVar {
+				if left_ident.info is ast.IdentVar {
 					// Register shadow variable or `as` variable with actual type
-					ident_var := ident_info as ast.IdentVar
+					ident_var := left_ident.info as ast.IdentVar
 					left_sym := c.table.get_type_symbol(ident_var.typ)
 					if left_sym.kind == .sum_type {
 						scope := c.file.scope.innermost(branch.pos.pos)
