@@ -249,7 +249,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.inside_call = false
 	}
 	gen_or := node.or_block.kind != .absent
-	cur_line := if gen_or && g.is_assign_rhs {
+	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+	cur_line := if is_gen_or_and_assign_rhs {
 		line := g.go_before_stmt(0)
 		g.out.write(tabs[g.indent])
 		line
@@ -268,7 +269,9 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	}
 	if gen_or {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
-		g.write('\n\t$cur_line$tmp_opt')
+		if is_gen_or_and_assign_rhs {
+			g.write('\n$cur_line$tmp_opt')
+		}
 	}
 }
 
