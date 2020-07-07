@@ -437,6 +437,27 @@ It can also append an entire array.
 
 `val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
+&nbsp;
+
+During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
+and the default element (`init`).
+
+Setting the capacity improves performance of insertions, as it reduces the amount of reallocations in
+dynamic arrays:
+
+```v
+numbers := []int{ cap: 1000 }
+// Now adding new elements is as efficient as setting them directly
+for i in 0 .. 1000 {
+    numbers << i
+    // same as
+    // numbers[i] = i
+}
+```
+
+`[]int{ len: 5, init: -1 }` will create `[-1, -1, -1, -1, -1]`.
+
+
 #### Array methods
 
 All arrays can be easily printed with `println(arr)` and converted to a string
