@@ -25,6 +25,7 @@ mut:
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
+	cached_msvc			MsvcResult
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -36,6 +37,12 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	}
 	if pref.use_color == .never {
 		util.emanager.set_support_color(false)
+	}
+	msvc := find_msvc() or {
+		if pref.ccompiler == 'msvc' {
+			verror('Cannot find MSVC on this OS')
+		}
+		MsvcResult { valid: false }
 	}
 	return Builder{
 		pref: pref
@@ -50,6 +57,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		} else {
 			100
 		}
+		cached_msvc: msvc
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
