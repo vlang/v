@@ -16,18 +16,18 @@ fn main() {
 }
 
 /*
-fn (mut app App) index_text() vweb.Result {
+pub fn (mut app App) index_text() vweb.Result {
 	app.vweb.text('Hello, world from vweb!')
 	return vweb.Result{}
 }
 
-fn (app &App) index_html() vweb.Result {
+pub fn (app &App) index_html() vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
 }
 */
 
-fn (app &App) index() vweb.Result {
+pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }
