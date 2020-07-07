@@ -7,7 +7,7 @@ import gx
 import os
 
 const (
-	default_font_size = 20
+	default_font_size = 16
 )
 
 struct FT {
@@ -51,7 +51,7 @@ pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	}
 	ctx.ft.fons.set_font(ctx.ft.font_normal)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	ctx.ft.fons.set_size(2.0 * scale * f32(cfg.size))
+	ctx.ft.fons.set_size(scale * f32(cfg.size))
 	if cfg.align == gx.align_right {
 		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
 	}
