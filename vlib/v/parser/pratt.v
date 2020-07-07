@@ -168,7 +168,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.anon_fn()
 			// its a call
 			// NOTE: this could be moved to just before the pratt loop
-			// then anything can be a call, eg. `index[2]()` or `stuct.field()`
+			// then anything can be a call, eg. `index[2]()` or `struct.field()`
 			// but this would take a bit of modification
 			if p.tok.kind == .lpar {
 				p.next()
