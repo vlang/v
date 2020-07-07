@@ -50,7 +50,8 @@ pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
 		return
 	}
 	ctx.ft.fons.set_font(ctx.ft.font_normal)
-	ctx.ft.fons.set_size(2.0 * ctx.ft.scale * f32(cfg.size))
+	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
+	ctx.ft.fons.set_size(2.0 * scale * f32(cfg.size))
 	if cfg.align == gx.align_right {
 		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
 	}
@@ -63,7 +64,7 @@ pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	descender := f32(0.0)
 	lh := f32(0.0)
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ctx.ft.fons, x*ctx.ft.scale, y*ctx.ft.scale, text.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ctx.ft.fons, x*scale, y*scale, text.str, 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x, y int, text string) {
