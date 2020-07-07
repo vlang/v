@@ -661,7 +661,7 @@ fn (c &Builder) build_thirdparty_obj_files() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
 			if c.pref.ccompiler == 'msvc' {
-				build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+				c.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
 				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
@@ -684,16 +684,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it...')
-	parent := os.dir(obj_path)
-	files := os.ls(parent) or {
-		panic(err)
-	}
-	mut cfiles := ''
-	for file in files {
-		if file.ends_with('.c') {
-			cfiles += '"' + os.real_path(parent + os.path_separator + file) + '" '
-		}
-	}
+	cfiles := '${path[..path.len-2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }

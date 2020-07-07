@@ -44,7 +44,7 @@ pub fn (cflags []CFlag) c_options_before_target() string {
 	// -I flags, optimization flags and so on
 	mut args := []string{}
 	for flag in cflags {
-		if flag.name != '-l' {
+		if flag.name != '-l' && !flag.value.ends_with('.o') {
 			args << flag.format()
 		}
 	}
