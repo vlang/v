@@ -2127,7 +2127,7 @@ fn C.WinFunction()
 
 ## Appendix I: Keywords
 
-V has 23 keywords:
+V has 25 keywords:
 
 ```v
 as
@@ -2148,6 +2148,7 @@ interface
 is
 match
 module
+mut
 none
 or
 pub
