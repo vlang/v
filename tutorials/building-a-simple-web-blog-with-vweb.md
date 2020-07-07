@@ -64,7 +64,7 @@ fn main() {
 	vweb.run<App>(8081)
 }
 
-fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index() vweb.Result {
 	app.vweb.text('Hello, world from vweb!')
 	return vweb.Result{}
 }
@@ -132,7 +132,7 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 and update our `index()` action so that it returns the HTML view we just created:
 
 ```v
-fn (mut app App) index() vweb.Result {
+pub fn (mut app App) index() vweb.Result {
 	message := 'Hello, world from Vweb!'
 	return $vweb.html()
 }
@@ -178,7 +178,7 @@ We'll be using V's builtin ORM and a SQLite database.
 
 Create a SQLite file with the schema:
 ```sql
-drop table Article;
+drop table if exists Article;
 
 create table Article (
 	id integer primary key,
@@ -252,7 +252,7 @@ pub fn (app &App) find_all_articles() []Article {
 Let's fetch the articles in the `index()` action:
 
 ```v
-fn (app &App) index() vweb.Result {
+pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
 }

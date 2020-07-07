@@ -1025,7 +1025,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		found = true
 	}
 	// try prefix with current module as it would have never gotten prefixed
-	else if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
+	if !found && !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed

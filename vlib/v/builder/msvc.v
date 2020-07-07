@@ -18,6 +18,7 @@ struct MsvcResult {
 	ucrt_include_path   string
 	vs_include_path     string
 	shared_include_path string
+	valid				bool
 }
 
 // shell32 for RegOpenKeyExW etc
@@ -183,15 +184,16 @@ fn find_msvc() ?MsvcResult {
 			ucrt_include_path: wk.ucrt_include_path
 			vs_include_path: vs.include_path
 			shared_include_path: wk.shared_include_path
+			valid: true
 		}
 	} $else {
-		verror('Cannot find msvc on this OS')
 		return error('msvc not found')
 	}
 }
 
 pub fn (mut v Builder) cc_msvc() {
-	r := find_msvc() or {
+	r := v.cached_msvc
+	if r.valid == false {
 		verror('Cannot find MSVC on this OS')
 		return
 	}
@@ -309,36 +311,30 @@ pub fn (mut v Builder) cc_msvc() {
 	os.rm(out_name_obj)
 }
 
-fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
-	msvc := find_msvc() or {
-		println('Could not find visual studio')
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
+	msvc := v.cached_msvc
+	
+	if msvc.valid == false {
+		verror('Cannot find MSVC on this OS')
 		return
 	}
 	// msvc expects .obj not .o
 	mut obj_path := '${path}bj'
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
-		println('$obj_path already built.')
+		// println('$obj_path already built.')
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	parent := os.dir(obj_path)
-	files := os.ls(parent) or {
-		panic(err)
-	}
-	mut cfiles := ''
-	for file in files {
-		if file.ends_with('.c') {
-			cfiles += '"' + os.real_path(parent + os.path_separator + file) + '" '
-		}
-	}
-	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
+	cfiles := '${path[..path.len-2]}.c'
+	flags := msvc_string_flags(moduleflags)
+	inc_dirs := flags.inc_paths.join(' ')
+	defines := flags.defines.join(' ')
+	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
 	// println('cfiles: $cfiles')
-	btarget := moduleflags.c_options_before_target_msvc()
-	atarget := moduleflags.c_options_after_target_msvc()
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path"'
+	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $defines $include_string /c $cfiles /Fo"$obj_path"'
 	// NB: the quotes above ARE balanced.
-	println('thirdparty cmd line: $cmd')
+	// println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
 		println('msvc: failed thirdparty object build cmd: $cmd')
 		verror(err)
@@ -357,6 +353,7 @@ mut:
 	real_libs   []string
 	inc_paths   []string
 	lib_paths   []string
+	defines     []string
 	other_flags []string
 }
 
@@ -365,6 +362,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
+	mut defines := []string{}
 	mut other_flags := []string{}
 	for flag in cflags {
 		// println('fl: $flag.name | flag arg: $flag.value')
@@ -392,6 +390,8 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.value.ends_with('.o') {
 			// msvc expects .obj not .o
 			other_flags << '"${flag.value}bj"'
+		} else if flag.value.starts_with('-D') {
+			defines << '/D${flag.value[2..]}'
 		} else {
 			other_flags << flag.value
 		}
@@ -404,6 +404,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		real_libs: real_libs
 		inc_paths: inc_paths
 		lib_paths: lpaths
+		defines: defines
 		other_flags: other_flags
 	}
 }

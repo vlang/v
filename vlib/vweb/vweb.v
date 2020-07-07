@@ -53,6 +53,8 @@ pub mut:
 	headers string // response headers
 	done bool
 	page_gen_start i64
+	form_error string
+
 }
 
 pub struct Cookie {
@@ -353,19 +355,19 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 	mut vars := []string{cap: route_words.len}
-
+	//println('http method =  $req.method')
 	$for method in T {
 		ok = true
-		println('\n\n method = $method urlwords=')
-		println(url_words)
-		println('attrs=$attrs')
+		//println('\n\n method = $method urlwords=')
+		//println(url_words)
+		//println('attrs=$attrs')
 		if attrs == '' {
 			// No routing for this method. If it matches, call it and finish matching
 			// since such methods have a priority.
 			// For example URL `/register` matches route `/:user`, but `fn register()`
 			// should be called first.
-			println('no attrs for ${url_words[0]}')
-			if url_words[0] == method {
+			//println('no attrs for ${url_words[0]}')
+			if (req.method == 'GET' && url_words[0] == method) || (req.method == 'POST' &&  url_words[0] + '_post' == method) {
 				println('easy match $method')
 				vars = []
 				app.$method(vars)
@@ -520,6 +522,10 @@ pub fn (mut ctx Context) handle_static(directory_path string) bool {
 pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
+}
+
+pub fn (mut ctx Context) error(s string) {
+	ctx.form_error = s
 }
 
 
