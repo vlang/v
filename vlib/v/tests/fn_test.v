@@ -209,4 +209,10 @@ fn test_cross_assign_anon_fn() {
 	foo7 += foo8
 	foo9 := one(0, true) + two(0, true) + foo7 + five(1, 2, 3) + six(1, 2, 3)
 	assert foo9 == 'onetwothreefourfivesix'
+	
+	mut seven := cross_assign_anon_fn_seven
+	mut eight := cross_assign_anon_fn_eight
+	one, two, seven, eight = two, seven, eight, one
+	foo10 := one(0, true) + two(0, true) + seven(0, true) + eight(0, true)
+	assert foo10 == 'twoseveneightone'
 }
