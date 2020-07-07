@@ -238,12 +238,12 @@ pub fn cp_all(osource_path, odest_path string, overwrite bool) ? {
 		dp := os.join_path(dest_path, file)
 		if os.is_dir(sp) {
 			os.mkdir(dp) or {
-				panic(err)
+				return error(err)
 			}
 		}
 		cp_all(sp, dp, overwrite) or {
 			os.rmdir(dp)
-			panic(err)
+			return error(err)
 		}
 	}
 }
@@ -1223,7 +1223,7 @@ pub fn flush() {
 	C.fflush(C.stdout)
 }
 
-pub fn mkdir_all(path string) {
+pub fn mkdir_all(path string) ? {
 	mut p := if path.starts_with(os.path_separator) { os.path_separator } else { '' }
 	path_parts := path.trim_left(os.path_separator).split(os.path_separator)
 	for subdir in path_parts {
@@ -1232,7 +1232,7 @@ pub fn mkdir_all(path string) {
 			continue
 		}
 		os.mkdir(p) or {
-			panic('folder: $p, error: $err')
+			return error('folder: $p, error: $err')
 		}
 	}
 }
