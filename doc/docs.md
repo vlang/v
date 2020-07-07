@@ -36,7 +36,7 @@ you can do in V.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Short struct init syntax](#short-struct-initialization-syntax)
+    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [println](#println)
@@ -776,9 +776,10 @@ All struct fields are zeroed by default during the creation of the struct. Array
 It's also possible to define custom default values.
 
 
-### Short struct initialization syntax
+<a id='short-struct-initialization-syntax' />
+### Trailing struct literal syntax
 
-There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -796,7 +797,9 @@ fn new_button(c ButtonConfig) &Button {
     }
 }
 
-button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+button := new_button(text:'Click me', width:100)
+// the height is unset, so it's the default value
+assert button.height == 20
 ```
 
 As you can see, we can use
@@ -811,7 +814,7 @@ instead of
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works with functions that have a single struct argument.
+This only works for functions that have a struct for the last argument.
 
 ### Access modifiers
 
