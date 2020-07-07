@@ -180,6 +180,14 @@ fn cross_assign_anon_fn_six(a ...int) string {
 	return 'six'
 }
 
+fn cross_assign_anon_fn_seven (a int, b bool) string {
+	return 'seven'
+}
+
+fn cross_assign_anon_fn_eight (a int, b bool) string {
+	return 'eight'
+}
+
 fn test_cross_assign_anon_fn() {
 	mut one := cross_assign_anon_fn_one
 	mut two := cross_assign_anon_fn_two
