@@ -329,11 +329,19 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	app.init()
 	// Call the right action
 	println('route matching...')
-	t := time.ticks()
+	//t := time.ticks()
 	mut action := ''
 	mut route_words := []string{}
 	mut ok := true
 	url_words := vals[1][1..].split('/')
+
+
+	if url_words.len == 0 {
+		app.index()
+		conn.close() or {}
+		return
+	}
+
 	mut vars := []string{cap: route_words.len}
 
 	$for method in T {
@@ -346,13 +354,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// since such methods have a priority.
 			// For example URL `/register` matches route `/:user`, but `fn register()`
 			// should be called first.
-
-			if url_words.len == 0 {
-				app.index()
-				conn.close() or {}
-				return
-			}
-
 			println('no attrs for ${url_words[0]}')
 			if url_words[0] == method {
 				println('easy match $method')
@@ -386,22 +387,30 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 					if !route_words[0].starts_with(':') {
 						// Routes without variables have higher priority, so call it right now
 						// e.g. `/register` matches `['/:user']`, but `['/register']` should be called first.
-						//println('OK not var $action="$action"')
+						//println('match no var $action="$action"')
 						app.$method(vars)
 						conn.close() or {}
 						return
 					}
-					action = method
-					println('setting action to $method')
+					//println('matched method=$method')
+					app.$method(vars)
+					conn.close() or {}
+					return
+					//action = method
+					//println('setting action to $method')
 				}
 			}
 		}
 	}
-	if action == '' {
+	//if action == '' {
 		conn.send_string(http_404) or {}
-	}
+		conn.close() or {}
+		return
+
+	//}
 	//end:
 	// No route matched, just do a simple `/home` => `action=home`
+	/*
 	if action == '' {
 		//println('action is empty because no routes were matched...')
 		action = vals[1][1..].all_before('/')
@@ -415,17 +424,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	$if debug {
 		println('action=$action')
 	}
+	*/
 
-	println('route matching took ${time.ticks() - t}ms')
-	app.$action()
+	//println('route matching took ${time.ticks() - t}ms')
+	//app.$action()
 	/*
 	app.$action() or {
 		conn.send_string(http_404) or {}
 	}
 	*/
-	conn.close() or {}
-	//app.reset()
-	return
+	//conn.close() or {}
+	////app.reset()
+	//return
 }
 
 fn (mut ctx Context) parse_form(s string) {
