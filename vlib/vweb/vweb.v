@@ -336,7 +336,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut ok := true
 	mut url_words := vals[1][1..].split('/')
 
-	println(url_words)
 
 	if url_words.len == 0 {
 		app.index()
