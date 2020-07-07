@@ -102,7 +102,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		path = os.join_path(dir, 'templates', fn_path.join('/'))
 		path += '.html'
 		if !os.exists(path) {
-			p.error('vweb HTML template "$html_name" not found')
+			p.error('vweb HTML template "$path" not found')
 		}
 		// println('path is now "$path"')
 	}
