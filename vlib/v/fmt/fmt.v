@@ -701,9 +701,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	match node {
 		ast.AnonFn {
 			f.fn_decl(node.decl)
-			if node.is_called {
-				f.write('()')
-			}
 		}
 		ast.ArrayInit {
 			f.array_init(node)

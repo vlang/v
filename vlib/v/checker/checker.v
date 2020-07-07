@@ -1014,6 +1014,16 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	mut f := table.Fn{}
 	mut found := false
 	mut found_in_args := false
+	// anon fn direct call
+	if call_expr.left is ast.AnonFn {
+		// it was set to anon for checker errors, clear for gen
+		call_expr.name = ''
+		c.expr(call_expr.left)
+		anon_fn := call_expr.left as ast.AnonFn
+		anon_fn_sym := c.table.get_type_symbol(anon_fn.typ)
+		f = (anon_fn_sym.info as table.FnType).func
+		found = true
+	}
 	// try prefix with current module as it would have never gotten prefixed
 	if !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
 		name_prefixed := '${call_expr.mod}.$fn_name'
@@ -2072,11 +2082,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.cur_fn = &node.decl
 			c.stmts(node.decl.stmts)
 			c.cur_fn = keep_fn
-			return if node.is_called {
-				node.decl.return_type
-			} else {
-				node.typ
-			}
+			return node.typ
 		}
 		ast.ArrayInit {
 			return c.array_init(mut node)

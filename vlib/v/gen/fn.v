@@ -241,6 +241,11 @@ fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) 
 }
 
 fn (mut g Gen) call_expr(node ast.CallExpr) {
+	// NOTE: everything could be done this way
+	// see my comment in parser near anon_fn
+	if node.left is ast.AnonFn {
+		g.expr(node.left)
+	}
 	if node.should_be_skipped {
 		return
 	}
