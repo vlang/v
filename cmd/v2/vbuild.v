@@ -8,14 +8,15 @@ import v.pref
 fn build_cmd() cli.Command {
 	return cli.Command{
 		name: 'build'
+		usage: '<file>'
 		description: 'Build V code in the provided path'
-		execute: build_cmd_func
 		flags: build_flags()
+		execute: build_cmd_func
 	}
 }
 
-fn build_cmd_func(cmd cli.Command) {
-	mut prefs := parse_build_preferences(cmd.flags) or { panic(err)}
+fn build_cmd_func(cmd cli.Command)? {
+	mut prefs := parse_build_preferences(cmd.flags)?
 
 	if cmd.args.len == 1 && (cmd.args[0].ends_with('.v') || os.exists(cmd.args[0])) {
 		prefs.path = cmd.args[0]

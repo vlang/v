@@ -5,11 +5,16 @@ import os
 import v.util
 
 fn main() {
+	mut cmd := v_cmd()
+	cmd.parse(os.args)
+}
+
+fn v_cmd() cli.Command {
 	mut v_cmd := cli.Command{
 		name: 'v'
 		description: 'V is a tool for managing V source code'
 		version: util.full_v_version(false)
-		execute: fn(cmd cli.Command) {
+		execute: fn(cmd cli.Command)? {
 			if cmd.args.len == 0 {
 				is_verbose := cmd.flags.get_bool_or('v', false)
 				util.launch_tool(is_verbose, 'vrepl', cmd.args)
@@ -55,7 +60,7 @@ fn main() {
 	v_cmd.add_command(tool_vpm_cmd('search', 'Search for a module from VPM'))
 	v_cmd.add_command(tool_vpm_cmd('update', 'Update an installed module from VPM'))
 
-	v_cmd.parse(os.args)
+	return v_cmd
 }
 
 fn tool_cmd(name string, description string) cli.Command {
