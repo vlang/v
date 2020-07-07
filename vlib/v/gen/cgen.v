@@ -953,14 +953,32 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
-		if g.table.sumtype_has_variant(expected_type, got_type) {
-			got_sym := g.table.get_type_symbol(got_type)
-			got_styp := g.typ(got_type)
-			exp_styp := g.typ(expected_type)
-			got_idx := got_type.idx()
-			g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
-			g.expr(expr)
-			g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+		expected_is_ptr := expected_type.is_ptr()
+		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
+		got_is_ptr := got_type.is_ptr()
+		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
+		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
+			exp_styp := g.typ(expected_deref_type)
+			got_styp := g.typ(got_deref_type)
+			got_idx := got_deref_type.idx()
+			got_sym := g.table.get_type_symbol(got_deref_type)
+			if expected_is_ptr && got_is_ptr {
+				g.write('/* sum type cast */ &($exp_styp) {.obj = ')
+				g.expr(expr)
+				g.write(', .typ = $got_idx /* $got_sym.name */}')
+			} else if expected_is_ptr {
+				g.write('/* sum type cast */ &($exp_styp) {.obj = &(')
+				g.expr(expr)
+				g.write('), .typ = $got_idx /* $got_sym.name */}')
+			} else if got_is_ptr {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {*')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			} else {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			}
 			return
 		}
 	}
@@ -2125,7 +2143,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					sym := g.table.get_type_symbol(node.cond_type)
 					// branch_sym := g.table.get_type_symbol(branch.typ)
 					if sym.kind == .sum_type {
-						g.write('.typ == ')
+						if node.cond_type.is_ptr() {
+							g.write('->typ == ')
+						} else {
+							g.write('.typ == ')
+						}
 					} else if sym.kind == .interface_ {
 						// g.write('._interface_idx == _${sym.name}_${branch_sym} ')
 						g.write('._interface_idx == ')
@@ -2166,7 +2188,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
 					g.write('\t$it_type* it = ($it_type*)')
 					g.expr(node.cond)
-					g.writeln('.obj; // ST it')
+					if node.cond_type.is_ptr() {
+						g.writeln('->obj; // ST it')
+					} else {
+						g.writeln('.obj; // ST it')
+					}
 					if node.var_name.len > 0 {
 						// for now we just copy it
 						g.writeln('\t$it_type* $node.var_name = it;')
