@@ -178,7 +178,7 @@ We'll be using V's builtin ORM and a SQLite database.
 
 Create a SQLite file with the schema:
 ```sql
-drop table Article;
+drop table if exists Article;
 
 create table Article (
 	id integer primary key,
