@@ -286,7 +286,7 @@ pub fn (node Stmt) str() string {
 					}
 				}
 				out += left.str()
-				if i < it.left.len - 1 {
+				if i < node.left.len - 1 {
 					out += ','
 				}
 			}

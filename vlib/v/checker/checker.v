@@ -2667,6 +2667,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 		}
+		// smartcast sumtypes when using `is`
+		if branch.cond is ast.InfixExpr {
+			infix := branch.cond as ast.InfixExpr
+			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
+				left_ident := infix.left as ast.Ident
+				right_type := infix.right as ast.Type
+				ident_info := left_ident.info
+				if ident_info is ast.IdentVar {
+					// Register shadow variable or `as` variable with actual type
+					ident_var := ident_info as ast.IdentVar
+					left_sym := c.table.get_type_symbol(ident_var.typ)
+					if left_sym.kind == .sum_type {
+						scope := c.file.scope.innermost(branch.pos.pos)
+						scope.register('it', ast.Var{
+							name: 'it'
+							typ: right_type.typ.to_ptr()
+							pos: left_ident.pos
+							is_used: true
+							is_mut: left_ident.is_mut
+						})
+					}
+				}
+			}
+		}
 	}
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.any_int_type {
