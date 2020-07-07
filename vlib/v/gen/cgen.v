@@ -4500,9 +4500,9 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		if g.is_shared {
 			mut shared_typ := it.typ.set_flag(.shared_f)
 			shared_styp = g.typ(shared_typ)
-			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = *($styp*)&')
+			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
 		} else {
-			g.write('($styp*)memdup(&')
+			g.write('($styp*)memdup(&') // TODO: doesn't work with every compiler
 		}
 	} else {
 		if g.is_shared {
