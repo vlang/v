@@ -2623,6 +2623,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 			}
 		}
+		// smartcast sumtypes when using `is`
+		if branch.cond is ast.InfixExpr {
+			infix := branch.cond as ast.InfixExpr
+			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
+				left_ident := infix.left as ast.Ident
+				right_type := infix.right as ast.Type
+				if left_ident.info is ast.IdentVar {
+					// Register shadow variable or `as` variable with actual type
+					ident_var := left_ident.info as ast.IdentVar
+					left_sym := c.table.get_type_symbol(ident_var.typ)
+					if left_sym.kind == .sum_type && branch.stmts.len > 0 {
+						first_stmt_pos := branch.stmts[0].position()
+						scope := c.file.scope.innermost(first_stmt_pos.pos)
+						scope.register('it', ast.Var{
+							name: 'it'
+							typ: right_type.typ.to_ptr()
+							pos: left_ident.pos
+							is_used: true
+							is_mut: left_ident.is_mut
+						})
+					}
+				}
+			}
+		}
 		c.stmts(branch.stmts)
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
@@ -2665,29 +2689,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				c.error('`if` expression requires an expression as the last statement of every branch',
 					branch.pos)
-			}
-		}
-		// smartcast sumtypes when using `is`
-		if branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
-				left_ident := infix.left as ast.Ident
-				right_type := infix.right as ast.Type
-				if left_ident.info is ast.IdentVar {
-					// Register shadow variable or `as` variable with actual type
-					ident_var := left_ident.info as ast.IdentVar
-					left_sym := c.table.get_type_symbol(ident_var.typ)
-					if left_sym.kind == .sum_type {
-						scope := c.file.scope.innermost(branch.pos.pos)
-						scope.register('it', ast.Var{
-							name: 'it'
-							typ: right_type.typ.to_ptr()
-							pos: left_ident.pos
-							is_used: true
-							is_mut: left_ident.is_mut
-						})
-					}
-				}
 			}
 		}
 	}
