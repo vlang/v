@@ -1536,7 +1536,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
 			right_type := c.expr(assign_stmt.right[i])
-			assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+			if assign_stmt.right_types.len == i {
+				assign_stmt.right_types << c.check_expr_opt_call(assign_stmt.right[i], right_type)
+			}
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		right_type := assign_stmt.right_types[i]
