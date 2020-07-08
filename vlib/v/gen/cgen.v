@@ -1002,24 +1002,24 @@ fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
 	g.decrement_inside_ternary()
 	if g.is_test {
 		g.writeln('{')
-		g.writeln('	g_test_oks++;')
+		g.writeln('\tg_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
-		g.writeln('	main__cb_assertion_ok(&$metaname_ok);')
+		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
 		g.writeln('} else {')
-		g.writeln('	g_test_fails++;')
+		g.writeln('\tg_test_fails++;')
 		metaname_fail := g.gen_assert_metainfo(a)
-		g.writeln('	main__cb_assertion_failed(&$metaname_fail);')
-		g.writeln('	longjmp(g_jump_buffer, 1);')
-		g.writeln('	// TODO')
-		g.writeln('	// Maybe print all vars in a test function if it fails?')
+		g.writeln('\tmain__cb_assertion_failed(&$metaname_fail);')
+		g.writeln('\tlongjmp(g_jump_buffer, 1);')
+		g.writeln('\t// TODO')
+		g.writeln('\t// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
 		return
 	}
-	g.writeln('{} else {')
+	g.writeln(' {} else {')
 	metaname_panic := g.gen_assert_metainfo(a)
-	g.writeln(' __print_assert_failure(&$metaname_panic);')
-	g.writeln(' v_panic(tos_lit("Assertion failed..."));')
-	g.writeln(' exit(1);')
+	g.writeln('\t__print_assert_failure(&$metaname_panic);')
+	g.writeln('\tv_panic(tos_lit("Assertion failed..."));')
+	g.writeln('\texit(1);')
 	g.writeln('}')
 }
 
@@ -1029,27 +1029,27 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	line_nr := a.pos.line_nr
 	src := cestring(a.expr.str())
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
-	g.writeln(' VAssertMetaInfo $metaname;')
-	g.writeln(' memset(&$metaname, 0, sizeof(VAssertMetaInfo));')
-	g.writeln(' ${metaname}.fpath   = ${ctoslit(mod_path)};')
-	g.writeln(' ${metaname}.line_nr = $line_nr;')
-	g.writeln(' ${metaname}.fn_name = ${ctoslit(fn_name)};')
-	g.writeln(' ${metaname}.src     = ${ctoslit(src)};')
+	g.writeln('\tVAssertMetaInfo $metaname;')
+	g.writeln('\tmemset(&$metaname, 0, sizeof(VAssertMetaInfo));')
+	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
+	g.writeln('\t${metaname}.line_nr = $line_nr;')
+	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
+	g.writeln('\t${metaname}.src = ${ctoslit(src)};')
 	match a.expr {
 		ast.InfixExpr {
-			g.writeln(' ${metaname}.op = ${ctoslit(it.op.str())};')
-			g.writeln(' ${metaname}.llabel = ${ctoslit(it.left.str())};')
-			g.writeln(' ${metaname}.rlabel = ${ctoslit(it.right.str())};')
-			g.write(' ${metaname}.lvalue = ')
+			g.writeln('\t${metaname}.op = ${ctoslit(it.op.str())};')
+			g.writeln('\t${metaname}.llabel = ${ctoslit(it.left.str())};')
+			g.writeln('\t${metaname}.rlabel = ${ctoslit(it.right.str())};')
+			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(it.left, it.left_type)
 			g.writeln(';')
 			//
-			g.write(' ${metaname}.rvalue = ')
+			g.write('\t${metaname}.rvalue = ')
 			g.gen_assert_single_expr(it.right, it.right_type)
 			g.writeln(';')
 		}
 		ast.CallExpr {
-			g.writeln(' ${metaname}.op = tos_lit("call");')
+			g.writeln('\t${metaname}.op = tos_lit("call");')
 		}
 		else {}
 	}
@@ -1064,7 +1064,11 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 		ast.IndexExpr { g.write(ctoslit(unknown_value)) }
 		ast.PrefixExpr { g.write(ctoslit(unknown_value)) }
 		ast.MatchExpr { g.write(ctoslit(unknown_value)) }
-		else { g.gen_expr_to_string(e, t) }
+		ast.Type {
+			sym := g.table.get_type_symbol(t)
+			g.write(ctoslit('$sym.name'))
+		}
+		else { g.gen_expr_to_string(e, t) or { g.write(ctoslit('[$err]')) } }
 	}
 	g.write(' /* typeof: ' + typeof(e) + ' type: ' + t.str() + ' */ ')
 }
