@@ -13,7 +13,7 @@ fn test_all() {
 		eprintln('You can still do it by setting FORCE_VALGRIND_TEST=1 .')
 		exit(0)
 	}
-	if os.getenv('V_CI_MUSL').len > 0 {
+	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		eprintln('This test is disabled for musl.')
 		exit(0)
 	}
