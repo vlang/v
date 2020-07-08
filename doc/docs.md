@@ -652,7 +652,13 @@ match os {
     'linux'  { println('Linux.') }
     else     { println(os) }
 }
+```
 
+A match statement is a shorter way to write a sequence of `if - else` statements.
+When a matching branch is found, the following statement block will be run.
+The else branch will be run when no other branches match.
+
+```v
 number := 2
 s := match number {
     1    { 'one' }
@@ -661,9 +667,7 @@ s := match number {
 }
 ```
 
-A match statement is a shorter way to write a sequence of `if - else` statements.
-When a matching branch is found, the following statement block will be run, and the final expression will be returned.
-The else branch will be evaluated when no other branches match.
+A match expression returns the final expression from each branch.
 
 ```v
 enum Color {
@@ -674,15 +678,16 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red  { true  }
-        .blue { true  }
-        else  { false }
+        .red   { true  }
+        .blue  { true  }
+        .green { false }
     }
 }
 ```
 
 A match statement can also be used to branch on the variants of an `enum`
-by using the shorthand `.variant_here` syntax.
+by using the shorthand `.variant_here` syntax. An `else` branch is not allowed
+when all the branches are exhaustive.
 
 ### Defer
 
@@ -1287,12 +1292,13 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a variable name
-    match w as expr {
-        Venus { expr.sweat() }
+    // using `as` to specify a name for each value
+    match w as var {
+        Mars  { var.shiver() }
+        Venus { var.sweat() }
         else {
             // w is of type World
-            assert w !is Venus
+            assert w is Moon
         }
     }
 }
