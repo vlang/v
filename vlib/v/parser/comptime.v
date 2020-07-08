@@ -129,9 +129,9 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
-			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name == 'main.vweb_tmpl_$p.cur_fn_name' {
-				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
+			if it.name == 'main.vweb_tmpl_$p.cur_fn_name' {
+				fn_decl := it
+				tmpl_scope := file.scope.innermost(it.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
 						mut v := it
