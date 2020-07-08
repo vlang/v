@@ -360,7 +360,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut action := ''
 	$for method in T {
 		if attrs == '' {
-			if url_words[0] == method && url_words.len == 0 {
+			if url_words[0] == method && url_words.len == 1 {
 				println('found method $method')
 				app.$method(vars)
 				conn.close() or {}
@@ -368,7 +368,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 		} else {
 			route_words = attrs[1..].split('/')
-			if url_words.len == route_words.len || (url_words.len == route_words.len && route_words.last().ends_with('...')) {
+			if url_words.len == route_words.len || (url_words.len >= route_words.len && route_words.last().ends_with('...')) {
 				mut matching := false
 				mut unknown := false
 				mut variables := []string{}
