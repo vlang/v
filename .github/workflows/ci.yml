@@ -5,25 +5,23 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
-    
-
     container: 
-      image: thevlang/vlang:alpine-build
+      image: alpine #thevlang/vlang:alpine-build
       env:
         V_CI_MUSL: 1
 
       volumes:
         - ${{github.workspace}}:/opt/vlang
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v2
-          
-        - name: Build V
-          run: |
-            make 
-        - name: Build V
-          run: |
-            uname -a 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          make 
+      - name: Build V
+        run: |
+          uname -a 
      # - name: Checkout
     #   uses: actions/checkout@v2
 
