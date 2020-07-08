@@ -31,9 +31,11 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				has_else = true
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
+				body_pos := p.tok.position()
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: start_pos.extend(end_pos)
+					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
 				}
 				comments = []
@@ -63,7 +65,8 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond = p.expr(0)
 		}
 		end_pos := p.prev_tok.position()
-		p.inside_if = false
+		body_pos := p.tok.position()
+		p.inside_if = false		
 		stmts := p.parse_block()
 		if is_or {
 			p.close_scope()
@@ -72,6 +75,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
+			body_pos: body_pos.extend(p.tok.position())
 			comments: comments
 		}
 		comments = []

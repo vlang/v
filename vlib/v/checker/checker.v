@@ -2623,6 +2623,29 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
 			}
 		}
+		// smartcast sumtypes when using `is`
+		if branch.cond is ast.InfixExpr {
+			infix := branch.cond as ast.InfixExpr
+			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
+				left_expr := infix.left as ast.Ident
+				right_expr := infix.right as ast.Type
+				if left_expr.kind == .variable {
+					// Register shadow variable or `as` variable with actual type
+					left_sym := c.table.get_type_symbol(infix.left_type)
+					if left_sym.kind == .sum_type {
+						mut scope := c.file.scope.innermost(branch.body_pos.pos)
+						scope.register('it', ast.Var{
+							name: 'it'
+							typ: right_expr.typ.to_ptr()
+							pos: left_expr.pos
+							is_used: true
+							is_mut: left_expr.is_mut
+						})
+						node.branches[i].smartcast = true
+					}
+				}
+			}
+		}
 		c.stmts(branch.stmts)
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {

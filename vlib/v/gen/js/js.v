@@ -663,27 +663,27 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	g.writeln('}')
 }
 
-fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
-	if it.left.len > it.right.len {
+fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
+	if stmt.left.len > stmt.right.len {
 		// multi return
 		g.write('const [')
-		for i, left in it.left {
+		for i, left in stmt.left {
 			if !left.is_blank_ident() {
 				g.expr(left)
 			}
-			if i < it.left.len - 1 {
+			if i < stmt.left.len - 1 {
 				g.write(', ')
 			}
 		}
 		g.write('] = ')
-		g.expr(it.right[0])
+		g.expr(stmt.right[0])
 		g.writeln(';')
 	} else {
 		// `a := 1` | `a,b := 1,2`
-		for i, left in it.left {
-			mut op := it.op
-			if it.op == .decl_assign { op = .assign }
-			val := it.right[i]
+		for i, left in stmt.left {
+			mut op := stmt.op
+			if stmt.op == .decl_assign { op = .assign }
+			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
 				ident := left as ast.Ident
@@ -698,13 +698,13 @@ fn (mut g JsGen) gen_assign_stmt(it ast.AssignStmt) {
 				}
 			}
 
-			mut styp := g.typ(it.left_types[i])
+			mut styp := g.typ(stmt.left_types[i])
 
 			if !g.inside_loop && styp.len > 0 {
 				g.doc.gen_typ(styp)
 			}
 
-			if it.op == .decl_assign {
+			if stmt.op == .decl_assign {
 				if g.inside_loop || is_mut {
 					g.write('let ')
 				} else {
