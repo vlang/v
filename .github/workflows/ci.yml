@@ -9,7 +9,7 @@ jobs:
       V_CI_MUSL: 1
 
     container: thevlang/vlang:alpine-build
-    volumes
+    volumes:
       - ${{github.workspace}}:/opt/vlang
     steps:
       - name: Checkout
@@ -17,7 +17,7 @@ jobs:
       - name: Build V
         run |
           make 
-          
+
      # - name: Checkout
     #   uses: actions/checkout@v2
 
