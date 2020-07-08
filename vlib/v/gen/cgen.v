@@ -1132,8 +1132,26 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		for i, left in assign_stmt.left {
 			match left {
 				ast.Ident {
-					styp := g.typ(assign_stmt.left_types[i])
-					g.writeln('$styp _var_$left.pos.pos = $left.name;')
+					var_type := assign_stmt.left_types[i]
+					left_sym := g.table.get_type_symbol(var_type)
+					if left_sym.kind == .function {
+						func := left_sym.info as table.FnType
+						ret_styp := g.typ(func.func.return_type)
+						g.write('$ret_styp (*_var_$left.pos.pos) (')
+						arg_len := func.func.args.len
+						for j, arg in func.func.args {
+							arg_type := g.table.get_type_symbol(arg.typ)
+							g.write('${arg_type.str()} ${arg.name}')
+							if j < arg_len - 1 {
+								g.write(', ')
+							}
+						}
+						g.writeln(') = $left.name;')
+					}
+					else {
+						styp := g.typ(var_type)
+						g.writeln('$styp _var_$left.pos.pos = $left.name;')
+					}
 				}
 				ast.IndexExpr {
 					sym := g.table.get_type_symbol(left.left_type)
