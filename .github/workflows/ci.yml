@@ -52,27 +52,27 @@ jobs:
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
-# Alpine docker pre-built container
-alpine-docker-musl-gcc:
-  name: alpine-musl
-  runs-on: ubuntu-latest
-  container: 
-    image: thevlang/vlang:alpine-build
-    env:
-      V_CI_MUSL: 1
+  # Alpine docker pre-built container
+  alpine-docker-musl-gcc:
+    name: alpine-musl
+    runs-on: ubuntu-latest
+    container: 
+      image: thevlang/vlang:alpine-build
+      env:
+        V_CI_MUSL: 1
 
-    volumes:
-      - ${{github.workspace}}:/opt/vlang
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      
-    - name: Build V
-      run: |
-        make CC=clang
-    - name: Test V fixed tests
-      run: |
-        v test-fixed 
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          make CC=clang
+      - name: Test V fixed tests
+        run: |
+          v test-fixed 
 
   macos:
     runs-on: ${{ matrix.os }}
