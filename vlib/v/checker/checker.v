@@ -2632,7 +2632,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if left_expr.kind == .variable {
 					// Register shadow variable or `as` variable with actual type
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type && branch.stmts.len > 0 {
+					if left_sym.kind == .sum_type {
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						scope.register('it', ast.Var{
 							name: 'it'
