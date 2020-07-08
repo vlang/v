@@ -2332,9 +2332,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
-			if left_type.is_ptr() {
-
-			}
 			g.writeln('\t$it_type* $left_expr.name = it;')
 		}
 		g.stmts(branch.stmts)
