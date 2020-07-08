@@ -9,14 +9,15 @@ import v.token
 
 pub struct Table {
 pub mut:
-	types         []TypeSymbol
-	type_idxs     map[string]int
-	fns           map[string]Fn
-	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
-	cflags        []cflag.CFlag
-	redefined_fns []string
-	fn_gen_types  map[string][]Type // for generic functions
+	types           []TypeSymbol
+	type_idxs       map[string]int
+	fns             map[string]Fn
+	imports         []string // List of all imports
+	modules         []string // Topologically sorted list of all modules registered by the application
+	cflags          []cflag.CFlag
+	redefined_fns   []string
+	fn_gen_types    map[string][]Type // for generic functions
+	reserved_idents map[string]int    // reserved identifiers
 }
 
 pub struct Fn {
@@ -30,9 +31,9 @@ pub:
 	is_deprecated bool
 	mod           string
 	ctdefine      string // compile time define. myflag, when [if myflag] tag
-	attrs []string
+	attrs         []string
 pub mut:
-	name        string
+	name          string
 }
 
 pub struct Arg {
@@ -53,7 +54,11 @@ mut:
 }
 
 pub fn new_table() &Table {
-	mut t := &Table{}
+	mut t := &Table{
+		reserved_idents: {'byte':1, 'int':1, 'string':1, 'rune':1, 'bool':1, 'i8':1,
+			'i16':1, 'u16':1, 'u32':1, 'i64':1, 'u64':1, 'f32':1, 'f64':1, 'any':1,
+			'voidptr':1, 'byteptr':1, 'charptr':1, 'size_t':1}
+	}
 	t.register_builtin_type_symbols()
 	return t
 }
@@ -99,6 +104,11 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 		return f
 	}
 	return none
+}
+
+[inline]
+pub fn (t &Table) is_reserved_ident(name string) bool {
+	return t.reserved_idents.exists(name)
 }
 
 pub fn (t &Table) known_fn(name string) bool {

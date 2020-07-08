@@ -1,0 +1,6 @@
+vlib/v/parser/tests/variable_name_is_reserved.v:2:2: error: `byte` is reserved identifier
+    1 | fn main() {
+    2 |     byte := 1
+      |     ~~~~
+    3 |     println(byte)
+    4 | }

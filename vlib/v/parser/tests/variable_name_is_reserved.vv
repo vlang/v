@@ -1,0 +1,4 @@
+fn main() {
+	byte := 1
+	println(byte)
+}

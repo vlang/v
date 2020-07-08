@@ -102,6 +102,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		match lx {
 			ast.Ident {
 				if op == .decl_assign {
+					if p.table.is_reserved_ident(lx.name) {
+						p.error_with_pos('`$lx.name` is reserved identifier', lx.pos)
+					}
 					if p.scope.known_var(lx.name) {
 						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
 					}
