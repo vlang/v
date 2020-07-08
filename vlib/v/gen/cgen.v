@@ -2291,10 +2291,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				left_type := infix.left_type
 				left_ident := infix.left as ast.Ident
 				right_type := infix.right as ast.Type
-				if left_ident.info is ast.IdentVar {
+				if left_ident.kind == .variable {
 					// Register shadow variable or `as` variable with actual type
-					ident_var := left_ident.info as ast.IdentVar
-					left_sym := g.table.get_type_symbol(ident_var.typ)
+					left_sym := g.table.get_type_symbol(left_type)
 					if left_sym.kind == .sum_type && branch.stmts.len > 0 {
 						it_type := g.typ(right_type.typ)
 						g.write('\t$it_type* it = ($it_type*)')

@@ -2629,13 +2629,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
 				left_expr := infix.left as ast.Ident
 				right_expr := infix.right as ast.Type
-				if left_expr.info is ast.IdentVar {
+				if left_expr.kind == .variable {
 					// Register shadow variable or `as` variable with actual type
-					ident_var := left_expr.info as ast.IdentVar
-					left_sym := c.table.get_type_symbol(ident_var.typ)
+					left_sym := c.table.get_type_symbol(infix.left_type)
 					if left_sym.kind == .sum_type && branch.stmts.len > 0 {
-						first_stmt_pos := branch.stmts[0].position()
-						scope := c.file.scope.innermost(first_stmt_pos.pos)
+						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						scope.register('it', ast.Var{
 							name: 'it'
 							typ: right_expr.typ.to_ptr()

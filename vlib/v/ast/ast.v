@@ -438,6 +438,7 @@ pub:
 	cond     Expr
 	stmts    []Stmt
 	pos      token.Position
+	body_pos token.Position
 	comments []Comment
 }
 
