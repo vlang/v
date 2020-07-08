@@ -2,466 +2,415 @@ name: CI
 on: [push, pull_request]
 jobs:
 
-  alpine-docker-musl-gcc:
-    name: alpine-musl
-    runs-on: ubuntu-latest
-    container: 
-      image: thevlang/vlang:alpine-build
-      # env:
-      #   V_CI_MUSL: 1
 
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
+#  v-fmt:
+#    runs-on: ubuntu-18.04
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: getting all branch metainfo from github
+#      run: |
+#          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+#          echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
+#    - name: Build v (there is no need for dependencies for fmt)
+#      run: make -j4
+#    - name: Build a production cmd/tools/vfmt
+#      run: ./v -prod -d vfmt cmd/tools/vfmt.v
+#    - name: Run v fmt -diff on only the changed files. Does NOT fail for now.
+#      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -noerror -diff
+#    - name: Run v test-fmt
+#      run: echo "TODO" #./v test-fmt
+
+  ubuntu-tcc:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        
-      - name: Build V
-        run: |
-          make 
-      - name: Test V
-        run: |
-          v test-fixed 
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+    - name: Build v
+      run: |
+        echo $VFLAGS
+        make -j4
+        ./v -cg -o v cmd/v
+    - name: Test v->c
+      run: |
+        sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
+        tcc -version
+        ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
+#        ./v -silent test-compiler
+    - name: Fixed tests
+      run: ./v test-fixed
+    - name: Test building v tools
+      run: ./v build-tools
+    - name: v vet
+      run: |
+        ./v vet vlib/v/parser
+        ./v vet vlib/v/ast
+        ./v vet vlib/v/gen/cgen.v
+        ./v vet vlib/v/checker
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
 
-  ubuntu-gcc:
-    name: alpine-musl
-    runs-on: ubuntu-latest
-    container: 
-      image: thevlang/vlang:alpine-build
-      # env:
-      #   V_CI_MUSL: 1
+# Alpine docker pre-built container
+alpine-docker-musl-gcc:
+  name: alpine-musl
+  runs-on: ubuntu-latest
+  container: 
+    image: thevlang/vlang:alpine-build
+    env:
+      V_CI_MUSL: 1
 
-      volumes:
-        - ${{github.workspace}}:/opt/vlang
+    volumes:
+      - ${{github.workspace}}:/opt/vlang
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Build V
+      run: |
+        make CC=clang
+    - name: Test V fixed tests
+      run: |
+        v test-fixed 
+
+  macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macOS-latest]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-        
-      - name: Build V
-        run: |
-          make 
-      - name: Test V
-        run: |
-          v test-fixed 
-     # - name: Checkout
-    #   uses: actions/checkout@v2
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+        ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
+        brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
+        brew install postgresql
+        brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
+    - name: Build V
+      run:  make -j4 && ./v -cg -o v cmd/v
+    - name: Build V using V
+      run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+    - name: Test symlink
+      run:  sudo ./v symlink
+#    - name: Set up pg database
+#      run: |
+#        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
+#        psql -d postgres -c 'select rolname from pg_roles'
+#        psql -d postgres -c 'create database customerdb;'
+#        psql -d customerdb -f examples/database/pg/mydb.sql
+#    - name: Test v->c
+#      run: ./v -silent test-compiler
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+##    - name: Test v->js
+##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Test symlink
+      run:  ./v symlink && v -o v2 cmd/v
+    - name: Fixed tests
+      run: ./v test-fixed
+    - name: Build examples
+      run: ./v build-examples
+#    - name: Cross-compilation to Linux
+#      run: ./v -os linux cmd/v
+#    - name: Test vsh
+#      run:  ./v examples/v_script.vsh
+    - name: Test vid
+      run: |
+        git clone --depth 1 https://github.com/vlang/vid
+        cd vid && ../v -o vid .
+    - name: Build V UI examples
+      run: |
+        git clone --depth 1 https://github.com/vlang/ui
+        cd ui
+        mkdir -p ~/.vmodules
+        ln -s $(pwd) ~/.vmodules/ui
+        ../v examples/rectangles.v
+#        ../v examples/users.v
+#        ../v examples/calculator.v
 
-    # - name: Build V
-    #   uses: spytheman/docker_alpine_v@v7.0
-    #   with:
-    #     entrypoint: .github/workflows/alpine.build.sh
+  ubuntu:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+    - name: Build V
+      run: make -j4 && ./v -cc gcc -o v cmd/v
+#    - name: Test V
+#      run: ./v -silent test-compiler
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+##    - name: Test v->js
+##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#    - name: Build Vorum
+#      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
+#    - name: Build vpm
+#      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
+#    - name: Build V UI examples
+#      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
+#    - name: Freestanding
+#      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: Fixed tests
+      run: |
+        ./v test-fixed
+    - name: Build examples
+      run: ./v build-examples
+    - name: x64 machine code generation
+      run: |
+        exit
+        ./v -o vprod -prod cmd/v
+        cd cmd/tools
+        echo "Generating a 1m line V file..."
+        ../../vprod gen1m.v
+        ./gen1m > 1m.v
+        echo "Building it..."
+        ../../vprod -backend x64 -o 1m 1m.v
+        echo "Running it..."
+        ls
+#    - name: SDL examples
+#      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
-    # - name: Test V
-    #   uses: spytheman/docker_alpine_v@v7.0
-    #   with:
-    #     entrypoint: .github/workflows/alpine.test.sh
-
-# #  v-fmt:
-# #    runs-on: ubuntu-18.04
-# #    steps:
-# #    - uses: actions/checkout@v2
-# #    - name: getting all branch metainfo from github
-# #      run: |
-# #          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
-# #          echo "Changed files compared to origin/master are:" && git diff --name-status origin/master HEAD -- '*.v'
-# #    - name: Build v (there is no need for dependencies for fmt)
-# #      run: make -j4
-# #    - name: Build a production cmd/tools/vfmt
-# #      run: ./v -prod -d vfmt cmd/tools/vfmt.v
-# #    - name: Run v fmt -diff on only the changed files. Does NOT fail for now.
-# #      run: git diff --name-status origin/master HEAD -- '*.v' |grep -v '^D'|rev|cut -f1|rev| xargs ./v fmt -noerror -diff
-# #    - name: Run v test-fmt
-# #      run: echo "TODO" #./v test-fmt
-
-#   ubuntu-tcc:
-#     runs-on: ubuntu-18.04
-#     env:
-#       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Install dependencies
-#       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-#     - name: Build v
-#       run: |
-#         echo $VFLAGS
-#         make -j4
-#         ./v -cg -o v cmd/v
-#     - name: Test v->c
-#       run: |
-#         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
-#         tcc -version
-#         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
-# #        ./v -silent test-compiler
-#     - name: Fixed tests
-#       run: ./v test-fixed
-#     - name: Test building v tools
-#       run: ./v build-tools
-#     - name: v vet
-#       run: |
-#         ./v vet vlib/v/parser
-#         ./v vet vlib/v/ast
-#         ./v vet vlib/v/gen/cgen.v
-#         ./v vet vlib/v/checker
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-
-#   alpine-docker-musl-gcc:
-#     name: alpine-musl
-#     runs-on: ubuntu-latest
-#     env:
-#       V_CI_MUSL: 1
-#     steps:
-
-#     - name: Checkout
-#       uses: actions/checkout@v2
-
-#     - name: Build V
-#       uses: spytheman/docker_alpine_v@v7.0
-#       with:
-#         entrypoint: .github/workflows/alpine.build.sh
-
-#     - name: Test V
-#       uses: spytheman/docker_alpine_v@v7.0
-#       with:
-#         entrypoint: .github/workflows/alpine.test.sh
-
-#   macos:
-#     runs-on: ${{ matrix.os }}
-#     strategy:
-#       matrix:
-#         os: [macOS-latest]
-#     steps:
-#     - uses: actions/checkout@v2
-#     - uses: actions/setup-node@v1
-#       with:
-#         node-version: 12.x
-#     - name: Install dependencies
-#       run: |
-#         ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
-#         brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
-#         brew install postgresql
-#         brew install glfw sdl2 sdl2_ttf sdl2_mixer sdl2_image
-#         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
-#     - name: Build V
-#       run:  make -j4 && ./v -cg -o v cmd/v
-#     - name: Build V using V
-#       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-#     - name: Test symlink
-#       run:  sudo ./v symlink
-# #    - name: Set up pg database
-# #      run: |
-# #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
-# #        psql -d postgres -c 'select rolname from pg_roles'
-# #        psql -d postgres -c 'create database customerdb;'
-# #        psql -d customerdb -f examples/database/pg/mydb.sql
-# #    - name: Test v->c
-# #      run: ./v -silent test-compiler
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-# ##    - name: Test v->js
-# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-#     - name: Test symlink
-#       run:  ./v symlink && v -o v2 cmd/v
-#     - name: Fixed tests
-#       run: ./v test-fixed
-#     - name: Build examples
-#       run: ./v build-examples
-# #    - name: Cross-compilation to Linux
-# #      run: ./v -os linux cmd/v
-# #    - name: Test vsh
-# #      run:  ./v examples/v_script.vsh
-#     - name: Test vid
-#       run: |
-#         git clone --depth 1 https://github.com/vlang/vid
-#         cd vid && ../v -o vid .
-#     - name: Build V UI examples
-#       run: |
-#         git clone --depth 1 https://github.com/vlang/ui
-#         cd ui
-#         mkdir -p ~/.vmodules
-#         ln -s $(pwd) ~/.vmodules/ui
-#         ../v examples/rectangles.v
-# #        ../v examples/users.v
-# #        ../v examples/calculator.v
-
-#   ubuntu:
-#     runs-on: ubuntu-18.04
-#     steps:
-#     - uses: actions/checkout@v2
-#     - uses: actions/setup-node@v1
-#       with:
-#         node-version: 12.x
-#     - name: Install dependencies
-#       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-#     - name: Build V
-#       run: make -j4 && ./v -cc gcc -o v cmd/v
-# #    - name: Test V
-# #      run: ./v -silent test-compiler
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-# ##    - name: Test v->js
-# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-# #    - name: Build Vorum
-# #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
-# #    - name: Build vpm
-# #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-# #    - name: Build V UI examples
-# #      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
-# #    - name: Freestanding
-# #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
-#     - name: v self compilation
-#       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-#     - name: Fixed tests
-#       run: |
-#         ./v test-fixed
-#     - name: Build examples
-#       run: ./v build-examples
-#     - name: x64 machine code generation
-#       run: |
-#         exit
-#         ./v -o vprod -prod cmd/v
-#         cd cmd/tools
-#         echo "Generating a 1m line V file..."
-#         ../../vprod gen1m.v
-#         ./gen1m > 1m.v
-#         echo "Building it..."
-#         ../../vprod -backend x64 -o 1m 1m.v
-#         echo "Running it..."
-#         ls
-# #    - name: SDL examples
-# #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
-
-# #        ./1m
-#       #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
-# #    - name: Coveralls GitHub Action
-# #      uses: coverallsapp/github-action@v1.0.1
-# #      with:
-# #        github-token: ${{ secrets.GITHUB_TOKEN }}
+#        ./1m
+      #run: echo "TODO" #cd examples/x64 && ../../v -x64 hello_world.v && ./hello_world
+#    - name: Coveralls GitHub Action
+#      uses: coverallsapp/github-action@v1.0.1
+#      with:
+#        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
-#   ubuntu-autofree-selfcompile:
-#     runs-on: ubuntu-18.04
-#     env:
-#       VFLAGS: -cc gcc
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Build V
-#       run: make -j4
-#     - name: V self compilation with -autofree
-#       run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+  ubuntu-autofree-selfcompile:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc gcc
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j4
+    - name: V self compilation with -autofree
+      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
-#   ubuntu-musl:
-#     runs-on: ubuntu-18.04
-#     env:
-#       VFLAGS: -cc musl-gcc
-#       V_CI_MUSL: 1
-#     steps:
-#     - uses: actions/checkout@v2
-#     - uses: actions/setup-node@v1
-#       with:
-#         node-version: 12.x
-#     - name: Install dependencies
-#       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-#     - name: Build v
-#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-# ##    - name: Test v->js
-# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-#     - name: quick debug
-#       run: ./v -stats vlib/strconv/format_test.v
-#     - name: Fixed tests
-#       run: ./v test-fixed
+  ubuntu-musl:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc musl-gcc
+      V_CI_MUSL: 1
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+    - name: Build v
+      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+##    - name: Test v->js
+##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: quick debug
+      run: ./v -stats vlib/strconv/format_test.v
+    - name: Fixed tests
+      run: ./v test-fixed
 
-#   ubuntu-llvm-mingw:
-#     runs-on: ubuntu-18.04
-#     steps:
-#     - uses: actions/checkout@v2
-# #    - name: Cross-compile V
-# #      run: docker build . -f Dockerfile.cross
+  ubuntu-llvm-mingw:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+#    - name: Cross-compile V
+#      run: docker build . -f Dockerfile.cross
 
-#   windows-gcc:
-#     runs-on: windows-2019
-#     env:
-#         VFLAGS: -cc gcc
-#     steps:
-#     - uses: actions/checkout@v2
-#     #- uses: actions/setup-node@v1
-#     #  with:
-#     #    node-version: 12.x
-#     - name: Build
-#       run: |
-#         gcc --version
-#         .\make.bat -gcc -skip-path
-#     - name: Test new v.c
-#       run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
-#     - name: Install dependencies
-#       run: |
-#         .\v.exe setup-freetype
-#         .\.github\workflows\windows-install-sdl.bat
-#         .\.github\workflows\windows-install-sqlite.bat
-#     - name: Fixed tests
-#       run: |
-#         .\v.exe test-fixed
-# #    - name: Test
-# #      run: |
-# #        .\v.exe -silent test-compiler
-#       ## v.js dosent work on windows
-#         #.\v.exe -o hi.js examples/hello_v_js.v
-#         #node hi.js
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-# #    - name: v2 self compilation
-# #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+  windows-gcc:
+    runs-on: windows-2019
+    env:
+        VFLAGS: -cc gcc
+    steps:
+    - uses: actions/checkout@v2
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      run: |
+        gcc --version
+        .\make.bat -gcc -skip-path
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
+    - name: Fixed tests
+      run: |
+        .\v.exe test-fixed
+#    - name: Test
+#      run: |
+#        .\v.exe -silent test-compiler
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+#    - name: v2 self compilation
+#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
-#   windows-msvc:
-#     runs-on: windows-2019
-#     env:
-#         VFLAGS: -cc msvc
-#     steps:
-#     - uses: actions/checkout@v2
-#     #- uses: actions/setup-node@v1
-#     #  with:
-#     #    node-version: 12.x
-#     - name: Build
-#       run: |
-#         echo %VFLAGS%
-#         echo $VFLAGS
-#         .\make.bat -msvc -skip-path
-#     - name: Install dependencies
-#       run: |
-#         .\v.exe setup-freetype
-#         .\.github\workflows\windows-install-sdl.bat
-#         .\.github\workflows\windows-install-sqlite.bat
-#     - name: Fixed tests
-#       run: |
-#         ./v -cg cmd\tools\vtest-fixed.v
-#         ./v test-fixed
-# #    - name: Test
-# #      run: |
-# #        .\v.exe -silent test-compiler
-# #      ## v.js dosent work on windows
-#         #.\v.exe -o hi.js examples/hello_v_js.v
-#         #node hi.js
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
+  windows-msvc:
+    runs-on: windows-2019
+    env:
+        VFLAGS: -cc msvc
+    steps:
+    - uses: actions/checkout@v2
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      run: |
+        echo %VFLAGS%
+        echo $VFLAGS
+        .\make.bat -msvc -skip-path
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
+    - name: Fixed tests
+      run: |
+        ./v -cg cmd\tools\vtest-fixed.v
+        ./v test-fixed
+#    - name: Test
+#      run: |
+#        .\v.exe -silent test-compiler
+#      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
 
-#   windows-tcc:
-#     runs-on: windows-2019
-#     # We are simulating a user with no cc installed.
-#     # This way, v's cc detection on Windows is also tested.
-#     # env:
-#     #   VFLAGS: -cc tcc
-#     steps:
-#     - uses: actions/checkout@v2
-#     #- uses: actions/setup-node@v1
-#     #  with:
-#     #    node-version: 12.x
-#     - name: Build
-#       # We need to move gcc and msvc, so that V doesn't find a C compiler
-#       run: |
-#         'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
-#         'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
-#         move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
-#         .\make.bat -skip-path
-#     - name: Test new v.c
-#       run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
-#     - name: Install dependencies
-#       run: |
-#         .\v.exe setup-freetype
-#         .\.github\workflows\windows-install-sdl.bat
-#         .\.github\workflows\windows-install-sqlite.bat
-#     - name: Fixed tests
-#       run: |
-#         .\v.exe test-fixed
-# #    - name: Test
-# #      run: |
-# #        .\v.exe -silent test-compiler
-#       ## v.js dosent work on windows
-#         #.\v.exe -o hi.js examples/hello_v_js.v
-#         #node hi.js
-# #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
-# #    - name: v2 self compilation
-# #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+  windows-tcc:
+    runs-on: windows-2019
+    # We are simulating a user with no cc installed.
+    # This way, v's cc detection on Windows is also tested.
+    # env:
+    #   VFLAGS: -cc tcc
+    steps:
+    - uses: actions/checkout@v2
+    #- uses: actions/setup-node@v1
+    #  with:
+    #    node-version: 12.x
+    - name: Build
+      # We need to move gcc and msvc, so that V doesn't find a C compiler
+      run: |
+        'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
+        'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
+        move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
+        .\make.bat -skip-path
+    - name: Test new v.c
+      run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
+    - name: Install dependencies
+      run: |
+        .\v.exe setup-freetype
+        .\.github\workflows\windows-install-sdl.bat
+        .\.github\workflows\windows-install-sqlite.bat
+    - name: Fixed tests
+      run: |
+        .\v.exe test-fixed
+#    - name: Test
+#      run: |
+#        .\v.exe -silent test-compiler
+      ## v.js dosent work on windows
+        #.\v.exe -o hi.js examples/hello_v_js.v
+        #node hi.js
+#    - name: Test v binaries
+#      run: ./v -silent build-vbinaries
+#    - name: v2 self compilation
+#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
-#   docs-line-len-check:
-#     runs-on: ubuntu-18.04
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Build
-#       run: make
-#     - name: Check docs line length
-#       run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
-
-
-#   compilable-v-c-and-v-win-c:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Install dependencies
-#       run: |
-#         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
-#         sudo apt-get update
-#         sudo apt install --quiet -y mingw-w64 wine-stable winetricks
-#     - name: Build V
-#       run: make -j4
-#     - name: v.c can be compiled and run
-#       run: |
-#         ./v -os cross -o /tmp/v.c cmd/v
-#         gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
-#         ls -lart v_from_vc
-#         ./v_from_vc version
-#     - name: v_win.c can be compiled and run
-#       run: |
-#         ./v -os windows -o /tmp/v_win.c cmd/v
-#         x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
-#         ls -lart v_from_vc.exe
-#         winetricks nocrashdialog
-#         wine v_from_vc.exe version
+  docs-line-len-check:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build
+      run: make
+    - name: Check docs line length
+      run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
 
 
-#   ubuntu-c-plus-plus:
-#     runs-on: ubuntu-18.04
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Install dependencies
-#       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-9
-#     - name: Build V
-#       run: make -j4
-#     - name: g++ version
-#       run: g++-9 --version
-#     - name: Running tests with g++
-#       run: ./v -cc g++-9 test-fixed
-#     - name: V self compilation with g++
-#       run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+  compilable-v-c-and-v-win-c:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: |
+        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list
+        sudo apt-get update
+        sudo apt install --quiet -y mingw-w64 wine-stable winetricks
+    - name: Build V
+      run: make -j4
+    - name: v.c can be compiled and run
+      run: |
+        ./v -os cross -o /tmp/v.c cmd/v
+        gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
+        ls -lart v_from_vc
+        ./v_from_vc version
+    - name: v_win.c can be compiled and run
+      run: |
+        ./v -os windows -o /tmp/v_win.c cmd/v
+        x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
+        ls -lart v_from_vc.exe
+        winetricks nocrashdialog
+        wine v_from_vc.exe version
 
-#   install-modules:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Install dependencies
-#       run: sudo apt-get install --quiet -y libssl-dev
-#     - name: Build V
-#       run: make -j4
-#     - name: Installing V modules
-#       run: |
-#         ./v install ui
-#         ./v install nedpals.args
 
-#   gitly-compiles:
-#     runs-on: ubuntu-18.04
-#     steps:
-#     - uses: actions/checkout@v2
-#     - name: Install dependencies
-#       run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
-#     - name: Build V
-#       run: make -j2 && ./v -cc gcc -o v cmd/v
-#     - name: Build Gitly
-#       run: |
-#         git clone --depth 1 https://github.com/vlang/gitly
-#         ./v install markdown
-#         cd gitly
-#         ../v .
-#         ../v -autofree .
-#         cd ..
+  ubuntu-c-plus-plus:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind g++-9
+    - name: Build V
+      run: make -j4
+    - name: g++ version
+      run: g++-9 --version
+    - name: Running tests with g++
+      run: ./v -cc g++-9 test-fixed
+    - name: V self compilation with g++
+      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+
+  install-modules:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install --quiet -y libssl-dev
+    - name: Build V
+      run: make -j4
+    - name: Installing V modules
+      run: |
+        ./v install ui
+        ./v install nedpals.args
+
+  gitly-compiles:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Build Gitly
+      run: |
+        git clone --depth 1 https://github.com/vlang/gitly
+        ./v install markdown
+        cd gitly
+        ../v .
+        ../v -autofree .
+        cd ..
