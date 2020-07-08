@@ -142,6 +142,7 @@ pub mut:
 
 pub struct ConstField {
 pub:
+	mod      string
 	name     string
 	expr     Expr
 	is_pub   bool
@@ -221,7 +222,6 @@ pub struct FnDecl {
 pub:
 	name          string
 	mod           string
-	stmts         []Stmt
 	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
@@ -241,6 +241,7 @@ pub:
 	file          string
 	is_generic    bool
 pub mut:
+	stmts         []Stmt
 	return_type   table.Type
 }
 
@@ -424,10 +425,10 @@ pub mut:
 pub struct IfExpr {
 pub:
 	tok_kind token.Kind
-	branches []IfBranch
 	left     Expr // `a` in `a := if ...`
 	pos      token.Position
 pub mut:
+	branches []IfBranch
 	is_expr  bool
 	typ      table.Type
 	has_else bool
@@ -438,7 +439,10 @@ pub:
 	cond     Expr
 	stmts    []Stmt
 	pos      token.Position
+	body_pos token.Position
 	comments []Comment
+pub mut:
+	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
 }
 
 pub struct LockExpr {

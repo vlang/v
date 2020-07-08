@@ -45,8 +45,7 @@ pub fn merge_comments(stmts []ast.Stmt) string {
 	mut res := []string{}
 	for s in stmts {
 		if s is ast.Comment {
-			c  := s as ast.Comment
-			res << c.text.trim_left('|')
+			res << it.text.trim_left('|')
 		}
 	}
 	return res.join('\n')
@@ -375,12 +374,11 @@ fn (mut d Doc) generate() ?Doc {
 				continue
 			}
 			if stmt is ast.FnDecl {
-				fnd := stmt as ast.FnDecl
-				if fnd.is_deprecated {
+				if it.is_deprecated {
 					continue
 				}
-				if fnd.receiver.typ != 0 {
-					node.attrs['parent'] = d.fmt.type_to_str(fnd.receiver.typ).trim_left('&')
+				if it.receiver.typ != 0 {
+					node.attrs['parent'] = d.fmt.type_to_str(it.receiver.typ).trim_left('&')
 					p_idx := d.contents.index_by_name(node.attrs['parent'])
 					if p_idx == -1 && node.attrs['parent'] != 'void' {
 						d.contents << DocNode{
@@ -405,7 +403,7 @@ fn (mut d Doc) generate() ?Doc {
 				ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
 				ast.StructDecl { node.attrs['category'] = 'Structs' }
 				ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
-				ast.FnDecl { 
+				ast.FnDecl {
 					node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') {
 						'Functions'
 					} else {

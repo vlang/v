@@ -1,4 +1,4 @@
-drop table Article;
+drop table if exists Article;
 
 create table Article (
 	id integer primary key,

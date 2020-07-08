@@ -284,14 +284,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	body_start_pos := p.peek_tok.position()
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
-		// Add return if `fn(...) ? {...}` have no return at end
-		if return_type != table.void_type &&
-			p.table.get_type_symbol(return_type).kind == .void && return_type.has_flag(.optional) &&
-			(stmts.len == 0 || stmts[stmts.len - 1] !is ast.Return) {
-			stmts << ast.Return{
-				pos: p.tok.position()
-			}
-		}
 	}
 	p.close_scope()
 	if !no_body && are_args_type_only {
@@ -563,8 +555,7 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 fn have_fn_main(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		if stmt is ast.FnDecl {
-			f := stmt as ast.FnDecl
-			if f.name == 'main.main' && f.mod == 'main' {
+			if it.name == 'main.main' && it.mod == 'main' {
 				return true
 			}
 		}

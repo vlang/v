@@ -36,7 +36,7 @@ you can do in V.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Short struct init syntax](#short-struct-initialization-syntax)
+    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [println](#println)
@@ -652,7 +652,13 @@ match os {
     'linux'  { println('Linux.') }
     else     { println(os) }
 }
+```
 
+A match statement is a shorter way to write a sequence of `if - else` statements.
+When a matching branch is found, the following statement block will be run.
+The else branch will be run when no other branches match.
+
+```v
 number := 2
 s := match number {
     1    { 'one' }
@@ -661,9 +667,7 @@ s := match number {
 }
 ```
 
-A match statement is a shorter way to write a sequence of `if - else` statements.
-When a matching branch is found, the following statement block will be run, and the final expression will be returned.
-The else branch will be evaluated when no other branches match.
+A match expression returns the final expression from each branch.
 
 ```v
 enum Color {
@@ -674,15 +678,16 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red  { true  }
-        .blue { true  }
-        else  { false }
+        .red   { true  }
+        .blue  { true  }
+        .green { false }
     }
 }
 ```
 
 A match statement can also be used to branch on the variants of an `enum`
-by using the shorthand `.variant_here` syntax.
+by using the shorthand `.variant_here` syntax. An `else` branch is not allowed
+when all the branches are exhaustive.
 
 ### Defer
 
@@ -710,13 +715,23 @@ struct Point {
     y int
 }
 
-p := Point{
+mut p := Point{
     x: 10
     y: 20
 }
 
 println(p.x) // Struct fields are accessed using a dot
+
+// Alternative literal syntax for structs with 3 fields or fewer
+p = Point{10, 20}
+assert p.x == 10
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
 ```
+
+Omitting the struct name also works for function arguments.
 
 <p>&nbsp;</p>
 
@@ -724,7 +739,6 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
- // Alternative initialization syntax for structs with 3 fields or fewer
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -767,9 +781,10 @@ All struct fields are zeroed by default during the creation of the struct. Array
 It's also possible to define custom default values.
 
 
-### Short struct initialization syntax
+<a id='short-struct-initialization-syntax' />
+### Trailing struct literal syntax
 
-There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -787,7 +802,9 @@ fn new_button(c ButtonConfig) &Button {
     }
 }
 
-button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+button := new_button(text:'Click me', width:100)
+// the height is unset, so it's the default value
+assert button.height == 20
 ```
 
 As you can see, we can use
@@ -802,7 +819,7 @@ instead of
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works with functions that have a single struct argument.
+This only works for functions that have a struct for the last argument.
 
 ### Access modifiers
 
@@ -1287,12 +1304,13 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a variable name
-    match w as expr {
-        Venus { expr.sweat() }
+    // using `as` to specify a name for each value
+    match w as var {
+        Mars  { var.shiver() }
+        Venus { var.sweat() }
         else {
             // w is of type World
-            assert w !is Venus
+            assert w is Moon
         }
     }
 }
@@ -2127,16 +2145,18 @@ fn C.WinFunction()
 
 ## Appendix I: Keywords
 
-V has 25 keywords:
+V has 29 keywords (3 are literals):
 
 ```v
 as
+assert
 break
 const
 continue
 defer
 else
 enum
+false
 fn
 for
 go
@@ -2154,8 +2174,11 @@ or
 pub
 return
 struct
+true
 type
+unsafe
 ```
+See also [Types](#types).
 
 ## Appendix II: Operators
 

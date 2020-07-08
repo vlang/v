@@ -33,8 +33,7 @@ fn wait() {
 
 fn (l Lander) land(w World) {
 	if w is Mars {
-		m := w as Mars
-		for m.dust_storm() {
+		for it.dust_storm() {
 			wait()
 		}
 	}

@@ -18,6 +18,7 @@ struct MsvcResult {
 	ucrt_include_path   string
 	vs_include_path     string
 	shared_include_path string
+	valid				bool
 }
 
 // shell32 for RegOpenKeyExW etc
@@ -141,7 +142,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
-		println('Unable to find msvc version')
+		//println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
@@ -183,20 +184,22 @@ fn find_msvc() ?MsvcResult {
 			ucrt_include_path: wk.ucrt_include_path
 			vs_include_path: vs.include_path
 			shared_include_path: wk.shared_include_path
+			valid: true
 		}
 	} $else {
-		verror('Cannot find msvc on this OS')
 		return error('msvc not found')
 	}
 }
 
 pub fn (mut v Builder) cc_msvc() {
-	r := find_msvc() or {
+	r := v.cached_msvc
+	if r.valid == false {
 		verror('Cannot find MSVC on this OS')
 		return
 	}
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
+	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
 	// Default arguments
 	// volatile:ms enables atomic volatile (gcc _Atomic)
 	// -w: no warnings
@@ -286,7 +289,11 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	a << lib_paths
 	args := a.join(' ')
-	cmd := '"$r.full_cl_exe_path" $args'
+	// write args to a file so that we dont smash createprocess
+	os.write_file(out_name_cmd_line, args) or {
+		verror('Unable to write response file to "$out_name_cmd_line"')
+	}
+	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	if v.pref.is_verbose {
@@ -309,36 +316,30 @@ pub fn (mut v Builder) cc_msvc() {
 	os.rm(out_name_obj)
 }
 
-fn build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
-	msvc := find_msvc() or {
-		println('Could not find visual studio')
+fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
+	msvc := v.cached_msvc
+
+	if msvc.valid == false {
+		verror('Cannot find MSVC on this OS')
 		return
 	}
 	// msvc expects .obj not .o
 	mut obj_path := '${path}bj'
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
-		println('$obj_path already built.')
+		// println('$obj_path already built.')
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	parent := os.dir(obj_path)
-	files := os.ls(parent) or {
-		panic(err)
-	}
-	mut cfiles := ''
-	for file in files {
-		if file.ends_with('.c') {
-			cfiles += '"' + os.real_path(parent + os.path_separator + file) + '" '
-		}
-	}
-	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path"'
+	cfiles := '${path[..path.len-2]}.c'
+	flags := msvc_string_flags(moduleflags)
+	inc_dirs := flags.inc_paths.join(' ')
+	defines := flags.defines.join(' ')
+	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
 	// println('cfiles: $cfiles')
-	btarget := moduleflags.c_options_before_target_msvc()
-	atarget := moduleflags.c_options_after_target_msvc()
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $include_string /c $btarget $cfiles $atarget /Fo"$obj_path"'
+	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $defines $include_string /c $cfiles /Fo"$obj_path"'
 	// NB: the quotes above ARE balanced.
-	println('thirdparty cmd line: $cmd')
+	// println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
 		println('msvc: failed thirdparty object build cmd: $cmd')
 		verror(err)
@@ -357,6 +358,7 @@ mut:
 	real_libs   []string
 	inc_paths   []string
 	lib_paths   []string
+	defines     []string
 	other_flags []string
 }
 
@@ -365,6 +367,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}
 	mut lib_paths := []string{}
+	mut defines := []string{}
 	mut other_flags := []string{}
 	for flag in cflags {
 		// println('fl: $flag.name | flag arg: $flag.value')
@@ -392,6 +395,8 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		} else if flag.value.ends_with('.o') {
 			// msvc expects .obj not .o
 			other_flags << '"${flag.value}bj"'
+		} else if flag.value.starts_with('-D') {
+			defines << '/D${flag.value[2..]}'
 		} else {
 			other_flags << flag.value
 		}
@@ -404,7 +409,7 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		real_libs: real_libs
 		inc_paths: inc_paths
 		lib_paths: lpaths
+		defines: defines
 		other_flags: other_flags
 	}
 }
-

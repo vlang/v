@@ -1,3 +1,5 @@
+module main
+
 // This tool regenerates V's bootstrap .c files
 // every time the V master branch is updated.
 
@@ -13,8 +15,6 @@
 // --log-file  path to log file used when --log-to is 'file'
 // --dry-run   dont push anything to remote repo
 // --force     force update even if already up to date
-
-module main
 
 import os
 import log
@@ -129,9 +129,8 @@ fn main() {
 	// webhook server mode
 	if flag_options.serve {
 		vweb.run<WebhookServer>(flag_options.port)
-	}
-	// cmd mode
-	else {
+	} else {
+		// cmd mode
 		mut gen_vc := new_gen_vc(flag_options)
 		gen_vc.init()
 		gen_vc.generate()
@@ -162,6 +161,10 @@ pub fn (mut ws WebhookServer) init_once() {
 
 pub fn (mut ws WebhookServer) init() {
 	//ws.init_once()
+}
+
+pub fn (mut ws WebhookServer) index() {
+	eprintln('WebhookServer.index() called')
 }
 
 // gen webhook

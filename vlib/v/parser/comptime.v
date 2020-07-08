@@ -88,15 +88,21 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
-	html_name := '${p.cur_fn_name}.html'
+
+	fn_path := p.cur_fn_name.split('_')
+	html_name := '${fn_path.last()}.html'
+
+
 	// Looking next to the vweb program
 	dir := os.dir(p.scanner.file_path)
-	mut path := os.join_path(dir, html_name)
+	mut path := os.join_path(dir, fn_path.join('/'))
+	path += '.html'
 	if !os.exists(path) {
 		// can be in `templates/`
-		path = os.join_path(dir, 'templates', html_name)
+		path = os.join_path(dir, 'templates', fn_path.join('/'))
+		path += '.html'
 		if !os.exists(path) {
-			p.error('vweb HTML template "$html_name" not found')
+			p.error('vweb HTML template "$path" not found')
 		}
 		// println('path is now "$path"')
 	}
@@ -123,12 +129,12 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
-			fn_decl := stmt as ast.FnDecl
-			if fn_decl.name == 'main.vweb_tmpl_$p.cur_fn_name' {
-				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
+			if it.name == 'main.vweb_tmpl_$p.cur_fn_name' {
+				fn_decl := it
+				tmpl_scope := file.scope.innermost(it.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
-						mut v := obj as ast.Var
+						mut v := it
 						v.pos = fn_decl.body_pos
 						tmpl_scope.register(v.name, *v)
 						// set the controller action var to used

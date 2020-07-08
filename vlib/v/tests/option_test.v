@@ -316,3 +316,15 @@ fn test_option_void_return_types_of_anon_fn_in_struct() {
 	}
 }
 
+fn get_string(param bool) ?string {
+	if param {
+		return 'Hello World'
+	}
+}
+
+fn test_option_auto_add_return_none() {
+	r := get_string(false) or {
+		'test'
+	}
+	assert r == 'test'
+}

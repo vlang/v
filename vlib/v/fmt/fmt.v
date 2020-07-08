@@ -246,8 +246,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			for i, left in node.left {
 				if left is ast.Ident {
-					ident := left as ast.Ident
-					var_info := ident.var_info()
+					var_info := it.var_info()
 					if var_info.is_mut {
 						f.write('mut ')
 					}
@@ -661,9 +660,8 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
 	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
-		pe := fexpr as ast.PrefixExpr
-		if pe.right is ast.CastExpr && pe.op == .amp {
-			ce = pe.right as ast.CastExpr
+		if it.right is ast.CastExpr && it.op == .amp {
+			ce = it.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -1323,8 +1321,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		stmt := branch.stmts[0]
 		if stmt is ast.ExprStmt {
 			// If expressions inside match branches can't be one a single line
-			expr_stmt := stmt as ast.ExprStmt
-			if !expr_is_single_line(expr_stmt.expr) {
+			if !expr_is_single_line(it.expr) {
 				single_line = false
 				break
 			}

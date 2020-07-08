@@ -840,7 +840,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 }
 
 fn (mut g Gen) postfix_expr(node ast.PostfixExpr) {
-	if !(node.expr is ast.Ident) {
+	if node.expr !is ast.Ident {
 		return
 	}
 	ident := node.expr as ast.Ident
