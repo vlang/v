@@ -336,7 +336,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	//t := time.ticks()
 	//mut action := ''
 	mut route_words := []string{}
-	mut url_words := vals[1][1..].split('/')
+	mut url_words := vals[1][1..].split('/').filter(it != '')
 
 
 	if url_words.len == 0 {
@@ -354,8 +354,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 		}
 	}
-
-	println(url_words)
 
 	mut vars := []string{cap: route_words.len}
 	mut action := ''
