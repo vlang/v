@@ -165,6 +165,14 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
 #undef FONS_USE_FREETYPE
 #endif
 
+#ifdef __APPLE__
+    #include "TargetConditionals.h"
+    #if TARGET_OS_IPHONE
+	#undef FONS_USE_FREETYPE
+    #endif
+#endif
+
+
 #ifdef FONS_USE_FREETYPE
 
 #include <ft2build.h>
