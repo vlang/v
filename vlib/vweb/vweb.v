@@ -355,6 +355,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 
+	println(url_words)
+
 	mut vars := []string{cap: route_words.len}
 	mut action := ''
 	$for method in T {
@@ -371,12 +373,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 		} else {
 			route_words = attrs[1..].split('/')
-			if url_words.len == route_words.len || (url_words.len >= route_words.len && route_words.last().ends_with('...')) {
+			if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
 				// match `/:user/:repo/tree` to `/vlang/v/tree`
 				mut matching := false
 				mut unknown := false
 				mut variables := []string{cap: route_words.len}
 				for i in 0..route_words.len {
+					if url_words.len == i {
+						variables << ''
+						matching = true
+						unknown = true
+						break
+					}
 					if url_words[i] == route_words[i] {
 						// no parameter
 						matching = true
@@ -388,6 +396,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 							variables << url_words[i]
 						} else {
 							// array parameter only in the end
+							println(i)
 							variables << url_words[i..].join('/')
 						}
 						matching = true
