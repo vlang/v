@@ -385,7 +385,7 @@ fn (mut a array) push(val voidptr) {
 pub fn (mut a3 array) push_many(val voidptr, size int) {
 	if a3.data == val {
 		// handle `arr << arr`
-		copy := a3.clone()
+		//copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
 		unsafe {
 			//C.memcpy(a.data, copy.data, copy.element_size * copy.len)
