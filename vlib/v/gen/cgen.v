@@ -2284,29 +2284,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		} else if i == node.branches.len - 1 && node.has_else {
 			g.writeln('} else {')
 		}
-		// smartcast
-		if branch.cond is ast.InfixExpr {
+		if branch.smartcast && branch.stmts.len > 0 {
 			infix := branch.cond as ast.InfixExpr
-			if infix.right is ast.Type && infix.left is ast.Ident {
-				left_type := infix.left_type
-				left_ident := infix.left as ast.Ident
-				right_type := infix.right as ast.Type
-				if left_ident.kind == .variable {
-					// Register shadow variable or `as` variable with actual type
-					left_sym := g.table.get_type_symbol(left_type)
-					if left_sym.kind == .sum_type && branch.stmts.len > 0 {
-						it_type := g.typ(right_type.typ)
-						g.write('\t$it_type* it = ($it_type*)')
-						g.expr(infix.left)
-						if left_type.is_ptr() {
-							g.write('->')
-						} else {
-							g.write('.')
-						}
-						g.writeln('obj;')
-					}
-				}
+			right_type := infix.right as ast.Type
+			left_type := infix.left_type
+			it_type := g.typ(right_type.typ)
+			g.write('\t$it_type* it = ($it_type*)')
+			g.expr(infix.left)
+			if left_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
 			}
+			g.writeln('obj;')
 		}
 		g.stmts(branch.stmts)
 	}

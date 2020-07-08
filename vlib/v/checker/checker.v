@@ -2641,6 +2641,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							is_used: true
 							is_mut: left_expr.is_mut
 						})
+						node.branches[i].smartcast = true
 					}
 				}
 			}

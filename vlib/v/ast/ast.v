@@ -424,10 +424,10 @@ pub mut:
 pub struct IfExpr {
 pub:
 	tok_kind token.Kind
-	branches []IfBranch
 	left     Expr // `a` in `a := if ...`
 	pos      token.Position
 pub mut:
+	branches []IfBranch
 	is_expr  bool
 	typ      table.Type
 	has_else bool
@@ -440,6 +440,8 @@ pub:
 	pos      token.Position
 	body_pos token.Position
 	comments []Comment
+pub mut:
+	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
 }
 
 pub struct LockExpr {
