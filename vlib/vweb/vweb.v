@@ -330,6 +330,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		return
 	}
 	app.init()
+
 	// Call the right action
 	println('route matching...')
 	//t := time.ticks()
@@ -354,100 +355,61 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 		}
 	}
-	mut vars := []string{cap: route_words.len}
-	//println('http method =  $req.method')
+
+	mut vars := []string{}
+	mut action := ''
 	$for method in T {
-		ok = true
-		//println('\n\n method = $method urlwords=')
-		//println(url_words)
-		//println('attrs=$attrs')
 		if attrs == '' {
-			// No routing for this method. If it matches, call it and finish matching
-			// since such methods have a priority.
-			// For example URL `/register` matches route `/:user`, but `fn register()`
-			// should be called first.
-			//println('no attrs for ${url_words[0]}')
-			if (req.method == 'GET' && url_words[0] == method) || (req.method == 'POST' &&  url_words[0] + '_post' == method) {
-				println('easy match $method')
-				vars = []
+			if url_words[0] == method && url_words.len == 0 {
+				println('found method $method')
 				app.$method(vars)
 				conn.close() or {}
 				return
 			}
-		}
-		else {
-			//println('ATTR=$attrs')
+		} else {
 			route_words = attrs[1..].split('/')
-			//println('words:') println(route_words)
-			//println('vals:') println(url_words)
-			vars = []string{cap: route_words.len}
-			if route_words.len <= url_words.len {
-				// match `/:user/:repo/tree` to `/vlang/v/tree`
-				for i, word in route_words {
-					if word.starts_with(':') {
-						// remember and skip the var
-						vars << url_words[i]
+			if url_words.len == route_words.len || (url_words.len == route_words.len && route_words.last().ends_with('...')) {
+				mut matching := false
+				mut unknown := false
+				mut variables := []string{}
+				for i in 0..route_words.len {
+					if url_words[i] == route_words[i] {
+						matching = true
 						continue
-					}
-					if word != url_words[i] {
-						ok = false
+					} else if route_words[i].starts_with(':') {
+						if i < route_words.len && !route_words[i].ends_with('...'){
+							variables << url_words[i]
+						} else {
+							variables << url_words[i..].join('/')
+						}
+						matching = true
+						unknown = true
+						continue
+					} else {
+						matching = false
 						break
 					}
 				}
-				if ok {
-					//goto end  // TODO break in $for
-					if !route_words[0].starts_with(':') {
-						// Routes without variables have higher priority, so call it right now
-						// e.g. `/register` matches `['/:user']`, but `['/register']` should be called first.
-						//println('match no var $action="$action"')
-						app.$method(vars)
-						conn.close() or {}
-						return
-					}
-					//println('matched method=$method')
+				if matching && !unknown {
 					app.$method(vars)
 					conn.close() or {}
 					return
-					//action = method
-					//println('setting action to $method')
+				} else if matching && unknown {
+					action = method
+					vars = variables
 				}
 			}
 		}
 	}
-	//if action == '' {
+	if action == '' {
 		conn.send_string(http_404) or {}
 		conn.close() or {}
 		return
-
-	//}
-	//end:
-	// No route matched, just do a simple `/home` => `action=home`
-	/*
-	if action == '' {
-		//println('action is empty because no routes were matched...')
-		action = vals[1][1..].all_before('/')
-		if action.contains('?') {
-			action = action.all_before('?')
-		}
-		if action == '' {
-			action = 'index'
-		}
 	}
-	$if debug {
-		println('action=$action')
-	}
-	*/
-
-	//println('route matching took ${time.ticks() - t}ms')
-	//app.$action()
-	/*
-	app.$action() or {
-		conn.send_string(http_404) or {}
-	}
-	*/
-	//conn.close() or {}
-	////app.reset()
-	//return
+	println(action)
+	app.$action(vars)
+	conn.close() or {}
+	return
 }
 
 fn (mut ctx Context) parse_form(s string) {
