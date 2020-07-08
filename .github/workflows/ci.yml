@@ -22,11 +22,12 @@ jobs:
       - name: Test V
         run: |
           v test-fixed 
-  alpine-docker-musl-gcc:
+
+  ubuntu-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
     container: 
-      image: thevlang/vlang:buster-build
+      image: thevlang/vlang:alpine-build
       # env:
       #   V_CI_MUSL: 1
 
