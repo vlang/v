@@ -8,7 +8,8 @@ const (
 	skip_test_files     = [
 		'vlib/net/http/http_httpbin_test.v',
 	]
-	skip_on_musl        = [
+	skip_on_musl        = []string{}
+	// [
 		// 'vlib/net/http/http_test.v',
 		// 'vlib/net/http/cookie_test.v',
 		// 'vlib/net/websocket/ws_test.v'
@@ -16,7 +17,7 @@ const (
 		// 'vlib/orm/orm_test.v',
 		// 'vlib/clipboard/clipboard_test.v',
 		// 'vlib/v/gen/js/jsgen_test.v',
-	]
+	// ]
 	skip_on_linux       = []string{}
 	skip_on_non_linux   = [
 		'vlib/net/websocket/ws_test.v'
