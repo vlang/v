@@ -235,22 +235,33 @@ struct Config {
 	def int = 10
 }
 
-fn foo_config(c Config) {
+fn foo_config(def int, c Config) {
+	assert c.def == def
+}
+fn bar_config(c Config, def int) {
+	assert c.def == def
 }
 
-fn foo2(u User) {
-}
+fn foo_user(u User) {}
 
-fn test_config() {
-	foo_config({
+fn test_struct_literal_args() {
+	foo_config(20, {
 		n: 10
 		def: 20
 	})
-	foo_config({})
-	foo2({
+	foo_config(10, {})
+	foo_config(10, n: 40)
+	foo_config(40, n: 30, def: 40)
+	
+	bar_config({}, 10)
+	bar_config({def:4}, 4)
+	
+	foo_user({
 		name: 'Peter'
 	})
-	foo2(name: 'Peter')
+	foo_user(name: 'Peter')
+	foo_user(age: 7)
+	foo_user(name: 'Stew', age: 50)
 }
 
 struct City {

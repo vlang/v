@@ -36,7 +36,7 @@ you can do in V.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Short struct init syntax](#short-struct-initialization-syntax)
+    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 * [println](#println)
@@ -715,13 +715,23 @@ struct Point {
     y int
 }
 
-p := Point{
+mut p := Point{
     x: 10
     y: 20
 }
 
 println(p.x) // Struct fields are accessed using a dot
+
+// Alternative literal syntax for structs with 3 fields or fewer
+p = Point{10, 20}
+assert p.x == 10
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
 ```
+
+Omitting the struct name also works for function arguments.
 
 <p>&nbsp;</p>
 
@@ -729,7 +739,6 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
- // Alternative initialization syntax for structs with 3 fields or fewer
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -772,9 +781,10 @@ All struct fields are zeroed by default during the creation of the struct. Array
 It's also possible to define custom default values.
 
 
-### Short struct initialization syntax
+<a id='short-struct-initialization-syntax' />
+### Trailing struct literal syntax
 
-There are no default function argument values or named arguments, for that the short struct initialization syntax can be used instead:
+There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -792,7 +802,9 @@ fn new_button(c ButtonConfig) &Button {
     }
 }
 
-button := new_button(text:'Click me', width:100) // the height is unset, so it's 20, the default value
+button := new_button(text:'Click me', width:100)
+// the height is unset, so it's the default value
+assert button.height == 20
 ```
 
 As you can see, we can use
@@ -807,7 +819,7 @@ instead of
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works with functions that have a single struct argument.
+This only works for functions that have a struct for the last argument.
 
 ### Access modifiers
 
