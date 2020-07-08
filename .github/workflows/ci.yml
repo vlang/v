@@ -2,6 +2,7 @@ name: CI
 on: [push, pull_request]
 jobs:
 
+
 #  v-fmt:
 #    runs-on: ubuntu-18.04
 #    steps:
@@ -51,25 +52,27 @@ jobs:
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
+  # Alpine docker pre-built container
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
-    env:
-      V_CI_MUSL: 1
+    container: 
+      image: thevlang/vlang:alpine-build
+      env:
+        V_CI_MUSL: 1
+
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
     steps:
-
-    - name: Checkout
-      uses: actions/checkout@v2
-
-    - name: Build V
-      uses: spytheman/docker_alpine_v@v7.0
-      with:
-        entrypoint: .github/workflows/alpine.build.sh
-
-    - name: Test V
-      uses: spytheman/docker_alpine_v@v7.0
-      with:
-        entrypoint: .github/workflows/alpine.test.sh
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          make CC=clang
+      - name: Test V fixed tests
+        run: |
+          v test-fixed 
 
   macos:
     runs-on: ${{ matrix.os }}
@@ -196,28 +199,52 @@ jobs:
     - name: V self compilation with -autofree
       run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
-  ubuntu-musl:
-    runs-on: ubuntu-18.04
-    env:
-      VFLAGS: -cc musl-gcc
-      V_CI_MUSL: 1
+
+  # Ubuntu docker pre-built container
+  ubuntu-musl: 
+    name: ubuntu-musl
+    runs-on: ubuntu-latest
+    container: 
+      image: thevlang/vlang:ubuntu-build
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
     steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-node@v1
-      with:
-        node-version: 12.x
-    - name: Install dependencies
-      run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
-    - name: Build v
-      run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
-#    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
-##    - name: Test v->js
-##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: quick debug
-      run: ./v -stats vlib/strconv/format_test.v
-    - name: Fixed tests
-      run: ./v test-fixed
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Test V fixed tests
+        run: |
+          v test-fixed 
+
+#   ubuntu-musl:
+#     runs-on: ubuntu-18.04
+#     env:
+#       VFLAGS: -cc musl-gcc
+#       V_CI_MUSL: 1
+#     steps:
+#     - uses: actions/checkout@v2
+#     - uses: actions/setup-node@v1
+#       with:
+#         node-version: 12.x
+#     - name: Install dependencies
+#       run: sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+#     - name: Build v
+#       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+# #    - name: Test v binaries
+# #      run: ./v -silent build-vbinaries
+# ##    - name: Test v->js
+# ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+#     - name: quick debug
+#       run: ./v -stats vlib/strconv/format_test.v
+#     - name: Fixed tests
+#       run: ./v test-fixed
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
