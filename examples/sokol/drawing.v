@@ -18,7 +18,7 @@ fn main() {
 	title := 'Sokol Drawing Template'
 	desc := C.sapp_desc{
 		user_data: state
-		init_userdata_cb: init
+		init_userdata_cb: setup
 		frame_userdata_cb: frame
 		window_title: title.str
 		html5_canvas_name: title.str
@@ -26,7 +26,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(user_data voidptr) {
+fn setup(user_data voidptr) {
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor

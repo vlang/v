@@ -29,7 +29,7 @@ fn main() {
 	title := 'V Metal/GL Text Rendering'
 	desc := C.sapp_desc{
 		user_data: state
-		init_userdata_cb: init
+		init_userdata_cb: setup
 		frame_userdata_cb: frame
 		window_title: title.str
 		html5_canvas_name: title.str
@@ -37,7 +37,7 @@ fn main() {
 	sapp.run(&desc)
 }
 
-fn init(mut state AppState) {
+fn setup(mut state AppState) {
 	// dont actually alocate this on the heap in real life
 	gfx.setup(&C.sg_desc{
 		mtl_device: sapp.metal_get_device()
