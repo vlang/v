@@ -35,8 +35,8 @@ mut:
 	typedefs2            strings.Builder
 	type_definitions     strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions          strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits                strings.Builder // contents of `void _vinit(){}`
-	cleanups             strings.Builder // contents of `void _vcleanup(){}`
+	inits                map[string]strings.Builder // contents of `void _vinit(){}`
+	cleanups             map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers           strings.Builder // all go callsite wrappers
 	stringliterals       strings.Builder // all string literals (they depend on tos3() beeing defined
 	auto_str_funcs       strings.Builder // function bodies of all auto generated _str funcs
@@ -119,8 +119,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		stringliterals: strings.new_builder(100)
 		auto_str_funcs: strings.new_builder(100)
 		comptime_defines: strings.new_builder(100)
-		inits: strings.new_builder(100)
-		cleanups: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
 		options: strings.new_builder(100)
@@ -133,6 +131,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		autofree: true
 		indent: -1
 		module_built: pref.path.after('vlib/')
+	}
+	for mod in g.table.modules {
+		g.inits[mod] = strings.new_builder(100)
+		g.cleanups[mod] = strings.new_builder(100)
 	}
 	g.init()
 	//
@@ -2727,7 +2729,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					styp := g.typ(it.typ)
 					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
 				} else {
-					g.const_decl_init_later(name, val, field.typ)
+					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
 			}
 			ast.StringLiteral {
@@ -2737,7 +2739,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			else {
-				g.const_decl_init_later(name, val, field.typ)
+				g.const_decl_init_later(field.mod, name, val, field.typ)
 			}
 		}
 	}
@@ -2752,20 +2754,20 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(name, val string, typ table.Type) {
+fn (mut g Gen) const_decl_init_later(mod, name, val string, typ table.Type) {
 	// Initialize more complex consts in `void _vinit(){}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
 	//
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
-	g.inits.writeln('\t$cname = $val;')
+	g.inits[mod].writeln('\t$cname = $val;')
 	if g.pref.autofree {
 		if styp.starts_with('array_') {
-			g.cleanups.writeln('\tarray_free(&$cname);')
+			g.cleanups[mod].writeln('\tarray_free(&$cname);')
 		}
 		if styp == 'string' {
-			g.cleanups.writeln('\tstring_free(&$cname);')
+			g.cleanups[mod].writeln('\tstring_free(&$cname);')
 		}
 	}
 }
@@ -3013,15 +3015,20 @@ fn (mut g Gen) write_init_function() {
 	}
 	g.writeln('\tbuiltin_init();')
 	g.writeln('\tvinit_string_literals();')
-	g.write(g.inits.str())
-	for mod_name in g.table.imports {
+	//
+	for mod_name in g.table.modules {
+		g.writeln('\t// Initializations for module $mod_name :')
+		g.write(g.inits[mod_name].str())
 		init_fn_name := '${mod_name}.init'
-		if _ := g.table.find_fn(init_fn_name) {
-			mod_c_name := util.no_dots(mod_name)
-			init_fn_c_name := '${mod_c_name}__init'
-			g.writeln('\t${init_fn_c_name}();')
+		if initfn := g.table.find_fn(init_fn_name) {
+			if initfn.return_type == table.void_type && initfn.args.len == 0 {
+				mod_c_name := util.no_dots(mod_name)
+				init_fn_c_name := '${mod_c_name}__init'
+				g.writeln('\t${init_fn_c_name}();')
+			}
 		}
 	}
+	//
 	g.writeln('}')
 	if g.pref.printfn_list.len > 0 && '_vinit' in g.pref.printfn_list {
 		println(g.out.after(fn_vinit_start_pos))
@@ -3030,7 +3037,11 @@ fn (mut g Gen) write_init_function() {
 		fn_vcleanup_start_pos := g.out.len
 		g.writeln('void _vcleanup() {')
 		// g.writeln('puts("cleaning up...");')
-		g.writeln(g.cleanups.str())
+		reversed_table_modules := g.table.modules.reverse()
+		for mod_name in reversed_table_modules {
+			g.writeln('\t// Cleanups for module $mod_name :')
+			g.writeln(g.cleanups[mod_name].str())
+		}
 		// g.writeln('\tfree(g_str_buf);')
 		g.writeln('}')
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
