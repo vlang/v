@@ -285,11 +285,18 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
 		// Add return if `fn(...) ? {...}` have no return at end
-		if return_type != table.void_type &&
-			p.table.get_type_symbol(return_type).kind == .void && return_type.has_flag(.optional) &&
+		if return_type != table.void_type && return_type.has_flag(.optional) &&
 			(stmts.len == 0 || stmts[stmts.len - 1] !is ast.Return) {
-			stmts << ast.Return{
-				pos: p.tok.position()
+			sym := p.table.get_type_symbol(return_type)
+			if sym.kind == .void {
+				stmts << ast.Return{
+					pos: p.tok.position()
+				}
+			} else {
+				stmts << ast.Return{
+					pos: p.tok.position()
+					exprs: [ast.Expr(ast.None{pos: p.tok.position()})]
+				}
 			}
 		}
 	}

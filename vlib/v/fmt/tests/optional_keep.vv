@@ -1,4 +1,5 @@
 pub fn test() ?&SomeType {
+	return none
 }
 
 struct SomeType {
