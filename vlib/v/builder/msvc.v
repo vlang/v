@@ -199,6 +199,7 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	out_name_obj := os.real_path(v.out_name_c + '.obj')
 	out_name_pdb := os.real_path(v.out_name_c + '.pdb')
+	out_name_cmd_line := os.real_path(v.out_name_c + '.rsp')
 	// Default arguments
 	// volatile:ms enables atomic volatile (gcc _Atomic)
 	// -w: no warnings
@@ -288,7 +289,11 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	a << lib_paths
 	args := a.join(' ')
-	cmd := '"$r.full_cl_exe_path" $args'
+	// write args to a file so that we dont smash createprocess
+	os.write_file(out_name_cmd_line, args) or {
+		verror('Unable to write response file to "$out_name_cmd_line"')
+	}
+	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	if v.pref.is_verbose {
