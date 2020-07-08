@@ -245,10 +245,8 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	match node {
 		ast.AssignStmt {
 			for i, left in node.left {
-				left_is_ident := left is ast.Ident
-				if left_is_ident {
-					ident := left as ast.Ident
-					var_info := ident.var_info()
+				if left is ast.Ident {
+					var_info := it.var_info()
 					if var_info.is_mut {
 						f.write('mut ')
 					}

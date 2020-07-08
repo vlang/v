@@ -963,9 +963,17 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 			got_styp := g.typ(got_type)
 			exp_styp := g.typ(expected_type)
 			got_idx := got_type.idx()
-			g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
-			g.expr(expr)
-			g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			if got_type.is_ptr() {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = ')
+				g.expr(expr)
+				g.write(', .typ = $got_idx /* $got_sym.name */}')
+			}
+			else {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			}
+
 			return
 		}
 	}
@@ -1284,8 +1292,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
-				left_is_index_expr := left is ast.IndexExpr
-				if left_is_index_expr {
+				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
 					g.expr(left)
 					g.write('string_add(')
@@ -2325,6 +2332,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
+			if left_type.is_ptr() {
+
+			}
 			g.writeln('\t$it_type* $left_expr.name = it;')
 		}
 		g.stmts(branch.stmts)
