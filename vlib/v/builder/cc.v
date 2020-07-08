@@ -395,10 +395,15 @@ fn (mut v Builder) cc() {
 		println('cc args=$args')
 		println(a)
 	}
+	// write args to response file
+	response_file := '${v.out_name_c}.rsp'
+	os.write_file(response_file, args.replace('\\', '\\\\')) or {
+		verror('Unable to write response file "$response_file"')
+	}
 	start:
 	todo()
 	// TODO remove
-	cmd := '${ccompiler} $args'
+	cmd := '${ccompiler} @$response_file'
 	// Run
 	if v.pref.is_verbose || v.pref.show_cc {
 		println('\n==========')
