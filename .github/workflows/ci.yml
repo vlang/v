@@ -115,8 +115,8 @@ jobs:
       run: ./v test-fixed
     - name: Build examples
       run: ./v build-examples
-#    - name: Cross-compilation to Linux
-#      run: ./v -os linux cmd/v
+    - name: Cross-compilation to Linux
+      run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
     - name: Test vid
