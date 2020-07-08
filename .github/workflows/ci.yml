@@ -200,7 +200,7 @@ jobs:
       run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
 
-  # Alpine docker pre-built container
+  # Ubuntu docker pre-built container
   ubuntu-musl: 
     name: ubuntu-musl
     runs-on: ubuntu-latest
@@ -208,6 +208,7 @@ jobs:
       image: thevlang/vlang:ubuntu-build
       env:
         V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
         VFLAGS: -cc musl-gcc
       volumes:
         - ${{github.workspace}}:/opt/vlang

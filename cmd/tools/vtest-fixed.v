@@ -9,6 +9,16 @@ const (
 		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_musl        = []string{}
+	skip_on_ubuntu_musl = 
+	[
+		'vlib/net/http/cookie_test.v',
+		'vlib/net/http/http_test.v',
+		'vlib/net/websocket/ws_test.v'
+		'vlib/sqlite/sqlite_test.v',
+		'vlib/orm/orm_test.v',
+		'vlib/clipboard/clipboard_test.v',
+		// 'vlib/v/gen/js/jsgen_test.v',
+	]
 	skip_on_linux       = []string{}
 	skip_on_non_linux   = [
 		'vlib/net/websocket/ws_test.v'
@@ -39,6 +49,9 @@ fn main() {
 	tsession.skip_files << skip_test_files
 	//
 	if os.getenv('V_CI_MUSL').len > 0 {
+		tsession.skip_files << skip_on_musl
+	}
+	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
 		tsession.skip_files << skip_on_musl
 	}
 	$if !linux {
