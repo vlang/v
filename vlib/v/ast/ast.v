@@ -142,7 +142,6 @@ pub mut:
 
 pub struct ConstField {
 pub:
-	mod      string
 	name     string
 	expr     Expr
 	is_pub   bool

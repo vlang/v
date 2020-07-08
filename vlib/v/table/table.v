@@ -13,7 +13,7 @@ pub mut:
 	type_idxs     map[string]int
 	fns           map[string]Fn
 	imports       []string // List of all imports
-	modules       []string // Topologically sorted list of all modules registered by the application
+	modules       []string // List of all modules registered by the application
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][]Type // for generic functions
@@ -510,3 +510,4 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	}
 	return false
 }
+

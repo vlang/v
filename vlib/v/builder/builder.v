@@ -12,10 +12,10 @@ import v.depgraph
 
 pub struct Builder {
 pub:
+	table               &table.Table
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
-	table               &table.Table
 	checker             checker.Checker
 	pref                &pref.Preferences
 	global_scope        &ast.Scope
@@ -146,7 +146,6 @@ pub fn (mut b Builder) resolve_deps() {
 			}
 		}
 	}
-	b.table.modules = mods
 	b.parsed_files = reordered_parsed_files
 }
 

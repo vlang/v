@@ -1376,7 +1376,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
-			mod: p.mod
 			expr: expr
 			pos: pos
 			comments: comments
