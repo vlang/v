@@ -686,8 +686,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 			val := stmt.right[i]
 			mut is_mut := false
 			if left is ast.Ident {
-				is_mut = it.is_mut
-				if it.kind == .blank_ident || it.name in ['', '_'] {
+				if left.kind == .blank_ident || left.name in ['', '_'] {
 					tmp_var := g.new_tmp_var()
 					// TODO: Can the tmp_var declaration be omitted?
 					g.write('const $tmp_var = ')
