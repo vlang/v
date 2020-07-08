@@ -11,11 +11,10 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
-				fn_decl := stmt as ast.FnDecl
 				// insert stmts from vweb_tmpl fn
-				if fn_decl.name.starts_with('main.vweb_tmpl') {
+				if it.name.starts_with('main.vweb_tmpl') {
 					g.inside_vweb_tmpl = true
-					g.stmts(fn_decl.stmts)
+					g.stmts(it.stmts)
 					g.inside_vweb_tmpl = false
 					break
 				}

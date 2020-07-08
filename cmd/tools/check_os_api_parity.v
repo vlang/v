@@ -98,8 +98,7 @@ fn (app App) gen_api_for_module_in_os(mod_name, os_name string) string {
 	for f in b.parsed_files {
 		for s in f.stmts {
 			if s is ast.FnDecl {
-				fnd := s as ast.FnDecl
-				if fnd.is_pub {
+				if it.is_pub {
 					fn_signature := fnd.stringify(b.table)
 					fn_mod := fnd.modname()
 					if fn_mod == mod_name {
