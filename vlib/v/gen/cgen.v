@@ -850,15 +850,18 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 
 fn (mut g Gen) write_defer_stmts() {
 	for defer_stmt in g.defer_stmts {
-		g.writeln('// defer')
+		g.writeln('// Defer begin')
 		if defer_stmt.ifdef.len > 0 {
 			g.writeln(defer_stmt.ifdef)
 			g.stmts(defer_stmt.stmts)
 			g.writeln('')
 			g.writeln('#endif')
 		} else {
+			g.indent--
 			g.stmts(defer_stmt.stmts)
+			g.indent++
 		}
+		g.writeln('// Defer end')
 	}
 }
 

@@ -136,7 +136,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 	}
 	g.stmts(it.stmts)
 	// ////////////
-	g.write_defer_stmts_when_needed()
+	if it.return_type == table.void_type {
+		g.write_defer_stmts_when_needed()
+	}
 	// /////////
 	if g.autofree {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
