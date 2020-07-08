@@ -2127,16 +2127,18 @@ fn C.WinFunction()
 
 ## Appendix I: Keywords
 
-V has 25 keywords:
+V has 29 keywords (3 are literals):
 
 ```v
 as
+assert
 break
 const
 continue
 defer
 else
 enum
+false
 fn
 for
 go
@@ -2154,8 +2156,11 @@ or
 pub
 return
 struct
+true
 type
+unsafe
 ```
+See also [Types](#types).
 
 ## Appendix II: Operators
 
