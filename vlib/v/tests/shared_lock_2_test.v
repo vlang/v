@@ -7,7 +7,7 @@ mut:
 }
 
 fn (shared x St) f(shared y St, shared z St) {
-	for _ in 0..101 {
+	for _ in 0 .. 101 {
 		lock x, y {
 			tmp := y.a
 			y.a = x.a
@@ -30,7 +30,7 @@ fn test_shared_receiver_lock() {
 		a: 1
 	}
 	go x.f(shared y, shared z)
-	for _ in 0..100 {
+	for _ in 0 .. 100 {
 		lock x, y {
 			tmp := x.a
 			x.a = y.a
@@ -38,8 +38,8 @@ fn test_shared_receiver_lock() {
 		}
 	}
 	// the following would be a good application for a channel
-	for finished := false; ; {
-		lock z {
+	for finished := false; true; {
+		rlock z {
 			finished = z.a == 0
 		}
 		if finished {
@@ -47,7 +47,7 @@ fn test_shared_receiver_lock() {
 		}
 		time.sleep_ms(100)
 	}
-	lock x, y {
+	rlock x, y {
 		assert x.a == 7 && y.a == 5
 	}
 }

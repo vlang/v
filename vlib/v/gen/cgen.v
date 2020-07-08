@@ -2376,10 +2376,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				if g.is_assign_lhs && !is_selector && node.is_setter {
 					g.is_array_set = true
 					g.write('array_set(')
-					if !left_is_ptr {
+					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
 					g.expr(node.left)
+					if node.left_type.has_flag(.shared_f) {
+						if left_is_ptr {
+							g.write('->val')
+						} else {
+							g.write('.val')
+						}
+					}
 					g.write(', ')
 					g.expr(node.index)
 					mut need_wrapper := true
@@ -2404,10 +2411,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						info.elem_type != table.string_type {
 						// TODO move this
 						g.write('*($elem_type_str*)array_get(')
-						if left_is_ptr {
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('*')
 						}
 						g.expr(node.left)
+						if node.left_type.has_flag(.shared_f) {
+							if left_is_ptr {
+								g.write('->val')
+							} else {
+								g.write('.val')
+							}
+						}
 						g.write(', ')
 						g.expr(node.index)
 						g.write(') ')
@@ -2428,10 +2442,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 				} else {
 					g.write('(*($elem_type_str*)array_get(')
-					if left_is_ptr {
+					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 						g.write('*')
 					}
 					g.expr(node.left)
+					if node.left_type.has_flag(.shared_f) {
+						if left_is_ptr {
+							g.write('->val')
+						} else {
+							g.write('.val')
+						}
+					}
 					g.write(', ')
 					g.expr(node.index)
 					g.write('))')
@@ -4497,6 +4518,24 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 
 fn (mut g Gen) array_init(it ast.ArrayInit) {
 	type_sym := g.table.get_type_symbol(it.typ)
+	styp := g.typ(it.typ)
+	mut shared_styp := '' // only needed for shared &[]{...}
+	is_amp := g.is_amp
+	g.is_amp = false
+	if is_amp {
+		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+		if g.is_shared {
+			mut shared_typ := it.typ.set_flag(.shared_f)
+			shared_styp = g.typ(shared_typ)
+			g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+		} else {
+			g.write('($styp*)memdup(&') // TODO: doesn't work with every compiler
+		}
+	} else {
+		if g.is_shared {
+			g.writeln('{.val = ($styp*)')
+		}
+	}
 	if type_sym.kind == .array_fixed {
 		g.write('{')
 		for i, expr in it.exprs {
@@ -4568,6 +4607,14 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		}
 	}
 	g.write('}))')
+	if g.is_shared {
+		g.write(', .mtx = sync__new_rwmutex()}')
+		if is_amp {
+			g.write(', sizeof($shared_styp))')
+		}
+	} else if is_amp {
+		g.write(', sizeof($styp))')
+	}
 }
 
 // `ui.foo(button)` =>
