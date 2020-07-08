@@ -1899,7 +1899,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// node.typ = c.check_expr_opt_call(node.expr, table.void_type)
 		}
 		ast.FnDecl {
-			c.fn_decl(node)
+			c.fn_decl(mut node)
 		}
 		ast.ForCStmt {
 			c.in_for_count++
@@ -2988,14 +2988,14 @@ fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Positio
 	return fields
 }
 
-fn (mut c Checker) fn_decl(node ast.FnDecl) {
+fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
 			// sym:=c.table.get_type_symbol(gen_type)
 			// println('\ncalling check for $node.name for type $sym.name')
-			c.fn_decl(node)
+			c.fn_decl(mut node)
 		}
 		c.cur_generic_type = 0
 		return
@@ -3046,7 +3046,24 @@ fn (mut c Checker) fn_decl(node ast.FnDecl) {
 		}
 	}
 	c.expected_type = table.void_type
-	c.cur_fn = &node
+	c.cur_fn = node
+
+	// Add return if `fn(...) ? {...}` have no return at end
+	if node.return_type != table.void_type && node.return_type.has_flag(.optional) &&
+	(node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
+		sym := c.table.get_type_symbol(node.return_type)
+		if sym.kind == .void {
+			node.stmts << ast.Return{
+				pos: node.pos
+			}
+		} else {
+			node.stmts << ast.Return{
+				pos: node.pos
+				exprs: [ast.Expr(ast.None{pos: node.pos})]
+			}
+		}
+	}
+
 	c.stmts(node.stmts)
 	if node.language == .v && !node.no_body &&
 		node.return_type != table.void_type && !c.returns &&

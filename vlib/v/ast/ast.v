@@ -222,7 +222,6 @@ pub struct FnDecl {
 pub:
 	name          string
 	mod           string
-	stmts         []Stmt
 	args          []table.Arg
 	is_deprecated bool
 	is_pub        bool
@@ -242,6 +241,7 @@ pub:
 	file          string
 	is_generic    bool
 pub mut:
+	stmts         []Stmt
 	return_type   table.Type
 }
 
