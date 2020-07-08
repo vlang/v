@@ -20,7 +20,9 @@ jobs:
       - name: Build V
         run: |
           make 
-
+      - name: Build V
+        run: |
+          uname -a 
      # - name: Checkout
     #   uses: actions/checkout@v2
 
