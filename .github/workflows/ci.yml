@@ -2,46 +2,46 @@ name: CI
 on: [push, pull_request]
 jobs:
 
-alpine-docker-musl-gcc:
-  name: alpine-musl
-  runs-on: ubuntu-latest
-  container: 
-    image: thevlang/vlang:alpine-build
-    # env:
-    #   V_CI_MUSL: 1
+  alpine-docker-musl-gcc:
+    name: alpine-musl
+    runs-on: ubuntu-latest
+    container: 
+      image: thevlang/vlang:alpine-build
+      # env:
+      #   V_CI_MUSL: 1
 
-    volumes:
-      - ${{github.workspace}}:/opt/vlang
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      
-    - name: Build V
-      run: |
-        make 
-    - name: Test V
-      run: |
-        v test-fixed 
-alpine-docker-musl-gcc:
-  name: alpine-musl
-  runs-on: ubuntu-latest
-  container: 
-    image: thevlang/vlang:buster-build
-    # env:
-    #   V_CI_MUSL: 1
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          make 
+      - name: Test V
+        run: |
+          v test-fixed 
+  alpine-docker-musl-gcc:
+    name: alpine-musl
+    runs-on: ubuntu-latest
+    container: 
+      image: thevlang/vlang:buster-build
+      # env:
+      #   V_CI_MUSL: 1
 
-    volumes:
-      - ${{github.workspace}}:/opt/vlang
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-      
-    - name: Build V
-      run: |
-        make 
-    - name: Test V
-      run: |
-        v test-fixed 
+      volumes:
+        - ${{github.workspace}}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+        
+      - name: Build V
+        run: |
+          make 
+      - name: Test V
+        run: |
+          v test-fixed 
      # - name: Checkout
     #   uses: actions/checkout@v2
 
