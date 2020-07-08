@@ -394,7 +394,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 							variables << url_words[i]
 						} else {
 							// array parameter only in the end
-							println(i)
 							variables << url_words[i..].join('/')
 						}
 						matching = true
