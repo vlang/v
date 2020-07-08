@@ -344,6 +344,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		conn.close() or {}
 		return
 	} else {
+		// Parse URL query
 		if url_words.last().contains('?') {
 			tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
 			url_words[url_words.len - 1] = url_words.last().all_before('?')
@@ -364,7 +365,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// For example URL `/register` matches route `/:user`, but `fn register()`
 			// should be called first.
 			if (req.method == 'GET' && url_words[0] == method) || (req.method == 'POST' && url_words[0] + '_post' == method) {
-				println('found method $method')
+				println('easy match method=$method')
 				app.$method(vars)
 				conn.close() or {}
 				return
