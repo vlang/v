@@ -964,9 +964,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 }
 
 pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
-	if call_expr.name == 'panic' {
-		c.returns = true
-	}
 	fn_name := call_expr.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
@@ -1843,6 +1840,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if node.has_else {
 				c.stmts(node.else_stmts)
 			}
+			mut stmts := node.stmts.clone()
+			stmts << node.else_stmts
+			if has_return := c.has_return(stmts) {
+				c.returns = has_return
+			}
 		}
 		ast.ConstDecl {
 			mut field_names := []string{}
@@ -2006,7 +2008,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {
-			c.returns = true
+			// c.returns = true
 			c.return_stmt(mut node)
 			c.scope_returns = true
 		}
@@ -2466,6 +2468,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
+	mut require_return := false
+	mut branch_without_return := false
 	for branch in node.branches {
 		for expr in branch.exprs {
 			c.expected_type = cond_type
@@ -2502,6 +2506,19 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				}
 			}
 		}
+		if has_return := c.has_return(branch.stmts) {
+			if has_return {
+				require_return = true
+			} else {
+				branch_without_return = true
+			}
+		}
+	}
+	if require_return && branch_without_return {
+		c.returns = false
+	} else {
+		// if inner if branch has not covered all branches but this one
+		c.returns = true
 	}
 	// if ret_type != table.void_type {
 	// node.is_expr = c.expected_type != table.void_type
@@ -2602,6 +2619,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
+	mut require_return := false
+	mut branch_without_return := false
 	for i, branch in node.branches {
 		if branch.cond is ast.ParExpr {
 			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
@@ -2691,6 +2710,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 		}
+		if has_return := c.has_return(branch.stmts) {
+			if has_return {
+				require_return = true
+			} else {
+				branch_without_return = true
+			}
+		}
+	}
+	if require_return && (!node.has_else || branch_without_return) {
+		c.returns = false
+	} else {
+		// if inner if branch has not covered all branches but this one
+		c.returns = true
 	}
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.any_int_type {
@@ -2705,6 +2737,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		return node.typ
 	}
 	return table.bool_type
+}
+
+fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
+	// complexity means either more match or ifs
+	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
+	contains_comp_if := stmts.filter(it is ast.CompIf).len > 0
+	contains_if_match := exprs.filter(it.expr is ast.IfExpr || it.expr is ast.MatchExpr).len > 0
+	contains_complexity := contains_comp_if || contains_if_match
+	// if the inner complexity covers all paths with returns there is no need for further checks
+	if !contains_complexity || !c.returns {
+		return has_top_return(stmts)
+	}
+	return none
 }
 
 pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
@@ -2996,6 +3041,7 @@ fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Positio
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	c.returns = true
 	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[node.name] {
@@ -3072,10 +3118,36 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 
 	c.stmts(node.stmts)
+	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body &&
-		node.return_type != table.void_type && !c.returns &&
+		node.return_type != table.void_type && !returns &&
 		node.name !in ['panic', 'exit'] {
 		c.error('missing return at end of function `$node.name`', node.pos)
 	}
 	c.returns = false
+}
+
+fn has_top_return(stmts []ast.Stmt) bool {
+	if stmts.filter(it is ast.Return).len > 0 {
+		return true
+	}
+	mut has_unsafe_return := false	
+	for _, stmt in stmts {
+		if stmt is ast.UnsafeStmt {
+			for ustmt in stmt.stmts {
+				if ustmt is ast.Return {
+					has_unsafe_return = true
+				}
+			}
+		}
+	}
+	if has_unsafe_return {
+		return true
+	}
+	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
+	has_panic_exit := exprs.filter(it.expr is ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' || it.name == 'exit').len > 0
+	if has_panic_exit {
+		return true
+	}
+	return false
 }

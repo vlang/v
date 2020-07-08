@@ -551,6 +551,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					expr: p.vweb()
 				}
 			}
+			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -601,6 +602,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_const {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
+			return ast.Stmt{}
 		}
 		// literals, 'if', etc. in here
 		else {
