@@ -142,7 +142,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
-		println('Unable to find msvc version')
+		//println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
@@ -313,7 +313,7 @@ pub fn (mut v Builder) cc_msvc() {
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
-	
+
 	if msvc.valid == false {
 		verror('Cannot find MSVC on this OS')
 		return
@@ -408,4 +408,3 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 		other_flags: other_flags
 	}
 }
-
