@@ -963,9 +963,17 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 			got_styp := g.typ(got_type)
 			exp_styp := g.typ(expected_type)
 			got_idx := got_type.idx()
-			g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
-			g.expr(expr)
-			g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			if got_type.is_ptr() {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = ')
+				g.expr(expr)
+				g.write(', .typ = $got_idx /* $got_sym.name */}')
+			}
+			else {
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			}
+
 			return
 		}
 	}
@@ -2314,6 +2322,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			infix := branch.cond as ast.InfixExpr
 			right_type := infix.right as ast.Type
 			left_type := infix.left_type
+			left_expr := infix.left as ast.Ident
 			it_type := g.typ(right_type.typ)
 			g.write('\t$it_type* it = ($it_type*)')
 			g.expr(infix.left)
@@ -2323,6 +2332,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
+			g.writeln('\t$it_type* $left_expr.name = it;')
 		}
 		g.stmts(branch.stmts)
 	}
