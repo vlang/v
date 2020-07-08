@@ -52,7 +52,7 @@ fn main() {
 		tsession.skip_files << skip_on_musl
 	}
 	if os.getenv('V_CI_UBUNTU_MUSL').len > 0 {
-		tsession.skip_files << skip_on_musl
+		tsession.skip_files << skip_on_ubuntu_musl
 	}
 	$if !linux {
 		tsession.skip_files << skip_on_non_linux
