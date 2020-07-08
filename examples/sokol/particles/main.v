@@ -52,7 +52,7 @@ fn (a App) run() {
 		width: a.width
 		height: a.height
 		user_data: &a
-		init_userdata_cb: init
+		init_userdata_cb: setup
 		frame_userdata_cb: frame
 		event_userdata_cb: event
 		window_title: title.str
@@ -66,7 +66,7 @@ fn (a App) draw() {
 	a.ps.draw()
 }
 
-fn init(user_data voidptr) {
+fn setup(user_data voidptr) {
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
