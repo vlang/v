@@ -99,8 +99,8 @@ fn (app App) gen_api_for_module_in_os(mod_name, os_name string) string {
 		for s in f.stmts {
 			if s is ast.FnDecl {
 				if it.is_pub {
-					fn_signature := fnd.stringify(b.table)
-					fn_mod := fnd.modname()
+					fn_signature := it.stringify(b.table)
+					fn_mod := it.modname()
 					if fn_mod == mod_name {
 						fline := '${fn_mod}: $fn_signature'
 						res << fline
