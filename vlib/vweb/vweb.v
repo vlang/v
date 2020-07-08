@@ -336,7 +336,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	//t := time.ticks()
 	//mut action := ''
 	mut route_words := []string{}
-	mut ok := true
 	mut url_words := vals[1][1..].split('/')
 
 
@@ -356,11 +355,15 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 
-	mut vars := []string{}
+	mut vars := []string{cap: route_words.len}
 	mut action := ''
 	$for method in T {
 		if attrs == '' {
-			if url_words[0] == method && url_words.len == 1 {
+			// No routing for this method. If it matches, call it and finish matching
+			// since such methods have a priority.
+			// For example URL `/register` matches route `/:user`, but `fn register()`
+			// should be called first.
+			if (req.method == 'GET' && url_words[0] == method) || (req.method == 'POST' && url_words[0] + '_post' == method) {
 				println('found method $method')
 				app.$method(vars)
 				conn.close() or {}
@@ -369,17 +372,22 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		} else {
 			route_words = attrs[1..].split('/')
 			if url_words.len == route_words.len || (url_words.len >= route_words.len && route_words.last().ends_with('...')) {
+				// match `/:user/:repo/tree` to `/vlang/v/tree`
 				mut matching := false
 				mut unknown := false
-				mut variables := []string{}
+				mut variables := []string{cap: route_words.len}
 				for i in 0..route_words.len {
 					if url_words[i] == route_words[i] {
+						// no parameter
 						matching = true
 						continue
 					} else if route_words[i].starts_with(':') {
-						if i < route_words.len && !route_words[i].ends_with('...'){
+						// is parameter
+						if i < route_words.len && !route_words[i].ends_with('...') {
+							// normal parameter
 							variables << url_words[i]
 						} else {
+							// array parameter only in the end
 							variables << url_words[i..].join('/')
 						}
 						matching = true
@@ -391,10 +399,12 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 					}
 				}
 				if matching && !unknown {
+					// absolute router words like `/test/site`
 					app.$method(vars)
 					conn.close() or {}
 					return
 				} else if matching && unknown {
+					// router words with paramter like `/:test/site`
 					action = method
 					vars = variables
 				}
@@ -402,14 +412,24 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		}
 	}
 	if action == '' {
+		// site not found
 		conn.send_string(http_404) or {}
 		conn.close() or {}
 		return
 	}
-	println(action)
-	app.$action(vars)
-	conn.close() or {}
+	send_action<T>(action, vars, mut app)
 	return
+}
+
+fn send_action<T>(action string, vars []string, mut app T) {
+	// TODO remove this function
+	$for method in T {
+		// search again for method
+		if action == method && attrs != '' {
+			// call action method
+			app.$method(vars)
+		}
+	}
 }
 
 fn (mut ctx Context) parse_form(s string) {
