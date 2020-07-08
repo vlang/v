@@ -336,7 +336,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	//t := time.ticks()
 	//mut action := ''
 	mut route_words := []string{}
-	mut url_words := vals[1][1..].split('/')
+	mut url_words := vals[1][1..].split('/').filter(it != '')
 
 
 	if url_words.len == 0 {
@@ -372,12 +372,18 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			}
 		} else {
 			route_words = attrs[1..].split('/')
-			if url_words.len == route_words.len || (url_words.len >= route_words.len && route_words.last().ends_with('...')) {
+			if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
 				// match `/:user/:repo/tree` to `/vlang/v/tree`
 				mut matching := false
 				mut unknown := false
 				mut variables := []string{cap: route_words.len}
 				for i in 0..route_words.len {
+					if url_words.len == i {
+						variables << ''
+						matching = true
+						unknown = true
+						break
+					}
 					if url_words[i] == route_words[i] {
 						// no parameter
 						matching = true
