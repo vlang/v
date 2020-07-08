@@ -2635,6 +2635,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							is_used: true
 							is_mut: left_expr.is_mut
 						})
+						scope.register(left_expr.name, ast.Var{
+							name: left_expr.name
+							typ: right_expr.typ.to_ptr()
+							pos: left_expr.pos
+							is_used: true
+							is_mut: left_expr.is_mut
+						})
 						node.branches[i].smartcast = true
 					}
 				}
