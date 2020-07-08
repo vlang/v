@@ -206,22 +206,18 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.TypeDecl {
-				// type_decl := stmt as ast.TypeDecl
 				if stmt is ast.AliasTypeDecl {
-					alias_decl := stmt as ast.AliasTypeDecl
-					if alias_decl.is_pub {
-						c.warn('type alias `$alias_decl.name` $no_pub_in_main_warning',
-							alias_decl.pos)
+					if it.is_pub {
+						c.warn('type alias `$it.name` $no_pub_in_main_warning',
+							it.pos)
 					}
 				} else if stmt is ast.SumTypeDecl {
-					sum_decl := stmt as ast.SumTypeDecl
-					if sum_decl.is_pub {
-						c.warn('sum type `$sum_decl.name` $no_pub_in_main_warning', sum_decl.pos)
+					if it.is_pub {
+						c.warn('sum type `$it.name` $no_pub_in_main_warning', it.pos)
 					}
 				} else if stmt is ast.FnTypeDecl {
-					fn_decl := stmt as ast.FnTypeDecl
-					if fn_decl.is_pub {
-						c.warn('type alias `$fn_decl.name` $no_pub_in_main_warning', fn_decl.pos)
+					if it.is_pub {
+						c.warn('type alias `$it.name` $no_pub_in_main_warning', it.pos)
 					}
 				}
 			}
@@ -995,7 +991,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name == 'json.encode' {
 	} else if fn_name == 'json.decode' {
 		expr := call_expr.args[0].expr
-		if !(expr is ast.Type) {
+		if expr !is ast.Type {
 			typ := typeof(expr)
 			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
@@ -1270,26 +1266,25 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 // return the actual type of the expression, once the optional is handled
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
-		call_expr := expr as ast.CallExpr
-		if call_expr.return_type.has_flag(.optional) {
-			if call_expr.or_block.kind == .absent {
+		if it.return_type.has_flag(.optional) {
+			if it.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${call_expr.name}() returns an option, but you missed to add an `or {}` block to it',
-						call_expr.pos)
+					c.error('${it.name}() returns an option, but you missed to add an `or {}` block to it',
+						it.pos)
 				}
 			} else {
-				c.check_or_expr(call_expr.or_block, ret_type)
+				c.check_or_expr(it.or_block, ret_type)
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
 			// TODO: currently unwrapped in assign, would need to refactor assign to unwrap here
 			return ret_type
-		} else if call_expr.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `$call_expr.name` does not return an optional',
-				call_expr.pos)
-		} else if call_expr.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$call_expr.name`, does not return an optional',
-				call_expr.pos)
+		} else if it.or_block.kind == .block {
+			c.error('unexpected `or` block, the function `$it.name` does not return an optional',
+				it.pos)
+		} else if it.or_block.kind == .propagate {
+			c.error('unexpected `?`, the function `$it.name`, does not return an optional',
+				it.pos)
 		}
 	}
 	return ret_type
@@ -1527,8 +1522,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	if assign_stmt.left.len != right_len {
 		if right_first is ast.CallExpr {
-			call_expr := assign_stmt.right[0] as ast.CallExpr
-			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${call_expr.name}()` returns $right_len value(s)',
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${it.name}()` returns $right_len value(s)',
 				assign_stmt.pos)
 		} else {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
@@ -1982,7 +1976,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_valid_snake_case(node.name, 'global name', node.pos)
 		}
 		ast.GoStmt {
-			if !(node.call_expr is ast.CallExpr) {
+			if node.call_expr !is ast.CallExpr {
 				c.error('expression in `go` must be a function call', node.call_expr.position())
 			}
 			c.expr(node.call_expr)
@@ -2803,7 +2797,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		c.error('expected type is not an enum', node.pos)
 		return table.void_type
 	}
-	if !(typ_sym.info is table.Enum) {
+	if typ_sym.info !is table.Enum {
 		c.error('not an enum', node.pos)
 		return table.void_type
 	}

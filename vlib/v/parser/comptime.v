@@ -134,7 +134,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 				tmpl_scope := file.scope.innermost(fn_decl.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
-						mut v := obj as ast.Var
+						mut v := it
 						v.pos = fn_decl.body_pos
 						tmpl_scope.register(v.name, *v)
 						// set the controller action var to used

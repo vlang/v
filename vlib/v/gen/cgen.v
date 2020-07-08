@@ -1205,7 +1205,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		if left is ast.Ident {
-			ident = left as ast.Ident
+			ident = it
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = ident.kind == .blank_ident
@@ -1382,10 +1382,9 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if lx is ast.Ident {
-					ident := lx as ast.Ident
-					if val.name == ident.name {
+					if val.name == it.name {
 						g.write('_var_')
-						g.write(ident.pos.pos.str())
+						g.write(it.pos.pos.str())
 						has_var = true
 						break
 					}

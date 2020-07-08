@@ -15,8 +15,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					ident := expr as ast.Ident
-					if ident.name == val.name {
+					if it.name == val.name {
 						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 					}
 				}
@@ -50,8 +49,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					ident := expr as ast.Ident
-					if ident.name == val_.name {
+					if it.name == val_.name {
 						return true
 					}
 				}
