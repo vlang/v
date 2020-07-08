@@ -1284,8 +1284,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			mut str_add := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
-				is_index_expr := left is ast.IndexExpr
-				if is_index_expr {
+				left_is_index_expr := left is ast.IndexExpr
+				if left_is_index_expr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
 					g.expr(left)
 					g.write('string_add(')
