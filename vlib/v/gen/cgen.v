@@ -2888,7 +2888,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
-		for i, field in info.fields {
+		for field in info.fields {
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
 				field_name := c_name(sfield.name)
@@ -2907,7 +2907,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
-				g.write_struct_field_comma(i, info.fields.len, is_multiline)
+				if is_multiline {
+					g.writeln(',')
+				} else {
+					g.write(',')
+				}
+
 				initialized = true
 				continue
 			}
@@ -2920,7 +2925,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			g.zero_struct_field(field)
-			g.write_struct_field_comma(i, info.fields.len, is_multiline)
+			if is_multiline {
+				g.writeln(',')
+			} else {
+				g.write(',')
+			}
+
 			initialized = true
 		}
 	}
@@ -2937,20 +2947,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 	} else if is_amp {
 		g.write(', sizeof($styp))')
-	}
-}
-
-fn (mut g Gen) write_struct_field_comma(idx, count int, is_multiline bool) {
-	if idx != count-1 {
-		if is_multiline {
-			g.writeln(',')
-		} else {
-			g.write(', ')
-		}
-	} else {
-		if is_multiline {
-			g.writeln('')
-		}
 	}
 }
 
