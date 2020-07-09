@@ -13,6 +13,12 @@ const (
 	one_line_supported  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 	another_const       = ['a', 'b', 'c', 'd', 'e', 'f']
+	multiline_const     = [
+		'first line',
+		'second line',
+		'third line',
+		'fourth line'
+	]
 )
 
 const (
@@ -24,3 +30,31 @@ const (
 pub const (
 	i_am_pub_const = true
 )
+
+fn main() {
+	a := [
+		[3, 5, 6],
+		[7, 9, 2]
+	]
+	b := [[
+		[2, 5, 8],
+		[5, 1, 3],
+		[2, 6, 0]
+	], [
+		[9, 4, 5],
+		[7, 2, 3],
+		[1, 2, 3]
+	]]
+	c := [
+		[
+			[2, 5, 8],
+			[5, 1, 3],
+			[2, 6, 0]
+		],
+		[
+			[9, 4, 5],
+			[7, 2, 3],
+			[1, 2, 3]
+		]
+	]
+}

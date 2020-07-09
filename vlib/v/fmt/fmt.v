@@ -1479,22 +1479,25 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	f.write('[')
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
+	mut break_after_each_element := false
 	for i, expr in it.exprs {
-		mut penalty := 3
 		line_nr := expr.position().line_nr
-		if last_line_nr < line_nr {
-			penalty--
+		if i == 0 && last_line_nr < line_nr {
+			 break_after_each_element = true
 		}
-		if i == 0 ||
-			it.exprs[i - 1] is ast.ArrayInit ||
-			it.exprs[i - 1] is ast.StructInit ||
-			it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
-			penalty--
-		}
-		if expr is ast.ArrayInit ||
-			expr is ast.StructInit || expr is ast.MapInit ||
-			expr is ast.CallExpr {
-			penalty--
+		mut penalty := if break_after_each_element { 0 } else { 3 }
+		if penalty > 0 {
+			if i == 0 ||
+				it.exprs[i - 1] is ast.ArrayInit ||
+				it.exprs[i - 1] is ast.StructInit ||
+				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
+				penalty--
+			}
+			if expr is ast.ArrayInit ||
+				expr is ast.StructInit || expr is ast.MapInit ||
+				expr is ast.CallExpr {
+				penalty--
+			}
 		}
 		is_new_line := f.wrap_long_line(penalty, !inc_indent)
 		if is_new_line && !inc_indent {
