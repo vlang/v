@@ -84,6 +84,9 @@ pub fn gen(files []ast.File, out_name string, pref &pref.Preferences) {
 		out_name: out_name
 		pref: pref
 	}
+	if !pref.is_verbose {
+		println('use `v -x64 -v ...` to print resulting asembly/machine code')
+	}
 	g.generate_elf_header()
 	for file in files {
 		g.stmts(file.stmts)
@@ -260,11 +263,13 @@ fn (mut g Gen) jle(addr i64) {
 }
 
 fn (mut g Gen) println(comment string) {
+	if !g.pref.is_verbose {
+		return
+	}
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
 	print(term.red(strings.repeat(`0`, 6 - addr.len) + addr + '  '))
-	for i := g.debug_pos; i < g.buf.len; i++
-	 {
+	for i := g.debug_pos; i < g.buf.len; i++ {
 		s := g.buf[i].hex()
 		if s.len == 1 {
 			print(term.blue('0'))
@@ -575,12 +580,14 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 			ast.Ident {
 				// `foo(x)` => `mov edi,DWORD PTR [rbp-0x8]`
 				var_offset := g.get_var_offset(expr.name)
-				println('i=$i fn name= $name offset=$var_offset')
-				println(int(fn_arg_registers[i]))
+				if g.pref.is_verbose {
+					println('i=$i fn name= $name offset=$var_offset')
+					println(int(fn_arg_registers[i]))
+				}
 				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
 			}
 			else {
-				verror('unhandled call_fn node: ' + typeof(expr))
+				verror('unhandled call_fn (name=$name) node: ' + typeof(expr))
 			}
 		}
 	}
@@ -797,7 +804,9 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 }
 
 fn (mut g Gen) fn_decl(node ast.FnDecl) {
-	println(term.green('\n$node.name:'))
+	if g.pref.is_verbose {
+		println(term.green('\n$node.name:'))
+	}
 	g.stack_var_pos = 0
 	is_main := node.name == 'main.main'
 	// println('saving addr $node.name $g.buf.len.hex2()')
