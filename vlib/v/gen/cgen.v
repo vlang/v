@@ -2332,7 +2332,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
-			g.write('\t$it_type* $left_expr.name = _sc_tmp_$branch.pos.pos;')
+			g.writeln('\t$it_type* $left_expr.name = _sc_tmp_$branch.pos.pos;')
 		}
 		g.stmts(branch.stmts)
 	}
