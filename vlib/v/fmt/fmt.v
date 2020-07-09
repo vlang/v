@@ -37,6 +37,8 @@ pub mut:
 	penalties         []int // how hard should it be to break line after each expression
 	precedences       []int // operator/parenthese precedences for operator at end of each expression
 	par_level         int // how many parentheses are put around the current expression
+	array_init_break  []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth  int // current level of hierarchie in array init
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
@@ -1479,13 +1481,15 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	f.write('[')
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
-	mut break_after_each_element := false
+	f.array_init_depth++
 	for i, expr in it.exprs {
 		line_nr := expr.position().line_nr
-		if i == 0 && last_line_nr < line_nr {
-			 break_after_each_element = true
+		if i == 0 {
+			if f.array_init_depth > f.array_init_break.len {
+				f.array_init_break << (last_line_nr < line_nr)
+			}
 		}
-		mut penalty := if break_after_each_element { 0 } else { 3 }
+		mut penalty := if f.array_init_break[f.array_init_depth - 1] { 0 } else { 3 }
 		if penalty > 0 {
 			if i == 0 ||
 				it.exprs[i - 1] is ast.ArrayInit ||
@@ -1516,6 +1520,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write(',')
 		}
 		last_line_nr = line_nr
+	}
+	f.array_init_depth--
+	if f.array_init_depth == 0 {
+		f.array_init_break = []
 	}
 	if inc_indent {
 		f.indent--
