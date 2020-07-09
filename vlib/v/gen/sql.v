@@ -183,8 +183,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			//
 			sym := g.table.get_type_symbol(array_info.elem_type)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		} else {
@@ -195,8 +198,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			// by the db engine.
 			sym := g.table.get_type_symbol(node.typ)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		}

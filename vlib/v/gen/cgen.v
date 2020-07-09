@@ -2813,6 +2813,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	}
 	sym := g.table.get_type_symbol(struct_init.typ)
 	is_amp := g.is_amp
+	is_multiline := struct_init.fields.len > 5
 	g.is_amp = false // reset the flag immediately so that other struct inits in this expr are handled correctly
 	if is_amp {
 		g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
@@ -2826,6 +2827,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	} else {
 		if g.is_shared {
 			g.writeln('{.val = {')
+		} else if is_multiline {
+			g.writeln('($styp){')
 		} else {
 			g.write('($styp){')
 		}
@@ -2842,6 +2845,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		fields = struct_init.fields
 	}
 	*/
+	if is_multiline { g.indent++ }
 	// User set fields
 	mut initialized := false
 	for i, field in struct_init.fields {
@@ -2864,7 +2868,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
 			}
 			if i != struct_init.fields.len - 1 {
-				g.write(', ')
+				if is_multiline {
+					g.writeln(',')
+				} else {
+					g.write(', ')
+				}
 			}
 			initialized = true
 		}
@@ -2879,7 +2887,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
-		for i, field in info.fields {
+		for field in info.fields {
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
 				field_name := c_name(sfield.name)
@@ -2898,9 +2906,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
 				}
-				if i != info.fields.len - 1 {
-					g.write(', ')
+				if is_multiline {
+					g.writeln(',')
+				} else {
+					g.write(',')
 				}
+
 				initialized = true
 				continue
 			}
@@ -2913,9 +2924,16 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				continue
 			}
 			g.zero_struct_field(field)
+			if is_multiline {
+				g.writeln(',')
+			} else {
+				g.write(',')
+			}
+
 			initialized = true
 		}
 	}
+	if is_multiline { g.indent-- }
 	// if struct_init.fields.len == 0 && info.fields.len == 0 {
 	if !initialized {
 		g.write('\n#ifndef __cplusplus\n0\n#endif\n')
@@ -2933,13 +2951,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 
 fn (mut g Gen) zero_struct_field(field table.Field) {
 	field_name := c_name(field.name)
-	g.write('\t.$field_name = ')
+	g.write('.$field_name = ')
 	if field.has_default_expr {
 		g.expr(ast.fe2ex(field.default_expr))
 	} else {
 		g.write(g.type_default(field.typ))
 	}
-	g.writeln(',')
 }
 
 // fn (mut g Gen) zero_struct_fields(info table.Struct, inited_fields map[string]int) {
