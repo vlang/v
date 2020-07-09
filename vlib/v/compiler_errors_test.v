@@ -33,13 +33,20 @@ fn get_tests_in_dir(dir string) []string {
 }
 
 fn check_path(vexe, dir, voptions, result_extension string, tests []string) int {
-	vtest_only := os.getenv('VTEST_ONLY')
+	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	mut nb_fail := 0
 	mut paths := []string{}
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
 		if vtest_only.len > 0 {
-			if !path.contains(vtest_only) {
+			mut found := 0
+			for substring in vtest_only {
+				if path.contains(substring) {
+					found++
+					break
+				}
+			}
+			if found == 0 {
 				continue
 			}
 		}

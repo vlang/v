@@ -69,7 +69,7 @@ pub fn (mut ts TestSession) test() {
 	//
 	ts.init()
 	mut remaining_files := []string{}
-	vtest_only := os.getenv('VTEST_ONLY')
+	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.real_path(relative_file)
@@ -94,7 +94,14 @@ pub fn (mut ts TestSession) test() {
 			}
 		}
 		if vtest_only.len > 0 {
-			if !file.contains(vtest_only) {
+			mut found := 0
+			for substring in vtest_only {
+				if file.contains(substring) {
+					found++
+					break
+				}
+			}
+			if found == 0 {
 				continue
 			}
 		}
