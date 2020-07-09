@@ -2322,7 +2322,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			infix := branch.cond as ast.InfixExpr
 			right_type := infix.right as ast.Type
 			left_type := infix.left_type
-			left_expr := infix.left as ast.Ident
 			it_type := g.typ(right_type.typ)
 			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
 			g.expr(infix.left)
@@ -2332,7 +2331,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
-			g.writeln('\t$it_type* $left_expr.name = _sc_tmp_$branch.pos.pos;')
+			g.writeln('\t$it_type* $infix.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
 		g.stmts(branch.stmts)
 	}

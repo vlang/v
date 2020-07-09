@@ -254,15 +254,27 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	p.next()
 	mut right := ast.Expr{}
+	is_is_cast := op == .key_is
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)
+	is_ident := left is ast.Ident
+	as_name := if is_is_cast && p.tok.kind == .key_as {
+		p.next()
+		p.check_name()
+	} else if is_ident {
+		ident := left as ast.Ident
+		ident.name
+	} else {
+		''
+	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
+		left_as_name: as_name
 	}
 }
 

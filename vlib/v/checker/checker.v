@@ -2620,20 +2620,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// smartcast sumtypes when using `is`
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
-				left_expr := infix.left as ast.Ident
+			if infix.op == .key_is && (infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&  infix.right is ast.Type {
 				right_expr := infix.right as ast.Type
-				if left_expr.kind == .variable {
-					// Register shadow variable or `as` variable with actual type
+				is_variable := if infix.left is ast.Ident {
+					(infix.left as ast.Ident).kind == .variable
+				} else { true }
+				// Register shadow variable or `as` variable with actual type
+				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type {
+					if left_sym.kind == .sum_type && infix.left_as_name.len > 0 {
+						mut is_mut := false
+						if infix.left is ast.Ident {
+							is_mut = (infix.left as ast.Ident).is_mut
+						} else if infix.left is ast.SelectorExpr {
+							selector := infix.left as ast.SelectorExpr
+							field := c.table.struct_find_field(left_sym, selector.field_name) or { table.Field{} }
+							is_mut = field.is_mut
+						}
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						scope.register(left_expr.name, ast.Var{
-							name: left_expr.name
+						scope.register(infix.left_as_name, ast.Var{
+							name: infix.left_as_name
 							typ: right_expr.typ.to_ptr()
-							pos: left_expr.pos
+							pos: infix.left.position()
 							is_used: true
-							is_mut: left_expr.is_mut
+							is_mut: is_mut
 						})
 						node.branches[i].smartcast = true
 					}

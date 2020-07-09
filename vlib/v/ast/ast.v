@@ -389,13 +389,14 @@ pub fn (i &Ident) var_info() IdentVar {
 
 pub struct InfixExpr {
 pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	right      Expr
+	op           token.Kind
+	pos          token.Position
+	left         Expr
+	right        Expr
+	left_as_name string // only used in x is SumType check
 pub mut:
-	left_type  table.Type
-	right_type table.Type
+	left_type    table.Type
+	right_type   table.Type
 }
 
 pub struct PostfixExpr {
