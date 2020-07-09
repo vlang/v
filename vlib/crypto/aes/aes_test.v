@@ -21,7 +21,8 @@ fn test_crypto_aes() {
 		panic('ciphertext is not a multiple of the block size')
 	}
 	mode := aes.new_cbc(block, iv)
-	mode.encrypt_blocks(mut ciphertext, ciphertext)
+	cipher_clone := ciphertext.clone()
+	mode.encrypt_blocks(mut ciphertext, cipher_clone)
 
 	assert ciphertext.hex() == 'c210459b514668ddc44674885e4979215265a6c44431a248421254ef357a8c2a308a8bddf5623af9df91737562041cf1'
 }
