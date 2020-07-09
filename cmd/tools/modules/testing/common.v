@@ -69,6 +69,7 @@ pub fn (mut ts TestSession) test() {
 	//
 	ts.init()
 	mut remaining_files := []string{}
+	vtest_only := os.getenv('VTEST_ONLY')
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.real_path(relative_file)
@@ -89,6 +90,11 @@ pub fn (mut ts TestSession) test() {
 		}
 		$if tinyc {
 			if file.contains('asm') {
+				continue
+			}
+		}
+		if vtest_only.len > 0 {
+			if !file.contains(vtest_only) {
 				continue
 			}
 		}
