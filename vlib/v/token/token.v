@@ -412,7 +412,7 @@ pub fn (k Kind) is_start_of_type() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
 	//
-	/*.key_as, */.ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is,
+	.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is,
 	//
 	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
 }
