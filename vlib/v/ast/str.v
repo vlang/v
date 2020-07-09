@@ -32,7 +32,7 @@ pub fn (node &FnDecl) stringify(t &table.Table) string {
 	mut receiver := ''
 	if node.is_method {
 		mut styp := t.type_to_str(node.receiver.typ)
-		mut m := if node.rec_mut { 'mut ' } else { '' }
+		mut m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
 		}
@@ -72,7 +72,7 @@ pub fn (node &FnDecl) stringify(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
 		if arg.is_mut {
-			f.write('mut ')
+			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
 		mut s := t.type_to_str(arg.typ)

@@ -250,7 +250,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				if left is ast.Ident {
 					var_info := left.var_info()
 					if var_info.is_mut {
-						f.write('mut ')
+						f.write(var_info.share.str() + ' ')
 					}
 					f.expr(left)
 					if i < node.left.len - 1 {
@@ -517,7 +517,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.write(arg.name)
 				mut s := f.table.type_to_str(arg.typ).replace(f.cur_mod + '.', '')
 				if arg.is_mut {
-					f.write('mut ')
+					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
 						s = s[1..]
 					}
@@ -1054,7 +1054,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	for i, arg in args {
 		if arg.is_mut {
-			f.write('mut ')
+			f.write(arg.share.str() + ' ')
 		}
 		if i > 0 {
 			f.wrap_long_line(2, true)
@@ -1173,7 +1173,11 @@ pub fn (mut f Fmt) short_module(name string) string {
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
-	f.write('lock ')
+	f.write(if lex.is_rlock {
+		'rlock '
+	} else {
+		'lock '
+	})
 	for i, v in lex.lockeds {
 		if i > 0 {
 			f.write(', ')
