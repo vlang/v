@@ -551,9 +551,10 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o x.o',
-		'-lc', '-lcrypto', '-lssl', '-lpthread', '-ldl', '$sysroot/crtn.o',
+		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o',
 		cflags.c_options_only_object_files()
 	]
+	// -ldl
 	linker_args_str := linker_args.join(' ')
 	cmd := '$sysroot/ld.lld ' + linker_args_str
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
