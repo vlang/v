@@ -218,7 +218,8 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed.
+Global (module level) variables are not allowed. There's no global state in V
+(see [Pure functions by default](#pure-functions-by-default) for details).
 
 ### Mutable variables
 
@@ -1038,7 +1039,7 @@ but a short, preferably one letter long, name.
 ### Pure functions by default
 
 V functions are pure by default, meaning that their return values are a function of their arguments only,
-and their evaluation has no side effects.
+and their evaluation has no side effects (besides I/O).
 
 This is achieved by a lack of global variables and all function arguments being immutable by default,
 even when [references](#references) are passed.
