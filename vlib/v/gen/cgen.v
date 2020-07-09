@@ -1213,9 +1213,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		if left is ast.Ident {
+			ident = *left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
-			blank_assign = ident.kind == .blank_ident
+			blank_assign = left.kind == .blank_ident
 			if left.info is ast.IdentVar {
 				share := (left.info as ast.IdentVar).share
 				if share == .shared_t {
@@ -2323,7 +2324,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			left_type := infix.left_type
 			left_expr := infix.left as ast.Ident
 			it_type := g.typ(right_type.typ)
-			g.write('\t$it_type* $left_expr.name = ($it_type*)')
+			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
 			g.expr(infix.left)
 			if left_type.is_ptr() {
 				g.write('->')
@@ -2331,6 +2332,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
+			g.write('\t$it_type* $left_expr.name = _sc_tmp_$branch.pos.pos;')
 		}
 		g.stmts(branch.stmts)
 	}
