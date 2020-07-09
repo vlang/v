@@ -2161,9 +2161,9 @@ fn bar() {
 [typedef]
 struct C.Foo { }
 
-// Declare a function with WINAPI
+// Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
-fn C.WinFunction()
+fn DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
 
