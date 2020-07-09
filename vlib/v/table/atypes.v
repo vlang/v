@@ -683,6 +683,7 @@ pub struct Enum {
 pub:
 	vals    []string
 	is_flag bool
+	is_multi_allowed bool
 }
 
 pub struct Alias {
