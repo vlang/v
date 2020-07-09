@@ -79,6 +79,7 @@ mut:
 	str_types            []string // types that need automatic str() generation
 	threaded_fns         []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions []string // array equality functions that have been defined
+	map_fn_definitions   []string // map equality functions that have been defined
 	is_json_fn           bool // inside json.encode()
 	json_types           []string // to avoid json gen duplicates
 	pcs                  []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -1955,7 +1956,24 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else if node.op == .ne {
 			g.write('!${ptr_typ}_arr_eq(')
 		}
-	    if node.left_type.is_ptr() {
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		if node.right_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.right)
+		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .map && right_sym.kind == .map {
+		ptr_typ := g.gen_map_equality_fn(left_type)
+		if node.op == .eq {
+			g.write('${ptr_typ}_map_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_map_eq(')
+		}
+		if node.left_type.is_ptr() {
 			g.write('*')
 		}
 		g.expr(node.left)
@@ -3004,6 +3022,41 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 		g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
 	} else {
 		g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
+	}
+	g.definitions.writeln('\t\t\treturn false;')
+	g.definitions.writeln('\t\t}')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
+	return ptr_typ
+}
+
+fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
+	left_sym := g.table.get_type_symbol(left)
+	typ_name := g.typ(left)
+	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..].trim('*')
+	value_sym := g.table.get_type_symbol(left_sym.map_info().value_type)
+	value_typ := g.typ(left_sym.map_info().value_type)
+	if value_sym.kind == .map {
+		// Recursively generate map element comparison function code if array element is map type
+		g.gen_map_equality_fn(left_sym.map_info().value_type)
+	}
+	if ptr_typ in g.map_fn_definitions {
+		return ptr_typ
+	}
+	g.map_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_map_eq(map_$ptr_typ a, map_$ptr_typ b) {')
+	g.definitions.writeln('\tif (a.len != b.len) {')
+	g.definitions.writeln('\t\treturn false;')
+	g.definitions.writeln('\t}')
+	g.definitions.writeln('\tarray_string _keys = map_keys(&a);')
+	g.definitions.writeln('\tfor (int i = 0; i < _keys.len; ++i) {')
+	g.definitions.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[i]);')
+	g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
+	if value_sym.kind == .string {
+		g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {')
+	} else {
+		g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {')
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
