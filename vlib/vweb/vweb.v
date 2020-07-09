@@ -364,7 +364,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// since such methods have a priority.
 			// For example URL `/register` matches route `/:user`, but `fn register()`
 			// should be called first.
-			if (req.method == 'GET' && url_words[0] == method) || (req.method == 'POST' && url_words[0] + '_post' == method) {
+			if (req.method == 'GET' && url_words[0] == method && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method) {
 				println('easy match method=$method')
 				app.$method(vars)
 				conn.close() or {}
