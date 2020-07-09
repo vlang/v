@@ -64,9 +64,25 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		} else {
 			cond = p.expr(0)
 		}
+		mut left_as_name := ''
+		is_infix := cond is ast.InfixExpr
+		if is_infix {
+			infix := cond as ast.InfixExpr
+			is_is_cast := infix.op == .key_is
+			is_ident := infix.left is ast.Ident
+			left_as_name = if is_is_cast && p.tok.kind == .key_as {
+				p.next()
+				p.check_name()
+			} else if is_ident {
+				ident := infix.left as ast.Ident
+				ident.name
+			} else {
+				''
+			}
+		}
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
-		p.inside_if = false		
+		p.inside_if = false
 		stmts := p.parse_block()
 		if is_or {
 			p.close_scope()
@@ -77,6 +93,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			pos: start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.tok.position())
 			comments: comments
+			left_as_name: left_as_name
 		}
 		comments = []
 		if p.tok.kind != .key_else {

@@ -393,7 +393,6 @@ pub:
 	pos          token.Position
 	left         Expr
 	right        Expr
-	left_as_name string // only used in x is SumType check
 pub mut:
 	left_type    table.Type
 	right_type   table.Type
@@ -444,6 +443,7 @@ pub:
 	comments []Comment
 pub mut:
 	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
+	left_as_name string // only used in x is SumType check
 }
 
 pub struct LockExpr {

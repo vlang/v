@@ -2628,7 +2628,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				// Register shadow variable or `as` variable with actual type
 				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type && infix.left_as_name.len > 0 {
+					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
 						mut is_mut := false
 						if infix.left is ast.Ident {
 							is_mut = (infix.left as ast.Ident).is_mut
@@ -2638,8 +2638,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							is_mut = field.is_mut
 						}
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						scope.register(infix.left_as_name, ast.Var{
-							name: infix.left_as_name
+						scope.register(branch.left_as_name, ast.Var{
+							name: branch.left_as_name
 							typ: right_expr.typ.to_ptr()
 							pos: infix.left.position()
 							is_used: true
