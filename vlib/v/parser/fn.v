@@ -555,7 +555,7 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 fn have_fn_main(stmts []ast.Stmt) bool {
 	for stmt in stmts {
 		if stmt is ast.FnDecl {
-			if it.name == 'main.main' && it.mod == 'main' {
+			if stmt.name == 'main.main' && stmt.mod == 'main' {
 				return true
 			}
 		}

@@ -279,7 +279,7 @@ pub fn (node Stmt) str() string {
 			mut out := ''
 			for i, left in it.left {
 				if left is Ident {
-					var_info := it.var_info()
+					var_info := left.var_info()
 					if var_info.is_mut {
 						out += 'mut '
 					}

@@ -1213,12 +1213,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		if left is ast.Ident {
-			ident = it
+			ident = *left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
-			blank_assign = ident.kind == .blank_ident
-			if ident.info is ast.IdentVar {
-				share := (ident.info as ast.IdentVar).share
+			blank_assign = left.kind == .blank_ident
+			if left.info is ast.IdentVar {
+				share := (left.info as ast.IdentVar).share
 				if share == .shared_t {
 					var_type = var_type.set_flag(.shared_f)
 				}
@@ -1390,9 +1390,9 @@ fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 			mut has_var := false
 			for lx in left {
 				if lx is ast.Ident {
-					if val.name == it.name {
+					if val.name == lx.name {
 						g.write('_var_')
-						g.write(it.pos.pos.str())
+						g.write(lx.pos.pos.str())
 						has_var = true
 						break
 					}
@@ -2322,9 +2322,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			infix := branch.cond as ast.InfixExpr
 			right_type := infix.right as ast.Type
 			left_type := infix.left_type
-			left_expr := infix.left as ast.Ident
 			it_type := g.typ(right_type.typ)
-			g.write('\t$it_type* it = ($it_type*)')
+			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
 			g.expr(infix.left)
 			if left_type.is_ptr() {
 				g.write('->')
@@ -2332,7 +2331,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.write('.')
 			}
 			g.writeln('obj;')
-			g.writeln('\t$it_type* $left_expr.name = it;')
+			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
 		g.stmts(branch.stmts)
 	}

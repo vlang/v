@@ -230,6 +230,10 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			// continue on infix expr
 			node = p.infix_expr(node)
+			// return early `if bar is SumType as b {`
+			if p.tok.kind == .key_as && p.inside_if {
+				return node
+			}
 		} else if p.tok.kind in [.inc, .dec] {
 			// Postfix
 			node = ast.PostfixExpr{

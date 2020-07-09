@@ -98,7 +98,7 @@ fn main() {
 ```
 Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-> That is assuming you have symlinked your V with `v symlink`, as described 
+> That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
 If you have not yet, you have to type the path to V manually.
 
@@ -108,7 +108,7 @@ Congratulations - you just wrote your first V program, and executed it!
 See `v help` for all supported commands.
 
 In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't 
+The return type goes after the function name. In this case `main` doesn't
 return anything, so the return type can be omitted.
 
 As in many other languages (such as C, Go and Rust), `main` is an entry point.
@@ -539,6 +539,32 @@ else {
     'odd'
 }
 println(s) // "odd"
+```
+
+#### Is check
+You can check sum types using `if` like `match`ing them.
+```v
+struct Abc {
+    val string
+}
+struct Xyz {
+    foo string
+}
+type Alphabet = Abc | Xyz
+
+x := Alphabet(Abc{'test'}) // sum type
+if x is Abc {
+    // x is automatically castet to Abc and can be used here
+    println(x)
+}
+```
+
+If you have a struct field which should be checked, there is also a way to name a alias.
+```
+if x.bar is MyStruct as bar {
+    // x.bar cannot be castet automatically, instead you say "as bar" which creates a variable with the MyStruct typing
+    println(bar)
+}
 ```
 
 ### In operator
@@ -1851,9 +1877,9 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 ## Performance tuning
 
-The generated C code is usually fast enough, when you compile your code 
-with `-prod`. There are some situations though, where you may want to give 
-additional hints to the C compiler, so that it can further optimize some 
+The generated C code is usually fast enough, when you compile your code
+with `-prod`. There are some situations though, where you may want to give
+additional hints to the C compiler, so that it can further optimize some
 blocks of code.
 
 NB: These are *rarely* needed, and should not be used, unless you
@@ -1862,11 +1888,11 @@ To cite gcc's documentation: "programmers are notoriously bad at predicting
 how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance, 
+try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
-`if _likely_(bool expression) {` this hints the C compiler, that the passed 
-boolean expression is very likely to be true, so it can generate assembly 
+`if _likely_(bool expression) {` this hints the C compiler, that the passed
+boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
 that does nothing.
 
@@ -2106,7 +2132,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition. 
+An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -2132,7 +2158,7 @@ fn bar() {
 }
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
-[typedef] 
+[typedef]
 struct C.Foo { }
 
 // Declare a function with WINAPI

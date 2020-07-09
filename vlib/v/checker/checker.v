@@ -207,17 +207,17 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 			}
 			ast.TypeDecl {
 				if stmt is ast.AliasTypeDecl {
-					if it.is_pub {
-						c.warn('type alias `$it.name` $no_pub_in_main_warning',
-							it.pos)
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning',
+							stmt.pos)
 					}
 				} else if stmt is ast.SumTypeDecl {
-					if it.is_pub {
-						c.warn('sum type `$it.name` $no_pub_in_main_warning', it.pos)
+					if stmt.is_pub {
+						c.warn('sum type `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				} else if stmt is ast.FnTypeDecl {
-					if it.is_pub {
-						c.warn('type alias `$it.name` $no_pub_in_main_warning', it.pos)
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				}
 			}
@@ -1266,25 +1266,25 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 // return the actual type of the expression, once the optional is handled
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
-		if it.return_type.has_flag(.optional) {
-			if it.or_block.kind == .absent {
+		if expr.return_type.has_flag(.optional) {
+			if expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${it.name}() returns an option, but you missed to add an `or {}` block to it',
-						it.pos)
+					c.error('${expr.name}() returns an option, but you missed to add an `or {}` block to it',
+						expr.pos)
 				}
 			} else {
-				c.check_or_expr(it.or_block, ret_type)
+				c.check_or_expr(expr.or_block, ret_type)
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
 			// TODO: currently unwrapped in assign, would need to refactor assign to unwrap here
 			return ret_type
-		} else if it.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `$it.name` does not return an optional',
-				it.pos)
-		} else if it.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$it.name`, does not return an optional',
-				it.pos)
+		} else if expr.or_block.kind == .block {
+			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
+				expr.pos)
+		} else if expr.or_block.kind == .propagate {
+			c.error('unexpected `?`, the function `$expr.name`, does not return an optional',
+				expr.pos)
 		}
 	}
 	return ret_type
@@ -1522,7 +1522,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	if assign_stmt.left.len != right_len {
 		if right_first is ast.CallExpr {
-			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${it.name}()` returns $right_len value(s)',
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
 				assign_stmt.pos)
 		} else {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
@@ -2620,27 +2620,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// smartcast sumtypes when using `is`
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
-				left_expr := infix.left as ast.Ident
+			if infix.op == .key_is && (infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&  infix.right is ast.Type {
 				right_expr := infix.right as ast.Type
-				if left_expr.kind == .variable {
-					// Register shadow variable or `as` variable with actual type
+				is_variable := if infix.left is ast.Ident {
+					(infix.left as ast.Ident).kind == .variable
+				} else { true }
+				// Register shadow variable or `as` variable with actual type
+				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type {
+					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
+						mut is_mut := false
+						if infix.left is ast.Ident {
+							is_mut = (infix.left as ast.Ident).is_mut
+						} else if infix.left is ast.SelectorExpr {
+							selector := infix.left as ast.SelectorExpr
+							field := c.table.struct_find_field(left_sym, selector.field_name) or { table.Field{} }
+							is_mut = field.is_mut
+						}
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						scope.register('it', ast.Var{
-							name: 'it'
+						scope.register(branch.left_as_name, ast.Var{
+							name: branch.left_as_name
 							typ: right_expr.typ.to_ptr()
-							pos: left_expr.pos
+							pos: infix.left.position()
 							is_used: true
-							is_mut: left_expr.is_mut
-						})
-						scope.register(left_expr.name, ast.Var{
-							name: left_expr.name
-							typ: right_expr.typ.to_ptr()
-							pos: left_expr.pos
-							is_used: true
-							is_mut: left_expr.is_mut
+							is_mut: is_mut
 						})
 						node.branches[i].smartcast = true
 					}

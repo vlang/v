@@ -288,8 +288,8 @@ fn (b &Builder) print_warnings_and_errors() {
 			for file in b.parsed_files {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
-						if it.name == fn_name {
-							fline := it.pos.line_nr
+						if stmt.name == fn_name {
+							fline := stmt.pos.line_nr
 							println('$file.path:$fline:')
 						}
 					}

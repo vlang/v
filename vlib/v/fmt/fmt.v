@@ -246,7 +246,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			for i, left in node.left {
 				if left is ast.Ident {
-					var_info := it.var_info()
+					var_info := left.var_info()
 					if var_info.is_mut {
 						f.write('mut ')
 					}
@@ -660,8 +660,8 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
 	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
-		if it.right is ast.CastExpr && it.op == .amp {
-			ce = it.right as ast.CastExpr
+		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
+			ce = fexpr.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -1248,16 +1248,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 		*/
 		if node.left is ast.Ident {
-			it := node.left as ast.Ident
+			left := node.left as ast.Ident
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-				if it.name !in f.auto_imports {
-					f.auto_imports << it.name
+			if left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+				if left.name !in f.auto_imports {
+					f.auto_imports << left.name
 					f.file.imports << ast.Import{
-						mod: it.name
-						alias: it.name
+						mod: left.name
+						alias: left.name
 					}
 				}
 				// for imp in f.file.imports {
@@ -1321,7 +1321,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		stmt := branch.stmts[0]
 		if stmt is ast.ExprStmt {
 			// If expressions inside match branches can't be one a single line
-			if !expr_is_single_line(it.expr) {
+			if !expr_is_single_line(stmt.expr) {
 				single_line = false
 				break
 			}
