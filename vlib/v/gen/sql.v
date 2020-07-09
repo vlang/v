@@ -89,7 +89,8 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
 	g.writeln('sqlite3_step($g.sql_stmt_name);')
-	g.writeln('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0) puts(sqlite3_errmsg(${db_name}.conn)); ')
+	g.write('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0)')
+	g.write('if (strcmp(sqlite3_errmsg(${db_name}.conn), "no more rows available") != 0) puts(sqlite3_errmsg(${db_name}.conn));')
 	g.writeln('sqlite3_finalize($g.sql_stmt_name);')
 }
 
