@@ -46,7 +46,7 @@ pub fn get_uchar(s string, index int) int {
 		ch_len = utf8util_char_len(s.str[index])
 
 		if ch_len == 1 {
-			return u16(s.str[0])
+			return u16(s.str[index])
 		}if ch_len > 1 && ch_len < 5{
 			mut lword := 0
 			for i:=0; i < ch_len ; i++ {
