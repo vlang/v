@@ -12,6 +12,7 @@ import v.errors
 
 const (
 	max_nr_errors = 300
+	match_exhaustive_cutoff_limit = 10
 	enum_min      = int(0x80000000)
 	enum_max      = 0x7FFFFFFF
 )
@@ -2594,7 +2595,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	}
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
-		err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or `else {}` at the end)'
+		err_details += ' (add match branches for: '
+		if unhandled.len < match_exhaustive_cutoff_limit {
+			err_details += unhandled.join(', ')
+		} else {
+			remaining := unhandled.len - match_exhaustive_cutoff_limit
+			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
+			err_details += ', and ${remaining} others ...'
+		}
+		err_details += ' or `else {}` at the end)'
 	} else {
 		err_details += ' (add `else {}` at the end)'
 	}
