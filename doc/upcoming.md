@@ -176,7 +176,7 @@ shared b map[string]int
 go h3(shared b)
 b['apple'] = 3
 c['plume'] = 7
-y := b['apple] // not necesarily `3`
+y := b['apple'] // not necesarily `3`
 
 // iteration over elements
 for k, v in b {
