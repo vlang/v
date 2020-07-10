@@ -1503,6 +1503,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	is_flag := 'flag' in p.attrs
+	is_multi_allowed := '_allow_multiple_values' in p.attrs
 	if is_flag {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')
@@ -1524,12 +1525,14 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		info: table.Enum{
 			vals: vals
 			is_flag: is_flag
+			is_multi_allowed: is_multi_allowed
 		}
 	})
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
 		is_flag: is_flag
+		is_multi_allowed: is_multi_allowed
 		fields: fields
 		pos: start_pos.extend(end_pos)
 		comments: enum_decl_comments

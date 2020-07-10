@@ -623,12 +623,13 @@ pub:
 
 pub struct EnumDecl {
 pub:
-	name     string
-	is_pub   bool
-	is_flag  bool // true when the enum has [flag] tag
-	comments []Comment // enum Abc { /* comments */ ... }
-	fields   []EnumField
-	pos      token.Position
+	name             string
+	is_pub           bool
+	is_flag          bool // true when the enum has [flag] tag
+	is_multi_allowed bool
+	comments         []Comment // enum Abc { /* comments */ ... }
+	fields           []EnumField
+	pos              token.Position
 }
 
 pub struct AliasTypeDecl {

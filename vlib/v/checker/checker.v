@@ -1467,7 +1467,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					val := field_expr.val.i64()
 					if val < enum_min || val > enum_max {
 						c.error('enum value `$val` overflows int', field_expr.pos)
-					} else if int(val) in seen {
+					} else if !decl.is_multi_allowed && int(val) in seen {
 						c.error('enum value `$val` already exists', field_expr.pos)
 					}
 					seen << int(val)

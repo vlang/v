@@ -4120,7 +4120,14 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	g.auto_str_funcs.writeln('\tswitch(it) {')
+	// Only use the first multi value on the lookup
+	mut seen := []string{len:info.vals.len}
 	for val in info.vals {
+		if info.is_multi_allowed && val in seen {
+			continue
+		} else if info.is_multi_allowed {
+			seen << val
+		}
 		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos_lit("$val");')
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return tos_lit("unknown enum value");')
