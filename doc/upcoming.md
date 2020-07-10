@@ -7,7 +7,11 @@ for the current state of V***
 ## Table of Contents
 
 * [Concurrency](#concurrency)
-    * [Variable Declarations](#concurrency-variable-declarations)
+    * [Variable Declarations](#variable-declarations)
+	* [Strengths](#strengths)
+	* [Weaknesses](#weaknesses)
+	* [Compatibility](#compatibility)
+	* [Automatic Lock](#automatic-lock)
 
 ## Concurrency
 
@@ -111,3 +115,78 @@ counting. Once the counter reaches 0 the object is automatically freed.
 <sup>3</sup> Since an `atomic` variable is only a few bytes in size
 allocation would be an unnecessary overhead. Instead the compiler
 creates a global.
+
+### Compatibility
+Outside of `lock`/`rlock` blocks function arguments must in general
+match - with the familiar exception that objects declared `mut` can be
+used to call functions expecting immutable arguments:
+
+```v
+fn f(x St) {...}
+fn g(mut x St) {...}
+fn h(shared x St) {...}
+fn i(atomic x u64) {...}
+
+a := St{...}
+f(a)
+
+mut b := &St{...} // reference since transferred to coroutine
+f(b)
+go g(mut b)
+// `b` should not be accessed here any more
+
+shared c := &St{...}
+h(shared c)
+
+atomic d &u64
+i(atomic d)
+```
+
+Inside a `lock c {...}` block `c` behaves like a `mut`,
+inside an `rlock c {...}` block like an immutable:
+```v
+shared c := &St{...}
+lock c {
+    g(mut c)
+	f(c)
+	// call to h() not allowed inside `lock` block
+	// since h() will lock `c` itself
+}
+rlock c {
+    f(c)
+	// call to g() or h() not allowed
+}
+```
+
+### Automatic Lock
+In general the compiler will generate an error message when a `shared`
+object is accessed outside of any corresponding `lock`/`rlock`
+block. However in simple and obvious cases the necessary lock/unlock
+can be generated automatically for `array`/`map` operations:
+
+```v
+shared a []int{...}
+go h2(shared a)
+a << 3
+// keep in mind that `h2()` could change `a` between these statements
+a << 4
+x := a[1] // not necessarily `4`
+
+shared b map[string]int
+go h3(shared b)
+b['apple'] = 3
+c['plume'] = 7
+y := b['apple] // not necesarily `3`
+
+// iteration over elements
+for k, v in b {
+    // concurrently changed k/v pairs may or my not be included
+}
+```
+
+This is handy, but since other coroutines might access the `array`/`map`
+concurrently between the automatically locked statements, the results
+are sometimes surprising. Each statement should be seen as a single
+transaction that is unrelated to the previous or following
+statement. Therefore - but also for performance reasons - it's often
+better to group consecutive coherent statements in an explicit `lock` block.
