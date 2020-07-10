@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 //
 // This module follows a similar convention to Rust: `init` makes the
 // structure of the program in the _current_ directory, while `new`
@@ -25,6 +24,7 @@ fn vmod_content(name, desc string) string {
 		'Module {',
 		"	name: '$name',",
 		"	description: '$desc',",
+		"	version: '0.0.0',",
 		'	dependencies: []',
 		'}'
 	].join('\n')
@@ -110,14 +110,20 @@ fn (c &Create) init_main() {
 
 fn create() {
 	mut c := Create{}
-	print('Input your project name: ')
-	c.name = os.get_line()
+	c.name = os.input('Input your project name: ')
+	if c.name == '' {
+		cerror('project name cannot be empty')
+		exit(1)
+	}
+	if c.name.contains('-') {
+		cerror('"$c.name" should not contain hyphens')
+		exit(1)
+	}
 	if os.is_dir(c.name) {
 		cerror('$c.name folder already exists')
 		exit(3)
 	}
-	print('Input your project description: ')
-	c.description = os.get_line()
+	c.description = os.input('Input your project description: ')
 	println('Initialising ...')
 	os.mkdir(c.name) or {
 		panic(err)
