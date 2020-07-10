@@ -216,6 +216,7 @@ pub fn run_app<T>(mut app T, port int) {
 }
 
 fn handle_conn<T>(conn net.Socket, mut app T) {
+	defer { conn.close() or {} }
 //fn handle_conn<T>(conn net.Socket, app_ T) T {
 	//mut app := app_
 	//first_line := strip(lines[0])
@@ -232,7 +233,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	if vals.len < 2 {
 		println('no vals for http')
 		conn.send_string(http_500) or {}
-		conn.close() or {}
 		return
 		//continue
 	}
@@ -306,7 +306,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		$if debug {
 			println('no vals for http')
 		}
-		conn.close() or {}
 		return
 		//continue
 	}
@@ -341,7 +340,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 
 	if url_words.len == 0 {
 		app.index()
-		conn.close() or {}
 		return
 	} else {
 		// Parse URL query
@@ -367,7 +365,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			if (req.method == 'GET' && url_words[0] == method && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method) {
 				println('easy match method=$method')
 				app.$method(vars)
-				conn.close() or {}
 				return
 			}
 		} else {
@@ -408,7 +405,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				if matching && !unknown {
 					// absolute router words like `/test/site`
 					app.$method(vars)
-					conn.close() or {}
 					return
 				} else if matching && unknown {
 					// router words with paramter like `/:test/site`
@@ -421,11 +417,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	if action == '' {
 		// site not found
 		conn.send_string(http_404) or {}
-		conn.close() or {}
 		return
 	}
 	send_action<T>(action, vars, mut app)
-	return
 }
 
 fn send_action<T>(action string, vars []string, mut app T) {
