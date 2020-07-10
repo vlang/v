@@ -2,6 +2,7 @@
 
 echo Building V
 
+set log_file=%TEMP%\v_make.bat.log
 set tcc_path=%~dp0thirdparty\tcc\
 pushd %~dp0
 
@@ -19,10 +20,6 @@ if exist "vc" (
 )
 
 :compile
-REM option to disable adding V to PATH
-if "%~1"=="-skip-path" set skip_path=1
-if "%~2"=="-skip-path" set skip_path=1
-
 REM option to force msvc, gcc or tcc
 if "%~1"=="-gcc"  set force_gcc=1  & goto :gcc_strap
 if "%~2"=="-gcc"  set force_gcc=1  & goto :gcc_strap
@@ -42,10 +39,14 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :msvc_strap
 )
 
-gcc -std=c99 -municode -w -o v.exe vc\v_win.c
-if %ERRORLEVEL% NEQ 0 goto :compile_error
+gcc -std=c99 -municode -w -o v.exe vc\v_win.c>>%log_file% 2>>&1
+if %ERRORLEVEL% NEQ 0 (
+	rem In most cases, compile errors happen because the version of GCC installed is too old
+	gcc --version>>%log_file% 2>>&1
+	goto :compile_error
+)
 
-v.exe self > NUL
+v.exe self>>%log_file% 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -78,10 +79,10 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v.exe /INCREMENTAL:NO > NUL
+cl.exe /nologo /w /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /NOLOGO /OUT:v.exe /INCREMENTAL:NO>>%log_file% 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
-v.exe -cc msvc self
+v.exe -cc msvc self>>%log_file% 2>>&1
 del %ObjFile%
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
@@ -115,19 +116,24 @@ if exist "%tcc_path%" (
 	if "%cloned_tcc%"=="" (
 		echo  ^> Updating prebuilt TCC...
 		pushd "%tcc_path%"
-		git pull -q > NUL
+		git pull -q
 		popd
 	)
 )
 call "%tcc_exe%" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
-v.exe -cc "%tcc_exe%" self > NUL
+v.exe -cc "%tcc_exe%" self>>%log_file% 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :compile_error
-echo Failed to compile - Create an issue at 'https://github.com/vlang'
+echo.
+echo.
+echo Failed to compile - Create an issue at 'https://github.com/vlang' with the following info:
+echo.
+type %log_file%
+del %log_file%
 goto :error
 
 :error
@@ -138,26 +144,9 @@ exit /b 1
 
 :success
 echo  ^> V built successfully!
+echo  ^> To add V to your PATH, run `.\v symlink`.
 del v_old.exe
-
-:path
-if "%skip_path%" NEQ "" goto :version
-echo.
-echo Adding V to PATH...
-v.exe symlink > NUL
-if %ERRORLEVEL% NEQ 0 (
-	echo  ^> Could not add V to %%PATH%%, try rebuilding as admin.
-	goto :error
-)
-echo  ^> V added to %%PATH%%
-
-if "%cloned_tcc%" NEQ "" (
-	echo @echo off> "%~dp0.bin\tcc.bat"
-	echo %tcc_path%tcc %%^*>> "%~dp0.bin\tcc.bat"
-	echo  ^> TCC added to %%PATH%%
-)
-
-echo  ^> Restart your shell/IDE to reload it
+del %log_file%
 
 :version
 echo.
