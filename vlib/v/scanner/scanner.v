@@ -1113,6 +1113,7 @@ fn (mut s Scanner) ident_string() string {
 	q := s.text[s.pos]
 	is_quote := q == single_quote || q == double_quote
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
+	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c`
 	if is_quote && !s.is_inside_string {
 		s.quote = q
 	}
@@ -1145,13 +1146,15 @@ fn (mut s Scanner) ident_string() string {
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
 			if s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit() {
-			} else {
+			} else if !is_cstr {
 				s.error('0 character in a string literal')
 			}
 		}
 		// Don't allow \x00
 		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
-			s.error('0 character in a string literal')
+			if !is_cstr {
+				s.error('0 character in a string literal')
+			}
 		}
 		// ${var} (ignore in vfmt mode)
 		if c == `{` && prevc == `$` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
