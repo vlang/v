@@ -265,7 +265,7 @@ jobs:
     - name: Build
       run: |
         gcc --version
-        .\make.bat -gcc -skip-path
+        .\make.bat -gcc
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
     - name: Install dependencies
@@ -300,7 +300,7 @@ jobs:
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        .\make.bat -msvc -skip-path
+        .\make.bat -msvc
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
@@ -331,12 +331,12 @@ jobs:
     #  with:
     #    node-version: 12.x
     - name: Build
-      # We need to move gcc and msvc, so that V doesn't find a C compiler
+      # We need to move gcc and msvc, so that V can't find an existing C compiler and downloads tcc
       run: |
         'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
         'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
         move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
-        .\make.bat -skip-path
+        .\make.bat
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
     - name: Install dependencies
