@@ -633,6 +633,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			// TODO
 		}
+		ast.UnsafeExpr {
+			g.stmts(it.stmts)
+		}
 	}
 }
 

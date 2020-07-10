@@ -13,7 +13,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
 	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None |
 	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf
+	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompFor |
 	CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt |
@@ -444,6 +444,12 @@ pub:
 pub mut:
 	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
 	left_as_name string // only used in x is SumType check
+}
+
+pub struct UnsafeExpr {
+pub:
+	stmts    []Stmt
+	pos      token.Position
 }
 
 pub struct LockExpr {
