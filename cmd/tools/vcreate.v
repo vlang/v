@@ -49,8 +49,9 @@ fn gen_gitignore(name string) string {
 	].join('\n')
 }
 
-fn (c &Create) create_vmod() {
-	mut vmod := os.create('$c.name/v.mod') or {
+fn (c &Create) write_vmod(new bool) {
+	vmod_path := if new { '$c.name/v.mod' } else { 'v.mod' }
+	mut vmod := os.create(vmod_path) or {
 		cerror(err)
 		exit(1)
 	}
@@ -58,22 +59,17 @@ fn (c &Create) create_vmod() {
 	vmod.close()
 }
 
-fn (c &Create) create_main() {
-	mut main := os.create('$c.name/${c.name}.v') or {
+fn (c &Create) write_main(new bool) {
+	if !new && (os.exists('${c.name}.v') || os.exists('src/${c.name}.v')) {
+		return
+	}
+	main_path := if new { '$c.name/${c.name}.v' } else { '${c.name}.v' }
+	mut main := os.create(main_path) or {
 		cerror(err)
 		exit(2)
 	}
 	main.write(main_content())
 	main.close()
-}
-
-fn (c &Create) init_vmod() {
-	mut vmod := os.create('v.mod') or {
-		cerror(err)
-		exit(1)
-	}
-	vmod.write(vmod_content(c.name, c.description))
-	vmod.close()
 }
 
 fn (c &Create) create_git_repo(dir string) {
@@ -92,20 +88,6 @@ fn (c &Create) create_git_repo(dir string) {
 			fl.close()
 		}
 	}
-}
-
-fn (c &Create) init_main() {
-	// The file already exists, don't over-write anything.
-	// Searching in the 'src' directory allows flexibility user module structure
-	if os.exists('${c.name}.v') || os.exists('src/${c.name}.v') {
-		return
-	}
-	mut main := os.create('${c.name}.v') or {
-		cerror(err)
-		exit(2)
-	}
-	main.write(main_content())
-	main.close()
 }
 
 fn create() {
@@ -128,8 +110,8 @@ fn create() {
 	os.mkdir(c.name) or {
 		panic(err)
 	}
-	c.create_vmod()
-	c.create_main()
+	c.write_vmod(true)
+	c.write_main(true)
 	c.create_git_repo(c.name)
 }
 
@@ -141,8 +123,8 @@ fn init_project() {
 	mut c := Create{}
 	c.name = os.file_name(os.getwd())
 	c.description = ''
-	c.init_vmod()
-	c.init_main()
+	c.write_vmod(false)
+	c.write_main(false)
 	c.create_git_repo('')
 	println("Change your module's description in `v.mod`")
 }
