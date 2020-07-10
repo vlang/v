@@ -42,7 +42,7 @@ fn main() {
 		return
 	}
 	*/
-	last_commits := exec('git log --pretty=format:"%h" -n 20').split('\n')//.reverse()
+	last_commits := exec('git log --pretty=format:"%h" -n 20').split('\n')
 	// Fetch all unprocessed commits (commits after the last processed commit)
 	mut commits := []string{}
 	println('last_commit="$commit_hash"')
@@ -60,8 +60,7 @@ fn main() {
 		println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
 		// Build an optimized V
 		println('  Building vprod...')
-		//exec('v -o $vdir/vprod -prod $vdir/cmd/v')
-		exec('v -o $vdir/vprod $vdir/cmd/v')
+		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
 		diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v', 'v.c')
 		diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
 		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
@@ -74,7 +73,7 @@ fn main() {
 		table =
 	'<tr>
 		<td>${date.format()}</td>
-		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit_hash">$commit_hash</a></td>
+		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
 		<td>$message</td>
 		<td>${diff1}ms</td>
 		<td>${diff2}ms</td>
