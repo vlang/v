@@ -2163,7 +2163,7 @@ struct C.Foo { }
 
 // Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
-fn DefWindowProc(hwnd int, msg int, lparam int, wparam int)
+fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
 
