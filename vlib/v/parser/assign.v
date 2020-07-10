@@ -87,8 +87,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
-			if op in [.plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, 
-			    .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign] {
+			if op !in [.assign, .decl_assign] {
 				p.error('unexpected $op.str(), expecting := or = or comma')
 			}
 			if has_cross_var {
