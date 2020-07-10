@@ -910,3 +910,25 @@ fn test_array_in_mut() {
 	array_in_mut(mut a)
 	assert a == [2,2]
 }
+
+// test array delete in function with mut argument
+fn delete_nums(mut arr []int) {
+	arr.delete(0)
+}
+
+fn test_array_delete_in_mut() {
+	mut nums := [1, 2, 3]
+	delete_nums(mut nums)
+	assert nums == [2, 3]
+}
+
+// test array add in function with mut argument
+fn add_nums(mut arr []int) {
+	arr << 4
+}
+
+fn test_array_add_in_mut() {
+	mut nums := [1, 2, 3]
+	add_nums(mut nums)
+	assert nums == [1, 2, 3, 4]
+}
