@@ -66,7 +66,7 @@ fn main() {
 		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
 		diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
 		//println('Building V took ${diff}ms')
-		commit_date := exec('git log -n1 --pretty="format:%at"')
+		commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 		date := time.unix(commit_date.int())
 		mut out := os.create('table.html')?
 		// Place the new row on top
