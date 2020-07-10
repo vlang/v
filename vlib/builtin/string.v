@@ -46,7 +46,7 @@ pub struct string {
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
-mut:    
+mut:
 	is_lit int
 }
 // mut:
@@ -157,7 +157,7 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 
 pub fn (s string) replace_once(rep, with string) string {
 	index := s.index(rep) or {
-		return s
+		return s.clone()
 	}
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
 }

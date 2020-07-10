@@ -676,6 +676,15 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
+	map_prefix := 'map[string]'
+	cur_mod := f.cur_mod + '.'
+	has_map_prefix := res.starts_with(map_prefix)
+	if has_map_prefix {
+		res = res.replace(map_prefix, '')
+	}
+	no_symbols := res.trim_left('&[]')
+	should_shorten := no_symbols.starts_with(cur_mod)
+	//
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
 		res = res[0..res.len - 4]
@@ -686,12 +695,18 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 		prefix := '[]fixed_'
 		res = res[prefix.len..]
 		last_underscore_idx := res.last_index('_') or {
-			return '[]' + res.replace(f.cur_mod + '.', '')
+			return '[]' + if should_shorten { res.replace_once(cur_mod, '') } else { res }
 		}
 		limit := res[last_underscore_idx + 1..]
 		res = '[' + limit + ']' + res[..last_underscore_idx]
 	}
-	return res.replace(f.cur_mod + '.', '')
+	if should_shorten {
+		res = res.replace_once(cur_mod, '')
+	}
+	if has_map_prefix {
+		res = map_prefix + res
+	}
+	return res
 }
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
