@@ -37,6 +37,7 @@ fn C.sqlite3_step() int
 fn C.sqlite3_prepare_v2()
 fn C.sqlite3_finalize()
 fn C.sqlite3_column_count(voidptr) int
+fn C.sqlite3_errstr(int) charptr
 
 // Opens the connection with a database.
 pub fn connect(path string) ?DB {
@@ -58,7 +59,10 @@ fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
 
 // Only for V ORM
 fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
-	C.sqlite3_step(stmt)
+	x := C.sqlite3_step(stmt)
+	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
+		C.puts( C.sqlite3_errstr(x) )
+	}
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
 	return res

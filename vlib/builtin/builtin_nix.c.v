@@ -17,7 +17,6 @@ const (
 	stderr_value  = 2
 )
 
-fn C.puts(charptr)
 */
 
 fn builtin_init() {
