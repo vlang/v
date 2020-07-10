@@ -1,5 +1,3 @@
-module main
-
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -8,6 +6,8 @@ module main
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
+module main
+
 import os
 
 struct Create {
@@ -127,7 +127,7 @@ fn create() {
 	c.create_git_repo(c.name)
 }
 
-fn init() {
+fn init_project() {
 	if os.exists('v.mod') {
 		cerror('`v init` cannot be run on existing v modules')
 		exit(3)
@@ -142,10 +142,10 @@ fn init() {
 }
 
 fn main() {
-	if 'new' == os.args[1] {
+	if os.args[1] == 'new' {
 		create()
-	} else if 'init' == os.args[1] {
-		init()
+	} else if os.args[1] == 'init' {
+		init_project()
 	} else {
 		cerror('Unknown command: ${os.args[1]}')
 		exit(1)
