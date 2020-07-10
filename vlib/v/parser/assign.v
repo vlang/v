@@ -46,32 +46,26 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	val_ := val
 	match val_ {
-		ast.Ident {
-			for expr in exprs {
+		ast.Ident { for expr in exprs {
 				if expr is ast.Ident {
 					if expr.name == val_.name {
 						return true
 					}
 				}
-			}
-		}
-		ast.IndexExpr {
-			for expr in exprs {
+			} }
+		ast.IndexExpr { for expr in exprs {
 				if expr.str() == val.str() {
 					return true
 				}
-			}
-		}
+			} }
 		ast.InfixExpr { return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right) }
 		ast.PrefixExpr { return p.check_cross_variables(exprs, val_.right) }
 		ast.PostfixExpr { return p.check_cross_variables(exprs, val_.expr) }
-		ast.SelectorExpr {
-			for expr in exprs {
+		ast.SelectorExpr { for expr in exprs {
 				if expr.str() == val.str() {
 					return true
 				}
-			}
-		}
+			} }
 		else {}
 	}
 	return false
@@ -93,6 +87,10 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
+			if op in [.plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign, 
+			    .mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign] {
+				p.error('unexpected $op.str(), expecting := or = or comma')
+			}
 			if has_cross_var {
 				break
 			}
