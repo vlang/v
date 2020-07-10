@@ -511,11 +511,11 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			typ_sym := f.table.get_type_symbol(node.typ)
 			fn_typ_info := typ_sym.info as table.FnType
 			fn_info := fn_typ_info.func
-			fn_name := node.name.replace(f.cur_mod + '.', '')
+			fn_name := f.no_cur_mod_anywhere(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
 				f.write(arg.name)
-				mut s := f.table.type_to_str(arg.typ).replace(f.cur_mod + '.', '')
+				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
 				if arg.is_mut {
 					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
@@ -538,8 +538,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.',
-					'')
+				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
 				f.write(' ' + ret_str)
 			}
 		}
@@ -1151,7 +1150,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
 	s := node.stringify(f.table)
-	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(f.no_cur_mod_anywhere(s)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')
 		f.stmts(node.stmts)
@@ -1167,6 +1166,30 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 		f.mark_types_module_as_used(arg.typ)
 	}
 	f.mark_types_module_as_used(node.return_type)
+}
+
+pub fn (mut f Fmt) no_cur_mod_anywhere(typename string) string {
+	return typename.replace(f.cur_mod + '.', '')
+}
+
+pub fn (mut f Fmt) no_cur_mod(typename string) string {
+	mut res := typename
+	map_prefix := 'map[string]'
+	cur_mod := f.cur_mod + '.'
+	has_map_prefix := res.starts_with(map_prefix)
+	if has_map_prefix {
+		res = res.replace(map_prefix, '')
+	}
+	no_symbols := res.trim_left('&[]')
+	should_shorten := no_symbols.starts_with(cur_mod)
+	//	eprintln('> no_cur_mod typename: $typename | cur_mod: $cur_mod | no_symbols: $no_symbols | should_shorten: $should_shorten | res: |$res|')
+	if should_shorten {
+		res = res.replace_once(cur_mod, '')
+	}
+	if has_map_prefix {
+		res = map_prefix + res
+	}
+	return res
 }
 
 // foo.bar.fn() => bar.fn()
@@ -1559,7 +1582,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') {
-		name = f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
 	}
 	if name == 'void' {
 		name = ''

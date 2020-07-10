@@ -21,3 +21,10 @@ struct Abcde {
 	p5 map[string]Xyz
 	p6 map[string]&Xyz
 }
+
+fn abc() {
+	x := vproto.Xyz{2}
+	mut a := []vproto.Xyz{}
+	a << x
+	a << vproto.Xyz{3}
+}
