@@ -1326,13 +1326,13 @@ pub fn (c byte) is_white() bool {
 
 pub fn (s string) hash() int {
 	// mut h := s.hash_cache
-	mut h := 0
+	mut h := u32(0)
 	if h == 0 && s.len > 0 {
 		for c in s {
-			h = h * 31 + int(c)
+			h = h * 31 + u32(c)
 		}
 	}
-	return h
+	return int(h)
 }
 
 pub fn (s string) bytes() []byte {
