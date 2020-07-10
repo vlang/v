@@ -396,7 +396,8 @@ fn (mut v Builder) cc() {
 	}
 	// write args to response file
 	response_file := '${v.out_name_c}.rsp'
-	os.write_file(response_file, args.replace('\\', '\\\\')) or {
+	response_file_content := args.replace('\\', '\\\\')
+	os.write_file(response_file, response_file_content) or {
 		verror('Unable to write response file "$response_file"')
 	}
 	start:
@@ -405,8 +406,14 @@ fn (mut v Builder) cc() {
 	cmd := '$ccompiler @$response_file'
 	// Run
 	if v.pref.is_verbose || v.pref.show_cc {
-		println('\n==========')
-		println(cmd)
+		println('')
+		println('=====================')
+		println('> C compiler cmd: $cmd')
+		if v.pref.show_cc {
+			println("> C compiler response file $response_file:")
+			println(response_file_content)
+		}
+		println('=====================')
 	}
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
