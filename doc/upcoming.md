@@ -148,13 +148,13 @@ inside an `rlock c {...}` block like an immutable:
 shared c := &St{...}
 lock c {
     g(mut c)
-	f(c)
-	// call to h() not allowed inside `lock` block
-	// since h() will lock `c` itself
+    f(c)
+    // call to h() not allowed inside `lock` block
+    // since h() will lock `c` itself
 }
 rlock c {
     f(c)
-	// call to g() or h() not allowed
+    // call to g() or h() not allowed
 }
 ```
 
