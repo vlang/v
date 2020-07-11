@@ -786,7 +786,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.GlobalDecl {
 			styp := g.typ(node.typ)
-			g.definitions.writeln('$styp $node.name; // global')
+			g.definitions.writeln('static $styp $node.name; // global')
 		}
 		ast.GoStmt {
 			g.go_stmt(node)
@@ -2787,7 +2787,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 				}
 			}
 			ast.StringLiteral {
-				g.definitions.writeln('string _const_$name; // a string literal, inited later')
+				g.definitions.writeln('static string _const_$name; // a string literal, inited later')
 				if g.pref.build_mode != .build_module {
 					g.stringliterals.writeln('\t_const_$name = $val;')
 				}
@@ -2814,7 +2814,7 @@ fn (mut g Gen) const_decl_init_later(mod, name, val string, typ table.Type) {
 	styp := g.typ(typ)
 	//
 	cname := '_const_$name'
-	g.definitions.writeln('$styp $cname; // inited later')
+	g.definitions.writeln('static $styp $cname; // inited later')
 	g.inits[mod].writeln('\t$cname = $val;')
 	if g.pref.autofree {
 		if styp.starts_with('array_') {
