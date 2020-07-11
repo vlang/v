@@ -3060,7 +3060,7 @@ fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Positio
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.returns = true
+	c.returns = false
 	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[node.name] {
@@ -3150,7 +3150,7 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	if stmts.filter(it is ast.Return).len > 0 {
 		return true
 	}
-	mut has_unsafe_return := false	
+	mut has_unsafe_return := false
 	for _, stmt in stmts {
 		if stmt is ast.UnsafeStmt {
 			for ustmt in stmt.stmts {
