@@ -12,6 +12,7 @@ import v.scanner
 import v.table
 import v.token
 import v.vmod
+import v.pref
 
 enum HighlightTokenTyp {
 	unone
@@ -43,7 +44,7 @@ const (
 		<meta charset="UTF-8">
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
-		<title>{{ title }} | vdoc</title>	
+		<title>{{ title }} | vdoc</title>
 		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 		{{ head_assets }}
 	</head>
@@ -128,7 +129,7 @@ fn open_url(url string) {
 
 fn (mut cfg DocConfig) serve_html() {
 	docs := cfg.render()
-	dkeys := docs.keys()            
+	dkeys := docs.keys()
 	if dkeys.len < 1 {
 		eprintln('no documentation created, the module has no `pub` functions')
 		exit(1)
@@ -275,16 +276,16 @@ fn (cfg DocConfig) gen_json(idx int) string {
 fn html_highlight(code string, tb &table.Table) string {
 	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64', 'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
 	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] { 
-			tok.kind.str() 
-		} else if typ == .string { 
+		lit := if typ in [.unone, .operator, .punctuation] {
+			tok.kind.str()
+		} else if typ == .string {
 			"'$tok.lit'"
 		} else if typ == .char {
 			'`$tok.lit`'
 		} else { tok.lit }
-		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' } 
+		return if typ in [.unone, .name] { lit } else { '<span class="token $typ">$lit</span>' }
 	}
-	s := scanner.new_scanner(code, .parse_comments, false)
+	s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
 	mut tok := s.scan()
 	mut next_tok := s.scan()
 	mut buf := strings.new_builder(200)
@@ -319,7 +320,7 @@ fn html_highlight(code string, tb &table.Table) string {
 				.key_true, .key_false {
 					tok_typ = .boolean
 				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, 
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr,
 				.rsbr, .semicolon, .colon, .comma, .dot {
 					tok_typ = .punctuation
 				}
@@ -354,7 +355,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.name == 'Constants' { ' const' } else { '' }
-	sym_name := if dd.attrs.exists('parent') && dd.attrs['parent'] !in ['void', '', 'Constants'] { 
+	sym_name := if dd.attrs.exists('parent') && dd.attrs['parent'] !in ['void', '', 'Constants'] {
 		dd.attrs['parent'] + '.' + dd.name
 	} else {
 		dd.name
@@ -440,8 +441,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	arrow_icon := cfg.get_resource('arrow.svg', true)
 	// write css
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 { 
-		os.file_name(os.real_path(cfg.input_path)) 
+	header_name := if cfg.is_multi && cfg.docs.len > 1 {
+		os.file_name(os.real_path(cfg.input_path))
 	} else {
 		dcs.head.name
 	}
@@ -587,7 +588,7 @@ fn (cfg DocConfig) get_readme(path string) string {
 		if os.exists(os.join_path(path, '${name}.md')) {
 			fname = name
 			break
-		} 
+		}
 	}
 	if fname == '' {
 		return ''
@@ -618,10 +619,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	is_vlib := 'vlib' in cfg.input_path
 	dir_path := if is_vlib {
 		vexe_path
-	} else if os.is_dir(cfg.input_path) { 
+	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
-	} else { 
-		os.base_dir(cfg.input_path) 
+	} else {
+		os.base_dir(cfg.input_path)
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
 	if os.exists(manifest_path) {
@@ -644,7 +645,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] } 
+	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
 		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
@@ -667,7 +668,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 		if cfg.pub_only {
 			for i, c in dcs.contents {
-				dcs.contents[i].content = c.content.all_after('pub ')	
+				dcs.contents[i].content = c.content.all_after('pub ')
 			}
 		}
 		cfg.docs << dcs
@@ -722,20 +723,20 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 
 fn (mut cfg DocConfig) set_output_type_from_str(format string) {
 	match format {
-		'htm', 'html' { 
-			cfg.output_type = .html 
+		'htm', 'html' {
+			cfg.output_type = .html
 		}
-		'md', 'markdown' { 
-			cfg.output_type = .markdown 
+		'md', 'markdown' {
+			cfg.output_type = .markdown
 		}
-		'json' { 
-			cfg.output_type = .json 
+		'json' {
+			cfg.output_type = .json
 		}
 		'stdout' {
 			cfg.output_type = .stdout
 		}
-		else { 
-			cfg.output_type = .plaintext 
+		else {
+			cfg.output_type = .plaintext
 		}
 	}
 	cfg.vprintln('Setting output type to "$cfg.output_type"')
@@ -819,8 +820,8 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	mut res := os.read_file(path) or { panic('could not read $path') }
 	if minify {
 		if name.ends_with('.js') {
-			res = js_compress(res) 
-		} else { 
+			res = js_compress(res)
+		} else {
 			res = res.split_into_lines().map(it.trim_space()).join('')
 		}
 	}
