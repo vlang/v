@@ -4,9 +4,10 @@
 module scanner
 
 import v.token
+import v.pref
 
 fn scan_kinds(text string) []token.Kind {
-	mut scanner := new_scanner(text, .skip_comments, false)
+	mut scanner := new_scanner(text, .skip_comments, &pref.Preferences{})
 	mut token_kinds := []token.Kind{}
 	for {
 		tok := scanner.scan()
@@ -90,7 +91,7 @@ fn test_ref_ref_foo() {
 	assert result[0] == .amp
 	assert result[1] == .amp
 	assert result[2] == .name
-}    
+}
 
 fn test_array_of_ref_ref_foo() {
 	result := scan_kinds('[]&&foo')
