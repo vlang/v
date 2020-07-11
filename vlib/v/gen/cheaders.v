@@ -208,7 +208,7 @@ $c_common_macros
 #endif
 
 // g_live_info is used by live.info()
-void* g_live_info = NULL;
+static void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
@@ -248,7 +248,7 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 
 //================================== GLOBALS =================================*/
 //byte g_str_buf[1024];
-byte* g_str_buf;
+static byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit();
