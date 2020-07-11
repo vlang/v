@@ -25,15 +25,20 @@ benchmarking of small snippets of code as *short*, easy to
 write, and then to read and analyze the results, as possible.
 Example:
 ```v
+import time
 import benchmark
-b := benchmark.start()
+mut b := benchmark.start()
 
-// your code 1 ...
+// your code section 1 ...
+time.sleep_ms(1500)
 b.measure('code_1')
 
-// your code 2 ...
+// your code section 2 ...
+time.sleep_ms(500)
 b.measure('code_2')
 ```
 ... which will produce on stdout something like this:
-SPENT    17 ms in code_1
-SPENT   462 ms in code_2
+```text
+SPENT 1500.063 ms in code_1
+SPENT  500.061 ms in code_2
+```
