@@ -164,6 +164,8 @@ jobs:
     - name: Fixed tests
       run: |
         ./v test-fixed
+    - name: Fixed tests (-prod)
+      run: ./v -o vprod -prod cmd/v && ./vprod test-fixed
     - name: Build examples
       run: ./v build-examples
     - name: x64 machine code generation
