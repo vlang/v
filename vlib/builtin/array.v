@@ -400,6 +400,21 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.len += size
 }
 
+pub fn (mut a array) reverse_in_place() {
+	if a.len < 2 {
+		return
+	}
+	unsafe {
+		mut tmp_value := malloc(a.element_size)
+		for i in 0..a.len/2 {
+			C.memcpy(tmp_value, byteptr(a.data) + i * a.element_size, a.element_size)
+			C.memcpy(byteptr(a.data) + i * a.element_size, byteptr(a.data) + (a.len-1-i) * a.element_size, a.element_size)
+			C.memcpy(byteptr(a.data) + (a.len-1-i) * a.element_size, tmp_value, a.element_size)
+		}
+		free(tmp_value)
+	}
+}
+
 // array.reverse returns a new array with the elements of
 // the original array in reverse order.
 pub fn (a array) reverse() array {

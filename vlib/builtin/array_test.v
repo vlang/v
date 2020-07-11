@@ -932,3 +932,17 @@ fn test_array_add_in_mut() {
 	add_nums(mut nums)
 	assert nums == [1, 2, 3, 4]
 }
+
+fn test_reverse_in_place() {
+	mut a := [1, 2, 3, 4]
+	a.reverse_in_place()
+	assert a == [4, 3, 2, 1]
+
+	mut b := ['a', 'b', 'c']
+	b.reverse_in_place()
+	assert b == ['c', 'b', 'a']
+
+	mut c := [[1, 2], [3, 4], [5, 6]]
+	c.reverse_in_place()
+	assert c == [[5, 6], [3, 4], [1, 2]]
+}
