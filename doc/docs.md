@@ -69,6 +69,7 @@ you can do in V.
 </td><td valign=top>
 
 * [Advanced](#advanced)
+    * [Memory safety](#memory-safety)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -1707,6 +1708,47 @@ fn main(){
 ```
 
 # Advanced Topics
+
+## Memory safety
+
+Sometimes for efficiency you may want to write low-level code that may potentially
+corrupt memory. V supports that, but not by default.
+
+V requires that any potentially memory-unsafe operations are marked, as they could 
+otherwise be unintentional. Marking them also indicates to anyone reading the code
+that there could be memory corruption if there was a mistake. If you suspect your
+program does have memory corruption, you have a head start on finding the cause: look
+at the `unsafe` blocks (and how they interact with surrounding code).
+
+Examples of memory-unsafe operations are:
+
+* Pointer arithmetic
+* Pointer indexing
+* Conversion to pointer from an incompatible type
+* Calling a C function
+
+To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
+
+```v
+// allocate 2 uninitialized bytes & return a reference to them
+mut p := unsafe { &byte(C.malloc(2)) }
+p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
+unsafe {
+    p[0] = `h`
+    p[1] = `i`
+}
+p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
+unsafe {
+    p++ // OK
+}
+assert *p == `i`
+```
+
+Best practice is to avoid putting any memory-safe expressions inside an `unsafe` block,
+so that the reason for using `unsafe` is as clear as possible. Any code you think is
+memory-safe should not be inside an `unsafe` block, so the compiler can verify it.
+
+* Note: This is work in progress.
 
 ## Calling C functions from V
 
