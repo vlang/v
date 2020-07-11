@@ -634,7 +634,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.UnsafeExpr {
-			g.stmts(it.stmts)
+			es := it.stmts[0] as ast.ExprStmt
+			g.expr(es.expr)
 		}
 	}
 }

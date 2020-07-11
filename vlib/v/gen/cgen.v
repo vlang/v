@@ -1823,7 +1823,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.UnsafeExpr {
-			g.stmts(node.stmts)
+			es := node.stmts[0] as ast.ExprStmt
+			g.expr(es.expr)
 		}
 	}
 }
