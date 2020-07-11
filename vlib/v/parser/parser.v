@@ -13,7 +13,6 @@ import v.errors
 import os
 import runtime
 import time
-import strconv
 
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
@@ -60,7 +59,7 @@ mut:
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
-	pref:= &pref.Preferences{}
+	pref := &pref.Preferences{}
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
@@ -127,8 +126,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
-	//if pref.is_vet && p.scanner.text.contains('( '\n        ') {
-	//}
+	// if pref.is_vet && p.scanner.text.contains('( '\n        ') {
+	// }
 	return p.parse()
 }
 
@@ -1203,12 +1202,12 @@ fn (mut p Parser) string_expr() ast.Expr {
 				if fields[0].len > 0 && fields[0][0] == `0` {
 					fill = true
 				}
-				fwidth = strconv.atoi(fields[0])
+				fwidth = fields[0].int()
 				if fwidthneg {
 					fwidth = -fwidth
 				}
 				if fields.len > 1 {
-					precision = strconv.atoi(fields[1])
+					precision = fields[1].int()
 				}
 				p.next()
 			}
