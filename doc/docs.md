@@ -1199,9 +1199,8 @@ setup/initialization code when imported (perhaps you want to call
 some C library functions), write a module `init` function inside the module:
 
 ```v
-fn init() int {
+fn init() {
     // your setup code here ...
-    return 1
 }
 ```
 
