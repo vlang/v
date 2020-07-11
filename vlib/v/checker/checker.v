@@ -2614,21 +2614,23 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
-	mut ret_type := table.void_type
+	if node.stmts.len > 1 {
+		c.error('FIXME: unsafe expression block should support multiple statements',
+			node.pos)
+		return table.none_type
+	}
 	if node.stmts.len == 0 {
 		c.error('unsafe expression does not yield an expression', node.pos)
-		return ret_type
+		return table.none_type
 	}
 	c.stmts(node.stmts)
 
 	last := node.stmts[node.stmts.len - 1]
 	if last is ast.ExprStmt {
-		ret_type = c.expr(last.expr)
+		return c.expr(last.expr)
 	}
-	else {
-		c.error('unsafe expression does not yield an expression', node.pos)
-	}
-	return ret_type
+	c.error('unsafe expression does not yield an expression', node.pos)
+	return table.none_type
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
