@@ -28,7 +28,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.cur_generic_type = 0
 		return
 	}
-	//g.cur_fn = it
+	// g.cur_fn = it
 	fn_start_pos := g.out.len
 	msvc_attrs := g.write_fn_attrs()
 	// Live
@@ -270,7 +270,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method {
-		g.method_call(node)
+		if node.name == 'writeln' && g.pref.show_cc &&
+			node.args.len > 0 && node.args[0].expr is ast.StringInterLiteral &&
+			g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
+			g.string_inter_literal_sb_optimized(node)
+		} else {
+			g.method_call(node)
+		}
 	} else {
 		g.fn_call(node)
 	}

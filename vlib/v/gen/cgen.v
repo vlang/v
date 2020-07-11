@@ -3599,9 +3599,8 @@ fn (mut g Gen) write_expr_to_string(expr ast.Expr) string {
 	return g.out.cut_last(g.out.buf.len - pos)
 }
 
-fn (mut g Gen) start_tmp() {
-}
-
+// fn (mut g Gen) start_tmp() {
+// }
 // If user is accessing the return value eg. in assigment, pass the variable name.
 // If the user is not using the optional return value. We need to pass a temp var
 // to access its fields (`.ok`, `.error` etc)
