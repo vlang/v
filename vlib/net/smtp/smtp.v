@@ -20,21 +20,9 @@ struct Commands {
 	quit       string = 'QUIT\r\n'
 }
 
-/*
-*
-* params mailserver
-* params port
-* params username 
-* params password
-* params subject
-* parmas from
-* params to 
-* params body
-* params type_body html or text
-* params debug
-*/
+
 // Sends an email trough SMTP socket
-pub fn send_mail(mailserver string, port int, username, password, subject, from, to, body, type_body string, debug bool) ? {
+pub fn send_mail(mailserver string, port int, username, password, subject, from, to, body, type_body string, debug bool)? {
 	client := connect(mailserver, port, debug)?
 	send_ehlo(client, debug)
 	auth(client, username, password, debug)
@@ -49,11 +37,6 @@ pub fn send_mail(mailserver string, port int, username, password, subject, from,
 	send_quit(client, debug)
 }
 
-/*
-* params mailserver
-* params port 
-* params debug
-*/
 // Creates socket connection with TCP server on provided port and returns net.Socket
 pub fn connect(mailserver string, port int, debug bool) ?(net.Socket) {
 	mut client := net.dial(mailserver, port)?
