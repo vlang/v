@@ -407,10 +407,10 @@ jobs:
       run: make -j4
     - name: g++ version
       run: g++-9 --version
-    - name: Running tests with g++
-      run: ./v -cc g++-9 test-fixed
-    - name: V self compilation with g++
-      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+#    - name: Running tests with g++
+#      run: ./v -cc g++-9 test-fixed
+#    - name: V self compilation with g++
+#      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
 
   install-modules:
     runs-on: ubuntu-latest
