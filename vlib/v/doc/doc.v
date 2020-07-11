@@ -118,7 +118,7 @@ pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 			return 'module $stmt.name'
 		}
 		ast.FnDecl {
-			return stmt.stringify(d.table).replace(d.fmt.cur_mod + '.', '')
+			return stmt.stringify(d.table, d.fmt.cur_mod)
 		}
 		else {
 			d.fmt.out = strings.new_builder(1000)
@@ -307,7 +307,7 @@ fn (mut d Doc) generate() ?Doc {
 		}
 		stmts := file_ast.stmts
 		d.fmt.file = file_ast
-		d.fmt.cur_mod = orig_mod_name
+		d.fmt.set_current_module_name(orig_mod_name)
 		d.fmt.process_file_imports(file_ast)
 		mut last_import_stmt_idx := 0
 		for sidx, stmt in stmts {

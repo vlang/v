@@ -343,3 +343,26 @@ pub fn strip_main_name(name string) string {
 pub fn no_dots(s string) string {
 	return s.replace('.', '__')
 }
+
+// no_cur_mod - removes cur_mod. prefix from typename,
+// but *only* when it is at the start, i.e.:
+// no_cur_mod('vproto.Abdcdef', 'proto') == 'vproto.Abdcdef'
+// even though proto. is a substring
+pub fn no_cur_mod(typename, cur_mod string) string {
+	mut res := typename
+	map_prefix := 'map[string]'
+	mod_prefix := cur_mod + '.'
+	has_map_prefix := res.starts_with(map_prefix)
+	if has_map_prefix {
+		res = res.replace(map_prefix, '')
+	}
+	no_symbols := res.trim_left('&[]')
+	should_shorten := no_symbols.starts_with(mod_prefix)
+	if should_shorten {
+		res = res.replace_once(mod_prefix, '')
+	}
+	if has_map_prefix {
+		res = map_prefix + res
+	}
+	return res
+}

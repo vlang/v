@@ -23,9 +23,8 @@ enum CommentsLevel {
 }
 
 pub struct Fmt {
-pub:
-	table             &table.Table
 pub mut:
+	table             &table.Table
 	out_imports       strings.Builder
 	out               strings.Builder
 	out_save          strings.Builder
@@ -64,7 +63,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		is_debug: is_debug
 	}
 	f.process_file_imports(file)
-	f.cur_mod = 'main'
+	f.set_current_module_name('main')
 	for stmt in file.stmts {
 		if stmt is ast.Import {
 			// Just remember the position of the imports for now
@@ -191,8 +190,13 @@ fn (mut f Fmt) adjust_complete_line() {
 	}
 }
 
+pub fn (mut f Fmt) set_current_module_name(cmodname string){
+	f.cur_mod = cmodname
+	f.table.cmod_prefix = cmodname + '.'
+}
+
 pub fn (mut f Fmt) mod(mod ast.Module) {
-	f.cur_mod = mod.name
+	f.set_current_module_name(mod.name)
 	if mod.is_skipped {
 		return
 	}
@@ -427,7 +431,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('interface $it.name {')
 			for method in it.methods {
 				f.write('\t')
-				f.writeln(method.stringify(f.table).after('fn '))
+				f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
 			}
 			f.writeln('}\n')
 		}
@@ -512,7 +516,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			typ_sym := f.table.get_type_symbol(node.typ)
 			fn_typ_info := typ_sym.info as table.FnType
 			fn_info := fn_typ_info.func
-			fn_name := f.no_cur_mod_anywhere(node.name)
+			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
 				f.write(arg.name)
@@ -1150,8 +1154,7 @@ pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bo
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
-	s := node.stringify(f.table)
-	f.write(f.no_cur_mod_anywhere(s)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')
 		f.stmts(node.stmts)
@@ -1169,28 +1172,8 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.mark_types_module_as_used(node.return_type)
 }
 
-pub fn (mut f Fmt) no_cur_mod_anywhere(typename string) string {
-	return typename.replace(f.cur_mod + '.', '')
-}
-
 pub fn (mut f Fmt) no_cur_mod(typename string) string {
-	mut res := typename
-	map_prefix := 'map[string]'
-	cur_mod := f.cur_mod + '.'
-	has_map_prefix := res.starts_with(map_prefix)
-	if has_map_prefix {
-		res = res.replace(map_prefix, '')
-	}
-	no_symbols := res.trim_left('&[]')
-	should_shorten := no_symbols.starts_with(cur_mod)
-	//	eprintln('> no_cur_mod typename: $typename | cur_mod: $cur_mod | no_symbols: $no_symbols | should_shorten: $should_shorten | res: |$res|')
-	if should_shorten {
-		res = res.replace_once(cur_mod, '')
-	}
-	if has_map_prefix {
-		res = map_prefix + res
-	}
-	return res
+	return util.no_cur_mod(typename, f.cur_mod)
 }
 
 // foo.bar.fn() => bar.fn()

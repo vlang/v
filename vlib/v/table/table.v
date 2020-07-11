@@ -17,6 +17,7 @@ pub mut:
 	cflags        []cflag.CFlag
 	redefined_fns []string
 	fn_gen_types  map[string][]Type // for generic functions
+	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
 }
 
 pub struct Fn {
