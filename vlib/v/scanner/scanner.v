@@ -143,6 +143,7 @@ pub fn (mut s Scanner) set_current_tidx(cidx int) {
 	s.tidx = tidx
 }
 
+[inline]
 fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Token {
 	cidx := s.tidx
 	s.tidx++
@@ -156,6 +157,7 @@ fn (mut s Scanner) new_token(tok_kind token.Kind, lit string, len int) token.Tok
 	}
 }
 
+[inline]
 fn (mut s Scanner) ident_name() string {
 	start := s.pos
 	s.pos++
@@ -531,6 +533,7 @@ fn (mut s Scanner) ident_number() string {
 	}
 }
 
+[inline]
 fn (mut s Scanner) skip_whitespace() {
 	// if s.is_vh { println('vh') return }
 	for s.pos < s.text.len && s.text[s.pos].is_space() {
@@ -1046,13 +1049,13 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `/` {
 					start := s.pos + 1
 					s.ignore_line()
-					s.line_comment = s.text[start + 1..s.pos]
-					mut comment := s.line_comment.trim_space()
+					comment_line_end := s.pos
 					s.pos--
-					// fix line_nr, \n was read, and the comment is marked
-					// on the next line
+					// fix line_nr, \n was read; the comment is marked on the next line
 					s.line_nr--
 					if s.should_parse_comment() {
+						s.line_comment = s.text[start + 1..comment_line_end]
+						mut comment := s.line_comment.trim_space()
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
 						for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
@@ -1267,6 +1270,7 @@ fn (mut s Scanner) ident_char() string {
 	}
 }
 
+[inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
 	if start_pos < 0 || start_pos >= s.text.len {
@@ -1306,17 +1310,20 @@ fn (mut s Scanner) debug_tokens() {
 	}
 }
 
+[inline]
 fn (mut s Scanner) ignore_line() {
 	s.eat_to_end_of_line()
 	s.inc_line_number()
 }
 
+[inline]
 fn (mut s Scanner) eat_to_end_of_line() {
 	for s.pos < s.text.len && s.text[s.pos] != `\n` {
 		s.pos++
 	}
 }
 
+[inline]
 fn (mut s Scanner) inc_line_number() {
 	s.last_nl_pos = s.pos
 	s.line_nr++
