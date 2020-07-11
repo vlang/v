@@ -166,7 +166,7 @@ TODO
 }
 
 [unsafe_fn]
-pub fn v_realloc(b byteptr, n int) byteptr {
+pub fn v_realloc(b byteptr, n u32) byteptr {
 	ptr := C.realloc(b, n)
 	if ptr == 0 {
 		panic('realloc($n) failed')

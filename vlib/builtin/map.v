@@ -122,8 +122,8 @@ fn new_dense_array(value_bytes int) DenseArray {
 fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
-		d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-		d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
+		d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
+		d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
 	}
 	push_index := d.len
 	d.keys[push_index] = key
@@ -168,8 +168,8 @@ fn (mut d DenseArray) zeros_to_end() {
 	d.deletes = 0
 	d.len = count
 	d.cap = if count < 8 { u32(8) } else { count }
-	d.keys = &string(C.realloc(d.keys, sizeof(string) * d.cap))
-	d.values = C.realloc(d.values, u32(d.value_bytes) * d.cap)
+	d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
+	d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
 }
 
 pub struct map {
@@ -267,7 +267,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
 		unsafe {
-			m.metas = &u32(C.realloc(m.metas, sizeof(u32) * mem_size))
+			m.metas = &u32(v_realloc(m.metas, sizeof(u32) * mem_size))
 			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 		}
 		// Should almost never happen
@@ -328,7 +328,7 @@ fn (mut m map) expand() {
 // the max_load_factor in an operation.
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
-	m.metas = &u32(C.realloc(m.metas, meta_bytes))
+	m.metas = &u32(v_realloc(m.metas, meta_bytes))
 	C.memset(m.metas, 0, meta_bytes)
 	for i := u32(0); i < m.key_values.len; i++ {
 		if m.key_values.keys[i].str == 0 {

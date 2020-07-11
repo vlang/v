@@ -280,7 +280,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 		goto free_data
 		return -1
 	}
-	unsafe 
+	unsafe
 	{
 		C.memcpy(fbdata, header.data, header_len)
 		C.memcpy(fbdata + header_len, payload, payload_len)
@@ -385,7 +385,7 @@ pub fn (mut ws Client) read() int {
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
 				l.d('reallocating: ${frame_size}')
-				data = C.realloc(data, frame_size)
+				data = v_realloc(data, frame_size)
 			}
 		} else if frame.payload_len == u64(127) && bytes_read == u64(extended_payload64_end_byte) {
 			header_len += 8 // TODO Not sure...
@@ -409,7 +409,7 @@ pub fn (mut ws Client) read() int {
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
 				l.d('reallocating: ${frame_size}')
-				data = C.realloc(data, frame_size)
+				data = v_realloc(data, frame_size)
 			}
 		}
 	}

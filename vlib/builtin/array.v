@@ -102,7 +102,7 @@ fn (mut a array) ensure_cap(required int) {
 		a.data = vcalloc(cap * a.element_size)
 	}
 	else {
-		a.data = C.realloc(a.data, cap * a.element_size)
+		a.data = v_realloc(a.data, u32(cap * a.element_size))
 	}
 	a.cap = cap
 }
