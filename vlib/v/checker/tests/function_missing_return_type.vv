@@ -1,0 +1,7 @@
+fn h() int {
+}
+
+fn main() {
+	d := h()
+	println('$d')
+}
