@@ -13,7 +13,6 @@ import v.errors
 import os
 import runtime
 import time
-import strconv
 
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
@@ -60,11 +59,12 @@ mut:
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
-	s := scanner.new_scanner(text, .skip_comments, false)
+	pref := &pref.Preferences{}
+	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
 		table: table
-		pref: &pref.Preferences{}
+		pref: pref
 		scope: scope
 		global_scope: &ast.Scope{
 			start_pos: 0
@@ -77,7 +77,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
-	s := scanner.new_scanner(text, .skip_comments, pref.is_fmt)
+	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
 		table: b_table
@@ -100,7 +100,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// panic(err)
 	// }
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref.is_fmt)
+		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
 		table: b_table
 		file_name: path
@@ -126,6 +126,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
+	// if pref.is_vet && p.scanner.text.contains('( '\n        ') {
+	// }
 	return p.parse()
 }
 
@@ -551,6 +553,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					expr: p.vweb()
 				}
 			}
+			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -601,6 +604,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_const {
 			p.error_with_pos('const can only be defined at the top level (outside of functions)',
 				p.tok.position())
+			return ast.Stmt{}
 		}
 		// literals, 'if', etc. in here
 		else {
@@ -1198,12 +1202,12 @@ fn (mut p Parser) string_expr() ast.Expr {
 				if fields[0].len > 0 && fields[0][0] == `0` {
 					fill = true
 				}
-				fwidth = strconv.atoi(fields[0])
+				fwidth = fields[0].int()
 				if fwidthneg {
 					fwidth = -fwidth
 				}
 				if fields.len > 1 {
-					precision = strconv.atoi(fields[1])
+					precision = fields[1].int()
 				}
 				p.next()
 			}
@@ -1501,6 +1505,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.top_level_statement_end()
 	p.check(.rcbr)
 	is_flag := 'flag' in p.attrs
+	is_multi_allowed := '_allow_multiple_values' in p.attrs
 	if is_flag {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')
@@ -1522,12 +1527,14 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		info: table.Enum{
 			vals: vals
 			is_flag: is_flag
+			is_multi_allowed: is_multi_allowed
 		}
 	})
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
 		is_flag: is_flag
+		is_multi_allowed: is_multi_allowed
 		fields: fields
 		pos: start_pos.extend(end_pos)
 		comments: enum_decl_comments

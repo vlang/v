@@ -46,7 +46,7 @@ pub struct string {
 pub:
 	str byteptr // points to a C style 0 terminated string of bytes.
 	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
-mut:    
+mut:
 	is_lit int
 }
 // mut:
@@ -157,7 +157,7 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 
 pub fn (s string) replace_once(rep, with string) string {
 	index := s.index(rep) or {
-		return s
+		return s.clone()
 	}
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
 }
@@ -1170,6 +1170,9 @@ pub fn (u ustring) at(idx int) string {
 }
 
 fn (u &ustring) free() {
+	$if prealloc {
+		return
+	}
 	u.runes.free()
 }
 
@@ -1194,6 +1197,9 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
+	$if prealloc {
+		return
+	}
 	if s.is_lit == -98761234 {
 		C.printf('double string.free() detected\n')
 		return
@@ -1326,13 +1332,13 @@ pub fn (c byte) is_white() bool {
 
 pub fn (s string) hash() int {
 	// mut h := s.hash_cache
-	mut h := 0
+	mut h := u32(0)
 	if h == 0 && s.len > 0 {
 		for c in s {
-			h = h * 31 + int(c)
+			h = h * 31 + u32(c)
 		}
 	}
-	return h
+	return int(h)
 }
 
 pub fn (s string) bytes() []byte {

@@ -32,6 +32,7 @@ pub fn (mut b Builder) write_b(data byte) {
 	b.len++
 }
 
+[inline]
 pub fn (mut b Builder) write(s string) {
 	if s == '' {
 		return
@@ -77,6 +78,7 @@ pub fn (mut b Builder) go_back_to(pos int) {
 	b.len = pos
 }
 
+[inline]
 pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
 	// b.buf << c

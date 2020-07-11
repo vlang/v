@@ -16,8 +16,25 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
+	vtest_only := os.getenv('VTEST_ONLY').split(',')
+	mut paths := []string{}
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
+		if vtest_only.len > 0 {
+			mut found := 0
+			for substring in vtest_only {
+				if path.contains(substring) {
+					found++
+					break
+				}
+			}
+			if found == 0 {
+				continue
+			}
+		}
+		paths << path
+	}
+	for path in paths {
 		print(path + ' ')
 		program := path.replace('.vv', '.v')
 		os.cp(path, program) or {

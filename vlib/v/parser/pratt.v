@@ -101,7 +101,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			is_known_var := p.mark_var_as_used( p.tok.lit )
+			is_known_var := p.mark_var_as_used(p.tok.lit)
 			if is_known_var {
 				expr := p.parse_ident(table.Language.v)
 				node = ast.SizeOf{
@@ -224,12 +224,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		} else if p.tok.kind.is_infix() {
 			// return early for deref assign `*x = 2` goes to prefix expr
-			if p.tok.kind == .mul && p.tok.line_nr != p.prev_tok.line_nr && p.peek_tok2.kind ==
-				.assign {
+			if p.tok.kind == .mul &&
+				p.tok.line_nr != p.prev_tok.line_nr &&
+				p.peek_tok2.kind == .assign {
 				return node
 			}
 			// continue on infix expr
 			node = p.infix_expr(node)
+			// return early `if bar is SumType as b {`
+			if p.tok.kind == .key_as && p.inside_if {
+				return node
+			}
 		} else if p.tok.kind in [.inc, .dec] {
 			// Postfix
 			node = ast.PostfixExpr{

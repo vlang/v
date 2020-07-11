@@ -12,6 +12,7 @@ import v.errors
 
 const (
 	max_nr_errors = 300
+	match_exhaustive_cutoff_limit = 10
 	enum_min      = int(0x80000000)
 	enum_max      = 0x7FFFFFFF
 )
@@ -207,17 +208,17 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 			}
 			ast.TypeDecl {
 				if stmt is ast.AliasTypeDecl {
-					if it.is_pub {
-						c.warn('type alias `$it.name` $no_pub_in_main_warning',
-							it.pos)
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning',
+							stmt.pos)
 					}
 				} else if stmt is ast.SumTypeDecl {
-					if it.is_pub {
-						c.warn('sum type `$it.name` $no_pub_in_main_warning', it.pos)
+					if stmt.is_pub {
+						c.warn('sum type `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				} else if stmt is ast.FnTypeDecl {
-					if it.is_pub {
-						c.warn('type alias `$it.name` $no_pub_in_main_warning', it.pos)
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				}
 			}
@@ -935,6 +936,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: str methods
 	if method_name == 'str' {
+		if left_type_sym.kind == .interface_ {
+			iname := left_type_sym.name
+			c.error('interface `$iname` does not have a .str() method. Use typeof() instead', call_expr.pos)
+		}
 		call_expr.receiver_type = left_type
 		call_expr.return_type = table.string_type
 		if call_expr.args.len > 0 {
@@ -964,9 +969,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 }
 
 pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
-	if call_expr.name == 'panic' {
-		c.returns = true
-	}
 	fn_name := call_expr.name
 	if fn_name == 'main' {
 		c.error('the `main` function cannot be called in the program', call_expr.pos)
@@ -1266,25 +1268,25 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 // return the actual type of the expression, once the optional is handled
 pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) table.Type {
 	if expr is ast.CallExpr {
-		if it.return_type.has_flag(.optional) {
-			if it.or_block.kind == .absent {
+		if expr.return_type.has_flag(.optional) {
+			if expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${it.name}() returns an option, but you missed to add an `or {}` block to it',
-						it.pos)
+					c.error('${expr.name}() returns an option, but you missed to add an `or {}` block to it',
+						expr.pos)
 				}
 			} else {
-				c.check_or_expr(it.or_block, ret_type)
+				c.check_or_expr(expr.or_block, ret_type)
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
 			// TODO: currently unwrapped in assign, would need to refactor assign to unwrap here
 			return ret_type
-		} else if it.or_block.kind == .block {
-			c.error('unexpected `or` block, the function `$it.name` does not return an optional',
-				it.pos)
-		} else if it.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$it.name`, does not return an optional',
-				it.pos)
+		} else if expr.or_block.kind == .block {
+			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
+				expr.pos)
+		} else if expr.or_block.kind == .propagate {
+			c.error('unexpected `?`, the function `$expr.name`, does not return an optional',
+				expr.pos)
 		}
 	}
 	return ret_type
@@ -1469,7 +1471,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					val := field_expr.val.i64()
 					if val < enum_min || val > enum_max {
 						c.error('enum value `$val` overflows int', field_expr.pos)
-					} else if int(val) in seen {
+					} else if !decl.is_multi_allowed && int(val) in seen {
 						c.error('enum value `$val` already exists', field_expr.pos)
 					}
 					seen << int(val)
@@ -1522,7 +1524,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	if assign_stmt.left.len != right_len {
 		if right_first is ast.CallExpr {
-			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${it.name}()` returns $right_len value(s)',
+			c.error('assignment mismatch: $assign_stmt.left.len variable(s) but `${right_first.name}()` returns $right_len value(s)',
 				assign_stmt.pos)
 		} else {
 			c.error('assignment mismatch: $assign_stmt.left.len variable(s) $right_len value(s)',
@@ -1843,6 +1845,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if node.has_else {
 				c.stmts(node.else_stmts)
 			}
+			mut stmts := node.stmts.clone()
+			stmts << node.else_stmts
+			if has_return := c.has_return(stmts) {
+				c.returns = has_return
+			}
 		}
 		ast.ConstDecl {
 			mut field_names := []string{}
@@ -2006,7 +2013,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {
-			c.returns = true
+			// c.returns = true
 			c.return_stmt(mut node)
 			c.scope_returns = true
 		}
@@ -2119,6 +2126,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.expr_type = c.expr(node.expr)
 			from_type_sym := c.table.get_type_symbol(node.expr_type)
 			to_type_sym := c.table.get_type_symbol(node.typ)
+			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
+				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.', node.pos)
+			}            
 			if to_type_sym.kind == .sum_type {
 				if node.expr_type in [table.any_int_type, table.any_flt_type] {
 					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
@@ -2466,6 +2476,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
+	mut require_return := false
+	mut branch_without_return := false
 	for branch in node.branches {
 		for expr in branch.exprs {
 			c.expected_type = cond_type
@@ -2502,6 +2514,19 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				}
 			}
 		}
+		if has_return := c.has_return(branch.stmts) {
+			if has_return {
+				require_return = true
+			} else {
+				branch_without_return = true
+			}
+		}
+	}
+	if require_return && branch_without_return {
+		c.returns = false
+	} else {
+		// if inner if branch has not covered all branches but this one
+		c.returns = true
 	}
 	// if ret_type != table.void_type {
 	// node.is_expr = c.expected_type != table.void_type
@@ -2577,7 +2602,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	}
 	mut err_details := 'match must be exhaustive'
 	if unhandled.len > 0 {
-		err_details += ' (add match branches for: ' + unhandled.join(', ') + ' or `else {}` at the end)'
+		err_details += ' (add match branches for: '
+		if unhandled.len < match_exhaustive_cutoff_limit {
+			err_details += unhandled.join(', ')
+		} else {
+			remaining := unhandled.len - match_exhaustive_cutoff_limit
+			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
+			err_details += ', and ${remaining} others ...'
+		}
+		err_details += ' or `else {}` at the end)'
 	} else {
 		err_details += ' (add `else {}` at the end)'
 	}
@@ -2602,6 +2635,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
+	mut require_return := false
+	mut branch_without_return := false
 	for i, branch in node.branches {
 		if branch.cond is ast.ParExpr {
 			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
@@ -2620,27 +2655,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// smartcast sumtypes when using `is`
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is && infix.left is ast.Ident && infix.right is ast.Type {
-				left_expr := infix.left as ast.Ident
+			if infix.op == .key_is && (infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&  infix.right is ast.Type {
 				right_expr := infix.right as ast.Type
-				if left_expr.kind == .variable {
-					// Register shadow variable or `as` variable with actual type
+				is_variable := if infix.left is ast.Ident {
+					(infix.left as ast.Ident).kind == .variable
+				} else { true }
+				// Register shadow variable or `as` variable with actual type
+				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type {
+					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
+						mut is_mut := false
+						if infix.left is ast.Ident {
+							is_mut = (infix.left as ast.Ident).is_mut
+						} else if infix.left is ast.SelectorExpr {
+							selector := infix.left as ast.SelectorExpr
+							field := c.table.struct_find_field(left_sym, selector.field_name) or { table.Field{} }
+							is_mut = field.is_mut
+						}
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						scope.register('it', ast.Var{
-							name: 'it'
+						scope.register(branch.left_as_name, ast.Var{
+							name: branch.left_as_name
 							typ: right_expr.typ.to_ptr()
-							pos: left_expr.pos
+							pos: infix.left.position()
 							is_used: true
-							is_mut: left_expr.is_mut
-						})
-						scope.register(left_expr.name, ast.Var{
-							name: left_expr.name
-							typ: right_expr.typ.to_ptr()
-							pos: left_expr.pos
-							is_used: true
-							is_mut: left_expr.is_mut
+							is_mut: is_mut
 						})
 						node.branches[i].smartcast = true
 					}
@@ -2691,6 +2729,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 		}
+		if has_return := c.has_return(branch.stmts) {
+			if has_return {
+				require_return = true
+			} else {
+				branch_without_return = true
+			}
+		}
+	}
+	if require_return && (!node.has_else || branch_without_return) {
+		c.returns = false
+	} else {
+		// if inner if branch has not covered all branches but this one
+		c.returns = true
 	}
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.any_int_type {
@@ -2705,6 +2756,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		return node.typ
 	}
 	return table.bool_type
+}
+
+fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
+	// complexity means either more match or ifs
+	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
+	contains_comp_if := stmts.filter(it is ast.CompIf).len > 0
+	contains_if_match := exprs.filter(it.expr is ast.IfExpr || it.expr is ast.MatchExpr).len > 0
+	contains_complexity := contains_comp_if || contains_if_match
+	// if the inner complexity covers all paths with returns there is no need for further checks
+	if !contains_complexity || !c.returns {
+		return has_top_return(stmts)
+	}
+	return none
 }
 
 pub fn (mut c Checker) postfix_expr(node ast.PostfixExpr) table.Type {
@@ -2996,6 +3060,7 @@ fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Positio
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	c.returns = false
 	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in c.table.fn_gen_types[node.name] {
@@ -3072,10 +3137,36 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 
 	c.stmts(node.stmts)
+	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body &&
-		node.return_type != table.void_type && !c.returns &&
+		node.return_type != table.void_type && !returns &&
 		node.name !in ['panic', 'exit'] {
 		c.error('missing return at end of function `$node.name`', node.pos)
 	}
 	c.returns = false
+}
+
+fn has_top_return(stmts []ast.Stmt) bool {
+	if stmts.filter(it is ast.Return).len > 0 {
+		return true
+	}
+	mut has_unsafe_return := false
+	for _, stmt in stmts {
+		if stmt is ast.UnsafeStmt {
+			for ustmt in stmt.stmts {
+				if ustmt is ast.Return {
+					has_unsafe_return = true
+				}
+			}
+		}
+	}
+	if has_unsafe_return {
+		return true
+	}
+	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
+	has_panic_exit := exprs.filter(it.expr is ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' || it.name == 'exit').len > 0
+	if has_panic_exit {
+		return true
+	}
+	return false
 }

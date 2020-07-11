@@ -98,7 +98,7 @@ fn main() {
 ```
 Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
 
-> That is assuming you have symlinked your V with `v symlink`, as described 
+> That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
 If you have not yet, you have to type the path to V manually.
 
@@ -108,7 +108,7 @@ Congratulations - you just wrote your first V program, and executed it!
 See `v help` for all supported commands.
 
 In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't 
+The return type goes after the function name. In this case `main` doesn't
 return anything, so the return type can be omitted.
 
 As in many other languages (such as C, Go and Rust), `main` is an entry point.
@@ -539,6 +539,32 @@ else {
     'odd'
 }
 println(s) // "odd"
+```
+
+#### Is check
+You can check sum types using `if` like `match`ing them.
+```v
+struct Abc {
+    val string
+}
+struct Xyz {
+    foo string
+}
+type Alphabet = Abc | Xyz
+
+x := Alphabet(Abc{'test'}) // sum type
+if x is Abc {
+    // x is automatically castet to Abc and can be used here
+    println(x)
+}
+```
+
+If you have a struct field which should be checked, there is also a way to name a alias.
+```
+if x.bar is MyStruct as bar {
+    // x.bar cannot be castet automatically, instead you say "as bar" which creates a variable with the MyStruct typing
+    println(bar)
+}
 ```
 
 ### In operator
@@ -1365,6 +1391,7 @@ If you don't need to return an error message, you can simply `return none` (this
 
 This is the primary mechanism for error handling in V. They are still values, like in Go,
 but the advantage is that errors can't be unhandled, and handling them is a lot less verbose.
+Unlike other languages, V does not handle exceptions with `throw/try/catch` blocks.
 
 `err` is defined inside an `or` block and is set to the string message passed
 to the `error()` function. `err` is empty if `none` was returned.
@@ -1687,15 +1714,29 @@ fn main(){
 #flag -lsqlite3
 #include "sqlite3.h"
 
-struct C.sqlite3
-struct C.sqlite3_stmt
+// See also the example from https://www.sqlite.org/quickstart.html
+struct C.sqlite3{}
+struct C.sqlite3_stmt{}
 
-fn C.sqlite3_open(charptr, C.sqlite3)
-fn C.sqlite3_column_int(stmt C.sqlite3_stmt, n int) int
-// Or just define the type of parameter & leave C. prefix
-fn C.sqlite3_prepare_v2(sqlite3, charptr, int, sqlite3_stmt, charptr) int
-fn C.sqlite3_step(sqlite3)
-fn C.sqlite3_finalize(sqlite3_stmt)
+type FnSqlite3Callback fn(voidptr, int, &charptr, &charptr) int
+
+fn C.sqlite3_open(charptr, &&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) int
+fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
+// ... you can also just define the type of parameter & leave out the C. prefix
+fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_step(&sqlite3_stmt)
+fn C.sqlite3_finalize(&sqlite3_stmt)
+fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+fn C.sqlite3_free(voidptr)
+
+fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
+    for i in 0..howmany {
+	    print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+	}
+    println('|')
+    return 0
+}
 
 fn main() {
     path := 'users.db'
@@ -1707,7 +1748,16 @@ fn main() {
     C.sqlite3_step(stmt)
     nr_users := C.sqlite3_column_int(stmt, 0)
     C.sqlite3_finalize(stmt)
-    println(nr_users)
+    println('There are $nr_users users in the database.')
+    //
+    error_msg := charptr(0)
+    query_all_users := 'select * from users'
+    rc := C.sqlite3_exec(db, query_all_users.str, my_callback, 7, &error_msg)
+    if rc != C.SQLITE_OK {
+        eprintln( cstring_to_vstring(error_msg) )
+        C.sqlite3_free(error_msg)
+    }
+    C.sqlite3_close(db)
 }
 ```
 
@@ -1851,9 +1901,9 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 ## Performance tuning
 
-The generated C code is usually fast enough, when you compile your code 
-with `-prod`. There are some situations though, where you may want to give 
-additional hints to the C compiler, so that it can further optimize some 
+The generated C code is usually fast enough, when you compile your code
+with `-prod`. There are some situations though, where you may want to give
+additional hints to the C compiler, so that it can further optimize some
 blocks of code.
 
 NB: These are *rarely* needed, and should not be used, unless you
@@ -1862,11 +1912,11 @@ To cite gcc's documentation: "programmers are notoriously bad at predicting
 how their programs actually perform".
 
 `[inline]` - you can tag functions with `[inline]`, so the C compiler will
-try to inline them, which in some cases, may be beneficial for performance, 
+try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
-`if _likely_(bool expression) {` this hints the C compiler, that the passed 
-boolean expression is very likely to be true, so it can generate assembly 
+`if _likely_(bool expression) {` this hints the C compiler, that the passed
+boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
 that does nothing.
 
@@ -1988,7 +2038,7 @@ Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
 fn main {
-    mut s := []
+    mut s := []string{}
     s << 'V is '
     s << 'awesome'
     println(s.len)
@@ -2106,7 +2156,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition. 
+An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -2132,12 +2182,12 @@ fn bar() {
 }
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
-[typedef] 
+[typedef]
 struct C.Foo { }
 
-// Declare a function with WINAPI
+// Used in Win32 API code when you need to pass callback function
 [windows_stdcall]
-fn C.WinFunction()
+fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 ```
 
 

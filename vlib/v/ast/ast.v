@@ -389,13 +389,13 @@ pub fn (i &Ident) var_info() IdentVar {
 
 pub struct InfixExpr {
 pub:
-	op         token.Kind
-	pos        token.Position
-	left       Expr
-	right      Expr
+	op           token.Kind
+	pos          token.Position
+	left         Expr
+	right        Expr
 pub mut:
-	left_type  table.Type
-	right_type table.Type
+	left_type    table.Type
+	right_type   table.Type
 }
 
 pub struct PostfixExpr {
@@ -443,6 +443,7 @@ pub:
 	comments []Comment
 pub mut:
 	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
+	left_as_name string // only used in x is SumType check
 }
 
 pub struct LockExpr {
@@ -622,12 +623,13 @@ pub:
 
 pub struct EnumDecl {
 pub:
-	name     string
-	is_pub   bool
-	is_flag  bool // true when the enum has [flag] tag
-	comments []Comment // enum Abc { /* comments */ ... }
-	fields   []EnumField
-	pos      token.Position
+	name             string
+	is_pub           bool
+	is_flag          bool // true when the enum has [flag] tag
+	is_multi_allowed bool
+	comments         []Comment // enum Abc { /* comments */ ... }
+	fields           []EnumField
+	pos              token.Position
 }
 
 pub struct AliasTypeDecl {

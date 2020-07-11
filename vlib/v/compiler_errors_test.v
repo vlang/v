@@ -11,14 +11,14 @@ fn test_all() {
 	global_dir := '$classic_dir/globals'
 	global_tests := get_tests_in_dir(global_dir)
 	run_dir := '$classic_dir/run'
-	run_tests := get_tests_in_dir(run_dir)	
+	run_tests := get_tests_in_dir(run_dir)
 	parser_dir := 'vlib/v/parser/tests'
 	parser_tests := get_tests_in_dir(parser_dir)
 	// -prod so that warns are errors
 	total_errors += check_path(vexe, classic_dir, '-prod', '.out', classic_tests)
 	total_errors += check_path(vexe, global_dir, '--enable-globals', '.out', global_tests)
 	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
-	total_errors += check_path(vexe, run_dir,   'run', '.run.out', run_tests)
+	total_errors += check_path(vexe, run_dir, 'run', '.run.out', run_tests)
 	total_errors += check_path(vexe, parser_dir, '-prod', '.out', parser_tests)
 	assert total_errors == 0
 }
@@ -33,9 +33,26 @@ fn get_tests_in_dir(dir string) []string {
 }
 
 fn check_path(vexe, dir, voptions, result_extension string, tests []string) int {
+	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	mut nb_fail := 0
+	mut paths := []string{}
 	for test in tests {
 		path := os.join_path(dir, test).replace('\\', '/')
+		if vtest_only.len > 0 {
+			mut found := 0
+			for substring in vtest_only {
+				if path.contains(substring) {
+					found++
+					break
+				}
+			}
+			if found == 0 {
+				continue
+			}
+		}
+		paths << path
+	}
+	for path in paths {
 		program := path.replace('.vv', '.v')
 		print(path + ' ')
 		os.cp(path, program) or {
@@ -68,5 +85,10 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 }
 
 fn clean_line_endings(s string) string {
-	return s.trim_space().replace(' \n', '\n').replace(' \r\n', '\n').replace('\r\n', '\n').trim('\n')
+	mut res := s.trim_space()
+	res = res.replace(' \n', '\n')
+	res = res.replace(' \r\n', '\n')
+	res = res.replace('\r\n', '\n')
+	res = res.trim('\n')
+	return res
 }

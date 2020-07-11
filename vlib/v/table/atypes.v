@@ -45,7 +45,7 @@ pub enum TypeFlag {
 	atomic_f
 }
 
-/* 
+/*
 	To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
 	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
@@ -683,6 +683,7 @@ pub struct Enum {
 pub:
 	vals    []string
 	is_flag bool
+	is_multi_allowed bool
 }
 
 pub struct Alias {
@@ -768,6 +769,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		vals := res.split('.')
 		if vals.len > 2 {
 			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+		}
+		if res.starts_with(table.cmod_prefix) {
+			res = res.replace_once(table.cmod_prefix, '')
 		}
 		if sym.kind == .array && !res.starts_with('[]') {
 			res = '[]' + res

@@ -24,18 +24,19 @@ pub fn (node &FnDecl) modname() string {
 
 // These methods are used only by vfmt, vdoc, and for debugging.
 
-pub fn (node &FnDecl) stringify(t &table.Table) string {
+pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
 	}
 	mut receiver := ''
 	if node.is_method {
-		mut styp := t.type_to_str(node.receiver.typ)
-		mut m := if node.rec_mut { 'mut ' } else { '' }
+		mut styp := util.no_cur_mod(t.type_to_str(node.receiver.typ), cur_mod)
+		mut m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
 		}
+		styp = util.no_cur_mod(styp, cur_mod)
 		receiver = '($m$node.receiver.name $styp) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
@@ -72,7 +73,7 @@ pub fn (node &FnDecl) stringify(t &table.Table) string {
 		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
 			i == node.args.len - 2)
 		if arg.is_mut {
-			f.write('mut ')
+			f.write(arg.typ.share().str() + ' ')
 		}
 		f.write(arg.name)
 		mut s := t.type_to_str(arg.typ)
@@ -82,6 +83,7 @@ pub fn (node &FnDecl) stringify(t &table.Table) string {
 				s = s[1..]
 			}
 		}
+		s = util.no_cur_mod(s, cur_mod)
 		if should_add_type {
 			if node.is_variadic && is_last_arg {
 				f.write(' ...' + s)
@@ -97,7 +99,7 @@ pub fn (node &FnDecl) stringify(t &table.Table) string {
 	if node.return_type != table.void_type {
 		// typ := t.type_to_str(node.typ)
 		// if typ.starts_with('
-		f.write(' ' + t.type_to_str(node.return_type))
+		f.write(' ' + util.no_cur_mod(t.type_to_str(node.return_type), cur_mod))
 	}
 	return f.str()
 }
@@ -279,7 +281,7 @@ pub fn (node Stmt) str() string {
 			mut out := ''
 			for i, left in it.left {
 				if left is Ident {
-					var_info := it.var_info()
+					var_info := left.var_info()
 					if var_info.is_mut {
 						out += 'mut '
 					}

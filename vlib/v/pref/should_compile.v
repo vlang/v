@@ -72,6 +72,9 @@ pub fn (prefs &Preferences) should_compile_c(file string) bool {
 	if file.ends_with('_solaris.c.v') && prefs.os != .solaris {
 		return false
 	}
+	if file.ends_with('_x64.v') && prefs.backend != .x64 {
+		return false
+	}
 	return true
 }
 

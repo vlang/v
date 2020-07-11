@@ -45,6 +45,7 @@ jobs:
       run: ./v build-tools
     - name: v vet
       run: |
+        ./v vet vlib/v/scanner
         ./v vet vlib/v/parser
         ./v vet vlib/v/ast
         ./v vet vlib/v/gen/cgen.v
@@ -56,7 +57,7 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
-    container: 
+    container:
       image: thevlang/vlang:alpine-build
       env:
         V_CI_MUSL: 1
@@ -66,13 +67,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        
+
       - name: Build V
         run: |
           make CC=clang
       - name: Test V fixed tests
         run: |
-          v test-fixed 
+          v test-fixed
 
   macos:
     runs-on: ${{ matrix.os }}
@@ -115,8 +116,8 @@ jobs:
       run: ./v test-fixed
     - name: Build examples
       run: ./v build-examples
-#    - name: Cross-compilation to Linux
-#      run: ./v -os linux cmd/v
+    - name: Cross-compilation to Linux
+      run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
     - name: Test vid
@@ -163,6 +164,8 @@ jobs:
     - name: Fixed tests
       run: |
         ./v test-fixed
+    - name: Fixed tests (-prod)
+      run: ./v -o vprod -prod cmd/v && ./vprod test-fixed
     - name: Build examples
       run: ./v build-examples
     - name: x64 machine code generation
@@ -201,10 +204,10 @@ jobs:
 
 
   # Ubuntu docker pre-built container
-  ubuntu-musl: 
+  ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-latest
-    container: 
+    container:
       image: thevlang/vlang:ubuntu-build
       env:
         V_CI_MUSL: 1
@@ -215,13 +218,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-        
+
       - name: Build V
         run: |
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Test V fixed tests
         run: |
-          v test-fixed 
+          v test-fixed
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
@@ -265,7 +268,7 @@ jobs:
     - name: Build
       run: |
         gcc --version
-        .\make.bat -gcc -skip-path
+        .\make.bat -gcc
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -municode -w v.c
     - name: Install dependencies
@@ -300,7 +303,7 @@ jobs:
       run: |
         echo %VFLAGS%
         echo $VFLAGS
-        .\make.bat -msvc -skip-path
+        .\make.bat -msvc
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
@@ -331,12 +334,12 @@ jobs:
     #  with:
     #    node-version: 12.x
     - name: Build
-      # We need to move gcc and msvc, so that V doesn't find a C compiler
+      # We need to move gcc and msvc, so that V can't find an existing C compiler and downloads tcc
       run: |
         'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
         'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
         move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
-        .\make.bat -skip-path
+        .\make.bat
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
     - name: Install dependencies
@@ -404,10 +407,10 @@ jobs:
       run: make -j4
     - name: g++ version
       run: g++-9 --version
-    - name: Running tests with g++
-      run: ./v -cc g++-9 test-fixed
-    - name: V self compilation with g++
-      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+#    - name: Running tests with g++
+#      run: ./v -cc g++-9 test-fixed
+#    - name: V self compilation with g++
+#      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
 
   install-modules:
     runs-on: ubuntu-latest
@@ -430,10 +433,11 @@ jobs:
       run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
     - name: Build V
       run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Install markdown
+      run: ./v install markdown
     - name: Build Gitly
       run: |
         git clone --depth 1 https://github.com/vlang/gitly
-        ./v install markdown
         cd gitly
         ../v .
         ../v -autofree .

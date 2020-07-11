@@ -42,9 +42,9 @@ fn fn_name_mod_level_high_order(cb fn(int)) {
 
 fn test_at_file() {
 	// Test @FILE
-    f := os.file_name( @FILE )
+	f := os.file_name(@FILE)
 	assert f == 'scanner_at_literals_test.v'
-}    
+}
 
 fn test_at_fn() {
 	// Test @FN

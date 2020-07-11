@@ -1,0 +1,30 @@
+module proto
+
+import vproto
+
+struct Xyz {
+	x int
+}
+
+struct Abcde {
+	f1 vproto.Xyz
+	f2 &vproto.Xyz
+	f3 []vproto.Xyz
+	f4 []&vproto.Xyz
+	f5 map[string]vproto.Xyz
+	f6 map[string]&vproto.Xyz
+	//
+	p1 Xyz
+	p2 &Xyz
+	p3 []Xyz
+	p4 []&Xyz
+	p5 map[string]Xyz
+	p6 map[string]&Xyz
+}
+
+fn abc() {
+	x := vproto.Xyz{2}
+	mut a := []vproto.Xyz{}
+	a << x
+	a << vproto.Xyz{3}
+}

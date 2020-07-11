@@ -23,9 +23,8 @@ enum CommentsLevel {
 }
 
 pub struct Fmt {
-pub:
-	table             &table.Table
 pub mut:
+	table             &table.Table
 	out_imports       strings.Builder
 	out               strings.Builder
 	out_save          strings.Builder
@@ -37,6 +36,8 @@ pub mut:
 	penalties         []int // how hard should it be to break line after each expression
 	precedences       []int // operator/parenthese precedences for operator at end of each expression
 	par_level         int // how many parentheses are put around the current expression
+	array_init_break  []bool // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth  int // current level of hierarchie in array init
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
@@ -62,7 +63,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 		is_debug: is_debug
 	}
 	f.process_file_imports(file)
-	f.cur_mod = 'main'
+	f.set_current_module_name('main')
 	for stmt in file.stmts {
 		if stmt is ast.Import {
 			// Just remember the position of the imports for now
@@ -74,7 +75,8 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
-	return res[..f.import_pos] + f.out_imports.str() + res[f.import_pos..] // + '\n'
+	bounded_import_pos := util.imin(res.len,f.import_pos)
+	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
@@ -188,8 +190,13 @@ fn (mut f Fmt) adjust_complete_line() {
 	}
 }
 
+pub fn (mut f Fmt) set_current_module_name(cmodname string){
+	f.cur_mod = cmodname
+	f.table.cmod_prefix = cmodname + '.'
+}
+
 pub fn (mut f Fmt) mod(mod ast.Module) {
-	f.cur_mod = mod.name
+	f.set_current_module_name(mod.name)
 	if mod.is_skipped {
 		return
 	}
@@ -246,9 +253,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			for i, left in node.left {
 				if left is ast.Ident {
-					var_info := it.var_info()
+					var_info := left.var_info()
 					if var_info.is_mut {
-						f.write('mut ')
+						f.write(var_info.share.str() + ' ')
 					}
 					f.expr(left)
 					if i < node.left.len - 1 {
@@ -424,7 +431,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('interface $it.name {')
 			for method in it.methods {
 				f.write('\t')
-				f.writeln(method.stringify(f.table).after('fn '))
+				f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
 			}
 			f.writeln('}\n')
 		}
@@ -509,13 +516,13 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			typ_sym := f.table.get_type_symbol(node.typ)
 			fn_typ_info := typ_sym.info as table.FnType
 			fn_info := fn_typ_info.func
-			fn_name := node.name.replace(f.cur_mod + '.', '')
+			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
 				f.write(arg.name)
-				mut s := f.table.type_to_str(arg.typ).replace(f.cur_mod + '.', '')
+				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
 				if arg.is_mut {
-					f.write('mut ')
+					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
 						s = s[1..]
 					}
@@ -536,8 +543,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
-				ret_str := f.table.type_to_str(fn_info.return_type).replace(f.cur_mod + '.',
-					'')
+				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
 				f.write(' ' + ret_str)
 			}
 		}
@@ -660,8 +666,8 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
 	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
-		if it.right is ast.CastExpr && it.op == .amp {
-			ce = it.right as ast.CastExpr
+		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
+			ce = fexpr.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -674,6 +680,15 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
+	map_prefix := 'map[string]'
+	cur_mod := f.cur_mod + '.'
+	has_map_prefix := res.starts_with(map_prefix)
+	if has_map_prefix {
+		res = res.replace(map_prefix, '')
+	}
+	no_symbols := res.trim_left('&[]')
+	should_shorten := no_symbols.starts_with(cur_mod)
+	//
 	for res.ends_with('_ptr') {
 		// type_ptr => &type
 		res = res[0..res.len - 4]
@@ -684,12 +699,18 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 		prefix := '[]fixed_'
 		res = res[prefix.len..]
 		last_underscore_idx := res.last_index('_') or {
-			return '[]' + res.replace(f.cur_mod + '.', '')
+			return '[]' + if should_shorten { res.replace_once(cur_mod, '') } else { res }
 		}
 		limit := res[last_underscore_idx + 1..]
 		res = '[' + limit + ']' + res[..last_underscore_idx]
 	}
-	return res.replace(f.cur_mod + '.', '')
+	if should_shorten {
+		res = res.replace_once(cur_mod, '')
+	}
+	if has_map_prefix {
+		res = map_prefix + res
+	}
+	return res
 }
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
@@ -1052,7 +1073,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 	for i, arg in args {
 		if arg.is_mut {
-			f.write('mut ')
+			f.write(arg.share.str() + ' ')
 		}
 		if i > 0 {
 			f.wrap_long_line(2, true)
@@ -1133,8 +1154,7 @@ pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bo
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
-	s := node.stringify(f.table)
-	f.write(s.replace(f.cur_mod + '.', '')) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')
 		f.stmts(node.stmts)
@@ -1150,6 +1170,10 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 		f.mark_types_module_as_used(arg.typ)
 	}
 	f.mark_types_module_as_used(node.return_type)
+}
+
+pub fn (mut f Fmt) no_cur_mod(typename string) string {
+	return util.no_cur_mod(typename, f.cur_mod)
 }
 
 // foo.bar.fn() => bar.fn()
@@ -1171,7 +1195,11 @@ pub fn (mut f Fmt) short_module(name string) string {
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
-	f.write('lock ')
+	f.write(if lex.is_rlock {
+		'rlock '
+	} else {
+		'lock '
+	})
 	for i, v in lex.lockeds {
 		if i > 0 {
 			f.write(', ')
@@ -1248,16 +1276,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 		*/
 		if node.left is ast.Ident {
-			it := node.left as ast.Ident
+			left := node.left as ast.Ident
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if it.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-				if it.name !in f.auto_imports {
-					f.auto_imports << it.name
+			if left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+				if left.name !in f.auto_imports {
+					f.auto_imports << left.name
 					f.file.imports << ast.Import{
-						mod: it.name
-						alias: it.name
+						mod: left.name
+						alias: left.name
 					}
 				}
 				// for imp in f.file.imports {
@@ -1321,7 +1349,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		stmt := branch.stmts[0]
 		if stmt is ast.ExprStmt {
 			// If expressions inside match branches can't be one a single line
-			if !expr_is_single_line(it.expr) {
+			if !expr_is_single_line(stmt.expr) {
 				single_line = false
 				break
 			}
@@ -1479,22 +1507,27 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	f.write('[')
 	mut inc_indent := false
 	mut last_line_nr := it.pos.line_nr // to have the same newlines between array elements
+	f.array_init_depth++
 	for i, expr in it.exprs {
-		mut penalty := 3
 		line_nr := expr.position().line_nr
-		if last_line_nr < line_nr {
-			penalty--
+		if i == 0 {
+			if f.array_init_depth > f.array_init_break.len {
+				f.array_init_break << (last_line_nr < line_nr)
+			}
 		}
-		if i == 0 ||
-			it.exprs[i - 1] is ast.ArrayInit ||
-			it.exprs[i - 1] is ast.StructInit ||
-			it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
-			penalty--
-		}
-		if expr is ast.ArrayInit ||
-			expr is ast.StructInit || expr is ast.MapInit ||
-			expr is ast.CallExpr {
-			penalty--
+		mut penalty := if f.array_init_break[f.array_init_depth - 1] { 0 } else { 3 }
+		if penalty > 0 {
+			if i == 0 ||
+				it.exprs[i - 1] is ast.ArrayInit ||
+				it.exprs[i - 1] is ast.StructInit ||
+				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
+				penalty--
+			}
+			if expr is ast.ArrayInit ||
+				expr is ast.StructInit || expr is ast.MapInit ||
+				expr is ast.CallExpr {
+				penalty--
+			}
 		}
 		is_new_line := f.wrap_long_line(penalty, !inc_indent)
 		if is_new_line && !inc_indent {
@@ -1514,6 +1547,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		last_line_nr = line_nr
 	}
+	f.array_init_depth--
+	if f.array_init_depth == 0 {
+		f.array_init_break = []
+	}
 	if inc_indent {
 		f.indent--
 	}
@@ -1529,7 +1566,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	// f.write('<old name: $type_sym.name>')
 	mut name := type_sym.name
 	if !name.starts_with('C.') {
-		name = f.short_module(type_sym.name).replace(f.cur_mod + '.', '') // TODO f.type_to_str?
+		name = f.no_cur_mod(f.short_module(type_sym.name)) // TODO f.type_to_str?
 	}
 	if name == 'void' {
 		name = ''

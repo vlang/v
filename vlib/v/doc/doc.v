@@ -45,7 +45,7 @@ pub fn merge_comments(stmts []ast.Stmt) string {
 	mut res := []string{}
 	for s in stmts {
 		if s is ast.Comment {
-			res << it.text.trim_left('|')
+			res << s.text.trim_left('|')
 		}
 	}
 	return res.join('\n')
@@ -118,7 +118,7 @@ pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 			return 'module $stmt.name'
 		}
 		ast.FnDecl {
-			return stmt.stringify(d.table).replace(d.fmt.cur_mod + '.', '')
+			return stmt.stringify(d.table, d.fmt.cur_mod)
 		}
 		else {
 			d.fmt.out = strings.new_builder(1000)
@@ -307,7 +307,7 @@ fn (mut d Doc) generate() ?Doc {
 		}
 		stmts := file_ast.stmts
 		d.fmt.file = file_ast
-		d.fmt.cur_mod = orig_mod_name
+		d.fmt.set_current_module_name(orig_mod_name)
 		d.fmt.process_file_imports(file_ast)
 		mut last_import_stmt_idx := 0
 		for sidx, stmt in stmts {
@@ -374,11 +374,11 @@ fn (mut d Doc) generate() ?Doc {
 				continue
 			}
 			if stmt is ast.FnDecl {
-				if it.is_deprecated {
+				if stmt.is_deprecated {
 					continue
 				}
-				if it.receiver.typ != 0 {
-					node.attrs['parent'] = d.fmt.type_to_str(it.receiver.typ).trim_left('&')
+				if stmt.receiver.typ != 0 {
+					node.attrs['parent'] = d.fmt.type_to_str(stmt.receiver.typ).trim_left('&')
 					p_idx := d.contents.index_by_name(node.attrs['parent'])
 					if p_idx == -1 && node.attrs['parent'] != 'void' {
 						d.contents << DocNode{

@@ -15,7 +15,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if it.name == val.name {
+					if expr.name == val.name {
 						p.error_with_pos('undefined variable: `$val.name`', val.pos)
 					}
 				}
@@ -49,7 +49,7 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
-					if it.name == val_.name {
+					if expr.name == val_.name {
 						return true
 					}
 				}
@@ -93,6 +93,9 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		// a, b = b, a
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
+			if op !in [.assign, .decl_assign] {
+				p.error('unexpected $op.str(), expecting := or = or comma')
+			}
 			if has_cross_var {
 				break
 			}

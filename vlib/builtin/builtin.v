@@ -43,14 +43,20 @@ fn panic_debug(line_no int, file, mod, fn_name, s string) {
 	eprintln('     file: $file')
 	eprintln('     line: ' + line_no.str())
 	eprintln('=========================================')
-	print_backtrace_skipping_top_frames(1)
+	// recent versions of tcc print better backtraces automatically
+	$if !tinyc {
+		print_backtrace_skipping_top_frames(1)
+	}
 	break_if_debugger_attached()
 	C.exit(1)
 }
 
 pub fn panic(s string) {
 	eprintln('V panic: $s')
-	print_backtrace()
+	// recent versions of tcc print better backtraces automatically
+	$if !tinyc {
+		print_backtrace()
+	}
 	break_if_debugger_attached()
 	C.exit(1)
 }
@@ -136,6 +142,7 @@ pub fn malloc(n int) byteptr {
 		panic('malloc(<=0)')
 	}
 	$if prealloc {
+		//println('p')
 		res := g_m2_ptr
 		unsafe {
 			g_m2_ptr += n
@@ -164,13 +171,23 @@ TODO
 */
 }
 
+//#include <malloc/malloc.h>
+//fn malloc_size(b byteptr) int
+
 [unsafe_fn]
-pub fn v_realloc(b byteptr, n int) byteptr {
-	ptr := C.realloc(b, n)
-	if ptr == 0 {
-		panic('realloc($n) failed')
+pub fn v_realloc(b byteptr, n u32) byteptr {
+	$if prealloc {
+		new_ptr := malloc(int(n))
+		size := 0 //malloc_size(b)
+		C.memcpy(new_ptr, b, size)
+		return new_ptr
+	} $else {
+		ptr := C.realloc(b, n)
+		if ptr == 0 {
+			panic('realloc($n) failed')
+		}
+		return ptr
 	}
-	return ptr
 }
 
 [unsafe_fn]
@@ -190,6 +207,9 @@ pub fn vcalloc(n int) byteptr {
 
 [unsafe_fn]
 pub fn free(ptr voidptr) {
+	$if prealloc {
+		return
+	}
 	C.free(ptr)
 }
 
@@ -202,6 +222,9 @@ pub fn memdup(src voidptr, sz int) voidptr {
 }
 
 fn v_ptr_free(ptr voidptr) {
+	$if prealloc {
+		return
+	}
 	C.free(ptr)
 }
 

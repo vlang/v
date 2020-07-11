@@ -88,9 +88,10 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	g.writeln('sqlite3_step($g.sql_stmt_name);')
-	g.writeln('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0) puts(sqlite3_errmsg(${db_name}.conn)); ')
-	g.writeln('sqlite3_finalize($g.sql_stmt_name);')
+	step_res := g.new_tmp_var()
+	g.writeln('\tint $step_res = sqlite3_step($g.sql_stmt_name);')
+	g.writeln('\tif( ($step_res != SQLITE_OK) && ($step_res != SQLITE_DONE)){ puts(sqlite3_errmsg(${db_name}.conn)); }')
+	g.writeln('\tsqlite3_finalize($g.sql_stmt_name);')
 }
 
 fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
@@ -162,7 +163,9 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	binds := g.sql_buf.str()
 	g.sql_buf = strings.new_builder(100)
 	g.writeln(binds)
-	g.writeln('if (strcmp(sqlite3_errmsg(${db_name}.conn), "not an error") != 0) puts(sqlite3_errmsg(${db_name}.conn)); ')
+	binding_res := g.new_tmp_var()
+	g.writeln('int $binding_res = sqlite3_extended_errcode(${db_name}.conn);')
+	g.writeln('if ($binding_res != SQLITE_OK) { puts(sqlite3_errmsg(${db_name}.conn)); }')
 	//
 	if node.is_count {
 		g.writeln('$cur_line ${dbtype}__get_int_from_stmt($g.sql_stmt_name);')
@@ -183,8 +186,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			//
 			sym := g.table.get_type_symbol(array_info.elem_type)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		} else {
@@ -195,8 +201,11 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			// by the db engine.
 			sym := g.table.get_type_symbol(node.typ)
 			info := sym.info as table.Struct
-			for field in info.fields {
+			for i, field in info.fields {
 				g.zero_struct_field(field)
+				if i != info.fields.len-1 {
+					g.write(', ')
+				}
 			}
 			g.writeln('};')
 		}

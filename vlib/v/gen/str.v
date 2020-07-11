@@ -138,13 +138,61 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	}
 }
 
+// optimize string interpolation in string builders:
+// `sb.writeln('a=$a')` =>
+// `sb.writeln('a='); sb.writeln(a.str())`
+fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
+	node := call_expr.args[0].expr as ast.StringInterLiteral
+	// sb_name := g.cur_call_expr.left
+	// g.go_before_stmt(0)
+	g.writeln('// sb inter opt')
+	write := 'writeln'
+	/*
+	if node.vals.len != node.exprs.len {
+		println('NOPE')
+		println(node.vals)
+		println('==========')
+		println(node.exprs)
+	}
+	*/
+	for i, val in node.vals {
+		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		// if val == '' {
+		// break
+		// continue
+		// }
+		g.write('strings__Builder_${write}(&')
+		g.expr(call_expr.left)
+		g.write(', tos_lit("')
+		g.write(escaped_val)
+		g.writeln('"));')
+		//
+		if i >= node.exprs.len {
+			break
+		}
+		// if node.expr_types.len <= i || node.exprs.len <= i {
+		// continue
+		// }
+		g.write('strings__Builder_${write}(&')
+		g.expr(call_expr.left)
+		g.write(', ')
+		g.write(g.typ(node.expr_types[i]))
+		g.write('_str(')
+		g.expr(node.exprs[i])
+		g.writeln('));')
+	}
+	g.writeln('')
+	// println(node.vals)
+	return
+}
+
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut cur_line := ''
 	mut tmp := ''
 	free := g.pref.autofree && g.inside_call && !g.inside_return &&
-		g.inside_ternary == 0 && !g.inside_const 
-		//&& g.cur_fn != 0 &&
-		//g.cur_fn.name != ''
+		g.inside_ternary == 0 && !g.inside_const
+	// && g.cur_fn != 0 &&
+	// g.cur_fn.name != ''
 	if free {
 		// Save the string expr in a temporary variable, so that it can be removed after the call.
 		tmp = g.new_tmp_var()

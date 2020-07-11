@@ -21,51 +21,78 @@ fn main() {
 		return
 	}
 	mut commit_hash := exec('git rev-parse HEAD')
-	commit_hash = commit_hash[..7]
-	if !os.exists('table.html') {
-		os.create('table.html') or { panic(err) }
+	commit_hash = commit_hash[..8]
+	if os.exists('last_commit.txt') {
+		last_commit := os.read_file('last_commit.txt')?
+		if last_commit.trim_space() == commit_hash.trim_space() {
+			println('No new commits to benchmark. Commit $commit_hash has already been processed.')
+			return
+		}
+		commit_hash = last_commit.trim_space()
 	}
-	mut table := os.read_file('table.html') or { panic(err) }
+
+	if !os.exists('table.html') {
+		os.create('table.html')?
+	}
+	mut table := os.read_file('table.html')?
+	/*
 	// Do nothing if it's already been processed.
 	if table.contains(commit_hash) {
 		println('Commit $commit_hash has already been processed')
 		return
 	}
-	// Build an optimized V
-	println('Building vprod...')
-	exec('v -o $vdir/vprod -prod $vdir/cmd/v')
-	println('Measuring...')
-	diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v')
-	diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v')
-	diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v')
-	diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v')
-	//println('Building V took ${diff}ms')
-	commit_date := exec('git log -n1 --pretty="format:%at"')
-	message := exec('git log -n1 --pretty="format:%s"')
-	date := time.unix(commit_date.int())
-	mut out := os.create('table.html') or { panic(err) }
-	// Place the new row on top
-	table =
-'<tr>
-	<td>${date.format()}</td>
-	<td><a target=_blank href="https://github.com/vlang/v/commit/$commit_hash">$commit_hash</a></td>
-	<td>$message</td>
-	<td>${diff1}ms</td>
-	<td>${diff2}ms</td>
-	<td>${diff3}ms</td>
-	<td>${diff4}ms</td>
-</tr>\n' +
-	table.trim_space()
-	out.writeln(table)
-	out.close()
-	// Regenerate index.html
-	header := os.read_file('header.html') or { panic(err) }
-	footer := os.read_file('footer.html') or { panic(err) }
-	mut res := os.create('index.html') or { panic(err) }
-	res.writeln(header)
-	res.writeln(table)
-	res.writeln(footer)
-	res.close()
+	*/
+	last_commits := exec('git log --pretty=format:"%h" -n 20').split('\n')
+	// Fetch all unprocessed commits (commits after the last processed commit)
+	mut commits := []string{}
+	println('last_commit="$commit_hash"')
+	for i, c in last_commits {
+		if c == commit_hash {
+			commits = last_commits[..i].reverse()
+			break
+		}
+	}
+	println(last_commits)
+	println('Commits to benchmark:')
+	println(commits)
+	for i, commit in commits {
+		message := exec('git log --pretty=format:"%s" -n1 $commit')
+		println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
+		// Build an optimized V
+		println('  Building vprod...')
+		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
+		diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v', 'v.c')
+		diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
+		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
+		diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
+		//println('Building V took ${diff}ms')
+		commit_date := exec('git log -n1 --pretty="format:%at" $commit')
+		date := time.unix(commit_date.int())
+		mut out := os.create('table.html')?
+		// Place the new row on top
+		table =
+	'<tr>
+		<td>${date.format()}</td>
+		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
+		<td>$message</td>
+		<td>${diff1}ms</td>
+		<td>${diff2}ms</td>
+		<td>${diff3}ms</td>
+		<td>${diff4}ms</td>
+	</tr>\n' +
+		table.trim_space()
+		out.writeln(table)
+		out.close()
+		// Regenerate index.html
+		header := os.read_file('header.html')?
+		footer := os.read_file('footer.html')?
+		mut res := os.create('index.html')?
+		res.writeln(header)
+		res.writeln(table)
+		res.writeln(footer)
+		res.close()
+	}
+	os.write_file('last_commit.txt', commits[commits.len-1])?
 }
 
 fn exec(s string) string {
@@ -74,12 +101,13 @@ fn exec(s string) string {
 }
 
 // returns milliseconds
-fn measure(cmd string) int {
-	println('Warming up...')
+fn measure(cmd, description string) int {
+	println('  Measuring $description')
+	println('  Warming up...')
 	for _ in 0..3 {
 		exec(cmd)
 	}
-	println('Building...')
+	println('  Building...')
 	sw := time.new_stopwatch({})
 	exec(cmd)
 	return int(sw.elapsed().milliseconds())

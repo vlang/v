@@ -43,6 +43,7 @@ fn C.chmod(byteptr, int) int
 
 fn C.printf(byteptr, ...byteptr) int
 
+fn C.puts(byteptr) int
 
 fn C.fputs(byteptr) int
 
