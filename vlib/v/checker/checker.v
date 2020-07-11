@@ -2126,6 +2126,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.expr_type = c.expr(node.expr)
 			from_type_sym := c.table.get_type_symbol(node.expr_type)
 			to_type_sym := c.table.get_type_symbol(node.typ)
+			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
+				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.', node.pos)
+			}            
 			if to_type_sym.kind == .sum_type {
 				if node.expr_type in [table.any_int_type, table.any_flt_type] {
 					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
