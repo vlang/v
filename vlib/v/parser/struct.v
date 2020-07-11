@@ -144,6 +144,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			// println(p.tok.position())
+			if p.tok.kind == .question {
+				p.error('cannot define `optional` struct field')
+			}
 			typ := p.parse_type()
 			// field_pos := field_start_pos.extend(p.tok.position())
 			field_pos := token.Position{
