@@ -2038,7 +2038,7 @@ Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
 fn main {
-    mut s := []
+    mut s := []string{}
     s << 'V is '
     s << 'awesome'
     println(s.len)
