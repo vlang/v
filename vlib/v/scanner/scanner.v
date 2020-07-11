@@ -48,6 +48,7 @@ pub mut:
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
+	pref                        &pref.Preferences
 }
 
 /*
@@ -94,7 +95,8 @@ pub enum CommentsMode {
 }
 
 // new scanner from file.
-pub fn new_scanner_file(file_path string, comments_mode CommentsMode, is_fmt bool) &Scanner {
+pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
+	// is_fmt := pref.is_fmt
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -102,15 +104,17 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, is_fmt boo
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_scanner(raw_text, comments_mode, is_fmt) // .skip_comments)
+	mut s := new_scanner(raw_text, comments_mode, pref) // .skip_comments)
 	// s.init_fmt()
 	s.file_path = file_path
 	return s
 }
 
 // new scanner from string.
-pub fn new_scanner(text string, comments_mode CommentsMode, is_fmt bool) &Scanner {
+pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
+	is_fmt := pref.is_fmt
 	s := &Scanner{
+		pref: pref
 		text: text
 		is_print_line_on_error: true
 		is_print_colored_error: true
@@ -768,6 +772,10 @@ fn (mut s Scanner) text_scan() token.Token {
 			return s.new_token(.chartoken, ident_char, ident_char.len + 2) // + two quotes
 		}
 		`(` {
+			// TODO `$if vet {` for performance
+			if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
+				println('$s.file_path:$s.line_nr: Looks like you are adding a space after `(`')
+			}
 			return s.new_token(.lpar, '', 1)
 		}
 		`)` {

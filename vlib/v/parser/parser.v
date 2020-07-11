@@ -60,11 +60,12 @@ mut:
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
-	s := scanner.new_scanner(text, .skip_comments, false)
+	pref:= &pref.Preferences{}
+	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
 		table: table
-		pref: &pref.Preferences{}
+		pref: pref
 		scope: scope
 		global_scope: &ast.Scope{
 			start_pos: 0
@@ -77,7 +78,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
-	s := scanner.new_scanner(text, .skip_comments, pref.is_fmt)
+	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
 		table: b_table
@@ -100,7 +101,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	// panic(err)
 	// }
 	mut p := Parser{
-		scanner: scanner.new_scanner_file(path, comments_mode, pref.is_fmt)
+		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
 		table: b_table
 		file_name: path
@@ -126,6 +127,8 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
+	//if pref.is_vet && p.scanner.text.contains('( '\n        ') {
+	//}
 	return p.parse()
 }
 
