@@ -195,6 +195,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-usecache' {
 				res.use_cache = true
 			}
+			'-prealloc' {
+				res.prealloc = true
+			}
 			'-keepc' {
 				eprintln('-keepc is deprecated. V always keeps the generated .tmp.c files now.')
 			}

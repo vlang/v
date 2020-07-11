@@ -136,6 +136,7 @@ pub fn malloc(n int) byteptr {
 		panic('malloc(<=0)')
 	}
 	$if prealloc {
+		//println('p')
 		res := g_m2_ptr
 		unsafe {
 			g_m2_ptr += n
