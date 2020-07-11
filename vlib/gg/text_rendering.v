@@ -85,8 +85,13 @@ pub fn (ft &FT) flush(){
 	sfons.flush(ft.fons)
 }
 
-pub fn (ft &Context) text_width(s string) int {
-	return 0
+pub fn (ctx &Context) text_width(s string) int {
+	if !ctx.font_inited {
+		return 0
+	}
+	mut buf := [4]f32
+	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	return int((buf[2] - buf[0]) / ctx.scale)
 }
 
 pub fn (ft &Context) text_height(s string) int {
