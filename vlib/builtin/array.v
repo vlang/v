@@ -438,6 +438,9 @@ pub fn (a array) reverse() array {
 // pub fn (a []int) free() {
 [unsafe_fn]
 pub fn (a &array) free() {
+	$if prealloc {
+		return
+	}
 	// if a.is_slice {
 	// return
 	// }

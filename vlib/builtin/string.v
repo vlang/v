@@ -1170,6 +1170,9 @@ pub fn (u ustring) at(idx int) string {
 }
 
 fn (u &ustring) free() {
+	$if prealloc {
+		return
+	}
 	u.runes.free()
 }
 
@@ -1194,6 +1197,9 @@ pub fn (c byte) is_letter() bool {
 }
 
 pub fn (s &string) free() {
+	$if prealloc {
+		return
+	}
 	if s.is_lit == -98761234 {
 		C.printf('double string.free() detected\n')
 		return

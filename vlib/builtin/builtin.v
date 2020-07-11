@@ -165,13 +165,23 @@ TODO
 */
 }
 
+//#include <malloc/malloc.h>
+//fn malloc_size(b byteptr) int
+
 [unsafe_fn]
 pub fn v_realloc(b byteptr, n u32) byteptr {
-	ptr := C.realloc(b, n)
-	if ptr == 0 {
-		panic('realloc($n) failed')
+	$if prealloc {
+		new_ptr := malloc(int(n))
+		size := 0 //malloc_size(b)
+		C.memcpy(new_ptr, b, size)
+		return new_ptr
+	} $else {
+		ptr := C.realloc(b, n)
+		if ptr == 0 {
+			panic('realloc($n) failed')
+		}
+		return ptr
 	}
-	return ptr
 }
 
 [unsafe_fn]
@@ -191,6 +201,9 @@ pub fn vcalloc(n int) byteptr {
 
 [unsafe_fn]
 pub fn free(ptr voidptr) {
+	$if prealloc {
+		return
+	}
 	C.free(ptr)
 }
 
@@ -203,6 +216,9 @@ pub fn memdup(src voidptr, sz int) voidptr {
 }
 
 fn v_ptr_free(ptr voidptr) {
+	$if prealloc {
+		return
+	}
 	C.free(ptr)
 }
 

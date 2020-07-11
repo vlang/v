@@ -122,7 +122,7 @@ fn new_dense_array(value_bytes int) DenseArray {
 fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
-		d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
+		d.keys = &string(v_realloc(byteptr(d.keys), sizeof(string) * d.cap))
 		d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
 	}
 	push_index := d.len
