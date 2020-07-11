@@ -4,8 +4,8 @@ fn test_smtp() {
 
 	server := 'smtp.mailtrap.io'
 	port := 2525
-	username := '46d1daf3ff04f'
-	password := '1e8ba2dbf19f4f'
+	username := ''
+	password := ''
 	subject := 'Hello from V'
 	from := 'dev@vlang.io'
 	to := 'dev@vlang.io'
