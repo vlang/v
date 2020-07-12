@@ -1382,6 +1382,20 @@ pub fn (s string) map(func fn(byte) byte) string {
 	return tos(res, s.len)
 }
 
+pub fn (s string) filter(func fn(byte) bool) string {
+    mut new_len := 0
+    mut buf := malloc(s.len + 1)
+    for i in 0..s.len {
+		mut b := s[i]
+		if func(b) {
+			buf[new_len] = b
+			new_len++
+		}
+	}
+	buf[new_len] = 0
+    return string(buf, new_len)
+}
+
 // Allows multi-line strings to be formatted in a way that removes white-space
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding

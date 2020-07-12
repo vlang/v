@@ -780,6 +780,18 @@ fn test_string_map() {
 	assert 'foo'.map(foo) == r'\ee'
 }
 
+fn test_string_filter() {
+	foo := 'V is awesome!!!!'.filter(fn (b byte) bool {
+		return b != `!`
+	})
+	assert foo == 'V is awesome'
+	assert 'Alexander'.filter(filter) == 'Alexnder'
+}
+
+fn filter(b byte) bool {
+	return b != `a`
+}
+
 fn foo(b byte) byte {
 	return b - 10
 }
