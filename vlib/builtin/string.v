@@ -1371,7 +1371,7 @@ pub fn (s string) filter(func fn(b byte) bool) string {
 		}
 	}
 	buf[new_len] = 0
-	return string(buf)
+	return string(buf, new_len)
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space
