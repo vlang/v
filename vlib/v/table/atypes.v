@@ -770,7 +770,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 		if vals.len > 2 {
 			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
 		}
-		if res.starts_with(table.cmod_prefix) {
+		if res.starts_with(table.cmod_prefix) ||
+			(sym.kind == .array && res.starts_with('[]' + table.cmod_prefix)) {
 			res = res.replace_once(table.cmod_prefix, '')
 		}
 		if sym.kind == .array && !res.starts_with('[]') {
