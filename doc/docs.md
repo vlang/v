@@ -1373,8 +1373,14 @@ fn (r Repo) find_user_by_id(id int) ?User {
 
 fn main() {
     repo := new_repo()
-    user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
-        return  // `or` block must end with `return`, `break`, or `continue`
+    user := repo.find_user_by_id(10) or {
+        // Option types must be handled by `or` blocks.
+        // Any `or` block, *must* end with one of:
+        // a) `break`, `continue` or `return` .
+        // b) a panic("message") or exit(code) call .
+        // c) a default value of the same type as the Option .
+        // (i.e. if the function returns for example ?int, you may put 1234 as default value)
+        return  
     }
     println(user.id) // "10"
     println(user.name) // "Charles"
