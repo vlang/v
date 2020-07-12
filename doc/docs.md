@@ -1723,7 +1723,7 @@ Examples of memory-unsafe operations are:
 * Pointer arithmetic
 * Pointer indexing
 * Conversion to pointer from an incompatible type
-* Calling a C function
+* Calling certain C functions, e.g. `strlen`, `strncmp`, `free`.
 
 To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
 
