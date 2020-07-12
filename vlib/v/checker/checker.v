@@ -2031,6 +2031,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.type_decl(node)
 		}
 		ast.UnsafeStmt {
+			assert !c.inside_unsafe
 			c.inside_unsafe = true
 			c.stmts(node.stmts)
 			c.inside_unsafe = false
@@ -2290,6 +2291,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.TypeOf {
 			node.expr_type = c.expr(node.expr)
 			return table.string_type
+		}
+		ast.UnsafeExpr {
+			return c.unsafe_expr(mut node)
 		}
 		ast.Likely {
 			ltype := c.expr(node.expr)
@@ -2628,6 +2632,34 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	c.stmts(node.stmts)
 	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
+}
+
+pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
+	slen := node.stmts.len
+	if slen > 1 {
+		c.error('FIXME: unsafe expression block should support multiple statements',
+			node.pos)
+		return table.none_type
+	}
+	if slen == 0 {
+		c.error('unsafe expression does not yield an expression', node.pos)
+		return table.none_type
+	}
+	assert !c.inside_unsafe
+	c.inside_unsafe = true
+	defer {
+		c.inside_unsafe = false
+	}
+	if slen > 1 {
+		c.stmts(node.stmts[0..slen - 1])
+	}
+	last := node.stmts[0]
+	if last is ast.ExprStmt {
+		t := c.expr(last.expr)
+		return t
+	}
+	c.error('unsafe expression does not yield an expression', node.pos)
+	return table.none_type
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {

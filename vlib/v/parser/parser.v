@@ -572,6 +572,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_unsafe {
 			p.next()
+			assert !p.inside_unsafe
 			p.inside_unsafe = true
 			stmts := p.parse_block()
 			p.inside_unsafe = false

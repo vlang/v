@@ -79,6 +79,18 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_if {
 			node = p.if_expr()
 		}
+		.key_unsafe {
+			p.next()
+			pos := p.tok.position()
+			assert !p.inside_unsafe
+			p.inside_unsafe = true
+			stmts := p.parse_block()
+			p.inside_unsafe = false
+			node = ast.UnsafeExpr {
+				stmts: stmts
+				pos: pos
+			}
+		}
 		.key_lock, .key_rlock {
 			node = p.lock_expr()
 		}
