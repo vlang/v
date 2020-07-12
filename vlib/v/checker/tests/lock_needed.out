@@ -1,0 +1,7 @@
+vlib/v/checker/tests/lock_needed.v:10:2: error: base of `v.ast.SelectorExpr` is `shared` - must be explicitely locked 
+    8 |         x: 5
+    9 |     }
+   10 |     abc.x++
+      |     ~~~
+   11 |     println(abc.x)
+   12 | }

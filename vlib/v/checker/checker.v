@@ -17,6 +17,14 @@ const (
 	enum_max      = 0x7FFFFFFF
 )
 
+enum LockNeeded {
+	no_lock
+	auto_rlock
+	auto_lock
+	explicit_rlock
+	explicit_lock
+}
+
 pub struct Checker {
 pub mut:
 	table            &table.Table
@@ -31,6 +39,8 @@ pub mut:
 	const_decl       string
 	const_deps       []string
 	const_names      []string
+	locked_names     []string // vars that are currently locked
+	rlocked_names    []string // vars that are currently read-locked
 	pref             &pref.Preferences // Preferences shared from V struct
 	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
@@ -656,11 +666,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	}
 }
 
-fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
+fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position) {
+	mut needed_lock := LockNeeded.no_lock
+	mut pos := token.Position{}
 	match expr {
 		ast.CastExpr {
 			// TODO
-			return
+			return LockNeeded.no_lock, pos
 		}
 		ast.Ident {
 			scope := c.file.scope.innermost(expr.pos.pos)
@@ -670,24 +682,30 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 						expr.pos)
 				}
 				v.is_changed = true
+				if v.typ.share() == .shared_t {
+					if expr.name !in c.locked_names {
+						needed_lock = .auto_lock
+						pos = expr.pos
+					}
+				}
 			} else if expr.name in c.const_names {
 				c.error('cannot modify constant `$expr.name`', expr.pos)
 			}
 		}
 		ast.IndexExpr {
-			c.fail_if_immutable(expr.left)
+			needed_lock, pos = c.fail_if_immutable(expr.left)
 		}
 		ast.ParExpr {
-			c.fail_if_immutable(expr.expr)
+			needed_lock, pos = c.fail_if_immutable(expr.expr)
 		}
 		ast.PrefixExpr {
-			c.fail_if_immutable(expr.right)
+			needed_lock, pos = c.fail_if_immutable(expr.right)
 		}
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if expr.expr_type == 0 {
 				c.error('0 type in SelectorExpr', expr.pos)
-				return
+				return LockNeeded.no_lock, pos
 			}
 			typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
@@ -696,14 +714,18 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 					field_info := struct_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return
+						return LockNeeded.no_lock, pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
 							expr.pos)
 					}
-					c.fail_if_immutable(expr.expr)
+					needed_lock, pos = c.fail_if_immutable(expr.expr)
+					if needed_lock != .no_lock {
+						// No automatic lock for struct access
+						needed_lock = .explicit_lock
+					}
 				}
 				.array, .string {
 					// This should only happen in `builtin`
@@ -721,18 +743,27 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) {
 		ast.CallExpr {
 			// TODO: should only work for builtin method
 			if expr.name == 'slice' {
-				return
+				needed_lock, pos = c.fail_if_immutable(expr.left)
+				if needed_lock != .no_lock {
+					// No automatic lock for array slicing (yet(?))
+					needed_lock = .explicit_lock
+				}
 			} else {
 				c.error('cannot use function call as mut', expr.pos)
 			}
 		}
 		ast.ArrayInit {
-			return
+			return LockNeeded.no_lock, pos
 		}
 		else {
 			c.error('unexpected expression `${typeof(expr)}`', expr.position())
 		}
 	}
+	if needed_lock == .explicit_lock {
+		c.error('base of `${typeof(expr)}` is `shared` - must be explicitely locked', pos)
+		needed_lock == .no_lock
+	}
+	return needed_lock, pos
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
@@ -2626,10 +2657,33 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
+	scope := c.file.scope.innermost(node.pos.pos)
 	for id in node.lockeds {
 		c.ident(mut id)
+		if v := scope.find_var(id.name) {
+			if v.typ.share() != .shared_t {
+				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
+			}
+		} else {
+			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
+		}
+		if id.name in c.locked_names {
+			c.error('`$id.name` is already locked', id.pos)
+		} else if id.name in c.rlocked_names {
+			c.error('`$id.name` is already read-locked', id.pos)
+		}
+		if node.is_rlock {
+			c.rlocked_names << id.name
+		} else {
+			c.locked_names << id.name
+		}
 	}
 	c.stmts(node.stmts)
+	if node.is_rlock {
+		c.rlocked_names = c.rlocked_names[.. c.rlocked_names.len - node.lockeds.len]
+	} else {
+		c.locked_names = c.locked_names[.. c.locked_names.len - node.lockeds.len]
+	}
 	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
 }
