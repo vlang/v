@@ -22,7 +22,7 @@ struct Filetime {
 }
 
 // win: WIN32_FIND_DATA
-// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-_win32_find_dataw
+// https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataw
 struct Win32finddata {
 mut:
     dw_file_attributes u32
