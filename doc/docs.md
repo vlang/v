@@ -69,7 +69,7 @@ you can do in V.
 </td><td valign=top>
 
 * [Advanced](#advanced)
-    * [Memory safety](#memory-safety)
+    * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
@@ -1709,7 +1709,7 @@ fn main(){
 
 # Advanced Topics
 
-## Memory safety
+## Memory-unsafe code
 
 Sometimes for efficiency you may want to write low-level code that may potentially
 corrupt memory. V supports that, but not by default.
