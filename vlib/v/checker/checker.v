@@ -1813,6 +1813,10 @@ fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 }
 
 fn (mut c Checker) stmt(node ast.Stmt) {
+	$if trace_checker? {
+		stmt_pos := node.position()
+		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
+	}
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
@@ -2044,10 +2048,6 @@ fn (mut c Checker) stmts(stmts []ast.Stmt) {
 	}
 	c.expected_type = table.void_type
 	for stmt in stmts {
-		$if debug_stmts? {
-			stmt_pos := stmt.position()
-			eprintln('file: ${c.file.path:-30} | stmt pos: $stmt_pos')
-		}
 		if c.scope_returns {
 			if unreachable.line_nr == -1 {
 				unreachable = stmt.position()

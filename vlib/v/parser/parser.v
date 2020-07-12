@@ -372,6 +372,10 @@ fn (mut p Parser) check_name() string {
 }
 
 pub fn (mut p Parser) top_stmt() ast.Stmt {
+	$if trace_parser? {
+		tok_pos := p.tok.position()
+		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | top_stmt')
+	}
 	match p.tok.kind {
 		.key_pub {
 			match p.peek_tok.kind {
@@ -496,6 +500,10 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 }
 
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
+	$if trace_parser? {
+		tok_pos := p.tok.position()
+		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | stmt($is_top_level)')
+	}
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
