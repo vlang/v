@@ -4,7 +4,6 @@
 module builtin
 
 import strconv
-
 /*
 NB: A V string should be/is immutable from the point of view of
     V user programs after it is first created. A V string is
@@ -41,14 +40,15 @@ NB: A V string should be/is immutable from the point of view of
     time, when used with pure V functions, but fail in strange ways,
     when used with modules using C functions (for example os and so on).
 */
+
+
 pub struct string {
 pub:
-	str    byteptr // points to a C style 0 terminated string of bytes.
-	len    int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	str byteptr // points to a C style 0 terminated string of bytes.
+	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int
 }
-
 // mut:
 // hash_cache int
 //
@@ -56,8 +56,9 @@ mut:
 // .is_lit == 0 => a fresh string, should be freed by autofree
 // .is_lit == 1 => a literal string from .rodata, should NOT be freed
 // .is_lit == -98761234 => already freed string, protects against double frees.
-// ^^^^^^^^^ calling free on these is a bug.
+//            ^^^^^^^^^ calling free on these is a bug.
 // Any other value means that the string has been corrupted.
+
 pub struct ustring {
 pub mut:
 	s     string
@@ -120,6 +121,7 @@ pub fn tos_lit(s charptr) string {
 	}
 }
 
+
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
 fn (a string) clone_static() string {
@@ -131,7 +133,7 @@ pub fn (a string) clone() string {
 		str: malloc(a.len + 1)
 		len: a.len
 	}
-	for i in 0 .. a.len {
+	for i in 0..a.len {
 		b.str[i] = a.str[i]
 	}
 	b.str[a.len] = `\0`
@@ -144,6 +146,7 @@ pub fn (s string) cstr() byteptr {
 	return clone.str
 }
 */
+
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
 pub fn cstring_to_vstring(cstr byteptr) string {
 	slen := C.strlen(cstr)
@@ -189,7 +192,7 @@ pub fn (s string) replace(rep, with string) string {
 	for i := 0; i < s.len; i++ {
 		if i == cur_idx {
 			// Reached the location of rep, replace it with "with"
-			for j in 0 .. with.len {
+			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
 			}
@@ -200,7 +203,8 @@ pub fn (s string) replace(rep, with string) string {
 			if idx_pos < idxs.len {
 				cur_idx = idxs[idx_pos]
 			}
-		} else {
+		}
+		else {
 			// Rep doesnt start here, just copy
 			b[b_i] = s[i]
 			b_i++
@@ -225,6 +229,7 @@ fn compare_rep_index(a, b &RepIndex) int {
 	return 0
 }
 
+
 fn (mut a []RepIndex) sort() {
 	a.sort_with_compare(compare_rep_index)
 }
@@ -235,6 +240,8 @@ fn (a RepIndex) < (b RepIndex) bool {
 	return a.idx < b.idx
 }
 */
+
+
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s
@@ -261,9 +268,9 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
-			idxs << RepIndex{
-				idx: idx
-				val_idx: rep_i
+			idxs << RepIndex {
+				idx:idx
+				val_idx:rep_i
 			}
 			idx++
 			new_len += with.len - rep.len
@@ -284,7 +291,7 @@ pub fn (s string) replace_each(vals []string) string {
 			// Reached the location of rep, replace it with "with"
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
-			for j in 0 .. with.len {
+			for j in 0..with.len {
 				b[b_i] = with[j]
 				b_i++
 			}
@@ -295,7 +302,8 @@ pub fn (s string) replace_each(vals []string) string {
 			if idx_pos < idxs.len {
 				cur_idx = idxs[idx_pos]
 			}
-		} else {
+		}
+		else {
 			// Rep doesnt start here, just copy
 			b[b_i] = s.str[i]
 			b_i++
@@ -366,10 +374,11 @@ fn (s string) ne(a string) bool {
 
 // s < a
 fn (s string) lt(a string) bool {
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		if i >= a.len || s[i] > a[i] {
 			return false
-		} else if s[i] < a[i] {
+		}
+		else if s[i] < a[i] {
 			return true
 		}
 	}
@@ -401,10 +410,10 @@ fn (s string) add(a string) string {
 		str: malloc(new_len + 1)
 		len: new_len
 	}
-	for j in 0 .. s.len {
+	for j in 0..s.len {
 		res.str[j] = s.str[j]
 	}
-	for j in 0 .. a.len {
+	for j in 0..a.len {
 		res.str[s.len + j] = a.str[j]
 	}
 	res.str[new_len] = `\0` // V strings are not null terminated, but just in case
@@ -454,11 +463,13 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			if val.starts_with(delim) {
 				val = val.right(delim.len)
 			}
+
 			was_last := nth > 0 && res.len == nth_1
 			if was_last {
 				res << s.right(start)
 				break
 			}
+
 			res << val
 			start = i + delim.len
 		}
@@ -480,16 +491,24 @@ pub fn (s string) split_into_lines() []string {
 		is_lf := s.str[i] == `\n`
 		is_crlf := i != s.len - 1 && s.str[i] == `\r` && s.str[i + 1] == `\n`
 		is_eol := is_lf || is_crlf
-		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
+		is_last := if is_crlf {
+			i == s.len - 2
+		} else {
+			i == s.len - 1
+		}
+
 		if is_eol || is_last {
 			if is_last && !is_eol {
 				i++
 			}
+
 			line := s.substr(start, i)
 			res << line
+
 			if is_crlf {
 				i++
 			}
+
 			start = i + 1
 		}
 	}
@@ -529,7 +548,7 @@ pub fn (s string) substr(start, end int) string {
 		str: malloc(len + 1)
 		len: len
 	}
-	for i in 0 .. len {
+	for i in 0..len {
 		res.str[i] = s.str[start + i]
 	}
 	res.str[len] = `\0`
@@ -538,7 +557,8 @@ pub fn (s string) substr(start, end int) string {
 		str: s.str + start
 		len: len
 	}
-	*/
+*/
+
 	return res
 }
 
@@ -583,7 +603,7 @@ fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := []int{len: p.len}
+	mut prefix := []int{len:p.len}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for p.str[j] != p.str[i] && j > 0 {
@@ -595,7 +615,7 @@ fn (s string) index_kmp(p string) int {
 		prefix[i] = j
 	}
 	j = 0
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		for p.str[j] != s.str[i] && j > 0 {
 			j = prefix[j - 1]
 		}
@@ -665,7 +685,7 @@ pub fn (s string) index_after(p string, start int) int {
 }
 
 pub fn (s string) index_byte(c byte) int {
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		if s.str[i] == c {
 			return i
 		}
@@ -717,7 +737,7 @@ pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0 .. p.len {
+	for i in 0..p.len {
 		if s.str[i] != p.str[i] {
 			return false
 		}
@@ -729,7 +749,7 @@ pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0 .. p.len {
+	for i in 0..p.len {
 		if p[i] != s[s.len - p.len + i] {
 			return false
 		}
@@ -740,14 +760,14 @@ pub fn (s string) ends_with(p string) bool {
 // TODO only works with ASCII
 pub fn (s string) to_lower() string {
 	mut b := malloc(s.len + 1)
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		b[i] = byte(C.tolower(s.str[i]))
 	}
 	return tos(b, s.len)
 }
 
 pub fn (s string) is_lower() bool {
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
@@ -757,14 +777,14 @@ pub fn (s string) is_lower() bool {
 
 pub fn (s string) to_upper() string {
 	mut b := malloc(s.len + 1)
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		b[i] = byte(C.toupper(s.str[i]))
 	}
 	return tos(b, s.len)
 }
 
 pub fn (s string) is_upper() bool {
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
 		}
@@ -785,7 +805,7 @@ pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
 	}
-	for i in 1 .. s.len {
+	for i in 1..s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
@@ -847,6 +867,7 @@ pub fn (a []string) to_c() voidptr {
 	return res
 }
 */
+
 pub fn (c byte) is_space() bool {
 	// 0x0085 is NEXT LINE (NEL)
 	// 0x00a0 is NO-BREAK SPACE
@@ -915,7 +936,7 @@ pub fn (s string) trim_prefix(str string) string {
 
 pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
-		return s[..s.len - str.len]
+		return s[..s.len-str.len]
 	}
 	return s
 }
@@ -963,7 +984,7 @@ pub fn (s string) str() string {
 }
 
 pub fn (s ustring) str() string {
-	return s.s
+   return s.s
 }
 
 pub fn (s string) ustring() ustring {
@@ -1234,7 +1255,8 @@ pub fn (s string) after_char(dot byte) string {
 	if pos == 0 {
 		return s
 	}
-	return s.right(pos + 1)
+	return s.right(pos+1)
+
 }
 
 // fn (s []string) substr(a, b int) string {
@@ -1256,13 +1278,13 @@ pub fn (a []string) join(del string) string {
 	mut idx := 0
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
-		for j in 0 .. val.len {
+		for j in 0..val.len {
 			res.str[idx] = val.str[j]
 			idx++
 		}
 		// Add del if it's not last
 		if i != a.len - 1 {
-			for k in 0 .. del.len {
+			for k in 0..del.len {
 				res.str[idx] = del.str[k]
 				idx++
 			}
@@ -1323,7 +1345,7 @@ pub fn (s string) bytes() []byte {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := []byte{len: s.len}
+	mut buf := []byte{ len:s.len }
 	C.memcpy(buf.data, s.str, s.len)
 	return buf
 }
@@ -1352,9 +1374,9 @@ pub fn (s string) fields() []string {
 	return s.replace('\t', ' ').split(' ')
 }
 
-pub fn (s string) map(func fn(b byte) byte) string {
+pub fn (s string) map(func fn(byte) byte) string {
 	mut res := malloc(s.len + 1)
-	for i in 0 .. s.len {
+	for i in 0..s.len {
 		res[i] = func(s[i])
 	}
 	return tos(res, s.len)
@@ -1381,21 +1403,20 @@ pub fn (s string) filter(func fn(b byte) bool) string {
 //
 // Example:
 // st := 'Hello there,
-// |this is a string,
-// |    Everything before the first | is removed'.strip_margin()
+//       |this is a string,
+//       |    Everything before the first | is removed'.strip_margin()
 // Returns:
 // Hello there,
 // this is a string,
-// Everything before the first | is removed
+//     Everything before the first | is removed
 pub fn (s string) strip_margin() string {
-	return s.strip_margin_custom(`|`)
+   return s.strip_margin_custom(`|`)
 }
-
 pub fn (s string) strip_margin_custom(del byte) string {
 	mut sep := del
 	if sep.is_space() {
-		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
-		eprintln('    Defaulting to `|`')
+		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
+		eprintln("    Defaulting to `|`")
 		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
@@ -1407,11 +1428,12 @@ pub fn (s string) strip_margin_custom(del byte) string {
 			ret[count] = s[i]
 			count++
 			// CRLF
-			if s[i] == `\r` && i < s.len - 1 && s[i + 1] == `\n` {
-				ret[count] = s[i + 1]
+			if s[i] == `\r` && i < s.len - 1 && s[i+1] == `\n` {
+				ret[count] = s[i+1]
 				count++
 				i++
 			}
+
 			for s[i] != sep {
 				i++
 				if i >= s.len {
