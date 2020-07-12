@@ -17,14 +17,6 @@ const (
 	enum_max      = 0x7FFFFFFF
 )
 
-enum LockNeeded {
-	no_lock
-	auto_rlock
-	auto_lock
-	explicit_rlock
-	explicit_lock
-}
-
 pub struct Checker {
 pub mut:
 	table            &table.Table
