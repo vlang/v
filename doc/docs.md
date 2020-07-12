@@ -1716,9 +1716,7 @@ corrupt memory. V supports that, but not by default.
 
 V requires that any potentially memory-unsafe operations are marked intentionally.
 Marking them also indicates to anyone reading the code that there could be memory 
-corruption if there was a mistake. If you suspect your program does have memory 
-corruption, you have a head start on finding the cause: look at the `unsafe` blocks 
-(and how they interact with surrounding code).
+corruption if there was a mistake. 
 
 Examples of memory-unsafe operations are:
 
@@ -1748,6 +1746,10 @@ Best practice is to avoid putting any memory-safe expressions inside an `unsafe`
 so that the reason for using `unsafe` is as clear as possible. Generally any code 
 you think is memory-safe should not be inside an `unsafe` block, so the compiler 
 can verify it.
+
+If you suspect your program does have memory corruption, you have a head start on 
+finding the cause: look at the `unsafe` blocks (and how they interact with 
+surrounding code).
 
 * Note: This is work in progress.
 
