@@ -1374,7 +1374,7 @@ fn (r Repo) find_user_by_id(id int) ?User {
 fn main() {
     repo := new_repo()
     user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
-        return  // `or` block must end with `return`, `break`, or `continue`
+        return
     }
     println(user.id) // "10"
     println(user.name) // "Charles"
@@ -1402,7 +1402,9 @@ user := repo.find_user_by_id(7) or {
 }
 ```
 
-You can also propagate errors:
+There are three ways of handling an optional.
+
+The first method is to propagate the error:
 
 ```v
 resp := http.get(url)?
@@ -1410,7 +1412,8 @@ println(resp.text)
 ```
 
 `http.get` returns `?http.Response`. Because it was called with `?`, the error will be propagated to the calling function
-(which must return an optional). If it is used in the `main()` function it will cause a panic.
+(which must return an optional as well). If it is used in the `main()` function it will `panic` instead, since the error
+cannot be propagated any further.
 
 The code above is essentially a condensed version of
 
@@ -1419,6 +1422,31 @@ resp := http.get(url) or {
     return error(err)
 }
 println(resp.text)
+```
+
+The second is to break from execution early:
+
+```v
+user := repo.find_user_by_id(7) or {
+    return
+}
+```
+
+Here, you can either call `panic()` or `exit()`, which will stop the execution of the entire program,
+or use a control flow statement (`return`, `break`, `continue`, etc) to break from the current block.
+Note that `break` and `continue` can only be used inside a `for` loop.
+
+The third method is to provide a default value at the end of the `or` block. In case of an error,
+that value would be assigned instead, so it must have the same type as the `Option` being handled.
+
+```v
+fn do_something(s string) ?string {
+    if s == 'foo' { return 'foo' }
+    return error('invalid string') // Could be `return none` as well
+}
+
+a := do_something('foo') or { 'default' } // a will be 'foo'
+b := do_something('bar') or { 'default' } // b will be 'default'
 ```
 
 V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
