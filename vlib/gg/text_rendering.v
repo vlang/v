@@ -51,7 +51,8 @@ pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
 	}
 	ctx.ft.fons.set_font(ctx.ft.font_normal)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	ctx.ft.fons.set_size(scale * f32(cfg.size))
+	size := if cfg.size == 0 { gg.default_font_size } else { cfg.size }
+	ctx.ft.fons.set_size(scale * f32(size))
 	if cfg.align == gx.align_right {
 		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
 	}

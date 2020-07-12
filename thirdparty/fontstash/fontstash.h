@@ -172,6 +172,7 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
     #endif
 #endif
 
+#undef FONS_USE_FREETYPE
 
 #ifdef FONS_USE_FREETYPE
 

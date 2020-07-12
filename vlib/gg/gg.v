@@ -215,6 +215,9 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
+pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
+}
+
 pub fn create_image(file string) u32 {
 	// println('gg create image "$file"')
 	if !os.exists(file) {
