@@ -519,7 +519,7 @@ fn (s string) substr2(start, _end int, end_max bool) string {
 }
 
 pub fn (s string) substr(start, end int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr($start, $end) out of bounds (len=$s.len)')
 		}
@@ -903,11 +903,7 @@ pub fn (s string) trim_right(cutset string) string {
 	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return if pos < 0 {
-		''
-	} else {
-		s.left(pos + 1)
-	}
+	return if pos < 0 { '' } else { s.left(pos + 1) }
 }
 
 pub fn (s string) trim_prefix(str string) string {
@@ -973,6 +969,9 @@ pub fn (s ustring) str() string {
 pub fn (s string) ustring() ustring {
 	mut res := ustring{
 		s: s
+		// runes will have at least s.len elements, save reallocations
+		// TODO use VLA for small strings?
+
 		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
@@ -988,6 +987,7 @@ pub fn (s string) ustring() ustring {
 // It's called from functions like draw_text() where we know that the string is going to be freed
 // right away. Uses global buffer for storing runes []int array.
 __global g_ustring_runes []int
+
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
 		g_ustring_runes = __new_array(0, 128, int(sizeof(int)))
@@ -1107,7 +1107,7 @@ pub fn (u ustring) count(substr ustring) int {
 }
 
 pub fn (u ustring) substr(_start, _end int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking? {
 		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
 			panic('substr($_start, $_end) out of bounds (len=$u.len)')
 		}
@@ -1131,7 +1131,7 @@ pub fn (u ustring) right(pos int) string {
 }
 
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking? {
 		if idx < 0 || idx >= s.len {
 			panic('string index out of range: $idx / $s.len')
 		}
@@ -1140,7 +1140,7 @@ fn (s string) at(idx int) byte {
 }
 
 pub fn (u ustring) at(idx int) string {
-	$if !no_bounds_checking ? {
+	$if !no_bounds_checking? {
 		if idx < 0 || idx >= u.len {
 			panic('string index out of range: $idx / $u.runes.len')
 		}
