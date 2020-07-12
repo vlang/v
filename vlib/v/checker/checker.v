@@ -581,7 +581,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.left_shift {
 			if left.kind == .array {
 				// `array << elm`
-				c.fail_if_immutable(infix_expr.left)
+				infix_expr.auto_locked, _ = c.fail_if_immutable(infix_expr.left)
 				left_value_type := c.table.value_type(left_type)
 				left_value_sym := c.table.get_type_symbol(left_value_type)
 				if left_value_sym.kind == .interface_ {
@@ -666,13 +666,15 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	}
 }
 
-fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position) {
-	mut needed_lock := LockNeeded.no_lock
-	mut pos := token.Position{}
+// returns name and position of variable that needs write lock
+fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
+	mut to_lock := '' // name of variable that needs lock
+	mut pos := token.Position{} // and its position
+	mut explicit_lock_needed := false
 	match expr {
 		ast.CastExpr {
 			// TODO
-			return LockNeeded.no_lock, pos
+			return '', pos
 		}
 		ast.Ident {
 			scope := c.file.scope.innermost(expr.pos.pos)
@@ -684,7 +686,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position)
 				v.is_changed = true
 				if v.typ.share() == .shared_t {
 					if expr.name !in c.locked_names {
-						needed_lock = .auto_lock
+						to_lock = expr.name
 						pos = expr.pos
 					}
 				}
@@ -693,19 +695,19 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position)
 			}
 		}
 		ast.IndexExpr {
-			needed_lock, pos = c.fail_if_immutable(expr.left)
+			to_lock, pos = c.fail_if_immutable(expr.left)
 		}
 		ast.ParExpr {
-			needed_lock, pos = c.fail_if_immutable(expr.expr)
+			to_lock, pos = c.fail_if_immutable(expr.expr)
 		}
 		ast.PrefixExpr {
-			needed_lock, pos = c.fail_if_immutable(expr.right)
+			to_lock, pos = c.fail_if_immutable(expr.right)
 		}
 		ast.SelectorExpr {
 			// retrieve table.Field
 			if expr.expr_type == 0 {
 				c.error('0 type in SelectorExpr', expr.pos)
-				return LockNeeded.no_lock, pos
+				return '', pos
 			}
 			typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
 			match typ_sym.kind {
@@ -714,17 +716,17 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position)
 					field_info := struct_info.find_field(expr.field_name) or {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
-						return LockNeeded.no_lock, pos
+						return '', pos
 					}
 					if !field_info.is_mut {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
 							expr.pos)
 					}
-					needed_lock, pos = c.fail_if_immutable(expr.expr)
-					if needed_lock != .no_lock {
+					to_lock, pos = c.fail_if_immutable(expr.expr)
+					if to_lock != '' {
 						// No automatic lock for struct access
-						needed_lock = .explicit_lock
+						explicit_lock_needed = true
 					}
 				}
 				.array, .string {
@@ -743,27 +745,27 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (LockNeeded, token.Position)
 		ast.CallExpr {
 			// TODO: should only work for builtin method
 			if expr.name == 'slice' {
-				needed_lock, pos = c.fail_if_immutable(expr.left)
-				if needed_lock != .no_lock {
+				to_lock, pos = c.fail_if_immutable(expr.left)
+				if to_lock != '' {
 					// No automatic lock for array slicing (yet(?))
-					needed_lock = .explicit_lock
+					explicit_lock_needed = true
 				}
 			} else {
 				c.error('cannot use function call as mut', expr.pos)
 			}
 		}
 		ast.ArrayInit {
-			return LockNeeded.no_lock, pos
+			return '', pos
 		}
 		else {
 			c.error('unexpected expression `${typeof(expr)}`', expr.position())
 		}
 	}
-	if needed_lock == .explicit_lock {
-		c.error('base of `${typeof(expr)}` is `shared` - must be explicitely locked', pos)
-		needed_lock == .no_lock
+	if explicit_lock_needed {
+		c.error('`$to_lock` is `shared` and needs explicit lock for `${typeof(expr)}`', pos)
+		to_lock = ''
 	}
-	return needed_lock, pos
+	return to_lock, pos
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
