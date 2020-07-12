@@ -115,6 +115,7 @@ pub mut:
 	is_parallel         bool
 	error_limit         int
 	is_vweb             bool // skip _ var warning in templates
+	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -126,6 +127,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		arg := args[i]
 		current_args := args[i..]
 		match arg {
+			'-check-syntax' {
+				res.only_check_syntax = true
+			}
 			'-v' {
 				res.is_verbose = true
 			}

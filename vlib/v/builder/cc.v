@@ -76,6 +76,12 @@ fn (mut v Builder) cc() {
 	if v.pref.is_verbose {
 		println('builder.cc() pref.out_name="$v.pref.out_name"')
 	}
+	if v.pref.only_check_syntax {
+		if v.pref.is_verbose {
+			println('builder.cc returning early, since pref.only_check_syntax is true')
+		}
+		return
+	}
 	v.build_thirdparty_obj_files()
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
