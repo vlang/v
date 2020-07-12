@@ -20,9 +20,8 @@ struct Commands {
 	quit       string = 'QUIT\r\n'
 }
 
-
 // Sends an email trough SMTP socket
-pub fn send_mail(mailserver string, port int, username, password, subject, from, to, body, type_body string, debug bool)? {
+pub fn send_mail(mailserver string, port int, username, password, subject, from, to, body, type_body string, debug bool) ?bool {
 	client := connect(mailserver, port, debug)?
 	send_ehlo(client, debug)
 	auth(client, username, password, debug)
@@ -30,9 +29,15 @@ pub fn send_mail(mailserver string, port int, username, password, subject, from,
 	send_mailto(client, to, debug)
 	send_data(client, debug)
 	if type_body == 'html' {
-		send_html_body(client, subject, from, to, body, debug)
+		is_sent := send_html_body(client, subject, from, to, body, debug) or {
+			return false
+		}
+		return is_sent
 	} else {
-		send_text_body(client, subject, from, to, body, debug)
+		is_sent := send_text_body(client, subject, from, to, body, debug) or {
+			return false
+		}
+		return is_sent
 	}
 	send_quit(client, debug)
 }
@@ -137,7 +142,7 @@ fn send(socket net.Socket, string_to_send string) string {
 	return recieved(bytes, blen)
 }
 
-fn send_text_body(socket net.Socket, subject, from, to, body string, debug bool) ? {
+fn send_text_body(socket net.Socket, subject, from, to, body string, debug bool) ?bool {
 	socket.send_string('From: $from\r\n')
 	socket.send_string('To: $to\r\n')
 	socket.send_string('Subject: $subject\r\n')
@@ -146,20 +151,19 @@ fn send_text_body(socket net.Socket, subject, from, to, body string, debug bool)
 	socket.send_string('\r\n.\r\n')
 	bytes, blen := socket.recv(1024)
 	recv := recieved(bytes, blen)
-	println(recv)
 	if recv.len >= 3 {
 		status := recv[..3]
 		is_debug(debug, recv)
 		if status.int() != 250 {
 			return error('Replay (250) from server has not been recieved for EHLO.\nReplay recieved: $status')
 		}
-		println('V: Mail sent!')
+		return true
 	} else {
 		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
 	}
 }
 
-fn send_html_body(socket net.Socket, subject, from, to, body string, debug bool) ? {
+fn send_html_body(socket net.Socket, subject, from, to, body string, debug bool) ?bool {
 	socket.send_string('From: $from\r\n')
 	socket.send_string('To: $to\r\n')
 	socket.send_string('Subject: $subject\r\n')
@@ -175,7 +179,7 @@ fn send_html_body(socket net.Socket, subject, from, to, body string, debug bool)
 		if status.int() != 250 {
 			return error('Replay (250) from server has not been recieved for EHLO.\nReplay recieved: $status')
 		}
-		println('V: Mail sent!')
+		return true
 	} else {
 		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
 	}
