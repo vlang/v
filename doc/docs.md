@@ -1714,11 +1714,11 @@ fn main(){
 Sometimes for efficiency you may want to write low-level code that may potentially
 corrupt memory. V supports that, but not by default.
 
-V requires that any potentially memory-unsafe operations are marked, as they could 
-otherwise be unintentional. Marking them also indicates to anyone reading the code
-that there could be memory corruption if there was a mistake. If you suspect your
-program does have memory corruption, you have a head start on finding the cause: look
-at the `unsafe` blocks (and how they interact with surrounding code).
+V requires that any potentially memory-unsafe operations are marked intentionally.
+Marking them also indicates to anyone reading the code that there could be memory 
+corruption if there was a mistake. If you suspect your program does have memory 
+corruption, you have a head start on finding the cause: look at the `unsafe` blocks 
+(and how they interact with surrounding code).
 
 Examples of memory-unsafe operations are:
 
@@ -1745,8 +1745,9 @@ assert *p == `i`
 ```
 
 Best practice is to avoid putting any memory-safe expressions inside an `unsafe` block,
-so that the reason for using `unsafe` is as clear as possible. Any code you think is
-memory-safe should not be inside an `unsafe` block, so the compiler can verify it.
+so that the reason for using `unsafe` is as clear as possible. Generally any code 
+you think is memory-safe should not be inside an `unsafe` block, so the compiler 
+can verify it.
 
 * Note: This is work in progress.
 
