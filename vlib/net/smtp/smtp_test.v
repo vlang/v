@@ -7,13 +7,16 @@ import smtp
 * Created by: nedimf (07/2020)
 */
 fn test_smtp() {
+	$if !network ? {
+		return
+	}
 	server := 'smtp.mailtrap.io'
 	port := 2525
 	username := ''
 	password := ''
 	subject := 'Hello from V'
-	from := 'devlang.io'
-	to := 'devlang@vlang.io,devlang@pop.com'
+	from := 'developers@vlang.io'
+	to := 'developers@vlang.io'
 	msg := '<h1>Hi,from V module, this message was sent by SMTP!</h1>'
 	body_type := 'html'
 	debug := true // use while debugging
@@ -44,6 +47,7 @@ fn ehlo_test(socket net.Socket) {
 		false
 	}
 	if is_ehlo_success == true {
+		assert true
 		println('V: Ehlo was success')
 	} else {
 		println('V: Ehlo failed')
@@ -55,6 +59,7 @@ fn quit_test(socket net.Socket) {
 		false
 	}
 	if is_quit_success == true {
+		assert true
 		println('V: Quit was success')
 	} else {
 		println('V: Quit failed')
@@ -63,6 +68,7 @@ fn quit_test(socket net.Socket) {
 
 fn is_sent(sent bool) {
 	if sent == true {
+		assert true
 		println('V: Email sent successfully')
 	} else {
 		println('V: Email failed to send.')
