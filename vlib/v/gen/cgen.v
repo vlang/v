@@ -3907,7 +3907,7 @@ fn (g Gen) type_default(typ table.Type) string {
 		'rune' { return '0' }
 		else {}
 	}
-	return '{0}'
+	return '0'
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'
 	// - Empty ee= (Empty) { . =  {0}  } ;
