@@ -241,7 +241,7 @@ extract_entry extracts the current zip entry into output file.
 @return the return code - 0 on success, negative number (< 0) on error.
  */
 pub fn (mut zentry zip_ptr) extract_entry(path string) /*?*/bool {
-    if C.access(path.str, 0) == -1 {
+    if C.access(charptr(path.str), 0) == -1 {
         return false
         //return error('Cannot open file for extracting, file not exists')
     }
