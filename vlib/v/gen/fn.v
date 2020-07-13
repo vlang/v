@@ -644,7 +644,10 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
-			g.write('(voidptr)&/*qq*/')
+			arg_typ_sym := g.table.get_type_symbol(arg.typ)            
+			if arg_typ_sym.kind != .function {
+				g.write('(voidptr)&/*qq*/')
+			}
 		}
 	}
 	g.expr_with_cast(arg.expr, arg.typ, expected_type)
