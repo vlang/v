@@ -20,6 +20,7 @@ fn testsuite_end() {
 	os.chdir( os.wd_at_startup )
 	os.rmdir_all( tfolder )
 	assert !os.is_dir( tfolder )
+	//eprintln('testsuite_end  , tfolder = $tfolder removed.')
 }
 
 fn test_open_file() {
@@ -351,4 +352,42 @@ fn test_uname() {
 	assert u.release.len > 0
 	assert u.version.len > 0
 	assert u.machine.len > 0
+}
+
+// tests for write_file_array and read_file_array<T>:
+const (
+	maxn = 3
+)
+
+struct IntPoint {
+	x int
+	y int
+}
+
+fn test_write_file_array_bytes() {
+	fpath := './abytes.bin'
+	mut arr := []byte{len: maxn}
+	for i in 0 .. maxn {
+		arr[i] = 65 + byte(i)
+	}
+	os.write_file_array(fpath, arr)
+	rarr := os.read_bytes(fpath) or {
+		panic(err)
+	}
+	assert arr == rarr
+	//eprintln(arr.str())
+	//eprintln(rarr.str())
+}
+
+fn test_write_file_array_structs() {
+	fpath := './astructs.bin'
+	mut arr := []IntPoint{len: maxn}
+	for i in 0 .. maxn {
+		arr[i] = IntPoint{65 + i, 65 + i + 10}
+	}
+	os.write_file_array(fpath, arr)
+	rarr := os.read_file_array<IntPoint>(fpath)
+	assert rarr == arr
+	assert rarr.len == maxn
+	//eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
 }

@@ -60,18 +60,19 @@ pub fn (mut f File) writeln(s string) {
 	C.fputs('\n', f.cfile)
 }
 
-pub fn (mut f File) write_bytes(data voidptr, size int) {
-	C.fwrite(data, 1, size, f.cfile)
+pub fn (mut f File) write_bytes(data voidptr, size int) int {
+	return C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) {
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
 	//$if linux {
 	//}
 	//$else {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
-	C.fwrite(data, 1, size, f.cfile)
+	res := C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
 	//}
+	return res
 }
 
 /***************************** Read ops  ****************************/
@@ -885,6 +886,35 @@ pub fn write_file(path, text string) ? {
 	}
 	f.write(text)
 	f.close()
+}
+
+// write_file_array writes the data in `buffer` to a file in `path`.
+pub fn write_file_array(path string, buffer array) ? {
+	mut f := os.create(path) or {
+		return error(err)
+	}
+	f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0)
+	f.close()
+}
+
+// read_file_array reads an array of `T` values from file `path`
+pub fn read_file_array<T>(path string) []T {
+	a := T{}
+	tsize := int(sizeof(a))    
+	// prepare for reading, get current file size
+	mut fp := vfopen(path, 'rb')
+	if isnil(fp) {
+		return array{}
+	}
+	C.fseek(fp, 0, C.SEEK_END)
+	fsize := C.ftell(fp)
+	C.rewind(fp)
+	// read the actual data from the file
+	len := fsize / tsize
+	buf := malloc(fsize)
+	C.fread(buf, fsize, 1, fp)
+	C.fclose(fp)    
+	return array{element_size: tsize data: buf len: len cap: len }
 }
 
 pub fn on_segfault(f voidptr) {
