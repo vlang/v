@@ -3,7 +3,7 @@ module builtin
 // <string.h>
 fn C.memcpy(byteptr, byteptr, int) voidptr
 
-
+fn C.memcmp(byteptr, byteptr, int) int
 fn C.memmove(byteptr, byteptr, int) voidptr
 fn C.calloc(int)  byteptr
 fn C.malloc(int) byteptr
