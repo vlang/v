@@ -18,7 +18,7 @@ fn C.qsort(voidptr, int, int, qsort_callback_func)
 fn C.sprintf(a ...voidptr) int
 
 
-fn C.strlen(s byteptr) int
+fn C.strlen(s charptr) int
 
 fn C.sscanf(byteptr, byteptr,...byteptr) int
 
