@@ -3903,7 +3903,7 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	*/
 	match sym.name {
-		'string' { return '(string){.str=(unsigned char*)""}' }
+		'string' { return '(string){.str=(byteptr)""}' }
 		'rune' { return '0' }
 		else {}
 	}
