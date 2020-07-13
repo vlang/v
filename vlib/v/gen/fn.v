@@ -269,7 +269,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		styp := g.typ(node.return_type.set_flag(.optional))
 		g.write('$styp $tmp_opt = ')
 	}
-	if node.is_method {
+	if node.is_method && !node.is_field {
 		if node.name == 'writeln' && g.pref.show_cc &&
 			node.args.len > 0 && node.args[0].expr is ast.StringInterLiteral &&
 			g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {

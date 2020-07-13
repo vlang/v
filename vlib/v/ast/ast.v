@@ -258,6 +258,7 @@ pub:
 pub mut:
 	name               string
 	is_method          bool
+	is_field           bool // temp hack, remove ASAP when call repimpl CallExpr / Selector (joe)
 	args               []CallArg
 	expected_arg_types []table.Type
 	language           table.Language
