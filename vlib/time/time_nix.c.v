@@ -26,7 +26,7 @@ fn make_unix_time(t C.tm) int {
 
 fn to_local_time(t Time) Time {
 	loc_tm := C.tm{}
-	C.localtime_r(&t.unix, &loc_tm)
+	C.localtime_r(time_t(&t.unix), &loc_tm)
 
 	return convert_ctime(loc_tm, t.microsecond)
 }

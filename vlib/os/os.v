@@ -170,11 +170,11 @@ pub fn cp(old, new string) ? {
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
-		fp_from := C.open(old.str, C.O_RDONLY)
+		fp_from := C.open(charptr(old.str), C.O_RDONLY)
 		if fp_from < 0 { // Check if file opened
 			return error_with_code('cp: failed to open $old', int(fp_from))
 		}
-		fp_to := C.open(new.str, C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
+		fp_to := C.open(charptr(new.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
 			return error_with_code('cp: failed to write to $new', int(fp_to))
@@ -193,8 +193,8 @@ pub fn cp(old, new string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		C.stat(old.str, &from_attr)
-		if C.chmod(new.str, from_attr.st_mode) < 0 {
+		C.stat(charptr(old.str), &from_attr)
+		if C.chmod(charptr(new.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
 	}
@@ -387,7 +387,7 @@ fn vpopen(path string) voidptr {
 		return C._wpopen(wpath, mode.to_wide())
 	} $else {
 		cpath := path.str
-		return C.popen(cpath, 'r')
+		return C.popen(charptr(cpath), 'r')
 	}
 }
 
@@ -446,7 +446,7 @@ pub fn system(cmd string) int {
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }
 		ret = C._wsystem(wcmd.to_wide())
 	} $else {
-		ret = C.system(cmd.str)
+		ret = C.system(charptr(cmd.str))
 	}
 	if ret == -1 {
 		print_c_errno()
@@ -554,7 +554,7 @@ pub fn exists(path string) bool {
 		p := path.replace('/', '\\')
 		return C._waccess(p.to_wide(), f_ok) != -1
 	} $else {
-		return C.access(path.str, f_ok) != -1
+		return C.access(charptr(path.str), f_ok) != -1
 	}
 }
 
@@ -572,12 +572,12 @@ pub fn is_executable(path string) bool {
   }
   $if solaris {
     statbuf := C.stat{}
-    if C.stat(path.str, &statbuf) != 0 {
+    if C.stat(charptr(path.str), &statbuf) != 0 {
       return false
     }
     return (int(statbuf.st_mode) & ( s_ixusr | s_ixgrp | s_ixoth )) != 0
   }
-  return C.access(path.str, x_ok) != -1
+  return C.access(charptr(path.str), x_ok) != -1
 }
 
 // `is_writable_folder` - `folder` exists and is writable to the process
@@ -603,7 +603,7 @@ pub fn is_writable(path string) bool {
     p := path.replace('/', '\\')
     return C._waccess(p.to_wide(), w_ok) != -1
   } $else {
-    return C.access(path.str, w_ok) != -1
+    return C.access(charptr(path.str), w_ok) != -1
   }
 }
 
@@ -613,7 +613,7 @@ pub fn is_readable(path string) bool {
     p := path.replace('/', '\\')
     return C._waccess(p.to_wide(), r_ok) != -1
   } $else {
-    return C.access(path.str, r_ok) != -1
+    return C.access(charptr(path.str), r_ok) != -1
   }
 }
 
@@ -632,7 +632,7 @@ pub fn rm(path string) ? {
 			return error('Failed to remove "$path"')
 		}
 	} $else {
-		rc := C.remove(path.str)
+		rc := C.remove(charptr(path.str))
 		if rc == -1 {
 			return error(posix_get_error_msg(C.errno))
 		}
@@ -648,7 +648,7 @@ pub fn rmdir(path string) ? {
 			return error('Failed to remove "$path"')
 		}
 	} $else {
-		rc := C.rmdir(path.str)
+		rc := C.rmdir(charptr(path.str))
 		if rc == -1 {
 			return error(posix_get_error_msg(C.errno))
 		}
@@ -939,7 +939,7 @@ pub fn on_segfault(f voidptr) {
 pub fn executable() string {
 	$if linux {
 		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/self/exe', result, max_path_len)
+		count := C.readlink('/proc/self/exe', charptr(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
@@ -975,7 +975,7 @@ pub fn executable() string {
 	$if haiku {}
 	$if netbsd {
 		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/exe', result, max_path_len)
+		count := C.readlink('/proc/curproc/exe', charptr(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
@@ -984,7 +984,7 @@ pub fn executable() string {
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)
-		count := C.readlink('/proc/curproc/file', result, max_path_len)
+		count := C.readlink('/proc/curproc/file', charptr(result), max_path_len)
 		if count < 0 {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
@@ -1068,7 +1068,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if C.stat(path.str, &statbuf) != 0 {
+		if C.stat(charptr(path.str), &statbuf) != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -1083,7 +1083,7 @@ pub fn is_link(path string) bool {
 		return false // TODO
 	} $else {
 		statbuf := C.stat{}
-		if C.lstat(path.str, &statbuf) != 0 {
+		if C.lstat(charptr(path.str), &statbuf) != 0 {
 			return false
 		}
 		return int(statbuf.st_mode) & s_ifmt == s_iflnk
@@ -1095,7 +1095,7 @@ pub fn chdir(path string) {
 	$if windows {
 		C._wchdir(path.to_wide())
 	} $else {
-		C.chdir(path.str)
+		C.chdir(charptr(path.str))
 	}
 }
 
@@ -1110,7 +1110,7 @@ pub fn getwd() string {
 		return string_from_wide(buf)
 	} $else {
 		buf := vcalloc(512)
-		if C.getcwd(buf, 512) == 0 {
+		if C.getcwd(charptr(buf), 512) == 0 {
 			return ''
 		}
 		return string(buf)
@@ -1131,7 +1131,7 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	} $else {
-		ret = charptr(C.realpath(fpath.str, fullpath))
+		ret = charptr(C.realpath(charptr(fpath.str), charptr(fullpath)))
 		if ret == 0 {
 			return fpath
 		}
@@ -1233,7 +1233,7 @@ pub fn wait() int {
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
 	// # struct stat attr;
-	C.stat(path.str, &attr)
+	C.stat(charptr(path.str), &attr)
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;
@@ -1318,7 +1318,7 @@ pub fn temp_dir() string {
 }
 
 pub fn chmod(path string, mode int) {
-	C.chmod(path.str, mode)
+	C.chmod(charptr(path.str), mode)
 }
 
 pub const (

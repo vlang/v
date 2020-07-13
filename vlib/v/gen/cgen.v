@@ -3903,11 +3903,17 @@ fn (g Gen) type_default(typ table.Type) string {
 	}
 	*/
 	match sym.name {
-		'string' { return '(string){.str=""}' }
+		'string' { return '(string){.str=(byteptr)""}' }
 		'rune' { return '0' }
 		else {}
 	}
-	return '{0}'
+	
+	return match sym.kind  {
+		.sum_type { '{0}' }
+		.array_fixed { '{0}' }
+		else { '0' }
+	}
+
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'
 	// - Empty ee= (Empty) { . =  {0}  } ;

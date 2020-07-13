@@ -67,7 +67,7 @@ pub fn parse_iso8601(s string) ?Time {
 	mut offset_hour := 0
 	mut offset_min  := 0
 
-	count := C.sscanf(s.str, "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
+	count := C.sscanf(charptr(s.str), "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
 													  &time_char, &hour, &minute,
 													  &second, &mic_second, &plus_min,
 													  &offset_hour, &offset_min)

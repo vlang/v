@@ -3,7 +3,7 @@ module builtin
 // <string.h>
 fn C.memcpy(byteptr, byteptr, int) voidptr
 
-
+fn C.memcmp(byteptr, byteptr, int) int
 fn C.memmove(byteptr, byteptr, int) voidptr
 fn C.calloc(int)  byteptr
 fn C.malloc(int) byteptr
@@ -18,13 +18,13 @@ fn C.qsort(voidptr, int, int, qsort_callback_func)
 fn C.sprintf(a ...voidptr) int
 
 
-fn C.strlen(s byteptr) int
+fn C.strlen(s charptr) int
 
 fn C.sscanf(byteptr, byteptr,...byteptr) int
 
 fn C.isdigit(s byteptr) bool
 // stdio.h
-fn C.popen(c byteptr, t byteptr) voidptr
+fn C.popen(c charptr, t charptr) voidptr
 
 // <execinfo.h>
 fn C.backtrace(a &voidptr, size int) int
@@ -35,7 +35,7 @@ fn C.backtrace_symbols_fd(a &voidptr, size int, fd int)
 pub fn proc_pidpath(int, voidptr, int) int
 
 
-fn C.realpath(byteptr, byteptr) &char
+fn C.realpath(charptr, charptr) &char
 
 
 fn C.chmod(byteptr, int) int
@@ -71,10 +71,10 @@ fn C.pclose() int
 fn C.system() int
 
 
-fn C.setenv() int
+fn C.setenv(charptr) int
 
 
-fn C.unsetenv() int
+fn C.unsetenv(charptr) int
 
 
 fn C.access() int
@@ -95,7 +95,7 @@ fn C.fread() int
 fn C.rewind() int
 
 
-fn C.stat() int
+fn C.stat(charptr) int
 
 
 fn C.lstat() int

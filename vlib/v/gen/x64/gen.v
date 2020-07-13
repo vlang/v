@@ -620,7 +620,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if word.len != 2 {
 					verror('opcodes format: xx xx xx xx')
 				}
-				b := C.strtol(word.str, 0, 16)
+				b := C.strtol(charptr(word.str), 0, 16)
 				// b := word.byte()
 				// println('"$word" $b')
 				g.write8(b)
