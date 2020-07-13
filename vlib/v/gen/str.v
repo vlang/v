@@ -146,22 +146,15 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	// sb_name := g.cur_call_expr.left
 	// g.go_before_stmt(0)
 	g.writeln('// sb inter opt')
-	write := 'writeln'
-	/*
-	if node.vals.len != node.exprs.len {
-		println('NOPE')
-		println(node.vals)
-		println('==========')
-		println(node.exprs)
-	}
-	*/
+	is_nl := call_expr.name == 'writeln'
+	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
 		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
 		// if val == '' {
 		// break
 		// continue
 		// }
-		g.write('strings__Builder_${write}(&')
+		g.write('strings__Builder_write(&')
 		g.expr(call_expr.left)
 		g.write(', tos_lit("')
 		g.write(escaped_val)
@@ -173,11 +166,23 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		// if node.expr_types.len <= i || node.exprs.len <= i {
 		// continue
 		// }
-		g.write('strings__Builder_${write}(&')
+		if is_nl && i == node.exprs.len - 1 {
+			g.write('strings__Builder_writeln(&')
+		} else {
+			g.write('strings__Builder_write(&')
+		}
 		g.expr(call_expr.left)
 		g.write(', ')
-		g.write(g.typ(node.expr_types[i]))
-		g.write('_str(')
+		typ := node.expr_types[i]
+		sym := g.table.get_type_symbol(typ)
+		// if typ.is_number() {
+		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_number() {
+			// Handle number aliases TODO this must be more generic, handled by g.typ()?
+			g.write('int_str(')
+		} else {
+			g.write(g.typ(typ))
+			g.write('_str(')
+		}
 		g.expr(node.exprs[i])
 		g.writeln('));')
 	}

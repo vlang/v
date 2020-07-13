@@ -42,10 +42,10 @@ fn main() {
 		return
 	}
 	*/
-	last_commits := exec('git log --pretty=format:"%h" -n 20').split('\n')
+	last_commits := exec('git log --pretty=format:"%h" -n 50').split('\n')
 	// Fetch all unprocessed commits (commits after the last processed commit)
 	mut commits := []string{}
-	println('last_commit="$commit_hash"')
+	println('!last_commit="$commit_hash"')
 	for i, c in last_commits {
 		if c == commit_hash {
 			commits = last_commits[..i].reverse()

@@ -1,5 +1,7 @@
 import strings
 
+type MyInt = int
+
 fn test_sb() {
 	mut sb := strings.Builder{}
 	sb.write('hi')
@@ -15,7 +17,20 @@ fn test_sb() {
 	sb.write('b')
 	assert sb.len == 2
 	assert sb.str() == 'ab'
-	///
+	// Test interpolation optimization
+	sb = strings.new_builder(10)
+	x := 10
+	y := MyInt(20)
+	sb.writeln('x = $x y = $y')
+	res := sb.str()
+	assert res[res.len-1] == `\n`
+	println('"$res"')
+	assert res.trim_space() == 'x = 10 y = 20'
+	//
+	sb = strings.new_builder(10)
+	sb.write('x = $x y = $y')
+	assert sb.str() == 'x = 10 y = 20'
+
 	$if !windows {
 		// TODO msvc bug
 		sb = strings.new_builder(10)
