@@ -82,6 +82,11 @@ pub struct C.timeval {
 	tv_usec u64
 }
 
+pub struct C.timespec {
+	tv_sec  i64
+	tv_nsec i64
+}
+
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
 
@@ -396,4 +401,11 @@ pub fn (d Duration) hours() f64 {
 	hr := d / hour
 	nsec := d % hour
 	return f64(hr) + f64(nsec)/(60*60*1e9)
+}
+
+pub fn (d Duration) timespec() C.timespec {
+	return C.timespec{
+		tv_sec: d / second
+		tv_nsec: d % second
+	}
 }

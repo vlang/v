@@ -3,7 +3,10 @@
 // that can be found in the LICENSE file.
 module sync
 
+import time
+
 #flag -lpthread
+#include <semaphore.h>
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [ref_only]
@@ -19,6 +22,15 @@ pub struct RwMutex {
 [ref_only]
 struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
+}
+
+[ref_only]
+struct PosixSemaphore {
+	sem C.sem_t
+}
+
+pub struct Semaphore {
+	sem &PosixSemaphore
 }
 
 pub fn new_mutex() &Mutex {
@@ -64,4 +76,33 @@ pub fn (mut m RwMutex) r_unlock() {
 
 pub fn (mut m RwMutex) w_unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
+}
+
+pub fn new_semaphore() Semaphore {
+	s := Semaphore{
+		sem: &PosixSemaphore{}
+	}
+	C.sem_init(&s.sem.sem, 0, 0)
+	return s
+}
+
+pub fn (s Semaphore) post() {
+	C.sem_post(&s.sem.sem)
+}
+
+pub fn (s Semaphore) wait() {
+	C.sem_wait(&s.sem.sem)
+}
+
+pub fn (s Semaphore) timed_wait(timeout time.Duration) ? {
+	t_spec := timeout.timespec()
+	if C.sem_timedwait(&s.sem.sem, &t_spec) == 0 {
+		return
+	}
+	code := C.errno
+	if code == C.ETIMEDOUT {
+		return error('timeout')
+	} else {
+		return error('error waiting for semaphore: 0x${code:08x}')
+	}
 }
