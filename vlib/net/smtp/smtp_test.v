@@ -29,23 +29,20 @@ fn test_smtp() {
 		body: 'Plain text'
 	}
 
-	// This loop avoids `or { assert false  return }` after each call; instead, it's replaced with
-	// `break`. There's an `assert false` after the loop, which will only be called if this loop
-	// is broken from.
-	for {
-		mut client := smtp.new_client(client_cfg) or { assert false break }
-		client.send(send_cfg) or { assert false break }
-		// client.send({ send_cfg | body_type: .html, body: '<html><h1>HTML V email!</h1></html>' }) or { break }
-		client.send({ send_cfg | from: 'alexander@vlang.io' }) or { assert false break }
-		client.send({ send_cfg | cc: 'alexander@vlang.io,joe@vlang.io', bcc: 'spytheman@vlang.io' }) or { assert false break }
-		client.send({ send_cfg | date: time.now().add_days(1000) }) or { assert false break }
-		client.quit() or { assert false break }
-		// This call should return an error, since the connection is closed
-		if !fn_errors(client, send_cfg) { assert false break }
-		client.reconnect() or { assert false break }
-		client.send(send_cfg) or { assert false break }
-		assert true
-		return
-	}
-	assert false
+	mut client := smtp.new_client(client_cfg) or { assert false return }
+	assert true
+	client.send(send_cfg) or { assert false return }
+	assert true
+	// client.send({ send_cfg | body_type: .html, body: '<html><h1>HTML V email!</h1></html>' }) or { assert false return }
+	client.send({ send_cfg | from: 'alexander@vlang.io' }) or { assert false return }
+	client.send({ send_cfg | cc: 'alexander@vlang.io,joe@vlang.io', bcc: 'spytheman@vlang.io' }) or { assert false return }
+	client.send({ send_cfg | date: time.now().add_days(1000) }) or { assert false return }
+	assert true
+	client.quit() or { assert false return }
+	assert true
+	// This call should return an error, since the connection is closed
+	if !fn_errors(client, send_cfg) { assert false return }
+	client.reconnect() or { assert false return }
+	client.send(send_cfg) or { assert false return }
+	assert true
 }
