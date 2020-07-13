@@ -28,7 +28,9 @@ const (
 		'vlib/net/websocket/ws_test.v',
 	]
 	skip_on_non_windows = []string{}
-	skip_on_macos       = []string{}
+	skip_on_macos       = [
+		'vlib/v/tests/semaphore_timed_test.v'
+	]
 	skip_on_non_macos   = []string{}
 )
 

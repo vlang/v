@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module sync
 
-import time
-
 #flag -lpthread
 #include <semaphore.h>
 
@@ -92,17 +90,4 @@ pub fn (s Semaphore) post() {
 
 pub fn (s Semaphore) wait() {
 	C.sem_wait(&s.sem.sem)
-}
-
-pub fn (s Semaphore) timed_wait(timeout time.Duration) ? {
-	t_spec := timeout.timespec()
-	if C.sem_timedwait(&s.sem.sem, &t_spec) == 0 {
-		return
-	}
-	code := C.errno
-	if code == C.ETIMEDOUT {
-		return error('timeout')
-	} else {
-		return error('error waiting for semaphore: 0x${code:08x}')
-	}
 }

@@ -82,12 +82,6 @@ pub struct C.timeval {
 	tv_usec u64
 }
 
-pub struct C.timespec {
-mut:
-	tv_sec  i64
-	tv_nsec i64
-}
-
 fn C.localtime(t &C.time_t) &C.tm
 fn C.time(t &C.time_t) C.time_t
 
@@ -402,19 +396,4 @@ pub fn (d Duration) hours() f64 {
 	hr := d / hour
 	nsec := d % hour
 	return f64(hr) + f64(nsec)/(60*60*1e9)
-}
-
-// return absolute timespec for now()+d
-pub fn (d Duration) timespec() C.timespec {
-	mut ts := C.timespec{}
-	C.clock_gettime(C.CLOCK_REALTIME, &ts)
-	d_sec := d / second
-	d_nsec := d % second
-	ts.tv_sec += d_sec
-	ts.tv_nsec += d_nsec
-	if ts.tv_nsec > second {
-		ts.tv_nsec -= second
-		ts.tv_sec++
-	}
-	return ts
 }
