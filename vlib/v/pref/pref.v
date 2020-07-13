@@ -116,6 +116,7 @@ pub mut:
 	error_limit         int
 	is_vweb             bool // skip _ var warning in templates
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
+	experimental        bool // enable experimental features
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -195,6 +196,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-showcc' {
 				res.show_cc = true
+			}
+			'-experimental' {
+				res.experimental = true
 			}
 			'-usecache' {
 				res.use_cache = true

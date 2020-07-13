@@ -270,7 +270,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
-		if node.name == 'writeln' && g.pref.show_cc &&
+		if node.name == 'writeln' && g.pref.experimental &&
 			node.args.len > 0 && node.args[0].expr is ast.StringInterLiteral &&
 			g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
@@ -644,7 +644,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
-			arg_typ_sym := g.table.get_type_symbol(arg.typ)            
+			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			if arg_typ_sym.kind != .function {
 				g.write('(voidptr)&/*qq*/')
 			}
