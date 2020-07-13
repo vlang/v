@@ -17,6 +17,7 @@ V supports the following commands:
    run               Compile and run a V program.
    test              Run all test files in the provided directory.
    fmt               Format the V code provided.
+   vet               Report suspicious code constructs.
    doc               Generate the documentation for a V module.
    vlib-docs         Generate and open the documentation of all the vlib modules.
    repl              Run the REPL.
@@ -25,7 +26,7 @@ V supports the following commands:
    up                Run the V self-updater.
    self [-prod]      Run the V self-compiler, use -prod to optimize compilation.
    version           Print the version text and exits.
-* Module/package management:   
+* Module/package management:
    install           Install a module from VPM.
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.
