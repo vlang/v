@@ -34,11 +34,11 @@ pub fn uname() Uname {
 	mut u := Uname{}
 	d := &C.utsname( malloc(int(sizeof(C.utsname))) )
 	if C.uname(d) == 0 {
-		u.sysname = cstring_to_vstring(d.sysname)
-		u.nodename = cstring_to_vstring(d.nodename)
-		u.release = cstring_to_vstring(d.release)
-		u.version = cstring_to_vstring(d.version)
-		u.machine = cstring_to_vstring(d.machine)
+		u.sysname = cstring_to_vstring(byteptr(d.sysname))
+		u.nodename = cstring_to_vstring(byteptr(d.nodename))
+		u.release = cstring_to_vstring(byteptr(d.release))
+		u.version = cstring_to_vstring(byteptr(d.version))
+		u.machine = cstring_to_vstring(byteptr(d.machine))
 	}
 	free(d)
 	return u
