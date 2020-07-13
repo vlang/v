@@ -396,6 +396,7 @@ pub:
 pub mut:
 	left_type    table.Type
 	right_type   table.Type
+	auto_locked  string
 }
 
 pub struct PostfixExpr {

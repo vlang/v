@@ -1892,6 +1892,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	// }
 	// string + string, string == string etc
 	// g.infix_op = node.op
+	if node.auto_locked != '' {
+		g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
 	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_type } else { left_type }
@@ -2120,6 +2123,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.write(')')
 			}
 		}
+	}
+	if node.auto_locked != '' {
+		g.writeln(';')
+		g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
 	}
 }
 
