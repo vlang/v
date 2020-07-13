@@ -1745,10 +1745,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.PostfixExpr {
+			if node.auto_locked != '' {
+				g.writeln('sync__RwMutex_w_lock($node.auto_locked->mtx);')
+			}
 			g.inside_map_postfix = true
 			g.expr(node.expr)
 			g.inside_map_postfix = false
 			g.write(node.op.str())
+			if node.auto_locked != '' {
+				g.writeln(';')
+				g.write('sync__RwMutex_w_unlock($node.auto_locked->mtx)')
+			}
 		}
 		ast.PrefixExpr {
 			if node.op == .amp {

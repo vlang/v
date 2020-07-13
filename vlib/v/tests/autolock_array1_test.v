@@ -9,10 +9,7 @@ fn add_elements(shared foo []int, n int) {
 	for _ in 0 .. iterations_per_thread {
 		foo << n
 	}
-	// automatic lock is not yet implemented for this...
-	lock foo {
-		foo[0]++
-	}
+	foo[0]++
 }
 
 fn test_autolocked_array() {
