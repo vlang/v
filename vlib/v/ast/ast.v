@@ -404,6 +404,8 @@ pub:
 	op   token.Kind
 	expr Expr
 	pos  token.Position
+pub mut:
+	auto_locked  string
 }
 
 pub struct PrefixExpr {
