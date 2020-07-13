@@ -2,219 +2,185 @@ module smtp
 
 /*
 *
-* smtp module 
+* smtp module
 * Created by: nedimf (07/2020)
 */
 import net
 import encoding.base64
 import strings
+import time
 
-struct Commands {
-	ehlo       string = 'EHLO Alice\r\n'
-	auth_plain string = 'AUTH PLAIN '
-	mail_from  string = 'MAIL FROM:'
-	recpt_to   string = 'RCPT TO:'
-	data       string = 'DATA\r\n'
-	subject    string = 'Subject:'
-	end_msg    string = '\r\n.\r\n'
-	quit       string = 'QUIT\r\n'
+const (
+	recv_size  = 128
+)
+
+enum ReplyCode {
+	ready      = 220
+	close      = 221
+	auth_ok    = 235
+	action_ok  = 250
+	mail_start = 354
 }
 
-// Sends an email trough SMTP socket
-pub fn send_mail(mailserver string, port int, username, password, subject, from, to, body, type_body string, debug bool) ?bool {
-	client := connect(mailserver, port, debug)?
-	send_ehlo(client, debug)
-	auth(client, username, password, debug)
-	send_mailfrom(client, from, debug)
-	send_mailto(client, to, debug)
-	send_data(client, debug)
-	if type_body == 'html' {
-		is_sent := send_html_body(client, subject, from, to, body, debug) or {
-			return false
-		}
-		return is_sent
-	} else {
-		is_sent := send_text_body(client, subject, from, to, body, debug) or {
-			return false
-		}
-		return is_sent
+pub enum BodyType {
+	text
+	html
+}
+
+pub struct Client {
+mut:
+	socket   net.Socket
+pub:
+	server   string
+	port     int = 25
+	username string
+	password string
+	from     string
+pub mut:
+    is_open  bool
+}
+
+pub struct Mail {
+	from      string
+	to        string
+	cc        string
+	bcc       string
+	date      time.Time = time.now()
+	subject   string
+	body_type BodyType
+	body      string
+}
+
+// new_client returns a new SMTP client and connects to it
+pub fn new_client(config Client) ?Client {
+	mut c := config
+	c.reconnect()?
+	return c
+}
+
+// reconnect reconnects to the SMTP server if the connection was closed
+pub fn (mut c Client) reconnect() ? {
+	if c.is_open { return error('Already connected to server') }
+
+	socket := net.dial(c.server, c.port) or { return error('Connecting to server failed') }
+	c.socket = socket
+
+	c.expect_reply(.ready) or { return error('Received invalid response from server') }
+	c.send_ehlo() or { return error('Sending EHLO packet failed') }
+	c.send_auth() or { return error('Authenticating to server failed') }
+	c.is_open = true
+}
+
+// send sends an email
+pub fn (c Client) send(config Mail) ? {
+	if !c.is_open { return error('Disconnected from server') }
+	from := if config.from != '' { config.from } else { c.from }
+	c.send_mailfrom(from) or { return error('Sending mailfrom failed') }
+	c.send_mailto(config.to) or { return error('Sending mailto failed') }
+	c.send_data() or { return error('Sending mail data failed') }
+	c.send_body({ config | from: from }) or { return error('Sending mail body failed') }
+}
+
+// quit closes the connection to the server
+pub fn (mut c Client) quit() ? {
+	c.send_str('QUIT\r\n')
+	c.expect_reply(.close)
+	c.socket.close()?
+	c.is_open = false
+}
+
+// expect_reply checks if the SMTP server replied with the expected reply code
+fn (c Client) expect_reply(expected ReplyCode) ? {
+	bytes, len := c.socket.recv(recv_size)
+
+	str := tos(bytes, len).trim_space()
+	$if smtp_debug? {
+		eprintln('\n\n[RECV START]')
+		eprint(str)
 	}
-	send_quit(client, debug)
-}
 
-// Creates socket connection with TCP server on provided port and returns net.Socket
-pub fn connect(mailserver string, port int, debug bool) ?(net.Socket) {
-	mut client := net.dial(mailserver, port)?
-	bytes, blen := client.recv(1024)
-	recv := recieved(bytes, blen)
-	if recv.len >= 3 {
-		is_debug(debug, recv)
-		status := recv[..3]
-		if status.int() != 220 {
-			return error('Replay (220) from server has not been recieved.\nReplay recieved: $status')
+	// Read remaining data in the socket
+	if len >= recv_size {
+		for {
+			tbytes, tlen := c.socket.recv(recv_size)
+			str2 := tos(tbytes, tlen)
+			$if smtp_debug? { eprint(str2) }
+			if tlen < recv_size { break }
 		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
 	}
-	return client
-}
 
-// Sends EHLO command to connected server. EHLO (Extended HELO) tells mailserver that our connection uses ESMTP
-pub fn send_ehlo(socket net.Socket, debug bool) ?bool {
-	cmd := Commands{}
-	recv := send(socket, cmd.ehlo)
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 250 {
-			return error('Replay (250) from server has not been recieved for EHLO.\nReplay recieved: $status')
+	$if smtp_debug? {
+		eprintln('\n[RECV END]')
+	}
+
+	if len >= 3 {
+		status := str[..3].int()
+		if status != expected {
+			return error('Received unexpected status code $status, expecting $expected')
 		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
+	} else { return error('Recieved unexpected SMTP data: $str') }
+}
+
+[inline]
+fn (c Client) send_str(s string) ? {
+	$if smtp_debug? {
+		eprintln('\n\n[SEND START]')
+		eprint(s.trim_space())
+		eprintln('\n[SEND END]')
 	}
-	return true
+	c.socket.send_string(s)?
 }
 
-// Closing the connection with server
-pub fn send_quit(socket net.Socket, debug bool) ?bool {
-	cmd := Commands{}
-	recv := send(socket, cmd.quit)
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 221 {
-			return error('Replay (221) from server has not been recieved for QUIT.\nReplay recieved: $status')
-		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-	return true
+[inline]
+fn (c Client) send_ehlo() ? {
+	c.send_str('EHLO $c.server\r\n')?
+	c.expect_reply(.action_ok)?
 }
 
-fn send_mailfrom(socket net.Socket, from string, debug bool) ?bool {
-	cmd := Commands{}
-	recv := send(socket, cmd.mail_from + ' <$from>\r\n')
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 221 {
-			return error('Replay (221) from server has not been recieved for MAIL FROM.\nReplay recieved: $status')
-		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-	return true
-}
-
-fn send_mailto(socket net.Socket, to string, debug bool) ?bool {
-	cmd := Commands{}
-	recv := send(socket, cmd.recpt_to + ' <$to>\r\n')
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 221 {
-			return error('Replay (221) from server has not been recieved for MAIL TO.\nReplay recieved: $status')
-		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-	return true
-}
-
-fn send_data(socket net.Socket, debug bool) ?bool {
-	cmd := Commands{}
-	recv := send(socket, cmd.data)
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 354 {
-			return error('Replay (354) from server has not been recieved for DATA.\nReplay recieved: $status')
-		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-	return true
-}
-
-fn send(socket net.Socket, string_to_send string) string {
-	socket.send_string(string_to_send)
-	bytes, blen := socket.recv(1024)
-	return recieved(bytes, blen)
-}
-
-fn send_text_body(socket net.Socket, subject, from, to, body string, debug bool) ?bool {
-	socket.send_string('From: $from\r\n')
-	socket.send_string('To: $to\r\n')
-	socket.send_string('Subject: $subject\r\n')
-	socket.send_string('\r\n\r\n')
-	socket.send_string(body)
-	socket.send_string('\r\n.\r\n')
-	bytes, blen := socket.recv(1024)
-	recv := recieved(bytes, blen)
-	if recv.len >= 3 {
-		status := recv[..3]
-		is_debug(debug, recv)
-		if status.int() != 250 {
-			return error('Replay (250) from server has not been recieved for EHLO.\nReplay recieved: $status')
-		}
-		return true
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-}
-
-fn send_html_body(socket net.Socket, subject, from, to, body string, debug bool) ?bool {
-	socket.send_string('From: $from\r\n')
-	socket.send_string('To: $to\r\n')
-	socket.send_string('Subject: $subject\r\n')
-	socket.send_string('Content-Type: text/html; charset=ISO-8859-1')
-	socket.send_string('\r\n\r\n')
-	socket.send_string(body)
-	socket.send_string('\r\n.\r\n')
-	bytes, blen := socket.recv(1024)
-	recv := recieved(bytes, blen)
-	if recv.len >= 3 {
-		is_debug(debug, recv)
-		status := recv[..3]
-		if status.int() != 250 {
-			return error('Replay (250) from server has not been recieved for EHLO.\nReplay recieved: $status')
-		}
-		return true
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-}
-
-fn auth(client net.Socket, username, password string, debug bool) ?bool {
-	cmd := Commands{}
+[inline]
+fn (c Client) send_auth() ? {
 	mut sb := strings.new_builder(100)
 	sb.write_b(0)
-	sb.write(username)
+	sb.write(c.username)
 	sb.write_b(0)
-	sb.write(password)
-	mut x := sb.str()
-	x = base64.encode(x)
-	auth_cmd := cmd.auth_plain + x + '\r\n'
-	recv := send(client, auth_cmd)
-	if recv.len >= 3 {
-		is_debug(debug, recv)
-		status := recv[..3]
-		if status.int() != 235 {
-			return error('Replay (235) from server has not been recieved for AUTH.\nReplay recieved: $status')
-		}
-	} else {
-		return error('Recieved data from SMTP server is not returning supported values\nReturned values: $recv')
-	}
-	return true
+	sb.write(c.password)
+	a := sb.str()
+	auth := 'AUTH PLAIN ${base64.encode(a)}\r\n'
+	c.send_str(auth)?
+	c.expect_reply(.auth_ok)?
 }
 
-fn recieved(bytes byteptr, blen int) string {
-	return tos(bytes, blen)
+fn (c Client) send_mailfrom(from string) ? {
+	c.send_str('MAIL FROM: <$from>\r\n')?
+	c.expect_reply(.action_ok)?
 }
 
-fn is_debug(debug bool, pr string) {
-	if debug == true {
-		println('\n...\n')
-		println(pr)
+fn (c Client) send_mailto(to string) ? {
+	c.send_str('RCPT TO: <$to>\r\n')?
+	c.expect_reply(.action_ok)?
+}
+
+fn (c Client) send_data() ? {
+	c.send_str('DATA\r\n')?
+	c.expect_reply(.mail_start)
+}
+
+fn (c Client) send_body(cfg Mail) ? {
+	is_html := cfg.body_type == .html
+	date := cfg.date.utc_string().trim_right(' UTC') // TODO
+	mut sb := strings.new_builder(200)
+	sb.write('From: $cfg.from\r\n')
+	sb.write('To: <$cfg.to>\r\n')
+	sb.write('Cc: <$cfg.cc>\r\n')
+	sb.write('Bcc: <$cfg.bcc>\r\n')
+	sb.write('Date: $date\r\n')
+	sb.write('Subject: $cfg.subject\r\n')
+	if is_html {
+		sb.write('Content-Type: text/html; charset=ISO-8859-1')
 	}
+	sb.write('\r\n\r\n')
+	sb.write(cfg.body)
+	sb.write('\r\n.\r\n')
+	c.send_str(sb.str())?
+	c.expect_reply(.action_ok)?
 }

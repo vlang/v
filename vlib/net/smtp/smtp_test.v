@@ -1,5 +1,11 @@
-import net
 import smtp
+import time
+
+// Used to test that a function call returns an error
+fn fn_errors(c smtp.Client, m smtp.Mail) bool {
+	c.send(m) or { return true }
+	return false
+}
 
 /*
 *
@@ -7,70 +13,41 @@ import smtp
 * Created by: nedimf (07/2020)
 */
 fn test_smtp() {
-	$if !network ? {
+	$if !network ? { return }
+
+	client_cfg := smtp.Client{
+		server: 'smtp.mailtrap.io'
+		from: 'dev@vlang.io'
+	}
+
+	send_cfg := smtp.Mail{
+		to: 'dev@vlang.io'
+		subject: 'Hello from V2'
+		body: 'Plain text'
+	}
+
+	// This loop avoids `or { assert false  return }` after each call; instead, it's replaced with
+	// `break`. There's an `assert false` after the loop, which will only be called if this loop
+	// is broken from.
+	for {
+		mut client := smtp.new_client(client_cfg) or { break }
+
+		client.send(send_cfg) or { break }
+		// client.send({ send_cfg | body_type: .html, body: '<html><h1>HTML V email!</h1></html>' }) or { break }
+		client.send({ send_cfg | from: 'alexander@vlang.io' }) or { break }
+		client.send({ send_cfg | cc: 'alexander@vlang.io,joe@vlang.io', bcc: 'spytheman@vlang.io' }) or { break }
+		client.send({ send_cfg | date: time.now().add_days(1000) }) or { break }
+
+		client.quit() or { break }
+
+		// This call should return an error, since the connection is closed
+		if !fn_errors(client, send_cfg) { break }
+
+		client.reconnect() or { break }
+		client.send(send_cfg) or { break }
+
 		return
 	}
-	server := 'smtp.mailtrap.io'
-	port := 2525
-	username := ''
-	password := ''
-	subject := 'Hello from V'
-	from := 'developers@vlang.io'
-	to := 'developers@vlang.io'
-	msg := '<h1>Hi,from V module, this message was sent by SMTP!</h1>'
-	body_type := 'html'
-	debug := true // use while debugging
-	// Test sending body_type = html
-	is_sent_html := smtp.send_mail(server, port, username, password, subject, from, to,
-		msg, body_type, debug) or {
-		false
-	}
-	is_sent(is_sent_html)
-	// Test sending body_type = text
-	is_sent_text := smtp.send_mail(server, port, username, password, subject, from, to,
-		msg, 'text', debug) or {
-		false
-	}
-	is_sent(is_sent_text)
-	// Test mailserver connection
-	client := smtp.connect(server, port, debug) or {
-		return
-	}
-	// Test socket connection created by sending ehlo command
-	ehlo_test(client)
-	// Test closing connection
-	quit_test(client)
-}
 
-fn ehlo_test(socket net.Socket) {
-	is_ehlo_success := smtp.send_ehlo(socket, true) or {
-		false
-	}
-	if is_ehlo_success == true {
-		assert true
-		println('V: Ehlo was success')
-	} else {
-		println('V: Ehlo failed')
-	}
-}
-
-fn quit_test(socket net.Socket) {
-	is_quit_success := smtp.send_quit(socket, true) or {
-		false
-	}
-	if is_quit_success == true {
-		assert true
-		println('V: Quit was success')
-	} else {
-		println('V: Quit failed')
-	}
-}
-
-fn is_sent(sent bool) {
-	if sent == true {
-		assert true
-		println('V: Email sent successfully')
-	} else {
-		println('V: Email failed to send.')
-	}
+	assert false
 }
