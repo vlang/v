@@ -139,6 +139,9 @@ fn (c Client) send_ehlo() ? {
 
 [inline]
 fn (c Client) send_auth() ? {
+	if c.username.len == 0 {
+		return
+	}    
 	mut sb := strings.new_builder(100)
 	sb.write_b(0)
 	sb.write(c.username)
