@@ -26,6 +26,7 @@ you can do in V.
 * [Types](#types)
     * [Primitive types](#primitive-types)
     * [Strings](#strings)
+    * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
 * [Imports](#imports)
@@ -39,10 +40,10 @@ you can do in V.
     * [Trailing struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
-* [println](#println)
 
 </td><td width=33% valign=top>
 
+* [println](#println)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -61,13 +62,13 @@ you can do in V.
 * [Testing](#testing)
 * [Memory management](#memory-management)
 * [ORM](#orm)
+
+</td><td valign=top>
+
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
     * [vfmt](#vfmt)
     * [Profiling](#profiling)
-
-</td><td valign=top>
-
 * [Advanced](#advanced)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Conditional compilation](#conditional-compilation)
@@ -392,24 +393,16 @@ a := 123
 This will assign the value of 123 to `a`. By default `a` will have the
 type `int`.
 
-You can also use hexadecimal notation for integer literals:
+You can also use hexadecimal, binary or octal notation for integer literals:
 
 ```v
 a := 0x7B
-```
-... or binary notation for integer literals:
-
-```v
-a := 0b01111011
-```
-... or octal notation for specifying integer literals:
-
-```v
-a := 0o173
+b := 0b01111011
+c := 0o173
 ```
 
-All of these will assign the same value 123 to `a`. `a` will have the
-type `int` no matter what notation you have used for the integer literal.
+All of these will be assigned the same value, 123. They will all have type
+`int`, no matter what notation you used.
 
 V also supports writing numbers with `_` as separator:
 
