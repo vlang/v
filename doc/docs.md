@@ -414,11 +414,11 @@ type `int` no matter what notation you have used for the integer literal.
 V also supports writing numbers with `_` as separator:
 
 ```v
-num := 100_000_0 // same as 1000000
+num := 1_000_000 // same as 1000000
 three := 0b0_11 // same as 0b11
-float_num := 312_2.55 // same as 3122.55
-hexa := 0x_FF // same as 255
-oct := 0o_173 // same as 0o173
+float_num := 3_122.55  // same as 3122.55
+hexa := 0xF_F // same as 255
+oct := 0o17_3 // same as 0o173
 ```
 
 **NOTE**: For all notations `_` must be used after their prefix i.e. `0b`, `0x` and `0o`.
