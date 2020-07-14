@@ -155,7 +155,7 @@ fn test_num_separator() {
 	assert -0b0_100 == -4
 	assert 0b010_ == 2
 
-	// octa
+	// oct
 	assert 0o_173 == 123
 	assert -0o_175 == -125
 	assert -0o175_ == -125
