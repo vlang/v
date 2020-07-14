@@ -2352,15 +2352,34 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	mut is_guard := false
+	mut guard_vars := []string{ len: node.branches.len }
 	for i, branch in node.branches {
-		if i == 0 {
-			match branch.cond {
+		if branch.cond is ast.IfGuardExpr as cond {
+			if !is_guard {
+				is_guard = true
+				g.writeln('{ /* if guard */ ')
+			}
+			var_name := g.new_tmp_var()
+			guard_vars[i] = var_name
+			g.writeln('${g.typ(cond.expr_type)} $var_name;')
+		}
+	}
+	for i, branch in node.branches {
+		if i > 0 {
+			g.write('} else ')
+		}
+		if i == node.branches.len - 1 && node.has_else {
+			g.writeln('{')
+		} else {
+			match branch.cond as cond {
 				ast.IfGuardExpr {
-					is_guard = true
-					g.write('{ /* if guard */ ${g.typ(it.expr_type)} $it.var_name = ')
+					var_name := guard_vars[i]
+					g.write('if ($var_name = ')
 					g.expr(it.expr)
-					g.writeln(';')
-					g.writeln('if (${it.var_name}.ok) {')
+					g.writeln(', ${var_name}.ok) {')
+					if cond.var_name != '_' {
+						g.writeln('\t${g.typ(cond.expr_type)} $cond.var_name = $var_name;')
+					}
 				}
 				else {
 					g.write('if (')
@@ -2368,12 +2387,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.writeln(') {')
 				}
 			}
-		} else if i < node.branches.len - 1 || !node.has_else {
-			g.write('} else if (')
-			g.expr(branch.cond)
-			g.writeln(') {')
-		} else if i == node.branches.len - 1 && node.has_else {
-			g.writeln('} else {')
 		}
 		if branch.smartcast && branch.stmts.len > 0 {
 			infix := branch.cond as ast.InfixExpr
