@@ -142,13 +142,7 @@ pub fn (s Semaphore) wait() {
 	C.WaitForSingleObject(s.sem, C.INFINITE)
 }
 
-pub fn (s Semaphore) timed_wait(timeout time.Duration) ? {
+pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 	code := C.WaitForSingleObject(s.sem, timeout / time.millisecond)
-	if code == 0 {
-		return
-	} else if code == C.WAIT_TIMEOUT {
-		return error('timeout')
-	} else {
-		return error('error waiting for semaphore: 0x${code:08x}')
-	}
+	return code == 0
 }

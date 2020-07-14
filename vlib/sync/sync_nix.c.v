@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module sync
 
+import time
+
 #flag -lpthread
 #include <semaphore.h>
 
@@ -22,13 +24,34 @@ struct RwMutexAttr {
 	attr C.pthread_rwlockattr_t
 }
 
+/* MacOSX has no unnamed semaphores and no `timed_wait()` at all
+   so we emulate the behaviour with other devices */
+struct MacOSX_Semaphore {
+	mtx C.pthread_mutex_t
+	cond C.pthread_cond_t
+mut:
+	count int
+}
+
 [ref_only]
 struct PosixSemaphore {
 	sem C.sem_t
 }
 
+[ref_only]
+struct CondAttr {
+	attr C.pthread_condattr_t
+}
+
 pub struct Semaphore {
-	sem &PosixSemaphore
+	/*
+	$if macos {
+		sem &MacOSX_Semaphore
+	} $else {
+		sem &PosixSemaphore
+	}
+	*/
+	sem voidptr // since the above does not work, yet
 }
 
 pub fn new_mutex() &Mutex {
@@ -77,17 +100,66 @@ pub fn (mut m RwMutex) w_unlock() {
 }
 
 pub fn new_semaphore() Semaphore {
-	s := Semaphore{
-		sem: &PosixSemaphore{}
+	$if macos {
+		s := Semaphore{
+			sem: &MacOSX_Semaphore{count: 0}
+		}
+		C.pthread_mutex_init(&&MacOSX_Semaphore(s.sem).mtx, C.NULL)
+		a := &CondAttr{}
+		C.pthread_condattr_init(&a.attr)
+		C.pthread_condattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
+		C.pthread_cond_init(&&MacOSX_Semaphore(s.sem).cond, &a.attr)
+		return s
+	} $else {
+		s := Semaphore{
+			sem: &PosixSemaphore{}
+		}
+		C.sem_init(&&PosixSemaphore(s.sem).sem, 0, 0)
+		return s
 	}
-	C.sem_init(&s.sem.sem, 0, 0)
-	return s
 }
 
 pub fn (s Semaphore) post() {
-	C.sem_post(&s.sem.sem)
+	$if macos {
+		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
+		(&MacOSX_Semaphore(s.sem)).count++
+		C.pthread_cond_signal(&&MacOSX_Semaphore(s.sem).cond)
+		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
+	} $else {
+		C.sem_post(&&PosixSemaphore(s.sem).sem)
+	}
 }
 
 pub fn (s Semaphore) wait() {
-	C.sem_wait(&s.sem.sem)
+	$if macos {
+		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
+		for &&MacOSX_Semaphore(s.sem).count <= 0 {
+			C.pthread_cond_wait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx)
+		}
+		(&MacOSX_Semaphore(s.sem)).count--
+		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
+	} $else {
+		C.sem_wait(&&PosixSemaphore(s.sem).sem)
+	}
+}
+
+pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
+	t_spec := timeout.timespec()
+	$if macos {
+		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
+		if &MacOSX_Semaphore(s.sem).count == 0 {
+			C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)
+		}
+		if &MacOSX_Semaphore(s.sem).count > 0 { // success
+			(&MacOSX_Semaphore(s.sem)).count--
+			C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
+			return true
+		} 
+		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
+	} $else {
+		if C.sem_timedwait(&&PosixSemaphore(s.sem).sem, &t_spec) == 0 {
+			return true
+		}
+	}
+	return false
 }

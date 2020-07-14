@@ -80,12 +80,6 @@ pub struct C.timeval {
 	tv_usec u64
 }
 
-pub struct C.timespec {
-mut:
-	tv_sec  i64
-	tv_nsec i64
-}
-
 // return absolute timespec for now()+d
 pub fn (d Duration) timespec() C.timespec {
 	mut ts := C.timespec{}

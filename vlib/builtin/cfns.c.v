@@ -412,6 +412,13 @@ fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
 
+fn C.pthread_condattr_init(voidptr) int
+fn C.pthread_condattr_setpshared(voidptr, int) int
+fn C.pthread_cond_init(voidptr, voidptr) int
+fn C.pthread_cond_signal(voidptr) int
+fn C.pthread_cond_wait(voidptr, voidptr) int
+fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
+
 fn C.sem_init(voidptr, int, u32) int
 fn C.sem_post(voidptr) int
 fn C.sem_wait(voidptr) int
