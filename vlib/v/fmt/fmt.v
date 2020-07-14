@@ -258,11 +258,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 						f.write(var_info.share.str() + ' ')
 					}
 					f.expr(left)
-					if i < node.left.len - 1 {
-						f.write(', ')
-					}
 				} else {
 					f.expr(left)
+				}
+				if i < node.left.len - 1 {
+					f.write(', ')
 				}
 			}
 			f.is_assign = true

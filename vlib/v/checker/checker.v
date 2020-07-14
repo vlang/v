@@ -2868,15 +2868,12 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
-	}
-	//
-	else {
+	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}
 	if (typ.is_ptr() || typ_sym.is_pointer()) && !c.inside_unsafe {
 		c.error('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
-
 	return typ
 }
 
