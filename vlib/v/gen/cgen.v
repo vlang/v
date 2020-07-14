@@ -622,7 +622,7 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		g.write('')
 		g.write(')')
 	}
-	if g.pref.autofree && stmts.len > 0 {
+	if g.pref.autofree && g.pref.experimental && stmts.len > 0 {
 		stmt := stmts[stmts.len - 1]
 		if stmt !is ast.FnDecl {
 			// g.writeln('// autofree scope')
