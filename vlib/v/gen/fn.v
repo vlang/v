@@ -140,10 +140,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.write_defer_stmts_when_needed()
 	}
 	// /////////
-	if g.autofree {
-		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
-		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
-	}
+	// if g.autofree {
+	// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
+	// g.autofree_scope_vars(it.body_pos.pos)
+	// }
 	g.writeln('}')
 	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {

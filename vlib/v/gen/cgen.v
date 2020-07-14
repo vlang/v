@@ -622,6 +622,10 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		g.write('')
 		g.write(')')
 	}
+	if g.pref.autofree && stmts.len > 0 {
+		// g.writeln('// autofree scope')
+		g.autofree_scope_vars(stmts[stmts.len - 1].position().pos)
+	}
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
@@ -1511,9 +1515,9 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-fn (mut g Gen) autofree_scope_vars(pos int) string {
+fn (mut g Gen) autofree_scope_vars(pos int) {
+	g.writeln('// autofree_scope_vars($pos)')
 	// eprintln('> free_scope_vars($pos)')
-	mut freeing_code := ''
 	scope := g.file.scope.innermost(pos)
 	for _, obj in scope.objects {
 		match obj {
@@ -1528,27 +1532,27 @@ fn (mut g Gen) autofree_scope_vars(pos int) string {
 					// TODO: free optionals
 					continue
 				}
-				freeing_code += g.autofree_variable(v)
+				g.autofree_variable(v)
 			}
 			else {}
 		}
 	}
-	return freeing_code
 }
 
-fn (g &Gen) autofree_variable(v ast.Var) string {
+fn (g &Gen) autofree_variable(v ast.Var) {
 	sym := g.table.get_type_symbol(v.typ)
 	// if v.name.contains('output2') {
 	// eprintln('   > var name: ${v.name:-20s} | is_arg: ${v.is_arg.str():6} | var type: ${int(v.typ):8} | type_name: ${sym.name:-33s}')
 	// }
 	if sym.kind == .array {
-		return g.autofree_var_call('array_free', v)
+		g.autofree_var_call('array_free', v)
+		return
 	}
 	if sym.kind == .string {
 		// Don't free simple string literals.
 		match v.expr {
 			ast.StringLiteral {
-				return '// str literal\n'
+				g.writeln('// str literal')
 			}
 			else {
 				// NOTE/TODO: assign_stmt multi returns variables have no expr
@@ -1565,23 +1569,23 @@ fn (g &Gen) autofree_variable(v ast.Var) string {
 				*/
 			}
 		}
-		return g.autofree_var_call('string_free', v)
+		g.autofree_var_call('string_free', v)
+		return
 	}
 	if sym.has_method('free') {
-		return g.autofree_var_call(c_name(sym.name) + '_free', v)
+		g.autofree_var_call(c_name(sym.name) + '_free', v)
 	}
-	return ''
 }
 
-fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) string {
+fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.is_arg {
 		// fn args should not be autofreed
-		return ''
+		return
 	}
 	if v.typ.is_ptr() {
-		return '\t${free_fn_name}($v.name); // autofreed ptr var\n'
+		g.writeln('\t${free_fn_name}($v.name); // autofreed ptr var')
 	} else {
-		return '\t${free_fn_name}(&$v.name); // autofreed var\n'
+		g.writeln('\t${free_fn_name}(&$v.name); // autofreed var')
 	}
 }
 
@@ -3907,13 +3911,11 @@ fn (g Gen) type_default(typ table.Type) string {
 		'rune' { return '0' }
 		else {}
 	}
-	
-	return match sym.kind  {
+	return match sym.kind {
 		.sum_type { '{0}' }
 		.array_fixed { '{0}' }
 		else { '0' }
 	}
-
 	// TODO this results in
 	// error: expected a field designator, such as '.field = 4'
 	// - Empty ee= (Empty) { . =  {0}  } ;
