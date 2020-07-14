@@ -359,12 +359,17 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	typ := table.new_type(reg_idx)
 	ts := p.table.get_type_symbol(typ)
+	// if methods were declared before, it's an error, ignore them
+	ts.methods.clear()
 	// Parse methods
 	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
+		if ts.has_method(name) {
+			p.error_with_pos('duplicate method `$name`', method_start_pos)
+		}
 		if util.contains_capital(name) {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}

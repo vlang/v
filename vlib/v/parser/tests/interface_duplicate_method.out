@@ -1,0 +1,6 @@
+vlib/v/parser/tests/interface_duplicate_method.v:3:2: error: duplicate method `fun`
+    1 | interface Abc {
+    2 |     fun()
+    3 |     fun()
+      |     ~~~
+    4 | }
