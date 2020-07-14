@@ -9,7 +9,7 @@ import v.vmod
 
 const (
 	default_vpm_server_urls    = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'remove']
+	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'outdated', 'remove']
 	excluded_dirs              = ['cache', 'vlib']
 	supported_vcs_systems      = ['git', 'hg']
 	supported_vcs_folders      = ['.git', '.hg']
@@ -73,6 +73,9 @@ fn main() {
 		'update' {
 			vpm_update(module_names)
 		}
+		'outdated' {
+			vpm_outdated()
+		}
 		'remove' {
 			vpm_remove(module_names)
 		}
@@ -120,7 +123,6 @@ fn vpm_search(keywords []string) {
 			break
 		}
 	}
-
 	if index == 0 {
 		println('No module(s) found for "$joined"')
 	} else {
@@ -226,6 +228,42 @@ fn vpm_update(m []string) {
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn vpm_outdated() {
+	module_names := get_installed_modules()
+	mut outdated := []string{}
+	for name in module_names {
+		final_module_path := valid_final_path_of_existing_module(name) or {
+			continue
+		}
+		os.chdir(final_module_path)
+		vcs := vcs_used_in_dir(final_module_path) or {
+			continue
+		}
+		if vcs[0] != 'git' {
+			println('Getting outdated modules is not supported with VCS {$vcs}')
+			exit(1)
+		}
+		// os.exec('git fetch') or { panic(err) }
+		upstream_res := os.exec('git rev-parse @{u}') or {
+			panic(err)
+		}
+		local_res := os.exec('git rev-parse @') or {
+			panic(err)
+		}
+		if local_res.output != upstream_res.output {
+			outdated << name
+		}
+	}
+	if outdated.len > 0 {
+		println('Outdated modules:')
+		for m in outdated {
+			println(m)
+		}
+	} else {
+		println('Modules are up to date.')
 	}
 }
 
