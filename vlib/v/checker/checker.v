@@ -11,10 +11,10 @@ import v.util
 import v.errors
 
 const (
-	max_nr_errors = 300
+	max_nr_errors                 = 300
 	match_exhaustive_cutoff_limit = 10
-	enum_min      = int(0x80000000)
-	enum_max      = 0x7FFFFFFF
+	enum_min                      = int(0x80000000)
+	enum_max                      = 0x7FFFFFFF
 )
 
 pub struct Checker {
@@ -211,8 +211,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 			ast.TypeDecl {
 				if stmt is ast.AliasTypeDecl {
 					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $no_pub_in_main_warning',
-							stmt.pos)
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				} else if stmt is ast.SumTypeDecl {
 					if stmt.is_pub {
@@ -754,7 +753,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		}
 	}
 	if explicit_lock_needed {
-		c.error('`$to_lock` is `shared` and needs explicit lock for `${typeof(expr)}`', pos)
+		c.error('`$to_lock` is `shared` and needs explicit lock for `${typeof(expr)}`',
+			pos)
 		to_lock = ''
 	}
 	return to_lock, pos
@@ -963,7 +963,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if method_name == 'str' {
 		if left_type_sym.kind == .interface_ {
 			iname := left_type_sym.name
-			c.error('interface `$iname` does not have a .str() method. Use typeof() instead', call_expr.pos)
+			c.error('interface `$iname` does not have a .str() method. Use typeof() instead',
+				call_expr.pos)
 		}
 		call_expr.receiver_type = left_type
 		call_expr.return_type = table.string_type
@@ -1839,7 +1840,7 @@ fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 }
 
 fn (mut c Checker) stmt(node ast.Stmt) {
-	$if trace_checker? {
+	$if trace_checker ? {
 		stmt_pos := node.position()
 		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
 	}
@@ -1887,7 +1888,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, field in node.fields {
 				// TODO Check const name once the syntax is decided
 				if field.name in c.const_names {
-					c.error('field name `$field.name` duplicate', field.pos)
+					c.error('duplciate const `$field.name`', field.pos)
 				}
 				c.const_names << field.name
 				field_names << field.name
@@ -2158,8 +2159,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			from_type_sym := c.table.get_type_symbol(node.expr_type)
 			to_type_sym := c.table.get_type_symbol(node.typ)
 			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
-				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.', node.pos)
-			}            
+				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
+					node.pos)
+			}
 			if to_type_sym.kind == .sum_type {
 				if node.expr_type in [table.any_int_type, table.any_flt_type] {
 					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
@@ -2642,7 +2644,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		} else {
 			remaining := unhandled.len - match_exhaustive_cutoff_limit
 			err_details += unhandled[0..match_exhaustive_cutoff_limit].join(', ')
-			err_details += ', and ${remaining} others ...'
+			err_details += ', and $remaining others ...'
 		}
 		err_details += ' or `else {}` at the end)'
 	} else {
@@ -2675,9 +2677,9 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	}
 	c.stmts(node.stmts)
 	if node.is_rlock {
-		c.rlocked_names = c.rlocked_names[.. c.rlocked_names.len - node.lockeds.len]
+		c.rlocked_names = c.rlocked_names[..c.rlocked_names.len - node.lockeds.len]
 	} else {
-		c.locked_names = c.locked_names[.. c.locked_names.len - node.lockeds.len]
+		c.locked_names = c.locked_names[..c.locked_names.len - node.lockeds.len]
 	}
 	// void for now... maybe sometime `x := lock a { a.getval() }`
 	return table.void_type
@@ -2686,8 +2688,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 	slen := node.stmts.len
 	if slen > 1 {
-		c.error('FIXME: unsafe expression block should support multiple statements',
-			node.pos)
+		c.error('FIXME: unsafe expression block should support multiple statements', node.pos)
 		return table.none_type
 	}
 	if slen == 0 {
@@ -2740,11 +2741,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// smartcast sumtypes when using `is`
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is && (infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&  infix.right is ast.Type {
+			if infix.op == .key_is &&
+				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&
+				infix.right is ast.Type {
 				right_expr := infix.right as ast.Type
-				is_variable := if infix.left is ast.Ident {
-					(infix.left as ast.Ident).kind == .variable
-				} else { true }
+				is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+						.variable } else { true }
 				// Register shadow variable or `as` variable with actual type
 				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
@@ -2754,7 +2756,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							is_mut = (infix.left as ast.Ident).is_mut
 						} else if infix.left is ast.SelectorExpr {
 							selector := infix.left as ast.SelectorExpr
-							field := c.table.struct_find_field(left_sym, selector.field_name) or { table.Field{} }
+							field := c.table.struct_find_field(left_sym, selector.field_name) or {
+								table.Field{}
+							}
 							is_mut = field.is_mut
 						}
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
@@ -2864,12 +2868,15 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
-	} else {
+	}
+	//
+	else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)
 	}
 	if (typ.is_ptr() || typ_sym.is_pointer()) && !c.inside_unsafe {
 		c.error('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
+
 	return typ
 }
 
@@ -3204,10 +3211,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	c.expected_type = table.void_type
 	c.cur_fn = node
-
 	// Add return if `fn(...) ? {...}` have no return at end
 	if node.return_type != table.void_type && node.return_type.has_flag(.optional) &&
-	(node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
+		(node.stmts.len == 0 || node.stmts[node.stmts.len - 1] !is ast.Return) {
 		sym := c.table.get_type_symbol(node.return_type)
 		if sym.kind == .void {
 			node.stmts << ast.Return{
@@ -3216,11 +3222,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else {
 			node.stmts << ast.Return{
 				pos: node.pos
-				exprs: [ast.Expr(ast.None{pos: node.pos})]
+				exprs: [ast.Expr(ast.None{
+					pos: node.pos
+				})]
 			}
 		}
 	}
-
 	c.stmts(node.stmts)
 	returns := c.returns || has_top_return(node.stmts)
 	if node.language == .v && !node.no_body &&
@@ -3249,7 +3256,9 @@ fn has_top_return(stmts []ast.Stmt) bool {
 		return true
 	}
 	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	has_panic_exit := exprs.filter(it.expr is ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' || it.name == 'exit').len > 0
+	has_panic_exit := exprs.filter(it.expr is
+		ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' ||
+		it.name == 'exit').len > 0
 	if has_panic_exit {
 		return true
 	}
