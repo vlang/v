@@ -142,7 +142,10 @@ pub fn (s Semaphore) wait() {
 	C.WaitForSingleObject(s.sem, C.INFINITE)
 }
 
+pub fn (s Semaphore) try_wait() bool {
+	return C.WaitForSingleObject(s.sem, 0) == 0
+}
+
 pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
-	code := C.WaitForSingleObject(s.sem, timeout / time.millisecond)
-	return code == 0
+	return C.WaitForSingleObject(s.sem, timeout / time.millisecond) == 0
 }
