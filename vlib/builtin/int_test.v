@@ -104,6 +104,25 @@ fn test_hex() {
 	assert b1.hex() == 'ffffffff'
 }
 
+fn test_bin() {
+	x1 := 0b10
+	assert x1 == 2
+	x2 := 0b10101010
+	assert x2 == 0xAA
+	x3 := -0b0000001
+	assert x3 == -1
+	x4 := 0b11111111
+	assert x4 == 255
+	x5 := byte(0b11111111)
+	assert x5 == 255
+	x6 := char(0b11111111)
+	assert int(x6) == -1
+	x7 := 0b0
+	assert x7 == 0
+	x8 := -0b0
+	assert x8 == 0
+}
+
 fn test_oct() {
 	x1 := 0o12
 	assert x1 == 10

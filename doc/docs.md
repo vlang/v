@@ -383,6 +383,47 @@ s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
 
+### Numbers
+
+```v
+a := 123
+```
+This will assign the value of 123 to `a`. By default `a` will have the
+type of `int`.
+
+You can also use hexadecimal notation for integer literals:
+```v
+a := 0x7B
+```
+... or binary notation for integer literals:
+```v
+a := 0b01111011
+```
+... or octal notation for specifying integer literals:
+```v
+a := 0o173
+```
+
+All of these will assign the same value 123 to `a`. `a` will have the
+type of `int` no matter what notation you have used for the integer literal.
+
+
+If you want a different type of integer, you can use casting:
+```v
+a := i64(123)
+b := byte(42)
+c := i16(12345)
+```
+
+Assigning floating point numbers works the same way:
+```v
+f := 1.0
+f1 := f64(3.14)
+f2 := f32(3.14)
+```
+If you do not specify the type explicitly, by default float literals 
+will have the type of `f64`.
+
 ### Arrays
 
 ```v
