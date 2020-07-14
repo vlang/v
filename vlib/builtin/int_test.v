@@ -144,6 +144,36 @@ fn test_oct() {
 	assert x9 == 0
 }
 
+fn test_num_separator() {
+	// int
+	assert 100_000_0 == 1000000
+	assert -2_23_4_6 == -22346
+	assert 230_ == 230
+
+	// bin
+	assert 0b0_11 == 3
+	assert -0b0_100 == -4
+	assert 0b010_ == 2
+
+	// octa
+	assert 0o_173 == 123
+	assert -0o_185 == -135
+	assert 0o193_ == 143
+
+	// hex
+	assert 0x_FF == 255
+	assert 0xFF_ == 255
+	assert 0xF_F == 255
+
+	// f32 or f64
+	assert 312_2.55 == 312.2.55
+	assert 312_2.55 == 312.2.55
+	assert 312_2.55_ == 312.2.55
+	
+
+
+}
+
 fn test_int_decl() {
 	x1 := 0
 	x2 := 1333
