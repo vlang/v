@@ -303,3 +303,11 @@ fn (b &Builder) print_warnings_and_errors() {
 fn verror(s string) {
 	util.verror('builder error', s)
 }
+
+pub fn (mut b Builder) timing_message(msg string) {
+	if b.pref.show_timings {
+		println(msg)
+	} else {
+		b.info(msg)
+	}
+}

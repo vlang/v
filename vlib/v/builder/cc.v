@@ -478,6 +478,7 @@ fn (mut v Builder) cc() {
 		println('$ccompiler took $diff ms')
 		println('=========\n')
 	}
+    v.timing_message('C ${ccompiler:3}: ${diff}ms')
 	// Link it if we are cross compiling and need an executable
 	/*
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {

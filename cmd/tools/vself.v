@@ -26,7 +26,7 @@ fn main() {
 		exit(1)
 	}
 	if result.output.len > 0 {
-		println(result.output)
+		println(result.output.trim_space())
 	}
 
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
