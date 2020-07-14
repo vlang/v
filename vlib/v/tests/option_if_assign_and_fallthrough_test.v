@@ -13,6 +13,28 @@ fn test_if_opt() {
 	assert true
 }
 
+fn test_simple_else_if_guard() {
+	if false {
+		assert false
+	} else if val := err_call(true) {
+		assert val == 42
+	} else {
+		assert false
+	}
+}
+
+fn test_multiple_else_if_guard() {
+	if _ := err_call(false) {
+		assert false
+	} else if val := err_call(false) {
+		assert val == 0 // assert false
+	} else if val := err_call(true) {
+		assert val == 42
+	} else {
+		assert false
+	}
+}
+
 fn test_opt_with_fall_through() {
 	mut x := 1
 	err_call(false) or {
