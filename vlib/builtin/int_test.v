@@ -157,7 +157,7 @@ fn test_num_separator() {
 
 	// octa
 	assert 0o_173 == 123
-	assert -0o_185 == -135
+	assert -0o_175 == -125
 	assert 0o193_ == 143
 
 	// hex
