@@ -166,12 +166,9 @@ fn test_num_separator() {
 	assert 0xF_F == 255
 
 	// f32 or f64
-	assert 312_2.55 == 312.2.55
-	assert 312_2.55 == 312.2.55
-	assert 312_2.55_ == 312.2.55
+	assert 312_2.55 == 3122.55
+	assert 312_2.55 == 3122.55
 	
-
-
 }
 
 fn test_int_decl() {
