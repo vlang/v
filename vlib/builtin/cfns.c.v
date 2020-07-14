@@ -422,6 +422,7 @@ fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
 fn C.sem_init(voidptr, int, u32) int
 fn C.sem_post(voidptr) int
 fn C.sem_wait(voidptr) int
+fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
 
 fn C.read(fd int, buf voidptr, count size_t) int
