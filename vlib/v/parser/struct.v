@@ -33,11 +33,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // .
 	}
 	is_typedef := 'typedef' in p.attrs
-	end_pos := p.tok.position()
+	name_pos := p.tok.position()
 	mut name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
-			end_pos)
+			name_pos)
 	}
 	mut generic_types := []table.Type{}
 	if p.tok.kind == .lt {
@@ -56,10 +56,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error('`$p.tok.lit` lacks body')
 	}
 	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
-		p.error_with_pos('struct name `$name` must begin with capital letter', end_pos)
+		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 	}
 	if name.len == 1 {
-		p.error_with_pos('struct names must have more than one character', end_pos)
+		p.error_with_pos('struct names must have more than one character', name_pos)
 	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
@@ -246,14 +246,15 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {
-		p.error('cannot register type `$name`, another type with this name exists')
+		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
+			name_pos)
 	}
 	p.expr_mod = ''
 	return ast.StructDecl{
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend(name_pos)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
@@ -339,20 +340,25 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		p.next()
 	}
 	p.next() // `interface`
+	name_pos := p.tok.position()
 	interface_name := p.prepend_mod(p.check_name())
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	// Declare the type
-	t := table.TypeSymbol{
+	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
 		mod: p.mod
 		info: table.Interface{
 			types: []
 		}
+	})
+	if reg_idx == -1 {
+		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
+			name_pos)
 	}
-	typ := table.new_type(p.table.register_type_symbol(t))
-	ts := p.table.get_type_symbol(typ) // TODO t vs ts
+	typ := table.new_type(reg_idx)
+	ts := p.table.get_type_symbol(typ)
 	// Parse methods
 	mut methods := []ast.FnDecl{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
@@ -396,6 +402,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
+		is_pub: is_pub
 		pos: start_pos
 	}
 }

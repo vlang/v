@@ -6,8 +6,6 @@ module builtin
 import strings
 import hash.wyhash
 
-fn C.memcmp(byteptr, byteptr, int) int
-
 /*
 This is a highly optimized hashmap implementation. It has several traits that
 in combination makes it very fast and memory efficient. Here is a short expl-

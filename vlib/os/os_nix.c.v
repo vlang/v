@@ -34,11 +34,11 @@ pub fn uname() Uname {
 	mut u := Uname{}
 	d := &C.utsname( malloc(int(sizeof(C.utsname))) )
 	if C.uname(d) == 0 {
-		u.sysname = cstring_to_vstring(d.sysname)
-		u.nodename = cstring_to_vstring(d.nodename)
-		u.release = cstring_to_vstring(d.release)
-		u.version = cstring_to_vstring(d.version)
-		u.machine = cstring_to_vstring(d.machine)
+		u.sysname = cstring_to_vstring(byteptr(d.sysname))
+		u.nodename = cstring_to_vstring(byteptr(d.nodename))
+		u.release = cstring_to_vstring(byteptr(d.release))
+		u.version = cstring_to_vstring(byteptr(d.version))
+		u.machine = cstring_to_vstring(byteptr(d.machine))
 	}
 	free(d)
 	return u
@@ -58,7 +58,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 
 pub fn ls(path string) ?[]string {
 	mut res := []string{}
-	dir := C.opendir(path.str)
+	dir := C.opendir(charptr(path.str))
 	if isnil(dir) {
 		return error('ls() couldnt open dir "$path"')
 	}
@@ -121,7 +121,7 @@ pub fn mkdir(path string) ?bool {
 		}
 	}
   */
-	r := C.mkdir(apath.str, 511)
+	r := C.mkdir(charptr(apath.str), 511)
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -157,7 +157,7 @@ pub fn exec(cmd string) ?Result {
 }
 
 pub fn symlink(origin, target string) ?bool {
-	res := C.symlink(origin.str, target.str)
+	res := C.symlink(charptr(origin.str), charptr(target.str))
 	if res == 0 {
 		return true
 	}

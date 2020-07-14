@@ -104,6 +104,25 @@ fn test_hex() {
 	assert b1.hex() == 'ffffffff'
 }
 
+fn test_bin() {
+	x1 := 0b10
+	assert x1 == 2
+	x2 := 0b10101010
+	assert x2 == 0xAA
+	x3 := -0b0000001
+	assert x3 == -1
+	x4 := 0b11111111
+	assert x4 == 255
+	x5 := byte(0b11111111)
+	assert x5 == 255
+	x6 := char(0b11111111)
+	assert int(x6) == -1
+	x7 := 0b0
+	assert x7 == 0
+	x8 := -0b0
+	assert x8 == 0
+}
+
 fn test_oct() {
 	x1 := 0o12
 	assert x1 == 10
@@ -123,6 +142,33 @@ fn test_oct() {
 	assert x8 == -112
 	x9 := -000
 	assert x9 == 0
+}
+
+fn test_num_separator() {
+	// int
+	assert 100_000_0 == 1000000
+	assert -2_23_4_6 == -22346
+	assert 230_ == 230
+
+	// bin
+	assert 0b0_11 == 3
+	assert -0b0_100 == -4
+	assert 0b010_ == 2
+
+	// oct
+	assert 0o_173 == 123
+	assert -0o_175 == -125
+	assert -0o175_ == -125
+
+	// hex
+	assert 0x_FF == 255
+	assert 0xFF_ == 255
+	assert 0xF_F == 255
+
+	// f32 or f64
+	assert 312_2.55 == 3122.55
+	assert 312_2.55 == 3122.55
+	
 }
 
 fn test_int_decl() {

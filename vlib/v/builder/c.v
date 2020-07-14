@@ -12,7 +12,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
-	b.info('PARSE: ${parse_time}ms')
+	b.timing_message('PARSE: ${parse_time}ms')
 	if b.pref.only_check_syntax {
 		return ''
 	}
@@ -21,14 +21,14 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
-	b.info('CHECK: ${check_time}ms')
+	b.timing_message('CHECK: ${check_time}ms')
 	b.print_warnings_and_errors()
 	// println('starting cgen...')
 	// TODO: move gen.cgen() to c.gen()
 	res := gen.cgen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
-	b.info('C GEN: ${gen_time}ms')
+	b.timing_message('C GEN: ${gen_time}ms')
 	// println('cgen done')
 	// println(res)
 	return res

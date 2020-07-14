@@ -140,9 +140,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.write_defer_stmts_when_needed()
 	}
 	// /////////
-	if g.autofree {
+	if g.autofree && !g.pref.experimental {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
-		g.writeln(g.autofree_scope_vars(it.body_pos.pos))
+		g.autofree_scope_vars(it.body_pos.pos)
 	}
 	g.writeln('}')
 	g.defer_stmts = []
@@ -270,7 +270,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
-		if node.name == 'writeln' && g.pref.show_cc &&
+		if node.name == 'writeln' && g.pref.experimental &&
 			node.args.len > 0 && node.args[0].expr is ast.StringInterLiteral &&
 			g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
@@ -352,12 +352,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
-		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
 		receiver_type_name = 'array'
-		if node.name in ['last', 'first'] {
+		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			g.write('*($return_type_str*)')
 		}
@@ -644,7 +644,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
-			arg_typ_sym := g.table.get_type_symbol(arg.typ)            
+			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			if arg_typ_sym.kind != .function {
 				g.write('(voidptr)&/*qq*/')
 			}
