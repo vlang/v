@@ -158,7 +158,7 @@ pub fn (s Semaphore) try_wait() bool {
 		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
 		return res
 	} $else {
-		return C.sem_trywait(&&PosixSemaphore(s.sem).sem) == 0 {
+		return C.sem_trywait(&&PosixSemaphore(s.sem).sem) == 0
 	}
 }
 
