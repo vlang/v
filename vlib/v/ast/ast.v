@@ -179,6 +179,7 @@ pub struct InterfaceDecl {
 pub:
 	name        string
 	field_names []string
+	is_pub      bool
 	methods     []FnDecl
 	pos         token.Position
 }
@@ -213,9 +214,9 @@ pub:
 
 pub struct AnonFn {
 pub:
-	decl      FnDecl
+	decl FnDecl
 pub mut:
-	typ       table.Type
+	typ  table.Type
 }
 
 pub struct FnDecl {
@@ -390,23 +391,23 @@ pub fn (i &Ident) var_info() IdentVar {
 
 pub struct InfixExpr {
 pub:
-	op           token.Kind
-	pos          token.Position
-	left         Expr
-	right        Expr
+	op          token.Kind
+	pos         token.Position
+	left        Expr
+	right       Expr
 pub mut:
-	left_type    table.Type
-	right_type   table.Type
-	auto_locked  string
+	left_type   table.Type
+	right_type  table.Type
+	auto_locked string
 }
 
 pub struct PostfixExpr {
 pub:
-	op   token.Kind
-	expr Expr
-	pos  token.Position
+	op          token.Kind
+	expr        Expr
+	pos         token.Position
 pub mut:
-	auto_locked  string
+	auto_locked string
 }
 
 pub struct PrefixExpr {
@@ -440,20 +441,20 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond     Expr
-	stmts    []Stmt
-	pos      token.Position
-	body_pos token.Position
-	comments []Comment
+	cond         Expr
+	stmts        []Stmt
+	pos          token.Position
+	body_pos     token.Position
+	comments     []Comment
 pub mut:
-	smartcast bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
+	smartcast    bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
 	left_as_name string // only used in x is SumType check
 }
 
 pub struct UnsafeExpr {
 pub:
-	stmts    []Stmt
-	pos      token.Position
+	stmts []Stmt
+	pos   token.Position
 }
 
 pub struct LockExpr {

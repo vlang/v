@@ -75,7 +75,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
-	bounded_import_pos := util.imin(res.len,f.import_pos)
+	bounded_import_pos := util.imin(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
 }
 
@@ -190,7 +190,7 @@ fn (mut f Fmt) adjust_complete_line() {
 	}
 }
 
-pub fn (mut f Fmt) set_current_module_name(cmodname string){
+pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 	f.cur_mod = cmodname
 	f.table.cmod_prefix = cmodname + '.'
 }
@@ -428,12 +428,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {
-			f.writeln('interface $it.name {')
-			for method in it.methods {
-				f.write('\t')
-				f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
-			}
-			f.writeln('}\n')
+			f.interface_decl(it)
 		}
 		ast.Module {
 			f.mod(it)
@@ -658,6 +653,19 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.empty_line = true
 		f.comment(comment)
 		f.indent--
+	}
+	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	name := node.name.after('.')
+	f.writeln('interface $name {')
+	for method in node.methods {
+		f.write('\t')
+		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
 	}
 	f.writeln('}\n')
 }
@@ -1053,7 +1061,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.UnsafeExpr {
 			f.writeln('unsafe {')
-			f.stmts(it.stmts)
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 	}
