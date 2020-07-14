@@ -623,8 +623,11 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		g.write(')')
 	}
 	if g.pref.autofree && stmts.len > 0 {
-		// g.writeln('// autofree scope')
-		g.autofree_scope_vars(stmts[stmts.len - 1].position().pos)
+		stmt := stmts[stmts.len - 1]
+		if stmt !is ast.FnDecl {
+			// g.writeln('// autofree scope')
+			g.autofree_scope_vars(stmt.position().pos)
+		}
 	}
 }
 
