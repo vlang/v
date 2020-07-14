@@ -352,12 +352,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
-		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'clone', 'reverse', 'slice'] {
+		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
 		// && rec_sym.name == 'array' {
 		// && rec_sym.name == 'array' && receiver_name.starts_with('array') {
 		// `array_byte_clone` => `array_clone`
 		receiver_type_name = 'array'
-		if node.name in ['last', 'first'] {
+		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
 			g.write('*($return_type_str*)')
 		}

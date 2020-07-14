@@ -256,6 +256,22 @@ pub fn (a array) last() voidptr {
 	}
 }
 
+// array.pop returns the last element of the array, and removes it
+pub fn (mut a array) pop() voidptr {
+	// in a sense, this is the opposite of `a << x`
+	$if !no_bounds_checking? {
+		if a.len == 0 {
+			panic('array.pop: array is empty')
+		}
+	}
+	new_len := a.len - 1
+	last_elem := unsafe { byteptr(a.data) + (new_len) * a.element_size }
+	a.len = new_len
+	// NB: a.cap is not changed here *on purpose*, so that
+	// further << ops on that array will be more efficient.
+	return memdup(last_elem, a.element_size)
+}
+
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
