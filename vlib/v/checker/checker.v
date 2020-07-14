@@ -1888,7 +1888,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			for i, field in node.fields {
 				// TODO Check const name once the syntax is decided
 				if field.name in c.const_names {
-					c.error('duplciate const `$field.name`', field.pos)
+					c.error('duplicate const `$field.name`', field.pos)
 				}
 				c.const_names << field.name
 				field_names << field.name
