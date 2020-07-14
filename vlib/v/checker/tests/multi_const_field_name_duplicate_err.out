@@ -1,4 +1,4 @@
-vlib/v/checker/tests/multi_const_field_name_duplicate_err.v:2:8: error: field name `aaa` duplicate
+vlib/v/checker/tests/multi_const_field_name_duplicate_err.v:2:8: error: duplicate const `aaa`
     1 | const (aaa = 1)
     2 | const (aaa = 2)
       |        ~~~
