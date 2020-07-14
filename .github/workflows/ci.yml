@@ -168,6 +168,11 @@ jobs:
       run: ./v -o vprod -prod cmd/v && ./vprod test-fixed
     - name: Build examples
       run: ./v build-examples
+    - name: Build modules
+      run: |
+        ./v build-module vlib/os
+        ./v build-module vlib/builtin
+        ./v build-module vlib/strconv
     - name: x64 machine code generation
       run: |
         exit
