@@ -21,6 +21,9 @@ const (
 		'git': 'git clone --depth=1'
 		'hg': 'hg clone'
 	}
+	supported_vcs_outdate_cmds = {
+		'git': ['git rev-parse @{u}', 'git rev-parse @']
+	}
 )
 
 struct Mod {
@@ -233,6 +236,7 @@ fn vpm_update(m []string) {
 
 fn vpm_outdated() {
 	module_names := get_installed_modules()
+	mut errors := 0
 	mut outdated := []string{}
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or {
@@ -243,15 +247,24 @@ fn vpm_outdated() {
 			continue
 		}
 		if vcs[0] != 'git' {
-			println('Getting outdated modules is not supported with VCS {$vcs}')
+			println('Listing outdated modules is not supported with VCS {$vcs}.')
 			exit(1)
 		}
-		// os.exec('git fetch') or { panic(err) }
-		upstream_res := os.exec('git rev-parse @{u}') or {
-			panic(err)
+		local_vcs_cmd := supported_vcs_outdate_cmds[vcs[0]][0]
+		local_res := os.exec(local_vcs_cmd) or {
+			errors++
+			println('Could not get local commit sha of "$name".')
+			verbose_println('Error command: $local_vcs_cmd')
+			verbose_println('Error details:\n$err')
+			continue
 		}
-		local_res := os.exec('git rev-parse @') or {
-			panic(err)
+		upstream_vcs_cmd := supported_vcs_outdate_cmds[vcs[0]][1]
+		upstream_res := os.exec(upstream_vcs_cmd) or {
+			errors++
+			println('Could not read upstream commit sha of "$name".')
+			verbose_println('Error command: $upstream_vcs_cmd')
+			verbose_println('Error details:\n$err')
+			continue
 		}
 		if local_res.output != upstream_res.output {
 			outdated << name
@@ -260,10 +273,13 @@ fn vpm_outdated() {
 	if outdated.len > 0 {
 		println('Outdated modules:')
 		for m in outdated {
-			println(m)
+			println('  $m')
 		}
 	} else {
 		println('Modules are up to date.')
+	}
+	if errors > 0 {
+		exit(1)
 	}
 }
 
