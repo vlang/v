@@ -388,18 +388,22 @@ println(s) // "hello\nworld"
 ```v
 a := 123
 ```
+
 This will assign the value of 123 to `a`. By default `a` will have the
 type `int`.
 
 You can also use hexadecimal notation for integer literals:
+
 ```v
 a := 0x7B
 ```
 ... or binary notation for integer literals:
+
 ```v
 a := 0b01111011
 ```
 ... or octal notation for specifying integer literals:
+
 ```v
 a := 0o173
 ```
@@ -407,8 +411,20 @@ a := 0o173
 All of these will assign the same value 123 to `a`. `a` will have the
 type `int` no matter what notation you have used for the integer literal.
 
+V also supports writing numbers with `_` as separator:
+
+```v
+num := 100_000_0 // same as 1000000
+three := 0b0_11 // same as 0b11
+float_num := 312_2.55 // same as 3122.55
+hexa := 0x_FF // same as 255
+oct := 0o_173 // same as 0o173
+```
+
+**NOTE**: For all notation `_` must be used after their prefix i.e. `0b`, `0x` and `0o`.
 
 If you want a different type of integer, you can use casting:
+
 ```v
 a := i64(123)
 b := byte(42)
@@ -416,6 +432,7 @@ c := i16(12345)
 ```
 
 Assigning floating point numbers works the same way:
+
 ```v
 f := 1.0
 f1 := f64(3.14)
