@@ -389,7 +389,7 @@ println(s) // "hello\nworld"
 a := 123
 ```
 This will assign the value of 123 to `a`. By default `a` will have the
-type of `int`.
+type `int`.
 
 You can also use hexadecimal notation for integer literals:
 ```v
@@ -405,7 +405,7 @@ a := 0o173
 ```
 
 All of these will assign the same value 123 to `a`. `a` will have the
-type of `int` no matter what notation you have used for the integer literal.
+type `int` no matter what notation you have used for the integer literal.
 
 
 If you want a different type of integer, you can use casting:
