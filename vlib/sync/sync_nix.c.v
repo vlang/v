@@ -145,7 +145,7 @@ pub fn (s Semaphore) wait() {
 
 pub fn (s Semaphore) try_wait() bool {
 	$if macos {
-		t_spec := C.timespec{}
+		t_spec := time.zero_timespec()
 		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
 		if &MacOSX_Semaphore(s.sem).count == 0 {
 			C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)

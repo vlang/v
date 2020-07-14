@@ -94,3 +94,12 @@ pub fn (d Duration) timespec() C.timespec {
 	}
 	return ts
 }
+
+// return timespec of 1970/1/1
+pub fn zero_timespec() C.timespec {
+	ts := C.timespec{
+		tv_sec:  0
+		tv_nsec: 0
+	}
+	return ts
+}
