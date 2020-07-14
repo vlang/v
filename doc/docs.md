@@ -421,8 +421,6 @@ hexa := 0xF_F // same as 255
 oct := 0o17_3 // same as 0o173
 ```
 
-**NOTE**: For all notations `_` must be used after their prefix i.e. `0b`, `0x` and `0o`.
-
 If you want a different type of integer, you can use casting:
 
 ```v
