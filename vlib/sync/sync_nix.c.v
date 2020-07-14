@@ -133,7 +133,7 @@ pub fn (s Semaphore) post() {
 pub fn (s Semaphore) wait() {
 	$if macos {
 		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
-		for &&MacOSX_Semaphore(s.sem).count <= 0 {
+		for &MacOSX_Semaphore(s.sem).count == 0 {
 			C.pthread_cond_wait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx)
 		}
 		(&MacOSX_Semaphore(s.sem)).count--
