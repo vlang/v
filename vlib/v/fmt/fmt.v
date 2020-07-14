@@ -428,12 +428,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {
-			f.writeln('interface $it.name {')
-			for method in it.methods {
-				f.write('\t')
-				f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
-			}
-			f.writeln('}\n')
+			f.interface_decl(it)
 		}
 		ast.Module {
 			f.mod(it)
@@ -658,6 +653,19 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.empty_line = true
 		f.comment(comment)
 		f.indent--
+	}
+	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
+	if node.is_pub {
+		f.write('pub ')
+	}
+	name := node.name.after('.')
+	f.writeln('interface $name {')
+	for method in node.methods {
+		f.write('\t')
+		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
 	}
 	f.writeln('}\n')
 }

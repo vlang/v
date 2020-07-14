@@ -179,6 +179,7 @@ pub struct InterfaceDecl {
 pub:
 	name        string
 	field_names []string
+	is_pub      bool
 	methods     []FnDecl
 	pos         token.Position
 }

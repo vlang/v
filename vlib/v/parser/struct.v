@@ -396,6 +396,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
+		is_pub: is_pub
 		pos: start_pos
 	}
 }
