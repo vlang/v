@@ -99,10 +99,15 @@ pub fn (mut m RwMutex) w_unlock() {
 	C.pthread_rwlock_unlock(&m.mutex)
 }
 
+[inline]
 pub fn new_semaphore() Semaphore {
+	return new_semaphore_init(0)
+}
+
+pub fn new_semaphore_init(n int) Semaphore {
 	$if macos {
 		s := Semaphore{
-			sem: &MacOSX_Semaphore{count: 0}
+			sem: &MacOSX_Semaphore{count: n}
 		}
 		C.pthread_mutex_init(&&MacOSX_Semaphore(s.sem).mtx, C.NULL)
 		a := &CondAttr{}
@@ -114,7 +119,7 @@ pub fn new_semaphore() Semaphore {
 		s := Semaphore{
 			sem: &PosixSemaphore{}
 		}
-		C.sem_init(&&PosixSemaphore(s.sem).sem, 0, 0)
+		C.sem_init(&&PosixSemaphore(s.sem).sem, 0, n)
 		return s
 	}
 }
