@@ -1454,7 +1454,7 @@ user := repo.find_user_by_id(7) or {
 
 ### Handling optionals
 
-There are three ways of handling an optional. The first method is to
+There are four ways of handling an optional. The first method is to
 propagate the error:
 
 ```v
@@ -1495,6 +1495,9 @@ Here, you can either call `panic()` or `exit()`, which will stop the execution o
 or use a control flow statement (`return`, `break`, `continue`, etc) to break from the current block.
 Note that `break` and `continue` can only be used inside a `for` loop.
 
+V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
+or Swift's `!`). To do this, use `or { panic(err) }` instead.
+
 ---
 The third method is to provide a default value at the end of the `or` block. In case of an error,
 that value would be assigned instead, so it must have the same type as the content of the `Option` being handled.
@@ -1509,8 +1512,18 @@ a := do_something('foo') or { 'default' } // a will be 'foo'
 b := do_something('bar') or { 'default' } // b will be 'default'
 ```
 
-V does not have a way to forcibly "unwrap" an optional (as other languages do, for instance Rust's `unwrap()`
-or Swift's `!`). To do this, use `or { panic(err) }` instead.
+---
+The fourth method is to use `if` unwrapping:
+
+```v
+if resp := http.get(url) {
+    println(resp.text) // resp is a http.Response, not an optional
+} else {
+    println(err)
+}
+```
+Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first 
+`if` branch. `err` is only in scope for the `else` branch.
 
 ## Generics
 
