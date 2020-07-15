@@ -196,7 +196,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if language == .v && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
 		}
-		if is_method && p.table.get_type_symbol(rec_type).has_method(name) {
+		type_sym := p.table.get_type_symbol(rec_type)
+		// interfaces are handled in the checker, methods can not be defined on them this way
+		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
 			p.error('duplicate method `$name`')
 		}
 	}
@@ -476,7 +478,8 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 						p.check_fn_mutable_arguments(typ, pos)
 					}
 				} else if is_shared || is_atomic {
-					p.error_with_pos('generic object cannot be `atomic` or `shared`', pos)
+					p.error_with_pos('generic object cannot be `atomic` or `shared`',
+						pos)
 				}
 				typ = typ.set_nr_muls(1)
 				if is_shared {
@@ -527,7 +530,8 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 fn (mut p Parser) check_fn_shared_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder] && !typ.is_ptr() {
-		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n', pos)
+		p.error_with_pos('shared arguments are only allowed for arrays, maps, and structs\n',
+			pos)
 	}
 }
 

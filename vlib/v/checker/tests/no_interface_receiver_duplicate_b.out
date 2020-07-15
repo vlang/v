@@ -1,0 +1,5 @@
+vlib/v/checker/tests/no_interface_receiver_duplicate_b.v:1:5: error: interfaces cannot be used as method receiver
+    1 | fn (a Abc) fun() {
+      |     ~~~~~
+    2 | }
+    3 |

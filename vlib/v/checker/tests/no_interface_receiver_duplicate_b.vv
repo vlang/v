@@ -1,0 +1,6 @@
+fn (a Abc) fun() {
+}
+
+interface Abc {
+	fun()
+}

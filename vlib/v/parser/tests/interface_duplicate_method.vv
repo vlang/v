@@ -1,0 +1,4 @@
+interface Abc {
+	fun()
+	fun()
+}
