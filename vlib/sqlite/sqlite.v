@@ -61,7 +61,7 @@ fn (db DB) init_stmt(query string) &C.sqlite3_stmt {
 fn get_int_from_stmt(stmt &C.sqlite3_stmt) int {
 	x := C.sqlite3_step(stmt)
 	if x != C.SQLITE_OK && x != C.SQLITE_DONE {
-		C.puts( C.sqlite3_errstr(x) )
+		C.puts(C.sqlite3_errstr(x))
 	}
 	res := C.sqlite3_column_int(stmt, 0)
 	C.sqlite3_finalize(stmt)
@@ -101,6 +101,7 @@ pub fn (db DB) exec(query string) ([]Row,int) {
 		res = C.sqlite3_step(stmt)
 		// Result Code SQLITE_ROW; Another row is available
 		if res != 100 {
+			//C.puts(C.sqlite3_errstr(res))
 			break
 		}
 		mut row := Row{}
