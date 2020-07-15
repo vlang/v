@@ -147,8 +147,11 @@ pub fn (s Semaphore) try_wait() bool {
 	$if macos {
 		t_spec := time.zero_timespec()
 		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
-		if &MacOSX_Semaphore(s.sem).count == 0 {
-			C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)
+		for &MacOSX_Semaphore(s.sem).count == 0 {
+			res := C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)
+			if res == C.ETIMEDOUT {
+				break
+			}
 		}
 		mut res := false
 		if &MacOSX_Semaphore(s.sem).count > 0 { // success
@@ -166,8 +169,11 @@ pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 	t_spec := timeout.timespec()
 	$if macos {
 		C.pthread_mutex_lock(&&MacOSX_Semaphore(s.sem).mtx)
-		if &MacOSX_Semaphore(s.sem).count == 0 {
-			C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)
+		for &MacOSX_Semaphore(s.sem).count == 0 {
+			res := C.pthread_cond_timedwait(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).mtx, &t_spec)
+			if res == C.ETIMEDOUT {
+				break
+			}
 		}
 		mut res := false
 		if &MacOSX_Semaphore(s.sem).count > 0 { // success
