@@ -128,10 +128,11 @@ fn (a string) clone_static() string {
 
 pub fn (a string) clone() string {
 	mut b := string{
-		str: unsafe {byteptr(memdup(a.str, a.len + 1))}
+		str: unsafe {malloc(a.len + 1)}
 		len: a.len
 	}
 	unsafe {
+		C.memcpy(b.str, a.str, a.len)
 		b.str[a.len] = `\0`
 	}
 	return b
