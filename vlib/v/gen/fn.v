@@ -90,8 +90,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		}
 	} else {
 		if !(it.is_pub || g.pref.is_debug) {
-			g.write('static ')
-			g.definitions.write('static ')
+			// Private functions need to marked as static so that they are not exportable in the
+			// binaries
+			if g.pref.build_mode != .build_module {
+				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
+				// If we are building vlib/builtin, we need all private functions like array_get
+				// to be public, so that all V programs can access them.
+				g.write('static ')
+				g.definitions.write('static ')
+			}
 		}
 		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
 		g.definitions.write(fn_header)
