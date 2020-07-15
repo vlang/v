@@ -390,6 +390,9 @@ fn C.ReleaseMutex(voidptr) bool
 fn C.CreateEvent(int, bool, bool, byteptr) voidptr
 fn C.SetEvent(voidptr) int
 
+fn C.CreateSemaphore(voidptr, int, int, voidptr) voidptr
+fn C.ReleaseSemaphore(voidptr, int, voidptr) voidptr
+
 fn C.InitializeSRWLock(voidptr)
 fn C.AcquireSRWLockShared(voidptr)
 fn C.AcquireSRWLockExclusive(voidptr)
@@ -408,6 +411,19 @@ fn C.pthread_rwlock_init(voidptr, voidptr) int
 fn C.pthread_rwlock_rdlock(voidptr) int
 fn C.pthread_rwlock_wrlock(voidptr) int
 fn C.pthread_rwlock_unlock(voidptr) int
+
+fn C.pthread_condattr_init(voidptr) int
+fn C.pthread_condattr_setpshared(voidptr, int) int
+fn C.pthread_cond_init(voidptr, voidptr) int
+fn C.pthread_cond_signal(voidptr) int
+fn C.pthread_cond_wait(voidptr, voidptr) int
+fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
+
+fn C.sem_init(voidptr, int, u32) int
+fn C.sem_post(voidptr) int
+fn C.sem_wait(voidptr) int
+fn C.sem_trywait(voidptr) int
+fn C.sem_timedwait(voidptr, voidptr) int
 
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int

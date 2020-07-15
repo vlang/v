@@ -3,11 +3,15 @@
 // that can be found in the LICENSE file.
 module sync
 
+import time
+
 // TODO: The suggestion of using CriticalSection instead of mutex
 // was discussed. Needs consideration.
 
 // Mutex HANDLE
 type MHANDLE voidptr
+// Semaphore HANDLE
+type SHANDLE voidptr
 
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 
@@ -26,6 +30,11 @@ mut:
 pub struct RwMutex {
 mut:
 	mx C.SRWLOCK    // mutex handle
+}
+
+pub struct Semaphore {
+mut:
+	sem SHANDLE
 }
 
 enum MutexState {
@@ -117,4 +126,26 @@ pub fn (mut m Mutex) destroy() {
 	}
 	C.CloseHandle(m.mx)  // destroy mutex
 	m.state = .destroyed // setting up reference to invalid state
+}
+
+pub fn new_semaphore() Semaphore {
+	return Semaphore{
+		sem: SHANDLE(C.CreateSemaphore(0, 0, C.INT32_MAX, 0))
+	}
+}
+
+pub fn (s Semaphore) post() {
+	C.ReleaseSemaphore(s.sem, 1, 0)
+}
+
+pub fn (s Semaphore) wait() {
+	C.WaitForSingleObject(s.sem, C.INFINITE)
+}
+
+pub fn (s Semaphore) try_wait() bool {
+	return C.WaitForSingleObject(s.sem, 0) == 0
+}
+
+pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
+	return C.WaitForSingleObject(s.sem, timeout / time.millisecond) == 0
 }
