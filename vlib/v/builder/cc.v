@@ -207,7 +207,7 @@ fn (mut v Builder) cc() {
 		println('Building ${v.pref.out_name}...')
 	}
 	debug_mode := v.pref.is_debug
-	mut debug_options := '-g'
+	mut debug_options := '-g3'
 	mut optimization_options := '-O2'
 	mut guessed_compiler := v.pref.ccompiler
 	if guessed_compiler == 'cc' && v.pref.is_prod {
@@ -233,7 +233,7 @@ fn (mut v Builder) cc() {
 	//
 	if is_cc_clang {
 		if debug_mode {
-			debug_options = '-g -O0 -no-pie'
+			debug_options = '-g3 -O0 -no-pie'
 		}
 		optimization_options = '-O3'
 		mut have_flto := true
