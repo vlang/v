@@ -1730,7 +1730,7 @@ To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
 
 ```v
 // allocate 2 uninitialized bytes & return a reference to them
-mut p := unsafe { &byte(C.malloc(2)) }
+mut p := unsafe { &byte(malloc(2)) }
 p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
 unsafe {
     p[0] = `h`
