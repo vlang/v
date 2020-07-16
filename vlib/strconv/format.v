@@ -10,7 +10,7 @@ This file contains the printf/sprintf functions
 
 */
 module strconv
-import strconv.ftoa
+
 import strings
 
 enum Char_parse_state {
@@ -69,7 +69,7 @@ const(
 
 pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 	// we add the rounding value
-	s := ftoa.f64_to_str(f + dec_round[dec_digit], 18)
+	s := f64_to_str(f + dec_round[dec_digit], 18)
 	// check for +inf -inf Nan
 	if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
 		return s
@@ -77,7 +77,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 	m_sgn_flag := false
 	mut sgn        := 1
-	mut b          := [26]byte 
+	mut b          := [26]byte
 	mut d_pos      := 1
 	mut i          := 0
 	mut i1         := 0
@@ -232,14 +232,14 @@ pub fn format_str(s string, p BF_param) string {
 	return res.str()
 }
 
-// max int64 9223372036854775807 
+// max int64 9223372036854775807
 pub fn format_dec(d u64, p BF_param) string {
 	mut s := ""
 	mut res := strings.new_builder(20)
 	mut sign_len_diff := 0
 	if p.pad_ch == `0` {
 		if p.positive {
-			if p.sign_flag { 
+			if p.sign_flag {
 				res.write_b(`+`)
 				sign_len_diff = -1
 			}
@@ -278,12 +278,12 @@ pub fn format_dec(d u64, p BF_param) string {
 pub fn format_fl(f f64, p BF_param) string {
 	mut s  := ""
 	mut fs := f64_to_str_lnd(if f >= 0.0 {f} else {-f}, p.len1)
-	
+
 	// error!!
 	if fs[0] == `[` {
 		return fs
 	}
-	
+
 	if p.rm_tail_zero {
 		fs = remove_tail_zeros(fs)
 	}
@@ -292,7 +292,7 @@ pub fn format_fl(f f64, p BF_param) string {
 	mut sign_len_diff := 0
 	if p.pad_ch == `0` {
 		if p.positive {
-			if p.sign_flag { 
+			if p.sign_flag {
 				res.write_b(`+`)
 				sign_len_diff = -1
 			}
@@ -332,7 +332,7 @@ pub fn format_fl(f f64, p BF_param) string {
 
 pub fn format_es(f f64, p BF_param) string {
 	mut s := ""
-	mut fs := ftoa.f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
+	mut fs := f64_to_str_pad(if f> 0 {f} else {-f},p.len1)
 	if p.rm_tail_zero {
 		fs = remove_tail_zeros(fs)
 	}
@@ -341,7 +341,7 @@ pub fn format_es(f f64, p BF_param) string {
 	mut sign_len_diff := 0
 	if p.pad_ch == `0` {
 		if p.positive {
-			if p.sign_flag { 
+			if p.sign_flag {
 				res.write_b(`+`)
 				sign_len_diff = -1
 			}
@@ -441,7 +441,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut pad_ch       := ` `              // pad char
 	mut th_separator := false            // thousands separator flag
 
-	// prefix chars for Length field 
+	// prefix chars for Length field
 	mut ch1 := `0`  // +1 char if present else `0`
 	mut ch2 := `0`  // +2 char if present else `0`
 
@@ -523,7 +523,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				status = .check_float
 				i++
 				continue
-			} 
+			}
 			// manage "%.*s" precision field
 			else if ch == `.` && fc_ch1 == `*` && fc_ch2 == `s` {
 				len := unsafe {*(&int(pt[p_index]))}
@@ -748,7 +748,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 						*/
 						x := unsafe {*(&i64(pt[p_index]))}
 						s = x.hex()
-					} 
+					}
 					else {
 						x := unsafe {*(&int(pt[p_index]))}
 						s = x.hex()

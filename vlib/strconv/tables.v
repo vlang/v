@@ -1,4 +1,4 @@
-module ftoa
+module strconv
 
 const(
 pow5_num_bits_32     = 61

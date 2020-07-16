@@ -167,8 +167,10 @@ Did you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v &Builder) get_user_files() []string {
-	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash'] {
-		// get_builtin_files() has already added the builtin files:
+	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash', 'vlib/hash/wyhash'] {
+		// This means we are building a builtin module with `v build-module vlib/strings` etc
+		// get_builtin_files() has already added the files in this module,
+		// do nothing here to avoid duplicate definition errors.
 		v.log('Skipping user files.')
 		return []
 	}

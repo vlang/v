@@ -1,9 +1,9 @@
+module strconv
 /**********************************************************************
 *
 * Float to string Test
 *
 **********************************************************************/
-import strconv.ftoa
 import math
 
 union Ufloat32 {
@@ -140,7 +140,7 @@ fn test_float_to_str() {
 	// test f32
 	for c,x in test_cases_f32 {
 		println(x)
-		s  := ftoa.f32_to_str(x,8)
+		s  := f32_to_str(x,8)
 		s1 := exp_result_f32[c]
 		//println("$s1 $s")
 		assert s == s1
@@ -148,7 +148,7 @@ fn test_float_to_str() {
 
 	// test f64
 	for c,x in test_cases_f64 {
-		s  := ftoa.f64_to_str(x,17)
+		s  := f64_to_str(x,17)
 		s1 := exp_result_f64[c]
 		//println("$s1 $s")
 		assert s == s1
@@ -156,11 +156,11 @@ fn test_float_to_str() {
 
 	// test long format
 	for exp := 1 ; exp < 120 ; exp++ {
-		a := ftoa.f64_to_str_l(("1e"+exp.str()).f64())
+		a := f64_to_str_l(("1e"+exp.str()).f64())
 		//println(a)
 		assert a.len == exp + 1
 
-		b := ftoa.f64_to_str_l(("1e-"+exp.str()).f64())
+		b := f64_to_str_l(("1e-"+exp.str()).f64())
 		//println(b)
 		assert b.len == exp + 2
 	}
