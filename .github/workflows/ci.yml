@@ -51,6 +51,9 @@ jobs:
         ./v vet vlib/v/gen/cgen.v
         ./v vet vlib/v/checker
         ./v vet vlib/sqlite
+    - name: v fmt
+      run: |
+        ./v fmt -verify vlib/v/checker/checker.v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
