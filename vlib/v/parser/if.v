@@ -187,7 +187,18 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.inside_match_case = true
 				expr := p.expr(0)
 				p.inside_match_case = false
-				exprs << expr
+				if p.tok.kind == .dotdot {
+					p.next()
+					expr2 := p.expr(0)
+					exprs << ast.RangeExpr{
+						low: expr
+						high: expr2
+						has_low: true
+						has_high: true
+					}
+				} else {
+					exprs << expr
+				}
 				if p.tok.kind != .comma {
 					break
 				}

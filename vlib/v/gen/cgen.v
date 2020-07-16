@@ -2226,20 +2226,30 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 						// g.write('._interface_idx == _${sym.name}_${branch_sym} ')
 						g.write('._interface_idx == ')
 					}
+					g.expr(expr)
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
 					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
+					g.expr(expr)
+					g.write(')')
+				} else if expr is ast.RangeExpr {
+					g.write('(')
+					g.expr(node.cond)
+					g.write(' >= ')
+					g.expr(expr.low)
+					g.write(' && ')
+					g.expr(node.cond)
+					g.write(' < ')
+					g.expr(expr.high)
+					g.write(')')
 				} else {
 					g.expr(node.cond)
 					g.write(' == ')
 					// g.write('$tmp == ')
-				}
-				g.expr(expr)
-				if type_sym.kind == .string {
-					g.write(')')
+					g.expr(expr)
 				}
 				if i < branch.exprs.len - 1 {
 					g.write(' || ')
