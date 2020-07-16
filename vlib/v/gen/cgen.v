@@ -622,11 +622,16 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		g.write('')
 		g.write(')')
 	}
-	if g.pref.autofree && g.pref.experimental && stmts.len > 0 {
-		stmt := stmts[stmts.len - 1]
+	if g.pref.autofree && g.pref.experimental && !g.inside_vweb_tmpl && stmts.len > 0 {
+		// use the first stmt to get the scope
+		stmt := stmts[0]
+		// stmt := stmts[stmts.len-1]
 		if stmt !is ast.FnDecl {
 			// g.writeln('// autofree scope')
-			g.autofree_scope_vars(stmt.position().pos)
+			// g.writeln('// autofree_scope_vars($stmt.position().pos) | ${typeof(stmt)}')
+			// go back 1 position is important so we dont get the 
+			// internal scope of for loops and possibly other nodes
+			g.autofree_scope_vars(stmt.position().pos-1)
 		}
 	}
 }
@@ -1586,9 +1591,9 @@ fn (g &Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		return
 	}
 	if v.typ.is_ptr() {
-		g.writeln('\t${free_fn_name}($v.name); // autofreed ptr var')
+		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&$v.name); // autofreed var')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
 	}
 }
 
@@ -2221,20 +2226,30 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 						// g.write('._interface_idx == _${sym.name}_${branch_sym} ')
 						g.write('._interface_idx == ')
 					}
+					g.expr(expr)
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
 					//
 					g.expr(node.cond)
 					g.write(', ')
 					// g.write('string_eq($tmp, ')
+					g.expr(expr)
+					g.write(')')
+				} else if expr is ast.RangeExpr {
+					g.write('(')
+					g.expr(node.cond)
+					g.write(' >= ')
+					g.expr(expr.low)
+					g.write(' && ')
+					g.expr(node.cond)
+					g.write(' < ')
+					g.expr(expr.high)
+					g.write(')')
 				} else {
 					g.expr(node.cond)
 					g.write(' == ')
 					// g.write('$tmp == ')
-				}
-				g.expr(expr)
-				if type_sym.kind == .string {
-					g.write(')')
+					g.expr(expr)
 				}
 				if i < branch.exprs.len - 1 {
 					g.write(' || ')

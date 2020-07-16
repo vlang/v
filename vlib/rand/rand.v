@@ -128,3 +128,15 @@ pub fn f32_in_range(min, max f32) f32 {
 pub fn f64_in_range(min, max f64) f64 {
 	return default_rng.f64_in_range(min, max)
 }
+
+const (
+	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+)
+
+pub fn string(len int) string {
+	mut buf := malloc(len)
+	for i in 0..len {
+		buf[i] = chars[intn(chars.len)]
+	}
+	return string(buf, len)
+}

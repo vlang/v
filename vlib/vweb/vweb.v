@@ -507,6 +507,12 @@ pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 	ctx.static_mime_types[url] = mime_type
 }
 
+pub fn (ctx &Context) ip() string {
+	// TODO make return ctx.conn.peer_ip() or { '' } work
+	res := ctx.conn.peer_ip() or { '' }
+	return res
+}
+
 pub fn (mut ctx Context) error(s string) {
 	ctx.form_error = s
 }

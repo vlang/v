@@ -167,7 +167,7 @@ Did you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v &Builder) get_user_files() []string {
-	if v.pref.path in ['vlib/builtin', 'vlib/strconv'] {
+	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash'] {
 		// get_builtin_files() has already added the builtin files:
 		v.log('Skipping user files.')
 		return []

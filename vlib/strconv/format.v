@@ -384,7 +384,7 @@ pub fn remove_tail_zeros(s string) string {
 	mut in_decimal := false
 	mut prev_ch := byte(0)
 	for i < s.len {
-		ch := s.str[i]
+		ch := unsafe {s.str[i]}
 		if ch == `.` {
 			in_decimal = true
 			dot_pos = i
@@ -405,14 +405,14 @@ pub fn remove_tail_zeros(s string) string {
 	mut tmp := ""
 	if last_zero_start > 0 {
 		if last_zero_start == dot_pos+1 {
-			tmp = s[..dot_pos] + s [i..]
+			tmp = s[..dot_pos] + s[i..]
 		}else {
-			tmp = s[..last_zero_start] + s [i..]
+			tmp = s[..last_zero_start] + s[i..]
 		}
 	} else {
 		tmp = s
 	}
-	if tmp.str[tmp.len-1] == `.` {
+	if unsafe {tmp.str[tmp.len-1]} == `.` {
 		return tmp[..tmp.len-1]
 	}
 	return tmp
@@ -474,7 +474,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 		// single char, manage it here
 		if ch == `c` && status == .field_char {
-			d1 := *(&byte(pt[p_index]))
+			d1 := unsafe {*(&byte(pt[p_index]))}
 			res.write_b(d1)
 			status = .reset_params
 			p_index++
@@ -484,7 +484,8 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 		// pointer, manage it here
 		if ch == `p` && status == .field_char {
-			res.write("0x"+ptr_str(pt[p_index]))
+			res.write("0x")
+			res.write(ptr_str(unsafe {pt[p_index]}))
 			status = .reset_params
 			p_index++
 			i++
@@ -525,9 +526,9 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			} 
 			// manage "%.*s" precision field
 			else if ch == `.` && fc_ch1 == `*` && fc_ch2 == `s` {
-				len := *(&int(pt[p_index]))
+				len := unsafe {*(&int(pt[p_index]))}
 				p_index++
-				mut s := *(&string(pt[p_index]))
+				mut s := unsafe {*(&string(pt[p_index]))}
 				s = s[..len]
 				p_index++
 				res.write(s)
@@ -629,11 +630,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// hh fot 8 bit int
 					`h` {
 						if ch2 == `h` {
-							x := *(&i8(pt[p_index]))
+							x := unsafe {*(&i8(pt[p_index]))}
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
 						} else {
-							x := *(&i16(pt[p_index]))
+							x := unsafe {*(&i16(pt[p_index]))}
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
 						}
@@ -653,13 +654,13 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 							d1 = if positive { u64(x) } else { u64(-x) }
 						}
 						*/
-						x := *(&i64(pt[p_index]))
+						x := unsafe {*(&i64(pt[p_index]))}
 						positive = if x >= 0 { true } else { false }
 						d1 = if positive { u64(x) } else { u64(-x) }
 					}
-					// defualt int
+					// default int
 					else {
-						x := *(&int(pt[p_index]))
+						x := unsafe {*(&int(pt[p_index]))}
 						positive = if x >= 0 { true } else { false }
 						d1 = if positive { u64(x) } else { u64(-x) }
 					}
@@ -685,9 +686,9 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// hh fot 8 bit unsigned int
 					`h` {
 						if ch2 == `h` {
-							d1 = u64(*(&byte(pt[p_index])))
+							d1 = u64(unsafe {*(&byte(pt[p_index]))})
 						} else {
-							d1 = u64(*(&u16(pt[p_index])))
+							d1 = u64(unsafe {*(&u16(pt[p_index]))})
 						}
 					}
 					// l  u64
@@ -701,11 +702,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 							d1 = u64(*(&u64(pt[p_index])))
 						}
 						*/
-						d1 = u64(*(&u64(pt[p_index])))
+						d1 = u64(unsafe {*(&u64(pt[p_index]))})
 					}
 					// defualt int
 					else {
-						d1 = u64(*(&u32(pt[p_index])))
+						d1 = u64(unsafe {*(&u32(pt[p_index]))})
 					}
 				}
 
@@ -725,10 +726,10 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// hh fot 8 bit int
 					`h` {
 						if ch2 == `h` {
-							x := *(&i8(pt[p_index]))
+							x := unsafe {*(&i8(pt[p_index]))}
 							s = x.hex()
 						} else {
-							x := *(&i16(pt[p_index]))
+							x := unsafe {*(&i16(pt[p_index]))}
 							s = x.hex()
 						}
 					}
@@ -745,11 +746,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 							s = x.hex()
 						}
 						*/
-						x := *(&i64(pt[p_index]))
+						x := unsafe {*(&i64(pt[p_index]))}
 						s = x.hex()
 					} 
 					else {
-						x := *(&int(pt[p_index]))
+						x := unsafe {*(&int(pt[p_index]))}
 						s = x.hex()
 					}
 				}
@@ -767,7 +768,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 			// float and double
 			if ch in [`f`, `F`] {
-				x := *(&f64(pt[p_index]))
+				x := unsafe {*(&f64(pt[p_index]))}
 				mut positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
@@ -778,7 +779,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				continue
 			}
 			else if ch in [`e`, `E`] {
-				x := *(&f64(pt[p_index]))
+				x := unsafe {*(&f64(pt[p_index]))}
 				mut positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
@@ -789,7 +790,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				continue
 			}
 			else if ch in [`g`, `G`] {
-				x := *(&f64(pt[p_index]))
+				x := unsafe {*(&f64(pt[p_index]))}
 				mut positive := x >= f64(0.0)
 				mut s := ""
 				tx := fabs(x)
@@ -810,7 +811,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 			// string
 			else if ch == `s` {
-				s1 := *(&string(pt[p_index]))
+				s1 := unsafe{*(&string(pt[p_index]))}
 				pad_ch = ` `
 				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
 				status = .reset_params

@@ -33,3 +33,10 @@ vlib/v/checker/tests/match_duplicate_branch.v:43:3: error: match case `2` is han
       |         ~~~
    44 |         else { println('else') }
    45 |     }
+vlib/v/checker/tests/match_duplicate_branch.v:51:3: error: match case `3` is handled more than once
+   49 |     match i {
+   50 |         1..5 { println('1 to 4') }
+   51 |         3 { println('3') }
+      |         ~~~
+   52 |         else { println('else') }
+   53 |     }
