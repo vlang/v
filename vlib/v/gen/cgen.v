@@ -2367,12 +2367,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	mut is_guard := false
-	mut guard_vars := []string{len: node.branches.len}
+	mut guard_vars := []string{}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
+				guard_vars = []string{ len: node.branches.len }
 				g.writeln('{ /* if guard */ ')
 			}
 			var_name := g.new_tmp_var()
