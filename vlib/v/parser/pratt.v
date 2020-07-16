@@ -91,7 +91,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.inside_unsafe = true
 			stmts := p.parse_block()
 			p.inside_unsafe = false
-			node = ast.UnsafeExpr {
+			node = ast.UnsafeExpr{
 				stmts: stmts
 				pos: pos
 			}

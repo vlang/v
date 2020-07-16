@@ -42,11 +42,12 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr    Expr
-	pos     token.Position
-	is_expr bool
+	expr     Expr
+	pos      token.Position
+	comments []Comment
+	is_expr  bool
 pub mut:
-	typ     table.Type
+	typ      table.Type
 }
 
 pub struct IntegerLiteral {
@@ -282,10 +283,11 @@ pub mut:
 
 pub struct Return {
 pub:
-	pos   token.Position
-	exprs []Expr
+	pos      token.Position
+	exprs    []Expr
+	comments []Comment
 pub mut:
-	types []table.Type
+	types    []table.Type
 }
 
 /*
@@ -579,6 +581,7 @@ pub:
 	right         []Expr
 	op            token.Kind
 	pos           token.Position
+	comments      []Comment
 pub mut:
 	left          []Expr
 	left_types    []table.Type

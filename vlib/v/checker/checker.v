@@ -19,7 +19,7 @@ const (
 
 pub struct Checker {
 pub mut:
-table            &table.Table
+	table            &table.Table
 	file             ast.File
 	nr_errors        int
 	nr_warnings      int
