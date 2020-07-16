@@ -188,6 +188,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				expr := p.expr(0)
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
+					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)', p.tok.position())
+				} else if p.tok.kind == .ellipsis {
 					p.next()
 					expr2 := p.expr(0)
 					exprs << ast.RangeExpr{

@@ -2242,7 +2242,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.expr(expr.low)
 					g.write(' && ')
 					g.expr(node.cond)
-					g.write(' < ')
+					g.write(' <= ')
 					g.expr(expr.high)
 					g.write(')')
 				} else {
