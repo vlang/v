@@ -419,9 +419,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.BranchStmt {
 			g.gen_branch_stmt(it)
 		}
-		ast.Comment {
-			// Skip: don't generate comments
-		}
 		ast.CompFor {
 			}
 		ast.CompIf {
@@ -534,6 +531,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.CharLiteral {
 			g.write("'$it.val'")
 		}
+		ast.Comment {}
 		ast.ConcatExpr {
 			// TODO
 		}

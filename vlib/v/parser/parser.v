@@ -137,7 +137,7 @@ fn (mut p Parser) parse() ast.File {
 	p.read_first_token()
 	mut stmts := []ast.Stmt{}
 	for p.tok.kind == .comment {
-		stmts << p.comment()
+		stmts << p.comment_stmt()
 	}
 	// module
 	module_decl := p.module_decl()
@@ -149,7 +149,7 @@ fn (mut p Parser) parse() ast.File {
 			continue
 		}
 		if p.tok.kind == .comment {
-			stmts << p.comment()
+			stmts << p.comment_stmt()
 			continue
 		}
 		break
@@ -443,7 +443,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.struct_decl()
 		}
 		.comment {
-			return p.comment()
+			return p.comment_stmt()
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
@@ -485,6 +485,14 @@ pub fn (mut p Parser) comment() ast.Comment {
 		is_multi: text.contains('\n')
 		text: text
 		pos: pos
+	}
+}
+
+pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
+	comment := p.comment()
+	return ast.ExprStmt{
+		expr: comment
+		pos: comment.pos
 	}
 }
 
@@ -546,7 +554,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.parse_multi_expr(is_top_level)
 		}
 		.comment {
-			return p.comment()
+			return p.comment_stmt()
 		}
 		.key_return {
 			return p.return_stmt()

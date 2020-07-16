@@ -41,28 +41,22 @@ pub mut:
 	attrs       map[string]string
 }
 
-pub fn merge_comments(stmts []ast.Stmt) string {
+pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
-	for s in stmts {
-		if s is ast.Comment {
-			res << s.text.trim_left('|')
-		}
+	for comment in comments {
+		res << comment.text.trim_left('|')
 	}
 	return res.join('\n')
 }
 
-pub fn get_comment_block_right_before(stmts []ast.Stmt) string {
-	if stmts.len == 0 {
+pub fn get_comment_block_right_before(comments []ast.Comment) string {
+	if comments.len == 0 {
 		return ''
 	}
 	mut comment := ''
 	mut last_comment_line_nr := 0
-	for i := stmts.len-1; i >= 0; i-- {
-		stmt := stmts[i]
-		if stmt !is ast.Comment {
-			panic('Not a comment')
-		}
-		cmt := stmt as ast.Comment
+	for i := comments.len - 1; i >= 0; i-- {
+		cmt := comments[i]
 		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
@@ -315,13 +309,15 @@ fn (mut d Doc) generate() ?Doc {
 				last_import_stmt_idx = sidx
 			}
 		}
-		mut prev_comments := []ast.Stmt{}
+		mut prev_comments := []ast.Comment{}
 		mut imports_section := true
 		for sidx, stmt in stmts {
 			//eprintln('stmt typeof: ' + typeof(stmt))
-			if stmt is ast.Comment {
-				prev_comments << stmt
-				continue
+			if stmt is ast.ExprStmt {
+				if stmt.expr is ast.Comment as cmt {
+					prev_comments << cmt
+					continue
+				}
 			}
 			// TODO: Fetch head comment once
 			if stmt is ast.Module {

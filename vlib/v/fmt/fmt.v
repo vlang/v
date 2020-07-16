@@ -302,9 +302,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.Comment {
-			f.comment(it)
-		}
 		ast.CompFor {}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
@@ -345,7 +342,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			f.expr(it.expr)
-			if !f.single_line_if {
+			if !f.single_line_if && it.expr !is ast.Comment {
 				f.writeln('')
 			}
 		}
@@ -764,6 +761,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			f.write('`$node.val`')
+		}
+		ast.Comment {
+			f.comment(node)
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -1456,6 +1456,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
 		ast.IfExpr { return false }
+		ast.Comment { return false }
 		else {}
 	}
 	return true

@@ -10,15 +10,15 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None |
-	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
+	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
+	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompFor |
-	CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt |
-	ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl |
-	Module | Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor | CompIf |
+	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
+	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
+	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -921,20 +921,23 @@ pub fn (expr Expr) position() token.Position {
 		AsCast {
 			return expr.pos
 		}
-		// ast.Ident { }
-		CastExpr {
-			return expr.pos
-		}
 		Assoc {
 			return expr.pos
 		}
 		BoolLiteral {
 			return expr.pos
 		}
+		// ast.Ident { }
 		CallExpr {
 			return expr.pos
 		}
+		CastExpr {
+			return expr.pos
+		}
 		CharLiteral {
+			return expr.pos
+		}
+		Comment {
 			return expr.pos
 		}
 		EnumVal {
@@ -1023,7 +1026,6 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		Comment { return stmt.pos }
 		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
 		/*
