@@ -4,7 +4,6 @@
 *
 **********************************************************************/
 import strconv
-import strconv.atofq
 
 fn test_atof() {
 	//
@@ -40,7 +39,7 @@ fn test_atof() {
 
 
 		// quick atof
-		mut s1 := (atofq.atof_quick(src_num_str[c]).str())
+		mut s1 := (atof_quick(src_num_str[c]).str())
 		mut s2 := (x.str())
 		delta := s1.f64() - s2.f64()
 		//println("$s1 $s2 $delta")

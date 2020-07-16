@@ -17,7 +17,7 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 */
-module ftoa
+module strconv
 
 // dec32 is a floating decimal type representing m * 10^e.
 struct Dec32 {
