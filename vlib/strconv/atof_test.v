@@ -3,7 +3,6 @@
 * String to float Test
 *
 **********************************************************************/
-import strconv
 
 fn test_atof() {
 	//
@@ -35,7 +34,7 @@ fn test_atof() {
 	// check conversion case 1 string <=> string
 	for c,x in src_num {
 		// slow atof
-		assert strconv.atof64(src_num_str[c]).strlong() == x.strlong()
+		assert atof64(src_num_str[c]).strlong() == x.strlong()
 
 
 		// quick atof
@@ -56,7 +55,7 @@ fn test_atof() {
 	// we don't test atof_quick beacuse we already know the rounding error
 	for c,x  in src_num_str {
 		b := src_num[c].strlong()
-		a1 := strconv.atof64(x).strlong()
+		a1 := atof64(x).strlong()
 		assert a1 == b
 	}
 
