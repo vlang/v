@@ -4,4 +4,4 @@ c:\Users\Raulete\Desktop\v\vlib\v\parser\tests\match_range_dotdot_err.v:3:4:erro
     3 |         0..10 { '0-9' }
       |          ~~
     4 |         else { 'other' }
-    5 |     } == '4-5'
+    5 |     }
