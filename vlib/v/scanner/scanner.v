@@ -324,6 +324,9 @@ fn (mut s Scanner) ident_bin_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0b'
+	if s.text[start_pos + 2] == num_sep {
+		s.error('separator `_` is only valid between digits in a numeric literal')
+	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_bin_digit() && c != num_sep {
@@ -355,6 +358,9 @@ fn (mut s Scanner) ident_hex_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0x'
+	if s.text[start_pos + 2] == num_sep {
+		s.error('separator `_` is only valid between digits in a numeric literal')
+	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_hex_digit() && c != num_sep {
@@ -386,6 +392,9 @@ fn (mut s Scanner) ident_oct_number() string {
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
 	s.pos += 2 // skip '0o'
+	if s.text[start_pos + 2] == num_sep {
+		s.error('separator `_` is only valid between digits in a numeric literal')
+	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
 		if !c.is_oct_digit() && c != num_sep {
