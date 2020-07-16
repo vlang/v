@@ -629,9 +629,9 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		if stmt !is ast.FnDecl {
 			// g.writeln('// autofree scope')
 			// g.writeln('// autofree_scope_vars($stmt.position().pos) | ${typeof(stmt)}')
-			// go back 1 position is important so we dont get the 
+			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
-			g.autofree_scope_vars(stmt.position().pos-1)
+			g.autofree_scope_vars(stmt.position().pos - 1)
 		}
 	}
 }
@@ -2367,9 +2367,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	mut is_guard := false
-	mut guard_vars := []string{ len: node.branches.len }
+	mut guard_vars := []string{len: node.branches.len}
 	for i, branch in node.branches {
-		if branch.cond is ast.IfGuardExpr as cond {
+		cond := branch.cond
+		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
 				g.writeln('{ /* if guard */ ')
@@ -2784,7 +2785,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write(')')
 		}
 		if free {
-			g.writeln(';')
+			g.writeln('; // free tmp exprs')
+			g.autofree_scope_vars(node.pos.pos + 1)
 			g.write('return $tmp')
 		}
 	} else {

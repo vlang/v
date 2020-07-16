@@ -650,6 +650,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.error('infix expr: cannot use `$right.name` (right expression) as `$left.name`',
 			infix_expr.pos)
 	}
+	/*
+	if (infix_expr.left is ast.InfixExpr &&
+		(infix_expr.left as ast.InfixExpr).op == .inc) ||
+		(infix_expr.right is ast.InfixExpr && (infix_expr.right as ast.InfixExpr).op == .inc) {
+		c.warn('`++` and `--` are statements, not expressions', infix_expr.pos)
+	}
+	*/
 	return if infix_expr.op.is_relational() {
 		table.bool_type
 	} else {
@@ -2589,15 +2596,17 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				mut low := 0
 				mut high := 0
 				c.expected_type = node.expected_type
-				if expr.low is ast.IntegerLiteral as low_expr {
-					if expr.high is ast.IntegerLiteral as high_expr {
+				low_expr := expr.low
+				high_expr := expr.high
+				if low_expr is ast.IntegerLiteral {
+					if high_expr is ast.IntegerLiteral {
 						low = low_expr.val.int()
 						high = high_expr.val.int()
 					} else {
 						c.error('mismatched range types', low_expr.pos)
 					}
-				} else if expr.low is ast.CharLiteral as low_expr {
-					if expr.high is ast.CharLiteral as high_expr {
+				} else if low_expr is ast.CharLiteral {
+					if high_expr is ast.CharLiteral {
 						low = low_expr.val[0]
 						high = high_expr.val[0]
 					} else {
@@ -2607,8 +2616,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `$typ` in match range', branch.pos)
 				}
-
-				for i in low..high {
+				for i in low .. high {
 					key = i.str()
 					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 					if val == 1 {
