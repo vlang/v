@@ -12,9 +12,7 @@ pub const (
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings',
-		'builtin'
-	]
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings', 'builtin']
 )
 
 pub const (
@@ -167,7 +165,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		}
 		if tool_compilation.exit_code != 0 {
 			mut err := 'Permission denied'
-			if !tool_compilation.output.contains('Permission denied') {
+			if !tool_compilation.output.contains(err) {
 				err = '\n$tool_compilation.output'
 			}
 			eprintln('cannot compile `$tool_source`: $err')

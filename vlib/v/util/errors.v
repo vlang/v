@@ -6,7 +6,6 @@ module util
 import os
 import term
 import v.token
-import time
 
 // The filepath:line:col: format is the default C compiler error output format.
 // It allows editors and IDE's like emacs to quickly find the errors in the
@@ -89,7 +88,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 		}
 	}
 	column := imax(0, pos.pos - p - 1)
-	position := '${path}:${pos.line_nr+1}:${util.imax(1,column+1)}:'
+	position := '$path:${pos.line_nr+1}:${imax(1,column+1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
@@ -112,11 +111,8 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 		sline := source_lines[iline]
 		start_column := imax(0, imin(column, sline.len))
 		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
-		cline := if iline == pos.line_nr {
-			sline[..start_column] + color(kind, sline[start_column..end_column]) + sline[end_column..]
-		} else {
-			sline
-		}
+		cline := if iline == pos.line_nr { sline[..start_column] + color(kind, sline[start_column..end_column]) +
+				sline[end_column..] } else { sline }
 		clines << '${iline+1:5d} | ' + cline.replace('\t', tab_spaces)
 		//
 		if iline == pos.line_nr {
@@ -126,18 +122,10 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 			// use strings.repeat(` `, col) to form it.
 			mut pointerline := ''
 			for bchar in sline[..start_column] {
-				x := if bchar.is_space() {
-					bchar
-				} else {
-					` `
-				}
+				x := if bchar.is_space() { bchar } else { ` ` }
 				pointerline += x.str()
 			}
-			underline := if pos.len > 1 {
-				'~'.repeat(end_column - start_column)
-			} else {
-				'^'
-			}
+			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
 			pointerline += bold(color(kind, underline))
 			clines << '      | ' + pointerline.replace('\t', tab_spaces)
 		}
@@ -147,44 +135,6 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 
 pub fn verror(kind, s string) {
 	final_kind := bold(color(kind, kind))
-	eprintln('${final_kind}: $s')
+	eprintln('$final_kind: $s')
 	exit(1)
-}
-
-pub fn find_working_diff_command() ?string {
-	for diffcmd in ['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe'] {
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
-		if p.exit_code == 0 {
-			return diffcmd
-		}
-	}
-	return error('no working diff command found')
-}
-
-pub fn color_compare_files(diff_cmd, file1, file2 string) string {
-	if diff_cmd != '' {    	
-		mut other_options := os.getenv('VDIFF_OPTIONS')
-		full_cmd := '$diff_cmd --minimal --text --unified=2 ' +
-		        ' --show-function-line="fn " $other_options "$file1" "$file2" '
-		x := os.exec(full_cmd) or {
-			return 'comparison command: `${full_cmd}` failed'
-		}
-		return x.output.trim_right('\r\n')
-    }
-    return ''
-}
-
-pub fn color_compare_strings(diff_cmd string, expected string, found string) string {
-	cdir := os.cache_dir()
-	ctime := time.sys_mono_now()
-	e_file := os.join_path(cdir, '${ctime}.expected.txt')
-	f_file := os.join_path(cdir, '${ctime}.found.txt')
-	os.write_file( e_file, expected)
-	os.write_file( f_file, found)
-	res := util.color_compare_files(diff_cmd, e_file, f_file)
-	os.rm( e_file )
-	os.rm( f_file )
-	return res
 }
