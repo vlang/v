@@ -30,7 +30,7 @@ fn setup_symlink(vexe string){
 		ret = os.exec('ln -sf $vexe $link_path') or {
 			panic(err)
 		}
-		if ret.exit_code == 1 {
+		if ret.exit_code == 0 {
 			println('Symlink "$link_path" has been created')
 		} else {
 			println('Failed to create symlink "$link_path". Try again with sudo.')
