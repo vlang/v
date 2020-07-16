@@ -2367,12 +2367,14 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	mut is_guard := false
+	mut guard_idx := 0
 	mut guard_vars := []string{}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
+				guard_idx = i
 				guard_vars = []string{ len: node.branches.len }
 				g.writeln('{ /* if guard */ ')
 			}
@@ -2385,8 +2387,14 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if i > 0 {
 			g.write('} else ')
 		}
+		// if last branch is `else {`
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('{')
+			// define `err` only for simple `if val := opt {...} else {`
+			if is_guard && guard_idx == i - 1 {
+				var_name := guard_vars[guard_idx]
+				g.writeln('string err = ${var_name}.v_error;')
+			}
 		} else {
 			match branch.cond as cond {
 				ast.IfGuardExpr {

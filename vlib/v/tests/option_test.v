@@ -69,7 +69,7 @@ fn test_if_else_opt() {
 	if _ := err_call(false) {
 		assert false
 	} else {
-		assert true
+		assert err.len != 0
 	}
 }
 
@@ -150,12 +150,12 @@ fn test_or_return() {
 	if _ := or_return_error() {
 		assert false
 	} else {
-		assert true
+		assert err.len != 0
 	}
 	if _ := or_return_none() {
 		assert false
 	} else {
-		assert true
+		assert err.len == 0
 	}
 }
 
