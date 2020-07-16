@@ -28,6 +28,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			if p.tok.kind == .key_if {
 				p.next()
 			} else {
+				// else {
 				has_else = true
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
@@ -65,9 +66,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond = p.expr(0)
 		}
 		mut left_as_name := ''
-		is_infix := cond is ast.InfixExpr
-		if is_infix {
-			infix := cond as ast.InfixExpr
+		if cond is ast.InfixExpr as infix {
 			is_is_cast := infix.op == .key_is
 			is_ident := infix.left is ast.Ident
 			left_as_name = if is_is_cast && p.tok.kind == .key_as {
