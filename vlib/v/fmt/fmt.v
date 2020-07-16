@@ -342,7 +342,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			f.expr(it.expr)
-			if !f.single_line_if && it.expr !is ast.Comment {
+			if !f.single_line_if {
 				f.writeln('')
 			}
 		}
@@ -616,6 +616,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.indent++
 			f.empty_line = true
 			f.comment(comments[j])
+			f.writeln('')
 			f.indent--
 			j++
 		}
@@ -649,6 +650,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.indent++
 		f.empty_line = true
 		f.comment(comment)
+		f.writeln('')
 		f.indent--
 	}
 	f.writeln('}\n')
@@ -1133,7 +1135,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
-		f.writeln(s)
+		f.write(s)
 		return
 	}
 	lines := node.text.split_into_lines()
@@ -1143,7 +1145,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 		f.empty_line = false
 	}
 	f.empty_line = true
-	f.writeln('*/')
+	f.write('*/')
 }
 
 pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bool, level CommentsLevel) {
@@ -1155,6 +1157,7 @@ pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bo
 			f.indent++
 		}
 		f.comment(c)
+		f.writeln('')
 		if level == .indent {
 			f.indent--
 		}
@@ -1374,6 +1377,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	for branch in it.branches {
 		if branch.comment.text != '' {
 			f.comment(branch.comment)
+			f.writeln('')
 		}
 		if !branch.is_else {
 			// normal branch
@@ -1556,8 +1560,14 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			if is_new_line {
 				f.writeln('')
 			}
-		} else {
-			f.write(',')
+		} else if expr !is ast.Comment {
+			// if expr is not the last value, add a comma
+			for j := i + 1; j < it.exprs.len; j++ {
+				if it.exprs[j] !is ast.Comment {
+					f.write(',')
+					break
+				}
+			}
 		}
 		last_line_nr = line_nr
 	}
@@ -1636,6 +1646,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		mut j := 0
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
 			f.comment(comments[j])
+			f.writeln('')
 			j++
 		}
 		name := field.name.after('.')

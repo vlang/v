@@ -13,7 +13,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	mut node := ast.Expr{}
 	is_stmt_ident := p.is_stmt_ident
 	p.is_stmt_ident = false
-	p.eat_comments()
+	if !p.pref.is_fmt {
+		p.eat_comments()
+	}
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
@@ -32,6 +34,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.string {
 			node = p.string_expr()
+		}
+		.comment {
+			node = p.comment()
 		}
 		.dot {
 			// .enum_val
