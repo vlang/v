@@ -156,12 +156,12 @@ fn test_num_separator() {
 	assert 0b010_ == 2
 
 	// oct
-	assert 0o_173 == 123
-	assert -0o_175 == -125
+	assert 0o1_73 == 123
+	assert -0o17_5 == -125
 	assert -0o175_ == -125
 
 	// hex
-	assert 0x_FF == 255
+	assert 0xFF == 255
 	assert 0xFF_ == 255
 	assert 0xF_F == 255
 
