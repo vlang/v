@@ -6,17 +6,16 @@ import v.pref
 
 const (
 	skip_test_files     = [
-		'vlib/net/http/http_httpbin_test.v',
+		'vlib/net/http/http_httpbin_test.v'
 	]
 	skip_on_musl        = []string{}
-	skip_on_ubuntu_musl = 
-	[
+	skip_on_ubuntu_musl = [
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
-		'vlib/net/websocket/ws_test.v'
+		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/orm/orm_test.v',
-		'vlib/clipboard/clipboard_test.v',
+		'vlib/clipboard/clipboard_test.v'
 		// 'vlib/v/gen/js/jsgen_test.v',
 	]
 	skip_on_linux       = []string{}
@@ -25,7 +24,7 @@ const (
 	]
 	skip_on_windows     = [
 		'vlib/orm/orm_test.v',
-		'vlib/net/websocket/ws_test.v',
+		'vlib/net/websocket/ws_test.v'
 	]
 	skip_on_non_windows = []string{}
 	skip_on_macos       = []string{}
@@ -75,6 +74,6 @@ fn main() {
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {
-		panic('\nWARNING: failed ${tsession.benchmark.nfail} times.\n')
+		panic('\nWARNING: failed $tsession.benchmark.nfail times.\n')
 	}
 }
