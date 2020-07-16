@@ -191,7 +191,15 @@ fn C._fileno(int) int
 fn C._get_osfhandle(fd int) C.intptr_t
 
 
+fn C.GetModuleFileName() int
 fn C.GetModuleFileNameW(hModule voidptr, lpFilename &u16, nSize u32) u32
+
+
+fn C.CreateFile() voidptr
+fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) u32
+
+
+fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) int
 
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
@@ -302,9 +310,6 @@ fn C.WriteConsole() voidptr
 
 
 fn C.WriteFile() voidptr
-
-
-fn C.GetModuleFileName() int
 
 
 fn C._wchdir()
