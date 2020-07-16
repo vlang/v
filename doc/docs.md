@@ -338,7 +338,7 @@ println(s) // "hello world"
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 
-Strings are immutable.
+Strings are immutable by default.
 
 Both single and double quotes can be used to denote strings. For consistency,
 `vfmt` converts double quotes to single quotes unless the string contains a single quote character.
