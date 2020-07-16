@@ -45,8 +45,17 @@ fn test_int(i int) {
 	}
 }
 
+fn test_range(i int) {
+	match i {
+		1..5 { println('1 to 4') }
+		3 { println('3') }
+		else { println('else') }
+	}
+}
+
 fn main() {
 	test_sum_type(St1{})
 	test_enum(.red)
 	test_int(2)
+	test_range(4)
 }

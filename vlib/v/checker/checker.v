@@ -2585,6 +2585,39 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	for branch in node.branches {
 		for expr in branch.exprs {
 			mut key := ''
+			if expr is ast.RangeExpr {
+				mut low := 0
+				mut high := 0
+				c.expected_type = node.expected_type
+				if expr.low is ast.IntegerLiteral as low_expr {
+					if expr.high is ast.IntegerLiteral as high_expr {
+						low = low_expr.val.int()
+						high = high_expr.val.int()
+					} else {
+						c.error('mismatched range types', low_expr.pos)
+					}
+				} else if expr.low is ast.CharLiteral as low_expr {
+					if expr.high is ast.CharLiteral as high_expr {
+						low = low_expr.val[0]
+						high = high_expr.val[0]
+					} else {
+						c.error('mismatched range types', low_expr.pos)
+					}
+				} else {
+					typ := c.table.type_to_str(c.expr(expr.low))
+					c.error('cannot use type `$typ` in match range', branch.pos)
+				}
+
+				for i in low..high {
+					key = i.str()
+					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
+					if val == 1 {
+						c.error('match case `$key` is handled more than once', branch.pos)
+					}
+					branch_exprs[key] = val + 1
+				}
+				continue
+			}
 			match expr {
 				ast.Type { key = c.table.type_to_str(expr.typ) }
 				ast.EnumVal { key = expr.val }
