@@ -517,7 +517,7 @@ pub fn (m map) clone() map {
 		cap:             m.cap
 		cached_hashbits: m.cached_hashbits
 		shift:           m.shift
-		key_values:      m.key_values.clone()
+		key_values:      unsafe {m.key_values.clone()}
 		metas:           &u32(malloc(int(metas_size)))
 		extra_metas:     m.extra_metas
 		len:            m.len

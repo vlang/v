@@ -331,12 +331,18 @@ pub fn (a &array) clone() array {
 	if a.element_size == sizeof(array) {
 		for i in 0..a.len {
 			ar := array{}
-			C.memcpy(&ar, a.get_unsafe(i), sizeof(array))
+			unsafe {
+				C.memcpy(&ar, a.get_unsafe(i), sizeof(array))
+			}
 			ar_clone := ar.clone()
-			arr.set_unsafe(i, &ar_clone)
+			unsafe {
+				arr.set_unsafe(i, &ar_clone)
+			}
 		}
 	} else {
-		C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
+		unsafe {
+			C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)
+		}
 	}
 	return arr
 }
@@ -681,7 +687,9 @@ pub fn compare_f32(a, b &f32) int {
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0..a.len {
-		res << a.get_unsafe(i)
+		unsafe {
+			res << a.get_unsafe(i)
+		}
 	}
 	return res
 }
