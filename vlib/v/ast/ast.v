@@ -433,7 +433,7 @@ pub:
 	left     Expr // `a` in `a := if ...`
 	pos      token.Position
 pub mut:
-	branches []IfBranch
+	branches []IfBranch // includes all `else if` branches
 	is_expr  bool
 	typ      table.Type
 	has_else bool
