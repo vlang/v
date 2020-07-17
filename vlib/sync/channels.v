@@ -13,6 +13,12 @@ mut: // atomic
 	read_subscriber Semaphore
 }
 
+/*
+pub fn new_channel<T>(n int) &Channel {
+	return new_channel_raw(n, sizeof(T))
+}
+*/
+
 pub fn new_channel(n int, objsize u32) &Channel {
 	assert n > 0
 	bufsize := u32(n) * objsize

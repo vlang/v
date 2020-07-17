@@ -128,9 +128,14 @@ pub fn (mut m Mutex) destroy() {
 	m.state = .destroyed // setting up reference to invalid state
 }
 
+[inline]
 pub fn new_semaphore() Semaphore {
+	return new_semaphore_init(0)
+}
+
+pub fn new_semaphore_init(n int) Semaphore {
 	return Semaphore{
-		sem: SHANDLE(C.CreateSemaphore(0, 0, C.INT32_MAX, 0))
+		sem: SHANDLE(C.CreateSemaphore(0, n, C.INT32_MAX, 0))
 	}
 }
 

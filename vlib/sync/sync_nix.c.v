@@ -26,6 +26,7 @@ struct RwMutexAttr {
 
 /* MacOSX has no unnamed semaphores and no `timed_wait()` at all
    so we emulate the behaviour with other devices */
+[ref_only]
 struct MacOSX_Semaphore {
 	mtx C.pthread_mutex_t
 	cond C.pthread_cond_t
