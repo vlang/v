@@ -16,15 +16,7 @@ Know limitation:
 
 */
 
-module atofq
-
-// same used in atof, here only for references
-const(
-	double_plus_zero        = u64(0x0000000000000000)
-	double_minus_zero       = u64(0x8000000000000000)
-	double_plus_infinity    = u64(0x7FF0000000000000)
-	double_minus_infinity   = u64(0xFFF0000000000000)
-)
+module strconv
 
 union Float64u {
 mut:

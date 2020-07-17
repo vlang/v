@@ -23,6 +23,7 @@ struct FormatOptions {
 	is_worker  bool
 	is_debug   bool
 	is_noerror bool
+	is_verify  bool // exit(1) if the file is not vfmt'ed
 }
 
 const (
@@ -51,6 +52,7 @@ fn main() {
 		is_worker: '-worker' in args
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
+		is_verify: '-verify' in args
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
@@ -183,6 +185,17 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 			return
 		}
 		println(util.color_compare_files(diff_cmd, file, formatted_file_path))
+		return
+	}
+	if foptions.is_verify {
+		diff_cmd := util.find_working_diff_command() or {
+			eprintln('No working "diff" CLI command found.')
+			return
+		}
+		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
+		if x.len != 0 {
+			exit(1)
+		}
 		return
 	}
 	fc := os.read_file(file) or {

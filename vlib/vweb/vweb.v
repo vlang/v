@@ -508,9 +508,17 @@ pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
 }
 
 pub fn (ctx &Context) ip() string {
+	mut ip := ctx.req.headers['X-Forwarded-For']
+	if ip == '' {
+		ip = ctx.req.headers['X-Real-IP']
+	}
+	if ip.contains(',') {
+		ip = ip.all_before(',')
+	}
+	return ip
 	// TODO make return ctx.conn.peer_ip() or { '' } work
-	res := ctx.conn.peer_ip() or { '' }
-	return res
+	//res := ctx.conn.peer_ip() or { '' }
+	//return res
 }
 
 pub fn (mut ctx Context) error(s string) {

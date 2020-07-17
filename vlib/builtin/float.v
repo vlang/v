@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
-import strconv.ftoa
+import strconv
 
 #include <float.h>
 // ----- f64 to string functions -----
@@ -11,9 +11,9 @@ import strconv.ftoa
 pub fn (x f64) str() string {
 	abs_x := f64_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return ftoa.f64_to_str_l(x)
+		return strconv.f64_to_str_l(x)
 	} else {
-		return ftoa.ftoa_64(x)
+		return strconv.ftoa_64(x)
 	}
 }
 
@@ -31,13 +31,13 @@ pub fn (x f64) strsci(digit_num int) string {
 	} else if n_digit > 17 {
 		n_digit = 17
 	}
-	return ftoa.f64_to_str(x, n_digit)
+	return strconv.f64_to_str(x, n_digit)
 }
 
 // return a decimal notation of the input f64
 [inline]
 pub fn (x f64) strlong() string {
-	return ftoa.f64_to_str_l(x)
+	return strconv.f64_to_str_l(x)
 }
 
 // ----- f32 to string functions -----
@@ -46,9 +46,9 @@ pub fn (x f64) strlong() string {
 pub fn (x f32) str() string {
 	abs_x := f32_abs(x)
 	if abs_x >= 0.0001 && abs_x < 1.0e6 {
-		return ftoa.f32_to_str_l(x)
+		return strconv.f32_to_str_l(x)
 	} else {
-		return ftoa.ftoa_32(x)
+		return strconv.ftoa_32(x)
 	}
 }
 
@@ -61,13 +61,13 @@ pub fn (x f32) strsci(digit_num int) string {
 	} else if n_digit > 8 {
 		n_digit = 8
 	}
-	return ftoa.f32_to_str(x, n_digit)
+	return strconv.f32_to_str(x, n_digit)
 }
 
 // return a decimal notation of the input f32
 [inline]
 pub fn (x f32) strlong() string {
-	return ftoa.f32_to_str_l(x)
+	return strconv.f32_to_str_l(x)
 }
 
 // ----- C functions -----
