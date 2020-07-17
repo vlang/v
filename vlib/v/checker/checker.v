@@ -2617,7 +2617,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `$typ` in match range', branch.pos)
 				}
-				for i in low..high + 1 {
+				for i in low .. high + 1 {
 					key = i.str()
 					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 					if val == 1 {

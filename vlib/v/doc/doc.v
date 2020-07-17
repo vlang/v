@@ -33,12 +33,12 @@ pub:
 
 pub struct DocNode {
 pub mut:
-	name        string
-	content     string = ''
-	comment     string
-	pos         DocPos = DocPos{-1, -1}
-	file_path   string = ''
-	attrs       map[string]string
+	name      string
+	content   string = ''
+	comment   string
+	pos       DocPos = DocPos{-1, -1}
+	file_path string = ''
+	attrs     map[string]string
 }
 
 pub fn merge_comments(comments []ast.Comment) string {
@@ -86,8 +86,8 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 			// }
 			// return new_cmt_content
 		}
-		//eprintln('cmt: $cmt')
-		cseparator := if cmt_content.starts_with('```') {'\n'} else {' '}
+		// eprintln('cmt: $cmt')
+		cseparator := if cmt_content.starts_with('```') { '\n' } else { ' ' }
 		comment = cmt_content + cseparator + comment
 		last_comment_line_nr = cmt.pos.line_nr
 	}
@@ -165,7 +165,7 @@ pub fn new(input_path string) Doc {
 	d.fmt = fmt.Fmt{
 		indent: 0
 		is_debug: false
-	    table: d.table
+		table: d.table
 	}
 	return d
 }
@@ -192,7 +192,9 @@ fn compare_nodes_by_category(a, b &DocNode) int {
 
 pub fn (nodes []DocNode) index_by_name(node_name string) int {
 	for i, node in nodes {
-		if node.name != node_name { continue }
+		if node.name != node_name {
+			continue
+		}
 		return i
 	}
 	return -1
@@ -202,7 +204,7 @@ pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
 	return nodes.find_nodes_with_attr('parent', parent)
 }
 
-pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []DocNode {
+pub fn (nodes []DocNode) find_nodes_with_attr(attr_name, value string) []DocNode {
 	mut subgroup := []DocNode{}
 	if attr_name.len == 0 {
 		return subgroup
@@ -220,9 +222,13 @@ pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []
 fn get_parent_mod(dir string) ?string {
 	$if windows {
 		// windows root path is C: or D:
-		if dir.len <= 2 { return error('root folder reached') }
+		if dir.len <= 2 {
+			return error('root folder reached')
+		}
 	} $else {
-		if dir.len == 0 { return error('root folder reached') }
+		if dir.len == 0 {
+			return error('root folder reached')
+		}
 	}
 	base_dir := os.base_dir(dir)
 	if os.file_name(base_dir) in ['encoding', 'v'] && 'vlib' in base_dir {
@@ -243,7 +249,9 @@ fn get_parent_mod(dir string) ?string {
 		return error('No V files found.')
 	}
 	tbl := table.new_table()
-	scope := &ast.Scope{ parent: 0 }
+	scope := &ast.Scope{
+		parent: 0
+	}
 	file_ast := parser.parse_file(v_files[0], tbl, .skip_comments, prefs, scope)
 	if file_ast.mod.name == 'main' {
 		return ''
@@ -312,7 +320,7 @@ fn (mut d Doc) generate() ?Doc {
 		mut prev_comments := []ast.Comment{}
 		mut imports_section := true
 		for sidx, stmt in stmts {
-			//eprintln('stmt typeof: ' + typeof(stmt))
+			// eprintln('stmt typeof: ' + typeof(stmt))
 			if stmt is ast.ExprStmt {
 				if stmt.expr is ast.Comment as cmt {
 					prev_comments << cmt
@@ -381,7 +389,9 @@ fn (mut d Doc) generate() ?Doc {
 							name: node.attrs['parent']
 							content: ''
 							comment: ''
-							attrs: {'category': 'Structs'}
+							attrs: {
+								'category': 'Structs'
+							}
 						}
 					}
 				}
@@ -416,7 +426,6 @@ fn (mut d Doc) generate() ?Doc {
 			}
 			prev_comments = []
 		}
-
 		d.fmt.mod2alias = map[string]string{}
 	}
 	d.time_generated = time.now()

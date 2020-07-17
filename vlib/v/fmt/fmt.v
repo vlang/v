@@ -246,7 +246,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.comments, { inline: false })
+			f.comments(node.comments, {
+				inline: false
+			})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
@@ -324,20 +326,27 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
-			f.comments(it.comments, { level: .indent })
+			f.comments(it.comments, {
+				level: .indent
+			})
 			for field in it.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
-				f.comments(field.comments, { has_nl: false, level: .indent })
+				f.comments(field.comments, {
+					has_nl: false
+					level: .indent
+				})
 				f.writeln('')
 			}
 			f.writeln('}\n')
 		}
 		ast.ExprStmt {
-			f.comments(it.comments, { inline: false })
+			f.comments(it.comments, {
+				inline: false
+			})
 			f.expr(it.expr)
 			if !f.single_line_if {
 				f.writeln('')
@@ -428,7 +437,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(it)
 		}
 		ast.Return {
-			f.comments(it.comments, { inline: false })
+			f.comments(it.comments, {
+				inline: false
+			})
 			f.write('return')
 			if it.exprs.len > 1 {
 				// multiple returns
@@ -1128,7 +1139,7 @@ enum CommentsLevel {
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool = true
-	level CommentsLevel = .keep
+	level  CommentsLevel = .keep
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
@@ -1243,7 +1254,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if branch.comments.len > 0 {
-			f.comments(branch.comments, { })
+			f.comments(branch.comments, {})
 		}
 		if i == 0 {
 			f.write('if ')
@@ -1416,7 +1427,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 		}
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, {  })
+			f.comments(branch.post_comments, {})
 		}
 	}
 	f.indent--
