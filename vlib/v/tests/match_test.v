@@ -63,19 +63,19 @@ fn test_match_integers() {
 }
 
 fn test_match_multiple() {
-	assert match 5 {
+	assert match 9 {
 		1, 2, 3 { '1-3' }
 		4, 5 { '4-5' }
-		6..9, 9 { '6-9' }
+		6...9 { '6-9' }
 		else { 'other' }
-	} == '4-5'
+	} == '6-9'
 }
 
 fn test_match_range() {
 	assert match `f` {
-		`0`..`9` { 'digit' }
-		`A`..`Z` { 'uppercase' }
-		`a`..`z` { 'lowercase' }
+		`0`...`9` { 'digit' }
+		`A`...`Z` { 'uppercase' }
+		`a`...`z` { 'lowercase' }
 		else { 'other' }
 	} == 'lowercase'
 }
