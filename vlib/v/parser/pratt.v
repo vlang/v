@@ -122,7 +122,10 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					pos: pos
 				}
 			} else {
+				save_expr_mod := p.expr_mod
+				p.expr_mod = ''
 				sizeof_type := p.parse_type()
+				p.expr_mod = save_expr_mod
 				node = ast.SizeOf{
 					is_type: true
 					typ: sizeof_type
