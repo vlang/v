@@ -1577,16 +1577,13 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.expr(expr)
 		if i == it.exprs.len - 1 {
 			if is_new_line {
+				if expr !is ast.Comment {
+					f.write(',')
+				}
 				f.writeln('')
 			}
 		} else if expr !is ast.Comment {
-			// if expr is not the last value, add a comma
-			for j := i + 1; j < it.exprs.len; j++ {
-				if it.exprs[j] !is ast.Comment {
-					f.write(',')
-					break
-				}
-			}
+			f.write(',')
 		}
 		last_line_nr = line_nr
 	}
