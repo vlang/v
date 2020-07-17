@@ -954,6 +954,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				}
 			}
 		}
+		if method.is_unsafe && !c.inside_unsafe {
+			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
+				call_expr.pos)
+		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
 			for i in 1 .. method.args.len {
