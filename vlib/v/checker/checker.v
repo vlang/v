@@ -19,7 +19,7 @@ const (
 
 pub struct Checker {
 pub mut:
-table            &table.Table
+	table            &table.Table
 	file             ast.File
 	nr_errors        int
 	nr_warnings      int
@@ -1865,10 +1865,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.pos)
 			}
 		}
-		// ast.Attr {}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
+		ast.Attr {}
 		ast.Block {
 			c.stmts(node.stmts)
 		}
@@ -2044,7 +2044,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		// ast.HashStmt {}
+		ast.GotoLabel {}
+		ast.GotoStmt {}
+		ast.HashStmt {}
 		ast.Import {}
 		ast.InterfaceDecl {
 			c.interface_decl(node)
@@ -2073,10 +2075,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_unsafe = true
 			c.stmts(node.stmts)
 			c.inside_unsafe = false
-		}
-		else {
-			// println('checker.stmt(): unhandled node')
-			// println('checker.stmt(): unhandled node (${typeof(node)})')
 		}
 	}
 }
@@ -2209,6 +2207,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CharLiteral {
 			return table.byte_type
+		}
+		ast.Comment {
+			return table.void_type
 		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
@@ -2616,7 +2617,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `$typ` in match range', branch.pos)
 				}
-				for i in low..high + 1 {
+				for i in low .. high + 1 {
 					key = i.str()
 					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 					if val == 1 {

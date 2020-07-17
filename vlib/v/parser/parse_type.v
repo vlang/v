@@ -13,7 +13,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.next()
 		p.check(.rsbr)
 		elem_type := p.parse_type()
-		//sym := p.table.get_type_symbol(elem_type)
+		// sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type(idx)
 	}
@@ -21,10 +21,8 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.rsbr)
 	elem_type := p.parse_type()
 	mut nr_dims := 1
-
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_tok2.kind !in [.semicolon, .rsbr]
-
 	for p.tok.kind == .lsbr && not_attr {
 		p.next()
 		p.check(.rsbr)
@@ -100,7 +98,6 @@ pub fn (mut p Parser) parse_type_with_mut(is_mut bool) table.Type {
 
 // Parses any language indicators on a type.
 pub fn (mut p Parser) parse_language() table.Language {
-
 	language := if p.tok.lit == 'C' {
 		table.Language.c
 	} else if p.tok.lit == 'JS' {
@@ -108,12 +105,10 @@ pub fn (mut p Parser) parse_language() table.Language {
 	} else {
 		table.Language.v
 	}
-
 	if language != .v {
 		p.next()
 		p.check(.dot)
 	}
-
 	return language
 }
 
@@ -124,7 +119,6 @@ pub fn (mut p Parser) parse_type() table.Type {
 		line_nr := p.tok.line_nr
 		p.next()
 		is_optional = true
-
 		if p.tok.line_nr > line_nr {
 			mut typ := table.void_type
 			if is_optional {
@@ -135,7 +129,6 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
-
 	mut nr_muls := 0
 	if p.tok.kind == .key_mut || is_shared || is_atomic {
 		nr_muls++
@@ -192,7 +185,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table
 		name = '${p.imports[name]}.$p.tok.lit'
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if p.mod !in ['builtin'] && name !in p.table.type_idxs  && name.len > 1 {
+	} else if p.mod !in ['builtin'] && name !in p.table.type_idxs && name.len > 1 {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}

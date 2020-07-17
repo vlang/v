@@ -24,12 +24,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 		p.check(.comma)
 	}
 	stmts := p.parse_block()
-	return ast.LockExpr {
+	return ast.LockExpr{
 		lockeds: lockeds
 		stmts: stmts
 		is_rlock: is_rlock
 		pos: pos
 	}
 }
-
-	

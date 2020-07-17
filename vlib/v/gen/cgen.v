@@ -676,7 +676,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.const_decl(node)
 			// }
 		}
-		ast.Comment {}
 		ast.CompFor {
 			g.comp_for(node)
 		}
@@ -1679,6 +1678,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			g.comptime_call(node)
 		}
+		ast.Comment {}
 		ast.ConcatExpr {
 			g.concat_expr(node)
 		}

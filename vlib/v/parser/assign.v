@@ -7,7 +7,8 @@ import v.ast
 import v.table
 
 fn (mut p Parser) assign_stmt() ast.Stmt {
-	return p.partial_assign_stmt(p.expr_list())
+	exprs, comments := p.expr_list()
+	return p.partial_assign_stmt(exprs, comments)
 }
 
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
@@ -77,12 +78,15 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	return false
 }
 
-fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
+fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comment) ast.Stmt {
 	p.is_stmt_ident = false
 	op := p.tok.kind
 	pos := p.tok.position()
 	p.next()
-	right := p.expr_list()
+	right, right_comments := p.expr_list()
+	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
+	comments << left_comments
+	comments << right_comments
 	mut has_cross_var := false
 	if op == .decl_assign {
 		// a, b := a + 1, b
@@ -155,6 +159,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr) ast.Stmt {
 		op: op
 		left: left
 		right: right
+		comments: comments
 		pos: pos
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr

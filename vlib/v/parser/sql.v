@@ -165,7 +165,6 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	} else if kind == .delete && n != 'from' {
 		p.error('expecting `from`')
 	}
-
 	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}
 	if kind == .insert {

@@ -17,11 +17,6 @@ const (
 	max_len = [0, 35, 85, 93, 100]
 )
 
-enum CommentsLevel {
-	keep
-	indent
-}
-
 pub struct Fmt {
 pub mut:
 	table             &table.Table
@@ -251,6 +246,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
+			f.comments(node.comments, {
+				inline: false
+			})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
@@ -302,9 +300,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.Comment {
-			f.comment(it)
-		}
 		ast.CompFor {}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
@@ -331,19 +326,27 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := it.name.after('.')
 			f.writeln('enum $name {')
-			f.comments(it.comments, false, .indent)
+			f.comments(it.comments, {
+				level: .indent
+			})
 			for field in it.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
-				f.comments(field.comments, true, .indent)
+				f.comments(field.comments, {
+					has_nl: false
+					level: .indent
+				})
 				f.writeln('')
 			}
 			f.writeln('}\n')
 		}
 		ast.ExprStmt {
+			f.comments(it.comments, {
+				inline: false
+			})
 			f.expr(it.expr)
 			if !f.single_line_if {
 				f.writeln('')
@@ -434,6 +437,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(it)
 		}
 		ast.Return {
+			f.comments(it.comments, {
+				inline: false
+			})
 			f.write('return')
 			if it.exprs.len > 1 {
 				// multiple returns
@@ -618,7 +624,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
-			f.comment(comments[j])
+			f.comment(comments[j], {})
+			f.writeln('')
 			f.indent--
 			j++
 		}
@@ -651,7 +658,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	for comment in node.end_comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment)
+		f.comment(comment, {})
+		f.writeln('')
 		f.indent--
 	}
 	f.writeln('}\n')
@@ -764,6 +772,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			f.write('`$node.val`')
+		}
+		ast.Comment {
+			f.comment(node, {})
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -1120,10 +1131,21 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 	}
 }
 
-pub fn (mut f Fmt) comment(node ast.Comment) {
+enum CommentsLevel {
+	keep
+	indent
+}
+
+struct CommentsOptions {
+	has_nl bool = true
+	inline bool = true
+	level  CommentsLevel = .keep
+}
+
+pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if !node.text.contains('\n') {
-		is_separate_line := node.text.starts_with('|')
-		mut s := if is_separate_line { node.text[1..] } else { node.text }
+		is_separate_line := !options.inline || node.text.starts_with('|')
+		mut s := if node.text.starts_with('|') { node.text[1..] } else { node.text }
 		if s == '' {
 			s = '//'
 		} else {
@@ -1133,7 +1155,7 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
-		f.writeln(s)
+		f.write(s)
 		return
 	}
 	lines := node.text.split_into_lines()
@@ -1143,24 +1165,24 @@ pub fn (mut f Fmt) comment(node ast.Comment) {
 		f.empty_line = false
 	}
 	f.empty_line = true
-	f.writeln('*/')
+	f.write('*/')
 }
 
-pub fn (mut f Fmt) comments(some_comments []ast.Comment, remove_last_new_line bool, level CommentsLevel) {
-	for c in some_comments {
+pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
+	for i, c in comments {
 		if !f.out.last_n(1)[0].is_space() {
 			f.write('\t')
 		}
-		if level == .indent {
+		if options.level == .indent {
 			f.indent++
 		}
-		f.comment(c)
-		if level == .indent {
+		f.comment(c, options)
+		if i < comments.len - 1 || options.has_nl {
+			f.writeln('')
+		}
+		if options.level == .indent {
 			f.indent--
 		}
-	}
-	if remove_last_new_line {
-		f.remove_new_line()
 	}
 }
 
@@ -1232,7 +1254,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if branch.comments.len > 0 {
-			f.comments(branch.comments, true, .keep)
+			f.comments(branch.comments, {})
 		}
 		if i == 0 {
 			f.write('if ')
@@ -1373,7 +1395,8 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	for branch in it.branches {
 		if branch.comment.text != '' {
-			f.comment(branch.comment)
+			f.comment(branch.comment, {})
+			f.writeln('')
 		}
 		if !branch.is_else {
 			// normal branch
@@ -1404,7 +1427,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 		}
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, false, .keep)
+			f.comments(branch.post_comments, {})
 		}
 	}
 	f.indent--
@@ -1456,6 +1479,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
 		ast.IfExpr { return false }
+		ast.Comment { return false }
 		else {}
 	}
 	return true
@@ -1553,9 +1577,12 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		f.expr(expr)
 		if i == it.exprs.len - 1 {
 			if is_new_line {
+				if expr !is ast.Comment {
+					f.write(',')
+				}
 				f.writeln('')
 			}
-		} else {
+		} else if expr !is ast.Comment {
 			f.write(',')
 		}
 		last_line_nr = line_nr
@@ -1634,7 +1661,8 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		comments := field.comments
 		mut j := 0
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j])
+			f.comment(comments[j], {})
+			f.writeln('')
 			j++
 		}
 		name := field.name.after('.')
