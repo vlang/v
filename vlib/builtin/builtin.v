@@ -150,7 +150,7 @@ pub fn malloc(n int) byteptr {
 		nr_mallocs++
 		return res
 	} $else {
-		ptr := C.malloc(n)
+		ptr := unsafe {C.malloc(n)}
 		if ptr == 0 {
 			panic('malloc($n) failed')
 		}
@@ -177,12 +177,14 @@ TODO
 [unsafe_fn]
 pub fn v_realloc(b byteptr, n u32) byteptr {
 	$if prealloc {
-		new_ptr := malloc(int(n))
-		size := 0 //malloc_size(b)
-		C.memcpy(new_ptr, b, size)
-		return new_ptr
+		unsafe {
+			new_ptr := malloc(int(n))
+			size := 0 //malloc_size(b)
+			C.memcpy(new_ptr, b, size)
+			return new_ptr
+		}
 	} $else {
-		ptr := C.realloc(b, n)
+		ptr := unsafe {C.realloc(b, n)}
 		if ptr == 0 {
 			panic('realloc($n) failed')
 		}
@@ -217,8 +219,10 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	if sz == 0 {
 		return vcalloc(1)
 	}
-	mem := malloc(sz)
-	return C.memcpy(mem, src, sz)
+	unsafe {
+		mem := malloc(sz)
+		return C.memcpy(mem, src, sz)
+	}
 }
 
 fn v_ptr_free(ptr voidptr) {

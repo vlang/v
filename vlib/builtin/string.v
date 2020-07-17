@@ -371,7 +371,9 @@ fn (s string) eq(a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	return C.memcmp(s.str, a.str, a.len) == 0
+	unsafe {
+		return C.memcmp(s.str, a.str, a.len) == 0
+	}
 }
 
 // !=
@@ -1379,7 +1381,9 @@ pub fn (s string) bytes() []byte {
 		return []
 	}
 	mut buf := []byte{ len:s.len }
-	C.memcpy(buf.data, s.str, s.len)
+	unsafe {
+		C.memcpy(buf.data, s.str, s.len)
+	}
 	return buf
 }
 

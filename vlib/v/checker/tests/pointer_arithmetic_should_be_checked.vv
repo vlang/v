@@ -23,3 +23,9 @@ fn test_funcs() {
     s := S1{}
     s.f()
 }
+
+fn test_c() {
+    mut p := C.malloc(4)
+    s := 'hope'
+    C.memcpy(p, s.str, 4)
+}

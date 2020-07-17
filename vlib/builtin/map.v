@@ -88,7 +88,9 @@ fn fast_string_eq(a, b string) bool {
 	if a.len != b.len {
 		return false
 	}
-	return C.memcmp(a.str, b.str, b.len) == 0
+	unsafe {
+		return C.memcmp(a.str, b.str, b.len) == 0
+	}
 }
 
 // Dynamic array with very low growth factor
@@ -502,11 +504,13 @@ pub fn (d DenseArray) clone() DenseArray {
 		cap:         d.cap
 		len:        d.len
 		deletes:     d.deletes
-		keys:        &string(malloc(int(d.cap * sizeof(string))))
-		values:      byteptr(malloc(int(d.cap * u32(d.value_bytes))))
+		keys:        unsafe {&string(malloc(int(d.cap * sizeof(string))))}
+		values:      unsafe {byteptr(malloc(int(d.cap * u32(d.value_bytes))))}
 	}
-	C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
-	C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
+	unsafe {
+		C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
+		C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
+	}
 	return res
 }
 

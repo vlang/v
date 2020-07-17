@@ -1128,6 +1128,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.is_deprecated {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
+	if f.is_unsafe && !c.inside_unsafe &&
+		f.language == .c && f.name[2] == `m` /* `C.m` functions only, temp */ {
+		c.warn('function `$f.name` must be called from an `unsafe` block',
+			call_expr.pos)
+	}
 	if f.is_generic && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
 		if rts.kind == .struct_ {
