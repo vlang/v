@@ -1,15 +1,31 @@
 Usage:
-  v [flags] fmt path_to_source.v [path_to_other_source.v]
+  v fmt [options] path_to_source.v [path_to_other_source.v]
 
 Formats the given V source files, then prints their formatted source to stdout.
 
 Options:
-  -c    Check if file is already formatted.
-        If it is not, print filepath, and exit with code 2.
-  -diff Display only diffs between the formatted source and the original source.
-  -l    List files whose formatting differs from vfmt.
-  -w    Write result to (source) file(s) instead of to stdout.
- -debug Print the kinds of encountered AST statements/expressions on stderr.
+  -c      Check if file is already formatted.
+          If it is not, print filepath, and exit with code 2.
+
+  -diff   Display the differences between the formatted source(s) and the original source(s).
+          This will attempt to find a working `diff` command automatically unless you
+          specify one with the VDIFF_TOOL environment variable.
+
+  -l      List files whose formatting differs from vfmt.
+
+  -w      Write result to (source) file(s) instead of to stdout.
+
+  -debug  Print the kinds of encountered AST statements/expressions on stderr.
+
+Environment Variables:
+  VDIFF_TOOL      A command-line tool that will be executed with the original file path
+                  and a temporary formatted file path as arguments. e.g.
+                  `VDIFF_TOOL=opendiff v fmt -diff path/to/file.v` will become:
+                  opendiff path/to/file.v /tmp/v/vfmt_file.v
+
+  VDIFF_OPTIONS   A set of command-line options to be sent immediately after the
+                  `diff` command. e.g.
+                  VDIFF_OPTIONS="-W 80 -y" v fmt -diff path/to/file.v /tmp/v/vfmt_file.v
 
 NB: vfmt after 2020/04/01 is based on the new AST compiler code, and
 thus is much faster, and more flexible than before.

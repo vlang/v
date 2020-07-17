@@ -24,10 +24,10 @@ struct FormatOptions {
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
-	difftool   string
 }
 
 const (
+	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
 	platform_and_file_extensions = [
 		['windows', '_windows.v'],
 		['linux', '_lin.v', '_linux.v', '_nix.v'],
@@ -39,7 +39,6 @@ const (
 		['haiku', '_haiku.v'],
 		['qnx', '_qnx.v']
 	]
-	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
 )
 
 fn main() {
@@ -49,17 +48,7 @@ fn main() {
 	// }
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
-	mut args := util.join_env_vflags_and_os_args()
-	mut diff_tool := ''
-	str_opts := args.filter(it.contains('='))
-	if str_opts.len > 0 {
-		for sopt in str_opts {
-			if sopt.starts_with('-diff') {
-				args << '-diff'
-				diff_tool = sopt.after('=')
-			}
-		}
-	}
+	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
@@ -71,7 +60,6 @@ fn main() {
 		is_debug: '-debug' in args
 		is_noerror: '-noerror' in args
 		is_verify: '-verify' in args
-		difftool: diff_tool
 	}
 	if foptions.is_verbose {
 		eprintln('vfmt foptions: $foptions')
@@ -199,16 +187,8 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 		return
 	}
 	if foptions.is_diff {
-		if foptions.difftool.len > 0 {
-			diff_cmd := '$foptions.difftool "$file" "$formatted_file_path"'
-			os.exec(diff_cmd) or {
-				eprintln('could not execute $diff_cmd\nerror: $err')
-				return
-			}
-			return
-		}
 		diff_cmd := util.find_working_diff_command() or {
-			eprintln('No working "diff" CLI command found.')
+			eprintln(err)
 			return
 		}
 		if foptions.is_verbose {
@@ -219,7 +199,7 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 	}
 	if foptions.is_verify {
 		diff_cmd := util.find_working_diff_command() or {
-			eprintln('No working "diff" CLI command found.')
+			eprintln(err)
 			return
 		}
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
@@ -267,7 +247,7 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 fn (f FormatOptions) str() string {
 	return 'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
 		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
-		' is_verify: $f.is_verify, difftool: "$f.difftool" }'
+		' is_verify: $f.is_verify" }'
 }
 
 fn file_to_target_os(file string) string {
