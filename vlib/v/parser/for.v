@@ -35,12 +35,15 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		if p.peek_tok.kind in [.assign, .decl_assign] {
 			init = p.assign_stmt()
 			has_init = true
-		} else if p.tok.kind != .semicolon {
 		}
-		// allow `for ;; i++ {`
+		// Allow `for ;; i++ {`
 		// Allow `for i = 0; i < ...`
 		p.check(.semicolon)
 		if p.tok.kind != .semicolon {
+			// Disallow `for i := 0; i++; i < ...`
+			if p.tok.kind == .name && p.peek_tok.kind in [.inc, .dec] {
+				p.error('cannot use $p.tok.lit$p.peek_tok.kind as value')
+			}
 			cond = p.expr(0)
 			has_cond = true
 		}
