@@ -1,0 +1,19 @@
+fn fun() int {
+	// comment zero
+	return 0
+}
+
+fn mr_fun() (int, int) {
+	// one comment
+	// another comment
+	return 1, 2
+}
+
+fn main() {
+	// this is a comment
+	a := 1
+	// and another comment
+	// just to make it worse
+	b, c := a, 2
+	d := c // and an extra one
+}
