@@ -19,13 +19,13 @@ pub fn new_channel<T>(n int) &Channel {
 }
 */
 
-pub fn new_channel(n int, objsize u32) &Channel {
+pub fn new_channel<T>(n int) &Channel {
 	assert n > 0
-	bufsize := u32(n) * objsize
+	bufsize := u32(n) * sizeof(T)
 	return &Channel{
 		writesem: new_semaphore_init(n)
 		readsem:  new_semaphore()
-		objsize: objsize
+		objsize: sizeof(T)
 		bufsize: bufsize
 		ringbuf: malloc(int(bufsize))
 		write_idx: 0

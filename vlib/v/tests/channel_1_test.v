@@ -11,7 +11,7 @@ fn do_send(mut ch sync.Channel) {
 }
 
 fn test_channel_buffered() {
-	mut ch := sync.new_channel(1000, sizeof(int))
+	mut ch := sync.new_channel<int>(1000)
 	go do_send(mut ch)
 	mut sum := i64(0)
 	for _ in 0 .. num_iterations {

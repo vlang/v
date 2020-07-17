@@ -1785,14 +1785,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SizeOf {
 			if node.is_type {
+				node_typ := g.unwrap_generic(node.typ)
 				mut styp := node.type_name
 				if styp.starts_with('C.') {
 					styp = styp[2..]
 				}
-				if node.type_name == '' {
-					styp = g.typ(node.typ)
+				if node.type_name == '' || node.typ.has_flag(.generic) {
+					styp = g.typ(node_typ)
 				} else {
-					sym := g.table.get_type_symbol(node.typ)
+					sym := g.table.get_type_symbol(node_typ)
 					if sym.kind == .struct_ {
 						info := sym.info as table.Struct
 						if !info.is_typedef {
