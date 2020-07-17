@@ -37,6 +37,12 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
 					p.open_scope()
+					p.scope.register('errcode', ast.Var{
+						name: 'errcode'
+						typ: table.int_type
+						pos: body_pos
+						is_used: true
+					})
 					p.scope.register('err', ast.Var{
 						name: 'err'
 						typ: table.string_type

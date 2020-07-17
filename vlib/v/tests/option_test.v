@@ -3,13 +3,20 @@ fn opt_err_with_code() ?string {
 }
 
 fn test_err_with_code() {
+	if w := opt_err_with_code() {
+		assert false
+		_ := w
+	} else {
+		assert err == 'hi'
+		assert errcode == 137
+	}
 	v := opt_err_with_code() or {
 		assert err == 'hi'
 		assert errcode == 137
 		return
 	}
 	assert false
-	println(v) // suppress not used error
+	_ := v
 }
 
 fn opt_err() ?string {

@@ -2392,8 +2392,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('{')
 			// define `err` only for simple `if val := opt {...} else {`
 			if is_guard && guard_idx == i - 1 {
-				var_name := guard_vars[guard_idx]
-				g.writeln('string err = ${var_name}.v_error;')
+				cvar_name := guard_vars[guard_idx]
+				g.writeln('\tstring err = ${cvar_name}.v_error;')
+				g.writeln('\tint errcode = ${cvar_name}.ecode;')
 			}
 		} else {
 			match branch.cond as cond {
