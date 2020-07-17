@@ -211,6 +211,20 @@ pub:
 	pos   token.Position
 	mod   string
 	alias string
+pub mut:
+	syms  []ImportSymbol
+}
+
+pub enum ImportSymbolKind {
+	fn_
+	type_
+}
+
+pub struct ImportSymbol {
+pub:
+	pos    token.Position
+	name   string
+	kind   ImportSymbolKind
 }
 
 pub struct AnonFn {
