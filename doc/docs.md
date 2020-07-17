@@ -1768,16 +1768,16 @@ To generate documentation use vdoc, for example `v doc net.http`.
 
 ## Tools
 
-### vfmt
+### v fmt
 
 You don't need to worry about formatting your code or setting style guidelines.
-`vfmt` takes care of that:
+`v fmt` takes care of that:
 
 ```v
 v fmt file.v
 ```
 
-It's recommended to set up your editor, so that vfmt runs on every save.
+It's recommended to set up your editor, so that `v fmt -w` runs on every save.
 A vfmt run is usually pretty cheap (takes <30ms).
 
 Always run `v fmt -w file.v` before pushing your code.

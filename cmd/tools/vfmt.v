@@ -15,7 +15,7 @@ import vhelp
 
 struct FormatOptions {
 	is_l       bool
-	is_c       bool  // NB: This refers to the '-c' fmt flag, NOT the C backend
+	is_c       bool // NB: This refers to the '-c' fmt flag, NOT the C backend
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -27,11 +27,18 @@ struct FormatOptions {
 }
 
 const (
-	platform_and_file_extensions = [['windows', '_windows.v'], ['linux', '_lin.v',
-		'_linux.v', '_nix.v'], ['macos', '_mac.v', '_darwin.v'], ['freebsd', '_bsd.v', '_freebsd.v'],
-		['netbsd', '_bsd.v', '_netbsd.v'], ['openbsd', '_bsd.v', '_openbsd.v'], ['solaris', '_solaris.v'],
-		['haiku', '_haiku.v'], ['qnx', '_qnx.v']]
 	formatted_file_token         = '\@\@\@' + 'FORMATTED_FILE: '
+	platform_and_file_extensions = [
+		['windows', '_windows.v'],
+		['linux', '_lin.v', '_linux.v', '_nix.v'],
+		['macos', '_mac.v', '_darwin.v'],
+		['freebsd', '_bsd.v', '_freebsd.v'],
+		['netbsd', '_bsd.v', '_netbsd.v'],
+		['openbsd', '_bsd.v', '_openbsd.v'],
+		['solaris', '_solaris.v'],
+		['haiku', '_haiku.v'],
+		['qnx', '_qnx.v']
+	]
 )
 
 fn main() {
@@ -132,7 +139,7 @@ fn main() {
 		errors++
 	}
 	if errors > 0 {
-		eprintln('Encountered a total of: ${errors} errors.')
+		eprintln('Encountered a total of: $errors errors.')
 		if foptions.is_noerror {
 			exit(0)
 		}
@@ -157,9 +164,9 @@ fn (foptions &FormatOptions) format_file(file string) {
 	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
 	os.write_file(vfmt_output_path, formatted_content)
 	if foptions.is_verbose {
-		eprintln('fmt.fmt worked and ${formatted_content.len} bytes were written to ${vfmt_output_path} .')
+		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
 	}
-	eprintln('${formatted_file_token}${vfmt_output_path}')
+	eprintln('$formatted_file_token$vfmt_output_path')
 }
 
 fn print_compiler_options(compiler_params &pref.Preferences) {
@@ -181,15 +188,18 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 	}
 	if foptions.is_diff {
 		diff_cmd := util.find_working_diff_command() or {
-			eprintln('No working "diff" CLI command found.')
+			eprintln(err)
 			return
+		}
+		if foptions.is_verbose {
+			eprintln('Using diff command: $diff_cmd')
 		}
 		println(util.color_compare_files(diff_cmd, file, formatted_file_path))
 		return
 	}
 	if foptions.is_verify {
 		diff_cmd := util.find_working_diff_command() or {
-			eprintln('No working "diff" CLI command found.')
+			eprintln(err)
 			return
 		}
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
@@ -234,10 +244,10 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 	print(formatted_fc)
 }
 
-
 fn (f FormatOptions) str() string {
-	return 'FormatOptions{ is_l: $f.is_l' + ' is_w: $f.is_w' + ' is_diff: $f.is_diff' + ' is_verbose: $f.is_verbose' +
-		' is_all: $f.is_all' + ' is_worker: $f.is_worker' + ' is_debug: $f.is_debug' + ' }'
+	return 'FormatOptions{ is_l: $f.is_l, is_w: $f.is_w, is_diff: $f.is_diff, is_verbose: $f.is_verbose,' +
+		' is_all: $f.is_all, is_worker: $f.is_worker, is_debug: $f.is_debug, is_noerror: $f.is_noerror,' +
+		' is_verify: $f.is_verify" }'
 }
 
 fn file_to_target_os(file string) string {
