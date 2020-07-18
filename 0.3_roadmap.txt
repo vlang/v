@@ -6,11 +6,12 @@
 - thread safe arrays/maps
 - C2V translator
 - doom.v
-- rune type, replace ustring with []rune
+- rune type, replace `ustring` with `[]rune`, fix `byte.str()`
 - maps with non-string keys
 - iOS/Android support
 - make `-autofree` the default
 - parallel parser (and maybe checker/gen?)
+- `recover()` from panics
 
 
 

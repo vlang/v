@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.util
 
-fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
+fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if it.language == .c {
 		// || it.no_body {
 		return
@@ -23,7 +23,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 				println('gen fn `$it.name` for type `$sym.name`')
 			}
 			g.cur_generic_type = gen_type
-			g.gen_fn_decl(it)
+			g.gen_fn_decl(it, skip)
 		}
 		g.cur_generic_type = 0
 		return
@@ -105,9 +105,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl) {
 		g.write(fn_header)
 	}
 	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.use_cache && it.is_builtin) {
+	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
-		g.definitions.writeln(');')
+		g.definitions.writeln('); // NO BODY')
 		g.writeln(');')
 		return
 	}

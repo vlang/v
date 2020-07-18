@@ -19,7 +19,7 @@ const (
 
 pub struct Checker {
 pub mut:
-table            &table.Table
+	table            &table.Table
 	file             ast.File
 	nr_errors        int
 	nr_warnings      int
@@ -382,6 +382,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as table.Alias
 				sym := c.table.get_type_symbol(info_t.parent_type)
+				if sym.kind == .placeholder { // pending import symbol did not resolve
+					c.error('unknown struct: $type_sym.name', struct_init.pos)
+					return table.void_type
+				}
 				if sym.kind != .struct_ {
 					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
 				}
@@ -707,7 +711,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				c.error('0 type in SelectorExpr', expr.pos)
 				return '', pos
 			}
-			typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
+			mut typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
+			if typ_sym.kind == .alias {
+				alias_info := typ_sym.info as table.Alias
+				typ_sym = c.table.get_type_symbol(alias_info.parent_type)
+			}
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
@@ -953,6 +961,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 						call_expr.pos)
 				}
 			}
+		}
+		if method.is_unsafe && !c.inside_unsafe {
+			c.warn('method `${left_type_sym.name}.$method_name` must be called from an `unsafe` block',
+				call_expr.pos)
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
@@ -1865,10 +1877,10 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.pos)
 			}
 		}
-		// ast.Attr {}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
+		ast.Attr {}
 		ast.Block {
 			c.stmts(node.stmts)
 		}
@@ -2044,8 +2056,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			}
 		}
-		// ast.HashStmt {}
-		ast.Import {}
+		ast.GotoLabel {}
+		ast.GotoStmt {}
+		ast.HashStmt {}
+		ast.Import {
+			c.import_stmt(node)
+		}
 		ast.InterfaceDecl {
 			c.interface_decl(node)
 		}
@@ -2074,9 +2090,25 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(node.stmts)
 			c.inside_unsafe = false
 		}
-		else {
-			// println('checker.stmt(): unhandled node')
-			// println('checker.stmt(): unhandled node (${typeof(node)})')
+	}
+}
+
+fn (mut c Checker) import_stmt(imp ast.Import) {
+	for sym in imp.syms {
+		name := '$imp.mod\.$sym.name'
+		if sym.kind == .fn_ {
+			c.table.find_fn(name) or {
+				c.error('module `$imp.mod` has no public fn named `$sym.name\()`', sym.pos)
+			}
+		}
+		if sym.kind == .type_ {
+			if type_sym := c.table.find_type(name) {
+				if type_sym.kind == .placeholder {
+					c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+				}
+			} else {
+				c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+			}
 		}
 	}
 }
@@ -2209,6 +2241,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.CharLiteral {
 			return table.byte_type
+		}
+		ast.Comment {
+			return table.void_type
 		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
@@ -2616,7 +2651,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					typ := c.table.type_to_str(c.expr(expr.low))
 					c.error('cannot use type `$typ` in match range', branch.pos)
 				}
-				for i in low..high + 1 {
+				for i in low .. high + 1 {
 					key = i.str()
 					val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 					if val == 1 {
@@ -2910,7 +2945,6 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ_sym := c.table.get_type_symbol(typ)
 	// if !typ.is_number() {
 	if !typ_sym.is_number() {
-		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
 	} else {
@@ -3223,7 +3257,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			mut idx := 0
 			for i, m in sym.methods {
 				if m.name == node.name {
-					println('got it')
 					idx = i
 					break
 				}

@@ -1201,11 +1201,14 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
+[unsafe_fn]
 fn (u &ustring) free() {
 	$if prealloc {
 		return
 	}
-	u.runes.free()
+	unsafe {
+		u.runes.free()
+	}
 }
 
 pub fn (c byte) is_digit() bool {

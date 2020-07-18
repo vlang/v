@@ -5,7 +5,7 @@ module wyrand
 
 import math.bits
 import rand.util
-import hash.wyhash
+import hash as wyhash
 
 // Redefinition of some constants that we will need for pseudorandom number generation
 const (

@@ -137,7 +137,7 @@ fn (mut p Parser) parse() ast.File {
 	p.read_first_token()
 	mut stmts := []ast.Stmt{}
 	for p.tok.kind == .comment {
-		stmts << p.comment()
+		stmts << p.comment_stmt()
 	}
 	// module
 	module_decl := p.module_decl()
@@ -149,7 +149,7 @@ fn (mut p Parser) parse() ast.File {
 			continue
 		}
 		if p.tok.kind == .comment {
-			stmts << p.comment()
+			stmts << p.comment_stmt()
 			continue
 		}
 		break
@@ -372,7 +372,7 @@ fn (mut p Parser) check_name() string {
 }
 
 pub fn (mut p Parser) top_stmt() ast.Stmt {
-	$if trace_parser? {
+	$if trace_parser ? {
 		tok_pos := p.tok.position()
 		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | top_stmt')
 	}
@@ -443,7 +443,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			return p.struct_decl()
 		}
 		.comment {
-			return p.comment()
+			return p.comment_stmt()
 		}
 		else {
 			if p.pref.is_script && !p.pref.is_test {
@@ -488,19 +488,27 @@ pub fn (mut p Parser) comment() ast.Comment {
 	}
 }
 
+pub fn (mut p Parser) comment_stmt() ast.ExprStmt {
+	comment := p.comment()
+	return ast.ExprStmt{
+		expr: comment
+		pos: comment.pos
+	}
+}
+
 pub fn (mut p Parser) eat_comments() []ast.Comment {
 	mut comments := []ast.Comment{}
 	for {
 		if p.tok.kind != .comment {
 			break
 		}
-		comments << p.check_comment()
+		comments << p.comment()
 	}
 	return comments
 }
 
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
-	$if trace_parser? {
+	$if trace_parser ? {
 		tok_pos := p.tok.position()
 		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | stmt($is_top_level)')
 	}
@@ -546,7 +554,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.parse_multi_expr(is_top_level)
 		}
 		.comment {
-			return p.comment()
+			return p.comment_stmt()
 		}
 		.key_return {
 			return p.return_stmt()
@@ -622,16 +630,22 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	}
 }
 
-fn (mut p Parser) expr_list() []ast.Expr {
+fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 	mut exprs := []ast.Expr{}
+	mut comments := []ast.Comment{}
 	for {
-		exprs << p.expr(0)
-		if p.tok.kind != .comma {
-			break
+		expr := p.expr(0)
+		if expr is ast.Comment {
+			comments << expr
+		} else {
+			exprs << expr
+			if p.tok.kind != .comma {
+				break
+			}
+			p.next()
 		}
-		p.next()
 	}
-	return exprs
+	return exprs, comments
 }
 
 // when is_top_stmt is true attrs are added to p.attrs
@@ -769,10 +783,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
 	tok := p.tok
-	left := p.expr_list()
+	left, left_comments := p.expr_list()
 	left0 := left[0]
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
-		return p.partial_assign_stmt(left)
+		return p.partial_assign_stmt(left, left_comments)
 	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
 		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
 		(left0 as ast.InfixExpr).op == .left_shift) &&
@@ -783,6 +797,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return ast.ExprStmt{
 			expr: left0
 			pos: tok.position()
+			comments: left_comments
 			is_expr: p.inside_for
 		}
 	}
@@ -791,6 +806,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 			vals: left
 		}
 		pos: tok.position()
+		comments: left_comments
 	}
 }
 
@@ -1315,7 +1331,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	mut mod_name := p.check_name()
 	if import_pos.line_nr != pos.line_nr {
-		p.error_with_pos('`import` and `module` must be at same line', pos)
+		p.error_with_pos('`import` statements must be a single line', pos)
 	}
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
@@ -1335,23 +1351,88 @@ fn (mut p Parser) import_stmt() ast.Import {
 		p.next()
 		mod_alias = p.check_name()
 	}
+	node := ast.Import{
+		pos: pos,
+		mod: mod_name,
+		alias: mod_alias,
+	}
+	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
+		p.import_syms(node)
+		p.register_used_import(mod_name) // no `unused import` msg for parent
+	}
 	pos_t := p.tok.position()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind != .name {
-			p.error_with_pos('module syntax error, please use `x.y.z`', pos_t)
-		} else {
+		if p.tok.kind != .lcbr {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 		}
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name
-	node := ast.Import{
-		mod: mod_name
-		alias: mod_alias
-		pos: pos
-	}
 	p.ast_imports << node
 	return node
+}
+
+// import_syms parses the inner part of `import module { submod1, submod2 }`
+fn (mut p Parser) import_syms(mut parent ast.Import) {
+	p.next()
+	pos_t := p.tok.position()
+	if p.tok.kind == .rcbr { // closed too early
+		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
+	}
+	if p.tok.kind != .name { // not a valid inner name
+		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
+	}
+	for p.tok.kind == .name {
+		pos := p.tok.position()
+		alias := p.check_name()
+		name := '$parent.mod\.$alias'
+		if alias[0].is_capital() {
+			idx := p.table.add_placeholder_type(name)
+			typ := table.new_type(idx)
+			p.table.register_type_symbol({
+				kind: .alias
+				name: p.prepend_mod(alias)
+				parent_idx: idx
+				mod: p.mod
+				info: table.Alias{
+					parent_type: typ
+					language: table.Language.v
+				}
+				is_public: false
+			})
+			// so we can work with the fully declared type in fmt+checker
+			parent.syms << ast.ImportSymbol{
+				pos: pos
+				name: alias
+				kind: .type_
+			}
+		} else {
+			if !p.table.known_fn(name) {
+				p.table.fns[alias] = table.Fn{
+					is_placeholder: true
+					mod: parent.mod
+					name: name
+				}
+			}
+			// so we can work with this in fmt+checker
+			parent.syms << ast.ImportSymbol{
+				pos: pos
+				name: alias
+				kind: .fn_
+			}
+		}
+		if p.tok.kind == .comma { // go again if more than one
+			p.next()
+			continue
+		}
+		if p.tok.kind == .rcbr { // finish if closing `}` is seen
+			break
+		}
+	}
+	if p.tok.kind != .rcbr {
+		p.error_with_pos('import syntax error, no closing `}`', p.tok.position())
+	}
+	p.next()
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
@@ -1416,10 +1497,11 @@ fn (mut p Parser) return_stmt() ast.Return {
 		}
 	}
 	// return exprs
-	exprs := p.expr_list()
+	exprs, comments := p.expr_list()
 	end_pos := exprs.last().position()
 	return ast.Return{
 		exprs: exprs
+		comments: comments
 		pos: first_pos.extend(end_pos)
 	}
 }

@@ -23,3 +23,15 @@ fn test_type_alias_v2() {
 	g := Myf64_2(10.4)
 	assert g + 0.5 == 10.9
 }
+
+struct Mystruct {
+	mut:
+	i int
+}
+type Mystruct_2 Mystruct
+
+fn test_type_alias_struct() {
+	mut s := Mystruct_2{}
+	s.i = 10
+	assert s.i + 100 == 110
+}

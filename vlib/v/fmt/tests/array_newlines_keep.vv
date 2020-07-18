@@ -7,7 +7,7 @@ fn main() {
 	expected_flags := [
 		make_flag('solaris', '-L', '/opt/local/lib'),
 		make_flag('darwin', '-framework', 'Cocoa'),
-		make_flag('windows', '-l', 'gdi32')
+		make_flag('windows', '-l', 'gdi32'),
 	]
 	x := []int{len: 10, cap: 100, init: 1}
 	_ := expected_flags

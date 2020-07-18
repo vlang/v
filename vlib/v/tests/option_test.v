@@ -3,13 +3,20 @@ fn opt_err_with_code() ?string {
 }
 
 fn test_err_with_code() {
+	if w := opt_err_with_code() {
+		assert false
+		_ := w
+	} else {
+		assert err == 'hi'
+		assert errcode == 137
+	}
 	v := opt_err_with_code() or {
 		assert err == 'hi'
 		assert errcode == 137
 		return
 	}
 	assert false
-	println(v) // suppress not used error
+	_ := v
 }
 
 fn opt_err() ?string {
@@ -69,7 +76,7 @@ fn test_if_else_opt() {
 	if _ := err_call(false) {
 		assert false
 	} else {
-		assert true
+		assert err.len != 0
 	}
 }
 
@@ -150,12 +157,12 @@ fn test_or_return() {
 	if _ := or_return_error() {
 		assert false
 	} else {
-		assert true
+		assert err.len != 0
 	}
 	if _ := or_return_none() {
 		assert false
 	} else {
-		assert true
+		assert err.len == 0
 	}
 }
 

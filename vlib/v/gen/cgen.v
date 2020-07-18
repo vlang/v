@@ -102,7 +102,7 @@ mut:
 
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
+		'\t\t\t\t\t\t\t\t',
 	]
 )
 
@@ -220,8 +220,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		b.write(g.stringliterals.str())
 	}
 	if g.auto_str_funcs.len > 0 {
-		b.writeln('\n// V auto str functions:')
-		b.write(g.auto_str_funcs.str())
+		if g.pref.build_mode != .build_module {
+			b.writeln('\n// V auto str functions:')
+			b.write(g.auto_str_funcs.str())
+		}
 	}
 	b.writeln('\n// V out')
 	b.write(g.out.str())
@@ -676,7 +678,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.const_decl(node)
 			// }
 		}
-		ast.Comment {}
 		ast.CompFor {
 			g.comp_for(node)
 		}
@@ -722,7 +723,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
-				if !node.name.starts_with(g.module_built + '.') {
+				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built {
 					// Skip functions that don't have to be generated
 					// for this module.
 					skip = true
@@ -732,6 +733,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 				if !skip {
 					println('build module `$g.module_built` fn `$node.name`')
+				}
+			}
+			if g.pref.use_cache {
+				if node.mod != 'main' {
+					skip = true
 				}
 			}
 			keep_fn_decl := g.fn_decl
@@ -744,7 +750,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#ifndef __cplusplus\n')
 			}
-			g.gen_fn_decl(node)
+			g.gen_fn_decl(node, skip)
 			if node.name == 'backtrace' ||
 				node.name == 'backtrace_symbols' ||
 				node.name == 'backtrace_symbols_fd' {
@@ -1679,6 +1685,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			g.comptime_call(node)
 		}
+		ast.Comment {}
 		ast.ConcatExpr {
 			g.concat_expr(node)
 		}
@@ -2368,12 +2375,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		return
 	}
 	mut is_guard := false
-	mut guard_vars := []string{len: node.branches.len}
+	mut guard_idx := 0
+	mut guard_vars := []string{}
 	for i, branch in node.branches {
 		cond := branch.cond
 		if cond is ast.IfGuardExpr {
 			if !is_guard {
 				is_guard = true
+				guard_idx = i
+				guard_vars = []string{len: node.branches.len}
 				g.writeln('{ /* if guard */ ')
 			}
 			var_name := g.new_tmp_var()
@@ -2385,8 +2395,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		if i > 0 {
 			g.write('} else ')
 		}
+		// if last branch is `else {`
 		if i == node.branches.len - 1 && node.has_else {
 			g.writeln('{')
+			// define `err` only for simple `if val := opt {...} else {`
+			if is_guard && guard_idx == i - 1 {
+				cvar_name := guard_vars[guard_idx]
+				g.writeln('\tstring err = ${cvar_name}.v_error;')
+				g.writeln('\tint errcode = ${cvar_name}.ecode;')
+			}
 		} else {
 			match branch.cond as cond {
 				ast.IfGuardExpr {
@@ -2888,7 +2905,7 @@ fn (mut g Gen) go_back_out(n int) {
 
 const (
 	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
-		'struct addrinfo'
+		'struct addrinfo',
 	]
 )
 
@@ -4154,6 +4171,9 @@ fn styp_to_str_fn_name(styp string) string {
 
 [inline]
 fn (mut g Gen) gen_str_for_type(typ table.Type) string {
+	if g.pref.build_mode == .build_module {
+		return ''
+	}
 	styp := g.typ(typ)
 	return g.gen_str_for_type_with_styp(typ, styp)
 }

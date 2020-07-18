@@ -42,17 +42,22 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('compilation took: $sw.elapsed().milliseconds() ms')
 	}
 	// running does not require the parsers anymore
-	b.myfree()
+	unsafe {
+		b.myfree()
+	}
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
 }
 
 // Temporary, will be done by -autofree
+[unsafe_fn]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
-	b.parsed_files.free()
+	unsafe {
+		b.parsed_files.free()
+	}
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
@@ -167,7 +172,7 @@ Did you forget to add vlib to the path? (Use @vlib for default vlib)')
 }
 
 pub fn (v &Builder) get_user_files() []string {
-	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash', 'vlib/hash/wyhash'] {
+	if v.pref.path in ['vlib/builtin', 'vlib/strconv', 'vlib/strings', 'vlib/hash'] {
 		// This means we are building a builtin module with `v build-module vlib/strings` etc
 		// get_builtin_files() has already added the files in this module,
 		// do nothing here to avoid duplicate definition errors.

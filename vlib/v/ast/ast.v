@@ -10,15 +10,15 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	CharLiteral | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr |
-	IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None |
-	OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf | SqlExpr |
-	StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
+	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
+	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | Comment | CompFor |
-	CompIf | ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt |
-	ForStmt | GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl |
-	Module | Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor | CompIf |
+	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
+	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
+	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -42,11 +42,12 @@ pub:
 // Stand-alone expression in a statement list.
 pub struct ExprStmt {
 pub:
-	expr    Expr
-	pos     token.Position
-	is_expr bool
+	expr     Expr
+	pos      token.Position
+	comments []Comment
+	is_expr  bool
 pub mut:
-	typ     table.Type
+	typ      table.Type
 }
 
 pub struct IntegerLiteral {
@@ -210,6 +211,20 @@ pub:
 	pos   token.Position
 	mod   string
 	alias string
+pub mut:
+	syms  []ImportSymbol
+}
+
+pub enum ImportSymbolKind {
+	fn_
+	type_
+}
+
+pub struct ImportSymbol {
+pub:
+	pos    token.Position
+	name   string
+	kind   ImportSymbolKind
 }
 
 pub struct AnonFn {
@@ -282,10 +297,11 @@ pub mut:
 
 pub struct Return {
 pub:
-	pos   token.Position
-	exprs []Expr
+	pos      token.Position
+	exprs    []Expr
+	comments []Comment
 pub mut:
-	types []table.Type
+	types    []table.Type
 }
 
 /*
@@ -433,7 +449,7 @@ pub:
 	left     Expr // `a` in `a := if ...`
 	pos      token.Position
 pub mut:
-	branches []IfBranch
+	branches []IfBranch // includes all `else if` branches
 	is_expr  bool
 	typ      table.Type
 	has_else bool
@@ -579,6 +595,7 @@ pub:
 	right         []Expr
 	op            token.Kind
 	pos           token.Position
+	comments      []Comment
 pub mut:
 	left          []Expr
 	left_types    []table.Type
@@ -921,20 +938,23 @@ pub fn (expr Expr) position() token.Position {
 		AsCast {
 			return expr.pos
 		}
-		// ast.Ident { }
-		CastExpr {
-			return expr.pos
-		}
 		Assoc {
 			return expr.pos
 		}
 		BoolLiteral {
 			return expr.pos
 		}
+		// ast.Ident { }
 		CallExpr {
 			return expr.pos
 		}
+		CastExpr {
+			return expr.pos
+		}
 		CharLiteral {
+			return expr.pos
+		}
+		Comment {
 			return expr.pos
 		}
 		EnumVal {
@@ -1023,7 +1043,6 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		Comment { return stmt.pos }
 		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
 		/*

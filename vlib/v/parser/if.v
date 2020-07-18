@@ -17,6 +17,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
 	mut comments := []ast.Comment{}
+	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
@@ -28,26 +29,46 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			if p.tok.kind == .key_if {
 				p.next()
 			} else {
+				// else {
 				has_else = true
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
 				body_pos := p.tok.position()
+				// only declare `err` if previous branch was an `if` guard
+				if prev_guard {
+					p.open_scope()
+					p.scope.register('errcode', ast.Var{
+						name: 'errcode'
+						typ: table.int_type
+						pos: body_pos
+						is_used: true
+					})
+					p.scope.register('err', ast.Var{
+						name: 'err'
+						typ: table.string_type
+						pos: body_pos
+						is_used: true
+					})
+				}
 				branches << ast.IfBranch{
 					stmts: p.parse_block()
 					pos: start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
 				}
+				if prev_guard {
+					p.close_scope()
+				}
 				comments = []
 				break
 			}
 		}
 		mut cond := ast.Expr{}
-		mut is_or := false
+		mut is_guard := false
 		// `if x := opt() {`
 		if p.peek_tok.kind == .decl_assign {
-			is_or = true
 			p.open_scope()
+			is_guard = true
 			var_pos := p.tok.position()
 			var_name := p.check_name()
 			p.check(.decl_assign)
@@ -61,13 +82,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				var_name: var_name
 				expr: expr
 			}
+			prev_guard = true
 		} else {
+			prev_guard = false
 			cond = p.expr(0)
 		}
 		mut left_as_name := ''
-		is_infix := cond is ast.InfixExpr
-		if is_infix {
-			infix := cond as ast.InfixExpr
+		if cond is ast.InfixExpr as infix {
+			// if sum is T
 			is_is_cast := infix.op == .key_is
 			is_ident := infix.left is ast.Ident
 			left_as_name = if is_is_cast && p.tok.kind == .key_as {
@@ -84,7 +106,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		body_pos := p.tok.position()
 		p.inside_if = false
 		stmts := p.parse_block()
-		if is_or {
+		if is_guard {
 			p.close_scope()
 		}
 		branches << ast.IfBranch{

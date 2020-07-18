@@ -37,12 +37,10 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	} else {
 		// [1,2,3] or [const]byte
 		for i := 0; p.tok.kind != .rsbr; i++ {
-			expr := p.expr(0)
-			exprs << expr
+			exprs << p.expr(0)
 			if p.tok.kind == .comma {
 				p.next()
 			}
-			// p.check_comment()
 		}
 		line_nr := p.tok.line_nr
 		$if tinyc {

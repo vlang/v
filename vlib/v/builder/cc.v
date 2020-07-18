@@ -355,7 +355,7 @@ fn (mut v Builder) cc() {
 	}
 	if v.pref.use_cache {
 		// vexe := pref.vexe_path()
-		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash.wyhash', 'strconv.ftoa']
+		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'] // , 'strconv.ftoa']
 		for cfile in cached_modules {
 			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
 				'.o')

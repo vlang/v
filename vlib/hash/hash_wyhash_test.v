@@ -1,4 +1,4 @@
-import hash.wyhash
+import hash as wyhash
 
 struct WyHashTest {
 	s        string

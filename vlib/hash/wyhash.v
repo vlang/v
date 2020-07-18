@@ -13,7 +13,7 @@
 // you can test performance by running:
 // `v run cmd/tools/bench/wyhash.v`
 // try running with and without the `-prod` flag
-module wyhash
+module hash
 
 //#flag -I @VROOT/thirdparty/wyhash
 //#include "wyhash.h"
