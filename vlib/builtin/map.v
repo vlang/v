@@ -4,8 +4,8 @@
 module builtin
 
 import strings
-import hash.wyhash as hash
-//import hash
+//import hash.wyhash as hash
+import hash
 
 /*
 This is a highly optimized hashmap implementation. It has several traits that

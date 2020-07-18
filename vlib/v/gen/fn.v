@@ -15,9 +15,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
-	if g.pref.use_cache && skip {
-		return
-	}
 	if it.is_generic && g.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
 		// loop thru each generic type and generate a function
 		for gen_type in g.table.fn_gen_types[it.name] {
@@ -108,7 +105,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
-	if it.no_body || (g.pref.use_cache && it.is_builtin) {
+	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln('); // NO BODY')
 		g.writeln(');')

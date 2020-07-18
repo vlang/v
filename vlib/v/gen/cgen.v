@@ -220,8 +220,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		b.write(g.stringliterals.str())
 	}
 	if g.auto_str_funcs.len > 0 {
-		b.writeln('\n// V auto str functions:')
-		b.write(g.auto_str_funcs.str())
+		if g.pref.build_mode != .build_module {
+			b.writeln('\n// V auto str functions:')
+			b.write(g.auto_str_funcs.str())
+		}
 	}
 	b.writeln('\n// V out')
 	b.write(g.out.str())
@@ -731,6 +733,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 				if !skip {
 					println('build module `$g.module_built` fn `$node.name`')
+				}
+			}
+			if g.pref.use_cache {
+				if node.mod != 'main' {
+					skip = true
 				}
 			}
 			keep_fn_decl := g.fn_decl
@@ -4164,6 +4171,9 @@ fn styp_to_str_fn_name(styp string) string {
 
 [inline]
 fn (mut g Gen) gen_str_for_type(typ table.Type) string {
+	if g.pref.build_mode == .build_module {
+		return ''
+	}
 	styp := g.typ(typ)
 	return g.gen_str_for_type_with_styp(typ, styp)
 }
