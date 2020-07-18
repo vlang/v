@@ -1,7 +1,7 @@
 module main
 
 import hash.fnv1a
-import hash.wyhash
+import hash as wyhash
 import rand
 import time
 
