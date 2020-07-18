@@ -1,27 +1,27 @@
-/*
-*
-* Creator: nedimf (07/2020)
-*/
+// Creator: nedimf (07/2020)
 import os
 import net.smtp
 
 fn main() {
-	println('Hi, this is sample of how to send email trough net.smtp libaray in V.')
-	println('This should be really easy.\nWe  are going to create simple email client that takes some arguments. In this test we are going to send email as HTML body.')
-	println('To fully test email sending I suggest using mailtrap service which is free and it actually acts like really nice sandbox.')
-	println('\nEmail client V\n')
-	mailserver := os.input('Enter your mailserver: ')
-	from := os.input('From: ')
+	println('Hi, this is sample of how to send email trough net.smtp library in V, which is really easy using the net.smtp module.')
+	println('We are going to create a simple email client, that takes some arguments. and then sends email with an HTML body.')
+	println('To fully test email sending, I suggest using the mailtrap.io service, which is free and acts like a really nice mail server sandbox.')
+	println('')
+	println('V Email client')
+	println('')
+	mailserver := os.input('Mail server: ')
+	mailport := os.input('Mail server port: ').int()
 	println('Login')
-	username := os.input('Enter your username: ')
-	password := os.input('Enter your password: ')
+	username := os.input('Username: ')
+	password := os.input('Password: ')
+	from := os.input('From: ')
 	to := os.input('To: ')
 	subject := os.input('Subject: ')
 	body := os.input('Body: ')
 	client_cfg := smtp.Client{
 		server: mailserver
 		from: from
-		port: 2525
+		port: mailport
 		username: username
 		password: password
 	}
