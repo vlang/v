@@ -128,7 +128,6 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 		cookie_data << 'expires=${cookie.expires.utc_string()}'
 	}
 	data := cookie_data.join(' ')
-	println('$cookie.name=$cookie.value; $data')
 	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
 }
 
