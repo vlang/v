@@ -102,7 +102,7 @@ mut:
 
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
+		'\t\t\t\t\t\t\t\t',
 	]
 )
 
@@ -721,7 +721,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
-				if !node.name.starts_with(g.module_built + '.') {
+				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built {
 					// Skip functions that don't have to be generated
 					// for this module.
 					skip = true
@@ -743,7 +743,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#ifndef __cplusplus\n')
 			}
-			g.gen_fn_decl(node)
+			g.gen_fn_decl(node, skip)
 			if node.name == 'backtrace' ||
 				node.name == 'backtrace_symbols' ||
 				node.name == 'backtrace_symbols_fd' {
@@ -2376,7 +2376,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			if !is_guard {
 				is_guard = true
 				guard_idx = i
-				guard_vars = []string{ len: node.branches.len }
+				guard_vars = []string{len: node.branches.len}
 				g.writeln('{ /* if guard */ ')
 			}
 			var_name := g.new_tmp_var()
@@ -2898,7 +2898,7 @@ fn (mut g Gen) go_back_out(n int) {
 
 const (
 	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
-		'struct addrinfo'
+		'struct addrinfo',
 	]
 )
 

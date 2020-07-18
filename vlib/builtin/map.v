@@ -4,7 +4,8 @@
 module builtin
 
 import strings
-import hash.wyhash
+//import hash.wyhash as hash
+import hash
 
 /*
 This is a highly optimized hashmap implementation. It has several traits that
@@ -225,7 +226,7 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 
 [inline]
 fn (m &map) key_to_index(key string) (u32,u32) {
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
+	hash := hash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index),u32(meta)
