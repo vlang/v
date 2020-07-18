@@ -707,7 +707,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				c.error('0 type in SelectorExpr', expr.pos)
 				return '', pos
 			}
-			typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
+			mut typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
+			if typ_sym.kind == .alias {
+				alias_info := typ_sym.info as table.Alias
+				typ_sym = c.table.get_type_symbol(alias_info.parent_type)
+			}
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
