@@ -924,12 +924,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&
 		(language != .v || p.known_import(p.tok.lit) || p.mod.all_after_last('.') == p.tok.lit) {
+		// p.tok.lit has been recognized as a module
 		if language == .c {
 			mod = 'C'
 		} else if language == .js {
 			mod = 'JS'
 		} else {
 			if p.tok.lit in p.imports {
+				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
 				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true

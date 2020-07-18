@@ -956,6 +956,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
 				// continue
 				// }
+				// same ancestor? let it be
+				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
+					continue
+				}
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 						call_expr.pos)

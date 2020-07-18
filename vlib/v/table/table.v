@@ -197,6 +197,22 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). Compiler bug. This should never happen')
 }
 
+// get_final_type_symbol follows aliases until it gets to a "real" Type
+[inline]
+pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
+	idx := typ.idx()
+	if idx > 0 {
+		current_type := t.types[idx]
+		if current_type.kind == .alias {
+			alias_info := current_type.info as Alias
+			return t.get_final_type_symbol(alias_info.parent_type)
+		}
+		return &t.types[idx]
+	}
+	// this should never happen
+	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). Compiler bug. This should never happen')
+}
+
 [inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	typ_sym := t.get_type_symbol(typ)
