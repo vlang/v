@@ -66,8 +66,9 @@ pub mut:
 	len   int
 }
 
+[unsafe_fn]
 pub fn vstrlen(s byteptr) int {
-	return C.strlen(charptr(s))
+	return unsafe {C.strlen(charptr(s))}
 }
 
 // Converts a C string to a V string.
@@ -107,14 +108,14 @@ pub fn tos3(s charptr) string {
 	}
 	return string{
 		str: byteptr(s)
-		len: C.strlen(s)
+		len: unsafe {C.strlen(s)}
 	}
 }
 
 pub fn tos_lit(s charptr) string {
 	return string{
 		str: byteptr(s)
-		len: C.strlen(s)
+		len: unsafe {C.strlen(s)}
 		is_lit: 1
 	}
 }
