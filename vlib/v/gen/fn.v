@@ -652,7 +652,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 		}
 		if !g.is_json_fn {
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
-			if arg_typ_sym.kind != .function {
+			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
+			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
+			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')
 			}
 		}
