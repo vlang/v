@@ -10,7 +10,7 @@ import v.util
 
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
-	fn_name := if language == .c {
+	mut fn_name := if language == .c {
 		'C.$p.check_name()'
 	} else if language == .js {
 		'JS.$p.check_js_name()'
@@ -81,10 +81,17 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next()
 		or_kind = .propagate
 	}
+	mut fn_mod := p.mod
+	if registered := p.table.find_fn(fn_name) {
+		if registered.is_placeholder {
+			fn_mod = registered.mod
+			fn_name = registered.name
+		}
+	}
 	node := ast.CallExpr{
 		name: fn_name
 		args: args
-		mod: p.mod
+		mod: fn_mod
 		pos: pos
 		language: language
 		or_block: ast.OrExpr{

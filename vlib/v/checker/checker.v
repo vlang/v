@@ -382,6 +382,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as table.Alias
 				sym := c.table.get_type_symbol(info_t.parent_type)
+				if sym.kind == .placeholder { // pending import symbol did not resolve
+					c.error('unknown struct: $type_sym.name', struct_init.pos)
+					return table.void_type
+				}
 				if sym.kind != .struct_ {
 					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
 				}
@@ -2055,7 +2059,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {}
-		ast.Import {}
+		ast.Import {
+			c.import_stmt(node)
+		}
 		ast.InterfaceDecl {
 			c.interface_decl(node)
 		}
@@ -2083,6 +2089,26 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_unsafe = true
 			c.stmts(node.stmts)
 			c.inside_unsafe = false
+		}
+	}
+}
+
+fn (mut c Checker) import_stmt(imp ast.Import) {
+	for sym in imp.syms {
+		name := '$imp.mod\.$sym.name'
+		if sym.kind == .fn_ {
+			c.table.find_fn(name) or {
+				c.error('module `$imp.mod` has no public fn named `$sym.name\()`', sym.pos)
+			}
+		}
+		if sym.kind == .type_ {
+			if type_sym := c.table.find_type(name) {
+				if type_sym.kind == .placeholder {
+					c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+				}
+			} else {
+				c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+			}
 		}
 	}
 }
@@ -2919,7 +2945,6 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ_sym := c.table.get_type_symbol(typ)
 	// if !typ.is_number() {
 	if !typ_sym.is_number() {
-		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
 	} else {
@@ -3232,7 +3257,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			mut idx := 0
 			for i, m in sym.methods {
 				if m.name == node.name {
-					println('got it')
 					idx = i
 					break
 				}

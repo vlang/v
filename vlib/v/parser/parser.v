@@ -1331,7 +1331,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	mut mod_name := p.check_name()
 	if import_pos.line_nr != pos.line_nr {
-		p.error_with_pos('`import` and `module` must be at same line', pos)
+		p.error_with_pos('`import` statements must be a single line', pos)
 	}
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
@@ -1351,23 +1351,88 @@ fn (mut p Parser) import_stmt() ast.Import {
 		p.next()
 		mod_alias = p.check_name()
 	}
+	node := ast.Import{
+		pos: pos,
+		mod: mod_name,
+		alias: mod_alias,
+	}
+	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
+		p.import_syms(node)
+		p.register_used_import(mod_name) // no `unused import` msg for parent
+	}
 	pos_t := p.tok.position()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind != .name {
-			p.error_with_pos('module syntax error, please use `x.y.z`', pos_t)
-		} else {
+		if p.tok.kind != .lcbr {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 		}
 	}
 	p.imports[mod_alias] = mod_name
 	p.table.imports << mod_name
-	node := ast.Import{
-		mod: mod_name
-		alias: mod_alias
-		pos: pos
-	}
 	p.ast_imports << node
 	return node
+}
+
+// import_syms parses the inner part of `import module { submod1, submod2 }`
+fn (mut p Parser) import_syms(mut parent ast.Import) {
+	p.next()
+	pos_t := p.tok.position()
+	if p.tok.kind == .rcbr { // closed too early
+		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
+	}
+	if p.tok.kind != .name { // not a valid inner name
+		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
+	}
+	for p.tok.kind == .name {
+		pos := p.tok.position()
+		alias := p.check_name()
+		name := '$parent.mod\.$alias'
+		if alias[0].is_capital() {
+			idx := p.table.add_placeholder_type(name)
+			typ := table.new_type(idx)
+			p.table.register_type_symbol({
+				kind: .alias
+				name: p.prepend_mod(alias)
+				parent_idx: idx
+				mod: p.mod
+				info: table.Alias{
+					parent_type: typ
+					language: table.Language.v
+				}
+				is_public: false
+			})
+			// so we can work with the fully declared type in fmt+checker
+			parent.syms << ast.ImportSymbol{
+				pos: pos
+				name: alias
+				kind: .type_
+			}
+		} else {
+			if !p.table.known_fn(name) {
+				p.table.fns[alias] = table.Fn{
+					is_placeholder: true
+					mod: parent.mod
+					name: name
+				}
+			}
+			// so we can work with this in fmt+checker
+			parent.syms << ast.ImportSymbol{
+				pos: pos
+				name: alias
+				kind: .fn_
+			}
+		}
+		if p.tok.kind == .comma { // go again if more than one
+			p.next()
+			continue
+		}
+		if p.tok.kind == .rcbr { // finish if closing `}` is seen
+			break
+		}
+	}
+	if p.tok.kind != .rcbr {
+		p.error_with_pos('import syntax error, no closing `}`', p.tok.position())
+	}
+	p.next()
 }
 
 fn (mut p Parser) const_decl() ast.ConstDecl {
