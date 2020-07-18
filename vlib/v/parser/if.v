@@ -24,8 +24,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
-			comments = p.eat_comments()
+			comments << p.eat_comments()
 			p.check(.key_else)
+			comments << p.eat_comments()
 			if p.tok.kind == .key_if {
 				p.next()
 			} else {
@@ -59,19 +60,21 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				if prev_guard {
 					p.close_scope()
 				}
-				comments = []
 				break
 			}
 		}
 		mut cond := ast.Expr{}
 		mut is_guard := false
+		comments << p.eat_comments()
 		// `if x := opt() {`
 		if p.peek_tok.kind == .decl_assign {
 			p.open_scope()
 			is_guard = true
 			var_pos := p.tok.position()
 			var_name := p.check_name()
+			comments << p.eat_comments()
 			p.check(.decl_assign)
+			comments << p.eat_comments()
 			expr := p.expr(0)
 			p.scope.register(var_name, ast.Var{
 				name: var_name
@@ -87,6 +90,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			prev_guard = false
 			cond = p.expr(0)
 		}
+		comments << p.eat_comments()
 		mut left_as_name := ''
 		if cond is ast.InfixExpr as infix {
 			// if sum is T
@@ -117,7 +121,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			comments: comments
 			left_as_name: left_as_name
 		}
-		comments = []
+		comments = p.eat_comments()
 		if p.tok.kind != .key_else {
 			break
 		}

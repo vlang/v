@@ -1280,19 +1280,35 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		if branch.comments.len > 0 {
-			f.comments(branch.comments, {})
-		}
 		if i == 0 {
+			f.comments(branch.comments, {
+				inline: false
+			})
 			f.write('if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i < it.branches.len - 1 || !it.has_else {
-			f.write('} else if ')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {
+					inline: false
+				})
+			} else {
+				f.write('} ')
+			}
+			f.write('else if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i == it.branches.len - 1 && it.has_else {
-			f.write('} else {')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {
+					inline: false
+				})
+			} else {
+				f.write('} ')
+			}
+			f.write('else {')
 		}
 		if single_line {
 			f.write(' ')

@@ -11,4 +11,15 @@ fn main() {
 	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one
 	println(/* before arg comment */ 'this is a test' /* after arg comment */)
+	if /* before if expr */ true /* after if expr */  {
+		println('if')
+	}
+	// before else if
+	else /* between else if */ if false {
+		println('else if')
+	}
+	// before else
+	else /* after else */ {
+		println('else')
+	}
 }
