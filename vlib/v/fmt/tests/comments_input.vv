@@ -10,4 +10,5 @@ fn main() {
 	a := /* this is a comment */ 1
 	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one
+	println(/* before arg comment */ 'this is a test' /* after arg comment */)
 }

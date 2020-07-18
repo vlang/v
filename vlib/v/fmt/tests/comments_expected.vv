@@ -16,4 +16,7 @@ fn main() {
 	// just to make it worse
 	b, c := a, 2
 	d := c // and an extra one
+	// before arg comment
+	// after arg comment
+	println('this is a test')
 }

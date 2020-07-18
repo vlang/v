@@ -1318,6 +1318,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		// }
 	}
 	*/
+	for arg in node.args {
+		f.comments(arg.comments, {
+			inline: false
+		})
+	}
 	if node.is_method {
 		/*
 		// x.foo!() experiment

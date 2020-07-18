@@ -288,11 +288,12 @@ pub mut:
 
 pub struct CallArg {
 pub:
-	is_mut bool
-	share  table.ShareType
-	expr   Expr
+	is_mut   bool
+	share    table.ShareType
+	expr     Expr
+	comments []Comment
 pub mut:
-	typ    table.Type
+	typ      table.Type
 }
 
 pub struct Return {
