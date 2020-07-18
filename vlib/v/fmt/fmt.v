@@ -1318,6 +1318,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+	if it.post_comments.len > 0 {
+		f.writeln('')
+		f.comments(it.post_comments, {
+			has_nl: false
+		})
+	}
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {

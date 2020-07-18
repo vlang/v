@@ -446,14 +446,15 @@ pub mut:
 
 pub struct IfExpr {
 pub:
-	tok_kind token.Kind
-	left     Expr // `a` in `a := if ...`
-	pos      token.Position
+	tok_kind      token.Kind
+	left          Expr // `a` in `a := if ...`
+	pos           token.Position
+	post_comments []Comment
 pub mut:
-	branches []IfBranch // includes all `else if` branches
-	is_expr  bool
-	typ      table.Type
-	has_else bool
+	branches      []IfBranch // includes all `else if` branches
+	is_expr       bool
+	typ           table.Type
+	has_else      bool
 }
 
 pub struct IfBranch {
