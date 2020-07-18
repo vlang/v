@@ -84,7 +84,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	mut fn_mod := p.mod
 	if registered := p.table.find_fn(fn_name) {
 		if registered.is_placeholder {
-			p.table.fns.delete(fn_name)
 			fn_mod = registered.mod
 			fn_name = registered.name
 		}
