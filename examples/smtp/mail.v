@@ -34,10 +34,7 @@ fn main() {
 	mut client := smtp.new_client(client_cfg) or {
 		panic('Error configuring smtp')
 	}
-	client.send({
-		send_cfg |
-		from: from
-	}) or {
+	client.send(send_cfg) or {
 		panic('Error resolving email address')
 	}
 }
