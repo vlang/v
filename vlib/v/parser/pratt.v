@@ -285,7 +285,7 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	right = p.expr(precedence)
 	if p.pref.is_vet && op in [.key_in, .not_in] &&
 		right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len == 1 {
-		eprintln('$p.file_name:$pos.line_nr: Use `var == value` instead of `var in [value]`')
+		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr)
 	}
 	return ast.InfixExpr{
 		left: left

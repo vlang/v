@@ -54,6 +54,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
+	vet_errors        &[]string
 	cur_fn_name       string
 }
 
@@ -70,6 +71,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 			start_pos: 0
 			parent: 0
 		}
+		vet_errors: 0
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -86,6 +88,7 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
+		vet_errors: 0
 	}
 	return p.parse()
 }
@@ -113,18 +116,40 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
+		vet_errors: 0
 	}
-	if pref.is_vet && p.scanner.text.contains('\n        ') {
+	return p.parse()
+}
+
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors &[]string) ast.File {
+	global_scope := &ast.Scope{
+		parent: 0
+	}
+	mut p := Parser{
+		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref, vet_errors)
+		comments_mode: .parse_comments
+		table: table_
+		file_name: path
+		file_name_dir: os.dir(path)
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: global_scope
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+		vet_errors: vet_errors
+	}
+	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or {
 			[]string{}
 		}
 		for lnumber, line in source_lines {
-			if line.starts_with('        ') {
-				eprintln('$p.scanner.file_path:${lnumber+1}: Looks like you are using spaces for indentation.')
+			if line.starts_with('  ') {
+				p.vet_error('Looks like you are using spaces for indentation.', lnumber)
 			}
 		}
-		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
-		exit(1)
 	}
 	return p.parse()
 }
@@ -773,6 +798,10 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 			message: s
 		}
 	}
+}
+
+pub fn (mut p Parser) vet_error(s string, line int) {
+	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {

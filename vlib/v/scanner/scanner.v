@@ -49,6 +49,7 @@ pub mut:
 	tidx                        int
 	eofs                        int
 	pref                        &pref.Preferences
+	vet_errors                  &[]string
 }
 
 /*
@@ -96,7 +97,10 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	// is_fmt := pref.is_fmt
+	return new_vet_scanner_file(file_path, comments_mode, pref, voidptr(0))
+}
+
+pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -104,14 +108,17 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_scanner(raw_text, comments_mode, pref) // .skip_comments)
-	// s.init_fmt()
+	mut s := new_vet_scanner(raw_text, comments_mode, pref, vet_errors)
 	s.file_path = file_path
 	return s
 }
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
+	return new_vet_scanner(text, comments_mode, pref, voidptr(0))
+}
+
+pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
 	is_fmt := pref.is_fmt
 	s := &Scanner{
 		pref: pref
@@ -121,6 +128,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 		is_print_rel_paths_on_error: true
 		is_fmt: is_fmt
 		comments_mode: comments_mode
+		vet_errors: vet_errors
 	}
 	return s
 }
@@ -793,14 +801,14 @@ fn (mut s Scanner) text_scan() token.Token {
 			`(` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
-					eprintln('$s.file_path:$s.line_nr: Looks like you are adding a space after `(`')
+					s.vet_error('Looks like you are adding a space after `(`')
 				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
-					eprintln('$s.file_path:$s.line_nr: Looks like you are adding a space before `)`')
+					s.vet_error('Looks like you are adding a space before `)`')
 				}
 				return s.new_token(.rpar, '', 1)
 			}
@@ -1349,6 +1357,10 @@ pub fn (s &Scanner) error(msg string) {
 	}
 	eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 	exit(1)
+}
+
+fn (mut s Scanner) vet_error(msg string) {
+	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
 }
 
 pub fn verror(s string) {
