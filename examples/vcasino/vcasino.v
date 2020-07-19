@@ -1,5 +1,4 @@
 import rand
-import time
 import os
 
 const (
@@ -116,14 +115,14 @@ fn is_broke(money int) bool {
     if money <= 0 {
         println('You\'re broke, the game is over..')
         return false
-    } else {
-        quit := Options{'yes', 'y'}
-        println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
-   	    line := os.get_line().trim_space().to_lower()
-        if line== quit.long_opt || line== quit.short_opt {
-            return false
-        }
     }
+	quit := Options{'yes', 'y'}
+	println('You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)')
+	line := os.get_line().trim_space().to_lower()
+	if line== quit.long_opt || line== quit.short_opt {
+		return false
+	}
+    
     return true
 }
 
@@ -142,10 +141,8 @@ fn game_loop() {
 }
 
 fn main() {
-    if os.args.len >= 2 {
-        if option_parser() {
-            return
-        }
+    if os.args.len >= 2 && option_parser() {
+		return
     }
     game_loop()
 }
