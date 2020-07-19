@@ -1503,13 +1503,10 @@ fn (mut g Gen) get_ternary_name(name string) string {
 }
 
 fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, add_eq bool) bool {
-	mut is_ident := false
-	match val {
-		ast.Ident { is_ident = true }
-		ast.SelectorExpr { is_ident = true }
-		else { return false }
+	if val !is ast.Ident && val !is ast.SelectorExpr {
+		return false
 	}
-	if g.autofree && right_sym.kind == .array && is_ident {
+	if g.autofree && right_sym.kind == .array {
 		// `arr1 = arr2` => `arr1 = arr2.clone()`
 		if add_eq {
 			g.write('=')
@@ -1517,7 +1514,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 		g.write(' array_clone_static(')
 		g.expr(val)
 		g.write(')')
-	} else if g.autofree && right_sym.kind == .string && is_ident {
+	} else if g.autofree && right_sym.kind == .string {
 		if add_eq {
 			g.write('=')
 		}
@@ -2962,7 +2959,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			g.write('.$field_name = ')
 			field_type_sym := g.table.get_type_symbol(field.typ)
 			mut cloned := false
-			if g.autofree && field_type_sym.kind in [.array, .string] {
+			if g.autofree && !field.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 				g.write('/*clone1*/')
 				if g.gen_clone_assignment(field.expr, field_type_sym, false) {
 					cloned = true
@@ -3001,7 +2998,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.write('.$field_name = ')
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
-				if g.autofree && field_type_sym.kind in [.array, .string] {
+				if g.autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 					g.write('/*clone1*/')
 					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
 						cloned = true
@@ -4787,7 +4784,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	elem_sym := g.table.get_type_symbol(it.elem_type)
+	if elem_sym.kind == .function {
+		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
+	}
+	else {
+		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	}
 	if len > 8 {
 		g.writeln('')
 		g.write('\t\t')

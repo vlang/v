@@ -1,0 +1,8 @@
+fn main() {
+	if 1 in [1] {
+		println('yeah !')
+	}
+	if 1 !in [1] {
+		println("oh no :'(")
+	}
+}

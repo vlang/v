@@ -3,7 +3,6 @@
 module main
 
 import v.vet
-import v.ast
 import v.pref
 import v.parser
 import v.util
@@ -13,6 +12,7 @@ import os.cmdline
 
 struct VetOptions {
 	is_verbose bool
+	errors     []string
 }
 
 fn (vet_options &VetOptions) vprintln(s string) {
@@ -39,18 +39,20 @@ fn main() {
 			}
 		}
 	}
+	if vet_options.errors.len > 0 {
+		for err in vet_options.errors {
+			eprintln(err)
+		}
+		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
+		exit(1)
+	}
 }
 
 fn (vet_options &VetOptions) vet_file(path string) {
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	table := table.new_table()
-	if path.contains('/tests') {
-		return
-	}
-	file_ast := parser.parse_file(path, table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
 	vet_options.vprintln("vetting file '$path'...")
+	file_ast := parser.parse_vet_file(path, table, prefs, vet_options.errors)
 	vet.vet(file_ast, table, true)
 }

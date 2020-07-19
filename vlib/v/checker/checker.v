@@ -1073,7 +1073,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		found = true
 	}
 	// try prefix with current module as it would have never gotten prefixed
-	if !found && !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
+	if !found && !fn_name.contains('.') && call_expr.mod != 'builtin' {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -1562,7 +1562,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
 		right_type0 := c.expr(right_first)
 		assign_stmt.right_types = [
-			c.check_expr_opt_call(right_first, right_type0)
+			c.check_expr_opt_call(right_first, right_type0),
 		]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
 		if right_type_sym0.kind == .multi_return {
@@ -2219,7 +2219,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
 					node.pos)
 			} else if node.expr_type == table.string_type {
-				if to_type_sym.kind !in [.alias] {
+				if to_type_sym.kind != .alias {
 					mut error_msg := 'cannot cast a string'
 					if node.expr is ast.StringLiteral {
 						str_lit := node.expr as ast.StringLiteral
@@ -2387,7 +2387,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin'] {
+		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
 		if name == c.const_decl {
@@ -2465,7 +2465,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin'] {
+		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
