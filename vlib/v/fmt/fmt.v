@@ -829,48 +829,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(node.expr)
 		}
 		ast.InfixExpr {
-			if f.is_inside_interp {
-				f.expr(node.left)
-				f.write('$node.op.str()')
-				f.expr(node.right)
-			} else {
-				buffering_save := f.buffering
-				if !f.buffering {
-					f.out_save = f.out
-					f.out = strings.new_builder(60)
-					f.buffering = true
-				}
-				f.expr(node.left)
-				f.write(' $node.op.str() ')
-				f.expr_bufs << f.out.str()
-				mut penalty := 3
-				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
-					penalty--
-				}
-				if node.right is ast.InfixExpr || node.right is ast.ParExpr {
-					penalty--
-				}
-				f.penalties << penalty
-				// combine parentheses level with operator precedence to form effective precedence
-				f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
-				f.out = strings.new_builder(60)
-				f.buffering = true
-				f.expr(node.right)
-				if !buffering_save && f.buffering { // now decide if and where to break
-					f.expr_bufs << f.out.str()
-					f.out = f.out_save
-					f.buffering = false
-					f.adjust_complete_line()
-					for i, p in f.penalties {
-						f.write(f.expr_bufs[i])
-						f.wrap_long_line(p, true)
-					}
-					f.write(f.expr_bufs[f.expr_bufs.len - 1])
-					f.expr_bufs = []string{}
-					f.penalties = []int{}
-					f.precedences = []int{}
-				}
-			}
+			f.infix_expr(node)
 		}
 		ast.IndexExpr {
 			f.expr(node.left)
@@ -1252,6 +1211,51 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 	f.writeln('')
 	f.stmts(lex.stmts)
 	f.write('}')
+}
+
+pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
+	if f.is_inside_interp {
+		f.expr(node.left)
+		f.write('$node.op.str()')
+		f.expr(node.right)
+	} else {
+		buffering_save := f.buffering
+		if !f.buffering {
+			f.out_save = f.out
+			f.out = strings.new_builder(60)
+			f.buffering = true
+		}
+		f.expr(node.left)
+		f.write(' $node.op.str() ')
+		f.expr_bufs << f.out.str()
+		mut penalty := 3
+		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
+			penalty--
+		}
+		if node.right is ast.InfixExpr || node.right is ast.ParExpr {
+			penalty--
+		}
+		f.penalties << penalty
+		// combine parentheses level with operator precedence to form effective precedence
+		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+		f.out = strings.new_builder(60)
+		f.buffering = true
+		f.expr(node.right)
+		if !buffering_save && f.buffering { // now decide if and where to break
+			f.expr_bufs << f.out.str()
+			f.out = f.out_save
+			f.buffering = false
+			f.adjust_complete_line()
+			for i, p in f.penalties {
+				f.write(f.expr_bufs[i])
+				f.wrap_long_line(p, true)
+			}
+			f.write(f.expr_bufs[f.expr_bufs.len - 1])
+			f.expr_bufs = []string{}
+			f.penalties = []int{}
+			f.precedences = []int{}
+		}
+	}
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
