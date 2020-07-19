@@ -86,7 +86,7 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				verror('cannot import module "$mod" (not found)')
+				verror('cannot import module "$mod" (not found locally or in ${b.module_search_paths.last()})')
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
