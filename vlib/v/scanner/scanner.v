@@ -793,14 +793,14 @@ fn (mut s Scanner) text_scan() token.Token {
 			`(` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
-					println('$s.file_path:$s.line_nr: Looks like you are adding a space after `(`')
+					eprintln('$s.file_path:$s.line_nr: Looks like you are adding a space after `(`')
 				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
-					println('$s.file_path:$s.line_nr: Looks like you are adding a space before `)`')
+					eprintln('$s.file_path:$s.line_nr: Looks like you are adding a space before `)`')
 				}
 				return s.new_token(.rpar, '', 1)
 			}

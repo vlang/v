@@ -126,8 +126,6 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		exit(1)
 	}
-	// if pref.is_vet && p.scanner.text.contains('( '\n        ') {
-	// }
 	return p.parse()
 }
 
@@ -1352,9 +1350,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_alias = p.check_name()
 	}
 	node := ast.Import{
-		pos: pos,
-		mod: mod_name,
-		alias: mod_alias,
+		pos: pos
+		mod: mod_name
+		alias: mod_alias
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
 		p.import_syms(node)
@@ -1380,7 +1378,8 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
 	}
 	if p.tok.kind != .name { // not a valid inner name
-		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
+		p.error_with_pos('import syntax error, please specify a valid fn or type name',
+			pos_t)
 	}
 	for p.tok.kind == .name {
 		pos := p.tok.position()
