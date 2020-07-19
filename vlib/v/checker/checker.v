@@ -1129,8 +1129,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
 	if f.is_unsafe && !c.inside_unsafe &&
-		f.language == .c && f.name[2] in [`m`, `s`] /* C.m*, C.s* functions only - temp */
-		&& f.mod == 'builtin' { // temp
+		f.language == .c && f.name[2] in [`m`, `s`] && f.mod == 'builtin' {
+		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block',
 			call_expr.pos)
 	}
