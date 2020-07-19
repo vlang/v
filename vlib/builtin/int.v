@@ -270,7 +270,7 @@ pub fn (n int) hex1() string {
 
 pub fn (nn byte) hex() string {
 	if nn == 0 {
-		return '0'
+		return '00'
 	}
 
 	mut n := nn
@@ -288,12 +288,14 @@ pub fn (nn byte) hex() string {
 			buf[index--] = if d < 10 { d + `0` } else { d + 87 }
 		}
 	}
-	//buf[index--] = `x`
-	//buf[index]   = `0`
-	index++
+	if index == 0 {
+		unsafe {
+			buf[index] = `0`
+		}
+	}
 
 	unsafe {
-		return tos(buf + index, (max - index))
+		return tos(buf, max)
 	}
 }
 
