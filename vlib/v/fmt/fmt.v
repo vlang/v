@@ -11,7 +11,7 @@ import v.util
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
+		'\t\t\t\t\t\t\t\t',
 	]
 	// when to break a line dependant on penalty
 	max_len = [0, 35, 85, 93, 100]
@@ -1226,10 +1226,15 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 			f.buffering = true
 		}
 		f.expr(node.left)
-		is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+		is_one_val_array_init := node.op in [.key_in, .not_in] &&
+			node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
 		if is_one_val_array_init {
 			// `var in [val]` => `var == val`
-			f.write(if node.op == .key_in { ' == ' } else { ' != ' })
+			f.write(if node.op == .key_in {
+				' == '
+			} else {
+				' != '
+			})
 		} else {
 			f.write(' $node.op.str() ')
 		}

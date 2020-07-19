@@ -1562,7 +1562,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
 		right_type0 := c.expr(right_first)
 		assign_stmt.right_types = [
-			c.check_expr_opt_call(right_first, right_type0)
+			c.check_expr_opt_call(right_first, right_type0),
 		]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
 		if right_type_sym0.kind == .multi_return {

@@ -801,7 +801,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) vet_error(s string, line int) {
-	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
+	p.vet_errors << '$p.scanner.file_path:${line+1}: $s'
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
