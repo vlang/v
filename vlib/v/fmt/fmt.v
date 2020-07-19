@@ -1226,7 +1226,13 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 			f.buffering = true
 		}
 		f.expr(node.left)
-		f.write(' $node.op.str() ')
+		is_one_val_array_init := node.op in [.key_in, .not_in] && node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.write(if node.op == .key_in { ' == ' } else { ' != ' })
+		} else {
+			f.write(' $node.op.str() ')
+		}
 		f.expr_bufs << f.out.str()
 		mut penalty := 3
 		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
@@ -1240,7 +1246,12 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
 		f.out = strings.new_builder(60)
 		f.buffering = true
-		f.expr(node.right)
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.expr((node.right as ast.ArrayInit).exprs[0])
+		} else {
+			f.expr(node.right)
+		}
 		if !buffering_save && f.buffering { // now decide if and where to break
 			f.expr_bufs << f.out.str()
 			f.out = f.out_save
