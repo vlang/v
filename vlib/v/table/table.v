@@ -22,19 +22,20 @@ pub mut:
 
 pub struct Fn {
 pub:
-	args          []Arg
-	return_type   Type
-	is_variadic   bool
-	language      Language
-	is_generic    bool
-	is_pub        bool
-	is_deprecated bool
-	is_unsafe     bool
-	mod           string
-	ctdefine      string // compile time define. myflag, when [if myflag] tag
-	attrs []string
+	args           []Arg
+	return_type    Type
+	is_variadic    bool
+	language       Language
+	is_generic     bool
+	is_pub         bool
+	is_deprecated  bool
+	is_unsafe      bool
+	is_placeholder bool
+	mod            string
+	ctdefine       string // compile time define. myflag, when [if myflag] tag
+	attrs          []string
 pub mut:
-	name        string
+	name           string
 }
 
 pub struct Arg {

@@ -77,6 +77,10 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+		for sym in imp.syms {
+			f.mod2alias['$imp.mod\.$sym.name'] = sym.name
+			f.mod2alias[sym.name] = sym.name
+		}
 	}
 }
 
@@ -228,7 +232,10 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
-	imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
+	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
+	if imp.syms.len > 0 {
+		imp_alias_suffix += ' { ' + imp.syms.map(it.name).join(', ') + ' }'
+	}
 	return '$imp.mod$imp_alias_suffix'
 }
 
@@ -1338,8 +1345,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		name := f.short_module(node.name)
+		mut name := f.short_module(node.name)
 		f.mark_module_as_used(name)
+		if node.name in f.mod2alias {
+			name = f.mod2alias[node.name]
+		}
 		f.write('$name')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')
