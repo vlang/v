@@ -4784,7 +4784,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	elem_sym := g.table.get_type_symbol(it.elem_type)
+	if elem_sym.kind == .function {
+		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
+	}
+	else {
+		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+	}
 	if len > 8 {
 		g.writeln('')
 		g.write('\t\t')
