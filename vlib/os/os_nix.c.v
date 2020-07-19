@@ -121,7 +121,7 @@ pub fn mkdir(path string) ?bool {
 		}
 	}
   */
-	r := C.mkdir(charptr(apath.str), 511)
+	r := unsafe {C.mkdir(charptr(apath.str), 511)}
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
