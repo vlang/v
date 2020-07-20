@@ -378,7 +378,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// Get methods
 			// Get is default
 			if 'post' in attrs {
-				println(attrs)
 				if req.method == 'POST' {
 					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
 				}
