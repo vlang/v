@@ -8,20 +8,20 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls    = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'outdated', 'remove']
-	excluded_dirs              = ['cache', 'vlib']
-	supported_vcs_systems      = ['git', 'hg']
-	supported_vcs_folders      = ['.git', '.hg']
-	supported_vcs_update_cmds  = {
+	default_vpm_server_urls      = ['https://vpm.best', 'https://vpm.vlang.io']
+	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'outdated', 'remove']
+	excluded_dirs                = ['cache', 'vlib']
+	supported_vcs_systems        = ['git', 'hg']
+	supported_vcs_folders        = ['.git', '.hg']
+	supported_vcs_update_cmds    = {
 		'git': 'git pull'
 		'hg': 'hg pull --update'
 	}
-	supported_vcs_install_cmds = {
+	supported_vcs_install_cmds   = {
 		'git': 'git clone --depth=1'
 		'hg': 'hg clone'
 	}
-	supported_vcs_outdate_cmds = {
+	supported_vcs_outdated_steps = {
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 	}
 )
@@ -251,7 +251,7 @@ fn vpm_outdated() {
 			verbose_println('VCS ${vcs[0]} does ot support `v outdated`.')
 			continue
 		}
-		vcs_cmd_steps := supported_vcs_outdate_cmds[vcs[0]]
+		vcs_cmd_steps := supported_vcs_outdate_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
 			res := os.exec(step) or {
