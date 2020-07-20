@@ -6,10 +6,10 @@ fn test_ptr_assign() {
     unsafe { (*p) += 2 }
     unsafe { p += 2 } // p now points to v[3]
     unsafe { *p = 31 }
-	assert v[0] == 6
-	assert v[1] == 8
-	assert v[2] == 77
-	assert v[3] == 31
+    assert v[0] == 6
+    assert v[1] == 8
+    assert v[2] == 77
+    assert v[3] == 31
 }
 
 fn test_ptr_infix() {

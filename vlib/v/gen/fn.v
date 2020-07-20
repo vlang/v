@@ -107,7 +107,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
 	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
-		g.definitions.writeln('); // NO BODY')
+		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
 		return
 	}
@@ -142,11 +142,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.profile_fn(it.name)
 	}
 	g.stmts(it.stmts)
-	// ////////////
+	//
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
-	// /////////
+	//
 	if g.autofree && !g.pref.experimental {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.autofree_scope_vars(it.body_pos.pos)
