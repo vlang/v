@@ -11,7 +11,7 @@ import v.util
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
+		'\t\t\t\t\t\t\t\t',
 	]
 	// when to break a line dependant on penalty
 	max_len = [0, 35, 85, 93, 100]
@@ -77,6 +77,10 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
+		for sym in imp.syms {
+			f.mod2alias['$imp.mod\.$sym.name'] = sym.name
+			f.mod2alias[sym.name] = sym.name
+		}
 	}
 }
 
@@ -228,7 +232,10 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
 	is_diff := imp.alias != imp.mod && !imp.mod.ends_with('.' + imp.alias)
-	imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
+	mut imp_alias_suffix := if is_diff { ' as $imp.alias' } else { '' }
+	if imp.syms.len > 0 {
+		imp_alias_suffix += ' { ' + imp.syms.map(it.name).join(', ') + ' }'
+	}
 	return '$imp.mod$imp_alias_suffix'
 }
 
@@ -822,48 +829,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(node.expr)
 		}
 		ast.InfixExpr {
-			if f.is_inside_interp {
-				f.expr(node.left)
-				f.write('$node.op.str()')
-				f.expr(node.right)
-			} else {
-				buffering_save := f.buffering
-				if !f.buffering {
-					f.out_save = f.out
-					f.out = strings.new_builder(60)
-					f.buffering = true
-				}
-				f.expr(node.left)
-				f.write(' $node.op.str() ')
-				f.expr_bufs << f.out.str()
-				mut penalty := 3
-				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
-					penalty--
-				}
-				if node.right is ast.InfixExpr || node.right is ast.ParExpr {
-					penalty--
-				}
-				f.penalties << penalty
-				// combine parentheses level with operator precedence to form effective precedence
-				f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
-				f.out = strings.new_builder(60)
-				f.buffering = true
-				f.expr(node.right)
-				if !buffering_save && f.buffering { // now decide if and where to break
-					f.expr_bufs << f.out.str()
-					f.out = f.out_save
-					f.buffering = false
-					f.adjust_complete_line()
-					for i, p in f.penalties {
-						f.write(f.expr_bufs[i])
-						f.wrap_long_line(p, true)
-					}
-					f.write(f.expr_bufs[f.expr_bufs.len - 1])
-					f.expr_bufs = []string{}
-					f.penalties = []int{}
-					f.precedences = []int{}
-				}
-			}
+			f.infix_expr(node)
 		}
 		ast.IndexExpr {
 			f.expr(node.left)
@@ -1247,6 +1213,67 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 	f.write('}')
 }
 
+pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
+	if f.is_inside_interp {
+		f.expr(node.left)
+		f.write('$node.op.str()')
+		f.expr(node.right)
+	} else {
+		buffering_save := f.buffering
+		if !f.buffering {
+			f.out_save = f.out
+			f.out = strings.new_builder(60)
+			f.buffering = true
+		}
+		f.expr(node.left)
+		is_one_val_array_init := node.op in [.key_in, .not_in] &&
+			node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.write(if node.op == .key_in {
+				' == '
+			} else {
+				' != '
+			})
+		} else {
+			f.write(' $node.op.str() ')
+		}
+		f.expr_bufs << f.out.str()
+		mut penalty := 3
+		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
+			penalty--
+		}
+		if node.right is ast.InfixExpr || node.right is ast.ParExpr {
+			penalty--
+		}
+		f.penalties << penalty
+		// combine parentheses level with operator precedence to form effective precedence
+		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+		f.out = strings.new_builder(60)
+		f.buffering = true
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.expr((node.right as ast.ArrayInit).exprs[0])
+		} else {
+			f.expr(node.right)
+		}
+		if !buffering_save && f.buffering { // now decide if and where to break
+			f.expr_bufs << f.out.str()
+			f.out = f.out_save
+			f.buffering = false
+			f.adjust_complete_line()
+			for i, p in f.penalties {
+				f.write(f.expr_bufs[i])
+				f.wrap_long_line(p, true)
+			}
+			f.write(f.expr_bufs[f.expr_bufs.len - 1])
+			f.expr_bufs = []string{}
+			f.penalties = []int{}
+			f.precedences = []int{}
+		}
+	}
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else &&
 		it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1 &&
@@ -1338,8 +1365,11 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		name := f.short_module(node.name)
+		mut name := f.short_module(node.name)
 		f.mark_module_as_used(name)
+		if node.name in f.mod2alias {
+			name = f.mod2alias[node.name]
+		}
 		f.write('$name')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')

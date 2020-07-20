@@ -382,6 +382,10 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			if type_sym.kind == .alias {
 				info_t := type_sym.info as table.Alias
 				sym := c.table.get_type_symbol(info_t.parent_type)
+				if sym.kind == .placeholder { // pending import symbol did not resolve
+					c.error('unknown struct: $type_sym.name', struct_init.pos)
+					return table.void_type
+				}
 				if sym.kind != .struct_ {
 					c.error('alias type name: $sym.name is not struct type', struct_init.pos)
 				}
@@ -1069,7 +1073,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		found = true
 	}
 	// try prefix with current module as it would have never gotten prefixed
-	if !found && !fn_name.contains('.') && call_expr.mod !in ['builtin'] {
+	if !found && !fn_name.contains('.') && call_expr.mod != 'builtin' {
 		name_prefixed := '${call_expr.mod}.$fn_name'
 		if f1 := c.table.find_fn(name_prefixed) {
 			call_expr.name = name_prefixed
@@ -1558,7 +1562,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
 		right_type0 := c.expr(right_first)
 		assign_stmt.right_types = [
-			c.check_expr_opt_call(right_first, right_type0)
+			c.check_expr_opt_call(right_first, right_type0),
 		]
 		right_type_sym0 := c.table.get_type_symbol(right_type0)
 		if right_type_sym0.kind == .multi_return {
@@ -2055,7 +2059,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {}
-		ast.Import {}
+		ast.Import {
+			c.import_stmt(node)
+		}
 		ast.InterfaceDecl {
 			c.interface_decl(node)
 		}
@@ -2083,6 +2089,26 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.inside_unsafe = true
 			c.stmts(node.stmts)
 			c.inside_unsafe = false
+		}
+	}
+}
+
+fn (mut c Checker) import_stmt(imp ast.Import) {
+	for sym in imp.syms {
+		name := '$imp.mod\.$sym.name'
+		if sym.kind == .fn_ {
+			c.table.find_fn(name) or {
+				c.error('module `$imp.mod` has no public fn named `$sym.name\()`', sym.pos)
+			}
+		}
+		if sym.kind == .type_ {
+			if type_sym := c.table.find_type(name) {
+				if type_sym.kind == .placeholder {
+					c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+				}
+			} else {
+				c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+			}
 		}
 	}
 }
@@ -2193,7 +2219,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
 					node.pos)
 			} else if node.expr_type == table.string_type {
-				if to_type_sym.kind !in [.alias] {
+				if to_type_sym.kind != .alias {
 					mut error_msg := 'cannot cast a string'
 					if node.expr is ast.StringLiteral {
 						str_lit := node.expr as ast.StringLiteral
@@ -2361,7 +2387,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	// TODO: move this
 	if c.const_deps.len > 0 {
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin'] {
+		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
 		if name == c.const_decl {
@@ -2439,7 +2465,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		}
 		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && ident.mod !in ['builtin'] {
+		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
@@ -2919,7 +2945,6 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ_sym := c.table.get_type_symbol(typ)
 	// if !typ.is_number() {
 	if !typ_sym.is_number() {
-		println(typ_sym.kind.str())
 		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
 			node.pos)
 	} else {
@@ -3232,7 +3257,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			mut idx := 0
 			for i, m in sym.methods {
 				if m.name == node.name {
-					println('got it')
 					idx = i
 					break
 				}

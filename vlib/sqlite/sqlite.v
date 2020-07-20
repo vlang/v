@@ -14,12 +14,11 @@ module sqlite
 //#flag linux -I @VROOT/thirdparty/sqlite
 //#flag @VROOT/thirdparty/sqlite/sqlite.c
 
-
 #include "sqlite3.h"
-
+//
 struct C.sqlite3 {}
 struct C.sqlite3_stmt {}
-
+//
 pub struct DB {
 mut:
 	conn &C.sqlite3
@@ -29,15 +28,23 @@ pub struct Row {
 pub mut:
 	vals []string
 }
-
-fn C.sqlite3_column_text(voidptr, int) byteptr
-fn C.sqlite3_column_int(voidptr, int) int
-fn C.sqlite3_open()
-fn C.sqlite3_step() int
-fn C.sqlite3_prepare_v2()
-fn C.sqlite3_finalize()
-fn C.sqlite3_column_count(voidptr) int
+//
+fn C.sqlite3_open(charptr, &&C.sqlite3) int
+fn C.sqlite3_close(&C.sqlite3) int
+//
+fn C.sqlite3_prepare_v2(&C.sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+fn C.sqlite3_step(&C.sqlite3_stmt) int
+fn C.sqlite3_finalize(&C.sqlite3_stmt) int
+//
+fn C.sqlite3_column_name(&C.sqlite3_stmt, int) charptr
+fn C.sqlite3_column_text(&C.sqlite3_stmt, int) byteptr
+fn C.sqlite3_column_int(&C.sqlite3_stmt, int) int
+fn C.sqlite3_column_int64(&C.sqlite3_stmt, int) int64
+fn C.sqlite3_column_double(&C.sqlite3_stmt, int) f64
+fn C.sqlite3_column_count(&C.sqlite3_stmt) int
+//
 fn C.sqlite3_errstr(int) charptr
+fn C.sqlite3_free(voidptr)
 
 // Opens the connection with a database.
 pub fn connect(path string) ?DB {

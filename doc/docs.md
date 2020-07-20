@@ -29,7 +29,7 @@ you can do in V.
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Imports](#imports)
+* [Module Imports](#module-imports)
 * [Statements & Expressions](#statements--expressions)
     * [If](#if)
     * [In Operator](#in-operator)
@@ -547,7 +547,13 @@ numbers := {
 }
 ```
 
-## Imports
+## Module Imports
+
+For information about creating a module, see [Modules](#modules)
+
+### Importing a Module
+
+Modules can be imported using keyword `import`.
 
 ```v
 import os
@@ -558,7 +564,48 @@ fn main() {
 }
 ```
 
-Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := input()` wouldn't work. That means that it's always clear from which module a function is called.
+When using constants from other modules, the module name must be prefixed. However,
+you can import functions and types from other modules directly:
+
+```v
+import os { input }
+import crypto.sha256 { sum }
+import time { Time }
+```
+
+### Module Import Aliasing
+
+Any imported module name can be aliased using the `as` keyword:
+
+NOTE: this example will not compile unless you have created `mymod/sha256.v`
+```v
+import crypto.sha256
+import mymod.sha256 as mysha256
+
+fn main() {
+    v_hash := sha256.sum('hi'.bytes()).hex()
+    my_hash := mysha256.sum('hi'.bytes()).hex()
+    assert my_hash == v_hash
+}
+```
+
+You cannot alias an imported function or type.
+However, you _can_ redeclare a type.
+
+```v
+import time
+
+type MyTime time.Time
+
+fn main() {
+    my_time := MyTime{
+        year: 2020,
+        month: 12,
+        day: 25
+    }
+    println(my_time.unix_time())
+}
+```
 
 ## Statements & Expressions
 
