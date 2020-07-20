@@ -559,9 +559,6 @@ pub fn (g Gen) save() {
 }
 
 pub fn (mut g Gen) write(s string) {
-	$if trace_gen ? {
-		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
-	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < tabs.len {
 			g.out.write(tabs[g.indent])
@@ -576,9 +573,6 @@ pub fn (mut g Gen) write(s string) {
 }
 
 pub fn (mut g Gen) writeln(s string) {
-	$if trace_gen ? {
-		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
-	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < tabs.len {
 			g.out.write(tabs[g.indent])
@@ -1509,10 +1503,13 @@ fn (mut g Gen) get_ternary_name(name string) string {
 }
 
 fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, add_eq bool) bool {
-	if val !is ast.Ident && val !is ast.SelectorExpr {
-		return false
+	mut is_ident := false
+	match val {
+		ast.Ident { is_ident = true }
+		ast.SelectorExpr { is_ident = true }
+		else { return false }
 	}
-	if g.autofree && right_sym.kind == .array {
+	if g.autofree && right_sym.kind == .array && is_ident {
 		// `arr1 = arr2` => `arr1 = arr2.clone()`
 		if add_eq {
 			g.write('=')
@@ -1520,7 +1517,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 		g.write(' array_clone_static(')
 		g.expr(val)
 		g.write(')')
-	} else if g.autofree && right_sym.kind == .string {
+	} else if g.autofree && right_sym.kind == .string && is_ident {
 		if add_eq {
 			g.write('=')
 		}
@@ -1745,7 +1742,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}), _MOV(($value_typ_str[$size]){')
+				value_typ := g.table.get_type_symbol(node.value_type)
+				if value_typ.kind == .function {
+					g.write('}), _MOV((voidptr[$size]){')
+				} else {
+					g.write('}), _MOV(($value_typ_str[$size]){')
+				}
 				for expr in node.vals {
 					g.expr(expr)
 					g.write(', ')
@@ -2499,6 +2501,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
+				elem_typ := g.table.get_type_symbol(info.elem_type)
 				// `vals[i].field = x` is an exception and requires `array_get`:
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
@@ -2530,7 +2533,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					*/
 					if need_wrapper {
-						g.write(', &($elem_type_str[]) { ')
+						if elem_typ.kind == .function {
+							g.write(', &(voidptr[]) { ')
+						} else {
+							g.write(', &($elem_type_str[]) { ')
+						}
 					} else {
 						g.write(', &')
 					}
@@ -2570,7 +2577,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(op)
 					}
 				} else {
-					g.write('(*($elem_type_str*)array_get(')
+					if elem_typ.kind == .function {
+						g.write('(*(voidptr*)array_get(')
+					} else {
+						g.write('(*($elem_type_str*)array_get(')
+					}
 					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 						g.write('*')
 					}
@@ -2589,6 +2600,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
+				elem_typ := g.table.get_type_symbol(info.value_type)
 				if g.is_assign_lhs && !g.is_array_set {
 					g.is_array_set = true
 					g.write('map_set(')
@@ -2598,7 +2610,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]) { ')
+					if elem_typ.kind == .function {
+						g.write(', &(voidptr[]) { ')
+					} else {
+						g.write(', &($elem_type_str[]) { ')
+					}
 				} else if g.inside_map_postfix || g.inside_map_infix {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set(')
@@ -2611,14 +2627,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get(')
+					if elem_typ.kind == .function {
+						g.write('(*(voidptr*)map_get(')
+					} else {
+						g.write('(*($elem_type_str*)map_get(')
+					}
 					if node.left_type.is_ptr() {
 						g.write('*')
 					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))')
+					if elem_typ.kind == .function {
+						g.write(', &(voidptr[]){ $zero }))')
+					} else {
+						g.write(', &($elem_type_str[]){ $zero }))')
+					}
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
 				g.write('string_at(')
@@ -2965,7 +2989,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			g.write('.$field_name = ')
 			field_type_sym := g.table.get_type_symbol(field.typ)
 			mut cloned := false
-			if g.autofree && !field.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
+			if g.autofree && field_type_sym.kind in [.array, .string] {
 				g.write('/*clone1*/')
 				if g.gen_clone_assignment(field.expr, field_type_sym, false) {
 					cloned = true
@@ -3004,7 +3028,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				g.write('.$field_name = ')
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
-				if g.autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
+				if g.autofree && field_type_sym.kind in [.array, .string] {
 					g.write('/*clone1*/')
 					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
 						cloned = true
@@ -4790,13 +4814,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	elem_sym := g.table.get_type_symbol(it.elem_type)
-	if elem_sym.kind == .function {
-		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
-	}
-	else {
-		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
-	}
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	if len > 8 {
 		g.writeln('')
 		g.write('\t\t')
