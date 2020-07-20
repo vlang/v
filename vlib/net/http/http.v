@@ -191,11 +191,15 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 }
 
 fn (mut req Request) free() {
-	req.headers.free()
+	unsafe {
+		req.headers.free()
+	}
 }
 
 fn (mut resp Response) free() {
-	resp.headers.free()
+	unsafe {
+		resp.headers.free()
+	}
 }
 
 // add_header adds the key and value of an HTTP request header
