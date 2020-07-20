@@ -363,7 +363,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words.len}
 	mut action := ''
 	$for method in T {
-		if attrs == '' {
+		println(attrs.len)
+		/*if attrs == '' {
 			// No routing for this method. If it matches, call it and finish matching
 			// since such methods have a priority.
 			// For example URL `/register` matches route `/:user`, but `fn register()`
@@ -418,7 +419,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 					vars = variables
 				}
 			}
-		}
+		}*/
 	}
 	if action == '' {
 		// site not found

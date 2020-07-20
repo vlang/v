@@ -121,6 +121,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		// if method.attrs.len == 0 {
 		// continue
 		// }
+		println(method.attrs)
 		if method.return_type != vweb_result_type { // table.void_type {
 			continue
 		}
@@ -134,8 +135,10 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.write('\tstring ')
 		}
 		if method.attrs.len == 0 {
+			println('test')
 			g.writeln('attrs = tos_lit("");')
 		} else {
+			println('test2')
 			g.writeln('attrs = tos_lit("${method.attrs[0]}");')
 		}
 		g.stmts(node.stmts)
