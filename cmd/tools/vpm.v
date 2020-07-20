@@ -250,6 +250,13 @@ fn vpm_outdated() {
 			println('Listing outdated modules is not supported with VCS {$vcs}.')
 			exit(1)
 		}
+		os.exec('git fetch') or {
+			errors++
+			println('Could not fetch recent changes "$name".')
+			verbose_println('Error command: git fetch')
+			verbose_println('Error details:\n$err')
+			continue
+		}
 		local_vcs_cmd := supported_vcs_outdate_cmds[vcs[0]][0]
 		local_res := os.exec(local_vcs_cmd) or {
 			errors++
