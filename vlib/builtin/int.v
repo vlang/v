@@ -268,35 +268,51 @@ pub fn (n int) hex1() string {
 }
 */
 
+[inline]
+fn u64_to_hex(nn u64, len byte) string {
+	mut n := nn
+	mut buf := [256]byte
+	buf[len] = `\0`
+	mut i := 0    
+	for i=len-1; i>=0; i-- {
+		d := byte(n & 0xF)
+		x := if d < 10 { d + `0` } else { d + 87 }        
+		buf[i] = x
+		n = n >> 4
+	}
+	return string{
+		str: memdup(buf, len + 1)
+		len: len
+	}
+}
+
+[inline]
+fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
+	mut n := nn
+	mut buf := [256]byte
+	buf[len] = `\0`
+	mut i := 0
+	for i=len-1; i>=0; i-- {
+		d := byte(n & 0xF)
+		x := if d < 10 { d + `0` } else { d + 87 }        
+		buf[i] = x
+		n = n >> 4
+		if n == 0 {
+			break
+		}
+	}
+	res_len := len - i
+	return string{
+		str: memdup(&buf[i], res_len + 1)
+		len: res_len
+	}
+}
+
 pub fn (nn byte) hex() string {
 	if nn == 0 {
 		return '00'
 	}
-
-	mut n := nn
-	max := 2
-	mut buf := malloc(max + 1)
-
-	mut index := max
-	unsafe {
-		buf[index--] = `\0`
-	}
-	for n > 0 {
-		d := n & 0xF
-		n = n >> 4
-		unsafe {
-			buf[index--] = if d < 10 { d + `0` } else { d + 87 }
-		}
-	}
-	if index == 0 {
-		unsafe {
-			buf[index] = `0`
-		}
-	}
-
-	unsafe {
-		return tos(buf, max)
-	}
+	return u64_to_hex(nn, 2)
 }
 
 pub fn (nn i8) hex() string {
@@ -307,29 +323,7 @@ pub fn (nn u16) hex() string {
 	if nn == 0 {
 		return '0'
 	}
-
-	mut n := nn
-	max := 5
-	mut buf := malloc(max + 1)
-
-	mut index := max
-	unsafe {
-		buf[index--] = `\0`
-	}
-	for n > 0 {
-		d := byte(n & 0xF)
-		n = n >> 4
-		unsafe {
-			buf[index--] = if d < 10 { d + `0` } else { d + 87 }
-		}
-	}
-	//buf[index--] = `x`
-	//buf[index]   = `0`
-	index++
-
-	unsafe {
-		return tos(buf + index, (max - index))
-	}
+	return u64_to_hex_no_leading_zeros(nn, 4)
 }
 
 pub fn (nn i16) hex() string {
@@ -340,29 +334,7 @@ pub fn (nn u32) hex() string {
 	if nn == 0 {
 		return '0'
 	}
-
-	mut n := nn
-	max := 10
-	mut buf := malloc(max + 1)
-
-	mut index := max
-	unsafe {
-		buf[index--] = `\0`
-	}
-	for n > 0 {
-		d := byte(n & 0xF)
-		n = n >> 4
-		unsafe {
-			buf[index--] = if d < 10 { d + `0` } else { d + 87 }
-		}
-	}
-	//buf[index--] = `x`
-	//buf[index]   = `0`
-	index++
-
-	unsafe {
-		return tos(buf + index, (max - index))
-	}
+	return u64_to_hex_no_leading_zeros(nn, 8)
 }
 
 pub fn (nn int) hex() string {
@@ -377,31 +349,7 @@ pub fn (nn u64) hex() string {
 	if nn == 0 {
 		return '0'
 	}
-
-	mut n := nn
-	max := 18
-	mut buf := malloc(max + 1)
-
-	mut index := max
-	unsafe {
-		buf[index--] = `\0`
-	}
-	for n > 0 {
-		d := byte(n & 0xF)
-		n = n >> 4
-		unsafe {
-			buf[index--] = if d < 10 { d + `0` } else { d + 87 }
-		}
-	}
-	//buf[index--] = `x`
-	//buf[index]   = `0`
-	index++
-
-	unsafe {
-		C.memmove(buf,buf+index, (max-index)+1 )
-		return tos(buf, (max-index))
-	}
-	//return tos(buf + index, (max-index))
+	return u64_to_hex_no_leading_zeros(nn, 16)
 }
 
 pub fn (nn i64) hex() string {
