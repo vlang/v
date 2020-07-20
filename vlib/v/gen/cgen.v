@@ -1207,7 +1207,25 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if sym.kind == .array {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
-						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						elem_typ := g.table.get_type_symbol(info.elem_type)
+						if elem_typ.kind == .function {
+							var_type := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(var_type)
+							func := left_sym.info as table.FnType
+							ret_styp := g.typ(func.func.return_type)
+							g.write('$ret_styp (*_var_$left.pos.pos) (')
+							arg_len := func.func.args.len
+							for j, arg in func.func.args {
+								arg_type := g.table.get_type_symbol(arg.typ)
+								g.write('$arg_type.str() $arg.name')
+								if j < arg_len - 1 {
+									g.write(', ')
+								}
+							}
+							g.write(') = *(voidptr*)array_get(')
+						} else {
+							g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						}
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
@@ -1219,14 +1237,36 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Map
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
-						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						value_typ := g.table.get_type_symbol(info.value_type)
+						if value_typ.kind == .function {
+							var_type := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(var_type)
+							func := left_sym.info as table.FnType
+							ret_styp := g.typ(func.func.return_type)
+							g.write('$ret_styp (*_var_$left.pos.pos) (')
+							arg_len := func.func.args.len
+							for j, arg in func.func.args {
+								arg_type := g.table.get_type_symbol(arg.typ)
+								g.write('$arg_type.str() $arg.name')
+								if j < arg_len - 1 {
+									g.write(', ')
+								}
+							}
+							g.write(') = *(voidptr*)map_get(')
+						} else {
+							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						}
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
-						g.writeln(', &($styp[]){ $zero });')
+						if value_typ.kind == .function {
+							g.writeln(', &(voidptr[]){ $zero });')
+						} else {
+							g.writeln(', &($styp[]){ $zero });')
+						}
 					}
 				}
 				ast.SelectorExpr {
@@ -1738,14 +1778,23 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			key_typ_str := g.typ(node.key_type)
 			value_typ_str := g.typ(node.value_type)
+			value_typ := g.table.get_type_symbol(node.value_type)
 			size := node.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+				if value_typ.kind == .function {
+					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+				} else {
+					g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+				}
 				for expr in node.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				g.write('}), _MOV(($value_typ_str[$size]){')
+				if value_typ.kind == .function {
+					g.write('}), _MOV((voidptr[$size]){')
+				} else {
+					g.write('}), _MOV(($value_typ_str[$size]){')
+				}
 				for expr in node.vals {
 					g.expr(expr)
 					g.write(', ')
@@ -2053,8 +2102,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 				else {}
 			}
-			styp := g.typ(g.table.mktyp(left_type))
-			g.write('_IN($styp, ')
+			if left_sym.kind == .function {
+				g.write('_IN(u64, ')
+			} else {
+				styp := g.typ(g.table.mktyp(left_type))
+				g.write('_IN($styp, ')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			if node.right_type.is_ptr() {
@@ -2499,6 +2552,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
+				elem_typ := g.table.get_type_symbol(info.elem_type)
 				// `vals[i].field = x` is an exception and requires `array_get`:
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
@@ -2530,7 +2584,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					*/
 					if need_wrapper {
-						g.write(', &($elem_type_str[]) { ')
+						if elem_typ.kind == .function {
+							g.write(', &(voidptr[]) { ')
+						} else {
+							g.write(', &($elem_type_str[]) { ')
+						}
 					} else {
 						g.write(', &')
 					}
@@ -2570,7 +2628,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(op)
 					}
 				} else {
-					g.write('(*($elem_type_str*)array_get(')
+					if elem_typ.kind == .function {
+						g.write('(*(voidptr*)array_get(')
+					} else {
+						g.write('(*($elem_type_str*)array_get(')
+					}
 					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 						g.write('*')
 					}
@@ -2589,6 +2651,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
+				elem_typ := g.table.get_type_symbol(info.value_type)
 				if g.is_assign_lhs && !g.is_array_set {
 					g.is_array_set = true
 					g.write('map_set(')
@@ -2598,7 +2661,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]) { ')
+					if elem_typ.kind == .function {
+						g.write(', &(voidptr[]) { ')
+					} else {
+						g.write(', &($elem_type_str[]) { ')
+					}
 				} else if g.inside_map_postfix || g.inside_map_infix {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set(')
@@ -2611,14 +2678,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get(')
+					if elem_typ.kind == .function {
+						g.write('(*(voidptr*)map_get(')
+					} else {
+						g.write('(*($elem_type_str*)map_get(')
+					}
 					if node.left_type.is_ptr() {
 						g.write('*')
 					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))')
+					if elem_typ.kind == .function {
+						g.write(', &(voidptr[]){ $zero }))')
+					} else {
+						g.write(', &($elem_type_str[]){ $zero }))')
+					}
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
 				g.write('string_at(')
@@ -4793,8 +4868,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	elem_sym := g.table.get_type_symbol(it.elem_type)
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
-	}
-	else {
+	} else {
 		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	}
 	if len > 8 {
