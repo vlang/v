@@ -1,8 +1,4 @@
-module websocket
-
-pub fn utf8_validate_str(str string) bool {
-	return utf8_validate(str.str, str.len)
-}
+module utf8
 
 struct Utf8State {
 mut:
@@ -11,7 +7,11 @@ mut:
 	failed   bool
 }
 
-pub fn utf8_validate(data byteptr, len int) bool {
+pub fn validate_str(str string) bool {
+	return validate(str.str, str.len)
+}
+
+pub fn validate(data byteptr, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
 		s := data[i]
@@ -25,29 +25,6 @@ pub fn utf8_validate(data byteptr, len int) bool {
 		// i++ //fast forward
 	}
 	return !state.failed && state.subindex <= 0
-}
-
-fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
-	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex ==
-		2) {
-		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
-			s.subindex++
-			return true
-		}
-		goto next
-	} else {
-		s.failed = true
-		if is_tail {
-			s.index = 0
-			s.subindex = 0
-			s.failed = false
-		}
-		return true
-	}
-	next:
-	s.index++
-	s.subindex = 0
-	return false
 }
 
 fn (mut s Utf8State) next_state(c byte) {
@@ -89,4 +66,27 @@ fn (mut s Utf8State) next_state(c byte) {
 	}
 	// we should never reach here
 	s.failed = true
+}
+
+fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
+	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex ==
+		2) {
+		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
+			s.subindex++
+			return true
+		}
+		goto next
+	} else {
+		s.failed = true
+		if is_tail {
+			s.index = 0
+			s.subindex = 0
+			s.failed = false
+		}
+		return true
+	}
+	next:
+	s.index++
+	s.subindex = 0
+	return false
 }

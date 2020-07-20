@@ -3,6 +3,7 @@ module websocket
 import net
 import net.urllib
 import encoding.base64
+import encoding.utf8
 import eventbus
 import sync
 import log
@@ -23,8 +24,8 @@ mut:
 	sslctx     &C.SSL_CTX
 	ssl        &C.SSL
 	fragments  []Fragment
-	log	       log.Log = log.Log{ output_label: 'ws'}
 pub mut:
+	log	       log.Log = log.Log{ output_label: 'ws'}
 	uri        string
 	subscriber &eventbus.Subscriber
 	nonce_size int = 18 // you can try 16 too
@@ -105,10 +106,14 @@ fn (ws &Client) parse_uri() &Uri {
 		panic(err)
 	}
 	v := u.request_uri().split('?')
+	mut port := u.port()
+	if port == '' {
+		port = if ws.uri.split('://')[0] == 'ws' { '80' } else { '443' }
+	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
 		hostname: u.hostname()
-		port: u.port()
+		port: port
 		resource: v[0]
 		querystring: querystring
 	}
@@ -123,7 +128,7 @@ pub fn (mut ws Client) connect() int {
 			ws.log.fatal('connect: websocket already connecting')
 		}
 		.open {
-			ws.log.fatal('connect: websocket already open')
+			ws.log.fatal('connect: websocket already open')//TODO change fatal?
 		}
 		else {
 			// do nothing
@@ -135,16 +140,13 @@ pub fn (mut ws Client) connect() int {
 	uri := ws.parse_uri()
 	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
-	ai_family := C.AF_INET
-	ai_socktype := C.SOCK_STREAM
 	ws.log.debug('handshake header:')
 	handshake := 'GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n'
 	ws.log.debug(handshake)
-	socket := net.new_socket(ai_family, ai_socktype, 0) or {
+	ws.socket = net.new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
 		ws.log.fatal(err)
 		return -1
 	}
-	ws.socket = socket
 	ws.socket.connect(uri.hostname, uri.port.int()) or {
 		ws.log.fatal(err)
 		return -1
@@ -230,14 +232,11 @@ pub fn (mut ws Client) close(code int, message string) {
 }
 
 pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int {
-	mut bytes_written := -1
 	if ws.state != .open {
 		ws.send_error_event('WebSocket closed. Cannot write.')
-		unsafe {
-			free(payload)
-		}
 		return -1
 	}
+	mut bytes_written := -1
 	header_len := 6 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
 	frame_len := header_len + payload_len
 	mut frame_buf := [`0`].repeat(frame_len)
@@ -296,7 +295,6 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	ws.log.debug('write: ${bytes_written} bytes written.')
 	free_data:
 	unsafe {
-		free(payload)
 		frame_buf.free()
 		header.free()
 		masking_key.free()
@@ -427,7 +425,9 @@ pub fn (mut ws Client) read() int {
 		if payload == 0 {
 			ws.log.fatal('out of memory')
 		}
-		C.memcpy(payload, &data[header_len], payload_len)
+		unsafe {
+			C.memcpy(payload, &data[header_len], payload_len)
+		}
 		if frame.fin {
 			if ws.fragments.len > 0 {
 				// join fragments
@@ -468,7 +468,7 @@ pub fn (mut ws Client) read() int {
 			}
 			payload[payload_len] = `\0`
 			if frame.opcode == .text_frame && payload_len > 0 {
-				if !utf8_validate(payload, int(payload_len)) {
+				if !utf8.validate(payload, int(payload_len)) {
 					ws.log.error('malformed utf8 payload')
 					ws.send_error_event('Recieved malformed utf8.')
 					ws.close(1007, 'malformed utf8 payload')
@@ -519,7 +519,9 @@ pub fn (mut ws Client) read() int {
 		mut payload := []byte{}
 		if payload_len > 0 {
 			payload = [`0`].repeat(int(payload_len))
-			C.memcpy(payload.data, &data[header_len], payload_len)
+			unsafe {
+				C.memcpy(payload.data, &data[header_len], payload_len)
+			}
 		}
 		unsafe {
 			free(data)
@@ -551,7 +553,7 @@ pub fn (mut ws Client) read() int {
 			payload_len -= 2
 			reason = string(&data[header_len])
 			ws.log.info('Closing with reason: ${reason} & code: ${code}')
-			if reason.len > 1 && !utf8_validate(reason.str, reason.len) {
+			if reason.len > 1 && !utf8.validate(reason.str, reason.len) {
 				ws.log.error('malformed utf8 payload')
 				ws.send_error_event('Recieved malformed utf8.')
 				ws.close(1007, 'malformed utf8 payload')
@@ -598,7 +600,9 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	if code == .close {
 		if payload.len > 2 {
 			mut parsed_payload := [`0`].repeat(payload.len + 1)
-			C.memcpy(parsed_payload.data, &payload[0], payload.len)
+			unsafe {
+				C.memcpy(parsed_payload.data, &payload[0], payload.len)
+			}
 			parsed_payload[payload.len] = `\0`
 			for i in 0 .. payload.len {
 				control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff

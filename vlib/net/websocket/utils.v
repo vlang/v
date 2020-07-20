@@ -20,7 +20,9 @@ fn htonl64(payload_len u64) byteptr {
 fn create_masking_key() []byte {
 	mask_bit := byte(rand.intn(255))
 	buf := [`0`].repeat(4)
-	C.memcpy(buf.data, &mask_bit, 4)
+	unsafe {
+		C.memcpy(buf.data, &mask_bit, 4)
+	}
 	return buf
 }
 
