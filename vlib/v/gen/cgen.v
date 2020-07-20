@@ -4857,7 +4857,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-		elem_sym := g.table.get_type_symbol(it.elem_type)
+	elem_sym := g.table.get_type_symbol(it.elem_type)
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
