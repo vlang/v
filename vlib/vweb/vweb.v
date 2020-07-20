@@ -378,102 +378,55 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// Get is default
 			if req.method == 'GET' {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-				if route_words_a.len > 0 {
-					for route_words in route_words_a {
-						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
-							// match `/:user/:repo/tree` to `/vlang/v/tree`
-							mut matching := false
-							mut unknown := false
-							mut variables := []string{cap: route_words.len}
-							for i in 0..route_words.len {
-								if url_words.len == i {
-									variables << ''
-									matching = true
-									unknown = true
-									break
-								}
-							if url_words[i] == route_words[i] {
-								// no parameter
+			} else if req.method == 'POST' && 'post' in attrs {
+				route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
+			}
+			if route_words_a.len > 0 {
+				for route_words in route_words_a {
+					if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
+						// match `/:user/:repo/tree` to `/vlang/v/tree`
+						mut matching := false
+						mut unknown := false
+						mut variables := []string{cap: route_words.len}
+						for i in 0..route_words.len {
+							if url_words.len == i {
+								variables << ''
 								matching = true
-								continue
-							} else if route_words[i].starts_with(':') {
-								// is parameter
-								if i < route_words.len && !route_words[i].ends_with('...') {
-									// normal parameter
-									variables << url_words[i]
-								} else {
-									// array parameter only in the end
-									variables << url_words[i..].join('/')
-								}
-								matching = true
-									unknown = true
-									continue
+								unknown = true
+								break
+							}
+						if url_words[i] == route_words[i] {
+							// no parameter
+							matching = true
+							continue
+						} else if route_words[i].starts_with(':') {
+							// is parameter
+							if i < route_words.len && !route_words[i].ends_with('...') {
+								// normal parameter
+								variables << url_words[i]
 							} else {
-									matching = false
-									break
-								}
+								// array parameter only in the end
+								variables << url_words[i..].join('/')
 							}
-							if matching && !unknown {
-								// absolute router words like `/test/site`
-								app.$method(vars)
-								return
-							} else if matching && unknown {
-								// router words with paramter like `/:test/site`
-								action = method
-								vars = variables
+							matching = true
+								unknown = true
+								continue
+						} else {
+								matching = false
+								break
 							}
+						}
+						if matching && !unknown {
+							// absolute router words like `/test/site`
+							app.$method(vars)
+							return
+						} else if matching && unknown {
+							// router words with paramter like `/:test/site`
+							action = method
+							vars = variables
 						}
 					}
 				}
-			} else if req.method == 'POST' && 'post' in attrs {
-				route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-				if route_words_a.len > 0 {
-					for route_words in route_words_a {
-						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
-							// match `/:user/:repo/tree` to `/vlang/v/tree`
-							mut matching := false
-							mut unknown := false
-							mut variables := []string{cap: route_words.len}
-							for i in 0..route_words.len {
-								if url_words.len == i {
-									variables << ''
-									matching = true
-									unknown = true
-									break
-								}
-							if url_words[i] == route_words[i] {
-								// no parameter
-								matching = true
-								continue
-							} else if route_words[i].starts_with(':') {
-								// is parameter
-								if i < route_words.len && !route_words[i].ends_with('...') {
-									// normal parameter
-									variables << url_words[i]
-								} else {
-									// array parameter only in the end
-									variables << url_words[i..].join('/')
-								}
-								matching = true
-									unknown = true
-									continue
-							} else {
-									matching = false
-									break
-								}
-							}
-							if matching && !unknown {
-								// absolute router words like `/test/site`
-								app.$method(vars)
-								return
-							} else if matching && unknown {
-								// router words with paramter like `/:test/site`
-								action = method
-								vars = variables
-							}
-						}
-					}
-				} 
 			}
 		}
 	}
