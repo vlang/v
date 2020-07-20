@@ -1790,7 +1790,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(expr)
 					g.write(', ')
 				}
-				value_typ := g.table.get_type_symbol(node.value_type)
 				if value_typ.kind == .function {
 					g.write('}), _MOV((voidptr[$size]){')
 				} else {
