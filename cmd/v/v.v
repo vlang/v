@@ -70,7 +70,7 @@ fn main() {
 			println('Translating C to V will be available in V 0.3')
 			return
 		}
-		'search', 'install', 'update', 'outdated', 'remove' {
+		'search', 'install', 'update', 'outdated', 'list', 'remove' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}

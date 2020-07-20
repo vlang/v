@@ -31,7 +31,8 @@ V supports the following commands:
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.
    update            Update an installed module from VPM.
-   outdated          List installed modules that need updates.
+   list              List all installed modules.
+   outdated          Show installed modules that need updates.
 * Others:
    build             Build a V code in the provided path (the default, so you can skip the word `build`).
    translate         Translate C code to V (coming soon in 0.3).
