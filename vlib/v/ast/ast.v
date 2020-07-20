@@ -288,11 +288,12 @@ pub mut:
 
 pub struct CallArg {
 pub:
-	is_mut bool
-	share  table.ShareType
-	expr   Expr
+	is_mut   bool
+	share    table.ShareType
+	expr     Expr
+	comments []Comment
 pub mut:
-	typ    table.Type
+	typ      table.Type
 }
 
 pub struct Return {
@@ -437,7 +438,7 @@ pub struct IndexExpr {
 pub:
 	pos       token.Position
 	left      Expr
-	index     Expr // [0], [start..end] etc
+	index     Expr // [0] or RangeExpr [start..end]
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool
@@ -445,14 +446,15 @@ pub mut:
 
 pub struct IfExpr {
 pub:
-	tok_kind token.Kind
-	left     Expr // `a` in `a := if ...`
-	pos      token.Position
+	tok_kind      token.Kind
+	left          Expr // `a` in `a := if ...`
+	pos           token.Position
+	post_comments []Comment
 pub mut:
-	branches []IfBranch // includes all `else if` branches
-	is_expr  bool
-	typ      table.Type
-	has_else bool
+	branches      []IfBranch // includes all `else if` branches
+	is_expr       bool
+	typ           table.Type
+	has_else      bool
 }
 
 pub struct IfBranch {
@@ -1094,12 +1096,16 @@ pub fn (stmt Stmt) position() token.Position {
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
 	res := Expr{}
-	C.memcpy(&res, &x, sizeof(Expr))
+	unsafe {
+		C.memcpy(&res, &x, sizeof(Expr))
+	}
 	return res
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
-	C.memcpy(&res, &x, sizeof(table.FExpr))
+	unsafe {
+		C.memcpy(&res, &x, sizeof(table.FExpr))
+	}
 	return res
 }

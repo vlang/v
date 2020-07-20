@@ -32,11 +32,15 @@ pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '$name=$value'
 		if overwrite {
-			return C._putenv(format.str)
+			unsafe {
+				return C._putenv(format.str)
+			}
 		}
 		return -1
 	} $else {
-		return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+		unsafe {
+			return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+		}
 	}
 }
 

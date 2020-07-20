@@ -194,22 +194,3 @@ fn test_array_init_direct_call() {
 	assert []int{len: 2, init: 0}.len == 2
 	assert []int{len: 3, init: 1}.map(it*2) == [2,2,2]
 }
-
-
-fn foo(a string) int {
-	return 10 + a.len
-}
-
-fn foo2(a string) int {
-	return 20 + a.len
-}
-
-type FnFoo fn(a string) int
-fn test_array_of_fns_init() {
-	a := [FnFoo(foo), foo2]
-	assert a.len == 2
-	f0 := a[0]
-	assert f0('xx') == 12
-	f1 := a[1]
-	assert f1('yyy') == 23
-}

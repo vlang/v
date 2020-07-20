@@ -140,14 +140,16 @@ pub fn (mut f File) flush() {
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
-	$if windows {
-		$if tinyc {
-			C.stat(charptr(path.str), voidptr(&s))
+	unsafe {
+		$if windows {
+			$if tinyc {
+				C.stat(charptr(path.str), &s)
+			} $else {
+				C._wstat(path.to_wide(), voidptr(&s))
+			}
 		} $else {
-			C._wstat(path.to_wide(), voidptr(&s))
+			C.stat(charptr(path.str), &s)
 		}
-	} $else {
-		C.stat(charptr(path.str), voidptr(&s))
 	}
 	return s.st_size
 }
@@ -193,7 +195,9 @@ pub fn cp(old, new string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		C.stat(charptr(old.str), &from_attr)
+		unsafe {
+			C.stat(charptr(old.str), &from_attr)
+		}
 		if C.chmod(charptr(new.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
@@ -444,9 +448,13 @@ pub fn system(cmd string) int {
 	$if windows {
 		// overcome bug in system & _wsystem (cmd) when first char is quote `"`
 		wcmd := if cmd.len > 1 && cmd[0] == `"` && cmd[1] != `"` { '"$cmd"' } else { cmd }
-		ret = C._wsystem(wcmd.to_wide())
+		unsafe {
+			ret = C._wsystem(wcmd.to_wide())
+		}
 	} $else {
-		ret = C.system(charptr(cmd.str))
+		unsafe {
+			ret = C.system(charptr(cmd.str))
+		}
 	}
 	if ret == -1 {
 		print_c_errno()
@@ -1095,7 +1103,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if C.stat(charptr(path.str), &statbuf) != 0 {
+		if unsafe {C.stat(charptr(path.str), &statbuf)} != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -1231,8 +1239,11 @@ pub fn walk(path string, f fn(path string)) {
 	return
 }
 
+[unsafe_fn]
 pub fn signal(signum int, handler voidptr) {
-	C.signal(signum, handler)
+	unsafe {
+		C.signal(signum, handler)
+	}
 }
 
 pub fn fork() int {
@@ -1260,7 +1271,9 @@ pub fn wait() int {
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
 	// # struct stat attr;
-	C.stat(charptr(path.str), &attr)
+	unsafe {
+		C.stat(charptr(path.str), &attr)
+	}
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;

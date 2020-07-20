@@ -79,6 +79,9 @@ fn main() {
 		'outdated' {
 			vpm_outdated()
 		}
+		'list' {
+			vpm_list()
+		}
 		'remove' {
 			vpm_remove(module_names)
 		}
@@ -277,6 +280,17 @@ fn vpm_outdated() {
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn vpm_list() {
+	module_names := get_installed_modules()
+	if module_names.len == 0 {
+		println('You have no modules installed.')
+		exit(0)
+	}
+	for mod in module_names {
+		println(mod)
 	}
 }
 

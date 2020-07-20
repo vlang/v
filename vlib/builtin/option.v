@@ -73,7 +73,9 @@ fn opt_ok(data voidptr, size int) Option {
 	res := Option{
 		ok: true
 	}
-	C.memcpy(res.data, data, size)
+	unsafe {
+		C.memcpy(res.data, data, size)
+	}
 	return res
 }
 

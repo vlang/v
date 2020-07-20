@@ -10,6 +10,7 @@ fn main() {
 	}
 	if true {
 	}
+	// some comment after an if without else
 	n := sizeof(User)
 	// else
 	// else {
