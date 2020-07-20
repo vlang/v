@@ -9,7 +9,7 @@ import v.vmod
 
 const (
 	default_vpm_server_urls    = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'outdated', 'remove']
+	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'outdated', 'list', 'remove']
 	excluded_dirs              = ['cache', 'vlib']
 	supported_vcs_systems      = ['git', 'hg']
 	supported_vcs_folders      = ['.git', '.hg']
@@ -78,6 +78,9 @@ fn main() {
 		}
 		'outdated' {
 			vpm_outdated()
+		}
+		'list' {
+			vpm_list()
 		}
 		'remove' {
 			vpm_remove(module_names)
@@ -280,6 +283,17 @@ fn vpm_outdated() {
 	}
 	if errors > 0 {
 		exit(1)
+	}
+}
+
+fn vpm_list() {
+	module_names := get_installed_modules()
+	if module_names.len == 0 {
+		println('You have no modules installed.')
+		exit(0)
+	}
+	for mod in module_names {
+		println(mod)
 	}
 }
 
