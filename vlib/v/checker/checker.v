@@ -1129,10 +1129,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
 	if f.is_unsafe && !c.inside_unsafe &&
-		f.language == .c && f.name[2] in [`m`, `s`] && f.mod == 'builtin' {
+		f.language == .c && f.name[2] in [`m`, `s`] &&
+		f.mod == 'builtin' {
 		// builtin C.m*, C.s* only - temp
-		c.warn('function `$f.name` must be called from an `unsafe` block',
-			call_expr.pos)
+		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
 	if f.is_generic && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
@@ -2962,8 +2962,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	return typ
 }
 
-fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.Type,
-	pos token.Position) {
+fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.Type, pos token.Position) {
 	index_type_sym := c.table.get_type_symbol(index_type)
 	// println('index expr left=$typ_sym.name $node.pos.line_nr')
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
