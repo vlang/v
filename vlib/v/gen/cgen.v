@@ -1778,9 +1778,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			key_typ_str := g.typ(node.key_type)
 			value_typ_str := g.typ(node.value_type)
+			value_typ := g.table.get_type_symbol(node.value_type)
 			size := node.vals.len
 			if size > 0 {
-				g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+				if value_typ.kind == .function {
+					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+				} else {
+					g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+				}
 				for expr in node.keys {
 					g.expr(expr)
 					g.write(', ')
