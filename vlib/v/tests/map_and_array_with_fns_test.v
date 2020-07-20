@@ -29,4 +29,15 @@ fn test_map_of_fns() {
 	assert a.len == 2
 	f0 := a['one']
 	assert f0('xx') == 12
+	f1 := a['two']
+	assert f1('yyy') == 23
+	a['one'], a['two'] = a['two'], a['one']
+	f2 := a['one']
+	assert f2('zzzz') == 24
+	f3 := a['two']
+	assert f3('aaaaa') == 15
+	mut b := {'one':foo}
+	b['one'] = a['one']
+	f4 := b['one']
+	assert f4('bbbbbb') == 26
 }
