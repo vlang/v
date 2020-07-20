@@ -6,7 +6,7 @@ fn foo2(a string) int {
 	return 20 + a.len
 }
 
-fn test_array_of_fns_init() {
+fn test_array_of_fns() {
 	mut a := [foo, foo2]
 	assert a.len == 2
 	f0 := a[0]
@@ -24,4 +24,9 @@ fn test_array_of_fns_init() {
 	assert f4('bbbbbb') == 26
 }
 
-
+fn test_map_of_fns() {
+	mut a := {'one':foo, 'two':foo2}
+	assert a.len == 2
+	f0 := a['one']
+	assert f0('xx') == 12
+}
