@@ -27,7 +27,9 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte
 	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+	unsafe {
+		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+	}
 	return tos_clone(buf)
 }
 
@@ -97,7 +99,9 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte
 	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+	unsafe {
+		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+	}
 	return tos_clone(buf)
 }
 

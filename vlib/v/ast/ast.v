@@ -1096,12 +1096,16 @@ pub fn (stmt Stmt) position() token.Position {
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
 	res := Expr{}
-	C.memcpy(&res, &x, sizeof(Expr))
+	unsafe {
+		C.memcpy(&res, &x, sizeof(Expr))
+	}
 	return res
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
-	C.memcpy(&res, &x, sizeof(table.FExpr))
+	unsafe {
+		C.memcpy(&res, &x, sizeof(table.FExpr))
+	}
 	return res
 }

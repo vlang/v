@@ -62,7 +62,9 @@ const (
 fn builtin_init() {
 	if is_atty(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
-		C.setbuf(C.stdout, 0)
+		unsafe {
+			C.setbuf(C.stdout, 0)
+		}
 	}
 	add_unhandled_exception_handler()
 }

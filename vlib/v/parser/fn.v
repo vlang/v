@@ -132,7 +132,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := 'deprecated' in p.attrs
-	is_unsafe := 'unsafe_fn' in p.attrs
+	mut is_unsafe := 'unsafe_fn' in p.attrs
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -141,6 +141,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	language := if p.tok.kind == .name && p.tok.lit == 'C' {
+		is_unsafe = !('trusted_fn' in p.attrs)
 		table.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		table.Language.js

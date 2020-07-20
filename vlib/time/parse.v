@@ -42,8 +42,8 @@ pub fn parse_rfc2822(s string) ?Time {
 	mm := pos / 3 + 1
 	mut tmstr := byteptr(0)
 	unsafe { tmstr = malloc(s.len * 2) }
-	count := C.snprintf(charptr(tmstr), (s.len *  2), '%s-%02d-%s %s', fields[3].str, mm,
-		fields[1].str, fields[4].str)
+	count := unsafe {C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str, mm,
+		fields[1].str, fields[4].str)}
 
 	return parse(tos(tmstr, count))
 }
@@ -67,10 +67,10 @@ pub fn parse_iso8601(s string) ?Time {
 	mut offset_hour := 0
 	mut offset_min  := 0
 
-	count := C.sscanf(charptr(s.str), "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
+	count := unsafe {C.sscanf(charptr(s.str), "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
 													  &time_char, &hour, &minute,
 													  &second, &mic_second, &plus_min,
-													  &offset_hour, &offset_min)
+													  &offset_hour, &offset_min)}
 
 	if count != 11 {
 		return error('Invalid 8601 format')
