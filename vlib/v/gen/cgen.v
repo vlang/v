@@ -1201,7 +1201,25 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if sym.kind == .array {
 						info := sym.info as table.Array
 						styp := g.typ(info.elem_type)
-						g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						elem_typ := g.table.get_type_symbol(info.elem_type)
+						if elem_typ.kind == .function {
+							var_type := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(var_type)
+							func := left_sym.info as table.FnType
+							ret_styp := g.typ(func.func.return_type)
+							g.write('$ret_styp (*_var_$left.pos.pos) (')
+							arg_len := func.func.args.len
+							for j, arg in func.func.args {
+								arg_type := g.table.get_type_symbol(arg.typ)
+								g.write('$arg_type.str() $arg.name')
+								if j < arg_len - 1 {
+									g.write(', ')
+								}
+							}
+							g.write(') = *(voidptr*)array_get(')
+						} else {
+							g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
+						}
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
@@ -1213,7 +1231,25 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Map
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
-						g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						value_typ := g.table.get_type_symbol(info.value_type)
+						if value_typ.kind == .function {
+							var_type := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(var_type)
+							func := left_sym.info as table.FnType
+							ret_styp := g.typ(func.func.return_type)
+							g.write('$ret_styp (*_var_$left.pos.pos) (')
+							arg_len := func.func.args.len
+							for j, arg in func.func.args {
+								arg_type := g.table.get_type_symbol(arg.typ)
+								g.write('$arg_type.str() $arg.name')
+								if j < arg_len - 1 {
+									g.write(', ')
+								}
+							}
+							g.write(') = *(voidptr*)map_get(')
+						} else {
+							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+						}
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
