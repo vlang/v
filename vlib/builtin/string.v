@@ -66,8 +66,9 @@ pub mut:
 	len   int
 }
 
+[unsafe_fn]
 pub fn vstrlen(s byteptr) int {
-	return C.strlen(charptr(s))
+	return unsafe {C.strlen(charptr(s))}
 }
 
 // Converts a C string to a V string.
@@ -85,9 +86,6 @@ pub fn tos(s byteptr, len int) string {
 }
 
 pub fn tos_clone(s byteptr) string {
-	if s == 0 {
-		panic('tos: nil string')
-	}
 	return tos2(s).clone()
 }
 
@@ -110,14 +108,14 @@ pub fn tos3(s charptr) string {
 	}
 	return string{
 		str: byteptr(s)
-		len: C.strlen(s)
+		len: unsafe {C.strlen(s)}
 	}
 }
 
 pub fn tos_lit(s charptr) string {
 	return string{
 		str: byteptr(s)
-		len: C.strlen(s)
+		len: unsafe {C.strlen(s)}
 		is_lit: 1
 	}
 }
@@ -131,13 +129,11 @@ fn (a string) clone_static() string {
 
 pub fn (a string) clone() string {
 	mut b := string{
-		str: malloc(a.len + 1)
+		str: unsafe {malloc(a.len + 1)}
 		len: a.len
 	}
-	for i in 0..a.len {
-		b.str[i] = a.str[i]
-	}
 	unsafe {
+		C.memcpy(b.str, a.str, a.len)
 		b.str[a.len] = `\0`
 	}
 	return b
@@ -152,12 +148,7 @@ pub fn (s string) cstr() byteptr {
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
 pub fn cstring_to_vstring(cstr byteptr) string {
-	unsafe {
-		slen := C.strlen(charptr(cstr))
-		mut s := byteptr(memdup(cstr, slen + 1))
-		s[slen] = `\0`
-		return tos(s, slen)
-	}
+	return tos_clone(cstr)
 }
 
 pub fn (s string) replace_once(rep, with string) string {
@@ -381,7 +372,9 @@ fn (s string) eq(a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	return C.memcmp(s.str, a.str, a.len) == 0
+	unsafe {
+		return C.memcmp(s.str, a.str, a.len) == 0
+	}
 }
 
 // !=
@@ -1389,7 +1382,9 @@ pub fn (s string) bytes() []byte {
 		return []
 	}
 	mut buf := []byte{ len:s.len }
-	C.memcpy(buf.data, s.str, s.len)
+	unsafe {
+		C.memcpy(buf.data, s.str, s.len)
+	}
 	return buf
 }
 

@@ -87,8 +87,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	}
 	// resolve imports
 	deps_resolved := graph.resolve()
+	nodes := deps_resolved.nodes
 	mut out := g.hashes() + g.definitions.str()
-	for node in deps_resolved.nodes {
+	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
 			out += '/** @namespace $name */\n'
@@ -128,6 +129,11 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += key.replace('.', '_')
 		}
 		out += ');\n\n'
+	}
+	if pref.is_shared {
+		// Export, through CommonJS, the module of the entry file if `-shared` was passed
+		export := nodes[nodes.len - 1].name
+		out += 'if (typeof module === "object" && module.exports) module.exports = $export;'
 	}
 	return out
 }

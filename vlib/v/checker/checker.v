@@ -1128,6 +1128,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if f.is_deprecated {
 		c.warn('function `$f.name` has been deprecated', call_expr.pos)
 	}
+	if f.is_unsafe && !c.inside_unsafe &&
+		f.language == .c && f.name[2] in [`m`, `s`] && f.mod == 'builtin' {
+		// builtin C.m*, C.s* only - temp
+		c.warn('function `$f.name` must be called from an `unsafe` block',
+			call_expr.pos)
+	}
 	if f.is_generic && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
 		if rts.kind == .struct_ {
@@ -2956,45 +2962,47 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	return typ
 }
 
+fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.Type,
+	pos token.Position) {
+	index_type_sym := c.table.get_type_symbol(index_type)
+	// println('index expr left=$typ_sym.name $node.pos.line_nr')
+	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
+	// index_type_sym.kind != .enum_) {
+	if typ_sym.kind in [.array, .array_fixed] && !(index_type.is_number() || index_type_sym.kind ==
+		.enum_) {
+		c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)',
+			pos)
+	}
+}
+
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	node.left_type = typ
-	mut is_range := false // TODO is_range := node.index is ast.RangeExpr
-	match node.index as index {
-		ast.RangeExpr {
-			is_range = true
-			if index.has_low {
-				c.expr(index.low)
-			}
-			if index.has_high {
-				c.expr(index.high)
-			}
-		}
-		else {}
-	}
 	typ_sym := c.table.get_type_symbol(typ)
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
-	if !is_range {
+	if node.index !is ast.RangeExpr { // [1]
 		index_type := c.expr(node.index)
-		index_type_sym := c.table.get_type_symbol(index_type)
-		// println('index expr left=$typ_sym.name $node.pos.line_nr')
-		// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
-		// index_type_sym.kind != .enum_) {
-		if typ_sym.kind in [.array, .array_fixed] && !(index_type.is_number() || index_type_sym.kind ==
-			.enum_) {
-			c.error('non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)',
-				node.pos)
-		} else if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
+		c.check_index_type(typ_sym, index_type, node.pos)
+		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
 			c.error('non-string map index (map type `$typ_sym.name`)', node.pos)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {
 			return value_type
 		}
-	} else if is_range {
+	} else { // [1..2]
+		range := node.index as ast.RangeExpr
+		if range.has_low {
+			index_type := c.expr(range.low)
+			c.check_index_type(typ_sym, index_type, node.pos)
+		}
+		if range.has_high {
+			index_type := c.expr(range.high)
+			c.check_index_type(typ_sym, index_type, node.pos)
+		}
 		// array[1..2] => array
 		// fixed_array[1..2] => array
 		if typ_sym.kind == .array_fixed {

@@ -626,10 +626,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
 			// { call_expr = it }
-			match expr {
-				ast.CallExpr {}
-				else {}
-			}
 			return ast.GoStmt{
 				call_expr: expr
 			}
@@ -1032,6 +1028,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 
 fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// left == `a` in `a[0]`
+	start_pos := p.tok.position()
 	p.next() // [
 	mut has_low := true
 	if p.tok.kind == .dotdot {
@@ -1039,10 +1036,11 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		// [..end]
 		p.next()
 		high := p.expr(0)
+		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
 			left: left
-			pos: p.tok.position()
+			pos: pos
 			index: ast.RangeExpr{
 				low: ast.Expr{}
 				high: high
@@ -1050,7 +1048,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			}
 		}
 	}
-	expr := p.expr(0) // `[expr]` or  `[expr..]`
+	expr := p.expr(0) // `[expr]` or  `[expr..`
 	mut has_high := false
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
@@ -1060,10 +1058,11 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			has_high = true
 			high = p.expr(0)
 		}
+		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
 			left: left
-			pos: p.tok.position()
+			pos: pos
 			index: ast.RangeExpr{
 				low: expr
 				high: high
@@ -1073,11 +1072,12 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		}
 	}
 	// [expr]
+	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
 	return ast.IndexExpr{
 		left: left
 		index: expr
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 

@@ -253,9 +253,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.comments, {
-				inline: false
-			})
+			f.comments(node.comments, {})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
@@ -334,6 +332,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			name := it.name.after('.')
 			f.writeln('enum $name {')
 			f.comments(it.comments, {
+				inline: true
 				level: .indent
 			})
 			for field in it.fields {
@@ -343,6 +342,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.expr(field.expr)
 				}
 				f.comments(field.comments, {
+					inline: true
 					has_nl: false
 					level: .indent
 				})
@@ -351,9 +351,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ExprStmt {
-			f.comments(it.comments, {
-				inline: false
-			})
+			f.comments(it.comments, {})
 			f.expr(it.expr)
 			if !f.single_line_if {
 				f.writeln('')
@@ -444,9 +442,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(it)
 		}
 		ast.Return {
-			f.comments(it.comments, {
-				inline: false
-			})
+			f.comments(it.comments, {})
 			f.write('return')
 			if it.exprs.len > 1 {
 				// multiple returns
@@ -631,7 +627,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
-			f.comment(comments[j], {})
+			f.comment(comments[j], {
+				inline: true
+			})
 			f.writeln('')
 			f.indent--
 			j++
@@ -665,7 +663,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	for comment in node.end_comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment, {})
+		f.comment(comment, {
+			inline: true
+		})
 		f.writeln('')
 		f.indent--
 	}
@@ -781,7 +781,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			f.comment(node, {})
+			f.comment(node, {
+				inline: true
+			})
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -1104,7 +1106,7 @@ enum CommentsLevel {
 
 struct CommentsOptions {
 	has_nl bool = true
-	inline bool = true
+	inline bool
 	level  CommentsLevel = .keep
 }
 
@@ -1280,19 +1282,29 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		if branch.comments.len > 0 {
-			f.comments(branch.comments, {})
-		}
 		if i == 0 {
+			f.comments(branch.comments, {})
 			f.write('if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i < it.branches.len - 1 || !it.has_else {
-			f.write('} else if ')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {})
+			} else {
+				f.write('} ')
+			}
+			f.write('else if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i == it.branches.len - 1 && it.has_else {
-			f.write('} else {')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {})
+			} else {
+				f.write('} ')
+			}
+			f.write('else {')
 		}
 		if single_line {
 			f.write(' ')
@@ -1306,6 +1318,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+	if it.post_comments.len > 0 {
+		f.writeln('')
+		f.comments(it.post_comments, {
+			has_nl: false
+		})
+	}
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
@@ -1318,6 +1336,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		// }
 	}
 	*/
+	for arg in node.args {
+		f.comments(arg.comments, {})
+	}
 	if node.is_method {
 		/*
 		// x.foo!() experiment
@@ -1425,7 +1446,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	for branch in it.branches {
 		if branch.comment.text != '' {
-			f.comment(branch.comment, {})
+			f.comment(branch.comment, {
+				inline: true
+			})
 			f.writeln('')
 		}
 		if !branch.is_else {
@@ -1457,7 +1480,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 		}
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, {})
+			f.comments(branch.post_comments, {
+				inline: true
+			})
 		}
 	}
 	f.indent--
@@ -1691,7 +1716,9 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		comments := field.comments
 		mut j := 0
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j], {})
+			f.comment(comments[j], {
+				inline: true
+			})
 			f.writeln('')
 			j++
 		}

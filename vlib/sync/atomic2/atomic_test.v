@@ -1,34 +1,42 @@
 import atomic2
 import sync
 
+const (
+	iterations_per_cycle = 100_000
+)
+
 struct Counter {
 mut:
-	counter u64 = 0
+	counter u64 = 0    
 }
 
 // without proper syncronization this would fail
-fn test_count_100_milion_should_result_100_million() {
+fn test_count_10_times_1_cycle_should_result_10_cycles_with_sync() {
+	desired_iterations := 10 * iterations_per_cycle
 	mut wg := sync.new_waitgroup()
 	mut counter := &Counter{}
 	wg.add(10)
 	for i := 0; i < 10; i++ {
-		go count_ten_million(mut counter, mut wg)
+		go count_one_cycle(mut counter, mut wg)
 	}
 	wg.wait()
-	assert counter.counter == 10000000
+	assert counter.counter == desired_iterations
+	eprintln('   with synchronization the counter is: ${counter.counter:10} , expectedly == ${desired_iterations:10}')
 }
 
 // This test just to make sure that we have an anti-test to prove it works
-// fn test_count_100_milion_should_fail_100_million_without_sync() {
-// 	mut wg := sync.new_waitgroup()
-// 	mut counter := &Counter{}
-// 	wg.add(10)
-// 	for i := 0; i < 10; i++ {
-// 		go count_ten_million_without_sync(mut counter, mut wg)
-// 	}
-// 	wg.wait()
-// 	assert counter.counter != 10000000
-// }
+fn test_count_10_times_1_cycle_should_not_be_10_cycles_without_sync() {
+	desired_iterations := 10 * iterations_per_cycle
+	mut wg := sync.new_waitgroup()
+	mut counter := &Counter{}
+	wg.add(10)
+	for i := 0; i < 10; i++ {
+		go count_one_cycle_without_sync(mut counter, mut wg)
+	}
+	wg.wait()
+	// NB: we do not assert here, just print, because sometimes by chance counter.counter may be == desired_iterations
+	eprintln('without synchronization the counter is: ${counter.counter:10} , expectedly != ${desired_iterations:10}')
+}
 
 fn test_count_plus_one_u64() {
 	mut c := u64(0)
@@ -78,18 +86,18 @@ fn test_count_minus_greater_than_one_i64() {
 	assert c == -10
 }
 
-// count_ten_million counts the common counter 10 million times in thread-safe way
-fn count_ten_million(mut counter Counter, mut group sync.WaitGroup) {
-	for i := 0; i < 1000000; i++ {
+// count_one_cycle counts the common counter iterations_per_cycle times in thread-safe way
+fn count_one_cycle(mut counter Counter, mut group sync.WaitGroup) {
+	for i := 0; i < iterations_per_cycle; i++ {
 		atomic2.add_u64(&counter.counter, 1)
 	}
 	group.done()
 }
 
-// // count_ten_million_without_sync counts the common counter 10 million times in none thread-safe way
-// fn count_ten_million_without_sync(mut counter Counter, mut group sync.WaitGroup) {
-// 	for i := 0; i < 1000000; i++ {
-// 		counter.counter++
-// 	}
-// 	group.done()
-// }
+// count_one_cycle_without_sync counts the common counter iterations_per_cycle times in none thread-safe way
+fn count_one_cycle_without_sync(mut counter Counter, mut group sync.WaitGroup) {
+	for i := 0; i < iterations_per_cycle; i++ {
+		counter.counter++
+	}
+	group.done()
+}

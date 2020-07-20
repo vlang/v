@@ -16,4 +16,22 @@ fn main() {
 	// just to make it worse
 	b, c := a, 2
 	d := c // and an extra one
+	// before arg comment
+	// after arg comment
+	println('this is a test')
+	// before if expr
+	// after if expr
+	if true {
+		println('if')
+	}
+	// before else if
+	// between else if
+	else if false {
+		println('else if')
+	}
+	// before else
+	// after else
+	else {
+		println('else')
+	}
 }
