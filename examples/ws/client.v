@@ -8,10 +8,6 @@ const (
 	eb = eventbus.new()
 )
 
-#flag -I @VROOT/vlib/net/websocket/examples
-#include "utf8.h"
-fn C.utf8_validate_str() bool
-
 fn main() {
 	// println(sss)
 	/*
