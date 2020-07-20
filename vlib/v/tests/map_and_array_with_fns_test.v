@@ -9,7 +9,7 @@ fn foo2(a string) int {
 fn test_array_with_fns() {
 	mut a := [foo, foo2]
 	assert a.len == 2
-	assert foo in a
+	assert (foo in a) == true
 	f0 := a[0]
 	assert f0('xx') == 12
 	f1 := a[1]
@@ -20,7 +20,7 @@ fn test_array_with_fns() {
 	f3 := a[1]
 	assert f3('aaaaa') == 15
 	mut b := [foo]
-	assert foo2 !in b
+	assert (foo2 !in b) == true
 	b[0] = a[0]
 	f4 := b[0]
 	assert f4('bbbbbb') == 26
