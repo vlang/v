@@ -437,7 +437,7 @@ pub struct IndexExpr {
 pub:
 	pos       token.Position
 	left      Expr
-	index     Expr // [0], [start..end] etc
+	index     Expr // [0] or RangeExpr [start..end]
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool

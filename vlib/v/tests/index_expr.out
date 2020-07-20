@@ -18,10 +18,24 @@ index_expr.v:11:7: error: type `int` does not support indexing
    11 |     _ = v[1..]
       |          ~~~~~
    12 |     _ = v[..1]
-   13 | }
+   13 |
 index_expr.v:12:7: error: type `int` does not support indexing
    10 |     v := 4
    11 |     _ = v[1..]
    12 |     _ = v[..1]
       |          ~~~~~
-   13 | }
+   13 |
+   14 |     a := [2]
+index_expr.v:15:7: error: non-integer index `array_int` (array type `array_int`)
+   13 |
+   14 |     a := [2]
+   15 |     _ = a[a..]
+      |          ~~~~~
+   16 |     _ = a[..a]
+   17 | }
+index_expr.v:16:7: error: non-integer index `array_int` (array type `array_int`)
+   14 |     a := [2]
+   15 |     _ = a[a..]
+   16 |     _ = a[..a]
+      |          ~~~~~
+   17 | }
