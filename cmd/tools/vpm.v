@@ -254,7 +254,7 @@ fn vpm_outdated() {
 			verbose_println('VCS ${vcs[0]} does ot support `v outdated`.')
 			continue
 		}
-		vcs_cmd_steps := supported_vcs_outdate_steps[vcs[0]]
+		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
 			res := os.exec(step) or {
