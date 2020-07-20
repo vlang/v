@@ -6,7 +6,7 @@ const (
 )
 
 fn main() {
-	mut arr := []int{cap: gen_len}
+	mut arr := []int{}
 	for _ in 0..gen_len {
 		arr << rand.intn(gen_max)
 	}
