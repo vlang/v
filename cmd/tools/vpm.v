@@ -247,8 +247,9 @@ fn vpm_outdated() {
 			continue
 		}
 		if vcs[0] != 'git' {
-			println('Listing outdated modules is not supported with VCS {$vcs}.')
-			exit(1)
+			println('Check for $name was skipped.')
+			verbose_println('VCS ${vcs[0]} does ot support `v outdated`.')
+			continue
 		}
 		os.exec('git fetch') or {
 			errors++
