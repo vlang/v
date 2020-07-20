@@ -378,7 +378,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// Get is default
 			if req.method == 'GET' {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-				println(route_words_a)
 				if route_words_a.len > 0 {
 					for route_words in route_words_a {
 						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
@@ -428,7 +427,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				}
 			} else if req.method == 'POST' && 'post' in attrs {
 				route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-				println(route_words_a)
 				if route_words_a.len > 0 {
 					for route_words in route_words_a {
 						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
