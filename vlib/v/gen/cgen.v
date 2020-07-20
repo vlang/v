@@ -2102,8 +2102,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				}
 				else {}
 			}
-			styp := g.typ(g.table.mktyp(left_type))
-			g.write('_IN($styp, ')
+			if left_sym.kind == .function {
+				g.write('_IN(int, ')
+			} else {
+				styp := g.typ(g.table.mktyp(left_type))
+				g.write('_IN($styp, ')
+			}
 			g.expr(node.left)
 			g.write(', ')
 			if node.right_type.is_ptr() {
