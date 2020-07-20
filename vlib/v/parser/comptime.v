@@ -161,7 +161,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	})
 	p.scope.register('attrs', ast.Var{
 		name: 'attrs'
-		typ: table.array_type
+		typ: p.table.find_type_idx('array_string')
 	})
 	p.check(.key_in)
 	// expr := p.expr(0)

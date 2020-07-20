@@ -121,7 +121,6 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		// if method.attrs.len == 0 {
 		// continue
 		// }
-		println(method.attrs)
 		if method.return_type != vweb_result_type { // table.void_type {
 			continue
 		}
@@ -132,14 +131,17 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 		g.writeln('method = tos_lit("$method.name");')
 		if i == 0 {
-			g.write('\tstring ')
+			g.write('\tarray_string ')
 		}
 		if method.attrs.len == 0 {
-			println('test')
-			g.writeln('attrs = tos_lit("");')
+			g.writeln('attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
 		} else {
-			println('test2')
-			g.writeln('attrs = tos_lit("${method.attrs[0]}");')
+			mut attrs := []string{}
+			for attrib in method.attrs {
+				attrs << 'tos_lit("$attrib")'
+			}
+			a := attrs.join(', ')
+			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){$a}));')
 		}
 		g.stmts(node.stmts)
 		i++
