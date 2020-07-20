@@ -363,6 +363,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
 	$for method in T {
+		route_words_a = [][]string{}
 		if attrs.len == 0 {
 			// No routing for this method. If it matches, call it and finish matching
 			// since such methods have a priority.
@@ -376,16 +377,25 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		} else {
 			// Get methods
 			// Get is default
-			if req.method == 'GET' {
+			if 'post' in attrs {
+				println(attrs)
+				if req.method == 'POST' {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+				}
+			} else if 'put' in attrs {
+				if req.method == 'PUT' {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+				}
+			} else if 'patch' in attrs {
+				if req.method == 'PATCH' {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+				}
+			} else if 'delete' in attrs {
+				if req.method == 'DELETE' {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+				}
+			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-			} else if req.method == 'POST' && 'post' in attrs {
-				route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-			} else if req.method == 'PUT' && 'put' in attrs {
-				route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-			} else if req.method == 'PATCH' && 'patch' in attrs {
-				route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-			} else if req.method == 'DELETE' && 'delete' in attrs {
-				route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 			}
 			if route_words_a.len > 0 {
 				for route_words in route_words_a {
@@ -415,8 +425,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 								variables << url_words[i..].join('/')
 							}
 							matching = true
-								unknown = true
-								continue
+							unknown = true
+							continue
 						} else {
 								matching = false
 								break
