@@ -24,8 +24,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
-			comments = p.eat_comments()
+			comments << p.eat_comments()
 			p.check(.key_else)
+			comments << p.eat_comments()
 			if p.tok.kind == .key_if {
 				p.next()
 			} else {
@@ -65,13 +66,16 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		}
 		mut cond := ast.Expr{}
 		mut is_guard := false
+		comments << p.eat_comments()
 		// `if x := opt() {`
 		if p.peek_tok.kind == .decl_assign {
 			p.open_scope()
 			is_guard = true
 			var_pos := p.tok.position()
 			var_name := p.check_name()
+			comments << p.eat_comments()
 			p.check(.decl_assign)
+			comments << p.eat_comments()
 			expr := p.expr(0)
 			p.scope.register(var_name, ast.Var{
 				name: var_name
@@ -87,6 +91,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			prev_guard = false
 			cond = p.expr(0)
 		}
+		comments << p.eat_comments()
 		mut left_as_name := ''
 		if cond is ast.InfixExpr as infix {
 			// if sum is T
@@ -117,13 +122,14 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			comments: comments
 			left_as_name: left_as_name
 		}
-		comments = []
+		comments = p.eat_comments()
 		if p.tok.kind != .key_else {
 			break
 		}
 	}
 	return ast.IfExpr{
 		branches: branches
+		post_comments: comments
 		pos: pos
 		has_else: has_else
 	}
@@ -210,7 +216,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				expr := p.expr(0)
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
-					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)', p.tok.position())
+					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
+						p.tok.position())
 				} else if p.tok.kind == .ellipsis {
 					p.next()
 					expr2 := p.expr(0)

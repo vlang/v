@@ -88,7 +88,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			fn_name = registered.name
 		}
 	}
-	node := ast.CallExpr{
+	return ast.CallExpr{
 		name: fn_name
 		args: args
 		mod: fn_mod
@@ -101,7 +101,6 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		}
 		generic_type: generic_type
 	}
-	return node
 }
 
 pub fn (mut p Parser) call_args() []ast.CallArg {
@@ -113,11 +112,14 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		if is_mut {
 			p.next()
 		}
+		mut comments := p.eat_comments()
 		e := p.expr(0)
+		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
 			expr: e
+			comments: comments
 		}
 		if p.tok.kind != .rpar {
 			p.check(.comma)

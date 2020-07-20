@@ -626,10 +626,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
 			// { call_expr = it }
-			match expr {
-				ast.CallExpr {}
-				else {}
-			}
 			return ast.GoStmt{
 				call_expr: expr
 			}
