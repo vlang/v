@@ -12,7 +12,7 @@ import v.builder
 const (
 	simple_cmd = [
 		'fmt', 'up', 'vet',
-		'self', 'symlink', 'bin2v',
+		'self', 'tracev', 'symlink', 'bin2v',
 		'test', 'test-fmt', 'test-compiler', 'test-fixed',
 		'repl',
 		'build-tools', 'build-examples',

@@ -559,6 +559,9 @@ pub fn (g Gen) save() {
 }
 
 pub fn (mut g Gen) write(s string) {
+	$if trace_gen ? {
+		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
+	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < tabs.len {
 			g.out.write(tabs[g.indent])
@@ -573,6 +576,9 @@ pub fn (mut g Gen) write(s string) {
 }
 
 pub fn (mut g Gen) writeln(s string) {
+	$if trace_gen ? {
+		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | writeln: $s')
+	}
 	if g.indent > 0 && g.empty_line {
 		if g.indent < tabs.len {
 			g.out.write(tabs[g.indent])
