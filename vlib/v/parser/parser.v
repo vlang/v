@@ -850,6 +850,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		mut name := p.check_name()
 		if name == '_' {
 			return ast.Ident{
+				tok_kind: p.tok.kind
 				name: '_'
 				kind: .blank_ident
 				pos: pos
@@ -866,6 +867,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			name = '${p.expr_mod}.$name'
 		}
 		return ast.Ident{
+			tok_kind: p.tok.kind
 			kind: .unresolved
 			name: name
 			language: language
