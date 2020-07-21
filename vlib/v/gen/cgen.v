@@ -338,7 +338,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 fn (g &Gen) typ(t table.Type) string {
-	styp := g.base_type(t) 
+	styp := g.base_type(t)
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
@@ -2665,11 +2665,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 				} else if g.inside_map_postfix || g.inside_map_infix {
 					zero := g.type_default(info.value_type)
-					if elem_typ.kind == .function {
-						g.write('(*(voidptr*)map_get(')
-					} else {
-						g.write('(*($elem_type_str*)map_get(')
-					}
+					g.write('(*($elem_type_str*)map_get_and_set(')
 					if !left_is_ptr {
 						g.write('&')
 					}
@@ -2679,7 +2675,11 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get(')
+					if elem_typ.kind == .function {
+						g.write('(*(voidptr*)map_get(')
+					} else {
+						g.write('(*($elem_type_str*)map_get(')
+					}
 					if node.left_type.is_ptr() {
 						g.write('*')
 					}
