@@ -397,9 +397,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				if req.method == 'HEAD' {
 					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
 				}
-			} else if 'option' in attrs {
-				if req.method == 'OPTION' {
-					route_words_a = attrs.filter(it.to_lower() != 'option').map(it[1..].split('/'))
+			} else if 'options' in attrs {
+				if req.method == 'OPTIONS' {
+					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
 				}
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
