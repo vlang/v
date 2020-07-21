@@ -48,10 +48,10 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 				continue
 			}
 			if int(m.args[i].typ) == table.string_type_idx {
-				g.write('((string*)${node.args_var}.data) [$i] ')
+				g.write('((string*)${node.args_var}.data) [${i-1}] ')
 			} else {
 				type_name := g.table.types[int(m.args[i].typ)].str()
-				g.write('string_${type_name}((string*)${node.args_var}.data [$i])')
+				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
 			}
 			if i < m.args.len - 1 {
 				g.write(', ')
