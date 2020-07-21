@@ -2567,11 +2567,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					*/
 					if need_wrapper {
-						if elem_typ.kind == .function {
-							g.write(', &(voidptr[]) { ')
-						} else {
-							g.write(', &($elem_type_str[]) { ')
-						}
+						g.write(', &($elem_type_str[]) { ')
 					} else {
 						g.write(', &')
 					}
