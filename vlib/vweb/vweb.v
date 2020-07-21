@@ -13,7 +13,7 @@ import time
 
 pub const (
 	methods_with_form = ['POST', 'PUT', 'PATCH']
-	method_all = ['GET','POST','PUT','PATCH','DELETE']
+	method_all = ['GET','POST','PUT','PATCH','DELETE', 'HEAD', 'OPTIONS']
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
@@ -392,6 +392,14 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			} else if 'delete' in attrs {
 				if req.method == 'DELETE' {
 					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
+				}
+			} else if 'head' in attrs {
+				if req.method == 'HEAD' {
+					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
+				}
+			} else if 'option' in attrs {
+				if req.method == 'OPTION' {
+					route_words_a = attrs.filter(it.to_lower() != 'option').map(it[1..].split('/'))
 				}
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
