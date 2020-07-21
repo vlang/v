@@ -54,6 +54,8 @@ pub enum FormatTime {
 	hhmm24
 	hhmmss12
 	hhmmss24
+	hhmmss24_milli
+	hhmmss24_micro
 	no_time
 }
 

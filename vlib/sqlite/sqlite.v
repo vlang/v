@@ -24,6 +24,10 @@ mut:
 	conn &C.sqlite3
 }
 
+pub fn (db DB) str() string {
+	return 'sqlite.DB{ conn: ' + ptr_str(db.conn) + ' }'
+}
+
 pub struct Row {
 pub mut:
 	vals []string
@@ -145,4 +149,3 @@ pub fn (db DB) exec_param(query string, param string) []Row {
 
 pub fn (db DB) insert<T>(x T) {
 }
-

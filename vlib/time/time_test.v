@@ -8,6 +8,7 @@ const (
 		hour: 21
 		minute: 23
 		second: 42
+		microsecond: 123456
 		unix: 332198622
 	}
 )
@@ -85,6 +86,16 @@ fn test_unix() {
 
 fn test_format_ss() {
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+}
+
+fn test_format_ss_milli() {
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+}
+
+fn test_format_ss_micro() {
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 }
 
 fn test_smonth() {
