@@ -140,8 +140,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			for attrib in method.attrs {
 				attrs << 'tos_lit("$attrib")'
 			}
-			a := attrs.join(', ')
-			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){$a}));')
+			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 		}
 		g.stmts(node.stmts)
 		i++
