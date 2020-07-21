@@ -924,6 +924,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('for (int $i = 0; $i < $atmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
+				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
 			} else {
@@ -957,6 +958,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
+				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = (*(voidptr*)map_get($atmp, $key, &(voidptr[]){ $zero }));')
 			} else {
