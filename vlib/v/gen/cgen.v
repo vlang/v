@@ -1259,7 +1259,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
-						if value_typ.kind == .function {
+						if val_typ.kind == .function {
 							g.writeln(', &(voidptr[]){ $zero });')
 						} else {
 							g.writeln(', &($styp[]){ $zero });')
