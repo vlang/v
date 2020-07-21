@@ -108,10 +108,19 @@ fn (ws &Client) parse_uri() &Uri {
 		panic(err)
 	}
 	v := u.request_uri().split('?')
+	mut port := u.port()
+	//Check if port is empty and check protocol to get the port, secure by default
+	if port == '' {
+		if ws.uri.contains('://') {
+			port = if ws.uri.split('://')[0] == 'ws' { '80' } else { '443' }
+		} else {
+			port = '443'
+		}
+	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
 		hostname: u.hostname()
-		port: u.port()
+		port: port
 		resource: v[0]
 		querystring: querystring
 	}
