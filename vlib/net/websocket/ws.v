@@ -247,7 +247,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	fbdata := byteptr( frame_buf.data )
 	masking_key := create_masking_key()
 	mut header := [`0`].repeat(header_len)
-	header[0] = byte(code) | 0x80
+	header[0] = byte(int(code)) | 0x80
 	if payload_len <= 125 {
 		header[1] = byte(payload_len | 0x80)
 		header[2] = masking_key[0]
@@ -592,7 +592,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	frame_len := header_len + payload.len
 	mut control_frame := [`0`].repeat(frame_len)
 	masking_key := create_masking_key()
-	control_frame[0] = byte(code | 0x80)
+	control_frame[0] = byte(int(code) | 0x80)
 	control_frame[1] = byte(payload.len | 0x80)
 	control_frame[2] = masking_key[0]
 	control_frame[3] = masking_key[1]
