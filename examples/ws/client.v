@@ -23,10 +23,10 @@ fn ws_test(uri string) {
 		println(text)
 		// Send a text to the server
 		ws.write(text.str, text.len, .text_frame)
-		// Only for test purposes, to give time to recieve message
+		// Only for test purposes, to give time to receive message
 		time.sleep_ms(100)
 	}
-	// Only for test purposes, to give time to recieve message
+	// Only for test purposes, to give time to receive message
 	time.sleep_ms(100)
 }
 
