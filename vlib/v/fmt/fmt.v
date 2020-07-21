@@ -914,7 +914,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			if node.is_type {
 				f.write('sizeof(')
 				if node.type_name != '' {
-					f.write(f.short_module(node.type_name))
+					if f.is_external_name(node.type_name) {
+						f.write(node.type_name)
+					} else {
+						f.write(f.short_module(node.type_name))
+					}
 				} else {
 					f.write(f.type_to_str(node.typ))
 				}
@@ -1731,4 +1735,14 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.indent--
 	f.writeln(')\n')
+}
+
+fn (mut f Fmt) is_external_name(name string) bool {
+	if name.len > 2 && name[0]==`C` && name[1]==`.` {
+		return true
+	}
+	if name.len > 3 && name[0]==`J` && name[1]==`S` && name[2] == `.` {
+		return true
+	}
+	return false
 }
