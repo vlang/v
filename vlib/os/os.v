@@ -1361,6 +1361,11 @@ pub fn chmod(path string, mode int) {
 	C.chmod(charptr(path.str), mode)
 }
 
+pub fn exit(code int) {
+	C.exit(code)
+}
+
+
 pub const (
 	wd_at_startup = getwd()
 )

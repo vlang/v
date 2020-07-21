@@ -283,6 +283,8 @@ fn test_symlink() {
 	os.rm('symlink2')
 }
 
+
+
 fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	mut f := os.create(file_name) or {
@@ -390,4 +392,9 @@ fn test_write_file_array_structs() {
 	assert rarr == arr
 	assert rarr.len == maxn
 	//eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
+}
+
+fn test_exit() {
+	eprintln('exit test')
+	//os.exit(1)
 }
