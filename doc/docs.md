@@ -824,7 +824,7 @@ typ := match c {
 println(typ) // 'lowercase'
 ```
 
-You can also use ranges as `match` conditions. If the value falls within the range
+You can also use ranges as `match` patterns. If the value falls within the range
 of a branch, that branch will be executed.
 
 Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
