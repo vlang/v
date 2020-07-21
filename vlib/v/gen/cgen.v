@@ -1150,7 +1150,7 @@ fn (g &Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 			g.write(', ')
 		}
 	}
-    g.write(')')
+	g.write(')')
 }
 
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
@@ -1210,12 +1210,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			match left {
 				ast.Ident {
 					left_typ := assign_stmt.left_types[i]
-					styp := g.typ(left_typ)
 					left_sym := g.table.get_type_symbol(left_typ)
 					if left_sym.kind == .function {
 						g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
 						g.writeln(' = $left.name;')
 					} else {
+						styp := g.typ(left_typ)
 						g.writeln('$styp _var_$left.pos.pos = $left.name;')
 					}
 				}
