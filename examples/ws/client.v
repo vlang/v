@@ -30,11 +30,11 @@ fn ws_test(uri string) {
 	time.sleep_ms(100)
 }
 
-fn on_open(ws websocket.Client, x, y voidptr) {
+fn on_open(ws &websocket.Client, x, y voidptr) {
 	println('websocket opened.')
 }
 
-fn on_message(ws websocket.Client, msg &websocket.Message, x voidptr) {
+fn on_message(ws &websocket.Client, msg &websocket.Message, x voidptr) {
 	typ := msg.opcode
 	if typ == .text_frame {
 		println('Message: ${cstring_to_vstring(msg.payload)}')
