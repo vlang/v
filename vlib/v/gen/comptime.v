@@ -43,11 +43,16 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 		if m.args.len > 1 {
 			g.write(', ')
 		}
-		for i in 1 .. m.args.len {
+		for i in 1 .. m.args.len{
+			if m.args[i].name == 'app' {
+				continue
+			}
 			if int(m.args[i].typ) == table.int_type_idx {
 				g.write('string_int(((string*)${node.args_var}.data) [$i]) ')
-			} else {
+			} else if int(m.args[i].typ) == table.string_type_idx {
 				g.write('((string*)${node.args_var}.data) [$i] ')
+			} else {
+				// Error
 			}
 			if i < m.args.len - 1 {
 				g.write(', ')
