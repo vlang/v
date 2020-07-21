@@ -2524,7 +2524,12 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			}
 			ident.mod = saved_mod
 		}
-		c.error('undefined ident: `$ident.name`', ident.pos)
+		if ident.tok_kind == .assign {
+			c.error('undefined ident: `$ident.name` (use `:=` to assign a variable)',
+				ident.pos)
+		} else {
+			c.error('undefined ident: `$ident.name`', ident.pos)
+		}
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
