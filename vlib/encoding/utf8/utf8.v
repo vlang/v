@@ -7,11 +7,11 @@ mut:
 	failed   bool
 }
 
-pub fn utf8_validate_str(str string) bool {
-	return utf8_validate(str.str, str.len)
+pub fn validate_str(str string) bool {
+	return validate(str.str, str.len)
 }
 
-pub fn utf8_validate(data byteptr, len int) bool {
+pub fn validate(data byteptr, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
 		s := data[i]
