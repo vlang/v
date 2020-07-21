@@ -338,7 +338,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 
 // V type to C type
 fn (g &Gen) typ(t table.Type) string {
-	styp := g.base_type(t)
+	styp := if g.table.get_type_symbol(t).kind == .function { 'voidptr' } else { g.base_type(t) }
 	if t.has_flag(.optional) {
 		// Register an optional if it's not registered yet
 		return g.register_optional(t)
@@ -912,6 +912,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		// `for num in nums {`
 		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
+		val_sym := g.table.get_type_symbol(it.val_type) 
 		cond_type_is_ptr := it.cond_type.is_ptr()
 		atmp := g.new_tmp_var()
 		atmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
@@ -922,7 +923,12 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		op_field := if cond_type_is_ptr { '->' } else { '.' }
 		g.writeln('for (int $i = 0; $i < $atmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
-			g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];')
+			if val_sym.kind == .function {
+				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
+				g.writeln(' = (($styp*)$atmp${op_field}data)[$i];')
+			} else {
+				g.write('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];') 
+			}
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -931,6 +937,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN map')
 		key_styp := g.typ(it.key_type)
 		val_styp := g.typ(it.val_type)
+		val_sym := g.table.get_type_symbol(it.val_type) 
 		keys_tmp := 'keys_' + g.new_tmp_var()
 		idx := g.new_tmp_var()
 		key := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
@@ -949,8 +956,12 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln('\t$key_styp $key = /*kkkk*/ (($key_styp*)${keys_tmp}.data)[$idx];')
 		}
 		if it.val_var != '_' {
-			g.write('\t$val_styp ${c_name(it.val_var)} = /*vvv*/ (*($val_styp*)map_get($atmp')
-			g.writeln(', $key, &($val_styp[]){ $zero }));')
+			if val_sym.kind == .function {
+				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
+				g.writeln(' = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
+			} else {
+				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
+			}
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -1128,6 +1139,20 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	g.write(' /* typeof: ' + typeof(e) + ' type: ' + t.str() + ' */ ')
 }
 
+fn (g &Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
+	ret_styp := g.typ(func.func.return_type)
+	g.write('$ret_styp (*$ptr_name) (')
+	arg_len := func.func.args.len
+	for i, arg in func.func.args {
+		arg_typ := g.table.get_type_symbol(arg.typ)
+		g.write('$arg_typ.str() $arg.name')
+		if i < arg_len - 1 {
+			g.write(', ')
+		}
+	}
+    g.write(')')
+}
+
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
 		g.write('static ')
@@ -1184,23 +1209,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		for i, left in assign_stmt.left {
 			match left {
 				ast.Ident {
-					var_type := assign_stmt.left_types[i]
-					left_sym := g.table.get_type_symbol(var_type)
+					left_typ := assign_stmt.left_types[i]
+					styp := g.typ(left_typ)
+					left_sym := g.table.get_type_symbol(left_typ)
 					if left_sym.kind == .function {
-						func := left_sym.info as table.FnType
-						ret_styp := g.typ(func.func.return_type)
-						g.write('$ret_styp (*_var_$left.pos.pos) (')
-						arg_len := func.func.args.len
-						for j, arg in func.func.args {
-							arg_type := g.table.get_type_symbol(arg.typ)
-							g.write('$arg_type.str() $arg.name')
-							if j < arg_len - 1 {
-								g.write(', ')
-							}
-						}
-						g.writeln(') = $left.name;')
+						g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
+						g.writeln(' = $left.name;')
 					} else {
-						styp := g.typ(var_type)
 						g.writeln('$styp _var_$left.pos.pos = $left.name;')
 					}
 				}
@@ -1208,24 +1223,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					sym := g.table.get_type_symbol(left.left_type)
 					if sym.kind == .array {
 						info := sym.info as table.Array
-						styp := g.typ(info.elem_type)
 						elem_typ := g.table.get_type_symbol(info.elem_type)
 						if elem_typ.kind == .function {
-							var_type := assign_stmt.left_types[i]
-							left_sym := g.table.get_type_symbol(var_type)
-							func := left_sym.info as table.FnType
-							ret_styp := g.typ(func.func.return_type)
-							g.write('$ret_styp (*_var_$left.pos.pos) (')
-							arg_len := func.func.args.len
-							for j, arg in func.func.args {
-								arg_type := g.table.get_type_symbol(arg.typ)
-								g.write('$arg_type.str() $arg.name')
-								if j < arg_len - 1 {
-									g.write(', ')
-								}
-							}
-							g.write(') = *(voidptr*)array_get(')
+							left_typ := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(left_typ)
+							g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
+							g.write(' = *(voidptr*)array_get(')
 						} else {
+							styp := g.typ(info.elem_type)
 							g.write('$styp _var_$left.pos.pos = *($styp*)array_get(')
 						}
 						if left.left_type.is_ptr() {
@@ -1239,21 +1244,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						info := sym.info as table.Map
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
-						value_typ := g.table.get_type_symbol(info.value_type)
-						if value_typ.kind == .function {
-							var_type := assign_stmt.left_types[i]
-							left_sym := g.table.get_type_symbol(var_type)
-							func := left_sym.info as table.FnType
-							ret_styp := g.typ(func.func.return_type)
-							g.write('$ret_styp (*_var_$left.pos.pos) (')
-							arg_len := func.func.args.len
-							for j, arg in func.func.args {
-								arg_type := g.table.get_type_symbol(arg.typ)
-								g.write('$arg_type.str() $arg.name')
-								if j < arg_len - 1 {
-									g.write(', ')
-								}
-							}
+						val_typ := g.table.get_type_symbol(info.value_type)
+						if val_typ.kind == .function {
+							left_type := assign_stmt.left_types[i]
+							left_sym := g.table.get_type_symbol(left_type)
+							g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
 							g.write(') = *(voidptr*)map_get(')
 						} else {
 							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
@@ -1264,11 +1259,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.expr(left.left)
 						g.write(', ')
 						g.expr(left.index)
-						if value_typ.kind == .function {
-							g.writeln(', &(voidptr[]){ $zero });')
-						} else {
-							g.writeln(', &($styp[]){ $zero });')
-						}
+						g.writeln(', &($styp[]){ $zero });')
 					}
 				}
 				ast.SelectorExpr {
@@ -1780,23 +1771,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.MapInit {
 			key_typ_str := g.typ(node.key_type)
 			value_typ_str := g.typ(node.value_type)
-			value_typ := g.table.get_type_symbol(node.value_type)
 			size := node.vals.len
 			if size > 0 {
-				if value_typ.kind == .function {
-					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str[$size]){')
-				} else {
-					g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
-				}
+				g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
 				for expr in node.keys {
 					g.expr(expr)
 					g.write(', ')
 				}
-				if value_typ.kind == .function {
-					g.write('}), _MOV((voidptr[$size]){')
-				} else {
-					g.write('}), _MOV(($value_typ_str[$size]){')
-				}
+				g.write('}), _MOV(($value_typ_str[$size]){')
 				for expr in node.vals {
 					g.expr(expr)
 					g.write(', ')
@@ -2554,7 +2536,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
-				elem_typ := g.table.get_type_symbol(info.elem_type)
 				// `vals[i].field = x` is an exception and requires `array_get`:
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
@@ -2630,11 +2611,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(op)
 					}
 				} else {
-					if elem_typ.kind == .function {
-						g.write('(*(voidptr*)array_get(')
-					} else {
-						g.write('(*($elem_type_str*)array_get(')
-					}
+					g.write('(*($elem_type_str*)array_get(')
 					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 						g.write('*')
 					}
@@ -2653,7 +2630,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
-				elem_typ := g.table.get_type_symbol(info.value_type)
 				if g.is_assign_lhs && !g.is_array_set {
 					g.is_array_set = true
 					g.write('map_set(')
@@ -2663,11 +2639,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					if elem_typ.kind == .function {
-						g.write(', &(voidptr[]) { ')
-					} else {
-						g.write(', &($elem_type_str[]) { ')
-					}
+					g.write(', &($elem_type_str[]) { ')
 				} else if g.inside_map_postfix || g.inside_map_infix {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set(')
@@ -2680,22 +2652,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					if elem_typ.kind == .function {
-						g.write('(*(voidptr*)map_get(')
-					} else {
-						g.write('(*($elem_type_str*)map_get(')
-					}
+					g.write('(*($elem_type_str*)map_get(')
 					if node.left_type.is_ptr() {
 						g.write('*')
 					}
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					if elem_typ.kind == .function {
-						g.write(', &(voidptr[]){ $zero }))')
-					} else {
-						g.write(', &($elem_type_str[]){ $zero }))')
-					}
+					g.write(', &($elem_type_str[]){ $zero }))')
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
 				g.write('string_at(')
@@ -4867,12 +4831,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		return
 	}
 	len := it.exprs.len
-	elem_sym := g.table.get_type_symbol(it.elem_type)
-	if elem_sym.kind == .function {
-		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
-	} else {
-		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
-	}
+	g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
 	if len > 8 {
 		g.writeln('')
 		g.write('\t\t')
