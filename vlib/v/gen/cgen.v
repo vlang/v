@@ -925,7 +925,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
-				g.writeln(' = (($styp*)$atmp${op_field}data)[$i];')
+				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
 			} else {
 				g.write('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];') 
 			}
@@ -958,7 +958,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
-				g.writeln(' = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
+				g.writeln(' = (*(voidptr*)map_get($atmp, $key, &(voidptr[]){ $zero }));')
 			} else {
 				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
 			}
@@ -1249,7 +1249,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							left_type := assign_stmt.left_types[i]
 							left_sym := g.table.get_type_symbol(left_type)
 							g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
-							g.write(') = *(voidptr*)map_get(')
+							g.write(' = *(voidptr*)map_get(')
 						} else {
 							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
 						}
