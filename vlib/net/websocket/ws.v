@@ -11,10 +11,10 @@ pub struct Client {
 	retry      int
 	eb         &eventbus.EventBus
 	is_ssl     bool
+mut:
 	// subprotocol_len int
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
-mut:
 	mtx        &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
@@ -24,7 +24,9 @@ mut:
 	ssl        &C.SSL
 	fragments  []Fragment
 pub mut:
-	log        log.Log = log.Log{ output_label: 'ws'}
+	log        log.Log = log.Log{
+	output_label: 'ws'
+}
 	uri        string
 	subscriber &eventbus.Subscriber
 	nonce_size int = 18 // you can try 16 too
@@ -138,7 +140,7 @@ pub fn (mut ws Client) connect() int {
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
 	ws.log.debug('handshake header:')
-	handshake := 'GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n'
+	handshake := 'GET $uri.resource$uri.querystring HTTP/1.1\r\nHost: $uri.hostname:$uri.port\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $seckey\r\nSec-WebSocket-Version: 13\r\n\r\n'
 	ws.log.debug(handshake)
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
 		ws.log.fatal(err)
@@ -239,7 +241,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	header_len := 6 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
 	frame_len := header_len + payload_len
 	mut frame_buf := [`0`].repeat(frame_len)
-	fbdata := byteptr( frame_buf.data )
+	fbdata := byteptr(frame_buf.data)
 	masking_key := create_masking_key()
 	mut header := [`0`].repeat(header_len)
 	header[0] = byte(code) | 0x80
@@ -275,8 +277,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 		goto free_data
 		return -1
 	}
-	unsafe
-	{
+	unsafe {
 		C.memcpy(fbdata, header.data, header_len)
 		C.memcpy(fbdata + header_len, payload, payload_len)
 	}
@@ -286,12 +287,12 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	bytes_written = ws.write_to_server(fbdata, frame_len)
 	if bytes_written == -1 {
 		err := string(byteptr(C.strerror(C.errno)))
-		ws.log.error('write: there was an error writing data: ${err}')
+		ws.log.error('write: there was an error writing data: $err')
 		ws.send_error_event('Error writing data')
 		goto free_data
 		return -1
 	}
-	ws.log.debug('write: ${bytes_written} bytes written.')
+	ws.log.debug('write: $bytes_written bytes written.')
 	free_data:
 	unsafe {
 		free(payload)
@@ -329,7 +330,7 @@ pub fn (mut ws Client) read() int {
 		match byt {
 			0 {
 				error := 'server closed the connection.'
-				ws.log.error('read: ${error}')
+				ws.log.error('read: $error')
 				ws.send_error_event(error)
 				ws.close(1006, error)
 				goto free_data
@@ -337,7 +338,7 @@ pub fn (mut ws Client) read() int {
 			}
 			-1 {
 				err := string(byteptr(C.strerror(C.errno)))
-				ws.log.error('read: error reading frame. ${err}')
+				ws.log.error('read: error reading frame. $err')
 				ws.send_error_event('error reading frame')
 				goto free_data
 				return -1
@@ -379,7 +380,7 @@ pub fn (mut ws Client) read() int {
 			payload_len = u64(extended_payload_len)
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
-				ws.log.debug('reallocating: ${frame_size}')
+				ws.log.debug('reallocating: $frame_size')
 				data = v_realloc(data, u32(frame_size))
 			}
 		} else if frame.payload_len == u64(127) && bytes_read == u64(extended_payload64_end_byte) {
@@ -403,7 +404,7 @@ pub fn (mut ws Client) read() int {
 			payload_len = extended_payload_len
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
-				ws.log.debug('reallocating: ${frame_size}')
+				ws.log.debug('reallocating: $frame_size')
 				data = v_realloc(data, u32(frame_size)) // TODO u64 => u32
 			}
 		}
@@ -425,7 +426,9 @@ pub fn (mut ws Client) read() int {
 		if payload == 0 {
 			ws.log.fatal('out of memory')
 		}
-		unsafe { C.memcpy(payload, &data[header_len], payload_len) }
+		unsafe {
+			C.memcpy(payload, &data[header_len], payload_len)
+		}
 		if frame.fin {
 			if ws.fragments.len > 0 {
 				// join fragments
@@ -517,7 +520,9 @@ pub fn (mut ws Client) read() int {
 		mut payload := []byte{}
 		if payload_len > 0 {
 			payload = [`0`].repeat(int(payload_len))
-			unsafe { C.memcpy(payload.data, &data[header_len], payload_len) }
+			unsafe {
+				C.memcpy(payload.data, &data[header_len], payload_len)
+			}
 		}
 		unsafe {
 			free(data)
@@ -548,7 +553,7 @@ pub fn (mut ws Client) read() int {
 			header_len += 2
 			payload_len -= 2
 			reason = string(&data[header_len])
-			ws.log.info('Closing with reason: ${reason} & code: ${code}')
+			ws.log.info('Closing with reason: $reason & code: $code')
 			if reason.len > 1 && !utf8_validate(reason.str, reason.len) {
 				ws.log.error('malformed utf8 payload')
 				ws.send_error_event('Recieved malformed utf8.')
@@ -563,8 +568,8 @@ pub fn (mut ws Client) read() int {
 		ws.close(code, reason)
 		return 0
 	}
-	ws.log.error('read: Recieved unsupported opcode: ${frame.opcode} fin: ${frame.fin} uri: ${ws.uri}')
-	ws.send_error_event('Recieved unsupported opcode: ${frame.opcode}')
+	ws.log.error('read: Recieved unsupported opcode: $frame.opcode fin: $frame.fin uri: $ws.uri')
+	ws.send_error_event('Recieved unsupported opcode: $frame.opcode')
 	ws.close(1002, 'Unsupported opcode')
 	free_data:
 	unsafe {
@@ -580,7 +585,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 		unsafe {
 			payload.free()
 		}
-		ws.log.fatal('send_control_frame: error sending ${frame_typ} control frame.')
+		ws.log.fatal('send_control_frame: error sending $frame_typ control frame.')
 		return -1
 	}
 	header_len := 6
@@ -596,7 +601,9 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	if code == .close {
 		if payload.len > 2 {
 			mut parsed_payload := [`0`].repeat(payload.len + 1)
-			unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
+			unsafe {
+				C.memcpy(parsed_payload.data, &payload[0], payload.len)
+			}
 			parsed_payload[payload.len] = `\0`
 			for i in 0 .. payload.len {
 				control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff
@@ -623,11 +630,11 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 			return 0
 		}
 		-1 {
-			ws.log.error('send_control_frame: error sending ${frame_typ} control frame.')
+			ws.log.error('send_control_frame: error sending $frame_typ control frame.')
 			return -1
 		}
 		else {
-			ws.log.debug('send_control_frame: wrote ${bytes_written} byte ${frame_typ} frame.')
+			ws.log.debug('send_control_frame: wrote $bytes_written byte $frame_typ frame.')
 			return bytes_written
 		}
 	}

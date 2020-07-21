@@ -14,8 +14,9 @@ fn (mut ws Client) read_handshake(seckey string) {
 		if res == 0 || res == -1 {
 			ws.log.fatal('read_handshake: Failed to read handshake.')
 		}
-		if buffer[bytes_read] == `\n` && buffer[bytes_read - 1] == `\r` && buffer[bytes_read -
-			2] == `\n` && buffer[bytes_read - 3] == `\r` {
+		if buffer[bytes_read] == `\n` &&
+			buffer[bytes_read - 1] == `\r` && buffer[bytes_read - 2] == `\n` &&
+			buffer[bytes_read - 3] == `\r` {
 			break
 		}
 		bytes_read += buffer_size
@@ -25,7 +26,7 @@ fn (mut ws Client) read_handshake(seckey string) {
 }
 
 fn (mut ws Client) handshake_handler(handshake_response, seckey string) {
-	ws.log.debug('handshake_handler:\r\n${handshake_response}')
+	ws.log.debug('handshake_handler:\r\n$handshake_response')
 	lines := handshake_response.split_into_lines()
 	header := lines[0]
 	if !header.starts_with('HTTP/1.1 101') && !header.starts_with('HTTP/1.0 101') {
@@ -45,9 +46,9 @@ fn (mut ws Client) handshake_handler(handshake_response, seckey string) {
 			}
 			'Sec-WebSocket-Accept', 'sec-websocket-accept' {
 				ws.log.debug('comparing hashes')
-				ws.log.debug('seckey: ${seckey}')
+				ws.log.debug('seckey: $seckey')
 				challenge := create_key_challenge_response(seckey)
-				ws.log.debug('challenge: ${challenge}')
+				ws.log.debug('challenge: $challenge')
 				ws.log.debug('response: ${keys[1]}')
 				if keys[1].trim_space() != challenge {
 					ws.log.error('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.')
