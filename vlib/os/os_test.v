@@ -283,8 +283,6 @@ fn test_symlink() {
 	os.rm('symlink2')
 }
 
-
-
 fn test_is_executable_writable_readable() {
 	file_name := 'rwxfile.exe'
 	mut f := os.create(file_name) or {
