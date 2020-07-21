@@ -1,0 +1,5 @@
+fn main() {
+	body := [1, 2, 3]
+	size := *&int(body.data)
+	eprintln('size: $size')
+}

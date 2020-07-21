@@ -8,6 +8,10 @@ import v.table
 import v.token
 
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
+	$if trace_parser ? {
+		tok_pos := p.tok.position()
+		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr($precedence)')
+	}
 	// println('\n\nparser.expr()')
 	mut typ := table.void_type
 	mut node := ast.Expr{}

@@ -898,7 +898,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			f.write(node.op.str())
-			f.expr(node.right)
+			f.prefix_expr_cast_expr( node.right )
 		}
 		ast.RangeExpr {
 			f.expr(node.low)
