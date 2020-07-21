@@ -114,7 +114,7 @@ pub fn new_semaphore() Semaphore {
 		s := Semaphore{
 			sem: &PosixSemaphore{}
 		}
-		C.sem_init(&&PosixSemaphore(s.sem).sem, 0, 0)
+		unsafe { C.sem_init(&&PosixSemaphore(s.sem).sem, 0, 0) }
 		return s
 	}
 }
@@ -126,7 +126,7 @@ pub fn (s Semaphore) post() {
 		C.pthread_cond_signal(&&MacOSX_Semaphore(s.sem).cond)
 		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
 	} $else {
-		C.sem_post(&&PosixSemaphore(s.sem).sem)
+		unsafe { C.sem_post(&&PosixSemaphore(s.sem).sem) }
 	}
 }
 
@@ -139,7 +139,7 @@ pub fn (s Semaphore) wait() {
 		(&MacOSX_Semaphore(s.sem)).count--
 		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
 	} $else {
-		C.sem_wait(&&PosixSemaphore(s.sem).sem)
+		unsafe { C.sem_wait(&&PosixSemaphore(s.sem).sem) }
 	}
 }
 
@@ -161,7 +161,7 @@ pub fn (s Semaphore) try_wait() bool {
 		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
 		return res
 	} $else {
-		return C.sem_trywait(&&PosixSemaphore(s.sem).sem) == 0
+		return unsafe { C.sem_trywait(&&PosixSemaphore(s.sem).sem) == 0 }
 	}
 }
 
@@ -183,6 +183,6 @@ pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 		C.pthread_mutex_unlock(&&MacOSX_Semaphore(s.sem).mtx)
 		return res
 	} $else {
-		return C.sem_timedwait(&&PosixSemaphore(s.sem).sem, &t_spec) == 0
+		return unsafe { C.sem_timedwait(&&PosixSemaphore(s.sem).sem, &t_spec) == 0 }
 	}
 }
