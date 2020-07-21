@@ -73,7 +73,9 @@ fn new_array_from_c_array(len, cap, elm_size int, c_array voidptr) array {
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	C.memcpy(arr.data, c_array, len * elm_size)
+	unsafe {
+		C.memcpy(arr.data, c_array, len * elm_size)
+	}
 	return arr
 }
 
@@ -125,7 +127,9 @@ pub fn (a array) repeat(count int) array {
 	for i in 0..count {
 		if a.len > 0 && a.element_size == sizeof(array) {
 			ary := array{}
-			C.memcpy(&ary, a.data, sizeof(array))
+			unsafe {
+				C.memcpy(&ary, a.data, sizeof(array))
+			}
 			ary_clone := ary.clone()
 			unsafe {
 				C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size)
@@ -516,7 +520,9 @@ pub fn copy(dst, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		mut min := 0
 		min = if dst.len < src.len { dst.len } else { src.len }
-		C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min)
+		unsafe {
+			C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min)
+		}
 		return min
 	}
 	return 0

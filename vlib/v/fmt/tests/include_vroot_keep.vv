@@ -1,0 +1,3 @@
+#flag -I @VROOT/c
+#flag @VROOT/c/implementation.o
+#include "@VROOT/c/implementation.h"

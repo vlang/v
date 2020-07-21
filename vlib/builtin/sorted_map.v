@@ -79,7 +79,9 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 			}
 			parent.split_child(child_index, mut node)
 			if key == parent.keys[child_index] {
-				C.memcpy(parent.values[child_index], value, m.value_bytes)
+				unsafe {
+					C.memcpy(parent.values[child_index], value, m.value_bytes)
+				}
 				return
 			}
 			node = if key < parent.keys[child_index] {
@@ -91,7 +93,9 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 		mut i := 0
 		for i < node.len && key > node.keys[i] { i++ }
 		if i != node.len && key == node.keys[i] {
-			C.memcpy(node.values[i], value, m.value_bytes)
+			unsafe {
+				C.memcpy(node.values[i], value, m.value_bytes)
+			}
 			return
 		}
 		if isnil(node.children) {
@@ -103,7 +107,9 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 			}
 			node.keys[j + 1] = key
 			node.values[j + 1] = malloc(m.value_bytes)
-			C.memcpy(node.values[j + 1], value, m.value_bytes)
+			unsafe {
+				C.memcpy(node.values[j + 1], value, m.value_bytes)
+			}
 			node.len++
 			m.len++
 			return
@@ -150,7 +156,9 @@ fn (m SortedMap) get(key string, out voidptr) bool {
 		mut i := node.len - 1
 		for i >= 0 && key < node.keys[i] { i-- }
 		if i != -1 && key == node.keys[i] {
-			C.memcpy(out, node.values[i], m.value_bytes)
+			unsafe {
+				C.memcpy(out, node.values[i], m.value_bytes)
+			}
 			return true
 		}
 		if isnil(node.children) {

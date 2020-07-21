@@ -5,6 +5,11 @@ fn test_nr_cpus() {
 	assert nr_cpus > 0
 }
 
+fn test_nr_jobs() {
+	nr_jobs := runtime.nr_jobs()
+	assert nr_jobs > 0
+}
+
 fn test_is_32bit(){
 	x := runtime.is_32bit().str()
 	assert x == 'true' || x == 'false'

@@ -310,6 +310,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
+	} else if command == 'build' {
+		if command_pos + 2 != args.len {
+			eprintln('`v build` requires exactly one argument - either a single .v file, or a single folder/ containing several .v files')
+			exit(1)
+		}
+		res.path = args[command_pos + 1]
+		must_exist(res.path)
 	} else if command == 'run' {
 		res.is_run = true
 		if command_pos + 2 > args.len {
@@ -318,6 +325,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		}
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
+		must_exist(res.path)
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -325,6 +333,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	}
 	res.fill_with_defaults()
 	return res, command
+}
+
+fn must_exist(path string) {
+	if !os.exists(path) {
+		eprintln('v expects that `$path` exists, but it does not')
+		exit(1)
+	}        
 }
 
 pub fn backend_from_string(s string) ?Backend {

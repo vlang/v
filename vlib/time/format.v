@@ -13,6 +13,16 @@ pub fn (t Time) format_ss() string {
 	return t.get_fmt_str(.hyphen, .hhmmss24, .yyyymmdd)
 }
 
+// format_ss_milli returns a date string in "YYYY-MM-DD HH:MM:SS.123" format (24h).
+pub fn (t Time) format_ss_milli() string {
+	return t.get_fmt_str(.hyphen, .hhmmss24_milli, .yyyymmdd)
+}
+
+// format_ss_micro returns a date string in "YYYY-MM-DD HH:MM:SS.123456" format (24h).
+pub fn (t Time) format_ss_micro() string {
+	return t.get_fmt_str(.hyphen, .hhmmss24_micro, .yyyymmdd)
+}
+
 // hhmm returns a date string in "HH:MM" format (24h).
 pub fn (t Time) hhmm() string {
 	return t.get_fmt_time_str(.hhmm24)
@@ -96,6 +106,12 @@ pub fn (t Time) get_fmt_time_str(fmt_time FormatTime) string {
 		}
 		.hhmmss24{
 			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}'
+		}
+		.hhmmss24_milli{
+			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${(t.microsecond/1000):03d}'
+		}
+		.hhmmss24_micro{
+			'${t.hour:02d}:${t.minute:02d}:${t.second:02d}.${t.microsecond:06d}'
 		}
 		else {
 			'unknown enumeration $fmt_time'}

@@ -430,7 +430,7 @@ pub fn (mut ws Client) read() int {
 		if payload == 0 {
 			l.f('out of memory')
 		}
-		C.memcpy(payload, &data[header_len], payload_len)
+		unsafe { C.memcpy(payload, &data[header_len], payload_len) }
 		if frame.fin {
 			if ws.fragments.len > 0 {
 				// join fragments
@@ -522,7 +522,7 @@ pub fn (mut ws Client) read() int {
 		mut payload := []byte{}
 		if payload_len > 0 {
 			payload = [`0`].repeat(int(payload_len))
-			C.memcpy(payload.data, &data[header_len], payload_len)
+			unsafe { C.memcpy(payload.data, &data[header_len], payload_len) }
 		}
 		unsafe {
 			free(data)
@@ -601,7 +601,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	if code == .close {
 		if payload.len > 2 {
 			mut parsed_payload := [`0`].repeat(payload.len + 1)
-			C.memcpy(parsed_payload.data, &payload[0], payload.len)
+			unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
 			parsed_payload[payload.len] = `\0`
 			for i in 0 .. payload.len {
 				control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff

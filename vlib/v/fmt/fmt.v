@@ -11,7 +11,7 @@ import v.util
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t'
+		'\t\t\t\t\t\t\t\t',
 	]
 	// when to break a line dependant on penalty
 	max_len = [0, 35, 85, 93, 100]
@@ -253,9 +253,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.comments, {
-				inline: false
-			})
+			f.comments(node.comments, {})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
@@ -334,6 +332,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			name := it.name.after('.')
 			f.writeln('enum $name {')
 			f.comments(it.comments, {
+				inline: true
 				level: .indent
 			})
 			for field in it.fields {
@@ -343,6 +342,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.expr(field.expr)
 				}
 				f.comments(field.comments, {
+					inline: true
 					has_nl: false
 					level: .indent
 				})
@@ -351,9 +351,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ExprStmt {
-			f.comments(it.comments, {
-				inline: false
-			})
+			f.comments(it.comments, {})
 			f.expr(it.expr)
 			if !f.single_line_if {
 				f.writeln('')
@@ -444,9 +442,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(it)
 		}
 		ast.Return {
-			f.comments(it.comments, {
-				inline: false
-			})
+			f.comments(it.comments, {})
 			f.write('return')
 			if it.exprs.len > 1 {
 				// multiple returns
@@ -631,7 +627,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
-			f.comment(comments[j], {})
+			f.comment(comments[j], {
+				inline: true
+			})
 			f.writeln('')
 			f.indent--
 			j++
@@ -665,7 +663,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	for comment in node.end_comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment, {})
+		f.comment(comment, {
+			inline: true
+		})
 		f.writeln('')
 		f.indent--
 	}
@@ -781,7 +781,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			f.comment(node, {})
+			f.comment(node, {
+				inline: true
+			})
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -829,48 +831,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(node.expr)
 		}
 		ast.InfixExpr {
-			if f.is_inside_interp {
-				f.expr(node.left)
-				f.write('$node.op.str()')
-				f.expr(node.right)
-			} else {
-				buffering_save := f.buffering
-				if !f.buffering {
-					f.out_save = f.out
-					f.out = strings.new_builder(60)
-					f.buffering = true
-				}
-				f.expr(node.left)
-				f.write(' $node.op.str() ')
-				f.expr_bufs << f.out.str()
-				mut penalty := 3
-				if node.left is ast.InfixExpr || node.left is ast.ParExpr {
-					penalty--
-				}
-				if node.right is ast.InfixExpr || node.right is ast.ParExpr {
-					penalty--
-				}
-				f.penalties << penalty
-				// combine parentheses level with operator precedence to form effective precedence
-				f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
-				f.out = strings.new_builder(60)
-				f.buffering = true
-				f.expr(node.right)
-				if !buffering_save && f.buffering { // now decide if and where to break
-					f.expr_bufs << f.out.str()
-					f.out = f.out_save
-					f.buffering = false
-					f.adjust_complete_line()
-					for i, p in f.penalties {
-						f.write(f.expr_bufs[i])
-						f.wrap_long_line(p, true)
-					}
-					f.write(f.expr_bufs[f.expr_bufs.len - 1])
-					f.expr_bufs = []string{}
-					f.penalties = []int{}
-					f.precedences = []int{}
-				}
-			}
+			f.infix_expr(node)
 		}
 		ast.IndexExpr {
 			f.expr(node.left)
@@ -937,7 +898,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			f.write(node.op.str())
-			f.expr(node.right)
+			f.prefix_expr_cast_expr( node.right )
 		}
 		ast.RangeExpr {
 			f.expr(node.low)
@@ -953,7 +914,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			if node.is_type {
 				f.write('sizeof(')
 				if node.type_name != '' {
-					f.write(f.short_module(node.type_name))
+					if f.is_external_name(node.type_name) {
+						f.write(node.type_name)
+					} else {
+						f.write(f.short_module(node.type_name))
+					}
 				} else {
 					f.write(f.type_to_str(node.typ))
 				}
@@ -1145,7 +1110,7 @@ enum CommentsLevel {
 
 struct CommentsOptions {
 	has_nl bool = true
-	inline bool = true
+	inline bool
 	level  CommentsLevel = .keep
 }
 
@@ -1254,25 +1219,96 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 	f.write('}')
 }
 
+pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
+	if f.is_inside_interp {
+		f.expr(node.left)
+		f.write('$node.op.str()')
+		f.expr(node.right)
+	} else {
+		buffering_save := f.buffering
+		if !f.buffering {
+			f.out_save = f.out
+			f.out = strings.new_builder(60)
+			f.buffering = true
+		}
+		f.expr(node.left)
+		is_one_val_array_init := node.op in [.key_in, .not_in] &&
+			node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.write(if node.op == .key_in {
+				' == '
+			} else {
+				' != '
+			})
+		} else {
+			f.write(' $node.op.str() ')
+		}
+		f.expr_bufs << f.out.str()
+		mut penalty := 3
+		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
+			penalty--
+		}
+		if node.right is ast.InfixExpr || node.right is ast.ParExpr {
+			penalty--
+		}
+		f.penalties << penalty
+		// combine parentheses level with operator precedence to form effective precedence
+		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+		f.out = strings.new_builder(60)
+		f.buffering = true
+		if is_one_val_array_init {
+			// `var in [val]` => `var == val`
+			f.expr((node.right as ast.ArrayInit).exprs[0])
+		} else {
+			f.expr(node.right)
+		}
+		if !buffering_save && f.buffering { // now decide if and where to break
+			f.expr_bufs << f.out.str()
+			f.out = f.out_save
+			f.buffering = false
+			f.adjust_complete_line()
+			for i, p in f.penalties {
+				f.write(f.expr_bufs[i])
+				f.wrap_long_line(p, true)
+			}
+			f.write(f.expr_bufs[f.expr_bufs.len - 1])
+			f.expr_bufs = []string{}
+			f.penalties = []int{}
+			f.precedences = []int{}
+		}
+	}
+}
+
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	single_line := it.branches.len == 2 && it.has_else &&
 		it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		if branch.comments.len > 0 {
-			f.comments(branch.comments, {})
-		}
 		if i == 0 {
+			f.comments(branch.comments, {})
 			f.write('if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i < it.branches.len - 1 || !it.has_else {
-			f.write('} else if ')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {})
+			} else {
+				f.write('} ')
+			}
+			f.write('else if ')
 			f.expr(branch.cond)
 			f.write(' {')
 		} else if i == it.branches.len - 1 && it.has_else {
-			f.write('} else {')
+			if branch.comments.len > 0 {
+				f.writeln('}')
+				f.comments(branch.comments, {})
+			} else {
+				f.write('} ')
+			}
+			f.write('else {')
 		}
 		if single_line {
 			f.write(' ')
@@ -1286,6 +1322,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	}
 	f.write('}')
 	f.single_line_if = false
+	if it.post_comments.len > 0 {
+		f.writeln('')
+		f.comments(it.post_comments, {
+			has_nl: false
+		})
+	}
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
@@ -1298,6 +1340,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		// }
 	}
 	*/
+	for arg in node.args {
+		f.comments(arg.comments, {})
+	}
 	if node.is_method {
 		/*
 		// x.foo!() experiment
@@ -1405,7 +1450,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	for branch in it.branches {
 		if branch.comment.text != '' {
-			f.comment(branch.comment, {})
+			f.comment(branch.comment, {
+				inline: true
+			})
 			f.writeln('')
 		}
 		if !branch.is_else {
@@ -1437,7 +1484,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 		}
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, {})
+			f.comments(branch.post_comments, {
+				inline: true
+			})
 		}
 	}
 	f.indent--
@@ -1671,7 +1720,9 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		comments := field.comments
 		mut j := 0
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j], {})
+			f.comment(comments[j], {
+				inline: true
+			})
 			f.writeln('')
 			j++
 		}
@@ -1684,4 +1735,14 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.indent--
 	f.writeln(')\n')
+}
+
+fn (mut f Fmt) is_external_name(name string) bool {
+	if name.len > 2 && name[0]==`C` && name[1]==`.` {
+		return true
+	}
+	if name.len > 3 && name[0]==`J` && name[1]==`S` && name[2] == `.` {
+		return true
+	}
+	return false
 }

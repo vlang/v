@@ -1,6 +1,7 @@
 module builder
 
 import os
+import time
 import v.pref
 import v.cflag
 
@@ -302,11 +303,14 @@ pub fn (mut v Builder) cc_msvc() {
 		println('==========\n')
 	}
 	// println('$cmd')
+	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
 	}
+	diff := time.ticks() - ticks
+	v.timing_message('C msvc: ${diff}ms')
 	if res.exit_code != 0 {
 		verror(res.output)
 	}

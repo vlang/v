@@ -54,6 +54,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
+	vet_errors        &[]string
 	cur_fn_name       string
 }
 
@@ -70,6 +71,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 			start_pos: 0
 			parent: 0
 		}
+		vet_errors: 0
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -86,6 +88,7 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
+		vet_errors: 0
 	}
 	return p.parse()
 }
@@ -113,21 +116,41 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
+		vet_errors: 0
 	}
-	if pref.is_vet && p.scanner.text.contains('\n        ') {
+	return p.parse()
+}
+
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors &[]string) ast.File {
+	global_scope := &ast.Scope{
+		parent: 0
+	}
+	mut p := Parser{
+		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref, vet_errors)
+		comments_mode: .parse_comments
+		table: table_
+		file_name: path
+		file_name_dir: os.dir(path)
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: global_scope
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+		vet_errors: vet_errors
+	}
+	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or {
 			[]string{}
 		}
 		for lnumber, line in source_lines {
-			if line.starts_with('        ') {
-				eprintln('$p.scanner.file_path:${lnumber+1}: Looks like you are using spaces for indentation.')
+			if line.starts_with('  ') {
+				p.vet_error('Looks like you are using spaces for indentation.', lnumber)
 			}
 		}
-		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
-		exit(1)
 	}
-	// if pref.is_vet && p.scanner.text.contains('( '\n        ') {
-	// }
 	return p.parse()
 }
 
@@ -603,10 +626,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
 			// { call_expr = it }
-			match expr {
-				ast.CallExpr {}
-				else {}
-			}
 			return ast.GoStmt{
 				call_expr: expr
 			}
@@ -777,6 +796,10 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
+pub fn (mut p Parser) vet_error(s string, line int) {
+	p.vet_errors << '$p.scanner.file_path:${line+1}: $s'
+}
+
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// in here might be 1) multi-expr 2) multi-assign
 	// 1, a, c ... }       // multi-expression
@@ -827,6 +850,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		mut name := p.check_name()
 		if name == '_' {
 			return ast.Ident{
+				tok_kind: p.tok.kind
 				name: '_'
 				kind: .blank_ident
 				pos: pos
@@ -843,6 +867,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			name = '${p.expr_mod}.$name'
 		}
 		return ast.Ident{
+			tok_kind: p.tok.kind
 			kind: .unresolved
 			name: name
 			language: language
@@ -1005,6 +1030,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 
 fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// left == `a` in `a[0]`
+	start_pos := p.tok.position()
 	p.next() // [
 	mut has_low := true
 	if p.tok.kind == .dotdot {
@@ -1012,10 +1038,11 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		// [..end]
 		p.next()
 		high := p.expr(0)
+		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
 			left: left
-			pos: p.tok.position()
+			pos: pos
 			index: ast.RangeExpr{
 				low: ast.Expr{}
 				high: high
@@ -1023,7 +1050,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			}
 		}
 	}
-	expr := p.expr(0) // `[expr]` or  `[expr..]`
+	expr := p.expr(0) // `[expr]` or  `[expr..`
 	mut has_high := false
 	if p.tok.kind == .dotdot {
 		// [start..end] or [start..]
@@ -1033,10 +1060,11 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 			has_high = true
 			high = p.expr(0)
 		}
+		pos := start_pos.extend(p.tok.position())
 		p.check(.rsbr)
 		return ast.IndexExpr{
 			left: left
-			pos: p.tok.position()
+			pos: pos
 			index: ast.RangeExpr{
 				low: expr
 				high: high
@@ -1046,11 +1074,12 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 		}
 	}
 	// [expr]
+	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
 	return ast.IndexExpr{
 		left: left
 		index: expr
-		pos: p.tok.position()
+		pos: pos
 	}
 }
 
@@ -1352,9 +1381,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_alias = p.check_name()
 	}
 	node := ast.Import{
-		pos: pos,
-		mod: mod_name,
-		alias: mod_alias,
+		pos: pos
+		mod: mod_name
+		alias: mod_alias
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
 		p.import_syms(node)
@@ -1380,7 +1409,8 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
 	}
 	if p.tok.kind != .name { // not a valid inner name
-		p.error_with_pos('import syntax error, please specify a valid fn or type name', pos_t)
+		p.error_with_pos('import syntax error, please specify a valid fn or type name',
+			pos_t)
 	}
 	for p.tok.kind == .name {
 		pos := p.tok.position()

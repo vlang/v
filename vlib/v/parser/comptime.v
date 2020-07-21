@@ -26,6 +26,9 @@ fn (mut p Parser) resolve_vroot(flag string) string {
 			' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
+	if p.pref.is_fmt {
+		return flag
+	}        
 	return flag.replace('@VROOT', os.real_path(vmod_path))
 }
 

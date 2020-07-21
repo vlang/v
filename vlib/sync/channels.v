@@ -12,8 +12,8 @@ fn C.atomic_fetch_add(voidptr, u64) u64
 fn C.atomic_fetch_sub(voidptr, u64) u64
 
 const (
-	spinloops = 70 // How often to try to get data before semaphore is used to wait
-	alignsize = 8 // 64 Bit
+	spinloops = 70 // how often to try to get data before to wait for semaphore
+	alignsize = 8 // 8 Bytes, since we use 64 Bit atomic operations
 )
 
 struct Channel {
@@ -31,8 +31,8 @@ mut: // atomic
 	readers_waiting C.atomic_ullong
 	write_adr C.atomic_uintptr_t // if != NULL the next obj can be written here without wait
 	read_adr C.atomic_uintptr_t // if != NULL an obj can be read from here without wait
-	adr_read C.atomic_uintptr_t
-	adr_written C.atomic_uintptr_t
+	adr_read C.atomic_uintptr_t // used to identify origin of writesem
+	adr_written C.atomic_uintptr_t // used to identify origin of readsem
 	buf_elem_write_ptr C.atomic_uintptr_t
 	buf_elem_read_ptr C.atomic_uintptr_t
 	// for select
@@ -41,15 +41,9 @@ mut: // atomic
 	read_subscriber Semaphore
 }
 
-/*
-pub fn new_channel<T>(n int) &Channel {
-	return new_channel_raw(n, sizeof(T))
-}
-*/
-
 pub fn new_channel<T>(n u32, is_ref bool) &Channel {
 	objsize := if is_ref { sizeof(voidptr) } else { sizeof(T) }
-	objsize_full := if is_ref { alignsize } else { alignsize * ((objsize + alignsize - 1) / alignsize) }
+	objsize_full := if is_ref { alignsize } else { alignsize * ((objsize + alignsize) / alignsize) }
 	bufsize := n * objsize_full
 	buf := if n > 0 { malloc(int(bufsize)) } else { byteptr(0) }
 	flagoffset := objsize_full - alignsize
@@ -78,21 +72,18 @@ pub fn new_channel<T>(n u32, is_ref bool) &Channel {
 			sem: 0
 		}
 	}
+	println('objsize: $objsize, objsize_full: $ch.objsize_full, flagoffset: $ch.flagoffset')
 	return ch
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
 	mut src_flag := src
 	mut srclastword := u64(0)
-	if ch.flagoffset == 0 {
-		srclastword = *&u64(src)
-	} else {
-		unsafe {
-			src_flag += ch.flagoffset
-		}
-		if ch.objsize & 0x07 != 0 {
-			C.memcpy(&srclastword, src_flag, ch.objsize & 0x07)
-		}
+	unsafe {
+		src_flag += ch.flagoffset
+	}
+	if ch.objsize > ch.flagoffset {
+		C.memcpy(&srclastword, src_flag, ch.objsize - ch.flagoffset)
 	}
 	mut wradr := if ch.bufsize == 0 { C.atomic_load(&ch.write_adr) } else { u64(0) }
 	for {
@@ -185,7 +176,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 					}
 					placeholder = 0x8000000000000000
 				}
-				if ch.flagoffset > 0 {
+				if ch.flagoffset != 0 {
 					C.memcpy(wr_ptr, src, ch.objsize_full - alignsize)
 				}
 				C.atomic_fetch_add(&ch.read_avail, 1)
@@ -291,8 +282,10 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 					}
 				}
 				mut rd_ptr_last_word := rd_ptr
+				mut dest_ptr_last_word := dest
 				unsafe {
 					rd_ptr_last_word += ch.flagoffset
+					dest_ptr_last_word += ch.flagoffset
 				}
 				mut x := u64(0)
 				for {
@@ -301,8 +294,9 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 						break
 					}
 				}
-				// C.atomic_store(&u64(dest), x)
-				C.memcpy(dest, rd_ptr, ch.objsize)
+				//if ch.flagoffset != 0 {
+					C.memcpy(dest, rd_ptr, ch.objsize)
+				//}
 				C.atomic_store(&u64(rd_ptr_last_word), 0x8000000000000000)
 				C.atomic_fetch_add(&ch.write_free, 1)
 				mut wr_waiting := C.atomic_load(&ch.writers_waiting)

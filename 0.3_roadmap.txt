@@ -12,6 +12,7 @@
 - make `-autofree` the default
 - parallel parser (and maybe checker/gen?)
 - `recover()` from panics
+- IO streams
 
 
 

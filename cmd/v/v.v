@@ -12,7 +12,7 @@ import v.builder
 const (
 	simple_cmd = [
 		'fmt', 'up', 'vet',
-		'self', 'symlink', 'bin2v',
+		'self', 'tracev', 'symlink', 'bin2v',
 		'test', 'test-fmt', 'test-compiler', 'test-fixed',
 		'repl',
 		'build-tools', 'build-examples',
@@ -70,7 +70,7 @@ fn main() {
 			println('Translating C to V will be available in V 0.3')
 			return
 		}
-		'search', 'install', 'update', 'outdated', 'remove' {
+		'search', 'install', 'update', 'outdated', 'list', 'remove' {
 			util.launch_tool(prefs.is_verbose, 'vpm', os.args[1..])
 			return
 		}
@@ -87,7 +87,7 @@ fn main() {
 		}
 		else {}
 	}
-	if command in ['run', 'build-module'] || command.ends_with('.v') || os.exists(command) {
+	if command in ['run', 'build', 'build-module'] || command.ends_with('.v') || os.exists(command) {
 		// println('command')
 		// println(prefs.path)
 		builder.compile(command, prefs)

@@ -1,7 +1,7 @@
 import sync
 
 const (
-	signals_per_thread = 10000000
+	signals_per_thread = 100_000
 )
 
 fn send_signals(sem, sem_end sync.Semaphore) {

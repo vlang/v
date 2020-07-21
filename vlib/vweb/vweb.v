@@ -60,7 +60,7 @@ pub mut:
 pub struct Cookie {
 	name string
 	value string
-	exprires time.Time
+	expires time.Time
 	secure bool
 	http_only bool
 }
@@ -120,9 +120,15 @@ pub fn (mut ctx Context) not_found() Result {
 }
 
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
-	secure := if cookie.secure { "Secure;" } else { "" }
-	http_only := if cookie.http_only { "HttpOnly" } else { "" }
-	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $secure $http_only')
+	mut cookie_data := []string{}
+	mut secure := if cookie.secure { "Secure;" } else { "" }
+	secure += if cookie.http_only { " HttpOnly" } else { " " }
+	cookie_data << secure
+	if cookie.expires.unix > 0 {
+		cookie_data << 'expires=${cookie.expires.utc_string()}'
+	}
+	data := cookie_data.join(' ')
+	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
 }
 
 pub fn (mut ctx Context) set_cookie_old(key, val string) {
