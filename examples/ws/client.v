@@ -4,6 +4,7 @@ import net.websocket
 import time
 
 fn main() {
+	//URLs working for testing, reply the same sent messages
 	ws_test('ws://echo.websocket.org')
 	ws_test('wss://echo.websocket.org')
 }
@@ -20,6 +21,7 @@ fn ws_test(uri string) {
 	for i := 0; i < 10; i++ {
 		text := 'a'.repeat(i)
 		println(text)
+		// Send a text to the server
 		ws.write(text.str, text.len, .text_frame)
 		// Only for test purposes, to give time to recieve message
 		time.sleep_ms(100)
