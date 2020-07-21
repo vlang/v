@@ -1,14 +1,14 @@
-module websocket
-
-pub fn utf8_validate_str(str string) bool {
-	return utf8_validate(str.str, str.len)
-}
+module utf8
 
 struct Utf8State {
 mut:
 	index    int
 	subindex int
 	failed   bool
+}
+
+pub fn utf8_validate_str(str string) bool {
+	return utf8_validate(str.str, str.len)
 }
 
 pub fn utf8_validate(data byteptr, len int) bool {
@@ -22,14 +22,12 @@ pub fn utf8_validate(data byteptr, len int) bool {
 		if state.failed {
 			return false
 		}
-		// i++ //fast forward
 	}
 	return !state.failed && state.subindex <= 0
 }
 
 fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
-	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex ==
-		2) {
+	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex == 2) {
 		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
 			s.subindex++
 			return true
