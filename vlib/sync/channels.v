@@ -1,6 +1,18 @@
 module sync
 
-#include <stdatomic.h>
+#flag windows -I @VROOT/thirdparty/stdatomic/win
+#flag linux -I @VROOT/thirdparty/stdatomic/nix
+#flag darwin -I @VROOT/thirdparty/stdatomic/nix
+#flag freebsd -I @VROOT/thirdparty/stdatomic/nix
+#flag solaris -I @VROOT/thirdparty/stdatomic/nix
+
+$if linux {
+	$if tinyc {
+		#flag /usr/lib/x86_64-linux-gnu/libatomic.so.1
+	}
+}
+
+#include <atomic.h>
 
 // the following functions are actually generic in C
 fn C.atomic_load(voidptr) u64
@@ -36,7 +48,6 @@ mut: // atomic
 	buf_elem_write_ptr C.atomic_uintptr_t
 	buf_elem_read_ptr C.atomic_uintptr_t
 	// for select
-	mtx C.pthread_mutex_t
 	write_subscriber Semaphore
 	read_subscriber Semaphore
 }
@@ -65,12 +76,6 @@ pub fn new_channel<T>(n u32, is_ref bool) &Channel {
 		buf_elem_read_ptr: voidptr(buf)
 		write_free: C.atomic_ullong(n)
 		read_avail: C.atomic_ullong(0)
-		write_subscriber: Semaphore{
-			sem: 0
-		}
-		read_subscriber: Semaphore{
-			sem: 0
-		}
 	}
 	println('objsize: $objsize, objsize_full: $ch.objsize_full, flagoffset: $ch.flagoffset')
 	return ch
@@ -83,7 +88,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 		src_flag += ch.flagoffset
 	}
 	if ch.objsize > ch.flagoffset {
-		C.memcpy(&srclastword, src_flag, ch.objsize - ch.flagoffset)
+		unsafe { C.memcpy(&srclastword, src_flag, ch.objsize - ch.flagoffset) }
 	}
 	mut wradr := if ch.bufsize == 0 { C.atomic_load(&ch.write_adr) } else { u64(0) }
 	for {
@@ -92,7 +97,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 				mut nulladr := voidptr(0)
 				if C.atomic_compare_exchange_strong(&ch.write_adr, &wradr, nulladr) {
 					// there is a reader waiting for us
-					C.memcpy(wradr, src, ch.objsize)
+					unsafe { C.memcpy(wradr, src, ch.objsize) }
 					for !C.atomic_compare_exchange_weak(&ch.adr_written, &nulladr, wradr) {
 						nulladr = voidptr(0)
 					}
@@ -177,7 +182,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 					placeholder = 0x8000000000000000
 				}
 				if ch.flagoffset != 0 {
-					C.memcpy(wr_ptr, src, ch.objsize_full - alignsize)
+					unsafe { C.memcpy(wr_ptr, src, ch.objsize_full - alignsize) }
 				}
 				C.atomic_fetch_add(&ch.read_avail, 1)
 				mut rd_waiting := C.atomic_load(&ch.readers_waiting)
@@ -212,7 +217,7 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 		for rdadr != C.NULL {
 			if C.atomic_compare_exchange_strong(&ch.read_adr, &rdadr, voidptr(0)) {
 				// there is a writer waiting for us
-				C.memcpy(dest, rdadr, ch.objsize)
+				unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 				mut nulladr := voidptr(0)
 				for !C.atomic_compare_exchange_weak(&ch.adr_read, &nulladr, rdadr) {
 					nulladr = voidptr(0)
@@ -294,9 +299,7 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 						break
 					}
 				}
-				//if ch.flagoffset != 0 {
-					C.memcpy(dest, rd_ptr, ch.objsize)
-				//}
+				unsafe { C.memcpy(dest, rd_ptr, ch.objsize) }
 				C.atomic_store(&u64(rd_ptr_last_word), 0x8000000000000000)
 				C.atomic_fetch_add(&ch.write_free, 1)
 				mut wr_waiting := C.atomic_load(&ch.writers_waiting)

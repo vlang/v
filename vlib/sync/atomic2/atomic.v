@@ -17,10 +17,16 @@ further tested.
 #flag freebsd -I @VROOT/thirdparty/stdatomic/nix
 #flag solaris -I @VROOT/thirdparty/stdatomic/nix
 
-#include "atomic.h"
+$if linux {
+	$if tinyc {
+		#flag /usr/lib/x86_64-linux-gnu/libatomic.so.1
+	}
+}
 
-fn C.atomic_fetch_add_explicit() int
-fn C.atomic_fetch_sub_explicit() int
+#include <atomic.h>
+
+fn C.atomic_fetch_add_explicit(voidptr, i64) i64
+fn C.atomic_fetch_sub_explicit(voidptr, i64) i64
 
 [typedef]
 struct C.atomic_ullong {

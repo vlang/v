@@ -1,8 +1,11 @@
 /*
     Compability header for stdatomic.h that works for all compilers supported
-    by V. For TCC the atomic features missing are implemented using mutex locks
+    by V. For TCC libatomic from the operating system is used
 
 */
+#ifndef __ATOMIC_H
+#define __ATOMIC_H
+
 #ifndef __cplusplus
 // If C just use stdatomic.h
 #ifndef __TINYC__
@@ -14,41 +17,58 @@
 #endif
 
 #ifdef __TINYC__
-#include <pthread.h>
 
-typedef intptr_t atomic_llong;
-typedef intptr_t atomic_ullong;
+typedef volatile intptr_t atomic_llong;
+typedef volatile intptr_t atomic_ullong;
+typedef volatile intptr_t atomic_uintptr_t;
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+// use functions for 64 bit types (8 bytes) from libatomic directly
+// since tcc is not capible to use "generics" in C
 
-/*
-    Wrapper for TCC to use mutex locks since it lacks the atomic functions
-*/
-static inline intptr_t atomic_fetch_add_explicit(intptr_t *x, size_t offset, int mo)
-{
-    pthread_mutex_lock(&lock);
+extern intptr_t __atomic_load_8(intptr_t* x, int mo);
+extern intptr_t __atomic_store_8(intptr_t* x, intptr_t y, int mo);
+extern char __atomic_compare_exchange_8(intptr_t* x, intptr_t* expected, intptr_t y, int mo);
+extern char __atomic_compare_exchange_8(intptr_t* x, intptr_t* expected, intptr_t y, int mo);
+extern intptr_t __atomic_exchange_8(intptr_t* x, intptr_t y, int mo);
+extern intptr_t __atomic_fetch_add_8(intptr_t* x, intptr_t y, int mo);
+extern intptr_t __atomic_fetch_sub_8(intptr_t* x, intptr_t y, int mo);
 
-    intptr_t old_value = *x;
-    *x = *x + offset;
+#define atomic_load_explicit __atomic_load_8
+#define atomic_store_explicit __atomic_store_8
+#define atomic_compare_exchange_weak_explicit __atomic_compare_exchange_8
+#define atomic_compare_exchange_strong_explicit __atomic_compare_exchange_8
+#define atomic_exchange_explicit __atomic_exchange_8
+#define atomic_fetch_add_explicit __atomic_fetch_add_8
+#define atomic_fetch_sub_explicit __atomic_sub_fetch_8
 
-    pthread_mutex_unlock(&lock);
+#define memory_order_relaxed 0
+#define memory_order_consume 1
+#define memory_order_acquire 2
+#define memory_order_release 3
+#define memory_order_acq_rel 4
+#define memory_order_seq_cst 5
 
-    return old_value;
+static inline intptr_t atomic_load(intptr_t* x) {
+	return atomic_load_explicit(x, memory_order_seq_cst);
+}
+static inline intptr_t atomic_store(intptr_t* x, intptr_t y) {
+	return atomic_store_explicit(x, y, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_weak(intptr_t* x, intptr_t* expected, intptr_t y) {
+	return atomic_compare_exchange_weak_explicit(x, expected, y, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_strong(intptr_t* x, intptr_t* expected, intptr_t y) {
+	return atomic_compare_exchange_strong_explicit(x, expected, y, memory_order_seq_cst);
+}
+static inline intptr_t atomic_exchange(intptr_t* x, intptr_t y) {
+	return atomic_exchange_explicit(x, y, memory_order_seq_cst);
+}
+static inline intptr_t atomic_fetch_add(intptr_t* x, intptr_t y) {
+	return atomic_fetch_add_explicit(x, y, memory_order_seq_cst);
+}
+static inline intptr_t atomic_fetch_sub(intptr_t* x, intptr_t y) {
+	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
 }
 
-/*
-    Wrapper for TCC to use mutex locks since it lacks the atomic functions
-*/
-static inline intptr_t atomic_fetch_sub_explicit(intptr_t *x, size_t offset, int mo)
-{
-    pthread_mutex_lock(&lock);
-
-    intptr_t old_value = *x;
-    *x = *x - offset;
-
-    pthread_mutex_unlock(&lock);
-
-    return old_value;
-}
-
+#endif
 #endif
