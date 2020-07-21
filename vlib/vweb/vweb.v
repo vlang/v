@@ -379,19 +379,19 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// Get is default
 			if 'post' in attrs {
 				if req.method == 'POST' {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
 				}
 			} else if 'put' in attrs {
 				if req.method == 'PUT' {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
 				}
 			} else if 'patch' in attrs {
 				if req.method == 'PATCH' {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
 				}
 			} else if 'delete' in attrs {
 				if req.method == 'DELETE' {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))				
+					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 				}
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
