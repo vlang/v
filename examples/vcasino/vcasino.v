@@ -5,8 +5,8 @@ const (
 	help_text = ' Usage:\t./VCasino\n
  Description:\n  VCasino is a little game only made to learn V.\n'
 	g_desc    = "  The object of Roulette is to pick the number where the spinning ball will land on the wheel.
-   If your number is the good one, you\'ll get your bet x3.
-   If your number is the same color as the ball one, you\'ll get your bet /2.
+   If your number is the good one, you'll get your bet x3.
+   If your number is the same color as the ball one, you'll get your bet /2.
    Otherwise, you will lose your bet.\n"
 	odd       = 'red'
 	even      = 'black'
@@ -68,7 +68,7 @@ fn get_bet_nbr() int {
 fn get_bet(money int) int {
 	mut bet := -1
 	for bet <= 0 || bet > money {
-		println("You\'ve $money V. Type in the amount of your bet:")
+		println("You have $money V. Type in the amount of your bet:")
 		line := os.get_line().trim_space()
 		if line.len < 1 {
 			println('error: empty line.')
@@ -113,11 +113,11 @@ fn run_wheel(bet_nbr, _bet int) int {
 
 fn is_broke(money int) bool {
 	if money <= 0 {
-		println("You\'re broke, the game is over..")
+		println("You're broke, the game is over..")
 		return false
 	}
 	quit := Options{'yes', 'y'}
-	println("You\'ve $money V. Do you want to quit the casino with your winnings? (y/n)")
+	println("You have $money V. Do you want to quit the casino with your winnings? (y/n)")
 	line := os.get_line().trim_space().to_lower()
 	if line == quit.long_opt || line == quit.short_opt {
 		return false
