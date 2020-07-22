@@ -47,11 +47,11 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 			if m.args[i].name == 'app' {
 				continue
 			}
-			if int(m.args[i].typ) == table.string_type_idx {
-				g.write('((string*)${node.args_var}.data) [${i-1}] ')
-			} else {
+			if int(m.args[i].typ) in table.integer_type_idxs || int(m.args[i].typ) == table.bool_type_idx {
 				type_name := g.table.types[int(m.args[i].typ)].str()
 				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
+			} else {
+				g.write('((string*)${node.args_var}.data) [${i-1}] ')
 			}
 			if i < m.args.len - 1 {
 				g.write(', ')
