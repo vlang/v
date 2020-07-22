@@ -2416,36 +2416,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.void_type
 	}
 	// second use
-	if ident.kind == .global {
-		if ident.obj is ast.GlobalDecl as obj {
-			println('IS GLOBAL DECL: $obj.typ')
-			return obj.typ
-		}
-	}
-	else if ident.kind in [.variable/*, .global*/] {
-		t := (ident.obj as ast.Var).typ
-		if t == 0 {
-			println('WTF ZERO')
-		}
-		return t
-		// info := ident.info as ast.IdentVar
+	if ident.kind in [.constant, .global, .variable] {
+		info := ident.info as ast.IdentVar
 		// if info.typ == table.t_type {
 		// Got a var with type T, return current generic type
 		// return c.cur_generic_type
 		// }
-		// return info.typ
-	} else if ident.kind in [.constant/*, .global, .variable*/] {
-		t := (ident.obj as ast.ConstField).typ
-		if t == 0 {
-			println('WTF ZERO')
-		}
-		return t
-		// info := ident.info as ast.IdentVar
-		// if info.typ == table.t_type {
-		// Got a var with type T, return current generic type
-		// return c.cur_generic_type
-		// }
-		// return info.typ
+		return info.typ
 	} else if ident.kind == .function {
 		info := ident.info as ast.IdentFn
 		return info.typ
