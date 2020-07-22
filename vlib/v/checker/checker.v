@@ -679,8 +679,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		ast.Ident {
-			// scope := c.file.scope.innermost(expr.pos.pos)
-			// if v := scope.find_var(expr.name) {
 			if expr.obj is ast.Var as v {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
@@ -1629,7 +1627,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 					}
-					// mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
 					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
@@ -1643,13 +1640,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if left_type != 0 {
 						if left.obj is ast.Var as v {
 							v.typ = left_type
-							// left.kind = .variable
 						}
 						else if left.obj is ast.GlobalDecl as v {
 							v.typ = left_type
 						}
 					}
-					// scope.update_var_type(left.name, left_type)
 				}
 			}
 			ast.PrefixExpr {
@@ -2786,22 +2781,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	// scope := c.file.scope.innermost(node.pos.pos)
 	for id in node.lockeds {
 		c.ident(mut id)
-		// if v := scope.find_var(id.name) {
-		mut is_var := false
-		mut shared_flag := table.ShareType(0)
 		if id.obj is ast.Var as v {
-			is_var = true
-			shared_flag = v.typ.share()
-		}
-		else if id.obj is ast.ConstField as v {
-			is_var = true
-			shared_flag = v.typ.share()
-		}
-		if is_var {
-			if shared_flag != .shared_t {
+			if v.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}
 		}
