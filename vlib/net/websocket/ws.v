@@ -480,7 +480,7 @@ pub fn (mut ws Client) read() int {
 			payload[payload_len] = `\0`
 			if frame.opcode == .text_frame && payload_len > 0 {
 				if !utf8.validate(payload, int(payload_len)) {
-					l.e('malformed utf8 payload')
+					ws.log.error('malformed utf8 payload')
 					ws.send_error_event('Recieved malformed utf8.')
 					ws.close(1007, 'malformed utf8 payload')
 					goto free_data
