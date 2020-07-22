@@ -20,7 +20,7 @@ mut:
 struct EventHandler {
 	name string
 	handler EventHandlerFn
-	receiver voidptr
+	receiver voidptr = voidptr(0)
 	once bool
 }
 
