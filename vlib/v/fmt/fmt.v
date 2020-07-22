@@ -1286,10 +1286,25 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
+		// NOTE: taken from checker in if_expr(). used for smartcast
+		mut is_variable := false
+		if branch.cond is ast.InfixExpr {
+			infix := branch.cond as ast.InfixExpr
+			if infix.op == .key_is &&
+				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&
+				infix.right is ast.Type {
+				right_expr := infix.right as ast.Type
+				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+					.variable } else { true }
+			}
+		}
 		if i == 0 {
 			f.comments(branch.comments, {})
 			f.write('if ')
 			f.expr(branch.cond)
+			if is_variable && branch.left_as_name.len > 0 {
+				f.write(' as $branch.left_as_name')
+			}
 			f.write(' {')
 		} else if i < it.branches.len - 1 || !it.has_else {
 			if branch.comments.len > 0 {
@@ -1300,6 +1315,9 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			f.write('else if ')
 			f.expr(branch.cond)
+			if is_variable && branch.left_as_name.len > 0 {
+				f.write(' as $branch.left_as_name')
+			}
 			f.write(' {')
 		} else if i == it.branches.len - 1 && it.has_else {
 			if branch.comments.len > 0 {

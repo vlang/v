@@ -360,6 +360,8 @@ pub mut:
 	typ table.Type
 }
 
+// TODO: (joe) remove completely, use ident.obj
+// instead which points to the scope object
 pub struct IdentVar {
 pub mut:
 	typ         table.Type
@@ -387,6 +389,7 @@ pub:
 	tok_kind token.Kind
 	pos      token.Position
 pub mut:
+	obj      ScopeObject
 	mod      string
 	name     string
 	kind     IdentKind
