@@ -9,6 +9,7 @@ fn foo2(a string) int {
 fn test_array_with_fns() {
 	mut a := [foo, foo2]
 	assert a.len == 2
+	assert (a != [foo, foo2]) == false
 	assert (foo in a) == true
 	f0 := a[0]
 	assert f0('xx') == 12
@@ -27,11 +28,18 @@ fn test_array_with_fns() {
 	for func in b {
 		assert func('ccccccc') == 27
 	}
+	b = []
+	b << foo
+	b << [foo2]
+	assert (b == [foo, foo2]) == true
+	f5 := b[0]
+	assert f5('dddddddd') == 18
 }
 
 fn test_map_with_fns() {
 	mut a := {'one':foo, 'two':foo2}
 	assert a.len == 2
+	assert (a == {'one':foo, 'two':foo2}) == true
 	f0 := a['one']
 	assert f0('xx') == 12
 	f1 := a['two']
