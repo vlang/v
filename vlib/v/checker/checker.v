@@ -679,8 +679,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		ast.Ident {
-			scope := c.file.scope.innermost(expr.pos.pos)
-			if v := scope.find_var(expr.name) {
+			if expr.obj is ast.Var as v {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
@@ -956,6 +955,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
 				// continue
 				// }
+				// same ancestor? let it be
+				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
+					continue
+				}
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 						call_expr.pos)
@@ -1628,7 +1631,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 					}
-					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
 					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
@@ -1639,7 +1641,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
-					scope.update_var_type(left.name, left_type)
+					if left_type != 0 {
+						if left.obj is ast.Var as v {
+							v.typ = left_type
+						} else if left.obj is ast.GlobalDecl as v {
+							v.typ = left_type
+						}
+					}
 				}
 			}
 			ast.PrefixExpr {
@@ -2419,13 +2427,14 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	} else if ident.kind == .unresolved {
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if obj := start_scope.find(ident.name) {
-			match obj {
+		if obj1 := start_scope.find(ident.name) {
+			match obj1 as obj {
 				ast.GlobalDecl {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: obj.typ
 					}
+					ident.obj = obj1
 					return obj.typ
 				}
 				ast.Var {
@@ -2460,6 +2469,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					// }
 					// } else {
 					obj.typ = typ
+					ident.obj = obj1
 					// unwrap optional (`println(x)`)
 					if is_optional {
 						return typ.clear_flag(.optional)
@@ -2474,8 +2484,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
-		if obj := c.file.global_scope.find(name) {
-			match obj {
+		if obj1 := c.file.global_scope.find(name) {
+			match obj1 as obj {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
@@ -2487,6 +2497,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 					}
 					obj.typ = typ
+					ident.obj = obj1
 					return typ
 				}
 				else {}
@@ -2745,10 +2756,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	scope := c.file.scope.innermost(node.pos.pos)
 	for id in node.lockeds {
 		c.ident(mut id)
-		if v := scope.find_var(id.name) {
+		if id.obj is ast.Var as v {
 			if v.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}
@@ -2986,6 +2996,20 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
+	}
+	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
+		mut is_ok := false
+		if node.left is ast.Ident {
+			ident := node.left as ast.Ident
+			scope := c.file.scope.innermost(ident.pos.pos)
+			if v := scope.find_var(ident.name) {
+				// `mut param []T` function parameter
+				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
+			}
+		}
+		if !is_ok {
+			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
+		}
 	}
 	if node.index !is ast.RangeExpr { // [1]
 		index_type := c.expr(node.index)

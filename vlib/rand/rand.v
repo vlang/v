@@ -136,7 +136,9 @@ const (
 pub fn string(len int) string {
 	mut buf := malloc(len)
 	for i in 0..len {
-		buf[i] = chars[intn(chars.len)]
+		unsafe {
+			buf[i] = chars[intn(chars.len)]
+		}
 	}
 	return string(buf, len)
 }

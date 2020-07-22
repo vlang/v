@@ -266,12 +266,14 @@ pub fn (mut v Builder) cc_msvc() {
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
+	defines := sflags.defines
 	other_flags := sflags.other_flags
 	// Include the base paths
 	a << '-I "$r.ucrt_include_path"'
 	a << '-I "$r.vs_include_path"'
 	a << '-I "$r.um_include_path"'
 	a << '-I "$r.shared_include_path"'
+	a << defines
 	a << inc_paths
 	a << other_flags
 	// Libs are passed to cl.exe which passes them to the linker

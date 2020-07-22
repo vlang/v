@@ -147,6 +147,7 @@ pub fn (s string) cstr() byteptr {
 */
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
+[unsafe_fn]
 pub fn cstring_to_vstring(cstr byteptr) string {
 	return tos_clone(cstr)
 }
@@ -1432,12 +1433,16 @@ pub fn (s string) filter(func fn(b byte) bool) string {
 	for i in 0 .. s.len {
 		mut b := s[i]
 		if func(b) {
-			buf[new_len] = b
+			unsafe {
+				buf[new_len] = b
+			}
 			new_len++
 		}
 	}
-	buf[new_len] = 0
-	return string(buf, new_len)
+	unsafe {
+		buf[new_len] = 0
+		return string(buf, new_len)
+	}
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

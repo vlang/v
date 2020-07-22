@@ -144,7 +144,7 @@ fn pretty_description(s string, indent_len int) string {
 		mut i := chars_per_line - 2
 		mut j := 0
 		for ; i < line.len; i += chars_per_line - 2 {
-			for line.str[i] != ` ` {
+			for line[i] != ` ` {
 				i--
 			}
 			// indent was already done the first iteration

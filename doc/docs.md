@@ -497,7 +497,7 @@ Setting the capacity improves performance of insertions, as it reduces the amoun
 dynamic arrays:
 
 ```v
-numbers := []int{ cap: 1000 }
+mut numbers := []int{ cap: 1000 }
 // Now adding new elements is as efficient as setting them directly
 for i in 0 .. 1000 {
     numbers << i
@@ -812,6 +812,24 @@ fn is_red_or_blue(c Color) bool {
 A match statement can also be used to branch on the variants of an `enum`
 by using the shorthand `.variant_here` syntax. An `else` branch is not allowed
 when all the branches are exhaustive.
+
+```v
+c := `v`
+typ := match c {
+    `0`...`9` { 'digit' }
+    `A`...`Z` { 'uppercase' }
+    `a`...`z` { 'lowercase' }
+    else      { 'other' }
+}
+println(typ) // 'lowercase'
+```
+
+You can also use ranges as `match` patterns. If the value falls within the range
+of a branch, that branch will be executed.
+
+Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
+because the range is *inclusive* of the last element, rather than exclusive
+(as `..` ranges are). Using `..` in a match branch will throw an error.
 
 ### Defer
 
