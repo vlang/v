@@ -68,7 +68,7 @@ fn get_bet_nbr() int {
 fn get_bet(money int) int {
 	mut bet := -1
 	for bet <= 0 || bet > money {
-		println("You have $money V. Type in the amount of your bet:")
+		println('You have $money V. Type in the amount of your bet:')
 		line := os.get_line().trim_space()
 		if line.len < 1 {
 			println('error: empty line.')
@@ -117,7 +117,7 @@ fn is_broke(money int) bool {
 		return false
 	}
 	quit := Options{'yes', 'y'}
-	println("You have $money V. Do you want to quit the casino with your winnings? (y/n)")
+	println('You have $money V. Do you want to quit the casino with your winnings? (y/n)')
 	line := os.get_line().trim_space().to_lower()
 	if line == quit.long_opt || line == quit.short_opt {
 		return false
