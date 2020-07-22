@@ -1640,8 +1640,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if left_type != 0 {
 						if left.obj is ast.Var as v {
 							v.typ = left_type
-						}
-						else if left.obj is ast.GlobalDecl as v {
+						} else if left.obj is ast.GlobalDecl as v {
 							v.typ = left_type
 						}
 					}
@@ -1838,8 +1837,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// }
 				mut full_const_name := init_expr.mod + '.' + init_expr.name
 				if obj := c.file.global_scope.find_const(full_const_name) {
-					// TODO: check sponge (joe)
-					// println('FOUND !! $init_expr.name')
 					if cint := const_int_value(obj) {
 						fixed_size = cint
 					}
@@ -2263,9 +2260,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref
-				
-				
-				
 				pref2 := {
 					pref |
 					is_vweb: true
@@ -2764,8 +2758,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 			if v.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}
-		}
-		else {
+		} else {
 			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
 		}
 		if id.name in c.locked_names {
