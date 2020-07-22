@@ -44,10 +44,14 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 			g.write(', ')
 		}
 		for i in 1 .. m.args.len{
-			if m.args[i].name == 'app' {
-				continue
+			if node.left is ast.Ident {
+				left_name := node.left as ast.Ident
+				if m.args[i].name == left_name.name {
+					continue
+				}
 			}
 			if m.args[i].typ.is_int() || m.args[i].typ.idx() == table.bool_type_idx {
+				// Gets the type name and cast the string to the type with the string_<type> function
 				type_name := g.table.types[int(m.args[i].typ)].str()
 				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
 			} else {
