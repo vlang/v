@@ -68,6 +68,7 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.ofile = ofile
 }
 
+//Writes the log file content to disk
 pub fn (mut l Log) flush() {
   l.ofile.flush()
 }
