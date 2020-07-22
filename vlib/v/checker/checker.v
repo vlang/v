@@ -2790,16 +2790,22 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	for id in node.lockeds {
 		c.ident(mut id)
 		// if v := scope.find_var(id.name) {
+		mut is_var := false
+		mut shared_flag := false
 		if id.obj is ast.Var as v {
-			if v.typ.share() != .shared_t {
+			is_var = true
+			shared_flag = v.typ.share()
+		}
+		else if id.obj is ast.ConstField as v {
+			is_var = true
+			shared_flag = v.typ.share()
+		}
+		if is_var {
+			if shared_flag != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}
 		}
-		else if id.obj is ast.Var as v {
-			if v.typ.share() != .shared_t {
-				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
-			}
-		} else {
+		else {
 			c.error('`$id.name` is not a variable and cannot be locked', id.pos)
 		}
 		if id.name in c.locked_names {
