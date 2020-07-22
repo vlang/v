@@ -928,7 +928,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
 			} else {
-				g.write('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];') 
+				g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];') 
 			}
 		}
 		g.stmts(it.stmts)
