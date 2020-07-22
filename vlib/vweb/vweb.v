@@ -418,23 +418,23 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 								unknown = true
 								break
 							}
-						if url_words[i] == route_words[i] {
-							// no parameter
-							matching = true
-							continue
-						} else if route_words[i].starts_with(':') {
-							// is parameter
-							if i < route_words.len && !route_words[i].ends_with('...') {
-								// normal parameter
-								variables << url_words[i]
+							if url_words[i] == route_words[i] {
+								// no parameter
+								matching = true
+								continue
+							} else if route_words[i].starts_with(':') {
+								// is parameter
+								if i < route_words.len && !route_words[i].ends_with('...') {
+									// normal parameter
+									variables << url_words[i]
+								} else {
+									// array parameter only in the end
+									variables << url_words[i..].join('/')
+								}
+								matching = true
+								unknown = true
+								continue
 							} else {
-								// array parameter only in the end
-								variables << url_words[i..].join('/')
-							}
-							matching = true
-							unknown = true
-							continue
-						} else {
 								matching = false
 								break
 							}
