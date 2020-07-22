@@ -1,8 +1,4 @@
-module websocket
-
-pub fn utf8_validate_str(str string) bool {
-	return utf8_validate(str.str, str.len)
-}
+module utf8
 
 struct Utf8State {
 mut:
@@ -11,7 +7,11 @@ mut:
 	failed   bool
 }
 
-pub fn utf8_validate(data byteptr, len int) bool {
+pub fn validate_str(str string) bool {
+	return validate(str.str, str.len)
+}
+
+pub fn validate(data byteptr, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
 		s := data[i]
@@ -22,7 +22,6 @@ pub fn utf8_validate(data byteptr, len int) bool {
 		if state.failed {
 			return false
 		}
-		// i++ //fast forward
 	}
 	return !state.failed && state.subindex <= 0
 }

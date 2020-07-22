@@ -3,6 +3,7 @@ module websocket
 import net
 import net.urllib
 import encoding.base64
+import encoding.utf8
 import eventbus
 import sync
 import log
@@ -478,7 +479,7 @@ pub fn (mut ws Client) read() int {
 			}
 			payload[payload_len] = `\0`
 			if frame.opcode == .text_frame && payload_len > 0 {
-				if !utf8_validate(payload, int(payload_len)) {
+				if !utf8.validate(payload, int(payload_len)) {
 					ws.log.error('malformed utf8 payload')
 					ws.send_error_event('Recieved malformed utf8.')
 					ws.close(1007, 'malformed utf8 payload')
@@ -563,7 +564,7 @@ pub fn (mut ws Client) read() int {
 			payload_len -= 2
 			reason = string(&data[header_len])
 			ws.log.info('Closing with reason: $reason & code: $code')
-			if reason.len > 1 && !utf8_validate(reason.str, reason.len) {
+			if reason.len > 1 && !utf8.validate(reason.str, reason.len) {
 				ws.log.error('malformed utf8 payload')
 				ws.send_error_event('Recieved malformed utf8.')
 				ws.close(1007, 'malformed utf8 payload')
