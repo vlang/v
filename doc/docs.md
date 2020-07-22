@@ -1766,21 +1766,21 @@ fn test() []int {
 
 ## ORM
 
-(this is still in an alpha state)
+(This is still in an alpha state)
 
 V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
-- One syntax for all SQL dialects. Migrating between databases becomes much easier.
-- Queries are constructed using V's syntax. There's no need to learn another syntax.
-- Safety. All queries are automatically sanitised to prevent SQL injection.
-- Compile time checks. This prevents typos which can only be caught during runtime.
-- Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
+- One syntax for all SQL dialects. (Migrating between databases becomes much easier.)
+- Queries are constructed using V's syntax. (There's no need to learn another syntax.)
+- Safety. (All queries are automatically sanitised to prevent SQL injection.)
+- Compile time checks. (This prevents typos which can only be caught during runtime.)
+- Readability and simplicity. (You don't need to manually parse the results of a query and then manually construct objects from the parsed results.)
 
 ```v
 struct Customer { // struct name has to be the same as the table name (for now)
-    id int // an field named `id` of integer type must be the first field
+    id int // a field named `id` of integer type must be the first field
     name string
     nr_orders int
     country string
