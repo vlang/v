@@ -1590,8 +1590,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		return
 	}
 	is_decl := assign_stmt.op == .decl_assign
-	for i, _ in assign_stmt.left {
-		mut left := assign_stmt.left[i]
+	for i, left in assign_stmt.left {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
@@ -1642,9 +1641,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
 					if left_type != 0 {
-						if left.obj is ast.ConstField {
-							println('is const field!')
-						}
 						if left.obj is ast.Var as v {
 							v.typ = left_type
 							// left.kind = .variable
@@ -1850,7 +1846,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// }
 				mut full_const_name := init_expr.mod + '.' + init_expr.name
 				if obj := c.file.global_scope.find_const(full_const_name) {
-					println('FOUND !! $init_expr.name')
+					// TODO: check sponge (joe)
+					// println('FOUND !! $init_expr.name')
 					if cint := const_int_value(obj) {
 						fixed_size = cint
 					}
