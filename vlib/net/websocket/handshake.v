@@ -14,14 +14,16 @@ fn (mut ws Client) read_handshake(seckey string) {
 		if res == 0 || res == -1 {
 			ws.log.fatal('read_handshake: Failed to read handshake.')
 		}
-		if buffer[bytes_read] == `\n` &&
+		if unsafe {buffer[bytes_read] == `\n` &&
 			buffer[bytes_read - 1] == `\r` && buffer[bytes_read - 2] == `\n` &&
-			buffer[bytes_read - 3] == `\r` {
+			buffer[bytes_read - 3] == `\r`} {
 			break
 		}
 		bytes_read += buffer_size
 	}
-	buffer[max_buffer - 1] = `\0`
+	unsafe {
+		buffer[max_buffer - 1] = `\0`
+	}
 	ws.handshake_handler(string(byteptr(buffer)), seckey)
 }
 

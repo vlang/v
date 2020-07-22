@@ -355,19 +355,20 @@ pub fn (mut ws Client) read() int {
 			}
 		}
 		if bytes_read == u64(header_len_offset) {
-			frame.fin = (data[0] & 0x80) == 0x80
-			frame.rsv1 = (data[0] & 0x40) == 0x40
-			frame.rsv2 = (data[0] & 0x20) == 0x20
-			frame.rsv3 = (data[0] & 0x10) == 0x10
-			frame.opcode = OPCode(int(data[0] & 0x7F))
-			frame.mask = (data[1] & 0x80) == 0x80
-			frame.payload_len = u64(data[1] & 0x7F)
+			data0 := unsafe {data[0]}
+			frame.fin = (data0 & 0x80) == 0x80
+			frame.rsv1 = (data0 & 0x40) == 0x40
+			frame.rsv2 = (data0 & 0x20) == 0x20
+			frame.rsv3 = (data0 & 0x10) == 0x10
+			frame.opcode = OPCode(int(data0 & 0x7F))
+			frame.mask = (unsafe {data[1]} & 0x80) == 0x80
+			frame.payload_len = u64(unsafe {data[1]} & 0x7F)
 			// masking key
 			if frame.mask {
-				frame.masking_key[0] = data[2]
-				frame.masking_key[1] = data[3]
-				frame.masking_key[2] = data[4]
-				frame.masking_key[3] = data[5]
+				frame.masking_key[0] = unsafe {data[2]}
+				frame.masking_key[1] = unsafe {data[3]}
+				frame.masking_key[2] = unsafe {data[4]}
+				frame.masking_key[3] = unsafe {data[5]}
 			}
 			payload_len = frame.payload_len
 			frame_size = u64(header_len) + payload_len
@@ -375,14 +376,14 @@ pub fn (mut ws Client) read() int {
 		if frame.payload_len == u64(126) && bytes_read == u64(extended_payload16_end_byte) {
 			header_len += 2
 			mut extended_payload_len := 0
-			extended_payload_len |= data[2] << 8
-			extended_payload_len |= data[3] << 0
+			extended_payload_len |= unsafe {data[2]} << 8
+			extended_payload_len |= unsafe {data[3]} << 0
 			// masking key
 			if frame.mask {
-				frame.masking_key[0] = data[4]
-				frame.masking_key[1] = data[5]
-				frame.masking_key[2] = data[6]
-				frame.masking_key[3] = data[7]
+				frame.masking_key[0] = unsafe {data[4]}
+				frame.masking_key[1] = unsafe {data[5]}
+				frame.masking_key[2] = unsafe {data[6]}
+				frame.masking_key[3] = unsafe {data[7]}
 			}
 			payload_len = u64(extended_payload_len)
 			frame_size = u64(header_len) + payload_len
@@ -393,20 +394,20 @@ pub fn (mut ws Client) read() int {
 		} else if frame.payload_len == u64(127) && bytes_read == u64(extended_payload64_end_byte) {
 			header_len += 8 // TODO Not sure...
 			mut extended_payload_len := u64(0)
-			extended_payload_len |= u64(data[2]) << 56
-			extended_payload_len |= u64(data[3]) << 48
-			extended_payload_len |= u64(data[4]) << 40
-			extended_payload_len |= u64(data[5]) << 32
-			extended_payload_len |= u64(data[6]) << 24
-			extended_payload_len |= u64(data[7]) << 16
-			extended_payload_len |= u64(data[8]) << 8
-			extended_payload_len |= u64(data[9]) << 0
+			extended_payload_len |= u64(unsafe {data[2]}) << 56
+			extended_payload_len |= u64(unsafe {data[3]}) << 48
+			extended_payload_len |= u64(unsafe {data[4]}) << 40
+			extended_payload_len |= u64(unsafe {data[5]}) << 32
+			extended_payload_len |= u64(unsafe {data[6]}) << 24
+			extended_payload_len |= u64(unsafe {data[7]}) << 16
+			extended_payload_len |= u64(unsafe {data[8]}) << 8
+			extended_payload_len |= u64(unsafe {data[9]}) << 0
 			// masking key
 			if frame.mask {
-				frame.masking_key[0] = data[10]
-				frame.masking_key[1] = data[11]
-				frame.masking_key[2] = data[12]
-				frame.masking_key[3] = data[13]
+				frame.masking_key[0] = unsafe {data[10]}
+				frame.masking_key[1] = unsafe {data[11]}
+				frame.masking_key[2] = unsafe {data[12]}
+				frame.masking_key[3] = unsafe {data[13]}
 			}
 			payload_len = extended_payload_len
 			frame_size = u64(header_len) + payload_len
@@ -419,7 +420,9 @@ pub fn (mut ws Client) read() int {
 	// unmask the payload
 	if frame.mask {
 		for i in 0 .. payload_len {
-			data[header_len + i] ^= frame.masking_key[i % 4] & 0xff
+			unsafe {
+				data[header_len + i] ^= frame.masking_key[i % 4] & 0xff
+			}
 		}
 	}
 	if ws.fragments.len > 0 && frame.opcode in [.text_frame, .binary_frame] {
@@ -474,11 +477,13 @@ pub fn (mut ws Client) read() int {
 				}
 				ws.fragments = []
 			}
-			payload[payload_len] = `\0`
+			unsafe {
+				payload[payload_len] = `\0`
+			}
 			if frame.opcode == .text_frame && payload_len > 0 {
 				if !utf8.validate(payload, int(payload_len)) {
 					ws.log.error('malformed utf8 payload')
-					ws.send_error_event('Recieved malformed utf8.')
+					ws.send_error_event('Received malformed utf8.')
 					ws.close(1007, 'malformed utf8 payload')
 					goto free_data
 					return -1
@@ -556,10 +561,10 @@ pub fn (mut ws Client) read() int {
 		mut code := 0
 		mut reason := ''
 		if payload_len > 2 {
-			code = (int(data[header_len]) << 8) + int(data[header_len + 1])
+			code = (int(unsafe {data[header_len]}) << 8) + int(unsafe {data[header_len + 1]})
 			header_len += 2
 			payload_len -= 2
-			reason = string(&data[header_len])
+			reason = unsafe {string(&data[header_len])}
 			ws.log.info('Closing with reason: $reason & code: $code')
 			if reason.len > 1 && !utf8.validate(reason.str, reason.len) {
 				ws.log.error('malformed utf8 payload')
