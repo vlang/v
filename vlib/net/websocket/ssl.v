@@ -7,20 +7,20 @@ const (
 )
 
 fn (mut ws Client) connect_ssl() {
-	l.i('Using secure SSL connection')
+	ws.log.info('Using secure SSL connection')
 	C.SSL_load_error_strings()
 	ws.sslctx = C.SSL_CTX_new(C.SSLv23_client_method())
 	if ws.sslctx == 0 {
-		l.f("Couldn't get ssl context")
+		ws.log.fatal("Couldn't get ssl context")
 	}
 	ws.ssl = C.SSL_new(ws.sslctx)
 	if ws.ssl == 0 {
-		l.f("Couldn't create OpenSSL instance.")
+		ws.log.fatal("Couldn't create OpenSSL instance.")
 	}
 	if C.SSL_set_fd(ws.ssl, ws.socket.sockfd) != 1 {
-		l.f("Couldn't assign ssl to socket.")
+		ws.log.fatal("Couldn't assign ssl to socket.")
 	}
 	if C.SSL_connect(ws.ssl) != 1 {
-		l.f("Couldn't connect using SSL.")
+		ws.log.fatal("Couldn't connect using SSL.")
 	}
 }

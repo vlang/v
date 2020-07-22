@@ -8,21 +8,21 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls    = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands         = ['help', 'search', 'install', 'update', 'outdated', 'list', 'remove']
-	excluded_dirs              = ['cache', 'vlib']
-	supported_vcs_systems      = ['git', 'hg']
-	supported_vcs_folders      = ['.git', '.hg']
-	supported_vcs_update_cmds  = {
+	default_vpm_server_urls      = ['https://vpm.best', 'https://vpm.vlang.io']
+	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'outdated', 'list', 'remove']
+	excluded_dirs                = ['cache', 'vlib']
+	supported_vcs_systems        = ['git', 'hg']
+	supported_vcs_folders        = ['.git', '.hg']
+	supported_vcs_update_cmds    = {
 		'git': 'git pull'
 		'hg': 'hg pull --update'
 	}
-	supported_vcs_install_cmds = {
+	supported_vcs_install_cmds   = {
 		'git': 'git clone --depth=1'
 		'hg': 'hg clone'
 	}
-	supported_vcs_outdate_cmds = {
-		'git': ['git rev-parse @{u}', 'git rev-parse @']
+	supported_vcs_outdated_steps = {
+		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
 	}
 )
 
@@ -250,26 +250,23 @@ fn vpm_outdated() {
 			continue
 		}
 		if vcs[0] != 'git' {
-			println('Listing outdated modules is not supported with VCS {$vcs}.')
-			exit(1)
-		}
-		local_vcs_cmd := supported_vcs_outdate_cmds[vcs[0]][0]
-		local_res := os.exec(local_vcs_cmd) or {
-			errors++
-			println('Could not get local commit sha of "$name".')
-			verbose_println('Error command: $local_vcs_cmd')
-			verbose_println('Error details:\n$err')
+			println('Check for $name was skipped.')
+			verbose_println('VCS ${vcs[0]} does ot support `v outdated`.')
 			continue
 		}
-		upstream_vcs_cmd := supported_vcs_outdate_cmds[vcs[0]][1]
-		upstream_res := os.exec(upstream_vcs_cmd) or {
-			errors++
-			println('Could not read upstream commit sha of "$name".')
-			verbose_println('Error command: $upstream_vcs_cmd')
-			verbose_println('Error details:\n$err')
-			continue
+		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
+		mut outputs := []string{}
+		for step in vcs_cmd_steps {
+			res := os.exec(step) or {
+				errors++
+				println('Error while checking latest commits for "$name".')
+				verbose_println('Error command: git fetch')
+				verbose_println('Error details:\n$err')
+				continue
+			}
+			outputs << res.output
 		}
-		if local_res.output != upstream_res.output {
+		if outputs[1] != outputs[2] {
 			outdated << name
 		}
 	}

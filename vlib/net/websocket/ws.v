@@ -6,20 +6,16 @@ import encoding.base64
 import encoding.utf8
 import eventbus
 import sync
-import net.websocket.logger
-
-const (
-	l = logger.new('ws')
-)
+import log
 
 pub struct Client {
 	retry      int
 	eb         &eventbus.EventBus
 	is_ssl     bool
+mut:
 	// subprotocol_len int
 	// cwebsocket_subprotocol *subprotocol;
 	// cwebsocket_subprotocol *subprotocols[];
-mut:
 	mtx        &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
 	state      State
@@ -29,6 +25,9 @@ mut:
 	ssl        &C.SSL
 	fragments  []Fragment
 pub mut:
+	log        log.Log = log.Log{
+	output_label: 'ws'
+}
 	uri        string
 	subscriber &eventbus.Subscriber
 	nonce_size int = 18 // you can try 16 too
@@ -109,10 +108,19 @@ fn (ws &Client) parse_uri() &Uri {
 		panic(err)
 	}
 	v := u.request_uri().split('?')
+	mut port := u.port()
+	//Check if port is empty and check protocol to get the port, secure by default
+	if port == '' {
+		if ws.uri.contains('://') {
+			port = if ws.uri.split('://')[0] == 'ws' { '80' } else { '443' }
+		} else {
+			port = '443'
+		}
+	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
 		hostname: u.hostname()
-		port: u.port()
+		port: port
 		resource: v[0]
 		querystring: querystring
 	}
@@ -121,13 +129,13 @@ fn (ws &Client) parse_uri() &Uri {
 pub fn (mut ws Client) connect() int {
 	match ws.state {
 		.connected {
-			l.f('connect: websocket already connected')
+			ws.log.fatal('connect: websocket already connected')
 		}
 		.connecting {
-			l.f('connect: websocket already connecting')
+			ws.log.fatal('connect: websocket already connecting')
 		}
 		.open {
-			l.f('connect: websocket already open')
+			ws.log.fatal('connect: websocket already open')
 		}
 		else {
 			// do nothing
@@ -141,21 +149,21 @@ pub fn (mut ws Client) connect() int {
 	seckey := base64.encode(nonce)
 	ai_family := C.AF_INET
 	ai_socktype := C.SOCK_STREAM
-	l.d('handshake header:')
-	handshake := 'GET ${uri.resource}${uri.querystring} HTTP/1.1\r\nHost: ${uri.hostname}:${uri.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ${seckey}\r\nSec-WebSocket-Version: 13\r\n\r\n'
-	l.d(handshake)
+	ws.log.debug('handshake header:')
+	handshake := 'GET $uri.resource$uri.querystring HTTP/1.1\r\nHost: $uri.hostname:$uri.port\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $seckey\r\nSec-WebSocket-Version: 13\r\n\r\n'
+	ws.log.debug(handshake)
 	socket := net.new_socket(ai_family, ai_socktype, 0) or {
-		l.f(err)
+		ws.log.fatal(err)
 		return -1
 	}
 	ws.socket = socket
 	ws.socket.connect(uri.hostname, uri.port.int()) or {
-		l.f(err)
+		ws.log.fatal(err)
 		return -1
 	}
 	optval := 1
 	ws.socket.setsockopt(C.SOL_SOCKET, C.SO_KEEPALIVE, &optval) or {
-		l.f(err)
+		ws.log.fatal(err)
 		return -1
 	}
 	if ws.is_ssl {
@@ -166,7 +174,7 @@ pub fn (mut ws Client) connect() int {
 	ws.mtx.unlock()
 	res := ws.write_to_server(handshake.str, handshake.len)
 	if res <= 0 {
-		l.f('Handshake failed.')
+		ws.log.fatal('Handshake failed.')
 	}
 	ws.read_handshake(seckey)
 	ws.mtx.m_lock()
@@ -209,7 +217,7 @@ pub fn (mut ws Client) close(code int, message string) {
 			}
 		} else {
 			if C.shutdown(ws.socket.sockfd, C.SHUT_WR) == -1 {
-				l.e('Unabled to shutdown websocket.')
+				ws.log.error('Unabled to shutdown websocket.')
 			}
 			mut buf := [`0`]
 			for ws.read_from_server(buf.data, 1) > 0 {
@@ -227,8 +235,6 @@ pub fn (mut ws Client) close(code int, message string) {
 		ws.mtx.m_lock()
 		ws.state = .closed
 		ws.mtx.unlock()
-		unsafe {
-		}
 		// TODO impl autoreconnect
 	}
 }
@@ -245,7 +251,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	header_len := 6 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
 	frame_len := header_len + payload_len
 	mut frame_buf := [`0`].repeat(frame_len)
-	fbdata := byteptr( frame_buf.data )
+	fbdata := byteptr(frame_buf.data)
 	masking_key := create_masking_key()
 	mut header := [`0`].repeat(header_len)
 	header[0] = byte(code) | 0x80
@@ -276,13 +282,12 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 		header[12] = masking_key[2]
 		header[13] = masking_key[3]
 	} else {
-		l.c('write: frame too large')
+		ws.log.fatal('write: frame too large')
 		ws.close(1009, 'frame too large')
 		goto free_data
 		return -1
 	}
-	unsafe
-	{
+	unsafe {
 		C.memcpy(fbdata, header.data, header_len)
 		C.memcpy(fbdata + header_len, payload, payload_len)
 	}
@@ -292,12 +297,12 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	bytes_written = ws.write_to_server(fbdata, frame_len)
 	if bytes_written == -1 {
 		err := string(byteptr(C.strerror(C.errno)))
-		l.e('write: there was an error writing data: ${err}')
+		ws.log.error('write: there was an error writing data: $err')
 		ws.send_error_event('Error writing data')
 		goto free_data
 		return -1
 	}
-	l.d('write: ${bytes_written} bytes written.')
+	ws.log.debug('write: $bytes_written bytes written.')
 	free_data:
 	unsafe {
 		free(payload)
@@ -309,11 +314,11 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 }
 
 pub fn (mut ws Client) listen() {
-	l.i('Starting listener...')
+	ws.log.info('Starting listener...')
 	for ws.state == .open {
 		ws.read()
 	}
-	l.i('Listener stopped as websocket was closed.')
+	ws.log.info('Listener stopped as websocket was closed.')
 }
 
 pub fn (mut ws Client) read() int {
@@ -335,7 +340,7 @@ pub fn (mut ws Client) read() int {
 		match byt {
 			0 {
 				error := 'server closed the connection.'
-				l.e('read: ${error}')
+				ws.log.error('read: $error')
 				ws.send_error_event(error)
 				ws.close(1006, error)
 				goto free_data
@@ -343,7 +348,7 @@ pub fn (mut ws Client) read() int {
 			}
 			-1 {
 				err := string(byteptr(C.strerror(C.errno)))
-				l.e('read: error reading frame. ${err}')
+				ws.log.error('read: error reading frame. $err')
 				ws.send_error_event('error reading frame')
 				goto free_data
 				return -1
@@ -385,7 +390,7 @@ pub fn (mut ws Client) read() int {
 			payload_len = u64(extended_payload_len)
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
-				l.d('reallocating: ${frame_size}')
+				ws.log.debug('reallocating: $frame_size')
 				data = v_realloc(data, u32(frame_size))
 			}
 		} else if frame.payload_len == u64(127) && bytes_read == u64(extended_payload64_end_byte) {
@@ -409,7 +414,7 @@ pub fn (mut ws Client) read() int {
 			payload_len = extended_payload_len
 			frame_size = u64(header_len) + payload_len
 			if frame_size > initial_buffer {
-				l.d('reallocating: ${frame_size}')
+				ws.log.debug('reallocating: $frame_size')
 				data = v_realloc(data, u32(frame_size)) // TODO u64 => u32
 			}
 		}
@@ -426,12 +431,14 @@ pub fn (mut ws Client) read() int {
 		return -1
 	} else if frame.opcode in [.text_frame, .binary_frame] {
 		data_node:
-		l.d('read: recieved text_frame or binary_frame')
+		ws.log.debug('read: recieved text_frame or binary_frame')
 		mut payload := malloc(int(sizeof(byte) * u32(payload_len) + 1))
 		if payload == 0 {
-			l.f('out of memory')
+			ws.log.fatal('out of memory')
 		}
-		unsafe { C.memcpy(payload, &data[header_len], payload_len) }
+		unsafe {
+			C.memcpy(payload, &data[header_len], payload_len)
+		}
 		if frame.fin {
 			if ws.fragments.len > 0 {
 				// join fragments
@@ -449,7 +456,7 @@ pub fn (mut ws Client) read() int {
 				}
 				mut pl := malloc(int(sizeof(byte) * u32(size)))
 				if pl == 0 {
-					l.f('out of memory')
+					ws.log.fatal('out of memory')
 				}
 				mut by := 0
 				for f in frags {
@@ -499,9 +506,9 @@ pub fn (mut ws Client) read() int {
 		}
 		return int(bytes_read)
 	} else if frame.opcode == .continuation {
-		l.d('read: continuation')
+		ws.log.debug('read: continuation')
 		if ws.fragments.len <= 0 {
-			l.e('Nothing to continue.')
+			ws.log.error('Nothing to continue.')
 			ws.close(1002, 'nothing to continue')
 			goto free_data
 			return -1
@@ -509,7 +516,7 @@ pub fn (mut ws Client) read() int {
 		goto data_node
 		return 0
 	} else if frame.opcode == .ping {
-		l.d('read: ping')
+		ws.log.debug('read: ping')
 		if !frame.fin {
 			ws.close(1002, 'control message must not be fragmented')
 			goto free_data
@@ -523,7 +530,9 @@ pub fn (mut ws Client) read() int {
 		mut payload := []byte{}
 		if payload_len > 0 {
 			payload = [`0`].repeat(int(payload_len))
-			unsafe { C.memcpy(payload.data, &data[header_len], payload_len) }
+			unsafe {
+				C.memcpy(payload.data, &data[header_len], payload_len)
+			}
 		}
 		unsafe {
 			free(data)
@@ -541,7 +550,7 @@ pub fn (mut ws Client) read() int {
 		// got pong
 		return 0
 	} else if frame.opcode == .close {
-		l.d('read: close')
+		ws.log.debug('read: close')
 		if frame.payload_len > 125 {
 			ws.close(1002, 'control frames must not exceed 125 bytes')
 			goto free_data
@@ -554,9 +563,9 @@ pub fn (mut ws Client) read() int {
 			header_len += 2
 			payload_len -= 2
 			reason = string(&data[header_len])
-			l.i('Closing with reason: ${reason} & code: ${code}')
+			ws.log.info('Closing with reason: $reason & code: $code')
 			if reason.len > 1 && !utf8.validate(reason.str, reason.len) {
-				l.e('malformed utf8 payload')
+				ws.log.error('malformed utf8 payload')
 				ws.send_error_event('Recieved malformed utf8.')
 				ws.close(1007, 'malformed utf8 payload')
 				goto free_data
@@ -569,8 +578,8 @@ pub fn (mut ws Client) read() int {
 		ws.close(code, reason)
 		return 0
 	}
-	l.e('read: Recieved unsupported opcode: ${frame.opcode} fin: ${frame.fin} uri: ${ws.uri}')
-	ws.send_error_event('Recieved unsupported opcode: ${frame.opcode}')
+	ws.log.error('read: Recieved unsupported opcode: $frame.opcode fin: $frame.fin uri: $ws.uri')
+	ws.send_error_event('Recieved unsupported opcode: $frame.opcode')
 	ws.close(1002, 'Unsupported opcode')
 	free_data:
 	unsafe {
@@ -582,11 +591,11 @@ pub fn (mut ws Client) read() int {
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
 	mut bytes_written := -1
 	if ws.socket.sockfd <= 0 {
-		l.e('No socket opened.')
+		ws.log.error('No socket opened.')
 		unsafe {
 			payload.free()
 		}
-		l.c('send_control_frame: error sending ${frame_typ} control frame.')
+		ws.log.fatal('send_control_frame: error sending $frame_typ control frame.')
 		return -1
 	}
 	header_len := 6
@@ -602,7 +611,9 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	if code == .close {
 		if payload.len > 2 {
 			mut parsed_payload := [`0`].repeat(payload.len + 1)
-			unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
+			unsafe {
+				C.memcpy(parsed_payload.data, &payload[0], payload.len)
+			}
 			parsed_payload[payload.len] = `\0`
 			for i in 0 .. payload.len {
 				control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff
@@ -625,15 +636,15 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 	}
 	match bytes_written {
 		0 {
-			l.d('send_control_frame: remote host closed the connection.')
+			ws.log.debug('send_control_frame: remote host closed the connection.')
 			return 0
 		}
 		-1 {
-			l.c('send_control_frame: error sending ${frame_typ} control frame.')
+			ws.log.error('send_control_frame: error sending $frame_typ control frame.')
 			return -1
 		}
 		else {
-			l.d('send_control_frame: wrote ${bytes_written} byte ${frame_typ} frame.')
+			ws.log.debug('send_control_frame: wrote $bytes_written byte $frame_typ frame.')
 			return bytes_written
 		}
 	}
