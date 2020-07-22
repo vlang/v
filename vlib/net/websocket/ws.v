@@ -239,13 +239,11 @@ pub fn (mut ws Client) close(code int, message string) {
 	}
 }
 
+// write will send the payload to the websocket server. NB: *it will not free the payload*, the caller is responsible for that.
 pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int {
 	mut bytes_written := -1
 	if ws.state != .open {
 		ws.send_error_event('WebSocket closed. Cannot write.')
-		unsafe {
-			free(payload)
-		}
 		return -1
 	}
 	header_len := 6 + if payload_len > 125 { 2 } else { 0 } + if payload_len > 0xffff { 6 } else { 0 }
@@ -305,7 +303,6 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	ws.log.debug('write: $bytes_written bytes written.')
 	free_data:
 	unsafe {
-		free(payload)
 		frame_buf.free()
 		header.free()
 		masking_key.free()

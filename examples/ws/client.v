@@ -10,6 +10,7 @@ fn main() {
 }
 
 fn ws_test(uri string) {
+	println('connecting to $uri ...')
 	mut ws := websocket.new(uri)
 	ws.subscriber.subscribe('on_open', on_open)
 	ws.subscriber.subscribe('on_message', on_message)
