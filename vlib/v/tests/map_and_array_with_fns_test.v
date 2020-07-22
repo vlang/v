@@ -24,6 +24,9 @@ fn test_array_with_fns() {
 	b[0] = a[0]
 	f4 := b[0]
 	assert f4('bbbbbb') == 26
+	for func in b {
+		assert func('ccccccc') == 27
+	}
 }
 
 fn test_map_with_fns() {
@@ -42,4 +45,7 @@ fn test_map_with_fns() {
 	b['one'] = a['one']
 	f4 := b['one']
 	assert f4('bbbbbb') == 26
+	for _, func in b {
+		assert func('ccccccc') == 27
+	}
 }
