@@ -3,11 +3,8 @@ module websocket
 fn (mut ws Client) write_to_server(buf voidptr, len int) int {
 	mut bytes_written := 0
 	ws.write_lock.m_lock()
-	bytes_written = if ws.is_ssl {
-		C.SSL_write(ws.ssl, buf, len)
-	} else {
-		C.write(ws.socket.sockfd, buf, len)
-	}
+	bytes_written = if ws.is_ssl { C.SSL_write(ws.ssl, buf, len) } else { C.write(ws.socket.sockfd,
+			buf, len) }
 	ws.write_lock.unlock()
 	return bytes_written
 }
