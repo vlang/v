@@ -2995,7 +2995,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
-		if node.left is ast.Ident as ident {
+		if node.left is ast.Ident {
+			ident := node.left as ast.Ident
 			scope := c.file.scope.innermost(ident.pos.pos)
 			if v := scope.find_var(ident.name) {
 				// `mut param []T` function parameter
@@ -3003,8 +3004,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			}
 		}
 		if !is_ok {
-			c.warn('pointer indexing is only allowed in `unsafe` blocks',
-				node.pos)
+			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
 	if node.index !is ast.RangeExpr { // [1]
