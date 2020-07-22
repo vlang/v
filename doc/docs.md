@@ -37,7 +37,7 @@ you can do in V.
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
+    * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 
@@ -868,13 +868,7 @@ println(p.x) // Struct fields are accessed using a dot
 // Alternative literal syntax for structs with 3 fields or fewer
 p = Point{10, 20}
 assert p.x == 10
-
-// you can omit the struct name when it's already known
-p = {x: 30, y: 4}
-assert p.y == 4
 ```
-
-Omitting the struct name also works for function arguments.
 
 <p>&nbsp;</p>
 
@@ -925,9 +919,24 @@ It's also possible to define custom default values.
 
 
 <a id='short-struct-initialization-syntax' />
-### Trailing struct literal syntax
 
-There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
+### Short struct literal syntax
+
+```v
+mut p := Point{x: 10, y: 20}
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
+```
+
+Omitting the struct name also works for returning a struct literal or passing one
+as a function argument.
+
+#### Trailing struct literal arguments
+
+V doesn't have default function arguments or named arguments, for that trailing struct
+literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -950,19 +959,13 @@ button := new_button(text:'Click me', width:100)
 assert button.height == 20
 ```
 
-As you can see, we can use
-
-```
-new_button(text:'Click me', width:100)
-```
-
-instead of
+As you can see, both the struct name and braces can be omitted, instead of:
 
 ```
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works for functions that have a struct for the last argument.
+This only works for functions that take a struct for the last argument.
 
 ### Access modifiers
 
