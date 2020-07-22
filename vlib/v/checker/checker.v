@@ -3101,30 +3101,11 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 }
 
 pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
-	slen := node.stmts.len
-	if slen > 1 {
-		c.error('FIXME: unsafe expression block should support multiple statements', node.pos)
-		return table.none_type
-	}
-	if slen == 0 {
-		c.error('unsafe expression does not yield an expression', node.pos)
-		return table.none_type
-	}
 	assert !c.inside_unsafe
 	c.inside_unsafe = true
-	defer {
-		c.inside_unsafe = false
-	}
-	if slen > 1 {
-		c.stmts(node.stmts[0..slen - 1])
-	}
-	last := node.stmts[0]
-	if last is ast.ExprStmt {
-		t := c.expr(last.expr)
-		return t
-	}
-	c.error('unsafe expression does not yield an expression', node.pos)
-	return table.none_type
+	t := c.expr(node.expr)
+	c.inside_unsafe = false
+	return t
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
