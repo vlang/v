@@ -1293,7 +1293,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			if infix.op == .key_is &&
 				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&
 				infix.right is ast.Type {
-				right_expr := infix.right as ast.Type
+				//right_expr := infix.right as ast.Type
 				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
 					.variable } else { true }
 			}
