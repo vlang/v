@@ -4896,7 +4896,11 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 		} else {
 			g.write('0, ')
 		}
-		g.write('sizeof($elem_type_str), ')
+		if elem_sym.kind == .function {
+			g.write('sizeof(voidptr), ')
+		} else {
+			g.write('sizeof($elem_type_str), ')
+		}
 		if is_default_array {
 			g.write('($elem_type_str[]){')
 			g.expr(it.default_expr)
