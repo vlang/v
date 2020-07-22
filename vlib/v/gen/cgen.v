@@ -3273,7 +3273,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 			arg_typ := g.table.get_type_symbol(arg.typ)
 			g.definitions.write('$arg_typ.str() $arg.name')
 			if i < arg_len - 1 {
-				g.write(', ')
+				g.definitions.write(', ')
 			}
 		}
 		g.definitions.writeln(') = (*(voidptr*)map_get(a, k, &(voidptr[]){ 0 }));')
