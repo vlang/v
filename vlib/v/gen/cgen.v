@@ -2159,13 +2159,17 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		} else {
 			// push a single element
 			elem_type_str := g.typ(info.elem_type)
+			elem_sym := g.table.get_type_symbol(info.elem_type)
 			g.write('array_push(')
 			if !left_type.is_ptr() {
 				g.write('&')
 			}
 			g.expr(node.left)
-			g.write(', _MOV(($elem_type_str[]){ ')
-			elem_sym := g.table.get_type_symbol(info.elem_type)
+			if elem_sym.kind == .function {
+				g.write(', _MOV((voidptr[]){ ')
+			} else {
+				g.write(', _MOV(($elem_type_str[]){ ')
+			}
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
@@ -3214,14 +3218,22 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
-	if elem_sym.kind == .string {
-		g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
-	} else if elem_sym.kind == .struct_ {
-		g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
-	} else if elem_sym.kind == .array {
-		g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
-	} else {
-		g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
+	match elem_sym.kind {
+		.string {
+			g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
+		} 
+		.struct_ {
+			g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
+		} 
+		.array {
+			g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
+		} 
+		.function {
+			g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
+		} 
+		else {
+			g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
+		}
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -3252,11 +3264,32 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	g.definitions.writeln('\tarray_string _keys = map_keys(&a);')
 	g.definitions.writeln('\tfor (int i = 0; i < _keys.len; ++i) {')
 	g.definitions.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[i]);')
-	g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
-	if value_sym.kind == .string {
-		g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {')
+	if value_sym.kind == .function {
+		func := value_sym.info as table.FnType
+		ret_styp := g.typ(func.func.return_type)
+		g.definitions.write('\t\t$ret_styp (*v) (')
+		arg_len := func.func.args.len
+		for i, arg in func.func.args {
+			arg_typ := g.table.get_type_symbol(arg.typ)
+			g.definitions.write('$arg_typ.str() $arg.name')
+			if i < arg_len - 1 {
+				g.write(', ')
+			}
+		}
+		g.definitions.writeln(') = (*(voidptr*)map_get(a, k, &(voidptr[]){ 0 }));')
 	} else {
-		g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {')
+		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
+	}
+	match value_sym.kind {
+		.string {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {')
+		}
+		.function {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {')
+		}
+		else {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {')
+		}
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
