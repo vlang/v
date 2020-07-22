@@ -679,8 +679,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		ast.Ident {
-			scope := c.file.scope.innermost(expr.pos.pos)
-			if v := scope.find_var(expr.name) {
+			// scope := c.file.scope.innermost(expr.pos.pos)
+			// if v := scope.find_var(expr.name) {
+			if expr.obj is ast.Var as v {
 				if !v.is_mut && !v.typ.is_ptr() {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
@@ -1589,7 +1590,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		return
 	}
 	is_decl := assign_stmt.op == .decl_assign
-	for i, left in assign_stmt.left {
+	for i, _ in assign_stmt.left {
+		mut left := assign_stmt.left[i]
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
@@ -1616,7 +1618,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// left_type = c.expr(left)
 		}
 		assign_stmt.left_types << left_type
-		match left {
+		match mut left {
 			ast.Ident {
 				if left.kind == .blank_ident {
 					left_type = right_type
@@ -1628,7 +1630,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 					}
-					mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
+					// mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
 					mut ident_var_info := left.var_info()
 					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
@@ -1639,7 +1641,22 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					assign_stmt.left_types[i] = left_type
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
-					scope.update_var_type(left.name, left_type)
+					if left_type != 0 {
+						if left.obj is ast.ConstField {
+							println('is const field!')
+						}
+						if left.obj is ast.Var as v {
+							v.typ = left_type
+							// left.kind = .variable
+						}
+						else if left.obj is ast.GlobalDecl as v {
+							v.typ = left_type
+						}
+						else {
+							println('# OTHER: ${typeof(left.obj)}')
+						}
+					}
+					// scope.update_var_type(left.name, left_type)
 				}
 			}
 			ast.PrefixExpr {
@@ -1833,6 +1850,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				// }
 				mut full_const_name := init_expr.mod + '.' + init_expr.name
 				if obj := c.file.global_scope.find_const(full_const_name) {
+					println('FOUND !! $init_expr.name')
 					if cint := const_int_value(obj) {
 						fixed_size = cint
 					}
@@ -2256,6 +2274,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.is_vweb {
 				// TODO assoc parser bug
 				pref := *c.pref
+				
+				
+				
 				pref2 := {
 					pref |
 					is_vweb: true
@@ -2406,26 +2427,50 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return table.void_type
 	}
 	// second use
-	if ident.kind in [.constant, .global, .variable] {
-		info := ident.info as ast.IdentVar
+	if ident.kind == .global {
+		if ident.obj is ast.GlobalDecl as obj {
+			println('IS GLOBAL DECL: $obj.typ')
+			return obj.typ
+		}
+	}
+	else if ident.kind in [.variable/*, .global*/] {
+		t := (ident.obj as ast.Var).typ
+		if t == 0 {
+			println('WTF ZERO')
+		}
+		return t
+		// info := ident.info as ast.IdentVar
 		// if info.typ == table.t_type {
 		// Got a var with type T, return current generic type
 		// return c.cur_generic_type
 		// }
-		return info.typ
+		// return info.typ
+	} else if ident.kind in [.constant/*, .global, .variable*/] {
+		t := (ident.obj as ast.ConstField).typ
+		if t == 0 {
+			println('WTF ZERO')
+		}
+		return t
+		// info := ident.info as ast.IdentVar
+		// if info.typ == table.t_type {
+		// Got a var with type T, return current generic type
+		// return c.cur_generic_type
+		// }
+		// return info.typ
 	} else if ident.kind == .function {
 		info := ident.info as ast.IdentFn
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if obj := start_scope.find(ident.name) {
-			match obj {
+		if obj1 := start_scope.find(ident.name) {
+			match obj1 as obj {
 				ast.GlobalDecl {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: obj.typ
 					}
+					ident.obj = obj1
 					return obj.typ
 				}
 				ast.Var {
@@ -2460,6 +2505,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					// }
 					// } else {
 					obj.typ = typ
+					ident.obj = obj1
 					// unwrap optional (`println(x)`)
 					if is_optional {
 						return typ.clear_flag(.optional)
@@ -2474,8 +2520,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
-		if obj := c.file.global_scope.find(name) {
-			match obj {
+		if obj1 := c.file.global_scope.find(name) {
+			match obj1 as obj {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
@@ -2487,6 +2533,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 					}
 					obj.typ = typ
+					ident.obj = obj1
 					return typ
 				}
 				else {}
@@ -2745,10 +2792,11 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	scope := c.file.scope.innermost(node.pos.pos)
+	// scope := c.file.scope.innermost(node.pos.pos)
 	for id in node.lockeds {
 		c.ident(mut id)
-		if v := scope.find_var(id.name) {
+		// if v := scope.find_var(id.name) {
+		if id.obj is ast.Var as v {
 			if v.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}

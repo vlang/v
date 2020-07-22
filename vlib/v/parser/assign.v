@@ -116,22 +116,20 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					if lx.info is ast.IdentVar {
 						share = (lx.info as ast.IdentVar).share
 					}
-					if left.len == right.len {
-						p.scope.register(lx.name, ast.Var{
-							name: lx.name
-							expr: right[i]
-							share: share
-							is_mut: lx.is_mut || p.inside_for
-							pos: lx.pos
-						})
-					} else {
-						p.scope.register(lx.name, ast.Var{
-							name: lx.name
-							share: share
-							is_mut: lx.is_mut || p.inside_for
-							pos: lx.pos
-						})
+					mut v := ast.Var{
+						name: lx.name
+						// expr: right[i]
+						share: share
+						is_mut: lx.is_mut || p.inside_for
+						pos: lx.pos
 					}
+					if left.len == right.len {
+						v = {v| expr: right[i]}
+					}
+					obj := ast.ScopeObject(v)
+					lx.obj = obj
+					p.scope.register(lx.name, obj)
+					// lx.obj = p.scope.objects[lx.name]
 				}
 			}
 			ast.IndexExpr {

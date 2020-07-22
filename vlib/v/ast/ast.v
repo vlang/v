@@ -387,6 +387,7 @@ pub:
 	tok_kind token.Kind
 	pos      token.Position
 pub mut:
+	obj      ScopeObject
 	mod      string
 	name     string
 	kind     IdentKind
