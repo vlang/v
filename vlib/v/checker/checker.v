@@ -2791,7 +2791,7 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 		c.ident(mut id)
 		// if v := scope.find_var(id.name) {
 		mut is_var := false
-		mut shared_flag := false
+		mut shared_flag := table.ShareType(0)
 		if id.obj is ast.Var as v {
 			is_var = true
 			shared_flag = v.typ.share()
