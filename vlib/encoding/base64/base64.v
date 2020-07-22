@@ -84,26 +84,28 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 		mut char_c := 0
 		mut char_d := 0
 		if i < input_length {
-			char_a = index[d[i]]
+			char_a = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_b = index[d[i]]
+			char_b = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_c = index[d[i]]
+			char_c = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_d = index[d[i]]
+			char_d = index[unsafe {d[i]}]
 			i++
 		}
 
 		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		b[j]   = byte(decoded_bytes >> 16)
-		b[j+1] = byte((decoded_bytes >> 8) & 0xff)
-		b[j+2] = byte((decoded_bytes >> 0) & 0xff)
+		unsafe {
+			b[j]   = byte(decoded_bytes >> 16)
+			b[j+1] = byte((decoded_bytes >> 8) & 0xff)
+			b[j+2] = byte((decoded_bytes >> 0) & 0xff)
+		}
 		j += 3
 	}
 	return output_length
@@ -139,30 +141,34 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 		mut octet_c := 0
 
 		if i < input_length {
-			octet_a = int(d[i])
+			octet_a = int(unsafe {d[i]})
 			i++
 		}
 		if i < input_length {
-			octet_b = int(d[i])
+			octet_b = int(unsafe {d[i]})
 			i++
 		}
 		if i < input_length {
-			octet_c = int(d[i])
+			octet_c = int(unsafe {d[i]})
 			i++
 		}
 
 		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
 
-		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
-		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]
-		b[j+2] = etable[ (triple >> 1 * 6) & 63 ]
-		b[j+3] = etable[ (triple >> 0 * 6) & 63 ]
+		unsafe {
+			b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
+			b[j+1] = etable[ (triple >> 2 * 6) & 63 ]
+			b[j+2] = etable[ (triple >> 1 * 6) & 63 ]
+			b[j+3] = etable[ (triple >> 0 * 6) & 63 ]
+		}
 		j += 4
 	}
 
 	padding_length := ending_table[input_length % 3]
 	for i = 0; i < padding_length; i++ {
-		b[output_length - 1 - i] = `=`
+		unsafe {
+			b[output_length - 1 - i] = `=`
+		}
 	}
 	return output_length
 }

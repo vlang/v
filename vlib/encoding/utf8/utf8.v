@@ -14,7 +14,7 @@ pub fn validate_str(str string) bool {
 pub fn validate(data byteptr, len int) bool {
 	mut state := Utf8State{}
 	for i := 0; i < len; i++ {
-		s := data[i]
+		s := unsafe {data[i]}
 		if s == 0 {
 			break
 		}

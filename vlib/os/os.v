@@ -120,11 +120,12 @@ pub fn read_file(path string) ?string {
 	fsize := C.ftell(fp)
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
-	mut str := &byte(0)
-	unsafe { str = malloc(fsize + 1) }
-	C.fread(str, fsize, 1, fp)
-	str[fsize] = 0
-	return string(str,fsize)
+	unsafe {
+		mut str := malloc(fsize + 1)
+		C.fread(str, fsize, 1, fp)
+		str[fsize] = 0
+		return string(str,fsize)
+	}
 }
 
 /***************************** Utility  ops ************************/

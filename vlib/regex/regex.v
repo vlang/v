@@ -90,18 +90,19 @@ fn utf8util_char_len(b byte) int {
 // get_char get a char from position i and return an u32 with the unicode code
 [inline]
 fn (re RE) get_char(in_txt string, i int) (u32,int) {
+	ini := unsafe {in_txt.str[i]}
 	// ascii 8 bit
 	if (re.flag & f_bin) !=0 ||
-		in_txt.str[i] & 0x80 == 0
+		ini & 0x80 == 0
 	{
-		return u32(in_txt.str[i]), 1
+		return u32(ini), 1
 	}
 	// unicode char
-	char_len := utf8util_char_len(in_txt.str[i])
+	char_len := utf8util_char_len(ini)
 	mut tmp := 0
 	mut ch := u32(0)
 	for tmp < char_len {
-		ch = (ch << 8) | in_txt.str[i+tmp]
+		ch = (ch << 8) | unsafe {in_txt.str[i+tmp]}
 		tmp++
 	}
 	return ch,char_len
@@ -112,16 +113,16 @@ fn (re RE) get_char(in_txt string, i int) (u32,int) {
 fn (re RE) get_charb(in_txt byteptr, i int) (u32,int) {
 	// ascii 8 bit
 	if (re.flag & f_bin) !=0 ||
-		in_txt[i] & 0x80 == 0
+		unsafe {in_txt[i]} & 0x80 == 0
 	{
-		return u32(in_txt[i]), 1
+		return u32(unsafe {in_txt[i]}), 1
 	}
 	// unicode char
-	char_len := utf8util_char_len(in_txt[i])
+	char_len := utf8util_char_len(unsafe {in_txt[i]})
 	mut tmp := 0
 	mut ch := u32(0)
 	for tmp < char_len {
-		ch = (ch << 8) | in_txt[i+tmp]
+		ch = (ch << 8) | unsafe {in_txt[i+tmp]}
 		tmp++
 	}
 	return ch,char_len
@@ -488,15 +489,19 @@ fn (re RE) get_char_class(pc int) string {
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != cc_end {
 
 		if re.cc[cc_i].cc_type == cc_bsls {
-			buf_ptr[i++] = `\\`
-			buf_ptr[i++] = byte(re.cc[cc_i].ch0)
+			unsafe {
+				buf_ptr[i++] = `\\`
+				buf_ptr[i++] = byte(re.cc[cc_i].ch0)
+			}
 		}
 		else if re.cc[cc_i].ch0 == re.cc[cc_i].ch1 {
 			tmp = 3
 			for tmp >= 0 {
 				x := byte((re.cc[cc_i].ch0 >> (tmp*8)) & 0xFF)
 				if x != 0 {
-					buf_ptr[i++] = x
+					unsafe {
+						buf_ptr[i++] = x
+					}
 				}
 				tmp--
 			}
@@ -506,23 +511,31 @@ fn (re RE) get_char_class(pc int) string {
 			for tmp >= 0 {
 				x := byte((re.cc[cc_i].ch0 >> (tmp*8)) & 0xFF)
 				if x != 0 {
-					buf_ptr[i++] = x
+					unsafe {
+						buf_ptr[i++] = x
+					}
 				}
 				tmp--
 			}
-			buf_ptr[i++] = `-`
+			unsafe {
+				buf_ptr[i++] = `-`
+			}
 			tmp = 3
 			for tmp >= 0 {
 				x := byte((re.cc[cc_i].ch1 >> (tmp*8)) & 0xFF)
 				if x != 0 {
-					buf_ptr[i++] = x
+					unsafe {
+						buf_ptr[i++] = x
+					}
 				}
 				tmp--
 			}
 		}
 		cc_i++
 	}
-	buf_ptr[i] = byte(0)
+	unsafe {
+		buf_ptr[i] = byte(0)
+	}
 
 	return tos_clone( buf_ptr )
 }
@@ -689,7 +702,9 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 	mut ch := byte(0)
 
 	for i < in_txt.len {
-		ch = in_txt.str[i]
+		unsafe {
+			ch = in_txt.str[i]
+		}
 
 		//println("${ch:c} status: $status")
 
