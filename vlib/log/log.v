@@ -68,6 +68,10 @@ pub fn (mut l Log) set_output_path(output_file_path string) {
 	l.ofile = ofile
 }
 
+pub fn (mut l Log) flush() {
+  l.ofile.flush()
+}
+
 pub fn (mut l Log) close() {
   l.ofile.close()
 }
