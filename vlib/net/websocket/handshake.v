@@ -6,7 +6,7 @@ fn (mut ws Client) read_handshake(seckey string) {
 	max_buffer := 1024
 	buffer_size := 1
 	mut buffer := malloc(max_buffer)
-	for bytes_read <= max_buffer {
+	for bytes_read < max_buffer - 1 {
 		mut res := 0
 		unsafe {
 			res = ws.read_from_server(buffer + bytes_read, buffer_size)
@@ -21,7 +21,7 @@ fn (mut ws Client) read_handshake(seckey string) {
 		}
 		bytes_read += buffer_size
 	}
-	buffer[max_buffer + 1] = `\0`
+	buffer[max_buffer - 1] = `\0`
 	ws.handshake_handler(string(byteptr(buffer)), seckey)
 }
 
