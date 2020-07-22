@@ -497,7 +497,7 @@ Setting the capacity improves performance of insertions, as it reduces the amoun
 dynamic arrays:
 
 ```v
-numbers := []int{ cap: 1000 }
+mut numbers := []int{ cap: 1000 }
 // Now adding new elements is as efficient as setting them directly
 for i in 0 .. 1000 {
     numbers << i
