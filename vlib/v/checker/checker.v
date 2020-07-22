@@ -1615,7 +1615,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// left_type = c.expr(left)
 		}
 		assign_stmt.left_types << left_type
-		match mut left {
+		match left {
 			ast.Ident {
 				if left.kind == .blank_ident {
 					left_type = right_type
