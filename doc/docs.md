@@ -498,7 +498,7 @@ dynamic arrays:
 
 ```v
 mut numbers := []int{ cap: 1000 }
-// Now adding new elements is as efficient as setting them directly
+// Now able to add new elements without reallocating
 for i in 0 .. 1000 {
     numbers << i
     // same as
