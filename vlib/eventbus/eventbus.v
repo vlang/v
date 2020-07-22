@@ -64,11 +64,7 @@ fn (mut pb Publisher) publish(name string, sender voidptr, args voidptr) {
 			if event.once {
 				pb.registry.events.delete(i)
 			}
-			if event.receiver != 0 {
-				event.handler(event.receiver, args, sender)
-			} else {
-				event.handler(sender, args, voidptr(0))
-			}
+			event.handler(sender, args, event.receiver)
 		}
 	}
 }
