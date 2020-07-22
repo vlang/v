@@ -11,7 +11,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	for p.tok.kind == .name {
 		lockeds << ast.Ident{
 			language: table.Language.v
-			kind: .variable
+			// kind: .variable
 			pos: p.tok.position()
 			name: p.tok.lit
 			is_mut: true
