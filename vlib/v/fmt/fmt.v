@@ -183,8 +183,8 @@ fn (mut f Fmt) adjust_complete_line() {
 			}
 		}
 		// emergency fallback: decrease penalty in front of long unbreakable parts
-		if i > 0 && buf.len > max_len[3] - max_len[1] && f.penalties[i - 1] > 0 {
-			f.penalties[i - 1] = if buf.len >= max_len[2] { 0 } else { 1 }
+		if i > 0 && buf.len > 55 && f.penalties[i - 1] > 0 {
+			f.penalties[i - 1] = if buf.len >= 72 { 0 } else { 1 }
 		}
 	}
 }
@@ -1246,11 +1246,25 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		}
 		f.expr_bufs << f.out.str()
 		mut penalty := 3
-		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
-			penalty--
+		match node.left as left {
+			ast.InfixExpr {
+				if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
+					penalty--
+				}
+			}
+			ast.ParExpr {
+				penalty = 1
+			}
+			else {}
 		}
-		if node.right is ast.InfixExpr || node.right is ast.ParExpr {
-			penalty--
+		match node.right as right {
+			ast.InfixExpr {
+				penalty--
+			}
+			ast.ParExpr {
+				penalty = 1
+			}
+			else {}
 		}
 		f.penalties << penalty
 		// combine parentheses level with operator precedence to form effective precedence

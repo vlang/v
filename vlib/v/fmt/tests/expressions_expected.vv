@@ -11,7 +11,8 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
-		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+		if fmt !in
+			[`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if node.precisions[i] != 0 && !typ.is_float() {
@@ -37,8 +38,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 
 fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) f64 {
 	return a_test * b_test * c_test * d_test +
-		e_test * f_test * a_test * d_test +
-		a_test * b_test * c_test
+		e_test * f_test * a_test * d_test + a_test * b_test * c_test
 }
 
 fn main() {
