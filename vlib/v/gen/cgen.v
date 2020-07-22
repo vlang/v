@@ -2796,14 +2796,6 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('return ')
 			styp = g.typ(g.fn_decl.return_type)
 		}
-		// Edge case handling for 2 multi returns of the same type
-		if node.exprs.len == 1 && g.expr_is_multi_return_call(node.exprs[0]) {
-			g.go_before_stmt(0)
-			g.write('return ')
-			g.expr(node.exprs[0])
-			g.writeln(';')
-			return
-		}
 		// Use this to keep the tmp assignments in order
 		mut multi_unpack := ''
 		g.write('($styp){')
@@ -2814,14 +2806,30 @@ fn (mut g Gen) return_statement(node ast.Return) {
 				c := expr as ast.CallExpr
 				expr_sym := g.table.get_type_symbol(c.return_type)
 				// Create a tmp for this call
-				tmp := g.new_tmp_var()
-				s := g.go_before_stmt(0)
-				expr_styp := g.typ(c.return_type)
-				g.write('$expr_styp $tmp=')
-				g.expr(expr)
-				g.writeln(';')
-				multi_unpack += g.go_before_stmt(0)
-				g.write(s)
+				mut tmp := g.new_tmp_var()
+				if !c.return_type.has_flag(.optional) {
+					s := g.go_before_stmt(0)
+					expr_styp := g.typ(c.return_type)
+					g.write('$expr_styp $tmp=')
+					g.expr(expr)
+					g.writeln(';')
+					multi_unpack += g.go_before_stmt(0)
+					g.write(s)
+				} else {
+					s := g.go_before_stmt(0)
+					// TODO
+					// I (emily) am sorry for doing this
+					// I cant find another way to do this so right now
+					// this will have to do.
+					g.tmp_count--
+					g.expr(expr)
+					multi_unpack += g.go_before_stmt(0)
+					g.write(s)
+					// modify tmp so that it is the opt deref
+					// TODO copy-paste from cgen.v:2397
+					expr_styp := g.base_type(c.return_type)
+					tmp = ('/*opt*/(*($expr_styp*)${tmp}.data)')
+				}
 				expr_types := expr_sym.mr_info().types
 				for j, _ in expr_types {
 					g.write('.arg$arg_idx=${tmp}.arg$j')
