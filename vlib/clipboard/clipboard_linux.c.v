@@ -381,12 +381,12 @@ fn (cb &Clipboard) pick_target(prop Property) C.Atom {
 			//See if this data type is allowed and of higher priority (closer to zero)
 			//than the present one.
 
-			if cb.is_supported_target(atom_list[i]) {
-				index := cb.get_target_index(atom_list[i])
-				if priority > index && index >= 0
-				{
+			target := unsafe{ atom_list[i] }
+			if cb.is_supported_target(target) {
+				index := cb.get_target_index(target)
+				if priority > index && index >= 0 {
 					priority = index
-					to_be_requested = atom_list[i]
+					to_be_requested = target
 				}
 			}
 		}
