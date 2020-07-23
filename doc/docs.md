@@ -1964,9 +1964,9 @@ fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int 
 }
 
 fn main() {
-    path := 'users.db'
-    db := &C.sqlite3(0) // a temporary hack meaning `sqlite3* db = 0`
-    C.sqlite3_open(path.str, &db)
+    db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+    C.sqlite3_open('users.db', &db) // passing a string literal to a C function call results in a C string, not a V string
+    // C.sqlite3_open(db_path.str, &db) // you can also use `.str byteptr` field to convert a V string to a C char pointer
     query := 'select count(*) from users'
     stmt := &C.sqlite3_stmt(0)
     C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
