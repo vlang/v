@@ -455,7 +455,7 @@ pub fn system(cmd string) int {
 	} $else {
 		$if ios {
 			unsafe {
-				arg := [ c'/bin/sh', c'-c'.str, cmd.str, 0 ]
+				arg := [ c'/bin/sh', c'-c', byteptr(cmd.str), 0 ]
 				pid := 0
 				ret = C.posix_spawn(&pid, '/bin/sh', 0, 0, arg.data, 0)
 				status := 0
