@@ -28,7 +28,7 @@ fn (mut p Parser) resolve_vroot(flag string) string {
 	vmod_path := vmod_file_location.vmod_folder
 	if p.pref.is_fmt {
 		return flag
-	}        
+	}
 	return flag.replace('@VROOT', os.real_path(vmod_path))
 }
 
@@ -270,6 +270,9 @@ fn os_from_string(os string) pref.OS {
 		}
 		'windows' {
 			return .windows
+		}
+		'ios' {
+			return .ios
 		}
 		'mac' {
 			return .mac

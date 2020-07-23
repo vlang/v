@@ -253,6 +253,9 @@ pub fn (mut g Gen) init() {
 		g.definitions.writeln('string _STR(const char*, int, ...);')
 		g.definitions.writeln('string _STR_TMP(const char*, ...);')
 	}
+	if g.pref.os == .ios {
+		g.cheaders.writeln('#define __TARGET_IOS__ 1')
+	}
 	g.write_builtin_types()
 	g.write_typedef_types()
 	g.write_typeof_functions()
@@ -3900,6 +3903,9 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		// platforms/os-es:
 		'windows' {
 			return '_WIN32'
+		}
+		'ios' {
+			return '__TARGET_IOS__'
 		}
 		'mac' {
 			return '__APPLE__'

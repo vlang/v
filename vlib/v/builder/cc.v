@@ -136,6 +136,9 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	if v.pref.os == .ios {
+		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
+	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
 	// '-Werror',
@@ -338,6 +341,9 @@ fn (mut v Builder) cc() {
 	// Min macos version is mandatory I think?
 	if v.pref.os == .mac {
 		a << '-mmacosx-version-min=10.7'
+	}
+	if v.pref.os == .ios {
+		a << '-miphoneos-version-min=10.0'
 	}
 	if v.pref.os == .windows {
 		a << '-municode'
