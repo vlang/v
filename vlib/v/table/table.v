@@ -500,7 +500,7 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 	return mod
 }
 
-pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
+pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 	mut a := table.fn_gen_types[fn_name]
 	if typ in a {
 		return

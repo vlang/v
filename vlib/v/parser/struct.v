@@ -183,7 +183,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				// default_expr = p.tok.lit
 				// p.expr(0)
 				default_expr = p.expr(0)
-				match default_expr {
+				match mut default_expr {
 					ast.EnumVal { default_expr.typ = typ }
 					// TODO: implement all types??
 					else {}
@@ -358,7 +358,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			name_pos)
 	}
 	typ := table.new_type(reg_idx)
-	ts := p.table.get_type_symbol(typ)
+	mut ts := p.table.get_type_symbol(typ)
 	// if methods were declared before, it's an error, ignore them
 	ts.methods.clear()
 	// Parse methods

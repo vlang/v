@@ -3,7 +3,7 @@ module gen
 import v.pref
 import v.util
 
-fn (g &Gen) generate_hotcode_reloading_declarations() {
+fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
 		if g.pref.is_livemain {
 			g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
@@ -29,7 +29,7 @@ void pthread_mutex_unlock(HANDLE *m) {
 	}
 }
 
-fn (g &Gen) generate_hotcode_reloader_code() {
+fn (mut g Gen) generate_hotcode_reloader_code() {
 	if g.pref.is_liveshared {
 		g.hotcode_definitions.writeln('')
 		return
@@ -66,7 +66,7 @@ void v_bind_live_symbols(void* live_lib){
 '
 )
 
-fn (g &Gen) generate_hotcode_reloading_main_caller() {
+fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if !g.pref.is_livemain {
 		return
 	}

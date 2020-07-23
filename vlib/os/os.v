@@ -281,7 +281,7 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
+		mut cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
 		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
@@ -922,7 +922,7 @@ pub fn write_file_array(path string, buffer array) ? {
 // read_file_array reads an array of `T` values from file `path`
 pub fn read_file_array<T>(path string) []T {
 	a := T{}
-	tsize := int(sizeof(a))    
+	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
 	mut fp := vfopen(path, 'rb')
 	if isnil(fp) {
@@ -935,7 +935,7 @@ pub fn read_file_array<T>(path string) []T {
 	len := fsize / tsize
 	buf := malloc(fsize)
 	C.fread(buf, fsize, 1, fp)
-	C.fclose(fp)    
+	C.fclose(fp)
 	return array{element_size: tsize data: buf len: len cap: len }
 }
 

@@ -14,4 +14,5 @@
 - `recover()` from panics
 - IO streams
 - struct and interface embedding
+- vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
 

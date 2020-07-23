@@ -125,7 +125,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
-			first_main_file := files_from_main_module[0]
+			mut first_main_file := files_from_main_module[0]
 			first_main_file.stmts << ast.FnDecl{
 				name: 'main.main'
 				mod: 'main'
@@ -673,14 +673,15 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
 	mut explicit_lock_needed := false
-	match expr {
+	match mut expr {
 		ast.CastExpr {
 			// TODO
 			return '', pos
 		}
 		ast.Ident {
-			if expr.obj is ast.Var as v {
-				if !v.is_mut && !v.typ.is_ptr() {
+			if expr.obj is ast.Var {
+				mut v := expr.obj as ast.Var
+				if !v.is_mut {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
@@ -1368,7 +1369,7 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 		// allow `f() or {}`
 		return
 	}
-	last_stmt := or_expr.stmts[stmts_len - 1]
+	mut last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
 		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
 			expected_type_name := c.table.get_type_symbol(ret_type).name
@@ -1376,7 +1377,7 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 				or_expr.pos)
 			return
 		}
-		match last_stmt {
+		match mut last_stmt {
 			ast.ExprStmt {
 				last_stmt.typ = c.expr(last_stmt.expr)
 				type_fits := c.check_types(last_stmt.typ, ret_type)
@@ -1618,7 +1619,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// left_type = c.expr(left)
 		}
 		assign_stmt.left_types << left_type
-		match left {
+		match mut left {
 			ast.Ident {
 				if left.kind == .blank_ident {
 					left_type = right_type
@@ -1641,11 +1642,23 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
 					if left_type != 0 {
+						match mut left.obj as v {
+							ast.Var {
+								v.typ = left_type
+							}
+							ast.GlobalDecl {
+								v.typ = left_type
+							}
+							else {}
+
+						}
+						/*
 						if left.obj is ast.Var as v {
 							v.typ = left_type
 						} else if left.obj is ast.GlobalDecl as v {
 							v.typ = left_type
 						}
+						*/
 					}
 				}
 			}
@@ -2425,7 +2438,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		// first use
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj1 := start_scope.find(ident.name) {
-			match obj1 as obj {
+			match mut obj1 as obj {
 				ast.GlobalDecl {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
@@ -2482,7 +2495,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj1 := c.file.global_scope.find(name) {
-			match obj1 as obj {
+			match mut obj1 as obj {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
@@ -2600,7 +2613,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
-			match branch.stmts[branch.stmts.len - 1] as stmt {
+			match mut branch.stmts[branch.stmts.len - 1] as stmt {
 				ast.ExprStmt {
 					ret_type = c.expr(stmt.expr)
 					stmt.typ = ret_type
@@ -2874,7 +2887,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		c.stmts(branch.stmts)
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
-				last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
+				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
 				last_expr.typ = c.expr(last_expr.expr)
 				if last_expr.typ != node.typ {
@@ -3247,7 +3260,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 	return table.void_type
 }
 
-fn (c &Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
+fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
 	fields := info.fields.filter(it.typ in
 		[table.string_type, table.int_type, table.bool_type] &&
 		'skip' !in it.attrs)
@@ -3277,7 +3290,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.check_valid_snake_case(node.name, 'function name', node.pos)
 	}
 	if node.is_method {
-		sym := c.table.get_type_symbol(node.receiver.typ)
+		mut sym := c.table.get_type_symbol(node.receiver.typ)
 		if sym.kind == .interface_ {
 			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
 		}

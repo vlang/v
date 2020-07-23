@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.util
 
-fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {

@@ -39,7 +39,7 @@ pub fn new_error_manager() &EManager {
 	}
 }
 
-pub fn (e &EManager) set_support_color(b bool) {
+pub fn (mut e EManager) set_support_color(b bool) {
 	e.support_color = b
 }
 

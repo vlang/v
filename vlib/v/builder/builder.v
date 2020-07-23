@@ -33,10 +33,11 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
 	if pref.use_color == .always {
-		util.emanager.set_support_color(true)
+		// TODO
+		//util.emanager.set_support_color(true)
 	}
 	if pref.use_color == .never {
-		util.emanager.set_support_color(false)
+		//util.emanager.set_support_color(false)
 	}
 	msvc := find_msvc() or {
 		if pref.ccompiler == 'msvc' {
@@ -210,9 +211,9 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b Builder) find_module_path(mod, fpath string) ?string {
+pub fn (b &Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	mcache := vmod.get_cache()
+	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
