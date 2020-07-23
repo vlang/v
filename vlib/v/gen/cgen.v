@@ -255,6 +255,7 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.os == .ios {
 		g.cheaders.writeln('#define __TARGET_IOS__ 1')
+		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
 	g.write_typedef_types()

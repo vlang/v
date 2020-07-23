@@ -121,11 +121,9 @@ pub fn get_host_os() OS {
 	$if linux {
 		return .linux
 	}
-/*
 	$if ios {
 		return .ios
 	}
-*/
 	$if macos {
 		return .mac
 	}
