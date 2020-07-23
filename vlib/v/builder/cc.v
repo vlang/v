@@ -136,6 +136,9 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	if v.pref.os == .ios {
+		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
+	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
 	// '-Werror',
@@ -286,28 +289,29 @@ fn (mut v Builder) cc() {
 			println('$builtin_o_path not found... building module builtin')
 			os.system('$vexe build module vlib${os.path_separator}builtin')
 		}
+		*/
 		for imp in v.table.imports {
 			if imp.contains('vweb') {
 				continue
-			} // not working
+			}
+			// not working
 			if imp == 'webview' {
 				continue
 			}
+			// println('cache: import "$imp"')
 			imp_path := imp.replace('.', os.path_separator)
-			path := '${pref.default_module_path}${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
+			path := '$pref.default_module_path${os.path_separator}cache${os.path_separator}vlib$os.path_separator${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
-			}
-			else {
+			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				os.system('$vexe build-module vlib$os.path_separator$imp_path')
 			}
 			if path.ends_with('vlib/ui.o') {
 				a << '-framework Cocoa -framework Carbon'
 			}
 		}
-		*/
 	}
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
@@ -338,6 +342,9 @@ fn (mut v Builder) cc() {
 	// Min macos version is mandatory I think?
 	if v.pref.os == .mac {
 		a << '-mmacosx-version-min=10.7'
+	}
+	if v.pref.os == .ios {
+		a << '-miphoneos-version-min=10.0'
 	}
 	if v.pref.os == .windows {
 		a << '-municode'
@@ -664,7 +671,7 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (c &Builder) build_thirdparty_obj_files() {
+fn (mut c Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)

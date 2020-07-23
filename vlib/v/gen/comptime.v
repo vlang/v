@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.util
 
-fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
@@ -43,9 +43,21 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 		if m.args.len > 1 {
 			g.write(', ')
 		}
-		for i in 0 .. m.args.len - 1 {
-			g.write('((string*)${node.args_var}.data) [$i] ')
-			if i < m.args.len - 2 {
+		for i in 1 .. m.args.len{
+			if node.left is ast.Ident {
+				left_name := node.left as ast.Ident
+				if m.args[i].name == left_name.name {
+					continue
+				}
+			}
+			if m.args[i].typ.is_int() || m.args[i].typ.idx() == table.bool_type_idx {
+				// Gets the type name and cast the string to the type with the string_<type> function
+				type_name := g.table.types[int(m.args[i].typ)].str()
+				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
+			} else {
+				g.write('((string*)${node.args_var}.data) [${i-1}] ')
+			}
+			if i < m.args.len - 1 {
 				g.write(', ')
 			}
 		}
@@ -131,12 +143,16 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 		g.writeln('method = tos_lit("$method.name");')
 		if i == 0 {
-			g.write('\tstring ')
+			g.write('\tarray_string ')
 		}
 		if method.attrs.len == 0 {
-			g.writeln('attrs = tos_lit("");')
+			g.writeln('attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
 		} else {
-			g.writeln('attrs = tos_lit("${method.attrs[0]}");')
+			mut attrs := []string{}
+			for attrib in method.attrs {
+				attrs << 'tos_lit("$attrib")'
+			}
+			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 		}
 		g.stmts(node.stmts)
 		i++

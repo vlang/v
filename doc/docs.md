@@ -22,22 +22,25 @@ you can do in V.
 * [Hello world](#hello-world)
 * [Comments](#comments)
 * [Functions](#functions)
+    * [Returning multiple values](#returning-multiple-values)
+* [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
-    * [Primitive types](#primitive-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Module Imports](#module-imports)
-* [Statements & Expressions](#statements--expressions)
+* [Module imports](#module-imports)
+* [Statements & expressions](#statements--expressions)
     * [If](#if)
-    * [In Operator](#in-operator)
+    * [In operator](#in-operator)
     * [For loop](#for-loop)
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
+    * [Embedded structs](#embedded-structs)
+    * [Default field values](#default-field-values)
+    * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 
@@ -70,6 +73,7 @@ you can do in V.
     * [vfmt](#vfmt)
     * [Profiling](#profiling)
 * [Advanced](#advanced)
+    * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
@@ -166,7 +170,7 @@ Functions can be used before their declaration:
 This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
-<p>&nbsp;</p>
+### Returning multiple values
 
 ```v
 fn foo() (int, int) {
@@ -179,10 +183,7 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
-Functions can return multiple values.
-
-<p>&nbsp;</p>
-
+## Symbol visibility
 
 ```v
 pub fn public_function() {
@@ -192,11 +193,9 @@ fn private_function() {
 }
 ```
 
-Like constants and types, functions are private (not exported) by default.
+Functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
-
-
 
 ## Variables
 
@@ -219,9 +218,10 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V.
+Global (module level) variables are not allowed. There's no global state in V
+(see [Pure functions by default](#pure-functions-by-default) for details).
 
-<p>&nbsp;</p>
+### Mutable variables
 
 ```v
 mut age := 20
@@ -235,10 +235,10 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
+### Initialization vs assignment
+
 Note the (important) difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -248,8 +248,6 @@ fn main() {
 
 This code will not compile, because the variable `age` is not declared.
 All variables need to be declared in V.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -262,14 +260,13 @@ fn main() {
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
 
-<p>&nbsp;</p>
-
 ```v
 fn main() {
     a := 10
     if true {
-        a := 20
+        a := 20 // error: shadowed variable
     }
+    // warning: unused variable `a`
 }
 ```
 
@@ -498,7 +495,7 @@ dynamic arrays:
 
 ```v
 mut numbers := []int{ cap: 1000 }
-// Now adding new elements is as efficient as setting them directly
+// Now able to add new elements without reallocating
 for i in 0 .. 1000 {
     numbers << i
     // same as
@@ -547,11 +544,11 @@ numbers := {
 }
 ```
 
-## Module Imports
+## Module imports
 
 For information about creating a module, see [Modules](#modules)
 
-### Importing a Module
+### Importing a module
 
 Modules can be imported using keyword `import`.
 
@@ -573,7 +570,7 @@ import crypto.sha256 { sum }
 import time { Time }
 ```
 
-### Module Import Aliasing
+### Module import aliasing
 
 Any imported module name can be aliased using the `as` keyword:
 
@@ -607,7 +604,7 @@ fn main() {
 }
 ```
 
-## Statements & Expressions
+## Statements & expressions
 
 ### If
 
@@ -694,7 +691,9 @@ V optimizes such expressions, so both `if` statements above produce the same mac
 
 ### For loop
 
-V has only one looping construct: `for`.
+V has only one looping keyword: `for`, with several forms.
+
+#### Array `for`
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -704,11 +703,11 @@ for num in numbers {
 names := ['Sam', 'Peter']
 for i, name in names {
     println('$i) $name')  // Output: 0) Sam
-}                             //         1) Peter
+}                         //         1) Peter
 ```
 
-The `for value in` loop is used for going through elements of an array.
-If an index is required, an alternative form `for index, value in` can be used.
+The `for value in arr` form is used for going through elements of an array.
+If an index is required, an alternative form `for index, value in arr` can be used.
 
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
@@ -721,6 +720,19 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
+#### Range `for`
+
+```v
+// Prints '01234'
+for i in 0..5 {
+    print(i)
+}
+```
+`low..high` means an *exclusive* range, which represents all values 
+from `low` up to *but not including* `high`.
+
+#### Condition `for`
+
 ```v
 mut sum := 0
 mut i := 0
@@ -732,15 +744,15 @@ println(sum) // "5050"
 ```
 
 This form of the loop is similar to `while` loops in other languages.
-
 The loop will stop iterating once the boolean condition evaluates to false.
-
 Again, there are no parentheses surrounding the condition, and the braces are always required.
+
+#### Bare `for`
 
 ```v
 mut num := 0
 for {
-    num++
+    num += 2
     if num >= 10 {
         break
     }
@@ -750,8 +762,10 @@ println(num) // "10"
 
 The condition can be omitted, resulting in an infinite loop.
 
+#### C `for`
+
 ```v
-for i := 0; i < 10; i++ {
+for i := 0; i < 10; i += 2 {
     // Don't print 6
     if i == 6 {
         continue
@@ -867,15 +881,9 @@ println(p.x) // Struct fields are accessed using a dot
 // Alternative literal syntax for structs with 3 fields or fewer
 p = Point{10, 20}
 assert p.x == 10
-
-// you can omit the struct name when it's already known
-p = {x: 30, y: 4}
-assert p.y == 4
 ```
 
-Omitting the struct name also works for function arguments.
-
-<p>&nbsp;</p>
+### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
@@ -886,10 +894,10 @@ p := &Point{10, 10}
 println(p.x)
 ```
 
-The type of `p` is `&Point`. It's a reference to `Point`.
+The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
-<p>&nbsp;</p>
+### Embedded structs
 
 V doesn't allow subclassing, but it supports embedded structs:
 
@@ -907,7 +915,7 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
-<p>&nbsp;</p>
+### Default field values
 
 ```v
 struct Foo {
@@ -924,9 +932,24 @@ It's also possible to define custom default values.
 
 
 <a id='short-struct-initialization-syntax' />
-### Trailing struct literal syntax
 
-There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
+### Short struct literal syntax
+
+```v
+mut p := Point{x: 10, y: 20}
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
+```
+
+Omitting the struct name also works for returning a struct literal or passing one
+as a function argument.
+
+#### Trailing struct literal arguments
+
+V doesn't have default function arguments or named arguments, for that trailing struct
+literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -949,19 +972,13 @@ button := new_button(text:'Click me', width:100)
 assert button.height == 20
 ```
 
-As you can see, we can use
-
-```
-new_button(text:'Click me', width:100)
-```
-
-instead of
+As you can see, both the struct name and braces can be omitted, instead of:
 
 ```
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works for functions that have a struct for the last argument.
+This only works for functions that take a struct for the last argument.
 
 ### Access modifiers
 
@@ -1026,10 +1043,8 @@ user2 := User{age: 20}
 println(user2.can_register()) // "true"
 ```
 
-V doesn't have classes. But you can define methods on types.
-
+V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
-
 The receiver appears in its own argument list between the `fn` keyword and the method name.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
@@ -1041,7 +1056,7 @@ but a short, preferably one letter long, name.
 ### Pure functions by default
 
 V functions are pure by default, meaning that their return values are a function of their arguments only,
-and their evaluation has no side effects.
+and their evaluation has no side effects (besides I/O).
 
 This is achieved by a lack of global variables and all function arguments being immutable by default,
 even when [references](#references) are passed.
@@ -1766,21 +1781,21 @@ fn test() []int {
 
 ## ORM
 
-(this is still in an alpha state)
+(This is still in an alpha state)
 
 V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
-- One syntax for all SQL dialects. Migrating between databases becomes much easier.
-- Queries are constructed using V's syntax. There's no need to learn another syntax.
-- Safety. All queries are automatically sanitised to prevent SQL injection.
-- Compile time checks. This prevents typos which can only be caught during runtime.
-- Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
+- One syntax for all SQL dialects. (Migrating between databases becomes much easier.)
+- Queries are constructed using V's syntax. (There's no need to learn another syntax.)
+- Safety. (All queries are automatically sanitised to prevent SQL injection.)
+- Compile time checks. (This prevents typos which can only be caught during runtime.)
+- Readability and simplicity. (You don't need to manually parse the results of a query and then manually construct objects from the parsed results.)
 
 ```v
 struct Customer { // struct name has to be the same as the table name (for now)
-    id int // an field named `id` of integer type must be the first field
+    id int // a field named `id` of integer type must be the first field
     name string
     nr_orders int
     country string
@@ -1873,6 +1888,51 @@ fn main(){
 
 # Advanced Topics
 
+## Memory-unsafe code
+
+Sometimes for efficiency you may want to write low-level code that can potentially
+corrupt memory or be vulnerable to security exploits. V supports writing such code, 
+but not by default.
+
+V requires that any potentially memory-unsafe operations are marked intentionally.
+Marking them also indicates to anyone reading the code that there could be
+memory-safety violations if there was a mistake.
+
+Examples of potentially memory-unsafe operations are:
+
+* Pointer arithmetic
+* Pointer indexing
+* Conversion to pointer from an incompatible type
+* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
+
+To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
+
+```v
+// allocate 2 uninitialized bytes & return a reference to them
+mut p := unsafe { &byte(malloc(2)) }
+p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
+unsafe {
+    p[0] = `h`
+    p[1] = `i`
+}
+p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
+unsafe {
+    p++ // OK
+}
+assert *p == `i`
+```
+
+Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
+so that the reason for using `unsafe` is as clear as possible. Generally any code 
+you think is memory-safe should not be inside an `unsafe` block, so the compiler 
+can verify it.
+
+If you suspect your program does violate memory-safety, you have a head start on 
+finding the cause: look at the `unsafe` blocks (and how they interact with 
+surrounding code).
+
+* Note: This is work in progress.
+
 ## Calling C functions from V
 
 ```v
@@ -1904,9 +1964,9 @@ fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int 
 }
 
 fn main() {
-    path := 'users.db'
-    db := &C.sqlite3(0) // a temporary hack meaning `sqlite3* db = 0`
-    C.sqlite3_open(path.str, &db)
+    db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+    C.sqlite3_open('users.db', &db) // passing a string literal to a C function call results in a C string, not a V string
+    // C.sqlite3_open(db_path.str, &db) // you can also use `.str byteptr` field to convert a V string to a C char pointer
     query := 'select count(*) from users'
     stmt := &C.sqlite3_stmt(0)
     C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
@@ -2404,6 +2464,8 @@ unsafe
 See also [Types](#types).
 
 ## Appendix II: Operators
+
+This lists operators for [primitive types](#primitive-types) only.
 
 ```v
 +    sum                    integers, floats, strings

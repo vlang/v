@@ -67,9 +67,7 @@ fn C.fclose() int
 
 fn C.pclose() int
 
-
 fn C.system() int
-
 
 fn C.setenv(charptr) int
 

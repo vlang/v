@@ -106,7 +106,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		}
 	}
 	for i, lx in left {
-		match lx {
+		match mut lx {
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {

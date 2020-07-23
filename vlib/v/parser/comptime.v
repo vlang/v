@@ -18,7 +18,7 @@ const (
 )
 
 fn (mut p Parser) resolve_vroot(flag string) string {
-	mcache := vmod.get_cache()
+	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
@@ -28,7 +28,7 @@ fn (mut p Parser) resolve_vroot(flag string) string {
 	vmod_path := vmod_file_location.vmod_folder
 	if p.pref.is_fmt {
 		return flag
-	}        
+	}
 	return flag.replace('@VROOT', os.real_path(vmod_path))
 }
 
@@ -133,7 +133,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			if stmt.name == 'main.vweb_tmpl_$p.cur_fn_name' {
-				tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
+				mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
 						mut v := obj
@@ -164,7 +164,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	})
 	p.scope.register('attrs', ast.Var{
 		name: 'attrs'
-		typ: table.string_type
+		typ: p.table.find_type_idx('array_string')
 	})
 	p.check(.key_in)
 	// expr := p.expr(0)
@@ -270,6 +270,9 @@ fn os_from_string(os string) pref.OS {
 		}
 		'windows' {
 			return .windows
+		}
+		'ios' {
+			return .ios
 		}
 		'mac' {
 			return .mac

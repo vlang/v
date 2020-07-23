@@ -7,7 +7,7 @@ import v.table
 import v.token
 import v.ast
 
-pub fn (c &Checker) check_basic(got, expected table.Type) bool {
+pub fn (mut c Checker) check_basic(got, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -112,7 +112,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	return false
 }
 
-pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymbol, exp_type_sym &table.TypeSymbol) bool {
+pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &table.TypeSymbol, exp_type_sym &table.TypeSymbol) bool {
 	got_info := got_type_sym.info as table.FnType
 	exp_info := exp_type_sym.info as table.FnType
 	got_fn := got_info.func
@@ -143,7 +143,7 @@ pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymb
 }
 
 [inline]
-fn (c &Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
+fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
 		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}',
 			left_pos)
@@ -220,7 +220,7 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 }
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (c &Checker) check_types(got, expected table.Type) bool {
+pub fn (mut c Checker) check_types(got, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -258,7 +258,7 @@ pub fn (c &Checker) check_types(got, expected table.Type) bool {
 	return true
 }
 
-pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
+pub fn (mut c Checker) symmetric_check(left, right table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
@@ -303,7 +303,7 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 	}
 }
 
-pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
+pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
 		node.expr_types << ftyp
