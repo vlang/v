@@ -454,9 +454,9 @@ pub fn system(cmd string) int {
 		}
 	} $else {
 /*
-	// make
-	// make selfcompile
-	// ./v -os ios hello.v
+		// make
+		// make selfcompile
+		// ./v -os ios hello.v
 		$if ios {
 			// TODO: use dlsym, use posix_spawn or embed ios_system
 			eprintln('system not supported on ios')

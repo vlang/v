@@ -137,13 +137,7 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if v.pref.os == .ios {
-		v.pref.compile_defines << 'target_ios'
-		v.pref.compile_defines_all << 'target_ios'
-	//	a << '-D__TARGET_IOS__=1'
-		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64 -D__TARGET_IOS__=1'
-	} else {
-		// v.pref.compile_defines << 'target_ios'
-		v.pref.compile_defines_all << 'target_ios'
+		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
 	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
