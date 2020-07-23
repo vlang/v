@@ -732,7 +732,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			mut skip := false
 			pos := g.out.buf.len
 			if g.pref.build_mode == .build_module {
-				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built {
+				// if node.name.contains('parse_text') {
+				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
+				// }
+				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built.after('/') {
 					// Skip functions that don't have to be generated
 					// for this module.
 					skip = true

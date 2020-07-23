@@ -289,28 +289,29 @@ fn (mut v Builder) cc() {
 			println('$builtin_o_path not found... building module builtin')
 			os.system('$vexe build module vlib${os.path_separator}builtin')
 		}
+		*/
 		for imp in v.table.imports {
 			if imp.contains('vweb') {
 				continue
-			} // not working
+			}
+			// not working
 			if imp == 'webview' {
 				continue
 			}
+			// println('cache: import "$imp"')
 			imp_path := imp.replace('.', os.path_separator)
-			path := '${pref.default_module_path}${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
+			path := '$pref.default_module_path${os.path_separator}cache${os.path_separator}vlib$os.path_separator${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
-			}
-			else {
+			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				os.system('$vexe build-module vlib$os.path_separator$imp_path')
 			}
 			if path.ends_with('vlib/ui.o') {
 				a << '-framework Cocoa -framework Carbon'
 			}
 		}
-		*/
 	}
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
