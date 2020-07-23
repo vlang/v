@@ -695,7 +695,9 @@ V optimizes such expressions, so both `if` statements above produce the same mac
 
 ### For loop
 
-V has only one looping construct: `for`.
+V has only one looping keyword: `for`, with several forms.
+
+#### Array `for`
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -705,11 +707,11 @@ for num in numbers {
 names := ['Sam', 'Peter']
 for i, name in names {
     println('$i) $name')  // Output: 0) Sam
-}                             //         1) Peter
+}                         //         1) Peter
 ```
 
-The `for value in` loop is used for going through elements of an array.
-If an index is required, an alternative form `for index, value in` can be used.
+The `for value in arr` form is used for going through elements of an array.
+If an index is required, an alternative form `for index, value in arr` can be used.
 
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
@@ -722,6 +724,19 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
+#### Range `for`
+
+```v
+// Prints '01234'
+for i in 0..5 {
+    print(i)
+}
+```
+`low..high` means an *exclusive* range, which represents all values 
+from `low` up to *but not including* `high`.
+
+#### Condition `for`
+
 ```v
 mut sum := 0
 mut i := 0
@@ -733,15 +748,15 @@ println(sum) // "5050"
 ```
 
 This form of the loop is similar to `while` loops in other languages.
-
 The loop will stop iterating once the boolean condition evaluates to false.
-
 Again, there are no parentheses surrounding the condition, and the braces are always required.
+
+#### Bare `for`
 
 ```v
 mut num := 0
 for {
-    num++
+    num += 2
     if num >= 10 {
         break
     }
@@ -751,8 +766,10 @@ println(num) // "10"
 
 The condition can be omitted, resulting in an infinite loop.
 
+#### C `for`
+
 ```v
-for i := 0; i < 10; i++ {
+for i := 0; i < 10; i += 2 {
     // Don't print 6
     if i == 6 {
         continue
