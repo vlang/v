@@ -812,8 +812,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
 		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
-		(left0 as ast.InfixExpr).op == .left_shift) &&
-		left0 !is ast.ComptimeCall {
+		(left0 as ast.InfixExpr).op == .left_shift) && left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
 	if left.len == 1 {
@@ -960,8 +959,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// type cast. TODO: finish
 		// if name in table.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs ||
-			name_w_mod in p.table.type_idxs) &&
-			name !in ['C.stat', 'C.sigaction']) || is_mod_cast {
+			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
+			is_mod_cast {
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -995,8 +994,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			node = p.call_expr(language, mod)
 		}
 	} else if (p.peek_tok.kind == .lcbr ||
-		(p.peek_tok.kind == .lt && lit0_is_capital)) && !p.inside_match && !p.inside_match_case &&
-		!p.inside_if && !p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
+		(p.peek_tok.kind == .lt && lit0_is_capital)) &&
+		!p.inside_match && !p.inside_match_case && !p.inside_if && !p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`
@@ -1398,10 +1397,10 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	p.imports[mod_alias] = mod_name
-	if mod_name !in p.table.imports {
-		p.table.imports << mod_name
-		p.ast_imports << node
-	}
+	// if mod_name !in p.table.imports {
+	p.table.imports << mod_name
+	p.ast_imports << node
+	// }
 	return node
 }
 
@@ -1548,8 +1547,7 @@ const (
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
 fn (mut p Parser) global_decl() ast.GlobalDecl {
 	if !p.pref.translated && !p.pref.is_livemain && !p.builtin_mod && !p.pref.building_v &&
-		p.mod != 'ui' && p.mod != 'gg2' &&
-		p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
+		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
 		p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
