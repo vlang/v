@@ -164,7 +164,7 @@ pub:
 	// status_ constants
 	code u32
 	flags u32
-	
+
 	record &ExceptionRecord
 	address voidptr
 	param_count u32
@@ -191,7 +191,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 [windows_stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) u32 {
 	match e.exception_record.code {
-		// These are 'used' by the backtrace printer 
+		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
 		0x4001000A, 0x40010006 {
 			return 0
@@ -215,7 +215,7 @@ fn C.__debugbreak()
 fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
-			ptr := &voidptr(0)
+			mut ptr := &voidptr(0)
 			*ptr = 0
 		}
 	} $else {
