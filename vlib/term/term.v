@@ -49,7 +49,7 @@ pub fn h_divider(divider string) string {
 // e.g: term.header('TEXT', '=')
 // =============== TEXT ===============
 pub fn header(text, divider string) string {
-	if text.len == 0 {
+	if text.len == 0 || divider.len < 2 {
 		return h_divider(divider)
 	}
 	cols,_ := get_terminal_size()
