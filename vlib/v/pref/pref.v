@@ -339,7 +339,7 @@ fn must_exist(path string) {
 	if !os.exists(path) {
 		eprintln('v expects that `$path` exists, but it does not')
 		exit(1)
-	}        
+	}
 }
 
 pub fn backend_from_string(s string) ?Backend {

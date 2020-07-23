@@ -453,9 +453,22 @@ pub fn system(cmd string) int {
 			ret = C._wsystem(wcmd.to_wide())
 		}
 	} $else {
-		unsafe {
-			ret = C.system(charptr(cmd.str))
+/*
+	// make
+	// make selfcompile
+	// ./v -os ios hello.v
+		$if ios {
+			// TODO: use dlsym, use posix_spawn or embed ios_system
+			eprintln('system not supported on ios')
+			ret = 1
+		} $else {
+*/
+			unsafe {
+				ret = C.system(charptr(cmd.str))
+			}
+/*
 		}
+*/
 	}
 	if ret == -1 {
 		print_c_errno()
