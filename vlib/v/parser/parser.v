@@ -1007,7 +1007,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			p.check(.rpar)
 			full_pos := pos.extend(p.tok.position())
 			type_symbol := p.table.get_type_symbol(to_typ)
-			if type_symbol.kind == .struct_ {
+			if type_symbol.kind == .struct_ && !to_typ.is_ptr() {
 				p.error_with_pos('cannot cast to struct', full_pos)
 			}
 			node = ast.CastExpr{
