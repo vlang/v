@@ -305,11 +305,18 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.CompFor {}
+		ast.CompFor {
+			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
+			f.writeln('\$for $it.val_var in ${typ}($it.for_val) {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
 			is_opt := if it.is_opt { ' ?' } else { '' }
-			f.writeln('\$if $inversion$it.val$is_opt {')
+			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
+			typecheck := if it.is_typecheck { ' is $typ' } else { '' }
+			f.writeln('\$if $inversion$it.val$is_opt$typecheck {')
 			f.stmts(it.stmts)
 			if it.has_else {
 				f.writeln('} \$else {')

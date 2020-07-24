@@ -3,7 +3,7 @@ module main
 struct App {
 	test string [test]
 mut:
-	a string
+	a    string
 }
 
 fn main() {
@@ -23,7 +23,6 @@ fn main() {
 		println('Method: $method.name')
 		println('Attributes: $method.attrs')
 	}
-
 	$for field in App(fields) {
 		$if ret_type is string {
 			println(field)
@@ -31,8 +30,11 @@ fn main() {
 	}
 }
 
-fn (mut app App) method_one() {}
-fn (mut app App) method_two() {}
+fn (mut app App) method_one() {
+}
+
+fn (mut app App) method_two() {
+}
 
 fn (mut app App) method_three() int {
 	return 0
