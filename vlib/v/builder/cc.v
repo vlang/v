@@ -536,6 +536,12 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
+	if v.pref.os == .ios {
+		ret := os.system('ldid2 -S $v.pref.out_name')
+		if ret != 0 {
+			eprintln('failed to run ldid2, try: brew install ldid')
+		}
+	}
 }
 
 fn (mut b Builder) cc_linux_cross() {
