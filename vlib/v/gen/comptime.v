@@ -189,6 +189,43 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 	} else if node.for_val == 'fields' {
 		// TODO add fields
+		if sym.info is table.Struct {
+			info := sym.info as table.Struct
+			mut fields := info.fields.filter(it.attrs.len == 0)
+			fields_with_attrs := info.fields.filter(it.attrs.len > 0)
+			fields << fields_with_attrs
+			for field in fields {
+				g.tmp_comp_for_ret_type = table.Type(0)
+				g.writeln('\t// field $i')
+				g.write('\t')
+				if i == 0 {
+					g.write('FieldData ')
+				}
+				g.writeln('$node.val_var = (FieldData){.name = tos_lit("$field.name"),')
+				g.write('\t')
+				if field.attrs.len == 0 {
+					g.writeln('.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){})),')
+				} else {
+					mut attrs := []string{}
+					for attrib in field.attrs {
+						attrs << 'tos_lit("$attrib")'
+					}
+					g.writeln('.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '})),')
+				}
+				g.write('\t')
+				mut ret_type := g.table.types[0]
+				if field.typ.idx() <= g.table.types.len {
+					ret_type = g.table.types[field.typ.idx()]
+				}
+				g.writeln('.typ = tos_lit("$ret_type.str()"),')
+				g.tmp_comp_for_ret_type = field.typ
+				g.write('\t')
+				g.writeln('.is_pub = $field.is_pub, .is_mut = $field.is_mut,};')
+				g.stmts(node.stmts)
+				i++
+				g.writeln('')
+			}
+		}
 	}
 	g.writeln('} // } comptime for')
 }

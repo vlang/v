@@ -289,3 +289,12 @@ pub:
 	attrs []string
 	ret_type string
 }
+
+pub struct FieldData {
+pub:
+	name string
+	attrs []string
+	typ string
+	is_pub bool
+	is_mut bool
+}
