@@ -105,7 +105,7 @@ pub fn new_semaphore() Semaphore {
 	return new_semaphore_init(0)
 }
 
-pub fn new_semaphore_init(n int) Semaphore {
+pub fn new_semaphore_init(n u32) Semaphore {
 	$if macos {
 		s := Semaphore{
 			sem: &MacOSX_Semaphore{count: n}
