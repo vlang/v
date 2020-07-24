@@ -132,7 +132,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		fn_decl: 0
 		autofree: true
 		indent: -1
-		module_built: pref.path.after('vlib/')
+		module_built: pref.path.after('vlib/').replace('/', '.')
 	}
 	for mod in g.table.modules {
 		g.inits[mod] = strings.new_builder(100)
@@ -740,6 +740,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built.after('/') {
 					// Skip functions that don't have to be generated
 					// for this module.
+					println('skip bm $node.name mode=$node.mod module_built=$g.module_built')
 					skip = true
 				}
 				if g.is_builtin_mod && g.module_built == 'builtin' {
