@@ -5,13 +5,16 @@ struct App {
 
 fn main() {
 	println('All functions')
-	$for method in App {
+	$for method in App(method) {
+		$if ret_type is int {
+			println('hi')
+		}
 		println('Method: $method')
 		println('Attributes: $attrs')
 		println('Return type: $ret_type')
 	}
 	println('All integer functions')
-	$for method in App if int {
+	$for method in App(method) {
 		println('Method: $method')
 		println('Attributes: $attrs')
 	}
