@@ -178,6 +178,8 @@ fn (mut p Parser) comp_for() ast.CompFor {
 			typ: p.table.find_type_idx('FieldData')
 		})
 		kind = .fields
+	} else {
+		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
 	}
 	stmts := p.parse_block()
 	return ast.CompFor{

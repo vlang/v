@@ -8,7 +8,7 @@ mut:
 
 fn main() {
 	println('All functions')
-	$for method in App.method) {
+	$for method in App.methods {
 		$if ret_type is int {
 			println('hi')
 		}
