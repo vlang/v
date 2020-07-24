@@ -172,6 +172,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			method_sym := g.table.get_type_symbol(method.return_type)
 			g.writeln('\t${node.val_var}.ret_type = tos_lit("${method_sym.name}");')
+			g.writeln('\t${node.val_var}.type = ${int(method.return_type).str()};')
 			//
 			g.tmp_comp_for_ret_type = method.return_type
 			g.stmts(node.stmts)
@@ -204,6 +205,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				}
 				field_sym := g.table.get_type_symbol( field.typ )
 				g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
+				g.writeln('\t${node.val_var}.type = ${int(field.typ).str()};')
 				g.tmp_comp_for_ret_type = field.typ
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
