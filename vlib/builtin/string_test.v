@@ -361,6 +361,14 @@ fn test_contains() {
 	assert 'abc'.contains('')
 }
 
+fn test_contains_any() {
+	s := 'Some random text'
+	assert s.contains_any(['false', 'not', 'rand'])
+	assert !s.contains_any(['ABC', 'invalid'])
+	assert ''.contains_any([])
+	assert 'abc'.contains_any([''])
+}
+
 fn test_arr_contains() {
 	a := ['a', 'b', 'c']
 	assert a.contains('b')
@@ -484,7 +492,7 @@ fn test_bytes_to_string() {
 		buf[2] = `l`
 		buf[3] = `l`
 		buf[4] = `o`
-	}        
+	}
 	assert string(buf) == 'hello'
 	assert string(buf, 2) == 'he'
 	bytes := [`h`, `e`, `l`, `l`, `o`]

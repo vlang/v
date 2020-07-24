@@ -753,6 +753,18 @@ pub fn (s string) contains(p string) bool {
 	return true
 }
 
+pub fn (s string) contains_any(vals []string) bool {
+	if vals.len == 0 {
+		return true
+	}
+	for p in vals {
+		if s.contains(p) {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
