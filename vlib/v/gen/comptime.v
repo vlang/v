@@ -135,8 +135,8 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
-	g.writeln('{ // 2comptime $' + 'for {')
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
+	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}(${node.kind.str()}) {')
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
@@ -144,10 +144,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
 		methods << methods_with_attrs
+		if methods.len > 0 {
+			g.writeln('\tFunctionData $node.val_var;')
+			g.writeln('\tmemset(&${node.val_var}, 0, sizeof(FunctionData));')
+		}
 		for method in methods { // sym.methods {
-			// if method.attrs.len == 0 {
-			// continue
-			// }
 			/*
 			if method.return_type != vweb_result_type { // table.void_type {
 				continue
@@ -156,31 +157,23 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.tmp_comp_for_ret_type = table.Type(0)
 			g.comp_for_method = method.name
 			g.writeln('\t// method $i')
-			g.write('\t')
-			if i == 0 {
-				g.write('FunctionData ')
-			}
-			g.writeln('$node.val_var = (FunctionData){.name = tos_lit("$method.name"),')
-			g.write('\t')
-			/*if i == 0 {
-				g.write('array_string ')
-			}*/
+			g.writeln('\t${node.val_var}.name = tos_lit("$method.name");')
 			if method.attrs.len == 0 {
-				g.writeln('.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){})),')
+				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
 			} else {
 				mut attrs := []string{}
 				for attrib in method.attrs {
 					attrs << 'tos_lit("$attrib")'
 				}
-				g.writeln('.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-					attrs.join(', ') + '})),')
+				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
+					attrs.join(', ') + '}));')
 			}
-			g.write('\t')
 			mut ret_type := g.table.types[0]
 			if int(method.return_type) <= g.table.types.len {
 				ret_type = g.table.types[int(method.return_type)]
 			}
-			g.writeln('.ret_type = tos_lit("$ret_type.str()"),};')
+			g.writeln('\t${node.val_var}.ret_type = tos_lit("$ret_type.str()");')
+			//
 			g.tmp_comp_for_ret_type = method.return_type
 			g.stmts(node.stmts)
 			i++
@@ -193,33 +186,31 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			mut fields := info.fields.filter(it.attrs.len == 0)
 			fields_with_attrs := info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
+			if fields.len > 0 {
+				g.writeln('\tFieldData $node.val_var;')
+				g.writeln('\tmemset(&${node.val_var}, 0, sizeof(FieldData));')
+			}
 			for field in fields {
 				g.tmp_comp_for_ret_type = table.Type(0)
 				g.writeln('\t// field $i')
-				g.write('\t')
-				if i == 0 {
-					g.write('FieldData ')
-				}
-				g.writeln('$node.val_var = (FieldData){.name = tos_lit("$field.name"),')
-				g.write('\t')
+				g.writeln('\t${node.val_var}.name = tos_lit("$field.name");')
 				if field.attrs.len == 0 {
-					g.writeln('.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){})),')
+					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
 				} else {
 					mut attrs := []string{}
 					for attrib in field.attrs {
 						attrs << 'tos_lit("$attrib")'
 					}
-					g.writeln('.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '})),')
+					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 				}
-				g.write('\t')
 				mut ret_type := g.table.types[0]
 				if field.typ.idx() <= g.table.types.len {
 					ret_type = g.table.types[field.typ.idx()]
 				}
-				g.writeln('.typ = tos_lit("$ret_type.str()"),')
+				g.writeln('\t${node.val_var}.typ = tos_lit("$ret_type.str()");')
 				g.tmp_comp_for_ret_type = field.typ
-				g.write('\t')
-				g.writeln('.is_pub = $field.is_pub, .is_mut = $field.is_mut,};')
+				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
+				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
 				g.stmts(node.stmts)
 				i++
 				g.writeln('')
