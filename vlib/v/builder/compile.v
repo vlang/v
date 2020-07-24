@@ -26,6 +26,21 @@ fn get_vtmp_filename(base_file_name, postfix string) string {
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
+	// Check if the output directory is writable
+	mut output_folder := os.base_dir(pref.out_name)
+
+	// If output param is a binary name
+	// Like this: v main.v -o exe
+	// Then set the output folder to the current directory
+	if output_folder == pref.out_name {
+		output_folder = os.getwd()
+	}
+
+	if !os.is_writable(output_folder) {
+		eprintln("Path `${output_folder}` is not writable or does not exist`")
+		exit(1)
+	}
+
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
 	if pref.is_verbose {
