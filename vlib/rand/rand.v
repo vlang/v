@@ -149,13 +149,18 @@ pub fn string(len int) string {
 pub fn uuid_v4() string {
 	mut buf := malloc(37)
 	for i in 0..36 {
+		mut v := intn(16)
+		if i == 19 {
+			v = (v & 0x3) | 0x8
+		}
 		unsafe {
-			buf[i] = hex_chars[intn(16)]
+			buf[i] = hex_chars[v]
 		}
 	}
 	unsafe {
 		buf[8] = `-`
 		buf[13] = `-`
+		buf[14] = `4`
 		buf[18] = `-`
 		buf[23] = `-`
 		buf[36] = 0

@@ -25,12 +25,15 @@ fn gen_randoms(seed_data []u32, bound int) []u32 {
 }
 
 fn test_pcg32_reproducibility() {
-	randoms1 := gen_randoms(util.time_seed_array(4), 1000)
-	randoms2 := gen_randoms(util.time_seed_array(4), 1000)
+	seed_data := util.time_seed_array(4)
+	randoms1 := gen_randoms(seed_data, 1000)
+	randoms2 := gen_randoms(seed_data, 1000)
 	assert randoms1.len == randoms2.len
 	len := randoms1.len
 	for i in 0 .. len {
-		assert randoms1[i] == randoms2[i]
+		r1 := randoms1[i]
+		r2 := randoms2[i]
+		assert r1 == r2
 	}
 }
 

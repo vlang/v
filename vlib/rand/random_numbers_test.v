@@ -186,4 +186,7 @@ fn test_rand_uuid_v4() {
 	assert uuid1.len == 36    
 	assert uuid2.len == 36    
 	assert uuid3.len == 36
+	assert uuid1[14] == `4`
+	assert uuid2[14] == `4`
+	assert uuid3[14] == `4`
 }
