@@ -162,8 +162,9 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.check(.key_for)
 	val_var := p.check_name()
 	p.check(.key_in)
-	typ := p.parse_type()
-	p.check(.lpar)
+	lang := p.parse_language()
+	typ := p.parse_any_type(lang, false, false)
+	p.check(.dot)
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
 	if for_val == 'methods' {
@@ -178,7 +179,6 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		})
 		kind = .fields
 	}
-	p.check(.rpar)
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var

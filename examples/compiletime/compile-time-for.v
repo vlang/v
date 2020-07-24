@@ -8,7 +8,7 @@ mut:
 
 fn main() {
 	println('All functions')
-	$for method in App(methods) {
+	$for method in App.method) {
 		$if ret_type is int {
 			println('hi')
 		}
@@ -19,11 +19,11 @@ fn main() {
 		println('Return type: $method.ret_type')
 	}
 	println('All integer functions')
-	$for method in App(methods) {
+	$for method in App.methods {
 		println('Method: $method.name')
 		println('Attributes: $method.attrs')
 	}
-	$for field in App(fields) {
+	$for field in App.fields {
 		$if ret_type is string {
 			println(field)
 		}

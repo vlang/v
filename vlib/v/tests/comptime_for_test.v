@@ -33,7 +33,7 @@ fn no_lines(s string) string { return s.replace('\n', ' ') }
 fn test_comptime_for() {
 	println(@FN)
 	methods := ['run', 'method2', 'int_method1', 'int_method2']
-	$for method in App(methods) {
+	$for method in App.methods {
 		println('  method: $method.name | ' + no_lines('$method'))
 		assert method.name in methods
 	}
@@ -42,7 +42,7 @@ fn test_comptime_for() {
 fn test_comptime_for_with_if() {
 	println(@FN)
 	methods := ['int_method1', 'int_method2']
-	$for method in App(methods) {
+	$for method in App.methods {
 		println('  method: ' + no_lines('$method'))
 		$if ret_type is int {
 			println(method.attrs)
@@ -53,7 +53,7 @@ fn test_comptime_for_with_if() {
 
 fn test_comptime_for_fields() {
 	println(@FN)
-	$for field in App(fields) {
+	$for field in App.fields. {
 		println('  field: $field.name | ' + no_lines('$field'))
 		$if ret_type is string {
 			assert field.name in ['a', 'b', 'g']
