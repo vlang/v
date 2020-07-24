@@ -33,11 +33,10 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	table := table.new_table()
 	if pref.use_color == .always {
-		// TODO
-		//util.emanager.set_support_color(true)
+		util.emanager.set_support_color(true)
 	}
 	if pref.use_color == .never {
-		//util.emanager.set_support_color(false)
+		util.emanager.set_support_color(false)
 	}
 	msvc := find_msvc() or {
 		if pref.ccompiler == 'msvc' {
