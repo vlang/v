@@ -165,6 +165,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	typ := p.parse_type()
 	p.check(.lpar)
 	for_val := p.check_name()
+	mut kind := ast.CompForKind.methods
 	if for_val == 'methods' {
 		p.scope.register(val_var, ast.Var{
 			name: val_var
@@ -175,13 +176,14 @@ fn (mut p Parser) comp_for() ast.CompFor {
 			name: val_var
 			typ: p.table.find_type_idx('FieldData')
 		})
+		kind = .fields
 	}
 	p.check(.rpar)
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
-		for_val: for_val
+		kind: kind
 		typ: typ
 	}
 }

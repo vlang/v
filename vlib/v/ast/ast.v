@@ -540,11 +540,16 @@ pub mut:
 	else_stmts []Stmt
 }
 
+pub enum CompForKind {
+	methods
+	fields
+}
+
 pub struct CompFor {
 pub:
 	val_var string
 	stmts   []Stmt
-	for_val string // .method or .field
+	kind    CompForKind
 pub mut:
 	// expr    Expr
 	typ     table.Type
