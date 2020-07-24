@@ -364,14 +364,15 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut action := ''
 	$for method in T(methods) {
 		$if res_type is Result {
+			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
 				// No routing for this method. If it matches, call it and finish matching
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if (req.method == 'GET' && url_words[0] == method && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method) {
-					println('easy match method=$method')
+				if (req.method == 'GET' && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
+					println('easy match method=$method.name')
 					app.$method(vars)
 					return
 				}
@@ -446,7 +447,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 								return
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
-								action = method
+								action = method.name
 								vars = variables
 							}
 						}
@@ -468,7 +469,7 @@ fn send_action<T>(action string, vars []string, mut app T) {
 	$for method in T(methods) {
 		$if ret_type is Result {
 			// search again for method
-			if action == method && attrs.len > 0 {
+			if action == method.name && method.attrs.len > 0 {
 				// call action method
 				app.$method(vars)
 			}
