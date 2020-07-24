@@ -92,14 +92,26 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {
 		return
 	}
-	if it.is_typecheck {
-		it.type_match = g.ret_type_arr[g.type_idx] == it.typ
-		typ := g.ret_type_arr[g.type_idx]
-		ret_type_name := g.table.get_type_symbol(typ).name
-		it_type_name := g.table.get_type_symbol(it.typ).name
-		g.writeln('{ // \$if ${it.val} is ${it_type_name}, typecheck start, $typ == $it.typ => $ret_type_name == $it_type_name => $it.type_match ')
+	if it.kind == .typecheck {
+		mut comptime_var_type := table.Type(0)
+		if it.tchk_expr is ast.SelectorExpr {
+			se := it.tchk_expr as ast.SelectorExpr
+			x := se.expr.str()
+			comptime_var_type = g.comptime_var_type_map[ x ]
+		}
+		if comptime_var_type == 0 {
+			$if trace_gen ? {
+				eprintln('Known compile time types: ')
+				eprintln( g.comptime_var_type_map.str() )
+			}
+			verror('the compile time type of `$it.tchk_expr.str()` is unknown')
+		}
+		ret_type_name := g.table.get_type_symbol( comptime_var_type ).name
+		it_type_name := g.table.get_type_symbol(it.tchk_type).name
+		types_match := comptime_var_type == it.tchk_type
+		g.writeln('{ // \$if ${it.val} is ${it_type_name}, typecheck start, $comptime_var_type == $it.tchk_type => $ret_type_name == $it_type_name => $types_match ')
 		mut stmts := it.stmts
-		if !it.type_match {
+		if !types_match {
 			stmts = []ast.Stmt{}
 			if it.has_else {
 				stmts = it.else_stmts
@@ -138,13 +150,6 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
-	g.type_idx++
-	if g.ret_type_arr.len == 0 {
-		g.ret_type_arr = []table.Type{}
-	}
-	if g.ret_type_arr.len < g.type_idx + 1{
-		g.ret_type_arr << table.Type(0)
-	}
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
 	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}(${node.kind.str()}) {')
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
@@ -181,11 +186,12 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.writeln('\t${node.val_var}.ret_type = tos_lit("${method_sym.name}");')
 			g.writeln('\t${node.val_var}.type = ${int(method.return_type).str()};')
 			//
-			g.ret_type_arr[g.type_idx] = method.return_type
+			g.comptime_var_type_map[ node.val_var ] = method.return_type
 			g.stmts(node.stmts)
 			i++
 			g.writeln('')
 		}
+		g.comptime_var_type_map.delete( node.val_var )
 	} else if node.kind == .fields {
 		// TODO add fields
 		if sym.info is table.Struct {
@@ -212,15 +218,15 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				field_sym := g.table.get_type_symbol( field.typ )
 				g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
 				g.writeln('\t${node.val_var}.type = ${int(field.typ).str()};')
-				g.ret_type_arr[g.type_idx] = field.typ
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
+				g.comptime_var_type_map[ node.val_var ] = field.typ
 				g.stmts(node.stmts)
 				i++
 				g.writeln('')
 			}
+			g.comptime_var_type_map.delete( node.val_var )
 		}
 	}
 	g.writeln('} // } comptime for')
-	g.type_idx--
 }

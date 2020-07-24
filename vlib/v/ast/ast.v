@@ -524,17 +524,28 @@ When .is_opt is true, the code should compile, even
 if `xyz` is NOT defined.
 If .is_opt is false, then when `xyz` is not defined,
 the compilation will fail.
+
+`$if method.type is string {}` will produce CompIf with:
+.is_typecheck true,
+.tchk_expr: method.type
+.tchk_type: string
+.tchk_match: true on each iteration, having a string `method.type`
 */
+pub enum CompIfKind {
+	platform
+	typecheck
+}
 pub struct CompIf {
 pub:
 	val        string
 	stmts      []Stmt
 	is_not     bool
-	is_typecheck bool
-	typ        table.Type
+	kind       CompIfKind
+	tchk_expr  Expr
+	tchk_type  table.Type
 	pos        token.Position
 pub mut:
-	type_match bool
+	tchk_match bool
 	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt

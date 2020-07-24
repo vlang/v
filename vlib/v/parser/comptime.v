@@ -22,8 +22,7 @@ fn (mut p Parser) resolve_vroot(flag string) string {
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' +
-			' or in one of its parent folders.')
+		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' + ' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
 	if p.pref.is_fmt {
@@ -91,11 +90,8 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
-
 	fn_path := p.cur_fn_name.split('_')
 	html_name := '${fn_path.last()}.html'
-
-
 	// Looking next to the vweb program
 	dir := os.dir(p.scanner.file_path)
 	mut path := os.join_path(dir, fn_path.join('/'))
@@ -201,7 +197,33 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if is_not {
 		p.next()
 	}
-	val := p.check_name()
+	//
+	name_pos_start := p.tok.position()
+	mut val := ''
+	mut tchk_expr := ast.Expr{}
+	if p.peek_tok.kind == .dot {
+		vname := p.parse_ident(table.Language.v)
+		cobj := p.scope.find(vname.name) or {
+			p.error_with_pos('unknown variable `$vname.name`', name_pos_start)
+			return ast.Stmt{}
+		}
+		if cobj is ast.Var {
+			tchk_expr = p.dot_expr(vname)
+			val = vname.name
+			if tchk_expr is ast.SelectorExpr {
+				if tchk_expr.field_name !in ['type', '@type'] {
+					p.error_with_pos('only the `.@type` field name is supported for now',
+						name_pos_start)
+				}
+			}
+		} else {
+			p.error_with_pos('`$vname.name` is not a variable', name_pos_start)
+		}
+	} else {
+		val = p.check_name()
+	}
+	name_pos := name_pos_start.extend(p.tok.position())
+	//
 	mut stmts := []ast.Stmt{}
 	mut skip := false
 	if val in supported_platforms {
@@ -247,25 +269,35 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	}
 	mut is_opt := false
 	mut is_typecheck := false
-	mut typ := table.Type(0)
+	mut tchk_type := table.Type(0)
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
 	} else if p.tok.kind == .key_is {
 		p.next()
-		typ = p.parse_type()
+		tchk_type = p.parse_type()
 		is_typecheck = true
 	}
 	if !skip {
 		stmts = p.parse_block()
 	}
+	if !is_typecheck && val.len == 0 {
+		p.error_with_pos('Only `\$if compvarname.field is type {}` is supported', name_pos)
+	}
+	if is_typecheck {
+		match tchk_expr {
+			ast.SelectorExpr {}
+			else { p.error_with_pos('Only compvarname.field is supported', name_pos) }
+		}
+	}
 	mut node := ast.CompIf{
 		is_not: is_not
 		is_opt: is_opt
-		is_typecheck: is_typecheck
+		kind: if is_typecheck { ast.CompIfKind.typecheck } else { ast.CompIfKind.platform }
 		pos: pos
 		val: val
-		typ: typ
+		tchk_type: tchk_type
+		tchk_expr: tchk_expr
 		stmts: stmts
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {

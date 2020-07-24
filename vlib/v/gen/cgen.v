@@ -98,8 +98,7 @@ mut:
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string // $for method in T {
-	ret_type_arr          []table.Type
-	type_idx              int = -1
+	comptime_var_type_map map[string]table.Type
 }
 
 const (
