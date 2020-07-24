@@ -44,7 +44,7 @@ fn test_comptime_for_with_if() {
 	methods := ['int_method1', 'int_method2']
 	$for method in App.methods {
 		println('  method: ' + no_lines('$method'))
-		$if ret_type is int {
+		$if method.@type is int {
 			println(method.attrs)
 			assert method.name in methods
 		}
@@ -55,10 +55,10 @@ fn test_comptime_for_fields() {
 	println(@FN)
 	$for field in App.fields {
 		println('  field: $field.name | ' + no_lines('$field'))
-		$if ret_type is string {
+		$if field.@type is string {
 			assert field.name in ['a', 'b', 'g']
 		}
-		$if ret_type is f32 {
+		$if field.@type is f32 {
 			assert field.name in ['d', 'e']
 		}
 		if field.is_mut {
