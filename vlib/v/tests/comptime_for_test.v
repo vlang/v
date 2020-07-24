@@ -23,6 +23,7 @@ fn (mut app App) method2() {
 fn (mut app App) int_method1() int {
 	return 0
 }
+
 fn (mut app App) int_method2() int {
 	return 1
 }
