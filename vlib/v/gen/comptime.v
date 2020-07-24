@@ -43,7 +43,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		if m.args.len > 1 {
 			g.write(', ')
 		}
-		for i in 1 .. m.args.len{
+		for i in 1 .. m.args.len {
 			if node.left is ast.Ident {
 				left_name := node.left as ast.Ident
 				if m.args[i].name == left_name.name {
@@ -138,53 +138,60 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	g.writeln('{ // 2comptime $' + 'for {')
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	//vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
+	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
-	mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
-	methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
-	methods << methods_with_attrs
-	for method in methods { // sym.methods {
-		// if method.attrs.len == 0 {
-		// continue
-		// }
-		/*if method.return_type != vweb_result_type { // table.void_type {
-			continue
-		}*/
-		g.tmp_comp_for_ret_type = table.Type(0)
-		g.comp_for_method = method.name
-		g.writeln('\t// method $i')
-		g.write('\t')
-		if i == 0 {
-			g.write('string ')
-		}
-		g.writeln('$node.val_var = tos_lit("$method.name");')
-		g.write('\t')
-		if i == 0 {
-			g.write('array_string ')
-		}
-		if method.attrs.len == 0 {
-			g.writeln('attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
-		} else {
-			mut attrs := []string{}
-			for attrib in method.attrs {
-				attrs << 'tos_lit("$attrib")'
+	if node.for_val == 'method' {
+		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
+		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
+		methods << methods_with_attrs
+		for method in methods { // sym.methods {
+			// if method.attrs.len == 0 {
+			// continue
+			// }
+			/*
+			if method.return_type != vweb_result_type { // table.void_type {
+				continue
 			}
-			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
+			*/
+			g.tmp_comp_for_ret_type = table.Type(0)
+			g.comp_for_method = method.name
+			g.writeln('\t// method $i')
+			g.write('\t')
+			if i == 0 {
+				g.write('string ')
+			}
+			g.writeln('$node.val_var = tos_lit("$method.name");')
+			g.write('\t')
+			if i == 0 {
+				g.write('array_string ')
+			}
+			if method.attrs.len == 0 {
+				g.writeln('attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
+			} else {
+				mut attrs := []string{}
+				for attrib in method.attrs {
+					attrs << 'tos_lit("$attrib")'
+				}
+				g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
+					attrs.join(', ') + '}));')
+			}
+			g.write('\t')
+			mut ret_type := g.table.types[0]
+			if int(method.return_type) <= g.table.types.len {
+				ret_type = g.table.types[int(method.return_type)]
+			}
+			if i == 0 {
+				g.write('string ')
+			}
+			g.writeln('ret_type = tos_lit("$ret_type.str()");')
+			g.tmp_comp_for_ret_type = method.return_type
+			g.stmts(node.stmts)
+			i++
+			g.writeln('')
 		}
-		g.write('\t')
-		mut ret_type := g.table.types[0]
-		if int(method.return_type) <= g.table.types.len {
-			ret_type = g.table.types[int(method.return_type)]
-		}
-		if i == 0 {
-			g.write('string ')
-		}
-		g.writeln('ret_type = tos_lit("$ret_type.str()");')
-		g.tmp_comp_for_ret_type = method.return_type
-		g.stmts(node.stmts)
-		i++
-		g.writeln('')
+	} else if node.for_val == 'fields' {
+		// TODO add fields
 	}
 	g.writeln('} // } comptime for')
 }
