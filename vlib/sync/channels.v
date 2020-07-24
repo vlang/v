@@ -65,8 +65,7 @@ struct Channel {
 	ringbuf            byteptr // queue for buffered channels
 	statusbuf          byteptr // flags to synchronize write/read in ringbuf
 	objsize            u32
-	bufsize            u32 // in bytes
-	nobjs              u32 // in #objects
+	queue_length       u32 // in #objects
 mut: // atomic
 	write_adr          voidptr // if != NULL the next obj can be written here without wait
 	read_adr           voidptr // if != NULL an obj can be read from here without wait
@@ -81,116 +80,144 @@ mut: // atomic
 
 pub fn new_channel<T>(n u32) &Channel {
 	objsize := sizeof(T)
-	bufsize := n * objsize
-	buf := if n > 0 { malloc(int(bufsize)) } else { byteptr(0) }
+	buf := if n > 0 { malloc(int(n * objsize)) } else { byteptr(0) }
 	statusbuf := if n > 0 { vcalloc(int(n)) } else { byteptr(0) }
 	mut ch := &Channel{
 		writesem: new_semaphore_init(n)
 		readsem:  new_semaphore()
 		objsize: objsize
-		nobjs: n
+		queue_length: n
 		ringbuf: buf
 		statusbuf: statusbuf
-		bufsize: bufsize
 	}
 	return ch
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
-	mut wradr := if ch.bufsize == 0 { C.atomic_load(&ch.write_adr) } else { voidptr(0) }
-	for {
-		if ch.bufsize == 0 {
-			for wradr != C.NULL {
-				mut nulladr := voidptr(0)
-				if C.atomic_compare_exchange_strong(&ch.write_adr, &wradr, nulladr) {
-					// there is a reader waiting for us
-					unsafe { C.memcpy(wradr, src, ch.objsize) }
-					for !C.atomic_compare_exchange_weak(&ch.adr_written, &nulladr, wradr) {
-						nulladr = voidptr(0)
-					}
-					ch.readsem.post()
-					return
-				}
+	if ch.queue_length > 0 { // buffered channel
+		ch.writesem.wait()
+		mut wr_idx := C.atomic_load_u32(&ch.buf_elem_write_idx)
+		for {
+			mut new_wr_idx := wr_idx + 1
+			for new_wr_idx >= ch.queue_length {
+				new_wr_idx -= ch.queue_length
+			}
+			if C.atomic_compare_exchange_strong_u32(&ch.buf_elem_write_idx, &wr_idx, new_wr_idx) {
+				break
 			}
 		}
-		if ch.bufsize == 0 { // synchronous channel or empty buffer
-			// try to provide current object as readable
-			mut nulladdr := voidptr(0)
-			if C.atomic_compare_exchange_strong(&ch.read_adr, &nulladdr, src) {
-				if ch.bufsize == 0 {
-					wradr = C.atomic_load(&ch.write_adr)
-					if wradr != C.NULL {
-						mut src2 := src
-						if C.atomic_compare_exchange_strong(&ch.read_adr, &src2, voidptr(0)) {
-							continue
-						}
-					}
+		mut wr_ptr := ch.ringbuf
+		mut status_adr := ch.statusbuf
+		unsafe {
+			wr_ptr += wr_idx * ch.objsize
+			status_adr += wr_idx
+		}
+		mut expected_status := byte(BufferElemStat.unused)
+		for {
+			if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.writing)) {
+				break
+			}
+			expected_status = byte(BufferElemStat.unused)
+		}
+		unsafe {
+			C.memcpy(wr_ptr, src, ch.objsize)
+		}
+		C.atomic_store_byte(status_adr, byte(BufferElemStat.written))
+		ch.readsem.post()
+		return
+	}
+	// unbuffered channel
+	mut wradr := C.atomic_load(&ch.write_adr)
+	for {
+		for wradr != C.NULL {
+			mut nulladr := voidptr(0)
+			if C.atomic_compare_exchange_strong(&ch.write_adr, &wradr, nulladr) {
+				// there is a reader waiting for us
+				unsafe { C.memcpy(wradr, src, ch.objsize) }
+				for !C.atomic_compare_exchange_weak(&ch.adr_written, &nulladr, wradr) {
+					nulladr = voidptr(0)
 				}
-				for {
-					mut src2 := src
-					// Try to spin wait for src to be read
-					mut have_swapped := false
-					for _ in 0 .. spinloops {
-						if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
-							have_swapped = true
-							break
-						}
-						src2 = src
-					}
-					ch.writesem.wait()
-					if have_swapped {
-						return
-					}
-					if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
-						break
-					} else {
-						// this semaphore was not for us - repost in
-						ch.writesem.post()
-					}
-				}
+				ch.readsem.post()
 				return
 			}
 		}
-		if ch.bufsize > 0 {	// buffered channel
-			ch.writesem.wait()
-			mut wr_idx := C.atomic_load_u32(&ch.buf_elem_write_idx)
+		// try to advertise current object as readable
+		mut nulladdr := voidptr(0)
+		if C.atomic_compare_exchange_strong(&ch.read_adr, &nulladdr, src) {
+			if ch.queue_length == 0 {
+				wradr = C.atomic_load(&ch.write_adr)
+				if wradr != C.NULL {
+					mut src2 := src
+					if C.atomic_compare_exchange_strong(&ch.read_adr, &src2, voidptr(0)) {
+						continue
+					}
+				}
+			}
 			for {
-				mut new_wr_idx := wr_idx + 1
-				for new_wr_idx >= ch.nobjs {
-					new_wr_idx -= ch.nobjs
+				mut src2 := src
+				// Try to spin wait for src to be read
+				mut have_swapped := false
+				for _ in 0 .. spinloops {
+					if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
+						have_swapped = true
+						break
+					}
+					src2 = src
 				}
-				if C.atomic_compare_exchange_strong_u32(&ch.buf_elem_write_idx, &wr_idx, new_wr_idx) {
+				ch.writesem.wait()
+				if have_swapped {
+					return
+				}
+				if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 					break
+				} else {
+					// this semaphore was not for us - repost in
+					ch.writesem.post()
 				}
 			}
-			mut wr_ptr := ch.ringbuf
-			mut status_adr := ch.statusbuf
-			unsafe {
-				wr_ptr += wr_idx * ch.objsize
-				status_adr += wr_idx
-			}
-			mut expected_status := byte(BufferElemStat.unused)
-			for {
-				if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.writing)) {
-					break
-				}
-				expected_status = byte(BufferElemStat.unused)
-			}
-			unsafe {
-				C.memcpy(wr_ptr, src, ch.objsize)
-			}
-			C.atomic_store_byte(status_adr, byte(BufferElemStat.written))
-			ch.readsem.post()
 			return
 		}
-		wradr = if ch.bufsize == 0 { C.atomic_load(&ch.write_adr) } else { voidptr(0) }
+		wradr = C.atomic_load(&ch.write_adr)
 	}
 }
 
 pub fn (mut ch Channel) pop(dest voidptr) {
-	mut rdadr := if ch.bufsize == 0 { C.atomic_load(&ch.read_adr) } else { voidptr(0) }
+	if ch.queue_length > 0 { // buffered channel - try to read element from buffer
+		ch.readsem.wait()
+		mut rd_idx := C.atomic_load_u32(&ch.buf_elem_read_idx)
+		for {
+			mut new_rd_idx := rd_idx + 1
+			for new_rd_idx >= ch.queue_length {
+				new_rd_idx -= ch.queue_length
+			}
+			if C.atomic_compare_exchange_strong_u32(&ch.buf_elem_read_idx, &rd_idx, new_rd_idx) {
+				break
+			}
+		}
+		mut rd_ptr := ch.ringbuf
+		mut status_adr := ch.statusbuf
+		unsafe {
+			rd_ptr += rd_idx * ch.objsize
+			status_adr += rd_idx
+		}
+		mut expected_status := byte(BufferElemStat.written)
+		for {
+			if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.reading)) {
+				break
+			}
+			expected_status = byte(BufferElemStat.written)
+		}
+		unsafe {
+			C.memcpy(dest, rd_ptr, ch.objsize)
+		}
+		C.atomic_store_byte(status_adr, byte(BufferElemStat.unused))
+		ch.writesem.post()
+		return
+	}
+	// unbuffered channel
+	mut rdadr := if ch.queue_length == 0 { C.atomic_load(&ch.read_adr) } else { voidptr(0) }
 	for {
-		for ch.bufsize == 0 && rdadr != C.NULL {
+		for rdadr != C.NULL {
 			if C.atomic_compare_exchange_strong(&ch.read_adr, &rdadr, voidptr(0)) {
 				// there is a writer waiting for us
 				unsafe { C.memcpy(dest, rdadr, ch.objsize) }
@@ -202,71 +229,39 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 				return
 			}
 		}
-		if ch.bufsize == 0 { // try to advertise `dest` as writable
-			mut nulladdr := voidptr(0)
-			if C.atomic_compare_exchange_strong(&ch.write_adr, &nulladdr, dest) {
-				rdadr = C.atomic_load(&ch.read_adr)
-				if rdadr != C.NULL {
-					mut dest2 := dest
-					if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
-						continue
-					}
+		// try to advertise `dest` as writable
+		mut nulladdr := voidptr(0)
+		if C.atomic_compare_exchange_strong(&ch.write_adr, &nulladdr, dest) {
+			rdadr = C.atomic_load(&ch.read_adr)
+			if rdadr != C.NULL {
+				mut dest2 := dest
+				if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
+					continue
 				}
-				for {
-					mut dest2 := dest
-					mut have_swapped := false
-					for _ in 0 .. spinloops {
-						if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
-							have_swapped = true
-							break
-						}
-						dest2 = dest
-					}
-					ch.readsem.wait()
-					if have_swapped {
-						return
-					}
+			}
+			for {
+				mut dest2 := dest
+				mut have_swapped := false
+				for _ in 0 .. spinloops {
 					if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
+						have_swapped = true
 						break
-					} else {
-						// this semaphore was not for us - repost in
-						ch.readsem.post()
 					}
+					dest2 = dest
 				}
-				return
-			}
-		} else { // try to read element from buffer
-			ch.readsem.wait()
-			mut rd_idx := C.atomic_load_u32(&ch.buf_elem_read_idx)
-			for {
-				mut new_rd_idx := rd_idx + 1
-				for new_rd_idx >= ch.nobjs {
-					new_rd_idx -= ch.nobjs
+				ch.readsem.wait()
+				if have_swapped {
+					return
 				}
-				if C.atomic_compare_exchange_strong_u32(&ch.buf_elem_read_idx, &rd_idx, new_rd_idx) {
+				if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 					break
+				} else {
+					// this semaphore was not for us - repost in
+					ch.readsem.post()
 				}
 			}
-			mut rd_ptr := ch.ringbuf
-			mut status_adr := ch.statusbuf
-			unsafe {
-				rd_ptr += rd_idx * ch.objsize
-				status_adr += rd_idx
-			}
-			mut expected_status := byte(BufferElemStat.written)
-			for {
-				if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.reading)) {
-					break
-				}
-				expected_status = byte(BufferElemStat.written)
-			}
-			unsafe {
-				C.memcpy(dest, rd_ptr, ch.objsize)
-			}
-			C.atomic_store_byte(status_adr, byte(BufferElemStat.unused))
-			ch.writesem.post()
 			return
 		}
-		rdadr = if ch.bufsize == 0 { C.atomic_load(&ch.read_adr) } else { voidptr(0) }
 	}
+	rdadr = C.atomic_load(&ch.read_adr)
 }
