@@ -30,8 +30,9 @@ fn (mut app App) int_method2() int {
 fn test_comptime_for() {
 	methods := ['run', 'method2', 'int_method1', 'int_method2']
 	$for method in App(methods) {
-		println(method.attrs)
-		println(method.ret_type)
+		println('method.attrs: $method.attrs')
+		println('method.ret_type: $method.ret_type')
+		println('method.name: $method.name')
 		assert method.name in methods
 	}
 }
