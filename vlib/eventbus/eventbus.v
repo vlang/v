@@ -83,7 +83,6 @@ pub fn (mut s Subscriber) subscribe(name string, handler EventHandlerFn) {
 	s.registry.events << EventHandler {
 		name: name
 		handler: handler
-		receiver: voidptr(0)
 	}
 }
 
@@ -99,7 +98,6 @@ pub fn (mut s Subscriber) subscribe_once(name string, handler EventHandlerFn) {
 	s.registry.events << EventHandler {
 		name: name
 		handler: handler
-		receiver: voidptr(0)
 		once: true
 	}
 }
