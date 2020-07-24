@@ -740,7 +740,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
-	match node {
+	match mut node {
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}
