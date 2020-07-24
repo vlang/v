@@ -171,10 +171,20 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	typ := p.parse_type()
 	// p.check(.dot)
 	// p.check_name()
+	mut expected_type := table.Type(0)
+	if p.tok.kind == .key_if {
+		p.next()
+		expected_type = p.parse_type()
+		p.scope.register('ret_type', ast.Var{
+			name: 'ret_type'
+			typ: table.string_type
+		})
+	}
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
+		expected_type: expected_type
 		typ: typ
 	}
 }

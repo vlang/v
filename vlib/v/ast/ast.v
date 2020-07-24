@@ -541,6 +541,7 @@ pub struct CompFor {
 pub:
 	val_var string
 	stmts   []Stmt
+	expected_type table.Type
 pub mut:
 	// expr    Expr
 	typ     table.Type

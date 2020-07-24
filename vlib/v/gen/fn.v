@@ -22,6 +22,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 			if g.pref.is_verbose {
 				println('gen fn `$it.name` for type `$sym.name`')
 			}
+			println(g.table.types[int(gen_type)])
 			g.cur_generic_type = gen_type
 			g.gen_fn_decl(it, skip)
 		}
