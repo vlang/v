@@ -93,7 +93,6 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 		return
 	}
 	if it.is_typecheck {
-		println(g.tmp_comp_for_ret_type)
 		g.writeln('{ // \$if $it.val typecheck start')
 		it.type_match = g.tmp_comp_for_ret_type == it.typ
 		mut stmts := it.stmts

@@ -173,7 +173,6 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	//p.check(.dot)
 	p.check(.lpar)
 	for_val := p.check_name()
-	println(for_val)
 	if for_val == 'methods' {
 		p.scope.register(val_var, ast.Var{
 			name: val_var
