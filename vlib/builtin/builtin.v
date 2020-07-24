@@ -282,3 +282,10 @@ pub:
 	value string
 	method string
 }
+
+pub struct FunctionData {
+pub:
+	name string
+	attrs []string
+	ret_type string
+}

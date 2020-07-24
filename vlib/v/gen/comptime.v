@@ -159,32 +159,29 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.writeln('\t// method $i')
 			g.write('\t')
 			if i == 0 {
-				g.write('string ')
+				g.write('FunctionData ')
 			}
-			g.writeln('$node.val_var = tos_lit("$method.name");')
+			g.writeln('$node.val_var = (FunctionData){.name = tos_lit("$method.name"),')
 			g.write('\t')
-			if i == 0 {
+			/*if i == 0 {
 				g.write('array_string ')
-			}
+			}*/
 			if method.attrs.len == 0 {
-				g.writeln('attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
+				g.writeln('.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){})),')
 			} else {
 				mut attrs := []string{}
 				for attrib in method.attrs {
 					attrs << 'tos_lit("$attrib")'
 				}
-				g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
-					attrs.join(', ') + '}));')
+				g.writeln('.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
+					attrs.join(', ') + '})),')
 			}
 			g.write('\t')
 			mut ret_type := g.table.types[0]
 			if int(method.return_type) <= g.table.types.len {
 				ret_type = g.table.types[int(method.return_type)]
 			}
-			if i == 0 {
-				g.write('string ')
-			}
-			g.writeln('ret_type = tos_lit("$ret_type.str()");')
+			g.writeln('.ret_type = tos_lit("$ret_type.str()"),};')
 			g.tmp_comp_for_ret_type = method.return_type
 			g.stmts(node.stmts)
 			i++

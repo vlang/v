@@ -9,14 +9,14 @@ fn main() {
 		$if ret_type is int {
 			println('hi')
 		}
-		println('Method: $method')
-		println('Attributes: $attrs')
-		println('Return type: $ret_type')
+		println('Method: $method.name')
+		println('Attributes: $method.attrs')
+		println('Return type: $method.ret_type')
 	}
 	println('All integer functions')
 	$for method in App(method) {
-		println('Method: $method')
-		println('Attributes: $attrs')
+		println('Method: $method.name')
+		println('Attributes: $method.attrs')
 	}
 }
 

@@ -158,13 +158,17 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.next()
 	p.check(.key_for)
 	val_var := p.check_name()
-	p.scope.register(val_var, ast.Var{
+	/*p.scope.register(val_var, ast.Var{
 		name: val_var
 		typ: table.string_type
 	})
 	p.scope.register('attrs', ast.Var{
 		name: 'attrs'
 		typ: p.table.find_type_idx('array_string')
+	})*/
+	p.scope.register(val_var, ast.Var{
+		name: val_var
+		typ: p.table.find_type_idx('FunctionData')
 	})
 	p.check(.key_in)
 	// expr := p.expr(0)
@@ -174,10 +178,10 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.check(.lpar)
 	for_val := p.check_name()
 	p.check(.rpar)
-	p.scope.register('ret_type', ast.Var{
+	/*p.scope.register('ret_type', ast.Var{a
 		name: 'ret_type'
 		typ: table.string_type_idx
-	})
+	})*/
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
