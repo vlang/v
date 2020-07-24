@@ -314,8 +314,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
 			is_opt := if it.is_opt { ' ?' } else { '' }
-			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
-			typecheck := if it.is_typecheck { ' is $typ' } else { '' }
+			mut typecheck := ''
+			if it.is_typecheck {
+				typ := f.no_cur_mod(f.table.type_to_str(it.typ))
+				typecheck = ' is $typ'
+			}
 			f.writeln('\$if $inversion$it.val$is_opt$typecheck {')
 			f.stmts(it.stmts)
 			if it.has_else {
