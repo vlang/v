@@ -23,7 +23,7 @@ fn ws_test(uri string) {
 	ws.subscriber.subscribe_method('on_close', on_close, test)
 	ws.connect()
 	go ws.listen()
-	text := ['ws test', '{"vlang": "test"}']
+	text := ['ws test', '{"vlang": "test0\n192"}']
 	for msg in text {
 		test.sended_msg << msg
 		len := ws.write(msg.str, msg.len, .text_frame)
@@ -31,8 +31,14 @@ fn ws_test(uri string) {
 		// sleep to give time to recieve response before send a new one
 		time.sleep_ms(100)
 	}
+	// sleep to give time to recieve response before asserts
 	time.sleep_ms(500)
-	ws.close(0, '')
+
+	assert test.connected == true
+	assert test.sended_msg.len == test.recieved_msg.len
+	for x, msg in test.sended_msg {
+		assert msg == test.recieved_msg[x]
+	}
 }
 
 fn on_open(mut test Test, y voidptr, ws &websocket.Client) {
@@ -52,11 +58,6 @@ fn on_message(mut test Test, msg &websocket.Message, ws &websocket.Client) {
 
 fn on_close(mut test Test, y voidptr, ws &websocket.Client) {
 	println('websocket closed.')
-	assert test.connected == true
-	assert test.sended_msg.len == test.recieved_msg.len
-	for x, msg in test.sended_msg {
-		assert msg == test.recieved_msg[x]
-	}
 }
 
 fn on_error(ws &websocket.Client, x, y voidptr) {
