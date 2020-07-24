@@ -53,7 +53,7 @@ fn test_comptime_for_with_if() {
 
 fn test_comptime_for_fields() {
 	println(@FN)
-	$for field in App.fields. {
+	$for field in App.fields {
 		println('  field: $field.name | ' + no_lines('$field'))
 		$if ret_type is string {
 			assert field.name in ['a', 'b', 'g']
