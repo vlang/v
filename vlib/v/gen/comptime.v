@@ -170,11 +170,8 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 					attrs.join(', ') + '}));')
 			}
-			mut ret_type := g.table.types[0]
-			if int(method.return_type) <= g.table.types.len {
-				ret_type = g.table.types[int(method.return_type)]
-			}
-			g.writeln('\t${node.val_var}.ret_type = tos_lit("$ret_type.str()");')
+			method_sym := g.table.get_type_symbol(method.return_type)
+			g.writeln('\t${node.val_var}.ret_type = tos_lit("${method_sym.name}");')
 			//
 			g.tmp_comp_for_ret_type = method.return_type
 			g.stmts(node.stmts)
@@ -205,11 +202,8 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					}
 					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 				}
-				mut ret_type := g.table.types[0]
-				if field.typ.idx() <= g.table.types.len {
-					ret_type = g.table.types[field.typ.idx()]
-				}
-				g.writeln('\t${node.val_var}.typ = tos_lit("$ret_type.str()");')
+				field_sym := g.table.get_type_symbol( field.typ )
+				g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
 				g.tmp_comp_for_ret_type = field.typ
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
