@@ -9,19 +9,19 @@ fn (mut app App) run() {
 fn (mut app App) method2() {
 }
 
-fn test_comptime_for() {
-	/*
-	app := App{}
+fn (mut app App) int_method1() int {}
+fn (mut app App) int_method2() int {}
 
-	$for method in App { //.method_attrs {
-		words := attrs.split('/')
-		println(words)
-		//println(method.value)
+fn test_comptime_for() {
+	methods := ['run', 'method2', 'int_method1', 'int_method2']
+	$for method in App {
+		assert method in methods
 	}
-	assert true
-	println('DONE')
-	*/
-	if true {}
-	//
-	else{}
+}
+
+fn test_comptime_for_with_if() {
+	methods := ['int_method1', 'int_method2']
+	$for method in App if int {
+		assert method in methods
+	}
 }
