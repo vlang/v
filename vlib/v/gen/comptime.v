@@ -173,7 +173,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.writeln('\t// method $i')
 			g.writeln('\t${node.val_var}.name = tos_lit("$method.name");')
 			if method.attrs.len == 0 {
-				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
+				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), 0);')
 			} else {
 				mut attrs := []string{}
 				for attrib in method.attrs {
@@ -207,7 +207,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t// field $i')
 				g.writeln('\t${node.val_var}.name = tos_lit("$field.name");')
 				if field.attrs.len == 0 {
-					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), _MOV((string[0]){}));')
+					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array(0, 0, sizeof(string), 0);')
 				} else {
 					mut attrs := []string{}
 					for attrib in field.attrs {
