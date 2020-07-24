@@ -155,22 +155,14 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 }
 
 fn (mut p Parser) comp_for() ast.CompFor {
+	// p.comp_for() handles these special forms:
+	// $for method in App(methods) {
+	// $for field in App(fields) {
 	p.next()
 	p.check(.key_for)
 	val_var := p.check_name()
-	/*p.scope.register(val_var, ast.Var{
-		name: val_var
-		typ: table.string_type
-	})
-	p.scope.register('attrs', ast.Var{
-		name: 'attrs'
-		typ: p.table.find_type_idx('array_string')
-	})*/
 	p.check(.key_in)
-	// expr := p.expr(0)
 	typ := p.parse_type()
-	//println(typ)
-	//p.check(.dot)
 	p.check(.lpar)
 	for_val := p.check_name()
 	if for_val == 'methods' {
@@ -185,10 +177,6 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		})
 	}
 	p.check(.rpar)
-	/*p.scope.register('ret_type', ast.Var{a
-		name: 'ret_type'
-		typ: table.string_type_idx
-	})*/
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
