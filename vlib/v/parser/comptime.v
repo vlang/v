@@ -169,8 +169,9 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.check(.key_in)
 	// expr := p.expr(0)
 	typ := p.parse_type()
-	// p.check(.dot)
-	// p.check_name()
+	println(typ)
+	p.check(.dot)
+	for_val := p.check_name()
 	mut expected_type := table.Type(0)
 	if p.tok.kind == .key_if {
 		p.next()
@@ -185,6 +186,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		val_var: val_var
 		stmts: stmts
 		expected_type: expected_type
+		for_val: for_val
 		typ: typ
 	}
 }

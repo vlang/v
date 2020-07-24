@@ -542,6 +542,7 @@ pub:
 	val_var string
 	stmts   []Stmt
 	expected_type table.Type
+	methods bool
 pub mut:
 	// expr    Expr
 	typ     table.Type

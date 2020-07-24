@@ -18,7 +18,7 @@ fn (mut app App) int_method2() int {
 
 fn test_comptime_for() {
 	methods := ['run', 'method2', 'int_method1', 'int_method2']
-	$for method in App {
+	$for method in App.methods {
 		println(attrs)
 		println(ret_type)
 		assert method in methods
