@@ -362,7 +362,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
-	$for method in T {
+	$for method in T(methods) {
 		$if res_type is Result {
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
@@ -465,7 +465,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 
 fn send_action<T>(action string, vars []string, mut app T) {
 	// TODO remove this function
-	$for method in T {
+	$for method in T(methods) {
 		$if ret_type is Result {
 			// search again for method
 			if action == method && attrs.len > 0 {
