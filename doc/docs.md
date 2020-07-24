@@ -75,7 +75,7 @@ you can do in V.
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
-    * [Reflection via codegen](#reflection-via-codegen)
+    * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
     * [Translating C/C++ to V](#translating-cc-to-v)
@@ -2145,26 +2145,43 @@ that does nothing.
 `if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
 the boolean expression is highly improbable. In the JS backend, that does nothing.
 
-## Reflection via codegen
+<a id='Reflection via codegen'>
+
+## Compile-time reflection
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format:
+serializers for any data format. V has compile-time `assert`, `if` and `for` constructs:
 
 ```v
 // TODO: not implemented yet
+
+struct User {
+    name string
+    age  int
+}
+
+// StructName.fields gives a compile-time array of a field metadata type
+$assert User.fields.len == 2
+// Check a field identifier:
+$assert User.fields[1].name == 'age'
+// Check the field type:
+$assert User.fields[0].Type is string
+
 fn decode<T>(data string) T {
     mut result := T{}
-    for field in T.fields {
-        if field.typ == 'string' {
-            result.$field = get_string(data, field.name)
-        } else if field.typ == 'int' {
-            result.$field = get_int(data, field.name)
+    // compile-time `for` loop
+    $for field in T.fields {
+        $if field.Type is string {
+            // $(string_expr) produces an identifier
+            result.$(field.name) = get_string(data, field.name)
+        } else $if field.Type is int {
+            result.$(field.name) = get_int(data, field.name)
         }
     }
     return result
 }
 
-// generates to:
+// `decode<User>` generates:
 fn decode_User(data string) User {
     mut result := User{}
     result.name = get_string(data, 'name')
