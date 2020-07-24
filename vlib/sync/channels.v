@@ -49,7 +49,8 @@ fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 const (
-	spinloops = 70 // how often to try to get data before to wait for semaphore
+	spinloops = 250 // how often to try to get data before to wait for semaphore
+	spinloops_sem = 200
 )
 
 enum BufferElemStat {
@@ -164,7 +165,16 @@ pub fn (mut ch Channel) push(src voidptr) {
 					}
 					src2 = src
 				}
-				ch.writesem.wait()
+				mut got_sem := false
+				for _ in 0 .. spinloops_sem {
+					if ch.writesem.try_wait() {
+						got_sem = true
+						break
+					}
+				}
+				if !got_sem {
+					ch.writesem.wait()
+				}
 				if have_swapped {
 					return
 				}
@@ -249,7 +259,16 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 					}
 					dest2 = dest
 				}
-				ch.readsem.wait()
+				mut got_sem := false
+				for _ in 0 .. spinloops_sem {
+					if ch.readsem.try_wait() {
+						got_sem = true
+						break
+					}
+				}
+				if !got_sem {
+					ch.readsem.wait()
+				}
 				if have_swapped {
 					return
 				}
