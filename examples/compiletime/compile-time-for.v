@@ -9,7 +9,7 @@ mut:
 fn main() {
 	println('All functions')
 	$for method in App.methods {
-		$if ret_type is int {
+		$if method.@type is int {
 			println('hi')
 		}
 		println('$method.name.len')
@@ -24,7 +24,7 @@ fn main() {
 		println('Attributes: $method.attrs')
 	}
 	$for field in App.fields {
-		$if ret_type is string {
+		$if field.@type is string {
 			println(field)
 		}
 	}
