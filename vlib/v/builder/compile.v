@@ -27,13 +27,15 @@ fn get_vtmp_filename(base_file_name, postfix string) string {
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
-	// Check if the output directory is writable
-	output_folder := os.base_dir(pref.out_name)
-	os.is_writable_folder(output_folder) or {
-		println("Path `${output_folder}` is not writable or does not exist`")
-		return
+	odir := os.base_dir(pref.out_name)
+	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
+	// without a folder component, just use the current folder instead:
+	output_folder := if odir.len == pref.out_name.len { os.getwd() } else { odir }
+	os.is_writable_folder(output_folder) or { 
+		// An early error here, is better than an unclear C error later:
+		verror(err)
+		exit(1)
 	}
-
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
 	if pref.is_verbose {
