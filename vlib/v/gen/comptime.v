@@ -141,7 +141,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
-	if node.for_val == 'method' {
+	if node.for_val == 'methods' {
 		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
 		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
 		methods << methods_with_attrs
