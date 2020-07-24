@@ -29,7 +29,6 @@ fn test_comptime_for_with_if() {
 	methods := ['int_method1', 'int_method2']
 	$for method in App if int {
 		println(attrs)
-		println(ret_type)
 		assert method in methods
 	}
 }
