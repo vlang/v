@@ -288,6 +288,7 @@ pub:
 	name string
 	attrs []string
 	ret_type string
+	@type int
 }
 
 pub struct FieldData {
@@ -297,4 +298,5 @@ pub:
 	typ string
 	is_pub bool
 	is_mut bool
+	@type int
 }
