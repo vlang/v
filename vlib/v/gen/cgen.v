@@ -98,6 +98,7 @@ mut:
 	has_main             bool
 	inside_const         bool
 	comp_for_method      string // $for method in T {
+	tmp_comp_for_ret_type table.Type
 }
 
 const (

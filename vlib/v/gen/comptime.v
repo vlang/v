@@ -88,8 +88,23 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
-fn (mut g Gen) comp_if(it ast.CompIf) {
+fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {
+		return
+	}
+	if it.is_typecheck {
+		println(g.tmp_comp_for_ret_type)
+		g.writeln('{ // \$if $it.val typecheck start')
+		it.type_match = g.tmp_comp_for_ret_type == it.typ
+		mut stmts := it.stmts
+		if !it.type_match {
+			stmts = []ast.Stmt{}
+			if it.has_else {
+				stmts = it.else_stmts
+			}
+		}
+		g.stmts(stmts)
+		g.writeln('} // typecheck end')
 		return
 	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
@@ -136,9 +151,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		/*if method.return_type != vweb_result_type { // table.void_type {
 			continue
 		}*/
-		if node.expected_type != table.Type(0) && method.return_type != node.expected_type {
-			continue
-		}
+		g.tmp_comp_for_ret_type = table.Type(0)
 		g.comp_for_method = method.name
 		g.writeln('\t// method $i')
 		g.write('\t')
@@ -160,16 +173,15 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.writeln('attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' + attrs.join(', ') + '}));')
 		}
 		g.write('\t')
-		if node.expected_type == table.Type(0) {
-			mut ret_type := g.table.types[0]
-			if int(method.return_type) <= g.table.types.len {
-				ret_type = g.table.types[int(method.return_type)]
-			}
-			if i == 0 {
-				g.write('string ')
-			}
-			g.writeln('ret_type = tos_lit("$ret_type.str()");')
+		mut ret_type := g.table.types[0]
+		if int(method.return_type) <= g.table.types.len {
+			ret_type = g.table.types[int(method.return_type)]
 		}
+		if i == 0 {
+			g.write('string ')
+		}
+		g.writeln('ret_type = tos_lit("$ret_type.str()");')
+		g.tmp_comp_for_ret_type = method.return_type
 		g.stmts(node.stmts)
 		i++
 		g.writeln('')

@@ -169,23 +169,19 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	p.check(.key_in)
 	// expr := p.expr(0)
 	typ := p.parse_type()
-	println(typ)
-	p.check(.dot)
+	//println(typ)
+	//p.check(.dot)
+	p.check(.lpar)
 	for_val := p.check_name()
-	mut expected_type := table.Type(0)
-	if p.tok.kind == .key_if {
-		p.next()
-		expected_type = p.parse_type()
-		p.scope.register('ret_type', ast.Var{
-			name: 'ret_type'
-			typ: table.string_type
-		})
-	}
+	p.check(.rpar)
+	p.scope.register('ret_type', ast.Var{
+		name: 'ret_type'
+		typ: table.string_type_idx
+	})
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
-		expected_type: expected_type
 		for_val: for_val
 		typ: typ
 	}
@@ -247,9 +243,15 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		skip = false
 	}
 	mut is_opt := false
+	mut is_typecheck := false
+	mut typ := table.Type(0)
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
+	} else if p.tok.kind == .key_is {
+		p.next()
+		typ = p.parse_type()
+		is_typecheck = true
 	}
 	if !skip {
 		stmts = p.parse_block()
@@ -257,8 +259,10 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	mut node := ast.CompIf{
 		is_not: is_not
 		is_opt: is_opt
+		is_typecheck: is_typecheck
 		pos: pos
 		val: val
+		typ: typ
 		stmts: stmts
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {

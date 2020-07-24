@@ -346,9 +346,9 @@ pub struct File {
 pub:
 	path         string
 	mod          Module
-	scope        &Scope
 	global_scope &Scope
 pub mut:
+	scope        &Scope
 	stmts        []Stmt
 	imports      []Import
 	errors       []errors.Error
@@ -530,8 +530,11 @@ pub:
 	val        string
 	stmts      []Stmt
 	is_not     bool
+	is_typecheck bool
+	typ        table.Type
 	pos        token.Position
 pub mut:
+	type_match bool
 	is_opt     bool
 	has_else   bool
 	else_stmts []Stmt
@@ -541,8 +544,7 @@ pub struct CompFor {
 pub:
 	val_var string
 	stmts   []Stmt
-	expected_type table.Type
-	methods bool
+	for_val string // .method or .field
 pub mut:
 	// expr    Expr
 	typ     table.Type
