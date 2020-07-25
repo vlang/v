@@ -194,5 +194,7 @@ fn is_gt(val string, dst Number) bool {
 
 fn test_sum_type_match() {
 	assert is_gt('3', 2)
+	assert !is_gt('3', 5)
+	assert is_gt('3', 1.2)
 	assert !is_gt('3', 3.5)
 }
