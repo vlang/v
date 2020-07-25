@@ -136,6 +136,9 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	if v.pref.os == .ios {
+		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
+	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
 	// '-Werror',
@@ -173,8 +176,8 @@ fn (mut v Builder) cc() {
 			verror('-fast is only supported on Linux right now')
 		}
 	}
-	if !v.pref.is_shared && v.pref.build_mode != .build_module &&
-		os.user_os() == 'windows' && !v.pref.out_name.ends_with('.exe') {
+	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
+		!v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
 	}
 	// linux_host := os.user_os() == 'linux'
@@ -196,13 +199,15 @@ fn (mut v Builder) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$pref.default_module_path${os.path_separator}cache$os.path_separator$v.pref.path' } else { '$pref.default_module_path$os.path_separator$v.pref.path' }
+		mut out_dir := if v.pref.path.starts_with('vlib') { '$pref.default_module_path${os.path_separator}cache$os.path_separator$v.pref.path' } else { '$pref.default_module_path${os.path_separator}cache/$v.pref.path' }
 		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
 		}
 		v.pref.out_name = '${out_dir}.o' // v.out_name
 		println('Building ${v.pref.out_name}...')
+		// println('v.table.imports:')
+		// println(v.table.imports)
 	}
 	debug_mode := v.pref.is_debug
 	mut debug_options := '-g3'
@@ -286,28 +291,36 @@ fn (mut v Builder) cc() {
 			println('$builtin_o_path not found... building module builtin')
 			os.system('$vexe build module vlib${os.path_separator}builtin')
 		}
+		*/
+		// TODO add `.unique()` to V arrays
+		mut unique_imports := []string{cap: v.table.imports.len}
 		for imp in v.table.imports {
+			if imp !in unique_imports {
+				unique_imports << imp
+			}
+		}
+		for imp in unique_imports {
 			if imp.contains('vweb') {
 				continue
-			} // not working
+			}
+			// not working
 			if imp == 'webview' {
 				continue
 			}
+			// println('cache: import "$imp"')
 			imp_path := imp.replace('.', os.path_separator)
-			path := '${pref.default_module_path}${os.path_separator}cache${os.path_separator}vlib${os.path_separator}${imp_path}.o'
+			path := '$pref.default_module_path${os.path_separator}cache${os.path_separator}vlib$os.path_separator${imp_path}.o'
 			// println('adding ${imp_path}.o')
 			if os.exists(path) {
 				libs += ' ' + path
-			}
-			else {
+			} else {
 				println('$path not found... building module $imp')
-				os.system('$vexe build module vlib${os.path_separator}$imp_path')
+				os.system('$vexe build-module vlib$os.path_separator$imp_path')
 			}
 			if path.ends_with('vlib/ui.o') {
 				a << '-framework Cocoa -framework Carbon'
 			}
 		}
-		*/
 	}
 	if v.pref.sanitize {
 		a << '-fsanitize=leak'
@@ -338,6 +351,9 @@ fn (mut v Builder) cc() {
 	// Min macos version is mandatory I think?
 	if v.pref.os == .mac {
 		a << '-mmacosx-version-min=10.7'
+	}
+	if v.pref.os == .ios {
+		a << '-miphoneos-version-min=10.0'
 	}
 	if v.pref.os == .windows {
 		a << '-municode'
@@ -378,8 +394,8 @@ fn (mut v Builder) cc() {
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
-	if !v.pref.is_bare && v.pref.build_mode != .build_module &&
-		v.pref.os in [.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
+	if !v.pref.is_bare && v.pref.build_mode != .build_module && v.pref.os in
+		[.linux, .freebsd, .openbsd, .netbsd, .dragonfly, .solaris, .haiku] {
 		linker_flags << '-lm'
 		linker_flags << '-lpthread'
 		// -ldl is a Linux only thing. BSDs have it in libc.
@@ -477,7 +493,7 @@ fn (mut v Builder) cc() {
 		println('$ccompiler took $diff ms')
 		println('=========\n')
 	}
-	v.timing_message('C ${ccompiler:3}: ${diff}ms')
+	v.timing_message('C ${ccompiler:3}', diff)
 	// Link it if we are cross compiling and need an executable
 	/*
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
@@ -522,11 +538,18 @@ fn (mut v Builder) cc() {
 				println('install upx with `brew install upx`')
 			}
 			$if linux {
-				println('install upx\n' + 'for example, on Debian/Ubuntu run `sudo apt install upx`')
+				println('install upx\n' +
+					'for example, on Debian/Ubuntu run `sudo apt install upx`')
 			}
 			$if windows {
 				// :)
 			}
+		}
+	}
+	if v.pref.os == .ios {
+		ret := os.system('ldid2 -S $v.pref.out_name')
+		if ret != 0 {
+			eprintln('failed to run ldid2, try: brew install ldid')
 		}
 	}
 }
@@ -664,7 +687,7 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (c &Builder) build_thirdparty_obj_files() {
+fn (mut c Builder) build_thirdparty_obj_files() {
 	for flag in c.get_os_cflags() {
 		if flag.value.ends_with('.o') {
 			rest_of_module_flags := c.get_rest_of_module_cflags(flag)

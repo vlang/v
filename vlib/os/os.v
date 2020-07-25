@@ -120,11 +120,12 @@ pub fn read_file(path string) ?string {
 	fsize := C.ftell(fp)
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
-	mut str := &byte(0)
-	unsafe { str = malloc(fsize + 1) }
-	C.fread(str, fsize, 1, fp)
-	str[fsize] = 0
-	return string(str,fsize)
+	unsafe {
+		mut str := malloc(fsize + 1)
+		C.fread(str, fsize, 1, fp)
+		str[fsize] = 0
+		return string(str,fsize)
+	}
 }
 
 /***************************** Utility  ops ************************/
@@ -280,7 +281,7 @@ pub fn fileno(cfile voidptr) int {
 	$if windows {
 		return C._fileno(cfile)
 	} $else {
-		cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
+		mut cfile_casted := &C.FILE(0) // FILE* cfile_casted = 0;
 		cfile_casted = cfile
 		// Required on FreeBSD/OpenBSD/NetBSD as stdio.h defines fileno(..) with a macro
 		// that performs a field access on its argument without casting from void*.
@@ -452,8 +453,21 @@ pub fn system(cmd string) int {
 			ret = C._wsystem(wcmd.to_wide())
 		}
 	} $else {
-		unsafe {
-			ret = C.system(charptr(cmd.str))
+		$if ios {
+			unsafe {
+				arg := [ c'/bin/sh', c'-c', byteptr(cmd.str), 0 ]
+				pid := 0
+				ret = C.posix_spawn(&pid, '/bin/sh', 0, 0, arg.data, 0)
+				status := 0
+				ret = C.waitpid(pid, &status, 0)
+				if C.WIFEXITED(status) {
+					ret = C.WEXITSTATUS(status)
+				}
+			}
+		} $else {
+			unsafe {
+				ret = C.system(charptr(cmd.str))
+			}
 		}
 	}
 	if ret == -1 {
@@ -908,7 +922,7 @@ pub fn write_file_array(path string, buffer array) ? {
 // read_file_array reads an array of `T` values from file `path`
 pub fn read_file_array<T>(path string) []T {
 	a := T{}
-	tsize := int(sizeof(a))    
+	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
 	mut fp := vfopen(path, 'rb')
 	if isnil(fp) {
@@ -921,7 +935,7 @@ pub fn read_file_array<T>(path string) []T {
 	len := fsize / tsize
 	buf := malloc(fsize)
 	C.fread(buf, fsize, 1, fp)
-	C.fclose(fp)    
+	C.fclose(fp)
 	return array{element_size: tsize data: buf len: len cap: len }
 }
 

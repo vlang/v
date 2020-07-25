@@ -5,6 +5,7 @@ module pref
 
 pub enum OS {
 	_auto // Reserved so .mac cannot be misunderstood as auto
+	ios
 	mac
 	linux
 	windows
@@ -26,6 +27,9 @@ pub fn os_from_string(os_str string) ?OS {
 		}
 		'windows' {
 			return .windows
+		}
+		'ios' {
+			return .ios
 		}
 		'mac' {
 			return .mac
@@ -74,6 +78,9 @@ pub fn (o OS) str() string {
 		._auto {
 			return 'RESERVED: AUTO'
 		}
+		.ios {
+			return 'iOS'
+		}
 		.mac {
 			return 'MacOS'
 		}
@@ -113,6 +120,9 @@ pub fn (o OS) str() string {
 pub fn get_host_os() OS {
 	$if linux {
 		return .linux
+	}
+	$if ios {
+		return .ios
 	}
 	$if macos {
 		return .mac

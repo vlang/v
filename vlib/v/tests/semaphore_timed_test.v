@@ -13,7 +13,7 @@ fn test_semaphore() {
 	sem := sync.new_semaphore()
 	go run_forever(shared abc, sem)
 	for _ in 0 .. 1000 {
-		abc[0]--
+		unsafe { abc[0]-- }
 	}
 	// wait for the 2 coroutines to finish using the semaphore
 	stopwatch := time.new_stopwatch({})

@@ -212,11 +212,13 @@ pub fn read_file(file_path string) ?string {
 	}
 	// BOM check
 	if raw_text.len >= 3 {
-		c_text := raw_text.str
-		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-			// skip three BOM bytes
-			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+		unsafe {
+			c_text := raw_text.str
+			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
+				// skip three BOM bytes
+				offset_from_begin := 3
+				raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+			}
 		}
 	}
 	return raw_text

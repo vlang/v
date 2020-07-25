@@ -46,13 +46,15 @@ pub fn (s System) draw() {
 }
 
 pub fn (mut s System) reset() {
-	for p in s.pool {
+	for i in 0..s.pool.len {
+		mut p := s.pool[i]
 		p.reset()
 		p.life_time = 0
 	}
-	for p_ in s.bin {
-		p_.reset()
-		p_.life_time = 0
+	for i in 0..s.bin.len {
+		mut p := s.pool[i]
+		p.reset()
+		p.life_time = 0
 	}
 }
 

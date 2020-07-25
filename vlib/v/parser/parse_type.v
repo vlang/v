@@ -143,7 +143,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 	mut typ := table.void_type
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
-		typ = p.parse_any_type(language, nr_muls > 0)
+		typ = p.parse_any_type(language, nr_muls > 0, true)
 		if typ == table.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 		}
@@ -163,13 +163,13 @@ pub fn (mut p Parser) parse_type() table.Type {
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool) table.Type {
+pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot bool) table.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.$name'
 	} else if language == .js {
 		name = 'JS.$name'
-	} else if p.peek_tok.kind == .dot {
+	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {

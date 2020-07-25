@@ -165,13 +165,14 @@ fn rw_callback(loop &C.picoev_loop, fd, events int, cb_arg voidptr) {
 			for {
 				pret := req.parse_request(s, 100)
 				if pret <= 0 && s.len > 0 {
-					C.memmove(buf, s.str, s.len)
+					unsafe { C.memmove(buf, s.str, s.len) }
 					p.idx[fd] = s.len
 					p.oidx[fd] = int(res.buf) - int(res.buf_start)
 					break
 				}
-				if req.method.str[0]==`p` || req.method.str[0]==`P` || req.method.str[0]==`d` || req.method.str[0]==`D`  {
-				  mut j := 0
+				c0 := unsafe { req.method.str[0] }
+				if c0 ==`p` || c0 == `P` || c0 == `d` || c0 == `D`  {
+					mut j := 0
 					for {
 						if j == req.num_headers {
 							break
@@ -238,7 +239,7 @@ pub fn new(port int, cb voidptr) &Picoev {
 
 	C.picoev_init(max_fds)
 	loop := C.picoev_create_loop(max_timeout)
-	pv := &Picoev{
+	mut pv := &Picoev{
 		loop: loop
 		cb: cb
 		date: C.get_date()

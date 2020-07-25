@@ -194,6 +194,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			rec_type = rec_type.set_flag(.atomic_f)
 		}
 		args << table.Arg{
+			pos: rec_start_pos
 			name: rec_name
 			is_mut: rec_mut
 			typ: rec_type
@@ -235,7 +236,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut
-			pos: p.tok.position()
+			pos: arg.pos
 			is_used: true
 			is_arg: true
 		})
@@ -341,7 +342,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		p.scope.register(arg.name, ast.Var{
 			name: arg.name
 			typ: arg.typ
-			pos: p.tok.position()
+			is_mut: arg.is_mut
+			pos: arg.pos
 			is_used: true
 			is_arg: true
 		})

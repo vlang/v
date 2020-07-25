@@ -84,10 +84,10 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 				}
 				return
 			}
-			node = if key < parent.keys[child_index] {
-				&mapnode(parent.children[child_index])
+			if key < parent.keys[child_index] {
+				node = unsafe {&mapnode(parent.children[child_index])}
 			} else {
-				&mapnode(parent.children[child_index + 1])
+				node = unsafe {&mapnode(parent.children[child_index + 1])}
 			}
 		}
 		mut i := 0
@@ -116,7 +116,7 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 		}
 		parent = node
 		child_index = i
-		node = &mapnode(node.children[child_index])
+		node = unsafe {&mapnode(node.children[child_index])}
 	}
 }
 
@@ -131,22 +131,30 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	if !isnil(y.children) {
 		z.children = &voidptr(malloc(int(children_bytes)))
 		for jj := degree - 1; jj >= 0; jj-- {
-			z.children[jj] = y.children[jj + degree]
+			unsafe {
+				z.children[jj] = y.children[jj + degree]
+			}
 		}
 	}
 	if isnil(n.children) {
 		n.children = &voidptr(malloc(int(children_bytes)))
 	}
-	n.children[n.len + 1] = n.children[n.len]
+	unsafe {
+		n.children[n.len + 1] = n.children[n.len]
+	}
 	for j := n.len; j > child_index; j-- {
 		n.keys[j] = n.keys[j - 1]
 		n.values[j] = n.values[j - 1]
-		n.children[j] = n.children[j - 1]
+		unsafe {
+			n.children[j] = n.children[j - 1]
+		}
 	}
 	n.keys[child_index] = y.keys[mid_index]
 	n.values[child_index] = y.values[mid_index]
-	n.children[child_index] = voidptr(y)
-	n.children[child_index + 1] = voidptr(z)
+	unsafe {
+		n.children[child_index] = voidptr(y)
+		n.children[child_index + 1] = voidptr(z)
+	}
 	n.len++
 }
 
@@ -164,7 +172,7 @@ fn (m SortedMap) get(key string, out voidptr) bool {
 		if isnil(node.children) {
 			break
 		}
-		node = &mapnode(node.children[i + 1])
+		node = unsafe {&mapnode(node.children[i + 1])}
 	}
 	return false
 }
@@ -183,7 +191,7 @@ fn (m SortedMap) exists(key string) bool {
 		if isnil(node.children) {
 			break
 		}
-		node = &mapnode(node.children[i + 1])
+		node = unsafe {&mapnode(node.children[i + 1])}
 	}
 	return false
 }
@@ -210,15 +218,17 @@ fn (mut n mapnode) remove_key(k string) bool {
 			return false
 		}
 		flag := if idx == n.len {true} else {false}
-		if (&mapnode(n.children[idx])).len < degree {
+		if unsafe {&mapnode(n.children[idx])}.len < degree {
 			n.fill(idx)
 		}
 
+		mut node := &mapnode(0)
 		if flag && idx > n.len {
-			return (&mapnode(n.children[idx - 1])).remove_key(k)
+			node = unsafe {&mapnode(n.children[idx - 1])}
 		} else {
-			return (&mapnode(n.children[idx])).remove_key(k)
+			node = unsafe {&mapnode(n.children[idx])}
 		}
+		return node.remove_key(k)
 	}
 }
 
@@ -232,34 +242,37 @@ fn (mut n mapnode) remove_from_leaf(idx int) {
 
 fn (mut n mapnode) remove_from_non_leaf(idx int) {
 	k := n.keys[idx]
-	if &mapnode(n.children[idx]).len >= degree {
-		mut current := &mapnode(n.children[idx])
+	if unsafe {&mapnode(n.children[idx])}.len >= degree {
+		mut current := unsafe {&mapnode(n.children[idx])}
 		for !isnil(current.children) {
-			current = &mapnode(current.children[current.len])
+			current = unsafe {&mapnode(current.children[current.len])}
 		}
 		predecessor := current.keys[current.len - 1]
 		n.keys[idx] = predecessor
 		n.values[idx] = current.values[current.len - 1]
-		(&mapnode(n.children[idx])).remove_key(predecessor)
-	} else if &mapnode(n.children[idx + 1]).len >= degree {
-		mut current := &mapnode(n.children[idx + 1])
+		mut node := unsafe {&mapnode(n.children[idx])}
+		node.remove_key(predecessor)
+	} else if unsafe {&mapnode(n.children[idx + 1])}.len >= degree {
+		mut current := unsafe {&mapnode(n.children[idx + 1])}
 		for !isnil(current.children) {
-			current = &mapnode(current.children[0])
+			current = unsafe {&mapnode(current.children[0])}
 		}
 		successor := current.keys[0]
 		n.keys[idx] = successor
 		n.values[idx] = current.values[0]
-		(&mapnode(n.children[idx + 1])).remove_key(successor)
+		mut node := unsafe {&mapnode(n.children[idx + 1])}
+		node.remove_key(successor)
 	} else {
 		n.merge(idx)
-		(&mapnode(n.children[idx])).remove_key(k)
+		mut node := unsafe {&mapnode(n.children[idx])}
+		node.remove_key(k)
 	}
 }
 
 fn (mut n mapnode) fill(idx int) {
-	if idx != 0 && &mapnode(n.children[idx - 1]).len >= degree {
+	if idx != 0 && unsafe {&mapnode(n.children[idx - 1])}.len >= degree {
 		n.borrow_from_prev(idx)
-	} else if idx != n.len && &mapnode(n.children[idx + 1]).len >= degree {
+	} else if idx != n.len && unsafe {&mapnode(n.children[idx + 1])}.len >= degree {
 		n.borrow_from_next(idx)
 	} else if idx != n.len {
 		n.merge(idx)
@@ -269,21 +282,25 @@ fn (mut n mapnode) fill(idx int) {
 }
 
 fn (mut n mapnode) borrow_from_prev(idx int) {
-	mut child := &mapnode(n.children[idx])
-	mut sibling := &mapnode(n.children[idx - 1])
+	mut child := unsafe {&mapnode(n.children[idx])}
+	mut sibling := unsafe {&mapnode(n.children[idx - 1])}
 	for i := child.len - 1; i >= 0; i-- {
 		child.keys[i + 1] = child.keys[i]
 		child.values[i + 1] = child.values[i]
 	}
 	if !isnil(child.children) {
 		for i := child.len; i >= 0; i-- {
-			child.children[i + 1] = child.children[i]
+			unsafe {
+				child.children[i + 1] = child.children[i]
+			}
 		}
 	}
 	child.keys[0] = n.keys[idx - 1]
 	child.values[0] = n.values[idx - 1]
 	if !isnil(child.children) {
-		child.children[0] = sibling.children[sibling.len]
+		unsafe {
+			child.children[0] = sibling.children[sibling.len]
+		}
 	}
 	n.keys[idx - 1] = sibling.keys[sibling.len - 1]
 	n.values[idx - 1] = sibling.values[sibling.len - 1]
@@ -292,12 +309,14 @@ fn (mut n mapnode) borrow_from_prev(idx int) {
 }
 
 fn (mut n mapnode) borrow_from_next(idx int) {
-	mut child := &mapnode(n.children[idx])
-	mut sibling := &mapnode(n.children[idx + 1])
+	mut child := unsafe {&mapnode(n.children[idx])}
+	mut sibling := unsafe {&mapnode(n.children[idx + 1])}
 	child.keys[child.len] = n.keys[idx]
 	child.values[child.len] = n.values[idx]
 	if !isnil(child.children) {
-		child.children[child.len + 1] = sibling.children[0]
+		unsafe {
+			child.children[child.len + 1] = sibling.children[0]
+		}
 	}
 	n.keys[idx] = sibling.keys[0]
 	n.values[idx] = sibling.values[0]
@@ -307,7 +326,9 @@ fn (mut n mapnode) borrow_from_next(idx int) {
 	}
 	if !isnil(sibling.children) {
 		for i := 1; i <= sibling.len; i++ {
-			sibling.children[i - 1] = sibling.children[i]
+			unsafe {
+				sibling.children[i - 1] = sibling.children[i]
+			}
 		}
 	}
 	child.len++
@@ -315,8 +336,8 @@ fn (mut n mapnode) borrow_from_next(idx int) {
 }
 
 fn (mut n mapnode) merge(idx int) {
-	mut child := &mapnode(n.children[idx])
-	sibling := &mapnode(n.children[idx + 1])
+	mut child := unsafe {&mapnode(n.children[idx])}
+	sibling := unsafe {&mapnode(n.children[idx + 1])}
 	child.keys[mid_index] = n.keys[idx]
 	child.values[mid_index] = n.values[idx]
 	for i in 0..sibling.len {
@@ -325,7 +346,9 @@ fn (mut n mapnode) merge(idx int) {
 	}
 	if !isnil(child.children) {
 		for i := 0; i <= sibling.len; i++ {
-			child.children[i + degree] = sibling.children[i]
+			unsafe {
+				child.children[i + degree] = sibling.children[i]
+			}
 		}
 	}
 	for i := idx + 1; i < n.len; i++ {
@@ -333,7 +356,9 @@ fn (mut n mapnode) merge(idx int) {
 		n.values[i - 1] = n.values[i]
 	}
 	for i := idx + 2; i <= n.len; i++ {
-		n.children[i - 1] = n.children[i]
+		unsafe {
+			n.children[i - 1] = n.children[i]
+		}
 	}
 	child.len += sibling.len + 1
 	n.len--
@@ -355,7 +380,7 @@ pub fn (mut m SortedMap) delete(key string) {
 		if isnil(m.root.children) {
 			return
 		} else {
-			m.root = &mapnode(m.root.children[0])
+			m.root = unsafe {&mapnode(m.root.children[0])}
 		}
 		// free(tmp)
 	}
@@ -369,13 +394,13 @@ fn (n &mapnode) subkeys(mut keys []string, at int) int {
 		// Traverse children and insert
 		// keys inbetween children
 		for i in 0..n.len {
-			child := &mapnode(n.children[i])
+			child := unsafe {&mapnode(n.children[i])}
 			position += child.subkeys(mut keys, position)
 			keys[position] = n.keys[i]
 			position++
 		}
 		// Insert the keys of the last child
-		child := &mapnode(n.children[n.len])
+		child := unsafe {&mapnode(n.children[n.len])}
 		position += child.subkeys(mut keys, position)
 	} else {
 		// If leaf, insert keys

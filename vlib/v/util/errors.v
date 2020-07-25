@@ -40,10 +40,13 @@ pub fn new_error_manager() &EManager {
 }
 
 pub fn (e &EManager) set_support_color(b bool) {
-	e.support_color = b
+	unsafe {
+		mut me := e
+		me.support_color = b
+	}
 }
 
-fn bold(msg string) string {
+pub fn bold(msg string) string {
 	if !emanager.support_color {
 		return msg
 	}

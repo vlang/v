@@ -49,8 +49,8 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
       When OS is `cross`, V will attempt to output cross-platform C code.
-      List of OS supported by V: `linux`, `windows`, `mac`, `freebsd`, `openbsd`, `netbsd`,
-                                 `dragonfly`, `solaris`, `android` and `haiku`.
+      List of OS supported by V: `linux`, `windows`, `ios`, `mac`, `freebsd`, `openbsd`,
+                                 `netbsd`, `dragonfly`, `solaris`, `android` and `haiku`.
 
    -sanitize
       Pass flags related to sanitization to the C compiler.

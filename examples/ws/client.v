@@ -1,117 +1,53 @@
 module main
 
 import net.websocket
-import eventbus
-import readline
-
-const (
-	eb = eventbus.new()
-)
+import time
 
 fn main() {
-	// println(sss)
-	/*
-	for sss in 0..10 {
-		mut bm := benchmark.new_benchmark()
-		for i in 0..10000 {
-			for a, t in tests {
-				ss := ws.utf8_validate(t.str, t.len)
-				if !ss {
-					panic("failed")
-				}
-				//println("${a}:${ss}")
-			}
-		}
-		bm.stop()
-		println( bm.total_message('remarks about the benchmark') )
-	}
-*/
-	mut ws := websocket.new('ws://localhost:9001/getCaseCount')
-	// ws.nonce_size = 16 // try this, if it does not work with your server
-	// defer { }
+	//URLs working for testing, reply the same sent messages
+	ws_test('ws://echo.websocket.org')
+	ws_test('wss://echo.websocket.org')
+}
+
+fn ws_test(uri string) {
+	println('connecting to $uri ...')
+	mut ws := websocket.new(uri)
 	ws.subscriber.subscribe('on_open', on_open)
 	ws.subscriber.subscribe('on_message', on_message)
 	ws.subscriber.subscribe('on_error', on_error)
 	ws.subscriber.subscribe('on_close', on_close)
-	// go
 	ws.connect()
-	ws.read()
-	// time.usleep(2000000)
-	// go ws.listen()
-	// term.erase_clear()
-	/*
-	text := read_line("[client]:")
-	if text == "close" {
-		ws.close(1005, "done")
-		time.usleep(1000000)
-		exit(0)
+	// Needs another thread, generates an infinite loop for listen
+	go ws.listen()
+	for i := 0; i < 10; i++ {
+		text := 'a'.repeat(i)
+		println(text)
+		// Send a text to the server
+		ws.write(text.str, text.len, .text_frame)
+		// Only for test purposes, to give time to receive message
+		time.sleep_ms(100)
 	}
-	ws.write(text, .text_frame)
-*/
-	/*
-	time.usleep(1000000)
-	ws.read()
-*/
-	// ws.close(1005, "done")	//
-	// ws.close(1005, "done")
-	// read_line("wait")
+	// Only for test purposes, to give time to receive message
+	time.sleep_ms(100)
 }
 
-fn read_line(text string) string {
-	mut r := readline.Readline{}
-	mut output := r.read_line(text + ' ') or {
-		panic(err)
-	}
-	output = output.replace('\n', '')
-	if output.len <= 0 {
-		return ''
-	}
-	return output
-}
-
-fn on_open(sender voidptr, ws &websocket.Client, x voidptr) {
+fn on_open(ws &websocket.Client, x, y voidptr) {
 	println('websocket opened.')
 }
 
-fn on_message(sender voidptr, mut ws websocket.Client, msg &websocket.Message) {
-	println('Message recieved. Sending it back.')
+fn on_message(ws &websocket.Client, msg &websocket.Message, x voidptr) {
 	typ := msg.opcode
 	if typ == .text_frame {
-		if ws.uri.ends_with('getCaseCount') {
-			num := int(msg.payload)
-			ws.close(1005, 'done')
-			start_tests(mut ws, num)
-			return
-		}
-		// println("Message: $msg")
-		ws.write(msg.payload, msg.payload_len, .text_frame)
+		println('Message: ${cstring_to_vstring(msg.payload)}')
 	} else {
-		println('Binary message.')
-		ws.write(msg.payload, msg.payload_len, .binary_frame)
+		println('Binary message: $msg')
 	}
 }
 
-fn start_tests(mut ws websocket.Client, num int) {
-	for i := 1; i < num; i++ {
-		println('Running test: ' + i.str())
-		ws.uri = 'ws://localhost:9001/runCase?case=${i.str()}&agent=vws/1.0a'
-		if ws.connect() >= 0 {
-			ws.listen()
-		}
-	}
-	println('Done!')
-	ws.uri = 'ws://localhost:9001/updateReports?agent=vws/1.0a'
-	if ws.connect() >= 0 {
-		ws.read()
-		ws.close(1000, 'disconnecting...')
-	}
-	exit(0)
-}
-
-fn on_close(sender voidptr, ws &websocket.Client, x voidptr) {
+fn on_close(ws &websocket.Client, x, y voidptr) {
 	println('websocket closed.')
 }
 
-fn on_error(sender voidptr, ws &websocket.Client, x voidptr) {
+fn on_error(ws &websocket.Client, x, y voidptr) {
 	println('we have an error.')
 }

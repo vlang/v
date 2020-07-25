@@ -52,7 +52,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = string(argv[i])
-		args << string(argv[i])
+		args << unsafe {string(argv[i])}
 	}
 	return args
 }

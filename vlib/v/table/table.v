@@ -197,6 +197,22 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	panic('get_type_symbol: invalid type (typ=$typ idx=${idx}). Compiler bug. This should never happen')
 }
 
+// get_final_type_symbol follows aliases until it gets to a "real" Type
+[inline]
+pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
+	idx := typ.idx()
+	if idx > 0 {
+		current_type := t.types[idx]
+		if current_type.kind == .alias {
+			alias_info := current_type.info as Alias
+			return t.get_final_type_symbol(alias_info.parent_type)
+		}
+		return &t.types[idx]
+	}
+	// this should never happen
+	panic('get_final_type_symbol: invalid type (typ=$typ idx=${idx}). Compiler bug. This should never happen')
+}
+
 [inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	typ_sym := t.get_type_symbol(typ)
@@ -473,6 +489,7 @@ pub fn (t &Table) mktyp(typ Type) Type {
 // this is not optimal
 pub fn (table &Table) qualify_module(mod, file_path string) string {
 	for m in table.imports {
+		//if m.contains('gen') { println('qm=$m') }
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
 			m_path := m_parts.join(os.path_separator)
@@ -484,7 +501,7 @@ pub fn (table &Table) qualify_module(mod, file_path string) string {
 	return mod
 }
 
-pub fn (table &Table) register_fn_gen_type(fn_name string, typ Type) {
+pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 	mut a := table.fn_gen_types[fn_name]
 	if typ in a {
 		return

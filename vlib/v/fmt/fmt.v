@@ -183,8 +183,8 @@ fn (mut f Fmt) adjust_complete_line() {
 			}
 		}
 		// emergency fallback: decrease penalty in front of long unbreakable parts
-		if i > 0 && buf.len > max_len[3] - max_len[1] && f.penalties[i - 1] > 0 {
-			f.penalties[i - 1] = if buf.len >= max_len[2] { 0 } else { 1 }
+		if i > 0 && buf.len > 55 && f.penalties[i - 1] > 0 {
+			f.penalties[i - 1] = if buf.len >= 72 { 0 } else { 1 }
 		}
 	}
 }
@@ -305,11 +305,27 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				else {}
 			}
 		}
-		ast.CompFor {}
+		ast.CompFor {
+			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
+			f.writeln('\$for $it.val_var in ${typ}($it.kind.str()) {')
+			f.stmts(it.stmts)
+			f.writeln('}')
+		}
 		ast.CompIf {
 			inversion := if it.is_not { '!' } else { '' }
 			is_opt := if it.is_opt { ' ?' } else { '' }
-			f.writeln('\$if $inversion$it.val$is_opt {')
+			mut typecheck := ''
+			if it.kind == .typecheck {
+				typ := f.no_cur_mod(f.table.type_to_str(it.tchk_type))
+				typecheck = ' is $typ'
+				f.write('\$if $inversion')
+				f.expr(it.tchk_expr)
+				f.write(is_opt)
+				f.write(typecheck)
+				f.writeln(' {')
+			} else {
+				f.writeln('\$if $inversion$it.val$is_opt {')
+			}
 			f.stmts(it.stmts)
 			if it.has_else {
 				f.writeln('} \$else {')
@@ -740,7 +756,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
-	match node {
+	match mut node {
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}
@@ -1246,11 +1262,25 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		}
 		f.expr_bufs << f.out.str()
 		mut penalty := 3
-		if node.left is ast.InfixExpr || node.left is ast.ParExpr {
-			penalty--
+		match node.left as left {
+			ast.InfixExpr {
+				if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
+					penalty--
+				}
+			}
+			ast.ParExpr {
+				penalty = 1
+			}
+			else {}
 		}
-		if node.right is ast.InfixExpr || node.right is ast.ParExpr {
-			penalty--
+		match node.right as right {
+			ast.InfixExpr {
+				penalty--
+			}
+			ast.ParExpr {
+				penalty = 1
+			}
+			else {}
 		}
 		f.penalties << penalty
 		// combine parentheses level with operator precedence to form effective precedence
@@ -1286,10 +1316,25 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
+		// NOTE: taken from checker in if_expr(). used for smartcast
+		mut is_variable := false
+		if branch.cond is ast.InfixExpr {
+			infix := branch.cond as ast.InfixExpr
+			if infix.op == .key_is &&
+				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&
+				infix.right is ast.Type {
+				//right_expr := infix.right as ast.Type
+				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+					.variable } else { true }
+			}
+		}
 		if i == 0 {
 			f.comments(branch.comments, {})
 			f.write('if ')
 			f.expr(branch.cond)
+			if is_variable && branch.left_as_name.len > 0 {
+				f.write(' as $branch.left_as_name')
+			}
 			f.write(' {')
 		} else if i < it.branches.len - 1 || !it.has_else {
 			if branch.comments.len > 0 {
@@ -1300,6 +1345,9 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			f.write('else if ')
 			f.expr(branch.cond)
+			if is_variable && branch.left_as_name.len > 0 {
+				f.write(' as $branch.left_as_name')
+			}
 			f.write(' {')
 		} else if i == it.branches.len - 1 && it.has_else {
 			if branch.comments.len > 0 {
