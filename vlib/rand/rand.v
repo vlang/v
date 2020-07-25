@@ -6,6 +6,8 @@ module rand
 import rand.util
 import rand.wyrand
 
+import time
+
 // Configuration struct for creating a new instance of the default RNG.
 pub struct PRNGConfigStruct {
 	seed []u32 = util.time_seed_array(2)
@@ -181,4 +183,52 @@ pub fn uuid_v4() string {
 		buf[buflen] = 0
 	}
 	return string(buf, buflen)
+}
+
+const(
+	ulid_encoding = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+)
+
+pub fn ulid() string {
+	buflen := 26
+	mut buf := malloc(27)
+
+	// time section
+	mut t := u64(time.utc().unix_time()) * 1000
+	println("t unix: ${t} ${t.hex()}")
+	mut i := 9
+	for i >= 0 {
+		unsafe{
+			buf[i] = ulid_encoding[t & 0x1F]
+		}
+		t = t >> 5
+		i--
+	}
+
+	// first rnd set
+	mut x := default_rng.u64()
+	i = 10
+	for i < 19 {
+		unsafe{
+			buf[i] = ulid_encoding[x & 0x1F]
+		}
+		x = x >> 5
+		i++
+	}
+
+	// second rnd set
+	x = default_rng.u64()
+	for i < 26 {
+		unsafe{
+			buf[i] = ulid_encoding[x & 0x1F]
+		}
+		x = x >> 5
+		i++
+	}
+
+	unsafe{
+		buf[27] = 0
+	}
+
+	return string(buf,buflen)
 }
