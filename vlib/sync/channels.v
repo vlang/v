@@ -1,5 +1,7 @@
 module sync
 
+import time
+
 #flag windows -I @VROOT/thirdparty/stdatomic/win
 #flag linux -I @VROOT/thirdparty/stdatomic/nix
 #flag darwin -I @VROOT/thirdparty/stdatomic/nix
@@ -49,8 +51,9 @@ fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 const (
-	spinloops = 250 // how often to try to get data before to wait for semaphore
-	spinloops_sem = 200
+	 // how often to try to get data without blocking before to wait for semaphore
+	spinloops = 250
+	spinloops_sem = 120
 )
 
 enum BufferElemStat {
@@ -95,8 +98,31 @@ pub fn new_channel<T>(n u32) &Channel {
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
+	ch.timed_push(src, -1)
+}
+
+pub fn (mut ch Channel) timed_push(src voidptr, timeout time.Duration) bool {
+	spinloops_, spinloops_sem_ := if i64(timeout) < 0 { spinloops, spinloops_sem } else { 1, 1 }
 	if ch.queue_length > 0 { // buffered channel
-		ch.writesem.wait()
+		if i64(timeout) > 0 {
+			if !ch.writesem.timed_wait(timeout) {
+				return false
+			}
+		} else {
+			mut got_sem := false
+			for _ in 0 .. spinloops_sem_ {
+				if ch.writesem.try_wait() {
+					got_sem = true
+					break
+				}
+				if i64(timeout) == 0 {
+					return false
+				}
+			}
+			if !got_sem {
+				ch.writesem.wait()
+			}
+		}
 		mut wr_idx := C.atomic_load_u32(&ch.buf_elem_write_idx)
 		for {
 			mut new_wr_idx := wr_idx + 1
@@ -125,7 +151,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 		}
 		C.atomic_store_byte(status_adr, byte(BufferElemStat.written))
 		ch.readsem.post()
-		return
+		return true
 	}
 	// unbuffered channel
 	mut wradr := C.atomic_load(&ch.write_adr)
@@ -139,7 +165,7 @@ pub fn (mut ch Channel) push(src voidptr) {
 					nulladr = voidptr(0)
 				}
 				ch.readsem.post()
-				return
+				return true
 			}
 		}
 		// try to advertise current object as readable
@@ -158,25 +184,35 @@ pub fn (mut ch Channel) push(src voidptr) {
 				mut src2 := src
 				// Try to spin wait for src to be read
 				mut have_swapped := false
-				for _ in 0 .. spinloops {
+				for _ in 0 .. spinloops_ {
 					if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 						have_swapped = true
 						break
 					}
 					src2 = src
 				}
-				mut got_sem := false
-				for _ in 0 .. spinloops_sem {
-					if ch.writesem.try_wait() {
-						got_sem = true
-						break
+				if i64(timeout) > 0 {
+					// TODO this has to be absolute time in multi receiver scenarios
+					if !ch.writesem.timed_wait(timeout) {
+						return false
+					}
+				} else {
+					mut got_sem := false
+					for _ in 0 .. spinloops_sem_ {
+						if ch.writesem.try_wait() {
+							got_sem = true
+							break
+							if i64(timeout) == 0 {
+								return false
+							}
+						}
+					}
+					if !got_sem {
+						ch.writesem.wait()
 					}
 				}
-				if !got_sem {
-					ch.writesem.wait()
-				}
 				if have_swapped {
-					return
+					return true
 				}
 				if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 					break
@@ -185,15 +221,38 @@ pub fn (mut ch Channel) push(src voidptr) {
 					ch.writesem.post()
 				}
 			}
-			return
+			return true
 		}
 		wradr = C.atomic_load(&ch.write_adr)
 	}
 }
 
 pub fn (mut ch Channel) pop(dest voidptr) {
+	ch.timed_pop(dest, -1)
+}
+
+pub fn (mut ch Channel) timed_pop(dest voidptr, timeout time.Duration) bool {
+	spinloops_, spinloops_sem_ := if i64(timeout) < 0 { spinloops, spinloops_sem } else { 1, 1 }
 	if ch.queue_length > 0 { // buffered channel - try to read element from buffer
-		ch.readsem.wait()
+		if i64(timeout) > 0 {
+			if !ch.readsem.timed_wait(timeout) {
+				return false
+			}
+		} else {
+			mut got_sem := false
+			for _ in 0 .. spinloops_sem_ {
+				if ch.readsem.try_wait() {
+					got_sem = true
+					break
+				}
+				if i64(timeout) == 0 {
+					return false
+				}
+			}
+			if !got_sem {
+				ch.readsem.wait()
+			}
+		}
 		mut rd_idx := C.atomic_load_u32(&ch.buf_elem_read_idx)
 		for {
 			mut new_rd_idx := rd_idx + 1
@@ -222,7 +281,7 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 		}
 		C.atomic_store_byte(status_adr, byte(BufferElemStat.unused))
 		ch.writesem.post()
-		return
+		return true
 	}
 	// unbuffered channel
 	mut rdadr := if ch.queue_length == 0 { C.atomic_load(&ch.read_adr) } else { voidptr(0) }
@@ -236,7 +295,7 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 					nulladr = voidptr(0)
 				}
 				ch.writesem.post()
-				return
+				return true
 			}
 		}
 		// try to advertise `dest` as writable
@@ -252,25 +311,34 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 			for {
 				mut dest2 := dest
 				mut have_swapped := false
-				for _ in 0 .. spinloops {
+				for _ in 0 .. spinloops_ {
 					if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 						have_swapped = true
 						break
 					}
 					dest2 = dest
 				}
-				mut got_sem := false
-				for _ in 0 .. spinloops_sem {
-					if ch.readsem.try_wait() {
-						got_sem = true
-						break
+				if i64(timeout) > 0 {
+					if !ch.readsem.timed_wait(timeout) {
+						return false
+					}
+				} else {
+					mut got_sem := false
+					for _ in 0 .. spinloops_sem_ {
+						if ch.readsem.try_wait() {
+							got_sem = true
+							break
+						}
+						if i64(timeout) == 0 {
+							return false
+						}
+					}
+					if !got_sem {
+						ch.readsem.wait()
 					}
 				}
-				if !got_sem {
-					ch.readsem.wait()
-				}
 				if have_swapped {
-					return
+					return true
 				}
 				if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 					break
@@ -279,7 +347,7 @@ pub fn (mut ch Channel) pop(dest voidptr) {
 					ch.readsem.post()
 				}
 			}
-			return
+			return true
 		}
 	}
 	rdadr = C.atomic_load(&ch.read_adr)
