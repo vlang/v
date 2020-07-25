@@ -2278,8 +2278,37 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.errors << c2.errors
 				c.nr_warnings += c2.nr_warnings
 				c.nr_errors += c2.nr_errors
+			} else {
+				if node.method_var !is ast.StringLiteral {
+					c.error('method `$node.method_name` is not a string literal', node.method_var.position())
+					return table.void_type
+				}
+				lit := node.method_var as ast.StringLiteral
+				method := c.table.type_find_method(node.sym, lit.val) or {
+					c.error('unknown method `$lit.val`', lit.pos)
+					return table.void_type
+				}
+				for i, arg in node.args {
+					exp_arg_typ := method.args[i + 1].typ
+					exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
+					c.expected_type = exp_arg_typ
+					got_type := c.expr(arg.expr)
+					node.args[i].typ = got_type
+
+					if !c.check_types(got_type, exp_arg_typ) {
+						got_arg_sym := c.table.get_type_symbol(got_type)
+						if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
+							continue
+						}
+						if got_type != table.void_type {
+							c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${node.sym.name}.$lit`', lit.pos)
+						}
+					}
+				}
+
+				return method.return_type
 			}
-			return c.table.find_type_idx('vweb.Result')
+			//return c.table.find_type_idx('vweb.Result')
 			// return table.void_type
 		}
 		ast.ConcatExpr {

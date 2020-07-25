@@ -400,6 +400,10 @@ pub fn cc_from_string(cc_str string) pref.CompilerType {
 fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	p.check(.dollar)
 	method_name := p.check_name()
+	method_data := p.scope.find_var(method_name) or {
+		p.error('unknown variable `$method_name`')
+		return ast.ComptimeCall{}
+	}
 	/*
 	mut j := 0
 	sym := p.table.get_type_symbol(typ)
@@ -431,6 +435,7 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 		args_var = p.tok.lit
 		p.next()
 	}
+	args := p.call_args()
 	p.check(.rpar)
 	if p.tok.kind == .key_orelse {
 		p.check(.key_orelse)
@@ -441,6 +446,8 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 	return ast.ComptimeCall{
 		left: left
 		method_name: method_name
+		method_var: method_data.expr
+		args: args
 		args_var: args_var
 	}
 }
