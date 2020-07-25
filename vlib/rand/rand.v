@@ -131,12 +131,11 @@ pub fn f64_in_range(min, max f64) f64 {
 
 const (
 	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-	hex_chars = '0123456789abcdef'
 )
 
 pub fn string(len int) string {
 	mut buf := malloc(len)
-	for i in 0..len {
+	for i in 0 .. len {
 		unsafe {
 			buf[i] = chars[intn(chars.len)]
 		}
@@ -154,9 +153,6 @@ pub fn uuid_v4() string {
 		mut c := 0
 		for c < 16 && i_buf < 36 {
 			mut d := byte(x) & 0x0F
-			if i_buf == 19 {
-				d = (d & 0x03) + 0x08
-			}
 			unsafe {
 				buf[i_buf] = if d > 9 { d + 87 } else { d + 48 }
 			}
@@ -165,11 +161,13 @@ pub fn uuid_v4() string {
 			x = x >> 4
 		}
 	}
+	n := ((byte(default_rng.u64()) & 0x0F) & 0x03) + 0x08
 	unsafe {
 		buf[8] = `-`
 		buf[13] = `-`
 		buf[14] = `4`
 		buf[18] = `-`
+		buf[19] = if n > 9 { n + 87 } else { n + 48 }
 		buf[23] = `-`
 		buf[36] = 0
 	}
