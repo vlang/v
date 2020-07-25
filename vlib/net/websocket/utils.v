@@ -4,6 +4,7 @@ import rand
 import crypto.sha1
 import encoding.base64
 
+[inline]
 fn htonl64(payload_len u64) byteptr {
 	unsafe {
 		mut ret := malloc(8)
@@ -19,6 +20,7 @@ fn htonl64(payload_len u64) byteptr {
 	}
 }
 
+[inline]
 fn create_masking_key() []byte {
 	mask_bit := byte(rand.intn(255))
 	buf := [`0`].repeat(4)
@@ -28,6 +30,7 @@ fn create_masking_key() []byte {
 	return buf
 }
 
+[inline]
 fn create_key_challenge_response(seckey string) string {
 	guid := '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 	sha1buf := seckey + guid
@@ -41,6 +44,7 @@ fn create_key_challenge_response(seckey string) string {
 	return b64
 }
 
+[inline]
 fn get_nonce(nonce_size int) string {
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'

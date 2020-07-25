@@ -1,5 +1,6 @@
 module websocket
 
+[inline]
 fn (mut ws Client) read_handshake(seckey string) {
 	ws.log.debug('reading handshake...')
 	mut bytes_read := 0
@@ -27,6 +28,7 @@ fn (mut ws Client) read_handshake(seckey string) {
 	ws.handshake_handler(string(byteptr(buffer)), seckey)
 }
 
+[inline]
 fn (mut ws Client) handshake_handler(handshake_response, seckey string) {
 	ws.log.debug('handshake_handler:\r\n$handshake_response')
 	lines := handshake_response.split_into_lines()

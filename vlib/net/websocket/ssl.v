@@ -6,6 +6,7 @@ const (
 	is_used = openssl.is_used
 )
 
+[inline]
 fn (mut ws Client) connect_ssl() {
 	ws.log.info('Using secure SSL connection')
 	C.SSL_load_error_strings()
