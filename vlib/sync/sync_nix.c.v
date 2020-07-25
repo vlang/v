@@ -45,13 +45,7 @@ struct CondAttr {
 }
 
 pub struct Semaphore {
-	/*
-	$if macos {
-		sem &MacOSX_Semaphore
-	} $else {
-		sem &PosixSemaphore
-	}
-	*/
+mut:
 	sem voidptr // since the above does not work, yet
 }
 
