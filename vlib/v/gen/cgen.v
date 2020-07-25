@@ -64,6 +64,7 @@ mut:
 	inside_ternary        int // ?: comma separated statements on a single line
 	inside_map_postfix    bool // inside map++/-- postfix expr
 	inside_map_infix      bool // inside map<</+=/-= infix expr
+	inside_sumtype_match  bool // inside match with cond being sum type 
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
 	stmt_path_pos         []int
@@ -2218,8 +2219,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
+			if g.inside_sumtype_match && node.left_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
+			if g.inside_sumtype_match && node.right_type.is_ptr() {
+				g.write('*')
+			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')
@@ -2265,6 +2272,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
+	g.inside_sumtype_match = type_sym.kind == .sum_type
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
