@@ -67,9 +67,9 @@ fn C.fclose() int
 
 fn C.pclose() int
 
-
 fn C.system() int
-
+fn C.posix_spawn(&int, charptr, voidptr, voidptr, &charptr, voidptr) int
+fn C.waitpid(int, voidptr, int) int
 
 fn C.setenv(charptr) int
 

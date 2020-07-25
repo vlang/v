@@ -14,7 +14,7 @@ const (
 )
 
 fn main() {
-	app := &App{
+	mut app := &App{
 		width: 800
 		height: 400
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)

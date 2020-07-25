@@ -18,8 +18,11 @@ fn test_mutable() {
 	mut x := Alphabet(Abc{'test'})
 	if x is Abc {
 		y := Abc{}
-		x = &y
-		assert x == &y
+		mut mx := x
+		mx = &y
+		assert mx == &y
+		assert u64(mx) == u64(&y)
+		assert u64(x) != u64(&y)
 	}
 }
 
@@ -47,8 +50,10 @@ struct Test {
 fn test_mutable_with_struct() {
 	mut x := Test{Abc{'test'}}
 	if x.abc is Abc as test {
-		test.val = 'test'
-		assert test.val == 'test'
+		mut ttt := test
+		assert u64(ttt) == u64(ttt)        
+		ttt.val = 'test'
+		assert ttt.val == 'test'
 	}
 }
 

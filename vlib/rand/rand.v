@@ -18,7 +18,7 @@ fn init() {
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
 pub fn new_default(config PRNGConfigStruct) &wyrand.WyRandRNG {
-	rng := &wyrand.WyRandRNG{}
+	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
 }
@@ -131,12 +131,47 @@ pub fn f64_in_range(min, max f64) f64 {
 
 const (
 	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
+	hex_chars = '0123456789abcdef'
 )
 
 pub fn string(len int) string {
 	mut buf := malloc(len)
 	for i in 0..len {
-		buf[i] = chars[intn(chars.len)]
+		unsafe {
+			buf[i] = chars[intn(chars.len)]
+		}
 	}
 	return string(buf, len)
+}
+
+// rand.uuid_v4 generate a completely random UUID (v4)
+// See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
+pub fn uuid_v4() string {
+	mut buf := malloc(37)
+	mut i_buf := 0
+	for i_buf < 36 {
+		mut x := default_rng.u64()
+		mut c := 0
+		for c < 16 && i_buf < 36 {
+			mut d := byte(x) & 0x0F
+			if i_buf == 19 {
+				d = (d & 0x03) + 0x08
+			}
+			unsafe {
+				buf[i_buf] = if d > 9 { d + 87 } else { d + 48 }
+			}
+			i_buf++
+			c++
+			x = x >> 4
+		}
+	}
+	unsafe {
+		buf[8] = `-`
+		buf[13] = `-`
+		buf[14] = `4`
+		buf[18] = `-`
+		buf[23] = `-`
+		buf[36] = 0
+	}
+	return string(buf, 36)
 }

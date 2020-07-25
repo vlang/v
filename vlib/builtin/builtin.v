@@ -282,3 +282,21 @@ pub:
 	value string
 	method string
 }
+
+pub struct FunctionData {
+pub:
+	name string
+	attrs []string
+	ret_type string
+	@type int
+}
+
+pub struct FieldData {
+pub:
+	name string
+	attrs []string
+	typ string
+	is_pub bool
+	is_mut bool
+	@type int
+}

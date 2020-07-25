@@ -46,5 +46,6 @@ fn callback(req picohttpparser.Request, mut res picohttpparser.Response) {
 }
 
 fn main() {
+	println('Starting webserver on http://127.0.0.1:8088/ ...')
 	picoev.new(8088, &callback).serve()
 }

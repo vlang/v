@@ -48,7 +48,7 @@ fn (dtp DTP) read() []byte {
 			break
 		}
 		for i in 0 .. len {
-			data << buf[i]
+			data << unsafe { buf[i] }
 		}
 		unsafe {
 			free(buf)
