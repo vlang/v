@@ -178,3 +178,21 @@ fn test_int_cast_to_sumtype() {
 		}
 	}
 }
+
+type Number = any_int | any_float
+
+fn is_gt(val string, dst Number) bool {
+	match dst {
+		any_int {
+			return val.int() > dst
+		}
+		any_float {
+			return dst < val.f64()
+		}
+	}
+}
+
+fn test_sum_type_match() {
+	assert is_gt('3', 2)
+	assert !is_gt('3', 3.5)
+}
