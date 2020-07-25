@@ -217,16 +217,15 @@ fn (mut n mapnode) remove_key(k string) bool {
 		if isnil(n.children) {
 			return false
 		}
-		flag := if idx == n.len {true} else {false}
+		flag := idx == n.len
 		if unsafe {&mapnode(n.children[idx])}.len < degree {
 			n.fill(idx)
 		}
 
-		mut node := &mapnode(0)
-		if flag && idx > n.len {
-			node = unsafe {&mapnode(n.children[idx - 1])}
+		mut node := if flag && idx > n.len {
+			unsafe(&mapnode(n.children[idx - 1]))
 		} else {
-			node = unsafe {&mapnode(n.children[idx])}
+			unsafe(&mapnode(n.children[idx]))
 		}
 		return node.remove_key(k)
 	}
@@ -250,8 +249,7 @@ fn (mut n mapnode) remove_from_non_leaf(idx int) {
 		predecessor := current.keys[current.len - 1]
 		n.keys[idx] = predecessor
 		n.values[idx] = current.values[current.len - 1]
-		mut node := unsafe {&mapnode(n.children[idx])}
-		node.remove_key(predecessor)
+		unsafe(&mapnode(n.children[idx])).remove_key(predecessor)
 	} else if unsafe {&mapnode(n.children[idx + 1])}.len >= degree {
 		mut current := unsafe {&mapnode(n.children[idx + 1])}
 		for !isnil(current.children) {
@@ -260,12 +258,10 @@ fn (mut n mapnode) remove_from_non_leaf(idx int) {
 		successor := current.keys[0]
 		n.keys[idx] = successor
 		n.values[idx] = current.values[0]
-		mut node := unsafe {&mapnode(n.children[idx + 1])}
-		node.remove_key(successor)
+		unsafe(&mapnode(n.children[idx + 1])).remove_key(successor)
 	} else {
 		n.merge(idx)
-		mut node := unsafe {&mapnode(n.children[idx])}
-		node.remove_key(k)
+		unsafe(&mapnode(n.children[idx])).remove_key(k)
 	}
 }
 
