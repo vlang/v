@@ -2370,11 +2370,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.writeln('obj; // ST it')
 					if node.var_name.len > 0 {
 						// for now we just copy it
-						if type_sym.kind == .sum_type {
-							g.writeln('\t$it_type $node.var_name = *it;')
-						} else {
-							g.writeln('\t$it_type* $node.var_name = it;')
-						}
+						g.writeln('\t$it_type* $node.var_name = it;')
 					}
 				}
 				else {
