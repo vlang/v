@@ -192,10 +192,8 @@ const(
 pub fn ulid() string {
 	buflen := 26
 	mut buf := malloc(27)
-
 	// time section
 	mut t := u64(time.utc().unix_time()) * 1000
-	println("t unix: ${t} ${t.hex()}")
 	mut i := 9
 	for i >= 0 {
 		unsafe{
@@ -204,8 +202,7 @@ pub fn ulid() string {
 		t = t >> 5
 		i--
 	}
-
-	// first rnd set
+	// first rand set
 	mut x := default_rng.u64()
 	i = 10
 	for i < 19 {
@@ -215,8 +212,7 @@ pub fn ulid() string {
 		x = x >> 5
 		i++
 	}
-
-	// second rnd set
+	// second rand set
 	x = default_rng.u64()
 	for i < 26 {
 		unsafe{
@@ -225,10 +221,8 @@ pub fn ulid() string {
 		x = x >> 5
 		i++
 	}
-
 	unsafe{
 		buf[27] = 0
 	}
-
 	return string(buf,buflen)
 }
