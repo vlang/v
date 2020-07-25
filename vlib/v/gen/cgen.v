@@ -912,7 +912,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		// `for num in nums {`
 		g.writeln('// FOR IN array')
 		styp := g.typ(it.val_type)
-		val_sym := g.table.get_type_symbol(it.val_type)
+		val_sym := g.table.get_type_symbol(it.val_type) 
 		cond_type_is_ptr := it.cond_type.is_ptr()
 		atmp := g.new_tmp_var()
 		atmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
@@ -928,7 +928,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
 			} else {
-				g.write('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];')
+				g.write('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];') 
 			}
 		}
 		g.stmts(it.stmts)
@@ -938,7 +938,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('// FOR IN map')
 		key_styp := g.typ(it.key_type)
 		val_styp := g.typ(it.val_type)
-		val_sym := g.table.get_type_symbol(it.val_type)
+		val_sym := g.table.get_type_symbol(it.val_type) 
 		keys_tmp := 'keys_' + g.new_tmp_var()
 		idx := g.new_tmp_var()
 		key := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
@@ -1160,8 +1160,8 @@ fn (g &Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write('$ret_styp (*$ptr_name) (')
 	arg_len := func.func.args.len
 	for i, arg in func.func.args {
-		arg_styp := g.typ(arg.typ)
-		g.write('$arg_styp $arg.name')
+		arg_typ := g.table.get_type_symbol(arg.typ)
+		g.write('$arg_typ.str() $arg.name')
 		if i < arg_len - 1 {
 			g.write(', ')
 		}
@@ -3220,11 +3220,21 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
 	match elem_sym.kind {
-		.string { g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {') }
-		.struct_ { g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {') }
-		.array { g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {') }
-		.function { g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {') }
-		else { g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {') }
+		.string {
+			g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
+		} 
+		.struct_ {
+			g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
+		} 
+		.array {
+			g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
+		} 
+		.function {
+			g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
+		} 
+		else {
+			g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
+		}
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -3261,8 +3271,8 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		g.definitions.write('\t\t$ret_styp (*v) (')
 		arg_len := func.func.args.len
 		for i, arg in func.func.args {
-			arg_styp := g.typ(arg.typ)
-			g.definitions.write('$arg_styp $arg.name')
+			arg_typ := g.table.get_type_symbol(arg.typ)
+			g.definitions.write('$arg_typ.str() $arg.name')
 			if i < arg_len - 1 {
 				g.definitions.write(', ')
 			}
@@ -3272,9 +3282,15 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {') }
-		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
-		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
+		.string {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {')
+		}
+		.function {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {')
+		}
+		else {
+			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {')
+		}
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -4764,7 +4780,6 @@ _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 		._interface_idx = $interface_index_name
 	};
 }
-
 _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 	/* TODO Remove memdup */
 	return (_Interface*) memdup(&(_Interface) {
