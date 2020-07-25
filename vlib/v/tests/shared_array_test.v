@@ -29,10 +29,7 @@ fn test_shared_array() {
 	mut finished_threads := 0
 	for {
 		rlock foo {
-			finished_threads = unsafe {
-				foo[2]
-			}
-
+			finished_threads = unsafe(foo[2])
 		}
 		if finished_threads == 4 {
 			break
@@ -40,14 +37,8 @@ fn test_shared_array() {
 		time.sleep_ms(100)
 	}
 	rlock foo {
-		f0 := unsafe {
-			foo[0]
-		}
-
-		f1 := unsafe {
-			foo[1]
-		}
-
+		f0 := unsafe(foo[0])
+		f1 := unsafe(foo[1])
 		assert f0 == 100010
 		assert f1 == 350020
 	}
