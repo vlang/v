@@ -67,7 +67,7 @@ pub fn (mut d Digest) write(p_ []byte) int {
 		n := copy(d.x[d.nx..], p)
 		d.nx += n
 		if d.nx == chunk {
-			block(d, d.x)
+			block(mut d, d.x)
 			d.nx = 0
 		}
 		if n >= p.len {
@@ -78,7 +78,7 @@ pub fn (mut d Digest) write(p_ []byte) int {
 	}
 	if p.len >= chunk {
 		n := p.len &~ (chunk - 1)
-		block(d, p[..n])
+		block(mut d, p[..n])
 		if n >= p.len {
 			p = []
 		} else {
@@ -138,7 +138,7 @@ pub fn sum(data []byte) []byte {
 	return d.checksum()
 }
 
-fn block(dig &Digest, p []byte) {
+fn block(mut dig Digest, p []byte) {
 	// For now just use block_generic until we have specific
 	// architecture optimized versions
 	block_generic(mut dig, p)

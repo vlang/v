@@ -18,7 +18,7 @@ fn init() {
 
 // new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
 pub fn new_default(config PRNGConfigStruct) &wyrand.WyRandRNG {
-	rng := &wyrand.WyRandRNG{}
+	mut rng := &wyrand.WyRandRNG{}
 	rng.seed(config.seed)
 	return rng
 }
@@ -135,10 +135,50 @@ const (
 
 pub fn string(len int) string {
 	mut buf := malloc(len)
-	for i in 0..len {
+	for i in 0 .. len {
 		unsafe {
 			buf[i] = chars[intn(chars.len)]
 		}
 	}
 	return string(buf, len)
+}
+
+// rand.uuid_v4 generate a completely random UUID (v4)
+// See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
+pub fn uuid_v4() string {
+	buflen := 36
+	mut buf := malloc(37)
+	mut i_buf := 0
+	mut x := u64(0)
+	mut d := byte(0)
+	for i_buf < buflen {
+		mut c := 0
+		x = default_rng.u64()
+		// do most of the bit manipulation at once:
+		x &= 0x0F0F0F0F0F0F0F0F
+		x += 0x3030303030303030
+		// write the ASCII codes to the buffer:
+		for c < 8 && i_buf < buflen {
+			d = byte(x)
+			unsafe {
+				buf[i_buf] = if d > 0x39 { d + 0x27 } else { d }
+			}
+			i_buf++
+			c++
+			x = x >> 8
+		}
+	}
+	// there are still some random bits in x:
+	x = x >> 8
+	d = byte(x)
+	unsafe {
+		buf[19] = if d > 0x39 { d + 0x27 } else { d }
+		buf[8] = `-`
+		buf[13] = `-`
+		buf[18] = `-`
+		buf[23] = `-`
+		buf[14] = `4`
+		buf[buflen] = 0
+	}
+	return string(buf, buflen)
 }

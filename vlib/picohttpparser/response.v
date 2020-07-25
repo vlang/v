@@ -9,7 +9,7 @@ pub mut:
 	buf byteptr
 }
 
-[inline] [unsafe_fn]
+[inline]
 fn (mut r Response) write_str(s string) {
 	unsafe {
 		C.memcpy(r.buf, s.str, s.len)

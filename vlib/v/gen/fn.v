@@ -7,6 +7,9 @@ import v.ast
 import v.table
 import v.util
 
+pub fn kek_cheburek() {
+}
+
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if it.language == .c {
 		// || it.no_body {
@@ -277,9 +280,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.write('$styp $tmp_opt = ')
 	}
 	if node.is_method && !node.is_field {
-		if node.name == 'writeln' && g.pref.experimental &&
-			node.args.len > 0 && node.args[0].expr is ast.StringInterLiteral &&
-			g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
+		if node.name == 'writeln' && g.pref.experimental && node.args.len > 0 && node.args[0].expr is
+			ast.StringInterLiteral && g.table.get_type_symbol(node.receiver_type).name == 'strings.Builder' {
 			g.string_inter_literal_sb_optimized(node)
 		} else {
 			g.method_call(node)

@@ -120,7 +120,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 
 pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
 	is_fmt := pref.is_fmt
-	s := &Scanner{
+	mut s := &Scanner{
 		pref: pref
 		text: text
 		is_print_line_on_error: true
@@ -130,6 +130,7 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		comments_mode: comments_mode
 		vet_errors: vet_errors
 	}
+	s.file_path = 'internal_memory'
 	return s
 }
 
@@ -1360,7 +1361,12 @@ pub fn (s &Scanner) error(msg string) {
 }
 
 fn (mut s Scanner) vet_error(msg string) {
-	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
+	eline := '$s.file_path:$s.line_nr: $msg'
+	if s.vet_errors == 0 {
+		eprintln(eline)
+		return
+	}
+	s.vet_errors << eline
 }
 
 pub fn verror(s string) {
