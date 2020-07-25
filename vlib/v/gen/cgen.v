@@ -1160,7 +1160,8 @@ fn (g &Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write('$ret_styp (*$ptr_name) (')
 	arg_len := func.func.args.len
 	for i, arg in func.func.args {
-		g.write('$arg.typ $arg.name')
+		arg_styp := g.typ(arg.typ)
+		g.write('$arg_styp $arg.name')
 		if i < arg_len - 1 {
 			g.write(', ')
 		}
@@ -3270,7 +3271,8 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		g.definitions.write('\t\t$ret_styp (*v) (')
 		arg_len := func.func.args.len
 		for i, arg in func.func.args {
-			g.definitions.write('$arg.typ $arg.name')
+			arg_styp := g.typ(arg.typ)
+			g.definitions.write('$arg_styp $arg.name')
 			if i < arg_len - 1 {
 				g.definitions.write(', ')
 			}
