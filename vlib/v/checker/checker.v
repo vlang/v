@@ -1643,14 +1643,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					left.info = ident_var_info
 					if left_type != 0 {
 						match mut left.obj as v {
-							ast.Var {
-								v.typ = left_type
-							}
-							ast.GlobalDecl {
-								v.typ = left_type
-							}
+							ast.Var { v.typ = left_type }
+							ast.GlobalDecl { v.typ = left_type }
 							else {}
-
 						}
 						/*
 						if left.obj is ast.Var as v {
@@ -1918,7 +1913,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(node.stmts)
 		}
 		ast.CompIf {
-			// c.expr(node.cond)
 			c.stmts(node.stmts)
 			if node.has_else {
 				c.stmts(node.else_stmts)

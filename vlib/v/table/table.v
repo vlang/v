@@ -489,6 +489,7 @@ pub fn (t &Table) mktyp(typ Type) Type {
 // this is not optimal
 pub fn (table &Table) qualify_module(mod, file_path string) string {
 	for m in table.imports {
+		//if m.contains('gen') { println('qm=$m') }
 		if m.contains('.') && m.contains(mod) {
 			m_parts := m.split('.')
 			m_path := m_parts.join(os.path_separator)

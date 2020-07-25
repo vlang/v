@@ -312,7 +312,7 @@ pub fn (mut v Builder) cc_msvc() {
 		return
 	}
 	diff := time.ticks() - ticks
-	v.timing_message('C msvc: ${diff}ms')
+	v.timing_message('C msvc', diff)
 	if res.exit_code != 0 {
 		verror(res.output)
 	}

@@ -9,6 +9,7 @@ pub fn (p &Parser) known_import(mod string) bool {
 }
 
 fn (p &Parser) prepend_mod(name string) string {
+	// println('prepend_mod() name=$name p.mod=$p.mod expr_mod=$p.expr_mod')
 	if p.expr_mod != '' {
 		return p.expr_mod + '.' + name
 	}
