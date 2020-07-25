@@ -148,13 +148,21 @@ pub fn string(len int) string {
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
 	mut buf := malloc(37)
-	for i in 0..36 {
-		mut v := intn(16)
-		if i == 19 {
-			v = (v & 0x3) | 0x8
-		}
-		unsafe {
-			buf[i] = hex_chars[v]
+	mut i_buf := 0
+	for i_buf < 36 {
+		mut x := default_rng.u64()
+		mut c := 0
+		for c < 16 && i_buf < 36 {
+			mut d := byte(x) & 0x0F
+			if i_buf == 19 {
+				d = (d & 0x03) + 0x08
+			}
+			unsafe {
+				buf[i_buf] = if d > 9 { d + 87 } else { d + 48 }
+			}
+			i_buf++
+			c++
+			x = x >> 4
 		}
 	}
 	unsafe {
