@@ -404,6 +404,7 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 		}
 	}
 	mut event_idx := -1
+	mut first_run := true
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		for j, _ in channels {
@@ -423,8 +424,10 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 				}
 			}
 		}
+		if event_idx < 0 && !first_run{
+			sem.wait()
+		}
 		rnd2 := rand.u32_in_range(0, u32(channels.len))
-		sem.wait()
 		for j, _ in channels {
 			mut i := j + int(rnd2)
 			if i >= channels.len {
@@ -447,6 +450,7 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 		if event_idx >= 0 {
 			break
 		}
+		first_run = false
 	}
 	// restore old subscribers
 	mut cmp_sems := []voidptr{ len: channels.len }
@@ -454,7 +458,7 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 		mut sem_unchanged := false
 		cmp_sems[i] = sem.sem
 		if is_push[i] {
-			sem_unchanged = C.atomic_compare_exchange_strong(&ch.write_subscriber.sem, &cmp_sems[i] , oldsems[i])
+			sem_unchanged = C.atomic_compare_exchange_strong(&ch.write_subscriber.sem, &cmp_sems[i], oldsems[i])
 		} else {
 			sem_unchanged = C.atomic_compare_exchange_strong(&ch.read_subscriber.sem, &cmp_sems[i], oldsems[i])
 		}
