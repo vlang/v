@@ -6,6 +6,7 @@ module builder
 import time
 import os
 import v.pref
+import v.util
 
 fn get_vtmp_folder() string {
 	mut vtmp := os.getenv('VTMP')
@@ -39,7 +40,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		.x64 { b.compile_x64() }
 	}
 	if pref.is_stats {
-		println('compilation took: $sw.elapsed().milliseconds() ms')
+		println('compilation took: ${util.bold(sw.elapsed().milliseconds().str())} ms')
 	}
 	// running does not require the parsers anymore
 	unsafe {

@@ -237,7 +237,14 @@ pub fn (b &Builder) find_module_path(mod, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
+fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.pref.is_stats {
+		println('checker summary: ${util.bold(b.checker.nr_errors.str())} V errors, ${util.bold(b.checker.nr_warnings.str())} V warnings')
+	}
+}
+
 fn (b &Builder) print_warnings_and_errors() {
+	defer { b.show_total_warns_and_errors_stats() }
 	if b.pref.output_mode == .silent {
 		if b.checker.nr_errors > 0 {
 			exit(1)
@@ -278,6 +285,7 @@ fn (b &Builder) print_warnings_and_errors() {
 				return
 			}
 		}
+		b.show_total_warns_and_errors_stats()
 		exit(1)
 	}
 	if b.table.redefined_fns.len > 0 {
@@ -295,6 +303,7 @@ fn (b &Builder) print_warnings_and_errors() {
 					}
 				}
 			}
+			b.show_total_warns_and_errors_stats()
 			exit(1)
 		}
 	}
@@ -304,10 +313,11 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string) {
+pub fn (mut b Builder) timing_message(msg string, ms int) {
+	formatted_message := '$msg: ${util.bold(ms.str())} ms'
 	if b.pref.show_timings {
-		println(msg)
+		println(formatted_message)
 	} else {
-		b.info(msg)
+		b.info(formatted_message)
 	}
 }

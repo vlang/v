@@ -13,16 +13,16 @@ pub fn (mut b Builder) gen_js(v_files []string) string {
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
-	b.timing_message('PARSE: ${parse_time}ms')
+	b.timing_message('PARSE', parse_time)
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
-	b.timing_message('CHECK: ${check_time}ms')
+	b.timing_message('CHECK', check_time)
 	b.print_warnings_and_errors()
 	res := js.gen(b.parsed_files, b.table, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
-	b.timing_message('JS GEN: ${gen_time}ms')
+	b.timing_message('JS GEN', gen_time)
 	return res
 }
 
