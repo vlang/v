@@ -226,6 +226,9 @@ pub fn (mut ws Client) close(code int, message string) {
 			unsafe {
 				buf.free()
 			}
+			if C.close(ws.socket.sockfd) == -1 {
+				// ws.send_close_event()(websocket, 1011, strerror(C.errno));
+			}
 		}
 		ws.fragments = []
 		ws.send_close_event()
