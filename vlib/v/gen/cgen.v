@@ -763,12 +763,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.has_main = true
 			}
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' ||
+				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#ifndef __cplusplus\n')
 			}
 			g.gen_fn_decl(node, skip)
 			if node.name == 'backtrace' ||
-				node.name == 'backtrace_symbols' || node.name == 'backtrace_symbols_fd' {
+				node.name == 'backtrace_symbols' ||
+				node.name == 'backtrace_symbols_fd' {
 				g.write('\n#endif\n')
 			}
 			g.fn_decl = keep_fn_decl
@@ -1044,7 +1046,8 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+	if got_is_ptr && !expected_is_ptr && neither_void &&
+		expected_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
@@ -2621,7 +2624,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					// `x[0] *= y`
 					if g.assign_op != .assign &&
-						g.assign_op in token.assign_tokens && info.elem_type != table.string_type {
+						g.assign_op in token.assign_tokens &&
+						info.elem_type != table.string_type {
 						// TODO move this
 						g.write('*($elem_type_str*)array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
@@ -2869,7 +2873,8 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name != 'Option' {
+		if fn_return_is_optional && !node.types[0].has_flag(.optional) &&
+			return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
@@ -3232,21 +3237,11 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
 	match elem_sym.kind {
-		.string {
-			g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {')
-		} 
-		.struct_ {
-			g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {')
-		} 
-		.array {
-			g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {')
-		} 
-		.function {
-			g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
-		} 
-		else {
-			g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {')
-		}
+		.string { g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {') }
+		.struct_ { g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {') }
+		.array { g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {') }
+		.function { g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {') }
+		else { g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -3294,15 +3289,9 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string {
-			g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {')
-		}
-		.function {
-			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {')
-		}
-		else {
-			g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {')
-		}
+		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {') }
+		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
+		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -3834,8 +3823,9 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		g.writeln('\tstring err = ${cvar_name}.v_error;')
 		g.writeln('\tint errcode = ${cvar_name}.ecode;')
 		stmts := or_block.stmts
-		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
-			1] as ast.ExprStmt).typ != table.void_type {
+		if stmts.len > 0 &&
+			stmts[or_block.stmts.len - 1] is ast.ExprStmt &&
+			(stmts[stmts.len - 1] as ast.ExprStmt).typ != table.void_type {
 			g.indent++
 			for i, stmt in stmts {
 				if i == stmts.len - 1 {
@@ -4041,8 +4031,8 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 			return 'TARGET_ORDER_IS_BIG'
 		}
 		else {
-			if is_comptime_optional ||
-				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
+			if is_comptime_optional || (g.pref.compile_defines_all.len > 0 &&
+				name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
 			verror('bad os ifdef name "$name"')
