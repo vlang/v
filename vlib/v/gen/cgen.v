@@ -2273,6 +2273,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
 	g.inside_sumtype_match = type_sym.kind == .sum_type
+	defer {
+		g.inside_sumtype_match = false
+	}
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
