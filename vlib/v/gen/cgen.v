@@ -64,7 +64,7 @@ mut:
 	inside_ternary        int // ?: comma separated statements on a single line
 	inside_map_postfix    bool // inside map++/-- postfix expr
 	inside_map_infix      bool // inside map<</+=/-= infix expr
-	inside_sumtype_match  bool // inside match with cond being sum type 
+	inside_sumtype_match  int // larger than 0 if inside match with cond being sum type otherwise equal to 0
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
 	stmt_path_pos         []int
@@ -2219,12 +2219,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
-			if g.inside_sumtype_match && node.left_type.is_ptr() {
+			if g.inside_sumtype_match > 0 && node.left_type.is_ptr() {
 				g.write('*')
 			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if g.inside_sumtype_match && node.right_type.is_ptr() {
+			if g.inside_sumtype_match > 0 && node.right_type.is_ptr() {
 				g.write('*')
 			}
 			g.expr(node.right)
@@ -2271,11 +2271,15 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
-	type_sym := g.table.get_type_symbol(node.cond_type)
-	g.inside_sumtype_match = type_sym.kind == .sum_type
-	defer {
-		g.inside_sumtype_match = false
+	if node.is_sum_type {
+		g.inside_sumtype_match++
 	}
+	defer {
+		if node.is_sum_type {
+			g.inside_sumtype_match--
+		}
+	}
+	type_sym := g.table.get_type_symbol(node.cond_type)
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
