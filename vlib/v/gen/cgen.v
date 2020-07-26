@@ -2219,14 +2219,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
-			if g.inside_sumtype_match > 0 && node.left_type.is_ptr() {
-				g.write('*')
-			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if g.inside_sumtype_match > 0 && node.right_type.is_ptr() {
-				g.write('*')
-			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')
@@ -2423,6 +2417,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if !g.is_assign_lhs && ident_var.share == .shared_t {
 			g.write('${name}.val')
 			return
+		}
+		if g.inside_sumtype_match > 0 && ident_var.typ.is_ptr() {
+			g.write('*')
 		}
 	}
 	g.write(g.get_ternary_name(name))
