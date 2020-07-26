@@ -179,6 +179,7 @@ fn test_int_cast_to_sumtype() {
 	}
 }
 
+// TODO: change definition once types other than any_int and any_float (int, f64, etc) are supported in sumtype
 type Number = any_int | any_float
 
 fn is_gt_simple(val string, dst Number) bool {
