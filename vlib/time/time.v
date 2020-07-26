@@ -138,28 +138,6 @@ pub fn (t Time) smonth() string {
 
 // new_time returns a time struct with calculated Unix time.
 pub fn new_time(t Time) Time {
-	return Time{
-		year: t.year
-		month: t.month
-		day: t.day
-		hour: t.hour
-		minute: t.minute
-		second: t.second
-		unix: u64(t.unix_time())
-		microsecond: t.microsecond
-	}
-	// TODO Use the syntax below when it works with reserved keywords like `unix`
-	// return {
-	// 	t |
-	// 	unix:t.unix_time()
-	// }
-}
-
-// unix_time returns Unix time.
-pub fn (t Time) unix_time() int {
-	if t.unix != 0 {
-		return int(t.unix)
-	}
 	tt := C.tm{
 		tm_sec: t.second
 		tm_min: t.minute
@@ -168,7 +146,14 @@ pub fn (t Time) unix_time() int {
 		tm_mon: t.month - 1
 		tm_year: t.year - 1900
 	}
-	return make_unix_time(tt)
+	utime := u64(make_unix_time(tt))
+	return { t | unix: utime }
+}
+
+// unix_time returns Unix time.
+[inline]
+pub fn (t Time) unix_time() int {
+	return int(t.unix)
 }
 
 // unix_time_milli returns Unix time with millisecond resolution.
