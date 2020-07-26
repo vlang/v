@@ -64,7 +64,6 @@ mut:
 	inside_ternary        int // ?: comma separated statements on a single line
 	inside_map_postfix    bool // inside map++/-- postfix expr
 	inside_map_infix      bool // inside map<</+=/-= infix expr
-	inside_sumtype_match  int // larger than 0 if inside match with cond being sum type otherwise equal to 0
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
 	stmt_path_pos         []int
@@ -100,6 +99,8 @@ mut:
 	inside_const          bool
 	comp_for_method       string // $for method in T {
 	comptime_var_type_map map[string]table.Type
+	match_sumtype_exprs   []ast.Expr
+	match_sumtype_syms    []table.TypeSymbol
 }
 
 const (
@@ -2219,14 +2220,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if need_par {
 				g.write('(')
 			}
-			if g.inside_sumtype_match > 0 && node.left_type.is_ptr() {
-				g.write('*')
-			}
 			g.expr(node.left)
 			g.write(' $node.op.str() ')
-			if g.inside_sumtype_match > 0 && node.right_type.is_ptr() {
-				g.write('*')
-			}
 			g.expr(node.right)
 			if need_par {
 				g.write(')')
@@ -2271,15 +2266,17 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.inside_ternary++
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
+	type_sym := g.table.get_type_symbol(node.cond_type)
 	if node.is_sum_type {
-		g.inside_sumtype_match++
-	}
+		g.match_sumtype_exprs << node.cond
+		g.match_sumtype_syms << type_sym	
+	} 
 	defer {
 		if node.is_sum_type {
-			g.inside_sumtype_match--
+			g.match_sumtype_exprs.pop()
+			g.match_sumtype_syms.pop()
 		}
 	}
-	type_sym := g.table.get_type_symbol(node.cond_type)
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
@@ -2424,8 +2421,33 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
+		is_sumtype_in_match, pos_in_arr := g.match_sumtype_expr_contains(node)
+		if ident_var.typ.is_ptr() && is_sumtype_in_match && g.match_sumtype_has_no_struct_variant(pos_in_arr) {
+			g.write('*')
+		}
 	}
 	g.write(g.get_ternary_name(name))
+}
+
+fn (mut g Gen) match_sumtype_has_no_struct_variant(idx int) bool {
+	sumtype := g.match_sumtype_syms[idx].info as table.SumType
+	for typ in sumtype.variants {
+		if g.table.get_type_symbol(typ).kind == .struct_ {
+			return false 
+		} 
+	}
+	return true
+}
+
+fn (mut g Gen) match_sumtype_expr_contains(expr ast.Ident) (bool, int) {
+	for i, s_expr in g.match_sumtype_exprs {
+		if s_expr is ast.Ident {
+			if expr.name == s_expr.name {
+				return true, i
+			}
+		}
+	}
+	return false, 0
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
