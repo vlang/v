@@ -220,6 +220,36 @@ fn is_gt_nested(val string, dst Number) bool {
 	}
 }
 
+fn concat(val string, dst Number) string {
+	match dst {
+		any_int {
+			mut res := val + '(int)'
+			res += dst.str()
+			return res
+		}
+		any_float {
+			mut res := val + '(float)'
+			res += dst.str()
+			return res
+		}
+	}
+}
+
+fn get_sum(val string, dst Number) f64 {
+	match dst {
+		any_int {
+			mut res := val.int()
+			res += dst
+			return res
+		}
+		any_float {
+			mut res := val.f64()
+			res += dst
+			return res
+		}
+	}
+}
+
 fn test_sum_type_match() {
 	assert is_gt_simple('3', 2)
 	assert !is_gt_simple('3', 5)
@@ -229,4 +259,12 @@ fn test_sum_type_match() {
 	assert !is_gt_nested('3', 5)
 	assert is_gt_nested('3', 1.2)
 	assert !is_gt_nested('3', 3.5)
+	assert concat('3', 2) == '3(int)2'
+	assert concat('3', 5) == '3(int)5'
+	assert concat('3', 1.2) == '3(float)1.2'
+	assert concat('3', 3.5) == '3(float)3.5'
+	assert get_sum('3', 2) == 5.
+	assert get_sum('3', 5) == 8.
+	assert get_sum('3', 1.2) == 4.2
+	assert get_sum('3', 3.5) == 6.5
 }
