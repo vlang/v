@@ -208,5 +208,5 @@ fn test_unix_time() {
 	//
 	//println('utm1: $utm1 | utm2: $utm2')
 	assert utm2 - utm1 > 2
-	assert utm2 - utm1 < 100
+	assert utm2 - utm1 < 999
 }
