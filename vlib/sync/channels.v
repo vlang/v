@@ -99,30 +99,24 @@ pub fn new_channel<T>(n u32) &Channel {
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
-	ch.timed_push(src, -1)
+	ch.try_push(src, false)
 }
 
-fn (mut ch Channel) timed_push(src voidptr, timeout time.Duration) bool {
-	spinloops_, spinloops_sem_ := if i64(timeout) < 0 { spinloops, spinloops_sem } else { 2, 2 }
+fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
+	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	if ch.queue_length > 0 { // buffered channel
-		if i64(timeout) > 0 {
-			if !ch.writesem.timed_wait(timeout) {
+		mut got_sem := false
+		for _ in 0 .. spinloops_sem_ {
+			if ch.writesem.try_wait() {
+				got_sem = true
+				break
+			}
+			if no_block {
 				return false
 			}
-		} else {
-			mut got_sem := false
-			for _ in 0 .. spinloops_sem_ {
-				if ch.writesem.try_wait() {
-					got_sem = true
-					break
-				}
-				if i64(timeout) == 0 {
-					return false
-				}
-			}
-			if !got_sem {
-				ch.writesem.wait()
-			}
+		}
+		if !got_sem {
+			ch.writesem.wait()
 		}
 		mut wr_idx := C.atomic_load_u32(&ch.buf_elem_write_idx)
 		for {
@@ -172,36 +166,43 @@ fn (mut ch Channel) timed_push(src voidptr, timeout time.Duration) bool {
 				return true
 			}
 		}
-		if i64(timeout) == 0 {
+		if no_block {
 			return false
 		}
 		// try to advertise current object as readable
 		mut nulladdr := voidptr(0)
 		if C.atomic_compare_exchange_strong(&ch.read_adr, &nulladdr, src) {
 			wradr = C.atomic_load(&ch.write_adr)
-			mut infinite_spin := false
+			mut read_in_progress := false
 			if wradr != C.NULL {
 				mut src2 := src
 				if C.atomic_compare_exchange_strong(&ch.read_adr, &src2, voidptr(0)) {
 					continue
 				} else {
-					infinite_spin = true
+					read_in_progress = true
+				}
+			}
+			if !read_in_progress {
+				mut sem := Semaphore{} // for select
+				sem.sem = C.atomic_load(&ch.read_subscriber.sem)
+				if sem.sem != 0 {
+					sem.post()
 				}
 			}
 			for {
 				mut src2 := src
 				// Try to spin wait for src to be read
 				mut have_swapped := false
-				for sp := u32(0); sp < spinloops_ || infinite_spin; sp++ {
+				for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
 					if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 						have_swapped = true
-						infinite_spin = true
+						read_in_progress = true
 						break
 					}
 					src2 = src
 				}
 				mut got_sem := false
-				for sp := u32(0); sp < spinloops_ || infinite_spin; sp++ {
+				for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
 					if ch.writesem.try_wait() {
 						got_sem = true
 						break
@@ -218,17 +219,7 @@ fn (mut ch Channel) timed_push(src voidptr, timeout time.Duration) bool {
 				} else {
 					// this semaphore was not for us - repost in
 					ch.writesem.post()
-					mut sem := Semaphore{}
-					sem.sem = C.atomic_load(&ch.write_subscriber.sem)
-					if sem.sem != 0 {
-						sem.post()
-					}
 				}
-			}
-			mut sem := Semaphore{} // for select
-			sem.sem = C.atomic_load(&ch.read_subscriber.sem)
-			if sem.sem != 0 {
-				sem.post()
 			}
 			return true
 		}
@@ -237,30 +228,24 @@ fn (mut ch Channel) timed_push(src voidptr, timeout time.Duration) bool {
 }
 
 pub fn (mut ch Channel) pop(dest voidptr) {
-	ch.timed_pop(dest, -1)
+	ch.try_pop(dest, false)
 }
 
-fn (mut ch Channel) timed_pop(dest voidptr, timeout time.Duration) bool {
-	spinloops_, spinloops_sem_ := if i64(timeout) < 0 { spinloops, spinloops_sem } else { 2, 2 }
+fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
+	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	if ch.queue_length > 0 { // buffered channel - try to read element from buffer
-		if i64(timeout) > 0 {
-			if !ch.readsem.timed_wait(timeout) {
+		mut got_sem := false
+		for _ in 0 .. spinloops_sem_ {
+			if ch.readsem.try_wait() {
+				got_sem = true
+				break
+			}
+			if no_block {
 				return false
 			}
-		} else {
-			mut got_sem := false
-			for _ in 0 .. spinloops_sem_ {
-				if ch.readsem.try_wait() {
-					got_sem = true
-					break
-				}
-				if i64(timeout) == 0 {
-					return false
-				}
-			}
-			if !got_sem {
-				ch.readsem.wait()
-			}
+		}
+		if !got_sem {
+			ch.readsem.wait()
 		}
 		mut rd_idx := C.atomic_load_u32(&ch.buf_elem_read_idx)
 		for {
@@ -310,36 +295,44 @@ fn (mut ch Channel) timed_pop(dest voidptr, timeout time.Duration) bool {
 				return true
 			}
 		}
-		if i64(timeout) == 0 {
+		if no_block {
 			return false
 		}
 		// try to advertise `dest` as writable
 		mut nulladdr := voidptr(0)
 		if C.atomic_compare_exchange_strong(&ch.write_adr, &nulladdr, dest) {
 			rdadr = C.atomic_load(&ch.read_adr)
-			mut infinite_spin := false
+			mut write_in_progress := false
 			if rdadr != C.NULL {
 				mut dest2 := dest
 				if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
 					continue
 				} else {
 					// we know that there is a write to `dest` in progress so no need to sem.wait()
-					infinite_spin = true
+					write_in_progress = true
+				}
+			}
+			if !write_in_progress {
+				// inform ongoing select about new data
+				mut sem := Semaphore{}
+				sem.sem = C.atomic_load(&ch.write_subscriber.sem)
+				if sem.sem != 0 {
+					sem.post()
 				}
 			}
 			for {
 				mut dest2 := dest
 				mut have_swapped := false
-				for sp := u32(0); sp < spinloops_ || infinite_spin; sp++ {
+				for sp := u32(0); sp < spinloops_ || write_in_progress; sp++ {
 					if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 						have_swapped = true
-						infinite_spin = true
+						write_in_progress = true
 						break
 					}
 					dest2 = dest
 				}
 				mut got_sem := false
-				for sp := u32(0); sp < spinloops_sem_ || infinite_spin; sp++ {
+				for sp := u32(0); sp < spinloops_sem_ || write_in_progress; sp++ {
 					if ch.readsem.try_wait() {
 						got_sem = true
 						break
@@ -356,17 +349,7 @@ fn (mut ch Channel) timed_pop(dest voidptr, timeout time.Duration) bool {
 				} else {
 					// this semaphore was not for us - repost in
 					ch.readsem.post()
-					mut sem := Semaphore{} // for select
-					sem.sem = C.atomic_load(&ch.read_subscriber.sem)
-					if sem.sem != 0 {
-						sem.post()
-					}
 				}
-			}
-			mut sem := Semaphore{}
-			sem.sem = C.atomic_load(&ch.write_subscriber.sem)
-			if sem.sem != 0 {
-				sem.post()
 			}
 			return true
 		}
@@ -380,88 +363,49 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 	assert objrefs.len == oldsems.len
 	mut sem := new_semaphore()
 	for i, ch in channels {
+		nulladr := voidptr(0)
 		if is_push[i] {
-			oldsems[i] = C.atomic_exchange(&ch.write_subscriber.sem, sem.sem)
+			C.atomic_compare_exchange_strong(&ch.write_subscriber.sem, &nulladr, sem.sem)
 		} else {
-			oldsems[i] = C.atomic_exchange(&ch.read_subscriber.sem, sem.sem)
+			C.atomic_compare_exchange_strong(&ch.read_subscriber.sem, &nulladr, sem.sem)
 		}
 	}
-	mut event_idx := -2
-	mut first_run := true
+	mut event_idx := -1 // negative value indicating timeout if not changed
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		for j, _ in channels {
-			mut i := j // + int(rnd)
+			mut i := j + int(rnd)
 			if i >= channels.len {
 				i -= channels.len
 			}
 			if is_push[i] {
-				if channels[i].timed_push(objrefs[i], 0) {
+				if channels[i].try_push(objrefs[i], true) {
 					event_idx = i
 					goto restore
 				}
 			} else {
-				if channels[i].timed_pop(objrefs[i], 0) {
+				if channels[i].try_pop(objrefs[i], true) {
 					event_idx = i
 					goto restore
 				}
 			}
 		}
-		if event_idx >= -1 {
-			break
-		}
-		if event_idx < -1 && !first_run {
-			if timeout > 0 {
-				if !sem.timed_wait(timeout) {
-					println('Timeout!!!')
-					event_idx = -1
-				}
-			} else {
-				sem.wait()
+		if timeout > 0 {
+			if !sem.timed_wait(timeout) {
+				goto restore
 			}
-		}
-		// rnd2 := rand.u32_in_range(0, u32(channels.len))
-		// for j, _ in channels {
-		// 	mut i := j + int(rnd2)
-		// 	if i >= channels.len {
-		// 		i -= channels.len
-		// 	}
-		// 	mut other_sem := Semaphore{} // for select
-		// 	if is_push[i] {
-		// 		other_sem.sem = C.atomic_load(&channels[i].write_subscriber.sem)
-		// 	} else {
-		// 		other_sem.sem = C.atomic_load(&channels[i].read_subscriber.sem)
-		// 	}
-		// 	if other_sem.sem == sem.sem {
-		// 		other_sem.post()
-		// 	}
-		// }
-		first_run = false
-	}
-	restore:
-	// restore old subscribers
-	mut cmp_sems := []voidptr{ len: channels.len }
-	for i, ch in channels {
-		mut sem_unchanged := false
-		cmp_sems[i] = sem.sem
-		if is_push[i] {
-			sem_unchanged = C.atomic_compare_exchange_strong(&ch.write_subscriber.sem, &cmp_sems[i], oldsems[i])
 		} else {
-			sem_unchanged = C.atomic_compare_exchange_strong(&ch.read_subscriber.sem, &cmp_sems[i], oldsems[i])
+			sem.wait()
 		}
 	}
-	for false && sem.try_wait() {
-		// we have not waited for this, so repost it to all old listeners
-		mut tmp_sem := Semaphore{}
-		for i, ch in channels {
-			if is_push[i] {
-				tmp_sem.sem = C.atomic_load(&ch.write_subscriber.sem)
-			} else {
-				tmp_sem.sem = C.atomic_load(&ch.read_subscriber.sem)
-			}
-			if tmp_sem.sem != 0 {
-				tmp_sem.post()
-			}
+restore:
+	// restore old subscribers
+	for i, ch in channels {
+		mut cmp_sem := sem.sem
+		if is_push[i] {
+			C.atomic_compare_exchange_strong(&ch.write_subscriber.sem, &cmp_sem, voidptr(0))
+		} else {
+			C.atomic_compare_exchange_strong(&ch.read_subscriber.sem, &cmp_sem, voidptr(0))
 		}
 	}
 	return event_idx
