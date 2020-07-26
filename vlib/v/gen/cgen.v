@@ -2422,13 +2422,13 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 	}
-	if g.should_write_aster_for(node) {
+	if g.should_write_asterisk_for(node) {
 		g.write('*')
 	}
 	g.write(g.get_ternary_name(name))
 }
 
-fn (mut g Gen) should_write_aster_for(expr ast.Expr) bool {
+fn (mut g Gen) should_write_asterisk_for(expr ast.Expr) bool {
 	match expr {
 		ast.Ident {
 			is_sumtype_in_match, match_sumtype_arr_idx := g.match_sumtype_expr_contains(expr)
