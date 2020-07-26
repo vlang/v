@@ -172,9 +172,9 @@ pub fn (t Time) unix_time() int {
 }
 
 // unix_time_milli returns Unix time with millisecond resolution.
+[inline]
 pub fn (t Time) unix_time_milli() u64 {
-	utime := u64(t.unix_time())
-	return utime * 1000 + u64(t.microsecond/1000)
+	return t.unix * 1000 + u64(t.microsecond/1000)
 }
 
 // add_seconds returns a new time struct with an added number of seconds.
