@@ -179,15 +179,32 @@ fn test_int_cast_to_sumtype() {
 	}
 }
 
+/*
 type Number = any_int | any_float
 
 fn is_gt(val string, dst Number) bool {
 	match dst {
 		any_int {
-			return val.int() > dst
+			match dst {
+				any_int {
+					return val.int() > dst
+				}
+				// this branch should never been hit
+				else { 
+					return val.int() < dst 
+				}
+			}
 		}
 		any_float {
-			return dst < val.f64()
+			match dst {
+				any_float {
+					return dst < val.f64()
+				}
+				// this branch should never been hit
+				else { 
+					return dst > val.f64() 
+				}
+			}
 		}
 	}
 }
@@ -198,3 +215,4 @@ fn test_sum_type_match() {
 	assert is_gt('3', 1.2)
 	assert !is_gt('3', 3.5)
 }
+*/
