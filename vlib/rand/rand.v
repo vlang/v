@@ -228,7 +228,7 @@ pub fn ulid() string {
 		i++
 	}
 	unsafe{
-		buf[27] = 0
+		buf[26] = 0
 	}
 	return string(buf,buflen)
 }
