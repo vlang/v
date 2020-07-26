@@ -19,32 +19,14 @@ pub fn parse(s string) ?Time {
 	minute := hms[1]
 	second := hms[2]
 
-	iyear := ymd[0].int()
-	imonth := ymd[1].int()
-	iday := ymd[2].int()
-	ihour := hour.int()
-	iminute := minute.int()
-	isecond := second.int()
-
-	tt := C.tm{
-		tm_sec: isecond
-		tm_min: iminute
-		tm_hour: ihour
-		tm_mday: iday
-		tm_mon: imonth - 1
-		tm_year: iyear - 1900
-	}
-	utime := u64(make_unix_time(tt))
-	res := Time{
-		year: iyear
-		month: imonth
-		day: iday
-		hour: ihour
-		minute: iminute
-		second: isecond
-		unix: utime
-		microsecond: 0
-	}
+	res := new_time(Time{
+		year: ymd[0].int()
+		month: ymd[1].int()
+		day: ymd[2].int()
+		hour: hour.int()
+		minute: minute.int()
+		second: second.int()
+	})
 	return res
 }
 
@@ -101,26 +83,16 @@ pub fn parse_iso8601(s string) ?Time {
 		return error('Invalid 8601 format, expected `+` or `-` as time separator' )
 	}
 
-	tt := C.tm{
-		tm_sec: second
-		tm_min: minute
-		tm_hour: hour
-		tm_mday: day
-		tm_mon: month - 1
-		tm_year: year - 1900
-	}
-	utime := u64(make_unix_time(tt))
 
-	mut t := Time{
+	mut t := new_time(Time{
 		year: year
 		month: month
 		day: day
 		hour: hour
 		minute: minute
 		second: second
-		unix: utime
 		microsecond: mic_second
-	}
+	})
 
 	mut unix_time   := t.unix
 	mut unix_offset := int(0)
