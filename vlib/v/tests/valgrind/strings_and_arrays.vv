@@ -8,17 +8,11 @@ fn return_array(array_arg []string) []int { // array argument must not be freed
 fn foo() {
 	nums := [1, 2, 3] // local array must be freed
 	println(nums)
-
 	nums_copy := nums // array assignments call .clone()
 	println(nums_copy)
-
-	name  := 'Peter' // string literals mustn't be freed
+	name := 'Peter' // string literals mustn't be freed
 	str_inter := 'hello, $name' // concatenated strings must be freed
-
-
-
-
-	//nums.free() // this should result in a double free and a CI error
+	// nums.free() // this should result in a double free and a CI error
 }
 
 fn str_replace() {
@@ -33,7 +27,6 @@ fn str_replace() {
 fn main() {
 	println('start')
 	foo()
-	//str_replace()
+	// str_replace()
 	println('end')
 }
-

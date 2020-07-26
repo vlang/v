@@ -5,6 +5,7 @@ module rand
 
 import rand.util
 import rand.wyrand
+import time
 
 // Configuration struct for creating a new instance of the default RNG.
 pub struct PRNGConfigStruct {
@@ -179,6 +180,57 @@ pub fn uuid_v4() string {
 		buf[23] = `-`
 		buf[14] = `4`
 		buf[buflen] = 0
+	}
+	return string(buf, buflen)
+}
+
+const(
+	ulid_encoding = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+)
+
+// rand.ulid generates an Unique Lexicographically sortable IDentifier.
+// See https://github.com/ulid/spec .
+// NB: ULIDs can leak timing information, if you make them public, because
+// you can infer the rate at which some resource is being created, like 
+// users or business transactions.
+// (https://news.ycombinator.com/item?id=14526173)
+pub fn ulid() string {
+	return ulid_at_millisecond(time.utc().unix_time_milli())
+}
+
+pub fn ulid_at_millisecond(unix_time_milli u64) string {
+	buflen := 26
+	mut buf := malloc(27)
+	mut t := unix_time_milli
+	mut i := 9
+	for i >= 0 {
+		unsafe{
+			buf[i] = ulid_encoding[t & 0x1F]
+		}
+		t = t >> 5
+		i--
+	}
+	// first rand set
+	mut x := default_rng.u64()
+	i = 10
+	for i < 19 {
+		unsafe{
+			buf[i] = ulid_encoding[x & 0x1F]
+		}
+		x = x >> 5
+		i++
+	}
+	// second rand set
+	x = default_rng.u64()
+	for i < 26 {
+		unsafe{
+			buf[i] = ulid_encoding[x & 0x1F]
+		}
+		x = x >> 5
+		i++
+	}
+	unsafe{
+		buf[26] = 0
 	}
 	return string(buf, buflen)
 }

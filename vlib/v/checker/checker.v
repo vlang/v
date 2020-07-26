@@ -1601,7 +1601,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			if v := scope.find_var(ident.name) {
 				if left_first is ast.Ident {
 					assigned_var := left_first
-					if !v.is_mut && assigned_var.is_mut {
+					if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
 						c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
 							node.pos)
 					}

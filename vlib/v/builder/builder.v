@@ -24,7 +24,7 @@ mut:
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
-	cached_msvc			MsvcResult
+	cached_msvc         MsvcResult
 	table               &table.Table
 }
 
@@ -42,7 +42,9 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		if pref.ccompiler == 'msvc' {
 			verror('Cannot find MSVC on this OS')
 		}
-		MsvcResult { valid: false }
+		MsvcResult{
+			valid: false
+		}
 	}
 	return Builder{
 		pref: pref
@@ -65,9 +67,14 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
 	mut done_imports := []string{}
-		if b.pref.is_script {
-			done_imports << 'os'
+	if b.pref.is_script {
+		done_imports << 'os'
+	}
+	for file in b.parsed_files {
+		if file.mod.name != 'main' && file.mod.name !in done_imports {
+			done_imports << file.mod.name
 		}
+	}
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
@@ -244,7 +251,9 @@ fn (b &Builder) show_total_warns_and_errors_stats() {
 }
 
 fn (b &Builder) print_warnings_and_errors() {
-	defer { b.show_total_warns_and_errors_stats() }
+	defer {
+		b.show_total_warns_and_errors_stats()
+	}
 	if b.pref.output_mode == .silent {
 		if b.checker.nr_errors > 0 {
 			exit(1)

@@ -1,6 +1,13 @@
 import os
 import term
 import benchmark
+import v.util
+
+const (
+	skip_valgrind_files = [
+		'vlib/v/tests/valgrind/struct_field.vv',
+	]
+)
 
 [if verbose]
 fn vprintln(s string) {
@@ -22,12 +29,12 @@ fn test_all() {
 	eprintln(term.header(bench_message, '-'))
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot,'vlib/v/tests/valgrind')
+	dir := os.join_path(vroot, 'vlib/v/tests/valgrind')
 	files := os.ls(dir) or {
 		panic(err)
 	}
 	//
-	wrkdir := os.join_path(os.temp_dir(),'vtests','valgrind')
+	wrkdir := os.join_path(os.temp_dir(), 'vtests', 'valgrind')
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
@@ -35,24 +42,35 @@ fn test_all() {
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
-		full_test_path := os.real_path(test)
-		println('x.v: $wrkdir/x.v')
-		os.system('cp ${dir}/${test} $wrkdir/x.v') // cant run .vv file
-		compile_cmd := '$vexe -cflags "-w" -verbose=3 -autofree -cg $wrkdir/x.v'
-		vprintln('compile cmd: $compile_cmd')
+		test_basename := os.file_name(test).replace('.vv', '')
+		v_filename := '$wrkdir/${test_basename}.v'
+		exe_filename := '$wrkdir/$test_basename'
+		full_test_path := os.real_path(os.join_path(dir, test))
+		dir_test_path := full_test_path.replace(vroot + '/', '')
+		if dir_test_path in skip_valgrind_files {
+			bench.skip()
+			eprintln(bench.step_message_skip(dir_test_path))
+			continue
+		}
+		vprintln('$dir_test_path => $v_filename')
+		//
+		vprintln('cp $full_test_path $v_filename')
+		os.cp(full_test_path, v_filename)
+		compile_cmd := '$vexe -cg -cflags "-w" -autofree $v_filename'
+		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()
-			eprintln(bench.step_message_fail('valgrind $test failed'))
+			eprintln(bench.step_message_fail('valgrind $dir_test_path failed'))
 			continue
 		}
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('file: $full_test_path could not be compiled.'))
+			eprintln(bench.step_message_fail('file: $dir_test_path could not be compiled.'))
 			eprintln(res.output)
 			continue
 		}
-		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $wrkdir/x'
-		vprintln('valgrind cmd: $valgrind_cmd')
+		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
+		vprintln('valgrind cmd: ${util.bold(valgrind_cmd)}')
 		valgrind_res := os.exec(valgrind_cmd) or {
 			bench.fail()
 			eprintln(bench.step_message_fail('valgrind could not be executed'))
@@ -60,12 +78,12 @@ fn test_all() {
 		}
 		if valgrind_res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('failed valgrind check for $test'))
+			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(dir_test_path)}'))
 			eprintln(valgrind_res.output)
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok('testing file: $test'))
+		eprintln(bench.step_message_ok(dir_test_path))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))
