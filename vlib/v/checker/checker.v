@@ -2288,6 +2288,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('unknown method `$lit.val`', lit.pos)
 					return table.void_type
 				}
+				// Check how often elements are after
 				mut exp := []int{len: method.args.len - 1}
 				mut cur := -1
 				mut last := table.Type(0)
@@ -2303,11 +2304,32 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					cur++
 					exp[cur] = 1
 				}
-				println(node.args)
-				for i, arg in node.args {
-					println(arg.typ)
-				}
+				for i := 0; i < node.args.len; i++ {
+					exp_typ := method.args[i + 1].typ
+					exp_typ_sym := c.table.get_type_symbol(exp_typ)
+					arg := node.args[i]
+					got_typ := c.expr(arg.expr)
+					got_typ_sym := c.table.get_type_symbol(got_typ)
 
+					mut arr_typ := got_typ
+					if got_typ_sym.info is table.Array {
+						arr_typ = got_typ_sym.array_info().elem_type
+					} else if got_typ_sym.info is table.ArrayFixed {
+						arr_typ = got_typ_sym.array_info().elem_type
+					}
+					if !c.check_types(exp_typ, got_typ) && (!c.check_types(exp_typ, arr_typ) && arr_typ != got_typ && exp[i] > 1) {
+						if exp_typ_sym.parent_idx == got_typ_sym.parent_idx {
+							continue
+						}
+						if got_typ != table.void_type {
+							c.error('cannot use type `$got_typ_sym.str()` as type `$exp_typ_sym.str()` in argument ${i+1} to `${node.sym.name}.$lit`', lit.pos)
+						}
+					}
+					if exp[i] > 1 {
+						i += exp[i] - 1
+					}
+				}
+				node.exp = exp
 				return method.return_type
 			}
 			//return c.table.find_type_idx('vweb.Result')

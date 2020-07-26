@@ -885,6 +885,7 @@ pub:
 	vweb_tmpl   File
 	args_var    string
 pub mut:
+	exp         []int
 	args        []CallArg
 	sym         table.TypeSymbol
 }
