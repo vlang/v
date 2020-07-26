@@ -6,10 +6,10 @@ fn main() {
 	app := App{}
 	method := 'method1'
 	arr := ['hello', method]
-	app.$method(['hello', method])
+	app.$method(['hello', method], 'test')
 }
 
-fn (app App) method1(a, b string) {
+fn (app App) method1(a, b, c string) {
 	println('hello $a $b')
 }
 

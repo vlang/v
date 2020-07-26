@@ -2304,6 +2304,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					cur++
 					exp[cur] = 1
 				}
+				// Checks if the var is a boolean plus the lenghts
+				mut node_args_arr := []int{len: node.args.len}
 				for i := 0; i < node.args.len; i++ {
 					exp_typ := method.args[i + 1].typ
 					exp_typ_sym := c.table.get_type_symbol(exp_typ)
@@ -2325,10 +2327,17 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 							c.error('cannot use type `$got_typ_sym.str()` as type `$exp_typ_sym.str()` in argument ${i+1} to `${node.sym.name}.$lit`', lit.pos)
 						}
 					}
-					if exp[i] > 1 {
+					println('a')
+					if exp[i] > 1 && arr_typ != got_typ {
+						node_args_arr[i] = exp[i]
 						i += exp[i] - 1
+					} else {
+						node_args_arr[i] = 1
 					}
 				}
+				println(exp)
+				println(node_args_arr)
+				node.args_arr = node_args_arr
 				node.exp = exp
 				return method.return_type
 			}
