@@ -179,13 +179,24 @@ fn test_int_cast_to_sumtype() {
 	}
 }
 
-/*
 type Number = any_int | any_float
 
-fn is_gt(val string, dst Number) bool {
+fn is_gt_simple(val string, dst Number) bool {
 	match dst {
 		any_int {
-			match dst {
+			return val.int() > dst
+		}
+		any_float {
+			return dst < val.f64()
+		}
+	}
+}
+
+fn is_gt_nested(val string, dst Number) bool {
+	dst2 := dst
+	match dst {
+		any_int {
+			match dst2 {
 				any_int {
 					return val.int() > dst
 				}
@@ -196,7 +207,7 @@ fn is_gt(val string, dst Number) bool {
 			}
 		}
 		any_float {
-			match dst {
+			match dst2 {
 				any_float {
 					return dst < val.f64()
 				}
@@ -210,9 +221,12 @@ fn is_gt(val string, dst Number) bool {
 }
 
 fn test_sum_type_match() {
-	assert is_gt('3', 2)
-	assert !is_gt('3', 5)
-	assert is_gt('3', 1.2)
-	assert !is_gt('3', 3.5)
+	assert is_gt_simple('3', 2)
+	assert !is_gt_simple('3', 5)
+	assert is_gt_simple('3', 1.2)
+	assert !is_gt_simple('3', 3.5)	
+	assert is_gt_nested('3', 2)
+	assert !is_gt_nested('3', 5)
+	assert is_gt_nested('3', 1.2)
+	assert !is_gt_nested('3', 3.5)
 }
-*/
