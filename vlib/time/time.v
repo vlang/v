@@ -138,6 +138,9 @@ pub fn (t Time) smonth() string {
 
 // new_time returns a time struct with calculated Unix time.
 pub fn new_time(t Time) Time {
+	if t.unix != 0 {
+		return t
+	}
 	tt := C.tm{
 		tm_sec: t.second
 		tm_min: t.minute
