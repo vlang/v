@@ -1,4 +1,5 @@
 import rand
+import time
 
 const (
 	rnd_count = 40
@@ -189,4 +190,28 @@ fn test_rand_uuid_v4() {
 	assert uuid1[14] == `4`
 	assert uuid2[14] == `4`
 	assert uuid3[14] == `4`
+}
+
+fn test_ulids_are_unique() {
+	t1 := time.utc()
+	ulid1 := rand.ulid()
+	ulid2 := rand.ulid()
+	ulid3 := rand.ulid()
+	t2 := time.utc()
+	assert ulid1.len == 26
+	assert ulid2.len == 26
+	assert ulid3.len == 26
+	assert ulid1 != ulid2
+	assert ulid1 != ulid3
+	assert ulid2 != ulid3
+	// the largest valid ULID encoded in Base32 is 7ZZZZZZZZZZZZZZZZZZZZZZZZZ
+	assert (int(ulid1[0]) - 48) <= 7
+	// ensure ulids generated in the same millisecond have the same prefix
+	if t1.unix_time_milli() == t2.unix_time_milli() {
+		ulid1_prefix := ulid1[0..10]    	
+		ulid2_prefix := ulid2[0..10]    	
+		ulid3_prefix := ulid3[0..10]    	
+		assert ulid1_prefix == ulid2_prefix
+		assert ulid1_prefix == ulid3_prefix
+	}        
 }

@@ -189,11 +189,13 @@ const(
 	ulid_encoding = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 )
 
+// rand.ulid generates a Universally Unique Lexicographically Sortable Identifier
+// See https://github.com/ulid/spec
 pub fn ulid() string {
 	buflen := 26
 	mut buf := malloc(27)
 	// time section
-	mut t := u64(time.utc().unix_time()) * 1000
+	mut t := time.utc().unix_time_milli()
 	mut i := 9
 	for i >= 0 {
 		unsafe{
