@@ -131,12 +131,11 @@ pub fn f64_in_range(min, max f64) f64 {
 
 const (
 	chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'
-	hex_chars = '0123456789abcdef'
 )
 
 pub fn string(len int) string {
 	mut buf := malloc(len)
-	for i in 0..len {
+	for i in 0 .. len {
 		unsafe {
 			buf[i] = chars[intn(chars.len)]
 		}
@@ -147,31 +146,39 @@ pub fn string(len int) string {
 // rand.uuid_v4 generate a completely random UUID (v4)
 // See https://en.wikipedia.org/wiki/Universally_unique_identifier#Version_4_(random)
 pub fn uuid_v4() string {
+	buflen := 36
 	mut buf := malloc(37)
 	mut i_buf := 0
-	for i_buf < 36 {
-		mut x := default_rng.u64()
+	mut x := u64(0)
+	mut d := byte(0)
+	for i_buf < buflen {
 		mut c := 0
-		for c < 16 && i_buf < 36 {
-			mut d := byte(x) & 0x0F
-			if i_buf == 19 {
-				d = (d & 0x03) + 0x08
-			}
+		x = default_rng.u64()
+		// do most of the bit manipulation at once:
+		x &= 0x0F0F0F0F0F0F0F0F
+		x += 0x3030303030303030
+		// write the ASCII codes to the buffer:
+		for c < 8 && i_buf < buflen {
+			d = byte(x)
 			unsafe {
-				buf[i_buf] = if d > 9 { d + 87 } else { d + 48 }
+				buf[i_buf] = if d > 0x39 { d + 0x27 } else { d }
 			}
 			i_buf++
 			c++
-			x = x >> 4
+			x = x >> 8
 		}
 	}
+	// there are still some random bits in x:
+	x = x >> 8
+	d = byte(x)
 	unsafe {
+		buf[19] = if d > 0x39 { d + 0x27 } else { d }
 		buf[8] = `-`
 		buf[13] = `-`
-		buf[14] = `4`
 		buf[18] = `-`
 		buf[23] = `-`
-		buf[36] = 0
+		buf[14] = `4`
+		buf[buflen] = 0
 	}
-	return string(buf, 36)
+	return string(buf, buflen)
 }

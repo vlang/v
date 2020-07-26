@@ -1,11 +1,11 @@
-vlib/v/checker/tests/unsafe_required.v:4:6: error: pointer arithmetic is only allowed in `unsafe` blocks 
-    2 |     v := 5
+vlib/v/checker/tests/unsafe_required.v:4:3: error: pointer arithmetic is only allowed in `unsafe` blocks 
+    2 |     mut v := 5
     3 |     mut p := &v
     4 |     p++
       |      ~~
     5 |     p += 2
     6 |     _ := v
-vlib/v/checker/tests/unsafe_required.v:5:7: error: pointer arithmetic is only allowed in `unsafe` blocks 
+vlib/v/checker/tests/unsafe_required.v:5:4: error: pointer arithmetic is only allowed in `unsafe` blocks 
     3 |     mut p := &v
     4 |     p++
     5 |     p += 2
@@ -38,7 +38,7 @@ vlib/v/checker/tests/unsafe_required.v:32:7: error: pointer indexing is only all
    31 |     c := &b
    32 |     _ = c[0]
       |          ~~~
-   33 |     
+   33 | 
    34 |     v := 4
 vlib/v/checker/tests/unsafe_required.v:36:10: error: pointer indexing is only allowed in `unsafe` blocks 
    34 |     v := 4
