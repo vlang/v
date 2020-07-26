@@ -263,8 +263,8 @@ fn test_sum_type_match() {
 	assert concat('3', 5) == '3(int)5'
 	assert concat('3', 1.2) == '3(float)1.2'
 	assert concat('3', 3.5) == '3(float)3.5'
-	assert get_sum('3', 2) == 5.
-	assert get_sum('3', 5) == 8.
+	assert get_sum('3', 2) == 5.0
+	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
 }
