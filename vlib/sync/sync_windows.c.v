@@ -154,3 +154,7 @@ pub fn (s Semaphore) try_wait() bool {
 pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 	return C.WaitForSingleObject(s.sem, timeout / time.millisecond) == 0
 }
+
+pub fn (s Semaphore) destroy() bool {
+	return C.CloseHandle(s.sem) != 0
+}

@@ -30,6 +30,7 @@ struct RwMutexAttr {
 struct MacOSX_Semaphore {
 	mtx C.pthread_mutex_t
 	cond C.pthread_cond_t
+	attr C.pthread_condattr_t
 mut:
 	count int
 }
@@ -37,11 +38,6 @@ mut:
 [ref_only]
 struct PosixSemaphore {
 	sem C.sem_t
-}
-
-[ref_only]
-struct CondAttr {
-	attr C.pthread_condattr_t
 }
 
 pub struct Semaphore {
@@ -105,10 +101,9 @@ pub fn new_semaphore_init(n u32) Semaphore {
 			sem: &MacOSX_Semaphore{count: n}
 		}
 		C.pthread_mutex_init(&&MacOSX_Semaphore(s.sem).mtx, C.NULL)
-		a := &CondAttr{}
-		C.pthread_condattr_init(&a.attr)
-		C.pthread_condattr_setpshared(&a.attr, C.PTHREAD_PROCESS_PRIVATE)
-		C.pthread_cond_init(&&MacOSX_Semaphore(s.sem).cond, &a.attr)
+		C.pthread_condattr_init(&&MacOSX_Semaphore(s.sem).attr)
+		C.pthread_condattr_setpshared(&&MacOSX_Semaphore(s.sem).attr, C.PTHREAD_PROCESS_PRIVATE)
+		C.pthread_cond_init(&&MacOSX_Semaphore(s.sem).cond, &&MacOSX_Semaphore(s.sem).attr)
 		return s
 	} $else {
 		s := Semaphore{
@@ -184,5 +179,15 @@ pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 		return res
 	} $else {
 		return unsafe { C.sem_timedwait(&&PosixSemaphore(s.sem).sem, &t_spec) == 0 }
+	}
+}
+
+pub fn (s Semaphore) destroy() bool {
+	$if macos {
+		return C.pthread_cond_destroy(&&MacOSX_Semaphore(s.sem).cond) == 0 &&
+			C.pthread_condattr_destroy(&&MacOSX_Semaphore(s.sem).attr) == 0 &&
+			pthread_mutex_destroy(&&MacOSX_Semaphore(s.sem).mtx) == 0
+	} $else {
+		return unsafe { C.sem_destroy(&&PosixSemaphore(s.sem).sem) == 0 }
 	}
 }

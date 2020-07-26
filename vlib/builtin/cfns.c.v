@@ -348,7 +348,7 @@ fn C.MAKELANGID() int
 fn C.FormatMessage() voidptr
 
 
-fn C.CloseHandle()
+fn C.CloseHandle(voidptr) int
 
 
 fn C.GetExitCodeProcess()
@@ -432,6 +432,7 @@ fn C.sem_post(voidptr) int
 fn C.sem_wait(voidptr) int
 fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
+fn C.sem_destroy(voidptr) int
 
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int
