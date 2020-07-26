@@ -49,7 +49,7 @@ pub:
 
 pub fn new_request(method, url_, data string) ?Request {
 	url := if method == 'GET' { url_ + '?' + data } else { url_ }
-	println('new req() method=$method url="$url" dta="$data"')
+	//println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method.to_upper()
 		url: url
@@ -364,7 +364,7 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 		if key == 'Cookie' {
 			continue
 		}
-		uheaders << '${key}=${val}\r\n'
+		uheaders << '${key}: ${val}\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
 	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +

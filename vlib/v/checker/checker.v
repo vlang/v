@@ -3091,7 +3091,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		typ_sym = c.table.get_type_symbol(typ)
 	}
 	if typ_sym.kind != .enum_ {
-		c.error('expected type is not an enum', node.pos)
+		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return table.void_type
 	}
 	if typ_sym.info !is table.Enum {
