@@ -2288,22 +2288,24 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('unknown method `$lit.val`', lit.pos)
 					return table.void_type
 				}
-				for i, arg in node.args {
-					exp_arg_typ := method.args[i + 1].typ
-					exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
-					c.expected_type = exp_arg_typ
-					got_type := c.expr(arg.expr)
-					node.args[i].typ = got_type
-
-					if !c.check_types(got_type, exp_arg_typ) {
-						got_arg_sym := c.table.get_type_symbol(got_type)
-						if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
-							continue
-						}
-						if got_type != table.void_type {
-							c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${node.sym.name}.$lit`', lit.pos)
-						}
+				mut exp := []int{len: method.args.len - 1}
+				mut cur := -1
+				mut last := table.Type(0)
+				for i, arg in method.args {
+					if i == 0 {
+						continue
 					}
+					if last == arg.typ {
+						exp[cur]++
+						continue
+					}
+					last = arg.typ
+					cur++
+					exp[cur] = 1
+				}
+				println(node.args)
+				for i, arg in node.args {
+					println(arg.typ)
 				}
 
 				return method.return_type

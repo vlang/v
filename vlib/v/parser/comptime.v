@@ -436,6 +436,7 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 		p.next()
 	}
 	args := p.call_args()
+	println(args)
 	p.check(.rpar)
 	if p.tok.kind == .key_orelse {
 		p.check(.key_orelse)

@@ -5,7 +5,10 @@ struct App {}
 fn main() {
 	app := App{}
 	method := 'method1'
-	app.$method('hello', method)
+	arr := ['hello', method]
+	app.method1(arr)
+	println(arr)
+	app.$method(arr)
 }
 
 fn (app App) method1(a, b string) {
