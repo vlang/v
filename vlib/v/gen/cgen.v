@@ -2269,8 +2269,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	type_sym := g.table.get_type_symbol(node.cond_type)
 	if node.is_sum_type {
 		g.match_sumtype_exprs << node.cond
-		g.match_sumtype_syms << type_sym	
-	} 
+		g.match_sumtype_syms << type_sym
+	}
 	defer {
 		if node.is_sum_type {
 			g.match_sumtype_exprs.pop()
@@ -2433,8 +2433,8 @@ fn (mut g Gen) match_sumtype_has_no_struct_variant(idx int) bool {
 	sumtype := g.match_sumtype_syms[idx].info as table.SumType
 	for typ in sumtype.variants {
 		if g.table.get_type_symbol(typ).kind == .struct_ {
-			return false 
-		} 
+			return false
+		}
 	}
 	return true
 }
