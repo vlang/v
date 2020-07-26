@@ -189,8 +189,12 @@ const(
 	ulid_encoding = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 )
 
-// rand.ulid generates a Universally Unique Lexicographically Sortable Identifier
-// See https://github.com/ulid/spec
+// rand.ulid generates an Unique Lexicographically sortable IDentifier.
+// See https://github.com/ulid/spec .
+// NB: ULIDs can leak timing information, if you make them public, because
+// you can infer the rate at which some resource is being created, like 
+// users or business transactions.
+// (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
 	buflen := 26
 	mut buf := malloc(27)
