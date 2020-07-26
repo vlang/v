@@ -2,16 +2,15 @@ import time
 import rand
 
 // uuid_v4:
-
 fn test_rand_uuid_v4() {
 	uuid1 := rand.uuid_v4()
 	uuid2 := rand.uuid_v4()
 	uuid3 := rand.uuid_v4()
-	assert uuid1 != uuid2    
+	assert uuid1 != uuid2
 	assert uuid1 != uuid3
 	assert uuid2 != uuid3
-	assert uuid1.len == 36    
-	assert uuid2.len == 36    
+	assert uuid1.len == 36
+	assert uuid2.len == 36
 	assert uuid3.len == 36
 	assert uuid1[14] == `4`
 	assert uuid2[14] == `4`
@@ -19,7 +18,6 @@ fn test_rand_uuid_v4() {
 }
 
 // ulids:
-
 fn test_ulids_are_unique() {
 	ulid1 := rand.ulid()
 	ulid2 := rand.ulid()
@@ -51,12 +49,12 @@ fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
 		ulid3 = rand.ulid()
 		t2 = time.utc()
 		if t1.unix_time_milli() == t2.unix_time_milli() {
-        	break
-        }
+			break
+		}
 	}
-	ulid1_prefix := ulid1[0..10]    	
-	ulid2_prefix := ulid2[0..10]    	
-	ulid3_prefix := ulid3[0..10]    	
+	ulid1_prefix := ulid1[0..10]
+	ulid2_prefix := ulid2[0..10]
+	ulid3_prefix := ulid3[0..10]
 	assert ulid1_prefix == ulid2_prefix
 	assert ulid1_prefix == ulid3_prefix
 }
@@ -67,11 +65,11 @@ fn test_ulids_should_be_lexicographically_ordered_when_not_in_same_millisecond()
 	ulid2 := rand.ulid()
 	time.sleep_ms(1)
 	ulid3 := rand.ulid()
-	mut all := [ ulid3, ulid2, ulid1 ]
-	//eprintln('all before: $all')
+	mut all := [ulid3, ulid2, ulid1]
+	// eprintln('all before: $all')
 	all.sort()
-	//eprintln('all  after: $all')
-	s1 := all[0]    	
+	// eprintln('all  after: $all')
+	s1 := all[0]
 	s2 := all[1]
 	s3 := all[2]
 	assert s1 == ulid1
