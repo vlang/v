@@ -5,7 +5,6 @@ module rand
 
 import rand.util
 import rand.wyrand
-
 import time
 
 // Configuration struct for creating a new instance of the default RNG.
@@ -196,10 +195,13 @@ const(
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
+	return ulid_at_millisecond(time.utc().unix_time_milli())
+}
+
+pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	buflen := 26
 	mut buf := malloc(27)
-	// time section
-	mut t := time.utc().unix_time_milli()
+	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
 		unsafe{
@@ -230,5 +232,5 @@ pub fn ulid() string {
 	unsafe{
 		buf[26] = 0
 	}
-	return string(buf,buflen)
+	return string(buf, buflen)
 }

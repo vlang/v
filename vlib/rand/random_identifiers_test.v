@@ -37,21 +37,13 @@ fn test_ulids_max_start_character_is_ok() {
 }
 
 fn test_ulids_generated_in_the_same_millisecond_have_the_same_prefix() {
-	mut t1 := time.utc()
-	mut t2 := time.utc()
+	t := time.utc().unix_time_milli()
 	mut ulid1 := ''
 	mut ulid2 := ''
-	mut ulid3 := ''
-	for {
-		t1 = time.utc()
-		ulid1 = rand.ulid()
-		ulid2 = rand.ulid()
-		ulid3 = rand.ulid()
-		t2 = time.utc()
-		if t1.unix_time_milli() == t2.unix_time_milli() {
-			break
-		}
-	}
+	mut ulid3 := ''    
+	ulid1 = rand.ulid_at_millisecond(t)
+	ulid2 = rand.ulid_at_millisecond(t)
+	ulid3 = rand.ulid_at_millisecond(t)
 	ulid1_prefix := ulid1[0..10]
 	ulid2_prefix := ulid2[0..10]
 	ulid3_prefix := ulid3[0..10]
