@@ -47,10 +47,12 @@ jobs:
       run: |
         ./v vet vlib/v/ast
         ./v vet vlib/v/builder
+        ./v vet vlib/v/cflag
+        ./v vet vlib/v/checker
+        ./v vet vlib/v/compiler_errors_test.v
         ./v vet vlib/v/scanner
         ./v vet vlib/v/parser
         ./v vet vlib/v/gen/cgen.v
-        ./v vet vlib/v/checker
         ./v vet vlib/sqlite
     - name: v fmt
       run: |
