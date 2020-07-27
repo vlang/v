@@ -12,8 +12,7 @@ import strings
 import time
 
 pub const (
-	methods_with_form = ['POST', 'PUT', 'PATCH']
-	method_all = ['GET','POST','PUT','PATCH','DELETE', 'HEAD', 'OPTIONS']
+	methods_with_form = [http.Method.post, http.Method.put, http.Method.patch]
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
@@ -286,7 +285,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		data: strip(body)
 		ws_func: 0
 		user_ptr: 0
-		method: vals[0]
+		method: http.get_method(vals[0])
 		url: vals[1]
 	}
 	$if debug {
@@ -371,8 +370,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if (req.method == 'GET' && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
-					println('easy match method=$method.name')
+				if (req.method == http.Method.get && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
+					println('easy match method=$method')
 					app.$method(vars)
 					return
 				}

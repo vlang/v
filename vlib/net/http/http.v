@@ -394,6 +394,22 @@ fn (m Method) str() string {
 	}
 }
 
+pub fn get_method(str string) m Method {
+	return match str {
+		'GET' { .get }
+		'POST' { .post }
+		'PUT' { .put }
+		'HEADER' { .header }
+		'DELETE' { .delete }
+		'OPTIONS' { .options }
+		'HEAD' { .head }
+		'TRACE' { .trace }
+		'CONNECT' { .connect }
+		'PATCH' { .patch }
+		else { .get }
+	}
+}
+
 fn (req &Request) build_request_cookies_header() string {
 	if req.cookies.keys().len < 1 {
 		return ''
