@@ -2279,14 +2279,26 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_warnings += c2.nr_warnings
 				c.nr_errors += c2.nr_errors
 			} else {
-				println(node.method_var)
-				if node.method_var !is ast.StringLiteral {
-					c.error('method `$node.method_name` is not a string literal', node.method_var.position())
+				name := c.expr(node.method_name)
+				if name != table.string_type_idx {
+					c.error('method literal has to be a string', node.method_name.position())
 					return table.void_type
 				}
-				lit := node.method_var as ast.StringLiteral
-				method := c.table.type_find_method(node.sym, lit.val) or {
-					c.error('unknown method `$lit.val`', lit.pos)
+				mut lit := ''
+				match node.method_name {
+					ast.Ident {
+						println(it.kind)
+					}
+					ast.StringLiteral {
+						lit = it.val
+						println(it.val)
+					}
+					else {
+						println('test')
+					}
+				}
+				method := c.table.type_find_method(node.sym, lit) or {
+					c.error('unknown method `$lit`', node.method_name.position())
 					return table.void_type
 				}
 				// Check how often elements are after
@@ -2368,7 +2380,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					arg_i++
 				}
-				node.method_name = lit.val
+				node.raw_name = lit
 				node.args_arr = node_args_arr
 				node.exp = exp
 				return method.return_type

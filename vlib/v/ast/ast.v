@@ -878,13 +878,13 @@ pub mut:
 
 pub struct ComptimeCall {
 pub:
-	method_var  Expr
 	left        Expr
 	is_vweb     bool
 	vweb_tmpl   File
 	args_var    string
 pub mut:
-	method_name string
+	method_name Expr
+	raw_name    string
 	args_arr    []int
 	exp         []int
 	args        []CallArg

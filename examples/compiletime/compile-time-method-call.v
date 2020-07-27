@@ -4,12 +4,12 @@ struct App {}
 
 fn main() {
 	app := App{}
-	method := 'method1'
-	arr := ['hello']
+	arr :=  ['hello', 'hi']
 	ints := [1, 2]
 	$for method in App.methods {
-		if method.@type is int {
-			app.$method.name(arr, true, false, ints)
+		$if method.@type is int {
+			app.$('method2')()
+			app.$(method.name)(arr, true, false, ints)
 		}
 	}
 }
