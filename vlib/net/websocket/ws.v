@@ -103,6 +103,10 @@ pub fn new(uri string) &Client {
 	return ws
 }
 
+pub fn (mut ws Client) get_state() State {
+	return ws.state
+}
+
 fn (ws &Client) parse_uri() &Uri {
 	u := urllib.parse(ws.uri) or {
 		panic(err)
