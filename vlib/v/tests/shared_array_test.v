@@ -32,7 +32,7 @@ fn test_shared_array() {
 			finished_threads = unsafe {
 				foo[2]
 			}
-			
+
 		}
 		if finished_threads == 4 {
 			break
@@ -43,11 +43,11 @@ fn test_shared_array() {
 		f0 := unsafe {
 			foo[0]
 		}
-		
+
 		f1 := unsafe {
 			foo[1]
 		}
-		
+
 		assert f0 == 100010
 		assert f1 == 350020
 	}

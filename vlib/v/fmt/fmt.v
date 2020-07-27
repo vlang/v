@@ -914,7 +914,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.PrefixExpr {
 			f.write(node.op.str())
-			f.prefix_expr_cast_expr( node.right )
+			f.prefix_expr_cast_expr(node.right)
 		}
 		ast.RangeExpr {
 			f.expr(node.low)
@@ -1274,12 +1274,8 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 			else {}
 		}
 		match node.right as right {
-			ast.InfixExpr {
-				penalty--
-			}
-			ast.ParExpr {
-				penalty = 1
-			}
+			ast.InfixExpr { penalty-- }
+			ast.ParExpr { penalty = 1 }
 			else {}
 		}
 		f.penalties << penalty
@@ -1311,8 +1307,8 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
-	single_line := it.branches.len == 2 && it.has_else &&
-		it.branches[0].stmts.len == 1 && it.branches[1].stmts.len == 1 &&
+	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
+		it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
@@ -1321,11 +1317,9 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is &&
-				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) &&
-				infix.right is ast.Type {
-				//right_expr := infix.right as ast.Type
-				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
-					.variable } else { true }
+				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
+				// right_expr := infix.right as ast.Type
+				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind == .variable } else { true }
 			}
 		}
 		if i == 0 {
@@ -1661,15 +1655,12 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		mut penalty := if f.array_init_break[f.array_init_depth - 1] { 0 } else { 3 }
 		if penalty > 0 {
-			if i == 0 ||
-				it.exprs[i - 1] is ast.ArrayInit ||
-				it.exprs[i - 1] is ast.StructInit ||
+			if i == 0 || it.exprs[i - 1] is ast.ArrayInit || it.exprs[i - 1] is ast.StructInit ||
 				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
 				penalty--
 			}
 			if expr is ast.ArrayInit ||
-				expr is ast.StructInit || expr is ast.MapInit ||
-				expr is ast.CallExpr {
+				expr is ast.StructInit || expr is ast.MapInit || expr is ast.CallExpr {
 				penalty--
 			}
 		}
@@ -1786,10 +1777,10 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 }
 
 fn (mut f Fmt) is_external_name(name string) bool {
-	if name.len > 2 && name[0]==`C` && name[1]==`.` {
+	if name.len > 2 && name[0] == `C` && name[1] == `.` {
 		return true
 	}
-	if name.len > 3 && name[0]==`J` && name[1]==`S` && name[2] == `.` {
+	if name.len > 3 && name[0] == `J` && name[1] == `S` && name[2] == `.` {
 		return true
 	}
 	return false

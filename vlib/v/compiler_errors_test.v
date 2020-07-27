@@ -18,7 +18,8 @@ fn test_all() {
 	// -prod so that warns are errors
 	total_errors += check_path(vexe, classic_dir, '-prod', '.out', classic_tests)
 	total_errors += check_path(vexe, global_dir, '--enable-globals', '.out', global_tests)
-	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
+	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out',
+		['globals_error.vv'])
 	total_errors += check_path(vexe, run_dir, 'run', '.run.out', run_tests)
 	total_errors += check_path(vexe, parser_dir, '-prod', '.out', parser_tests)
 	assert total_errors == 0
@@ -76,7 +77,7 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 			println('found:')
 			println(found)
 			println('============\n')
-            diff_content( expected, found )
+			diff_content(expected, found)
 			nb_fail++
 		} else {
 			println(term.green('OK'))
@@ -95,9 +96,11 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
-fn diff_content(s1 string, s2 string) {
-	diff_cmd := util.find_working_diff_command() or { return }
+fn diff_content(s1, s2 string) {
+	diff_cmd := util.find_working_diff_command() or {
+		return
+	}
 	println('diff: ')
-	println( util.color_compare_strings(diff_cmd, s1, s2) )
+	println(util.color_compare_strings(diff_cmd, s1, s2))
 	println('============\n')
-}    
+}

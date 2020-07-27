@@ -4,6 +4,8 @@ import v.ast
 import v.table
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
+	// TODO Handle aliasing sync
+	p.register_used_import('sync')
 	pos := p.tok.position()
 	is_rlock := p.tok.kind == .key_rlock
 	p.next()
