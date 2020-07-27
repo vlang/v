@@ -370,7 +370,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if (req.method == http.Method.get && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
+				if (req.method == http.Method.get && url_words[0] == method.name && url_words.len == 1) || (req.method == http.Method.post && url_words[0] + '_post' == method.name) {
 					println('easy match method=$method')
 					app.$method(vars)
 					return
@@ -379,27 +379,27 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// Get methods
 				// Get is default
 				if 'post' in attrs {
-					if req.method == 'POST' {
+					if req.method == http.Method.post {
 						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
 					}
 				} else if 'put' in attrs {
-					if req.method == 'PUT' {
+					if req.method == http.Method.put {
 						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
 					}
 				} else if 'patch' in attrs {
-					if req.method == 'PATCH' {
+					if req.method == http.Method.patch {
 						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
 					}
 				} else if 'delete' in attrs {
-					if req.method == 'DELETE' {
+					if req.method == http.Method.delete {
 						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 					}
 				} else if 'head' in attrs {
-					if req.method == 'HEAD' {
+					if req.method == http.Method.head {
 						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
 					}
 				} else if 'options' in attrs {
-					if req.method == 'OPTIONS' {
+					if req.method == http.Method.options {
 						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
 					}
 				} else {
