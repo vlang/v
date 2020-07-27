@@ -305,7 +305,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if decl.language == .v {
+		if !c.is_builtin_mod && decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
