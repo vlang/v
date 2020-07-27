@@ -477,7 +477,8 @@ fn send_action<T>(action string, vars []string, mut app T) {
 }
 
 fn (mut ctx Context) parse_form(s string) {
-	if ctx.req.method !in methods_with_form {
+	// TODO replace with !in methods_with_form when available
+	if ctx.req.method != http.Method.post && ctx.req.method != http.Method.put && ctx.req.method != http.Method.patch {
 		return
 	}
 	//pos := s.index('\r\n\r\n')
