@@ -14,9 +14,22 @@ const (
 	bufsize = 1536
 )
 
+pub enum Method {
+	get
+	post
+	put
+	header
+	delete
+	options
+	head
+	trace
+	connect
+	patch
+}
+
 pub struct Request {
 pub mut:
-	method     string
+	method     Method
 	headers    map[string]string
 	cookies    map[string]string
 	data       string
@@ -29,7 +42,7 @@ pub mut:
 
 pub struct FetchConfig {
 pub mut:
-	method     string
+	method     Method
 	data       string
 	params     map[string]string
 	headers    map[string]string
@@ -47,11 +60,11 @@ pub:
 	status_code int
 }
 
-pub fn new_request(method, url_, data string) ?Request {
-	url := if method == 'GET' { url_ + '?' + data } else { url_ }
+pub fn new_request(method Method, url_, data string) ?Request {
+	url := if method == .get { url_ + '?' + data } else { url_ }
 	//println('new req() method=$method url="$url" dta="$data"')
 	return Request{
-		method: method.to_upper()
+		method: method
 		url: url
 		data: data
 		/*
@@ -63,11 +76,11 @@ pub fn new_request(method, url_, data string) ?Request {
 }
 
 pub fn get(url string) ?Response {
-	return fetch_with_method('GET', url, FetchConfig{})
+	return fetch_with_method(.get, url, FetchConfig{})
 }
 
 pub fn post(url, data string) ?Response {
-	return fetch_with_method('POST', url, {
+	return fetch_with_method(.post, url, {
 		data: data
 		headers: {
 			'Content-Type': content_type_default
@@ -76,7 +89,7 @@ pub fn post(url, data string) ?Response {
 }
 
 pub fn post_json(url, data string) ?Response {
-	return fetch_with_method('POST', url, {
+	return fetch_with_method(.post, url, {
 		data: data
 		headers: {
 			'Content-Type': 'application/json'
@@ -85,7 +98,7 @@ pub fn post_json(url, data string) ?Response {
 }
 
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method('POST', url, {
+	return fetch_with_method(.post, url, {
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
 		}
@@ -94,7 +107,7 @@ pub fn post_form(url string, data map[string]string) ?Response {
 }
 
 pub fn put(url, data string) ?Response {
-	return fetch_with_method('PUT', url, {
+	return fetch_with_method(.put, url, {
 		data: data
 		headers: {
 			'Content-Type': content_type_default
@@ -103,7 +116,7 @@ pub fn put(url, data string) ?Response {
 }
 
 pub fn patch(url, data string) ?Response {
-	return fetch_with_method('PATCH', url, {
+	return fetch_with_method(.patch, url, {
 		data: data
 		headers: {
 			'Content-Type': content_type_default
@@ -112,11 +125,11 @@ pub fn patch(url, data string) ?Response {
 }
 
 pub fn head(url string) ?Response {
-	return fetch_with_method('HEAD', url, FetchConfig{})
+	return fetch_with_method(.head, url, FetchConfig{})
 }
 
 pub fn delete(url string) ?Response {
-	return fetch_with_method('DELETE', url, FetchConfig{})
+	return fetch_with_method(.delete, url, FetchConfig{})
 }
 
 pub fn fetch(_url string, config FetchConfig) ?Response {
@@ -127,9 +140,8 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		return error('http.fetch: invalid url ${_url}')
 	}
 	data := config.data
-	method := config.method.to_upper()
 	req := Request{
-		method: method
+		method: config.method
 		url: url
 		data: data
 		headers: config.headers
@@ -147,7 +159,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 
 pub fn get_text(url string) string {
 	resp := fetch(url, {
-		method: 'GET'
+		method: .get
 	}) or {
 		return ''
 	}
@@ -164,7 +176,7 @@ pub fn url_encode_form_data(data map[string]string) string {
 	return pieces.join('&')
 }
 
-fn fetch_with_method(method, url string, _config FetchConfig) ?Response {
+fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
 	mut config := _config
 	config.method = method
 	return fetch(url, config)
@@ -258,7 +270,7 @@ pub fn (req &Request) do() ?Response {
 	return resp
 }
 
-fn (req &Request) method_and_url_to_response(method string, url urllib.URL) ?Response {
+fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Response {
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.path.trim_left('/')
@@ -348,7 +360,7 @@ fn parse_response(resp string) Response {
 	}
 }
 
-fn (req &Request) build_request_headers(method, host_name, path string) string {
+fn (req &Request) build_request_headers(method Method, host_name, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string{}
 	if 'Host' !in req.headers {
@@ -371,13 +383,24 @@ fn (req &Request) build_request_headers(method, host_name, path string) string {
 		req.data
 }
 
+fn (m Method) str() string {
+	return match m {
+		.get { 'GET' }
+		.post { 'POST' }
+		.header { 'HEADER' }
+		.put { 'PUT' }
+		.connect { 'CONNECT' }
+		else { '' }
+	}
+}
+
 fn (req &Request) build_request_cookies_header() string {
 	if req.cookies.keys().len < 1 {
 		return ''
 	}
 	mut cookie := []string{}
 	for key, val in req.cookies {
-		cookie << '$key: $val'
+		cookie << '$key=$val'
 	}
 	if 'Cookie' in req.headers && req.headers['Cookie'] != '' {
 		cookie << req.headers['Cookie']
@@ -401,7 +424,7 @@ pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 
-fn (req &Request) http_do(port int, method, host_name, path string) ?Response {
+fn (req &Request) http_do(port int, method Method, host_name, path string) ?Response {
 	rbuffer := [bufsize]byte
 	mut sb := strings.new_builder(100)
 	s := req.build_request_headers(method, host_name, path)

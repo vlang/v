@@ -8,10 +8,13 @@ fn new_st() MyStruct {
 
 fn get_st() MyStruct {
 	r := new_st()
-	return {r|s:'6'}
+	return {
+		r |
+		s: '6'
+	}
 }
 
 fn main() {
-    s := get_st()
-    println(s)
+	s := get_st()
+	println(s)
 }

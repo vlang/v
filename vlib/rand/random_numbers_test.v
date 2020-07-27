@@ -175,18 +175,3 @@ fn test_rand_f64_in_range() {
 		assert value < max
 	}
 }
-
-fn test_rand_uuid_v4() {
-	uuid1 := rand.uuid_v4()
-	uuid2 := rand.uuid_v4()
-	uuid3 := rand.uuid_v4()
-	assert uuid1 != uuid2    
-	assert uuid1 != uuid3
-	assert uuid2 != uuid3
-	assert uuid1.len == 36    
-	assert uuid2.len == 36    
-	assert uuid3.len == 36
-	assert uuid1[14] == `4`
-	assert uuid2[14] == `4`
-	assert uuid3[14] == `4`
-}

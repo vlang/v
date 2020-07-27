@@ -8,6 +8,7 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
+//import time
 
 pub type FNCb fn(x voidptr)
 pub type FNEvent fn(e voidptr, x voidptr)
@@ -85,7 +86,9 @@ fn gg_init_sokol_window(user_data voidptr) {
 	//println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
 	//if g.config.init_text {
 	if g.config.font_path != '' {
+		//t := time.ticks()
 		g.ft = new_ft({ font_path: g.config.font_path, scale: sapp.dpi_scale() }) or {panic(err)}
+		//println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	}
 	if g.config.init_fn != voidptr(0) {

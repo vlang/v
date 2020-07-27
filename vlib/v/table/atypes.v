@@ -15,8 +15,8 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | Interface | Map | MultiReturn |
-	Struct | GenericStructInst | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | GenericStructInst | Interface |
+	Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -46,10 +46,9 @@ pub enum TypeFlag {
 }
 
 /*
-	To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
+To save precious TypeFlag bits the 4 possible ShareTypes are coded in the two
 	bits `shared` and `atomic_or_rw` (see sharetype_from_flags() below).
 */
-
 pub enum ShareType {
 	mut_t
 	shared_t
@@ -127,7 +126,6 @@ pub fn (t Type) to_ptr() Type {
 	if nr_muls == 255 {
 		panic('to_ptr: nr_muls is already at max of 255')
 	}
-
 	return int(t) & 0xff00ffff | ((nr_muls + 1) << 16)
 }
 
@@ -144,13 +142,13 @@ pub fn (t Type) deref() Type {
 // set `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) set_flag(flag TypeFlag) Type {
-  return int(t) | (1 << (int(flag) + 24))
+	return int(t) | (1 << (int(flag) + 24))
 }
 
 // clear `flag` on `t` and return `t`
 [inline]
 pub fn (t Type) clear_flag(flag TypeFlag) Type {
-  return int(t) & ~(1 << (int(flag) + 24))
+	return int(t) & ~(1 << (int(flag) + 24))
 }
 
 // clear all flags
@@ -162,7 +160,7 @@ pub fn (t Type) clear_flags() Type {
 // return true if `flag` is set on `t`
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
-  return int(t) & (1 << (int(flag) + 24)) > 0
+	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
 // copy flags & nr_muls from `t_from` to `t` and return `t`
@@ -263,24 +261,12 @@ pub const (
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx,
-		u32_type_idx,
-		u64_type_idx,
-		any_int_type_idx
-	]
+		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx]
-	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx,
-		i64_type_idx, byte_type_idx,
-		u16_type_idx,
-		u32_type_idx,
-		u64_type_idx,
-		f32_type_idx,
-		f64_type_idx,
-		any_int_type_idx,
-		any_flt_type_idx
-	]
+	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, any_flt_type_idx]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
@@ -314,13 +300,9 @@ pub const (
 )
 
 pub const (
-	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64',
-		'u16',
-		'u32',
-		'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte',
-		'bool', 'none', 'array', 'array_fixed',
-		'map', 'any', 'struct',
-		'mapnode', 'size_t']
+	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
+		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
+		'none', 'array', 'array_fixed', 'map', 'any', 'struct', 'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -548,10 +530,10 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	})
 	// t.register_type_symbol({
-	// 	kind: .any
-	// 	name: 'T'
-	// 	mod: 'builtin'
-	// 	is_public: true
+	// kind: .any
+	// name: 'T'
+	// mod: 'builtin'
+	// is_public: true
 	// })
 	t.register_type_symbol({
 		kind: .any_float
@@ -681,15 +663,15 @@ pub mut:
 
 pub struct Enum {
 pub:
-	vals    []string
-	is_flag bool
+	vals             []string
+	is_flag          bool
 	is_multi_allowed bool
 }
 
 pub struct Alias {
 pub:
 	parent_type Type
-	language   Language
+	language    Language
 }
 
 // NB: FExpr here is a actually an ast.Expr .

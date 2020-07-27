@@ -14,4 +14,6 @@ pub:
 	family    string
 	bold      bool
 	mono      bool
+	italic bool
+
 }

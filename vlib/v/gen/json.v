@@ -23,7 +23,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	mut enc := strings.new_builder(100)
 	sym := g.table.get_type_symbol(typ)
 	styp := g.typ(typ)
-	if is_js_prim(sym.name) || sym.kind == .enum_{
+	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
 	if sym.kind == .array {
@@ -38,26 +38,24 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	// cJSON_Parse(str) call is added by the compiler
 	// Code gen decoder
 	dec_fn_name := js_dec_name(sym.name)
-
 	// Make sure that this optional type actually exists
 	g.register_optional(typ)
 	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
 //Option_$styp ${dec_fn_name}(cJSON* root, $styp* res) {
 $dec_fn_dec {
-  $styp res;
-  if (!root) {
-    const char *error_ptr = cJSON_GetErrorPtr();
-    if (error_ptr != NULL)	{
-//      fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
-//      printf("\\nbad js=%%s\\n", js.str);
-		Option err = v_error(tos2(error_ptr));
-      return *(Option_$styp *)&err;
-    }
-  }
+	$styp res;
+	if (!root) {
+		const char *error_ptr = cJSON_GetErrorPtr();
+		if (error_ptr != NULL)	{
+			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
+			// printf("\\nbad js=%%s\\n", js.str);
+			Option err = v_error(tos2(error_ptr));
+			return *(Option_$styp *)&err;
+		}
+	}
 ')
 	g.json_forward_decls.writeln('$dec_fn_dec;')
-
 	// Code gen encoder
 	// encode_TYPE funcs receive an object to encode
 	enc_fn_name := js_enc_name(sym.name)
@@ -107,11 +105,9 @@ $enc_fn_dec {
 					dec.writeln('  res . ${c_name(field.name)} = *($field_type*) $dec_name (js_get(root,"$name")).data;')
 				}
 			}
-
 			mut enc_name := js_enc_name(field_type)
 			if g.table.get_type_symbol(field.typ).kind == .enum_ {
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
-
 			} else {
 				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
 			}
@@ -160,7 +156,7 @@ const cJSON *jsval = NULL;
 cJSON_ArrayForEach(jsval, root)
 {
 $s
-  array_push(&res, &val);
+	array_push(&res, &val);
 }
 '
 }
@@ -171,7 +167,7 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 	return '
 o = cJSON_CreateArray();
 for (int i = 0; i < val.len; i++){
-  cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
+	cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
 }
 '
 }
