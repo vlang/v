@@ -24,6 +24,39 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		return
 	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
+
+	g.write('${util.no_dots(node.sym.name)}_${node.method_name}(')
+	g.expr(node.left)
+	if node.args.len > 0 {
+		g.write(', ')
+	}
+	for i := 0; i < node.args.len; i++ {
+		arg := node.args[i]
+		match node.args_arr[i] {
+			1 {
+				g.expr(arg.expr)
+			}
+			else {
+				for a in 0..node.args_arr[i] {
+					typ_name := g.typ(arg.typ)
+					if arg.expr is ast.Ident {
+						ident := arg.expr as ast.Ident
+						name := ident.name
+						g.write('(($typ_name*)${name}.data) [$a]')
+					}
+					if a < node.args_arr[i] - 1 {
+						g.write(', ')
+					}
+				}
+			}
+		}
+		if i < node.args.len - 1 {
+			g.write(', ')
+		}
+	}
+	g.write(')')
+
+/*
 	mut j := 0
 	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
 	if node.method_name == 'method' {
@@ -38,7 +71,8 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		for val in vals {
 		}
 		*/
-		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
+		println(node.method_name)
+		g.write('${util.no_dots(node.sym.name)}_${node.method_name}(')
 		g.expr(node.left)
 		if m.args.len > 1 {
 			g.write(', ')
@@ -85,7 +119,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		g.expr(node.left)
 		g.writeln(');')
 		j++
-	}
+	}*/
 }
 
 fn (mut g Gen) comp_if(mut it ast.CompIf) {
