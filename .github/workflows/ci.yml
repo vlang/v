@@ -45,9 +45,10 @@ jobs:
       run: ./v build-tools
     - name: v vet
       run: |
+        ./v vet vlib/v/ast
+        ./v vet vlib/v/builder
         ./v vet vlib/v/scanner
         ./v vet vlib/v/parser
-        ./v vet vlib/v/ast
         ./v vet vlib/v/gen/cgen.v
         ./v vet vlib/v/checker
         ./v vet vlib/sqlite
