@@ -370,6 +370,14 @@ fn test_contains_any() {
 	assert !''.contains_any('')
 }
 
+fn test_contains_any_substr() {
+	s := 'Some random text'
+	assert s.contains_any_substr(['false', 'not', 'rand'])
+	assert !s.contains_any_substr(['ABC', 'invalid'])
+	assert ''.contains_any_substr([])
+	assert 'abc'.contains_any_substr([''])
+}
+
 fn test_arr_contains() {
 	a := ['a', 'b', 'c']
 	assert a.contains('b')

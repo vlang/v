@@ -762,6 +762,18 @@ pub fn (s string) contains_any(chars string) bool {
 	return false
 }
 
+pub fn (s string) contains_any_substr(substrs []string) bool {
+	if substrs.len == 0 {
+		return true
+	}
+	for sub in substrs {
+		if s.contains(sub) {
+			return true
+		}
+	}
+	return false
+}
+
 pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
