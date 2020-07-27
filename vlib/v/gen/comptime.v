@@ -109,7 +109,7 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 		mut comptime_var_type := table.Type(0)
 		if it.tchk_expr is ast.SelectorExpr {
 			se := it.tchk_expr as ast.SelectorExpr
-			x := se.expr.str()
+			x := '${se.expr}.$se.field_name'
 			comptime_var_type = g.comptime_var_type_map[x]
 		}
 		if comptime_var_type == 0 {
@@ -117,22 +117,24 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 				eprintln('Known compile time types: ')
 				eprintln(g.comptime_var_type_map.str())
 			}
-			verror('the compile time type of `$it.tchk_expr.str()` is unknown')
-		}
-		ret_type_name := g.table.get_type_symbol(comptime_var_type).name
-		it_type_name := g.table.get_type_symbol(it.tchk_type).name
-		types_match := comptime_var_type == it.tchk_type
-		g.writeln('{ // \$if $it.val is $it_type_name, typecheck start, $comptime_var_type == $it.tchk_type => $ret_type_name == $it_type_name => $types_match ')
-		mut stmts := it.stmts
-		if !types_match {
-			stmts = []ast.Stmt{}
-			if it.has_else {
-				stmts = it.else_stmts
+			// verror('the compile time type of `$it.tchk_expr.str()` is unknown')
+			return
+		} else {
+			ret_type_name := g.table.get_type_symbol(comptime_var_type).name
+			it_type_name := g.table.get_type_symbol(it.tchk_type).name
+			types_match := comptime_var_type == it.tchk_type
+			g.writeln('{ // \$if $it.val is $it_type_name, typecheck start, $comptime_var_type == $it.tchk_type => $ret_type_name == $it_type_name => $types_match ')
+			mut stmts := it.stmts
+			if !types_match {
+				stmts = []ast.Stmt{}
+				if it.has_else {
+					stmts = it.else_stmts
+				}
 			}
-		}
-		g.stmts(stmts)
-		g.writeln('} // typecheck end')
+			g.stmts(stmts)
+			g.writeln('} // typecheck end')
 		return
+		}
 	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	g.empty_line = false
@@ -192,12 +194,27 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 					attrs.join(', ') + '}));')
 			}
-			method_sym := g.table.get_type_symbol(method.return_type)
-			g.writeln('\t${node.val_var}.ret_type = tos_lit("$method_sym.name");')
-			styp := int(method.return_type).str()
-			g.writeln('\t${node.val_var}.type = $styp;')
+			mut sig := 'anon_fn_'
+			// skip the first (receiver) arg
+			for j, arg in method.args[1..] {
+				// TODO: ignore mut/pts in sig for now
+				typ := arg.typ.set_nr_muls(0)
+				sig += '${typ}'
+				if j < method.args.len - 2 { sig += '_' }
+			}
+			sig += '_$method.return_type'
+
+			styp :=	g.table.find_type_idx(sig)
+			println(styp)
+			// if styp == 0 { }
+			// TODO: type aliases
+
+			ret_typ := method.return_type.idx()
+			g.writeln('\t${node.val_var}.Type = $styp;')
+			g.writeln('\t${node.val_var}.ReturnType = $ret_typ;')
 			//
-			g.comptime_var_type_map[node.val_var] = method.return_type
+			g.comptime_var_type_map['${node.val_var}.ReturnType'] = ret_typ
+			g.comptime_var_type_map['${node.val_var}.Type'] = styp
 			g.stmts(node.stmts)
 			i++
 			g.writeln('')
@@ -224,13 +241,13 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 						attrs.join(', ') + '}));')
 				}
-				field_sym := g.table.get_type_symbol(field.typ)
-				g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
-				styp := int(field.typ).str()
-				g.writeln('\t${node.val_var}.type = $styp;')
+				// field_sym := g.table.get_type_symbol(field.typ)
+				// g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
+				styp := field.typ
+				g.writeln('\t${node.val_var}.Type = $styp;')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
-				g.comptime_var_type_map[node.val_var] = field.typ
+				g.comptime_var_type_map[node.val_var + '.Type'] = styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('')

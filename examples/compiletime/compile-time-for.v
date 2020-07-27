@@ -6,26 +6,36 @@ mut:
 	a    string
 }
 
+// type VoidFn = fn()
+
 fn main() {
-	println('All functions')
+	println('\n\nAll functions')
 	$for method in App.methods {
-		$if method.@type is int {
-			println('hi')
+		println('Method: $method.name')
+		println('Attributes: $method.attrs')
+		println('Return type: $method.ReturnType')
+		// TODO: `ReturnType.str()` should return the type name as a string
+
+		$if method.Type is fn(string) string {
+			println('$method.name is fn(string) string')
 		}
-		println('$method.name.len')
-		println('$method.name.str')
-		println('Method: $method.name')
-		println('Attributes: $method.attrs')
-		println('Return type: $method.ret_type')
+		$if method.ReturnType is int {
+			println('$method.name returns int')
+		}
+		/*
+		$if method.args[0].Type is int {
+			println('${method.name}\'s first arg is int')
+		}
+		$if method.Type is VoidFn {
+			println('$method.name is a void method')
+		}
+		*/
+		println('')
 	}
-	println('All integer functions')
-	$for method in App.methods {
-		println('Method: $method.name')
-		println('Attributes: $method.attrs')
-	}
+	println('\n\nAll fields')
 	$for field in App.fields {
-		$if field.@type is string {
-			println(field)
+		$if field.Type is string {
+			println('Field `$field.name` is string')
 		}
 	}
 }
@@ -42,4 +52,8 @@ fn (mut app App) method_three() int {
 
 fn (mut app App) method_four() int {
 	return 1
+}
+
+fn (mut app App) method_five(s string) string {
+	return s
 }
