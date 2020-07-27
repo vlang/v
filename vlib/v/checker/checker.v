@@ -358,6 +358,11 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
+	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
+		sexpr := struct_init.fields[0].expr.str()
+		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
+			struct_init.pos)
+	}
 	if type_sym.kind == .interface_ {
 		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
 	}
