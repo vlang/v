@@ -1762,6 +1762,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
+			if g.should_write_asterisk_due_to_match_sumtype(node) {
+				g.write('*')
+			}
 			g.ident(node)
 		}
 		ast.IfExpr {
@@ -2421,9 +2424,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-	}
-	if g.should_write_asterisk_due_to_match_sumtype(node) {
-		g.write('*')
 	}
 	g.write(g.get_ternary_name(name))
 }
