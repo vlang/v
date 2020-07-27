@@ -2279,6 +2279,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_warnings += c2.nr_warnings
 				c.nr_errors += c2.nr_errors
 			} else {
+				println(node.method_var)
 				if node.method_var !is ast.StringLiteral {
 					c.error('method `$node.method_name` is not a string literal', node.method_var.position())
 					return table.void_type
@@ -2312,16 +2313,25 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				for i := 0; i < node.args.len; i++ {
 					exp_typ := method.args[arg_i].typ
 					exp_typ_sym := c.table.get_type_symbol(exp_typ)
-
+					mut exp_dim := 0
+					if exp_typ_sym.info is table.Array {
+						exp_dim = exp_typ_sym.array_info().nr_dims
+					} else if exp_typ_sym.info is table.ArrayFixed {
+						exp_dim = exp_typ_sym.array_fixed_info().nr_dims
+					}
 					arg := node.args[i]
 					got_typ := c.expr(arg.expr)
 					got_typ_sym := c.table.get_type_symbol(got_typ)
 
 					mut arr_typ := got_typ
 					if got_typ_sym.info is table.Array {
-						arr_typ = got_typ_sym.array_info().elem_type
+						if got_typ_sym.array_info().nr_dims == exp_dim + 1 {
+							arr_typ = got_typ_sym.array_info().elem_type
+						}
 					} else if got_typ_sym.info is table.ArrayFixed {
-						arr_typ = got_typ_sym.array_fixed_info().elem_type
+						if got_typ_sym.array_fixed_info().nr_dims == exp_dim + 1 {
+							arr_typ = got_typ_sym.array_fixed_info().elem_type
+						}
 					}
 
 					node.args[i].typ = arr_typ

@@ -4,7 +4,7 @@
 #endif
 
 #ifndef V_CURRENT_COMMIT_HASH
-	#define V_CURRENT_COMMIT_HASH "7b61aa5"
+	#define V_CURRENT_COMMIT_HASH "b72a9c1"
 #endif
 
 // V typedefs:
@@ -9466,17 +9466,14 @@ static void main__main() {
 #endif
 };
 	string method = tos_lit("method1");
-	array_string arr = new_array_from_c_array(2, 2, sizeof(string), _MOV((string[2]){tos_lit("hello"), method}));
+	array_string arr = new_array_from_c_array(1, 1, sizeof(string), _MOV((string[1]){tos_lit("hello")}));
 	array_int ints = new_array_from_c_array(2, 2, sizeof(int), _MOV((int[2]){1, 2}));
 	// $method call. sym="main.App"
 	main__App_method1(app, ((string*)arr.data) [0], ((string*)arr.data) [1], true, false, ((int*)ints.data) [0], ((int*)ints.data) [1]);
-	string met = tos_lit("method2");
-	// $method call. sym="main.App"
-	main__App_method2(app);
 }
 
 static void main__App_method1(main__App app, string a, string b, bool c, bool d, int e, int f) {
-	println(_STR("hello %.*s\000 %.*s", 2, a, b));
+	println(_STR("hello %.*s\000 %.*s\000 %.*s\000 %.*s\000 %"PRId32"\000 %"PRId32"", 6, a, b, c ? _SLIT("true") : _SLIT("false"), d ? _SLIT("true") : _SLIT("false"), e, f));
 }
 
 static void main__App_method2(main__App app) {
