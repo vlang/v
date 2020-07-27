@@ -2422,13 +2422,14 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 	}
-	if g.should_write_asterisk_for(node) {
+	if g.should_write_asterisk_due_to_match_sumtype(node) {
 		g.write('*')
 	}
 	g.write(g.get_ternary_name(name))
 }
 
-fn (mut g Gen) should_write_asterisk_for(expr ast.Expr) bool {
+[unlikely]
+fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 	if expr is ast.Ident {
 		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
 		return if typ.is_ptr() && g.match_sumtype_contains_and_has_no_struct(expr) {
@@ -2441,6 +2442,7 @@ fn (mut g Gen) should_write_asterisk_for(expr ast.Expr) bool {
 	}
 }
 
+[unlikely]
 fn (mut g Gen) match_sumtype_contains_and_has_no_struct(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
