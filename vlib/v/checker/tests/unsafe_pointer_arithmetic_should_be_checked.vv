@@ -1,5 +1,5 @@
 fn test_ptr_assign() {
-    v := 5
+    mut v := 5
     mut p := &v
     p++
     p += 2
