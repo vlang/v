@@ -355,7 +355,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
-	if start_pos + 2 == s.pos {
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	} else if has_wrong_digit {
@@ -395,7 +395,7 @@ fn (mut s Scanner) ident_hex_number() string {
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
-	if start_pos + 2 == s.pos {
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	} else if has_wrong_digit {
@@ -435,7 +435,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
 	}
-	if start_pos + 2 == s.pos {
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	} else if has_wrong_digit {
