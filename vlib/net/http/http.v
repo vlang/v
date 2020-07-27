@@ -394,7 +394,7 @@ fn (m Method) str() string {
 	}
 }
 
-pub fn get_method(str string) m Method {
+pub fn get_method(str string) Method {
 	return match str {
 		'GET' { .get }
 		'POST' { .post }
