@@ -337,6 +337,9 @@ fn (mut s Scanner) ident_bin_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
@@ -347,6 +350,9 @@ fn (mut s Scanner) ident_bin_number() string {
 			}
 		}
 		s.pos++
+	}
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
 	}
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -371,6 +377,9 @@ fn (mut s Scanner) ident_hex_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.is_inside_string {
 				break
@@ -381,6 +390,9 @@ fn (mut s Scanner) ident_hex_number() string {
 			}
 		}
 		s.pos++
+	}
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
 	}
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -405,6 +417,9 @@ fn (mut s Scanner) ident_oct_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
@@ -415,6 +430,9 @@ fn (mut s Scanner) ident_oct_number() string {
 			}
 		}
 		s.pos++
+	}
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
 	}
 	if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
@@ -436,6 +454,9 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1]  == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_digit() && c != num_sep {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
@@ -446,6 +467,9 @@ fn (mut s Scanner) ident_dec_number() string {
 			}
 		}
 		s.pos++
+	}
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
 	}
 	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
 	mut is_range := false // true for, e.g., 5..10
