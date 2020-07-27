@@ -194,6 +194,22 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 					attrs.join(', ') + '}));')
 			}
+			if method.args.len < 2 {
+				// 0 or 1 (the receiver) args
+				g.writeln('\t${node.val_var}.args = __new_array_with_default(0, 0, sizeof(MethodArgs), 0);')
+			} else {
+				len := method.args.len - 1
+				g.write('\t${node.val_var}.args = new_array_from_c_array($len, $len, sizeof(MethodArgs), _MOV((MethodArgs[$len]){')
+				// Skip receiver arg
+				for j, arg in method.args[1..] {
+					typ := arg.typ.idx()
+					g.write(typ.str())
+					if j < len - 1 { g.write(', ') }
+					g.comptime_var_type_map['${node.val_var}.args[$j].Type'] = typ
+				}
+				g.writeln('}));')
+			}
+
 			mut sig := 'anon_fn_'
 			// skip the first (receiver) arg
 			for j, arg in method.args[1..] {

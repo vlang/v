@@ -22,10 +22,10 @@ fn main() {
 		$if method.ReturnType is int {
 			println('$method.name returns int')
 		}
-		/*
-		$if method.args[0].Type is int {
-			println('${method.name}\'s first arg is int')
+		$if method.args[0].Type is string {
+			println("${method.name}'s first arg is string")
 		}
+		/*
 		$if method.Type is VoidFn {
 			println('$method.name is a void method')
 		}
