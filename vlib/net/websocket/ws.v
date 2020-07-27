@@ -590,6 +590,10 @@ pub fn (mut ws Client) read() int {
 	return -1
 }
 
+pub fn (mut ws Client) send_pong() int {
+	return ws.send_control_frame(.pong, 'PONG', [])
+}
+
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
 	mut bytes_written := -1
 	if ws.socket.sockfd <= 0 {
