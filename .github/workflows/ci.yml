@@ -45,6 +45,7 @@ jobs:
       run: ./v build-tools
     - name: v vet
       run: |
+        ./v vet vlib/sqlite
         ./v vet vlib/v/ast
         ./v vet vlib/v/builder
         ./v vet vlib/v/cflag
@@ -55,12 +56,15 @@ jobs:
         ./v vet vlib/v/errors
         ./v vet vlib/v/eval
         ./v vet vlib/v/fmt
+        ./v vet vlib/v/gen/cgen.v
         ./v vet vlib/v/parser
         ./v vet vlib/v/pref
         ./v vet vlib/v/scanner
         ./v vet vlib/v/table
-        ./v vet vlib/v/gen/cgen.v
-        ./v vet vlib/sqlite
+        ./v vet vlib/v/token
+        ./v vet vlib/v/util
+        ./v vet vlib/v/vet
+        ./v vet vlib/v/vmod
     - name: v fmt
       run: |
         ./v fmt -verify vlib/v/checker/checker.v
