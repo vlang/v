@@ -2429,42 +2429,31 @@ fn (mut g Gen) ident(node ast.Ident) {
 }
 
 fn (mut g Gen) should_write_asterisk_for(expr ast.Expr) bool {
-	match expr {
-		ast.Ident {
-			is_sumtype_in_match, match_sumtype_arr_idx := g.match_sumtype_expr_contains(expr)
-			typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
-			return if typ.is_ptr() && is_sumtype_in_match &&
-				g.match_sumtype_has_no_struct_variant(match_sumtype_arr_idx) {
-				true
-			} else {
-				false
-			}
+	if expr is ast.Ident {
+		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
+		return if typ.is_ptr() && g.match_sumtype_contains_and_has_no_struct(expr) {
+			true
+		} else {
+			false
 		}
-		else {
-			return false
-		}
+	} else {
+		return false
 	}
 }
 
-fn (mut g Gen) match_sumtype_expr_contains(expr ast.Ident) (bool, int) {
-	for i, s_expr in g.match_sumtype_exprs {
-		if s_expr is ast.Ident {
-			if expr.name == s_expr.name {
-				return true, i
+fn (mut g Gen) match_sumtype_contains_and_has_no_struct(node ast.Ident) bool {
+	for i, expr in g.match_sumtype_exprs {
+		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
+			sumtype := g.match_sumtype_syms[i].info as table.SumType
+			for typ in sumtype.variants {
+				if g.table.get_type_symbol(typ).kind == .struct_ {
+					return false
+				}
 			}
+			return true
 		}
 	}
-	return false, 0
-}
-
-fn (mut g Gen) match_sumtype_has_no_struct_variant(idx int) bool {
-	sumtype := g.match_sumtype_syms[idx].info as table.SumType
-	for typ in sumtype.variants {
-		if g.table.get_type_symbol(typ).kind == .struct_ {
-			return false
-		}
-	}
-	return true
+	return false
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
