@@ -88,9 +88,14 @@ fn (m Method) str() string {
 	return match m {
 		.get { 'GET' }
 		.post { 'POST' }
-		.header { 'HEADER' }
 		.put { 'PUT' }
+		.header { 'HEADER' }
+		.delete { 'DELETE' }
+		.options { 'OPTIONS' }
+		.head { 'HEAD' }
+		.trace { 'TRACE' }
 		.connect { 'CONNECT' }
+		.patch { 'PATCH' }
 		else { '' }
 	}
 }
