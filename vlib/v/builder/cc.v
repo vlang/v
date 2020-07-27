@@ -137,7 +137,11 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if v.pref.os == .ios {
-		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
+		ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
+		ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or { panic('Couldn\'t find iphonesimulator') }
+		mut isysroot := ios_sdk_path_res.output.replace('\n', '')
+
+		ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
 	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
@@ -146,6 +150,14 @@ fn (mut v Builder) cc() {
 	// warnings are totally fixed/removed
 	mut a := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
 		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
+	if v.pref.os == .ios {
+		a << '-framework Foundation'
+		a << '-framework UIKit'
+		a << '-framework Metal'
+		a << '-framework MetalKit'
+		a << '-DSOKOL_METAL'
+		a << '-fobjc-arc'
+	}
 	mut linker_flags := []string{}
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
@@ -335,12 +347,17 @@ fn (mut v Builder) cc() {
 	// Cross compiling windows
 	//
 	// Output executable name
-	a << '-o "$v.pref.out_name"'
+	if v.pref.os == .ios {
+		bundle_name := v.pref.out_name.split('/').last()
+		a << '-o "$v.pref.out_name\.app/$bundle_name"'
+	} else {
+		a << '-o "$v.pref.out_name"'
+	}
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .mac {
+	if v.pref.os == .mac || v.pref.os == .ios {
 		a << '-x objective-c'
 	}
 	// The C file we are compiling
@@ -546,12 +563,12 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
-	if v.pref.os == .ios {
-		ret := os.system('ldid2 -S $v.pref.out_name')
-		if ret != 0 {
-			eprintln('failed to run ldid2, try: brew install ldid')
-		}
-	}
+	// if v.pref.os == .ios {
+	// 	ret := os.system('ldid2 -S $v.pref.out_name')
+	// 	if ret != 0 {
+	// 		eprintln('failed to run ldid2, try: brew install ldid')
+	// 	}
+	// }
 }
 
 fn (mut b Builder) cc_linux_cross() {

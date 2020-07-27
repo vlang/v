@@ -134,7 +134,6 @@ struct Game {
 	second_sw time.StopWatch = time.new_stopwatch({})
 }
 
-const ( fpath = os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') )
 
 [if showfps]
 fn (mut game Game) showfps() {
@@ -173,7 +172,7 @@ fn main() {
 		user_data: game
 		frame_fn: frame
 		event_fn: on_event
-		font_path: fpath
+		//font_path: fpath
 		//wait_events: true
 	)
 	game.init_game()
