@@ -217,5 +217,5 @@ fn test_optimized_in_expression_with_string() {
 
 fn test_in_array_init() {
 	assert 1 !in []int{}
-	assert [1] in [[1]]
+	assert [1] in [[1], [2]]
 }

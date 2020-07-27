@@ -2,132 +2,120 @@ import hello as hl
 import hello.hello1 as hl1
 
 const (
-    i_am_a_const = 21214
-    super = 'amazing keyword'
+	i_am_a_const = 21214
+	super        = 'amazing keyword'
 )
 
 struct Foo {
 mut:
-    a hl.Aaa
+	a hl.Aaa
 }
 
 struct Companies {
 	google int
-    amazon bool
-    yahoo string
+	amazon bool
+	yahoo  string
 }
 
 enum POSITION {
-    go_back
-    dont_go_back
+	go_back
+	dont_go_back
 }
 
 fn class(extends string, instanceof int) {
-    delete := instanceof
-    _ = delete
+	delete := instanceof
+	_ = delete
 }
-
 
 fn main() {
-    println('Hello from V.js!')
-    println(JS.Math.atan2(1, 0))
-
-    mut a := 1
-    a *= 2
-    a += 3
-    println(a) // TODO: Handle string interpolation
-
-    mut b := hl.Aaa{}
-    b.update('an update')
-    println(b)
-
-    mut c := Foo{ hl.Aaa{} }
-    c.a.update('another update')
-    println(c)
-
-    _ = "done"
-    {
-        _ = "block"
-    }
-
-    _ = POSITION.go_back
-    _ = hl.Ccc.a
-
-    debugger := 'JS keywords'
-    // TODO: Implement interpolation
-    await := '$super: $debugger'
-    mut finally := 'implemented'
-
-    println('$await $finally')
-
-    dun := i_am_a_const * 20
-    dunn := hl.hello // External constant
-    _ = hl1.nested()
-
-    for i := 0; i < 10; i++ {}
-
-    for i, x in 'hello' {}
-
-    for x in 1..10 {}
-
-    arr := [1,2,3,4,5]
-    for i in arr {}
-
-    ma := {
-        'str':  "done"
-        'ddo': "baba"
-    }
-
-    // panic('foo')
-    for m, n in ma {
-        iss := m
-    }
-
-    go async(0, "hello")
-
-    fn_in_var := fn (number int) {
-        println("number: $number")
-    }
-
-    hl.debugger()
-    anon_consumer(hl.excited(), fn (message string) {
-        println(message)
-    })
-
-    hl.raw_js_log()
+	println('Hello from V.js!')
+	println(JS.Math.atan2(1, 0))
+	mut a := 1
+	a *= 2
+	a += 3
+	println(a) // TODO: Handle string interpolation
+	mut b := hl.Aaa{}
+	b.update('an update')
+	println(b)
+	mut c := Foo{hl.Aaa{}}
+	c.a.update('another update')
+	println(c)
+	_ = 'done'
+	{
+		_ = 'block'
+	}
+	_ = POSITION.go_back
+	_ = hl.Ccc.a
+	debugger := 'JS keywords'
+	// TODO: Implement interpolation
+	await := '$super: $debugger'
+	mut finally := 'implemented'
+	println('$await $finally')
+	dun := i_am_a_const * 20
+	dunn := hl.hello // External constant
+	_ = hl1.nested()
+	for i := 0; i < 10; i++ {
+	}
+	for i, x in 'hello' {
+	}
+	for x in 1 .. 10 {
+	}
+	arr := [1, 2, 3, 4, 5]
+	for i in arr {
+	}
+	ma := {
+		'str': 'done'
+		'ddo': 'baba'
+	}
+	// panic('foo')
+	for m, n in ma {
+		iss := m
+	}
+	go async(0, 'hello')
+	fn_in_var := fn (number int) {
+		println('number: $number')
+	}
+	hl.debugger()
+	anon_consumer(hl.excited(), fn (message string) {
+		println(message)
+	})
+	hl.raw_js_log()
 }
 
-fn anon_consumer (greeting string, anon fn(message string)) {
-    anon(greeting)
+fn anon_consumer(greeting string, anon fn (message string)) {
+	anon(greeting)
 }
 
-fn async(num int, def string) {}
+fn async(num int, def string) {
+}
 
 [inline]
 [deprecated]
 fn hello(game_on int, dummy ...string) (int, int) {
-    defer {
-        do := "not"
-    }
-    for dd in dummy {
-        l := dd
-    }
-    return game_on + 2, 221
+	defer {
+		do := 'not'
+	}
+	for dd in dummy {
+		l := dd
+	}
+	return game_on + 2, 221
 }
 
 fn (it Companies) method() int {
-
-    ss := Companies {
-        google: 2
-        amazon: true
-        yahoo: "hello"
+	ss := Companies{
+		google: 2
+		amazon: true
+		yahoo: 'hello'
 	}
-
-    a, b := hello(2, 'google', 'not google')
-
-    glue := if a > 2 { 'more_glue' } else if a > 5 {'more glueee'} else { 'less glue' }
-
-    if a != 2 {}
-
-    return 0
+	a, b := hello(2, 'google', 'not google')
+	glue := if a > 2 {
+		'more_glue'
+	} else if a > 5 {
+		'more glueee'
+	} else {
+		'less glue'
+	}
+	if a != 2 {
+	}
+	return 0
 }
