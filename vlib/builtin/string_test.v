@@ -362,11 +362,12 @@ fn test_contains() {
 }
 
 fn test_contains_any() {
-	s := 'Some random text'
-	assert s.contains_any(['false', 'not', 'rand'])
-	assert !s.contains_any(['ABC', 'invalid'])
-	assert ''.contains_any([])
-	assert 'abc'.contains_any([''])
+	assert !'team'.contains_any('i')
+	assert 'fail'.contains_any('ui')
+	assert 'ure'.contains_any('ui')
+	assert 'failure'.contains_any('ui')
+	assert !'foo'.contains_any('')
+	assert !''.contains_any('')
 }
 
 fn test_arr_contains() {

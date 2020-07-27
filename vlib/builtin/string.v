@@ -743,22 +743,19 @@ pub fn (s string) count(substr string) int {
 	return 0 // TODO can never get here - v doesn't know that
 }
 
-pub fn (s string) contains(p string) bool {
-	if p.len == 0 {
+pub fn (s string) contains(substr string) bool {
+	if substr.len == 0 {
 		return true
 	}
-	s.index(p) or {
+	s.index(substr) or {
 		return false
 	}
 	return true
 }
 
-pub fn (s string) contains_any(vals []string) bool {
-	if vals.len == 0 {
-		return true
-	}
-	for p in vals {
-		if s.contains(p) {
+pub fn (s string) contains_any(chars string) bool {
+	for c in chars {
+		if c.str() in s {
 			return true
 		}
 	}
