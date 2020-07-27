@@ -55,8 +55,10 @@ jobs:
         ./v vet vlib/v/errors
         ./v vet vlib/v/eval
         ./v vet vlib/v/fmt
-        ./v vet vlib/v/scanner
         ./v vet vlib/v/parser
+        ./v vet vlib/v/pref
+        ./v vet vlib/v/scanner
+        ./v vet vlib/v/table
         ./v vet vlib/v/gen/cgen.v
         ./v vet vlib/sqlite
     - name: v fmt

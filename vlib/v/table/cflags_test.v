@@ -19,7 +19,7 @@ fn test_parse_valid_cflags() {
 		make_flag('darwin', '-framework', 'Cocoa'),
 		make_flag('windows', '-l', 'gdi32'),
 		make_flag(no_os, '-l', 'mysqlclient'),
-		make_flag(no_os, no_name, '-test')
+		make_flag(no_os, no_name, '-test'),
 	]
 	parse_valid_flag(mut t, '-lmysqlclient')
 	parse_valid_flag(mut t, '-test')
@@ -54,8 +54,7 @@ fn test_parse_invalid_cflags() {
 }
 
 fn parse_valid_flag(mut t table.Table, flag string) {
-	t.parse_cflag(flag, module_name, cdefines) or {
-	}
+	t.parse_cflag(flag, module_name, cdefines) or { }
 }
 
 fn assert_parse_invalid_flag(mut t table.Table, flag string) {
