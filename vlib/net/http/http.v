@@ -396,17 +396,17 @@ fn (m Method) str() string {
 
 pub fn get_method(str string) Method {
 	return match str {
-		'GET' { .get }
-		'POST' { .post }
-		'PUT' { .put }
-		'HEADER' { .header }
-		'DELETE' { .delete }
-		'OPTIONS' { .options }
-		'HEAD' { .head }
-		'TRACE' { .trace }
-		'CONNECT' { .connect }
-		'PATCH' { .patch }
-		else { .get }
+		'GET' { Method.get }
+		'POST' { Method.post }
+		'PUT' { Method.put }
+		'HEADER' { Method.header }
+		'DELETE' { Method.delete }
+		'OPTIONS' { Method.options }
+		'HEAD' { Method.head }
+		'TRACE' { Method.trace }
+		'CONNECT' { Method.connect }
+		'PATCH' { Method.patch }
+		else { Method.get }
 	}
 }
 
