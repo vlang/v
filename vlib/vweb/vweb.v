@@ -362,91 +362,94 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
-	$for method in T {
-		route_words_a = [][]string{}
-		if attrs.len == 0 {
-			// No routing for this method. If it matches, call it and finish matching
-			// since such methods have a priority.
-			// For example URL `/register` matches route `/:user`, but `fn register()`
-			// should be called first.
-			if (req.method == 'GET' && url_words[0] == method && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method) {
-				println('easy match method=$method')
-				app.$method(vars)
-				return
-			}
-		} else {
-			// Get methods
-			// Get is default
-			if 'post' in attrs {
-				if req.method == 'POST' {
-					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-				}
-			} else if 'put' in attrs {
-				if req.method == 'PUT' {
-					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-				}
-			} else if 'patch' in attrs {
-				if req.method == 'PATCH' {
-					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-				}
-			} else if 'delete' in attrs {
-				if req.method == 'DELETE' {
-					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
-				}
-			} else if 'head' in attrs {
-				if req.method == 'HEAD' {
-					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
-				}
-			} else if 'options' in attrs {
-				if req.method == 'OPTIONS' {
-					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
+	$for method in T.methods {
+		$if method.@type is Result {
+			attrs := method.attrs
+			route_words_a = [][]string{}
+			if attrs.len == 0 {
+				// No routing for this method. If it matches, call it and finish matching
+				// since such methods have a priority.
+				// For example URL `/register` matches route `/:user`, but `fn register()`
+				// should be called first.
+				if (req.method == 'GET' && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
+					println('easy match method=$method.name')
+					app.$method(vars)
+					return
 				}
 			} else {
-				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-			}
-			if route_words_a.len > 0 {
-				for route_words in route_words_a {
-					if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
-						// match `/:user/:repo/tree` to `/vlang/v/tree`
-						mut matching := false
-						mut unknown := false
-						mut variables := []string{cap: route_words.len}
-						for i in 0..route_words.len {
-							if url_words.len == i {
-								variables << ''
-								matching = true
-								unknown = true
-								break
-							}
-							if url_words[i] == route_words[i] {
-								// no parameter
-								matching = true
-								continue
-							} else if route_words[i].starts_with(':') {
-								// is parameter
-								if i < route_words.len && !route_words[i].ends_with('...') {
-									// normal parameter
-									variables << url_words[i]
-								} else {
-									// array parameter only in the end
-									variables << url_words[i..].join('/')
+				// Get methods
+				// Get is default
+				if 'post' in attrs {
+					if req.method == 'POST' {
+						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
+					}
+				} else if 'put' in attrs {
+					if req.method == 'PUT' {
+						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
+					}
+				} else if 'patch' in attrs {
+					if req.method == 'PATCH' {
+						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
+					}
+				} else if 'delete' in attrs {
+					if req.method == 'DELETE' {
+						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
+					}
+				} else if 'head' in attrs {
+					if req.method == 'HEAD' {
+						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
+					}
+				} else if 'options' in attrs {
+					if req.method == 'OPTIONS' {
+						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
+					}
+				} else {
+					route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
+				}
+				if route_words_a.len > 0 {
+					for route_words in route_words_a {
+						if url_words.len == route_words.len || (url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
+							// match `/:user/:repo/tree` to `/vlang/v/tree`
+							mut matching := false
+							mut unknown := false
+							mut variables := []string{cap: route_words.len}
+							for i in 0..route_words.len {
+								if url_words.len == i {
+									variables << ''
+									matching = true
+									unknown = true
+									break
 								}
-								matching = true
-								unknown = true
-								continue
-							} else {
-								matching = false
-								break
+								if url_words[i] == route_words[i] {
+									// no parameter
+									matching = true
+									continue
+								} else if route_words[i].starts_with(':') {
+									// is parameter
+									if i < route_words.len && !route_words[i].ends_with('...') {
+										// normal parameter
+										variables << url_words[i]
+									} else {
+										// array parameter only in the end
+										variables << url_words[i..].join('/')
+									}
+									matching = true
+									unknown = true
+									continue
+								} else {
+									matching = false
+									break
+								}
 							}
-						}
-						if matching && !unknown {
-							// absolute router words like `/test/site`
-							app.$method(vars)
-							return
-						} else if matching && unknown {
-							// router words with paramter like `/:test/site`
-							action = method
-							vars = variables
+							if matching && !unknown {
+								// absolute router words like `/test/site`
+								app.$method(vars)
+								return
+							} else if matching && unknown {
+								// router words with paramter like `/:test/site`
+								action = method.name
+								vars = variables
+							}
 						}
 					}
 				}
@@ -463,11 +466,13 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 
 fn send_action<T>(action string, vars []string, mut app T) {
 	// TODO remove this function
-	$for method in T {
-		// search again for method
-		if action == method && attrs.len > 0 {
-			// call action method
-			app.$method(vars)
+	$for method in T.methods {
+		$if method.@type is Result {
+			// search again for method
+			if action == method.name && method.attrs.len > 0 {
+				// call action method
+				app.$method(vars)
+			}
 		}
 	}
 }

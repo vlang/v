@@ -377,7 +377,7 @@ fn (req &Request) build_request_cookies_header() string {
 	}
 	mut cookie := []string{}
 	for key, val in req.cookies {
-		cookie << '$key: $val'
+		cookie << '$key=$val'
 	}
 	if 'Cookie' in req.headers && req.headers['Cookie'] != '' {
 		cookie << req.headers['Cookie']

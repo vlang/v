@@ -128,7 +128,7 @@ const (
 black = C.sfons_rgba(0, 0, 0, 255)
 )
 
-fn (state &AppState) render_font() {
+fn (mut state AppState) render_font() {
 	lh := 30
 	mut dy := lh
 	if !state.inited {

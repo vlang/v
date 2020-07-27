@@ -446,22 +446,20 @@ println(nums.len) // "0"
 
 // Declare an empty array:
 users := []int{}
-
-// We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
 
 The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
-
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
-`.len` field returns the length of the array. Note that it's a read-only field,
+The `.len` field returns the length of the array. Note that it's a read-only field,
 and it can't be modified by the user. Exported fields are read-only by default in V.
 See [Access modifiers](#access-modifiers).
+
+#### Array operations
 
 ```v
 mut nums := [1, 2, 3]
@@ -485,26 +483,26 @@ It can also append an entire array.
 
 `val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
-&nbsp;
+#### Initializing array properties
 
 During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
-and the default element (`init`).
+and the default element (`init`):
 
-Setting the capacity improves performance of insertions, as it reduces the amount of reallocations in
-dynamic arrays:
+```v
+arr := []int{ len: 5, init: -1 } // `[-1, -1, -1, -1, -1]`
+```
+
+Setting the capacity improves performance of insertions, as it reduces the number of reallocations needed:
 
 ```v
 mut numbers := []int{ cap: 1000 }
-// Now able to add new elements without reallocating
+println(numbers.len) // 0
+// Now appending elements won't reallocate
 for i in 0 .. 1000 {
     numbers << i
-    // same as
-    // numbers[i] = i
 }
 ```
-
-`[]int{ len: 5, init: -1 }` will create `[-1, -1, -1, -1, -1]`.
-
+Note: The above code uses a [range `for`](#range-for) statement.
 
 #### Array methods
 

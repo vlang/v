@@ -453,22 +453,22 @@ pub fn system(cmd string) int {
 			ret = C._wsystem(wcmd.to_wide())
 		}
 	} $else {
-/*
-		// make
-		// make selfcompile
-		// ./v -os ios hello.v
 		$if ios {
-			// TODO: use dlsym, use posix_spawn or embed ios_system
-			eprintln('system not supported on ios')
-			ret = 1
+			unsafe {
+				arg := [ c'/bin/sh', c'-c', byteptr(cmd.str), 0 ]
+				pid := 0
+				ret = C.posix_spawn(&pid, '/bin/sh', 0, 0, arg.data, 0)
+				status := 0
+				ret = C.waitpid(pid, &status, 0)
+				if C.WIFEXITED(status) {
+					ret = C.WEXITSTATUS(status)
+				}
+			}
 		} $else {
-*/
 			unsafe {
 				ret = C.system(charptr(cmd.str))
 			}
-/*
 		}
-*/
 	}
 	if ret == -1 {
 		print_c_errno()

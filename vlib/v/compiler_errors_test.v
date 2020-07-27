@@ -1,5 +1,6 @@
 import os
 import term
+import v.util
 
 fn test_all() {
 	mut total_errors := 0
@@ -75,6 +76,7 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 			println('found:')
 			println(found)
 			println('============\n')
+            diff_content( expected, found )
 			nb_fail++
 		} else {
 			println(term.green('OK'))
@@ -92,3 +94,10 @@ fn clean_line_endings(s string) string {
 	res = res.trim('\n')
 	return res
 }
+
+fn diff_content(s1 string, s2 string) {
+	diff_cmd := util.find_working_diff_command() or { return }
+	println('diff: ')
+	println( util.color_compare_strings(diff_cmd, s1, s2) )
+	println('============\n')
+}    

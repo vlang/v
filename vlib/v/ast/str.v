@@ -314,3 +314,10 @@ pub fn (node Stmt) str() string {
 		}
 	}
 }
+
+pub fn (e CompForKind) str() string {
+	match e {
+		.methods { return 'methods' }
+		.fields { return 'fields' }
+	}
+}

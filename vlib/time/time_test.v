@@ -192,3 +192,21 @@ fn test_utc() {
 	assert now.microsecond 		>= 0
 	assert now.microsecond 		< 1000000
 }
+
+fn test_unix_time() {
+	t1 := time.utc()
+	time.sleep_ms(50)
+	t2 := time.utc()
+	ut1 := t1.unix_time()
+	ut2 := t2.unix_time()
+	assert ut2 - ut1 < 2
+	//
+	utm1 := t1.unix_time_milli()
+	utm2 := t2.unix_time_milli()
+	assert (utm1 - u64(ut1)*1000) < 1000
+	assert (utm2 - u64(ut2)*1000) < 1000
+	//
+	//println('utm1: $utm1 | utm2: $utm2')
+	assert utm2 - utm1 > 2
+	assert utm2 - utm1 < 999
+}

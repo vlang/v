@@ -1591,6 +1591,25 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		return
 	}
+	// Check `x := &y`
+	if right_first is ast.PrefixExpr {
+		node := right_first
+		left_first := assign_stmt.left[0]
+		if node.op == .amp && node.right is ast.Ident {
+			ident := node.right as ast.Ident
+			scope := c.file.scope.innermost(node.pos.pos)
+			if v := scope.find_var(ident.name) {
+				if left_first is ast.Ident {
+					assigned_var := left_first
+					if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
+						c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
+							node.pos)
+					}
+				}
+			}
+		}
+	}
+	//
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
 		is_blank_ident := left.is_blank_ident()
@@ -1643,14 +1662,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					left.info = ident_var_info
 					if left_type != 0 {
 						match mut left.obj as v {
-							ast.Var {
-								v.typ = left_type
-							}
-							ast.GlobalDecl {
-								v.typ = left_type
-							}
+							ast.Var { v.typ = left_type }
+							ast.GlobalDecl { v.typ = left_type }
 							else {}
-
 						}
 						/*
 						if left.obj is ast.Var as v {
@@ -1918,7 +1932,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(node.stmts)
 		}
 		ast.CompIf {
-			// c.expr(node.cond)
 			c.stmts(node.stmts)
 			if node.has_else {
 				c.stmts(node.else_stmts)
@@ -3078,7 +3091,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		typ_sym = c.table.get_type_symbol(typ)
 	}
 	if typ_sym.kind != .enum_ {
-		c.error('expected type is not an enum', node.pos)
+		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return table.void_type
 	}
 	if typ_sym.info !is table.Enum {
