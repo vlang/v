@@ -1778,10 +1778,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if g.should_write_asterisk_due_to_match_sumtype(node) {
-				g.write('*')
+			if !g.is_assign_lhs && !g.assign_rhs_is_ident && g.should_write_asterisk_due_to_match_sumtype(node) {
+				g.write('(*')
+				g.ident(node)
+				g.write(')')
+			} else {
+				g.ident(node)
 			}
-			g.ident(node)
 		}
 		ast.IfExpr {
 			g.if_expr(node)
