@@ -9,10 +9,8 @@ module math
 // backend specific functions.
 // If using System/Backend dependent functions, put them in their respective
 // .c.v or .js.v or other files
-
 // Below are functions that are not wrappers for built-in system functions, but
 // native V functions. They are still sorted alphabetically
-
 // Faster approximate sin() and cos() implemented from lolremez
 pub fn aprox_sin(a f64) f64 {
 	a0 := 1.91059300966915117e-31
@@ -95,6 +93,24 @@ pub fn gcd(a_, b_ i64) i64 {
 	return a
 }
 
+// max returns the maximum value of the two provided. (int version)
+pub fn int_max(a, b int) int {
+	return if a < b {
+		a
+	} else {
+		b
+	}
+}
+
+// min returns the minimum value of the two provided. (int version)
+pub fn int_min(a, b int) int {
+	return if a < b {
+		a
+	} else {
+		b
+	}
+}
+
 // lcm calculates least common (non-negative) multiple.
 pub fn lcm(a, b i64) i64 {
 	if a == 0 {
@@ -107,25 +123,22 @@ pub fn lcm(a, b i64) i64 {
 	return res
 }
 
-// max returns the maximum value of the two provided. (int version)
-pub fn imax(x,y int) int {
-	return if x > y { x } else { y }
-}
-
 // max returns the maximum value of the two provided.
 pub fn max(a, b f64) f64 {
-	if a > b {
-		return a
+	return if a < b {
+		a
+	} else {
+		b
 	}
-	return b
 }
 
 // min returns the minimum value of the two provided.
 pub fn min(a, b f64) f64 {
-	if a < b {
-		return a
+	return if a < b {
+		a
+	} else {
+		b
 	}
-	return b
 }
 
 // radians convert from radians to degrees.

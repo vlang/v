@@ -75,18 +75,18 @@ fn (cmd Command) help_message() string {
 	mut name_len := min_description_indent_len
 	if cmd.has_abbrev_flags() {
 		for flag in cmd.flags {
-			abbrev_len = math.imax(abbrev_len, flag.abbrev.len + spacing + 1) // + 1 for '-' in front
-			name_len = math.imax(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
+			abbrev_len = math.int_max(abbrev_len, flag.abbrev.len + spacing + 1) // + 1 for '-' in front
+			name_len = math.int_max(name_len, abbrev_len + flag.name.len + spacing + 2) // + 2 for '--' in front
 		}
 		for command in cmd.commands {
-			name_len = math.imax(name_len, command.name.len + spacing)
+			name_len = math.int_max(name_len, command.name.len + spacing)
 		}
 	} else {
 		for flag in cmd.flags {
-			name_len = math.imax(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
+			name_len = math.int_max(name_len, abbrev_len + flag.name.len + spacing + 1) // + 1 for '-' in front
 		}
 		for command in cmd.commands {
-			name_len = math.imax(name_len, command.name.len + spacing)
+			name_len = math.int_max(name_len, command.name.len + spacing)
 		}
 	}
 	if cmd.flags.len > 0 {

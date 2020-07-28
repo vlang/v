@@ -5,6 +5,7 @@ module util
 
 import os
 import term
+import math
 import v.token
 
 // The filepath:line:col: format is the default C compiler error output format.
@@ -82,7 +83,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 	source := read_file(filepath) or {
 		''
 	}
-	mut p := imax(0, imin(source.len - 1, pos.pos))
+	mut p := math.int_max(0, math.int_min(source.len - 1, pos.pos))
 	if source.len > 0 {
 		for ; p >= 0; p-- {
 			if source[p] == `\r` || source[p] == `\n` {
@@ -90,7 +91,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 			}
 		}
 	}
-	column := imax(0, pos.pos - p - 1)
+	column := math.int_max(0, pos.pos - p - 1)
 	position := '$path:${pos.line_nr+1}:${imax(1,column+1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
@@ -107,13 +108,13 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 		return clines
 	}
 	source_lines := source.split_into_lines()
-	bline := imax(0, pos.line_nr - error_context_before)
-	aline := imax(0, imin(source_lines.len - 1, pos.line_nr + error_context_after))
+	bline := math.int_max(0, pos.line_nr - error_context_before)
+	aline := math.int_max(0, math.int_min(source_lines.len - 1, pos.line_nr + error_context_after))
 	tab_spaces := '    '
 	for iline := bline; iline <= aline; iline++ {
 		sline := source_lines[iline]
-		start_column := imax(0, imin(column, sline.len))
-		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
+		start_column := math.int_max(0, math.int_min(column, sline.len))
+		end_column := math.int_max(0, math.int_min(column + math.int_max(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr { sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..] } else { sline }
 		clines << '${iline+1:5d} | ' + cline.replace('\t', tab_spaces)

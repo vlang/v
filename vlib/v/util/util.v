@@ -224,24 +224,6 @@ pub fn read_file(file_path string) ?string {
 	return raw_text
 }
 
-[inline]
-pub fn imin(a, b int) int {
-	return if a < b {
-		a
-	} else {
-		b
-	}
-}
-
-[inline]
-pub fn imax(a, b int) int {
-	return if a > b {
-		a
-	} else {
-		b
-	}
-}
-
 pub fn replace_op(s string) string {
 	last_char := s[s.len - 1]
 	suffix := match last_char {

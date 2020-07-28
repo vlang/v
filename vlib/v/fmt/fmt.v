@@ -7,6 +7,7 @@ import v.ast
 import v.table
 import v.token
 import strings
+import math
 import v.util
 
 const (
@@ -70,7 +71,7 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
-	bounded_import_pos := util.imin(res.len, f.import_pos)
+	bounded_import_pos := math.int_min(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
 }
 

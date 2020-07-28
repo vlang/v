@@ -3,6 +3,7 @@ module doc
 import os
 import strings
 import time
+import math
 import v.ast
 import v.fmt
 import v.parser
@@ -98,11 +99,11 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	source := util.read_file(file_path) or {
 		''
 	}
-	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
-	column := util.imax(0, pos.pos - p - 1)
+	mut p := math.int_max(0, math.int_min(source.len - 1, pos.pos))
+	column := math.int_max(0, pos.pos - p - 1)
 	return DocPos{
 		line: pos.line_nr + 1
-		col: util.imax(1, column + 1)
+		col: math.int_max(1, column + 1)
 	}
 }
 
