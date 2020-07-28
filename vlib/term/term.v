@@ -1,6 +1,7 @@
 module term
 
 import os
+import math
 
 const (
 	default_columns_size = 80
@@ -53,19 +54,15 @@ pub fn header(text, divider string) string {
 		return h_divider(divider)
 	}
 	xcols,_ := get_terminal_size()
-	cols := imax(1, xcols)    
-	tlimit := imax(1, if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len })
+	cols := math.imax(1, xcols)    
+	tlimit := math.imax(1, if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len })
 	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
-	tstart := imax(0, (cols - tlimit_alligned) / 2)
+	tstart := math.imax(0, (cols - tlimit_alligned) / 2)
 	ln := if divider.len > 0 { divider.repeat(1 + cols / divider.len)[0..cols] } else { " ".repeat(1 + cols) }
 	if ln.len == 1 {
 		return ln + ' ' + text[0..tlimit] + ' ' + ln
 	}
 	return ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
-}
-
-fn imax(x,y int) int {
-	return if x > y { x } else { y }
 }
 
 fn supports_escape_sequences(fd int) bool {

@@ -107,6 +107,11 @@ pub fn lcm(a, b i64) i64 {
 	return res
 }
 
+// max returns the maximum value of the two provided. (int version)
+pub fn imax(x,y int) int {
+	return if x > y { x } else { y }
+}
+
 // max returns the maximum value of the two provided.
 pub fn max(a, b f64) f64 {
 	if a > b {
