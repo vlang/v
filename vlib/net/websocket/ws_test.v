@@ -41,12 +41,12 @@ fn ws_test(uri string) {
 	}
 }
 
-fn on_open(ws &websocket.Client, x voidptr, mut test Test) {
+fn on_open(mut test Test, x voidptr, ws &websocket.Client) {
 	println('websocket opened.')
 	test.connected = true
 }
 
-fn on_message(ws &websocket.Client, msg &websocket.Message, mut test Test) {
+fn on_message(mut test Test, msg &websocket.Message, ws &websocket.Client) {
 	typ := msg.opcode
 	if typ == .text_frame {
 		println('Message: ${cstring_to_vstring(msg.payload)}')
@@ -56,11 +56,11 @@ fn on_message(ws &websocket.Client, msg &websocket.Message, mut test Test) {
 	}
 }
 
-fn on_close(ws &websocket.Client, x, y voidptr) {
+fn on_close(x, y voidptr, ws &websocket.Client) {
 	println('websocket closed.')
 }
 
-fn on_error(ws &websocket.Client, x, y voidptr) {
+fn on_error(x, y voidptr, ws &websocket.Client) {
 	println('we have an error.')
 	assert false
 }

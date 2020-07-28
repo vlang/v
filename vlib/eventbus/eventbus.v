@@ -1,6 +1,6 @@
 module eventbus
 
-pub type EventHandlerFn fn(voidptr, voidptr, voidptr)
+pub type EventHandlerFn fn(receiver voidptr, args voidptr, sender voidptr)
 
 pub struct Publisher {
 mut:
@@ -64,7 +64,7 @@ fn (mut pb Publisher) publish(name string, sender voidptr, args voidptr) {
 			if event.once {
 				pb.registry.events.delete(i)
 			}
-			event.handler(sender, args, event.receiver)
+			event.handler(event.receiver, args, sender)
 		}
 	}
 }
