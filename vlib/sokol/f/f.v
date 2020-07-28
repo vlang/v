@@ -17,7 +17,10 @@ pub const (
 #flag freebsd -I/usr/local/include/freetype2
 #flag freebsd -Wl -L/usr/local/lib
 
-#flag -lfreetype
+#flag windows -lfreetype
+#flag linux -lfreetype
+#flag darwin -lfreetype
+
 #flag darwin -lpng -lbz2 -lz
 
 #flag linux -I.

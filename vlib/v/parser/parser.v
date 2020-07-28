@@ -602,13 +602,22 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_unsafe {
-			p.next()
-			assert !p.inside_unsafe
-			p.inside_unsafe = true
-			stmts := p.parse_block()
-			p.inside_unsafe = false
-			return ast.UnsafeStmt{
-				stmts: stmts
+			// unsafe {
+			if p.peek_tok.kind == .lcbr {
+				p.next()
+				assert !p.inside_unsafe
+				p.inside_unsafe = true
+				stmts := p.parse_block()
+				p.inside_unsafe = false
+				return ast.UnsafeStmt{
+					stmts: stmts
+				}
+			}
+			// unsafe(
+			pos := p.tok.position()
+			return ast.ExprStmt{
+				expr: p.expr(0)
+				pos: pos
 			}
 		}
 		.hash {

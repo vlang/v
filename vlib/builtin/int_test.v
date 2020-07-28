@@ -148,21 +148,18 @@ fn test_num_separator() {
 	// int
 	assert 100_000_0 == 1000000
 	assert -2_23_4_6 == -22346
-	assert 230_ == 230
 
 	// bin
 	assert 0b0_11 == 3
 	assert -0b0_100 == -4
-	assert 0b010_ == 2
 
 	// oct
 	assert 0o1_73 == 123
 	assert -0o17_5 == -125
-	assert -0o175_ == -125
+	assert -0o175 == -125
 
 	// hex
 	assert 0xFF == 255
-	assert 0xFF_ == 255
 	assert 0xF_F == 255
 
 	// f32 or f64

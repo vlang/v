@@ -1907,10 +1907,10 @@ To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
 
 ```v
 // allocate 2 uninitialized bytes & return a reference to them
-mut p := unsafe { &byte(malloc(2)) }
+mut p := unsafe(&byte(malloc(2)))
 p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
 unsafe {
-    p[0] = `h`
+    p[0] = `h` // OK
     p[1] = `i`
 }
 p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
@@ -1920,13 +1920,12 @@ unsafe {
 assert *p == `i`
 ```
 
-Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
+Best practice is to avoid putting memory-safe expressions inside an `unsafe` expression/block,
 so that the reason for using `unsafe` is as clear as possible. Generally any code 
-you think is memory-safe should not be inside an `unsafe` block, so the compiler 
-can verify it.
+you think is memory-safe should be verified by the compiler.
 
 If you suspect your program does violate memory-safety, you have a head start on 
-finding the cause: look at the `unsafe` blocks (and how they interact with 
+finding the cause: look for the `unsafe` keyword (and how it affects the
 surrounding code).
 
 * Note: This is work in progress.
