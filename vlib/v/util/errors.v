@@ -92,7 +92,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 		}
 	}
 	column := math.int_max(0, pos.pos - p - 1)
-	position := '$path:${pos.line_nr+1}:${imax(1,column+1)}:'
+	position := '$path:${pos.line_nr+1}:${math.int_max(1,column+1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
