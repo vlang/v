@@ -18,13 +18,13 @@ mut:
 	// cwebsocket_subprotocol *subprotocols[];
 	mtx        &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
-	state      State
 	socket     net.Socket
 	flags      []Flag
 	sslctx     &C.SSL_CTX
 	ssl        &C.SSL
 	fragments  []Fragment
 pub mut:
+	state      State
 	log        log.Log = log.Log{
 	output_label: 'ws'
 }
@@ -101,10 +101,6 @@ pub fn new(uri string) &Client {
 		sslctx: 0
 	}
 	return ws
-}
-
-pub fn (mut ws Client) get_state() State {
-	return ws.state
 }
 
 fn (ws &Client) parse_uri() &Uri {
