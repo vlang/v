@@ -41,7 +41,9 @@ fn ws_test(uri string) {
 	}
 }
 
-fn on_open(mut test Test, y voidptr, ws &websocket.Client) {
+fn on_open(mut test Test, y voidptr, mut ws &websocket.Client) {
+	// Send PONG only for testing porposes
+	ws.send_pong()
 	println('websocket opened.')
 	test.connected = true
 }
