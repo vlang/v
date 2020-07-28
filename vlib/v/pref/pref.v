@@ -102,6 +102,8 @@ pub mut:
 	prealloc            bool
 	vroot               string
 	out_name            string
+	display_name        string
+	bundle_id           string
 	path                string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
 	compile_defines     []string // just ['vfmt']
@@ -118,6 +120,7 @@ pub mut:
 	only_check_syntax   bool // when true, just parse the files, then stop, before running checker
 	experimental        bool // enable experimental features
 	show_timings        bool // show how much time each compiler stage took
+	is_ios_simulator    bool
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -182,6 +185,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-prod' {
 				res.is_prod = true
+			}
+			'-simulator' {
+				res.is_ios_simulator = true
 			}
 			'-stats' {
 				res.is_stats = true
@@ -283,6 +289,14 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					exit(1)
 				}
 				res.custom_prelude = prelude
+				i++
+			}
+			'-name' {
+				res.display_name = cmdline.option(current_args, '-name', '')
+				i++
+			}
+			'-bundle' {
+				res.bundle_id = cmdline.option(current_args, '-bundle', '')
 				i++
 			}
 			else {

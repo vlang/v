@@ -18,7 +18,7 @@ A module to provide eventing capabilities using pub/sub.
 
 1. `subscribe(name string, handler EventHandlerFn)` - subscribe to an event
 2. `subscribe_once(name string, handler EventHandlerFn)` - subscribe only once to an event
-3. `subscribe_method(name string, handler EventHandlerFn, reciever voidptr)` - subscribe to an event and also recieve the `reciever` as a parameter. Since it's not yet possible to send methods as parameters, this is the workaround.
+3. `subscribe_method(name string, handler EventHandlerFn, receiver voidptr)` - subscribe to an event and also set the `receiver` as a parameter. Since it's not yet possible to send methods as parameters, this is a workaround.
 4. `is_subscribed(name string)` - check if we are subscribed to an event
 5. `unsubscribe(name string)` - unsubscribe from an event
 
@@ -27,7 +27,7 @@ A module to provide eventing capabilities using pub/sub.
 The function given to `subscribe`, `subscribe_method` and `subscribe_once` must match this:
 
 ```v
-fn(voidptr, voidptr, voidptr){
+fn(receiver voidptr, args voidptr, sender voidptr){
 
 }
 
@@ -38,7 +38,7 @@ struct ClickEvent {
 }
 
 // Example case where publisher sends ClickEvent as args.
-fn onPress(sender voidptr, e &ClickEvent){
+fn onPress(receiver voidptr, e &ClickEvent, sender voidptr){
     println(e.x)
     //your code here...
 }
@@ -71,7 +71,7 @@ fn main(){
 }
 
 // the event handler
-fn on_error(work &Work, e &Error) {
+fn on_error(receiver voidptr, e &Error, work &Work) {
 	println('error occured on ${work.hours}. Error: ${e.message}')
 }
 ```
@@ -106,4 +106,6 @@ fn do_work(){
 
 **The rationale behind separating Subscriber & Publisher:**
 
-This is mainly for security because the if publisher & subscriber are both passed around, a client can easily publish events acting as the server. So a client should only be able to use the Subscriber methods.
+This is mainly for security because if publisher & subscriber are both passed around, 
+a client can easily publish events acting as the server. 
+So a client should only be able to use the Subscriber methods.

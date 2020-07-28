@@ -137,15 +137,27 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if v.pref.os == .ios {
-		ccompiler = 'xcrun --sdk iphoneos gcc -arch arm64'
+		ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
+		ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or { panic('Couldn\'t find iphonesimulator') }
+		mut isysroot := ios_sdk_path_res.output.replace('\n', '')
+
+		ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
 	}
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
 	// '-Werror',
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
-	mut a := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
+	mut args := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
 		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
+	if v.pref.os == .ios {
+		args << '-framework Foundation'
+		args << '-framework UIKit'
+		args << '-framework Metal'
+		args << '-framework MetalKit'
+		args << '-DSOKOL_METAL'
+		args << '-fobjc-arc'
+	}
 	mut linker_flags := []string{}
 	// TCC on Linux by default, unless -cc was provided
 	// TODO if -cc = cc, TCC is still used, default compiler should be
@@ -169,7 +181,7 @@ fn (mut v Builder) cc() {
 					// os.mkdir('/var/tmp/tcc/lib/tcc/') or { panic(err) }
 					// os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
 					v.pref.ccompiler = tcc_path
-					a << '-m64'
+					args << '-m64'
 				}
 			}
 		} $else {
@@ -184,7 +196,7 @@ fn (mut v Builder) cc() {
 	v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
 	if v.pref.is_shared {
 		linker_flags << '-shared'
-		a << '-fPIC' // -Wl,-z,defs'
+		args << '-fPIC' // -Wl,-z,defs'
 		$if macos {
 			v.pref.out_name += '.dylib'
 		} $else {
@@ -192,8 +204,8 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if v.pref.is_bare {
-		a << '-fno-stack-protector'
-		a << '-ffreestanding'
+		args << '-fno-stack-protector'
+		args << '-ffreestanding'
 		linker_flags << '-static'
 		linker_flags << '-nostdlib'
 	}
@@ -254,36 +266,36 @@ fn (mut v Builder) cc() {
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
 	if debug_mode {
-		a << debug_options
+		args << debug_options
 		$if macos {
-			a << ' -ferror-limit=5000 '
+			args << ' -ferror-limit=5000 '
 		}
 	}
 	if v.pref.is_prod {
-		a << optimization_options
+		args << optimization_options
 	}
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
-		a << '-Werror=implicit-function-declaration'
+		args << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
 			linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .mac || os.user_os() == 'mac' {
-			a << '-flat_namespace'
+			args << '-flat_namespace'
 		}
 	}
 	mut libs := '' // builtin.o os.o http.o etc
 	if v.pref.build_mode == .build_module {
-		a << '-c'
+		args << '-c'
 	} else if v.pref.use_cache {
 		/*
 		QTODO
 		builtin_o_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
-		a << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
+		args << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
 		if os.exists(builtin_o_path) {
 			libs = builtin_o_path
 		}
@@ -318,12 +330,12 @@ fn (mut v Builder) cc() {
 				os.system('$vexe build-module vlib$os.path_separator$imp_path')
 			}
 			if path.ends_with('vlib/ui.o') {
-				a << '-framework Cocoa -framework Carbon'
+				args << '-framework Cocoa -framework Carbon'
 			}
 		}
 	}
 	if v.pref.sanitize {
-		a << '-fsanitize=leak'
+		args << '-fsanitize=leak'
 	}
 	// Cross compiling for linux
 	if v.pref.os == .linux {
@@ -335,39 +347,44 @@ fn (mut v Builder) cc() {
 	// Cross compiling windows
 	//
 	// Output executable name
-	a << '-o "$v.pref.out_name"'
+	if v.pref.os == .ios {
+		bundle_name := v.pref.out_name.split('/').last()
+		args << '-o "$v.pref.out_name\.app/$bundle_name"'
+	} else {
+		args << '-o "$v.pref.out_name"'
+	}
 	if os.is_dir(v.pref.out_name) {
 		verror("'$v.pref.out_name' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .mac {
-		a << '-x objective-c'
+	if v.pref.os == .mac || v.pref.os == .ios {
+		args << '-x objective-c'
 	}
 	// The C file we are compiling
-	a << '"$v.out_name_c"'
+	args << '"$v.out_name_c"'
 	if v.pref.os == .mac {
-		a << '-x none'
+		args << '-x none'
 	}
 	// Min macos version is mandatory I think?
 	if v.pref.os == .mac {
-		a << '-mmacosx-version-min=10.7'
+		args << '-mmacosx-version-min=10.7'
 	}
 	if v.pref.os == .ios {
-		a << '-miphoneos-version-min=10.0'
+		args << '-miphoneos-version-min=10.0'
 	}
 	if v.pref.os == .windows {
-		a << '-municode'
+		args << '-municode'
 	}
 	cflags := v.get_os_cflags()
 	// add .o files
-	a << cflags.c_options_only_object_files()
+	args << cflags.c_options_only_object_files()
 	// add all flags (-I -l -L etc) not .o files
-	a << cflags.c_options_without_object_files()
-	a << libs
+	args << cflags.c_options_without_object_files()
+	args << libs
 	// For C++ we must be very tolerant
 	if guessed_compiler.contains('++') {
-		a << '-fpermissive'
-		a << '-w'
+		args << '-fpermissive'
+		args << '-w'
 	}
 	if v.pref.use_cache {
 		// vexe := pref.vexe_path()
@@ -380,7 +397,7 @@ fn (mut v Builder) cc() {
 				println('$vexe build-module vlib/$cfile')
 				os.system('$vexe build-module vlib/$cfile')
 			}
-			a << ofile
+			args << ofile
 		}
 		if !is_cc_tcc {
 			$if linux {
@@ -390,7 +407,7 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if is_cc_tcc {
-		a << '-bt10'
+		args << '-bt10'
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
@@ -410,14 +427,14 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	args := a.join(' ') + ' ' + linker_flags.join(' ')
+	str_args := args.join(' ') + ' ' + linker_flags.join(' ')
 	if v.pref.is_verbose {
-		println('cc args=$args')
-		println(a)
+		println('cc args=$str_args')
+		println(args)
 	}
 	// write args to response file
 	response_file := '${v.out_name_c}.rsp'
-	response_file_content := args.replace('\\', '\\\\')
+	response_file_content := str_args.replace('\\', '\\\\')
 	os.write_file(response_file, response_file_content) or {
 		verror('Unable to write response file "$response_file"')
 	}
@@ -546,12 +563,12 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
-	if v.pref.os == .ios {
-		ret := os.system('ldid2 -S $v.pref.out_name')
-		if ret != 0 {
-			eprintln('failed to run ldid2, try: brew install ldid')
-		}
-	}
+	// if v.pref.os == .ios {
+	// 	ret := os.system('ldid2 -S $v.pref.out_name')
+	// 	if ret != 0 {
+	// 		eprintln('failed to run ldid2, try: brew install ldid')
+	// 	}
+	// }
 }
 
 fn (mut b Builder) cc_linux_cross() {
