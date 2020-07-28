@@ -75,6 +75,37 @@ pub fn new_request(method Method, url_, data string) ?Request {
 	}
 }
 
+fn (methods []Method) contains(m Method) bool {
+	for method in methods {
+		if method == m {
+			return true
+		}
+	}
+	return false
+}
+
+fn (m Method) str() string {
+	return match m {
+		.get { 'GET' }
+		.post { 'POST' }
+		.header { 'HEADER' }
+		.put { 'PUT' }
+		.connect { 'CONNECT' }
+		else { '' }
+	}
+}
+
+pub fn method_from_str(m string) Method {
+	return match m {
+		'GET' { Method.get }
+		'POST' { Method.post }
+		'HEADER' { Method.header }
+		'PUT' { Method.put }
+		'CONNECT' { Method.connect }
+		else { Method.get } // should we default to GET?
+	}
+}
+
 pub fn get(url string) ?Response {
 	return fetch_with_method(.get, url, FetchConfig{})
 }
@@ -381,17 +412,6 @@ fn (req &Request) build_request_headers(method Method, host_name, path string) s
 	uheaders << req.build_request_cookies_header()
 	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
 		req.data
-}
-
-fn (m Method) str() string {
-	return match m {
-		.get { 'GET' }
-		.post { 'POST' }
-		.header { 'HEADER' }
-		.put { 'PUT' }
-		.connect { 'CONNECT' }
-		else { '' }
-	}
 }
 
 fn (req &Request) build_request_cookies_header() string {
