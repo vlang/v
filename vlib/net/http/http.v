@@ -14,19 +14,6 @@ const (
 	bufsize = 1536
 )
 
-pub enum Method {
-	get
-	post
-	put
-	header
-	delete
-	options
-	head
-	trace
-	connect
-	patch
-}
-
 pub struct Request {
 pub mut:
 	method     Method
@@ -82,33 +69,6 @@ fn (methods []Method) contains(m Method) bool {
 		}
 	}
 	return false
-}
-
-fn (m Method) str() string {
-	return match m {
-		.get { 'GET' }
-		.post { 'POST' }
-		.put { 'PUT' }
-		.header { 'HEADER' }
-		.delete { 'DELETE' }
-		.options { 'OPTIONS' }
-		.head { 'HEAD' }
-		.trace { 'TRACE' }
-		.connect { 'CONNECT' }
-		.patch { 'PATCH' }
-		else { '' }
-	}
-}
-
-pub fn method_from_str(m string) Method {
-	return match m {
-		'GET' { Method.get }
-		'POST' { Method.post }
-		'HEADER' { Method.header }
-		'PUT' { Method.put }
-		'CONNECT' { Method.connect }
-		else { Method.get } // should we default to GET?
-	}
 }
 
 pub fn get(url string) ?Response {
