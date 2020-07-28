@@ -194,6 +194,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	// }
 	p.check(.key_if)
 	mut is_not := p.tok.kind == .not
+	inversion_pos := p.tok.position()
 	if is_not {
 		p.next()
 	}
@@ -289,10 +290,16 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		p.next()
 		is_opt = true
 	} else if p.tok.kind in [.key_is, .not_is] {
-		if p.tok.kind == .not_is { is_not = !is_not }
+		typecheck_inversion := p.tok.kind == .not_is
 		p.next()
 		tchk_type = p.parse_type()
 		is_typecheck = true
+		if is_not {
+			name := p.table.get_type_name(tchk_type)
+			p.error_with_pos('use `\$if $tchk_expr !is $name {`, not `\$if !$tchk_expr is $name {`',
+			inversion_pos)
+		}
+		is_not = typecheck_inversion
 	}
 	if !skip {
 		stmts = p.parse_block()
