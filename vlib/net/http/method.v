@@ -3,6 +3,9 @@
 // that can be found in the LICENSE file.
 module http
 
+// The methods listed here are some of the most used ones, ordered by
+// commonality. A comprehensive list is available at:
+// https://www.iana.org/assignments/http-methods/http-methods.xhtml
 pub enum Method {
 	get
 	post
@@ -36,7 +39,10 @@ pub fn method_from_str(m string) Method {
 		'PUT' { Method.put }
 		'HEAD' { Method.head }
 		'DELETE' { Method.delete }
+		'OPTIONS' { Method.options }
+		'TRACE' { Method.trace }
 		'CONNECT' { Method.connect }
+		'PATCH' { Method.patch }
 		else { Method.get } // should we default to GET?
 	}
 }
