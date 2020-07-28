@@ -99,6 +99,8 @@ mut:
 	inside_const          bool
 	comp_for_method       string // $for method in T {
 	comptime_var_type_map map[string]table.Type
+	match_sumtype_exprs   []ast.Expr
+	match_sumtype_syms    []table.TypeSymbol
 }
 
 const (
@@ -1760,6 +1762,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
+			if g.should_write_asterisk_due_to_match_sumtype(node) {
+				g.write('*')
+			}
 			g.ident(node)
 		}
 		ast.IfExpr {
@@ -2269,6 +2274,16 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
+	if node.is_sum_type {
+		g.match_sumtype_exprs << node.cond
+		g.match_sumtype_syms << type_sym
+	}
+	defer {
+		if node.is_sum_type {
+			g.match_sumtype_exprs.pop()
+			g.match_sumtype_syms.pop()
+		}
+	}
 	mut tmp := ''
 	if type_sym.kind != .void {
 		tmp = g.new_tmp_var()
@@ -2415,6 +2430,36 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
+}
+
+[unlikely]
+fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
+	if expr is ast.Ident {
+		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
+		return if typ.is_ptr() && g.match_sumtype_has_no_struct_and_contains(expr) {
+			true
+		} else {
+			false
+		}
+	} else {
+		return false
+	}
+}
+
+[unlikely]
+fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
+	for i, expr in g.match_sumtype_exprs {
+		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
+			sumtype := g.match_sumtype_syms[i].info as table.SumType
+			for typ in sumtype.variants {
+				if g.table.get_type_symbol(typ).kind == .struct_ {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
