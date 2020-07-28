@@ -4,8 +4,8 @@ import time
 struct Test {
 mut:
 	connected    bool = false
-	sended_msg   []string = []
-	recieved_msg []string = []
+	sent_messages     []string = []
+	received_messages []string = []
 }
 
 fn test_ws() {
@@ -25,7 +25,7 @@ fn ws_test(uri string) {
 	go ws.listen()
 	text := ['ws test', '{"vlang": "test0\n192"}']
 	for msg in text {
-		test.sended_msg << msg
+		test.sent_messages << msg
 		len := ws.write(msg.str, msg.len, .text_frame)
 		assert msg.len <= len
 		// sleep to give time to recieve response before send a new one
@@ -35,28 +35,28 @@ fn ws_test(uri string) {
 	time.sleep_ms(500)
 
 	assert test.connected == true
-	assert test.sended_msg.len == test.recieved_msg.len
-	for x, msg in test.sended_msg {
-		assert msg == test.recieved_msg[x]
+	assert test.sent_messages.len == test.received_messages.len
+	for x, msg in test.sent_messages {
+		assert msg == test.received_messages[x]
 	}
 }
 
-fn on_open(mut test Test, y voidptr, ws &websocket.Client) {
+fn on_open(ws &websocket.Client, x voidptr, mut test Test) {
 	println('websocket opened.')
 	test.connected = true
 }
 
-fn on_message(mut test Test, msg &websocket.Message, ws &websocket.Client) {
+fn on_message(ws &websocket.Client, msg &websocket.Message, mut test Test) {
 	typ := msg.opcode
 	if typ == .text_frame {
 		println('Message: ${cstring_to_vstring(msg.payload)}')
-		test.recieved_msg << cstring_to_vstring(msg.payload)
+		test.received_messages << cstring_to_vstring(msg.payload)
 	} else {
 		println('Binary message: $msg')
 	}
 }
 
-fn on_close(mut test Test, y voidptr, ws &websocket.Client) {
+fn on_close(ws &websocket.Client, x, y voidptr) {
 	println('websocket closed.')
 }
 
