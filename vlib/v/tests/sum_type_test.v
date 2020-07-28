@@ -251,7 +251,7 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
-fn test_calc_expr(dst Number, get_final bool) bool {
+fn calc_expr(dst Number, get_final bool) bool {
 	if !get_final {
 		match dst {
 			any_int {
