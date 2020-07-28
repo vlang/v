@@ -251,26 +251,28 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
-fn test_calc_expr(dst Number) bool {
-	match dst {
-		any_int {
-			dst2 := dst
-			dst3 := dst2
-			temp := 2 * dst3 + 1
-			res := temp - 3
-			foo := 1
-			return (foo + res) * res - res == 0
-		}
-		any_float {
-			dst2 := dst
-			dst3, foo := dst2, 2
-			temp := foo - 2
-			return dst3 - foo - temp > 0
+fn test_calc_expr(dst Number, get_final bool) bool {
+	if !get_final {
+		match dst {
+			any_int {
+				dst2 := dst
+				dst3 := dst2
+				temp := 2 * dst3 + 1
+				res := temp - 3
+				foo := 1
+				return (foo + res) * res - res == 0
+			}
+			any_float {
+				dst2 := dst
+				dst3, foo := dst2, 2
+				temp := foo - 2
+				return dst3 - foo - temp > 0
+			}
 		}
 	}
 	foo := 10
 	temp := foo
-	assert temp == 10
+	return temp + 10 == 20
 }
 
 fn test_sum_type_match() {
@@ -290,8 +292,9 @@ fn test_sum_type_match() {
 	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
-	assert test_calc_expr(1)
-	assert !test_calc_expr(2)
-	assert test_calc_expr(1.5)
-	assert !test_calc_expr(0.5)
+	assert calc_expr(1, false)
+	assert !calc_expr(2, false)
+	assert calc_expr(1.5, false)
+	assert !calc_expr(0.5, false)
+	assert calc_expr(0, true)
 }
