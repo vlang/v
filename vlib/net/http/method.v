@@ -18,7 +18,7 @@ pub enum Method {
 	patch
 }
 
-fn (m Method) str() string {
+pub fn (m Method) str() string {
 	return match m {
 		.get { 'GET' }
 		.post { 'POST' }
