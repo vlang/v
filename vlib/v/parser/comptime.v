@@ -193,7 +193,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	// return p.vweb()
 	// }
 	p.check(.key_if)
-	is_not := p.tok.kind == .not
+	mut is_not := p.tok.kind == .not
 	if is_not {
 		p.next()
 	}
@@ -288,7 +288,8 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
-	} else if p.tok.kind == .key_is {
+	} else if p.tok.kind in [.key_is, .not_is] {
+		if p.tok.kind == .not_is { is_not = !is_not }
 		p.next()
 		tchk_type = p.parse_type()
 		is_typecheck = true

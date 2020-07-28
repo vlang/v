@@ -107,34 +107,34 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	}
 	if it.kind == .typecheck {
 		mut comptime_var_type := table.Type(0)
+		mut name := ''
 		if it.tchk_expr is ast.SelectorExpr {
 			se := it.tchk_expr as ast.SelectorExpr
-			x := '${se.expr}.$se.field_name'
-			comptime_var_type = g.comptime_var_type_map[x]
+			name = '${se.expr}.$se.field_name'
+			comptime_var_type = g.comptime_var_type_map[name]
 		}
-		if comptime_var_type == 0 {
-			$if trace_gen ? {
-				eprintln('Known compile time types: ')
-				eprintln(g.comptime_var_type_map.str())
-			}
-			// verror('the compile time type of `$it.tchk_expr.str()` is unknown')
-			return
-		} else {
-			ret_type_name := g.table.get_type_symbol(comptime_var_type).name
-			it_type_name := g.table.get_type_symbol(it.tchk_type).name
-			types_match := comptime_var_type == it.tchk_type
-			g.writeln('{ // \$if $it.val is $it_type_name, typecheck start, $comptime_var_type == $it.tchk_type => $ret_type_name == $it_type_name => $types_match ')
-			mut stmts := it.stmts
-			if !types_match {
-				stmts = []ast.Stmt{}
-				if it.has_else {
-					stmts = it.else_stmts
-				}
-			}
-			g.stmts(stmts)
-			g.writeln('} // typecheck end')
+		// if comptime_var_type == 0 {
+		// 	$if trace_gen ? {
+		// 		eprintln('Known compile time types: ')
+		// 		eprintln(g.comptime_var_type_map.str())
+		// 	}
+		// 	// verror('the compile time type of `$it.tchk_expr.str()` is unknown')
+		// 	return
+		// }
+		it_type_name := g.table.get_type_name(it.tchk_type)
+		should_write := (comptime_var_type == it.tchk_type && !it.is_not) ||
+			(comptime_var_type != it.tchk_type && it.is_not)
+		if should_write {
+			inversion := if it.is_not { '!' } else { '' }
+			g.writeln('/* \$if $name ${inversion}is $it_type_name */ {')
+			g.stmts(it.stmts)
+			g.writeln('}')
+		} else if it.has_else {
+			g.writeln('/* \$else */ {')
+			g.stmts(it.else_stmts)
+			g.writeln('}')
+		}
 		return
-		}
 	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
 	g.empty_line = false
@@ -204,27 +204,28 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				for j, arg in method.args[1..] {
 					typ := arg.typ.idx()
 					g.write(typ.str())
-					if j < len - 1 { g.write(', ') }
+					if j < len - 1 {
+						g.write(', ')
+					}
 					g.comptime_var_type_map['${node.val_var}.args[$j].Type'] = typ
 				}
 				g.writeln('}));')
 			}
-
 			mut sig := 'anon_fn_'
 			// skip the first (receiver) arg
 			for j, arg in method.args[1..] {
 				// TODO: ignore mut/pts in sig for now
 				typ := arg.typ.set_nr_muls(0)
-				sig += '${typ}'
-				if j < method.args.len - 2 { sig += '_' }
+				sig += '$typ'
+				if j < method.args.len - 2 {
+					sig += '_'
+				}
 			}
 			sig += '_$method.return_type'
-
-			styp :=	g.table.find_type_idx(sig)
-			println(styp)
+			styp := g.table.find_type_idx(sig)
+			// println(styp)
 			// if styp == 0 { }
 			// TODO: type aliases
-
 			ret_typ := method.return_type.idx()
 			g.writeln('\t${node.val_var}.Type = $styp;')
 			g.writeln('\t${node.val_var}.ReturnType = $ret_typ;')
