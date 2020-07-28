@@ -251,6 +251,23 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
+fn calc_expr(dst Number) bool {
+	match dst {
+		any_int {
+			dst2 := dst
+			dst3 := dst2
+			temp := 2 * dst3 + 1
+			res := temp - 3
+			return (1 + res) * res - res == 0
+		}
+		any_float {
+			dst2 := dst
+			dst3 := dst2
+			return dst3 - 1 > 0
+		}
+	}
+}
+
 fn test_sum_type_match() {
 	assert is_gt_simple('3', 2)
 	assert !is_gt_simple('3', 5)
@@ -268,4 +285,8 @@ fn test_sum_type_match() {
 	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
+	assert calc_expr(1)
+	assert !calc_expr(2)
+	assert calc_expr(1.5)
+	assert !calc_expr(0.5)
 }
