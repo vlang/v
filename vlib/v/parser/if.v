@@ -7,7 +7,10 @@ import v.ast
 import v.table
 import v.token
 
-fn (mut p Parser) if_expr() ast.IfExpr {
+fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
+	if is_comptime {
+		p.next() // `$`
+	}
 	was_inside_if_expr := p.inside_if_expr
 	defer {
 		p.inside_if_expr = was_inside_if_expr
@@ -68,7 +71,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		mut is_guard := false
 		comments << p.eat_comments()
 		// `if x := opt() {`
-		if p.peek_tok.kind == .decl_assign {
+		if !is_comptime && p.peek_tok.kind == .decl_assign {
 			p.open_scope()
 			is_guard = true
 			var_pos := p.tok.position()
@@ -97,7 +100,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			// if sum is T
 			is_is_cast := infix.op == .key_is
 			is_ident := infix.left is ast.Ident
-			left_as_name = if is_is_cast && p.tok.kind == .key_as {
+			left_as_name = if is_comptime {
+				''
+			} else if is_is_cast && p.tok.kind == .key_as {
 				p.next()
 				p.check_name()
 			} else if is_ident {
@@ -123,11 +128,15 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			left_as_name: left_as_name
 		}
 		comments = p.eat_comments()
+		if is_comptime && p.tok.kind == .dollar {
+			p.next()
+		}
 		if p.tok.kind != .key_else {
 			break
 		}
 	}
 	return ast.IfExpr{
+		is_comptime: is_comptime
 		branches: branches
 		post_comments: comments
 		pos: pos

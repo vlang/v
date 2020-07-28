@@ -13,7 +13,7 @@ pub fn (stmt Stmt) position() Position {
 		// }
 		*/
 		Comment { return stmt.pos }
-		CompIf { return stmt.pos }
+		// CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
 		/*
 		// DeferStmt {

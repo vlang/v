@@ -47,10 +47,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.enum_val()
 		}
 		.dollar {
-			if p.peek_tok.kind == .name {
-				return p.vweb()
-			} else {
-				p.error('unexpected $')
+			match p.peek_tok.kind {
+				.name {
+					return p.vweb()
+				} .key_if {
+					return p.if_expr(true)
+				} else {
+					p.error('unexpected $')
+				}
 			}
 		}
 		.chartoken {
@@ -86,7 +90,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_if {
-			node = p.if_expr()
+			node = p.if_expr(false)
 		}
 		.key_unsafe {
 			p.next()

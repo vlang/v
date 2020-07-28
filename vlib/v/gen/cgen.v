@@ -694,9 +694,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.CompFor {
 			g.comp_for(node)
 		}
-		ast.CompIf {
-			g.comp_if(node)
-		}
+		// ast.CompIf {
+		// 	g.comp_if(node)
+		// }
 		ast.DeferStmt {
 			mut defer_stmt := *node
 			defer_stmt.ifdef = g.defer_ifdef

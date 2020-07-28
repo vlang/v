@@ -88,6 +88,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
+/*
 fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {
 		return
@@ -148,6 +149,7 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	g.empty_line = false
 	g.writeln('#endif\n// } $it.val')
 }
+*/
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))

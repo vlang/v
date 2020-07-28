@@ -450,9 +450,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		.key_struct {
 			return p.struct_decl()
 		}
-		.dollar {
-			return p.comp_if()
-		}
 		.hash {
 			return p.hash()
 		}
@@ -584,7 +581,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.dollar {
 			if p.peek_tok.kind == .key_if {
-				return p.comp_if()
+				return ast.ExprStmt{
+					expr: p.if_expr(true)
+				}
 			} else if p.peek_tok.kind == .key_for {
 				return p.comp_for()
 			} else if p.peek_tok.kind == .name {

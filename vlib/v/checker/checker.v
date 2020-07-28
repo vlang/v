@@ -1951,17 +1951,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// node.typ = c.expr(node.expr)
 			c.stmts(node.stmts)
 		}
-		ast.CompIf {
-			c.stmts(node.stmts)
-			if node.has_else {
-				c.stmts(node.else_stmts)
-			}
-			mut stmts := node.stmts.clone()
-			stmts << node.else_stmts
-			if has_return := c.has_return(stmts) {
-				c.returns = has_return
-			}
-		}
 		ast.ConstDecl {
 			mut field_names := []string{}
 			mut field_order := []int{}
@@ -2861,147 +2850,157 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
-	mut expr_required := false
-	if c.expected_type != table.void_type {
-		// sym := c.table.get_type_symbol(c.expected_type)
-		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
-		expr_required = true
-	}
-	former_expected_type := c.expected_type
-	node.typ = table.void_type
-	mut require_return := false
-	mut branch_without_return := false
-	for i, branch in node.branches {
-		if branch.cond is ast.ParExpr {
-			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
-				branch.pos)
+	if node.is_comptime {
+		// c.stmts(node.stmts)
+		// if node.has_else {
+		// 	c.stmts(node.else_stmts)
+		// }
+		// mut stmts := node.stmts.clone()
+		// stmts << node.else_stmts
+		// if has_return := c.has_return(stmts) {
+		// 	c.returns = has_return
+		// }
+	} else {
+		mut expr_required := false
+		if c.expected_type != table.void_type {
+			// sym := c.table.get_type_symbol(c.expected_type)
+			// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
+			expr_required = true
 		}
-		if !node.has_else || i < node.branches.len - 1 {
-			// check condition type is boolean
-			cond_typ := c.expr(branch.cond)
-			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] {
-				// void types are skipped, because they mean the var was initialized incorrectly
-				// (via missing function etc)
-				typ_sym := c.table.get_type_symbol(cond_typ)
-				c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
-			}
-		}
-		// smartcast sumtypes when using `is`
-		if branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is &&
-				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
-				right_expr := infix.right as ast.Type
-				is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
-						.variable } else { true }
-				// Register shadow variable or `as` variable with actual type
-				if is_variable {
-					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
-						mut is_mut := false
-						if infix.left is ast.Ident {
-							is_mut = (infix.left as ast.Ident).is_mut
-						} else if infix.left is ast.SelectorExpr {
-							selector := infix.left as ast.SelectorExpr
-							field := c.table.struct_find_field(left_sym, selector.field_name) or {
-								table.Field{}
-							}
-							is_mut = field.is_mut
-						}
-						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						scope.register(branch.left_as_name, ast.Var{
-							name: branch.left_as_name
-							typ: right_expr.typ.to_ptr()
-							pos: infix.left.position()
-							is_used: true
-							is_mut: is_mut
-						})
-						node.branches[i].smartcast = true
-					}
-				}
-			}
-		}
-		c.stmts(branch.stmts)
-		if expr_required {
-			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
-				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
-				c.expected_type = former_expected_type
-				last_expr.typ = c.expr(last_expr.expr)
-				if last_expr.typ != node.typ {
-					if node.typ == table.void_type {
-						// first branch of if expression
-						node.is_expr = true
-						node.typ = last_expr.typ
-						continue
-					} else if node.typ in [table.any_flt_type, table.any_int_type] {
-						if node.typ == table.any_int_type {
-							if last_expr.typ.is_int() || last_expr.typ.is_float() {
-								node.typ = last_expr.typ
-								continue
-							}
-						} else { // node.typ == any_float
-							if last_expr.typ.is_float() {
-								node.typ = last_expr.typ
-								continue
-							}
-						}
-					}
-					if last_expr.typ in [table.any_flt_type, table.any_int_type] {
-						if last_expr.typ == table.any_int_type {
-							if node.typ.is_int() || node.typ.is_float() {
-								continue
-							}
-						} else { // expr_type == any_float
-							if node.typ.is_float() {
-								continue
-							}
-						}
-					}
-					c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
-						node.pos)
-				}
-			} else {
-				c.error('`if` expression requires an expression as the last statement of every branch',
+		former_expected_type := c.expected_type
+		node.typ = table.void_type
+		mut require_return := false
+		mut branch_without_return := false
+		for i, branch in node.branches {
+			if branch.cond is ast.ParExpr {
+				c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
 					branch.pos)
 			}
-		}
-		if has_return := c.has_return(branch.stmts) {
-			if has_return {
-				require_return = true
-			} else {
-				branch_without_return = true
+			if !node.has_else || i < node.branches.len - 1 {
+				// check condition type is boolean
+				cond_typ := c.expr(branch.cond)
+				if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] {
+					// void types are skipped, because they mean the var was initialized incorrectly
+					// (via missing function etc)
+					typ_sym := c.table.get_type_symbol(cond_typ)
+					c.error('non-bool type `$typ_sym.name` used as if condition', branch.pos)
+				}
+			}
+			// smartcast sumtypes when using `is`
+			if branch.cond is ast.InfixExpr {
+				infix := branch.cond as ast.InfixExpr
+				if infix.op == .key_is &&
+					(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
+					right_expr := infix.right as ast.Type
+					is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+							.variable } else { true }
+					// Register shadow variable or `as` variable with actual type
+					if is_variable {
+						left_sym := c.table.get_type_symbol(infix.left_type)
+						if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
+							mut is_mut := false
+							if infix.left is ast.Ident {
+								is_mut = (infix.left as ast.Ident).is_mut
+							} else if infix.left is ast.SelectorExpr {
+								selector := infix.left as ast.SelectorExpr
+								field := c.table.struct_find_field(left_sym, selector.field_name) or {
+									table.Field{}
+								}
+								is_mut = field.is_mut
+							}
+							mut scope := c.file.scope.innermost(branch.body_pos.pos)
+							scope.register(branch.left_as_name, ast.Var{
+								name: branch.left_as_name
+								typ: right_expr.typ.to_ptr()
+								pos: infix.left.position()
+								is_used: true
+								is_mut: is_mut
+							})
+							node.branches[i].smartcast = true
+						}
+					}
+				}
+			}
+			c.stmts(branch.stmts)
+			if expr_required {
+				if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
+					mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
+					c.expected_type = former_expected_type
+					last_expr.typ = c.expr(last_expr.expr)
+					if last_expr.typ != node.typ {
+						if node.typ == table.void_type {
+							// first branch of if expression
+							node.is_expr = true
+							node.typ = last_expr.typ
+							continue
+						} else if node.typ in [table.any_flt_type, table.any_int_type] {
+							if node.typ == table.any_int_type {
+								if last_expr.typ.is_int() || last_expr.typ.is_float() {
+									node.typ = last_expr.typ
+									continue
+								}
+							} else { // node.typ == any_float
+								if last_expr.typ.is_float() {
+									node.typ = last_expr.typ
+									continue
+								}
+							}
+						}
+						if last_expr.typ in [table.any_flt_type, table.any_int_type] {
+							if last_expr.typ == table.any_int_type {
+								if node.typ.is_int() || node.typ.is_float() {
+									continue
+								}
+							} else { // expr_type == any_float
+								if node.typ.is_float() {
+									continue
+								}
+							}
+						}
+						c.error('mismatched types `${c.table.type_to_str(node.typ)}` and `${c.table.type_to_str(last_expr.typ)}`',
+							node.pos)
+					}
+				} else {
+					c.error('`if` expression requires an expression as the last statement of every branch',
+						branch.pos)
+				}
+			}
+			if has_return := c.has_return(branch.stmts) {
+				if has_return {
+					require_return = true
+				} else {
+					branch_without_return = true
+				}
 			}
 		}
-	}
-	if require_return && (!node.has_else || branch_without_return) {
-		c.returns = false
-	} else {
-		// if inner if branch has not covered all branches but this one
-		c.returns = true
-	}
-	// if only untyped literals were given default to int/f64
-	if node.typ == table.any_int_type {
-		node.typ = table.int_type
-	} else if node.typ == table.any_flt_type {
-		node.typ = table.f64_type
-	}
-	if expr_required {
-		if !node.has_else {
-			c.error('`if` expression needs `else` clause', node.pos)
+		if require_return && (!node.has_else || branch_without_return) {
+			c.returns = false
+		} else {
+			// if inner if branch has not covered all branches but this one
+			c.returns = true
 		}
-		return node.typ
+		// if only untyped literals were given default to int/f64
+		if node.typ == table.any_int_type {
+			node.typ = table.int_type
+		} else if node.typ == table.any_flt_type {
+			node.typ = table.f64_type
+		}
+		if expr_required {
+			if !node.has_else {
+				c.error('`if` expression needs `else` clause', node.pos)
+			}
+			return node.typ
+		}
+		return table.bool_type
 	}
-	return table.bool_type
 }
 
 fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
 	// complexity means either more match or ifs
 	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	contains_comp_if := stmts.filter(it is ast.CompIf).len > 0
 	contains_if_match := exprs.filter(it.expr is ast.IfExpr || it.expr is ast.MatchExpr).len > 0
-	contains_complexity := contains_comp_if || contains_if_match
 	// if the inner complexity covers all paths with returns there is no need for further checks
-	if !contains_complexity || !c.returns {
+	if !contains_if_match || !c.returns {
 		return has_top_return(stmts)
 	}
 	return none

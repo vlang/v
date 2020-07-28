@@ -15,7 +15,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor | CompIf |
+pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor |
 	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
 	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
 	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
@@ -449,6 +449,7 @@ pub mut:
 
 pub struct IfExpr {
 pub:
+	is_comptime   bool
 	tok_kind      token.Kind
 	left          Expr // `a` in `a := if ...`
 	pos           token.Position
@@ -514,41 +515,6 @@ pub:
 	comment       Comment // comment above `xxx {`
 	is_else       bool
 	post_comments []Comment
-}
-
-/*
-CompIf.is_opt:
-`$if xyz? {}` => this compile time `if` is optional,
-and .is_opt reflects the presence of ? at the end.
-When .is_opt is true, the code should compile, even
-if `xyz` is NOT defined.
-If .is_opt is false, then when `xyz` is not defined,
-the compilation will fail.
-
-`$if method.type is string {}` will produce CompIf with:
-.is_typecheck true,
-.tchk_expr: method.type
-.tchk_type: string
-.tchk_match: true on each iteration, having a string `method.type`
-*/
-pub enum CompIfKind {
-	platform
-	typecheck
-}
-pub struct CompIf {
-pub:
-	val        string
-	stmts      []Stmt
-	is_not     bool
-	kind       CompIfKind
-	tchk_expr  Expr
-	tchk_type  table.Type
-	pos        token.Position
-pub mut:
-	tchk_match bool
-	is_opt     bool
-	has_else   bool
-	else_stmts []Stmt
 }
 
 pub enum CompForKind {
@@ -1068,7 +1034,6 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
 		/*
 		// DeferStmt {

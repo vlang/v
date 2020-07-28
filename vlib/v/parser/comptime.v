@@ -186,6 +186,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	}
 }
 
+/*
 fn (mut p Parser) comp_if() ast.Stmt {
 	pos := p.tok.position()
 	p.next()
@@ -315,7 +316,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	}
 	return node
 }
-
+*/
 // TODO import warning bug
 const (
 	todo_delete_me = pref.OS.linux
