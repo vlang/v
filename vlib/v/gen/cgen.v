@@ -55,6 +55,7 @@ mut:
 	is_c_call             bool // e.g. `C.printf("v")`
 	is_assign_lhs         bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs         bool // inside right part of assign after `=` (val expr)
+	assign_rhs_is_ident   bool
 	is_array_set          bool
 	is_amp                bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql                bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
@@ -1312,6 +1313,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut is_call := false
 		mut blank_assign := false
 		mut ident := ast.Ident{}
+		g.assign_rhs_is_ident = val is ast.Ident
+		defer {
+			g.assign_rhs_is_ident = false
+		}
+		if g.should_write_asterisk_due_to_match_sumtype(val) {
+			g.match_sumtype_exprs << left
+			g.match_sumtype_syms << g.table.get_type_symbol(var_type)
+		}
 		if left is ast.Ident {
 			ident = *left
 			// id_info := ident.var_info()
@@ -1437,6 +1446,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else if str_add {
 				g.write(', ')
 			}
+			should_get_infix_addr := val is ast.InfixExpr && g.should_write_asterisk_due_to_match_sumtype(val)
+			if should_get_infix_addr {
+				g.write('&(array[]){')
+			}
 			mut cloned := false
 			if g.autofree && right_sym.kind in [.array, .string] {
 				if g.gen_clone_assignment(val, right_sym, false) {
@@ -1472,6 +1485,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if g.is_array_set {
 				g.write(' })')
 				g.is_array_set = false
+			}
+			if should_get_infix_addr {
+				g.write('}[0]')
 			}
 			g.is_shared = false
 		}
@@ -2282,6 +2298,12 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		if node.is_sum_type {
 			g.match_sumtype_exprs.pop()
 			g.match_sumtype_syms.pop()
+			// TODO: change to `g.match_sumtype_syms.last().kind` once `array.last()` is fixed
+			for g.match_sumtype_syms.len > 0 &&
+				g.match_sumtype_syms[g.match_sumtype_syms.len - 1].kind != .sum_type {
+				g.match_sumtype_exprs.pop()
+				g.match_sumtype_syms.pop()
+			}
 		}
 	}
 	mut tmp := ''
@@ -2434,15 +2456,21 @@ fn (mut g Gen) ident(node ast.Ident) {
 
 [unlikely]
 fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
-	if expr is ast.Ident {
-		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
-		return if typ.is_ptr() && g.match_sumtype_has_no_struct_and_contains(expr) {
-			true
-		} else {
-			false
+	match expr {
+		ast.Ident {
+			typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
+			return if typ.is_ptr() && g.match_sumtype_has_no_struct_and_contains(expr) {
+				true
+			} else {
+				false
+			}
 		}
-	} else {
-		return false
+		ast.InfixExpr {
+			return g.should_write_asterisk_due_to_match_sumtype(expr.left) || g.should_write_asterisk_due_to_match_sumtype(expr.right)
+		}
+		else {
+			return false
+		}
 	}
 }
 
@@ -2450,10 +2478,12 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			sumtype := g.match_sumtype_syms[i].info as table.SumType
-			for typ in sumtype.variants {
-				if g.table.get_type_symbol(typ).kind == .struct_ {
-					return false
+			if g.match_sumtype_syms[i].kind == .sum_type {
+				sumtype := g.match_sumtype_syms[i].info as table.SumType
+				for typ in sumtype.variants {
+					if g.table.get_type_symbol(typ).kind == .struct_ {
+						return false
+					}
 				}
 			}
 			return true
