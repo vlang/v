@@ -59,7 +59,7 @@ pub fn (mut l Log) set_output_label(label string) {
 }
 
 pub fn (mut l Log) set_output_path(output_file_path string) {
-	if l.ofile.is_opened() {
+	if l.ofile.opened {
 		l.ofile.close()
 	}
 	l.output_to_file = true
