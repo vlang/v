@@ -95,7 +95,7 @@ pub fn gcd(a_, b_ i64) i64 {
 
 // max returns the maximum value of the two provided. (int version)
 pub fn int_max(a, b int) int {
-	return if a < b {
+	return if a > b {
 		a
 	} else {
 		b
@@ -125,7 +125,7 @@ pub fn lcm(a, b i64) i64 {
 
 // max returns the maximum value of the two provided.
 pub fn max(a, b f64) f64 {
-	return if a < b {
+	return if a > b {
 		a
 	} else {
 		b
