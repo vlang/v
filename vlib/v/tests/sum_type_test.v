@@ -268,9 +268,9 @@ fn test_calc_expr(dst Number) bool {
 			return dst3 - foo - temp > 0
 		}
 	}
-	temp, foo := 10, 20
-	assert temp == 10
-	assert foo == 20
+	temp := 10
+	foo := temp
+	assert foo == 10
 }
 
 fn test_sum_type_match() {
@@ -290,8 +290,8 @@ fn test_sum_type_match() {
 	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
-	assert calc_expr(1)
-	assert !calc_expr(2)
-	assert calc_expr(1.5)
-	assert !calc_expr(0.5)
+	assert test_calc_expr(1)
+	assert !test_calc_expr(2)
+	assert test_calc_expr(1.5)
+	assert !test_calc_expr(0.5)
 }
