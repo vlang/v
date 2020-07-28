@@ -9,7 +9,8 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev valgrind
+        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
     - name: Download V
       run: |
         tag=${GITHUB_REF##*/}
@@ -25,7 +26,8 @@ jobs:
     steps:
     - name: Install dependencies
       run: |
-        brew install freetype glfw openssl sdl2 sdl2_ttf sdl2_mixer sdl2_image
+        brew install freetype glfw openssl
+        # brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Download V
       run: |
