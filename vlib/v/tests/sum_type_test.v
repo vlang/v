@@ -251,21 +251,26 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
-fn calc_expr(dst Number) bool {
+fn test_calc_expr(dst Number) bool {
 	match dst {
 		any_int {
 			dst2 := dst
 			dst3 := dst2
 			temp := 2 * dst3 + 1
 			res := temp - 3
-			return (1 + res) * res - res == 0
+			foo := 1
+			return (foo + res) * res - res == 0
 		}
 		any_float {
 			dst2 := dst
-			dst3 := dst2
-			return dst3 - 1 > 0
+			dst3, foo := dst2, 2
+			temp := foo - 2
+			return dst3 - foo - temp > 0
 		}
 	}
+	temp, foo := 10, 20
+	assert temp == 10
+	assert foo == 20
 }
 
 fn test_sum_type_match() {
