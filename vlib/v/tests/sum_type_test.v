@@ -252,29 +252,36 @@ fn get_sum(val string, dst Number) f64 {
 }
 
 fn calc_expr(dst Number, get_final bool) bool {
-	if !get_final {
-		match dst {
-			any_int {
-				dst2 := dst
-				dst3 := dst2
-				temp := 2 * dst3 + 1
-				res := temp - 3
-				foo := 1 + dst - dst2
-				return (foo + res) * res - res == 0
-			}
-			any_float {
-				dst2 := dst
-				dst3, foo := dst2, 2
-				mut temp := foo - 4
-				temp += foo * (foo - 1)
-				bar := !(dst2 < 1) && dst3 - foo - temp > 0
-				return bar
-			}
-		}
+	if (!get_final) {
+		if (dst.typ == 24 /* any_int */) {
+			any_int* it = (any_int*)dst.obj; // ST it
+			any_int* dst = it;
+			any_int* dst2 = dst;
+			any_int* dst3 = dst2;
+			string dst4 = ptr_str(((*dst2) + (*dst3)));
+			any_int* temp = &(array[]){2 * (*dst3) + 1}[0];
+			any_int* res = &(array[]){(*temp) - 3}[0];
+			any_int* foo = &(array[]){1 + (*dst) - (*dst2)}[0];
+			string dst5 = int_str(string_int(any_int_str((*foo))));
+			return ((*foo) + (*res)) * (*res) - (*res) == 0 && dst4.len == 1 && dst5.len == 1;
+		} else if (dst.typ == 23 /* any_float */) {
+			any_float* it = (any_float*)dst.obj; // ST it
+			any_float* dst = it;
+			any_float* dst2 = dst;
+			any_float* dst3 = dst2;
+			int foo = 2;
+			any_float* dst4 = &(array[]){(*dst3) + 1}[0];
+			(*dst4) = (*dst) / 1;
+			(*dst4) -= (*dst2);
+			int temp = foo - 4;
+			temp += foo * (foo - 1);
+			bool bar = !((*dst2) < 1) && (*dst3) - foo - temp > 0 && (*dst4) == 0;
+			return bar;
+		};
 	}
-	foo := 10
-	temp := foo
-	return temp + 10 == 20
+	int foo = 10;
+	int temp = foo;
+	return temp + 10 == 20;
 }
 
 fn test_sum_type_match() {
