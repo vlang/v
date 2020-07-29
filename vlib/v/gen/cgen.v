@@ -1439,7 +1439,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			} else if str_add {
 				g.write(', ')
 			}
-			should_get_infix_addr := val is ast.InfixExpr && g.should_write_asterisk_due_to_match_sumtype(val)
+			should_get_infix_addr := right_sym.kind != .bool &&
+				val is ast.InfixExpr && g.should_write_asterisk_due_to_match_sumtype(val)
 			if should_get_infix_addr {
 				g.write('&(array[]){')
 			}
