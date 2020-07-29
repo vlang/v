@@ -902,9 +902,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			panic('fmt: OrExpr should to linked to CallExpr')
 		}
 		ast.ParExpr {
-			if node.is_unsafe {
-				f.write('unsafe')
-			}
 			f.write('(')
 			f.par_level++
 			f.expr(node.expr)

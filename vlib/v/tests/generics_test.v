@@ -70,7 +70,7 @@ fn mut_arg<T>(mut x T) {
 
 fn mut_arg2<T>(mut x T) T {
 	println(x.name) // = 'foo'
-	return x
+	return *x
 }
 
 fn test_create() {

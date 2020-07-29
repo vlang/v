@@ -400,7 +400,7 @@ pub mut:
 pub fn (i &Ident) var_info() IdentVar {
 	match i.info as info {
 		IdentVar {
-			return info
+			return *info
 		}
 		else {
 			// return IdentVar{}
@@ -728,7 +728,6 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
-	is_unsafe bool // unsafe(expr)
 }
 
 pub struct GoStmt {

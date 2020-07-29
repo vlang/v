@@ -1515,6 +1515,11 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
 		}
+		if got_typ.is_ptr() && !exp_type.is_ptr() {
+			pos := return_stmt.exprs[i].position()
+			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos)
+		}
 	}
 }
 
@@ -1905,7 +1910,7 @@ fn const_int_value(cfield ast.ConstField) ?int {
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	match cfield.expr {
-		ast.IntegerLiteral { return it }
+		ast.IntegerLiteral { return *it }
 		else {}
 	}
 	return none
@@ -2380,14 +2385,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.void_type
 		}
 		ast.ParExpr {
-			if !node.is_unsafe {
-				return c.expr(node.expr)
-			}
-			assert !c.inside_unsafe
-			c.inside_unsafe = true
-			t := c.expr(node.expr)
-			c.inside_unsafe = false
-			return t
+			return c.expr(node.expr)
 		}
 		ast.RangeExpr {
 			// never happens
