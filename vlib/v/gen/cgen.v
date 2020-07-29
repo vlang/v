@@ -1491,7 +1491,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		if g.inside_ternary == 0 && !assign_stmt.is_simple {
 			g.writeln(';')
 		}
-		if g.should_write_asterisk_due_to_match_sumtype(val) {
+		// `g.match_sumtype_exprs.len > 0` greatly reduces numbers of function calling
+		if g.match_sumtype_exprs.len > 0 && g.should_write_asterisk_due_to_match_sumtype(val) {
 			g.match_sumtype_exprs << left
 			g.match_sumtype_syms << g.table.get_type_symbol(var_type)
 		}
