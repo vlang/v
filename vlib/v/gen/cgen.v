@@ -1776,7 +1776,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if g.should_write_asterisk_for(node) && !g.is_assign_lhs && !g.is_decl_and_rhs_ident {
+			if g.should_write_asterisk_due_to_match_sumtype(node) && !g.is_assign_lhs && !g.is_decl_and_rhs_ident {
 				g.write('(*')
 				g.ident(node)
 				g.write(')')
@@ -2476,7 +2476,8 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 
 [unlikely]
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
-	for i, expr in g.match_sumtype_exprs {
+	for i := g.match_sumtype_exprs.len - 1; i >= 0; i-- {
+		expr := g.match_sumtype_exprs[i]
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
 			if g.match_sumtype_syms[i].kind == .sum_type {
 				sumtype := g.match_sumtype_syms[i].info as table.SumType
