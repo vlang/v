@@ -1,0 +1,7 @@
+vlib/v/checker/tests/return_ref_as_no_ref_bug.v:11:9: error: fn `return_not_reference` expects you to return a non reference type `BugStruct`, but you are returning `&BugStruct` instead
+    9 | 
+   10 | fn return_not_reference() BugStruct{
+   11 |     return &BugStruct {
+      |            ^
+   12 |         id: 1
+   13 |     }
