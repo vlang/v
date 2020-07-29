@@ -235,7 +235,7 @@ pub fn open_append(path string) ?File {
 	if isnil(file.cfile) {
 		return error('failed to create(append) file "$path"')
 	}
-	file.opened = true
+	file.is_opened = true
 	return file
 }
 

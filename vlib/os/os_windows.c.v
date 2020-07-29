@@ -305,10 +305,10 @@ pub fn symlink(origin, target string) ?bool {
 }
 
 pub fn (mut f File) close() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
-	f.opened = false
+	f.is_opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }

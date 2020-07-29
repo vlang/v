@@ -4,8 +4,8 @@ pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
 pub:
 	fd     int
-mut:
-	opened bool
+pub mut:
+	is_opened bool
 }
 
 struct FileInfo {
@@ -13,13 +13,15 @@ struct FileInfo {
 	size int
 }
 
+[deprecated]
 pub fn (f File) is_opened() bool {
-	return f.opened
+	eprintln('warning: `file.is_opened()` has been deprecated, use `file.is_opened` instead')
+	return f.is_opened
 }
 
 // **************************** Write ops  ***************************
 pub fn (mut f File) write(s string) {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
 	/*
@@ -34,7 +36,7 @@ pub fn (mut f File) write(s string) {
 }
 
 pub fn (mut f File) writeln(s string) {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
 	/*
@@ -80,7 +82,7 @@ pub fn (f &File) read_bytes_at(size, pos int) []byte {
 // **************************** Utility  ops ***********************
 // write any unwritten data in stream's buffer
 pub fn (mut f File) flush() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
 	C.fflush(f.cfile)
