@@ -4,7 +4,7 @@ pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
 pub:
 	fd     int
-pub mut:
+mut:
 	opened bool
 }
 
