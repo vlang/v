@@ -362,7 +362,7 @@ pub fn (t &TypeSymbol) str() string {
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
 	match t.info {
-		Enum { return it }
+		Enum { return *it }
 		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
 	}
 }
@@ -370,7 +370,7 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	match t.info {
-		MultiReturn { return it }
+		MultiReturn { return *it }
 		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
 	}
 }
@@ -378,7 +378,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
 	match t.info {
-		Array { return it }
+		Array { return *it }
 		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
 	}
 }
@@ -386,7 +386,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	match t.info {
-		ArrayFixed { return it }
+		ArrayFixed { return *it }
 		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
 	}
 }
@@ -394,7 +394,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
 	match t.info {
-		Map { return it }
+		Map { return *it }
 		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
 	}
 }
@@ -402,7 +402,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 [inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
 	match t.info {
-		Struct { return it }
+		Struct { return *it }
 		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
 	}
 }

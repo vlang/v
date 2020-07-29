@@ -164,7 +164,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 pub fn (pool &PoolProcessor) get_string_item(idx int) string {
    // return *(&string(pool.items[idx]))
    // TODO: the below is a hack, remove it when v2 casting works again
-   return &string( pool.items[idx] )
+   return *(&string( pool.items[idx] ))
 }
 
 // get_int_item - called by the worker callback.

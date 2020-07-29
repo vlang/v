@@ -165,7 +165,7 @@ pub mut:
 pub fn (mut desc C.sg_shader_stage_desc) set_image(index int, name string) C.sg_shader_stage_desc {
     desc.images[index].name = name.str
     desc.images[index].@type = ._2d
-    return desc
+    return *desc
 }
 
 
