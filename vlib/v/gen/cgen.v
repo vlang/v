@@ -1442,7 +1442,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			should_get_infix_addr := is_decl && right_sym.kind != .bool && val is ast.InfixExpr &&
 				g.should_write_asterisk_due_to_match_sumtype(val)
 			if should_get_infix_addr {
-				g.write('&($styp.trim('*')[]){')
+				styp_deref := styp.trim('*')
+				g.write('&($styp_deref[]){')
 			}
 			mut cloned := false
 			if g.autofree && right_sym.kind in [.array, .string] {
