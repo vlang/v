@@ -2466,7 +2466,8 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 			}
 		}
 		ast.InfixExpr {
-			return g.should_write_asterisk_due_to_match_sumtype(expr.left) || g.should_write_asterisk_due_to_match_sumtype(expr.right)
+			return g.should_write_asterisk_due_to_match_sumtype(expr.left) ||
+				g.should_write_asterisk_due_to_match_sumtype(expr.right)
 		}
 		else {
 			return false
