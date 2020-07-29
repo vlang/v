@@ -39,6 +39,13 @@ fn test_map() {
 	m.delete('aloha')
 	assert m.len == 1
 
+	m['hi'] = 80
+	m['delete'] = 101
+	assert m.len == 2
+	m.delete_all(['hi', 'hello', 'aloha', 'delete'])
+	assert m.len == 0
+
+	m['hello'] = 101
 	assert m['hi'] == 0
 	assert m.keys().len == 1
 	assert m.keys()[0] == 'hello'

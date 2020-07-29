@@ -486,6 +486,13 @@ pub fn (mut m map) delete(key string) {
 	}
 }
 
+// Removes the mapping of a array of keys
+pub fn (mut m map) delete_all(keys []string) {
+	for key in keys {
+		m.delte(key)
+	}
+}
+
 // Returns all keys in the map.
 // TODO: add optimization in case of no deletes
 pub fn (m &map) keys() []string {
