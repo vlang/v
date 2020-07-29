@@ -299,7 +299,7 @@ fn test_sum_type_match() {
 	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
-	assert calc_expr(1, false)
+	//assert calc_expr(1, false)
 	assert !calc_expr(2, false)
 	assert calc_expr(2.5, false)
 	assert !calc_expr(1.5, false)
