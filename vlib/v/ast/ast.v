@@ -728,6 +728,7 @@ pub:
 pub struct ParExpr {
 pub:
 	expr Expr
+	is_unsafe bool // unsafe(expr)
 }
 
 pub struct GoStmt {

@@ -96,8 +96,9 @@ Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v
-fn (mut app App) time() {
+fn (mut app App) time() vweb.Result {
 	app.vweb.text(time.now().format())
+	return vweb.Result{}
 }
 ```
 
@@ -118,9 +119,9 @@ Let's return an HTML view instead. Create `index.html` in the same directory:
 
 ```html
 <html>
-<header>
+<head>
 	<title>V Blog</title>
-</header>
+</head>
 <body>
 	<b>@message</b>
 	<br>
@@ -317,9 +318,9 @@ Create `new.html`:
 
 ```html
 <html>
-<header>
+<head>
 	<title>V Blog</title>
-</header>
+</head>
 <body>
 	<form action='/new_article' method='post'>
 		<input type='text' placeholder='Title' name='title'> <br>
@@ -336,7 +337,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	text := app.vweb.form['text']
 	if title == '' || text == ''  {
 		app.vweb.text('Empty text/title')
-		return
+		return vweb.Result{}
 	}
 	article := Article{
 		title: title
@@ -346,7 +347,8 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	return app.vweb.redirect('/article/')
+	app.vweb.redirect('/')
+	return vweb.Result{}
 }
 ```
 
@@ -368,9 +370,10 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v
-pub fn (mut app App) articles() {
+pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	app.vweb.json(json.encode(articles))
+	return vweb.Result{}
 }
 ```
 

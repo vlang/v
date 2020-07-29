@@ -42,17 +42,17 @@ fn new_ft(c FTConfig) ?&FT{
 	bold_path := 'SFNS-bold.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
 	bytes_bold := os.read_bytes(bold_path) or {
 		println('failed to load font "$bold_path"')
-		return none
+		bytes
 	}
 	mono_path := '/System/Library/Fonts/SFNSMono.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
 	bytes_mono:= os.read_bytes(mono_path) or {
 		println('failed to load font "$mono_path"')
-		return none
+		bytes
 	}
 	italic_path := '/System/Library/Fonts/SFNSItalic.ttf'
 	bytes_italic:= os.read_bytes(italic_path) or {
 		println('failed to load font "$italic_path"')
-		return none
+		bytes
 	}
 	fons := sfons.create(512, 512, 1)
 	return &FT{

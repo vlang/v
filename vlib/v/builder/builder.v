@@ -333,7 +333,7 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string, ms int) {
+pub fn (mut b Builder) timing_message(msg string, ms i64) {
 	formatted_message := '$msg: ${util.bold(ms.str())} ms'
 	if b.pref.show_timings {
 		println(formatted_message)

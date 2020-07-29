@@ -1,6 +1,6 @@
 module eventbus
 
-pub type EventHandlerFn fn(voidptr, voidptr, voidptr)
+pub type EventHandlerFn fn(receiver voidptr, args voidptr, sender voidptr)
 
 pub struct Publisher {
 mut:
@@ -20,7 +20,7 @@ mut:
 struct EventHandler {
 	name string
 	handler EventHandlerFn
-	receiver voidptr
+	receiver voidptr = voidptr(0)
 	once bool
 }
 
@@ -64,11 +64,7 @@ fn (mut pb Publisher) publish(name string, sender voidptr, args voidptr) {
 			if event.once {
 				pb.registry.events.delete(i)
 			}
-			if event.receiver != 0 {
-				event.handler(event.receiver, args, sender)
-			} else {
-				event.handler(sender, args, voidptr(0))
-			}
+			event.handler(event.receiver, args, sender)
 		}
 	}
 }
@@ -87,7 +83,6 @@ pub fn (mut s Subscriber) subscribe(name string, handler EventHandlerFn) {
 	s.registry.events << EventHandler {
 		name: name
 		handler: handler
-		receiver: voidptr(0)
 	}
 }
 
@@ -103,7 +98,6 @@ pub fn (mut s Subscriber) subscribe_once(name string, handler EventHandlerFn) {
 	s.registry.events << EventHandler {
 		name: name
 		handler: handler
-		receiver: voidptr(0)
 		once: true
 	}
 }

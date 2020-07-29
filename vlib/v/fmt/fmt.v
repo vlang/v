@@ -902,6 +902,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			panic('fmt: OrExpr should to linked to CallExpr')
 		}
 		ast.ParExpr {
+			if node.is_unsafe {
+				f.write('unsafe')
+			}
 			f.write('(')
 			f.par_level++
 			f.expr(node.expr)
@@ -968,19 +971,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				}
 			}
 			f.write('from ${util.strip_mod_name(node.table_name)}')
-			f.write(' ')
 			if node.has_where {
-				f.write('where ')
+				f.write(' where ')
 				f.expr(node.where_expr)
-				f.write(' ')
 			}
 			if node.has_limit {
-				f.write('limit ')
+				f.write(' limit ')
 				f.expr(node.limit_expr)
-				f.write(' ')
 			}
 			if node.has_offset {
-				f.write('offset ')
+				f.write(' offset ')
 				f.expr(node.offset_expr)
 			}
 			f.writeln('')
