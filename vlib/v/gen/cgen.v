@@ -2458,6 +2458,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 
 [unlikely]
 fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
+	if g.match_sumtype_exprs.len == 0 {
+		return false
+	}
 	match expr {
 		ast.Ident {
 			typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
