@@ -267,7 +267,8 @@ fn calc_expr(dst Number, get_final bool) bool {
 				dst3, foo := dst2, 2
 				mut temp := foo - 4
 				temp += foo * (foo - 1)
-				return dst3 - foo - temp > 0
+				bar := !(dst2 < 1) && dst3 - foo - temp > 0
+				return bar
 			}
 		}
 	}
