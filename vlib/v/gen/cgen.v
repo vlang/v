@@ -1442,7 +1442,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			should_get_infix_addr := is_decl && right_sym.kind != .bool && val is ast.InfixExpr &&
 				g.should_write_asterisk_due_to_match_sumtype(val)
 			if should_get_infix_addr {
-				g.write('&(array[]){')
+				g.write('&($styp.trim('*')[]){')
 			}
 			mut cloned := false
 			if g.autofree && right_sym.kind in [.array, .string] {
@@ -1481,7 +1481,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.is_array_set = false
 			}
 			if should_get_infix_addr {
-				g.write('}[0]')
+				g.write('}')
 			}
 			g.is_shared = false
 		}
