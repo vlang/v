@@ -1619,6 +1619,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	//
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
+		if left is ast.CallExpr {
+			c.error('cannot call function `${left.name}()` on the left side of an assignment',
+				left.pos)
+		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
