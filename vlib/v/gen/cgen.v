@@ -1314,10 +1314,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		g.is_decl_and_rhs_ident = is_decl && val is ast.Ident
-		if g.should_write_asterisk_due_to_match_sumtype(val) {
-			g.match_sumtype_exprs << left
-			g.match_sumtype_syms << g.table.get_type_symbol(var_type)
-		}
 		if left is ast.Ident {
 			ident = *left
 			// id_info := ident.var_info()
@@ -1492,6 +1488,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		g.is_assign_rhs = false
 		if g.inside_ternary == 0 && !assign_stmt.is_simple {
 			g.writeln(';')
+		}
+		if g.should_write_asterisk_due_to_match_sumtype(val) {
+			g.match_sumtype_exprs << left
+			g.match_sumtype_syms << g.table.get_type_symbol(var_type)
 		}
 	}
 	g.is_decl_and_rhs_ident = false
@@ -1776,7 +1776,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if g.should_write_asterisk_due_to_match_sumtype(node) && !g.is_assign_lhs && !g.is_decl_and_rhs_ident {
+			if g.should_write_asterisk_due_to_match_sumtype(node) && !g.is_decl_and_rhs_ident {
 				g.write('(*')
 				g.ident(node)
 				g.write(')')
