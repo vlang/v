@@ -291,7 +291,7 @@ fn test_sum_type_match() {
 	assert is_gt_nested('3', 5) == false
 	assert is_gt_nested('3', 1.2) == true
 	assert is_gt_nested('3', 3.5) == false
-	assert concat('3', 2) == '3(int)2' 
+	assert concat('3', 2) == '3(int)2'
 	assert concat('3', 5) == '3(int)5'
 	assert concat('3', 1.2) == '3(float)1.2'
 	assert concat('3', 3.5) == '3(float)3.5'
