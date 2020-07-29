@@ -283,14 +283,14 @@ fn calc_expr(dst Number, get_final bool) bool {
 }
 
 fn test_sum_type_match() {
-	assert is_gt_simple('3', 2) == true
-	assert is_gt_simple('3', 5) == false
-	assert is_gt_simple('3', 1.2) == true
-	assert is_gt_simple('3', 3.5) == false
-	assert is_gt_nested('3', 2) == true
-	assert is_gt_nested('3', 5) == false
-	assert is_gt_nested('3', 1.2) == true
-	assert is_gt_nested('3', 3.5) == false
+	assert is_gt_simple('3', 2)
+	assert !is_gt_simple('3', 5)
+	assert is_gt_simple('3', 1.2)
+	assert !is_gt_simple('3', 3.5)
+	assert is_gt_nested('3', 2)
+	assert !is_gt_nested('3', 5)
+	assert is_gt_nested('3', 1.2)
+	assert !is_gt_nested('3', 3.5)
 	assert concat('3', 2) == '3(int)2'
 	assert concat('3', 5) == '3(int)5'
 	assert concat('3', 1.2) == '3(float)1.2'
@@ -299,9 +299,9 @@ fn test_sum_type_match() {
 	assert get_sum('3', 5) == 8.0
 	assert get_sum('3', 1.2) == 4.2
 	assert get_sum('3', 3.5) == 6.5
-	assert calc_expr(1, false) == true
-	assert calc_expr(2, false) == false
-	assert calc_expr(2.5, false) == true
-	assert calc_expr(1.5, false) == false
-	assert calc_expr(0, true) == true
+	assert calc_expr(1, false)
+	assert !calc_expr(2, false)
+	assert calc_expr(2.5, false)
+	assert !calc_expr(1.5, false)
+	assert calc_expr(0, true)
 }
