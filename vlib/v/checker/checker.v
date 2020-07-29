@@ -2385,14 +2385,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.void_type
 		}
 		ast.ParExpr {
-			if !node.is_unsafe {
-				return c.expr(node.expr)
-			}
-			assert !c.inside_unsafe
-			c.inside_unsafe = true
-			t := c.expr(node.expr)
-			c.inside_unsafe = false
-			return t
+			return c.expr(node.expr)
 		}
 		ast.RangeExpr {
 			// never happens
