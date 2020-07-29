@@ -72,7 +72,7 @@ fn calculate_state(seed_data []u32, mut state []u64) []u64 {
 	for j := 1; j < nn; j++ {
 		state[j] = u64(6364136223846793005) * (state[j - 1] ^ (state[j - 1] >> 62)) + u64(j)
 	}
-	return state
+	return *state
 }
 
 // seed() - Set the seed, needs only two u32s in little endian format as [lower, higher]
