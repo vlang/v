@@ -1496,6 +1496,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		c.error('wrong number of return arguments', return_stmt.pos)
 		return
 	}
+
 	for i, exp_type in expected_types {
 		got_typ := c.unwrap_generic(got_types[i])
 		if got_typ.has_flag(.optional) &&
@@ -1504,6 +1505,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
+
 		if !c.check_types(got_typ, exp_type) {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
@@ -1910,7 +1912,7 @@ fn const_int_value(cfield ast.ConstField) ?int {
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	match cfield.expr {
-		ast.IntegerLiteral { return it }
+		ast.IntegerLiteral { return *it }
 		else {}
 	}
 	return none
