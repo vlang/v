@@ -55,7 +55,7 @@ mut:
 	is_c_call             bool // e.g. `C.printf("v")`
 	is_assign_lhs         bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs         bool // inside right part of assign after `=` (val expr)
-	assign_rhs_is_ident   bool
+	is_decl_and_rhs_ident bool
 	is_array_set          bool
 	is_amp                bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql                bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
@@ -1313,10 +1313,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut is_call := false
 		mut blank_assign := false
 		mut ident := ast.Ident{}
-		g.assign_rhs_is_ident = val is ast.Ident
-		defer {
-			g.assign_rhs_is_ident = false
-		}
+		g.is_decl_and_rhs_ident = is_decl && val is ast.Ident
 		if g.should_write_asterisk_due_to_match_sumtype(val) {
 			g.match_sumtype_exprs << left
 			g.match_sumtype_syms << g.table.get_type_symbol(var_type)
@@ -1497,6 +1494,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln(';')
 		}
 	}
+	g.is_decl_and_rhs_ident = false
 }
 
 fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
@@ -1778,7 +1776,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if !g.is_assign_lhs && !g.assign_rhs_is_ident && g.should_write_asterisk_due_to_match_sumtype(node) {
+			if g.should_write_asterisk_for(node) && !g.is_assign_lhs && !g.is_decl_and_rhs_ident {
 				g.write('(*')
 				g.ident(node)
 				g.write(')')
@@ -2297,16 +2295,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.match_sumtype_exprs << node.cond
 		g.match_sumtype_syms << type_sym
 	}
+	match_sumtype_arr_len := g.match_sumtype_exprs.len
 	defer {
 		if node.is_sum_type {
 			g.match_sumtype_exprs.pop()
 			g.match_sumtype_syms.pop()
-			// TODO: change to `g.match_sumtype_syms.last().kind` once `array.last()` is fixed
-			for g.match_sumtype_syms.len > 0 &&
-				g.match_sumtype_syms[g.match_sumtype_syms.len - 1].kind != .sum_type {
-				g.match_sumtype_exprs.pop()
-				g.match_sumtype_syms.pop()
-			}
 		}
 	}
 	mut tmp := ''
@@ -2417,6 +2410,10 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		g.stmts(branch.stmts)
 		if g.inside_ternary == 0 && node.branches.len > 1 {
 			g.write('}')
+		}
+		if node.is_sum_type {
+			g.match_sumtype_exprs.trim(match_sumtype_arr_len)
+			g.match_sumtype_syms.trim(match_sumtype_arr_len)
 		}
 	}
 	if is_expr {
