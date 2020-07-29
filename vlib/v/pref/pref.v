@@ -123,6 +123,7 @@ pub mut:
 	experimental        bool // enable experimental features
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
+	is_apk              bool // build as Android .apk format
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -134,6 +135,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		arg := args[i]
 		current_args := args[i..]
 		match arg {
+			'-apk' {
+				res.is_apk = true
+			}
 			'-show-timings' {
 				res.show_timings = true
 			}
