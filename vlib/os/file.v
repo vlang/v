@@ -13,10 +13,7 @@ struct FileInfo {
 	size int
 }
 
-// Use instead file.opened
-[deprecated]
 pub fn (f File) is_opened() bool {
-	eprintln('warning: `file.is_opened()` has been deprecated, use `file.opened` instead')
 	return f.opened
 }
 
