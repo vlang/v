@@ -259,13 +259,14 @@ fn calc_expr(dst Number, get_final bool) bool {
 				dst3 := dst2
 				temp := 2 * dst3 + 1
 				res := temp - 3
-				foo := 1
+				foo := 1 + dst - dst2
 				return (foo + res) * res - res == 0
 			}
 			any_float {
 				dst2 := dst
 				dst3, foo := dst2, 2
-				temp := foo - 2
+				mut temp := foo - 4
+				temp += foo * (foo - 1)
 				return dst3 - foo - temp > 0
 			}
 		}
