@@ -287,7 +287,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	return File{
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
@@ -1316,7 +1316,7 @@ pub fn open(path string) ?File {
 			}
 			return File{
 				fd: fd
-				opened: true
+				is_opened: true
 			}
 		}
 	}
@@ -1329,7 +1329,7 @@ pub fn open(path string) ?File {
 	return File {
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
@@ -1352,7 +1352,7 @@ pub fn create(path string) ?File {
 			}
 			file = File{
 				fd: fd
-				opened: true
+				is_opened: true
 			}
 			return file
 		}
@@ -1366,7 +1366,7 @@ pub fn create(path string) ?File {
 	return File {
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
