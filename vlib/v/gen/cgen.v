@@ -2470,6 +2470,9 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 			return g.should_write_asterisk_due_to_match_sumtype(expr.left) ||
 				g.should_write_asterisk_due_to_match_sumtype(expr.right)
 		}
+		ast.ParExpr {
+			return g.should_write_asterisk_due_to_match_sumtype(expr.expr)
+		}
 		else {
 			return false
 		}
