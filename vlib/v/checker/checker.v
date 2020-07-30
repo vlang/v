@@ -2285,16 +2285,44 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					return table.void_type
 				}
 				mut lit := ''
+				//println(c.file.scope)
 				match node.method_name {
 					ast.Ident {
-						println(it.kind)
+						if it.obj is ast.Var {
+							v := it.obj as ast.Var
+							v_r := *v
+							mut e := v_r.expr
+							for e !is ast.StringLiteral {
+								if e is ast.SelectorExpr {
+									println('1')
+									a := e as ast.SelectorExpr
+									e = a.expr
+								}
+							}
+						}
+					}
+					else {}
+				}
+
+				match node.method_name {
+					ast.Ident {
+						if it.obj is ast.Var {
+							v := it.obj as ast.Var
+							if v.expr is ast.StringLiteral {
+								s := v.expr as ast.StringLiteral
+								lit = s.val
+							} else {
+								c.error('variable has to be clear string', v.expr.position())
+								return table.void_type
+							}
+						}
 					}
 					ast.StringLiteral {
 						lit = it.val
-						println(it.val)
 					}
 					else {
-						println('test')
+						c.error('expr can not be used or is not implemented', node.method_name.position())
+						return table.void_type
 					}
 				}
 				method := c.table.type_find_method(node.sym, lit) or {
