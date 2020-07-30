@@ -38,11 +38,11 @@ pub fn new_suggestion(wanted string, possibilities []string) Suggestion {
 }
 
 pub fn (mut s Suggestion) add(val string) {
-	if val == s.wanted {
+	if val in [ s.wanted, s.swanted ] {
 		return
 	}
 	sval := short_module_name(val)
-	if sval == s.wanted {
+	if sval in [ s.wanted, s.swanted ] {
 		return
 	}
 	s.known << Possibility{
