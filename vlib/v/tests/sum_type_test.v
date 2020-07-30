@@ -288,7 +288,7 @@ type CommonType = any_int | any_float | string
 fn (c CommonType) str() string {
 	match c {
 		string {
-			return *c
+			return c
 		}
 		// TODO: combine `any_int` and `any_float` into `else` once code generation for `else` in sumtype match is mature 
 		any_int {
