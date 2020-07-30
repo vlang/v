@@ -721,7 +721,7 @@ When an identifier is just a single underscore, it is ignored.
 #### Map `for`
 
 ```v
-mut m := {'one':1, 'two':2}
+m := {'one':1, 'two':2}
 for key, value in m {
     println("$key -> $value")  // Output: one -> 1
 }                              //         two -> 2
@@ -729,7 +729,7 @@ for key, value in m {
 
 Either key or value can be ignored by using a single underscore as the identifer.
 ```v
-mut m := {'one':1, 'two':2}
+m := {'one':1, 'two':2}
 
 // iterate over keys
 for key, _ in m {
