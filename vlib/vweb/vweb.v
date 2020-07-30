@@ -440,10 +440,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 									break
 								}
 							}
-							println('method')
-							println(method)
 							if matching && !unknown {
-								println(method)
 								// absolute router words like `/test/site`
 								app.$method(vars)
 								return
@@ -463,11 +460,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		conn.send_string(http_404) or {}
 		return
 	}
-	send_action<T>(action, vars, mut app)
-}
-
-fn send_action<T>(action string, vars []string, mut app T) {
-	// TODO remove this function
 	$for method in T.methods {
 		$if method.@type is Result {
 			// search again for method
