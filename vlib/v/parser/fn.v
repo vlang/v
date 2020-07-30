@@ -131,8 +131,8 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
-	is_deprecated := 'deprecated' in p.attrs
-	mut is_unsafe := 'unsafe_fn' in p.attrs
+	is_deprecated := p.attrs.contains('deprecated')
+	mut is_unsafe := p.attrs.contains('unsafe_fn')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -141,7 +141,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	language := if p.tok.kind == .name && p.tok.lit == 'C' {
-		is_unsafe = !('trusted_fn' in p.attrs)
+		is_unsafe = !p.attrs.contains('trusted_fn')
 		table.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		table.Language.js
@@ -249,7 +249,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
-	ctdefine := p.attr_ctdefine
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
@@ -263,7 +262,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
-			ctdefine: ctdefine
 			mod: p.mod
 			attrs: p.attrs
 		})
@@ -288,8 +286,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_pub: is_pub
 			is_deprecated: is_deprecated
 			is_unsafe: is_unsafe
-			ctdefine: ctdefine
 			mod: p.mod
+			attrs: p.attrs
 			language: language
 		})
 	}
@@ -328,7 +326,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
-		ctdefine: ctdefine
+		attrs: p.attrs
 	}
 }
 

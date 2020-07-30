@@ -36,8 +36,7 @@ mut:
 	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
-	attrs             []string // attributes before next decl stmt
-	attr_ctdefine     string
+	attrs             []table.Attr // attributes before next decl stmt
 	expr_mod          string // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
@@ -183,13 +182,9 @@ fn (mut p Parser) parse() ast.File {
 			break
 		}
 		// println('stmt at ' + p.tok.str())
-		stmt := p.top_stmt()
-		// clear the attribtes at the end of next non Attr top level stmt
-		if stmt !is ast.Attr {
-			p.attrs = []
-			p.attr_ctdefine = ''
-		}
-		stmts << stmt
+		stmts << p.top_stmt()
+		// clear the attributes after each statement
+		p.attrs = []
 	}
 	// println('nr stmts = $stmts.len')
 	// println(stmts[0])
@@ -399,96 +394,102 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 		tok_pos := p.tok.position()
 		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | top_stmt')
 	}
-	match p.tok.kind {
-		.key_pub {
-			match p.peek_tok.kind {
-				.key_const {
-					return p.const_decl()
+	for {
+		match p.tok.kind {
+			.key_pub {
+				match p.peek_tok.kind {
+					.key_const {
+						return p.const_decl()
+					}
+					.key_fn {
+						return p.fn_decl()
+					}
+					.key_struct, .key_union {
+						return p.struct_decl()
+					}
+					.key_interface {
+						return p.interface_decl()
+					}
+					.key_enum {
+						return p.enum_decl()
+					}
+					.key_type {
+						return p.type_decl()
+					}
+					else {
+						p.error('wrong pub keyword usage')
+						return ast.Stmt{}
+					}
 				}
-				.key_fn {
-					return p.fn_decl()
-				}
-				.key_struct, .key_union {
-					return p.struct_decl()
-				}
-				.key_interface {
-					return p.interface_decl()
-				}
-				.key_enum {
-					return p.enum_decl()
-				}
-				.key_type {
-					return p.type_decl()
-				}
-				else {
-					p.error('wrong pub keyword usage')
+			}
+			.lsbr {
+				// attrs are stores in `p.attrs()`
+				p.attributes()
+				continue
+			}
+			.key_interface {
+				return p.interface_decl()
+			}
+			.key_import {
+				p.error_with_pos('`import x` can only be declared at the beginning of the file',
+					p.tok.position())
+				return p.import_stmt()
+			}
+			.key_global {
+				return p.global_decl()
+			}
+			.key_const {
+				return p.const_decl()
+			}
+			.key_fn {
+				return p.fn_decl()
+			}
+			.key_struct {
+				return p.struct_decl()
+			}
+			.dollar {
+				return p.comp_if()
+			}
+			.hash {
+				return p.hash()
+			}
+			.key_type {
+				return p.type_decl()
+			}
+			.key_enum {
+				return p.enum_decl()
+			}
+			.key_union {
+				return p.struct_decl()
+			}
+			.comment {
+				return p.comment_stmt()
+			}
+			else {
+				if p.pref.is_script && !p.pref.is_test {
+					mut stmts := []ast.Stmt{}
+					for p.tok.kind != .eof {
+						stmts << p.stmt(false)
+					}
+					return ast.FnDecl{
+						name: 'main.main'
+						mod: 'main'
+						stmts: stmts
+						file: p.file_name
+						return_type: table.void_type
+					}
+				} else if p.pref.is_fmt {
+					return p.stmt(false)
+				} else {
+					p.error('bad top level statement ' + p.tok.str())
 					return ast.Stmt{}
 				}
 			}
 		}
-		.lsbr {
-			attrs := p.attributes(true)
-			return attrs[0]
-		}
-		.key_interface {
-			return p.interface_decl()
-		}
-		.key_import {
-			p.error_with_pos('`import x` can only be declared at the beginning of the file',
-				p.tok.position())
-			return p.import_stmt()
-		}
-		.key_global {
-			return p.global_decl()
-		}
-		.key_const {
-			return p.const_decl()
-		}
-		.key_fn {
-			return p.fn_decl()
-		}
-		.key_struct {
-			return p.struct_decl()
-		}
-		.dollar {
-			return p.comp_if()
-		}
-		.hash {
-			return p.hash()
-		}
-		.key_type {
-			return p.type_decl()
-		}
-		.key_enum {
-			return p.enum_decl()
-		}
-		.key_union {
-			return p.struct_decl()
-		}
-		.comment {
-			return p.comment_stmt()
-		}
-		else {
-			if p.pref.is_script && !p.pref.is_test {
-				mut stmts := []ast.Stmt{}
-				for p.tok.kind != .eof {
-					stmts << p.stmt(false)
-				}
-				return ast.FnDecl{
-					name: 'main.main'
-					mod: 'main'
-					stmts: stmts
-					file: p.file_name
-					return_type: table.void_type
-				}
-			} else if p.pref.is_fmt {
-				return p.stmt(false)
-			} else {
-				p.error('bad top level statement ' + p.tok.str())
-				return ast.Stmt{}
-			}
-		}
 	}
+	// TODO remove dummy return statement
+	// the compiler complains if it's not there
+	return ast.Stmt{}
 }
 
 // TODO [if vfmt]
@@ -681,40 +682,42 @@ fn (mut p Parser) expr_list() ([]ast.Expr, []ast.Comment) {
 }
 
 // when is_top_stmt is true attrs are added to p.attrs
-fn (mut p Parser) attributes(is_top_stmt bool) []ast.Attr {
-	mut attrs := []ast.Attr{}
+fn (mut p Parser) attributes() {
 	p.check(.lsbr)
+	mut has_ctdefine := false
 	for p.tok.kind != .rsbr {
 		start_pos := p.tok.position()
 		attr := p.parse_attr()
-		if attr in attrs || (is_top_stmt && attr.name in p.attrs) {
+		if p.attrs.contains(attr.name) {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
 		}
-		if is_top_stmt {
-			p.attrs << attr.name
+		if attr.is_ctdefine {
+			if has_ctdefine {
+				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`', start_pos.extend(p.prev_tok.position()))
+			} else {
+				has_ctdefine = true
+			}
 		}
-		attrs << attr
+		p.attrs << attr
 		if p.tok.kind != .semicolon {
-			expected := `;`
 			if p.tok.kind == .rsbr {
 				p.next()
 				break
 			}
-			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
 		}
 		p.next()
 	}
-	if attrs.len == 0 {
+	if p.attrs.len == 0 {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.position().extend(p.tok.position()))
 	}
-	return attrs
 }
 
-fn (mut p Parser) parse_attr() ast.Attr {
-	mut is_if_attr := false
+fn (mut p Parser) parse_attr() table.Attr {
+	mut is_ctdefine := false
 	if p.tok.kind == .key_if {
 		p.next()
-		is_if_attr = true
+		is_ctdefine = true
 	}
 	mut name := ''
 	is_string := p.tok.kind == .string
@@ -734,12 +737,10 @@ fn (mut p Parser) parse_attr() ast.Attr {
 			}
 		}
 	}
-	if is_if_attr {
-		p.attr_ctdefine = name
-	}
-	return ast.Attr{
+	return table.Attr{
 		name: name
 		is_string: is_string
+		is_ctdefine: is_ctdefine
 	}
 }
 
@@ -1653,8 +1654,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	is_flag := 'flag' in p.attrs
-	is_multi_allowed := '_allow_multiple_values' in p.attrs
+	is_flag := p.attrs.contains('flag')
+	is_multi_allowed := p.attrs.contains('_allow_multiple_values')
 	if is_flag {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')

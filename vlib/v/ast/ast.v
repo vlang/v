@@ -15,7 +15,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor | CompIf |
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf |
 	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
 	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
 	Return | SqlStmt | StructDecl | TypeDecl
@@ -129,7 +129,7 @@ pub:
 	comments         []Comment
 	default_expr     Expr
 	has_default_expr bool
-	attrs            []string
+	attrs            []table.Attr
 	is_public        bool
 pub mut:
 	typ              table.Type
@@ -174,7 +174,7 @@ pub:
 	pub_mut_pos  int // pub mut:
 	language     table.Language
 	is_union     bool
-	attrs        []string
+	attrs        []table.Attr
 	end_comments []Comment
 }
 
@@ -253,11 +253,11 @@ pub:
 	language      table.Language
 	no_body       bool // just a definition `fn C.malloc()`
 	is_builtin    bool // this function is defined in builtin/strconv
-	ctdefine      string // has [if myflag] tag
 	pos           token.Position
 	body_pos      token.Position
 	file          string
 	is_generic    bool
+	attrs         []table.Attr
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
@@ -641,21 +641,6 @@ pub mut:
 	expr_type table.Type
 }
 
-// e.g. `[unsafe_fn]`
-pub struct Attr {
-pub:
-	name      string
-	is_string bool // `['xxx']`
-}
-
-pub fn (attrs []Attr) contains(attr Attr) bool {
-	for a in attrs {
-		if attr.name == a.name {
-			return true
-		}
-	}
-	return false
-}
 
 pub struct EnumVal {
 pub:

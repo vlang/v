@@ -425,9 +425,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.gen_assign_stmt(node)
 		}
-		ast.Attr {
-			g.gen_attr(node)
-		}
 		ast.Block {
 			g.gen_block(node)
 			g.writeln('')
@@ -740,8 +737,10 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut g JsGen) gen_attr(it ast.Attr) {
-	g.writeln('/* [$it.name] */')
+fn (mut g JsGen) gen_attrs(attrs []table.Attr) {
+	for attr in attrs {
+		g.writeln('/* [$attr.name] */')
+	}
 }
 
 fn (mut g JsGen) gen_block(it ast.Block) {
@@ -830,6 +829,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = &it
 	has_go := fn_has_go(it)
 	is_main := it.name == 'main.main'
+	g.gen_attrs(it.attrs)
 	if is_main {
 		// there is no concept of main in JS but we do have iife
 		g.writeln('/* program entry point */')
@@ -1043,6 +1043,7 @@ fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if node.name.starts_with('JS.') { return }
+	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
 	g.write('function ${g.js_name(node.name)}({ ')
 	for i, field in node.fields {

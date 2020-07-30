@@ -33,7 +33,7 @@ pub:
 	is_placeholder bool
 	mod            string
 	ctdefine       string // compile time define. myflag, when [if myflag] tag
-	attrs          []string
+	attrs          []Attr
 pub mut:
 	name           string
 }

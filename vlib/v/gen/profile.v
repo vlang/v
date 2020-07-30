@@ -1,16 +1,19 @@
 module gen
 
+import v.ast
+
 pub struct ProfileCounterMeta{
 	fn_name string
 	vpc_name string
 	vpc_calls string
 }
 
-fn (mut g Gen) profile_fn(fn_name string){
-	if g.pref.profile_no_inline && 'inline' in g.attrs {
+fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
+	if g.pref.profile_no_inline && fn_decl.attrs.contains('inline') {
 		g.defer_profile_code = ''
 		return
 	}
+	fn_name := fn_decl.name
 	if fn_name.starts_with('time.vpc_now') {
 		g.defer_profile_code = ''
 	} else {

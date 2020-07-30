@@ -78,18 +78,18 @@ $enc_fn_dec {
 		}
 		info := sym.info as table.Struct
 		for field in info.fields {
-			if 'skip' in field.attrs {
+			if field.attrs.contains('skip') {
 				continue
 			}
 			mut name := field.name
 			for attr in field.attrs {
-				if attr.starts_with('json:') {
-					name = attr[5..]
+				if attr.name.starts_with('json:') {
+					name = attr.name[5..]
 					break
 				}
 			}
 			field_type := g.typ(field.typ)
-			if 'raw' in field.attrs {
+			if field.attrs.contains('raw') {
 				dec.writeln(' res . ${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
