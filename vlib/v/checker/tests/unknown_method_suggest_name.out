@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unknown_method_suggest_name.v:7:2: error: unknown type `hash.crc32.Crc33`. Did you mean `crc32.Crc33` ?
+vlib/v/checker/tests/unknown_method_suggest_name.v:7:2: error: unknown type `hash.crc32.Crc33`. Did you mean `crc32.Crc32` ?
     5 |     y   int
     6 |     z   int
     7 |     ccc crc32.Crc33
