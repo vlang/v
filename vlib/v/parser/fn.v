@@ -244,8 +244,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut end_pos := p.prev_tok.position()
 	// Return type
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() || (p.tok.kind == .key_fn &&
-		p.tok.line_nr == p.prev_tok.line_nr) {
+	if p.tok.kind.is_start_of_type() ||
+		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
 		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
@@ -392,8 +392,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 	// `int, int, string` (no names, just types)
 	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) ||
-		p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')

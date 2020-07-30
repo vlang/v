@@ -15,10 +15,10 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf |
-	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
-	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	Return | SqlStmt | StructDecl | TypeDecl
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
+	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
+	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
+	SqlStmt | StructDecl | TypeDecl
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -36,7 +36,7 @@ pub:
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
 pub:
-	stmts []Stmt
+	stmts     []Stmt
 	is_unsafe bool
 }
 
@@ -224,9 +224,9 @@ pub enum ImportSymbolKind {
 
 pub struct ImportSymbol {
 pub:
-	pos    token.Position
-	name   string
-	kind   ImportSymbolKind
+	pos  token.Position
+	name string
+	kind ImportSymbolKind
 }
 
 pub struct AnonFn {
@@ -537,6 +537,7 @@ pub enum CompIfKind {
 	platform
 	typecheck
 }
+
 pub struct CompIf {
 pub:
 	val        string
@@ -640,7 +641,6 @@ pub:
 pub mut:
 	expr_type table.Type
 }
-
 
 pub struct EnumVal {
 pub:

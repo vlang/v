@@ -693,7 +693,8 @@ fn (mut p Parser) attributes() {
 		}
 		if attr.is_ctdefine {
 			if has_ctdefine {
-				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`', start_pos.extend(p.prev_tok.position()))
+				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
+					start_pos.extend(p.prev_tok.position()))
 			} else {
 				has_ctdefine = true
 			}

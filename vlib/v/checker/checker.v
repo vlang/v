@@ -199,7 +199,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				if stmt.return_type != table.void_type {
 					for attr in stmt.attrs {
 						if attr.is_ctdefine {
-							c.error('only functions that do NOT return values can have `[if ${attr.name}]` tags',
+							c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
 								stmt.pos)
 							break
 						}
@@ -3301,7 +3301,8 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 }
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
-	fields := info.fields.filter(it.typ in [table.string_type, table.int_type, table.bool_type] && !it.attrs.contains('skip'))
+	fields := info.fields.filter(it.typ in
+		[table.string_type, table.int_type, table.bool_type] && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 	}

@@ -527,7 +527,6 @@ pub fn (table &Table) sumtype_has_variant(parent, variant Type) bool {
 		}
 	}
 	return false
-
 }
 
 pub fn (table &Table) known_type_names() []string {

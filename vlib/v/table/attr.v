@@ -19,4 +19,3 @@ pub fn (attrs []Attr) contains(str string) bool {
 	}
 	return false
 }
-
