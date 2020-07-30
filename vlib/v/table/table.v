@@ -529,3 +529,14 @@ pub fn (table &Table) sumtype_has_variant(parent, variant Type) bool {
 	return false
 
 }
+
+pub fn (table &Table) known_type_names() []string {
+	mut res := []string{}
+	for _, idx in table.type_idxs {
+		if idx == 0 {
+			continue
+		}
+		res << table.type_to_str(idx)
+	}
+	return res
+}

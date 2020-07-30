@@ -315,13 +315,15 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
-			c.error('unknown type `$sym.name`', field.pos)
+			c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+				field.pos)
 		}
 		if sym.kind == .array {
 			array_info := sym.array_info()
 			elem_sym := c.table.get_type_symbol(array_info.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', field.pos)
+				c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
+					field.pos)
 			}
 		}
 		if sym.kind == .struct_ {
@@ -1024,7 +1026,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if left_type != table.void_type {
-		c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
+		c.error(suggestion.say('unknown method: `${left_type_sym.name}.$method_name`'),
+			call_expr.pos)
 	}
 	return table.void_type
 }
