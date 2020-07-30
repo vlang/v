@@ -723,7 +723,7 @@ When an identifier is just a single underscore, it is ignored.
 ```v
 mut m := {'one':1, 'two':2}
 for key, value in m {
-	println("$key -> $value")  // Output: one -> 1
+    println("$key -> $value")  // Output: one -> 1
 }                              //         two -> 2
 ```
 
