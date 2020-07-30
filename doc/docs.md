@@ -718,6 +718,15 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
+#### Map `for`
+
+```v
+mut m := {'one':1, 'two':2}
+for key, value in m {
+	println("$key -> $value")  // Output: one -> 1
+}                              //         two -> 2
+```
+
 #### Range `for`
 
 ```v
