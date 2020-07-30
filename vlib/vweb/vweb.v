@@ -378,28 +378,28 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			} else {
 				// Get methods
 				// Get is default
-				if 'post' in attrs {
-					if req.method == .post {
+				if req.method == .post {
+					if 'post' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
 					}
-				} else if 'put' in attrs {
-					if req.method == .put {
+				} else if req.method == .put {
+					if 'put' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
 					}
-				} else if 'patch' in attrs {
-					if req.method == .patch {
+				} else if req.method == .patch {
+					if 'patch' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
 					}
-				} else if 'delete' in attrs {
-					if req.method == .delete {
+				} else if req.method == .delete {
+					if 'delete' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 					}
-				} else if 'head' in attrs {
-					if req.method == .head {
+				} else if req.method == .head {
+					if 'head' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
 					}
-				} else if 'options' in attrs {
-					if req.method == .options {
+				} else if req.method == .options {
+					if 'options' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
 					}
 				} else {
@@ -440,7 +440,10 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 									break
 								}
 							}
+							println('method')
+							println(method)
 							if matching && !unknown {
+								println(method)
 								// absolute router words like `/test/site`
 								app.$method(vars)
 								return
