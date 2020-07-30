@@ -788,6 +788,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			node.typname = f.table.get_type_symbol(node.typ).name
 			f.write(f.type_to_str(node.typ) + '(')
 			f.expr(node.expr)
+			if node.has_arg {
+				f.write(', ')
+				f.expr(node.arg)
+			}
 			f.write(')')
 		}
 		ast.CallExpr {
