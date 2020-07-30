@@ -407,7 +407,7 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if is_cc_tcc {
-		args << '-bt10'
+		args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
