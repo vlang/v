@@ -1047,13 +1047,12 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 	got_is_ptr := got_type.is_ptr()
 	expected_is_ptr := expected_type.is_ptr()
 	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] &&
-		!g.should_write_asterisk_due_to_match_sumtype(expr) {
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
 		got_deref_type := got_type.deref()
 		deref_sym := g.table.get_type_symbol(got_deref_type)
 		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
 		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt {
+		if (deref_will_match || got_is_opt) && !g.should_write_asterisk_due_to_match_sumtype(expr) {
 			g.write('*')
 		}
 	}
