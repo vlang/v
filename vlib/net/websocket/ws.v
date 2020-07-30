@@ -18,13 +18,13 @@ mut:
 	// cwebsocket_subprotocol *subprotocols[];
 	mtx        &sync.Mutex = sync.new_mutex()
 	write_lock &sync.Mutex = sync.new_mutex()
-	state      State
 	socket     net.Socket
 	flags      []Flag
 	sslctx     &C.SSL_CTX
 	ssl        &C.SSL
 	fragments  []Fragment
 pub mut:
+	state      State
 	log        log.Log = log.Log{
 	output_label: 'ws'
 }
@@ -588,6 +588,10 @@ pub fn (mut ws Client) read() int {
 		free(data)
 	}
 	return -1
+}
+
+pub fn (mut ws Client) send_pong() int {
+	return ws.send_control_frame(.pong, 'PONG', [])
 }
 
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) int {
