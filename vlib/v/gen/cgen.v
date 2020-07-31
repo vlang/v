@@ -755,7 +755,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if g.pref.use_cache {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
-				if node.mod != 'main' {
+				if node.mod != 'main' && node.mod != 'help' {
 					skip = true
 				}
 			}
