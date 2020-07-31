@@ -29,6 +29,7 @@ mut:
 	language          table.Language
 	inside_if         bool
 	inside_if_expr    bool
+	inside_ct_if_expr bool
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool

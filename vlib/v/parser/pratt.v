@@ -263,7 +263,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.tok.kind == .key_as && p.inside_if {
 				return node
 			}
-		} else if p.tok.kind in [.inc, .dec] {
+		} else if p.tok.kind in [.inc, .dec] || (p.tok.kind == .question && p.inside_ct_if_expr) {
 			// Postfix
 			node = ast.PostfixExpr{
 				op: p.tok.kind

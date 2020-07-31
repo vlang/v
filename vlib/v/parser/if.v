@@ -8,22 +8,27 @@ import v.table
 import v.token
 
 fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
-	if is_comptime {
-		p.next() // `$`
-	}
 	was_inside_if_expr := p.inside_if_expr
+	was_inside_ct_if_expr := p.inside_ct_if_expr
 	defer {
 		p.inside_if_expr = was_inside_if_expr
+		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	pos := p.tok.position()
+	pos := if is_comptime {
+		p.inside_ct_if_expr = true
+		p.next() // `$`
+		p.prev_tok.position().extend(p.tok.position())
+	} else {
+		p.tok.position()
+	}
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
 	mut comments := []ast.Comment{}
 	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
-		start_pos := p.tok.position()
+		start_pos := if is_comptime { p.prev_tok.position().extend(p.tok.position()) } else { p.tok.position() }
 		if p.tok.kind == .key_if {
 			p.next()
 		} else {
@@ -128,7 +133,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			left_as_name: left_as_name
 		}
 		comments = p.eat_comments()
-		if is_comptime && p.tok.kind == .dollar {
+		if is_comptime && p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
 			p.next()
 		}
 		if p.tok.kind != .key_else {

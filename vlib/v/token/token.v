@@ -331,9 +331,10 @@ pub fn build_precedences() []Precedence {
 
 	p[Kind.lsbr] = .index
 	p[Kind.dot] = .call
-	// `++` | `--`
+	// `++` | `--` | `?`
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
+	p[Kind.question] = .postfix
 	// `*` |  `/` | `%` | `<<` | `>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
