@@ -225,19 +225,26 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	name_pos := name_pos_start.extend(p.tok.position())
 	//
 	mut stmts := []ast.Stmt{}
-	mut skip := false
+	mut skip_os := false
+	mut skip_cc := false
 	if val in supported_platforms {
 		os := os_from_string(val)
 		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
-			skip = true
+			skip_os = true
 		}
 	} else if val in supported_ccompilers {
-		cc := cc_from_string(val)
-		user_cc := cc_from_string(p.pref.ccompiler)
-		if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
-			skip = true
+		if p.pref.ccompiler.len == 2 && p.pref.ccompiler == 'cc' {
+			// we just do not know, so we can not skip:
+			skip_cc = false
+		}else {
+			cc := cc_from_string(val)
+			user_cc := cc_from_string(p.pref.ccompiler)
+			if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
+				skip_cc = true
+			}
 		}
 	}
+	mut skip := skip_os || skip_cc
 	// `$if os {` or `$if compiler {` for a different target, skip everything inside
 	// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
 	// on non-Windows systems)

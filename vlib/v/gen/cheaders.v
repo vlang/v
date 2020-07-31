@@ -28,6 +28,23 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
+// Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
+#ifdef __GNUC__
+	#define __V_GCC__
+#endif    
+#ifdef __TINYC__
+	#undef __V_GCC__
+#endif
+#ifdef __cplusplus
+	#undef __V_GCC__
+#endif
+#ifdef __clang__
+	#undef __V_GCC__
+#endif
+#ifdef _MSC_VER
+	#undef __V_GCC__
+#endif
+
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
