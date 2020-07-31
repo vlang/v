@@ -903,7 +903,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.OrExpr {
 			// shouldn't happen, an or expression
 			// is always linked to a call expr
-			panic('fmt: OrExpr should to linked to CallExpr')
+			panic('fmt: OrExpr should be linked to CallExpr')
 		}
 		ast.ParExpr {
 			f.write('(')
