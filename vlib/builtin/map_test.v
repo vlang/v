@@ -42,7 +42,7 @@ fn test_map() {
 	m['hi'] = 80
 	m['delete'] = 101
 	assert m.len == 3
-	m.delete_all(['hi', 'hello', 'aloha', 'delete'])
+	m.delete_keys(['hi', 'hello', 'aloha', 'delete'])
 	assert m.len == 0
 
 	m['hello'] = 101
