@@ -487,7 +487,7 @@ pub fn (mut m map) delete(key string) {
 }
 
 // Removes the mapping of a array of keys
-pub fn (mut m map) delete_all(keys []string) {
+pub fn (mut m map) delete_keys(keys []string) {
 	for key in keys {
 		m.delete(key)
 	}
