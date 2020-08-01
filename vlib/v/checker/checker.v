@@ -2286,6 +2286,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
+			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type &&
+				!node.expr_type.is_ptr() &&
+				to_type_sym.kind == .byte {
+				type_name := c.table.type_to_str(node.expr_type)
+				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
