@@ -20,8 +20,6 @@ pub const (
 	sys_creat = 85
 )
 
-
-
 /*
 // TODO no pub => error
 pub fn write(fd int, data voidptr, nbytes int) int {
@@ -47,9 +45,4 @@ pub fn malloc(n int) byteptr {
 	println('malloc($n)')
 	return mmap(0, n, 3, 		4098, //prot_read|prot_write,
 	 -1,0)			//map_private|map_anonymous,
-}
-
-pub fn free(b byteptr) {
-
-}
 */

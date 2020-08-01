@@ -171,10 +171,10 @@ pub fn get_error_msg(code int) string {
 }
 
 pub fn (mut f File) close() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
-	f.opened = false
+	f.is_opened = false
 	/*
 	$if linux {
 		$if !android {
