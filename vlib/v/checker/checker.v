@@ -305,7 +305,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if decl.language == .v {
+		if !c.is_builtin_mod && decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -315,13 +315,15 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
-			c.error('unknown type `$sym.name`', field.pos)
+			c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+				field.pos)
 		}
 		if sym.kind == .array {
 			array_info := sym.array_info()
 			elem_sym := c.table.get_type_symbol(array_info.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', field.pos)
+				c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
+					field.pos)
 			}
 		}
 		if sym.kind == .struct_ {
@@ -358,6 +360,11 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		struct_init.typ = c.expected_type
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
+	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
+		sexpr := struct_init.fields[0].expr.str()
+		c.error('cast to sum type using `${type_sym.name}($sexpr)` not `$type_sym.name{$sexpr}`',
+			struct_init.pos)
+	}
 	if type_sym.kind == .interface_ {
 		c.error('cannot instantiate interface `$type_sym.name`', struct_init.pos)
 	}
@@ -958,7 +965,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				// }
 				// same ancestor? let it be
 				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
-					continue
+					if got_arg_sym.parent_idx != 0 {
+						continue
+					}
 				}
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
@@ -1017,7 +1026,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if left_type != table.void_type {
-		c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
+		c.error(suggestion.say('unknown method: `${left_type_sym.name}.$method_name`'),
+			call_expr.pos)
 	}
 	return table.void_type
 }
@@ -1508,6 +1519,11 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('cannot use `$got_typ_sym.name` as type `$exp_typ_sym.name` in return argument',
 				pos)
 		}
+		if got_typ.is_ptr() && !exp_type.is_ptr() {
+			pos := return_stmt.exprs[i].position()
+			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos)
+		}
 	}
 }
 
@@ -1612,6 +1628,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	//
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
+		if left is ast.CallExpr {
+			c.error('cannot call function `${left.name}()` on the left side of an assignment',
+				left.pos)
+		}
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
@@ -1894,7 +1914,7 @@ fn const_int_value(cfield ast.ConstField) ?int {
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	match cfield.expr {
-		ast.IntegerLiteral { return it }
+		ast.IntegerLiteral { return *it }
 		else {}
 	}
 	return none
@@ -2266,6 +2286,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
+			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type && !node.expr_type.is_ptr() &&
+				to_type_sym.kind == .byte {
+				type_name := c.table.type_to_str(node.expr_type)
+				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
@@ -3091,7 +3115,7 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		typ_sym = c.table.get_type_symbol(typ)
 	}
 	if typ_sym.kind != .enum_ {
-		c.error('expected type is not an enum', node.pos)
+		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return table.void_type
 	}
 	if typ_sym.info !is table.Enum {

@@ -400,7 +400,7 @@ pub mut:
 pub fn (i &Ident) var_info() IdentVar {
 	match i.info as info {
 		IdentVar {
-			return info
+			return *info
 		}
 		else {
 			// return IdentVar{}
@@ -789,7 +789,7 @@ pub:
 
 pub struct CastExpr {
 pub:
-	expr      Expr // `buf`
+	expr      Expr // `buf` in `string(buf, n)`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position

@@ -846,6 +846,7 @@ SOKOL_API_DECL const void* sapp_metal_get_renderpass_descriptor(void);
 SOKOL_API_DECL const void* sapp_metal_get_drawable(void);
 /* macOS: get ARC-bridged pointer to macOS NSWindow */
 SOKOL_API_DECL const void* sapp_macos_get_window(void);
+SOKOL_API_DECL void sapp_macos_set_title(const char* title);
 /* iOS: get ARC-bridged pointer to iOS UIWindow */
 SOKOL_API_DECL const void* sapp_ios_get_window(void);
 
@@ -7524,6 +7525,12 @@ SOKOL_API_IMPL const void* sapp_macos_get_window(void) {
         return obj;
     #else
         return 0;
+    #endif
+}
+
+SOKOL_API_IMPL void sapp_macos_set_title(const char* title) {
+    #if defined(__APPLE__) && !TARGET_OS_IPHONE
+        [_sapp_macos_window_obj setTitle: [NSString stringWithUTF8String:title]];
     #endif
 }
 

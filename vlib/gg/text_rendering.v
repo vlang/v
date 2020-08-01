@@ -15,6 +15,9 @@ pub:
 	fons &C.FONScontext
 
 	font_normal int
+	font_bold int
+	font_mono int
+	font_italic int
 	scale f32 = 1.0
 }
 
@@ -36,22 +39,59 @@ fn new_ft(c FTConfig) ?&FT{
 		println('failed to load font "$c.font_path"')
 		return none
 	}
+	bold_path := 'SFNS-bold.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
+	bytes_bold := os.read_bytes(bold_path) or {
+		println('failed to load font "$bold_path"')
+		bytes
+	}
+	mono_path := '/System/Library/Fonts/SFNSMono.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
+	bytes_mono:= os.read_bytes(mono_path) or {
+		println('failed to load font "$mono_path"')
+		bytes
+	}
+	italic_path := '/System/Library/Fonts/SFNSItalic.ttf'
+	bytes_italic:= os.read_bytes(italic_path) or {
+		println('failed to load font "$italic_path"')
+		bytes
+	}
 	fons := sfons.create(512, 512, 1)
 	return &FT{
 		fons : fons
 		font_normal: C.fonsAddFontMem(fons, 'sans', bytes.data, bytes.len, false)
+		font_bold: C.fonsAddFontMem(fons, 'sans', bytes_bold.data, bytes_bold.len, false)
+		font_mono: C.fonsAddFontMem(fons, 'sans', bytes_mono.data, bytes_mono.len, false)
+		font_italic: C.fonsAddFontMem(fons, 'sans', bytes_italic.data, bytes_italic.len, false)
 		scale: c.scale
 	}
 
 }
 
-pub fn (ctx &Context) draw_text(x, y int, text string, cfg gx.TextCfg) {
+pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
 	}
-	ctx.ft.fons.set_font(ctx.ft.font_normal)
+	//text := text_.trim_space() // TODO remove/optimize
+	mut text := text_
+	if text.contains('\t') {
+		text = text.replace('\t', '    ')
+	}
+	if cfg.bold {
+		ctx.ft.fons.set_font(ctx.ft.font_bold)
+	}
+	else if cfg.mono {
+		ctx.ft.fons.set_font(ctx.ft.font_mono)
+	}
+	else if cfg.italic {
+		ctx.ft.fons.set_font(ctx.ft.font_italic)
+	}
+	else {
+		ctx.ft.fons.set_font(ctx.ft.font_normal)
+	}
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	size := if cfg.size == 0 { gg.default_font_size } else { cfg.size }
+	mut size := if cfg.size == 0 { gg.default_font_size } else { cfg.size }
+	if cfg.mono {
+		size -= 2
+	}
 	ctx.ft.fons.set_size(scale * f32(size))
 	if cfg.align == gx.align_right {
 		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)

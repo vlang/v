@@ -70,6 +70,17 @@ pub fn (mut b Builder) parse_imports() {
 	if b.pref.is_script {
 		done_imports << 'os'
 	}
+	// TODO (joe): decide if this is correct solution.
+	// in the case of building a module, the actual module files
+	// are passed via cmd line, so they have already been parsed
+	// by this stage. note that if one files from a module was
+	// parsed (but not all of them), then this will cause a problem.
+	// we could add a list of parsed files instead, but I think
+	// there is a better solution all around, I will revisit this.
+	// NOTE: there is a very similar occurance with the way
+	// internal module test's work, and this was the reason there
+	// were issues with duplicate declarations, so we should sort
+	// that out in a similar way.
 	for file in b.parsed_files {
 		if file.mod.name != 'main' && file.mod.name !in done_imports {
 			done_imports << file.mod.name
@@ -322,7 +333,7 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string, ms int) {
+pub fn (mut b Builder) timing_message(msg string, ms i64) {
 	formatted_message := '$msg: ${util.bold(ms.str())} ms'
 	if b.pref.show_timings {
 		println(formatted_message)

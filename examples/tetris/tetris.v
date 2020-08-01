@@ -19,7 +19,7 @@ const (
 	win_width = block_size * field_width
 	win_height = block_size * field_height
 	timer_period = 250 // ms
-	text_size = 12
+	text_size = 24
 	limit_thickness = 3
 )
 

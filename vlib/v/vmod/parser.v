@@ -168,11 +168,7 @@ fn get_array_content(tokens []Token, st_idx int) ?([]string, int) {
 				if tokens[idx + 1].typ !in [.comma, .rabr] {
 					return error('vmod: invalid separator "${tokens[idx+1].val}"')
 				}
-				idx += if tokens[idx + 1].typ == .comma {
-					2
-				} else {
-					1
-				}
+				idx += if tokens[idx + 1].typ == .comma { 2 } else { 1 }
 			}
 			.rabr {
 				idx++

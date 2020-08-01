@@ -5,7 +5,7 @@ const (w = 30 h = 30)
 fn get(game [][]bool, x int, y int) bool {
 	if y < 0 || x < 0 { return false }
 	if y >= h || x >= w { return false }
-	
+
 	return game[y][x]
 }
 
@@ -51,6 +51,8 @@ fn show(game [][]bool) {
 	}
 }
 
+// TODO Remove `fn main` once vet supports scripts
+fn main() {
 mut game := [][]bool{ len: h, init: []bool{ len: w } }
 
 game[11][15] = true
@@ -62,3 +64,4 @@ game[12][21] = true
 game[12][22] = true
 
 JS.setInterval(fn () { show(game) game = step(game) }, 500)
+}

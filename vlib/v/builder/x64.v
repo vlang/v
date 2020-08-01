@@ -17,7 +17,6 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	t1 := time.ticks()
 	parse_time := t1 - t0
 	b.timing_message('PARSE', parse_time)
-    
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1

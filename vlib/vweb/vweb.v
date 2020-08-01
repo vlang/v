@@ -12,8 +12,7 @@ import strings
 import time
 
 pub const (
-	methods_with_form = ['POST', 'PUT', 'PATCH']
-	method_all = ['GET','POST','PUT','PATCH','DELETE', 'HEAD', 'OPTIONS']
+	methods_with_form = [http.Method.post, .put, .patch]
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
@@ -286,7 +285,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		data: strip(body)
 		ws_func: 0
 		user_ptr: 0
-		method: vals[0]
+		method: http.method_from_str(vals[0])
 		url: vals[1]
 	}
 	$if debug {
@@ -371,7 +370,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if (req.method == 'GET' && url_words[0] == method.name && url_words.len == 1) || (req.method == 'POST' && url_words[0] + '_post' == method.name) {
+				if (req.method == .get && url_words[0] == method.name && url_words.len == 1) || (req.method == .post && url_words[0] + '_post' == method.name) {
 					println('easy match method=$method.name')
 					app.$method(vars)
 					return
@@ -379,28 +378,28 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			} else {
 				// Get methods
 				// Get is default
-				if 'post' in attrs {
-					if req.method == 'POST' {
+				if req.method == .post {
+					if 'post' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
 					}
-				} else if 'put' in attrs {
-					if req.method == 'PUT' {
+				} else if req.method == .put {
+					if 'put' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
 					}
-				} else if 'patch' in attrs {
-					if req.method == 'PATCH' {
+				} else if req.method == .patch {
+					if 'patch' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
 					}
-				} else if 'delete' in attrs {
-					if req.method == 'DELETE' {
+				} else if req.method == .delete {
+					if 'delete' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 					}
-				} else if 'head' in attrs {
-					if req.method == 'HEAD' {
+				} else if req.method == .head {
+					if 'head' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
 					}
-				} else if 'options' in attrs {
-					if req.method == 'OPTIONS' {
+				} else if req.method == .options {
+					if 'options' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
 					}
 				} else {
@@ -461,11 +460,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		conn.send_string(http_404) or {}
 		return
 	}
-	send_action<T>(action, vars, mut app)
-}
-
-fn send_action<T>(action string, vars []string, mut app T) {
-	// TODO remove this function
 	$for method in T.methods {
 		$if method.@type is Result {
 			// search again for method
