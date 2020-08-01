@@ -8,57 +8,66 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-//import time
+import stbi
 
-pub type FNCb fn(x voidptr)
-pub type FNEvent fn(e voidptr, x voidptr)
-pub type FNFail fn(msg string, x voidptr)
-pub type FNKeyDown fn(c sapp.KeyCode, m sapp.Modifier, x voidptr)
-pub type FNChar fn(c u32, x voidptr)
+// import time
+pub type FNCb = fn (x voidptr)
+
+pub type FNEvent = fn (e, x voidptr)
+
+pub type FNFail = fn (msg string, x voidptr)
+
+pub type FNKeyDown = fn (c sapp.KeyCode, m sapp.Modifier, x voidptr)
+
+pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Config {
 pub:
-	width         int
-	height        int
-	use_ortho     bool
-	retina        bool
-	resizable     bool
-	user_data     voidptr
-	font_size     int
-	create_window bool
+	width             int
+	height            int
+	use_ortho         bool
+	retina            bool
+	resizable         bool
+	user_data         voidptr
+	font_size         int
+	create_window     bool
 	// window_user_ptr voidptr
-	window_title  string
+	window_title      string
 	borderless_window bool
-	always_on_top bool
-	bg_color      gx.Color
-	init_fn       FNCb = voidptr(0)
-	frame_fn      FNCb = voidptr(0)
-	cleanup_fn    FNCb = voidptr(0)
-	fail_fn       FNFail = voidptr(0)
-	event_fn      FNEvent = voidptr(0)
-	keydown_fn    FNKeyDown = voidptr(0) // special case of event_fn
-	char_fn       FNChar = voidptr(0) // special case of event_fn
-	wait_events   bool // set this to true for UIs, to save power
-	fullscreen bool
-	scale f32 = 1.0 // vid needs this
-	//init_text bool
-	font_path string
+	always_on_top     bool
+	bg_color          gx.Color
+	init_fn           FNCb = voidptr(0)
+	frame_fn          FNCb = voidptr(0)
+	cleanup_fn        FNCb = voidptr(0)
+	fail_fn           FNFail = voidptr(0)
+	event_fn          FNEvent = voidptr(0)
+	keydown_fn        FNKeyDown = voidptr(0) // special case of event_fn
+	char_fn           FNChar = voidptr(0) // special case of event_fn
+	wait_events       bool // set this to true for UIs, to save power
+	fullscreen        bool
+	scale             f32 = 1.0 // vid needs this
+	// init_text bool
+	font_path         string
 }
 
 pub struct Context {
 	render_text bool
 pub mut:
-	scale      f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
-	width      int
-	height     int
-	clear_pass C.sg_pass_action
-	window     C.sapp_desc
-	config     Config
-	ft &FT
+	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	width       int
+	height      int
+	clear_pass  C.sg_pass_action
+	window      C.sapp_desc
+	config      Config
+	ft          &FT
 	font_inited bool
 }
 
-pub struct Size { pub: width int height int }
+pub struct Size {
+pub:
+	width  int
+	height int
+}
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut g := &Context(user_data)
@@ -80,15 +89,20 @@ fn gg_init_sokol_window(user_data voidptr) {
 	if g.scale < 0.1 {
 		g.scale = 1.0
 	}
-	//is_high_dpi := sapp.high_dpi()
-	//fb_w := sapp.width()
-	//fb_h := sapp.height()
-	//println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
-	//if g.config.init_text {
+	// is_high_dpi := sapp.high_dpi()
+	// fb_w := sapp.width()
+	// fb_h := sapp.height()
+	// println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
+	// if g.config.init_text {
 	if g.config.font_path != '' {
-		//t := time.ticks()
-		g.ft = new_ft({ font_path: g.config.font_path, scale: sapp.dpi_scale() }) or {panic(err)}
-		//println('FT took ${time.ticks()-t} ms')
+		// t := time.ticks()
+		g.ft = new_ft({
+			font_path: g.config.font_path
+			scale: sapp.dpi_scale()
+		}) or {
+			panic(err)
+		}
+		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	}
 	if g.config.init_fn != voidptr(0) {
@@ -108,9 +122,10 @@ fn gg_frame_fn(user_data voidptr) {
 // where it thinks that &sapp.Event(x) is a function call,
 // instead of a cast, if v has not yet seen &sapp.Event used
 // as a parameter type.
-fn todo_remove_this(e &sapp.Event){}
+fn todo_remove_this(e &sapp.Event) {
+}
 
-fn gg_event_fn(ce &C.sapp_event, user_data voidptr){
+fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	e := &sapp.Event(ce)
 	mut g := &Context(user_data)
 	if g.config.event_fn != voidptr(0) {
@@ -129,41 +144,39 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr){
 				cfn(e.char_code, g.config.user_data)
 			}
 		}
-		else{}
+		else {}
 	}
 }
 
-fn gg_cleanup_fn(user_data voidptr){
+fn gg_cleanup_fn(user_data voidptr) {
 	mut g := &Context(user_data)
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
 }
 
-fn gg_fail_fn(msg charptr, user_data voidptr){
+fn gg_fail_fn(msg charptr, user_data voidptr) {
 	mut g := &Context(user_data)
 	vmsg := tos3(msg)
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)
-	}else{
+	} else {
 		eprintln('gg error: $vmsg')
 	}
 }
 
 //
-
-pub fn new_context(cfg Config) &Context{
+pub fn new_context(cfg Config) &Context {
 	mut g := &Context{
 		width: cfg.width
 		height: cfg.height
-		clear_pass: gfx.create_clear_pass( f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
-f32(cfg.bg_color.b) / 255.0, 1.0)
+		clear_pass: gfx.create_clear_pass(f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
+			f32(cfg.bg_color.b) / 255.0, 1.0)
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
 	}
-
-	//C.printf('new_context() %p\n', cfg.user_data)
+	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
 		user_data: g
 		init_userdata_cb: gg_init_sokol_window
@@ -178,8 +191,9 @@ f32(cfg.bg_color.b) / 255.0, 1.0)
 		high_dpi: true
 		fullscreen: cfg.fullscreen
 	}
-	if cfg.use_ortho {}
-	else {}
+	if cfg.use_ortho {
+	} else {
+	}
 	g.window = window
 	return g
 }
@@ -207,13 +221,12 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 		sgl.v2f(x + w, y + h)
 		sgl.v2f(x, y + h)
 		sgl.v2f(x, y)
-	}
-	else {
+	} else {
 		sgl.v2f(x * ctx.scale, y * ctx.scale)
 		sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
 		sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
 		sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-		sgl.v2f(x*ctx.scale, y*ctx.scale)
+		sgl.v2f(x * ctx.scale, y * ctx.scale)
 	}
 	sgl.end()
 }
@@ -230,6 +243,49 @@ pub fn create_image(file string) u32 {
 	// img := stbi.load(file)
 	// img.free()
 	return 0 // texture
+}
+
+pub struct Image {
+pub mut:
+	width       int
+	height      int
+	nr_channels int
+	ok          bool
+	data        voidptr
+	ext         string
+	sokol_img   C.sg_image
+}
+
+pub fn create_image2(file string) Image {
+	if !os.exists(file) {
+		println('gg create image no such file "$file"')
+		return Image{} // none
+	}
+	stb_img := stbi.load(file)
+	mut img := Image{
+		width: stb_img.width
+		height: stb_img.height
+		nr_channels: stb_img.nr_channels
+		ok: stb_img.ok
+		data: stb_img.data
+		ext: stb_img.ext
+	}
+	mut img_desc := C.sg_image_desc{
+		width: img.width
+		height: img.height
+		num_mipmaps: 0
+		wrap_u: .clamp_to_edge
+		wrap_v: .clamp_to_edge
+		label: &byte(0)
+		d3d11_texture: 0
+	}
+	img_desc.content.subimage[0][0] = C.sg_subimage_content{
+		ptr: img.data
+		size: img.nr_channels * img.width * img.height
+	}
+	the_sokol_image := C.sg_make_image(&img_desc)
+	img.sokol_img = the_sokol_image
+	return img
 }
 
 pub fn create_image_from_memory(buf byteptr) u32 {
@@ -254,7 +310,7 @@ pub fn (gg &Context) end() {
 	gfx.end_pass()
 	gfx.commit()
 	if gg.config.wait_events {
-		//println('gg: waiting')
+		// println('gg: waiting')
 		wait_events()
 	}
 }
@@ -265,9 +321,25 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()
-
 }
-pub fn (ctx &Context) draw_image(x, y, width, height f32, image u32) {
+
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
+}
+
+pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
+	sgl_enable_texture()
+	sgl_texture(img.sokol_img)
+
+
+/*
+	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.begin_quads()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
+	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
+	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	sgl.end()
+	*/
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
@@ -280,12 +352,12 @@ fn C.WaitMessage()
 
 pub fn wait_events() {
 	unsafe {
-		$if macos  {
-		# NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
-		# untilDate:[NSDate distantFuture]
-		# inMode:NSDefaultRunLoopMode
-		# dequeue:YES];
-		# [NSApp sendEvent:event];
+		$if macos {
+			#NSEvent *event = [NSApp nextEventMatchingMask:NSEventMaskAny
+			#untilDate:[NSDate distantFuture]
+			#inMode:NSDefaultRunLoopMode
+			#dequeue:YES];
+			#[NSApp sendEvent:event];
 		}
 		$if windows {
 			C.WaitMessage()
