@@ -327,9 +327,8 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
 }
 
 pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
-	sgl_enable_texture()
-	sgl_texture(img.sokol_img)
-
+	C.Csgl_enable_texture()
+	C.sgl_texture(img.sokol_img)
 
 /*
 	sgl.c4b(c.r, c.g, c.b, 128)
