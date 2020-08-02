@@ -129,6 +129,9 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				return true
 			}
 		}
+		if no_block && ch.queue_length == 0 {
+			return false
+		}
 		// get token to read
 		for _ in 0 .. spinloops_sem_ {
 			if got_sem {
@@ -137,9 +140,6 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 			got_sem = ch.writesem.try_wait()
 		}
 		if !got_sem {
-			if no_block {
-				return false
-			}
 			ch.writesem.wait()
 		}
 		if ch.queue_length == 0 {
@@ -166,11 +166,10 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				}
 			}
 			mut src2 := src
-			// Try to spin wait for src to be read
 			for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
 				if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 					have_swapped = true
-					// read_in_progress = true
+					read_in_progress = true
 					break
 				}
 				src2 = src
@@ -190,6 +189,11 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				}
 				if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
+					// mut sem := Semaphore{} // for select
+					// sem.sem = C.atomic_load(&ch.write_subscriber.sem)
+					// if sem.sem != 0 {
+					// 	sem.post()
+					// }
 					break
 				} else {
 					// this semaphore was not for us - repost in
@@ -354,7 +358,7 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 				}
 			}
 		}
-		if ch.queue_length == 0 && !write_in_progress {
+		if ch.queue_length == 0 /* && !write_in_progress  */ {
 			mut sem := Semaphore{}
 			sem.sem = C.atomic_load(&ch.write_subscriber.sem)
 			if sem.sem != 0 {
@@ -384,6 +388,11 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			}
 			if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 				ch.readsem.post()
+				// mut sem := Semaphore{} // for select
+				// sem.sem = C.atomic_load(&ch.read_subscriber.sem)
+				// if sem.sem != 0 {
+				// 	sem.post()
+				// }
 				break
 			} else {
 				// this semaphore was not for us - repost in
