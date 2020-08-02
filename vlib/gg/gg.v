@@ -283,8 +283,7 @@ pub fn create_image2(file string) Image {
 		ptr: img.data
 		size: img.nr_channels * img.width * img.height
 	}
-	the_sokol_image := C.sg_make_image(&img_desc)
-	img.sokol_img = the_sokol_image
+	img.sokol_img = C.sg_make_image(&img_desc)
 	return img
 }
 

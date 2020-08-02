@@ -1940,7 +1940,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.Attr {}
 		ast.Block {
-			c.stmts(node.stmts)
+			if node.is_unsafe {
+				assert !c.inside_unsafe
+				c.inside_unsafe = true
+				c.stmts(node.stmts)
+				c.inside_unsafe = false
+			} else {
+				c.stmts(node.stmts)
+			}
 		}
 		ast.BranchStmt {
 			if c.in_for_count == 0 {
@@ -2140,12 +2147,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.TypeDecl {
 			c.type_decl(node)
-		}
-		ast.UnsafeStmt {
-			assert !c.inside_unsafe
-			c.inside_unsafe = true
-			c.stmts(node.stmts)
-			c.inside_unsafe = false
 		}
 	}
 }
@@ -3399,18 +3400,12 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	if stmts.filter(it is ast.Return).len > 0 {
 		return true
 	}
-	mut has_unsafe_return := false
-	for _, stmt in stmts {
-		if stmt is ast.UnsafeStmt {
-			for ustmt in stmt.stmts {
-				if ustmt is ast.Return {
-					has_unsafe_return = true
-				}
+	for stmt in stmts {
+		if stmt is ast.Block {
+			if has_top_return(stmt.stmts) {
+				return true
 			}
 		}
-	}
-	if has_unsafe_return {
-		return true
 	}
 	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
 	has_panic_exit := exprs.filter(it.expr is

@@ -12,10 +12,13 @@ const (
 struct App {
 mut:
 	gg &gg.Context
+	image gg.Image
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &App{
+		//image: gg.create_image2('logo.png')
+	}
 	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
@@ -30,23 +33,16 @@ fn main() {
 	app.gg.run()
 }
 
-fn frame(user_data voidptr) {
-	mut app := &App(user_data)
-	mut gg := app.gg
-	gg.begin()
-	/*
-	if gg.fons == 0 {
-		gg.init_font()
-	}
-	*/
+fn frame(app &App) {
+	app.gg.begin()
 	app.draw()
-	//C.sfons_flush(gg.fons)
-	gg.end()
+	app.gg.end()
 }
 
 fn (app &App) draw() {
 	//app.gg.draw_text_def(200,20, 'hello world!')
 	//app.gg.draw_text_def(300,300, 'привет')
 	app.gg.draw_rect(10, 10, 100, 30, gx.blue)
-	app.gg.draw_empty_rect(10, 150, 80, 40, gx.green)
+	app.gg.draw_empty_rect(110, 150, 80, 40, gx.black)
+	//app.gg.draw_image2(30,30,100,30, app.image)
 }
