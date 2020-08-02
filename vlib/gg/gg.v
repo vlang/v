@@ -58,6 +58,7 @@ pub mut:
 	height      int
 	clear_pass  C.sg_pass_action
 	window      C.sapp_desc
+	timage_pip  C.sgl_pipeline
 	config      Config
 	ft          &FT
 	font_inited bool
@@ -105,6 +106,14 @@ fn gg_init_sokol_window(user_data voidptr) {
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	}
+	//
+	mut pipdesc := C.sg_pipeline_desc{}
+	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+	pipdesc.blend.enabled = true
+	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
+	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	g.timage_pip = sgl.make_pipeline(&pipdesc)
+	//
 	if g.config.init_fn != voidptr(0) {
 		g.config.init_fn(g.config.user_data)
 	}
@@ -335,6 +344,7 @@ pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
 	x1 := f32(x + width)
 	y1 := f32(y + height)
 	//
+	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
 	sgl.texture(img.sokol_img)
 	sgl.begin_quads()
