@@ -167,9 +167,8 @@ pub fn cp(old, new string) ? {
 	$if windows {
 		w_old := old.replace('/', '\\')
 		w_new := new.replace('/', '\\')
-		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
-		result := C.GetLastError()
-		if result != 0 {
+		if C.CopyFile(w_old.to_wide(), w_new.to_wide(), false) == 0 {
+			result := C.GetLastError()
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
