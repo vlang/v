@@ -506,9 +506,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			// skip JS has no typedecl
 		}
-		ast.UnsafeStmt {
-			g.stmts(node.stmts)
-		}
 	}
 }
 

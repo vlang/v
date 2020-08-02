@@ -604,6 +604,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.assign_stmt(node)
 		}
+		ast.Block {
+			g.stmts(node.stmts)
+		}
 		ast.ConstDecl {}
 		ast.ExprStmt {
 			g.expr(node.expr)
@@ -632,9 +635,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
-		ast.UnsafeStmt {
-			g.stmts(node.stmts)
-		}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
 		}

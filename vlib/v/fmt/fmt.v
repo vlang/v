@@ -294,6 +294,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 		}
 		ast.Block {
+			if node.is_unsafe {
+				f.write('unsafe ')
+			}
 			f.writeln('{')
 			f.stmts(node.stmts)
 			f.writeln('}')
@@ -511,11 +514,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			// already handled in f.imports
 			f.type_decl(it)
-		}
-		ast.UnsafeStmt {
-			f.writeln('unsafe {')
-			f.stmts(it.stmts)
-			f.writeln('}')
 		}
 	}
 }

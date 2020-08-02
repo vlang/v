@@ -677,7 +677,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// Attr: [$node.name]')
 		}
 		ast.Block {
-			g.writeln('{')
+			if node.is_unsafe {
+				g.writeln('{ // Unsafe block')
+			} else {
+				g.writeln('{')
+			}
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
@@ -879,11 +883,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.TypeDecl {
 			g.writeln('// TypeDecl')
-		}
-		ast.UnsafeStmt {
-			g.writeln('{ // Unsafe block')
-			g.stmts(node.stmts)
-			g.writeln('}')
 		}
 	}
 	g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
