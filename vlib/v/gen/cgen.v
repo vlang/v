@@ -2482,6 +2482,10 @@ fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
 }
 
 fn (mut g Gen) if_expr(node ast.IfExpr) {
+	if node.is_comptime {
+		g.comp_if(node)
+		return
+	}
 	if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
 		g.write('(')

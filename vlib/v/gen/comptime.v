@@ -88,6 +88,61 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
+fn (mut g Gen) comp_if(node ast.IfExpr) {
+	for i, branch in node.branches {
+		start_pos := g.out.len
+		if i == node.branches.len - 1 && node.has_else {
+			g.writeln('#else')
+		} else {
+			if i == 0 {
+				g.write('#if ')
+			} else {
+				g.write('#elif ')
+			}
+			g.comp_if_expr(branch.cond)
+			g.writeln('')
+		}
+		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
+		g.defer_ifdef = expr_str
+		g.stmts(branch.stmts)
+		g.defer_ifdef = ''
+	}
+	g.writeln('#endif')
+}
+
+fn (mut g Gen) comp_if_expr(cond ast.Expr) {
+	match cond {
+		ast.ParExpr {
+			g.write('(')
+			g.comp_if_expr(cond.expr)
+			g.write(')')
+		} ast.PrefixExpr {
+			g.write(cond.op.str())
+			g.comp_if_expr(cond.right)
+		} ast.PostfixExpr {
+			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true)
+			g.write('defined($ifdef)')
+		} ast.InfixExpr {
+			match cond.op {
+				.and, .logical_or {
+					g.comp_if_expr(cond.left)
+					g.comp_if_expr(cond.right)
+				}
+				.key_is, .not_is {
+					// $if method.@type is string
+					// TODO
+				} .eq, .ne {
+					// $if method.args.len == 1
+					// TODO: Implementation for this is in #5997
+				} else {}
+			}
+		} ast.Ident {
+			ifdef := g.comp_if_to_ifdef(cond.name, false)
+			g.write('defined($ifdef)')
+		} else {}
+	}
+}
+
 /*
 fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {

@@ -2857,11 +2857,9 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	is_ct := node.is_comptime
-	kind := if is_ct { '\$if' } else { 'if' }
+	if_kind := if is_ct { '\$if' } else { 'if' }
 	mut expr_required := false
 	if c.expected_type != table.void_type {
-		// sym := c.table.get_type_symbol(c.expected_type)
-		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.name)
 		expr_required = true
 	}
 	former_expected_type := c.expected_type
@@ -2870,7 +2868,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut branch_without_return := false
 	for i, branch in node.branches {
 		if branch.cond is ast.ParExpr {
-			c.error('unnecessary `()` in `$kind` condition, use `$kind expr {` instead of `$kind (expr) {`.',
+			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
@@ -2962,7 +2960,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						node.pos)
 				}
 			} else {
-				c.error('`$kind` expression requires an expression as the last statement of every branch',
+				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
@@ -2988,7 +2986,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	if expr_required {
 		if !node.has_else {
-			c.error('`$kind` expression needs `else` clause', node.pos)
+			c.error('`$if_kind` expression needs `else` clause', node.pos)
 			// dollar := if is_ct { '$' } else { '' }
 			// c.error('`${dollar}if` expression needs `${dollar}else` clause', node.pos)
 		}
@@ -3009,7 +3007,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) ast.Expr {
 			}
 			c.comp_if_branch(cond.right, cond.pos)
 		} ast.PostfixExpr {
-			if cond.op != .question {
+			if cond.op != .question || cond.expr !is ast.Ident {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
 		} ast.InfixExpr {
