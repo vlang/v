@@ -1977,6 +1977,13 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	p.next()
 	assert !p.inside_unsafe
+	if p.tok.kind == .rcbr {
+		// `unsafe {}`
+		p.next()
+		return ast.Block{
+			is_unsafe: true
+		}
+	}
 	p.inside_unsafe = true
 	p.open_scope() // needed in case of `unsafe {stmt}`
 	defer {
