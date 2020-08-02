@@ -203,7 +203,7 @@ pub fn (gg &Context) run() {
 }
 
 pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.c4b(c.r, c.g, c.b, 255)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
@@ -213,7 +213,7 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.c4b(c.r, c.g, c.b, 255)
 	sgl.begin_line_strip()
 	if ctx.scale == 1 {
 		sgl.v2f(x, y)
@@ -315,7 +315,7 @@ pub fn (gg &Context) end() {
 }
 
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.c4b(c.r, c.g, c.b, 255)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
@@ -326,18 +326,25 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
 }
 
 pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
-	C.sgl_enable_texture()
-	C.sgl_texture(img.sokol_img)
-
-/*
-	sgl.c4b(c.r, c.g, c.b, 128)
+	u0 := f32(0.0)
+	v0 := f32(0.0)
+	u1 := f32(1.0)
+	v1 := f32(1.0)
+	x0 := f32(x)
+	y0 := f32(y)
+	x1 := f32(x + width)
+	y1 := f32(y + height)
+	//
+	sgl.enable_texture()
+	sgl.texture(img.sokol_img)
 	sgl.begin_quads()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
+	sgl.c4b(255, 255, 255, 255)
+	sgl.v2f_t2f(x0, y0,	  u0, v0)
+	sgl.v2f_t2f(x1, y0,	  u1, v0)
+	sgl.v2f_t2f(x1, y1,	  u1, v1)
+	sgl.v2f_t2f(x0, y1,	  u0, v1)
 	sgl.end()
-	*/
+	sgl.disable_texture()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
