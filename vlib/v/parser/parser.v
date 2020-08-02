@@ -601,6 +601,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					expr: p.vweb()
 				}
 			}
+			p.error_with_pos('unexpected \$', p.tok.position())
 			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
