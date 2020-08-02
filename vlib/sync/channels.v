@@ -225,17 +225,17 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 					wr_ptr += wr_idx * ch.objsize
 					status_adr += wr_idx
 				}
-				mut expected_status := byte(BufferElemStat.unused)
+				mut expected_status := byte(int(BufferElemStat.unused))
 				for {
-					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.writing)) {
+					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(int(BufferElemStat.writing))) {
 						break
 					}
-					expected_status = byte(BufferElemStat.unused)
+					expected_status = byte(int(BufferElemStat.unused))
 				}
 				unsafe {
 					C.memcpy(wr_ptr, src, ch.objsize)
 				}
-				C.atomic_store_byte(status_adr, byte(BufferElemStat.written))
+				C.atomic_store_byte(status_adr, byte(int(BufferElemStat.written)))
 				ch.readsem.post()
 				return true
 			}
@@ -312,17 +312,17 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 					rd_ptr += rd_idx * ch.objsize
 					status_adr += rd_idx
 				}
-				mut expected_status := byte(BufferElemStat.written)
+				mut expected_status := byte(int(BufferElemStat.written))
 				for {
-					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(BufferElemStat.reading)) {
+					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(int(BufferElemStat.reading))) {
 						break
 					}
-					expected_status = byte(BufferElemStat.written)
+					expected_status = byte(int(BufferElemStat.written))
 				}
 				unsafe {
 					C.memcpy(dest, rd_ptr, ch.objsize)
 				}
-				C.atomic_store_byte(status_adr, byte(BufferElemStat.unused))
+				C.atomic_store_byte(status_adr, byte(int(BufferElemStat.unused)))
 				old_write_free := C.atomic_fetch_add_u32(&ch.write_free, 1)
 				ch.writesem.post()
 				if old_write_free == 0 {
