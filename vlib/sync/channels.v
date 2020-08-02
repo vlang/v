@@ -53,8 +53,8 @@ fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 const (
 	 // how often to try to get data without blocking before to wait for semaphore
-	spinloops = 1000
-	spinloops_sem = 10000
+	spinloops = 250
+	spinloops_sem = 500
 )
 
 enum BufferElemStat {
@@ -92,8 +92,8 @@ pub fn new_channel<T>(n u32) &Channel {
 	buf := if n > 0 { malloc(int(n * objsize)) } else { byteptr(0) }
 	statusbuf := if n > 0 { vcalloc(int(n)) } else { byteptr(0) }
 	mut ch := &Channel{
-		writesem: new_semaphore_init(if n > 0 { n } else { 1 })
-		readsem:  new_semaphore_init(1)
+		writesem: new_semaphore_init(if n > 0 { n + 1 } else { 1 })
+		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
 		objsize: objsize
@@ -236,8 +236,11 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 					C.memcpy(wr_ptr, src, ch.objsize)
 				}
 				C.atomic_store_byte(status_adr, byte(int(BufferElemStat.written)))
+				old_read_avail := C.atomic_fetch_add_u32(&ch.read_avail, 1)
 				ch.readsem.post()
 				return true
+			} else {
+				ch.writesem.post()
 			}
 		}
 	}
@@ -338,14 +341,16 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 		// try to advertise `dest` as writable
 		mut nulladdr := voidptr(0)
 		if C.atomic_compare_exchange_strong(&ch.write_adr, &nulladdr, dest) {
-			mut rdadr := C.atomic_load(&ch.read_adr)
-			if rdadr != C.NULL {
-				mut dest2 := dest
-				if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
-					ch.readsem.post()
-					continue
-				} else {
-					write_in_progress = true
+			if ch.queue_length == 0 {
+				mut rdadr := C.atomic_load(&ch.read_adr)
+				if rdadr != C.NULL {
+					mut dest2 := dest
+					if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
+						ch.readsem.post()
+						continue
+					} else {
+						write_in_progress = true
+					}
 				}
 			}
 		}
