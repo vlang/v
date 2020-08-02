@@ -8,19 +8,6 @@ pub struct C.sg_desc {
     pipeline_pool_size int
     pass_pool_size int
     context_pool_size int
-    /* GL specific */
-    gl_force_gles2 bool
-    /* Metal-specific */
-    mtl_device voidptr
-    mtl_renderpass_descriptor_cb fn() voidptr
-    mtl_drawable_cb fn() voidptr
-    mtl_global_uniform_buffer_size int
-    mtl_sampler_cache_size int
-    /* D3D11-specific */
-    d3d11_device voidptr
-    d3d11_device_context voidptr
-    d3d11_render_target_view_cb fn() voidptr
-    d3d11_depth_stencil_view_cb fn() voidptr
     _end_canary u32
 }
 

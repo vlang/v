@@ -33,7 +33,6 @@ pub:
     html5_premultiplied_alpha bool     /* HTML5 only: whether the rendered pixels use premultiplied alpha convention */
     html5_ask_leave_site bool          /* initial state of the internal html5_ask_leave_site flag (see sapp_html5_ask_leave_site()) */
     ios_keyboard_resizes_canvas bool   /* if true, showing the iOS keyboard shrinks the canvas */
-    gl_force_gles2 bool                /* if true, setup GLES2/WebGL even if GLES3/WebGL2 is available */
 }
 
 pub struct Event {
