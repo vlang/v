@@ -1995,7 +1995,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 				}
 				// parse e.g. `unsafe {expr}.foo()`
 				expr := p.expr_with_left(ue, 0, p.is_stmt_ident)
-				return ast.ExprStmt {
+				return ast.ExprStmt{
 					expr: expr
 					pos: pos
 				}
