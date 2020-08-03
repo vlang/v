@@ -32,7 +32,7 @@ struct MacOSX_Semaphore {
 	cond C.pthread_cond_t
 	attr C.pthread_condattr_t
 mut:
-	count int
+	count u32
 }
 
 [ref_only]
@@ -186,7 +186,7 @@ pub fn (s Semaphore) destroy() bool {
 	$if macos {
 		return C.pthread_cond_destroy(&&MacOSX_Semaphore(s.sem).cond) == 0 &&
 			C.pthread_condattr_destroy(&&MacOSX_Semaphore(s.sem).attr) == 0 &&
-			pthread_mutex_destroy(&&MacOSX_Semaphore(s.sem).mtx) == 0
+			C.pthread_mutex_destroy(&&MacOSX_Semaphore(s.sem).mtx) == 0
 	} $else {
 		return unsafe { C.sem_destroy(&&PosixSemaphore(s.sem).sem) == 0 }
 	}
