@@ -1316,7 +1316,8 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		if branch.cond is ast.InfixExpr as infix {
 			if infix.op == .key_is {
 				// left_as_name is either empty, infix.left.str() or the `as` name
-				smartcast_as = branch.left_as_name.len > 0 && infix.left.str() != branch.left_as_name
+				smartcast_as = branch.left_as_name.len > 0 &&
+					infix.left.str() != branch.left_as_name
 			}
 		}
 		if i == 0 {
