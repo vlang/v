@@ -27,13 +27,13 @@ fn C.atomic_exchange(voidptr, voidptr) voidptr
 fn C.atomic_fetch_add(voidptr, voidptr) voidptr
 fn C.atomic_fetch_sub(voidptr, voidptr) voidptr
 
-fn C.atomic_load_byte(voidptr) byte
-fn C.atomic_store_byte(voidptr, byte)
-fn C.atomic_compare_exchange_weak_byte(voidptr, voidptr, byte) bool
-fn C.atomic_compare_exchange_strong_byte(voidptr, voidptr, byte) bool
-fn C.atomic_exchange_byte(voidptr, byte) byte
-fn C.atomic_fetch_add_byte(voidptr, byte) byte
-fn C.atomic_fetch_sub_byte(voidptr, byte) byte
+fn C.atomic_load_u16(voidptr) u16
+fn C.atomic_store_u16(voidptr, u16)
+fn C.atomic_compare_exchange_weak_u16(voidptr, voidptr, u16) bool
+fn C.atomic_compare_exchange_strong_u16(voidptr, voidptr, u16) bool
+fn C.atomic_exchange_u16(voidptr, u16) u16
+fn C.atomic_fetch_add_u16(voidptr, u16) u16
+fn C.atomic_fetch_sub_u16(voidptr, u16) u16
 
 fn C.atomic_load_u32(voidptr) u32
 fn C.atomic_store_u32(voidptr, u32)
@@ -88,22 +88,18 @@ mut: // atomic
 }
 
 pub fn new_channel<T>(n u32) &Channel {
-	objsize := sizeof(T)
-	buf := if n > 0 { malloc(int(n * objsize)) } else { byteptr(0) }
-	statusbuf := if n > 0 { vcalloc(int(n)) } else { byteptr(0) }
-	mut ch := &Channel{
+	return &Channel{
 		writesem: new_semaphore_init(if n > 0 { n + 1 } else { 1 })
 		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
-		objsize: objsize
+		objsize: sizeof(T)
 		queue_length: n
 		write_free: n
 		read_avail: 0
-		ringbuf: buf
-		statusbuf: statusbuf
+		ringbuf: if n > 0 { malloc(int(n * sizeof(T))) } else { byteptr(0) }
+		statusbuf: if n > 0 { vcalloc(int(n * sizeof(u16))) } else { byteptr(0) }
 	}
-	return ch
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
@@ -112,7 +108,6 @@ pub fn (mut ch Channel) push(src voidptr) {
 
 fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
-	// unbuffered channel
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -189,11 +184,6 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				}
 				if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
-					// mut sem := Semaphore{} // for select
-					// sem.sem = C.atomic_load(&ch.write_subscriber.sem)
-					// if sem.sem != 0 {
-					// 	sem.post()
-					// }
 					break
 				} else {
 					// this semaphore was not for us - repost in
@@ -227,20 +217,20 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				mut status_adr := ch.statusbuf
 				unsafe {
 					wr_ptr += wr_idx * ch.objsize
-					status_adr += wr_idx
+					status_adr += wr_idx * sizeof(u16)
 				}
-				mut expected_status := byte(int(BufferElemStat.unused))
+				mut expected_status := u16(BufferElemStat.unused)
 				for {
-					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(int(BufferElemStat.writing))) {
+					if C.atomic_compare_exchange_weak_u16(status_adr, &expected_status, u16(BufferElemStat.writing)) {
 						break
 					}
-					expected_status = byte(int(BufferElemStat.unused))
+					expected_status = u16(BufferElemStat.unused)
 				}
 				unsafe {
 					C.memcpy(wr_ptr, src, ch.objsize)
 				}
-				C.atomic_store_byte(status_adr, byte(int(BufferElemStat.written)))
-				old_read_avail := C.atomic_fetch_add_u32(&ch.read_avail, 1)
+				C.atomic_store_u16(status_adr, u16(BufferElemStat.written))
+				C.atomic_fetch_add_u32(&ch.read_avail, 1)
 				ch.readsem.post()
 				return true
 			} else {
@@ -317,19 +307,19 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 				mut status_adr := ch.statusbuf
 				unsafe {
 					rd_ptr += rd_idx * ch.objsize
-					status_adr += rd_idx
+					status_adr += rd_idx * sizeof(u16)
 				}
-				mut expected_status := byte(int(BufferElemStat.written))
+				mut expected_status := u16(BufferElemStat.written)
 				for {
-					if C.atomic_compare_exchange_weak_byte(status_adr, &expected_status, byte(int(BufferElemStat.reading))) {
+					if C.atomic_compare_exchange_weak_u16(status_adr, &expected_status, u16(BufferElemStat.reading)) {
 						break
 					}
-					expected_status = byte(int(BufferElemStat.written))
+					expected_status = u16(BufferElemStat.written)
 				}
 				unsafe {
 					C.memcpy(dest, rd_ptr, ch.objsize)
 				}
-				C.atomic_store_byte(status_adr, byte(int(BufferElemStat.unused)))
+				C.atomic_store_u16(status_adr, u16(BufferElemStat.unused))
 				old_write_free := C.atomic_fetch_add_u32(&ch.write_free, 1)
 				ch.writesem.post()
 				if old_write_free == 0 {
@@ -358,7 +348,7 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 				}
 			}
 		}
-		if ch.queue_length == 0 /* && !write_in_progress  */ {
+		if ch.queue_length == 0 && !write_in_progress {
 			mut sem := Semaphore{}
 			sem.sem = C.atomic_load(&ch.write_subscriber.sem)
 			if sem.sem != 0 {
@@ -388,11 +378,6 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			}
 			if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
 				ch.readsem.post()
-				// mut sem := Semaphore{} // for select
-				// sem.sem = C.atomic_load(&ch.read_subscriber.sem)
-				// if sem.sem != 0 {
-				// 	sem.post()
-				// }
 				break
 			} else {
 				// this semaphore was not for us - repost in

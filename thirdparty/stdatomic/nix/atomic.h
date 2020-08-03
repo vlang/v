@@ -24,6 +24,7 @@ typedef volatile uintptr_t atomic_uintptr_t;
 
 // use functions for 64, 32 and 8 bit from libatomic directly
 // since tcc is not capible to use "generic" C functions
+// there is no header file for libatomic so we provide function declarations here
 
 extern unsigned long long __atomic_load_8(unsigned long long* x, int mo);
 extern void __atomic_store_8(unsigned long long* x, unsigned long long y, int mo);
@@ -40,6 +41,14 @@ extern _Bool __atomic_compare_exchange_4(unsigned int* x, unsigned int* expected
 extern unsigned int __atomic_exchange_4(unsigned int* x, unsigned int y, int mo);
 extern unsigned int __atomic_fetch_add_4(unsigned int* x, unsigned int y, int mo);
 extern unsigned int __atomic_fetch_sub_4(unsigned int* x, unsigned int y, int mo);
+
+extern unsigned short __atomic_load_2(unsigned short* x, int mo);
+extern void __atomic_store_2(unsigned short* x, unsigned short y, int mo);
+extern _Bool __atomic_compare_exchange_2(unsigned short* x, unsigned short* expected, unsigned short y, int mo, int mo2);
+extern _Bool __atomic_compare_exchange_2(unsigned short* x, unsigned short* expected, unsigned short y, int mo, int mo2);
+extern unsigned short __atomic_exchange_2(unsigned short* x, unsigned short y, int mo);
+extern unsigned short __atomic_fetch_add_2(unsigned short* x, unsigned short y, int mo);
+extern unsigned short __atomic_fetch_sub_2(unsigned short* x, unsigned short y, int mo);
 
 extern unsigned char __atomic_load_1(unsigned char* x, int mo);
 extern void __atomic_store_1(unsigned char* x, unsigned char y, int mo);
@@ -149,6 +158,28 @@ static inline unsigned atomic_fetch_sub_u32(unsigned* x, unsigned y) {
 	return __atomic_fetch_sub_4(x, y, memory_order_seq_cst);
 }
 
+static inline unsigned short atomic_load_u16(unsigned short* x) {
+	return __atomic_load_2(x, memory_order_seq_cst);
+}
+static inline void atomic_store_u16(unsigned short* x, unsigned short y) {
+	__atomic_store_2(x, y, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_weak_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+	return (int)__atomic_compare_exchange_2(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_strong_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+	return (int)__atomic_compare_exchange_2(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline unsigned short atomic_exchange_u16(unsigned short* x, unsigned short y) {
+	return __atomic_exchange_2(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_add_u16(unsigned short* x, unsigned short y) {
+	return __atomic_fetch_add_2(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_sub_u16(unsigned short* x, unsigned short y) {
+	return __atomic_fetch_sub_2(x, y, memory_order_seq_cst);
+}
+
 static inline unsigned char atomic_load_byte(unsigned char* x) {
 	return __atomic_load_1(x, memory_order_seq_cst);
 }
@@ -216,6 +247,28 @@ static inline unsigned atomic_fetch_add_u32(unsigned* x, unsigned y) {
 	return atomic_fetch_add_explicit(x, y, memory_order_seq_cst);
 }
 static inline unsigned atomic_fetch_sub_u32(unsigned* x, unsigned y) {
+	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
+}
+
+static inline unsigned short atomic_load_u16(unsigned short* x) {
+	return atomic_load_explicit(x, memory_order_seq_cst);
+}
+static inline void atomic_store_u16(unsigned short* x, unsigned short y) {
+	atomic_store_explicit(x, y, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_weak_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+	return (int)atomic_compare_exchange_weak_explicit(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_strong_u16(unsigned short* x, unsigned short* expected, unsigned short y) {
+	return (int)atomic_compare_exchange_strong_explicit(x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline unsigned short atomic_exchange_u16(unsigned short* x, unsigned short y) {
+	return atomic_exchange_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_add_u16(unsigned short* x, unsigned short y) {
+	return atomic_fetch_add_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_sub_u16(unsigned short* x, unsigned short y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
 }
 

@@ -129,10 +129,12 @@ __CRT_INLINE LONGLONG _InterlockedExchangeAdd64(LONGLONG volatile *Addend, LONGL
 static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *expected,
                                                  intptr_t desired)
 {
-    intptr_t old = *expected;
-    *expected = (intptr_t)InterlockedCompareExchangePointer(
-        (PVOID *)object, (PVOID)desired, (PVOID)old);
-    return *expected == old;
+    intptr_t exp = *expected;
+    intptr old = (intptr_t)InterlockedCompareExchangePointer(
+        (PVOID *)object, (PVOID)desired, (PVOID)exp);
+	if (old != exp)
+		*expected = old;
+    return exp == old;
 }
 
 #define atomic_compare_exchange_strong_explicit(object, expected, desired, success, failure) \
