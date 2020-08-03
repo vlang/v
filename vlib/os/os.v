@@ -638,7 +638,7 @@ pub fn dir(path string) string {
 
 pub fn base_dir(path string) string {
 	posx := path.last_index(path_separator) or {
-		return path
+		return path.clone()
 	}
 	// NB: *without* terminating /
 	return path[..posx]

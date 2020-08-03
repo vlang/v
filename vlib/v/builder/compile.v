@@ -30,7 +30,10 @@ pub fn compile(command string, pref &pref.Preferences) {
 	odir := os.base_dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
-	output_folder := if odir.len == pref.out_name.len { os.getwd() } else { odir }
+	mut output_folder := odir
+	if odir.len == pref.out_name.len {
+		output_folder = os.getwd()
+	}        
 	os.is_writable_folder(output_folder) or { 
 		// An early error here, is better than an unclear C error later:
 		verror(err)
