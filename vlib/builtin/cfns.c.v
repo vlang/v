@@ -411,6 +411,7 @@ fn C.ReleaseSRWLockExclusive(voidptr)
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
+fn C.pthread_mutex_destroy(voidptr) int
 
 fn C.pthread_rwlockattr_init(voidptr) int
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
@@ -422,10 +423,12 @@ fn C.pthread_rwlock_unlock(voidptr) int
 
 fn C.pthread_condattr_init(voidptr) int
 fn C.pthread_condattr_setpshared(voidptr, int) int
+fn C.pthread_condattr_destroy(voidptr) int
 fn C.pthread_cond_init(voidptr, voidptr) int
 fn C.pthread_cond_signal(voidptr) int
 fn C.pthread_cond_wait(voidptr, voidptr) int
 fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
+fn C.pthread_cond_destroy(voidptr) int
 
 fn C.sem_init(voidptr, int, u32) int
 fn C.sem_post(voidptr) int
