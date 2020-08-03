@@ -196,9 +196,9 @@ fn test_int_to_hex() {
 	// --- int to hex tests
 	c0 := 12
 	// 8Bit
-	assert byte(0).hex() == '0'
-	assert byte(c0).hex() == 'c'
-	assert i8(c0).hex() == 'c'
+	assert byte(0).hex() == '00'
+	assert byte(c0).hex() == '0c'
+	assert i8(c0).hex() == '0c'
 	assert byte(127).hex() == '7f'
 	assert i8(127).hex() == '7f'
 	assert byte(255).hex() == 'ff'

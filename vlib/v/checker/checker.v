@@ -305,7 +305,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if decl.language == .v {
+		if !c.is_builtin_mod && decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -1940,7 +1940,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.Attr {}
 		ast.Block {
-			c.stmts(node.stmts)
+			if node.is_unsafe {
+				assert !c.inside_unsafe
+				c.inside_unsafe = true
+				c.stmts(node.stmts)
+				c.inside_unsafe = false
+			} else {
+				c.stmts(node.stmts)
+			}
 		}
 		ast.BranchStmt {
 			if c.in_for_count == 0 {
@@ -2141,12 +2148,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			c.type_decl(node)
 		}
-		ast.UnsafeStmt {
-			assert !c.inside_unsafe
-			c.inside_unsafe = true
-			c.stmts(node.stmts)
-			c.inside_unsafe = false
-		}
 	}
 }
 
@@ -2286,6 +2287,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
+			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type && !node.expr_type.is_ptr() &&
+				to_type_sym.kind == .byte {
+				type_name := c.table.type_to_str(node.expr_type)
+				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
@@ -3395,18 +3400,12 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	if stmts.filter(it is ast.Return).len > 0 {
 		return true
 	}
-	mut has_unsafe_return := false
-	for _, stmt in stmts {
-		if stmt is ast.UnsafeStmt {
-			for ustmt in stmt.stmts {
-				if ustmt is ast.Return {
-					has_unsafe_return = true
-				}
+	for stmt in stmts {
+		if stmt is ast.Block {
+			if has_top_return(stmt.stmts) {
+				return true
 			}
 		}
-	}
-	if has_unsafe_return {
-		return true
 	}
 	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
 	has_panic_exit := exprs.filter(it.expr is

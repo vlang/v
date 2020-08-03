@@ -321,11 +321,20 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
+		mut c := 0
 		for {
 			stmts << p.stmt(is_top_level)
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
 				break
+			}
+			c++
+			if c % 100000 == 0 {
+				eprintln('parsed $c statements so far from fn $p.cur_fn_name ...')
+			}
+			if c > 1000000 {
+				p.error_with_pos('parsed over $c statements from fn $p.cur_fn_name, the parser is probably stuck',
+					p.tok.position())
 			}
 		}
 	}
@@ -592,6 +601,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					expr: p.vweb()
 				}
 			}
+			p.error_with_pos('unexpected \$', p.tok.position())
 			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
@@ -602,13 +612,26 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_unsafe {
-			p.next()
-			assert !p.inside_unsafe
-			p.inside_unsafe = true
-			stmts := p.parse_block()
-			p.inside_unsafe = false
-			return ast.UnsafeStmt{
-				stmts: stmts
+			if p.peek_tok.kind == .lcbr {
+				// unsafe {
+				p.next()
+				assert !p.inside_unsafe
+				p.inside_unsafe = true
+				stmts := p.parse_block()
+				p.inside_unsafe = false
+				return ast.Block{
+					stmts: stmts
+					is_unsafe: true
+				}
+			} else {
+				p.error_with_pos('please use `unsafe {`', p.tok.position())
+			}
+			// unsafe( ; NB: this will be never reached
+			pos := p.tok.position()
+			ex := p.expr(0)
+			return ast.ExprStmt{
+				expr: ex
+				pos: pos
 			}
 		}
 		.hash {

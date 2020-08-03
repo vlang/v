@@ -305,10 +305,10 @@ pub fn symlink(origin, target string) ?bool {
 }
 
 pub fn (mut f File) close() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
-	f.opened = false
+	f.is_opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
@@ -365,4 +365,22 @@ pub fn uname() Uname {
 		version: unknown
 		machine: unknown
 	}
+}
+
+
+// `is_writable_folder` - `folder` exists and is writable to the process
+pub fn is_writable_folder(folder string) ?bool {
+	if !os.exists(folder) {
+		return error('`$folder` does not exist')
+	}
+	if !os.is_dir(folder) {
+		return error('`folder` is not a folder')
+	}
+	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+		return error('cannot write to folder $folder: $err')
+	}
+	f.close()
+	os.rm(tmp_perm_check)
+	return true
 }

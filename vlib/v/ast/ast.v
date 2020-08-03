@@ -18,7 +18,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 pub type Stmt = AssertStmt | AssignStmt | Attr | Block | BranchStmt | CompFor | CompIf |
 	ConstDecl | DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt |
 	GlobalDecl | GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module |
-	Return | SqlStmt | StructDecl | TypeDecl | UnsafeStmt
+	Return | SqlStmt | StructDecl | TypeDecl
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
@@ -33,9 +33,11 @@ pub:
 	pos token.Position
 }
 
+// `{stmts}` or `unsafe {stmts}`
 pub struct Block {
 pub:
 	stmts []Stmt
+	is_unsafe bool
 }
 
 // | IncDecStmt k
@@ -719,11 +721,6 @@ pub mut:
 	ifdef string
 }
 
-pub struct UnsafeStmt {
-pub:
-	stmts []Stmt
-}
-
 // `(3+4)`
 pub struct ParExpr {
 pub:
@@ -789,7 +786,7 @@ pub:
 
 pub struct CastExpr {
 pub:
-	expr      Expr // `buf`
+	expr      Expr // `buf` in `string(buf, n)`
 	arg       Expr // `n` in `string(buf, n)`
 	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position
@@ -1103,8 +1100,6 @@ pub fn (stmt Stmt) position() token.Position {
 		StructDecl { return stmt.pos }
 		/*
 		// TypeDecl {
-		// }
-		// UnsafeStmt {
 		// }
 		*/
 		//

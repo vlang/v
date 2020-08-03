@@ -391,7 +391,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' && !g.should_write_asterisk_due_to_match_sumtype(node.left) {
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' &&
+		!g.should_write_asterisk_due_to_match_sumtype(node.left) {
 		g.write('ptr_str(')
 	} else {
 		g.write('${name}(')
@@ -490,6 +491,25 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	*/
+	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
+	// like `foo(get_string())` or `foo(a + b)`
+	/*
+	if g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) {
+		for i, arg in node.args {
+			if arg.typ != table.string_type {
+				continue
+			}
+			if arg.expr is ast.Ident {
+				continue
+			}
+			t := g.new_tmp_var()
+			g.write('string $t = ')
+			g.expr(arg.expr)
+			g.writeln('// to free $i ')
+		}
+	}
+	*/
+	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
