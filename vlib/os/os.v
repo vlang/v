@@ -519,11 +519,27 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !os.is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder `$folder`: $err')
+	tmp_perm_check := os.join_path(folder, 'XXXXXX')
+	$if windows {
+		unsafe {
+			x := C._mktemp_s( tmp_perm_check.str, tmp_perm_check.len )
+			if 0 != x {
+				return error('C._mktemp_s failed')
+			}
+		}
+		mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+			return error('cannot write to folder $folder: $err')
+		}
+		f.close()
+	} $else {
+		unsafe {
+			x := C.mkstemp(tmp_perm_check.str)
+			if -1 == x {
+				return error('folder `$folder` is not writable')
+			}
+			C.close(x)
+		}
 	}
-	f.close()
 	os.rm(tmp_perm_check)
 	return true
 }

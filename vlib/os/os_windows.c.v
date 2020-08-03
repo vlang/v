@@ -294,6 +294,8 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+fn C._mktemp_s(stemplate byteptr, stemplate_len int)
+
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 pub fn symlink(origin, target string) ?bool {

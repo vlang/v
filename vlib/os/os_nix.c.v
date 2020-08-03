@@ -28,6 +28,8 @@ mut:
 
 fn C.uname(name voidptr) int
 
+fn C.mkstemp(stemplate byteptr) int
+
 fn C.symlink(arg_1, arg_2 charptr) int
 
 pub fn uname() Uname {
