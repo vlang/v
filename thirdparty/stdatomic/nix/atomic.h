@@ -33,6 +33,9 @@ extern _Bool __atomic_compare_exchange_8(unsigned long long* x, unsigned long lo
 extern unsigned long long __atomic_exchange_8(unsigned long long* x, unsigned long long y, int mo);
 extern unsigned long long __atomic_fetch_add_8(unsigned long long* x, unsigned long long y, int mo);
 extern unsigned long long __atomic_fetch_sub_8(unsigned long long* x, unsigned long long y, int mo);
+extern unsigned long long __atomic_fetch_and_8(unsigned long long* x, unsigned long long y, int mo);
+extern unsigned long long __atomic_fetch_or_8(unsigned long long* x, unsigned long long y, int mo);
+extern unsigned long long __atomic_fetch_xor_8(unsigned long long* x, unsigned long long y, int mo);
 
 extern unsigned int __atomic_load_4(unsigned int* x, int mo);
 extern void __atomic_store_4(unsigned int* x, unsigned int y, int mo);
@@ -41,6 +44,9 @@ extern _Bool __atomic_compare_exchange_4(unsigned int* x, unsigned int* expected
 extern unsigned int __atomic_exchange_4(unsigned int* x, unsigned int y, int mo);
 extern unsigned int __atomic_fetch_add_4(unsigned int* x, unsigned int y, int mo);
 extern unsigned int __atomic_fetch_sub_4(unsigned int* x, unsigned int y, int mo);
+extern unsigned int __atomic_fetch_and_4(unsigned int* x, unsigned int y, int mo);
+extern unsigned int __atomic_fetch_or_4(unsigned int* x, unsigned int y, int mo);
+extern unsigned int __atomic_fetch_xor_4(unsigned int* x, unsigned int y, int mo);
 
 extern unsigned short __atomic_load_2(unsigned short* x, int mo);
 extern void __atomic_store_2(unsigned short* x, unsigned short y, int mo);
@@ -49,6 +55,9 @@ extern _Bool __atomic_compare_exchange_2(unsigned short* x, unsigned short* expe
 extern unsigned short __atomic_exchange_2(unsigned short* x, unsigned short y, int mo);
 extern unsigned short __atomic_fetch_add_2(unsigned short* x, unsigned short y, int mo);
 extern unsigned short __atomic_fetch_sub_2(unsigned short* x, unsigned short y, int mo);
+extern unsigned short __atomic_fetch_and_2(unsigned short* x, unsigned short y, int mo);
+extern unsigned short __atomic_fetch_or_2(unsigned short* x, unsigned short y, int mo);
+extern unsigned short __atomic_fetch_xor_2(unsigned short* x, unsigned short y, int mo);
 
 extern unsigned char __atomic_load_1(unsigned char* x, int mo);
 extern void __atomic_store_1(unsigned char* x, unsigned char y, int mo);
@@ -57,6 +66,9 @@ extern _Bool __atomic_compare_exchange_1(unsigned char* x, unsigned char* expect
 extern unsigned char __atomic_exchange_1(unsigned char* x, unsigned char y, int mo);
 extern unsigned char __atomic_fetch_add_1(unsigned char* x, unsigned char y, int mo);
 extern unsigned char __atomic_fetch_sub_1(unsigned char* x, unsigned char y, int mo);
+extern unsigned char __atomic_fetch_and_1(unsigned char* x, unsigned char y, int mo);
+extern unsigned char __atomic_fetch_or_1(unsigned char* x, unsigned char y, int mo);
+extern unsigned char __atomic_fetch_xor_1(unsigned char* x, unsigned char y, int mo);
 
 // The default functions should work with pointers so we have to decide based on pointer size
 #if UINTPTR_MAX == 0xFFFFFFFF
@@ -111,6 +123,15 @@ static inline uintptr_t atomic_fetch_add(uintptr_t* x, uintptr_t y) {
 static inline uintptr_t atomic_fetch_sub(uintptr_t* x, uintptr_t y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
 }
+static inline uintptr_t atomic_fetch_and(uintptr_t* x, uintptr_t y) {
+	return atomic_fetch_and_explicit(x, y, memory_order_seq_cst);
+}
+static inline uintptr_t atomic_fetch_or(uintptr_t* x, uintptr_t y) {
+	return atomic_fetch_or_explicit(x, y, memory_order_seq_cst);
+}
+static inline uintptr_t atomic_fetch_xor(uintptr_t* x, uintptr_t y) {
+	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
+}
 
 // specialized versions for 64 bit
 
@@ -135,6 +156,15 @@ static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, uns
 static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
 	return __atomic_fetch_sub_8(x, y, memory_order_seq_cst);
 }
+static inline unsigned long long atomic_fetch_and_u64(unsigned long long* x, unsigned long long y) {
+	return __atomic_fetch_and_8(x, y, memory_order_seq_cst);
+}
+static inline unsigned long long atomic_fetch_or_u64(unsigned long long* x, unsigned long long y) {
+	return __atomic_fetch_or_8(x, y, memory_order_seq_cst);
+}
+static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, unsigned long long y) {
+	return __atomic_fetch_xor_8(x, y, memory_order_seq_cst);
+}
 
 static inline unsigned atomic_load_u32(unsigned* x) {
 	return __atomic_load_4(x, memory_order_seq_cst);
@@ -156,6 +186,15 @@ static inline unsigned atomic_fetch_add_u32(unsigned* x, unsigned y) {
 }
 static inline unsigned atomic_fetch_sub_u32(unsigned* x, unsigned y) {
 	return __atomic_fetch_sub_4(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_and_u32(unsigned* x, unsigned y) {
+	return __atomic_fetch_and_4(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_or_u32(unsigned* x, unsigned y) {
+	return __atomic_fetch_or_4(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_xor_u32(unsigned* x, unsigned y) {
+	return __atomic_fetch_xor_4(x, y, memory_order_seq_cst);
 }
 
 static inline unsigned short atomic_load_u16(unsigned short* x) {
@@ -179,6 +218,15 @@ static inline unsigned short atomic_fetch_add_u16(unsigned short* x, unsigned sh
 static inline unsigned short atomic_fetch_sub_u16(unsigned short* x, unsigned short y) {
 	return __atomic_fetch_sub_2(x, y, memory_order_seq_cst);
 }
+static inline unsigned short atomic_fetch_and_u16(unsigned short* x, unsigned short y) {
+	return __atomic_fetch_and_2(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_or_u16(unsigned short* x, unsigned short y) {
+	return __atomic_fetch_or_2(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_xor_u16(unsigned short* x, unsigned short y) {
+	return __atomic_fetch_xor_2(x, y, memory_order_seq_cst);
+}
 
 static inline unsigned char atomic_load_byte(unsigned char* x) {
 	return __atomic_load_1(x, memory_order_seq_cst);
@@ -200,6 +248,15 @@ static inline unsigned char atomic_fetch_add_byte(unsigned char* x, unsigned cha
 }
 static inline unsigned char atomic_fetch_sub_byte(unsigned char* x, unsigned char y) {
 	return __atomic_fetch_sub_1(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_and_byte(unsigned char* x, unsigned char y) {
+	return __atomic_fetch_and_1(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_or_byte(unsigned char* x, unsigned char y) {
+	return __atomic_fetch_or_1(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_xor_byte(unsigned char* x, unsigned char y) {
+	return __atomic_fetch_xor_1(x, y, memory_order_seq_cst);
 }
 
 #else
@@ -227,6 +284,15 @@ static inline unsigned long long atomic_fetch_add_u64(unsigned long long* x, uns
 static inline unsigned long long atomic_fetch_sub_u64(unsigned long long* x, unsigned long long y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
 }
+static inline unsigned long long atomic_fetch_and_u64(unsigned long long* x, unsigned long long y) {
+	return atomic_fetch_and_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned long long atomic_fetch_or_u64(unsigned long long* x, unsigned long long y) {
+	return atomic_fetch_or_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, unsigned long long y) {
+	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
+}
 
 static inline unsigned atomic_load_u32(unsigned* x) {
 	return atomic_load_explicit(x, memory_order_seq_cst);
@@ -248,6 +314,15 @@ static inline unsigned atomic_fetch_add_u32(unsigned* x, unsigned y) {
 }
 static inline unsigned atomic_fetch_sub_u32(unsigned* x, unsigned y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_and_u32(unsigned* x, unsigned y) {
+	return atomic_fetch_and_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_or_u32(unsigned* x, unsigned y) {
+	return atomic_fetch_or_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned atomic_fetch_xor_u32(unsigned* x, unsigned y) {
+	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
 }
 
 static inline unsigned short atomic_load_u16(unsigned short* x) {
@@ -271,6 +346,15 @@ static inline unsigned short atomic_fetch_add_u16(unsigned short* x, unsigned sh
 static inline unsigned short atomic_fetch_sub_u16(unsigned short* x, unsigned short y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
 }
+static inline unsigned short atomic_fetch_and_u16(unsigned short* x, unsigned short y) {
+	return atomic_fetch_and_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_or_u16(unsigned short* x, unsigned short y) {
+	return atomic_fetch_or_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned short atomic_fetch_xor_u16(unsigned short* x, unsigned short y) {
+	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
+}
 
 static inline unsigned char atomic_load_byte(unsigned char* x) {
 	return atomic_load_explicit(x, memory_order_seq_cst);
@@ -292,6 +376,15 @@ static inline unsigned char atomic_fetch_add_byte(unsigned char* x, unsigned cha
 }
 static inline unsigned char atomic_fetch_sub_byte(unsigned char* x, unsigned char y) {
 	return atomic_fetch_sub_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_and_byte(unsigned char* x, unsigned char y) {
+	return atomic_fetch_and_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_or_byte(unsigned char* x, unsigned char y) {
+	return atomic_fetch_or_explicit(x, y, memory_order_seq_cst);
+}
+static inline unsigned char atomic_fetch_xor_byte(unsigned char* x, unsigned char y) {
+	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
 }
 
 #endif

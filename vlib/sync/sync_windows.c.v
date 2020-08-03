@@ -133,7 +133,7 @@ pub fn new_semaphore() Semaphore {
 	return new_semaphore_init(0)
 }
 
-pub fn new_semaphore_init(n int) Semaphore {
+pub fn new_semaphore_init(n u32) Semaphore {
 	return Semaphore{
 		sem: SHANDLE(C.CreateSemaphore(0, n, C.INT32_MAX, 0))
 	}

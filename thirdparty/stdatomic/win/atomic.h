@@ -121,7 +121,7 @@ __CRT_INLINE LONGLONG _InterlockedExchangeAdd64(LONGLONG volatile *Addend, LONGL
     atomic_load(object)
 
 #define atomic_exchange(object, desired) \
-    InterlockedExchangePointer(object, desired);
+    InterlockedExchangePointer(object, desired)
 
 #define atomic_exchange_explicit(object, desired, order) \
     atomic_exchange(object, desired)
@@ -130,7 +130,7 @@ static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *exp
                                                  intptr_t desired)
 {
     intptr_t exp = *expected;
-    intptr old = (intptr_t)InterlockedCompareExchangePointer(
+    intptr_t old = (intptr_t)InterlockedCompareExchangePointer(
         (PVOID *)object, (PVOID)desired, (PVOID)exp);
 	if (old != exp)
 		*expected = old;
@@ -178,6 +178,140 @@ static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *exp
 #define atomic_fetch_and(object, operand) \
     InterlockedAnd(object, operand)
 #endif /* _WIN64 */
+
+/* specialized versions with explicit object size */
+
+static inline void atomic_store_u64(unsigned long long* object, unsigned long long desired) {
+    do {
+        *(object) = (desired);
+        MemoryBarrier();
+    } while (0);
+}
+
+static inline unsigned long long atomic_load_u64(unsigned long long* object) {
+    return (MemoryBarrier(), *(object));
+}
+
+#define atomic_exchange_u64(object, desired) \
+    InterlockedExchange64(object, desired)
+
+static inline int atomic_compare_exchange_strong_u64(unsigned long long* object, unsigned long long* expected,
+                                                 unsigned long long desired)
+{
+    unsigned long long exp = *expected;
+    unsigned long long old = InterlockedCompareExchange64(object, desired, exp);
+	if (old != exp)
+		*expected = old;
+    return exp == old;
+}
+
+#define atomic_compare_exchange_weak_u64(object, expected, desired) \
+    atomic_compare_exchange_strong_u64(object, expected, desired)
+
+#define atomic_fetch_add_u64(object, operand) \
+    InterlockedExchangeAdd64(object, operand)
+
+#define atomic_fetch_sub_u64(object, operand) \
+    InterlockedExchangeAdd64(object, -(operand))
+
+#define atomic_fetch_or_u64(object, operand) \
+    InterlockedOr64(object, operand)
+
+#define atomic_fetch_xor_u64(object, operand) \
+    InterlockedXor64(object, operand)
+
+#define atomic_fetch_and_u64(object, operand) \
+    InterlockedAnd64(object, operand)
+
+
+
+static inline void atomic_store_u32(unsigned* object, unsigned desired) {
+    do {
+        *(object) = (desired);
+        MemoryBarrier();
+    } while (0);
+}
+
+static inline unsigned atomic_load_u32(unsigned* object) {
+    return (MemoryBarrier(), *(object));
+}
+
+#define atomic_exchange_u32(object, desired) \
+    InterlockedExchange(object, desired)
+
+static inline int atomic_compare_exchange_strong_u32(unsigned* object, unsigned* expected,
+                                                 unsigned desired)
+{
+    unsigned exp = *expected;
+    unsigned old = InterlockedCompareExchange(object, desired, exp);
+	if (old != exp)
+		*expected = old;
+    return exp == old;
+}
+
+#define atomic_compare_exchange_weak_u32(object, expected, desired) \
+    atomic_compare_exchange_strong_u32(object, expected, desired)
+
+#define atomic_fetch_add_u32(object, operand) \
+    InterlockedExchangeAdd(object, operand)
+
+#define atomic_fetch_sub_u32(object, operand) \
+    InterlockedExchangeAdd(object, -(operand))
+
+#define atomic_fetch_or_u32(object, operand) \
+    InterlockedOr(object, operand)
+
+#define atomic_fetch_xor_u32(object, operand) \
+    InterlockedXor(object, operand)
+
+#define atomic_fetch_and_u32(object, operand) \
+    InterlockedAnd(object, operand)
+
+
+
+static inline void atomic_store_u16(unsigned short* object, unsigned short desired) {
+    do {
+        *(object) = (desired);
+        MemoryBarrier();
+    } while (0);
+}
+
+static inline unsigned short atomic_load_u16(unsigned short* object) {
+    return (MemoryBarrier(), *(object));
+}
+
+#define atomic_exchange_u16(object, desired) \
+    InterlockedExchange16(object, desired)
+
+static inline int atomic_compare_exchange_strong_u16(unsigned short* object, unsigned short* expected,
+                                                 unsigned short desired)
+{
+    unsigned short exp = *expected;
+    unsigned short old = InterlockedCompareExchange16(object, desired, exp);
+	if (old != exp)
+		*expected = old;
+    return exp == old;
+}
+
+#define atomic_compare_exchange_weak_u16(object, expected, desired) \
+    atomic_compare_exchange_strong_u16(object, expected, desired)
+
+#define atomic_fetch_add_u16(object, operand) \
+    InterlockedExchangeAdd16(object, operand)
+
+#define atomic_fetch_sub_u16(object, operand) \
+    InterlockedExchangeAdd16(object, -(operand))
+
+#define atomic_fetch_or_u16(object, operand) \
+    InterlockedOr16(object, operand)
+
+#define atomic_fetch_xor_u16(object, operand) \
+    InterlockedXor16(object, operand)
+
+#define atomic_fetch_and_u16(object, operand) \
+    InterlockedAnd16(object, operand)
+
+
 
 #define atomic_fetch_add_explicit(object, operand, order) \
     atomic_fetch_add(object, operand)
