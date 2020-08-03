@@ -294,8 +294,6 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
-fn C._mktemp_s(stemplate byteptr, stemplate_len int) int
-
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
 pub fn symlink(origin, target string) ?bool {
@@ -367,4 +365,29 @@ pub fn uname() Uname {
 		version: unknown
 		machine: unknown
 	}
+}
+
+
+fn C._mktemp_s(stemplate byteptr, stemplate_len int) int
+// `is_writable_folder` - `folder` exists and is writable to the process
+pub fn is_writable_folder(folder string) ?bool {
+	if !os.exists(folder) {
+		return error('`$folder` does not exist')
+	}
+	if !os.is_dir(folder) {
+		return error('`folder` is not a folder')
+	}
+	tmp_perm_check := os.join_path(folder, 'XXXXXX')
+	unsafe {
+		x := C._mktemp_s( tmp_perm_check.str, tmp_perm_check.len )
+		if 0 != x {
+			return error('C._mktemp_s failed')
+		}
+	}
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+		return error('cannot write to folder $folder: $err')
+	}
+	f.close()
+	os.rm(tmp_perm_check)
+	return true
 }

@@ -511,39 +511,6 @@ pub fn is_executable(path string) bool {
   return C.access(charptr(path.str), x_ok) != -1
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) ?bool {
-	if !os.exists(folder) {
-		return error('`$folder` does not exist')
-	}
-	if !os.is_dir(folder) {
-		return error('`folder` is not a folder')
-	}
-	tmp_perm_check := os.join_path(folder, 'XXXXXX')
-	$if windows {
-		unsafe {
-			x := C._mktemp_s( tmp_perm_check.str, tmp_perm_check.len )
-			if 0 != x {
-				return error('C._mktemp_s failed')
-			}
-		}
-		mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
-			return error('cannot write to folder $folder: $err')
-		}
-		f.close()
-	} $else {
-		unsafe {
-			x := C.mkstemp(tmp_perm_check.str)
-			if -1 == x {
-				return error('folder `$folder` is not writable')
-			}
-			C.close(x)
-		}
-	}
-	os.rm(tmp_perm_check)
-	return true
-}
-
 // `is_writable` returns `true` if `path` is writable.
 pub fn is_writable(path string) bool {
   $if windows {
