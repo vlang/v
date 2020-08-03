@@ -383,6 +383,7 @@ pub struct C.sg_stencil_state {
 }
 
 pub struct C.sg_blend_state {
+pub mut:
     enabled bool
     src_factor_rgb BlendFactor
     dst_factor_rgb BlendFactor

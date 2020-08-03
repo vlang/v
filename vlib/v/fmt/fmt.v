@@ -562,7 +562,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
 				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
-				f.write(' ' + ret_str)
+				f.write(' $ret_str')
+			} else if fn_info.return_type.has_flag(.optional) {
+				f.write(' ?')
 			}
 		}
 		ast.SumTypeDecl {
@@ -1311,21 +1313,20 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		// NOTE: taken from checker in if_expr(). used for smartcast
-		mut is_variable := false
-		if branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is &&
-				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
-				// right_expr := infix.right as ast.Type
-				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind == .variable } else { true }
+		// Check `sum is T` smartcast
+		mut smartcast_as := false
+		if branch.cond is ast.InfixExpr as infix {
+			if infix.op == .key_is {
+				// left_as_name is either empty, infix.left.str() or the `as` name
+				smartcast_as = branch.left_as_name.len > 0 &&
+					infix.left.str() != branch.left_as_name
 			}
 		}
 		if i == 0 {
 			f.comments(branch.comments, {})
 			f.write('if ')
 			f.expr(branch.cond)
-			if is_variable && branch.left_as_name.len > 0 {
+			if smartcast_as {
 				f.write(' as $branch.left_as_name')
 			}
 			f.write(' {')
@@ -1338,7 +1339,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 			f.write('else if ')
 			f.expr(branch.cond)
-			if is_variable && branch.left_as_name.len > 0 {
+			if smartcast_as {
 				f.write(' as $branch.left_as_name')
 			}
 			f.write(' {')
