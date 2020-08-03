@@ -34,11 +34,10 @@ pub fn compile(command string, pref &pref.Preferences) {
 	if odir.len == pref.out_name.len {
 		output_folder = os.getwd()
 	}        
-	if !os.exists(output_folder) {
-		verror('folder $output_folder/ does not exist')
-	}
-	if !os.is_writable(output_folder) {
-		verror('folder $output_folder/ is not writable')
+	os.is_writable_folder(output_folder) or { 
+		// An early error here, is better than an unclear C error later:
+		verror(err)
+		exit(1)
 	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
