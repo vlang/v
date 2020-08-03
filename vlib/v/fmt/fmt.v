@@ -562,7 +562,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
 				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
-				f.write(' ' + ret_str)
+				f.write(' $ret_str')
+			} else if fn_info.return_type.has_flag(.optional) {
+				f.write(' ?')
 			}
 		}
 		ast.SumTypeDecl {
