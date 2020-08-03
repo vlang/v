@@ -24,14 +24,8 @@ fn test_ptr_assign() {
 
 fn test_ptr_infix() {
 	v := 4
-	mut q := unsafe {
-		&v - 1
-	}
-	
-	q = unsafe {
-		q + 3
-	}
-	
+	mut q := unsafe {&v - 1}
+	q = unsafe {q + 3}
 	_ := q
 	_ := v
 }
