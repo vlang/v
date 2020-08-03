@@ -16,21 +16,23 @@ mut:
 }
 
 fn main() {
-	mut app := &App{
-		//image: gg.create_image2('logo.png')
-	}
+	mut app := &App{}
 	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
 		height: win_height
 		use_ortho: true // This is needed for 2D drawing
 		create_window: true
-		window_title: 'Empty window'
+		window_title: 'Rectangles'
 		frame_fn: frame
+		init_fn: init_app
 		user_data: app
-		//font_path: os.resource_abs_path('assets/fonts/RobotoMono-Regular.ttf')
 	)
 	app.gg.run()
+}
+
+fn init_app(mut app App) {
+	app.image = gg.create_image('logo.png')
 }
 
 fn frame(app &App) {
@@ -44,5 +46,5 @@ fn (app &App) draw() {
 	//app.gg.draw_text_def(300,300, 'привет')
 	app.gg.draw_rect(10, 10, 100, 30, gx.blue)
 	app.gg.draw_empty_rect(110, 150, 80, 40, gx.black)
-	//app.gg.draw_image2(30,30,100,30, app.image)
+	app.gg.draw_image(230,30,app.image.width,app.image.height, app.image)
 }

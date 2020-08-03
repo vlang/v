@@ -243,17 +243,6 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
 }
 
-pub fn create_image(file string) u32 {
-	// println('gg create image "$file"')
-	if !os.exists(file) {
-		println('gg create image no such file "$file"')
-		return u32(0)
-	}
-	// img := stbi.load(file)
-	// img.free()
-	return 0 // texture
-}
-
 pub struct Image {
 pub mut:
 	width       int
@@ -265,9 +254,9 @@ pub mut:
 	sokol_img   C.sg_image
 }
 
-pub fn create_image2(file string) Image {
+pub fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg create image no such file "$file"')
+		println('gg.create_image(): file not found: $file')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file)
@@ -331,18 +320,15 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
-}
-
-pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img Image) {
 	u0 := f32(0.0)
 	v0 := f32(0.0)
 	u1 := f32(1.0)
 	v1 := f32(1.0)
-	x0 := f32(x)
-	y0 := f32(y)
-	x1 := f32(x + width)
-	y1 := f32(y + height)
+	x0 := f32(x) * ctx.scale
+	y0 := f32(y) * ctx.scale
+	x1 := f32(x + width) * ctx.scale
+	y1 := f32(y + height) * ctx.scale
 	//
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()

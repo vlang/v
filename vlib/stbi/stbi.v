@@ -24,6 +24,10 @@ fn C.stbi_load_from_memory() voidptr
 fn C.stbi_image_free()
 fn C.stbi_set_flip_vertically_on_load()
 
+fn init() {
+	set_flip_vertically_on_load(false)
+}
+
 pub fn load(path string) Image {
 	ext := path.all_after_last('.')
 	mut res := Image {
