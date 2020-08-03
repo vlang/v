@@ -190,3 +190,24 @@ pub fn (mut f File) close() {
 pub fn debugger_present() bool {
 	return false
 }
+
+fn C.mkstemp(stemplate byteptr) int
+// `is_writable_folder` - `folder` exists and is writable to the process
+pub fn is_writable_folder(folder string) ?bool {
+	if !os.exists(folder) {
+		return error('`$folder` does not exist')
+	}
+	if !os.is_dir(folder) {
+		return error('`folder` is not a folder')
+	}
+	tmp_perm_check := os.join_path(folder, 'XXXXXX')
+	unsafe {
+		x := C.mkstemp(tmp_perm_check.str)
+		if -1 == x {
+			return error('folder `$folder` is not writable')
+		}
+		C.close(x)
+	}
+	os.rm(tmp_perm_check)
+	return true
+}
