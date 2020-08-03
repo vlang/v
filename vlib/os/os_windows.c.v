@@ -368,7 +368,6 @@ pub fn uname() Uname {
 }
 
 
-fn C._mktemp_s(stemplate byteptr, stemplate_len int) int
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
 	if !os.exists(folder) {
@@ -377,13 +376,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !os.is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'XXXXXX')
-	unsafe {
-		x := C._mktemp_s( tmp_perm_check.str, tmp_perm_check.len )
-		if 0 != x {
-			return error('C._mktemp_s failed')
-		}
-	}
+	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
 	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder $folder: $err')
 	}
