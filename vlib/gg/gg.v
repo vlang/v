@@ -251,7 +251,8 @@ pub mut:
 	ok          bool
 	data        voidptr
 	ext         string
-	sokol_img   C.sg_image
+	simg_ok     bool
+	simg        C.sg_image
 }
 
 pub fn create_image(file string) Image {
@@ -268,6 +269,10 @@ pub fn create_image(file string) Image {
 		data: stb_img.data
 		ext: stb_img.ext
 	}
+	return img
+}
+
+pub fn (mut img Image) init_sokol_image() &Image {
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
@@ -281,7 +286,8 @@ pub fn create_image(file string) Image {
 		ptr: img.data
 		size: img.nr_channels * img.width * img.height
 	}
-	img.sokol_img = C.sg_make_image(&img_desc)
+	img.simg = C.sg_make_image(&img_desc)
+	img.simg_ok = true
 	return img
 }
 
@@ -320,7 +326,14 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img Image) {
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
+	if !img.simg_ok {
+		unsafe {
+			mut image := img
+			image.init_sokol_image()
+			println('>>> img.simg_ok: $img.simg_ok')
+		}
+	}
 	u0 := f32(0.0)
 	v0 := f32(0.0)
 	u1 := f32(1.0)
@@ -332,7 +345,7 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img Image) {
 	//
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
-	sgl.texture(img.sokol_img)
+	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v2f_t2f(x0, y0,	  u0, v0)
