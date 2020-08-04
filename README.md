@@ -34,7 +34,8 @@
 - Built-in graphics library
 - Easy cross compilation
 - REPL
-- Built-in ORM
+- [Built-in ORM](https://github.com/tarunama/v/blob/master/examples/database/pg/customer.v)
+- [Developing web applications](https://github.com/vlang/gitly)
 - C and JavaScript backends
 
 ## Stability guarantee and future changes
