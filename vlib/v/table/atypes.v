@@ -687,7 +687,7 @@ pub mut:
 	default_expr     FExpr
 	has_default_expr bool
 	default_val      string
-	attrs            []string
+	attrs            []Attr
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
