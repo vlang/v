@@ -3,29 +3,29 @@ import time
 
 fn do_rec_i64(mut ch sync.Channel) {
 	mut sum := i64(0)
-	for _ in 0 .. 1000 {
+	for _ in 0 .. 30 {
 		mut a := i64(0)
 		ch.pop(&a)
 		sum += a
 	}
-	assert sum == 1000 * (1000 - 1) / 2
+	assert sum == 30 * (30 - 1) / 2
 }
 
 fn do_send_int(mut ch sync.Channel) {
-	for i in 0 .. 1000 {
+	for i in 0 .. 30 {
 		ch.push(&i)
 	}
 }
 
 fn do_send_byte(mut ch sync.Channel) {
-	for i in 0 .. 1000 {
+	for i in 0 .. 30 {
 		ii := byte(i)
 		ch.push(&ii)
 	}
 }
 
 fn do_send_i64(mut ch sync.Channel) {
-	for i in 0 .. 1000 {
+	for i in 0 .. 30 {
 		ii := i64(i)
 		ch.push(&ii)
 	}
@@ -34,7 +34,7 @@ fn do_send_i64(mut ch sync.Channel) {
 fn test_select() {
 	mut chi := sync.new_channel<int>(0)
 	mut chl := sync.new_channel<i64>(1)
-	mut chb := sync.new_channel<byte>(100)
+	mut chb := sync.new_channel<byte>(10)
 	mut recch := sync.new_channel<i64>(0)
 	go do_rec_i64(mut recch)
 	go do_send_int(mut chi)
@@ -48,7 +48,7 @@ fn test_select() {
 	mut rb := byte(0)
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
-	for _ in 0 .. 4000 {
+	for _ in 0 .. 120 {
 		idx := sync.channel_select(mut channels, directions, mut objs, 0)
 		match idx {
 			0 {
@@ -68,5 +68,5 @@ fn test_select() {
 			}
 		}
 	}
-	assert sum == 1123716
+	assert sum == 3 * (30 * (30 - 1) / 2)
 }
