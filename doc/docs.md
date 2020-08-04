@@ -2544,7 +2544,6 @@ shared
 sizeof
 static
 struct
-switch
 true
 type
 typeof
