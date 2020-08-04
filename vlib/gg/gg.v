@@ -331,7 +331,6 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
 		unsafe {
 			mut image := img
 			image.init_sokol_image()
-			println('>>> img.simg_ok: $img.simg_ok')
 		}
 	}
 	u0 := f32(0.0)
