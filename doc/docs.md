@@ -524,6 +524,17 @@ println(upper) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension:
+
+```v
+mut a := [][]int{len:2}
+a = a.map([]int{len:3})
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
 ### Maps
 
 ```v
