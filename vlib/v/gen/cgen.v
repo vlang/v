@@ -83,7 +83,6 @@ mut:
 	is_json_fn            bool // inside json.encode()
 	json_types            []string // to avoid json gen duplicates
 	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	attrs                 []string // attributes before next decl stmt
 	is_builtin_mod        bool
 	hotcode_fn_names      []string
 	// cur_fn               ast.FnDecl
@@ -629,10 +628,6 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(',')
 		}
-		// clear attrs on next non Attr stmt
-		if stmt !is ast.Attr {
-			g.attrs = []
-		}
 	}
 	g.indent--
 	if g.inside_ternary > 0 {
@@ -673,10 +668,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.AssignStmt {
 			g.gen_assign_stmt(node)
-		}
-		ast.Attr {
-			g.attrs << node.name
-			g.writeln('// Attr: [$node.name]')
 		}
 		ast.Block {
 			if node.is_unsafe {
@@ -868,6 +859,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {
 			name := if node.language == .c { util.no_dots(node.name) } else { c_name(node.name) }
+			// TODO For some reason, build fails with autofree with this line
+			// as it's only informative, comment it for now
+			// g.gen_attrs(node.attrs)
 			// g.writeln('typedef struct {')
 			// for field in it.fields {
 			// field_type_sym := g.table.get_type_symbol(field.typ)
@@ -1068,6 +1062,12 @@ fn cestring(s string) string {
 // ctoslit returns a 'tos_lit("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
 	return 'tos_lit("' + cestring(s) + '")'
+}
+
+fn (mut g Gen) gen_attrs(attrs []table.Attr) {
+	for attr in attrs {
+		g.writeln('// Attr: [$attr.name]')
+	}
 }
 
 fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
