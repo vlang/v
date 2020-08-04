@@ -434,7 +434,6 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 	}
 	stopwatch := if timeout == 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
 	mut event_idx := -1 // negative index means `timed out`
-	for sem.try_wait() {}
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
 		for j, _ in channels {
