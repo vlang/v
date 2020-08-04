@@ -272,6 +272,23 @@ pub fn create_image(file string) Image {
 	return img
 }
 
+pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
+	stb_img := stbi.load_from_memory(buf, bufsize)
+	mut img := Image{
+		width: stb_img.width
+		height: stb_img.height
+		nr_channels: stb_img.nr_channels
+		ok: stb_img.ok
+		data: stb_img.data
+		ext: stb_img.ext
+	}
+	return img
+}
+
+pub fn create_image_from_byte_array(b []byte) Image {
+	return create_image_from_memory(b.data, b.len)
+}
+
 pub fn (mut img Image) init_sokol_image() &Image {
 	mut img_desc := C.sg_image_desc{
 		width: img.width
@@ -289,13 +306,6 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true
 	return img
-}
-
-pub fn create_image_from_memory(buf byteptr) u32 {
-	// texture := gl.gen_texture()
-	// img := stbi.load_from_memory(buf)
-	// img.free()
-	return 0 // texture
 }
 
 pub fn (gg &Context) begin() {
