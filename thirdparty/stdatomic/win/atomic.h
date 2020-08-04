@@ -203,6 +203,17 @@ static inline int atomic_compare_exchange_strong(intptr_t *object, intptr_t *exp
 
 /* specialized versions with explicit object size */
 
+#define atomic_load_ptr atomic_load
+#define atomic_store_ptr atomic_store
+#define atomic_compare_exchange_weak_ptr atomic_compare_exchange_weak
+#define atomic_compare_exchange_strong_ptr atomic_compare_exchange_strong
+#define atomic_exchange_ptr atomic_exchange
+#define atomic_fetch_add_ptr atomic_fetch_add
+#define atomic_fetch_sub_ptr atomic_fetch_sub
+#define atomic_fetch_and_ptr atomic_fetch_and
+#define atomic_fetch_or_ptr atomic_fetch_or
+#define atomic_fetch_xor_ptr atomic_fetch_xor
+
 static inline void atomic_store_u64(unsigned long long* object, unsigned long long desired) {
     do {
         *(object) = (desired);

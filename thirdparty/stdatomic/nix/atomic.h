@@ -133,6 +133,17 @@ static inline uintptr_t atomic_fetch_xor(uintptr_t* x, uintptr_t y) {
 	return atomic_fetch_xor_explicit(x, y, memory_order_seq_cst);
 }
 
+#define atomic_load_ptr atomic_load
+#define atomic_store_ptr atomic_store
+#define atomic_compare_exchange_weak_ptr atomic_compare_exchange_weak
+#define atomic_compare_exchange_strong_ptr atomic_compare_exchange_strong
+#define atomic_exchange_ptr atomic_exchange
+#define atomic_fetch_add_ptr atomic_fetch_add
+#define atomic_fetch_sub_ptr atomic_fetch_sub
+#define atomic_fetch_and_ptr atomic_fetch_and
+#define atomic_fetch_or_ptr atomic_fetch_or
+#define atomic_fetch_xor_ptr atomic_fetch_xor
+
 // specialized versions for 64 bit
 
 static inline unsigned long long atomic_load_u64(unsigned long long* x) {
@@ -293,6 +304,39 @@ static inline unsigned long long atomic_fetch_or_u64(unsigned long long* x, unsi
 static inline unsigned long long atomic_fetch_xor_u64(unsigned long long* x, unsigned long long y) {
 	return atomic_fetch_xor_explicit((_Atomic unsigned long long*)x, y, memory_order_seq_cst);
 }
+
+
+static inline void* atomic_load_ptr(void** x) {
+	return atomic_load_explicit((_Atomic uintptr_t*)x, memory_order_seq_cst);
+}
+static inline void atomic_store_ptr(void** x, void* y) {
+	atomic_store_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_weak_ptr(void** x, void** expected, void* y) {
+	return (int)atomic_compare_exchange_weak_explicit((_Atomic uintptr_t*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline int atomic_compare_exchange_strong_ptr(void** x, void** expected, void* y) {
+	return (int)atomic_compare_exchange_strong_explicit((_Atomic uintptr_t*)x, expected, y, memory_order_seq_cst, memory_order_seq_cst);
+}
+static inline void* atomic_exchange_ptr(void** x, void* y) {
+	return atomic_exchange_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline void* atomic_fetch_add_ptr(void** x, void* y) {
+	return atomic_fetch_add_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline void* atomic_fetch_sub_ptr(void** x, void* y) {
+	return atomic_fetch_sub_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline void* atomic_fetch_and_ptr(void** x, void* y) {
+	return atomic_fetch_and_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline void* atomic_fetch_or_ptr(void** x, void* y) {
+	return atomic_fetch_or_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+static inline void* atomic_fetch_xor_ptr(void** x, void* y) {
+	return atomic_fetch_xor_explicit((_Atomic uintptr_t*)x, y, memory_order_seq_cst);
+}
+
 
 static inline unsigned atomic_load_u32(unsigned* x) {
 	return atomic_load_explicit((_Atomic unsigned*)x, memory_order_seq_cst);

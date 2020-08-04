@@ -19,13 +19,13 @@ $if linux {
 #include <atomic.h>
 
 // the following functions are actually generic in C
-fn C.atomic_load(voidptr) voidptr
-fn C.atomic_store(voidptr, voidptr)
-fn C.atomic_compare_exchange_weak(voidptr, voidptr, voidptr) bool
-fn C.atomic_compare_exchange_strong(voidptr, voidptr, voidptr) bool
-fn C.atomic_exchange(voidptr, voidptr) voidptr
-fn C.atomic_fetch_add(voidptr, voidptr) voidptr
-fn C.atomic_fetch_sub(voidptr, voidptr) voidptr
+fn C.atomic_load_ptr(voidptr) voidptr
+fn C.atomic_store_ptr(voidptr, voidptr)
+fn C.atomic_compare_exchange_weak_ptr(voidptr, voidptr, voidptr) bool
+fn C.atomic_compare_exchange_strong_ptr(voidptr, voidptr, voidptr) bool
+fn C.atomic_exchange_ptr(voidptr, voidptr) voidptr
+fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr
+fn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr
 
 fn C.atomic_load_u16(voidptr) u16
 fn C.atomic_store_u16(voidptr, u16)
@@ -52,7 +52,7 @@ fn C.atomic_fetch_add_u64(voidptr, u64) u64
 fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 const (
-	 // how often to try to get data without blocking before to wait for semaphore
+	// how often to try to get data without blocking before to wait for semaphore
 	spinloops = 250
 	spinloops_sem = 500
 )
@@ -85,6 +85,8 @@ mut: // atomic
 	// for select
 	write_subscriber   Semaphore
 	read_subscriber    Semaphore
+	write_sub_mtx      u16
+	read_sub_mtx       u16
 }
 
 pub fn new_channel<T>(n u32) &Channel {
@@ -111,13 +113,13 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 	mut have_swapped := false
 	for {
 		mut got_sem := false
-		mut wradr := C.atomic_load(&ch.write_adr)
+		mut wradr := C.atomic_load_ptr(&ch.write_adr)
 		for wradr != C.NULL {
-			if C.atomic_compare_exchange_strong(&ch.write_adr, &wradr, voidptr(0)) {
+			if C.atomic_compare_exchange_strong_ptr(&ch.write_adr, &wradr, voidptr(0)) {
 				// there is a reader waiting for us
 				unsafe { C.memcpy(wradr, src, ch.objsize) }
 				mut nulladr := voidptr(0)
-				for !C.atomic_compare_exchange_weak(&ch.adr_written, &nulladr, wradr) {
+				for !C.atomic_compare_exchange_weak_ptr(&ch.adr_written, &nulladr, wradr) {
 					nulladr = voidptr(0)
 				}
 				ch.readsem_im.post()
@@ -141,11 +143,11 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 			// try to advertise current object as readable
 			mut read_in_progress := false
 			mut nulladdr := voidptr(0)
-			if C.atomic_compare_exchange_strong(&ch.read_adr, &nulladdr, src) {
-				wradr = C.atomic_load(&ch.write_adr)
+			if C.atomic_compare_exchange_strong_ptr(&ch.read_adr, &nulladdr, src) {
+				wradr = C.atomic_load_ptr(&ch.write_adr)
 				if wradr != C.NULL {
 					mut src2 := src
-					if C.atomic_compare_exchange_strong(&ch.read_adr, &src2, voidptr(0)) {
+					if C.atomic_compare_exchange_strong_ptr(&ch.read_adr, &src2, voidptr(0)) {
 						ch.writesem.post()
 						continue
 					} else {
@@ -155,14 +157,19 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 			}
 			if !read_in_progress {
 				mut sem := Semaphore{} // for select
-				sem.sem = C.atomic_load(&ch.read_subscriber.sem)
+				mut null16 := u16(0)
+				for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+					null16 = u16(0)
+				}
+				sem.sem = ch.read_subscriber.sem
 				if sem.sem != 0 {
 					sem.post()
 				}
+				C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 			}
 			mut src2 := src
 			for sp := u32(0); sp < spinloops_ || read_in_progress; sp++ {
-				if C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
+				if C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					have_swapped = true
 					read_in_progress = true
 					break
@@ -182,7 +189,7 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				} else {
 					ch.writesem_im.wait()
 				}
-				if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_read, &src2, voidptr(0)) {
+				if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
 					break
 				} else {
@@ -252,13 +259,13 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 		mut got_sem := false
 		if ch.queue_length == 0 {
 			// unbuffered channel - first see if a `push()` has adversized
-			mut rdadr := C.atomic_load(&ch.read_adr)
+			mut rdadr := C.atomic_load_ptr(&ch.read_adr)
 			for rdadr != C.NULL {
-				if C.atomic_compare_exchange_strong(&ch.read_adr, &rdadr, voidptr(0)) {
+				if C.atomic_compare_exchange_strong_ptr(&ch.read_adr, &rdadr, voidptr(0)) {
 					// there is a writer waiting for us
 					unsafe { C.memcpy(dest, rdadr, ch.objsize) }
 					mut nulladr := voidptr(0)
-					for !C.atomic_compare_exchange_weak(&ch.adr_read, &nulladr, rdadr) {
+					for !C.atomic_compare_exchange_weak_ptr(&ch.adr_read, &nulladr, rdadr) {
 						nulladr = voidptr(0)
 					}
 					ch.writesem_im.post()
@@ -324,22 +331,27 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 				ch.writesem.post()
 				if old_write_free == 0 {
 					mut sem := Semaphore{}
-					sem.sem = C.atomic_load(&ch.write_subscriber.sem)
+					mut null16 := u16(0)
+					for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+						null16 = u16(0)
+					}
+					sem.sem = ch.write_subscriber.sem
 					if sem.sem != 0 {
 						sem.post()
 					}
+					C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 				}
 				return true
 			}
 		}
 		// try to advertise `dest` as writable
 		mut nulladdr := voidptr(0)
-		if C.atomic_compare_exchange_strong(&ch.write_adr, &nulladdr, dest) {
+		if C.atomic_compare_exchange_strong_ptr(&ch.write_adr, &nulladdr, dest) {
 			if ch.queue_length == 0 {
-				mut rdadr := C.atomic_load(&ch.read_adr)
+				mut rdadr := C.atomic_load_ptr(&ch.read_adr)
 				if rdadr != C.NULL {
 					mut dest2 := dest
-					if C.atomic_compare_exchange_strong(&ch.write_adr, &dest2, voidptr(0)) {
+					if C.atomic_compare_exchange_strong_ptr(&ch.write_adr, &dest2, voidptr(0)) {
 						ch.readsem.post()
 						continue
 					} else {
@@ -350,14 +362,19 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 		}
 		if ch.queue_length == 0 && !write_in_progress {
 			mut sem := Semaphore{}
-			sem.sem = C.atomic_load(&ch.write_subscriber.sem)
+			mut null16 := u16(0)
+			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+				null16 = u16(0)
+			}
+			sem.sem = ch.write_subscriber.sem
 			if sem.sem != 0 {
 				sem.post()
 			}
+			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		}
 		mut dest2 := dest
 		for sp := u32(0); sp < spinloops_ || write_in_progress; sp++ {
-			if C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
+			if C.atomic_compare_exchange_strong_ptr(&ch.adr_written, &dest2, voidptr(0)) {
 				have_swapped = true
 				break
 			}
@@ -376,7 +393,7 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			} else {
 				ch.readsem_im.wait()
 			}
-			if have_swapped || C.atomic_compare_exchange_strong(&ch.adr_written, &dest2, voidptr(0)) {
+			if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_written, &dest2, voidptr(0)) {
 				ch.readsem.post()
 				break
 			} else {
@@ -394,12 +411,24 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 	assert is_push.len == objrefs.len
 	mut sem := new_semaphore()
 	for i, ch in channels {
-		oldsem := if is_push[i] {
-			C.atomic_exchange(&ch.write_subscriber.sem, sem.sem)
+		mut oldsem := voidptr(0)
+		if is_push[i] {
+			mut null16 := u16(0)
+			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+				null16 = u16(0)
+			}
+			oldsem = C.atomic_exchange_ptr(&ch.write_subscriber.sem, sem.sem)
+			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
-			C.atomic_exchange(&ch.read_subscriber.sem, sem.sem)
+			mut null16 := u16(0)
+			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+				null16 = u16(0)
+			}
+			oldsem = C.atomic_exchange_ptr(&ch.read_subscriber.sem, sem.sem)
+			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 		if oldsem != 0 {
+			// TODO: subscriber lists to handle more than one select at a time
 			panic('channel_select: channel $i is already used in another `select`')
 		}
 	}
@@ -438,9 +467,19 @@ restore:
 	// reset subscribers
 	for i, ch in channels {
 		if is_push[i] {
-			C.atomic_exchange(&ch.write_subscriber.sem, voidptr(0))
+			mut null16 := u16(0)
+			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+				null16 = u16(0)
+			}
+			C.atomic_exchange_ptr(&ch.write_subscriber.sem, voidptr(0))
+			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
-			C.atomic_exchange(&ch.read_subscriber.sem, voidptr(0))
+			mut null16 := u16(0)
+			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+				null16 = u16(0)
+			}
+			C.atomic_exchange_ptr(&ch.read_subscriber.sem, voidptr(0))
+			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
 	sem.destroy()
