@@ -537,10 +537,12 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
+				if arg.is_mut {
+					f.write(arg.typ.share().str() + ' ')
+				}
 				f.write(arg.name)
 				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
 				if arg.is_mut {
-					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
 						s = s[1..]
 					}
