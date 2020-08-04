@@ -19,7 +19,8 @@ further tested.
 
 $if linux {
 	$if tinyc {
-		#flag /usr/lib/x86_64-linux-gnu/libatomic.so.1
+		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
 	}
 }
 

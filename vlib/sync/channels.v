@@ -67,17 +67,17 @@ enum BufferElemStat {
 struct Channel {
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
-	writesem_im         Semaphore
+	writesem_im        Semaphore
 	readsem_im         Semaphore
 	ringbuf            byteptr // queue for buffered channels
 	statusbuf          byteptr // flags to synchronize write/read in ringbuf
 	objsize            u32
 	queue_length       u32 // in #objects
 mut: // atomic
-	write_adr          voidptr // if != NULL the next obj can be written here without wait
-	read_adr           voidptr // if != NULL an obj can be read from here without wait
-	adr_read           voidptr // used to identify origin of writesem
-	adr_written        voidptr // used to identify origin of readsem
+	write_adr          C.atomic_uintptr_t // if != NULL the next obj can be written here without wait
+	read_adr           C.atomic_uintptr_t // if != NULL an obj can be read from here without wait
+	adr_read           C.atomic_uintptr_t // used to identify origin of writesem
+	adr_written        C.atomic_uintptr_t // used to identify origin of readsem
 	write_free         u32 // for queue state
 	read_avail         u32
 	buf_elem_write_idx u32
