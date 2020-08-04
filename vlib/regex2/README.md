@@ -1,4 +1,4 @@
-# V RegEx (Regular expression) 0.9d
+# V RegEx (Regular expression) 0.9f
 
 [TOC]
 
@@ -137,7 +137,7 @@ The "capture groups" are store as couple of index in the field `groups` that is 
 ```v
 text := "cpaz cpapaz cpapapaz"
 query:= r"(c(pa)+z ?)+"
-mut re := regex.regex(query) or { panic(err) }
+mut re := regex2.regex(query) or { panic(err) }
 
 println(re.get_query())
 // #0(c#1(pa)+z ?)+  // #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
@@ -187,7 +187,7 @@ fn example2() {
 	text := "tst: 01,23,45 ,56, 78"
 	query:= r".*:(\s*\d+[\s,]*)+"
 
-	mut re := regex.new_regex()
+	mut re := regex2.new_regex()
 	//re.debug = 2
 	re.group_csave = [-1].repeat(3*20+1)  // we expect max 20 records
 
@@ -344,8 +344,8 @@ It is possible to set some flags in the regex parser that change the behavior of
 
 ```v
 // example of flag settings
-mut re := regex.new_regex()
-re.flag = regex.F_BIN 
+mut re := regex2.new_regex()
+re.flag = regex2.F_BIN 
 
 ```
 
@@ -544,38 +544,29 @@ tests = [
 
 fn example() {
 	for c,tst in tests {
-		mut re := regex.new_regex()
+		mut re := regex2.new_regex()
 		re.compile(tst.query) or { println(err) continue }
-		if re_err == regex.COMPILE_OK {
 			
-			// print the query parsed with the groups ids
-			re.debug = 1 // set debug on at minimum level
-			println("#${c:2d} query parsed: ${re.get_query()}")
-			re.debug = 0
-			
-			// do the match
-			start, end := re.match_string(tst.source)
-			if start >= 0 && end > start {
-				println("#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]")
-			}	
-			
-			// print the groups
-			mut gi := 0
-			for gi < re.groups.len {
-				if re.groups[gi] >= 0 {
-					println("group ${gi/2:2d} :[${tst.source[re.groups[gi]..re.groups[gi+1]]}]")
-				}
-				gi += 2
-			}		
-			println("")
-		} else {
-			// print the compile error
-			println("query: $tst.query")
-			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
-			err_str := re.get_parse_error_string(re_err)
-			println("ERROR: $err_str")
-		}
+        // print the query parsed with the groups ids
+        re.debug = 1 // set debug on at minimum level
+        println("#${c:2d} query parsed: ${re.get_query()}")
+        re.debug = 0
+        
+        // do the match
+        start, end := re.match_string(tst.source)
+        if start >= 0 && end > start {
+            println("#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]")
+        }	
+        
+        // print the groups
+        mut gi := 0
+        for gi < re.groups.len {
+            if re.groups[gi] >= 0 {
+                println("group ${gi/2:2d} :[${tst.source[re.groups[gi]..re.groups[gi+1]]}]")
+            }
+            gi += 2
+        }		
+        println("")
 	}
 }
 
