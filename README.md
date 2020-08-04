@@ -52,10 +52,8 @@ they are stabilized in 2020. Of course the APIs will grow after that, but withou
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple 
+being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
-
-
 
 ## Installing V from source
 
@@ -67,7 +65,7 @@ cd v
 make
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`. 
+That's it! Now you have a V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
 (On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
@@ -76,7 +74,7 @@ Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is being constantly updated. To update V, simply run:
 
-```
+```.bash
 v up
 ```
 
@@ -105,20 +103,22 @@ executable. To do that, run:
 sudo ./v symlink
 ```
 
-On Windows, start a new shell with administrative privileges, for 
+On Windows, start a new shell with administrative privileges, for
 example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
-entry, and choose `Run as administrator`. In the new administrative 
+entry, and choose `Run as administrator`. In the new administrative
 shell, cd to the path, where you have compiled v.exe, then type:
-```bat
+
+```bash
 .\v.exe symlink
 ```
-That will make v available everywhere, by adding it to your PATH. 
-Please restart your shell/editor after that, so that it can pick 
+
+That will make v available everywhere, by adding it to your PATH.
+Please restart your shell/editor after that, so that it can pick
 the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will 
-continue to be available, even after `v up`, restarts and so on. 
-You only need to run it again, if you decide to move the V repo 
+NB: there is no need to run `v symlink` more than once - v will
+continue to be available, even after `v up`, restarts and so on.
+You only need to run it again, if you decide to move the V repo
 folder somewhere else.
 
 ### Docker
@@ -133,7 +133,8 @@ docker run --rm -it vlang:latest
 v
 ```
 
-### Docker with Alpine/musl:
+### Docker with Alpine/musl
+
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -143,12 +144,11 @@ docker run --rm -it vlang:latest
 ```
 </details>
 
-
 ### Testing and running the examples
 
 Make sure V can compile itself:
 
-```
+```bash
 v self
 ```
 
@@ -192,7 +192,6 @@ Fedora:
 sudo dnf install freetype-devel
 ```
 
-
 ## V UI
 
 <a href="https://github.com/vlang/ui">
@@ -230,7 +229,6 @@ tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 https://github.com/vlang/gitly
 
 <img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
-
 
 ## Troubleshooting
 
