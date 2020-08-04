@@ -31,7 +31,6 @@ fn do_send_i64(mut ch sync.Channel) {
 	}
 }
 
-
 fn test_select() {
 	mut chi := sync.new_channel<int>(0)
 	mut chl := sync.new_channel<i64>(1)

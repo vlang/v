@@ -2,7 +2,7 @@ import sync
 
 fn do_rec(mut ch sync.Channel, mut resch sync.Channel) {
 	mut sum := i64(0)
-	for _ in 0 .. 100000 {
+	for _ in 0 .. 2000 {
 		mut a := 0
 		ch.pop(&a)
 		sum += a
@@ -12,7 +12,7 @@ fn do_rec(mut ch sync.Channel, mut resch sync.Channel) {
 }
 
 fn do_send(mut ch sync.Channel) {
-	for i in 0 .. 100000 {
+	for i in 0 .. 2000 {
 		ch.push(&i)
 	}
 }
@@ -34,5 +34,5 @@ fn test_channel_multi_buffered() {
 		resch.pop(&r)
 		sum += r
 	}
-	assert sum == i64(4) * 100000 * (100000 - 1) / 2
+	assert sum == i64(4) * 2000 * (2000 - 1) / 2
 }

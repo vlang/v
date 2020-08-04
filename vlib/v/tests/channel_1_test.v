@@ -1,7 +1,7 @@
 import sync
 
 const (
-	num_iterations = 1000000
+	num_iterations = 10000
 )
 
 fn do_send(mut ch sync.Channel) {
