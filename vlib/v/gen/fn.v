@@ -493,22 +493,28 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	*/
 	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	/*
-	if g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) {
+	free_tmp_arg_vars := g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional)
+	if free_tmp_arg_vars {
+		g.tmp_idxs = []int{cap: 10} // TODO perf
 		for i, arg in node.args {
 			if arg.typ != table.string_type {
 				continue
 			}
-			if arg.expr is ast.Ident {
+			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
 				continue
 			}
-			t := g.new_tmp_var()
+			t := '_arg_expr_${name}_$i' // g.new_tmp_var()
+			g.called_fn_name = name
+			/*
 			g.write('string $t = ')
 			g.expr(arg.expr)
-			g.writeln('// to free $i ')
+			g.writeln('; // to free $i ')
+			*/
+			str_expr := g.write_expr_to_string(arg.expr)
+			g.insert_before_stmt('string $t = $str_expr; // to free $i ')
+			g.tmp_idxs << i
 		}
 	}
-	*/
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
@@ -585,6 +591,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write(')')
 		g.is_json_fn = false
 	}
+	if free_tmp_arg_vars {
+		g.tmp_idxs.clear()
+	}
 }
 
 fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
@@ -612,6 +621,9 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			}
 			if is_interface {
 				g.expr(arg.expr)
+			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
+				g.tmp_idxs.len > 0 && i in g.tmp_idxs {
+				g.write('_arg_expr_${g.called_fn_name}_$i')
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i])
 			}

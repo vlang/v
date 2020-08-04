@@ -101,6 +101,8 @@ mut:
 	comptime_var_type_map map[string]table.Type
 	match_sumtype_exprs   []ast.Expr
 	match_sumtype_syms    []table.TypeSymbol
+	tmp_idxs              []int
+	called_fn_name        string
 }
 
 const (

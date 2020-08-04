@@ -243,17 +243,6 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
 }
 
-pub fn create_image(file string) u32 {
-	// println('gg create image "$file"')
-	if !os.exists(file) {
-		println('gg create image no such file "$file"')
-		return u32(0)
-	}
-	// img := stbi.load(file)
-	// img.free()
-	return 0 // texture
-}
-
 pub struct Image {
 pub mut:
 	width       int
@@ -262,12 +251,13 @@ pub mut:
 	ok          bool
 	data        voidptr
 	ext         string
-	sokol_img   C.sg_image
+	simg_ok     bool
+	simg        C.sg_image
 }
 
-pub fn create_image2(file string) Image {
+pub fn create_image(file string) Image {
 	if !os.exists(file) {
-		println('gg create image no such file "$file"')
+		println('gg.create_image(): file not found: $file')
 		return Image{} // none
 	}
 	stb_img := stbi.load(file)
@@ -279,6 +269,27 @@ pub fn create_image2(file string) Image {
 		data: stb_img.data
 		ext: stb_img.ext
 	}
+	return img
+}
+
+pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
+	stb_img := stbi.load_from_memory(buf, bufsize)
+	mut img := Image{
+		width: stb_img.width
+		height: stb_img.height
+		nr_channels: stb_img.nr_channels
+		ok: stb_img.ok
+		data: stb_img.data
+		ext: stb_img.ext
+	}
+	return img
+}
+
+pub fn create_image_from_byte_array(b []byte) Image {
+	return create_image_from_memory(b.data, b.len)
+}
+
+pub fn (mut img Image) init_sokol_image() &Image {
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
@@ -292,15 +303,9 @@ pub fn create_image2(file string) Image {
 		ptr: img.data
 		size: img.nr_channels * img.width * img.height
 	}
-	img.sokol_img = C.sg_make_image(&img_desc)
+	img.simg = C.sg_make_image(&img_desc)
+	img.simg_ok = true
 	return img
-}
-
-pub fn create_image_from_memory(buf byteptr) u32 {
-	// texture := gl.gen_texture()
-	// img := stbi.load_from_memory(buf)
-	// img.free()
-	return 0 // texture
 }
 
 pub fn (gg &Context) begin() {
@@ -331,22 +336,25 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
-}
-
-pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
+	if !img.simg_ok {
+		unsafe {
+			mut image := img
+			image.init_sokol_image()
+		}
+	}
 	u0 := f32(0.0)
 	v0 := f32(0.0)
 	u1 := f32(1.0)
 	v1 := f32(1.0)
-	x0 := f32(x)
-	y0 := f32(y)
-	x1 := f32(x + width)
-	y1 := f32(y + height)
+	x0 := f32(x) * ctx.scale
+	y0 := f32(y) * ctx.scale
+	x1 := f32(x + width) * ctx.scale
+	y1 := f32(y + height) * ctx.scale
 	//
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
-	sgl.texture(img.sokol_img)
+	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v2f_t2f(x0, y0,	  u0, v0)
