@@ -7,6 +7,7 @@ import v.util.vtest
 const (
 	skip_valgrind_files = [
 		'vlib/v/tests/valgrind/struct_field.vv',
+		'vlib/v/tests/valgrind/fn_returning_string_param.vv',
 	]
 )
 
