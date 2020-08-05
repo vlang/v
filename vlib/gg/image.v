@@ -9,7 +9,6 @@ import stbi
 
 pub struct Image {
 pub mut:
-	id          int // used as an index in image_cache.slots
 	width       int
 	height      int
 	nr_channels int
@@ -17,23 +16,27 @@ pub mut:
 	data        voidptr
 	ext         string
 	path string
+	cache_slot  &ImageCacheSlot = 0
 }
 //
 struct ImageCacheSlot {
-	id      int
-	simg_ok bool
-	simg    C.sg_image
+	id         int
+mut:
+	is_simg_ok bool
+	simg       C.sg_image
 }
+fn (mut cs ImageCacheSlot) set_sokol_image(simg C.sg_image) {
+	cs.simg = simg
+	cs.is_simg_ok = true
+}
+//
 [ref_only]
 struct ImageCache {
 mut:
 	current_image_id int = -1
 	slots []ImageCacheSlot
 }
-fn new_image_cache() &ImageCache {
-	return &ImageCache{}
-}
-fn (ic &ImageCache) get_new_id() int {
+fn (ic &ImageCache) get_new_cache_slot() &ImageCacheSlot {
 	mut mic := &ImageCache(0)
 	unsafe {
 		mic = ic
@@ -41,22 +44,12 @@ fn (ic &ImageCache) get_new_id() int {
 	mic.current_image_id++
 	mic.slots << ImageCacheSlot {
 		id: mic.current_image_id
-		simg_ok: false
+		is_simg_ok: false
 	}
-	return ic.current_image_id
-}
-fn (ic &ImageCache) set_simg(id int, simg C.sg_image) {
-	if id >= ic.slots.len {
-		panic('invalid image cache id: $id, slots.len: $ic.slots.len')
-	}
-	mut mic := &ImageCache(0)
-	unsafe {
-		mic = ic
-	}
-	mic.slots[id] = ImageCacheSlot{ id: id, simg_ok: true, simg: simg }
+	return &mic.slots[mic.slots.len-1]
 }
 const (
-	image_cache = new_image_cache()
+	image_cache = &ImageCache{}
 )
 //
 pub fn  create_image(file string) Image {
@@ -66,7 +59,6 @@ pub fn  create_image(file string) Image {
 	}
 	stb_img := stbi.load(file)
 	mut img := Image{
-		id: image_cache.get_new_id()
 		width: stb_img.width
 		height: stb_img.height
 		nr_channels: stb_img.nr_channels
@@ -74,6 +66,7 @@ pub fn  create_image(file string) Image {
 		data: stb_img.data
 		ext: stb_img.ext
 		path: file
+		cache_slot: image_cache.get_new_cache_slot()
 	}
 	return img
 }
@@ -81,13 +74,13 @@ pub fn  create_image(file string) Image {
 pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
 	stb_img := stbi.load_from_memory(buf, bufsize)
 	mut img := Image{
-		id: image_cache.get_new_id()
 		width: stb_img.width
 		height: stb_img.height
 		nr_channels: stb_img.nr_channels
 		ok: stb_img.ok
 		data: stb_img.data
 		ext: stb_img.ext
+		cache_slot: image_cache.get_new_cache_slot()
 	}
 	return img
 }
@@ -116,12 +109,15 @@ pub fn (img &Image) new_sokol_image() C.sg_image {
 }
 
 pub fn (img &Image) get_sokol_image() C.sg_image {
-	slot := image_cache.slots[img.id]
-	if slot.simg_ok {
+	slot := img.cache_slot
+	if slot.is_simg_ok {
 		return slot.simg
 	}
 	simg := img.new_sokol_image()
-	image_cache.set_simg(img.id, simg)
+	unsafe {
+		mut cs := slot
+		cs.set_sokol_image(simg)
+	}
 	return simg
 }
 
