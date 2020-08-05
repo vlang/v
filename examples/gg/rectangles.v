@@ -25,13 +25,13 @@ fn main() {
 		create_window: true
 		window_title: 'Rectangles'
 		frame_fn: frame
-		init_fn: init_app
 		user_data: app
+		init_fn: init_images
 	)
 	app.gg.run()
 }
 
-fn init_app(mut app App) {
+fn init_images(mut app App) {
 	app.image = gg.create_image('logo.png')
 }
 

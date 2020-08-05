@@ -8,7 +8,6 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-import stbi
 
 // import time
 pub type FNCb = fn (x voidptr)
@@ -52,6 +51,7 @@ pub:
 
 pub struct Context {
 	render_text bool
+	//img_cache []ImageCache
 pub mut:
 	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
@@ -184,6 +184,7 @@ pub fn new_context(cfg Config) &Context {
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
+
 	}
 	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
@@ -243,71 +244,6 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
 }
 
-pub struct Image {
-pub mut:
-	width       int
-	height      int
-	nr_channels int
-	ok          bool
-	data        voidptr
-	ext         string
-	simg_ok     bool
-	simg        C.sg_image
-}
-
-pub fn create_image(file string) Image {
-	if !os.exists(file) {
-		println('gg.create_image(): file not found: $file')
-		return Image{} // none
-	}
-	stb_img := stbi.load(file)
-	mut img := Image{
-		width: stb_img.width
-		height: stb_img.height
-		nr_channels: stb_img.nr_channels
-		ok: stb_img.ok
-		data: stb_img.data
-		ext: stb_img.ext
-	}
-	return img
-}
-
-pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
-	stb_img := stbi.load_from_memory(buf, bufsize)
-	mut img := Image{
-		width: stb_img.width
-		height: stb_img.height
-		nr_channels: stb_img.nr_channels
-		ok: stb_img.ok
-		data: stb_img.data
-		ext: stb_img.ext
-	}
-	return img
-}
-
-pub fn create_image_from_byte_array(b []byte) Image {
-	return create_image_from_memory(b.data, b.len)
-}
-
-pub fn (mut img Image) init_sokol_image() &Image {
-	mut img_desc := C.sg_image_desc{
-		width: img.width
-		height: img.height
-		num_mipmaps: 0
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &byte(0)
-		d3d11_texture: 0
-	}
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
-		ptr: img.data
-		size: img.nr_channels * img.width * img.height
-	}
-	img.simg = C.sg_make_image(&img_desc)
-	img.simg_ok = true
-	return img
-}
-
 pub fn (gg &Context) begin() {
 	if gg.render_text && gg.font_inited {
 		gg.ft.flush()
@@ -334,35 +270,6 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()
-}
-
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
-	if !img.simg_ok {
-		unsafe {
-			mut image := img
-			image.init_sokol_image()
-		}
-	}
-	u0 := f32(0.0)
-	v0 := f32(0.0)
-	u1 := f32(1.0)
-	v1 := f32(1.0)
-	x0 := f32(x) * ctx.scale
-	y0 := f32(y) * ctx.scale
-	x1 := f32(x + width) * ctx.scale
-	y1 := f32(y + height) * ctx.scale
-	//
-	sgl.load_pipeline(ctx.timage_pip)
-	sgl.enable_texture()
-	sgl.texture(img.simg)
-	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
-	sgl.v2f_t2f(x0, y0,	  u0, v0)
-	sgl.v2f_t2f(x1, y0,	  u1, v0)
-	sgl.v2f_t2f(x1, y1,	  u1, v1)
-	sgl.v2f_t2f(x0, y1,	  u0, v1)
-	sgl.end()
-	sgl.disable_texture()
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
