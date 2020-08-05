@@ -12,7 +12,7 @@ import stbi
 
 pub struct Image {
 pub mut:
-	//id int
+	id int
 	width       int
 	height      int
 	nr_channels int
@@ -24,22 +24,37 @@ pub mut:
 	path string
 }
 
-/*
-struct ImageCache {
-	id int
-mut:
-	simg C.sg_image
-	ok bool
-}
-*/
+fn C.sg_isvalid() bool
 
-//pub fn (mut ctx Context) create_image(file string) Image {
-pub fn  create_image(file string) Image {
+pub fn (mut ctx Context) create_image(file string) Image {
+	if !C.sg_isvalid() {
+		//ctx.image_queue << file
+		stb_img := stbi.load(file)
+		img := Image{
+			width: stb_img.width
+			height: stb_img.height
+			nr_channels: stb_img.nr_channels
+			ok: false
+			data: stb_img.data
+			ext: stb_img.ext
+			path: file
+			id: ctx.image_cache.len
+		}
+		ctx.image_cache << img
+		return img
+	}
+	mut img := create_image(file)
+	img.id = ctx.image_cache.len
+	ctx.image_cache << img
+	return img
+}
+
+// TODO remove this
+fn create_image(file string) Image {
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: $file')
 		return Image{} // none
 	}
-	//id := ctx.img_buf.len
 	stb_img := stbi.load(file)
 	mut img := Image{
 		width: stb_img.width
@@ -49,12 +64,8 @@ pub fn  create_image(file string) Image {
 		data: stb_img.data
 		ext: stb_img.ext
 		path: file
-		//id: id
 	}
 	img.init_sokol_image()
-	//ctx.img_buf << ImageCache {
-		//id: id
-	//}
 	return img
 }
 
@@ -76,7 +87,7 @@ pub fn create_image_from_byte_array(b []byte) Image {
 }
 
 pub fn (mut img Image) init_sokol_image() &Image {
-	println('\n init sokol image $img.path ok=$img.simg_ok')
+	//println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
@@ -92,38 +103,14 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	}
 	img.simg = C.sg_make_image(&img_desc)
 	img.simg_ok = true
+	img.ok = true
 	return img
 }
 
-fn (mut ctx Context) cache_sokol_image(img &Image) {
-	//println('\ncache sokol image $img.path ok=$img.simg_ok')
-	mut img_desc := C.sg_image_desc{
-		width: img.width
-		height: img.height
-		num_mipmaps: 0
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &byte(0)
-		d3d11_texture: 0
-	}
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
-		ptr: img.data
-		size: img.nr_channels * img.width * img.height
-	}
-	//ctx.img_cache[img.id].simg = C.sg_make_image(&img_desc)
-	//ctx.img_cache[img.id].ok = true
-}
-
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
+	img := ctx.image_cache[img_.id] // fetch the image from cache
 	if !img.simg_ok {
 		return
-		//ctx.cache_sokol_image(img)
-		/*
-		unsafe {
-			mut image := img
-			image.init_sokol_image()
-		}
-		*/
 	}
 	u0 := f32(0.0)
 	v0 := f32(0.0)
@@ -145,6 +132,11 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
 	sgl.v2f_t2f(x0, y1,	  u0, v1)
 	sgl.end()
 	sgl.disable_texture()
+}
+
+pub fn (ctx &Context) draw_image_by_id(x, y, width, height f32, id int) {
+	img := ctx.image_cache[id]
+	ctx.draw_image(x,y,width,height,img)
 }
 
 

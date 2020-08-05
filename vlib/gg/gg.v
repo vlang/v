@@ -51,7 +51,10 @@ pub:
 
 pub struct Context {
 	render_text bool
-	//img_cache []ImageCache
+mut:
+	// a cache with all images created by the user. used for sokol image init and to save space
+	// (so that the user can store image ids, not entire Image objects)
+	image_cache []Image
 pub mut:
 	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
@@ -116,6 +119,10 @@ fn gg_init_sokol_window(user_data voidptr) {
 	//
 	if g.config.init_fn != voidptr(0) {
 		g.config.init_fn(g.config.user_data)
+	}
+	// Create images now that we can do that after sg is inited
+	for i in 0..g.image_cache.len {
+		g.image_cache[i].init_sokol_image()
 	}
 }
 
