@@ -64,6 +64,13 @@ enum BufferElemStat {
 	reading
 }
 
+struct Subscription {
+mut:
+	sem Semaphore
+	prev &&Subscription
+	nxt &Subscription
+}
+
 struct Channel {
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
@@ -83,8 +90,8 @@ mut: // atomic
 	buf_elem_write_idx u32
 	buf_elem_read_idx  u32
 	// for select
-	write_subscriber   Semaphore
-	read_subscriber    Semaphore
+	write_subscriber   &Subscription
+	read_subscriber    &Subscription
 	write_sub_mtx      u16
 	read_sub_mtx       u16
 }
@@ -101,6 +108,8 @@ pub fn new_channel<T>(n u32) &Channel {
 		read_avail: 0
 		ringbuf: if n > 0 { malloc(int(n * sizeof(T))) } else { byteptr(0) }
 		statusbuf: if n > 0 { vcalloc(int(n * sizeof(u16))) } else { byteptr(0) }
+		write_subscriber: 0
+		read_subscriber: 0
 	}
 }
 
@@ -154,14 +163,12 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				}
 			}
 			if !read_in_progress {
-				mut sem := Semaphore{} // for select
 				mut null16 := u16(0)
 				for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 					null16 = u16(0)
 				}
-				sem.sem = ch.read_subscriber.sem
-				if sem.sem != 0 {
-					sem.post()
+				if ch.read_subscriber != voidptr(0) {
+					ch.read_subscriber.sem.post()
 				}
 				C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 			}
@@ -235,14 +242,12 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				old_read_avail := C.atomic_fetch_add_u32(&ch.read_avail, 1)
 				ch.readsem.post()
 				if old_read_avail == 0 {
-					mut sem := Semaphore{} // for select
 					mut null16 := u16(0)
 					for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 						null16 = u16(0)
 					}
-					sem.sem = ch.read_subscriber.sem
-					if sem.sem != 0 {
-						sem.post()
+					if ch.read_subscriber != voidptr(0) {
+						ch.read_subscriber.sem.post()
 					}
 					C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 				}
@@ -334,14 +339,12 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 				old_write_free := C.atomic_fetch_add_u32(&ch.write_free, 1)
 				ch.writesem.post()
 				if old_write_free == 0 {
-					mut sem := Semaphore{}
 					mut null16 := u16(0)
 					for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 						null16 = u16(0)
 					}
-					sem.sem = ch.write_subscriber.sem
-					if sem.sem != 0 {
-						sem.post()
+					if ch.write_subscriber != voidptr(0) {
+						ch.write_subscriber.sem.post()
 					}
 					C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 				}
@@ -349,7 +352,6 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			}
 		}
 		// try to advertise `dest` as writable
-		mut nulladdr := voidptr(0)
 		C.atomic_store_ptr(&ch.write_adr, dest)
 		if ch.queue_length == 0 {
 			mut rdadr := C.atomic_load_ptr(&ch.read_adr)
@@ -364,14 +366,12 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			}
 		}
 		if ch.queue_length == 0 && !write_in_progress {
-			mut sem := Semaphore{}
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			sem.sem = ch.write_subscriber.sem
-			if sem.sem != 0 {
-				sem.post()
+			if ch.write_subscriber != voidptr(0) {
+				ch.write_subscriber.sem.post()
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		}
@@ -409,30 +409,39 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 	}
 }
 
+// Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
+// object referenced by `objrefs[i]`. `timeout = 0` means wait unlimited time
+
 pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voidptr, timeout time.Duration) int {
 	assert channels.len == is_push.len
 	assert is_push.len == objrefs.len
-	mut sem := new_semaphore()
+	mut subscr := []Subscription{len: channels.len}
+	sem := new_semaphore()
 	for i, ch in channels {
-		mut oldsem := voidptr(0)
 		if is_push[i] {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			oldsem = C.atomic_exchange_ptr(&ch.write_subscriber.sem, sem.sem)
+			subscr[i].sem = sem
+			subscr[i].prev = &ch.write_subscriber
+			subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
+			if voidptr(subscr[i].nxt) != voidptr(0) {
+				subscr[i].nxt.prev = &subscr[i]
+			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			oldsem = C.atomic_exchange_ptr(&ch.read_subscriber.sem, sem.sem)
+			subscr[i].sem = sem
+			subscr[i].prev = &ch.read_subscriber
+			subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
+			if voidptr(subscr[i].nxt) != voidptr(0) {
+				subscr[i].nxt.prev = &subscr[i]
+			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
-		}
-		if oldsem != 0 {
-			// TODO: subscriber lists to handle more than one select at a time
-			panic('channel_select: channel $i is already used in another `select`')
 		}
 	}
 	stopwatch := if timeout == 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
@@ -473,14 +482,21 @@ restore:
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			C.atomic_exchange_ptr(&ch.write_subscriber.sem, voidptr(0))
+			subscr[i].prev = subscr[i].nxt
+			if subscr[i].nxt != 0 {
+				// just in case we have missed a semaphore during restore
+				subscr[i].nxt.sem.post()
+			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			C.atomic_exchange_ptr(&ch.read_subscriber.sem, voidptr(0))
+			subscr[i].prev = subscr[i].nxt
+			if subscr[i].nxt != 0 {
+				subscr[i].nxt.sem.post()
+			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
