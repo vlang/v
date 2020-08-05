@@ -474,7 +474,6 @@ fn (mut s Scanner) ident_dec_number() string {
 	}
 	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
 	mut is_range := false // true for, e.g., 5..10
-	mut is_float_without_fraction := false // true for, e.g. 5.
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
@@ -508,10 +507,8 @@ fn (mut s Scanner) ident_dec_number() string {
 				// 5.str()
 				call_method = true
 				s.pos--
-			} else if s.text[s.pos] != `)` {
+			} else {
 				// 5.
-				is_float_without_fraction = true
-				s.pos--
 			}
 		}
 	}
@@ -550,7 +547,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		s.pos-- // adjust error position
 		s.error('exponent has no digits')
 	} else if s.pos < s.text.len &&
-		s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
+		s.text[s.pos] == `.` && !is_range && !call_method {
 		// error check: 1.23.4, 123.e+3.4
 		if has_exp {
 			s.error('exponential part should be integer')
