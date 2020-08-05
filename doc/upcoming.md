@@ -243,23 +243,21 @@ index of the object that was pushed or popped or `-1` for timeout.
 
 ```v
 mut chans := [ch, ch2]        // the channels to monitor
-directions := [false, false]  // true means push, false means pop
+directions := [false, false]  // `true` means push, `false` means pop
 mut objs := [voidptr(&m), &y] // the objects to push or pop
 
-idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
-
 // idx contains the index of the object that was pushed or popped, -1 means timeout occured
-
+idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
 match idx {
     0 {
-	    println('got $m')
-	}
-	1 {
-	    println('got $y')
-	}
-	else {
-	    // idx = -1
-		println('Timeout')
-	}
+        println('got $m')
+    }
+    1 {
+        println('got $y')
+    }
+    else {
+        // idx = -1
+        println('Timeout')
+    }
 }
 ```
