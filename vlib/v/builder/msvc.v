@@ -96,9 +96,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		}
 		kit_lib := kit_root + 'Lib'
 		// println(kit_lib)
-		files := os.ls(kit_lib) or {
-			panic(err)
-		}
+		files := os.ls(kit_lib)?
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
