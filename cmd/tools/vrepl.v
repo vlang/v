@@ -54,7 +54,8 @@ fn (mut r Repl) checks() bool {
 
 fn (r &Repl) function_call(line string) bool {
 	for function in r.functions_name {
-		if line.starts_with(function) {
+		is_function_definition := line.replace(' ', '').starts_with("$function:=")
+		if line.starts_with(function) && !is_function_definition {
 			return true
 		}
 	}
