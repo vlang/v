@@ -28,7 +28,7 @@ fn main() {
 		user_data: app
 		init_fn: init_images
 	)
-	app.image = app.gg.create_image('logo.png')
+	app.image = app.gg.create_image(os.resource_abs_path('logo.png'))
 	app.gg.run()
 }
 
