@@ -378,11 +378,17 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !os.is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
+	tmp_perm_check := os.join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
 	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
 	os.rm(tmp_perm_check)
 	return true
+}
+
+fn C._getpid() int
+[inline]
+pub fn getpid() int {
+	return C._getpid()
 }

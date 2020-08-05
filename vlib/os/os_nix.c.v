@@ -211,3 +211,8 @@ pub fn is_writable_folder(folder string) ?bool {
 	os.rm(tmp_perm_check)
 	return true
 }
+
+[inline]
+pub fn getpid() int {
+	return C.getpid()
+}
