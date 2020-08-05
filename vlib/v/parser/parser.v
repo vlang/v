@@ -725,6 +725,12 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() table.Attr {
+	if p.tok.kind == .key_unsafe {
+		p.next()
+		return table.Attr{
+			name: 'unsafe'
+		}
+	}
 	mut is_ctdefine := false
 	if p.tok.kind == .key_if {
 		p.next()
@@ -737,6 +743,10 @@ fn (mut p Parser) parse_attr() table.Attr {
 		p.next()
 	} else {
 		mut name = p.check_name()
+		if name == 'unsafe_fn' {
+			//p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+			name = 'unsafe'
+		}
 		if p.tok.kind == .colon {
 			name += ':'
 			p.next()
