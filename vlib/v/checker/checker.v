@@ -2644,8 +2644,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			}
 		}
 		if node.is_sum_type && branch.stmts.len > 0 && branch.exprs.len > 0
-			&& node.cond is ast.Ident && (node.cond as ast.Ident).kind == .variable {
-			mut scope := c.file.scope.innermost(branch.stmts[0].position().pos)
+			&& ((node.cond is ast.Ident && (node.cond as ast.Ident).kind == .variable)
+			|| node.cond is ast.SelectorExpr) {
+			// lcbr + 1
+			mut scope := c.file.scope.innermost(branch.pos.pos + 1)
+			// if new var has same name will fail silently. will create otherwise
 			scope.register(node.var_name, ast.Var{
 				name: node.var_name
 				typ: c.expr(branch.exprs[0])
@@ -2653,6 +2656,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				is_used: true
 				is_mut: node.is_mut
 			})
+			// if new var has same name, will update type here
+			scope.update_var_type(node.var_name, c.expr(branch.exprs[0]))
 			node.smartcast = true
 		}
 		c.stmts(branch.stmts)
