@@ -53,8 +53,8 @@ fn C.atomic_fetch_sub_u64(voidptr, u64) u64
 
 const (
 	// how often to try to get data without blocking before to wait for semaphore
-	spinloops = 250
-	spinloops_sem = 500
+	spinloops = 750
+	spinloops_sem = 4000
 )
 
 enum BufferElemStat {
