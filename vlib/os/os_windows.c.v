@@ -241,13 +241,15 @@ pub fn exec(cmd string) ?Result {
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
 		voidptr(&child_stdout_write), voidptr(&sa), 0)
 	if !create_pipe_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		return error('exec failed (CreatePipe): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (CreatePipe): $error_msg', error_num)
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		panic('exec failed (SetHandleInformation): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (SetHandleInformation): $error_msg', error_num)
 	}
 
 	proc_info := ProcessInformation{}
@@ -267,7 +269,7 @@ pub fn exec(cmd string) ?Result {
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd')
+		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd', error_num)
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
