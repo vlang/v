@@ -2,6 +2,7 @@ import os
 import term
 import benchmark
 import v.util
+import v.util.vtest
 
 const (
 	skip_valgrind_files = [
@@ -9,9 +10,10 @@ const (
 	]
 )
 
-[if verbose]
 fn vprintln(s string) {
-	eprintln(s)
+	$if verbose ? {
+		eprintln(s)
+	}
 }
 
 fn test_all() {
@@ -29,7 +31,8 @@ fn test_all() {
 	eprintln(term.header(bench_message, '-'))
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	dir := os.join_path(vroot, 'vlib/v/tests/valgrind')
+	valgrind_test_path := 'vlib/v/tests/valgrind'
+	dir := os.join_path(vroot, valgrind_test_path)
 	files := os.ls(dir) or {
 		panic(err)
 	}
@@ -38,19 +41,23 @@ fn test_all() {
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
-	tests := files.filter(it.ends_with('.vv'))
+	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.vv')), {
+		basepath: valgrind_test_path
+	})
 	bench.set_total_expected_steps(tests.len)
-	for test in tests {
+	for dir_test_path in tests {
 		bench.step()
-		test_basename := os.file_name(test).replace('.vv', '')
+		test_basename := os.file_name(dir_test_path).replace('.vv', '')
 		v_filename := '$wrkdir/${test_basename}.v'
 		exe_filename := '$wrkdir/$test_basename'
-		full_test_path := os.real_path(os.join_path(dir, test))
-		dir_test_path := full_test_path.replace(vroot + '/', '')
+		full_test_path := os.real_path(os.join_path(vroot, dir_test_path))
+		//
 		if dir_test_path in skip_valgrind_files {
-			bench.skip()
-			eprintln(bench.step_message_skip(dir_test_path))
-			continue
+			$if !noskip ? {
+				bench.skip()
+				eprintln(bench.step_message_skip(dir_test_path))
+				continue
+			}
 		}
 		vprintln('$dir_test_path => $v_filename')
 		//

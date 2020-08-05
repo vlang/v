@@ -1,5 +1,6 @@
 import os
 import term
+import v.util.vtest
 
 fn test_vet() {
 	vexe := os.getenv('VEXE')
@@ -20,25 +21,10 @@ fn get_tests_in_dir(dir string) []string {
 }
 
 fn check_path(vexe, dir string, tests []string) int {
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	mut nb_fail := 0
-	mut paths := []string{}
-	for test in tests {
-		path := os.join_path(dir, test).replace('\\', '/')
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if path.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
-		paths << path
-	}
+	paths := vtest.filter_vtest_only(tests, {
+		basepath: dir
+	})
 	for path in paths {
 		program := path.replace('.vv', '.v')
 		print(path + ' ')
