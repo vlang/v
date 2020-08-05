@@ -504,6 +504,7 @@ pub mut:
 	expected_type table.Type // for debugging only
 	is_sum_type   bool
 	is_interface  bool
+	smartcast     bool	= false	// indicates smartcast for sumtypes, for checker and cgen
 }
 
 pub struct MatchBranch {

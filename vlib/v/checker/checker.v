@@ -2643,16 +2643,17 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				}
 			}
 		}
-		if node.is_sum_type && branch.stmts.len > 0 && node.cond is ast.Ident {
-			var_name := (node.cond as ast.Ident).name
+		if node.is_sum_type && branch.stmts.len > 0 && branch.exprs.len > 0
+			&& node.cond is ast.Ident && (node.cond as ast.Ident).kind == .variable {
 			mut scope := c.file.scope.innermost(branch.stmts[0].position().pos)
-			scope.register(var_name, ast.Var{
-				name: var_name
-				typ: (branch.exprs[0] as ast.Type).typ
+			scope.register(node.var_name, ast.Var{
+				name: node.var_name
+				typ: c.expr(branch.exprs[0])
 				pos: branch.stmts[0].position()
 				is_used: true
 				is_mut: node.is_mut
 			})
+			node.smartcast = true
 		}
 		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type

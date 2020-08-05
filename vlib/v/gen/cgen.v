@@ -2368,7 +2368,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
-		if node.is_sum_type && branch.exprs.len > 0 && !node.is_expr {
+		if node.is_sum_type && node.smartcast && branch.exprs.len > 0 && !node.is_expr {
 			// The first node in expr is an ast.Type
 			// Use it to generate `it` variable.
 			first_expr := branch.exprs[0]
