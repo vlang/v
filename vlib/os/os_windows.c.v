@@ -4,6 +4,7 @@ import strings
 
 #flag -lws2_32
 #include <winsock2.h>
+#include <process.h>
 
 pub const (
 	path_separator = '\\'
