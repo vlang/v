@@ -1256,8 +1256,11 @@ pub fn temp_dir() string {
 			}
 		}
 	}
-	if path == '' {
-		path = os.cache_dir()
+	$if android {
+		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		if path == '' {
+			path = os.cache_dir()
+		}
 	}
 	if path == '' {
 		path = '/tmp'
