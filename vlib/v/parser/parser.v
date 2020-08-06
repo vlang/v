@@ -1015,7 +1015,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				expr: expr
 				arg: arg
 				has_arg: has_arg
-				pos: full_pos
+				pos: expr.position()
 			}
 			p.expr_mod = ''
 			return node
