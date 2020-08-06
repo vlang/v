@@ -1,29 +1,29 @@
 module io
 
 pub interface InputStream {
-	get_int() int
-	get_ints(l u32) []int
-	get_i8() i8
-	get_i8s(l u32) []i8
-	get_i16() i16
-	get_i16s(l u32) []i16
-	get_i64() i64
-	get_i64s(l u32) []i64
-	get_byte() byte
-	get_bytes(l u32) []byte
-	get_u16() u16
-	get_u16s(l u32) []u16
-	get_u32() u32
-	get_u32s(l u32) []u32
-	get_u64() u64
-	get_u64s(l u32) []u64
-	get_f32() f32
-	get_f32s(l u32) []f32
-	get_f64() f64
-	get_f64s(l u32) []f64
-	get_string(l u32)
+	read_int() int
+	read_ints(l u32) []int
+	read_i8() i8
+	read_i8s(l u32) []i8
+	read_i16() i16
+	read_i16s(l u32) []i16
+	read_i64() i64
+	read_i64s(l u32) []i64
+	read_byte() byte
+	read_bytes(l u32) []byte
+	read_u16() u16
+	read_u16s(l u32) []u16
+	read_u32() u32
+	read_u32s(l u32) []u32
+	read_u64() u64
+	read_u64s(l u32) []u64
+	read_f32() f32
+	read_f32s(l u32) []f32
+	read_f64() f64
+	read_f64s(l u32) []f64
+	read_string(l u32)
 	skip(l u32)
-	get_struct(l u32) voidptr
+	read_struct(l u32) voidptr
 }
 
 pub interface OutputStream {
