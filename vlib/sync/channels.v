@@ -71,6 +71,11 @@ mut:
 	nxt &Subscription
 }
 
+enum Direction {
+	pop
+	push
+}
+
 struct Channel {
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
@@ -97,17 +102,18 @@ mut: // atomic
 }
 
 pub fn new_channel<T>(n u32) &Channel {
+	st := sizeof(T)
 	return &Channel{
 		writesem: new_semaphore_init(if n > 0 { n + 1 } else { 1 })
 		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
-		objsize: sizeof(T)
+		objsize: st
 		queue_length: n
 		write_free: n
 		read_avail: 0
-		ringbuf: if n > 0 { malloc(int(n * sizeof(T))) } else { byteptr(0) }
-		statusbuf: if n > 0 { vcalloc(int(n * sizeof(u16))) } else { byteptr(0) }
+		ringbuf: if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
+		statusbuf: if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
 		write_subscriber: 0
 		read_subscriber: 0
 	}
@@ -412,13 +418,13 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
 // object referenced by `objrefs[i]`. `timeout = 0` means wait unlimited time
 
-pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voidptr, timeout time.Duration) int {
-	assert channels.len == is_push.len
-	assert is_push.len == objrefs.len
+pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration) int {
+	assert channels.len == dir.len
+	assert dir.len == objrefs.len
 	mut subscr := []Subscription{len: channels.len}
 	sem := new_semaphore()
 	for i, ch in channels {
-		if is_push[i] {
+		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
@@ -453,7 +459,7 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 			if i >= channels.len {
 				i -= channels.len
 			}
-			if is_push[i] {
+			if dir[i] == .push {
 				if channels[i].try_push(objrefs[i], true) {
 					event_idx = i
 					goto restore
@@ -477,7 +483,7 @@ pub fn channel_select(mut channels []&Channel, is_push []bool, mut objrefs []voi
 restore:
 	// reset subscribers
 	for i, ch in channels {
-		if is_push[i] {
+		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)

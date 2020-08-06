@@ -40,7 +40,7 @@ fn test_select() {
 	go do_send_byte(mut chb)
 	go do_send_i64(mut chl)
 	mut channels := [chi, recch, chl, chb]
-	directions := [false, true, false, false]
+	directions := [sync.Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)
 	mut rl := i64(0)
 	mut ri := int(0)
