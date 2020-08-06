@@ -43,10 +43,10 @@ pub fn (e &EManager) set_support_color(b bool) {
 	unsafe {
 		mut me := e
 		me.support_color = b
-	}        
+	}
 }
 
-fn bold(msg string) string {
+pub fn bold(msg string) string {
 	if !emanager.support_color {
 		return msg
 	}
@@ -98,7 +98,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 	final_msg := emsg
 	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
-	return '$final_position $final_kind $final_msg $final_context'.trim_space()
+	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
 pub fn source_context(kind, source string, column int, pos token.Position) []string {

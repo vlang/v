@@ -1,5 +1,5 @@
 vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.v:4:6: error: pointer arithmetic is only allowed in `unsafe` blocks
-    2 |     v := 5
+    2 |     mut v := 5
     3 |     mut p := &v
     4 |     p++
       |      ~~

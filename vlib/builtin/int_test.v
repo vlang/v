@@ -148,21 +148,18 @@ fn test_num_separator() {
 	// int
 	assert 100_000_0 == 1000000
 	assert -2_23_4_6 == -22346
-	assert 230_ == 230
 
 	// bin
 	assert 0b0_11 == 3
 	assert -0b0_100 == -4
-	assert 0b010_ == 2
 
 	// oct
 	assert 0o1_73 == 123
 	assert -0o17_5 == -125
-	assert -0o175_ == -125
+	assert -0o175 == -125
 
 	// hex
 	assert 0xFF == 255
-	assert 0xFF_ == 255
 	assert 0xF_F == 255
 
 	// f32 or f64
@@ -199,9 +196,9 @@ fn test_int_to_hex() {
 	// --- int to hex tests
 	c0 := 12
 	// 8Bit
-	assert byte(0).hex() == '0'
-	assert byte(c0).hex() == 'c'
-	assert i8(c0).hex() == 'c'
+	assert byte(0).hex() == '00'
+	assert byte(c0).hex() == '0c'
+	assert i8(c0).hex() == '0c'
 	assert byte(127).hex() == '7f'
 	assert i8(127).hex() == '7f'
 	assert byte(255).hex() == 'ff'

@@ -1,0 +1,5 @@
+[inline]
+[if debug]
+fn keep_attributes() {
+	println('hi !')
+}

@@ -11,7 +11,7 @@ module http
 
 fn C.new_tls_context() C.TlsContext
 
-fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
+fn (req &Request) ssl_do(port int, method Method, host_name, path string) ?Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 

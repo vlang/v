@@ -45,10 +45,34 @@ fn test_float_conversion_and_reading() {
 	mut e := 1.2E3 * -1e-1
 	assert e == -120.0
 	e = 1.2E3 * 1e-1
+	x := 55.
 	assert e == 120.0
 	assert 1.23e+10 == 1.23e10
 	assert 1.23e+10 == 1.23e0010
 	assert (-1.23e+10) == (1.23e0010 * -1.0)
+	assert x == 55.0
+}
+
+fn test_float_without_fraction() {
+	mut result := scan_kinds('x := 10.')
+	assert result.len == 3
+	assert result[0] == .name
+	assert result[1] == .decl_assign
+	assert result[2] == .number
+
+	result = scan_kinds('return 3., 4.')
+	assert result.len == 4
+	assert result[0] == .key_return
+	assert result[1] == .number
+	assert result[2] == .comma
+	assert result[3] == .number
+
+	result = scan_kinds('fun(5.)')
+	assert result.len == 4
+	assert result[0] == .name
+	assert result[1] == .lpar
+	assert result[2] == .number
+	assert result[3] == .rpar
 }
 
 fn test_reference_bools() {

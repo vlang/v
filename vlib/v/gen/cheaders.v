@@ -28,6 +28,23 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
+// Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
+#ifdef __GNUC__
+	#define __V_GCC__
+#endif    
+#ifdef __TINYC__
+	#undef __V_GCC__
+#endif
+#ifdef __cplusplus
+	#undef __V_GCC__
+#endif
+#ifdef __clang__
+	#undef __V_GCC__
+#endif
+#ifdef _MSC_VER
+	#undef __V_GCC__
+#endif
+
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
@@ -48,7 +65,7 @@ const (
 // for __offset_of
 #ifndef __offsetof
 	#define __offsetof(s,memb) \\
-    ((size_t)((char *)&((s *)0)->memb - (char *)0))
+	((size_t)((char *)&((s *)0)->memb - (char *)0))
 #endif
 
 #define OPTION_CAST(x) (x)
@@ -337,7 +354,7 @@ void _vcleanup();
 				else if (_likely_(i)) _wymix128(_wyr3(p,i)^_wyp0,_wyp1, &seed, &see1);
 				else _wymix128(_wyp0,_wyp1, &seed, &see1);
 			}
-  			else _wymix128(_wyr8(p)^_wyp0,_wyr8(p+i-8)^_wyp1, &seed, &see1);
+			else _wymix128(_wyr8(p)^_wyp0,_wyr8(p+i-8)^_wyp1, &seed, &see1);
 	#endif
 			_wymix128(len,_wyp0, &seed, &see1);
 			return	seed^see1;

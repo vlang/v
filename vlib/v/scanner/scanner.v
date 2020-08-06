@@ -120,7 +120,7 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 
 pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
 	is_fmt := pref.is_fmt
-	s := &Scanner{
+	mut s := &Scanner{
 		pref: pref
 		text: text
 		is_print_line_on_error: true
@@ -130,6 +130,7 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		comments_mode: comments_mode
 		vet_errors: vet_errors
 	}
+	s.file_path = 'internal_memory'
 	return s
 }
 
@@ -337,6 +338,9 @@ fn (mut s Scanner) ident_bin_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_bin_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
@@ -348,7 +352,10 @@ fn (mut s Scanner) ident_bin_number() string {
 		}
 		s.pos++
 	}
-	if start_pos + 2 == s.pos {
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
+	}
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	} else if has_wrong_digit {
@@ -371,6 +378,9 @@ fn (mut s Scanner) ident_hex_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_hex_digit() && c != num_sep {
 			if !c.is_letter() || s.is_inside_string {
 				break
@@ -382,7 +392,10 @@ fn (mut s Scanner) ident_hex_number() string {
 		}
 		s.pos++
 	}
-	if start_pos + 2 == s.pos {
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
+	}
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	} else if has_wrong_digit {
@@ -405,6 +418,9 @@ fn (mut s Scanner) ident_oct_number() string {
 	}
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_oct_digit() && c != num_sep {
 			if (!c.is_digit() && !c.is_letter()) || s.is_inside_string {
 				break
@@ -416,7 +432,10 @@ fn (mut s Scanner) ident_oct_number() string {
 		}
 		s.pos++
 	}
-	if start_pos + 2 == s.pos {
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
+	}
+	else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	} else if has_wrong_digit {
@@ -436,6 +455,9 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
+		if c == num_sep && s.text[s.pos + 1]  == num_sep {
+			s.error('cannot use `_` consecutively')
+		}
 		if !c.is_digit() && c != num_sep {
 			if !c.is_letter() || c in [`e`, `E`] || s.is_inside_string {
 				break
@@ -447,9 +469,11 @@ fn (mut s Scanner) ident_dec_number() string {
 		}
 		s.pos++
 	}
+	if s.text[s.pos - 1] == num_sep {
+		s.error('cannot use `_` at the end of a numeric literal')
+	}
 	mut call_method := false // true for, e.g., 5.str(), 5.5.str(), 5e5.str()
 	mut is_range := false // true for, e.g., 5..10
-	mut is_float_without_fraction := false // true for, e.g. 5.
 	// scan fractional part
 	if s.pos < s.text.len && s.text[s.pos] == `.` {
 		s.pos++
@@ -483,10 +507,8 @@ fn (mut s Scanner) ident_dec_number() string {
 				// 5.str()
 				call_method = true
 				s.pos--
-			} else if s.text[s.pos] != `)` {
+			} else {
 				// 5.
-				is_float_without_fraction = true
-				s.pos--
 			}
 		}
 	}
@@ -525,7 +547,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		s.pos-- // adjust error position
 		s.error('exponent has no digits')
 	} else if s.pos < s.text.len &&
-		s.text[s.pos] == `.` && !is_range && !is_float_without_fraction && !call_method {
+		s.text[s.pos] == `.` && !is_range && !call_method {
 		// error check: 1.23.4, 123.e+3.4
 		if has_exp {
 			s.error('exponential part should be integer')
@@ -1360,7 +1382,12 @@ pub fn (s &Scanner) error(msg string) {
 }
 
 fn (mut s Scanner) vet_error(msg string) {
-	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
+	eline := '$s.file_path:$s.line_nr: $msg'
+	if s.vet_errors == 0 {
+		eprintln(eline)
+		return
+	}
+	s.vet_errors << eline
 }
 
 pub fn verror(s string) {

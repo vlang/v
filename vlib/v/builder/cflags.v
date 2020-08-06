@@ -10,10 +10,13 @@ fn (v &Builder) get_os_cflags() []cflag.CFlag {
 		ctimedefines << v.pref.compile_defines
 	}
 	for flag in v.table.cflags {
-		if flag.os == '' || (flag.os == 'linux' && v.pref.os == .linux) || (flag.os == 'darwin' &&
-			v.pref.os == .mac) || (flag.os == 'freebsd' && v.pref.os == .freebsd) || (flag.os == 'windows' &&
-			v.pref.os == .windows) || (flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler !=
-			'msvc') || (flag.os == 'solaris' && v.pref.os == .solaris) {
+		if flag.os == '' ||
+			(flag.os == 'linux' && v.pref.os == .linux) ||
+			(flag.os == 'darwin' && v.pref.os == .mac) ||
+			(flag.os == 'freebsd' && v.pref.os == .freebsd) ||
+			(flag.os == 'windows' && v.pref.os == .windows) ||
+			(flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') ||
+			(flag.os == 'solaris' && v.pref.os == .solaris) {
 			flags << flag
 		}
 		if flag.os in ctimedefines {

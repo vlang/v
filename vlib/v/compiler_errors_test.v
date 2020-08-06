@@ -1,5 +1,7 @@
 import os
 import term
+import v.util
+import v.util.vtest
 
 fn test_all() {
 	mut total_errors := 0
@@ -17,7 +19,8 @@ fn test_all() {
 	// -prod so that warns are errors
 	total_errors += check_path(vexe, classic_dir, '-prod', '.out', classic_tests)
 	total_errors += check_path(vexe, global_dir, '--enable-globals', '.out', global_tests)
-	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
+	total_errors += check_path(vexe, classic_dir, '--enable-globals run', '.run.out',
+		['globals_error.vv'])
 	total_errors += check_path(vexe, run_dir, 'run', '.run.out', run_tests)
 	total_errors += check_path(vexe, parser_dir, '-prod', '.out', parser_tests)
 	assert total_errors == 0
@@ -33,25 +36,10 @@ fn get_tests_in_dir(dir string) []string {
 }
 
 fn check_path(vexe, dir, voptions, result_extension string, tests []string) int {
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	mut nb_fail := 0
-	mut paths := []string{}
-	for test in tests {
-		path := os.join_path(dir, test).replace('\\', '/')
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if path.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
-		paths << path
-	}
+	paths := vtest.filter_vtest_only(tests, {
+		basepath: dir
+	})
 	for path in paths {
 		program := path.replace('.vv', '.v')
 		print(path + ' ')
@@ -75,6 +63,7 @@ fn check_path(vexe, dir, voptions, result_extension string, tests []string) int 
 			println('found:')
 			println(found)
 			println('============\n')
+			diff_content(expected, found)
 			nb_fail++
 		} else {
 			println(term.green('OK'))
@@ -91,4 +80,13 @@ fn clean_line_endings(s string) string {
 	res = res.replace('\r\n', '\n')
 	res = res.trim('\n')
 	return res
+}
+
+fn diff_content(s1, s2 string) {
+	diff_cmd := util.find_working_diff_command() or {
+		return
+	}
+	println('diff: ')
+	println(util.color_compare_strings(diff_cmd, s1, s2))
+	println('============\n')
 }

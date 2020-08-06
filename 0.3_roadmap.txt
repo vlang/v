@@ -1,18 +1,19 @@
-+ = done
 - = TODO
++ = done
 
+- make `-autofree` the default
 - coroutines
-- bring back lock{}
+- lock{}
 - thread safe arrays/maps
 - C2V translator
 - doom.v
 - rune type, replace `ustring` with `[]rune`, fix `byte.str()`
 - maps with non-string keys
 - iOS/Android support
-- make `-autofree` the default
 - parallel parser (and maybe checker/gen?)
 - `recover()` from panics
 - IO streams
 - struct and interface embedding
 - vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
+- method expressions with an explicit receiver as the first argument
 

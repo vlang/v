@@ -1,12 +1,15 @@
 import os
 import term
 import v.util
+import v.util.vtest
 
 fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	diff_cmd := util.find_working_diff_command() or { '' }
+	diff_cmd := util.find_working_diff_command() or {
+		''
+	}
 	dir := 'vlib/v/tests/inout'
 	files := os.ls(dir) or {
 		panic(err)
@@ -16,24 +19,9 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
-	mut paths := []string{}
-	for test in tests {
-		path := os.join_path(dir, test).replace('\\', '/')
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if path.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
-		paths << path
-	}
+	paths := vtest.filter_vtest_only(tests, {
+		basepath: dir
+	})
 	for path in paths {
 		print(path + ' ')
 		program := path.replace('.vv', '.v')
@@ -70,8 +58,8 @@ fn test_all() {
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
 		if expected.contains('================ V panic ================') {
 			// panic include backtraces and absolute file paths, so can't do char by char comparison
-			n_found := normalize_panic_message( found, vroot )
-			n_expected := normalize_panic_message( expected, vroot )
+			n_found := normalize_panic_message(found, vroot)
+			n_expected := normalize_panic_message(expected, vroot)
 			if found.contains('================ V panic ================') {
 				if n_found.contains(n_expected) {
 					println(term.green('OK (panic)'))
@@ -87,12 +75,12 @@ fn test_all() {
 		}
 		if expected != found {
 			println(term.red('FAIL'))
-			println(term.header('expected:','-'))
+			println(term.header('expected:', '-'))
 			println(expected)
-			println(term.header('found:','-'))
+			println(term.header('found:', '-'))
 			println(found)
 			if diff_cmd != '' {
-				println(term.header('difference:','-'))
+				println(term.header('difference:', '-'))
 				println(util.color_compare_strings(diff_cmd, expected, found))
 			} else {
 				println(term.h_divider('-'))
@@ -105,7 +93,7 @@ fn test_all() {
 	assert total_errors == 0
 }
 
-fn normalize_panic_message(message string, vroot string) string {
+fn normalize_panic_message(message, vroot string) string {
 	mut msg := message.all_before('=========================================')
 	msg = msg.replace(vroot + os.path_separator, '')
 	msg = msg.trim_space()

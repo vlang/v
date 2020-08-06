@@ -7,14 +7,12 @@ import os
 import v.pref
 
 pub const (
-	v_version = '0.1.28'
+	v_version = '0.1.29'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings',
-		'builtin',
-	]
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
 )
 
 pub const (
