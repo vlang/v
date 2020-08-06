@@ -7,7 +7,8 @@ import v.ast
 import v.table
 import v.util
 
-fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
+fn (mut g Gen) comptime_call(nd ast.ComptimeCall) {
+	mut node := nd
 	if node.is_vweb {
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
@@ -24,8 +25,59 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		return
 	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
-
-	g.write('${util.no_dots(node.sym.name)}_${node.method_name}(')
+	mut name := node.raw_name
+	if node.is_comp_for {
+		if g.comp_for_vals.len - 1 < node.comp_for {
+			return
+		}
+		name = g.comp_for_vals[node.comp_for]
+		if name == '' {
+			return
+		}
+		method := g.table.type_find_method(node.sym, name) or {
+			return
+		}
+		// Check how often elements are after
+		mut exp := []int{len: method.args.len - 1}
+		mut cur := -1
+		mut last := table.Type(0)
+		for i, arg in method.args {
+			if i == 0 {
+				continue
+			}
+			if last == arg.typ {
+				exp[cur]++
+				continue
+			}
+			last = arg.typ
+			cur++
+			exp[cur] = 1
+		}
+		// Checks if the var is a boolean plus the lenghts
+		mut node_args_arr := []int{len: node.args.len}
+		cur = 0
+		mut same_typ := 1
+		last = table.Type(0)
+		mut idx := 0
+		for i := 1; i < method.args.len + 1; i++ {
+			mut exp_typ := table.Type(0)
+			if i < method.args.len {
+				exp_typ = method.args[i].typ
+			}
+			if last != table.Type(0) && last != exp_typ {
+				node_args_arr[idx] = same_typ
+				node.args[idx].typ = last
+				same_typ = 1
+				idx++
+			}
+			if last == exp_typ {
+				same_typ++
+			}
+			last = exp_typ
+		}
+		node.args_arr = node_args_arr
+	}
+	g.write('${util.no_dots(node.sym.name)}_${name}(')
 	g.expr(node.left)
 	if node.args.len > 0 {
 		g.write(', ')
@@ -33,30 +85,26 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	for i := 0; i < node.args.len; i++ {
 		arg := node.args[i]
 		match node.args_arr[i] {
-			1 {
-				g.expr(arg.expr)
-			}
+			1 { g.expr(arg.expr) }
 			else {
-				for a in 0..node.args_arr[i] {
+				for a in 0 .. node.args_arr[i] {
 					typ_name := g.typ(arg.typ)
 					if arg.expr is ast.Ident {
 						ident := arg.expr as ast.Ident
-						name := ident.name
-						g.write('(($typ_name*)${name}.data) [$a]')
+						n := ident.name
+						g.write('(($typ_name*)${n}.data) [$a]')
 					}
 					if a < node.args_arr[i] - 1 {
 						g.write(', ')
 					}
-				}
-			}
+				} }
 		}
 		if i < node.args.len - 1 {
 			g.write(', ')
 		}
 	}
 	g.write(')')
-
-/*
+	/*
 	mut j := 0
 	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
 	if node.method_name == 'method' {
@@ -119,7 +167,8 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		g.expr(node.left)
 		g.writeln(');')
 		j++
-	}*/
+	}
+	*/
 }
 
 fn (mut g Gen) comp_if(mut it ast.CompIf) {
@@ -184,8 +233,12 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
+	if g.comp_for_vals.len == 0 {
+		g.comp_for_vals << ''
+	}
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
 	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
+	g.comp_for_idx++
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
@@ -222,10 +275,15 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.writeln('\t${node.val_var}.type = $styp;')
 			//
 			g.comptime_var_type_map[node.val_var] = method.return_type
+			if g.comp_for_vals.len - 1 < g.comp_for_idx {
+				g.comp_for_vals << ''
+			}
+			g.comp_for_vals[g.comp_for_idx] = method.name
 			g.stmts(node.stmts)
 			i++
 			g.writeln('')
 		}
+		g.comp_for_vals[g.comp_for_idx] = ''
 		g.comptime_var_type_map.delete(node.val_var)
 	} else if node.kind == .fields {
 		// TODO add fields
@@ -265,5 +323,6 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.comptime_var_type_map.delete(node.val_var)
 		}
 	}
+	g.comp_for_idx--
 	g.writeln('} // } comptime for')
 }

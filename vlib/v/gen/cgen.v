@@ -97,6 +97,8 @@ mut:
 	has_main              bool
 	inside_const          bool
 	comp_for_method       string // $for method in T {
+	comp_for_vals         []string
+	comp_for_idx          int
 	comptime_var_type_map map[string]table.Type
 	match_sumtype_exprs   []ast.Expr
 	match_sumtype_syms    []table.TypeSymbol

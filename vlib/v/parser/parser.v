@@ -50,6 +50,7 @@ mut:
 	inside_match_body bool // to fix eval not used TODO
 	inside_unsafe     bool
 	comp_for          int = 0
+	comp_for_vals     map[string]string
 	is_stmt_ident     bool // true while the beginning of a statement is an ident/selector
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error

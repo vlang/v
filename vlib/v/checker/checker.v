@@ -2209,7 +2209,7 @@ fn (mut c Checker) comp_call_find_string(node ast.Expr) ?string {
 	mut str := ''
 	match node {
 		ast.StringLiteral {
-			str = it.lit
+			str = it.val
 		}
 		ast.Ident {
 			if it.obj is ast.Var {
@@ -2350,7 +2350,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_errors += c2.nr_errors
 			} else {
 				name := c.expr(node.method_name)
-				mut lit := c.comp_call_find_string(node) or {
+				if name != table.string_type_idx {
+					c.error('method literal has to be a string', node.method_name.position())
+					return table.void_type
+				}
+				if node.is_comp_for {
+					return table.void_type_idx
+				}
+
+				mut lit := c.comp_call_find_string(node.method_name) or {
 					c.error(err, node.method_name.position())
 					return table.void_type_idx
 				}

@@ -5,14 +5,14 @@ struct App {}
 fn main() {
 	app := App{}
 	arr :=  ['hello', 'hi']
+	bools := [true, false]
 	ints := [1, 2]
 	m := 'method2'
 	$for method in App.methods {
-		name := method.name
 		$if method.@type is int {
 			app.$('method2')()
 			app.$(m)()
-			app.$(name)(arr, true, false, ints)
+			app.$(method.name)(arr, bools, ints)
 		}
 	}
 }

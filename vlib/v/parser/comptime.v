@@ -178,7 +178,9 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	} else {
 		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
 	}
+	p.comp_for_vals[val_var + '.name'] = 'valid'
 	stmts := p.parse_block()
+	p.comp_for_vals[val_var + '.name'] = ''
 	p.comp_for--
 	return ast.CompFor{
 		val_var: val_var
@@ -455,7 +457,7 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 		method_name: method
 		args: args
 		args_var: args_var
-		is_comp_for: p.comp_for > 0
+		is_comp_for: p.comp_for > 0 && method.str() in p.comp_for_vals
 		comp_for: p.comp_for
 	}
 }
