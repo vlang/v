@@ -51,3 +51,10 @@ fn test_tags_used() {
 	dom := generate_dom(generate_temp_html())
 	assert dom.get_all_tags().len == 9
 }
+
+fn test_access_tag_fields() {
+	dom := generate_dom(generate_temp_html())
+	id_tags := dom.get_by_attribute('id')
+	assert id_tags[0].get_name() == "div"
+	assert id_tags[1].get_attributes()['class'] == "several-1"
+}

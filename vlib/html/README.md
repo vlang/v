@@ -50,6 +50,25 @@ This function returns the root Tag
 #### get_all_tags() []Tag_ptr
 This function returns all important tags, removing close tags
 
+### Tag
+
+An object that holds tags information, such as `name`, `attributes`, `children`
+
+#### get_children() []Tag_ptr
+Returns all children as an array
+
+#### get_parent() &Tag
+Returns the parent of current tag
+
+### get_name() string
+Returns tag name
+
+### get_content() string
+Returns tag content
+
+### get_attributes() map[string]string
+Returns all attributes and it value
+
 ## Some questions that can appear
 
 ### Q: Why in parser have a `builder_str() string` method that returns only the lexeme string?

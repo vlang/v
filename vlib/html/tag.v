@@ -33,8 +33,16 @@ pub fn (tag Tag) get_parent() &Tag {
 	return tag.parent
 }
 
+pub fn (tag Tag) get_name() string {
+	return tag.name
+}
+
 pub fn (tag Tag) get_content() string {
 	return tag.content
+}
+
+pub fn (tag Tag) get_attributes() map[string]string {
+	return tag.attributes
 }
 
 pub fn (tag &Tag) str() string { // add text method to generate a tag text from it content and childs content
