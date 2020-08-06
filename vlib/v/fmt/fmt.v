@@ -1115,18 +1115,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 
 fn (mut f Fmt) attrs(attrs []table.Attr) {
 	for attr in attrs {
-		f.write('[')
-		if attr.is_ctdefine {
-			f.write('if ')
-		}
-		if attr.is_string {
-			f.write("'")
-		}
-		f.write(attr.name)
-		if attr.is_string {
-			f.write("'")
-		}
-		f.writeln(']')
+		f.writeln('[$attr]')
 	}
 }
 
@@ -1139,7 +1128,7 @@ fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
 		if i > 0 {
 			f.write(';')
 		}
-		f.write(attr.name)
+		f.write('$attr')
 	}
 	f.write(']')
 }
