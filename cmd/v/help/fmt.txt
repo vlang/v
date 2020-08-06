@@ -17,6 +17,9 @@ Options:
 
   -debug  Print the kinds of encountered AST statements/expressions on stderr.
 
+  -verify Make sure the provided file is already formatted. Useful for checking code contributions
+          in CI for example.
+
 Environment Variables:
   VDIFF_TOOL      A command-line tool that will be executed with the original file path
                   and a temporary formatted file path as arguments. e.g.
@@ -27,7 +30,3 @@ Environment Variables:
                   `diff` command. e.g.
                   VDIFF_OPTIONS="-W 80 -y" v fmt -diff path/to/file.v /tmp/v/vfmt_file.v
 
-NB: vfmt after 2020/04/01 is based on the new AST compiler code, and
-thus is much faster, and more flexible than before.
-It may also EAT some of your code for now, so please be careful, and
-make frequent BACKUPS.
