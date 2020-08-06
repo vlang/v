@@ -174,7 +174,8 @@ pub fn (mut nis NetInputStream) get_f64s(l u32) []f64 {
 }
 
 pub fn (mut nis NetInputStream) get_string(l u32) string {
-	return string(nis.get_bytes(l))
+	bytes := nis.get_bytes(l)
+	return tos(bytes.data, bytes.len)
 }
 
 pub fn (mut nis NetInputStream) skip(l u32) {
