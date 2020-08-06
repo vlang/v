@@ -2160,6 +2160,27 @@ pub fn (c &Checker) unwrap_generic(typ table.Type) table.Type {
 	return typ
 }
 
+fn (mut c Checker) comp_call_find_string(node ast.Expr) ?string {
+	mut str := ''
+	match node {
+		ast.StringLiteral {
+			str = it.lit
+		}
+		ast.Ident {
+			if it.obj is ast.Var {
+				v := it.obj as ast.Var
+				str = c.comp_call_find_string(v.expr) or {
+					return error(err)
+				}
+			}
+		}
+		else {
+			return error('Unknown string expression')
+		}
+	}
+	return str
+}
+
 // TODO node must be mut
 pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 	c.expr_level++
@@ -2280,51 +2301,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_errors += c2.nr_errors
 			} else {
 				name := c.expr(node.method_name)
-				if name != table.string_type_idx {
-					c.error('method literal has to be a string', node.method_name.position())
-					return table.void_type
+				mut lit := c.comp_call_find_string(node) or {
+					c.error(err, node.method_name.position())
+					return table.void_type_idx
 				}
-				mut lit := ''
 				//println(c.file.scope)
-				match node.method_name {
-					ast.Ident {
-						if it.obj is ast.Var {
-							v := it.obj as ast.Var
-							v_r := *v
-							mut e := v_r.expr
-							for e !is ast.StringLiteral {
-								if e is ast.SelectorExpr {
-									println('1')
-									a := e as ast.SelectorExpr
-									e = a.expr
-								}
-							}
-						}
-					}
-					else {}
-				}
-
-				match node.method_name {
-					ast.Ident {
-						if it.obj is ast.Var {
-							v := it.obj as ast.Var
-							if v.expr is ast.StringLiteral {
-								s := v.expr as ast.StringLiteral
-								lit = s.val
-							} else {
-								c.error('variable has to be clear string', v.expr.position())
-								return table.void_type
-							}
-						}
-					}
-					ast.StringLiteral {
-						lit = it.val
-					}
-					else {
-						c.error('expr can not be used or is not implemented', node.method_name.position())
-						return table.void_type
-					}
-				}
 				method := c.table.type_find_method(node.sym, lit) or {
 					c.error('unknown method `$lit`', node.method_name.position())
 					return table.void_type

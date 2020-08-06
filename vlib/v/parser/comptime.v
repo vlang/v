@@ -154,6 +154,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	// p.comp_for() handles these special forms:
 	// $for method in App(methods) {
 	// $for field in App(fields) {
+	p.comp_for++
 	p.next()
 	p.check(.key_for)
 	val_var := p.check_name()
@@ -178,6 +179,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
 	}
 	stmts := p.parse_block()
+	p.comp_for--
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
@@ -446,5 +448,7 @@ fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
 		method_name: method
 		args: args
 		args_var: args_var
+		is_comp_for: p.comp_for > 0
+		comp_for: p.comp_for
 	}
 }

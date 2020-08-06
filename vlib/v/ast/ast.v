@@ -880,6 +880,8 @@ pub struct ComptimeCall {
 pub:
 	left        Expr
 	is_vweb     bool
+	is_comp_for bool
+	comp_for    int
 	vweb_tmpl   File
 	args_var    string
 pub mut:
