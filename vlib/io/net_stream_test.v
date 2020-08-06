@@ -124,18 +124,32 @@ fn test_primitives() {
 	assert i == c_i
 }
 
-/*
 fn test_floats() {
 	_, c, s := setup()
 
-	mut nos := stream.new_net_output_stream(s)
-	mut nis := stream.new_net_input_stream(c)
+	mut nos := io.new_net_output_stream(s)
+	mut nis := io.new_net_input_stream(c)
 
 	a := f32(7.5)
 	nos.write_f32(a) or { assert false }
 	c_a := nis.get_f32()
 	assert a == c_a
-}*/
+
+	b := f64(43587349857834579834.45435435)
+	nos.write_f64(b) or { assert false }
+	c_b := nis.get_f64()
+	assert b == c_b
+
+	d := [f32(7.3), 3.45, 546.3, 4545.3]
+	nos.write_f32s(d) or { assert false }
+	c_d := nis.get_f32s(4)
+	assert d == c_d
+
+	e := [f64(345324324.3242342), 3243242.342, 344564.343242423, 43543.43534, 34234.34324]
+	nos.write_f64s(e) or { assert false }
+	c_e := nis.get_f64s(5)
+	assert e == c_e
+}
 
 fn test_string() {
 	_, c, s := setup()

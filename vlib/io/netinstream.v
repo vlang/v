@@ -133,14 +133,10 @@ pub fn (mut nis NetInputStream) get_u64s(l u32) []u64 {
 	}
 	return u64s
 }
-/*
 pub fn (mut nis NetInputStream) get_f32() f32 {
 	bytes := nis.get_bytes(sizeof(f32))
-	println(bytes.hex())
 	f := &f32(bytes.data)
-	unsafe {
-		return f[0]
-	}
+	return *f
 }
 
 pub fn (mut nis NetInputStream) get_f32s(l u32) []f32 {
@@ -151,14 +147,16 @@ pub fn (mut nis NetInputStream) get_f32s(l u32) []f32 {
 		b := bytes[offs..int(u32(offs) + sizeof(f32))]
 		f := &f32(b.data)
 		unsafe {
-			f32s << f[0]
+			f32s << *f
 		}
 	}
 	return f32s
 }
 
 pub fn (mut nis NetInputStream) get_f64() f64 {
-	return f64(nis.get_i64())
+	bytes := nis.get_bytes(sizeof(f64))
+	f := &f64(bytes.data)
+	return *f
 }
 
 pub fn (mut nis NetInputStream) get_f64s(l u32) []f64 {
@@ -169,11 +167,11 @@ pub fn (mut nis NetInputStream) get_f64s(l u32) []f64 {
 		b := bytes[offs..int(u32(offs) + sizeof(f64))]
 		f := &f64(b.data)
 		unsafe {
-			f64s << f[0]
+			f64s << *f
 		}
 	}
 	return f64s
-}*/
+}
 
 pub fn (mut nis NetInputStream) get_string(l u32) string {
 	return string(nis.get_bytes(l))

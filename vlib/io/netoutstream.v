@@ -125,27 +125,54 @@ pub fn (mut nos NetOutputStream) write_u64s(d []u64) ? {
 	}
 	nos.sock.send(bytes.data, int(sizeof(u64) * u32(d.len)))?
 }
-/*
+
 pub fn (mut nos NetOutputStream) write_f32(d f32) ? {
-	a := &d
+	pb := &byte(&d)
 	mut bytes := []byte{len: int(sizeof(f32))}
-	binary.big_endian_put_u32(mut bytes, u32(d))
-	println(bytes.hex())
+	unsafe {
+		for i in 0..bytes.len {
+			bytes[i] = pb[i]
+		}
+	}
 	nos.sock.send(bytes.data, bytes.len)?
 }
 
 pub fn (mut nos NetOutputStream) write_f32s(d []f32) ? {
-	nos.sock.send(d.data, int(sizeof(f32) * u32(d.len)))?
+	mut bytes := []byte{}
+	for f in d {
+		pb := &byte(&f)
+		unsafe {
+			for i in 0..int(sizeof(f32)) {
+				bytes << pb[i]
+			}
+		}
+	}
+	nos.sock.send(bytes.data, bytes.len)?
 }
 
 pub fn (mut nos NetOutputStream) write_f64(d f64) ? {
-	nos.sock.send(byteptr(int(d)), int(sizeof(f64)))?
+	pb := &byte(&d)
+	mut bytes := []byte{len: int(sizeof(f64))}
+	unsafe {
+		for i in 0..bytes.len {
+			bytes[i] = pb[i]
+		}
+	}
+	nos.sock.send(bytes.data, bytes.len)?
 }
 
 pub fn (mut nos NetOutputStream) write_f64s(d []f64) ? {
-	nos.sock.send(d.data, int(sizeof(f64) * u32(d.len)))?
+	mut bytes := []byte{}
+	for f in d {
+		pb := &byte(&f)
+		unsafe {
+			for i in 0..int(sizeof(f64)) {
+				bytes << pb[i]
+			}
+		}
+	}
+	nos.sock.send(bytes.data, bytes.len)?
 }
-*/
 
 pub fn (mut nos NetOutputStream) write_string(d string) ? {
 	nos.write_bytes(d.bytes())?
