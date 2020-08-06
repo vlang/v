@@ -230,7 +230,7 @@ fn vpm_update(m []string) {
 			verbose_println('Failed details:\n$vcs_res.output')
 			continue
 		} else {
-			verbose_println('    ${vcs_res.output.trim_space()}')
+			verbose_println('    $vcs_res.output.trim_space()')
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
