@@ -2293,6 +2293,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				to_type_sym.kind == .byte {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to `byte`', node.pos)
+			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
+				c.error('cannot cast to struct', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)

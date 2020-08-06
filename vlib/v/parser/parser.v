@@ -987,7 +987,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
 			is_mod_cast {
 			// TODO handle C.stat()
-			pos := p.tok.position()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
 				// Handle `&Foo(0)`
@@ -1005,11 +1004,6 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				has_arg = true
 			}
 			p.check(.rpar)
-			full_pos := pos.extend(p.tok.position())
-			type_symbol := p.table.get_type_symbol(to_typ)
-			if type_symbol.kind == .struct_ && !to_typ.is_ptr() {
-				p.error_with_pos('cannot cast to struct', full_pos)
-			}
 			node = ast.CastExpr{
 				typ: to_typ
 				expr: expr
