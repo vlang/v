@@ -537,7 +537,8 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code == 404 || r.text.contains('404') {
-			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			errors <<
+				'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
 		if r.status_code != 200 {
