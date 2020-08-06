@@ -17,10 +17,10 @@ pub interface InputStream {
 	get_u32s(l u32) []u32
 	get_u64() u64
 	get_u64s(l u32) []u64
-	/*get_f32() f32
+	get_f32() f32
 	get_f32s(l u32) []f32
 	get_f64() f64
-	get_f64s(l u32) []f64*/
+	get_f64s(l u32) []f64
 	get_string(l u32)
 	skip(l u32)
 	get_struct(l u32) voidptr
@@ -43,10 +43,10 @@ pub interface OutputStream {
 	write_u32s(d []u32) ?
 	write_u64(d u64) ?
 	write_u64s(d []u64) ?
-	/*write_f32(d f32) ?
+	write_f32(d f32) ?
 	write_f32s(d []f32) ?
 	write_f64(d f64) ?
-	write_f64s(d []f64) ?*/
+	write_f64s(d []f64) ?
 	write_string(d string) ?
 	write_struct(d voidptr, l u32) ?
 }
