@@ -51,7 +51,7 @@ they are stabilized in 2020. Of course the APIs will grow after that, but withou
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple 
+being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
 
 
@@ -66,7 +66,7 @@ cd v
 make
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`. 
+That's it! Now you have a V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
 (On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
@@ -104,20 +104,20 @@ executable. To do that, run:
 sudo ./v symlink
 ```
 
-On Windows, start a new shell with administrative privileges, for 
+On Windows, start a new shell with administrative privileges, for
 example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
-entry, and choose `Run as administrator`. In the new administrative 
+entry, and choose `Run as administrator`. In the new administrative
 shell, cd to the path, where you have compiled v.exe, then type:
 ```bat
 .\v.exe symlink
 ```
-That will make v available everywhere, by adding it to your PATH. 
-Please restart your shell/editor after that, so that it can pick 
+That will make v available everywhere, by adding it to your PATH.
+Please restart your shell/editor after that, so that it can pick
 the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will 
-continue to be available, even after `v up`, restarts and so on. 
-You only need to run it again, if you decide to move the V repo 
+NB: there is no need to run `v symlink` more than once - v will
+continue to be available, even after `v up`, restarts and so on.
+You only need to run it again, if you decide to move the V repo
 folder somewhere else.
 
 ### Docker
@@ -173,22 +173,20 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module on non-Windows systems, you will need to install freetype libraries.
-
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install freetype openssl
+brew install openssl
 
 Debian/Ubuntu:
-sudo apt install libfreetype6-dev libssl-dev
+sudo apt install libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S freetype2
+openssl is installed by default
 
 Fedora:
-sudo dnf install freetype-devel
+sudo dnf install openssl-devel
 ```
 
 
