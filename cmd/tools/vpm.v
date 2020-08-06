@@ -215,7 +215,7 @@ fn vpm_update(m []string) {
 			continue
 		}
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
-		verbose_println('      command: $vcs_cmd')
+		verbose_println('    command: $vcs_cmd')
 		vcs_res := os.exec('$vcs_cmd') or {
 			errors++
 			println('Could not update module "$name".')
@@ -229,6 +229,8 @@ fn vpm_update(m []string) {
 			verbose_println('Failed command: $vcs_cmd')
 			verbose_println('Failed details:\n$vcs_res.output')
 			continue
+		} else {
+			verbose_println('    ${vcs_res.output.trim_space()}')
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -289,8 +291,9 @@ fn vpm_list() {
 		println('You have no modules installed.')
 		exit(0)
 	}
+	println('Installed modules:')
 	for mod in module_names {
-		println(mod)
+		println('  $mod')
 	}
 }
 
