@@ -18,8 +18,8 @@ fn setup() (net.Socket, net.Socket, net.Socket) {
 fn test_arrays() {
 	_, c, s := setup()
 
-	mut nos := stream.new_net_output_stream(s)
-	mut nis := stream.new_net_input_stream(c)
+	mut nos := io.new_net_output_stream(s)
+	mut nis := io.new_net_input_stream(c)
 
 	//bytes
 	a := [byte(76), 7, 43, 5]
@@ -72,8 +72,8 @@ fn test_arrays() {
 fn test_primitives() {
 	_, c, s := setup()
 
-	mut nos := stream.new_net_output_stream(s)
-	mut nis := stream.new_net_input_stream(c)
+	mut nos := io.new_net_output_stream(s)
+	mut nis := io.new_net_input_stream(c)
 
 	// bytes
 	a := byte(45)
@@ -140,8 +140,8 @@ fn test_floats() {
 fn test_string() {
 	_, c, s := setup()
 
-	mut nos := stream.new_net_output_stream(s)
-	mut nis := stream.new_net_input_stream(c)
+	mut nos := io.new_net_output_stream(s)
+	mut nis := io.new_net_input_stream(c)
 
 	a := 'hello'
 	nos.write_string(a) or { assert false }
@@ -152,8 +152,8 @@ fn test_string() {
 fn test_struct() {
 	_, c, s := setup()
 
-	mut nos := stream.new_net_output_stream(s)
-	mut nis := stream.new_net_input_stream(c)
+	mut nos := io.new_net_output_stream(s)
+	mut nis := io.new_net_input_stream(c)
 
 	a := Test{
 		a: 1
