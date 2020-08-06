@@ -1,5 +1,5 @@
 import net
-import net.stream
+import io
 
 struct Test {
 	a int
