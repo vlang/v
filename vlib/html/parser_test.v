@@ -39,7 +39,7 @@ fn test_script_tag() {
 	assert parser.get_tags()[2].get_content().len == 101
 }
 
-fn test_download_source() {
+/*fn test_download_source() {
 	println('Fetching github data in pastebin')
 	resp := http.get('https://pastebin.com/raw/5snUQgqN') or {
 		println('failed to fetch data from the server')
@@ -49,4 +49,4 @@ fn test_download_source() {
 	mut parser := Parser{}
 	parser.parse_html(resp.text, false)
 	assert parser.get_tags().len == 2244
-}
+}*/
