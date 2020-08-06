@@ -442,7 +442,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 							}
 							if matching && !unknown {
 								// absolute router words like `/test/site`
-								app.$method(vars)
+								app.$(method.name)(vars)
 								return
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
@@ -465,7 +465,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// search again for method
 			if action == method.name && method.attrs.len > 0 {
 				// call action method
-				app.$method(vars)
+				app.$(method.name)(vars)
 			}
 		}
 	}
