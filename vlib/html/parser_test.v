@@ -1,6 +1,6 @@
 module html
 
-import net.http
+//import net.http
 
 fn test_split_parse() {
 	mut parser := Parser{}
