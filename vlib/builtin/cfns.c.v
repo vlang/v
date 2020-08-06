@@ -348,7 +348,7 @@ fn C.MAKELANGID() int
 fn C.FormatMessage() voidptr
 
 
-fn C.CloseHandle()
+fn C.CloseHandle(voidptr) int
 
 
 fn C.GetExitCodeProcess()
@@ -411,6 +411,7 @@ fn C.ReleaseSRWLockExclusive(voidptr)
 fn C.pthread_mutex_init(voidptr, voidptr) int
 fn C.pthread_mutex_lock(voidptr) int
 fn C.pthread_mutex_unlock(voidptr) int
+fn C.pthread_mutex_destroy(voidptr) int
 
 fn C.pthread_rwlockattr_init(voidptr) int
 fn C.pthread_rwlockattr_setkind_np(voidptr, int) int
@@ -422,16 +423,19 @@ fn C.pthread_rwlock_unlock(voidptr) int
 
 fn C.pthread_condattr_init(voidptr) int
 fn C.pthread_condattr_setpshared(voidptr, int) int
+fn C.pthread_condattr_destroy(voidptr) int
 fn C.pthread_cond_init(voidptr, voidptr) int
 fn C.pthread_cond_signal(voidptr) int
 fn C.pthread_cond_wait(voidptr, voidptr) int
 fn C.pthread_cond_timedwait(voidptr, voidptr, voidptr) int
+fn C.pthread_cond_destroy(voidptr) int
 
 fn C.sem_init(voidptr, int, u32) int
 fn C.sem_post(voidptr) int
 fn C.sem_wait(voidptr) int
 fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
+fn C.sem_destroy(voidptr) int
 
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int
