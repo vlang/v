@@ -74,7 +74,7 @@ Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is being constantly updated. To update V, simply run:
 
-```.bash
+```bash
 v up
 ```
 
