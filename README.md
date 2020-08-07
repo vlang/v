@@ -142,6 +142,7 @@ docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
 /usr/local/v/v
 ```
+
 </details>
 
 ### Testing and running the examples
@@ -176,7 +177,7 @@ v run tetris/tetris.v
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
-```
+```bash
 macOS:
 brew install openssl
 
