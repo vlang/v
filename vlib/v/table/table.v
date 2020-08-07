@@ -33,7 +33,7 @@ pub:
 	is_placeholder bool
 	mod            string
 	ctdefine       string // compile time define. myflag, when [if myflag] tag
-	attrs          []string
+	attrs          []Attr
 pub mut:
 	name           string
 }
@@ -527,7 +527,6 @@ pub fn (table &Table) sumtype_has_variant(parent, variant Type) bool {
 		}
 	}
 	return false
-
 }
 
 pub fn (table &Table) known_type_names() []string {

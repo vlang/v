@@ -4,6 +4,7 @@ import strings
 
 #flag -lws2_32
 #include <winsock2.h>
+#include <process.h>
 
 pub const (
 	path_separator = '\\'
@@ -241,13 +242,15 @@ pub fn exec(cmd string) ?Result {
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
 		voidptr(&child_stdout_write), voidptr(&sa), 0)
 	if !create_pipe_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		return error('exec failed (CreatePipe): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (CreatePipe): $error_msg', error_num)
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		panic('exec failed (SetHandleInformation): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (SetHandleInformation): $error_msg', error_num)
 	}
 
 	proc_info := ProcessInformation{}
@@ -267,7 +270,7 @@ pub fn exec(cmd string) ?Result {
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd')
+		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd', error_num)
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
@@ -376,11 +379,17 @@ pub fn is_writable_folder(folder string) ?bool {
 	if !os.is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
+	tmp_perm_check := os.join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
 	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
 	os.rm(tmp_perm_check)
 	return true
+}
+
+fn C._getpid() int
+[inline]
+pub fn getpid() int {
+	return C._getpid()
 }

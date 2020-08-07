@@ -174,22 +174,20 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module on non-Windows systems, you will need to install freetype libraries.
-
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```
 macOS:
-brew install freetype openssl
+brew install openssl
 
 Debian/Ubuntu:
-sudo apt install libfreetype6-dev libssl-dev
+sudo apt install libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S freetype2
+openssl is installed by default
 
 Fedora:
-sudo dnf install freetype-devel
+sudo dnf install openssl-devel
 ```
 
 ## V UI

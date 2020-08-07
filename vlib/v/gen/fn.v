@@ -11,6 +11,9 @@ pub fn kek_cheburek() {
 }
 
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
+	// TODO For some reason, build fails with autofree with this line
+	// as it's only informative, comment it for now
+	// g.gen_attrs(it.attrs)
 	if it.language == .c {
 		// || it.no_body {
 		return
@@ -33,9 +36,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// g.cur_fn = it
 	fn_start_pos := g.out.len
-	msvc_attrs := g.write_fn_attrs()
+	msvc_attrs := g.write_fn_attrs(it.attrs)
 	// Live
-	is_livefn := 'live' in g.attrs
+	is_livefn := it.attrs.contains('live')
 	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
@@ -142,7 +145,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-		g.profile_fn(it.name)
+		g.profile_fn(it)
 	}
 	g.stmts(it.stmts)
 	//
@@ -711,10 +714,10 @@ fn (g &Gen) fileis(s string) bool {
 	return g.file.path.contains(s)
 }
 
-fn (mut g Gen) write_fn_attrs() string {
+fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 	mut msvc_attrs := ''
-	for attr in g.attrs {
-		match attr {
+	for attr in attrs {
+		match attr.name {
 			'inline' {
 				g.write('inline ')
 			}

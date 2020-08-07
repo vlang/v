@@ -286,13 +286,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(node.expr)
 			f.writeln('')
 		}
-		ast.Attr {
-			if node.is_string {
-				f.writeln("['$node.name']")
-			} else {
-				f.writeln('[$node.name]')
-			}
-		}
 		ast.Block {
 			if node.is_unsafe {
 				f.write('unsafe ')
@@ -537,10 +530,12 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
+				if arg.is_mut {
+					f.write(arg.typ.share().str() + ' ')
+				}
 				f.write(arg.name)
 				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
 				if arg.is_mut {
-					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
 						s = s[1..]
 					}
@@ -591,6 +586,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 }
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -628,9 +624,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
 			f.write(f.type_to_str(field.typ))
-			if field.attrs.len > 0 {
-				f.write(' [' + field.attrs.join(';') + ']')
-			}
+			f.inline_attrs(field.attrs)
 			if field.has_default_expr {
 				f.write(' = ')
 				f.prefix_expr_cast_expr(field.default_expr)
@@ -661,9 +655,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(f.type_to_str(field.typ))
-		if field.attrs.len > 0 {
-			f.write(' [' + field.attrs.join(';') + ']')
-		}
+		f.inline_attrs(field.attrs)
 		if field.has_default_expr {
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
@@ -1121,6 +1113,37 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 	}
 }
 
+fn (mut f Fmt) attrs(attrs []table.Attr) {
+	for attr in attrs {
+		f.write('[')
+		if attr.is_ctdefine {
+			f.write('if ')
+		}
+		if attr.is_string {
+			f.write("'")
+		}
+		f.write(attr.name)
+		if attr.is_string {
+			f.write("'")
+		}
+		f.writeln(']')
+	}
+}
+
+fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
+	if attrs.len == 0 {
+		return
+	}
+	f.write(' [')
+	for i, attr in attrs {
+		if i > 0 {
+			f.write(';')
+		}
+		f.write(attr.name)
+	}
+	f.write(']')
+}
+
 enum CommentsLevel {
 	keep
 	indent
@@ -1179,6 +1202,7 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
+	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')

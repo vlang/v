@@ -197,7 +197,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	free := g.pref.autofree && g.inside_call && !g.inside_return && g.inside_ternary == 0 && !g.inside_const
 	// && g.cur_fn != 0 &&
 	// g.cur_fn.name != ''
-	if false && free {
+	if free {
 		// Save the string expr in a temporary variable, so that it can be removed after the call.
 		tmp = g.new_tmp_var()
 		/*

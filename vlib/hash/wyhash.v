@@ -51,26 +51,26 @@ fn wyhash64(key byteptr, len, seed_ u64) u64 {
 	mut p := key
 	mut seed := seed_
 	mut i := len & 63
-	unsafe {
-		if i < 4 {
-			seed = wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
+	seed = unsafe{match i {
+		0...3 {
+			wymum(wyr3(p, i) ^ seed ^ wyp0, seed ^ wyp1)
 		}
-		else if i <= 8 {
-			seed = wymum(wyr4(p) ^ seed ^ wyp0, wyr4(p + i - 4) ^ seed ^ wyp1)
+		4...8 {
+			wymum(wyr4(p) ^ seed ^ wyp0, wyr4(p + i - 4) ^ seed ^ wyp1)
 		}
-		else if i <= 16 {
-			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + i - 8) ^ seed ^ wyp1)
+		9...16 {
+			wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + i - 8) ^ seed ^ wyp1)
 		}
-		else if i <= 24 {
-			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + i - 8) ^ seed ^ wyp2, seed ^ wyp3)
+		17...24 {
+			wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + i - 8) ^ seed ^ wyp2, seed ^ wyp3)
 		}
-		else if i <= 32 {
-			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + i - 8) ^ seed ^ wyp3)
+		25...32 {
+			wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + i - 8) ^ seed ^ wyp3)
 		}
 		else {
-			seed = wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + 24) ^ seed ^ wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ wyp1, wyr8(p + i - 24) ^ seed ^ wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ wyp3, wyr8(p + i - 8) ^ seed ^ wyp0)
+			wymum(wyr8(p) ^ seed ^ wyp0, wyr8(p + 8) ^ seed ^ wyp1) ^ wymum(wyr8(p + 16) ^ seed ^ wyp2, wyr8(p + 24) ^ seed ^ wyp3) ^ wymum(wyr8(p + i - 32) ^ seed ^ wyp1, wyr8(p + i - 24) ^ seed ^ wyp2) ^ wymum(wyr8(p + i - 16) ^ seed ^ wyp3, wyr8(p + i - 8) ^ seed ^ wyp0)
 		}
-	}
+	}}
 	if i == len {
 		return wymum(seed, len ^ wyp4)
 	}

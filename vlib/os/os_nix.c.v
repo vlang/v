@@ -148,9 +148,9 @@ pub fn exec(cmd string) ?Result {
 	soutput := res.str()
 	// res.free()
 	exit_code := vpclose(f)
-	// if exit_code != 0 {
-	// return error(res)
-	// }
+	if exit_code == 127 {
+		return error_with_code(soutput, 127)
+	}
 	return Result{
 		exit_code: exit_code
 		output: soutput
@@ -210,4 +210,9 @@ pub fn is_writable_folder(folder string) ?bool {
 	}
 	os.rm(tmp_perm_check)
 	return true
+}
+
+[inline]
+pub fn getpid() int {
+	return C.getpid()
 }
