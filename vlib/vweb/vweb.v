@@ -372,7 +372,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// should be called first.
 				if (req.method == .get && url_words[0] == method.name && url_words.len == 1) || (req.method == .post && url_words[0] + '_post' == method.name) {
 					println('easy match method=$method.name')
-					app.$method(vars)
+					app.$(method.name)(vars)
 					return
 				}
 			} else {
