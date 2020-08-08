@@ -1147,7 +1147,7 @@ pub fn walk(path string, f fn(path string)) {
 	return
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn signal(signum int, handler voidptr) {
 	unsafe {
 		C.signal(signum, handler)
