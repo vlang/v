@@ -744,7 +744,7 @@ fn (mut p Parser) parse_attr() table.Attr {
 	} else {
 		mut name = p.check_name()
 		if name == 'unsafe_fn' {
-			//p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+			// p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
 			name = 'unsafe'
 		}
 		if p.tok.kind == .colon {

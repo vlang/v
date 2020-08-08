@@ -33,7 +33,7 @@ fn test_ptr_infix() {
 struct S1 {
 }
 
-[unsafe_fn]
+[unsafe]
 fn (s S1) f() {
 }
 
