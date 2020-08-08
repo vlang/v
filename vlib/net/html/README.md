@@ -16,16 +16,16 @@ This functions is the main function called by parse method to fragment parse you
 #### parse_html(data string, is_file bool)
 This function is called passing a filename or a complete html data string to it
 
-### add_code_tag(name string)
+#### add_code_tag(name string)
 This function is used to add a tag for the parser ignore it's content. For example, if you have an html or XML with a custom tag, like `<script>`, using this function, like `add_code_tag('script')` will make all `script` tags content be jumped, so you still have its content, but will not confuse the parser with it's `>` or `<`
 
-### finalize()
+#### finalize()
 When using **split_parse** method, you must call this function to ends the parse completely
 
-### get_tags() []Tag_ptr
+#### get_tags() []Tag_ptr
 This functions returns a array with all tags and it's content
 
-### get_dom() DocumentObjectModel
+#### get_dom() DocumentObjectModel
 Returns the DocumentObjectModel for current parsed tags
 
 ### WARNING
@@ -60,16 +60,16 @@ Returns all children as an array
 #### get_parent() &Tag
 Returns the parent of current tag
 
-### get_name() string
+#### get_name() string
 Returns tag name
 
-### get_content() string
+#### get_content() string
 Returns tag content
 
-### get_attributes() map[string]string
+#### get_attributes() map[string]string
 Returns all attributes and it value
 
-### text() string
+#### text() string
 Returns the content of the tag and all tags inside it. Also, any `<br>` tag will be converted into `\n`
 
 ## Some questions that can appear
