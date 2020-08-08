@@ -1,5 +1,7 @@
 [inline]
 [if debug]
+[foo: bar]
+[deprecated: 'use bar() instead']
 fn keep_attributes() {
 	println('hi !')
 }
