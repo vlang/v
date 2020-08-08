@@ -914,6 +914,10 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 // compile return (return code, index) where index is the index of the error in the query string if return code is an error code
 [deprecated]
 pub fn (mut re RE) compile(in_txt string) (int,int) {
+	return re.impl_compile(in_txt)
+}    
+
+fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	mut i        := 0      // input string index
 	mut pc       := 0      // program counter
 	mut tmp_code := u32(0)
@@ -2202,12 +2206,15 @@ pub fn regex(in_query string) (RE,int,int){
 // new_regex create a RE of small size, usually sufficient for ordinary use
 [deprecated]
 pub fn new_regex() RE {
-	return new_regex_by_size(1)
+	return impl_new_regex_by_size(1)
 }
 
 // new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
 [deprecated]
 pub fn new_regex_by_size(mult int) RE {
+	return impl_new_regex_by_size(mult)
+}    
+fn impl_new_regex_by_size(mult int) RE {
 	mut re := RE{}
 	re.prog = [Token{}].repeat(max_code_len*mult)       // max program length, default 256 istructions
 	re.cc = [CharClass{}].repeat(max_code_len*mult)     // char class list

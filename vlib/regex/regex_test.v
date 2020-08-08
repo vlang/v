@@ -175,48 +175,52 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
 
-		mut re, re_err, _ := regex.regex(to.q)
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
+			assert false
+			continue
+		}
+
 		re.group_csave = [-1].repeat(3*20+1)
 
-		if re_err == regex.compile_ok {
-			start, end := re.match_string(to.src)
+		start, end := re.match_string(to.src)
 
-			mut tmp_str := ""
-			if start >= 0 && end  > start{
-				tmp_str = to.src[start..end]
-			}
+		mut tmp_str := ""
+		if start >= 0 && end  > start{
+			tmp_str = to.src[start..end]
+		}
 
-			if start != to.s || end != to.e {
-				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
-				println("ERROR!")
-				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+		if start != to.s || end != to.e {
+			println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			println("ERROR!")
+			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+			assert false
+			continue
+		}
+
+		// check cgroups
+		if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
+			println("Capturing group len error!")
+			assert false
+			continue
+		}
+
+		// check captured groups
+		mut ln := re.group_csave[0]*3
+		for ln > 0 {
+			if re.group_csave[ln] != to.cg[ln] {
 				assert false
-				break
 			}
+			ln--
+		}
 
-			// check cgroups
-			if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
-				println("Capturing group len error!")
+		// check named captured groups
+		for k in to.cgn.keys() {
+			if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
+				println("Named capturing group error! [$k]")
 				assert false
+				continue
 			}
-
-			// check captured groups
-			mut ln := re.group_csave[0]*3
-			for ln > 0 {
-				if re.group_csave[ln] != to.cg[ln] {
-					assert false
-				}
-				ln--
-			}
-
-			// check named captured groups
-			for k in to.cgn.keys() {
-				if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
-					println("Named capturing group error! [$k]")
-					assert false
-				}
-			}
-
 		}
 	}
 
@@ -225,29 +229,27 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.r")
 
-		mut re, re_err, err_pos := regex.regex(to.q)
-		if re_err == regex.compile_ok {
-			res := re.find_all(to.src)
-			if res.len != to.r.len {
-				println("ERROR: find_all, array of different size.")
-				assert false
-			}
-
-			for c1,i in res {
-				if i != to.r[c1] {
-					println("ERROR: find_all, different indexes.")
-					assert false
-				}
-			}
-
-		} else {
-			println("query: $to.q")
-			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
-			err_str := re.get_parse_error_string(re_err)
-			println("ERROR: $err_str")
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
 			assert false
+			continue
 		}
+
+		res := re.find_all(to.src)
+		if res.len != to.r.len {
+			println("ERROR: find_all, array of different size.")
+			assert false
+			continue            
+		}
+
+		for c1,i in res {
+			if i != to.r[c1] {
+				println("ERROR: find_all, different indexes.")
+				assert false
+				continue
+			}
+		}
+
 	}
 
 	// check replace
@@ -255,97 +257,81 @@ fn test_regex(){
 		// debug print
 		//println("#$c [$to.src] q[$to.q] $to.r")
 
-		mut re, re_err, err_pos := regex.regex(to.q)
-		if re_err == regex.compile_ok {
-			res := re.replace(to.src,to.rep)
-			if res != to.r {
-				println("ERROR: replace.")
-				assert false
-			}
-
-		} else {
-			println("query: $to.q")
-			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
-			err_str := re.get_parse_error_string(re_err)
-			println("ERROR: $err_str")
+		mut re := regex.regex_opt(to.q) or {
+			eprintln('err: $err')
 			assert false
+			continue
 		}
+
+		res := re.replace(to.src,to.rep)
+		if res != to.r {
+			println("ERROR: replace.")
+			assert false
+			continue
+		}		
 	}
 
 	// check match and find
 	for c,to in match_test_suite {
 		// debug print
-		//println("#$c [$to.src] q[$to.q] $to.s")
+		println("#$c [$to.src] q[$to.q] $to.s $to.e")
 
 		// test the find
 		if to.s > 0 {
-			mut re, re_err, err_pos := regex.regex(to.q)
-			if re_err == regex.compile_ok {
-				//q_str := re.get_query()
-				//println("Query: $q_str")
-				start,end := re.find(to.src)
-
-				if start != to.s || end != to.e {
-					err_str := re.get_parse_error_string(start)
-					println("ERROR : $err_str")
-					assert false
-				} else {
-					//tmp_str := text[start..end]
-					//println("found in [$start, $end] => [$tmp_str]")
-					assert true
-				}
-
-			} else {
-				println("query: $to.q")
-				lc := "-".repeat(err_pos-1)
-				println("err  : $lc^")
-				err_str := re.get_parse_error_string(re_err)
-				println("ERROR: $err_str")
+			mut re := regex.regex_opt(to.q) or {
+				eprintln('err: $err')
 				assert false
+				continue
+			}                
+			// q_str := re.get_query()
+			// println("Query: $q_str")
+			start,end := re.find(to.src)
+
+			if start != to.s || end != to.e {
+				err_str := re.get_parse_error_string(start)
+				println("ERROR : $err_str")
+				assert false
+			} else {
+				//tmp_str := text[start..end]
+				//println("found in [$start, $end] => [$tmp_str]")
+				assert true
 			}
 			continue
 		}
 
 		// test the match
-		mut re := regex.new_regex()
+		mut re := regex.new()
 		//re.debug = true
 
-		re_err,err_pos := re.compile(to.q)
-		if re_err == regex.compile_ok {
-			//println("#$c [$to.src] q[$to.q]")
-			start, end := re.match_string(to.src)
-
-			mut tmp_str := ""
-			if start >= 0 && end  > start{
-				tmp_str = to.src[start..end]
-			}
-
-			if start != to.s || end != to.e {
-				println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
-				println("ERROR!")
-				//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
-				assert false
-				break
-			}
-
-			// rerun to test consistency
-			tmp_str1 := to.src.clone()
-			start1, end1 := re.match_string(tmp_str1)
-			if start1 != start || end1 != end {
-				println("two run ERROR!!")
-				assert false
-				break
-			}
-
-		} else {
-			println("query: $to.q")
-			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
-			err_str := re.get_parse_error_string(re_err)
-			println("ERROR: $err_str")
+		re.compile_opt(to.q) or {
+			eprintln('err: $err')
 			assert false
-			break
+			continue
 		}
+		//println("#$c [$to.src] q[$to.q]")
+		start, end := re.match_string(to.src)
+
+		mut tmp_str := ""
+		if start >= 0 && end  > start{
+			tmp_str = to.src[start..end]
+		}
+
+		if start != to.s || end != to.e {
+			println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			println("ERROR!")
+			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+			assert false
+			continue
+		}
+
+		// rerun to test consistency
+		tmp_str1 := to.src.clone()
+		start1, end1 := re.match_string(tmp_str1)
+		if start1 != start || end1 != end {
+			println("two run ERROR!!")
+			assert false
+			continue
+		}
+
 	}
 }

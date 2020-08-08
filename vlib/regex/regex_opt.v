@@ -3,7 +3,7 @@ import strings
 
 // compile_opt compile RE pattern string
 pub fn (mut re RE) compile_opt(pattern string) ? {
-	re_err,err_pos := re.compile(pattern)
+	re_err,err_pos := re.impl_compile(pattern)
 	
 	if re_err != compile_ok {
 		mut err_msg := strings.new_builder(300)
@@ -18,12 +18,12 @@ pub fn (mut re RE) compile_opt(pattern string) ? {
 
 // new_regex create a RE of small size, usually sufficient for ordinary use
 pub fn new() RE {
-	return new_regex()
+	return impl_new_regex_by_size(1)
 }
 
 // new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
 pub fn new_by_size(mult int) RE {
-	return new_regex_by_size(mult)
+	return impl_new_regex_by_size(mult)
 }
 
 // regex_opt create new RE object from RE pattern string
