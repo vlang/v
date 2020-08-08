@@ -17,7 +17,7 @@ fn test_split_parse() {
 	parser.split_parse('</bo\n\n\ndy></html>')
 	parser.finalize()
 	assert parser.get_tags().len == 11
-	assert parser.get_tags()[3].get_content() == ' hum... a tit\nle'
+	assert parser.get_tags()[3].get_content() == ' Hum... A Tit\nle'
 }
 
 fn test_giant_string() {

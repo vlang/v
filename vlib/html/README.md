@@ -69,6 +69,9 @@ Returns tag content
 ### get_attributes() map[string]string
 Returns all attributes and it value
 
+### text() string
+Returns the content of the tag and all tags inside it. Also, any `<br>` tag will be converted into `\n`
+
 ## Some questions that can appear
 
 ### Q: Why in parser have a `builder_str() string` method that returns only the lexeme string?

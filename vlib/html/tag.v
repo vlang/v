@@ -1,5 +1,10 @@
 module html
 
+enum CloseTagType {
+	in_name
+	new_tag
+}
+
 [ref_only]
 pub struct Tag {
 mut:
@@ -11,6 +16,7 @@ mut:
 	parent             &Tag = C.NULL
 	position_in_parent int = 0
 	closed             bool = false
+	close_type         CloseTagType = .in_name
 }
 
 fn (mut tag Tag) add_parent(t &Tag, position int) {
@@ -45,7 +51,18 @@ pub fn (tag Tag) get_attributes() map[string]string {
 	return tag.attributes
 }
 
-pub fn (tag &Tag) str() string { // add text method to generate a tag text from it content and childs content
+pub fn (tag Tag) text() string {
+	if tag.name.len >= 2 && tag.name[0..2] == 'br' {
+		return '\n'
+	}
+	mut to_return := tag.content.replace('\n', '')
+	for index := 0; index < tag.children.len; index++ {
+		to_return += tag.children[index].text()
+	}
+	return to_return
+}
+
+pub fn (tag &Tag) str() string {
 	mut to_return := '<$tag.name'
 	for key in tag.attributes.keys() {
 		to_return += ' $key'
@@ -54,7 +71,7 @@ pub fn (tag &Tag) str() string { // add text method to generate a tag text from 
 			to_return += '=' + '"${tag.attributes[key]}"'
 		}
 	}
-	to_return += if tag.closed { '/>' } else { '>' }
+	to_return += if tag.closed && tag.close_type == .in_name { '/>' } else { '>' }
 	to_return += '$tag.content'
 	if tag.children.len > 0 {
 		// println('${tag.name} have ${tag.children.len} childrens')
@@ -62,7 +79,7 @@ pub fn (tag &Tag) str() string { // add text method to generate a tag text from 
 			to_return += tag.get_children()[index].str()
 		}
 	}
-	if !tag.closed {
+	if !tag.closed || tag.close_type == .new_tag {
 		to_return += '</$tag.name>'
 	}
 	return to_return

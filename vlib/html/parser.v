@@ -19,9 +19,9 @@ mut:
 	}
 }
 
-fn (mut lxa LexycalAttributes) write_lexeme(data string) {
+fn (mut lxa LexycalAttributes) write_lexeme(data byte) {
 	mut temp := lxa.lexeme_builder
-	temp += data
+	temp += data.str()
 	lxa.lexeme_builder = temp
 }
 
@@ -49,7 +49,7 @@ pub fn (mut parser Parser) add_code_tag(name string) {
 }
 
 fn (parser Parser) builder_str() string {
-	return parser.lexycal_attributes.lexeme_builder.to_lower()
+	return parser.lexycal_attributes.lexeme_builder
 }
 
 [if debug]
@@ -74,21 +74,6 @@ fn (mut parser Parser) verify_end_comment(remove bool) bool {
 		parser.lexycal_attributes.lexeme_builder = temp[0..temp.len - 2]
 	}
 	return is_end_comment
-}
-
-fn compare_end_string(first, second string) bool {
-	mut big := first
-	mut small := second
-	if second.len > big.len {
-		big = second
-		small = first
-	}
-	for index := 0; index < small.len; index++ {
-		if small[index] != big[big.len - small.len + index] {
-			return false
-		}
-	}
-	return true
 }
 
 fn blank_string(data string) bool {
@@ -138,7 +123,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			else { 0 }
 		}
 		if parser.lexycal_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
-			parser.lexycal_attributes.write_lexeme(word.str())
+			parser.lexycal_attributes.write_lexeme(word)
 			if parser.lexycal_attributes.open_string > 0 {
 				if parser.lexycal_attributes.open_string == string_code {
 					parser.lexycal_attributes.open_string = 0
@@ -148,43 +133,46 @@ pub fn (mut parser Parser) split_parse(data string) {
 			} else if word == 62 { // only execute verification if is a > // here will verify < to know if code tag is finished
 				name_close_tag := '</' + parser.lexycal_attributes.opened_code_type + '>'
 				temp_string := parser.builder_str()
-				if compare_end_string(temp_string, name_close_tag) {
-					parser.lexycal_attributes.open_code = false // need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)
+				if temp_string.to_lower().ends_with(name_close_tag) {
+					parser.lexycal_attributes.open_code = false
+					// need to modify lexeme_builder to add script text as a content in next loop (not gave error in dom)
 					parser.lexycal_attributes.lexeme_builder = temp_string[0..temp_string.len -
 						name_close_tag.len]
 					parser.lexycal_attributes.current_tag.closed = true
+					parser.lexycal_attributes.current_tag.close_type = .new_tag
 				}
 			}
-		} else if parser.lexycal_attributes.open_comment { // close tag '>
-			if word == 62 && parser.verify_end_comment(false) { // parser.print_debug(parser.builder_str() + " >> " + parser.lexycal_attributes.line_count.str())
+		} else if parser.lexycal_attributes.open_comment {
+			if word == 62 && parser.verify_end_comment(false) { // close tag '>'
+				// parser.print_debug(parser.builder_str() + " >> " + parser.lexycal_attributes.line_count.str())
 				parser.lexycal_attributes.lexeme_builder = '' // strings.Builder{}
 				parser.lexycal_attributes.open_comment = false
 				parser.lexycal_attributes.open_tag = false
 			} else {
-				parser.lexycal_attributes.write_lexeme(word.str())
+				parser.lexycal_attributes.write_lexeme(word)
 			}
 		} else if parser.lexycal_attributes.open_string > 0 {
 			if parser.lexycal_attributes.open_string == string_code {
 				parser.lexycal_attributes.open_string = 0
-				parser.lexycal_attributes.write_lexeme(word.str())
+				parser.lexycal_attributes.write_lexeme(word)
 				temp_lexeme := parser.builder_str()
 				if parser.lexycal_attributes.current_tag.last_attribute != '' {
 					parser.lexycal_attributes.current_tag.attributes[parser.lexycal_attributes.current_tag.last_attribute] = temp_lexeme.substr(1,
 						temp_lexeme.len - 1) // parser.print_debug(parser.lexycal_attributes.current_tag.last_attribute + " = " + temp_lexeme)
 					parser.lexycal_attributes.current_tag.last_attribute = ''
 				} else {
-					parser.lexycal_attributes.current_tag.attributes[temp_lexeme] = '' // parser.print_debug(temp_lexeme)
+					parser.lexycal_attributes.current_tag.attributes[temp_lexeme.to_lower()] = '' // parser.print_debug(temp_lexeme)
 				}
 				parser.lexycal_attributes.lexeme_builder = ''
 			} else {
-				parser.lexycal_attributes.write_lexeme(word.str())
+				parser.lexycal_attributes.write_lexeme(word)
 			}
 		} else if parser.lexycal_attributes.open_tag {
 			if parser.lexycal_attributes.lexeme_builder.len == 0 && is_quotation {
 				parser.lexycal_attributes.open_string = string_code
-				parser.lexycal_attributes.write_lexeme(word.str())
+				parser.lexycal_attributes.write_lexeme(word)
 			} else if word == 62 { // close tag >
-				complete_lexeme := parser.builder_str()
+				complete_lexeme := parser.builder_str().to_lower()
 				parser.lexycal_attributes.current_tag.closed = (complete_lexeme.len > 0 &&
 					complete_lexeme[complete_lexeme.len - 1] == 47) // if equals to /
 				if complete_lexeme.len > 0 && complete_lexeme[0] == 47 {
@@ -208,9 +196,9 @@ pub fn (mut parser Parser) split_parse(data string) {
 				}
 				// parser.print_debug(parser.lexycal_attributes.current_tag.name)
 			} else if word != 9 && word != 32 && word != 61 && word != 10 { // Tab, space, = and \n
-				parser.lexycal_attributes.write_lexeme(word.str())
+				parser.lexycal_attributes.write_lexeme(word)
 			} else if word != 10 {
-				complete_lexeme := parser.builder_str()
+				complete_lexeme := parser.builder_str().to_lower()
 				if parser.lexycal_attributes.current_tag.name == '' {
 					parser.lexycal_attributes.current_tag.name = complete_lexeme
 				} else {
@@ -243,7 +231,7 @@ pub fn (mut parser Parser) split_parse(data string) {
 			parser.generate_tag()
 			parser.lexycal_attributes.open_tag = true
 		} else {
-			parser.lexycal_attributes.write_lexeme(word.str())
+			parser.lexycal_attributes.write_lexeme(word)
 		}
 	}
 }
