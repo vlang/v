@@ -132,7 +132,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := p.attrs.contains('deprecated')
-	mut is_unsafe := p.attrs.contains('unsafe_fn')
+	mut is_unsafe := p.attrs.contains('unsafe')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
