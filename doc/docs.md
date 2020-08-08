@@ -183,6 +183,21 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+    mut total := 0
+    for x in a {
+        total += x
+    }
+    return total
+}
+println(sum())    // Output: 0
+println(sum(1))   //         1
+println(sum(2,3)) //         5
+```
+
 ## Symbol visibility
 
 ```v
