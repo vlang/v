@@ -588,7 +588,7 @@ fn test_title() {
 	assert s.title() == 'Hello World'
 	s = 'HELLO WORLD'
 	assert !s.is_title()
-	assert s.title() == 'Hello World'
+	assert s.title() == 'HELLO WORLD'
 	s = 'Hello World'
 	assert s.is_title()
 	assert s.title() == 'Hello World'
