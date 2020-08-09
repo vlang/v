@@ -28,9 +28,6 @@ fn main() {
                 }
         }
 }
-
-
-
 ```
 
 This simple program covers many of the principal aspects of the `term ` module.
@@ -41,8 +38,7 @@ Here are some functions you should be aware of in the `term `module:
 
 ```v
 // returns the height and the width of the terminal
-width,height := term.get_terminal_size()
-
+term.get_terminal_size() (width, height)
 
 // returns the string as green text to be printed on stdout 
 term.ok_message(string)
@@ -68,7 +64,7 @@ term.strikethrough(string)
 // Underlines the given string
 term.underline(string)
 
-// colors the background of the given string, replace <color> witha color of your choice
+// colors the background of the given string, replace <color> with a color of your choice
 term.bg_<color>(string)
 
 // Sets the position of the cursor at a given place in the terminal
@@ -86,10 +82,10 @@ term.cursor_forward()
 // moves the cursor to the left
 term.cursor_back()
 
-// show the cursor
+// shows the cursor
 term.show_cursor()
 
-// hide the cursor
+// hides the cursor
 term.hide_cursor
 
 
