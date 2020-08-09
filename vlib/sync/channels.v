@@ -489,22 +489,33 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut event_idx := -1 // negative index means `timed out`
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
+		mut num_closed := 0
 		for j, _ in channels {
 			mut i := j + int(rnd)
 			if i >= channels.len {
 				i -= channels.len
 			}
 			if dir[i] == .push {
-				if channels[i].try_push(objrefs[i], true) == .success {
+				stat := channels[i].try_push(objrefs[i], true)
+				if stat == .success {
 					event_idx = i
 					goto restore
+				} else if stat == .closed {
+					num_closed++
 				}
 			} else {
-				if channels[i].try_pop(objrefs[i], true) == .success {
+				stat := channels[i].try_pop(objrefs[i], true)
+				if stat == .success {
 					event_idx = i
 					goto restore
+				} else if stat == .closed {
+					num_closed++
 				}
 			}
+		}
+		if num_closed == channels.len {
+			event_idx == -2
+			goto restore
 		}
 		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
