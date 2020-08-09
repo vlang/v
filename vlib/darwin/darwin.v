@@ -44,7 +44,7 @@ pub fn resource_path() string {
 	if conv_result == 0 {
 		panic('CFURLGetFileSystemRepresentation failed')
 	}
-	result := string(buffer)
+	result := unsafe { buffer.vstring() }
 	C.CFRelease(resource_dir_url)
 	return result
 }

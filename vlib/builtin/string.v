@@ -1446,9 +1446,10 @@ pub fn (s string) repeat(count int) string {
 		}
 	}
 	unsafe {
-		ret[s.len * count] = 0
+		new_len := s.len * count    
+		ret[new_len] = 0
+		return ret.vstring_with_len(new_len)
 	}
-	return string(ret)
 }
 
 pub fn (s string) fields() []string {
@@ -1480,7 +1481,7 @@ pub fn (s string) filter(func fn(b byte) bool) string {
 	}
 	unsafe {
 		buf[new_len] = 0
-		return string(buf, new_len)
+		return buf.vstring_with_len(new_len)
 	}
 }
 
@@ -1541,6 +1542,6 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	unsafe {
 		ret[count] = 0
+		return ret.vstring_with_len(count)
 	}
-	return string(ret)
 }

@@ -502,10 +502,10 @@ fn test_bytes_to_string() {
 		buf[3] = `l`
 		buf[4] = `o`
 	}
-	assert string(buf) == 'hello'
-	assert string(buf, 2) == 'he'
+	assert unsafe { buf.vstring() } == 'hello'
+	assert unsafe { buf.vstring_with_len(2) } == 'he'
 	bytes := [`h`, `e`, `l`, `l`, `o`]
-	assert string(bytes, 5) == 'hello'
+	assert bytes.bytestr() == 'hello'
 }
 
 fn test_count() {

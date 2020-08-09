@@ -323,7 +323,7 @@ fn filter_num_sep(txt byteptr, start, end int) string {
 			}
 		}
 		b[i1] = 0 // C string compatibility
-		return string(b)
+		return b.vstring_with_len(i1)
 	}
 }
 

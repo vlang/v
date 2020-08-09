@@ -275,7 +275,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 		break
 	}
 	if ok {
-		return v
+		return v.clone()
 	}
 	// TODO: Use `filter` instead of this nonesense
 	buf := v.bytes()
@@ -285,7 +285,7 @@ fn sanitize(valid fn(byte) bool, v string) string {
 			bytes.delete(i)
 		}
 	}
-	return string(bytes)
+	return bytes.bytestr()
 }
 
 fn sanitize_cookie_name(name string) string {
