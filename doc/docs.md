@@ -23,6 +23,7 @@ you can do in V.
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
+    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -181,6 +182,21 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
+```
+
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+    mut total := 0
+    for x in a {
+        total += x
+    }
+    return total
+}
+println(sum())    // Output: 0
+println(sum(1))   //         1
+println(sum(2,3)) //         5
 ```
 
 ## Symbol visibility
