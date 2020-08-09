@@ -411,7 +411,7 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
-pub fn (b []byte) str2() string {
+pub fn (b []byte) bytestr() string {
 	return bytes2string(b)
 }
 
