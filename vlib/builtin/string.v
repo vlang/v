@@ -120,6 +120,23 @@ pub fn tos_lit(s charptr) string {
 	}
 }
 
+// byteptr.vstring() - converts a C style string to a V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring() string {
+	return string{
+		str: bp
+		len: unsafe {C.strlen(bp)}
+	}	
+}
+
+// byteptr.vstring_with_len() - converts a C style string to a V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring_with_len(len int) string {
+	return string{
+		str: bp
+		len: len
+	}	
+}
 
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
