@@ -745,8 +745,7 @@ fn (mut p Parser) parse_attr() table.Attr {
 		mut name = p.check_name()
 		if name == 'unsafe_fn' {
 			p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
-		}
-		else if name == 'trusted_fn' {
+		} else if name == 'trusted_fn' {
 			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
 		}
 		if p.tok.kind == .colon {
