@@ -141,7 +141,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.open_scope()
 	// C. || JS.
 	language := if p.tok.kind == .name && p.tok.lit == 'C' {
-		is_unsafe = !p.attrs.contains('trusted_fn')
+		is_unsafe = !p.attrs.contains('trusted')
 		table.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
 		table.Language.js
