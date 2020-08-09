@@ -512,7 +512,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 		}
 		if num_closed == channels.len {
-			event_idx == -2
+			event_idx = -2
 			goto restore
 		}
 		if timeout > 0 {
