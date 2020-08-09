@@ -128,12 +128,10 @@ pub fn new_channel<T>(n u32) &Channel {
 
 pub fn (mut ch Channel) close() {
 	C.atomic_store_u16(&ch.closed, 1)
-	println('about to prepare close')
 	mut nulladr := voidptr(0)
 	for !C.atomic_compare_exchange_weak_ptr(&ch.adr_written, &nulladr, voidptr(-1)) {
 		nulladr = voidptr(0)
 	}
-	println('close prepared')
 	ch.readsem_im.post()
 	ch.readsem.post()
 }
