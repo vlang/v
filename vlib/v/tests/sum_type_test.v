@@ -283,7 +283,7 @@ fn calc_expr(dst Number, get_final bool) bool {
 }
 
 // TODO: change definition once types other than any_int and any_float (int, f64, etc) are supported in sumtype
-type CommonType = any_int | any_float | string
+type CommonType = int | f64 | string
 
 fn (c CommonType) str() string {
 	match c {
@@ -291,10 +291,10 @@ fn (c CommonType) str() string {
 			return c
 		}
 		// TODO: combine `any_int` and `any_float` into `else` once code generation for `else` in sumtype match is mature 
-		any_int {
+		int {
 			return c.str()
 		}
-		any_float {
+		f64 {
 			return c.str()
 		}
 	}
