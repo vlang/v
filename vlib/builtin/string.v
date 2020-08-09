@@ -66,14 +66,14 @@ pub mut:
 	len   int
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn vstrlen(s byteptr) int {
 	return unsafe {C.strlen(charptr(s))}
 }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
-[unsafe_fn]
+[unsafe]
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if s == 0 {
@@ -147,7 +147,7 @@ pub fn (s string) cstr() byteptr {
 */
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
-[unsafe_fn]
+[unsafe]
 pub fn cstring_to_vstring(cstr byteptr) string {
 	return tos_clone(cstr)
 }
@@ -1217,7 +1217,7 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
-[unsafe_fn]
+[unsafe]
 fn (u &ustring) free() {
 	$if prealloc {
 		return

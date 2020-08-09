@@ -125,7 +125,7 @@ fn C.mktime() int
 fn C.gettimeofday() int
 
 
-[trusted_fn]
+[trusted]
 fn C.sleep(int) int
 
 
@@ -153,11 +153,11 @@ fn C.tolower() int
 fn C.toupper() int
 
 
-[trusted_fn]
+[trusted]
 fn C.getchar() int
 
 
-[trusted_fn]
+[trusted]
 fn C.strerror(int) charptr
 
 

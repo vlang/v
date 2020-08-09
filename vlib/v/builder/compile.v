@@ -64,7 +64,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe_fn]
+[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
