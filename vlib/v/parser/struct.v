@@ -10,6 +10,8 @@ import v.util
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
 	p.top_level_statement_start()
+	// save attributes, they will be changed later in fields
+	attrs := p.attrs
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -32,7 +34,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
-	is_typedef := 'typedef' in p.attrs
 	name_pos := p.tok.position()
 	mut name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
@@ -55,7 +56,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+	if language == .v &&
+		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 	}
 	if name.len == 1 {
@@ -168,12 +170,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					break
 				}
 			}
-			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes(false)
-				for attr in parsed_attrs {
-					attrs << attr.name
-				}
+				// attrs are stored in `p.attrs`
+				p.attributes()
 			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
@@ -198,7 +197,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comments: comments
 				default_expr: default_expr
 				has_default_expr: has_default_expr
-				attrs: attrs
+				attrs: p.attrs
 				is_public: is_field_pub
 			}
 			fields << table.Field{
@@ -209,8 +208,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
-				attrs: attrs
+				attrs: p.attrs
 			}
+			p.attrs = []
 			// println('struct field $ti.name $field_name')
 		}
 		p.top_level_statement_end()
@@ -228,9 +228,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		name: name
 		info: table.Struct{
 			fields: fields
-			is_typedef: is_typedef
+			is_typedef: attrs.contains('typedef')
 			is_union: is_union
-			is_ref_only: 'ref_only' in p.attrs
+			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
 		}
 		mod: p.mod
@@ -260,7 +260,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		pub_mut_pos: pub_mut_pos
 		language: language
 		is_union: is_union
-		attrs: p.attrs
+		attrs: attrs
 		end_comments: end_comments
 	}
 }

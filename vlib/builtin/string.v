@@ -841,9 +841,10 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	sl := s.to_lower()
-	cap := sl[0].str().to_upper() + sl.right(1)
-	return cap
+	return s[0].str().to_upper() + s[1..]
+	//sl := s.to_lower()
+	//cap := sl[0].str().to_upper() + sl.right(1)
+	//return cap
 }
 
 pub fn (s string) is_capital() bool {

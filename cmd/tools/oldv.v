@@ -79,7 +79,7 @@ fn main() {
 	} else {
 		context.commit_v = scripting.run('git rev-list -n1 HEAD')
 	}
-	println('#################  context.commit_v: $context.commit_v #####################')
+	scripting.cprintln('#################  context.commit_v: $context.commit_v #####################')
 	context.path_v = vgit.normalized_workpath_for_commit(context.vgo.workdir, context.commit_v)
 	context.path_vc = vgit.normalized_workpath_for_commit(context.vgo.workdir, 'vc')
 	if !os.is_dir(context.vgo.workdir) {
@@ -98,13 +98,13 @@ fn main() {
 	context.compile_oldv_if_needed()
 
 	scripting.chdir(context.path_v)
-	println('#     v commit hash: $context.commit_v_hash')
-	println('#   checkout folder: $context.path_v')
+	scripting.cprintln('#     v commit hash: $context.commit_v_hash')
+	scripting.cprintln('#   checkout folder: $context.path_v')
 	if context.cmd_to_run.len > 0 {
 		cmdres := os.exec(context.cmd_to_run) or {
 			panic(err)
 		}
-		println('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
+		scripting.cprintln('#           command: ${context.cmd_to_run:-34s} exit code: ${cmdres.exit_code:-4d}  result:')
 		println(cmdres.output)
 		exit(cmdres.exit_code)
 	}

@@ -119,7 +119,6 @@ pub enum Kind {
 	key_unlikely
 	key_offsetof
 	key_struct
-	key_switch
 	key_true
 	key_type
 	key_typeof
@@ -234,7 +233,6 @@ fn build_token_str() []string {
 	s[Kind.key_rlock] = 'rlock'
 	s[Kind.key_type] = 'type'
 	s[Kind.key_for] = 'for'
-	s[Kind.key_switch] = 'switch'
 	s[Kind.key_fn] = 'fn'
 	s[Kind.key_true] = 'true'
 	s[Kind.key_false] = 'false'

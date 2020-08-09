@@ -17,10 +17,17 @@ further tested.
 #flag freebsd -I @VROOT/thirdparty/stdatomic/nix
 #flag solaris -I @VROOT/thirdparty/stdatomic/nix
 
-#include "atomic.h"
+$if linux {
+	$if tinyc {
+		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
+	}
+}
 
-fn C.atomic_fetch_add_explicit() int
-fn C.atomic_fetch_sub_explicit() int
+#include <atomic.h>
+
+fn C.atomic_fetch_add_explicit(voidptr, i64) i64
+fn C.atomic_fetch_sub_explicit(voidptr, i64) i64
 
 [typedef]
 struct C.atomic_ullong {

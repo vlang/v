@@ -35,6 +35,7 @@ const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
+	long_days= ['Monday', 'Tuesday', 'Wednesday', 'Thusday', 'Friday', 'Saturday', 'Sunday']
 )
 
 pub struct Time {
@@ -270,6 +271,12 @@ pub fn (t Time) day_of_week() int {
 pub fn (t Time) weekday_str() string {
 	i := t.day_of_week() - 1
 	return days_string[i * 3..(i + 1) * 3]
+}
+
+// weekday_str returns the current day as a string.
+pub fn (t Time) long_weekday_str() string {
+	i := t.day_of_week() - 1
+	return long_days[i]
 }
 
 // ticks returns a number of milliseconds elapsed since system start.

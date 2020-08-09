@@ -12,6 +12,7 @@ for the current state of V***
 	* [Weaknesses](#weaknesses)
 	* [Compatibility](#compatibility)
 	* [Automatic Lock](#automatic-lock)
+	* [Channels](#channels)
 
 ## Concurrency
 
@@ -190,3 +191,73 @@ are sometimes surprising. Each statement should be seen as a single
 transaction that is unrelated to the previous or following
 statement. Therefore - but also for performance reasons - it's often
 better to group consecutive coherent statements in an explicit `lock` block.
+
+### Channels
+Channels in V work basically like those in Go. You can `push()` objects into
+a channel and `pop()` objects from a channel. They can be buffered or unbuffered
+and it is possible to `select` from multiple channels.
+
+#### Syntax and Usage
+There is no support for channels in the core language (yet), so all functions
+are in the `sync` library. Channels must be created as `mut` objects.
+
+```v
+mut ch := sync.new_channel<int>(0)    // unbuffered
+mut ch2 := sync.new_channel<f64>(100) // buffer length 100
+```
+
+Channels can be passed to coroutines like normal `mut` variables:
+
+```v
+fn f(mut ch sync.Channel) {
+    ...
+}
+
+fn main() {
+    ...
+    go f(mut ch)
+    ...
+}
+```
+
+The routines `push()` and `pop()` both use *references* to objects. This way
+unnecessary copies of large objects are avoided and the call to `cannel_select()`
+(see below) is simpler:
+
+```v
+n := 5
+x := 7.3
+ch.push(&n)
+ch2.push(&x)
+
+mut m := int(0)
+mut y := f64(0.0)
+ch.pop(&m)
+ch2.pop(&y)
+```
+
+The select call is somewhat tricky. The `channel_select()` function needs three arrays that
+contain the channels, the directions (pop/push) and the object references and
+a timeout of type `time.Duration` (or `0` to wait unlimited) as parameters. It returns the
+index of the object that was pushed or popped or `-1` for timeout.
+
+```v
+mut chans := [ch, ch2]        // the channels to monitor
+directions := [false, false]  // `true` means push, `false` means pop
+mut objs := [voidptr(&m), &y] // the objects to push or pop
+
+// idx contains the index of the object that was pushed or popped, -1 means timeout occured
+idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
+match idx {
+    0 {
+        println('got $m')
+    }
+    1 {
+        println('got $y')
+    }
+    else {
+        // idx = -1
+        println('Timeout')
+    }
+}
+```

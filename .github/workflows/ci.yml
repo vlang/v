@@ -53,8 +53,10 @@ jobs:
     - name: v fmt
       run: |
         ./v fmt -verify vlib/v/checker/checker.v
+        ./v fmt -verify vlib/v/fmt/fmt.v
         ./v fmt -verify vlib/v/parser/parser.v
         ./v fmt -verify vlib/v/gen/cgen.v
+        ./v fmt -verify vlib/v/gen/x64/gen.v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 

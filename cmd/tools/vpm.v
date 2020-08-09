@@ -8,7 +8,7 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls      = ['https://vpm.best', 'https://vpm.vlang.io']
+	default_vpm_server_urls      = ['https://vpm.vlang.io']
 	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'outdated', 'list', 'remove']
 	excluded_dirs                = ['cache', 'vlib']
 	supported_vcs_systems        = ['git', 'hg']
@@ -215,7 +215,7 @@ fn vpm_update(m []string) {
 			continue
 		}
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
-		verbose_println('      command: $vcs_cmd')
+		verbose_println('    command: $vcs_cmd')
 		vcs_res := os.exec('$vcs_cmd') or {
 			errors++
 			println('Could not update module "$name".')
@@ -229,6 +229,8 @@ fn vpm_update(m []string) {
 			verbose_println('Failed command: $vcs_cmd')
 			verbose_println('Failed details:\n$vcs_res.output')
 			continue
+		} else {
+			verbose_println('    $vcs_res.output.trim_space()')
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -289,8 +291,9 @@ fn vpm_list() {
 		println('You have no modules installed.')
 		exit(0)
 	}
+	println('Installed modules:')
 	for mod in module_names {
-		println(mod)
+		println('  $mod')
 	}
 }
 
@@ -534,7 +537,8 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code == 404 || r.text.contains('404') {
-			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			errors <<
+				'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
 		if r.status_code != 200 {

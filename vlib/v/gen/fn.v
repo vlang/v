@@ -11,6 +11,9 @@ pub fn kek_cheburek() {
 }
 
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
+	// TODO For some reason, build fails with autofree with this line
+	// as it's only informative, comment it for now
+	// g.gen_attrs(it.attrs)
 	if it.language == .c {
 		// || it.no_body {
 		return
@@ -33,9 +36,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// g.cur_fn = it
 	fn_start_pos := g.out.len
-	msvc_attrs := g.write_fn_attrs()
+	msvc_attrs := g.write_fn_attrs(it.attrs)
 	// Live
-	is_livefn := 'live' in g.attrs
+	is_livefn := it.attrs.contains('live')
 	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
@@ -142,7 +145,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-		g.profile_fn(it.name)
+		g.profile_fn(it)
 	}
 	g.stmts(it.stmts)
 	//
@@ -491,6 +494,31 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	*/
+	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
+	// like `foo(get_string())` or `foo(a + b)`
+	free_tmp_arg_vars := g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional)
+	if free_tmp_arg_vars {
+		g.tmp_idxs = []int{cap: 10} // TODO perf
+		for i, arg in node.args {
+			if arg.typ != table.string_type {
+				continue
+			}
+			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
+				continue
+			}
+			t := '_arg_expr_${name}_$i' // g.new_tmp_var()
+			g.called_fn_name = name
+			/*
+			g.write('string $t = ')
+			g.expr(arg.expr)
+			g.writeln('; // to free $i ')
+			*/
+			str_expr := g.write_expr_to_string(arg.expr)
+			g.insert_before_stmt('string $t = $str_expr; // to free $i ')
+			g.tmp_idxs << i
+		}
+	}
+	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
@@ -566,6 +594,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write(')')
 		g.is_json_fn = false
 	}
+	if free_tmp_arg_vars {
+		g.tmp_idxs.clear()
+	}
 }
 
 fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
@@ -593,6 +624,9 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			}
 			if is_interface {
 				g.expr(arg.expr)
+			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
+				g.tmp_idxs.len > 0 && i in g.tmp_idxs {
+				g.write('_arg_expr_${g.called_fn_name}_$i')
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i])
 			}
@@ -680,10 +714,10 @@ fn (g &Gen) fileis(s string) bool {
 	return g.file.path.contains(s)
 }
 
-fn (mut g Gen) write_fn_attrs() string {
+fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 	mut msvc_attrs := ''
-	for attr in g.attrs {
-		match attr {
+	for attr in attrs {
+		match attr.name {
 			'inline' {
 				g.write('inline ')
 			}

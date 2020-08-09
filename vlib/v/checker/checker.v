@@ -196,10 +196,13 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.warn('function `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				}
-				if stmt.ctdefine.len > 0 {
-					if stmt.return_type != table.void_type {
-						c.error('only functions that do NOT return values can have `[if $stmt.ctdefine]` tags',
-							stmt.pos)
+				if stmt.return_type != table.void_type {
+					for attr in stmt.attrs {
+						if attr.is_ctdefine {
+							c.error('only functions that do NOT return values can have `[if $attr.name]` tags',
+								stmt.pos)
+							break
+						}
 					}
 				}
 			}
@@ -233,7 +236,7 @@ fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Pos
 	if !c.pref.is_vweb && (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
-	if util.contains_capital(name) {
+	if !c.pref.experimental && !c.pref.translated && util.contains_capital(name) {
 		c.error('$identifier `$name` cannot contain uppercase letters, use snake_case instead',
 			pos)
 	}
@@ -248,7 +251,7 @@ fn stripped_name(name string) string {
 
 fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
 	sname := stripped_name(name)
-	if !sname[0].is_capital() {
+	if !sname[0].is_capital() && !c.pref.translated {
 		c.error('$identifier `$name` must begin with capital letter', pos)
 	}
 }
@@ -305,7 +308,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if decl.language == .v {
+		if !c.is_builtin_mod && decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -315,13 +318,15 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		}
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
-			c.error('unknown type `$sym.name`', field.pos)
+			c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
+				field.pos)
 		}
 		if sym.kind == .array {
 			array_info := sym.array_info()
 			elem_sym := c.table.get_type_symbol(array_info.elem_type)
 			if elem_sym.kind == .placeholder {
-				c.error('unknown type `$elem_sym.name`', field.pos)
+				c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
+					field.pos)
 			}
 		}
 		if sym.kind == .struct_ {
@@ -356,6 +361,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			return table.void_type
 		}
 		struct_init.typ = c.expected_type
+	}
+	if struct_init.typ == 0 {
+		c.error('unknown type', struct_init.pos)
 	}
 	type_sym := c.table.get_type_symbol(struct_init.typ)
 	if type_sym.kind == .sum_type && struct_init.fields.len == 1 {
@@ -457,7 +465,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
-				if field.typ.is_ptr() {
+				if field.typ.is_ptr() && !c.pref.translated {
 					c.warn('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
@@ -686,7 +694,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		ast.Ident {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
-				if !v.is_mut {
+				if !v.is_mut && !c.pref.translated {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
@@ -729,7 +737,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
 					}
-					if !field_info.is_mut {
+					if !field_info.is_mut && !c.pref.translated {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('field `$expr.field_name` of struct `$type_str` is immutable',
 							expr.pos)
@@ -1024,7 +1032,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	if left_type != table.void_type {
-		c.error('unknown method: `${left_type_sym.name}.$method_name`', call_expr.pos)
+		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
+		c.error(suggestion.say('unknown method: `${left_type_sym.name}.$method_name`'),
+			call_expr.pos)
 	}
 	return table.void_type
 }
@@ -1527,7 +1537,8 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	mut seen := []int{}
 	for i, field in decl.fields {
-		if util.contains_capital(field.name) {
+		if !c.pref.experimental && util.contains_capital(field.name) {
+			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
 			c.error('field name `$field.name` cannot contain uppercase letters, use snake_case instead',
 				field.pos)
 		}
@@ -1934,9 +1945,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
 		}
-		ast.Attr {}
 		ast.Block {
-			c.stmts(node.stmts)
+			if node.is_unsafe {
+				assert !c.inside_unsafe
+				c.inside_unsafe = true
+				c.stmts(node.stmts)
+				c.inside_unsafe = false
+			} else {
+				c.stmts(node.stmts)
+			}
 		}
 		ast.BranchStmt {
 			if c.in_for_count == 0 {
@@ -2078,7 +2095,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			c.in_for_count++
 			typ := c.expr(node.cond)
-			if !node.is_inf && typ.idx() != table.bool_type_idx {
+			if !node.is_inf && typ.idx() != table.bool_type_idx && !c.pref.translated {
 				c.error('non-bool used as for condition', node.pos)
 			}
 			// TODO: update loop var type
@@ -2136,12 +2153,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.TypeDecl {
 			c.type_decl(node)
-		}
-		ast.UnsafeStmt {
-			assert !c.inside_unsafe
-			c.inside_unsafe = true
-			c.stmts(node.stmts)
-			c.inside_unsafe = false
 		}
 	}
 }
@@ -2282,6 +2293,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
+			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type && !node.expr_type.is_ptr() &&
+				to_type_sym.kind == .byte {
+				type_name := c.table.type_to_str(node.expr_type)
+				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
@@ -2369,10 +2384,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.op == .mul && right_type.is_ptr() {
 				return right_type.deref()
 			}
-			if node.op == .bit_not && !right_type.is_int() {
+			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
 				c.error('operator ~ only defined on int types', node.pos)
 			}
-			if node.op == .not && right_type != table.bool_type_idx {
+			if node.op == .not && right_type != table.bool_type_idx && !c.pref.translated {
 				c.error('! operator can only be used with bool types', node.pos)
 			}
 			return right_type
@@ -2871,7 +2886,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if !node.has_else || i < node.branches.len - 1 {
 			// check condition type is boolean
 			cond_typ := c.expr(branch.cond)
-			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] {
+			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
 				// void types are skipped, because they mean the var was initialized incorrectly
 				// (via missing function etc)
 				typ_sym := c.table.get_type_symbol(cond_typ)
@@ -3045,7 +3060,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
 			}
 		}
-		if !is_ok {
+		if !is_ok && !c.pref.translated {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
@@ -3291,8 +3306,7 @@ fn (mut c Checker) sql_stmt(mut node ast.SqlStmt) table.Type {
 
 fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Position, table_name string) []table.Field {
 	fields := info.fields.filter(it.typ in
-		[table.string_type, table.int_type, table.bool_type] &&
-		'skip' !in it.attrs)
+		[table.string_type, table.int_type, table.bool_type] && !it.attrs.contains('skip'))
 	if fields.len == 0 {
 		c.error('V orm: select: empty fields in `$table_name`', pos)
 	}
@@ -3391,18 +3405,12 @@ fn has_top_return(stmts []ast.Stmt) bool {
 	if stmts.filter(it is ast.Return).len > 0 {
 		return true
 	}
-	mut has_unsafe_return := false
-	for _, stmt in stmts {
-		if stmt is ast.UnsafeStmt {
-			for ustmt in stmt.stmts {
-				if ustmt is ast.Return {
-					has_unsafe_return = true
-				}
+	for stmt in stmts {
+		if stmt is ast.Block {
+			if has_top_return(stmt.stmts) {
+				return true
 			}
 		}
-	}
-	if has_unsafe_return {
-		return true
 	}
 	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
 	has_panic_exit := exprs.filter(it.expr is

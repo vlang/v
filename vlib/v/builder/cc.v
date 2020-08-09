@@ -292,47 +292,58 @@ fn (mut v Builder) cc() {
 	if v.pref.build_mode == .build_module {
 		args << '-c'
 	} else if v.pref.use_cache {
-		/*
-		QTODO
-		builtin_o_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
-		args << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
-		if os.exists(builtin_o_path) {
-			libs = builtin_o_path
+		mut built_modules := []string{}
+		builtin_obj_path := pref.default_module_path + os.path_separator + 'cache' + os.path_separator + 'vlib' + os.path_separator + 'builtin.o'
+		if !os.exists(builtin_obj_path) {
+			os.system('$vexe build-module vlib/builtin')
 		}
-		else {
-			println('$builtin_o_path not found... building module builtin')
-			os.system('$vexe build module vlib${os.path_separator}builtin')
-		}
-		*/
-		// TODO add `.unique()` to V arrays
-		mut unique_imports := []string{cap: v.table.imports.len}
-		for imp in v.table.imports {
-			if imp !in unique_imports {
-				unique_imports << imp
+		libs += ' ' + builtin_obj_path
+		for ast_file in v.parsed_files {
+			for imp_stmt in ast_file.imports {
+				imp := imp_stmt.mod
+				if imp in built_modules {
+					continue
+				}
+				// not working
+				if imp == 'webview' {
+					continue
+				}
+				// println('cache: import "$imp"')
+				mod_path := imp.replace('.', os.path_separator)
+
+				// TODO: to get import path all imports (even relative) we can use:
+				// import_path := v.find_module_path(imp, ast_file.path) or {
+				// 	verror('cannot import module "$imp" (not found)')
+				// 	break
+				// }
+
+				// The problem is cmd/v is in module main and imports
+				// the relative module named help, which is built as cmd.v.help not help
+				// currently this got this workign by building into main, see ast.FnDecl in cgen
+				if imp == 'help' {
+					continue
+				}
+				// we are skipping help manually above, this code will skip all relative imports
+				// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
+				// 	continue
+				// }
+				
+				imp_path := 'vlib' + os.path_separator + mod_path
+				cache_path := pref.default_module_path + os.path_separator + 'cache'
+				obj_path := cache_path + os.path_separator + '${imp_path}.o'
+				if os.exists(obj_path) {
+					libs += ' ' + obj_path
+				} else {
+					println('$obj_path not found... building module $imp')
+					os.system('$vexe build-module $imp_path')
+				}
+				if obj_path.ends_with('vlib/ui.o') {
+					args << '-framework Cocoa -framework Carbon'
+				}
+				built_modules << imp
 			}
 		}
-		for imp in unique_imports {
-			if imp.contains('vweb') {
-				continue
-			}
-			// not working
-			if imp == 'webview' {
-				continue
-			}
-			// println('cache: import "$imp"')
-			imp_path := imp.replace('.', os.path_separator)
-			path := '$pref.default_module_path${os.path_separator}cache${os.path_separator}vlib$os.path_separator${imp_path}.o'
-			// println('adding ${imp_path}.o')
-			if os.exists(path) {
-				libs += ' ' + path
-			} else {
-				println('$path not found... building module $imp')
-				os.system('$vexe build-module vlib$os.path_separator$imp_path')
-			}
-			if path.ends_with('vlib/ui.o') {
-				args << '-framework Cocoa -framework Carbon'
-			}
-		}
+
 	}
 	if v.pref.sanitize {
 		args << '-fsanitize=leak'
@@ -386,19 +397,20 @@ fn (mut v Builder) cc() {
 		args << '-fpermissive'
 		args << '-w'
 	}
+	// TODO: why is this duplicated from above?
 	if v.pref.use_cache {
 		// vexe := pref.vexe_path()
-		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'] // , 'strconv.ftoa']
-		for cfile in cached_modules {
-			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
-				'.o')
-			if !os.exists(ofile) {
-				println('${cfile}.o is missing. Building...')
-				println('$vexe build-module vlib/$cfile')
-				os.system('$vexe build-module vlib/$cfile')
-			}
-			args << ofile
-		}
+		// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
+		// for cfile in cached_modules {
+		// 	ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
+		// 		'.o')
+		// 	if !os.exists(ofile) {
+		// 		println('${cfile}.o is missing. Building...')
+		// 		println('$vexe build-module vlib/$cfile')
+		// 		os.system('$vexe build-module vlib/$cfile')
+		// 	}
+		// 	args << ofile
+		// }
 		if !is_cc_tcc {
 			$if linux {
 				linker_flags << '-Xlinker -z'
@@ -407,7 +419,7 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if is_cc_tcc {
-		args << '-bt10'
+		args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'

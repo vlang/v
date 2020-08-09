@@ -148,9 +148,9 @@ pub fn exec(cmd string) ?Result {
 	soutput := res.str()
 	// res.free()
 	exit_code := vpclose(f)
-	// if exit_code != 0 {
-	// return error(res)
-	// }
+	if exit_code == 127 {
+		return error_with_code(soutput, 127)
+	}
 	return Result{
 		exit_code: exit_code
 		output: soutput
@@ -171,10 +171,10 @@ pub fn get_error_msg(code int) string {
 }
 
 pub fn (mut f File) close() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
-	f.opened = false
+	f.is_opened = false
 	/*
 	$if linux {
 		$if !android {
@@ -189,4 +189,30 @@ pub fn (mut f File) close() {
 
 pub fn debugger_present() bool {
 	return false
+}
+
+fn C.mkstemp(stemplate byteptr) int
+// `is_writable_folder` - `folder` exists and is writable to the process
+pub fn is_writable_folder(folder string) ?bool {
+	if !os.exists(folder) {
+		return error('`$folder` does not exist')
+	}
+	if !os.is_dir(folder) {
+		return error('`folder` is not a folder')
+	}
+	tmp_perm_check := os.join_path(folder, 'XXXXXX')
+	unsafe {
+		x := C.mkstemp(tmp_perm_check.str)
+		if -1 == x {
+			return error('folder `$folder` is not writable')
+		}
+		C.close(x)
+	}
+	os.rm(tmp_perm_check)
+	return true
+}
+
+[inline]
+pub fn getpid() int {
+	return C.getpid()
 }

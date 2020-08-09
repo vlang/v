@@ -23,6 +23,7 @@ you can do in V.
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
+    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -181,6 +182,21 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
+```
+
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+    mut total := 0
+    for x in a {
+        total += x
+    }
+    return total
+}
+println(sum())    // Output: 0
+println(sum(1))   //         1
+println(sum(2,3)) //         5
 ```
 
 ## Symbol visibility
@@ -524,6 +540,24 @@ println(upper) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension.
+
+2d array example:
+```v
+mut a := [][]int{len:2, init: []int{len:3}}
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
+3d array example:
+```v
+mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
+a[0][1][1] = 2
+println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
 ### Maps
 
 ```v
@@ -717,6 +751,30 @@ for i, _ in numbers {
 println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
+
+#### Map `for`
+
+```v
+m := {'one':1, 'two':2}
+for key, value in m {
+    println("$key -> $value")  // Output: one -> 1
+}                              //         two -> 2
+```
+
+Either key or value can be ignored by using a single underscore as the identifer.
+```v
+m := {'one':1, 'two':2}
+
+// iterate over keys
+for key, _ in m {
+    println(key)  // Output: one
+}                 //         two
+
+// iterate over values
+for _, value in m {
+    println(value)  // Output: 1
+}                   //         2
+```
 
 #### Range `for`
 
@@ -1627,11 +1685,67 @@ user := users_repo.find_by_id(1)?
 post := posts_repo.find_by_id(1)?
 ```
 
+Another example:
+```v
+fn compare<T>(a, b T) int {
+    if a < b {
+        return -1
+    }
+    if a > b {
+        return 1
+    }
+    return 0
+}
+
+println(compare<int>(1,0)) // Outputs: 1
+println(compare<int>(1,1)) //          0
+println(compare<int>(1,2)) //         -1
+
+println(compare<string>('1','0')) // Outputs: 1
+println(compare<string>('1','1')) //          0
+println(compare<string>('1','2')) //         -1
+
+println(compare<float>(1.1, 1.0)) // Outputs: 1 
+println(compare<float>(1.1, 1.1)) //          0
+println(compare<float>(1.1, 1.2)) //         -1
+```
+
+
 ## Concurrency
 
 V's model of concurrency is very similar to Go's. To run `foo()` concurrently, just
 call it with `go foo()`. Right now, it launches the function on a new system
 thread. Soon coroutines and a scheduler will be implemented.
+
+```v
+import sync
+import time
+
+fn task(id, duration int, mut wg sync.WaitGroup) {
+    println("task ${id} begin")
+    time.sleep_ms(duration)
+    println("task ${id} end")
+    wg.done()
+}
+
+fn main() {
+    mut wg := sync.new_waitgroup()
+    wg.add(3)
+    go task(1, 500, mut wg)
+    go task(2, 900, mut wg)
+    go task(3, 100, mut wg)
+    wg.wait()
+    println('done')
+}
+
+// Output: task 1 begin
+//         task 2 begin
+//         task 3 begin
+//         task 3 end
+//         task 1 end
+//         task 2 end
+//         done
+```
 
 Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between a coroutine
 and the calling thread via a shared variable. This variable should be created as reference and passed to

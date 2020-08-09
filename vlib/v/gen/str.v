@@ -194,8 +194,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut cur_line := ''
 	mut tmp := ''
-	free := g.pref.autofree && g.inside_call && !g.inside_return &&
-		g.inside_ternary == 0 && !g.inside_const
+	free := g.pref.autofree && g.inside_call && !g.inside_return && g.inside_ternary == 0 && !g.inside_const
 	// && g.cur_fn != 0 &&
 	// g.cur_fn.name != ''
 	if free {

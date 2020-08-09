@@ -8,91 +8,6 @@ pub const (
 	max_path_len = 4096
 )
 
-pub struct File {
-	cfile  voidptr // Using void* instead of FILE*
-pub:
-	fd     int
-mut:
-	opened bool
-}
-
-struct FileInfo {
-	name string
-	size int
-}
-
-pub fn (f File) is_opened() bool {
-	return f.opened
-}
-
-// Write ops
-
-pub fn (mut f File) write(s string) {
-	if !f.opened {
-		return
-	}
-	/*
-	$if linux {
-		$if !android {
-			C.syscall(sys_write, f.fd, s.str, s.len)
-			return
-		}
-	}
-	*/
-	C.fwrite(s.str, s.len, 1, f.cfile)
-}
-
-pub fn (mut f File) writeln(s string) {
-	if !f.opened {
-		return
-	}
-	/*
-	$if linux {
-		$if !android {
-			snl := s + '\n'
-			C.syscall(sys_write, f.fd, snl.str, snl.len)
-			return
-		}
-	}
-	*/
-	// TODO perf
-	C.fwrite(s.str, s.len, 1, f.cfile)
-	C.fputs('\n', f.cfile)
-}
-
-pub fn (mut f File) write_bytes(data voidptr, size int) int {
-	return C.fwrite(data, 1, size, f.cfile)
-}
-
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
-	//$if linux {
-	//}
-	//$else {
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	res := C.fwrite(data, 1, size, f.cfile)
-	C.fseek(f.cfile, 0, C.SEEK_END)
-	//}
-	return res
-}
-
-/***************************** Read ops  ****************************/
-
-
-// read_bytes reads an amount of bytes from the beginning of the file
-pub fn (f &File) read_bytes(size int) []byte {
-	return f.read_bytes_at(size, 0)
-}
-
-// read_bytes_at reads an amount of bytes at the given position in the file
-pub fn (f &File) read_bytes_at(size, pos int) []byte {
-	mut arr := [`0`].repeat(size)
-	C.fseek(f.cfile, pos, C.SEEK_SET)
-	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
-	C.fseek(f.cfile, 0, C.SEEK_SET)
-	return arr[0..nreadbytes]
-}
-
-
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')
 	if isnil(fp) {
@@ -128,15 +43,6 @@ pub fn read_file(path string) ?string {
 	}
 }
 
-/***************************** Utility  ops ************************/
-
-pub fn (mut f File) flush() {
-	if !f.opened {
-		return
-	}
-	C.fflush(f.cfile)
-}
-
 /***************************** OS ops ************************/
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
@@ -155,6 +61,7 @@ pub fn file_size(path string) int {
 	return s.st_size
 }
 
+// move files or folders from one path to other
 pub fn mv(old, new string) {
 	$if windows {
 		C._wrename(old.to_wide(), new.to_wide())
@@ -163,13 +70,13 @@ pub fn mv(old, new string) {
 	}
 }
 
+// copies files or folders from one path to other
 pub fn cp(old, new string) ? {
 	$if windows {
 		w_old := old.replace('/', '\\')
 		w_new := new.replace('/', '\\')
-		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
-		result := C.GetLastError()
-		if result != 0 {
+		if C.CopyFile(w_old.to_wide(), w_new.to_wide(), false) == 0 {
+			result := C.GetLastError()
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
@@ -327,7 +234,7 @@ pub fn open_append(path string) ?File {
 	if isnil(file.cfile) {
 		return error('failed to create(append) file "$path"')
 	}
-	file.opened = true
+	file.is_opened = true
 	return file
 }
 
@@ -379,7 +286,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 	return File{
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
@@ -594,29 +501,14 @@ pub fn is_executable(path string) bool {
   }
   $if solaris {
     statbuf := C.stat{}
-    if C.stat(charptr(path.str), &statbuf) != 0 {
-      return false
-    }
+	unsafe {
+		if C.stat(charptr(path.str), &statbuf) != 0 {
+		return false
+		}
+	}
     return (int(statbuf.st_mode) & ( s_ixusr | s_ixgrp | s_ixoth )) != 0
   }
   return C.access(charptr(path.str), x_ok) != -1
-}
-
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) ?bool {
-	if !os.exists(folder) {
-		return error('`$folder` does not exist')
-	}
-	if !os.is_dir(folder) {
-		return error('`folder` is not a folder')
-	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder `$folder`: $err')
-	}
-	f.close()
-	os.rm(tmp_perm_check)
-	return true
 }
 
 // `is_writable` returns `true` if `path` is writable.
@@ -729,7 +621,7 @@ pub fn dir(path string) string {
 
 pub fn base_dir(path string) string {
 	posx := path.last_index(path_separator) or {
-		return path
+		return path.clone()
 	}
 	// NB: *without* terminating /
 	return path[..posx]
@@ -1010,7 +902,9 @@ pub fn executable() string {
 		mut result := vcalloc(max_path_len)
 		mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
-		C.sysctl(mib.data, 4, result, &size, 0, 0)
+		unsafe {
+			C.sysctl(mib.data, 4, result, &size, 0, 0)
+		}
 		return string(result)
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
@@ -1362,8 +1256,11 @@ pub fn temp_dir() string {
 			}
 		}
 	}
-	if path == '' {
-		path = os.cache_dir()
+	$if android {
+		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		if path == '' {
+			path = os.cache_dir()
+		}
 	}
 	if path == '' {
 		path = '/tmp'
@@ -1404,7 +1301,7 @@ pub fn open(path string) ?File {
 			}
 			return File{
 				fd: fd
-				opened: true
+				is_opened: true
 			}
 		}
 	}
@@ -1417,7 +1314,7 @@ pub fn open(path string) ?File {
 	return File {
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
@@ -1440,7 +1337,7 @@ pub fn create(path string) ?File {
 			}
 			file = File{
 				fd: fd
-				opened: true
+				is_opened: true
 			}
 			return file
 		}
@@ -1454,7 +1351,7 @@ pub fn create(path string) ?File {
 	return File {
 		cfile: cfile
 		fd: fd
-		opened: true
+		is_opened: true
 	}
 }
 
