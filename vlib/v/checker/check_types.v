@@ -144,7 +144,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sy
 [inline]
 fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
-		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}',
+		c.error('invalid operation: shift of type `${c.table.get_type_symbol(left_type).name}`',
 			left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
