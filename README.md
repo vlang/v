@@ -108,7 +108,7 @@ example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
 entry, and choose `Run as administrator`. In the new administrative
 shell, cd to the path, where you have compiled v.exe, then type:
 
-```bash
+```bat
 .\v.exe symlink
 ```
 
