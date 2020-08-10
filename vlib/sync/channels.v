@@ -76,6 +76,12 @@ enum Direction {
 	push
 }
 
+enum TransactionState {
+	success
+	not_ready // push()/pop() would have to wait, but no_block was requested
+	closed
+}
+
 struct Channel {
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
@@ -99,6 +105,7 @@ mut: // atomic
 	read_subscriber    &Subscription
 	write_sub_mtx      u16
 	read_sub_mtx       u16
+	closed             u16
 }
 
 pub fn new_channel<T>(n u32) &Channel {
@@ -119,11 +126,42 @@ pub fn new_channel<T>(n u32) &Channel {
 	}
 }
 
-pub fn (mut ch Channel) push(src voidptr) {
-	ch.try_push(src, false)
+pub fn (mut ch Channel) close() {
+	C.atomic_store_u16(&ch.closed, 1)
+	mut nulladr := voidptr(0)
+	for !C.atomic_compare_exchange_weak_ptr(&ch.adr_written, &nulladr, voidptr(-1)) {
+		nulladr = voidptr(0)
+	}
+	ch.readsem_im.post()
+	ch.readsem.post()
+	mut null16 := u16(0)
+	for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+		null16 = u16(0)
+	}
+	if ch.read_subscriber != voidptr(0) {
+		ch.read_subscriber.sem.post()
+	}
+	C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
+	null16 = u16(0)
+	for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+		null16 = u16(0)
+	}
+	if ch.write_subscriber != voidptr(0) {
+		ch.write_subscriber.sem.post()
+	}
+	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 }
 
-fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
+pub fn (mut ch Channel) push(src voidptr) {
+	if ch.try_push(src, false) == .closed {
+		panic('push on closed channel')
+	}
+}
+
+fn (mut ch Channel) try_push(src voidptr, no_block bool) TransactionState {
+	if C.atomic_load_u16(&ch.closed) != 0 {
+		return .closed
+	}
 	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
@@ -138,11 +176,11 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 					nulladr = voidptr(0)
 				}
 				ch.readsem_im.post()
-				return true
+				return .success
 			}
 		}
 		if no_block && ch.queue_length == 0 {
-			return false
+			return .not_ready
 		}
 		// get token to read
 		for _ in 0 .. spinloops_sem_ {
@@ -206,10 +244,14 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 				} else {
 					// this semaphore was not for us - repost in
 					ch.writesem_im.post()
+					if src2 == voidptr(-1) {
+						ch.readsem.post()
+						return .closed
+					}
 					src2 = src
 				}
 			}
-			return true
+			return .success
 		} else {
 			// buffered channel
 			mut space_in_queue := false
@@ -257,7 +299,7 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 					}
 					C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 				}
-				return true
+				return .success
 			} else {
 				ch.writesem.post()
 			}
@@ -265,11 +307,11 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) bool {
 	}
 }
 
-pub fn (mut ch Channel) pop(dest voidptr) {
-	ch.try_pop(dest, false)
+pub fn (mut ch Channel) pop(dest voidptr) bool {
+	return ch.try_pop(dest, false) == .success
 }
 
-fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
+fn (mut ch Channel) try_pop(dest voidptr, no_block bool) TransactionState  {
 	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
@@ -287,11 +329,11 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 						nulladr = voidptr(0)
 					}
 					ch.writesem_im.post()
-					return true
+					return .success
 				}
 			}
 			if no_block {
-				return false
+				return if C.atomic_load_u16(&ch.closed) == 0 { TransactionState.not_ready } else { TransactionState.closed }
 			}
 		}
 		// get token to read
@@ -303,7 +345,7 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 		}
 		if !got_sem {
 			if no_block {
-				return false
+				return if C.atomic_load_u16(&ch.closed) == 0 { TransactionState.not_ready } else { TransactionState.closed }
 			}
 			ch.readsem.wait()
 		}
@@ -354,7 +396,7 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 					}
 					C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 				}
-				return true
+				return .success
 			}
 		}
 		// try to advertise `dest` as writable
@@ -386,6 +428,9 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			if C.atomic_compare_exchange_strong_ptr(&ch.adr_written, &dest2, voidptr(0)) {
 				have_swapped = true
 				break
+			} else if dest2 == voidptr(-1) {
+				ch.readsem.post()
+				return .closed
 			}
 			dest2 = dest
 		}
@@ -408,10 +453,14 @@ fn (mut ch Channel) try_pop(dest voidptr, no_block bool) bool {
 			} else {
 				// this semaphore was not for us - repost in
 				ch.readsem_im.post()
+				if dest2 == voidptr(-1) {
+					ch.readsem.post()
+					return .closed
+				}
 				dest2 = dest
 			}
 		}
-		return true
+		return .success
 	}
 }
 
@@ -454,22 +503,33 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut event_idx := -1 // negative index means `timed out`
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
+		mut num_closed := 0
 		for j, _ in channels {
 			mut i := j + int(rnd)
 			if i >= channels.len {
 				i -= channels.len
 			}
 			if dir[i] == .push {
-				if channels[i].try_push(objrefs[i], true) {
+				stat := channels[i].try_push(objrefs[i], true)
+				if stat == .success {
 					event_idx = i
 					goto restore
+				} else if stat == .closed {
+					num_closed++
 				}
 			} else {
-				if channels[i].try_pop(objrefs[i], true) {
+				stat := channels[i].try_pop(objrefs[i], true)
+				if stat == .success {
 					event_idx = i
 					goto restore
+				} else if stat == .closed {
+					num_closed++
 				}
 			}
+		}
+		if num_closed == channels.len {
+			event_idx = -2
+			goto restore
 		}
 		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()

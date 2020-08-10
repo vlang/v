@@ -236,15 +236,29 @@ ch.pop(&m)
 ch2.pop(&y)
 ```
 
+A channel can be closed to indicate that no further objects can be pushed. Any attempt
+to do so will then result in a runtime panic. The `pop()` method will return immediately `false`
+if the associated channel has been closed and the buffer is empty.
+
+```v
+ch.close()
+...
+if ch.pop(&m) {
+    println('got $m')
+} else {
+    println('channel has been closed')
+}
+```
+
 The select call is somewhat tricky. The `channel_select()` function needs three arrays that
 contain the channels, the directions (pop/push) and the object references and
 a timeout of type `time.Duration` (or `0` to wait unlimited) as parameters. It returns the
 index of the object that was pushed or popped or `-1` for timeout.
 
 ```v
-mut chans := [ch, ch2]        // the channels to monitor
-directions := [false, false]  // `true` means push, `false` means pop
-mut objs := [voidptr(&m), &y] // the objects to push or pop
+mut chans := [ch, ch2]                    // the channels to monitor
+directions := [sync.Direction.pop, .pop]  // .push or .pop
+mut objs := [voidptr(&m), &y]             // the objects to push or pop
 
 // idx contains the index of the object that was pushed or popped, -1 means timeout occured
 idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
@@ -261,3 +275,4 @@ match idx {
     }
 }
 ```
+If all channels have been closed `-2` is returned as index.
