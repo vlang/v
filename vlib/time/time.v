@@ -366,7 +366,7 @@ pub const(
 	second      = Duration(1000) * millisecond
 	minute      = Duration(60) * second
 	hour        = Duration(60) * minute
-	infinite    = Duration(u64(1) << 63)
+	infinite    = Duration(-1)
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.

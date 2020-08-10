@@ -517,7 +517,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
 	}
-	stopwatch := if timeout == 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
+	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
 	mut event_idx := -1 // negative index means `timed out`
 	for {
 		rnd := rand.u32_in_range(0, u32(channels.len))
