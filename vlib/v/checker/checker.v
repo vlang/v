@@ -2265,6 +2265,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.expr_type = c.expr(node.expr)
 			from_type_sym := c.table.get_type_symbol(node.expr_type)
 			to_type_sym := c.table.get_type_symbol(node.typ)
+			expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
+			if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
+				if node.has_arg {
+					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
+						node.pos)
+				} else {
+					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
+						node.pos)
+				}
+			}
 			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
 				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
 					node.pos)

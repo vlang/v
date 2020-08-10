@@ -583,7 +583,7 @@ fn readall(conn net.Socket) string {
 	for {
 		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
-		message += string( byteptr(buf), m )
+		message += unsafe { byteptr(buf).vstring_with_len(m) }
 		if message.len > max_http_post_size { break }
 		if n == m { break }
 	}
