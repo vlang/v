@@ -1401,11 +1401,25 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 		} else if right_sym.kind == .array_fixed && assign_stmt.op == .assign {
 			right := val as ast.ArrayInit
-			for j, expr in right.exprs {
-				g.expr(left)
-				g.write('[$j] = ')
-				g.expr(expr)
-				g.writeln(';')
+			if right.has_val {
+				for j, expr in right.exprs {
+					g.expr(left)
+					g.write('[$j] = ')
+					g.expr(expr)
+					g.writeln(';')
+				}
+			} else {
+				af := right_sym.info as table.ArrayFixed
+				for j in 0 .. af.size {
+					g.expr(left)
+					g.write('[$j] = ')
+					if right.has_default {
+						g.expr(right.default_expr)
+					} else {
+						g.write(g.type_default(right.elem_type))
+					}
+					g.writeln(';')
+				}
 			}
 		} else {
 			g.assign_op = assign_stmt.op
