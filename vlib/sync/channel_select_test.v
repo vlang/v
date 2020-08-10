@@ -48,7 +48,7 @@ fn test_select() {
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for _ in 0 .. 1200 {
-		idx := sync.channel_select(mut channels, directions, mut objs, 0)
+		idx := sync.channel_select(mut channels, directions, mut objs, -1)
 		match idx {
 			0 {
 				sum += ri

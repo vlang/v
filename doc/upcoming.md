@@ -252,7 +252,7 @@ if ch.pop(&m) {
 
 The select call is somewhat tricky. The `channel_select()` function needs three arrays that
 contain the channels, the directions (pop/push) and the object references and
-a timeout of type `time.Duration` (or `0` to wait unlimited) as parameters. It returns the
+a timeout of type `time.Duration` (`time.infinite` or `-1` to wait unlimited) as parameters. It returns the
 index of the object that was pushed or popped or `-1` for timeout.
 
 ```v

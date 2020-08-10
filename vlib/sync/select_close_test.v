@@ -1,4 +1,5 @@
 import sync
+import time
 
 fn do_rec_i64(mut ch sync.Channel) {
 	mut sum := i64(0)
@@ -55,7 +56,7 @@ fn test_select() {
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for j in 0 .. 1101 {
-		idx := sync.channel_select(mut channels, directions, mut objs, 0)
+		idx := sync.channel_select(mut channels, directions, mut objs, time.infinite)
 		match idx {
 			0 {
 				sum += ri
