@@ -1,0 +1,14 @@
+vlib/v/checker/tests/warnings_for_string_c2v_calls.v:8:14: error: to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)
+    6 |         p[2] = `z`
+    7 |     }
+    8 |     x := string(p)
+      |                 ^
+    9 |     y := string(p, 10)
+   10 |     eprintln('x: $x | y: $y')
+vlib/v/checker/tests/warnings_for_string_c2v_calls.v:9:14: error: to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)
+    7 |     }
+    8 |     x := string(p)
+    9 |     y := string(p, 10)
+      |                 ^
+   10 |     eprintln('x: $x | y: $y')
+   11 |     eprintln('x.len: $x.len | y.len: $y.len')
