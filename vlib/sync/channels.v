@@ -483,7 +483,8 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
 }
 
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
-// object referenced by `objrefs[i]`. `timeout = 0` means wait unlimited time
+// object referenced by `objrefs[i]`. `timeout < 0` means wait unlimited time. `timeout == 0` means return immediately
+// no transaction can be performed without waiting.
 
 pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout time.Duration) int {
 	assert channels.len == dir.len
