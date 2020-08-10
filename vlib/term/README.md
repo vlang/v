@@ -52,7 +52,7 @@ term.warning_message(string)
 //clears the entire terminal and leaves a blank one
 term.clear()
 
-// colors the output following the given color, replace <color> with a color of your choice
+// colors the output following the given color, replace <color> with a color of your choice; the available colors are: black,blue,yellow,green,cyan,gray
 term.<color>(string)
 
 // Transforms the given string into bold text
@@ -64,7 +64,7 @@ term.strikethrough(string)
 // Underlines the given string
 term.underline(string)
 
-// colors the background of the given string, replace <color> with a color of your choice
+// colors the background of the given string, replace <color> with a color of your choice; the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
 term.bg_<color>(string)
 
 // Sets the position of the cursor at a given place in the terminal
@@ -86,7 +86,7 @@ term.cursor_back()
 term.show_cursor()
 
 // hides the cursor
-term.hide_cursor
+term.hide_cursor()
 
 
 ```
