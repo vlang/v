@@ -134,6 +134,22 @@ pub fn (mut ch Channel) close() {
 	}
 	ch.readsem_im.post()
 	ch.readsem.post()
+	mut null16 := u16(0)
+	for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+		null16 = u16(0)
+	}
+	if ch.read_subscriber != voidptr(0) {
+		ch.read_subscriber.sem.post()
+	}
+	C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
+	null16 = u16(0)
+	for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+		null16 = u16(0)
+	}
+	if ch.write_subscriber != voidptr(0) {
+		ch.write_subscriber.sem.post()
+	}
+	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 }
 
 pub fn (mut ch Channel) push(src voidptr) {
