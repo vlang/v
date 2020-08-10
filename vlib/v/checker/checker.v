@@ -3019,12 +3019,21 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 
 fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
 	// complexity means either more match or ifs
-	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	contains_comp_if := stmts.filter(it is ast.CompIf).len > 0
-	contains_if_match := exprs.filter(it.expr is ast.IfExpr || it.expr is ast.MatchExpr).len > 0
-	contains_complexity := contains_comp_if || contains_if_match
+	mut has_complexity := false
+	for s in stmts {
+		if s is ast.CompIf {
+			has_complexity = true
+			break
+		}
+		if s is ast.ExprStmt {
+			if s.expr is ast.IfExpr || s.expr is ast.MatchExpr {
+				has_complexity = true
+				break
+			}
+		}
+	}
 	// if the inner complexity covers all paths with returns there is no need for further checks
-	if !contains_complexity || !c.returns {
+	if !has_complexity || !c.returns {
 		return has_top_return(stmts)
 	}
 	return none
@@ -3418,22 +3427,20 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 }
 
 fn has_top_return(stmts []ast.Stmt) bool {
-	if stmts.filter(it is ast.Return).len > 0 {
-		return true
-	}
 	for stmt in stmts {
-		if stmt is ast.Block {
+		if stmt is ast.Return {
+			return true
+		} else if stmt is ast.Block {
 			if has_top_return(stmt.stmts) {
 				return true
 			}
+		} else if stmt is ast.ExprStmt {
+			if stmt.expr is ast.CallExpr as ce {
+				if ce.name in ['panic', 'exit'] {
+					return true
+				}
+			}
 		}
-	}
-	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	has_panic_exit := exprs.filter(it.expr is
-		ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' ||
-		it.name == 'exit').len > 0
-	if has_panic_exit {
-		return true
 	}
 	return false
 }
