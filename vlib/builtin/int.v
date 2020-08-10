@@ -411,6 +411,7 @@ pub fn (b []byte) clone() []byte {
 	return res
 }
 
+// TODO remove this once runes are implemented
 pub fn (b []byte) bytestr() string {
 	return bytes2string(b)
 }
