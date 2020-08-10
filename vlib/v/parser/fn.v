@@ -140,13 +140,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	p.open_scope()
 	// C. || JS.
-	language := if p.tok.kind == .name && p.tok.lit == 'C' {
+	mut language := table.Language.v
+	if p.tok.kind == .name && p.tok.lit == 'C' {
 		is_unsafe = !p.attrs.contains('trusted')
-		table.Language.c
+		language = table.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
-		table.Language.js
-	} else {
-		table.Language.v
+		language = table.Language.js
 	}
 	if language != .v {
 		p.next()
@@ -178,6 +177,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
+		if p.tok.kind == .name && p.tok.lit == 'JS' {
+			language = table.Language.js
+		}
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
