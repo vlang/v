@@ -363,9 +363,10 @@ pub const(
 	nanosecond  = Duration(1)
 	microsecond = Duration(1000) * nanosecond
 	millisecond = Duration(1000) * microsecond
-	second       = Duration(1000) * millisecond
-	minute       = Duration(60) * second
-	hour         = Duration(60) * minute
+	second      = Duration(1000) * millisecond
+	minute      = Duration(60) * second
+	hour        = Duration(60) * minute
+	infinite    = Duration(u64(1) << 63)
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.

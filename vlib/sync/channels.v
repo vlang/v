@@ -152,17 +152,26 @@ pub fn (mut ch Channel) close() {
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 }
 
+[inline]
 pub fn (mut ch Channel) push(src voidptr) {
-	if ch.try_push(src, false) == .closed {
+	if ch.try_push_priv(src, false) == .closed {
 		panic('push on closed channel')
 	}
 }
 
-fn (mut ch Channel) try_push(src voidptr, no_block bool) TransactionState {
+[inline]
+pub fn (mut ch Channel) try_push(src voidptr) TransactionState {
+	return ch.try_push_priv(src, false)
+}
+
+fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
+	mut spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	$if macos {
+		spinloops_sem_ = 1
+	}
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -307,12 +316,21 @@ fn (mut ch Channel) try_push(src voidptr, no_block bool) TransactionState {
 	}
 }
 
+[inline]
 pub fn (mut ch Channel) pop(dest voidptr) bool {
-	return ch.try_pop(dest, false) == .success
+	return ch.try_pop_priv(dest, false) == .success
 }
 
-fn (mut ch Channel) try_pop(dest voidptr, no_block bool) TransactionState  {
-	spinloops_, spinloops_sem_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
+[inline]
+pub fn (mut ch Channel) try_pop(dest voidptr) TransactionState {
+	return ch.try_pop_priv(dest, false)
+}
+
+fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
+	mut spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	$if macos {
+		spinloops_sem_ = 1
+	}
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
@@ -510,7 +528,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 				i -= channels.len
 			}
 			if dir[i] == .push {
-				stat := channels[i].try_push(objrefs[i], true)
+				stat := channels[i].try_push_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
 					goto restore
@@ -518,7 +536,7 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 					num_closed++
 				}
 			} else {
-				stat := channels[i].try_pop(objrefs[i], true)
+				stat := channels[i].try_pop_priv(objrefs[i], true)
 				if stat == .success {
 					event_idx = i
 					goto restore
@@ -531,7 +549,9 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			event_idx = -2
 			goto restore
 		}
-		if timeout > 0 {
+		if timeout == 0 {
+			goto restore
+		} else if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
 				goto restore
