@@ -2150,7 +2150,7 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 ## Compile-time reflection
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format. V has compile-time `assert`, `if` and `for` constructs:
+serializers for any data format. V has compile-time `if` and `for` constructs:
 
 ```v
 // TODO: not implemented yet
@@ -2160,16 +2160,11 @@ struct User {
     age  int
 }
 
-// StructName.fields gives a compile-time array of a field metadata type
-$assert User.fields.len == 2
-// Check a field identifier:
-$assert User.fields[1].name == 'age'
-// Check the field type:
-$assert User.fields[0].Type is string
-
+// Note: T should be passed a struct name only
 fn decode<T>(data string) T {
     mut result := T{}
     // compile-time `for` loop
+    // T.fields gives an array of a field metadata type
     $for field in T.fields {
         $if field.Type is string {
             // $(string_expr) produces an identifier
