@@ -195,7 +195,7 @@ fn is_gt_simple(val string, dst Number) bool {
 fn is_gt_nested(val string, dst Number) bool {
 	dst2 := dst
 	match dst {
-		any_int {
+		int {
 			match dst2 {
 				int {
 					return val.int() > dst
@@ -206,7 +206,7 @@ fn is_gt_nested(val string, dst Number) bool {
 				}
 			}
 		}
-		any_float {
+		f64 {
 			match dst2 {
 				f64 {
 					return dst < val.f64()
