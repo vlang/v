@@ -179,15 +179,14 @@ fn test_int_cast_to_sumtype() {
 	}
 }
 
-// TODO: change definition once types other than any_int and any_float (int, f64, etc) are supported in sumtype
-type Number = any_int | any_float
+type Number = int | f64
 
 fn is_gt_simple(val string, dst Number) bool {
 	match dst {
-		any_int {
+		int {
 			return val.int() > dst
 		}
-		any_float {
+		f64 {
 			return dst < val.f64()
 		}
 	}
@@ -198,7 +197,7 @@ fn is_gt_nested(val string, dst Number) bool {
 	match dst {
 		any_int {
 			match dst2 {
-				any_int {
+				int {
 					return val.int() > dst
 				}
 				// this branch should never been hit
@@ -209,7 +208,7 @@ fn is_gt_nested(val string, dst Number) bool {
 		}
 		any_float {
 			match dst2 {
-				any_float {
+				f64 {
 					return dst < val.f64()
 				}
 				// this branch should never been hit
@@ -223,12 +222,12 @@ fn is_gt_nested(val string, dst Number) bool {
 
 fn concat(val string, dst Number) string {
 	match dst {
-		any_int {
+		int {
 			mut res := val + '(int)'
 			res += dst.str()
 			return res
 		}
-		any_float {
+		f64 {
 			mut res := val + '(float)'
 			res += dst.str()
 			return res
@@ -238,12 +237,12 @@ fn concat(val string, dst Number) string {
 
 fn get_sum(val string, dst Number) f64 {
 	match dst {
-		any_int {
+		int {
 			mut res := val.int()
 			res += dst
 			return res
 		}
-		any_float {
+		f64 {
 			mut res := val.f64()
 			res += dst
 			return res
@@ -254,7 +253,7 @@ fn get_sum(val string, dst Number) f64 {
 fn calc_expr(dst Number, get_final bool) bool {
 	if !get_final {
 		match dst {
-			any_int {
+			int {
 				dst2 := dst
 				dst3 := dst2
 				dst4 := (dst2 + dst3).str()
@@ -264,7 +263,7 @@ fn calc_expr(dst Number, get_final bool) bool {
 				dst5 := foo.str().int().str()
 				return (foo + res) * res - res == 0 && dst4.len == 1 && dst5.len == 1
 			}
-			any_float {
+			f64 {
 				dst2 := dst
 				dst3, foo := dst2, 2
 				mut dst4 := dst3 + 1
@@ -282,7 +281,6 @@ fn calc_expr(dst Number, get_final bool) bool {
 	return temp + 10 == 20
 }
 
-// TODO: change definition once types other than any_int and any_float (int, f64, etc) are supported in sumtype
 type CommonType = int | f64 | string
 
 fn (c CommonType) str() string {
@@ -290,7 +288,7 @@ fn (c CommonType) str() string {
 		string {
 			return c
 		}
-		// TODO: combine `any_int` and `any_float` into `else` once code generation for `else` in sumtype match is mature 
+		// TODO: replace `int` and `f64` together with `else` once code generation for `else` in sumtype match is mature 
 		int {
 			return c.str()
 		}
@@ -305,27 +303,27 @@ fn as_string(val CommonType) string {
 }
 
 fn test_sum_type_match() {
-	assert is_gt_simple('3', 2)
-	assert !is_gt_simple('3', 5)
-	assert is_gt_simple('3', 1.2)
-	assert !is_gt_simple('3', 3.5)
-	assert is_gt_nested('3', 2)
-	assert !is_gt_nested('3', 5)
-	assert is_gt_nested('3', 1.2)
-	assert !is_gt_nested('3', 3.5)
-	assert concat('3', 2) == '3(int)2'
-	assert concat('3', 5) == '3(int)5'
-	assert concat('3', 1.2) == '3(float)1.2'
-	assert concat('3', 3.5) == '3(float)3.5'
-	assert get_sum('3', 2) == 5.0
-	assert get_sum('3', 5) == 8.0
-	assert get_sum('3', 1.2) == 4.2
-	assert get_sum('3', 3.5) == 6.5
-	assert calc_expr(1, false)
-	assert !calc_expr(2, false)
-	assert calc_expr(2.5, false)
-	assert !calc_expr(1.5, false)
-	assert calc_expr(0, true)
+	assert is_gt_simple('3', int(2))
+	assert !is_gt_simple('3', int(5))
+	assert is_gt_simple('3', f64(1.2))
+	assert !is_gt_simple('3', f64(3.5))
+	assert is_gt_nested('3', int(2))
+	assert !is_gt_nested('3', int(5))
+	assert is_gt_nested('3', f64(1.2))
+	assert !is_gt_nested('3', f64(3.5))
+	assert concat('3', int(2)) == '3(int)2'
+	assert concat('3', int(5)) == '3(int)5'
+	assert concat('3', f64(1.2)) == '3(float)1.2'
+	assert concat('3', f64(3.5)) == '3(float)3.5'
+	assert get_sum('3', int(2)) == 5.0
+	assert get_sum('3', int(5)) == 8.0
+	assert get_sum('3', f64(1.2)) == 4.2
+	assert get_sum('3', f64(3.5)) == 6.5
+	assert calc_expr(int(1), false)
+	assert !calc_expr(int(2), false)
+	assert calc_expr(f64(2.5), false)
+	assert !calc_expr(f64(1.5), false)
+	assert calc_expr(int(0), true)
 	assert as_string(int(1)) == 'This is the string representation of "1"'
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
