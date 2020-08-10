@@ -432,7 +432,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 			}
 			.lsbr {
-				// attrs are stores in `p.attrs()`
+				// attrs are stored in `p.attrs`
 				p.attributes()
 				continue
 			}
@@ -737,7 +737,9 @@ fn (mut p Parser) parse_attr() table.Attr {
 		is_ctdefine = true
 	}
 	mut name := ''
+	mut arg := ''
 	is_string := p.tok.kind == .string
+	mut is_string_arg := false
 	if is_string {
 		name = p.tok.lit
 		p.next()
@@ -749,12 +751,13 @@ fn (mut p Parser) parse_attr() table.Attr {
 			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
 		}
 		if p.tok.kind == .colon {
-			name += ':'
 			p.next()
+			// `name: arg`
 			if p.tok.kind == .name {
-				name += p.check_name()
-			} else if p.tok.kind == .string {
-				name += p.tok.lit
+				arg = p.check_name()
+			} else if p.tok.kind == .string { // `name: 'arg'`
+				arg = p.tok.lit
+				is_string_arg = true
 				p.next()
 			}
 		}
@@ -763,6 +766,8 @@ fn (mut p Parser) parse_attr() table.Attr {
 		name: name
 		is_string: is_string
 		is_ctdefine: is_ctdefine
+		arg: arg
+		is_string_arg: is_string_arg
 	}
 }
 

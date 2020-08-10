@@ -2501,7 +2501,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
+An attribute is specified inside `[]` right before a function/struct declaration and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning

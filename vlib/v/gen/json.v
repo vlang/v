@@ -83,8 +83,8 @@ $enc_fn_dec {
 			}
 			mut name := field.name
 			for attr in field.attrs {
-				if attr.name.starts_with('json:') {
-					name = attr.name[5..]
+				if attr.name == 'json' {
+					name = attr.arg
 					break
 				}
 			}
