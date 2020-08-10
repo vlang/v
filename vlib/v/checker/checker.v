@@ -3017,7 +3017,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	return table.bool_type
 }
 
-fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
+fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	// complexity means either more match or ifs
 	mut has_complexity := false
 	for s in stmts {
