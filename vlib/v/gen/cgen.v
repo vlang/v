@@ -1499,7 +1499,20 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
-						g.write('{0}')
+						if val is ast.ArrayInit {
+							if val.has_default {
+								g.write('{$val.default_expr')
+								af := right_sym.info as table.ArrayFixed
+								for _ in 1 .. af.size {
+									g.write(', $val.default_expr')
+								}
+								g.write('}')
+							} else {
+								g.write('{0}')
+							}
+						} else {
+							g.write('{0}')
+						}
 					} else {
 						g.expr(val)
 					}

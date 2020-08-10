@@ -733,7 +733,7 @@ pub struct ArrayInit {
 pub:
 	pos             token.Position
 	elem_type_pos   token.Position
-	exprs           []Expr
+	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	is_fixed        bool
 	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
