@@ -35,7 +35,7 @@
 - Easy cross compilation
 - REPL
 - [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
-- [Developing web applications](https://github.com/vlang/gitly)
+- [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
 
 ## Stability guarantee and future changes
