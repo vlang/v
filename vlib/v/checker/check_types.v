@@ -144,8 +144,12 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sy
 [inline]
 fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
-		c.error('invalid operation: shift of type `${c.table.get_type_symbol(left_type).name}`',
-			left_pos)
+		// maybe it's an int alias? TODO move this to is_int() ?
+		sym := c.table.get_type_symbol(left_type)
+		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_int() {
+			return left_type
+		}
+		c.error('invalid operation: shift of type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
