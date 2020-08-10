@@ -308,7 +308,7 @@ any_int, any_float // internal intermediate types of number literals
 
 byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
-any // similar to C's void* and Go's interface{}
+any // [WIP] similar to C's void* and Go's interface{}
 ```
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
