@@ -2472,7 +2472,11 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 				for i := g.match_sumtype_exprs.len - 1; i >= 0; i-- {
 					s_expr := g.match_sumtype_exprs[i]
 					if s_expr is ast.Ident && expr.name == (s_expr as ast.Ident).name {
-						g.table.get_type_symbol(typ).kind !in [.struct_, .sum_type]
+						if g.table.get_type_symbol(typ).kind == .sum_type {
+							return g.should_write_asterisk_due_to_match_sumtype(s_expr)
+						} else {
+							return g.table.get_type_symbol(typ).kind != .struct_
+						}
 					}
 				}
 			}
