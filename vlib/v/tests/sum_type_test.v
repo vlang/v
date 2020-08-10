@@ -283,7 +283,7 @@ fn calc_expr(dst Number, get_final bool) bool {
 }
 
 // TODO: change definition once types other than any_int and any_float (int, f64, etc) are supported in sumtype
-type CommonType = any_int | any_float | string
+type CommonType = int | f64 | string
 
 fn (c CommonType) str() string {
 	match c {
@@ -291,10 +291,10 @@ fn (c CommonType) str() string {
 			return c
 		}
 		// TODO: combine `any_int` and `any_float` into `else` once code generation for `else` in sumtype match is mature 
-		any_int {
+		int {
 			return c.str()
 		}
-		any_float {
+		f64 {
 			return c.str()
 		}
 	}
@@ -326,7 +326,7 @@ fn test_sum_type_match() {
 	assert calc_expr(2.5, false)
 	assert !calc_expr(1.5, false)
 	assert calc_expr(0, true)
-	assert as_string(1) == 'This is the string representation of "1"'
-	assert as_string(3.14) == 'This is the string representation of "3.14"'
+	assert as_string(int(1)) == 'This is the string representation of "1"'
+	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
 }
