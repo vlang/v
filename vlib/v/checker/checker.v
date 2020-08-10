@@ -659,7 +659,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.symmetric_check(right_type, left_type) {
+	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
@@ -1723,9 +1723,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
+		// Dual sides check (compatibility check)
+		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
+			right_sym.kind != .placeholder {
+			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
+				right.position())
+		}
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
-			return
+			continue
 		}
 		// Single side check
 		match assign_stmt.op {
@@ -1773,12 +1779,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {}
-		}
-		// Dual sides check (compatibility check)
-		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
-			right_sym.kind != .placeholder {
-			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
-				right.position())
 		}
 	}
 }
