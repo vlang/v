@@ -595,6 +595,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	name := node.name.after('.')
 	f.writeln('$name {')
 	mut max := 0
+	mut max_type := 0
+	mut field_types := []string{cap: node.fields.len}
 	for field in node.fields {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -608,6 +610,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
+		}
+		ft := f.type_to_str(field.typ)
+		field_types << ft
+		if ft.len > max_type {
+			max_type = ft.len
 		}
 	}
 	for i, field in node.fields {
@@ -623,8 +630,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments.len == 0 {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
-			f.write(f.type_to_str(field.typ))
-			f.inline_attrs(field.attrs)
+			f.write(field_types[i])
+			if field.attrs.len > 0 {
+				f.write(strings.repeat(` `, max_type - field_types[i].len))
+				f.inline_attrs(field.attrs)
+			}
 			if field.has_default_expr {
 				f.write(' = ')
 				f.prefix_expr_cast_expr(field.default_expr)
@@ -654,7 +664,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			j++
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
-		f.write(f.type_to_str(field.typ))
+		f.write(field_types[i])
 		f.inline_attrs(field.attrs)
 		if field.has_default_expr {
 			f.write(' = ')
@@ -1126,7 +1136,7 @@ fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
 	f.write(' [')
 	for i, attr in attrs {
 		if i > 0 {
-			f.write(';')
+			f.write('; ')
 		}
 		f.write('$attr')
 	}

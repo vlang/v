@@ -67,17 +67,13 @@ fn (mut tasks []TaskDescription) run() {
 	vjobs := runtime.nr_jobs()
 	mut bench := benchmark.new_benchmark()
 	bench.set_total_expected_steps(tasks.len)
-	// TODO: close work channel instead of using sentinel items
-	task_sentinel := TaskDescription{
-		path: ''
-	}
-	mut work := sync.new_channel<TaskDescription>(tasks.len + vjobs)
+	mut work := sync.new_channel<TaskDescription>(tasks.len)
 	mut results := sync.new_channel<TaskDescription>(tasks.len)
 	for i in 0 .. tasks.len {
 		work.push(&tasks[i])
 	}
+	work.close()
 	for _ in 0 .. vjobs {
-		work.push(&task_sentinel)
 		go work_processor(mut work, mut results)
 	}
 	for _ in 0 .. tasks.len {
@@ -112,8 +108,7 @@ fn (mut tasks []TaskDescription) run() {
 fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 	for {
 		mut task := TaskDescription{}
-		work.pop(&task)
-		if task.path == '' {
+		if !work.pop(&task) {
 			break
 		}
 		sw := time.new_stopwatch({})
