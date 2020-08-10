@@ -281,19 +281,26 @@ fn calc_expr(dst Number, get_final bool) bool {
 	return temp + 10 == 20
 }
 
-type CommonType = int | f64 | string
+struct IntAndStr {
+	foo int
+	bar string
+}
+
+type CommonType = int | f64 | string | IntAndStr
 
 fn (c CommonType) str() string {
 	match c {
 		string {
 			return c
 		}
-		// TODO: replace `int` and `f64` together with `else` once code generation for `else` in sumtype match is mature 
 		int {
 			return c.str()
 		}
 		f64 {
 			return c.str()
+		}
+		IntAndStr {
+			return c.foo.str() + '_' + c.bar	
 		}
 	}
 }
@@ -327,4 +334,5 @@ fn test_sum_type_match() {
 	assert as_string(int(1)) == 'This is the string representation of "1"'
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
+	assert as_string(IntAndStr{foo: 2, bar: 'hi'}) == 'This is the string representation of "2_hi"'
 }
