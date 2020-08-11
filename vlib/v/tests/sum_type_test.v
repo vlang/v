@@ -296,19 +296,25 @@ fn as_string(val CommonType) string {
 fn (c CommonType) str() string {
 	match c {		
 		string {
+			d := c.int()
 			return c
 		}
 		int {
-			return c.str()
+			d := c
+			e := c + d - d
+			return e.str()
 		}
 		f64 {
 			return c.str()
 		}
 		IntAndStr {
-			return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
+			d := c
+			return (d.foo + d.baz.foo).str() + '_' + d.bar + '_' + d.baz.bar
 		}
 		bool {
-			return if c { 'true' } else { 'false' }
+			d := c == true
+			e := d == true
+			return if e { 'true' } else { 'false' }
 		}
 		byte {
 			return c.str()
