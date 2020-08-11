@@ -284,6 +284,7 @@ fn calc_expr(dst Number, get_final bool) bool {
 struct IntAndStr {
 	foo int
 	bar string
+	baz &IntAndStr
 }
 
 type CommonType = int | f64 | string | IntAndStr
@@ -300,7 +301,7 @@ fn (c CommonType) str() string {
 			return c.str()
 		}
 		IntAndStr {
-			return c.foo.str() + '_' + c.bar	
+			return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
 		}
 	}
 }
@@ -334,5 +335,5 @@ fn test_sum_type_match() {
 	assert as_string(int(1)) == 'This is the string representation of "1"'
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
-	assert as_string(IntAndStr{foo: 2, bar: 'hi'}) == 'This is the string representation of "2_hi"'
+	assert as_string(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}}) == 'This is the string representation of "5_hi_hello"'
 }
