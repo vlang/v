@@ -287,27 +287,38 @@ struct IntAndStr {
 	baz &IntAndStr
 }
 
-type CommonType = int | f64 | string | IntAndStr
+type Base = int | f64 | string | IntAndStr
+type Derived = Base | bool | byte
 
-fn (c CommonType) str() string {
-	match c {
-		string {
-			return c
-		}
-		int {
-			return c.str()
-		}
-		f64 {
-			return c.str()
-		}
-		IntAndStr {
-			return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
-		}
-	}
+fn as_string(val Derived) string {
+	return 'This is the string representation of "' + val.str() + '"'
 }
 
-fn as_string(val CommonType) string {
-	return 'This is the string representation of "' + val.str() + '"'
+fn (c Derived) str() string {
+	match c {		
+		Base {
+			match c {
+				string {
+					return c
+				}
+				int {
+					return c.str()
+				}
+				f64 {
+					return c.str()
+				}
+				IntAndStr {
+					return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
+				}
+			}
+		}
+		bool {
+			return if c { 'true' } else { 'false' }
+		}
+		byte {
+			return c.str()
+		}
+	}
 }
 
 fn test_sum_type_match() {
@@ -336,4 +347,6 @@ fn test_sum_type_match() {
 	assert as_string(f64(3.14)) == 'This is the string representation of "3.14"'
 	assert as_string('String') == 'This is the string representation of "String"'
 	assert as_string(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}}) == 'This is the string representation of "5_hi_hello"'
+	assert as_string(true) == 'This is the string representation of "true"'
+	assert as_string(`i`) == 'This is the string representation of "i"'
 }
