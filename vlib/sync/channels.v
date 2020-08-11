@@ -330,7 +330,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) TransactionState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
-	mut spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
