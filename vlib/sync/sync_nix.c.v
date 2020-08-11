@@ -120,7 +120,7 @@ pub fn (s Semaphore) post() {
 
 pub fn (s Semaphore) wait() {
 	$if macos {
-		C.dispatch_semaphore_wait(s.sem, C.DISPATCH_TIME_FOREVER);
+		C.dispatch_semaphore_wait(s.sem, C.DISPATCH_TIME_FOREVER)
 	} $else {
 		unsafe { C.sem_wait(&&PosixSemaphore(s.sem).sem) }
 	}
