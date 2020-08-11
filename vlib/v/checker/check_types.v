@@ -149,6 +149,10 @@ fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right
 		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_int() {
 			return left_type
 		}
+		if c.pref.translated && left_type == table.bool_type {
+			// allow `bool << 2` in translated C code
+			return table.int_type
+		}
 		c.error('invalid operation: shift of type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {

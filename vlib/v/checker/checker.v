@@ -1731,6 +1731,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
+			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
 		// Single side check
@@ -3135,6 +3136,11 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		return table.void_type
 	}
 	mut typ := table.new_type(typ_idx)
+	if c.pref.translated {
+		// TODO make more strict
+		node.typ = typ
+		return typ
+	}
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
 		return table.void_type
@@ -3146,7 +3152,8 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		typ = array_info.elem_type
 		typ_sym = c.table.get_type_symbol(typ)
 	}
-	if typ_sym.kind != .enum_ {
+	if typ_sym.kind != .enum_ && !c.pref.translated {
+		// TODO in C int fields can be compared to enums, need to handle that in C2V
 		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return table.void_type
 	}
@@ -3220,6 +3227,10 @@ pub fn (mut c Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
+	if c.pref.translated && message.starts_with('mismatched types') {
+		// TODO move this
+		return
+	}
 	if c.pref.is_verbose {
 		print_backtrace()
 	}

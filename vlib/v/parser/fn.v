@@ -559,6 +559,9 @@ fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) 
 }
 
 fn (mut p Parser) fn_redefinition_error(name string) {
+	if p.pref.translated {
+		return
+	}
 	// Find where this function was already declared
 	// TODO
 	/*
