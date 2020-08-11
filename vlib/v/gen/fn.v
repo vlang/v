@@ -407,7 +407,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			g.write('&')
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
+		!g.should_write_asterisk_due_to_match_sumtype(node.left) {
 		g.write('/*rec*/*')
 	}
 	g.expr(node.left)
