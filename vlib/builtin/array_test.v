@@ -171,16 +171,16 @@ fn test_strings() {
 }
 
 /*
-fn test_compare_ints() {
-    assert compare_ints(1, 2) == -1
-    assert compare_ints(2, 1) == 1
-    assert compare_ints(0, 0) == 0
+fn test_compare_int() {
+    assert compare_int(1, 2) == -1
+    assert compare_int(2, 1) == 1
+    assert compare_int(0, 0) == 0
 
     a := 1
     b := 2
-    assert compare_ints(a, b) == -1
-    assert compare_ints(b, a) == 1
-    assert compare_ints(a, a) == 0
+    assert compare_int(a, b) == -1
+    assert compare_int(b, a) == 1
+    assert compare_int(a, a) == 0
 }
 */
 
@@ -695,46 +695,208 @@ fn test_eq() {
 	*/
 }
 
-fn test_sort() {
+fn test_string_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
 	assert a[0] == '1'
 	assert a[1] == '3'
 	assert a[2] == '5'
 	assert a[3] == 'hi'
-	//
-	mut nums := [67, -3, 108, 42, 7]
-	nums.sort()
-	assert nums[0] == -3
-	assert nums[1] == 7
-	assert nums[2] == 42
-	assert nums[3] == 67
-	assert nums[4] == 108
-}
-
-fn test_f32_sort() {
-	mut f := [f32(50.0), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f32)
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
-}
-
-fn test_f64_sort() {
-	mut f := [50.0, 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_f64)
-	assert f[0] == 0.0
-	assert f[1] == 1.0
-	assert f[6] == 79.0
 }
 
 fn test_i64_sort() {
-	mut f := [i64(50), 15, 1, 79, 38, 0, 27]
-	f.sort_with_compare(compare_i64)
-	assert f[0] == 0
-	assert f[1] == 1
-	assert f[6] == 79
+	mut a := [i64(67), -3, 108, 42, 7]
+	a.sort()
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
 }
+
+fn test_int_sort() {
+	mut a := [67, -3, 108, 42, 7]
+	a.sort()
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_i16_sort() {
+	mut a := [i16(67), -3, 108, 42, 7]
+	a.sort()
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_i8_sort() {
+	mut a := [i8(67), -3, 108, 42, 7]
+	a.sort()
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u64_sort() {
+	mut a := [u64(67), 3, 108, 42, 7]
+	a.sort()
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u32_sort() {
+	mut a := [u32(67), 3, 108, 42, 7]
+	a.sort()
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u16_sort() {
+	mut a := [u16(67), 3, 108, 42, 7]
+	a.sort()
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_byte_sort() {
+	mut a := [byte(67), 3, 108, 42, 7]
+	a.sort()
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_f64_sort() {
+	mut a := [50.0, 15, 1, 79, 38, 0, 27]
+	a.sort()
+	assert a[0] == 0.0
+	assert a[1] == 1.0
+	assert a[6] == 79.0
+}
+
+fn test_f32_sort() {
+	mut a := [f32(50.0), 15, 1, 79, 38, 0, 27]
+	a.sort()
+	assert a[0] == 0.0
+	assert a[1] == 1.0
+	assert a[6] == 79.0
+}
+
+
+fn test_i64_sort_with_compare() {
+	mut a := [i64(67), -3, 108, 42, 7]
+	a.sort_with_compare(compare_i64)
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_int_sort_with_compare() {
+	mut a := [67, -3, 108, 42, 7]
+	a.sort_with_compare(compare_int)
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_i16_sort_with_compare() {
+	mut a := [i16(67), -3, 108, 42, 7]
+	a.sort_with_compare(compare_i16)
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_i8_sort_with_compare() {
+	mut a := [i8(67), -3, 108, 42, 7]
+	a.sort_with_compare(compare_i8)
+	assert a[0] == -3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u64_sort_with_compare() {
+	mut a := [u64(67), 3, 108, 42, 7]
+	a.sort_with_compare(compare_u64)
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u32_sort_with_compare() {
+	mut a := [u32(67), 3, 108, 42, 7]
+	a.sort_with_compare(compare_u32)
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_u16_sort_with_compare() {
+	mut a := [u16(67), 3, 108, 42, 7]
+	a.sort_with_compare(compare_u16)
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_byte_sort_with_compare() {
+	mut a := [byte(67), 3, 108, 42, 7]
+	a.sort_with_compare(compare_byte)
+	assert a[0] == 3
+	assert a[1] == 7
+	assert a[2] == 42
+	assert a[3] == 67
+	assert a[4] == 108
+}
+
+fn test_f64_sort_with_compare() {
+	mut a := [50.0, 15, 1, 79, 38, 0, 27]
+	a.sort_with_compare(compare_f64)
+	assert a[0] == 0.0
+	assert a[1] == 1.0
+	assert a[6] == 79.0
+}
+
+fn test_f32_sort_with_compare() {
+	mut a := [f32(50.0), 15, 1, 79, 38, 0, 27]
+	a.sort_with_compare(compare_f32)
+	assert a[0] == 0.0
+	assert a[1] == 1.0
+	assert a[6] == 79.0
+}
+
 
 /*
 fn test_for_last() {

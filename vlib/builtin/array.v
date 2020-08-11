@@ -528,21 +528,57 @@ pub fn copy(dst, src []byte) int {
 	return 0
 }
 
-// Private function. Comparator for int type.
-fn compare_ints(a, b &int) int {
-	if *a < *b {
-		return -1
-	}
-	if *a > *b {
-		return 1
-	}
-	return 0
+
+// []i64.sort sorts array of i64 in place in ascending order.
+pub fn (mut a []i64) sort() {
+	a.sort_with_compare(compare_i64)
 }
 
 // []int.sort sorts array of int in place in ascending order.
 pub fn (mut a []int) sort() {
-	a.sort_with_compare(compare_ints)
+	a.sort_with_compare(compare_int)
 }
+
+// []i16.sort sorts array of i16 in place in ascending order.
+pub fn (mut a []i16) sort() {
+	a.sort_with_compare(compare_i16)
+}
+
+// []i8.sort sorts array of i8 in place in ascending order.
+pub fn (mut a []i8) sort() {
+	a.sort_with_compare(compare_i8)
+}
+
+// []u64.sort sorts array of u64 in place in ascending order.
+pub fn (mut a []u64) sort() {
+	a.sort_with_compare(compare_u64)
+}
+
+// []u32.sort sorts array of u32 in place in ascending order.
+pub fn (mut a []u32) sort() {
+	a.sort_with_compare(compare_u32)
+}
+
+// []u16.sort sorts array of u32 in place in ascending order.
+pub fn (mut a []u16) sort() {
+	a.sort_with_compare(compare_u16)
+}
+
+// []byte.sort sorts array of byte in place in ascending order.
+pub fn (mut a []byte) sort() {
+	a.sort_with_compare(compare_byte)
+}
+
+// []f64.sort sorts array of f64 in place in ascending order.
+pub fn (mut a []f64) sort() {
+	a.sort_with_compare(compare_f64)
+}
+
+// []f32.sort sorts array of f32 in place in ascending order.
+pub fn (mut a []f32) sort() {
+	a.sort_with_compare(compare_f32)
+}
+
 
 // []string.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
@@ -655,6 +691,90 @@ pub fn (a1 []string) eq(a2 []string) bool {
 // output:
 // [10, 28, 70, 92, 100]
 pub fn compare_i64(a, b &i64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_int for []int sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_int(a, b &int) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_i16 for []i16 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_i16(a, b &i16) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_i8 for []i8 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_i8(a, b &i8) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_u64 for []u64 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_u64(a, b &u64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_u32 for []u32 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_u32(a, b &u32) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_u16 for []u16 sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_u16(a, b &u16) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+// compare_byte for []byte sort_with_compare()
+// ref. compare_i64(...)
+pub fn compare_byte(a, b &byte) int {
 	if *a < *b {
 		return -1
 	}
