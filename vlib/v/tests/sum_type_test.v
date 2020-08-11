@@ -297,6 +297,7 @@ fn (c CommonType) str() string {
 	match c {		
 		string {
 			d := c.int()
+			e := d
 			return c
 		}
 		int {
@@ -308,13 +309,11 @@ fn (c CommonType) str() string {
 			return c.str()
 		}
 		IntAndStr {
-			d := c
-			return (d.foo + d.baz.foo).str() + '_' + d.bar + '_' + d.baz.bar
+			return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
 		}
 		bool {
-			d := c == true
-			e := d == true
-			return if e { 'true' } else { 'false' }
+			d := c
+			return if d { 'true' } else { 'false' }
 		}
 		byte {
 			return c.str()
