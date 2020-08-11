@@ -1,19 +1,25 @@
 import sync
+import time
 
 fn do_rec_i64(mut ch sync.Channel) {
 	mut sum := i64(0)
-	for _ in 0 .. 300 {
+	for i in 0 .. 300 {
+		if i == 200 {
+			ch.close()
+		}
 		mut a := i64(0)
-		ch.pop(&a)
-		sum += a
+		if ch.pop(&a) {
+			sum += a
+		}
 	}
-	assert sum == 300 * (300 - 1) / 2
+	assert sum == 200 * (200 - 1) / 2
 }
 
 fn do_send_int(mut ch sync.Channel) {
 	for i in 0 .. 300 {
 		ch.push(&i)
 	}
+	ch.close()
 }
 
 fn do_send_byte(mut ch sync.Channel) {
@@ -21,6 +27,7 @@ fn do_send_byte(mut ch sync.Channel) {
 		ii := byte(i)
 		ch.push(&ii)
 	}
+	ch.close()
 }
 
 fn do_send_i64(mut ch sync.Channel) {
@@ -28,6 +35,7 @@ fn do_send_i64(mut ch sync.Channel) {
 		ii := i64(i)
 		ch.push(&ii)
 	}
+	ch.close()
 }
 
 fn test_select() {
@@ -47,8 +55,8 @@ fn test_select() {
 	mut rb := byte(0)
 	mut sl := i64(0)
 	mut objs := [voidptr(&ri), &sl, &rl, &rb]
-	for _ in 0 .. 1200 {
-		idx := sync.channel_select(mut channels, directions, mut objs, -1)
+	for j in 0 .. 1101 {
+		idx := sync.channel_select(mut channels, directions, mut objs, time.infinite)
 		match idx {
 			0 {
 				sum += ri
@@ -62,9 +70,18 @@ fn test_select() {
 			3 {
 				sum += rb
 			}
+			-2 {
+				// channel was closed - last item
+				assert j == 1100
+			}
 			else {
 				println('got $idx (timeout)')
+				assert false
 			}
+		}
+		if j == 1100 {
+			// check also in other direction
+			assert idx == -2
 		}
 	}
 	// Use Gauß' formula for the first 2 contributions

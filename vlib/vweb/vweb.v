@@ -42,6 +42,7 @@ mut:
 	static_files map[string]string
 	static_mime_types map[string]string
 	content_type string = 'text/plain'
+	status string = '200 OK'
 pub:
 	req http.Request
 	conn net.Socket
@@ -71,8 +72,9 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
 	defer { sb.free() }
-	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
-	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
+	sb.write('HTTP/1.1 ${ctx.status}')
+	sb.write('\r\nContent-Type: ${mimetype}')
+	sb.write('\r\nContent-Length: ${res.len}')
 	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(headers_close)
@@ -162,6 +164,14 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 		return cookie.trim_space()
 	}
 	return error('Cookie not found')
+}
+
+pub fn (mut ctx Context) set_status(code int, desc string) {
+	if code < 100 || code > 599 {
+		ctx.status = '500 Internal Server Error'
+	} else {
+		ctx.status = '$code $desc'
+	}
 }
 
 pub fn (mut ctx Context) add_header(key, val string) {
@@ -573,7 +583,7 @@ fn readall(conn net.Socket) string {
 	for {
 		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
-		message += string( byteptr(buf), m )
+		message += unsafe { byteptr(buf).vstring_with_len(m) }
 		if message.len > max_http_post_size { break }
 		if n == m { break }
 	}

@@ -88,6 +88,19 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
+fn cgen_attrs(attrs []table.Attr) []string {
+	mut res := []string{cap: attrs.len}
+	for attr in attrs {
+		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
+		mut s := attr.name
+		if attr.arg.len > 0 {
+			s += ': $attr.arg'
+		}
+		res << 'tos_lit("$s")'
+	}
+	return res
+}
+
 fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {
 		return
@@ -175,10 +188,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			if method.attrs.len == 0 {
 				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 			} else {
-				mut attrs := []string{}
-				for attrib in method.attrs {
-					attrs << 'tos_lit("$attrib.name")'
-				}
+				attrs := cgen_attrs(method.attrs)
 				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 					attrs.join(', ') + '}));')
 			}
@@ -210,10 +220,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				if field.attrs.len == 0 {
 					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
 				} else {
-					mut attrs := []string{}
-					for attrib in field.attrs {
-						attrs << 'tos_lit("$attrib.name")'
-					}
+					attrs := cgen_attrs(field.attrs)
 					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 						attrs.join(', ') + '}));')
 				}

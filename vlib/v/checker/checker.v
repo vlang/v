@@ -659,7 +659,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
-	if !c.symmetric_check(right_type, left_type) {
+	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
 		if left_type == table.void_type || right_type == table.void_type {
 			return table.void_type
@@ -1589,6 +1589,9 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 
 pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	c.expected_type = table.none_type // TODO a hack to make `x := if ... work`
+	defer {
+		c.expected_type = table.void_type
+	}
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
@@ -1720,6 +1723,17 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
+		// Dual sides check (compatibility check)
+		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
+			right_sym.kind != .placeholder {
+			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
+				right.position())
+		}
+		if c.pref.translated {
+			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
+			// TODO replace all c.pref.translated checks with `$if !translated` for performance
+			continue
+		}
 		// Single side check
 		match assign_stmt.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
@@ -1767,14 +1781,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		// Dual sides check (compatibility check)
-		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
-			right_sym.kind != .placeholder {
-			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
-				right.position())
-		}
 	}
-	c.expected_type = table.void_type
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
@@ -2265,6 +2272,16 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.expr_type = c.expr(node.expr)
 			from_type_sym := c.table.get_type_symbol(node.expr_type)
 			to_type_sym := c.table.get_type_symbol(node.typ)
+			expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
+			if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
+				if node.has_arg {
+					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
+						node.pos)
+				} else {
+					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
+						node.pos)
+				}
+			}
 			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
 				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
 					node.pos)
@@ -3001,14 +3018,23 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	return table.bool_type
 }
 
-fn (c Checker) has_return(stmts []ast.Stmt) ?bool {
+fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	// complexity means either more match or ifs
-	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	contains_comp_if := stmts.filter(it is ast.CompIf).len > 0
-	contains_if_match := exprs.filter(it.expr is ast.IfExpr || it.expr is ast.MatchExpr).len > 0
-	contains_complexity := contains_comp_if || contains_if_match
+	mut has_complexity := false
+	for s in stmts {
+		if s is ast.CompIf {
+			has_complexity = true
+			break
+		}
+		if s is ast.ExprStmt {
+			if s.expr is ast.IfExpr || s.expr is ast.MatchExpr {
+				has_complexity = true
+				break
+			}
+		}
+	}
 	// if the inner complexity covers all paths with returns there is no need for further checks
-	if !contains_complexity || !c.returns {
+	if !has_complexity || !c.returns {
 		return has_top_return(stmts)
 	}
 	return none
@@ -3049,6 +3075,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
+	}
+	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
+		c.error('cannot assign to s[i] (strings are immutable)', node.pos)
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
@@ -3110,6 +3139,11 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		return table.void_type
 	}
 	mut typ := table.new_type(typ_idx)
+	if c.pref.translated {
+		// TODO make more strict
+		node.typ = typ
+		return typ
+	}
 	if typ == table.void_type {
 		c.error('not an enum', node.pos)
 		return table.void_type
@@ -3121,7 +3155,8 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 		typ = array_info.elem_type
 		typ_sym = c.table.get_type_symbol(typ)
 	}
-	if typ_sym.kind != .enum_ {
+	if typ_sym.kind != .enum_ && !c.pref.translated {
+		// TODO in C int fields can be compared to enums, need to handle that in C2V
 		c.error('expected type is not an enum (`$typ_sym.name`)', node.pos)
 		return table.void_type
 	}
@@ -3195,6 +3230,10 @@ pub fn (mut c Checker) warn(s string, pos token.Position) {
 }
 
 pub fn (mut c Checker) error(message string, pos token.Position) {
+	if c.pref.translated && message.starts_with('mismatched types') {
+		// TODO move this
+		return
+	}
 	if c.pref.is_verbose {
 		print_backtrace()
 	}
@@ -3402,22 +3441,20 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 }
 
 fn has_top_return(stmts []ast.Stmt) bool {
-	if stmts.filter(it is ast.Return).len > 0 {
-		return true
-	}
 	for stmt in stmts {
-		if stmt is ast.Block {
+		if stmt is ast.Return {
+			return true
+		} else if stmt is ast.Block {
 			if has_top_return(stmt.stmts) {
 				return true
 			}
+		} else if stmt is ast.ExprStmt {
+			if stmt.expr is ast.CallExpr as ce {
+				if ce.name in ['panic', 'exit'] {
+					return true
+				}
+			}
 		}
-	}
-	exprs := stmts.filter(it is ast.ExprStmt).map(it as ast.ExprStmt)
-	has_panic_exit := exprs.filter(it.expr is
-		ast.CallExpr).map(it.expr as ast.CallExpr).filter(it.name == 'panic' ||
-		it.name == 'exit').len > 0
-	if has_panic_exit {
-		return true
 	}
 	return false
 }

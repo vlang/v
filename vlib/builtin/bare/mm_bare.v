@@ -40,7 +40,7 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 	return dest0
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn malloc(n int) byteptr {
 	if n < 0 {
 		panic('malloc(<0)')
@@ -52,7 +52,7 @@ pub fn malloc(n int) byteptr {
 	return ptr
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn free(ptr voidptr) {
 	assert mm_free(ptr) == .enoerror
 }

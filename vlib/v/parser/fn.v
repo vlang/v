@@ -140,13 +140,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.check(.key_fn)
 	p.open_scope()
 	// C. || JS.
-	language := if p.tok.kind == .name && p.tok.lit == 'C' {
-		is_unsafe = !p.attrs.contains('trusted_fn')
-		table.Language.c
+	mut language := table.Language.v
+	if p.tok.kind == .name && p.tok.lit == 'C' {
+		is_unsafe = !p.attrs.contains('trusted')
+		language = table.Language.c
 	} else if p.tok.kind == .name && p.tok.lit == 'JS' {
-		table.Language.js
-	} else {
-		table.Language.v
+		language = table.Language.js
 	}
 	if language != .v {
 		p.next()
@@ -178,6 +177,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		receiver_pos = rec_start_pos.extend(p.tok.position())
 		is_amp := p.tok.kind == .amp
+		if p.tok.kind == .name && p.tok.lit == 'JS' {
+			language = table.Language.js
+		}
 		// if rec_mut {
 		// p.check(.key_mut)
 		// }
@@ -557,6 +559,9 @@ fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) 
 }
 
 fn (mut p Parser) fn_redefinition_error(name string) {
+	if p.pref.translated {
+		return
+	}
 	// Find where this function was already declared
 	// TODO
 	/*

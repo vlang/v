@@ -49,6 +49,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
 			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
 			table.MultiReturn { g.gen_str_for_multi_return(it, styp, str_fn_name) }
+			table.SumType {}
 			else { verror("could not generate string method $str_fn_name for type \'$styp\'") }
 		}
 	}

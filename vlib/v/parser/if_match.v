@@ -152,7 +152,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.next()
 		var_name = p.check_name()
 	}
-	p.check(.lcbr)
+	no_lcbr := p.tok.kind != .lcbr
+	if !no_lcbr {
+		p.check(.lcbr)
+	}
 	mut branches := []ast.MatchBranch{}
 	for {
 		branch_first_pos := p.tok.position()
@@ -164,9 +167,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
-				(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-				(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
+			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
+			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
 			if var_name.len == 0 {
 				match cond {
 					ast.Ident {
@@ -256,7 +259,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			post_comments: post_comments
 		}
 		p.close_scope()
-		if p.tok.kind == .rcbr {
+		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
 		}
 	}
@@ -266,7 +269,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 	}
-	p.check(.rcbr)
+	if p.tok.kind == .rcbr {
+		p.check(.rcbr)
+	}
 	// return ast.StructInit{}
 	return ast.MatchExpr{
 		branches: branches

@@ -116,7 +116,7 @@ pub fn (mut b Builder) str() string {
 			'If you want to reuse a builder, call b.free() first.')
 	}
 	b.buf << `\0`
-	s := string(b.buf,b.len)
+	s := tos(b.buf.data, b.len)
 	bis := b.initial_size
 	//free(b.buf.data)
 	b.buf = []byte{cap: bis}

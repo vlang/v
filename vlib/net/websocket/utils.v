@@ -32,12 +32,8 @@ fn create_key_challenge_response(seckey string) string {
 	guid := '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 	sha1buf := seckey + guid
 	hash := sha1.sum(sha1buf.bytes())
-	hashstr := string(byteptr(hash.data))
+	hashstr := hash.bytestr()
 	b64 := base64.encode(hashstr)
-	unsafe {
-		sha1buf.free()
-		hash.free()
-	}
 	return b64
 }
 

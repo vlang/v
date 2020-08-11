@@ -42,4 +42,5 @@ fn test_funcs() {
 	unsafe {
 		s.f()
 	}
+	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
 }

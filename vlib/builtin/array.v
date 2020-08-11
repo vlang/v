@@ -219,7 +219,7 @@ pub fn (mut a array) trim(index int) {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline] [unsafe_fn]
+[inline] [unsafe]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
 		return byteptr(a.data) + i * a.element_size
@@ -379,7 +379,7 @@ fn (a &array) slice_clone(start, _end int) array {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline] [unsafe_fn]
+[inline] [unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe {
 		C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
@@ -462,7 +462,7 @@ pub fn (a array) reverse() array {
 }
 
 // pub fn (a []int) free() {
-[unsafe_fn]
+[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
 		return

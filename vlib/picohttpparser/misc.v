@@ -1,6 +1,6 @@
 module picohttpparser
 
-[inline] [unsafe_fn]
+[inline] [unsafe]
 fn cpy(dst, src byteptr, len int) int {
 	unsafe { C.memcpy(dst, src, len) }
 	return len

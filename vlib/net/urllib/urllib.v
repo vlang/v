@@ -272,7 +272,7 @@ fn escape(s string, mode EncodingMode) string {
 				t[i] = `+`
 			}
 		}
-		return string(t,t.len)
+		return t.bytestr()
 	}
 	upperhex := '0123456789ABCDEF'
 	mut j := 0
@@ -293,7 +293,7 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		}
 	}
-	return string(t,t.len)
+	return t.bytestr()
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
@@ -367,7 +367,7 @@ fn (u &Userinfo) empty() bool {
 
 // string returns the encoded userinfo information in the standard form
 // of 'username[:password]'.
-fn (u &Userinfo) string() string {
+fn (u &Userinfo) str() string {
 	if u.empty() {
 		return ''
 	}
@@ -771,7 +771,7 @@ pub fn (u URL) str() string {
 				buf.write('//')
 			}
 			if !u.user.empty() {
-				buf.write(u.user.string())
+				buf.write(u.user.str())
 				buf.write('@')
 			}
 			if u.host != '' {
