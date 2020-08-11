@@ -287,30 +287,25 @@ struct IntAndStr {
 	baz &IntAndStr
 }
 
-type Base = int | f64 | string | IntAndStr
-type Derived = Base | bool | byte
+type CommonType = int | f64 | string | IntAndStr | bool | byte
 
-fn as_string(val Derived) string {
+fn as_string(val CommonType) string {
 	return 'This is the string representation of "' + val.str() + '"'
 }
 
-fn (c Derived) str() string {
+fn (c CommonType) str() string {
 	match c {		
-		Base {
-			match c {
-				string {
-					return c
-				}
-				int {
-					return c.str()
-				}
-				f64 {
-					return c.str()
-				}
-				IntAndStr {
-					return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
-				}
-			}
+		string {
+			return c
+		}
+		int {
+			return c.str()
+		}
+		f64 {
+			return c.str()
+		}
+		IntAndStr {
+			return (c.foo + c.baz.foo).str() + '_' + c.bar + '_' + c.baz.bar
 		}
 		bool {
 			return if c { 'true' } else { 'false' }
