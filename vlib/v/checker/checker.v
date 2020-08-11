@@ -3076,6 +3076,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
+	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
+		c.error('cannot assign to s[i] (strings are immutable)', node.pos)
+	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
 		if node.left is ast.Ident {
