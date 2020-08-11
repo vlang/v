@@ -6,19 +6,11 @@ module sync
 import time
 
 #flag -lpthread
-#include <pthread.h>
 $if macos {
 	#include <dispatch/dispatch.h>
 } $else {
 	#include <semaphore.h>
 }
-
-// These are specific to MacOS
-fn C.dispatch_semaphore_create(i64) voidptr
-fn C.dispatch_semaphore_signal(voidptr) i64
-fn C.dispatch_semaphore_wait(voidptr, u64) i64
-fn C.dispatch_time(u64, i64) u64
-fn C.dispatch_release(voidptr)
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 [ref_only]
