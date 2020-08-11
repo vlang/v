@@ -59,6 +59,8 @@ mut:
 	is_amp                bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
 	is_sql                bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
 	is_shared             bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
+	vlines_path           string // set to the proper path for generating #line directives
 	optionals             []string // to avoid duplicates TODO perf, use map
 	shareds               []int // types with hidden mutex for which decl has been emitted
 	inside_ternary        int // ?: comma separated statements on a single line
@@ -147,6 +149,9 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	mut autofree_used := false
 	for file in files {
 		g.file = file
+		if g.pref.is_vlines {
+			g.vlines_path = util.vlines_escape_path(file.path, g.pref.ccompiler)
+		}
 		// println('\ncgen "$g.file.path" nr_stmts=$file.stmts.len')
 		// building_v := true && (g.file.path.contains('/vlib/') || g.file.path.contains('cmd/v'))
 		is_test := g.file.path.ends_with('.vv') || g.file.path.ends_with('_test.v')
@@ -174,6 +179,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	g.write_variadic_types()
 	// g.write_str_definitions()
+	// v files are finished, what remains is pure C code
+	g.gen_vlines_reset()
 	if g.pref.build_mode != .build_module {
 		// no init in builtin.o
 		g.write_init_function()
@@ -235,7 +242,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	return b.str()
 }
 
-pub fn (g Gen) hashes() string {
+pub fn (g &Gen) hashes() string {
 	mut res := c_commit_hash_default.replace('@@@', util.vhash())
 	res += c_current_commit_hash_default.replace('@@@', util.githash(g.pref.building_v))
 	return res
@@ -563,9 +570,6 @@ pub fn (mut g Gen) write_variadic_types() {
 	}
 }
 
-pub fn (g Gen) save() {
-}
-
 pub fn (mut g Gen) write(s string) {
 	$if trace_gen ? {
 		eprintln('gen file: ${g.file.path:-30} | last_fn_c_name: ${g.last_fn_c_name:-45} | write: $s')
@@ -648,6 +652,15 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	}
 }
 
+[inline]
+fn (mut g Gen) write_v_source_line_info(pos token.Position) {
+	if g.inside_ternary == 0 && g.pref.is_vlines && g.is_vlines_enabled {
+		nline := pos.line_nr + 1
+		lineinfo := '\n#line $nline "$g.vlines_path"'
+		g.writeln(lineinfo)
+	}
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	g.stmt_path_pos << g.out.len
 	defer {
@@ -664,9 +677,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// g.writeln('//// stmt start')
 	match node {
 		ast.AssertStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
 		}
 		ast.AssignStmt {
+			g.write_v_source_line_info(node.pos)
 			g.gen_assign_stmt(node)
 		}
 		ast.Block {
@@ -679,11 +694,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
+			g.write_v_source_line_info(node.tok.position())
 			// continue or break
 			g.write(node.tok.kind.str())
 			g.writeln(';')
 		}
 		ast.ConstDecl {
+			g.write_v_source_line_info(node.pos)
 			// if g.pref.build_mode != .build_module {
 			g.const_decl(node)
 			// }
@@ -692,6 +709,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.comp_for(node)
 		}
 		ast.CompIf {
+			g.write_v_source_line_info(node.pos)
 			g.comp_if(node)
 		}
 		ast.DeferStmt {
@@ -723,6 +741,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.enum_typedefs.writeln('} $enum_name;\n')
 		}
 		ast.ExprStmt {
+			g.write_v_source_line_info(node.pos)
 			g.expr(node.expr)
 			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
 				g.writeln(';')
@@ -779,6 +798,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ForCStmt {
+			g.write_v_source_line_info(node.pos)
+			g.is_vlines_enabled = false
 			g.write('for (')
 			if !node.has_init {
 				g.write('; ')
@@ -799,13 +820,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.stmt(node.inc)
 			}
 			g.writeln(') {')
+			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
 		ast.ForInStmt {
+			g.write_v_source_line_info(node.pos)
 			g.for_in(node)
 		}
 		ast.ForStmt {
+			g.write_v_source_line_info(node.pos)
+			g.is_vlines_enabled = false
 			g.write('while (')
 			if node.is_inf {
 				g.write('1')
@@ -813,6 +838,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.expr(node.cond)
 			}
 			g.writeln(') {')
+			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
 			g.writeln('}')
 		}
@@ -2784,7 +2810,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 }
 
 [inline]
-fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
+fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	match expr {
 		ast.CallExpr { return g.table.get_type_symbol(expr.return_type).kind == .multi_return }
 		else { return false }
@@ -2792,6 +2818,7 @@ fn (g Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) return_statement(node ast.Return) {
+	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
 		if node.exprs[0] is ast.ComptimeCall {
@@ -3525,7 +3552,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 }
 
 // sort structs by dependant fields
-fn (g Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
+fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	mut dep_graph := depgraph.new_dep_graph()
 	// types name list
 	mut type_names := []string{}
@@ -4168,7 +4195,7 @@ fn (mut g Gen) type_default(typ table.Type) string {
 	*/
 }
 
-fn (g Gen) get_all_test_function_names() []string {
+fn (g &Gen) get_all_test_function_names() []string {
 	mut tfuncs := []string{}
 	mut tsuite_begin := ''
 	mut tsuite_end := ''
@@ -4215,7 +4242,7 @@ fn (g Gen) get_all_test_function_names() []string {
 	return all_tfuncs_c
 }
 
-fn (g Gen) is_importing_os() bool {
+fn (g &Gen) is_importing_os() bool {
 	return 'os' in g.table.imports
 }
 
@@ -4385,7 +4412,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (g Gen) type_to_fmt(typ table.Type) string {
+fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind in [.struct_, .array, .array_fixed, .map] {
 		return '%.*s\\000'

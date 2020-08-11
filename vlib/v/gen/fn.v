@@ -36,6 +36,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// g.cur_fn = it
 	fn_start_pos := g.out.len
+	g.write_v_source_line_info(it.pos)
 	msvc_attrs := g.write_fn_attrs(it.attrs)
 	// Live
 	is_livefn := it.attrs.contains('live')

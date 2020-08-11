@@ -70,7 +70,7 @@ pub mut:
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
 	show_cc             bool // -showcc, print cc command
-	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
+	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	use_cache           bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
@@ -101,6 +101,7 @@ pub mut:
 	output_cross_c      bool
 	prealloc            bool
 	vroot               string
+	out_name_c          string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name            string
 	display_name        string
 	bundle_id           string
@@ -144,8 +145,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-silent' {
 				res.output_mode = .silent
 			}
+			'-g' {
+				res.is_debug = true
+				res.is_vlines = true
+			}
 			'-cg' {
 				res.is_debug = true
+				res.is_vlines = false
 			}
 			'-repl' {
 				res.is_repl = true
