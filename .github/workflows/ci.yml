@@ -46,10 +46,10 @@ jobs:
       run: ./v test-fixed
     - name: Test building v tools
       run: ./v build-tools
-#    - name: v vet # TODO bring back v vet on linux-tcc
-#      run: |
-#        ./v vet vlib/sqlite
-#        ./v vet vlib/v
+    - name: v vet
+      run: |
+        ./v vet vlib/sqlite
+        ./v vet vlib/v
     - name: v fmt
       run: |
         ./v fmt -verify vlib/v/checker/checker.v
