@@ -21,7 +21,7 @@ fn main() {
         mut var := os.input('press q to quit: ')
         // KEEP prompting the user until he enters the q key
         for {
-                if 'q' in var {
+                if  var=='q' {
                         break
                 } else {
                         var = os.input('press q to quit: ')
@@ -52,22 +52,22 @@ term.warning_message(string)
 //clears the entire terminal and leaves a blank one
 term.clear()
 
-// colors the output following the given color, replace <color> with a color of your choice; the available colors are: black,blue,yellow,green,cyan,gray
+// colors the output of the output, the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
 term.<color>(string)
 
-// Transforms the given string into bold text
+// transforms the given string into bold text
 term.bold(string)
 
-// Puts a strikethrough into the given string
+// puts a strikethrough into the given string
 term.strikethrough(string)
 
-// Underlines the given string
+// underlines the given string
 term.underline(string)
 
-// colors the background of the given string, replace <color> with a color of your choice; the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
+// colors the background of the outup following the given color, the available colors are: black,blue,yellow,green,cyan,gray
 term.bg_<color>(string)
 
-// Sets the position of the cursor at a given place in the terminal
+// sets the position of the cursor at a given place in the terminal
 term.set_cursor_position(x,y)
 
 // moves the cursor up
