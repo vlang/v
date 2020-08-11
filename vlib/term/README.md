@@ -21,7 +21,7 @@ fn main() {
         mut var := os.input('press q to quit: ')
         // KEEP prompting the user until he enters the q key
         for {
-                if  var=='q' {
+                if  var == 'q' {
                         break
                 } else {
                         var = os.input('press q to quit: ')
@@ -87,8 +87,6 @@ term.show_cursor()
 
 // hides the cursor
 term.hide_cursor()
-
-
 ```
 
 
