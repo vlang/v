@@ -152,7 +152,8 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.next()
 		var_name = p.check_name()
 	}
-	if p.tok.kind == .lcbr {
+	no_lcbr := p.tok.kind != .lcbr
+	if !no_lcbr {
 		p.check(.lcbr)
 	}
 	mut branches := []ast.MatchBranch{}
@@ -258,7 +259,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			post_comments: post_comments
 		}
 		p.close_scope()
-		if p.tok.kind == .rcbr || is_else {
+		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
 		}
 	}
