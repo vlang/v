@@ -63,7 +63,7 @@ $dec_fn_dec {
 	g.json_forward_decls.writeln('$enc_fn_dec;\n')
 	enc.writeln('
 $enc_fn_dec {
-\tcJSON *o = cJSON_CreateObject();')
+\tcJSON *o;')
 	if sym.kind == .array {
 		// Handle arrays
 		value_type := g.table.value_type(typ)
@@ -72,6 +72,7 @@ $enc_fn_dec {
 		enc.writeln(g.encode_array(value_type))
 		// enc += g.encode_array(t)
 	} else {
+		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
 		if sym.info !is table.Struct {
 			verror('json: $sym.name is not struct')
@@ -151,13 +152,13 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 		s = '\t$styp val = *($styp*) ${fn_name}(jsval).data; '
 	}
 	return '
-res = __new_array(0, 0, sizeof($styp));
-const cJSON *jsval = NULL;
-cJSON_ArrayForEach(jsval, root)
-{
-$s
-	array_push(&res, &val);
-}
+	res = __new_array(0, 0, sizeof($styp));
+	const cJSON *jsval = NULL;
+	cJSON_ArrayForEach(jsval, root)
+	{
+	$s
+		array_push(&res, &val);
+	}
 '
 }
 
@@ -165,9 +166,9 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
 	return '
-o = cJSON_CreateArray();
-for (int i = 0; i < val.len; i++){
-	cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
-}
+	o = cJSON_CreateArray();
+	for (int i = 0; i < val.len; i++){
+		cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
+	}
 '
 }
