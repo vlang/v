@@ -8,7 +8,8 @@ fn test_vet() {
 	os.chdir(vroot)
 	test_dir := 'vlib/v/vet/tests'
 	tests := get_tests_in_dir(test_dir)
-	assert check_path(vexe, test_dir, tests) == 0
+	fails := check_path(vexe, test_dir, tests)
+	assert fails == 0
 }
 
 fn get_tests_in_dir(dir string) []string {

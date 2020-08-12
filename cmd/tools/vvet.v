@@ -29,8 +29,12 @@ fn main() {
 		is_verbose: '-verbose' in args || '-v' in args
 	}
 	for path in paths {
-		println(path)
-		if path.ends_with('_test.v') || path.contains('/tests/') {
+		if !os.exists(path) {
+			eprintln('File/folder $path does not exist')
+			continue
+		}
+		if path.ends_with('_test.v') || (path.contains('/tests/') && !path.contains('vlib/v/vet/')) {
+			eprintln('skipping $path')
 			continue
 		}
 		if path.ends_with('.v') {
