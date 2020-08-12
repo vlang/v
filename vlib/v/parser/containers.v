@@ -73,7 +73,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				p.check(.rcbr)
 			}
 			else {
-				// p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`', last_pos)
+				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`', last_pos)
 			}
 		} else {
 			if p.tok.kind == .not {

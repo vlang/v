@@ -301,7 +301,7 @@ struct Foooj {
 }
 
 fn test_fixed() {
-	mut nums := [4]int
+	mut nums := [4]int{}
 	//x := nums[1..3]
 	//assert x.len == 2
 	assert nums[0] == 0
@@ -310,7 +310,7 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [5]int // c_n
+	nums2 := [5]int{} // c_n
 	assert nums2[c_n - 1] == 0
 }
 

@@ -89,7 +89,7 @@ pub fn cp(old, new string) ? {
 			C.close(fp_from)
 			return error_with_code('cp: failed to write to $new', int(fp_to))
 		}
-		mut buf := [1024]byte
+		mut buf := [1024]byte{}
 		mut count := 0
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
