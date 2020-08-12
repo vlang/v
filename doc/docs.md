@@ -444,7 +444,7 @@ f := 1.0
 f1 := f64(3.14)
 f2 := f32(3.14)
 ```
-If you do not specify the type explicitly, by default float literals 
+If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 ### Arrays
@@ -556,6 +556,24 @@ println(a) // [[0, 2, 0], [0, 0, 0]]
 mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
+#### Sorting arrays
+
+Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
+are used when providing a custom sorting condition.
+
+```v
+mut numbers := [1, 3, 2]
+numbers.sort()      // 1, 2, 3
+numbers.sort(a > b) // 3, 2, 1
+```
+
+```v
+struct User { age int  name string }
+mut users := [...]
+users.sort(a.age < b.age)   // sort by User.age int field
+users.sort(a.name > b.name) // reverse sort by User.name string field
 ```
 
 ### Maps
@@ -784,7 +802,7 @@ for i in 0..5 {
     print(i)
 }
 ```
-`low..high` means an *exclusive* range, which represents all values 
+`low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
 
 #### Condition `for`
@@ -1602,11 +1620,11 @@ fn f(url string) ?string {
 }
 ```
 
-`http.get` returns `?http.Response`. Because `?` follows the call, the 
-error will be propagated to the caller of `f`. When using `?` after a 
-function call producing an optional, the enclosing function must return 
-an optional as well. If error propagation is used in the `main()` 
-function it will `panic` instead, since the error cannot be propagated 
+`http.get` returns `?http.Response`. Because `?` follows the call, the
+error will be propagated to the caller of `f`. When using `?` after a
+function call producing an optional, the enclosing function must return
+an optional as well. If error propagation is used in the `main()`
+function it will `panic` instead, since the error cannot be propagated
 any further.
 
 The body of `f` is essentially a condensed version of:
@@ -1658,7 +1676,7 @@ if resp := http.get(url) {
     println(err)
 }
 ```
-Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first 
+Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
 
 ## Generics
@@ -1705,7 +1723,7 @@ println(compare<string>('1','0')) // Outputs: 1
 println(compare<string>('1','1')) //          0
 println(compare<string>('1','2')) //         -1
 
-println(compare<float>(1.1, 1.0)) // Outputs: 1 
+println(compare<float>(1.1, 1.0)) // Outputs: 1
 println(compare<float>(1.1, 1.1)) //          0
 println(compare<float>(1.1, 1.2)) //         -1
 ```
@@ -2003,7 +2021,7 @@ fn main(){
 ## Memory-unsafe code
 
 Sometimes for efficiency you may want to write low-level code that can potentially
-corrupt memory or be vulnerable to security exploits. V supports writing such code, 
+corrupt memory or be vulnerable to security exploits. V supports writing such code,
 but not by default.
 
 V requires that any potentially memory-unsafe operations are marked intentionally.
@@ -2035,12 +2053,12 @@ assert *p == `i`
 ```
 
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
-so that the reason for using `unsafe` is as clear as possible. Generally any code 
-you think is memory-safe should not be inside an `unsafe` block, so the compiler 
+so that the reason for using `unsafe` is as clear as possible. Generally any code
+you think is memory-safe should not be inside an `unsafe` block, so the compiler
 can verify it.
 
-If you suspect your program does violate memory-safety, you have a head start on 
-finding the cause: look at the `unsafe` blocks (and how they interact with 
+If you suspect your program does violate memory-safety, you have a head start on
+finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
 * Note: This is work in progress.
