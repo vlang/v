@@ -134,7 +134,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v.name, *v)
+						tmpl_scope.register(v.name, v)
 						// set the controller action var to used
 						// if its unused in the template it will warn
 						v.is_used = true

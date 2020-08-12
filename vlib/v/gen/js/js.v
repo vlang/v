@@ -442,7 +442,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_const_decl(node)
 		}
 		ast.DeferStmt {
-			g.defer_stmts << *node
+			g.defer_stmts << node
 		}
 		ast.EnumDecl {
 			g.gen_enum_decl(node)
@@ -452,7 +452,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
-			g.fn_decl = node
+			g.fn_decl = &node
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
