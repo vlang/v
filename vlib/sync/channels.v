@@ -174,10 +174,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	mut spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
-	$if macos {
-		spinloops_sem_ = 1
-	}
+	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -333,10 +330,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) TransactionState {
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
-	mut spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
-	$if macos {
-		spinloops_sem_ = 1
-	}
+	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
