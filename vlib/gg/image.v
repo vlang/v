@@ -2,12 +2,12 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-import gx
+//import gx
 import os
 import sokol
-import sokol.sapp
+//import sokol.sapp
 import sokol.sgl
-import sokol.gfx
+//import sokol.gfx
 import stbi
 
 pub struct Image {

@@ -3237,7 +3237,8 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	if c.pref.is_verbose {
 		print_backtrace()
 	}
-	c.warn_or_error(message, pos, false)
+	msg := message.replace('`array_', '`[]')
+	c.warn_or_error(msg, pos, false)
 }
 
 fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) {
