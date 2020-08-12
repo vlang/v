@@ -2251,7 +2251,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				//
 				c.error('cannot cast non sum type `$type_sym.name` using `as`', node.pos)
 			}
-			return node.typ.to_ptr()
+			return node.typ
 			// return node.typ
 		}
 		ast.Assoc {
@@ -2671,6 +2671,14 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				}
 			}
 		}
+		if node.is_sum_type && branch.stmts.len > 0 && branch.exprs.len > 0 {
+			mut scope := c.file.scope.innermost(branch.pos.pos + 1)
+			scope.update_var_type('it', c.expr(branch.exprs[0]))
+			if node.var_name.len > 0 {
+				//pub fn (s &Scope) find_var(name string) ?&Var
+				scope.update_var_type(node.var_name, c.expr(branch.exprs[0]))
+			}
+		}
 		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
@@ -2935,7 +2943,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						scope.register(branch.left_as_name, ast.Var{
 							name: branch.left_as_name
-							typ: right_expr.typ.to_ptr()
+							typ: right_expr.typ
 							pos: infix.left.position()
 							is_used: true
 							is_mut: is_mut
