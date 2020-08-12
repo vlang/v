@@ -539,11 +539,31 @@ fn compare_ints(a, b &int) int {
 	return 0
 }
 
+fn compare_ints_reverse(a, b &int) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
 fn compare_floats(a, b &f64) int {
 	if *a < *b {
 		return -1
 	}
 	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_floats_reverse(a, b &f64) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
 		return 1
 	}
 	return 0

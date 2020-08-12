@@ -695,6 +695,11 @@ fn test_eq() {
 	*/
 }
 
+struct User {
+	age int
+	name string
+}
+
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
@@ -717,6 +722,20 @@ fn test_sort() {
 	assert nums[2] == 42
 	assert nums[3] == 67
 	assert nums[4] == 108
+	//
+	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
+	users.sort(a.age < b.age)
+	assert(users[0].age == 20)
+	assert(users[1].age == 22)
+	assert(users[2].age == 25)
+	assert(users[0].name == 'Bob')
+	assert(users[1].name == 'Peter')
+	assert(users[2].name == 'Alice')
+	//
+	users.sort(a.age > b.age)
+	assert(users[0].age == 25)
+	assert(users[1].age == 22)
+	assert(users[2].age == 20)
 }
 
 fn test_f32_sort() {

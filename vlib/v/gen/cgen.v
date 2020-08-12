@@ -3750,12 +3750,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// No arguments means we are sorting an array of builtins (e.g. `numbers.sort()`)
 	// The type for the comparison fns is the type of the element itself.
 	mut typ := info.elem_type
+	mut is_reverse := false
 	// `users.sort(a.age > b.age)`
 	if node.args.len > 0 {
 		// Get the type of the field that's being compared
 		// `a.age > b.age` => `age int` => int
 		infix_expr := node.args[0].expr as ast.InfixExpr
 		typ = infix_expr.left_type
+		is_reverse = infix_expr.op == .gt
 	}
 	mut compare_fn := match typ {
 		table.int_type {
@@ -3770,11 +3772,14 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		else {
 			q := g.table.get_type_symbol(typ)
 			if node.args.len == 0 {
-				verror('usage: .sort(a.field < b.field)')
+				verror('usage: .sort(a.field < b.field) $q.name')
 			}
 			verror('sort(): unhandled type $typ $q.name')
 			''
 		}
+	}
+	if is_reverse {
+		compare_fn += '_reverse'
 	}
 	//
 	g.write('qsort(')
