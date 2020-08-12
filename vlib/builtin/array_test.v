@@ -736,6 +736,9 @@ fn test_sort() {
 	assert(users[0].age == 25)
 	assert(users[1].age == 22)
 	assert(users[2].age == 20)
+	//
+	users.sort(a.name < b.name) // Test sorting by string fields
+	//assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
 fn test_f32_sort() {
