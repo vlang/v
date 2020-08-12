@@ -847,12 +847,19 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
-		method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice'] {
+		method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort'] {
 		mut elem_typ := table.void_type
-		if method_name in ['filter', 'map'] {
+		is_filter_map := method_name in ['filter', 'map']
+		is_sort := method_name == 'sort'
+		if is_filter_map || is_sort {
 			array_info := left_type_sym.info as table.Array
 			mut scope := c.file.scope.innermost(call_expr.pos.pos)
-			scope.update_var_type('it', array_info.elem_type)
+			if is_filter_map {
+				scope.update_var_type('it', array_info.elem_type)
+			} else if is_sort {
+				scope.update_var_type('a', array_info.elem_type)
+				scope.update_var_type('b', array_info.elem_type)
+			}
 			elem_typ = array_info.elem_type
 		}
 		// map/filter are supposed to have 1 arg only

@@ -14,6 +14,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
@@ -612,12 +613,13 @@ pub:
 	mod string
 }
 
-// filter(), map()
+/*
+// filter(), map(), sort()
 pub struct Lambda {
 pub:
 	name string
 }
-
+*/
 pub struct AssignStmt {
 pub:
 	right         []Expr

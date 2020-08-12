@@ -1133,6 +1133,19 @@ fn (mut p Parser) scope_register_it() {
 	})
 }
 
+fn (mut p Parser) scope_register_ab() {
+	p.scope.register('a', ast.Var{
+		name: 'a'
+		pos: p.tok.position()
+		is_used: true
+	})
+	p.scope.register('b', ast.Var{
+		name: 'b'
+		pos: p.tok.position()
+		is_used: true
+	})
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
@@ -1149,6 +1162,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// defer {
 		// p.close_scope()
 		// }
+	} else if field_name == 'sort' {
+		p.open_scope()
+		name_pos = p.tok.position()
+		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -1208,7 +1225,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: pos
 			}
 		}
-		if is_filter {
+		if is_filter || field_name == 'sort' {
 			p.close_scope()
 		}
 		return mcall_expr

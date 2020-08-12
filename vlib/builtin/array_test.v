@@ -710,6 +710,13 @@ fn test_sort() {
 	assert nums[2] == 42
 	assert nums[3] == 67
 	assert nums[4] == 108
+	//
+	nums.sort(a < b)
+	assert nums[0] == -3
+	assert nums[1] == 7
+	assert nums[2] == 42
+	assert nums[3] == 67
+	assert nums[4] == 108
 }
 
 fn test_f32_sort() {

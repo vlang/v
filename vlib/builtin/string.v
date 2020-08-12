@@ -126,7 +126,7 @@ pub fn (bp byteptr) vstring() string {
 	return string{
 		str: bp
 		len: unsafe {C.strlen(bp)}
-	}	
+	}
 }
 
 // byteptr.vstring_with_len() - converts a C style string to a V string. NB: the string data is reused, NOT copied.
@@ -135,7 +135,7 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
 		len: len
-	}	
+	}
 }
 
 // string.clone_static returns an independent copy of a given array
@@ -250,7 +250,7 @@ fn compare_rep_index(a, b &RepIndex) int {
 }
 
 
-fn (mut a []RepIndex) sort() {
+fn (mut a []RepIndex) sort2() {
 	a.sort_with_compare(compare_rep_index)
 }
 
@@ -300,7 +300,7 @@ pub fn (s string) replace_each(vals []string) string {
 	if idxs.len == 0 {
 		return s
 	}
-	idxs.sort()
+	idxs.sort2()
 	mut b := malloc(new_len + 1) // add a \0 just in case
 	// Fill the new string
 	mut idx_pos := 0
@@ -1446,7 +1446,7 @@ pub fn (s string) repeat(count int) string {
 		}
 	}
 	unsafe {
-		new_len := s.len * count    
+		new_len := s.len * count
 		ret[new_len] = 0
 		return ret.vstring_with_len(new_len)
 	}

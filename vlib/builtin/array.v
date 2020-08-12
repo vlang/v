@@ -539,6 +539,16 @@ fn compare_ints(a, b &int) int {
 	return 0
 }
 
+fn compare_floats(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
 // []int.sort sorts array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)

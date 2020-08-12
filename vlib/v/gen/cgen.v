@@ -3736,6 +3736,56 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.write(tmp)
 }
 
+// `users.sort(a.age < b.age)`
+fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
+	// println('filter s="$s"')
+	sym := g.table.get_type_symbol(node.return_type)
+	if sym.kind != .array {
+		println(node.name)
+		println(g.typ(node.receiver_type))
+		println(sym.kind)
+		verror('sort() requires an array')
+	}
+	info := sym.info as table.Array
+	// No arguments means we are sorting an array of builtins (e.g. `numbers.sort()`)
+	// The type for the comparison fns is the type of the element itself.
+	mut typ := info.elem_type
+	// `users.sort(a.age > b.age)`
+	if node.args.len > 0 {
+		// Get the type of the field that's being compared
+		// `a.age > b.age` => `age int` => int
+		infix_expr := node.args[0].expr as ast.InfixExpr
+		typ = infix_expr.left_type
+	}
+	mut compare_fn := match typ {
+		table.int_type {
+			'compare_ints'
+		}
+		table.string_type {
+			'compare_strings'
+		}
+		table.f64_type {
+			'compare_floats'
+		}
+		else {
+			q := g.table.get_type_symbol(typ)
+			if node.args.len == 0 {
+				verror('usage: .sort(a.field < b.field)')
+			}
+			verror('sort(): unhandled type $typ $q.name')
+			''
+		}
+	}
+	//
+	g.write('qsort(')
+	g.expr(node.left)
+	g.write('.data, ')
+	g.expr(node.left)
+	g.write('.len, ')
+	g.expr(node.left)
+	g.writeln('.element_size, $compare_fn);')
+}
+
 // `nums.filter(it % 2 == 0)`
 fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	tmp := g.new_tmp_var()

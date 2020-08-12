@@ -341,6 +341,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_filter(node)
 				return
 			}
+			'sort' {
+				g.gen_array_sort(node)
+				return
+			}
 			'insert' {
 				g.gen_array_insert(node)
 				return
