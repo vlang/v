@@ -13,13 +13,13 @@ import term
 import os
 
 fn main() {
-        term.clear() // will clear everything and leave a blank terminal
+        term.clear() // clears the content in the terminal
         width, height := term.get_terminal_size() // get the size of the terminal 
-        term.set_cursor_position(width / 2, height / 2) // Now we point the cursor to the middle of  the terminal 
+        term.set_cursor_position(width / 2, height / 2) // now we point the cursor to the middle of  the terminal 
         println(term.strikethrough(term.bright_green("hello world")))  // Print green text
         term.set_cursor_position(0, height) // Sets the position of the cursor to the bottom of the terminal
         mut var := os.input('press q to quit: ')
-        // KEEP prompting the user until he enters the q key
+        // Keep prompting until the user presses the q key
         for {
                 if  var == 'q' {
                         break
@@ -88,5 +88,3 @@ term.show_cursor()
 // hides the cursor
 term.hide_cursor()
 ```
-
-
