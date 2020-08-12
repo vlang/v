@@ -71,6 +71,13 @@ $enc_fn_dec {
 		dec.writeln(g.decode_array(value_type))
 		enc.writeln(g.encode_array(value_type))
 		// enc += g.encode_array(t)
+	} else if sym.kind == .map {
+		// Handle maps
+		m := sym.info as table.Map		
+		g.gen_json_for_type(m.key_type)
+		g.gen_json_for_type(m.value_type)
+		//dec.writeln(g.decode_map(m.key_type, m.value_type))
+		enc.writeln(g.encode_map(m.key_type, m.value_type))
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
@@ -170,5 +177,40 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 	for (int i = 0; i < val.len; i++){
 		cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
 	}
+'
+}
+
+fn (mut g Gen) decode_map(key_type, value_type table.Type) string {
+	// TODO
+	return ''
+}
+
+fn (mut g Gen) encode_map(key_type, value_type table.Type) string {
+	styp := g.typ(key_type)
+
+	styp_v := g.typ(value_type)
+	fn_name_v := js_enc_name(styp_v)
+
+	zero := g.type_default(value_type)
+
+	keys_tmp := g.new_tmp_var()
+
+	mut key := 'string key = '
+	if key_type.is_string() {
+		key += '(($styp*)${keys_tmp}.data)[i];'
+	} else {
+		// g.gen_str_for_type(key_type)
+		// key += '${styp}_str((($styp*)${keys_tmp}.data)[i]);'
+		verror('json: encode only maps with string keys')
+	}
+
+	return '
+	o = cJSON_CreateObject();
+	array_$styp $keys_tmp = map_keys(&val);
+	for (int i = 0; i < ${keys_tmp}.len; ++i) {
+		$key
+		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get(val, key, &($styp_v[]) { $zero } ) ) );
+	}
+	array_free(&$keys_tmp);
 '
 }
