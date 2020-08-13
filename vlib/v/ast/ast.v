@@ -10,7 +10,7 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	CharLiteral | ChanInit | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
@@ -749,6 +749,16 @@ pub mut:
 	interface_type  table.Type // Animal
 	elem_type       table.Type
 	typ             table.Type
+}
+
+pub struct ChanInit {
+pub:
+	pos        token.Position
+	cap_expr   Expr
+	has_cap    bool
+pub mut:
+	typ        table.Type
+	elem_type  table.Type
 }
 
 pub struct MapInit {

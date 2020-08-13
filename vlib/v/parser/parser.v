@@ -958,6 +958,47 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
+	// `chan[typ]{...}`
+	if p.tok.lit == 'chan' && p.peek_tok.kind == .lsbr {
+		first_pos := p.tok.position()
+		mut last_pos := p.tok.position()
+		chan_type := p.parse_chan_type()
+		mut has_cap := false
+		mut cap_expr := ast.Expr{}
+		p.check(.lcbr)
+		if p.tok.kind == .rcbr {
+			last_pos = p.tok.position()
+			p.next()
+		} else {
+			key := p.check_name()
+			p.check(.colon)
+			match key {
+				'cap' {
+					has_cap = true
+					cap_expr = p.expr(0)
+				}
+				'len', 'init' {
+					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
+				}
+				else {
+					p.error('wrong field `$key`, expecting `cap`')
+				}
+			}
+			last_pos = p.tok.position()
+			p.check(.rcbr)
+		}
+		pos := token.Position{
+			line_nr: first_pos.line_nr
+			pos: first_pos.pos
+			len: last_pos.pos - first_pos.pos + last_pos.len
+		}
+		return ast.ChanInit{
+			pos: pos
+			has_cap: has_cap
+			cap_expr: cap_expr
+			typ: chan_type
+		}
+	}
 	// Raw string (`s := r'hello \n ')
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()

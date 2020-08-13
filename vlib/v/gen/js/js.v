@@ -232,6 +232,9 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			info := sym.info as table.ArrayFixed
 			styp = g.typ(info.elem_type) + '[]'
 		}
+		.chan {
+			styp = 'chan'
+		}
 		// 'map[string]int' => 'Map<string, number>'
 		.map {
 			info := sym.info as table.Map
@@ -532,6 +535,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			g.gen_call_expr(node)
+		}
+		ast.ChanInit {
+			// TODO
 		}
 		ast.CastExpr {
 			// JS has no types, so no need to cast

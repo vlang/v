@@ -321,12 +321,38 @@ pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
 }
 
 [inline]
+pub fn (t &Table) chan_name(elem_type Type) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	suffix := if elem_type.is_ptr() { '_ptr' } else { '' }
+	return 'chan_$elem_type_sym.name' + suffix
+}
+
+[inline]
 pub fn (t &Table) map_name(key_type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
 	return 'map_${key_type_sym.name}_$value_type_sym.name' + suffix
 	// return 'map_${value_type_sym.name}' + suffix
+}
+
+pub fn (mut t Table) find_or_register_chan(elem_type Type) int {
+	name := t.chan_name(elem_type)
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 {
+		return existing_idx
+	}
+	// register
+	chan_typ := TypeSymbol{
+		parent_idx: chan_type_idx
+		kind: .chan
+		name: name
+		info: Chan{
+			elem_type: elem_type
+		}
+	}
+	return t.register_type_symbol(chan_typ)
 }
 
 pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {

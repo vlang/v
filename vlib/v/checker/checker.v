@@ -2338,6 +2338,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.CallExpr {
 			return c.call_expr(mut node)
 		}
+		ast.ChanInit {
+			return c.chan_init(mut node)
+		}
 		ast.CharLiteral {
 			return table.byte_type
 		}
@@ -3187,6 +3190,17 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 	}
 	node.typ = typ
 	return typ
+}
+
+pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
+	if node.typ != 0 {
+		info := c.table.get_type_symbol(node.typ).chan_info()
+		node.elem_type = info.elem_type
+		return node.typ
+	} else {
+		c.error('`chan` of unknown type', node.pos)
+		return node.typ
+	}
 }
 
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {

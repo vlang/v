@@ -415,6 +415,8 @@ typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
 
+typedef struct sync__Channel* chan;
+
 #ifndef __cplusplus
 	#ifndef bool
 		typedef int bool;

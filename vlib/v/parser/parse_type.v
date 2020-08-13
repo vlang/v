@@ -51,6 +51,18 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	return table.new_type(idx)
 }
 
+pub fn (mut p Parser) parse_chan_type() table.Type {
+	p.next()
+	if p.tok.kind != .lsbr {
+		return table.chan_type
+	}
+	p.check(.lsbr)
+	elem_type := p.parse_type()
+	p.check(.rsbr)
+	idx := p.table.find_or_register_chan(elem_type)
+	return table.new_type(idx)
+}
+
 pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
 	mut mr_types := []table.Type{}
@@ -210,6 +222,9 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 			// no defer
 			if name == 'map' {
 				return p.parse_map_type()
+			}
+			if name == 'chan' {
+				return p.parse_chan_type()
 			}
 			defer {
 				p.next()
