@@ -1409,8 +1409,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.writeln(';')
 				}
 			} else {
-				af := right_sym.info as table.ArrayFixed
-				for j in 0 .. af.size {
+				fixed_array := right_sym.info as table.ArrayFixed
+				for j in 0 .. fixed_array.size {
 					g.expr(left)
 					g.write('[$j] = ')
 					if right.has_default {
