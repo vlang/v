@@ -1456,7 +1456,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-
 		if node.left is ast.AnonFn as anon_fn {
 			f.fn_decl(anon_fn.decl)
 		} else {
