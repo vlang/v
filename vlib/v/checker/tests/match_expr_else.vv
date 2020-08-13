@@ -31,11 +31,11 @@ fn main() {
 		string {
 			'string'
 		}
-		f64 {
-			'f64'
-		}
 		else {
 			'else'
+		}
+		f64 {
+			'f64'
 		}
 	}
 }

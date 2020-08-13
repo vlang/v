@@ -1737,12 +1737,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
-		// Dual sides check (compatibility check)
-		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
-			right_sym.kind != .placeholder {
-			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
-				right.position())
-		}
 		if c.pref.translated {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
@@ -1794,6 +1788,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {}
+		}
+		// Dual sides check (compatibility check)
+		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
+			right_sym.kind != .placeholder {
+			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
+				right.position())
 		}
 	}
 }
