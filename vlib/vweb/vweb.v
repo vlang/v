@@ -280,7 +280,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				//println('GOT CL=$len')
 			}
 		} else {
-			body += line
+			body += line.trim_left('\r\n')
 			if body.len >= len {
 				break
 			}
