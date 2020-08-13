@@ -34,11 +34,9 @@ fn test_fixed_array_init() {
 
 fn test_fixed_type_init() {
 	a := [2]int
-	assert typeof(a) == '[2]int'
-	lit := [0,0]!!
-	assert a == lit
-	b := [2]int
-	assert a == b
+	assert a == [2]int
+	assert a == [0,0]!!
+	assert a == a
 	c := [3,3]!!
-	assert b != c
+	assert a != c
 }

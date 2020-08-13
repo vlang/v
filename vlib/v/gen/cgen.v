@@ -2128,7 +2128,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(', ')
 		if node.right is ast.ArrayInit {
-			verror('`==` with fixed array initializer/literal not supported yet')
+			s := g.typ(left_type)
+			g.write('($s)')
 		}
 		g.expr(node.right)
 		g.write(', sizeof(')
@@ -3675,6 +3676,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		if !is_p && str_method_expects_ptr {
 			g.write('${str_fn_name}( &')
 		}
+		if expr is ast.ArrayInit {
+			if expr.is_fixed {
+				s := g.typ(expr.typ)
+				g.write('($s)')
+			}
+		}
 		g.expr(expr)
 		if sym.kind == .struct_ && !sym_has_str_method {
 			if is_p {
@@ -4650,11 +4657,15 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	}
 	if type_sym.kind == .array_fixed {
 		g.write('{')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i != it.exprs.len - 1 {
-				g.write(', ')
+		if it.has_val {
+			for i, expr in it.exprs {
+				g.expr(expr)
+				if i != it.exprs.len - 1 {
+					g.write(', ')
+				}
 			}
+		} else {
+			g.write('0')
 		}
 		g.write('}')
 		return
