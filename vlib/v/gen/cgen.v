@@ -4576,7 +4576,7 @@ fn (mut g Gen) interface_table() string {
 		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
 		methods_wrapper.writeln('// Methods wrapper for interface "$interface_name"')
-		mut already_generated_mwrappers := map[string]bool
+		mut already_generated_mwrappers := map[string]bool{}
 		for i, st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
