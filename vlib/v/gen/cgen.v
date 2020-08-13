@@ -2119,6 +2119,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
 		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
+		af := left_sym.info as table.ArrayFixed
+		et := af.elem_type
+		if !et.is_ptr() && !et.is_pointer() && !et.is_number() && et.idx() !in [table.bool_type_idx, table.char_type_idx] {
+			verror('`==` on fixed array only supported with POD element types ATM')
+		}
 		g.write('(memcmp(')
 		g.expr(node.left)
 		g.write(', ')
