@@ -1456,12 +1456,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		mut name := f.short_module(node.name)
-		f.mark_module_as_used(name)
-		if node.name in f.mod2alias {
-			name = f.mod2alias[node.name]
+		if node.left is ast.AnonFn as anon_fn {
+			f.fn_decl(anon_fn.decl)
+		} else {
+			mut name := f.short_module(node.name)
+			f.mark_module_as_used(name)
+			if node.name in f.mod2alias {
+				name = f.mod2alias[node.name]
+			}
+			f.write('$name')
 		}
-		f.write('$name')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')
 			f.write(f.type_to_str(node.generic_type))
