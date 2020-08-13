@@ -7,9 +7,6 @@ import v.ast
 import v.table
 import v.util
 
-pub fn kek_cheburek() {
-}
-
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now

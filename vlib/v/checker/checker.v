@@ -3091,7 +3091,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
-		c.error('cannot assign to s[i] (strings are immutable)', node.pos)
+		c.error('cannot assign to s[i] since V strings are immutable\n' +
+			'(note, that variables may be mutable but string values are always immutable, like in Go and Java)',
+			node.pos)
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
