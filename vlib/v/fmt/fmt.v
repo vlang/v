@@ -805,7 +805,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(']{')
 			if node.has_cap {
 				f.write('cap: ')
-				f.expr(it.cap_expr)
+				f.expr(node.cap_expr)
 			}
 			f.write('}')
 		}
