@@ -255,7 +255,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	mut body_len := 0
 	//for line in lines[1..] {
 	for _ in 0..100 {
 		//println(j)
@@ -281,9 +280,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				//println('GOT CL=$len')
 			}
 		} else {
-			body += sline + '\r\n'
-			body_len += body.len
-			if body_len >= len {
+			body += line
+			if body.len >= len {
 				break
 			}
 			//println('body:$body')
