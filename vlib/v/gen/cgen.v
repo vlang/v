@@ -4352,6 +4352,10 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
 		name = receiver_sym.name + '_' + name
+	} else if expr.left is ast.AnonFn as anon_fn {
+		g.gen_anon_fn_decl(anon_fn)
+		fsym := g.table.get_type_symbol(anon_fn.typ)
+		name = fsym.name
 	}
 	name = util.no_dots(name)
 	g.writeln('// go')
