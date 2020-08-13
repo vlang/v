@@ -39,4 +39,5 @@ fn test_fixed_type_init() {
 	assert a == a
 	c := [3,3]!!
 	assert a != c
+	assert c == [3,3]!!
 }
