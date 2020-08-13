@@ -1,7 +1,7 @@
 fn main() {
-	fn() {
+	fn () {
 		for {
-			println("Hello V!")
+			println('Hello V!')
 		}
 	}()
 }
