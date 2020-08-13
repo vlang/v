@@ -2117,6 +2117,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] &&
+		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
+		g.write('(memcmp(')
+		g.expr(node.left)
+		g.write(', ')
+		if node.right is ast.ArrayInit {
+			verror('`==` with fixed array initializer/literal not supported yet')
+		}
+		g.expr(node.right)
+		g.write(', sizeof(')
+		g.expr(node.left)
+		if node.op == .eq {
+			g.write(')) == 0')
+		} else if node.op == .ne {
+			g.write(')) != 0')
+		}
+		g.write(')')
 	} else if node.op in [.eq, .ne] && left_sym.kind == .map && right_sym.kind == .map {
 		ptr_typ := g.gen_map_equality_fn(left_type)
 		if node.op == .eq {

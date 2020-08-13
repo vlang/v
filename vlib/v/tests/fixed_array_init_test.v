@@ -31,3 +31,14 @@ fn test_fixed_array_init() {
 	assert typeof(d2) == '[3]f32'
 	assert '$d2' == '[1.1, 2.2, 3.3]'
 }
+
+fn test_fixed_type_init() {
+	a := [2]int
+	assert typeof(a) == '[2]int'
+	lit := [0,0]!!
+	assert a == lit
+	b := [2]int
+	assert a == b
+	c := [3,3]!!
+	assert b != c
+}
