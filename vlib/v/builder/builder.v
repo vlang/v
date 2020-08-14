@@ -67,7 +67,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
 	mut done_imports := []string{}
-	if b.pref.is_script {
+	if b.pref.is_vsh {
 		done_imports << 'os'
 	}
 	// TODO (joe): decide if this is correct solution.
@@ -178,7 +178,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_script && p.mod.name != 'os' {
+				if b.pref.is_vsh && p.mod.name != 'os' {
 					deps << 'os'
 				}
 			}

@@ -184,7 +184,7 @@ pub fn (v Builder) get_builtin_files() []string {
 			}
 			if v.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if v.pref.is_script && os.exists(os.join_path(location, 'os')) {
+				if v.pref.is_vsh && os.exists(os.join_path(location, 'os')) {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'os'))
 				}
 			}
