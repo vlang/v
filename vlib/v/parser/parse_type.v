@@ -53,12 +53,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 
 pub fn (mut p Parser) parse_chan_type() table.Type {
 	p.next()
-	if p.tok.kind != .lsbr {
-		return table.chan_type
-	}
-	p.check(.lsbr)
 	elem_type := p.parse_type()
-	p.check(.rsbr)
 	idx := p.table.find_or_register_chan(elem_type)
 	return table.new_type(idx)
 }

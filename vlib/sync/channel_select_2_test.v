@@ -1,6 +1,6 @@
 import sync
 
-fn do_rec_i64(ch chan[i64]) {
+fn do_rec_i64(ch chan i64) {
 	mut sum := i64(0)
 	for _ in 0 .. 300 {
 		mut a := i64(0)
@@ -10,13 +10,13 @@ fn do_rec_i64(ch chan[i64]) {
 	assert sum == 300 * (300 - 1) / 2
 }
 
-fn do_send_int(ch chan[int]) {
+fn do_send_int(ch chan int) {
 	for i in 0 .. 300 {
 		(&sync.Channel(ch)).push(&i)
 	}
 }
 
-fn do_send_byte(ch chan[byte]) {
+fn do_send_byte(ch chan byte) {
 	for i in 0 .. 300 {
 		ii := byte(i)
 		(&sync.Channel(ch)).push(&ii)
@@ -31,10 +31,10 @@ fn do_send_i64(mut ch sync.Channel) {
 }
 
 fn test_select() {
-	chi := chan[int]{}
+	chi := chan int{}
 	mut chl := sync.new_channel<i64>(1)
-	chb := chan[byte]{cap: 10}
-	recch := chan[i64]{cap: 0}
+	chb := chan byte{cap: 10}
+	recch := chan i64{cap: 0}
 	go do_rec_i64(recch)
 	go do_send_int(chi)
 	go do_send_byte(chb)

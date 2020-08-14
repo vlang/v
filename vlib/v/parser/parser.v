@@ -959,7 +959,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// `chan[typ]{...}`
-	if p.tok.lit == 'chan' && p.peek_tok.kind == .lsbr {
+	if p.tok.lit == 'chan' {
 		first_pos := p.tok.position()
 		mut last_pos := p.tok.position()
 		chan_type := p.parse_chan_type()
