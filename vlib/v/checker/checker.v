@@ -266,6 +266,10 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			typ_sym := c.table.get_type_symbol(node.parent_type)
 			if typ_sym.kind == .placeholder {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
+			} else if typ_sym.kind == .alias {
+				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
+				c.error('type `$typ_sym.name` is an alias, alias original type `$orig_sym.name` instead',
+					node.pos)
 			}
 		}
 		ast.FnTypeDecl {
