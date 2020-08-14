@@ -67,6 +67,7 @@ $enc_fn_dec {
 	if sym.kind == .array {
 		// Handle arrays
 		value_type := g.table.value_type(typ)
+		// If we have `[]Profile`, have to register a Profile en(de)coder first
 		g.gen_json_for_type(value_type)
 		dec.writeln(g.decode_array(value_type))
 		enc.writeln(g.encode_array(value_type))
@@ -123,9 +124,9 @@ $enc_fn_dec {
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('Option_$styp ret;')
-	dec.writeln('opt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
-	dec.writeln('return ret;\n}')
+	dec.writeln('\tOption_$styp ret;')
+	dec.writeln('\topt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
+	dec.writeln('\treturn ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())
@@ -150,15 +151,25 @@ fn is_js_prim(typ string) bool {
 fn (mut g Gen) decode_array(value_type table.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
-	// If we have `[]Profile`, have to register a Profile en(de)coder first
-	g.gen_json_for_type(value_type)
+	
 	mut s := ''
 	if is_js_prim(styp) {
 		s = '$styp val = ${fn_name}(jsval); '
 	} else {
-		s = '\t$styp val = *($styp*) ${fn_name}(jsval).data; '
+		s = '
+		Option_$styp val2 = $fn_name (jsval);
+		if(!val2.ok) {
+			array_free(&res);
+			return *(Option_array_${styp}*)&val2;
+		}
+		$styp val = *($styp*)val2.data;
+'
 	}
 	return '
+	if(!cJSON_IsArray(root)) {
+		Option err = v_error( string_add(tos_lit("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
+		return *(Option_array_${styp} *)&err;
+	}
 	res = __new_array(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
