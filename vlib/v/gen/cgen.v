@@ -2117,6 +2117,29 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] &&
+		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
+		af := left_sym.info as table.ArrayFixed
+		et := af.elem_type
+		if !et.is_ptr() && !et.is_pointer() && !et.is_number() && et.idx() !in [table.bool_type_idx, table.char_type_idx] {
+			verror('`==` on fixed array only supported with POD element types ATM')
+		}
+		g.write('(memcmp(')
+		g.expr(node.left)
+		g.write(', ')
+		if node.right is ast.ArrayInit {
+			s := g.typ(left_type)
+			g.write('($s)')
+		}
+		g.expr(node.right)
+		g.write(', sizeof(')
+		g.expr(node.left)
+		if node.op == .eq {
+			g.write(')) == 0')
+		} else if node.op == .ne {
+			g.write(')) != 0')
+		}
+		g.write(')')
 	} else if node.op in [.eq, .ne] && left_sym.kind == .map && right_sym.kind == .map {
 		ptr_typ := g.gen_map_equality_fn(left_type)
 		if node.op == .eq {
@@ -3653,6 +3676,12 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		if !is_p && str_method_expects_ptr {
 			g.write('${str_fn_name}( &')
 		}
+		if expr is ast.ArrayInit {
+			if expr.is_fixed {
+				s := g.typ(expr.typ)
+				g.write('($s)')
+			}
+		}
 		g.expr(expr)
 		if sym.kind == .struct_ && !sym_has_str_method {
 			if is_p {
@@ -4681,11 +4710,15 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	}
 	if type_sym.kind == .array_fixed {
 		g.write('{')
-		for i, expr in it.exprs {
-			g.expr(expr)
-			if i != it.exprs.len - 1 {
-				g.write(', ')
+		if it.has_val {
+			for i, expr in it.exprs {
+				g.expr(expr)
+				if i != it.exprs.len - 1 {
+					g.write(', ')
+				}
 			}
+		} else {
+			g.write('0')
 		}
 		g.write('}')
 		return
