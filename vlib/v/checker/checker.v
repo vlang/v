@@ -2332,7 +2332,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				from_type_info := from_type_sym.info as table.Struct
 				to_type_info := to_type_sym.info as table.Struct
 				if !c.check_struct_signature(from_type_info, to_type_info) {
-					c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`', node.pos)
+					c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`',
+						node.pos)
 				}
 			}
 			if node.has_arg {
