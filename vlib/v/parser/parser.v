@@ -958,7 +958,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
-	// `chan[typ]{...}`
+	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
 		first_pos := p.tok.position()
 		mut last_pos := p.tok.position()
