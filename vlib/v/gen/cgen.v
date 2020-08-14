@@ -1024,6 +1024,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
+	} else {
+		s := g.typ(it.cond_type)
+		g.error('`for`: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 }
 
@@ -3408,6 +3411,11 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 
 fn verror(s string) {
 	util.verror('cgen error', s)
+}
+
+fn (g &Gen) error(s string, pos token.Position) {
+	p := if pos.line_nr == 0 {'?'} else {'${pos.line_nr + 1}'}
+	util.verror('$g.file.path:$p: cgen error', s)
 }
 
 fn (mut g Gen) write_init_function() {
