@@ -497,6 +497,10 @@ typedef struct {
 			.interface_ {
 				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
+			.chan {
+				styp := util.no_dots(typ.name)
+				g.type_definitions.writeln('typedef chan $styp;')
+			}
 			.map {
 				styp := util.no_dots(typ.name)
 				g.type_definitions.writeln('typedef map $styp;')
@@ -1786,6 +1790,18 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(node.expr)
 				g.write('))')
 			}
+		}
+		ast.ChanInit {
+			elem_typ_str := g.typ(node.elem_type)
+			g.write('sync__new_channel_st(')
+			if node.has_cap {
+				g.expr(node.cap_expr)
+			} else {
+				g.write('0')
+			}
+			g.write(', sizeof(')
+			g.write(elem_typ_str)
+			g.write('))')
 		}
 		ast.CharLiteral {
 			g.write("'$node.val'")

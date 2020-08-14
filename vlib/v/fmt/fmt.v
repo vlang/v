@@ -799,6 +799,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.CallExpr {
 			f.call_expr(node)
 		}
+		ast.ChanInit {
+			f.write('chan[')
+			f.write(f.type_to_str(node.elem_type))
+			f.write(']{')
+			if node.has_cap {
+				f.write('cap: ')
+				f.expr(node.cap_expr)
+			}
+			f.write('}')
+		}
 		ast.CharLiteral {
 			f.write('`$node.val`')
 		}

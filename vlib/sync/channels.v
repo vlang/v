@@ -111,6 +111,10 @@ pub:
 
 pub fn new_channel<T>(n u32) &Channel {
 	st := sizeof(T)
+	return new_channel_st(n, st)
+}
+
+fn new_channel_st(n u32, st u32) &Channel {
 	return &Channel{
 		writesem: new_semaphore_init(if n > 0 { n + 1 } else { 1 })
 		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })

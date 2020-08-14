@@ -15,7 +15,7 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | GenericStructInst | Interface |
+pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst | Interface |
 	Map | MultiReturn | Struct | SumType
 
 pub enum Language {
@@ -253,10 +253,11 @@ pub const (
 	ustring_type_idx = 19
 	array_type_idx   = 20
 	map_type_idx     = 21
-	any_type_idx     = 22
+	chan_type_idx    = 22
+	any_type_idx     = 23
 	// t_type_idx       = 23
-	any_flt_type_idx = 23
-	any_int_type_idx = 24
+	any_flt_type_idx = 24
+	any_int_type_idx = 25
 )
 
 pub const (
@@ -293,6 +294,7 @@ pub const (
 	ustring_type = new_type(ustring_type_idx)
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
+	chan_type    = new_type(chan_type_idx)
 	any_type     = new_type(any_type_idx)
 	// t_type       = new_type(t_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
@@ -302,7 +304,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'any', 'struct', 'mapnode', 'size_t']
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t']
 )
 
 pub struct MultiReturn {
@@ -342,6 +344,7 @@ pub enum Kind {
 	array
 	array_fixed
 	map
+	chan
 	any
 	struct_
 	generic_struct_inst
@@ -388,6 +391,14 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	match t.info {
 		ArrayFixed { return *it }
 		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
+	}
+}
+
+[inline]
+pub fn (t &TypeSymbol) chan_info() Chan {
+	match t.info {
+		Chan { return *it }
+		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
 	}
 }
 
@@ -525,6 +536,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
+		kind: .chan
+		name: 'chan'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
 		kind: .any
 		name: 'any'
 		mod: 'builtin'
@@ -616,6 +632,7 @@ pub fn (k Kind) str() string {
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
 		.map { 'map' }
+		.chan { 'chan' }
 		.multi_return { 'multi_return' }
 		.sum_type { 'sum_type' }
 		.alias { 'alias' }
@@ -706,6 +723,11 @@ pub:
 	size      int
 pub mut:
 	elem_type Type
+}
+
+pub struct Chan {
+pub mut:
+	elem_type   Type
 }
 
 pub struct Map {
