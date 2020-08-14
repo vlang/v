@@ -2329,7 +2329,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
-				c.error('cannot cast to struct', node.pos)
+				from_type_info := from_type_sym.info as table.Struct
+				to_type_info := to_type_sym.info as table.Struct
+				if !c.check_struct_signature(from_type_info, to_type_info) {
+					c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`', node.pos)
+				}
 			}
 			if node.has_arg {
 				c.expr(node.arg)
@@ -3257,6 +3261,34 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 	}
 	msg := message.replace('`array_', '`[]')
 	c.warn_or_error(msg, pos, false)
+}
+
+// check_struct_signature checks if both structs has the same signature / fields for casting
+fn (c Checker) check_struct_signature(from, to table.Struct) bool {
+	if from.fields.len != to.fields.len {
+		return false
+	}
+	for _, field in from.fields {
+		filtered := to.fields.filter(it.name == field.name)
+		if filtered.len != 1 {
+			// field doesn't exist
+			return false
+		}
+		counterpart := filtered[0]
+		if field.typ != counterpart.typ {
+			// field has different tye
+			return false
+		}
+		if field.is_pub != counterpart.is_pub {
+			// field is not public while the other one is
+			return false
+		}
+		if field.is_mut != counterpart.is_mut {
+			// field is not mutable while the other one is
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) {

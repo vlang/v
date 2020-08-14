@@ -1,6 +1,0 @@
-vlib/v/parser/tests/cannot_cast_to_struct.v:10:12: error: cannot cast to struct
-    8 |
-    9 | fn main() {
-   10 |     _ := Test(Abc{})
-      |               ~~~~~
-   11 | }
