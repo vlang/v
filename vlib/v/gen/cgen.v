@@ -3414,7 +3414,7 @@ fn verror(s string) {
 }
 
 fn (g &Gen) error(s string, pos token.Position) {
-	p := if pos.line_nr == 0 {'?'} else {'${pos.line_nr + 1}'}
+	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr+1}' }
 	util.verror('$g.file.path:$p: cgen error', s)
 }
 
