@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
 //import hash.wyhash as hash
 import hash
 
@@ -556,6 +555,7 @@ pub fn (m &map) free() {
 	}
 }
 
+/*
 pub fn (m map_string) str() string {
 	if m.len == 0 {
 		return '{}'
@@ -568,3 +568,4 @@ pub fn (m map_string) str() string {
 	sb.writeln('}')
 	return sb.str()
 }
+*/
