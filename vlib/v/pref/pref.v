@@ -55,6 +55,7 @@ pub mut:
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped
+	is_vsh              bool // v script (`file.vsh`) file, the `os` module should be made global
 	is_livemain         bool // main program that contains live/hot code
 	is_liveshared       bool // a shared library, that will be used in a -live main program
 	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
