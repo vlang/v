@@ -735,11 +735,11 @@ pub:
 	elem_type_pos   token.Position
 	exprs           []Expr
 	is_fixed        bool
-	has_val         bool
+	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
 	len_expr        Expr
 	cap_expr        Expr
-	default_expr    Expr
+	default_expr    Expr // init: expr
 	has_len         bool
 	has_cap         bool
 	has_default     bool
