@@ -1917,7 +1917,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 						fixed_size = cint
 					}
 				} else {
-					c.error('non existant integer const $full_const_name while initializing the size of a static array',
+					c.error('non existent integer const $full_const_name while initializing the size of a static array',
 						array_init.pos)
 				}
 			}
