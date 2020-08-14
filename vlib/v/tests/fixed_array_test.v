@@ -6,6 +6,10 @@ fn test_fixed_array_can_be_assigned() {
 	assert v[1] == x
 	v = [8]f64
 	assert v[1] == 0
+	// test slicing
+	for e in v[0..8] {
+		assert e == 0
+	}
 }
 
 fn test_fixed_array_can_be_used_in_declaration() {
