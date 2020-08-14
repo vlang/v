@@ -432,7 +432,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 			}
 			.lsbr {
-				// attrs are stores in `p.attrs()`
+				// attrs are stored in `p.attrs`
 				p.attributes()
 				continue
 			}
@@ -725,25 +725,39 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() table.Attr {
+	if p.tok.kind == .key_unsafe {
+		p.next()
+		return table.Attr{
+			name: 'unsafe'
+		}
+	}
 	mut is_ctdefine := false
 	if p.tok.kind == .key_if {
 		p.next()
 		is_ctdefine = true
 	}
 	mut name := ''
+	mut arg := ''
 	is_string := p.tok.kind == .string
+	mut is_string_arg := false
 	if is_string {
 		name = p.tok.lit
 		p.next()
 	} else {
-		mut name = p.check_name()
+		name = p.check_name()
+		if name == 'unsafe_fn' {
+			p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+		} else if name == 'trusted_fn' {
+			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
+		}
 		if p.tok.kind == .colon {
-			name += ':'
 			p.next()
+			// `name: arg`
 			if p.tok.kind == .name {
-				name += p.check_name()
-			} else if p.tok.kind == .string {
-				name += p.tok.lit
+				arg = p.check_name()
+			} else if p.tok.kind == .string { // `name: 'arg'`
+				arg = p.tok.lit
+				is_string_arg = true
 				p.next()
 			}
 		}
@@ -752,6 +766,8 @@ fn (mut p Parser) parse_attr() table.Attr {
 		name: name
 		is_string: is_string
 		is_ctdefine: is_ctdefine
+		arg: arg
+		is_string_arg: is_string_arg
 	}
 }
 
@@ -1117,6 +1133,19 @@ fn (mut p Parser) scope_register_it() {
 	})
 }
 
+fn (mut p Parser) scope_register_ab() {
+	p.scope.register('a', ast.Var{
+		name: 'a'
+		pos: p.tok.position()
+		is_used: true
+	})
+	p.scope.register('b', ast.Var{
+		name: 'b'
+		pos: p.tok.position()
+		is_used: true
+	})
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
@@ -1133,6 +1162,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// defer {
 		// p.close_scope()
 		// }
+	} else if field_name == 'sort' {
+		p.open_scope()
+		name_pos = p.tok.position()
+		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -1192,7 +1225,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: pos
 			}
 		}
-		if is_filter {
+		if is_filter || field_name == 'sort' {
 			p.close_scope()
 		}
 		return mcall_expr

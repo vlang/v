@@ -23,6 +23,7 @@ fn test_fixed_array_can_be_assigned_to_a_struct_field() {
 	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!
 	assert ctx.vb[1] == x
 	assert ctx.vb[7] == 8.9
+	assert ctx.vb == ctx.vb
 	/*
 	println( ctx.vb[0] )
 	println( ctx.vb[1] )

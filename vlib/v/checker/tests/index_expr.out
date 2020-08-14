@@ -5,7 +5,7 @@ vlib/v/checker/tests/index_expr.v:3:7: error: type `int` does not support indexi
       |          ~~~
     4 |     
     5 |     a := [2]
-vlib/v/checker/tests/index_expr.v:6:7: error: non-integer index `array_int` (array type `array_int`) 
+vlib/v/checker/tests/index_expr.v:6:7: error: non-integer index `[]int` (array type `[]int`) 
     4 |     
     5 |     a := [2]
     6 |     _ = a[a]
@@ -26,14 +26,14 @@ vlib/v/checker/tests/index_expr.v:12:7: error: type `int` does not support index
       |          ~~~~~
    13 |     
    14 |     a := [2]
-vlib/v/checker/tests/index_expr.v:15:7: error: non-integer index `array_int` (array type `array_int`) 
+vlib/v/checker/tests/index_expr.v:15:7: error: non-integer index `[]int` (array type `[]int`) 
    13 |     
    14 |     a := [2]
    15 |     _ = a[a..]
       |          ~~~~~
    16 |     _ = a[..a]
    17 | }
-vlib/v/checker/tests/index_expr.v:16:7: error: non-integer index `array_int` (array type `array_int`) 
+vlib/v/checker/tests/index_expr.v:16:7: error: non-integer index `[]int` (array type `[]int`) 
    14 |     a := [2]
    15 |     _ = a[a..]
    16 |     _ = a[..a]

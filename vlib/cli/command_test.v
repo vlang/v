@@ -56,7 +56,7 @@ fn flag_should_be_set(cmd cli.Command) ? {
 	flag := cmd.flags.get_string('flag')?
 	assert flag == 'value'
 }
-        
+
 fn test_if_flag_gets_set() {
 	mut cmd := cli.Command{
 		name: 'command'

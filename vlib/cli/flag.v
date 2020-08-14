@@ -183,8 +183,10 @@ fn (flags []Flag) contains(name string) bool {
 	return false
 }
 
-fn (mut flags []Flag) sort() {
-	flags.sort_with_compare(fn (a, b &Flag) int {
-		return compare_strings(&a.name, &b.name)
-	})
+
+fn (mut flags []Flag) sort2() {
+       flags.sort_with_compare(fn (a, b &Flag) int {
+               return compare_strings(&a.name, &b.name)
+       })
 }
+

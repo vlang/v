@@ -2,57 +2,55 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+//import gx
 import os
 import sokol
+//import sokol.sapp
 import sokol.sgl
+//import sokol.gfx
 import stbi
 
 pub struct Image {
 pub mut:
+	id int
 	width       int
 	height      int
 	nr_channels int
 	ok          bool
 	data        voidptr
 	ext         string
+	simg_ok     bool
+	simg        C.sg_image
 	path string
-	cache_slot  &ImageCacheSlot = 0
 }
-//
-struct ImageCacheSlot {
-	id         int
-mut:
-	is_simg_ok bool
-	simg       C.sg_image
-}
-fn (mut cs ImageCacheSlot) set_sokol_image(simg C.sg_image) {
-	cs.simg = simg
-	cs.is_simg_ok = true
-}
-//
-[ref_only]
-struct ImageCache {
-mut:
-	current_image_id int = -1
-	slots []ImageCacheSlot
-}
-fn (ic &ImageCache) get_new_cache_slot() &ImageCacheSlot {
-	mut mic := &ImageCache(0)
-	unsafe {
-		mic = ic
+
+fn C.sg_isvalid() bool
+
+pub fn (mut ctx Context) create_image(file string) Image {
+	if !C.sg_isvalid() {
+		//ctx.image_queue << file
+		stb_img := stbi.load(file)
+		img := Image{
+			width: stb_img.width
+			height: stb_img.height
+			nr_channels: stb_img.nr_channels
+			ok: false
+			data: stb_img.data
+			ext: stb_img.ext
+			path: file
+			id: ctx.image_cache.len
+		}
+		ctx.image_cache << img
+		return img
 	}
-	mic.current_image_id++
-	mic.slots << ImageCacheSlot {
-		id: mic.current_image_id
-		is_simg_ok: false
-	}
-	return &mic.slots[mic.slots.len-1]
+	mut img := create_image(file)
+	img.id = ctx.image_cache.len
+	ctx.image_cache << img
+	return img
 }
-const (
-	image_cache = &ImageCache{}
-)
-//
-pub fn  create_image(file string) Image {
+
+// TODO remove this
+fn create_image(file string) Image {
 	if !os.exists(file) {
 		println('gg.create_image(): file not found: $file')
 		return Image{} // none
@@ -66,8 +64,8 @@ pub fn  create_image(file string) Image {
 		data: stb_img.data
 		ext: stb_img.ext
 		path: file
-		cache_slot: image_cache.get_new_cache_slot()
 	}
+	img.init_sokol_image()
 	return img
 }
 
@@ -80,7 +78,6 @@ pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
 		ok: stb_img.ok
 		data: stb_img.data
 		ext: stb_img.ext
-		cache_slot: image_cache.get_new_cache_slot()
 	}
 	return img
 }
@@ -89,8 +86,8 @@ pub fn create_image_from_byte_array(b []byte) Image {
 	return create_image_from_memory(b.data, b.len)
 }
 
-pub fn (img &Image) new_sokol_image() C.sg_image {
-	//eprintln('> new_sokol_image from img: $img')
+pub fn (mut img Image) init_sokol_image() &Image {
+	//println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
@@ -104,25 +101,17 @@ pub fn (img &Image) new_sokol_image() C.sg_image {
 		ptr: img.data
 		size: img.nr_channels * img.width * img.height
 	}
-	simg := C.sg_make_image(&img_desc)
-	return simg
+	img.simg = C.sg_make_image(&img_desc)
+	img.simg_ok = true
+	img.ok = true
+	return img
 }
 
-pub fn (img &Image) get_sokol_image() C.sg_image {
-	slot := img.cache_slot
-	if slot.is_simg_ok {
-		return slot.simg
+pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
+	img := ctx.image_cache[img_.id] // fetch the image from cache
+	if !img.simg_ok {
+		return
 	}
-	simg := img.new_sokol_image()
-	unsafe {
-		mut cs := slot
-		cs.set_sokol_image(simg)
-	}
-	return simg
-}
-
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
-	simg := img.get_sokol_image()
 	u0 := f32(0.0)
 	v0 := f32(0.0)
 	u1 := f32(1.0)
@@ -134,7 +123,7 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
 	//
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()
-	sgl.texture(simg)
+	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
 	sgl.v2f_t2f(x0, y0,	  u0, v0)
@@ -144,3 +133,10 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img &Image) {
 	sgl.end()
 	sgl.disable_texture()
 }
+
+pub fn (ctx &Context) draw_image_by_id(x, y, width, height f32, id int) {
+	img := ctx.image_cache[id]
+	ctx.draw_image(x,y,width,height,img)
+}
+
+

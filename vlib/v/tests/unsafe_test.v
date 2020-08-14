@@ -33,7 +33,7 @@ fn test_ptr_infix() {
 struct S1 {
 }
 
-[unsafe_fn]
+[unsafe]
 fn (s S1) f() {
 }
 
@@ -42,4 +42,5 @@ fn test_funcs() {
 	unsafe {
 		s.f()
 	}
+	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
 }

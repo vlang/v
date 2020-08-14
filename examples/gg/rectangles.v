@@ -28,11 +28,12 @@ fn main() {
 		user_data: app
 		init_fn: init_images
 	)
+	app.image = app.gg.create_image(os.resource_abs_path('logo.png'))
 	app.gg.run()
 }
 
 fn init_images(mut app App) {
-	app.image = gg.create_image('logo.png')
+	//app.image = gg.create_image('logo.png')
 }
 
 fn frame(app &App) {

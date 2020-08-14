@@ -14,6 +14,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
@@ -612,12 +613,13 @@ pub:
 	mod string
 }
 
-// filter(), map()
+/*
+// filter(), map(), sort()
 pub struct Lambda {
 pub:
 	name string
 }
-
+*/
 pub struct AssignStmt {
 pub:
 	right         []Expr
@@ -769,6 +771,14 @@ pub:
 	has_low  bool
 }
 
+// NB: &string(x) gets parsed as ast.PrefixExpr{ right: ast.CastExpr{...} }
+// TODO: that is very likely a parsing bug. It should get parsed as just
+// ast.CastExpr{...}, where .typname is '&string' instead.
+// The current situation leads to special cases in vfmt and cgen
+// (see prefix_expr_cast_expr in fmt.v, and .is_amp in cgen.v)
+// .in_prexpr is also needed because of that, because the checker needs to
+// show warnings about the deprecated C->V conversions `string(x)` and
+// `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
 	expr      Expr // `buf` in `string(buf, n)`
@@ -779,6 +789,7 @@ pub mut:
 	typname   string
 	expr_type table.Type // `byteptr`
 	has_arg   bool
+	in_prexpr bool // is the parent node an ast.PrefixExpr
 }
 
 pub struct AssertStmt {

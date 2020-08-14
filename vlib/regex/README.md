@@ -1,4 +1,4 @@
-# V RegEx (Regular expression) 0.9d
+# V RegEx (Regular expression) 0.9g
 
 [TOC]
 
@@ -137,7 +137,7 @@ The "capture groups" are store as couple of index in the field `groups` that is 
 ```v
 text := "cpaz cpapaz cpapapaz"
 query:= r"(c(pa)+z ?)+"
-re, _, _ := regex.regex(query) 
+mut re := regex.regex_opt(query) or { panic(err) }
 
 println(re.get_query())
 // #0(c#1(pa)+z ?)+  // #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
@@ -155,8 +155,6 @@ for gi < re.groups.len {
 // groups captured
 // 0 :[cpapapaz]
 // 1 :[pa]
-
-
 ```
 
 **note:** *to show the `group id number` in the result of the `get_query()` the flag `debug` of the RE object must be `1` or `2`*
@@ -187,48 +185,41 @@ fn example2() {
 	text := "tst: 01,23,45 ,56, 78"
 	query:= r".*:(\s*\d+[\s,]*)+"
 
-	mut re := regex.new_regex()
+	mut re := new() or { panic(err) }
 	//re.debug = 2
 	re.group_csave = [-1].repeat(3*20+1)  // we expect max 20 records
 
-	re_err, err_pos := re.compile(query)
-	if re_err == regex.COMPILE_OK {
-		q_str := re.get_query()
-		println("Query: $q_str")
-	
-		start, end := re.match_string(text)
-		if start < 0 {
-			println("ERROR : ${re.get_parse_error_string(start)}, $start")
-		} else {
-			println("found in [$start, $end] => [${text[start..end]}]")
-		}
+	re.compile_opt(query) or { println(err) return }
 
-		// groups capture
-		mut gi := 0
-		for gi < re.groups.len {
-			if re.groups[gi] >= 0 {
-				println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
-			}
-			gi += 2
-		}
+    q_str := re.get_query()
+    println("Query: $q_str")
 
-		// continuous saving
-		gi = 0
-		println("num: ${re.group_csave[0]}")
-		for gi < re.group_csave[0] {
-			id := re.group_csave[1+gi*3]
-			st := re.group_csave[1+gi*3+1]
-			en := re.group_csave[1+gi*3+2]
-			println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
-			gi++
-		}
-	} else {
-		println("query: $query")
-		lc := "-".repeat(err_pos)
-		println("err  : $lc^")
-		err_str := re.get_parse_error_string(re_err)
-		println("ERROR: $err_str")	
-	}
+    start, end := re.match_string(text)
+    if start < 0 {
+        println("ERROR : ${re.get_parse_error_string(start)}, $start")
+    } else {
+        println("found in [$start, $end] => [${text[start..end]}]")
+    }
+
+    // groups capture
+    mut gi := 0
+    for gi < re.groups.len {
+        if re.groups[gi] >= 0 {
+            println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
+        }
+        gi += 2
+    }
+
+    // continuous saving
+    gi = 0
+    println("num: ${re.group_csave[0]}")
+    for gi < re.group_csave[0] {
+        id := re.group_csave[1+gi*3]
+        st := re.group_csave[1+gi*3+1]
+        en := re.group_csave[1+gi*3+2]
+        println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
+        gi++
+    }
 }
 ```
 
@@ -261,73 +252,65 @@ Have a look at the example for the use of them.
 example:
 
 ```v
+import regex
 fn main() {
 	test_regex()
 
 	text := "http://www.ciao.mondo/hello/pippo12_/pera.html"
 	query:= r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+"
 
-	mut re := new_regex()
+	mut re := new()
 	re.debug = 2
 
 	// must provide an array of the right size if want the continuos saving of the groups
 	re.group_csave = [-1].repeat(3*20+1)
 
-	re_err, err_pos := re.compile(query)
-	if re_err == COMPILE_OK {
-		q_str := re.get_query()
-		println("O.Query: $query")
-		println("Query  : $q_str")
-		
-		re.debug = 0	
-		start, end := re.match_string(text)
-		if start < 0 {
-			err_str := re.get_parse_error_string(start)
-			println("ERROR : $err_str, $start")
-		} else {
-			text1 := text[start..end]
-			println("found in [$start, $end] => [$text1]")
-		}
+	re.compile_opt(query) or { println(err) return }
 
-		// groups
-		mut gi := 0
-		for gi < re.groups.len {
-			if re.groups[gi] >= 0 {
-				println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
-			}
-			gi += 2
-		}
-		// continuous saving
-		gi = 0
-		println("num of group item saved: ${re.group_csave[0]}")
-		for gi < re.group_csave[0] {
-			id := re.group_csave[1+gi*3]
-			st := re.group_csave[1+gi*3+1]
-			en := re.group_csave[1+gi*3+2]
-			println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
-			gi++
-		}
-		println("raw array: ${re.group_csave[0..gi*3+2-1]}")
+    q_str := re.get_query()
+    println("O.Query: $query")
+    println("Query  : $q_str")
+    
+    re.debug = 0	
+    start, end := re.match_string(text)
+    if start < 0 {
+        err_str := re.get_parse_error_string(start)
+        println("ERROR : $err_str, $start")
+    } else {
+        text1 := text[start..end]
+        println("found in [$start, $end] => [$text1]")
+    }
 
-		// named capturing groups
-		println("named capturing groups:")
-		for g_name in re.group_map.keys() {
-			s,e := re.get_group(g_name)
-			if s >= 0 && e > s {
-				println("'${g_name}':[$s, $e] => '${text[s..e]}'")
-			} else {
-				println("Group [${g_name}] doesn't exist.")
-			}
-		}
-		
-	} else {
-		println("query: $query")
-		lc := "-".repeat(err_pos)
-		println("err  : $lc^")
-		err_str := re.get_parse_error_string(re_err)
-		println("ERROR: $err_str")	
-	}
+    // groups
+    mut gi := 0
+    for gi < re.groups.len {
+        if re.groups[gi] >= 0 {
+            println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
+        }
+        gi += 2
+    }
+    // continuous saving
+    gi = 0
+    println("num of group item saved: ${re.group_csave[0]}")
+    for gi < re.group_csave[0] {
+        id := re.group_csave[1+gi*3]
+        st := re.group_csave[1+gi*3+1]
+        en := re.group_csave[1+gi*3+2]
+        println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
+        gi++
+    }
+    println("raw array: ${re.group_csave[0..gi*3+2-1]}")
 
+    // named capturing groups
+    println("named capturing groups:")
+    for g_name in re.group_map.keys() {
+        s,e := re.get_group(g_name)
+        if s >= 0 && e > s {
+            println("'${g_name}':[$s, $e] => '${text[s..e]}'")
+        } else {
+            println("Group [${g_name}] doesn't exist.")
+        }
+    }
 }
 ```
 
@@ -360,7 +343,7 @@ It is possible to set some flags in the regex parser that change the behavior of
 
 ```v
 // example of flag settings
-mut re := regex.new_regex()
+mut re := regex.new()
 re.flag = regex.F_BIN 
 
 ```
@@ -382,22 +365,22 @@ These functions are helper that create the `RE` struct, a `RE` struct can be cre
 
 ```v
 // regex create a regex object from the query string and compile it
-pub fn regex(in_query string) (RE,int,int)
+pub fn regex_opt(in_query string) ?RE
 ```
 
 #### **Base initializer**
 
 ```v
 // new_regex create a REgex of small size, usually sufficient for ordinary use
-pub fn new_regex() RE
+pub fn new() RE
 
 // new_regex_by_size create a REgex of large size, mult specify the scale factor of the memory that will be allocated
-pub fn new_regex_by_size(mult int) RE
+pub fn new_by_size(mult int) RE
 ```
 After a base initializer is used, the regex expression must be compiled with:
 ```v
-// compile return (return code, index) where index is the index of the error in the query string if return code is an error code
-pub fn (re mut RE) compile(in_txt string) (int,int)
+// compile compiles the REgex returning an error if the compilation fails
+pub fn (re mut RE) compile_opt(in_txt string) ?
 ```
 
 ### Operative Functions
@@ -428,20 +411,9 @@ the following example code show how to visualize the syntax errors in the compil
 
 ```v
 query:= r"ciao da ab[ab-]"  // there is an error, a range not closed!!
-mut re := new_regex()
+mut re := new()
 
-// re_err ==> is the return value, if < 0 it is an error
-// re_pos ==> if re_err < 0, re_pos is the error index in the query string 
-re_err, err_pos := re.compile(query)
-
-// print the error if one happen
-if re_err != COMPILE_OK {
-	println("query: $query")
-    lc := "-".repeat(err_pos)
-    println("err  : $lc^")
-    err_str := re.get_parse_error_string(re_err)  // get the error string
-    println("ERROR: $err_str")
-}
+re.compile_opt(query) or { println(err) }
 
 // output!!
 
@@ -543,7 +515,7 @@ fn custom_print(txt string) {
 	println("my log: $txt")
 }
 
-mut re := new_regex()
+mut re := new()
 re.log_func = custom_print  // every debug output from now will call this function
 
 ```
@@ -571,38 +543,29 @@ tests = [
 
 fn example() {
 	for c,tst in tests {
-		mut re := regex.new_regex()
-		re_err, err_pos := re.compile(tst.query)
-		if re_err == regex.COMPILE_OK {
+		mut re := regex.new()
+		re.compile_opt(tst.query) or { println(err) continue }
 			
-			// print the query parsed with the groups ids
-			re.debug = 1 // set debug on at minimum level
-			println("#${c:2d} query parsed: ${re.get_query()}")
-			re.debug = 0
-			
-			// do the match
-			start, end := re.match_string(tst.source)
-			if start >= 0 && end > start {
-				println("#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]")
-			}	
-			
-			// print the groups
-			mut gi := 0
-			for gi < re.groups.len {
-				if re.groups[gi] >= 0 {
-					println("group ${gi/2:2d} :[${tst.source[re.groups[gi]..re.groups[gi+1]]}]")
-				}
-				gi += 2
-			}		
-			println("")
-		} else {
-			// print the compile error
-			println("query: $tst.query")
-			lc := "-".repeat(err_pos-1)
-			println("err  : $lc^")
-			err_str := re.get_parse_error_string(re_err)
-			println("ERROR: $err_str")
-		}
+        // print the query parsed with the groups ids
+        re.debug = 1 // set debug on at minimum level
+        println("#${c:2d} query parsed: ${re.get_query()}")
+        re.debug = 0
+        
+        // do the match
+        start, end := re.match_string(tst.source)
+        if start >= 0 && end > start {
+            println("#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]")
+        }	
+        
+        // print the groups
+        mut gi := 0
+        for gi < re.groups.len {
+            if re.groups[gi] >= 0 {
+                println("group ${gi/2:2d} :[${tst.source[re.groups[gi]..re.groups[gi+1]]}]")
+            }
+            gi += 2
+        }		
+        println("")
 	}
 }
 

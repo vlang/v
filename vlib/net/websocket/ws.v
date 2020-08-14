@@ -294,7 +294,7 @@ pub fn (mut ws Client) write(payload byteptr, payload_len int, code OPCode) int 
 	}
 	bytes_written = ws.write_to_server(fbdata, frame_len)
 	if bytes_written == -1 {
-		err := string(byteptr(C.strerror(C.errno)))
+		err := unsafe { byteptr(C.strerror(C.errno)).vstring() }
 		ws.log.error('write: there was an error writing data: $err')
 		ws.send_error_event('Error writing data')
 		goto free_data
@@ -344,7 +344,7 @@ pub fn (mut ws Client) read() int {
 				return -1
 			}
 			-1 {
-				err := string(byteptr(C.strerror(C.errno)))
+				err := unsafe { byteptr(C.strerror(C.errno)).vstring() }
 				ws.log.error('read: error reading frame. $err')
 				ws.send_error_event('error reading frame')
 				goto free_data
@@ -564,7 +564,7 @@ pub fn (mut ws Client) read() int {
 			code = (int(unsafe {data[header_len]}) << 8) + int(unsafe {data[header_len + 1]})
 			header_len += 2
 			payload_len -= 2
-			reason = unsafe {string(&data[header_len])}
+			reason = unsafe { byteptr(&data[header_len]).vstring() }
 			ws.log.info('Closing with reason: $reason & code: $code')
 			if reason.len > 1 && !utf8.validate(reason.str, reason.len) {
 				ws.log.error('malformed utf8 payload')

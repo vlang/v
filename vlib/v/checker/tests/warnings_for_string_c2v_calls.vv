@@ -1,0 +1,12 @@
+fn main() {
+	mut p := vcalloc(20)
+	unsafe {
+		p[0] = `A`
+		p[1] = `B`
+		p[2] = `z`
+	}
+	x := string(p)
+	y := string(p, 10)
+	eprintln('x: $x | y: $y')
+	eprintln('x.len: $x.len | y.len: $y.len')
+}

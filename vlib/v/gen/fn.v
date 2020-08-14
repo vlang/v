@@ -7,9 +7,6 @@ import v.ast
 import v.table
 import v.util
 
-pub fn kek_cheburek() {
-}
-
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	// TODO For some reason, build fails with autofree with this line
 	// as it's only informative, comment it for now
@@ -36,6 +33,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// g.cur_fn = it
 	fn_start_pos := g.out.len
+	g.write_v_source_line_info(it.pos)
 	msvc_attrs := g.write_fn_attrs(it.attrs)
 	// Live
 	is_livefn := it.attrs.contains('live')
@@ -338,6 +336,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		match node.name {
 			'filter' {
 				g.gen_array_filter(node)
+				return
+			}
+			'sort' {
+				g.gen_array_sort(node)
 				return
 			}
 			'insert' {

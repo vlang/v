@@ -136,7 +136,7 @@ __global nr_mallocs int=0
 
 fn looo(){} // TODO remove, [ pratt
 
-[unsafe_fn]
+[unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
 		panic('malloc(<=0)')
@@ -174,7 +174,7 @@ TODO
 //#include <malloc/malloc.h>
 //fn malloc_size(b byteptr) int
 
-[unsafe_fn]
+[unsafe]
 pub fn v_realloc(b byteptr, n u32) byteptr {
 	$if prealloc {
 		unsafe {
@@ -192,12 +192,12 @@ pub fn v_realloc(b byteptr, n u32) byteptr {
 	}
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
@@ -207,7 +207,7 @@ pub fn vcalloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn free(ptr voidptr) {
 	$if prealloc {
 		return

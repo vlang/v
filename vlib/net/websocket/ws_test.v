@@ -9,6 +9,9 @@ mut:
 }
 
 fn test_ws() {
+	$if !network ? {
+		return
+	}
 	ws_test('ws://echo.websocket.org')
 	ws_test('wss://echo.websocket.org')
 }

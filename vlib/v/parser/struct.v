@@ -56,7 +56,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+	if language == .v &&
+		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 	}
 	if name.len == 1 {

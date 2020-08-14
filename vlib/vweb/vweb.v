@@ -16,7 +16,7 @@ pub const (
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
-	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${headers_close}404 Not Found'
+	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types = {
 		'.css': 'text/css; charset=utf-8',
@@ -42,6 +42,7 @@ mut:
 	static_files map[string]string
 	static_mime_types map[string]string
 	content_type string = 'text/plain'
+	status string = '200 OK'
 pub:
 	req http.Request
 	conn net.Socket
@@ -71,8 +72,9 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
 	defer { sb.free() }
-	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
-	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
+	sb.write('HTTP/1.1 ${ctx.status}')
+	sb.write('\r\nContent-Type: ${mimetype}')
+	sb.write('\r\nContent-Length: ${res.len}')
 	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(headers_close)
@@ -164,6 +166,14 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 	return error('Cookie not found')
 }
 
+pub fn (mut ctx Context) set_status(code int, desc string) {
+	if code < 100 || code > 599 {
+		ctx.status = '500 Internal Server Error'
+	} else {
+		ctx.status = '$code $desc'
+	}
+}
+
 pub fn (mut ctx Context) add_header(key, val string) {
 	//println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
@@ -245,7 +255,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	mut body_len := 0
 	//for line in lines[1..] {
 	for _ in 0..100 {
 		//println(j)
@@ -271,9 +280,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				//println('GOT CL=$len')
 			}
 		} else {
-			body += sline + '\r\n'
-			body_len += body.len
-			if body_len >= len {
+			body += line.trim_left('\r\n')
+			if body.len >= len {
 				break
 			}
 			//println('body:$body')
@@ -573,7 +581,7 @@ fn readall(conn net.Socket) string {
 	for {
 		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
-		message += string( byteptr(buf), m )
+		message += unsafe { byteptr(buf).vstring_with_len(m) }
 		if message.len > max_http_post_size { break }
 		if n == m { break }
 	}
