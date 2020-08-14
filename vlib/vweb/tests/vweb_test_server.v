@@ -4,6 +4,10 @@ import os
 import vweb
 import time
 
+const (
+	known_users = ['bilbo', 'kent']
+)
+
 struct App {
 	port    int
 	timeout int
@@ -38,7 +42,7 @@ pub fn (mut app App) init() {
 }
 
 pub fn (mut app App) init_once() {
-	eprintln('Started webserver on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
+	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 }
 
 pub fn (mut app App) index() {
@@ -58,12 +62,42 @@ pub fn (mut app App) html_page() vweb.Result {
 // the following serve custom routes
 ['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
+	if username !in known_users {
+		return app.vweb.not_found()
+	}
 	app.vweb.html('username: $username')
 	return vweb.Result{}
 }
 
 ['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username, repository string) vweb.Result {
+	if username !in known_users {
+		return app.vweb.not_found()
+	}
 	app.vweb.html('username: $username | repository: $repository')
 	return vweb.Result{}
+}
+
+[post]
+['/json_echo']
+pub fn (mut app App) json() vweb.Result {
+	app.vweb.set_content_type(app.vweb.req.headers['Content-Type'])
+	return app.vweb.ok(app.vweb.req.data)
+}
+
+pub fn (mut app App) shutdown() vweb.Result {
+	session_key := app.vweb.get_cookie('skey') or {
+		return app.vweb.not_found()
+	}
+	if session_key != 'superman' {
+		return app.vweb.not_found()
+	}
+	go app.gracefull_exit()
+	return app.vweb.ok('good bye')
+}
+
+fn (mut app App) gracefull_exit() {
+	eprintln('>> webserver: gracefull_exit')
+	time.sleep_ms(100)
+	exit(0)
 }

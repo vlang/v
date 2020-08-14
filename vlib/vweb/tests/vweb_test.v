@@ -1,11 +1,12 @@
 import os
 import time
+import json
 import net
 import net.http
 
 const (
 	sport           = 12380
-	exit_after_time = 1000 // milliseconds
+	exit_after_time = 5000 // milliseconds
 	vexe            = os.getenv('VEXE')
 	vroot           = os.dir(vexe)
 	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
@@ -108,6 +109,20 @@ fn test_http_client_index() {
 	assert x.text == 'Welcome to VWeb'
 }
 
+fn test_http_client_404() {
+	url_404_list := [
+		'http://127.0.0.1:$sport/zxcnbnm',
+		'http://127.0.0.1:$sport/JHKAJA',
+		'http://127.0.0.1:$sport/unknown',
+		]
+	for url in url_404_list {
+		res := http.get(url) or {
+			panic(err)
+		}
+		assert res.status_code == 404
+	}
+}
+
 fn test_http_client_simple() {
 	x := http.get('http://127.0.0.1:$sport/simple') or {
 		panic(err)
@@ -132,6 +147,7 @@ fn test_http_client_settings_page() {
 	}
 	assert_common_http_headers(x)
 	assert x.text == 'username: bilbo'
+	//
 	y := http.get('http://127.0.0.1:$sport/kent/settings') or {
 		panic(err)
 	}
@@ -145,11 +161,67 @@ fn test_http_client_user_repo_settings_page() {
 	}
 	assert_common_http_headers(x)
 	assert x.text == 'username: bilbo | repository: gostamp'
+	//
 	y := http.get('http://127.0.0.1:$sport/kent/golang/settings') or {
 		panic(err)
 	}
 	assert_common_http_headers(y)
 	assert y.text == 'username: kent | repository: golang'
+	//
+	z := http.get('http://127.0.0.1:$sport/missing/golang/settings') or {
+		panic(err)
+	}
+	assert z.status_code == 404
+}
+
+struct User {
+	name string
+	age  int
+}
+
+fn test_http_client_json_post() {
+	ouser := User{
+		name: 'Bilbo'
+		age: 123
+	}
+	json_for_ouser := json.encode(ouser)
+	x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or {
+		panic(err)
+	}
+	$if debug_net_socket_client ? {
+		eprintln('json response: $x')
+	}
+	assert x.headers['Content-Type'] == 'application/json'
+	assert x.text == json_for_ouser
+	nuser := json.decode(User, x.text) or {
+		User{}
+	}
+	assert '$ouser' == '$nuser'
+}
+
+fn test_http_client_shutdown_does_not_work_without_a_cookie() {
+	x := http.get('http://127.0.0.1:$sport/shutdown') or {
+		assert err == ''
+		return
+	}
+	assert x.status_code == 404
+	assert x.text == '404 Not Found'
+}
+
+fn testsuite_end() {
+	// This test is guaranteed to be called last.
+	// It sends a request to the server to shutdown.
+	x := http.fetch('http://127.0.0.1:$sport/shutdown', {
+		method: .get
+		cookies: {
+			'skey': 'superman'
+		}
+	}) or {
+		assert err == ''
+		return
+	}
+	assert x.status_code == 200
+	assert x.text == 'good bye'
 }
 
 // utility code:
