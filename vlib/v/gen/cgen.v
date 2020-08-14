@@ -1025,7 +1025,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.stmts(it.stmts)
 		g.writeln('}')
 	} else {
-		s := g.typ(it.cond_type)
+		s := g.table.type_to_str(it.cond_type)
 		g.error('`for`: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 }
