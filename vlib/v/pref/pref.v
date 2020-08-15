@@ -286,7 +286,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
-				res.lookup_path = path.split(os.path_delimiter)
+				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-custom-prelude' {

@@ -168,8 +168,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		return []
 	}
 	*/
-	// println('get_builtin_files() lookuppath:')
-	// println(v.pref.lookup_path)
+	v.log('v.pref.lookup_path: $v.pref.lookup_path')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
