@@ -7,10 +7,10 @@ enum JobTitle {
 }
 
 struct Employee {
-	name string
-	age  int
+	name   string
+	age    int
 	salary f32
-	title JobTitle
+	title  JobTitle
 }
 
 fn test_simple() {
@@ -37,10 +37,10 @@ struct User2 {
 struct User {
 	age           int
 	nums          []int
-	last_name     string [json:lastName]
-	is_registered bool   [json:IsRegistered]
-	typ           int    [json:'type']
-	pets          string [raw; json:'pet_animals']
+	last_name     string [json: lastName]
+	is_registered bool   [json: IsRegistered]
+	typ           int    [json: 'type']
+	pets          string [raw; json: 'pet_animals']
 }
 
 fn test_parse_user() {
@@ -112,4 +112,150 @@ fn test_struct_in_struct() {
 	assert country.cities[0].name == 'London'
 	assert country.cities[1].name == 'Manchester'
 	println(country.cities)
+}
+
+fn test_encode_map() {
+	expected := '{"one":1,"two":2,"three":3,"four":4}'
+	numbers := {
+		'one': 1
+		'two': 2
+		'three': 3
+		'four': 4
+	}
+	out := json.encode(numbers)
+	println(out)
+	assert out == expected
+}
+
+fn test_parse_map() {
+	expected := {
+		'one': 1
+		'two': 2
+		'three': 3
+		'four': 4
+	}
+	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}') or {
+		assert false
+		r := {
+			'': 0
+		}
+		r
+	}
+	println(out)
+	assert out == expected
+}
+
+struct Data {
+	countries []Country
+	users     map[string]User
+	extra     map[string]map[string]int
+}
+
+fn test_nested_type() {
+	data_expected := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
+
+	data := Data{
+		countries: [
+			Country{
+				name: 'UK'
+				cities: [City{'London'},
+					City{'Manchester'},
+				]
+			},
+			Country{
+				name: 'KU'
+				cities: [City{'Donlon'},
+					City{'Termanches'},
+				]
+			},
+		]
+		users: {
+			'Foo': User{
+				age: 10
+				nums: [1, 2, 3]
+				last_name: 'Johnson'
+				is_registered: true
+				typ: 0
+				pets: 'little foo'
+			},
+			'Boo': User{
+				age: 20
+				nums: [5, 3, 1]
+				last_name: 'Smith'
+				is_registered: false
+				typ: 4
+				pets: 'little boo'
+			}
+		},
+		extra: {
+			'2': {
+				'n1': 2
+				'n2': 4
+				'n3': 8
+				'n4': 16
+			},
+			'3': {
+				'n1': 3
+				'n2': 9
+				'n3': 27
+				'n4': 81
+			},
+		}
+	}
+	out := json.encode(data)
+	println(out)
+	assert out == data_expected
+
+	data2 := json.decode(Data, data_expected) or {
+		assert false
+		Data{}
+	}
+	assert data2.countries.len == data.countries.len
+	for i in 0..1 {
+		assert data2.countries[i].name == data.countries[i].name
+		assert data2.countries[i].cities.len == data.countries[i].cities.len
+		for j in 0..1 {
+			assert data2.countries[i].cities[j].name == data.countries[i].cities[j].name
+		}
+	}
+	
+	for key, user in data.users {
+		assert data2.users[key].age == user.age
+		assert data2.users[key].nums == user.nums
+		assert data2.users[key].last_name == user.last_name
+		assert data2.users[key].is_registered == user.is_registered
+		assert data2.users[key].typ == user.typ
+		// assert data2.users[key].pets == user.pets // TODO FIX
+	}
+
+	for k, v in data.extra {
+		for k2, v2 in v {
+			assert data2.extra[k][k2] == v2
+		}
+	}
+}
+
+fn test_errors() {
+	invalid_array := fn () {
+		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":{"name":"Donlon"},"name":"KU"}],"users":{"Foo":{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},"Boo":{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}},"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
+
+		json.decode(Data, data) or {
+			println(err)
+			assert err.starts_with('Json element is not an array:')
+			return
+		}
+		assert false
+	}
+	invalid_object := fn() {
+		data := '{"countries":[{"cities":[{"name":"London"},{"name":"Manchester"}],"name":"UK"},{"cities":[{"name":"Donlon"},{"name":"Termanches"}],"name":"KU"}],"users":[{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"little foo"},{"age":20,"nums":[5,3,1],"lastName":"Smith","IsRegistered":false,"type":4,"pet_animals":"little boo"}],"extra":{"2":{"n1":2,"n2":4,"n3":8,"n4":16},"3":{"n1":3,"n2":9,"n3":27,"n4":81}}}'
+
+		json.decode(Data, data) or {
+			println(err)
+			assert err.starts_with('Json element is not an object:')
+			return
+		}
+		assert false
+	}
+	invalid_array()
+	invalid_object()
 }
