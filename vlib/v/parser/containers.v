@@ -71,8 +71,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				}
 				last_pos = p.tok.position()
 				p.check(.rcbr)
-			}
-			else {
+			} else {
 				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`', last_pos)
 			}
 		} else {

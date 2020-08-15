@@ -141,7 +141,7 @@ pub fn exec(cmd string) ?Result {
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
-	buf := [4096]byte
+	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
 	for C.fgets(charptr(buf), 4096, f) != 0 {
 		bufbp := byteptr(buf)
