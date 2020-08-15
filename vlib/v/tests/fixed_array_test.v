@@ -1,15 +1,17 @@
 fn test_fixed_array_can_be_assigned() {
 	x := 2.32
-	mut v := [8]f64
+	mut v := [8]f64{}
 	assert v[1] == 0
 	v = [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!!
 	assert v[1] == x
-	v = [8]f64
+	v = [8]f64{}
 	assert v[1] == 0
 	// test slicing
 	for e in v[0..8] {
 		assert e == 0
 	}
+	v = [8]f64{init: 3.0}
+	assert v[1] == 3.0
 }
 
 fn test_fixed_array_can_be_used_in_declaration() {

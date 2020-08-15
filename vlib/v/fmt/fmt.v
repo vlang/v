@@ -1734,6 +1734,11 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		f.write(f.type_to_str(it.elem_type))
+		if it.has_default {
+			f.write('{init: $it.default_expr}')
+		} else {
+			f.write('{}')
+		}
 	}
 }
 

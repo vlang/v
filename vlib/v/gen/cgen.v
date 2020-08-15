@@ -1499,7 +1499,20 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			if !cloned {
 				if is_decl {
 					if is_fixed_array_init && !has_val {
-						g.write('{0}')
+						if val is ast.ArrayInit {
+							if val.has_default {
+								g.write('{$val.default_expr')
+								info := right_sym.info as table.ArrayFixed
+								for _ in 1 .. info.size {
+									g.write(', $val.default_expr')
+								}
+								g.write('}')
+							} else {
+								g.write('{0}')
+							}
+						} else {
+							g.write('{0}')
+						}
 					} else {
 						g.expr(val)
 					}
@@ -2152,8 +2165,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
 		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
-		af := left_sym.info as table.ArrayFixed
-		et := af.elem_type
+		info := left_sym.info as table.ArrayFixed
+		et := info.elem_type
 		if !et.is_ptr() && !et.is_pointer() && !et.is_number() && et.idx() !in [table.bool_type_idx, table.char_type_idx] {
 			verror('`==` on fixed array only supported with POD element types ATM')
 		}
