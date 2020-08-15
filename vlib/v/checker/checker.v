@@ -268,7 +268,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
 			} else if typ_sym.kind == .alias {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
-				c.error('type `$typ_sym.name` is an alias, alias original type `$orig_sym.name` instead',
+				c.error('type `$typ_sym.name` is an alias, use the original alias type `$orig_sym.name` instead',
 					node.pos)
 			}
 		}
