@@ -99,19 +99,24 @@ $enc_fn_dec {
 			}
 			field_type := g.typ(field.typ)
 			if field.attrs.contains('raw') {
-				dec.writeln(' res . ${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+				dec.writeln('\tres.${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
 				// need to do it here so that these functions are generated first
 				g.gen_json_for_type(field.typ)
 				dec_name := js_dec_name(field_type)
 				if is_js_prim(field_type) {
-					dec.writeln(' res . ${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
+					dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
 				} else if g.table.get_type_symbol(field.typ).kind == .enum_ {
-					dec.writeln(' res . ${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
+					dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
 				} else {
 					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
-					dec.writeln('  res . ${c_name(field.name)} = *($field_type*) $dec_name (js_get(root,"$name")).data;')
+					tmp := g.new_tmp_var()
+					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+					dec.writeln('\tif(!${tmp}.ok) {')
+					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+					dec.writeln('\t}')
+					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
 			}
 			mut enc_name := js_enc_name(field_type)
