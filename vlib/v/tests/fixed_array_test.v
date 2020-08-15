@@ -4,6 +4,10 @@ fn test_fixed_array_can_be_assigned() {
 	assert v[1] == 0
 	v = [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!!
 	assert v[1] == x
+	v[1] = 2.0
+	for i, e in v {
+		assert e == i + 1
+	}
 	v = [8]f64{}
 	assert v[1] == 0
 	// test slicing
