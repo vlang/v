@@ -11,4 +11,6 @@ fn main() {
 	sum := Alphabet(Xyz{})
 	_ = Xyz(sum)
 	_ = Xyz(5)
+	s := Abc{}
+	_ = Xyz(&s)
 }
