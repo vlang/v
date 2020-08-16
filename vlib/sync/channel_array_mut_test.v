@@ -23,7 +23,7 @@ fn do_rec_calc_send(chs []chan mut St, sem sync.Semaphore) {
 }
 
 fn test_channel_array_mut() {
-	mut chs := [chan mut St{cap: 1}, chan mut St{}]
+	mut chs := [chan mut St{cap: 0}, chan mut St{}]
 	sem := sync.new_semaphore()
 	go do_rec_calc_send(chs, sem)
 	mut t := St{
