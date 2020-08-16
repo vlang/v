@@ -6,12 +6,16 @@ const (
 
 struct St {
 mut:
-	n int
+	dummy  i64
+	dummy2 u32
+	dummy3 i64
+	n      int
+	dummy4 int
 }
 
 // this function gets an array of channels for `St` references
 fn do_rec_calc_send(chs []chan mut St) {
-	mut s := St{}
+	mut s := &St(0)
 	for {
 		if !(&sync.Channel(chs[0])).pop(&s) {
 			break
@@ -24,7 +28,7 @@ fn do_rec_calc_send(chs []chan mut St) {
 fn test_channel_array_mut() {
 	mut chs := [chan mut St{cap: 1}, chan mut St{}]
 	go do_rec_calc_send(chs)
-	mut t := St{
+	mut t := &St{
 		n: 100
 	}
 	for _ in 0 .. num_iterations {
