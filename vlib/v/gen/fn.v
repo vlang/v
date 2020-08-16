@@ -641,6 +641,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				g.expr(arg.expr)
 			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
 				g.tmp_idxs.len > 0 && i in g.tmp_idxs {
+				// Save expressions in temp variables so that they can be freed later.
+				// `foo(str + str2) => x := str + str2; foo(x); x.free()`
 				g.write('_arg_expr_${g.called_fn_name}_$i')
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i])

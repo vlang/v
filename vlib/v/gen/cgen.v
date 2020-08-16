@@ -863,8 +863,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// #include etc
 			typ := node.val.all_before(' ')
 			if typ == 'include' {
-				g.includes.writeln('// added by module `$node.mod`:')
-				g.includes.writeln('#$node.val')
+				if node.val.contains('.m') {
+					// Objective C code import, include it after V types, so that e.g. `string` is
+					// available there
+					g.definitions.writeln('#$node.val')
+				} else {
+					g.includes.writeln('// added by module `$node.mod`:')
+					g.includes.writeln('#$node.val')
+				}
 			}
 			if typ == 'define' {
 				g.includes.writeln('#$node.val')
@@ -880,6 +886,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Return {
 			g.write_defer_stmts_when_needed()
 			if g.pref.autofree {
+				g.writeln('// ast.Return free')
+				// g.autofree_scope_vars(node.pos.pos)
 				g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node)

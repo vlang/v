@@ -141,6 +141,9 @@ pub fn (mut p Parser) parse_type() table.Type {
 		nr_muls++
 		p.next()
 	}
+	if p.tok.kind == .mul {
+		p.error('use `&Type` instead of `*Type` when declaring references')
+	}
 	// &Type
 	for p.tok.kind == .amp {
 		nr_muls++
@@ -190,6 +193,9 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		p.check(.dot)
 		// prefix with full module
 		name = '${p.imports[name]}.$p.tok.lit'
+		if !p.tok.lit[0].is_capital() {
+			p.error('imported types must start with a capital letter')
+		}
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
 	} else if p.mod != 'builtin' && name !in p.table.type_idxs && name.len > 1 {
@@ -223,6 +229,10 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 			}
 			defer {
 				p.next()
+			}
+			if name == '' {
+				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
+				p.error('bad type syntax')
 			}
 			match name {
 				'voidptr' {
