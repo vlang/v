@@ -6,7 +6,11 @@ const (
 
 struct St {
 mut:
-	n int
+	dummy  i64
+	dummy2 u32
+	dummy3 i64
+	n      int
+	dummy4 int
 }
 
 // this function gets an array of channels for `St` references
