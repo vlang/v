@@ -10,29 +10,27 @@ mut:
 }
 
 // this function gets an array of channels for `St` references
-fn do_rec_calc_send(chs0, chs1 chan mut St, sem sync.Semaphore) {
+fn do_rec_calc_send(chs []chan mut St) {
 	mut s := &St(0)
-	for _ in 0 .. num_iterations {
-		(&sync.Channel(chs0)).pop(&s)
+	for {
+		if !(&sync.Channel(chs[0])).pop(&s) {
+			break
+		}
 		s.n++
-		(&sync.Channel(chs1)).push(&s)
+		(&sync.Channel(chs[1])).push(&s)
 	}
-	sem.post()
 }
 
 fn test_channel_array_mut() {
-	mut chs0 := chan mut St{cap: 1}
-	mut chs1 := chan mut St{}
-	sem := sync.new_semaphore()
-	go do_rec_calc_send(chs0, chs1, sem)
+	mut chs := [chan mut St{cap: 1}, chan mut St{}]
+	go do_rec_calc_send(chs)
 	mut t := &St{
 		n: 100
 	}
 	for _ in 0 .. num_iterations {
-		(&sync.Channel(chs0)).push(&t)
-		(&sync.Channel(chs1)).pop(&t)
+		(&sync.Channel(chs[0])).push(&t)
+		(&sync.Channel(chs[1])).pop(&t)
 	}
-	// (&sync.Channel(chs0)).close()
-	sem.wait()
+	(&sync.Channel(chs[0])).close()
 	assert t.n == 100 + num_iterations
 }
