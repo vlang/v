@@ -8,6 +8,7 @@ const (
 	skip_valgrind_files = [
 		'vlib/v/tests/valgrind/struct_field.vv',
 		'vlib/v/tests/valgrind/fn_returning_string_param.vv',
+		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.vv',
 	]
 )
 
