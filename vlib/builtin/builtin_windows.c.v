@@ -86,7 +86,7 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 $if msvc {
 	mut offset := u64(0)
-	backtraces := [100]voidptr
+	backtraces := [100]voidptr{}
 	sic := SymbolInfoContainer{}
 	mut si := &sic.syminfo
 	si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88

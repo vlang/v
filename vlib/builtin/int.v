@@ -271,7 +271,7 @@ pub fn (n int) hex1() string {
 [inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
 	for i=len-1; i>=0; i-- {
@@ -289,7 +289,7 @@ fn u64_to_hex(nn u64, len byte) string {
 [inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
 	for i=len-1; i>=0; i-- {
