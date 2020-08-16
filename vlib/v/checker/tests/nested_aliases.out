@@ -1,0 +1,4 @@
+vlib/v/checker/tests/nested_aliases.v:2:1: error: type `MyInt` is an alias, use the original alias type `int` instead
+    1 | type MyInt = int
+    2 | type MyMyInt = MyInt
+      | ~~~~~~~~~~~~
