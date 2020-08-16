@@ -744,18 +744,18 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfile := '${path[..path.len-2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
 	res := os.exec(cmd) or {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
 		return
 	}
