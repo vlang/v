@@ -93,7 +93,7 @@ However, if none is found when running `make` on Linux or Windows, TCC would be 
 ### Symlinking
 
 NB: it is *highly recommended*, that you put V on your PATH. That saves
-you the effort to type in the full path to your v executable everytime.
+you the effort to type in the full path to your v executable every time.
 V provides a convenience `v symlink` command to do that more easily.
 
 On Unix systems, it creates a `/usr/local/bin/v` symlink to your
