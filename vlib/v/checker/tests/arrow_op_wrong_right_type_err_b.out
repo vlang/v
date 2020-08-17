@@ -1,0 +1,7 @@
+vlib/v/checker/tests/arrow_op_wrong_right_type_err_b.v:3:9: error: <- operator can only be used with `chan` types
+    1 | fn main() {
+    2 |     ch := i64(3)
+    3 |     obj := <-ch
+      |            ~~
+    4 |     println(obj)
+    5 | }

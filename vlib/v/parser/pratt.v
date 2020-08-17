@@ -60,7 +60,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		.minus, .amp, .mul, .not, .bit_not {
+		.minus, .amp, .mul, .not, .bit_not, .arrow {
 			// -1, -a, !x, &x, ~x
 			node = p.prefix_expr()
 		}
