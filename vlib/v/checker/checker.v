@@ -2694,6 +2694,9 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
 	node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
+	// we setting this here rather than at the end of the method
+	// since it is used in c.match_exprs() it saves checking twice
+	node.cond_type = cond_type
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
@@ -2761,7 +2764,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
-	node.cond_type = cond_type
 	// println('!m $expr_type')
 	return ret_type
 }
@@ -2815,6 +2817,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
 				c.error('match case `$key` is handled more than once', branch.pos)
+			}
+			c.expected_type = node.cond_type
+			expr_type := c.expr(expr)
+			if !c.check_types(expr_type, c.expected_type) {
+				expr_str := c.table.type_to_str(expr_type)
+				expect_str := c.table.type_to_str(c.expected_type)
+				c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
 			}
 			branch_exprs[key] = val + 1
 		}
