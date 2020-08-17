@@ -7,12 +7,13 @@ enum CloseTagType {
 
 [ref_only]
 pub struct Tag {
-mut:
-	name               string = ''
-	attributes         map[string]string // attributes will be like map[name]value
-	last_attribute     string = ''
-	content            string = ''
+pub mut:
+	name               string
+	content            string
 	children           []&Tag
+mut:
+	attributes         map[string]string // attributes will be like map[name]value
+	last_attribute     string
 	parent             &Tag = C.NULL
 	position_in_parent int = 0
 	closed             bool = false

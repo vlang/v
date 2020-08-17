@@ -108,6 +108,10 @@ pub fn (mut img Image) init_sokol_image() &Image {
 }
 
 pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
+	if img_.id >= ctx.image_cache.len {
+		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+		return
+	}
 	img := ctx.image_cache[img_.id] // fetch the image from cache
 	if !img.simg_ok {
 		return
