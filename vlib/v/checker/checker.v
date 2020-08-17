@@ -2551,7 +2551,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		start_scope := c.file.scope.innermost(ident.pos.pos + 1)
+		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj1 := start_scope.find(ident.name) {
 			match mut obj1 as obj {
 				ast.GlobalDecl {
