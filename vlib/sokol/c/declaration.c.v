@@ -21,7 +21,8 @@ pub const (
 //#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 
 // D3D
-#flag windows -DSOKOL_D3D11
+#flag windows -DSOKOL_GLCORE33
+//#flag windows -DSOKOL_D3D11
 
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
