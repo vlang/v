@@ -298,7 +298,12 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	p.scope.end_pos = p.tok.pos
+	// p.scope.end_pos = p.tok.pos
+	// NOTE: since this is usually called after `p.parse_block()`
+	// ie. when `prev_tok` is rcbr `}` we most likely want `prev_tok`
+	// we could do the following, but probably not needed in 99% of cases:
+	// `end_pos = if p.prev_tok.kind == .rcbr { p.prev_tok.pos } else { p.tok.pos }`
+	p.scope.end_pos = p.prev_tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
 }
