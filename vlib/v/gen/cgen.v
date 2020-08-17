@@ -978,8 +978,8 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 	} else if it.kind == .array_fixed {
 		atmp := g.new_tmp_var()
 		atmp_type := g.typ(it.cond_type)
-		if it.cond is ast.ArrayInit {
-			g.error('for in: unhandled `$it.cond`', it.pos)
+		if !it.cond.is_lvalue() {
+			g.error('for in: unhandled condition `$it.cond`', it.pos)
 		}
 		// TODO rvalue cond
 		g.write('$atmp_type *$atmp = &')
