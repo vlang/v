@@ -1061,6 +1061,16 @@ pub fn (expr Expr) position() token.Position {
 	}
 }
 
+pub fn (expr Expr) is_lvalue() bool {
+	match expr {
+		Ident {return true}
+		IndexExpr {return expr.left.is_lvalue()}
+		SelectorExpr {return expr.expr.is_lvalue()}
+		else {}
+	}
+	return false
+}
+
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }

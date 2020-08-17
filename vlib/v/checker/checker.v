@@ -2551,7 +2551,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
-		start_scope := c.file.scope.innermost(ident.pos.pos)
+		start_scope := c.file.scope.innermost(ident.pos.pos + 1)
 		if obj1 := start_scope.find(ident.name) {
 			match mut obj1 as obj {
 				ast.GlobalDecl {
@@ -2986,8 +2986,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					left_sym := c.table.get_type_symbol(infix.left_type)
 					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
 						mut is_mut := false
-						if infix.left is ast.Ident {
-							is_mut = (infix.left as ast.Ident).is_mut
+						mut scope := c.file.scope.innermost(branch.body_pos.pos)
+						if infix.left is ast.Ident as infix_left {
+							if var := scope.find_var(infix_left.name) {
+								is_mut = var.is_mut
+							}
 						} else if infix.left is ast.SelectorExpr {
 							selector := infix.left as ast.SelectorExpr
 							field := c.table.struct_find_field(left_sym, selector.field_name) or {
@@ -2995,7 +2998,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							}
 							is_mut = field.is_mut
 						}
-						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						scope.register(branch.left_as_name, ast.Var{
 							name: branch.left_as_name
 							typ: right_expr.typ.to_ptr()

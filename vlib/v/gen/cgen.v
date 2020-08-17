@@ -988,6 +988,33 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
+	} else if it.kind == .array_fixed {
+		atmp := g.new_tmp_var()
+		atmp_type := g.typ(it.cond_type)
+		if !it.cond.is_lvalue() {
+			g.error('for in: unhandled condition `$it.cond`', it.pos)
+		}
+		// TODO rvalue cond
+		g.write('$atmp_type *$atmp = &')
+		g.expr(it.cond)
+		g.writeln(';')
+		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
+		cond_sym := g.table.get_type_symbol(it.cond_type)
+		info := cond_sym.info as table.ArrayFixed
+		g.writeln('for (int $i = 0; $i != $info.size; ++$i) {')
+		if it.val_var != '_' {
+			val_sym := g.table.get_type_symbol(it.val_type)
+			if val_sym.kind == .function {
+				g.write('\t')
+				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
+			} else {
+				styp := g.typ(it.val_type)
+				g.write('\t$styp ${c_name(it.val_var)}')
+			}
+			g.writeln(' = (*$atmp)[$i];')
+		}
+		g.stmts(it.stmts)
+		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map {`
 		g.writeln('// FOR IN map')
@@ -1051,7 +1078,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln('}')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
-		g.error('`for`: unhandled symbol `$it.cond` of type `$s`', it.pos)
+		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
 }
 
@@ -1812,6 +1839,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(')')
 			} else if sym.kind == .sum_type {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
+			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
+				styp := g.typ(node.typ)
+				g.write('*(($styp *)(&')
+				g.expr(node.expr)
+				g.write('))')
 			} else {
 				// styp := g.table.Type_to_str(it.typ)
 				styp := g.typ(node.typ)

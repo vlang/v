@@ -4,6 +4,10 @@ fn test_fixed_array_can_be_assigned() {
 	assert v[1] == 0
 	v = [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!!
 	assert v[1] == x
+	v[1] = 2.0
+	for i, e in v {
+		assert e == i + 1
+	}
 	v = [8]f64{}
 	assert v[1] == 0
 	// test slicing
@@ -32,6 +36,9 @@ fn test_fixed_array_can_be_assigned_to_a_struct_field() {
 	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!
 	assert ctx.vb[1] == x
 	assert ctx.vb[7] == 8.9
+	for i, e in ctx.vb {
+		assert e == ctx.vb[i]
+	}
 	assert ctx.vb == ctx.vb
 	/*
 	println( ctx.vb[0] )
