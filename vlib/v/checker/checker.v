@@ -2669,6 +2669,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
 	node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
+	// we setting this here rather than at the end of the method
+	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = cond_type
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
