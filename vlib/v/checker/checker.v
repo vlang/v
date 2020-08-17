@@ -639,6 +639,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			return table.bool_type
 		}
+		.arrow { // `chan <- elem`
+			if left.kind == .chan {
+				elem_type := left.chan_info().elem_type
+				if !c.check_types(right_type, elem_type) {
+					c.error('cannot push `$right.name` on `$left.name`', right_pos)
+				}
+			} else {
+				c.error('cannot push on non-channel `$left.name`', left_pos)
+			}
+			return table.void_type
+		}
 		else {
 			// use `()` to make the boolean expression clear error
 			// for example: `(a && b) || c` instead of `a && b || c`
@@ -2440,6 +2451,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if node.op == .not && right_type != table.bool_type_idx && !c.pref.translated {
 				c.error('! operator can only be used with bool types', node.pos)
+			}
+			if node.op == .arrow {
+				right := c.table.get_type_symbol(right_type)
+				if right.kind == .chan {
+					return right.chan_info().elem_type
+				} else {
+					c.error('<- operator can only be used with `chan` types', node.pos)
+				}
 			}
 			return right_type
 		}

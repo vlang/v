@@ -1037,6 +1037,9 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					return s.new_token(.left_shift, '', 2)
+				} else if nextc == `-` {
+					s.pos++
+					return s.new_token(.arrow, '', 2)
 				} else {
 					return s.new_token(.lt, '', 1)
 				}
@@ -1045,9 +1048,6 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.eq, '', 2)
-				} else if nextc == `>` {
-					s.pos++
-					return s.new_token(.arrow, '', 2)
 				} else {
 					return s.new_token(.assign, '', 1)
 				}
