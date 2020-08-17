@@ -2797,6 +2797,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			if val == 1 {
 				c.error('match case `$key` is handled more than once', branch.pos)
 			}
+			c.expected_type = node.cond_type
+			expr_type := c.expr(expr)
+			if !c.check_types(expr_type, c.expected_type) {
+				expr_str := c.table.type_to_str(expr_type)
+				expect_str := c.table.type_to_str(c.expected_type)
+				c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+			}
 			branch_exprs[key] = val + 1
 		}
 	}
