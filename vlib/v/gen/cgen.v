@@ -1950,11 +1950,20 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.op == .amp {
 				g.is_amp = true
 			}
-			// g.write('/*pref*/')
-			g.write(node.op.str())
-			// g.write('(')
+			if node.op == .arrow {
+				right_type := g.unwrap_generic(node.right_type)
+				right_sym := g.table.get_type_symbol(right_type)
+				styp := util.no_dots(right_sym.name)
+				g.write('__${styp}_popval(')
+			} else {
+				// g.write('/*pref*/')
+				g.write(node.op.str())
+				// g.write('(')
+			}
 			g.expr(node.right)
-			// g.write(')')
+			if node.op == .arrow {
+				g.write(')')
+			}
 			g.is_amp = false
 		}
 		ast.RangeExpr {

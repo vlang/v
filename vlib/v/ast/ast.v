@@ -435,9 +435,11 @@ pub mut:
 
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op         token.Kind
+	right      Expr
+	pos        token.Position
+pub mut:
+	right_type table.Type
 }
 
 pub struct IndexExpr {

@@ -1,11 +1,10 @@
 import sync
+import time
 
 fn do_rec_i64(ch chan i64) {
 	mut sum := i64(0)
 	for _ in 0 .. 300 {
-		mut a := i64(0)
-		(&sync.Channel(ch)).pop(&a)
-		sum += a
+		sum += <-ch
 	}
 	assert sum == 300 * (300 - 1) / 2
 }
@@ -71,4 +70,5 @@ fn test_select() {
 		256 * (256 - 1) / 2 +
 		44 * (44 - 1) / 2
 	assert sum == expected_sum
+	time.sleep_ms(20) // to give assert in coroutine enough time
 }

@@ -2439,6 +2439,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.PrefixExpr {
 			right_type := c.expr(node.right)
+			node.right_type = right_type
 			// TODO: testing ref/deref strategy
 			if node.op == .amp && !right_type.is_ptr() {
 				return right_type.to_ptr()
