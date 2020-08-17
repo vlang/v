@@ -410,7 +410,7 @@ pub fn escape(s string) string {
 }
 
 fn (req &Request) http_do(port int, method Method, host_name, path string) ?Response {
-	rbuffer := [bufsize]byte
+	rbuffer := [bufsize]byte{}
 	mut sb := strings.new_builder(100)
 	s := req.build_request_headers(method, host_name, path)
 	client := net.dial(host_name, port) or {
