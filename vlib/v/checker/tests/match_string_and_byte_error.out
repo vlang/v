@@ -1,0 +1,6 @@
+vlib/v/checker/tests/match_string_and_byte_error.v:2:1: error: cannot use untyped string as byte
+    1 | ch := `a`
+    2 | match ch {
+      | ~~~~~~~~~~
+    3 |   'a' {}
+    4 |   else {}

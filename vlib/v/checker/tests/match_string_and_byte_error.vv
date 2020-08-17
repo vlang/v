@@ -1,0 +1,5 @@
+ch := `a`
+match ch {
+  'a' {}
+  else {}
+}
