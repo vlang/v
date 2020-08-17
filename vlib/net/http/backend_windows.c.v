@@ -21,5 +21,5 @@ fn (req &Request) ssl_do(port int, method Method, host_name, path string) ?Respo
 	length := int(C.request(&ctx, port, addr.to_wide(), sdata.str, &buff))
 
 	C.vschannel_cleanup(&ctx)
-	return parse_response(string(buff, length))
+	return parse_response(buff.vstring_with_len(length))
 }
