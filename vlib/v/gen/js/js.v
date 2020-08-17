@@ -209,7 +209,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.byteptr, .charptr {
 			styp = 'string'
 		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float {
 			// TODO: Should u64 and i64 use BigInt rather than number?
 			styp = 'number'
 		}
@@ -330,7 +330,7 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
 	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float {
 			styp = '0'
 		}
 		.bool {

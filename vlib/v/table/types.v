@@ -366,7 +366,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'rune']
 )
 
 pub struct MultiReturn {
@@ -406,7 +406,6 @@ pub enum Kind {
 	f32
 	f64
 	char
-	size_t
 	rune
 	bool
 	none_
@@ -656,11 +655,15 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		cname: 'chan'
 		mod: 'builtin'
 	})
+	mut size_kind := Kind.u32
+	if t.m64 {
+		size_kind = .u64
+	}
 	t.register_type_symbol({
-		kind: .size_t
-		name: 'size_t'
-		source_name: 'size_t'
-		cname: 'size_t'
+		kind: size_kind
+		name: 'usize'
+		source_name: 'usize'
+		cname: 'usize'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
@@ -710,6 +713,25 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 		parent_idx: map_string_int_idx
 	})
+	// currently used for C interop
+	t.register_type_symbol({
+		kind: size_kind
+		name: 'size_t'
+		source_name: 'size_t'
+		cname: 'size_t'
+		mod: 'builtin'
+	})
+	size_kind = .int
+	if t.m64 {
+		size_kind = .i64
+	}
+	t.register_type_symbol({
+		kind: size_kind
+		name: 'isize'
+		source_name: 'isize'
+		cname: 'isize'
+		mod: 'builtin'
+	})
 }
 
 [inline]
@@ -756,7 +778,6 @@ pub fn (k Kind) str() string {
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
-		.size_t { 'size_t' }
 		.none_ { 'none' }
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }

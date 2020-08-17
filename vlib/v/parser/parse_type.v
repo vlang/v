@@ -272,6 +272,12 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 				'i64' {
 					return table.i64_type
 				}
+				'isize' {
+					if p.pref.m64 {
+						return table.i64_type
+					}
+					return table.int_type
+				}
 				'byte' {
 					return table.byte_type
 				}
@@ -283,6 +289,12 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 				}
 				'u64' {
 					return table.u64_type
+				}
+				'usize', 'size_t' {
+					if p.pref.m64 {
+						return table.u64_type
+					}
+					return table.u32_type
 				}
 				'f32' {
 					return table.f32_type
