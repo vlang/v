@@ -2344,11 +2344,17 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
-				from_type_info := from_type_sym.info as table.Struct
-				to_type_info := to_type_sym.info as table.Struct
-				if !c.check_struct_signature(from_type_info, to_type_info) {
-					c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`',
-						node.pos)
+				// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
+				if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+					from_type_info := from_type_sym.info as table.Struct
+					to_type_info := to_type_sym.info as table.Struct
+					if !c.check_struct_signature(from_type_info, to_type_info) {
+						c.error('cannot convert struct `$from_type_sym.name` to struct `$to_type_sym.name`',
+							node.pos)
+					}
+				} else {
+					type_name := c.table.type_to_str(node.expr_type)
+					c.error('cannot cast `$type_name` to struct', node.pos)
 				}
 			}
 			if node.has_arg {
