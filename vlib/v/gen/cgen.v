@@ -498,8 +498,21 @@ typedef struct {
 				g.type_definitions.writeln('typedef _Interface ${c_name(typ.name)};')
 			}
 			.chan {
-				styp := util.no_dots(typ.name)
-				g.type_definitions.writeln('typedef chan $styp;')
+				if typ.name != 'chan' {
+					styp := util.no_dots(typ.name)
+					g.type_definitions.writeln('typedef chan $styp;')
+					el_stype := g.typ(typ.chan_info().elem_type)
+					g.hotcode_definitions.writeln('
+static inline $el_stype __${styp}_popval($styp ch) {
+	$el_stype val;
+	sync__Channel_try_pop_priv(ch, &val, false);
+	return val;
+}')
+					g.hotcode_definitions.writeln('
+static inline void __${styp}_pushval($styp ch, $el_stype val) {
+	sync__Channel_try_push_priv(ch, &val, false);
+}')
+				}
 			}
 			.map {
 				styp := util.no_dots(typ.name)
@@ -1969,11 +1982,20 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.op == .amp {
 				g.is_amp = true
 			}
-			// g.write('/*pref*/')
-			g.write(node.op.str())
-			// g.write('(')
+			if node.op == .arrow {
+				right_type := g.unwrap_generic(node.right_type)
+				right_sym := g.table.get_type_symbol(right_type)
+				styp := util.no_dots(right_sym.name)
+				g.write('__${styp}_popval(')
+			} else {
+				// g.write('/*pref*/')
+				g.write(node.op.str())
+				// g.write('(')
+			}
 			g.expr(node.right)
-			// g.write(')')
+			if node.op == .arrow {
+				g.write(')')
+			}
 			g.is_amp = false
 		}
 		ast.RangeExpr {
@@ -2326,6 +2348,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			}
 			g.write(' }))')
 		}
+	} else if node.op == .arrow {
+		// chan <- val
+		styp := util.no_dots(left_sym.name)
+		g.write('__${styp}_pushval(')
+		g.expr(node.left)
+		g.write(', ')
+		g.expr(node.right)
+		g.write(')')
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
