@@ -2669,6 +2669,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	node.is_expr = c.expected_type != table.void_type
 	node.expected_type = c.expected_type
 	cond_type := c.expr(node.cond)
+	node.cond_type = cond_type
 	if cond_type == 0 {
 		c.error('match 0 cond type', node.pos)
 	}
@@ -2736,7 +2737,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
-	node.cond_type = cond_type
 	// println('!m $expr_type')
 	return ret_type
 }
@@ -2744,11 +2744,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
-	node.is_expr = c.expected_type != table.void_type
-    node.expected_type = c.expected_type
-    cond_type := c.expr(node.cond)
-    node.cond_type = cond_type
-	is_byte := cond_type == table.byte_type
+	is_byte := node.cond_type == table.byte_type
 	mut branch_exprs := map[string]int{}
 	for branch in node.branches {
 		for expr in branch.exprs {
