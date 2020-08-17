@@ -1826,6 +1826,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(')')
 			} else if sym.kind == .sum_type {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
+			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
+				styp := g.typ(node.typ)
+				g.write('*(($styp *)(&')
+				g.expr(node.expr)
+				g.write('))')
 			} else {
 				// styp := g.table.Type_to_str(it.typ)
 				styp := g.typ(node.typ)

@@ -118,7 +118,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			body_pos: body_pos.extend(p.tok.position())
+			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
 			left_as_name: left_as_name
 		}
