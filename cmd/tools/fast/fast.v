@@ -59,6 +59,8 @@ fn main() {
 		message := exec('git log --pretty=format:"%s" -n1 $commit')
 		println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
 		// Build an optimized V
+		println('Checking out ${commit}...')
+		exec('git checkout $commit')
 		println('  Building vprod...')
 		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
 		diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v', 'v.c')
@@ -92,6 +94,7 @@ fn main() {
 		res.writeln(footer)
 		res.close()
 	}
+	exec('git checkout master')
 	os.write_file('last_commit.txt', commits[commits.len-1])?
 }
 
