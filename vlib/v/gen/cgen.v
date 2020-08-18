@@ -43,6 +43,9 @@ mut:
 	comptime_defines      strings.Builder // custom defines, given by -d/-define flags on the CLI
 	pcs_declarations      strings.Builder // -prof profile counter declarations for each function
 	hotcode_definitions   strings.Builder // -live declarations & functions
+	shared_types          strings.Builder // shared/lock types
+	channel_definitions   strings.Builder // channel related code
+	options_typedefs      strings.Builder // Option typedefs
 	options               strings.Builder // `Option_xxxx` types
 	json_forward_decls    strings.Builder // json type forward decls
 	enum_typedefs         strings.Builder // enum types
@@ -128,7 +131,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		comptime_defines: strings.new_builder(100)
 		pcs_declarations: strings.new_builder(100)
 		hotcode_definitions: strings.new_builder(100)
+		options_typedefs: strings.new_builder(100)
 		options: strings.new_builder(100)
+		shared_types: strings.new_builder(100)
+		channel_definitions: strings.new_builder(100)
 		json_forward_decls: strings.new_builder(100)
 		enum_typedefs: strings.new_builder(100)
 		sql_buf: strings.new_builder(100)
@@ -225,6 +231,18 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if g.hotcode_definitions.len > 0 {
 		b.writeln('\n// V hotcode definitions:')
 		b.write(g.hotcode_definitions.str())
+	}
+	if g.options_typedefs.len > 0 {
+		b.writeln('\n// V option typedefs:')
+		b.write(g.options_typedefs.str())
+	}
+	if g.shared_types.len > 0 {
+		b.writeln('\n// V shared types:')
+		b.write(g.shared_types.str())
+	}
+	if g.channel_definitions.len > 0 {
+		b.writeln('\n// V channel code:')
+		b.write(g.channel_definitions.str())
 	}
 	if g.stringliterals.len > 0 {
 		b.writeln('\n// V stringliterals:')
@@ -412,7 +430,7 @@ fn (mut g Gen) register_optional(t table.Type) string {
 	if styp !in g.optionals {
 		no_ptr := base.replace('*', '_ptr')
 		typ := if base == 'void' { 'void*' } else { base }
-		g.hotcode_definitions.writeln('typedef struct {
+		g.options_typedefs.writeln('typedef struct {
 			$typ  data;
 			string error;
 			int    ecode;
@@ -435,7 +453,7 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 		return sh_typ
 	}
 	mtx_typ := 'sync__RwMutex'
-	g.hotcode_definitions.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
+	g.shared_types.writeln('struct $sh_typ { $base val; $mtx_typ* mtx; };')
 	g.typedefs2.writeln('typedef struct $sh_typ $sh_typ;')
 	// println('registered shared type $sh_typ')
 	g.shareds << t_idx
@@ -502,13 +520,13 @@ typedef struct {
 					styp := util.no_dots(typ.name)
 					g.type_definitions.writeln('typedef chan $styp;')
 					el_stype := g.typ(typ.chan_info().elem_type)
-					g.hotcode_definitions.writeln('
+					g.channel_definitions.writeln('
 static inline $el_stype __${styp}_popval($styp ch) {
 	$el_stype val;
 	sync__Channel_try_pop_priv(ch, &val, false);
 	return val;
 }')
-					g.hotcode_definitions.writeln('
+					g.channel_definitions.writeln('
 static inline void __${styp}_pushval($styp ch, $el_stype val) {
 	sync__Channel_try_push_priv(ch, &val, false);
 }')
