@@ -958,10 +958,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
-	first_pos := p.tok.position()
 	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
-		mut last_pos := p.tok.position()
+		first_pos := p.tok.position()
+		mut last_pos := first_pos
 		chan_type := p.parse_chan_type()
 		mut has_cap := false
 		mut cap_expr := ast.Expr{}
@@ -1024,7 +1024,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	same_line := first_pos.line_nr + 1 == p.peek_tok.line_nr
+	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
 		node = p.parse_ident(language)
