@@ -1658,7 +1658,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 const (
 	// modules which allow globals by default
-	global_enabled_mods = ['rand']
+	global_enabled_mods = ['rand', 'sokol.sapp']
 )
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
