@@ -4695,6 +4695,8 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return '%.*s\\000'
 	} else if typ in [table.f32_type, table.f64_type] {
 		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if typ == table.u64_type {
+		return '%lld\\000'
 	}
 	return '%d\\000'
 }
