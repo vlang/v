@@ -1906,7 +1906,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			g.expr(node.expr)
-			if node.expr_type.is_ptr() {
+			expr_sym := g.table.get_type_symbol(node.expr_type)
+			if node.expr_type.is_ptr() && expr_sym.kind != .array {
 				g.write('->')
 			} else {
 				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
