@@ -512,7 +512,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				ast.Ident { true }
 				else { false }
 			}
-			if typ.is_ptr() && sym.kind != .struct_ {
+			if typ.is_ptr() && sym.kind !in [.struct_, .array] {
 				// ptr_str() for pointers
 				styp = 'ptr'
 				str_fn_name = 'ptr_str'
