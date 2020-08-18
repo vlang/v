@@ -1024,10 +1024,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	// fn call or type cast
-	if p.peek_tok.kind == .lpar ||
+	same_line := first_pos.line_nr + 1 == p.peek_tok.line_nr
+	// `(` must be on same line as name token otherwise it's a ParExpr
+	if !same_line && p.peek_tok.kind == .lpar {
+		node = p.parse_ident(language)
+	} else if p.peek_tok.kind == .lpar ||
 		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
-		// foo() or foo<int>()
+		// foo(), foo<int>() or type() cast
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
