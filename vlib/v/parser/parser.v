@@ -958,9 +958,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
+	first_pos := p.tok.position()
 	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
-		first_pos := p.tok.position()
 		mut last_pos := p.tok.position()
 		chan_type := p.parse_chan_type()
 		mut has_cap := false
@@ -987,13 +987,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			last_pos = p.tok.position()
 			p.check(.rcbr)
 		}
-		pos := token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
 		return ast.ChanInit{
-			pos: pos
+			pos: first_pos.extend(last_pos)
 			has_cap: has_cap
 			cap_expr: cap_expr
 			typ: chan_type
