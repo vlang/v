@@ -3,7 +3,6 @@
 module gg
 
 import sokol.sfons
-import sokol.sapp
 import gx
 import os
 
