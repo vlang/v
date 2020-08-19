@@ -2229,7 +2229,7 @@ $if macos {
     println('macOS')
 }
 $else {
-    println('different OS)
+    println('different OS')
 }
 
 $if debug {
