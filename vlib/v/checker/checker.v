@@ -2356,6 +2356,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					type_name := c.table.type_to_str(node.expr_type)
 					c.error('cannot cast `$type_name` to struct', node.pos)
 				}
+			} else if node.typ == table.bool_type {
+				c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
