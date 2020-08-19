@@ -269,7 +269,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				}
 			}
 			f.is_assign = true
-			f.write(' $node.op.str() ')
+			f.write(' ${node.op.str()} ')
 			for i, val in node.right {
 				f.prefix_expr_cast_expr(val)
 				if i < node.right.len - 1 {
@@ -303,7 +303,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.CompFor {
 			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
-			f.writeln('\$for $it.val_var in ${typ}($it.kind.str()) {')
+			f.writeln('\$for $it.val_var in ${typ}(${it.kind.str()}) {')
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
@@ -756,7 +756,7 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
-		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
+		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | ${node.str()}')
 	}
 	match mut node {
 		ast.AnonFn {
@@ -1273,7 +1273,7 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	if f.is_inside_interp {
 		f.expr(node.left)
-		f.write('$node.op.str()')
+		f.write('${node.op.str()}')
 		f.expr(node.right)
 	} else {
 		buffering_save := f.buffering
@@ -1293,7 +1293,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 				' != '
 			})
 		} else {
-			f.write(' $node.op.str() ')
+			f.write(' ${node.op.str()} ')
 		}
 		f.expr_bufs << f.out.str()
 		mut penalty := 3
