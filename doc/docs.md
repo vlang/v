@@ -2228,6 +2228,9 @@ $if linux {
 $if macos {
     println('macOS')
 }
+$else {
+    println('different OS)
+}
 
 $if debug {
     println('debugging')
