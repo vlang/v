@@ -729,6 +729,9 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
+			else if s.is_inter_start && next_char == `(` {
+				s.warn('use e.g. `\${f()}` or `\$f\\()` instead of `\$f()`')
+			}
 			if s.pos == 0 && next_char == ` ` {
 				// If a single letter name at the start of the file, increment
 				// Otherwise the scanner would be stuck at s.pos = 0
@@ -1370,6 +1373,14 @@ fn (mut s Scanner) inc_line_number() {
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
 	}
+}
+
+pub fn (s &Scanner) warn(msg string) {
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}
+	eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 }
 
 pub fn (s &Scanner) error(msg string) {
