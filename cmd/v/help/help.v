@@ -14,9 +14,10 @@ pub fn print_and_exit(topic string) {
 	for b in topic {
 		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {
 			continue
+		} else {
+			println(unknown_topic)
+			exit(1)
 		}
-		println(unknown_topic)
-		exit(1)
 	}
 	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${topic}.txt')
 	content := os.read_file(target_topic) or {
