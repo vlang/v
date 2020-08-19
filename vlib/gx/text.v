@@ -6,6 +6,12 @@ const (
 	used_import = fontstash.used_import
 )
 
+// TODO: remove these and uae the enum everywhere
+const (
+	align_left = HorizontalAlign.left
+	align_right = HorizontalAlign.right
+)
+
 pub enum HorizontalAlign {
 	left = C.FONS_ALIGN_LEFT
 	center = C.FONS_ALIGN_CENTER
@@ -30,5 +36,4 @@ pub:
 	bold           bool
 	mono           bool
 	italic         bool
-
 }
