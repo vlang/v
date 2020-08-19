@@ -6,7 +6,7 @@ module builtin
 
 [unsafe]
 fn arr_min<T>(a array) T {
-	// if a.len==0 { return none } // TODO needs fix of 'duplicate method xxx'
+	if a.len==0 { panic('.min called on an empty array') } // TODO
 	unsafe {
 		data := &T(a.data)
 		mut val := data[0]
@@ -41,7 +41,7 @@ pub fn (a []f64)  min() f64  { return arr_min<f64>(a)  }
 
 [unsafe]
 fn arr_max<T>(a array) T {
-	// if a.len==0 { return none } // TODO needs fix of 'duplicate method xxx'
+	if a.len==0 { panic('.max called on an empty array') } // TODO
 	unsafe {
 		data := &T(a.data)
 		mut val := data[0]
@@ -76,7 +76,7 @@ pub fn (a []f64)  max() f64  { return arr_max<f64>(a)  }
 
 [unsafe]
 fn arr_argmin<T>(a array) int {
-	// if a.len==0 { return none } // TODO needs fix of 'duplicate method xxx'
+	if a.len==0 { panic('.argmin called on an empty array') } // TODO
 	mut idx := 0
 	unsafe {
 		data := &T(a.data)
@@ -113,7 +113,7 @@ pub fn (a []f64)  argmin() int { return arr_argmin<f64>(a)  }
 
 [unsafe]
 fn arr_argmax<T>(a array) int {
-	// if a.len==0 { return none } // TODO needs fix of 'duplicate method xxx'
+	if a.len==0 { panic('.argmax called on an empty array') } // TODO
 	mut idx := 0
 	unsafe {
 		data := &T(a.data)
