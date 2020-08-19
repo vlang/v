@@ -724,8 +724,8 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 			}
 			// end of `$expr`
-			// allow `'$a.b'` and `'$a.c()'`
-			if s.is_inter_start && next_char != `.` && next_char != `(` {
+			// allow `$a.b`, `$f()`, `$a[expr]`, `$s.m()`, `$s.a[expr]`
+			if s.is_inter_start && next_char !in [`.`, `(`, `[`] {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
@@ -753,8 +753,8 @@ fn (mut s Scanner) text_scan() token.Token {
 			num := s.ident_number()
 			return s.new_token(.number, num, num.len)
 		}
-		// Handle `'$fn()'`
-		if c == `)` && s.is_inter_start {
+		// Handle `$fn()`, `$a[expr]`
+		if c in [`)`, `]`] && s.is_inter_start {
 			next_char := s.look_ahead(1)
 			if next_char != `.` {
 				s.is_inter_end = true
@@ -762,7 +762,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				if next_char == s.quote {
 					s.is_inside_string = false
 				}
-				return s.new_token(.rpar, '', 1)
+				if c == `)` {
+					return s.new_token(.rpar, '', 1)
+				}
+				return s.new_token(.rsbr, '', 1)
 			}
 		}
 		// all other tokens

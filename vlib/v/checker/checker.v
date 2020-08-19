@@ -925,7 +925,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if sym.kind != elem_sym.kind &&
 				((elem_sym.kind == .int && sym.kind != .any_int) ||
 				(elem_sym.kind == .f64 && sym.kind != .any_float)) {
-				c.error('type mismatch, should use `$elem_sym.name[]`', arg_expr.position())
+				c.error('type mismatch, should use `$elem_sym.name\[]`', arg_expr.position())
 			}
 		} else {
 			if arg_sym.kind != elem_sym.kind &&

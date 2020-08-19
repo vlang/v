@@ -192,7 +192,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get(')
 	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
 	g.auto_str_funcs.write(', ')
-	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
+	g.auto_str_funcs.writeln(' &($val_styp\[]) { $zero }));')
 	if val_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {

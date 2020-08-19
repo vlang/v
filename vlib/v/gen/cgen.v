@@ -1004,7 +1004,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = (*(voidptr*)map_get($atmp, $key, &(voidptr[]){ $zero }));')
 			} else {
-				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
+				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp, $key, &($val_styp\[]){ $zero }));')
 			}
 		}
 		g.stmts(it.stmts)
@@ -1062,7 +1062,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 				g.write(', .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if expected_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){.obj = memdup(&($got_styp[]) {')
+				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){.obj = memdup(&($got_styp\[]) {')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if got_is_ptr {
@@ -1070,7 +1070,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 				g.expr(expr)
 				g.write(', .typ = $got_idx /* $got_sym.name */}')
 			} else {
-				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp\[]) {')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
 			}
@@ -1328,7 +1328,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						if val_typ.kind == .function {
 							g.writeln(', &(voidptr[]){ $zero });')
 						} else {
-							g.writeln(', &($styp[]){ $zero });')
+							g.writeln(', &($styp\[]){ $zero });')
 						}
 					}
 				}
@@ -1887,9 +1887,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			size := node.vals.len
 			if size > 0 {
 				if value_typ.kind == .function {
-					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str\[$size]){')
 				} else {
-					g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+					g.write('new_map_init($size, sizeof($value_typ_str), _MOV(($key_typ_str\[$size]){')
 				}
 				for expr in node.keys {
 					g.expr(expr)
@@ -1898,7 +1898,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				if value_typ.kind == .function {
 					g.write('}), _MOV((voidptr[$size]){')
 				} else {
-					g.write('}), _MOV(($value_typ_str[$size]){')
+					g.write('}), _MOV(($value_typ_str\[$size]){')
 				}
 				for expr in node.vals {
 					g.expr(expr)
@@ -2283,7 +2283,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if elem_sym.kind == .function {
 				g.write(', _MOV((voidptr[]){ ')
 			} else {
-				g.write(', _MOV(($elem_type_str[]){ ')
+				g.write(', _MOV(($elem_type_str\[]){ ')
 			}
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
@@ -2763,7 +2763,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						if elem_typ.kind == .function {
 							g.write(', &(voidptr[]) { ')
 						} else {
-							g.write(', &($elem_type_str[]) { ')
+							g.write(', &($elem_type_str\[]) { ')
 						}
 					} else {
 						g.write(', &')
@@ -2839,7 +2839,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					if elem_typ.kind == .function {
 						g.write(', &(voidptr[]) { ')
 					} else {
-						g.write(', &($elem_type_str[]) { ')
+						g.write(', &($elem_type_str\[]) { ')
 					}
 				} else if g.inside_map_postfix || g.inside_map_infix {
 					zero := g.type_default(info.value_type)
@@ -2850,7 +2850,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.expr(node.left)
 					g.write(', ')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))')
+					g.write(', &($elem_type_str\[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
 					if elem_typ.kind == .function {
@@ -2867,7 +2867,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					if elem_typ.kind == .function {
 						g.write(', &(voidptr[]){ $zero }))')
 					} else {
-						g.write(', &($elem_type_str[]){ $zero }))')
+						g.write(', &($elem_type_str\[]){ $zero }))')
 					}
 				}
 			} else if sym.kind == .string && !node.left_type.is_ptr() {
@@ -3025,7 +3025,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// Create a tmp for this option
 			opt_tmp := g.new_tmp_var()
 			g.writeln('$opt_type $opt_tmp;')
-			g.write('opt_ok2(&($styp[]) { ')
+			g.write('opt_ok2(&($styp\[]) { ')
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
@@ -3431,12 +3431,12 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		}
 		g.definitions.writeln(') = (*(voidptr*)map_get(a, k, &(voidptr[]){ 0 }));')
 	} else {
-		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
+		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ\[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {') }
+		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ\[]){tos_lit("")})), v)) {') }
 		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
-		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
+		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ\[]){ 0 })) != v) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -3996,7 +3996,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.expr(node.args[1].expr)
 		g.write('.len)')
 	} else {
-		g.write(', &($elem_type_str[]){')
+		g.write(', &($elem_type_str\[]){')
 		g.expr(node.args[1].expr)
 		g.write('})')
 	}
@@ -4022,7 +4022,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('.len)')
 	} else {
-		g.write(', &($elem_type_str[]){')
+		g.write(', &($elem_type_str\[]){')
 		g.expr(node.args[0].expr)
 		g.write('})')
 	}
@@ -4809,15 +4809,15 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('sizeof($elem_type_str), ')
 		}
 		if is_default_array {
-			g.write('($elem_type_str[]){')
+			g.write('($elem_type_str\[]){')
 			g.expr(it.default_expr)
 			g.write('}[0])')
 		} else if it.has_default {
-			g.write('&($elem_type_str[]){')
+			g.write('&($elem_type_str\[]){')
 			g.expr(it.default_expr)
 			g.write('})')
 		} else if it.has_len && it.elem_type == table.string_type {
-			g.write('&($elem_type_str[]){')
+			g.write('&($elem_type_str\[]){')
 			g.write('tos_lit("")')
 			g.write('})')
 		} else {
@@ -4830,7 +4830,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 	if elem_sym.kind == .function {
 		g.write('new_array_from_c_array($len, $len, sizeof(voidptr), _MOV((voidptr[$len]){')
 	} else {
-		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str[$len]){')
+		g.write('new_array_from_c_array($len, $len, sizeof($elem_type_str), _MOV(($elem_type_str\[$len]){')
 	}
 	if len > 8 {
 		g.writeln('')

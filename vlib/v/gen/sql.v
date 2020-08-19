@@ -230,7 +230,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			}
 		}
 		if node.is_array {
-			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str[]){ $tmp }));')
+			g.writeln('\t array_push(&${tmp}_array, _MOV(($elem_type_str\[]){ $tmp }));')
 		}
 		g.writeln('}')
 		g.writeln('sqlite3_finalize($g.sql_stmt_name);')

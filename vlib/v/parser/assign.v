@@ -130,7 +130,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					p.error_with_pos('non-name `$lx.left\[$lx.index]` on left side of `:=`',
 						lx.pos)
 				}
 				lx.is_setter = true
