@@ -27,7 +27,16 @@ pub const (
 // for simplicity, all header includes are here because import order matters and we dont have any way
 // to ensure import order with V yet
 #define SOKOL_IMPL
-#define SOKOL_NO_ENTRY
+
+// TODO should not be defined for android graphic (apk/aab using sokol) builds, but we have no ways to undefine
+//#define SOKOL_NO_ENTRY
+#flag linux   -DSOKOL_NO_ENTRY
+#flag darwin  -DSOKOL_NO_ENTRY
+#flag windows -DSOKOL_NO_ENTRY
+#flag freebsd -DSOKOL_NO_ENTRY
+#flag solaris -DSOKOL_NO_ENTRY
+// TODO end
+
 #include "sokol_app.h"
 
 #define SOKOL_IMPL

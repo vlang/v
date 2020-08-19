@@ -46,12 +46,12 @@ fn (mut a App) cleanup() {
 	a.ps.free()
 }
 
-fn (a App) run() {
+fn (mut a App) run() {
 	title := 'V Particle Example'
 	desc := C.sapp_desc{
 		width: a.width
 		height: a.height
-		user_data: &a
+		user_data: a
 		init_userdata_cb: init
 		frame_userdata_cb: frame
 		event_userdata_cb: event
@@ -59,6 +59,7 @@ fn (a App) run() {
 		html5_canvas_name: title.str
 		cleanup_userdata_cb: cleanup
 	}
+
 	sapp.run(&desc)
 }
 
@@ -124,6 +125,15 @@ fn event(ev &C.sapp_event, user_data voidptr) {
 			if is_pressed {
 				app.ps.reset()
 			}
+		}
+	}
+
+	if ev.@type == .touches_began || ev.@type == .touches_moved {
+		if ev.num_touches > 0 {
+
+			touch_point := ev.touches[0]
+			app.ps.explode(touch_point.pos_x, touch_point.pos_y)
+
 		}
 	}
 }
