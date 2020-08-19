@@ -966,7 +966,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// `chan typ{...}`
 	if p.tok.lit == 'chan' {
 		first_pos := p.tok.position()
-		mut last_pos := p.tok.position()
+		mut last_pos := first_pos
 		chan_type := p.parse_chan_type()
 		mut has_cap := false
 		mut cap_expr := ast.Expr{}
@@ -992,13 +992,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			last_pos = p.tok.position()
 			p.check(.rcbr)
 		}
-		pos := token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
 		return ast.ChanInit{
-			pos: pos
+			pos: first_pos.extend(last_pos)
 			has_cap: has_cap
 			cap_expr: cap_expr
 			typ: chan_type
@@ -1034,10 +1029,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	// fn call or type cast
-	if p.peek_tok.kind == .lpar ||
+	same_line := p.tok.line_nr == p.peek_tok.line_nr
+	// `(` must be on same line as name token otherwise it's a ParExpr
+	if !same_line && p.peek_tok.kind == .lpar {
+		node = p.parse_ident(language)
+	} else if p.peek_tok.kind == .lpar ||
 		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
-		// foo() or foo<int>()
+		// foo(), foo<int>() or type() cast
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
