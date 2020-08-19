@@ -23,9 +23,9 @@ fn cerror(e string) {
 fn vmod_content(name, desc string) string {
 	return [
 		'Module {',
-		"	name: '$name',",
-		"	description: '$desc',",
-		"	version: '0.0.0',",
+		"	name: '$name'",
+		"	description: '$desc'",
+		"	version: '0.0.0'",
 		'	dependencies: []',
 		'}'
 	].join('\n')
