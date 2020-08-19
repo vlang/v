@@ -64,7 +64,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe_fn]
+[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
@@ -168,8 +168,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		return []
 	}
 	*/
-	// println('get_builtin_files() lookuppath:')
-	// println(v.pref.lookup_path)
+	v.log('v.pref.lookup_path: $v.pref.lookup_path')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
@@ -184,7 +183,7 @@ pub fn (v Builder) get_builtin_files() []string {
 			}
 			if v.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if v.pref.is_script && os.exists(os.join_path(location, 'os')) {
+				if v.pref.is_vsh && os.exists(os.join_path(location, 'os')) {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'os'))
 				}
 			}

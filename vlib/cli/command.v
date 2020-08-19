@@ -109,10 +109,10 @@ pub fn (mut cmd Command) parse(args []string) {
 	}
 	cmd.add_default_commands()
 	if cmd.sort_flags {
-		cmd.flags.sort()
+		cmd.flags.sort(a.name < b.name)
 	}
 	if cmd.sort_commands {
-		cmd.commands.sort()
+		cmd.commands.sort(a.name < b.name)
 	}
 	cmd.args = args[1..]
 	for i in 0 .. cmd.commands.len {
@@ -286,8 +286,3 @@ fn (cmds []Command) contains(name string) bool {
 	return false
 }
 
-fn (mut cmds []Command) sort() {
-	cmds.sort_with_compare(fn (a, b &Command) int {
-		return compare_strings(&a.name, &b.name)
-	})
-}

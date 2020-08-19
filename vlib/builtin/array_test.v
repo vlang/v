@@ -301,7 +301,7 @@ struct Foooj {
 }
 
 fn test_fixed() {
-	mut nums := [4]int
+	mut nums := [4]int{}
 	//x := nums[1..3]
 	//assert x.len == 2
 	assert nums[0] == 0
@@ -310,7 +310,7 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [5]int // c_n
+	nums2 := [5]int{} // c_n
 	assert nums2[c_n - 1] == 0
 }
 
@@ -695,6 +695,11 @@ fn test_eq() {
 	*/
 }
 
+struct User {
+	age int
+	name string
+}
+
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
@@ -710,6 +715,30 @@ fn test_sort() {
 	assert nums[2] == 42
 	assert nums[3] == 67
 	assert nums[4] == 108
+	//
+	nums.sort(a < b)
+	assert nums[0] == -3
+	assert nums[1] == 7
+	assert nums[2] == 42
+	assert nums[3] == 67
+	assert nums[4] == 108
+	//
+	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
+	users.sort(a.age < b.age)
+	assert(users[0].age == 20)
+	assert(users[1].age == 22)
+	assert(users[2].age == 25)
+	assert(users[0].name == 'Bob')
+	assert(users[1].name == 'Peter')
+	assert(users[2].name == 'Alice')
+	//
+	users.sort(a.age > b.age)
+	assert(users[0].age == 25)
+	assert(users[1].age == 22)
+	assert(users[2].age == 20)
+	//
+	users.sort(a.name < b.name) // Test sorting by string fields
+	//assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
 fn test_f32_sort() {

@@ -3,12 +3,41 @@
 // that can be found in the LICENSE file.
 module table
 
-// e.g. `[unsafe_fn]`
+// e.g. `[unsafe]`
 pub struct Attr {
 pub:
-	name        string
-	is_string   bool // `['xxx']`
-	is_ctdefine bool // `[if flag]`
+	name        string // [name]
+	is_string   bool // ['name']
+	is_ctdefine bool // [if name]
+	arg         string // [name: arg]
+	is_string_arg bool // [name: 'arg']
+}
+
+// no square brackets
+pub fn (attr Attr) str() string {
+	mut s := ''
+	if attr.is_ctdefine {
+		s += 'if '
+	}
+	if attr.is_string {
+		s += "'$attr.name'"
+	}
+	else {
+		s += attr.name
+		if attr.arg.len > 0 {
+			s += ': '
+			if attr.is_string_arg {
+				mut a := attr.arg.replace('\\', '\\\\')
+				// FIXME: other escapes e.g. \r\n
+				a = a.replace("'", "\\'")
+				s += "'$a'"
+			}
+			else {
+				s += attr.arg
+			}
+		}
+	}
+	return s
 }
 
 pub fn (attrs []Attr) contains(str string) bool {

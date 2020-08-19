@@ -1,4 +1,4 @@
-vlib/v/checker/tests/cannot_assign_array.v:9:11: error: cannot assign `array_fixed_f64_8` to `ctx.vb` of type `string`
+vlib/v/checker/tests/cannot_assign_array.v:9:11: error: cannot assign `[]fixed_f64_8` to `ctx.vb` of type `string`
     7 |     mut ctx := Context{}
     8 |     x := 2.32
     9 |     ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!

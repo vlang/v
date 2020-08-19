@@ -3,7 +3,6 @@
 module gg
 
 import gx
-import os
 import sokol
 import sokol.sapp
 import sokol.sgl
@@ -186,13 +185,11 @@ pub fn new_context(cfg Config) &Context {
 	mut g := &Context{
 		width: cfg.width
 		height: cfg.height
-		clear_pass: gfx.create_clear_pass(f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
-			f32(cfg.bg_color.b) / 255.0, 1.0)
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
-
 	}
+	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
 		user_data: g
@@ -219,8 +216,14 @@ pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
 
+pub fn (mut ctx Context) set_bg_color(c gx.Color) {
+	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0,
+			f32(c.b) / 255.0, f32(c.a) / 255.0)
+}
+
+// TODO: Fix alpha
 pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
@@ -230,7 +233,7 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	if ctx.scale == 1 {
 		sgl.v2f(x, y)
@@ -272,7 +275,7 @@ pub fn (gg &Context) end() {
 }
 
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)

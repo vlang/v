@@ -595,6 +595,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	name := node.name.after('.')
 	f.writeln('$name {')
 	mut max := 0
+	mut max_type := 0
+	mut field_types := []string{cap: node.fields.len}
 	for field in node.fields {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -608,6 +610,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
+		}
+		ft := f.type_to_str(field.typ)
+		field_types << ft
+		if ft.len > max_type {
+			max_type = ft.len
 		}
 	}
 	for i, field in node.fields {
@@ -623,8 +630,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments.len == 0 {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
-			f.write(f.type_to_str(field.typ))
-			f.inline_attrs(field.attrs)
+			f.write(field_types[i])
+			if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only]			attr being added to fields, fix it
+				f.write(strings.repeat(` `, max_type - field_types[i].len))
+				f.inline_attrs(field.attrs)
+			}
 			if field.has_default_expr {
 				f.write(' = ')
 				f.prefix_expr_cast_expr(field.default_expr)
@@ -654,7 +664,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			j++
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
-		f.write(f.type_to_str(field.typ))
+		f.write(field_types[i])
 		f.inline_attrs(field.attrs)
 		if field.has_default_expr {
 			f.write(' = ')
@@ -788,6 +798,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.CallExpr {
 			f.call_expr(node)
+		}
+		ast.ChanInit {
+			f.write('chan[')
+			f.write(f.type_to_str(node.elem_type))
+			f.write(']{')
+			if node.has_cap {
+				f.write('cap: ')
+				f.expr(node.cap_expr)
+			}
+			f.write('}')
 		}
 		ast.CharLiteral {
 			f.write('`$node.val`')
@@ -1115,18 +1135,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 
 fn (mut f Fmt) attrs(attrs []table.Attr) {
 	for attr in attrs {
-		f.write('[')
-		if attr.is_ctdefine {
-			f.write('if ')
-		}
-		if attr.is_string {
-			f.write("'")
-		}
-		f.write(attr.name)
-		if attr.is_string {
-			f.write("'")
-		}
-		f.writeln(']')
+		f.writeln('[$attr]')
 	}
 }
 
@@ -1137,9 +1146,9 @@ fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
 	f.write(' [')
 	for i, attr in attrs {
 		if i > 0 {
-			f.write(';')
+			f.write('; ')
 		}
-		f.write(attr.name)
+		f.write('$attr')
 	}
 	f.write(']')
 }
@@ -1457,12 +1466,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		mut name := f.short_module(node.name)
-		f.mark_module_as_used(name)
-		if node.name in f.mod2alias {
-			name = f.mod2alias[node.name]
+		if node.left is ast.AnonFn as anon_fn {
+			f.fn_decl(anon_fn.decl)
+		} else {
+			mut name := f.short_module(node.name)
+			f.mark_module_as_used(name)
+			if node.name in f.mod2alias {
+				name = f.mod2alias[node.name]
+			}
+			f.write('$name')
 		}
-		f.write('$name')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')
 			f.write(f.type_to_str(node.generic_type))
@@ -1721,6 +1734,11 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		f.write(f.type_to_str(it.elem_type))
+		if it.has_default {
+			f.write('{init: $it.default_expr}')
+		} else {
+			f.write('{}')
+		}
 	}
 }
 

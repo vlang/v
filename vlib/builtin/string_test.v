@@ -502,10 +502,10 @@ fn test_bytes_to_string() {
 		buf[3] = `l`
 		buf[4] = `o`
 	}
-	assert string(buf) == 'hello'
-	assert string(buf, 2) == 'he'
+	assert unsafe { buf.vstring() } == 'hello'
+	assert unsafe { buf.vstring_with_len(2) } == 'he'
 	bytes := [`h`, `e`, `l`, `l`, `o`]
-	assert string(bytes, 5) == 'hello'
+	assert bytes.bytestr() == 'hello'
 }
 
 fn test_count() {
@@ -575,10 +575,11 @@ fn test_capitalize() {
 	assert s.capitalize() == ''
 	s = 'TEST IT'
 	assert !s.is_capital()
-	assert s.capitalize() == 'Test it'
+	assert s.capitalize() == 'TEST IT'
 	s = 'Test it'
 	assert s.is_capital()
 	assert s.capitalize() == 'Test it'
+	assert 'GameMission_t'.capitalize() == 'GameMission_t'
 }
 
 fn test_title() {
@@ -587,7 +588,7 @@ fn test_title() {
 	assert s.title() == 'Hello World'
 	s = 'HELLO WORLD'
 	assert !s.is_title()
-	assert s.title() == 'Hello World'
+	assert s.title() == 'HELLO WORLD'
 	s = 'Hello World'
 	assert s.is_title()
 	assert s.title() == 'Hello World'

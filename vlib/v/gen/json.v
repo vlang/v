@@ -63,15 +63,24 @@ $dec_fn_dec {
 	g.json_forward_decls.writeln('$enc_fn_dec;\n')
 	enc.writeln('
 $enc_fn_dec {
-\tcJSON *o = cJSON_CreateObject();')
+\tcJSON *o;')
 	if sym.kind == .array {
 		// Handle arrays
 		value_type := g.table.value_type(typ)
+		// If we have `[]Profile`, have to register a Profile en(de)coder first
 		g.gen_json_for_type(value_type)
 		dec.writeln(g.decode_array(value_type))
 		enc.writeln(g.encode_array(value_type))
 		// enc += g.encode_array(t)
+	} else if sym.kind == .map {
+		// Handle maps
+		m := sym.info as table.Map		
+		g.gen_json_for_type(m.key_type)
+		g.gen_json_for_type(m.value_type)
+		dec.writeln(g.decode_map(m.key_type, m.value_type))
+		enc.writeln(g.encode_map(m.key_type, m.value_type))
 	} else {
+		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
 		if sym.info !is table.Struct {
 			verror('json: $sym.name is not struct')
@@ -83,26 +92,31 @@ $enc_fn_dec {
 			}
 			mut name := field.name
 			for attr in field.attrs {
-				if attr.name.starts_with('json:') {
-					name = attr.name[5..]
+				if attr.name == 'json' {
+					name = attr.arg
 					break
 				}
 			}
 			field_type := g.typ(field.typ)
 			if field.attrs.contains('raw') {
-				dec.writeln(' res . ${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+				dec.writeln('\tres.${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 			} else {
 				// Now generate decoders for all field types in this struct
 				// need to do it here so that these functions are generated first
 				g.gen_json_for_type(field.typ)
 				dec_name := js_dec_name(field_type)
 				if is_js_prim(field_type) {
-					dec.writeln(' res . ${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
+					dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
 				} else if g.table.get_type_symbol(field.typ).kind == .enum_ {
-					dec.writeln(' res . ${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
+					dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
 				} else {
 					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
-					dec.writeln('  res . ${c_name(field.name)} = *($field_type*) $dec_name (js_get(root,"$name")).data;')
+					tmp := g.new_tmp_var()
+					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+					dec.writeln('\tif(!${tmp}.ok) {')
+					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+					dec.writeln('\t}')
+					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 				}
 			}
 			mut enc_name := js_enc_name(field_type)
@@ -115,9 +129,9 @@ $enc_fn_dec {
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
-	dec.writeln('Option_$styp ret;')
-	dec.writeln('opt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
-	dec.writeln('return ret;\n}')
+	dec.writeln('\tOption_$styp ret;')
+	dec.writeln('\topt_ok2(&res, (OptionBase*)&ret, sizeof(res));')
+	dec.writeln('\treturn ret;\n}')
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())
@@ -142,22 +156,32 @@ fn is_js_prim(typ string) bool {
 fn (mut g Gen) decode_array(value_type table.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
-	// If we have `[]Profile`, have to register a Profile en(de)coder first
-	g.gen_json_for_type(value_type)
+	
 	mut s := ''
 	if is_js_prim(styp) {
 		s = '$styp val = ${fn_name}(jsval); '
 	} else {
-		s = '\t$styp val = *($styp*) ${fn_name}(jsval).data; '
+		s = '
+		Option_$styp val2 = $fn_name (jsval);
+		if(!val2.ok) {
+			array_free(&res);
+			return *(Option_array_${styp}*)&val2;
+		}
+		$styp val = *($styp*)val2.data;
+'
 	}
 	return '
-res = __new_array(0, 0, sizeof($styp));
-const cJSON *jsval = NULL;
-cJSON_ArrayForEach(jsval, root)
-{
-$s
-	array_push(&res, &val);
-}
+	if(!cJSON_IsArray(root)) {
+		Option err = v_error( string_add(tos_lit("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
+		return *(Option_array_${styp} *)&err;
+	}
+	res = __new_array(0, 0, sizeof($styp));
+	const cJSON *jsval = NULL;
+	cJSON_ArrayForEach(jsval, root)
+	{
+	$s
+		array_push(&res, &val);
+	}
 '
 }
 
@@ -165,9 +189,75 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_enc_name(styp)
 	return '
-o = cJSON_CreateArray();
-for (int i = 0; i < val.len; i++){
-	cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
+	o = cJSON_CreateArray();
+	for (int i = 0; i < val.len; i++){
+		cJSON_AddItemToArray(o, $fn_name (  (($styp*)val.data)[i]  ));
+	}
+'
 }
+
+fn (mut g Gen) decode_map(key_type, value_type table.Type) string {
+	
+	styp := g.typ(key_type)
+
+	styp_v := g.typ(value_type)
+	fn_name_v := js_dec_name(styp_v)
+
+	mut s := ''
+	if is_js_prim(styp_v) {
+		s = '$styp_v val = $fn_name_v (js_get(root, jsval->string));'
+	} else {
+		s = '
+		Option_$styp_v val2 = $fn_name_v (js_get(root, jsval->string));
+		if(!val2.ok) {
+			map_free(&res);
+			return *(Option_map_${styp}_${styp_v}*)&val2;
+		}
+		$styp_v val = *($styp_v*)val2.data;
+'
+	}
+
+	return '
+	if(!cJSON_IsObject(root)) {
+		Option err = v_error( string_add(tos_lit("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
+		return *(Option_map_${styp}_${styp_v} *)&err;
+	}
+	res = new_map_1(sizeof($styp_v));
+	cJSON *jsval = NULL;
+	cJSON_ArrayForEach(jsval, root)
+	{
+		$s
+		map_set(&res, tos2( (byteptr) jsval->string ) , &val );
+	}
+'
+}
+
+fn (mut g Gen) encode_map(key_type, value_type table.Type) string {
+	styp := g.typ(key_type)
+
+	styp_v := g.typ(value_type)
+	fn_name_v := js_enc_name(styp_v)
+
+	zero := g.type_default(value_type)
+
+	keys_tmp := g.new_tmp_var()
+
+	mut key := 'string key = '
+	if key_type.is_string() {
+		key += '(($styp*)${keys_tmp}.data)[i];'
+	} else {
+		// g.gen_str_for_type(key_type)
+		// key += '${styp}_str((($styp*)${keys_tmp}.data)[i]);'
+		verror('json: encode only maps with string keys')
+	}
+
+	return '
+	o = cJSON_CreateObject();
+	array_$styp $keys_tmp = map_keys(&val);
+	for (int i = 0; i < ${keys_tmp}.len; ++i) {
+		$key
+		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get(val, key, &($styp_v[]) { $zero } ) ) );
+	}
+	array_free(&$keys_tmp);
 '
 }

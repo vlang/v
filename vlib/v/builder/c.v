@@ -36,6 +36,7 @@ pub fn (mut b Builder) gen_c(v_files []string) string {
 
 pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.out_name_c = out_file
+	b.pref.out_name_c = os.real_path(out_file)
 	b.info('build_c($out_file)')
 	output2 := b.gen_c(v_files)
 	mut f := os.create(out_file) or {

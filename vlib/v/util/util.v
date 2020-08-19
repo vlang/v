@@ -23,7 +23,7 @@ pub const (
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
@@ -95,7 +95,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)

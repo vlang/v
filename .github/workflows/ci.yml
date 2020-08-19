@@ -28,9 +28,9 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependencies
       run: |
-           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; 
+           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
            sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev      
+           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
       run: |
         echo $VFLAGS
@@ -97,7 +97,7 @@ jobs:
         ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
         brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
         brew install postgresql
-        brew install glfw 
+        brew install glfw
         ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
@@ -124,6 +124,10 @@ jobs:
       run: ./v test-fixed
     - name: Build examples
       run: ./v build-examples
+    - name: v vet
+      run: |
+        ./v vet vlib/sqlite
+        ./v vet vlib/v
     - name: Cross-compilation to Linux
       run: ./v -os linux cmd/v
 #    - name: Test vsh
@@ -151,8 +155,8 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-         sudo apt-get update; 
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
          sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
@@ -255,10 +259,10 @@ jobs:
 #         node-version: 12.x
 #     - name: Install dependencies
 #       run: |
-#          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-#          sudo apt-get update; 
+#          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+#          sudo apt-get update;
 #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-#          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
+#          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
 #     - name: Build v
 #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 # #    - name: Test v binaries
@@ -424,11 +428,11 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependencies
       run: |
-        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-        sudo apt-get update; 
-        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev 
-        sudo apt-get install --quiet -y valgrind g++-9 
-        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
+        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+        sudo apt-get update;
+        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev
+        sudo apt-get install --quiet -y valgrind g++-9
+        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4
     - name: g++ version

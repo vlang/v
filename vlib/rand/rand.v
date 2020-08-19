@@ -141,7 +141,7 @@ pub fn string(len int) string {
 			buf[i] = chars[intn(chars.len)]
 		}
 	}
-	return string(buf, len)
+	return unsafe { buf.vstring_with_len(len) }
 }
 
 // rand.uuid_v4 generate a completely random UUID (v4)
@@ -181,7 +181,7 @@ pub fn uuid_v4() string {
 		buf[14] = `4`
 		buf[buflen] = 0
 	}
-	return string(buf, buflen)
+	return unsafe { buf.vstring_with_len(buflen) }
 }
 
 const(
@@ -232,5 +232,5 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	unsafe{
 		buf[26] = 0
 	}
-	return string(buf, buflen)
+	return unsafe { buf.vstring_with_len(buflen) }
 }

@@ -10,10 +10,11 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	CharLiteral | ChanInit | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+	
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
@@ -434,9 +435,11 @@ pub mut:
 
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op         token.Kind
+	right      Expr
+	pos        token.Position
+pub mut:
+	right_type table.Type
 }
 
 pub struct IndexExpr {
@@ -612,12 +615,13 @@ pub:
 	mod string
 }
 
-// filter(), map()
+/*
+// filter(), map(), sort()
 pub struct Lambda {
 pub:
 	name string
 }
-
+*/
 pub struct AssignStmt {
 pub:
 	right         []Expr
@@ -731,13 +735,13 @@ pub struct ArrayInit {
 pub:
 	pos             token.Position
 	elem_type_pos   token.Position
-	exprs           []Expr
+	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	is_fixed        bool
-	has_val         bool
+	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
 	len_expr        Expr
 	cap_expr        Expr
-	default_expr    Expr
+	default_expr    Expr // init: expr
 	has_len         bool
 	has_cap         bool
 	has_default     bool
@@ -747,6 +751,16 @@ pub mut:
 	interface_type  table.Type // Animal
 	elem_type       table.Type
 	typ             table.Type
+}
+
+pub struct ChanInit {
+pub:
+	pos        token.Position
+	cap_expr   Expr
+	has_cap    bool
+pub mut:
+	typ        table.Type
+	elem_type  table.Type
 }
 
 pub struct MapInit {
@@ -769,6 +783,14 @@ pub:
 	has_low  bool
 }
 
+// NB: &string(x) gets parsed as ast.PrefixExpr{ right: ast.CastExpr{...} }
+// TODO: that is very likely a parsing bug. It should get parsed as just
+// ast.CastExpr{...}, where .typname is '&string' instead.
+// The current situation leads to special cases in vfmt and cgen
+// (see prefix_expr_cast_expr in fmt.v, and .is_amp in cgen.v)
+// .in_prexpr is also needed because of that, because the checker needs to
+// show warnings about the deprecated C->V conversions `string(x)` and
+// `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
 	expr      Expr // `buf` in `string(buf, n)`
@@ -779,6 +801,7 @@ pub mut:
 	typname   string
 	expr_type table.Type // `byteptr`
 	has_arg   bool
+	in_prexpr bool // is the parent node an ast.PrefixExpr
 }
 
 pub struct AssertStmt {
@@ -1036,6 +1059,16 @@ pub fn (expr Expr) position() token.Position {
 			return token.Position{}
 		}
 	}
+}
+
+pub fn (expr Expr) is_lvalue() bool {
+	match expr {
+		Ident {return true}
+		IndexExpr {return expr.left.is_lvalue()}
+		SelectorExpr {return expr.expr.is_lvalue()}
+		else {}
+	}
+	return false
 }
 
 pub fn (stmt Stmt) position() token.Position {

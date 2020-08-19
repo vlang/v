@@ -1,5 +1,8 @@
 module sapp
 
+// Android needs a global reference to `g_desc`
+__global g_desc C.sapp_desc
+
 /* returns true after sokol-app has been initialized */
 [inline]
 pub fn isvalid() bool {
@@ -111,6 +114,7 @@ pub fn get_clipboard_string() byteptr {
 /* special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub) */
 [inline]
 pub fn run(desc &C.sapp_desc) int {
+	g_desc = desc
 	return C.sapp_run(desc)
 }
 

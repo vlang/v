@@ -51,8 +51,10 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string(make(0, argc, sizeof(string)))
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
-		// args [i] = string(argv[i])
-		args << unsafe {string(argv[i])}
+		// args [i] = argv[i].vstring()
+		unsafe {
+			args << byteptr(argv[i]).vstring()
+		}
 	}
 	return args
 }
@@ -139,7 +141,7 @@ pub fn exec(cmd string) ?Result {
 	if isnil(f) {
 		return error('exec("$cmd") failed')
 	}
-	buf := [4096]byte
+	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
 	for C.fgets(charptr(buf), 4096, f) != 0 {
 		bufbp := byteptr(buf)

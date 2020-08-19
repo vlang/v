@@ -1,0 +1,6 @@
+vlib/v/checker/tests/arrow_op_wrong_left_type_err_a.v:4:2: error: cannot push on non-channel `i64`
+    2 |     ch := i64(3)
+    3 |     obj := 5
+    4 |     ch <- obj
+      |     ~~
+    5 | }

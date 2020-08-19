@@ -39,7 +39,7 @@ pub fn read_file(path string) ?string {
 		mut str := malloc(fsize + 1)
 		C.fread(str, fsize, 1, fp)
 		str[fsize] = 0
-		return string(str,fsize)
+		return str.vstring_with_len(fsize)
 	}
 }
 
@@ -87,9 +87,9 @@ pub fn cp(old, new string) ? {
 		fp_to := C.open(charptr(new.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp: failed to write to $new', int(fp_to))
+			return error_with_code('cp (permission): failed to write to $new (fp_to: $fp_to)', int(fp_to))
 		}
-		mut buf := [1024]byte
+		mut buf := [1024]byte{}
 		mut count := 0
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
@@ -109,6 +109,8 @@ pub fn cp(old, new string) ? {
 		if C.chmod(charptr(new.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
+		C.close(fp_to)
+		C.close(fp_from)
 	}
 }
 
@@ -673,7 +675,7 @@ pub fn get_raw_line() string {
 				}
 				offset++
 			}
-			return string(buf, offset)
+			return buf.vstring_with_len(offset)
 		}
 	} $else {
 		max := size_t(0)
@@ -858,7 +860,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	$if windows {
 		max := 512
@@ -896,7 +898,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	$if freebsd {
 		mut result := vcalloc(max_path_len)
@@ -905,7 +907,7 @@ pub fn executable() string {
 		unsafe {
 			C.sysctl(mib.data, 4, result, &size, 0, 0)
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
 	$if openbsd {}
@@ -918,7 +920,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		return string(result,count)
+		return result.vstring_with_len(count)
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)
@@ -927,7 +929,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		return string(result,count)
+		return unsafe { result.vstring_with_len(count) }
 	}
 	return executable_fallback()
 }
@@ -1056,7 +1058,7 @@ pub fn getwd() string {
 		if C.getcwd(charptr(buf), 512) == 0 {
 			return ''
 		}
-		return string(buf)
+		return unsafe { buf.vstring() }
 	}
 }
 
@@ -1079,7 +1081,7 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	}
-	return string(fullpath)
+	return unsafe { fullpath.vstring() }
 }
 
 // is_abs_path returns true if `path` is absolute.
@@ -1147,7 +1149,7 @@ pub fn walk(path string, f fn(path string)) {
 	return
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn signal(signum int, handler voidptr) {
 	unsafe {
 		C.signal(signum, handler)

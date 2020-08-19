@@ -236,15 +236,38 @@ ch.pop(&m)
 ch2.pop(&y)
 ```
 
+A channel can be closed to indicate that no further objects can be pushed. Any attempt
+to do so will then result in a runtime panic. The `pop()` method will return immediately `false`
+if the associated channel has been closed and the buffer is empty.
+
+```v
+ch.close()
+...
+if ch.pop(&m) {
+    println('got $m')
+} else {
+    println('channel has been closed')
+}
+```
+
+There are also methods `try_push()` and `try_pop()` which return immediatelly with the return value `.not_ready` if the transaction
+cannot be performed without waiting. The return value is of type `sync.TransactionState` which can also be
+`.success` or `.closed`.
+
+To monitor a channel there is a method `len()` which returns the number of elements currently in the queue and the attribute
+`cap` for the queue length. Please be aware that in general `channel.len() > 0` does not guarantee that the next
+`pop()` will succeed without waiting, since other threads may already have "stolen" elements from the queue. Use `try_pop()` to
+accomplish this kind of task.
+
 The select call is somewhat tricky. The `channel_select()` function needs three arrays that
 contain the channels, the directions (pop/push) and the object references and
-a timeout of type `time.Duration` (or `0` to wait unlimited) as parameters. It returns the
+a timeout of type `time.Duration` (`time.infinite` or `-1` to wait unlimited) as parameters. It returns the
 index of the object that was pushed or popped or `-1` for timeout.
 
 ```v
-mut chans := [ch, ch2]        // the channels to monitor
-directions := [false, false]  // `true` means push, `false` means pop
-mut objs := [voidptr(&m), &y] // the objects to push or pop
+mut chans := [ch, ch2]                    // the channels to monitor
+directions := [sync.Direction.pop, .pop]  // .push or .pop
+mut objs := [voidptr(&m), &y]             // the objects to push or pop
 
 // idx contains the index of the object that was pushed or popped, -1 means timeout occured
 idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
@@ -261,3 +284,4 @@ match idx {
     }
 }
 ```
+If all channels have been closed `-2` is returned as index.

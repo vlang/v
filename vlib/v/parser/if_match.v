@@ -52,7 +52,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 					})
 				}
 				branches << ast.IfBranch{
-					stmts: p.parse_block()
+					stmts: if prev_guard { p.parse_block_no_scope(false) } else { p.parse_block() }
 					pos: start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
@@ -118,7 +118,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
-			body_pos: body_pos.extend(p.tok.position())
+			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
 			left_as_name: left_as_name
 		}
@@ -152,7 +152,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.next()
 		var_name = p.check_name()
 	}
-	p.check(.lcbr)
+	no_lcbr := p.tok.kind != .lcbr
+	if !no_lcbr {
+		p.check(.lcbr)
+	}
 	mut branches := []ast.MatchBranch{}
 	for {
 		branch_first_pos := p.tok.position()
@@ -164,9 +167,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' && p.peek_tok.kind == .dot) &&
-				(p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-				(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
+		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
+			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
+			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
 			if var_name.len == 0 {
 				match cond {
 					ast.Ident {
@@ -239,14 +242,15 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_last_pos := p.tok.position()
 		// p.warn('match block')
 		p.inside_match_body = true
-		stmts := p.parse_block()
+		stmts := p.parse_block_no_scope(false)
+		p.close_scope()
 		p.inside_match_body = false
-		post_comments := p.eat_comments()
 		pos := token.Position{
 			line_nr: branch_first_pos.line_nr
 			pos: branch_first_pos.pos
 			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
 		}
+		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
 			stmts: stmts
@@ -255,8 +259,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			is_else: is_else
 			post_comments: post_comments
 		}
-		p.close_scope()
-		if p.tok.kind == .rcbr {
+		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break
 		}
 	}
@@ -266,7 +269,9 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		pos: match_first_pos.pos
 		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 	}
-	p.check(.rcbr)
+	if p.tok.kind == .rcbr {
+		p.check(.rcbr)
+	}
 	// return ast.StructInit{}
 	return ast.MatchExpr{
 		branches: branches

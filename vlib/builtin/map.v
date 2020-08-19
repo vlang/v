@@ -3,7 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
 //import hash.wyhash as hash
 import hash
 
@@ -105,7 +104,7 @@ mut:
 }
 
 [inline]
-[unsafe_fn]
+[unsafe]
 fn new_dense_array(value_bytes int) DenseArray {
 	return DenseArray{
 		value_bytes: value_bytes
@@ -501,7 +500,7 @@ pub fn (m &map) keys() []string {
 	return keys
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (d DenseArray) clone() DenseArray {
 	res := DenseArray {
 		value_bytes: d.value_bytes
@@ -518,7 +517,7 @@ pub fn (d DenseArray) clone() DenseArray {
 	return res
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (m map) clone() map {
 	metas_size := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	res := map{
@@ -537,7 +536,7 @@ pub fn (m map) clone() map {
 	return res
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (m &map) free() {
 	unsafe {
 		free(m.metas)
@@ -556,6 +555,7 @@ pub fn (m &map) free() {
 	}
 }
 
+/*
 pub fn (m map_string) str() string {
 	if m.len == 0 {
 		return '{}'
@@ -568,3 +568,4 @@ pub fn (m map_string) str() string {
 	sb.writeln('}')
 	return sb.str()
 }
+*/

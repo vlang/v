@@ -298,7 +298,12 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	p.scope.end_pos = p.tok.pos
+	// p.scope.end_pos = p.tok.pos
+	// NOTE: since this is usually called after `p.parse_block()`
+	// ie. when `prev_tok` is rcbr `}` we most likely want `prev_tok`
+	// we could do the following, but probably not needed in 99% of cases:
+	// `end_pos = if p.prev_tok.kind == .rcbr { p.prev_tok.pos } else { p.tok.pos }`
+	p.scope.end_pos = p.prev_tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
 }
@@ -432,7 +437,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				}
 			}
 			.lsbr {
-				// attrs are stores in `p.attrs()`
+				// attrs are stored in `p.attrs`
 				p.attributes()
 				continue
 			}
@@ -725,25 +730,39 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() table.Attr {
+	if p.tok.kind == .key_unsafe {
+		p.next()
+		return table.Attr{
+			name: 'unsafe'
+		}
+	}
 	mut is_ctdefine := false
 	if p.tok.kind == .key_if {
 		p.next()
 		is_ctdefine = true
 	}
 	mut name := ''
+	mut arg := ''
 	is_string := p.tok.kind == .string
+	mut is_string_arg := false
 	if is_string {
 		name = p.tok.lit
 		p.next()
 	} else {
-		mut name = p.check_name()
+		name = p.check_name()
+		if name == 'unsafe_fn' {
+			p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+		} else if name == 'trusted_fn' {
+			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
+		}
 		if p.tok.kind == .colon {
-			name += ':'
 			p.next()
+			// `name: arg`
 			if p.tok.kind == .name {
-				name += p.check_name()
-			} else if p.tok.kind == .string {
-				name += p.tok.lit
+				arg = p.check_name()
+			} else if p.tok.kind == .string { // `name: 'arg'`
+				arg = p.tok.lit
+				is_string_arg = true
 				p.next()
 			}
 		}
@@ -752,6 +771,8 @@ fn (mut p Parser) parse_attr() table.Attr {
 		name: name
 		is_string: is_string
 		is_ctdefine: is_ctdefine
+		arg: arg
+		is_string_arg: is_string_arg
 	}
 }
 
@@ -837,7 +858,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
 		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
-		(left0 as ast.InfixExpr).op == .left_shift) && left0 !is ast.ComptimeCall {
+		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
 	if left.len == 1 {
@@ -942,6 +963,42 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
+	// `chan typ{...}`
+	if p.tok.lit == 'chan' {
+		first_pos := p.tok.position()
+		mut last_pos := first_pos
+		chan_type := p.parse_chan_type()
+		mut has_cap := false
+		mut cap_expr := ast.Expr{}
+		p.check(.lcbr)
+		if p.tok.kind == .rcbr {
+			last_pos = p.tok.position()
+			p.next()
+		} else {
+			key := p.check_name()
+			p.check(.colon)
+			match key {
+				'cap' {
+					has_cap = true
+					cap_expr = p.expr(0)
+				}
+				'len', 'init' {
+					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
+				}
+				else {
+					p.error('wrong field `$key`, expecting `cap`')
+				}
+			}
+			last_pos = p.tok.position()
+			p.check(.rcbr)
+		}
+		return ast.ChanInit{
+			pos: first_pos.extend(last_pos)
+			has_cap: has_cap
+			cap_expr: cap_expr
+			typ: chan_type
+		}
+	}
 	// Raw string (`s := r'hello \n ')
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
@@ -972,10 +1029,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	// fn call or type cast
-	if p.peek_tok.kind == .lpar ||
+	same_line := p.tok.line_nr == p.peek_tok.line_nr
+	// `(` must be on same line as name token otherwise it's a ParExpr
+	if !same_line && p.peek_tok.kind == .lpar {
+		node = p.parse_ident(language)
+	} else if p.peek_tok.kind == .lpar ||
 		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
-		// foo() or foo<int>()
+		// foo(), foo<int>() or type() cast
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
@@ -1117,6 +1177,19 @@ fn (mut p Parser) scope_register_it() {
 	})
 }
 
+fn (mut p Parser) scope_register_ab() {
+	p.scope.register('a', ast.Var{
+		name: 'a'
+		pos: p.tok.position()
+		is_used: true
+	})
+	p.scope.register('b', ast.Var{
+		name: 'b'
+		pos: p.tok.position()
+		is_used: true
+	})
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
@@ -1133,6 +1206,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// defer {
 		// p.close_scope()
 		// }
+	} else if field_name == 'sort' {
+		p.open_scope()
+		name_pos = p.tok.position()
+		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -1192,7 +1269,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: pos
 			}
 		}
-		if is_filter {
+		if is_filter || field_name == 'sort' {
 			p.close_scope()
 		}
 		return mcall_expr
@@ -1579,7 +1656,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 const (
 	// modules which allow globals by default
-	global_enabled_mods = ['rand']
+	global_enabled_mods = ['rand', 'sokol.sapp']
 )
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`

@@ -116,7 +116,7 @@ pub fn (conn Connection) escape_string(s string) string {
     quote := byte(39) // single quote
 
     C.mysql_real_escape_string_quote(conn.conn, to, s.str, len, quote)
-    return string(to)
+    return unsafe { to.vstring() }
 }
 
 // set_option is used to set extra connect options and affect behavior for a connection.
@@ -175,12 +175,12 @@ pub fn (conn Connection) info() string {
 
 // get_host_info returns a string describing the connection.
 pub fn (conn Connection) get_host_info() string {
-	return string(C.mysql_get_host_info(conn.conn))
+	return unsafe { C.mysql_get_host_info(conn.conn).vstring() }
 }
 
 // get_server_info returns the server version number as a string.
 pub fn (conn Connection) get_server_info() string {
-	return string(C.mysql_get_server_info(conn.conn))
+	return unsafe { C.mysql_get_server_info(conn.conn).vstring() }
 }
 
 // get_server_version returns the server version number as an integer.
@@ -192,7 +192,7 @@ pub fn (conn Connection) get_server_version() u64 {
 
 // get_client_info returns client version information as a string.
 pub fn get_client_info() string {
-	return string(C.mysql_get_client_info())
+	return unsafe { C.mysql_get_client_info().vstring() }
 }
 
 // get_client_version returns client version information as an integer.

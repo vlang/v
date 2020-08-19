@@ -1,0 +1,7 @@
+vlib/v/checker/tests/string_index_assign_error.v:3:6: error: cannot assign to s[i] since V strings are immutable
+(note, that variables may be mutable but string values are always immutable, like in Go and Java)
+    1 | fn main() {
+    2 |     mut a := 'V is great!!'
+    3 |     a[0] = `R`
+      |      ~~~
+    4 | }

@@ -36,6 +36,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	name_pos := p.tok.position()
 	mut name := p.check_name()
+	// defer {
+	// if name.contains('App') {
+	// println('end of struct decl $name')
+	// }
+	// }
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -56,7 +61,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+	if language == .v &&
+		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 	}
 	if name.len == 1 {
@@ -152,12 +158,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				pos: field_start_pos.pos
 				len: p.tok.position().pos - field_start_pos.pos
 			}
-			/*
-			if name == '_net_module_s' {
-			s := p.table.get_type_symbol(typ)
-			println('XXXX' + s.str())
-		}
-			*/
+			// if name == '_net_module_s' {
+			// if name.contains('App') {
+			// s := p.table.get_type_symbol(typ)
+			// println('struct decl field type ' + s.str())
+			// }
 			// Comments after type (same line)
 			line_pos := field_pos.line_nr
 			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
@@ -266,6 +271,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
+	/*
+	defer {
+		if p.fileis('x.v') {
+			p.warn('end of struct init $short_syntax')
+		}
+	}
+	*/
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
