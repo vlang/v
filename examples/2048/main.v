@@ -34,7 +34,7 @@ const (
 		text: 'Points: '
 		pos: Pos{10, 5}
 		cfg: gx.TextCfg{
-			align: gx.align_left
+			align: .left
 			size: 24
 			color: gx.rgb(0, 0, 0)
 		}
@@ -43,7 +43,7 @@ const (
 		text: 'Moves: '
 		pos: Pos{window_width - 160, 5}
 		cfg: gx.TextCfg{
-			align: gx.align_left
+			align: .left
 			size: 24
 			color: gx.rgb(0, 0, 0)
 		}
@@ -52,7 +52,7 @@ const (
 		text: 'Game Over'
 		pos: Pos{80, 220}
 		cfg: gx.TextCfg{
-			align: gx.align_left
+			align: .left
 			size: 100
 			color: gx.rgb(0, 0, 255)
 		}
