@@ -24,19 +24,22 @@ mut:
 	a []int = [7]
 }
 
-fn (s S1) m() int {
-	return s.a[0]
+fn (s S1) m() []int {
+	return s.a
 }
 
 fn test_array_interpolation() {
 	a := [2,3]
 	assert '$a[1]' == '3'
+	
 	mut s := S1{}
 	assert '$s.a[0]' == '7'
-	assert '$s.m()' == '7'
-	b := [s]
-	assert '$b[0].a' == '[7]'
+	assert '$s.m()' == '[7]'
+	assert '$s.m()[0]' == '7'
+	
 	s.a[0]++
+	b := [s]
+	assert '$b[0].a' == '[8]'
 	assert '$b[0].a[0]' == '8'
 }
 

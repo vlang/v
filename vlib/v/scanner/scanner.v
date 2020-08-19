@@ -724,7 +724,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				}
 			}
 			// end of `$expr`
-			// allow `$a.b`, `$f()`, `$a[expr]`, `$s.m()`, `$s.a[expr]`
+			// allow `$a.b`, `$f()`, `$a[expr]`
 			if s.is_inter_start && next_char !in [`.`, `(`, `[`] {
 				s.is_inter_end = true
 				s.is_inter_start = false
@@ -756,7 +756,8 @@ fn (mut s Scanner) text_scan() token.Token {
 		// Handle `$fn()`, `$a[expr]`
 		if c in [`)`, `]`] && s.is_inter_start {
 			next_char := s.look_ahead(1)
-			if next_char != `.` {
+			// allow `$s.m()`, `$s.a[expr]`, `$f()[expr]` etc
+			if next_char !in [`.`, `(`, `[`] {
 				s.is_inter_end = true
 				s.is_inter_start = false
 				if next_char == s.quote {
