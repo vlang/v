@@ -6,10 +6,6 @@ import sokol.sfons
 import gx
 import os
 
-const (
-	default_font_size = 16
-)
-
 struct FT {
 pub:
 	fons &C.FONScontext
@@ -31,14 +27,26 @@ fn new_ft(c FTConfig) ?&FT{
 	if c.font_path == '' {
 		// Load default font
 	}
-	if c.font_path == '' || !os.exists(c.font_path) {
-		println('failed to load font "$c.font_path"')
-		return none
+	$if !android {
+		if c.font_path == '' || !os.exists(c.font_path) {
+			println('failed to load font "$c.font_path"')
+			return none
+		}
 	}
-	bytes := os.read_bytes(c.font_path) or {
-		println('failed to load font "$c.font_path"')
-		return none
+
+	mut bytes := []byte{}
+	$if android {
+		bytes = os.read_apk_asset(c.font_path) or {
+			println('failed to load font "$c.font_path"')
+			return none
+		}
+	} $else {
+		bytes = os.read_bytes(c.font_path) or {
+			println('failed to load font "$c.font_path"')
+			return none
+		}
 	}
+
 	bold_path := 'SFNS-bold.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
 	bytes_bold := os.read_bytes(bold_path) or {
 		println('failed to load font "$bold_path"')
@@ -66,14 +74,9 @@ fn new_ft(c FTConfig) ?&FT{
 
 }
 
-pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
+fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
-	}
-	//text := text_.trim_space() // TODO remove/optimize
-	mut text := text_
-	if text.contains('\t') {
-		text = text.replace('\t', '    ')
 	}
 	if cfg.bold {
 		ctx.ft.fons.set_font(ctx.ft.font_bold)
@@ -88,33 +91,30 @@ pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
 		ctx.ft.fons.set_font(ctx.ft.font_normal)
 	}
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	mut size := if cfg.size == 0 { gg.default_font_size } else { cfg.size }
-	if cfg.mono {
-		size -= 2
-	}
+	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
 	ctx.ft.fons.set_size(scale * f32(size))
-	if cfg.align == gx.align_right {
-		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_RIGHT | C.FONS_ALIGN_TOP)
-	}
-	else {
-		C.fonsSetAlign(ctx.ft.fons, C.FONS_ALIGN_LEFT | C.FONS_ALIGN_TOP)
-	}
+	C.fonsSetAlign(ctx.ft.fons, int(cfg.align) | int(cfg.vertical_align))
 	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
 	C.fonsSetColor(ctx.ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)
 	lh := f32(0.0)
 	ctx.ft.fons.vert_metrics(&ascender, &descender, &lh)
-	C.fonsDrawText(ctx.ft.fons, x*scale, y*scale, text.str, 0) // TODO: check offsets/alignment
+}
+
+pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
+	//text := text_.trim_space() // TODO remove/optimize
+	mut text := text_
+	if text.contains('\t') {
+		text = text.replace('\t', '    ')
+	}
+	ctx.set_cfg(cfg)
+	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
+	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text.str, 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x, y int, text string) {
-	cfg := gx.TextCfg {
-		color: gx.black
-		size: default_font_size
-		align: gx.align_left
-	}
-	ctx.draw_text(x, y, text, cfg)
+	ctx.draw_text(x, y, text, {})
 }
 
 /*
@@ -127,6 +127,7 @@ pub fn (ft &FT) flush(){
 }
 
 pub fn (ctx &Context) text_width(s string) int {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -136,6 +137,7 @@ pub fn (ctx &Context) text_width(s string) int {
 }
 
 pub fn (ctx &Context) text_height(s string) int {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -145,6 +147,7 @@ pub fn (ctx &Context) text_height(s string) int {
 }
 
 pub fn (ctx &Context) text_size(s string) (int, int) {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0,0
 	}

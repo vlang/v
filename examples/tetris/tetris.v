@@ -25,12 +25,12 @@ const (
 
 const (
 	text_cfg = gx.TextCfg{
-		align:gx.align_left
+		align:.left
 		size:text_size
 		color:gx.rgb(0, 0, 0)
 	}
 	over_cfg = gx.TextCfg{
-		align:gx.align_left
+		align:.left
 		size:text_size
 		color:gx.white
 	}
