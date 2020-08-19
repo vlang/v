@@ -187,7 +187,7 @@ pub fn (mut g JsGen) init() {
 }
 
 pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH $util.vhash()\n'
+	mut res := '// V_COMMIT_HASH ${util.vhash()}\n'
 	res += '// V_CURRENT_COMMIT_HASH ${util.githash(g.pref.building_v)}\n'
 	return res
 }

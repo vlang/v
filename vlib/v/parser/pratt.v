@@ -209,7 +209,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			return node
 		}
 		else {
-			p.error('expr(): bad token `$p.tok.kind.str()`')
+			p.error('expr(): bad token `${p.tok.kind.str()}`')
 		}
 	}
 	// Infix

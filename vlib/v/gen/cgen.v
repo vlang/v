@@ -1204,7 +1204,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	fn_name := g.fn_decl.name
 	line_nr := a.pos.line_nr
 	src := cestring(a.expr.str())
-	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
+	metaname := 'v_assert_meta_info_${g.new_tmp_var()}'
 	g.writeln('\tVAssertMetaInfo $metaname;')
 	g.writeln('\tmemset(&$metaname, 0, sizeof(VAssertMetaInfo));')
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
@@ -2412,7 +2412,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.write('(')
 			}
 			g.expr(node.left)
-			g.write(' $node.op.str() ')
+			g.write(' ${node.op.str()} ')
 			g.expr(node.right)
 			if need_par {
 				g.write(')')

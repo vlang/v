@@ -515,25 +515,25 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				.array {
 					right_sym := c.table.get_type_symbol(c.table.mktyp(right.array_info().elem_type))
 					if left_default.kind != right_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.name`)',
+						c.error('the data type on the left of `${infix_expr.op.str()}` (`$left.name`) does not match the array item type (`$right_sym.name`)',
 							infix_expr.pos)
 					}
 				}
 				.map {
 					key_sym := c.table.get_type_symbol(c.table.mktyp(right.map_info().key_type))
 					if left_default.kind != key_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the map key type `$key_sym.name`',
+						c.error('the data type on the left of `${infix_expr.op.str()}` (`$left.name`) does not match the map key type `$key_sym.name`',
 							infix_expr.pos)
 					}
 				}
 				.string {
 					if left.kind != .string {
-						c.error('the data type on the left of `$infix_expr.op.str()` must be a string (is `$left.name`)',
+						c.error('the data type on the left of `${infix_expr.op.str()}` must be a string (is `$left.name`)',
 							infix_expr.pos)
 					}
 				}
 				else {
-					c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
+					c.error('`${infix_expr.op.str()}` can only be used with an array/map/string',
 						infix_expr.pos)
 				}
 			}
@@ -565,7 +565,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 							c.error('float modulo not allowed, use math.fmod() instead',
 								pos)
 						} else {
-							c.error('$side type of `$infix_expr.op.str()` cannot be non-integer type $name',
+							c.error('$side type of `${infix_expr.op.str()}` cannot be non-integer type $name',
 								pos)
 						}
 					}
@@ -631,10 +631,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('$infix_expr.op.str(): type `$typ_sym.name` does not exist', type_expr.pos)
+				c.error('${infix_expr.op.str()}: type `$typ_sym.name` does not exist',
+					type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
-				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
+				c.error('`${infix_expr.op.str()}` can only be used with interfaces and sum types',
 					infix_expr.pos)
 			}
 			return table.bool_type
@@ -1005,7 +1006,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					}
 				}
 				if got_arg_typ != table.void_type {
-					c.error('cannot use type `$got_arg_sym.str()` as type `$exp_arg_sym.str()` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
+					c.error('cannot use type `${got_arg_sym.str()}` as type `${exp_arg_sym.str()}` in argument ${i+1} to `${left_type_sym.name}.$method_name`',
 						call_expr.pos)
 				}
 			}
@@ -1320,10 +1321,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
 				candidate_fn_name := if typ_sym.name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.name`' }
-				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+				c.error('cannot use $candidate_fn_name as function type `${arg_typ_sym.str()}` in argument ${i+1} to `$fn_name`',
 					call_expr.pos)
 			} else {
-				c.error('cannot use type `$typ_sym.str()` as type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
+				c.error('cannot use type `${typ_sym.str()}` as type `${arg_typ_sym.str()}` in argument ${i+1} to `$fn_name`',
 					call_expr.pos)
 			}
 		}
@@ -1786,19 +1787,19 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() {
-					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
+					c.error('operator ${assign_stmt.op.str()} not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() {
-					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
+					c.error('operator ${assign_stmt.op.str()} not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
 			}
 			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
 				if !left_sym.is_int() {
-					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
+					c.error('operator ${assign_stmt.op.str()} not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_int() {
-					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
+					c.error('operator ${assign_stmt.op.str()} not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
 			}
@@ -1807,7 +1808,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		// Dual sides check (compatibility check)
 		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
 			right_sym.kind != .placeholder {
-			c.error('cannot assign `$right_sym.name` to `$left.str()` of type `$left_sym.name`',
+			c.error('cannot assign `$right_sym.name` to `${left.str()}` of type `$left_sym.name`',
 				right.position())
 		}
 	}
@@ -3112,7 +3113,7 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 	typ_sym := c.table.get_type_symbol(typ)
 	// if !typ.is_number() {
 	if !typ_sym.is_number() {
-		c.error('invalid operation: $node.op.str() (non-numeric type `$typ_sym.name`)',
+		c.error('invalid operation: ${node.op.str()} (non-numeric type `$typ_sym.name`)',
 			node.pos)
 	} else {
 		node.auto_locked, _ = c.fail_if_immutable(node.expr)

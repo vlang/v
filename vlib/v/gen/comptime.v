@@ -117,7 +117,7 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 				eprintln('Known compile time types: ')
 				eprintln(g.comptime_var_type_map.str())
 			}
-			verror('the compile time type of `$it.tchk_expr.str()` is unknown')
+			verror('the compile time type of `${it.tchk_expr.str()}` is unknown')
 		}
 		ret_type_name := g.table.get_type_symbol(comptime_var_type).name
 		it_type_name := g.table.get_type_symbol(it.tchk_type).name
@@ -164,7 +164,7 @@ fn (mut g Gen) comp_if(mut it ast.CompIf) {
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
+	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}(${node.kind.str()}) {')
 	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')

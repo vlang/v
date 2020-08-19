@@ -328,7 +328,7 @@ fn (mut g Gen) mov_reg_to_rbp(var_offset int, reg Register) {
 		else { verror('mov_from_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
+	g.println('mov DWORD PTR[rbp-${var_offset.hex2()}],$reg')
 }
 
 fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
@@ -343,7 +343,7 @@ fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
 		else { verror('mov_var_to_reg $reg') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('mov $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -397,7 +397,7 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('sub32 $reg,$val.hex2()')
+	g.println('sub32 $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) sub8(reg Register, val int) {
@@ -405,7 +405,7 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 	g.write8(0x83)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(val)
-	g.println('sub8 $reg,$val.hex2()')
+	g.println('sub8 $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
@@ -413,7 +413,7 @@ pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
-	g.println('add $reg,$val.hex2()')
+	g.println('add $reg,${val.hex2()}')
 }
 
 pub fn (mut g Gen) add8(reg Register, val int) {
@@ -422,7 +422,7 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 	// g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(0xc4)
 	g.write8(val)
-	g.println('add8 $reg,$val.hex2()')
+	g.println('add8 $reg,${val.hex2()}')
 }
 
 fn (mut g Gen) add8_var(reg Register, var_offset int) {
@@ -432,7 +432,7 @@ fn (mut g Gen) add8_var(reg Register, var_offset int) {
 		else { verror('add8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('add8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('add8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) sub8_var(reg Register, var_offset int) {
@@ -442,7 +442,7 @@ fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 		else { verror('sub8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('sub8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('sub8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) mul8_var(reg Register, var_offset int) {
@@ -453,7 +453,7 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 		else { verror('mul8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
-	g.println('mul8 $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+	g.println('mul8 $reg,DWORD PTR[rbp-${var_offset.hex2()}]')
 }
 
 fn (mut g Gen) leave() {
@@ -709,7 +709,7 @@ fn (mut g Gen) allocate_var(name string, size, initial_val int) {
 	// Generate the value assigned to the variable
 	g.write32(initial_val)
 	// println('allocate_var(size=$size, initial_val=$initial_val)')
-	g.println('mov DWORD [rbp-$n.hex2()],$initial_val (Allocate var `$name`)')
+	g.println('mov DWORD [rbp-${n.hex2()}],$initial_val (Allocate var `$name`)')
 }
 
 fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
@@ -728,7 +728,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.allocate_var(name, 4, 0)
 				// `mov DWORD PTR [rbp-0x8],eax`
 				offset := g.get_var_offset(name)
-				println('infix assignment $name offset=$offset.hex2()')
+				println('infix assignment $name offset=${offset.hex2()}')
 				g.mov_reg_to_rbp(offset, .eax)
 			}
 			ast.StructInit {

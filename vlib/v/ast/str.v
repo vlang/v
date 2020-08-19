@@ -55,7 +55,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	else if node.language == .js {
 		name = 'JS.$name'
 	}
-	f.write('fn ${receiver}${name}')
+	f.write('fn $receiver$name')
 	if node.is_generic {
 		f.write('<T>')
 	}
@@ -105,7 +105,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 }
 
 pub fn (x &InfixExpr) str() string {
-	return '${x.left.str()} $x.op.str() ${x.right.str()}'
+	return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 }
 
 // Expressions in string interpolations may have to be put in braces if they
@@ -140,9 +140,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 					break
 				}
 				CallExpr {
-					if sx.args.len != 0 {
-						needs_braces = true
-					}
+					needs_braces = true
 					break
 				}
 				SelectorExpr {
@@ -212,7 +210,7 @@ pub fn (x Expr) str() string {
 			return it.val
 		}
 		InfixExpr {
-			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 		}
 		ParExpr {
 			return '($it.expr)'
@@ -302,8 +300,8 @@ pub fn (node Stmt) str() string {
 					out += ','
 				}
 			}
-			out += ' $it.op.str() '
-			for i, val in it.right {
+			out += ' ${node.op.str()} '
+			for i, val in node.right {
 				out += val.str()
 				if i < it.right.len - 1 {
 					out += ','

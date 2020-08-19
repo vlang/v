@@ -371,9 +371,9 @@ fn (mut p Parser) check(expected token.Kind) {
 	// }
 	if p.tok.kind != expected {
 		if p.tok.kind == .name {
-			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+			p.error('unexpected name `$p.tok.lit`, expecting `${expected.str()}`')
 		} else {
-			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+			p.error('unexpected `${p.tok.kind.str()}`, expecting `${expected.str()}`')
 		}
 	}
 	p.next()
@@ -720,7 +720,7 @@ fn (mut p Parser) attributes() {
 				p.next()
 				break
 			}
-			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
+			p.error('unexpected `${p.tok.kind.str()}`, expecting `;`')
 		}
 		p.next()
 	}

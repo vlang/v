@@ -11,11 +11,11 @@ import v.util
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
-		'C.$p.check_name()'
+		'C.${p.check_name()}'
 	} else if language == .js {
-		'JS.$p.check_js_name()'
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$p.check_name()'
+		'${mod}.${p.check_name()}'
 	} else {
 		p.check_name()
 	}
@@ -363,7 +363,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	name := 'anon_${p.tok.pos}_$func.signature()'
+	name := 'anon_${p.tok.pos}_${func.signature()}'
 	func.name = name
 	idx := p.table.find_or_register_fn_type(p.mod, func, true, false)
 	typ := table.new_type(idx)
