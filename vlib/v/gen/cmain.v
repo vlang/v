@@ -11,7 +11,6 @@ pub fn (mut g Gen) gen_c_main() {
 	}
 	g.out.writeln('')
 	main_fn_start_pos := g.out.len
-
 	if g.pref.os == .android && g.pref.is_apk {
 		g.gen_c_android_sokol_main()
 	} else {
@@ -90,26 +89,20 @@ pub fn (mut g Gen) gen_c_main_footer() {
 }
 
 pub fn (mut g Gen) gen_c_android_sokol_main() {
-
-
 	// TODO get autofree weaved into android lifecycle somehow
 	/*
 	if g.autofree {
 		g.writeln('\t_vcleanup();')
 	}
 	*/
-
 	// TODO do proper check for the global g_desc field we need
-
 	g.writeln('sapp_desc sokol_main(int argc, char* argv[]) {')
 	g.writeln('\t(void)argc; (void)argv;')
 	g.writeln('')
-    g.writeln('\t_vinit();')
+	g.writeln('\t_vinit();')
 	g.writeln('\tmain__main();')
 	g.writeln('')
-
 	g.writeln('\treturn g_desc;')
-
 	g.writeln('}')
 }
 
