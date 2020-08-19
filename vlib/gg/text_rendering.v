@@ -126,8 +126,8 @@ pub fn (ft &FT) flush(){
 	sfons.flush(ft.fons)
 }
 
-pub fn (ctx &Context) text_width(s string, cfg gx.TextCfg) int {
-	ctx.set_cfg(cfg)
+pub fn (ctx &Context) text_width(s string) int {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -136,8 +136,8 @@ pub fn (ctx &Context) text_width(s string, cfg gx.TextCfg) int {
 	return int((buf[2] - buf[0]) / ctx.scale)
 }
 
-pub fn (ctx &Context) text_height(s string, cfg gx.TextCfg) int {
-	ctx.set_cfg(cfg)
+pub fn (ctx &Context) text_height(s string) int {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
@@ -146,8 +146,8 @@ pub fn (ctx &Context) text_height(s string, cfg gx.TextCfg) int {
 	return int((buf[3] - buf[1]) / ctx.scale)
 }
 
-pub fn (ctx &Context) text_size(s string, cfg gx.TextCfg) (int, int) {
-	ctx.set_cfg(cfg)
+pub fn (ctx &Context) text_size(s string) (int, int) {
+	// ctx.set_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0,0
 	}
