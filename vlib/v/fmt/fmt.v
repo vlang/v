@@ -631,7 +631,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
 			f.write(field_types[i])
-			if field.attrs.len > 0 {
+			if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only]			attr being added to fields, fix it
 				f.write(strings.repeat(` `, max_type - field_types[i].len))
 				f.inline_attrs(field.attrs)
 			}
