@@ -7,7 +7,6 @@ module main
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
-
 import os
 
 struct Create {
@@ -27,7 +26,7 @@ fn vmod_content(name, desc string) string {
 		"	description: '$desc'",
 		"	version: '0.0.0'",
 		'	dependencies: []',
-		'}'
+		'}',
 	].join('\n')
 }
 
@@ -36,7 +35,7 @@ fn main_content() string {
 		'module main\n',
 		'fn main() {',
 		"	println('Hello World!')",
-		'}'
+		'}',
 	].join('\n')
 }
 
@@ -46,7 +45,7 @@ fn gen_gitignore(name string) string {
 		'$name',
 		'*.so',
 		'*.dylib',
-		'*.dll'
+		'*.dll',
 	].join('\n')
 }
 
