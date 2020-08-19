@@ -144,3 +144,27 @@ pub fn (a []u64)  argmax() int { return arr_argmax<u64>(a)  }
 pub fn (a []f32)  argmax() int { return arr_argmax<f32>(a)  }
 pub fn (a []f64)  argmax() int { return arr_argmax<f64>(a)  }
 
+
+// ---[ FOO - COMPILER ERROR EXAMPLE ]------------------------------------------
+/*
+[unsafe]
+fn arr_foo<T>(a array) ?T {
+	if a.len==0 { return none } // TODO
+	unsafe {
+		data := &T(a.data)
+		mut val := data[0]
+		for i in 0..a.len {
+			if data[i] < val {
+				val = data[i]
+			}
+		}
+		return val
+	}
+}
+
+// signed
+pub fn (a []i8)   foo() ?i8   { return arr_foo<i8>(a)?  }
+pub fn (a []i16)  foo() ?i16  { return arr_foo<i16>(a)? }
+pub fn (a []int)  foo() ?int  { return arr_foo<int>(a)? }
+pub fn (a []i64)  foo() ?i64  { return arr_foo<i64>(a)? }
+*/
