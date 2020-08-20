@@ -1224,14 +1224,14 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// ${var} (ignore in vfmt mode)
-		if c == `{` && prevc == `$` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			// so that s.pos points to $ at the next step
 			s.pos -= 2
 			break
 		}
 		// $var
-		if util.is_name_char(c) && prevc == `$` && !is_raw &&
+		if prevc == `$` && util.is_name_char(c) && !is_raw &&
 			s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
