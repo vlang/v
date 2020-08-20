@@ -4355,12 +4355,21 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'no_bounds_checking' {
 			return 'CUSTOM_DEFINE_no_bounds_checking'
 		}
+		// architectures:
+		'amd64' {
+			return '__V_amd64'
+		}
+		'aarch64' {
+			return '__V_aarch64'
+		}
+		// bitness:
 		'x64' {
 			return 'TARGET_IS_64BIT'
 		}
 		'x32' {
 			return 'TARGET_IS_32BIT'
 		}
+		// endianness:
 		'little_endian' {
 			return 'TARGET_ORDER_IS_LITTLE'
 		}

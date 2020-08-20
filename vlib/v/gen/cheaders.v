@@ -28,6 +28,13 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
+#if defined(__x86_64__) 
+#define __V_amd64  1
+#endif
+#if defined(__aarch64__) || defined(__arm64__)
+#define __V_aarch64  1
+#endif
+
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
 	#define __V_GCC__
