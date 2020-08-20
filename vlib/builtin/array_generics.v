@@ -4,19 +4,15 @@ module builtin
 // ---[ MIN ]-------------------------------------------------------------------
 
 
-[unsafe]
-fn arr_min<T>(a array) T {
+fn arr_min<T>(a []T) T {
 	if a.len==0 { panic('.min called on an empty array') } // TODO
-	unsafe {
-		data := &T(a.data)
-		mut val := data[0]
-		for i in 0..a.len {
-			if data[i] < val {
-				val = data[i]
-			}
+	mut val := a[0]
+	for i in 0..a.len {
+		if a[i] < val {
+			val = a[i]
 		}
-		return val
 	}
+	return val
 }
 
 // signed
@@ -39,19 +35,15 @@ pub fn (a []f64)  min() f64  { return arr_min<f64>(a)  }
 // ---[ MAX ]-------------------------------------------------------------------
 
 
-[unsafe]
-fn arr_max<T>(a array) T {
+fn arr_max<T>(a []T) T {
 	if a.len==0 { panic('.max called on an empty array') } // TODO
-	unsafe {
-		data := &T(a.data)
-		mut val := data[0]
-		for i in 0..a.len {
-			if data[i] > val {
-				val = data[i]
-			}
+	mut val := a[0]
+	for i in 0..a.len {
+		if a[i] > val {
+			val = a[i]
 		}
-		return val
 	}
+	return val
 }
 
 // signed
@@ -74,21 +66,17 @@ pub fn (a []f64)  max() f64  { return arr_max<f64>(a)  }
 // ---[ ARGMIN ]----------------------------------------------------------------
 
 
-[unsafe]
-fn arr_argmin<T>(a array) int {
+fn arr_argmin<T>(a []T) int {
 	if a.len==0 { panic('.argmin called on an empty array') } // TODO
 	mut idx := 0
-	unsafe {
-		data := &T(a.data)
-		mut val := data[0]
-		for i in 0..a.len {
-			if data[i] < val {
-				val = data[i]
-				idx = i
-			}
+	mut val := a[0]
+	for i in 0..a.len {
+		if a[i] < val {
+			val = a[i]
+			idx = i
 		}
-		return idx
 	}
+	return idx
 }
 
 // signed
@@ -111,21 +99,17 @@ pub fn (a []f64)  argmin() int { return arr_argmin<f64>(a)  }
 // ---[ ARGMAX ]----------------------------------------------------------------
 
 
-[unsafe]
-fn arr_argmax<T>(a array) int {
+fn arr_argmax<T>(a []T) int {
 	if a.len==0 { panic('.argmax called on an empty array') } // TODO
 	mut idx := 0
-	unsafe {
-		data := &T(a.data)
-		mut val := data[0]
-		for i in 0..a.len {
-			if data[i] > val {
-				val = data[i]
-				idx = i
-			}
+	mut val := a[0]
+	for i in 0..a.len {
+		if a[i] > val {
+			val = a[i]
+			idx = i
 		}
-		return idx
 	}
+	return idx
 }
 
 // signed
