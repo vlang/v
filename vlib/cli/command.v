@@ -78,13 +78,15 @@ pub fn (mut cmd Command) add_commands(commands []Command) {
 }
 
 pub fn (mut cmd Command) add_command(command Command) {
+	mut subcmd := command
 	for existing_cmd in cmd.commands {
-		if existing_cmd.name == command.name {
-			println("command with the same name \'$command.name\' already exists")
+		if existing_cmd.name == subcmd.name {
+			println('Command with the name `$command.name` already exists')
 			exit(1)
 		}
 	}
-	cmd.commands << command
+	subcmd.parent = cmd
+	cmd.commands << subcmd
 }
 
 pub fn (mut cmd Command) add_flags(flags []Flag) {
@@ -115,9 +117,6 @@ pub fn (mut cmd Command) parse(args []string) {
 		cmd.commands.sort(a.name < b.name)
 	}
 	cmd.args = args[1..]
-	for i in 0 .. cmd.commands.len {
-		cmd.commands[i].parent = cmd
-	}
 	if !cmd.disable_flags {
 		cmd.parse_flags()
 	}
@@ -285,4 +284,3 @@ fn (cmds []Command) contains(name string) bool {
 	}
 	return false
 }
-
