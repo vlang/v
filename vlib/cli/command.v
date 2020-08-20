@@ -151,14 +151,14 @@ fn (mut cmd Command) parse_flags() {
 				found = true
 				flag.found = true
 				cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
-					println('failed to parse flag ${cmd.args[0]}: $err')
+					println('Failed to parse flag `${cmd.args[0]}`: $err')
 					exit(1)
 				}
 				break
 			}
 		}
 		if !found {
-			println('invalid flag: ${cmd.args[0]}')
+			println('Invalid flag: ${cmd.args[0]}')
 			exit(1)
 		}
 	}
@@ -238,7 +238,7 @@ fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value == '' {
 			full_name := cmd.full_name()
-			println("flag \'$flag.name\' is required by \'$full_name\'")
+			println('Flag `$flag.name` is required by `$full_name`')
 			exit(1)
 		}
 	}
@@ -261,7 +261,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error("command \'$name\' not found.")
+	return error('Command `$name` not found')
 }
 
 fn (cmds []Command) contains(name string) bool {
