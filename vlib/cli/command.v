@@ -121,10 +121,12 @@ pub fn (mut cmd Command) parse(args []string) {
 
 fn (mut cmd Command) add_default_flags() {
 	if !cmd.disable_help && !cmd.flags.contains('help') {
-		cmd.add_flag(help_flag(!cmd.flags.contains('h') && cmd.has_abbrev_flags()))
+		use_help_abbrev := !cmd.flags.contains('h') && cmd.has_abbrev_flags()
+		cmd.add_flag(help_flag(use_help_abbrev))
 	}
-	if cmd.version != '' && !cmd.flags.contains('version') {
-		cmd.add_flag(version_flag(!cmd.flags.contains('v') && cmd.has_abbrev_flags()))
+	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
+		use_version_abbrev := !cmd.flags.contains('v') && cmd.has_abbrev_flags()
+		cmd.add_flag(version_flag(use_version_abbrev))
 	}
 }
 
@@ -132,7 +134,7 @@ fn (mut cmd Command) add_default_commands() {
 	if !cmd.disable_help && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
 	}
-	if cmd.version != '' && !cmd.commands.contains('version') {
+	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
 		cmd.add_command(version_cmd())
 	}
 }
@@ -228,7 +230,7 @@ fn (cmd Command) check_help_flag() {
 }
 
 fn (cmd Command) check_version_flag() {
-	if cmd.version != '' && cmd.flags.contains('version') {
+	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or {
 			return
 		} // ignore error and handle command normally
