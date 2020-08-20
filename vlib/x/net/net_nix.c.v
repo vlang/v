@@ -8,6 +8,7 @@ module net
 #include <netinet/in.h>
 #include <netdb.h>
 #include <errno.h>
+#include <fcntl.h>
 
 fn error_code() int {
 	return C.errno
