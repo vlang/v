@@ -910,6 +910,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// in ['clone', 'str'] {
 			call_expr.receiver_type = left_type.to_ptr()
 			// call_expr.return_type = call_expr.receiver_type
+		} else if method_name == 'sort' {
+			call_expr.return_type = table.void_type
 		}
 		return call_expr.return_type
 	} else if left_type_sym.kind == .map && method_name == 'clone' {
