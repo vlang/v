@@ -3907,14 +3907,14 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="$s"')
-	return_sym := g.table.get_type_symbol(node.return_type)
-	if return_sym.kind != .array {
+	rec_sym := g.table.get_type_symbol(node.receiver_type)
+	if rec_sym.kind != .array {
 		println(node.name)
 		println(g.typ(node.receiver_type))
-		// println(sym.kind)
-		verror('sort() requires an array')
+		// println(rec_sym.kind)
+		verror('.sort() is an array method')
 	}
-	info := return_sym.info as table.Array
+	info := rec_sym.info as table.Array
 	// No arguments means we are sorting an array of builtins (e.g. `numbers.sort()`)
 	// The type for the comparison fns is the type of the element itself.
 	mut typ := info.elem_type
