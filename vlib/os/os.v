@@ -967,7 +967,7 @@ fn executable_fallback() string {
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
 	if os.is_abs_path(exepath) {
-		return exepath
+		return os.real_path(exepath)
 	}
 	mut res := ''
 	env_path_delimiter := if os.user_os() == 'windows' { ';' } else { ':' }
@@ -980,7 +980,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		}
 	}
 	if res.len>0 {
-		return res
+		return os.real_path(res)
 	}
 	return error('failed to find executable')
 }
