@@ -44,6 +44,8 @@ jobs:
 #        ./v -silent test-compiler
     - name: Fixed tests
       run: ./v test-fixed
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Test building v tools
       run: ./v build-tools
     - name: v vet
