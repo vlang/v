@@ -182,3 +182,13 @@ fn (flags []Flag) contains(name string) bool {
 	}
 	return false
 }
+
+fn (flags []Flag) have_abbrev() bool {
+	mut have_abbrev := false
+	for flag in flags {
+		if flag.abbrev != '' {
+			have_abbrev = true
+		}
+	}
+	return have_abbrev
+}

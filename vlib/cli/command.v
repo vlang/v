@@ -121,11 +121,11 @@ pub fn (mut cmd Command) parse(args []string) {
 
 fn (mut cmd Command) add_default_flags() {
 	if !cmd.disable_help && !cmd.flags.contains('help') {
-		use_help_abbrev := !cmd.flags.contains('h') && cmd.has_abbrev_flags()
+		use_help_abbrev := !cmd.flags.contains('h') && cmd.flags.have_abbrev()
 		cmd.add_flag(help_flag(use_help_abbrev))
 	}
 	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
-		use_version_abbrev := !cmd.flags.contains('v') && cmd.has_abbrev_flags()
+		use_version_abbrev := !cmd.flags.contains('v') && cmd.flags.have_abbrev()
 		cmd.add_flag(version_flag(use_version_abbrev))
 	}
 }
@@ -147,10 +147,10 @@ fn (mut cmd Command) parse_flags() {
 		mut found := false
 		for i in 0 .. cmd.flags.len {
 			mut flag := &cmd.flags[i]
-			if flag.matches(cmd.args, cmd.has_abbrev_flags()) {
+			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
 				found = true
 				flag.found = true
-				cmd.args = flag.parse(cmd.args, cmd.has_abbrev_flags()) or {
+				cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
 					println('failed to parse flag ${cmd.args[0]}: $err')
 					exit(1)
 				}
@@ -205,16 +205,6 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-}
-
-fn (cmd Command) has_abbrev_flags() bool {
-	mut has_abbrev := false
-	for flag in cmd.flags {
-		if flag.abbrev != '' {
-			has_abbrev = true
-		}
-	}
-	return has_abbrev
 }
 
 fn (cmd Command) check_help_flag() {
