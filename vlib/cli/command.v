@@ -23,6 +23,7 @@ pub mut:
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
+	required_args   int
 	args            []string
 }
 
@@ -48,6 +49,7 @@ pub fn (cmd Command) str() string {
 	}
 	res << '	commands: $cmd.commands'
 	res << '	flags: $cmd.flags'
+	res << '	required_args: $cmd.required_args'
 	res << '	args: $cmd.args'
 	res << '}'
 	return res.join('\n')
@@ -158,7 +160,7 @@ fn (mut cmd Command) parse_flags() {
 			}
 		}
 		if !found {
-			println('Invalid flag: ${cmd.args[0]}')
+			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
 			exit(1)
 		}
 	}
@@ -187,6 +189,13 @@ fn (mut cmd Command) parse_commands() {
 			cmd.execute_help()
 		}
 	} else {
+		if cmd.required_args > 0 {
+			if cmd.required_args > cmd.args.len {
+				println('Command `$cmd.name` needs at least $cmd.required_args arguments')
+				exit(1)
+			}
+		}
+
 		cmd.check_required_flags()
 		if int(cmd.pre_execute) > 0 {
 			cmd.pre_execute(*cmd) or {
