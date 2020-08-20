@@ -1,6 +1,6 @@
 module cli
 
-type FnCommandCallback fn (cmd Command)?
+type FnCommandCallback = fn (cmd Command) ?
 
 pub fn (f FnCommandCallback) str() string {
 	return 'FnCommandCallback=>' + ptr_str(f)
@@ -195,7 +195,6 @@ fn (mut cmd Command) parse_commands() {
 				exit(1)
 			}
 		}
-
 		cmd.check_required_flags()
 		if int(cmd.pre_execute) > 0 {
 			cmd.pre_execute(*cmd) or {
