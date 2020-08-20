@@ -727,7 +727,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			// allow `'$a.b'` and `'$a.c()'`
 			if s.is_inter_start && next_char == `(` {
 				if s.look_ahead(2) != `)` {
-					s.warn('use e.g. `\${f(expr)}` or `\$name\\(` instead of `\$f(expr).`')
+					s.warn('use e.g. `\${f(expr)}` or `\$name\\(` instead of `\$f(expr)`')
 				}
 			} else if s.is_inter_start && next_char != `.` {
 				s.is_inter_end = true
