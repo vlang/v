@@ -42,7 +42,7 @@ fn print_help_for_command(help_cmd Command) ? {
 			}
 			if !found {
 				args := help_cmd.args.join(' ')
-				print('invalid command: $args')
+				print('Invalid command: $args')
 				return
 			}
 		}
@@ -62,6 +62,9 @@ fn (cmd Command) help_message() string {
 	}
 	if cmd.commands.len > 0 {
 		help += ' [commands]'
+	}
+	for i in 0 .. cmd.required_args {
+		help += ' <arg$i>'
 	}
 	if cmd.usage.len > 0 {
 		help += ' $cmd.usage'
