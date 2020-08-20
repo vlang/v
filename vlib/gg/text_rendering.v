@@ -103,6 +103,10 @@ fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 }
 
 pub fn (ctx &Context) draw_text(x, y int, text_ string, cfg gx.TextCfg) {
+	if !ctx.font_inited {
+		eprintln('gg: draw_text(): font not initialized')
+		return
+	}
 	//text := text_.trim_space() // TODO remove/optimize
 	mut text := text_
 	if text.contains('\t') {
@@ -133,6 +137,9 @@ pub fn (ctx &Context) text_width(s string) int {
 	}
 	mut buf := [4]f32{}
 	C.fonsTextBounds(ctx.ft.fons, 0, 0, s.str, 0, buf)
+	if s.ends_with(' ') {
+		return int((buf[2] - buf[0]) / ctx.scale) + ctx.text_width('i') // TODO fix this in fontstash?
+	}
 	return int((buf[2] - buf[0]) / ctx.scale)
 }
 

@@ -109,6 +109,7 @@ pub fn (c Color) str() string {
 const (
 string_colors = {
 	'black': black
+	'blue': blue
 	'red': red
 }
 )
