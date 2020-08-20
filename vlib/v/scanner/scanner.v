@@ -725,7 +725,11 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
-			if s.is_inter_start && next_char != `.` && next_char != `(` {
+			if s.is_inter_start && next_char == `(` {
+				if s.look_ahead(2) != `)` {
+					s.warn('use e.g. `\${f(expr)}` or `\$name\\(` instead of `\$f(expr).`')
+				}
+			} else if s.is_inter_start && next_char != `.` {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
@@ -1370,6 +1374,14 @@ fn (mut s Scanner) inc_line_number() {
 	if s.line_nr > s.nr_lines {
 		s.nr_lines = s.line_nr
 	}
+}
+
+pub fn (s &Scanner) warn(msg string) {
+	pos := token.Position{
+		line_nr: s.line_nr
+		pos: s.pos
+	}
+	eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
 }
 
 pub fn (s &Scanner) error(msg string) {

@@ -182,3 +182,12 @@ fn test_method_interpolation() {
 	assert '>${y.f().a}<' == '>2<'
 	assert '>$y.f().a<' == '>2<'
 }
+
+fn f(i int) int {
+	return i
+}
+
+fn test_call() {
+	s := '${f(4)}'
+	assert s == '4'
+}
