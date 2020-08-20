@@ -1,29 +1,29 @@
 module main
 
-import cli
+import cli { Command, Flag }
 import os
 
 fn main() {
-	mut cmd := cli.Command{
+	mut cmd := Command{
 		name: 'cli'
 		description: 'An example of the cli library.'
 		version: '1.0.0'
 	}
-	mut greet_cmd := cli.Command{
+	mut greet_cmd := Command{
 		name: 'greet'
 		description: 'Prints greeting in different languages.'
 		pre_execute: greet_pre_func
 		execute: greet_func
 		post_execute: greet_post_func
 	}
-	greet_cmd.add_flag(cli.Flag{
+	greet_cmd.add_flag(Flag{
 		flag: .string
 		required: true
 		name: 'language'
 		abbrev: 'l'
 		description: 'Language of the message.'
 	})
-	greet_cmd.add_flag(cli.Flag{
+	greet_cmd.add_flag(Flag{
 		flag: .int
 		name: 'times'
 		value: '3'
@@ -33,12 +33,12 @@ fn main() {
 	cmd.parse(os.args)
 }
 
-fn greet_func(cmd cli.Command) {
+fn greet_func(cmd Command) {
 	language := cmd.flags.get_string('language') or {
-		panic("Failed to get \'language\' flag: $err")
+		panic('Failed to get `language` flag: $err')
 	}
 	times := cmd.flags.get_int('times') or {
-		panic("Failed to get \'times\' flag: $err")
+		panic('Failed to get `times` flag: $err')
 	}
 	for _ in 0 .. times {
 		match language {
@@ -60,10 +60,10 @@ fn greet_func(cmd cli.Command) {
 	}
 }
 
-fn greet_pre_func(cmd cli.Command) {
+fn greet_pre_func(cmd Command) {
 	println('This is a function running before the main function.\n')
 }
 
-fn greet_post_func(cmd cli.Command) {
+fn greet_post_func(cmd Command) {
 	println('\nThis is a function running after the main function.')
 }
