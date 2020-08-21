@@ -302,6 +302,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
+        choco install openssl
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
@@ -335,6 +336,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
+        choco install openssl
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
@@ -373,6 +375,7 @@ jobs:
       run: |
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
+        choco install openssl
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
