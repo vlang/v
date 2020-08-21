@@ -2330,7 +2330,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 						node.pos)
 				}
 			} else if node.typ == table.string_type && !(from_type_sym.kind in [.byte, .byteptr] ||
-				(from_type_sym.kind == .array && from_type_sym.source_name == 'array_byte')) {
+				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
 					node.pos)
