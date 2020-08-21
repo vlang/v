@@ -258,6 +258,7 @@ pub:
 	body_pos      token.Position
 	file          string
 	is_generic    bool
+	is_direct_arr bool // direct array access
 	attrs         []table.Attr
 pub mut:
 	stmts         []Stmt
