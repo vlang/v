@@ -18,6 +18,7 @@ const (
 		'vlib/orm/orm_test.v',
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
+		'vlib/x/websocket/websocket_test.v',
 	]
 	skip_on_linux       = []string{}
 	skip_on_non_linux   = [
@@ -26,6 +27,7 @@ const (
 	skip_on_windows     = [
 		'vlib/orm/orm_test.v',
 		'vlib/net/websocket/ws_test.v',
+		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
 	skip_on_non_windows = []string{}
