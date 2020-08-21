@@ -30,29 +30,26 @@ fn main() {
 	checksum = 0
 	for len in str_lens {
 		end_pos := start_pos + len
-		str := string(bytepile[start_pos..end_pos], len)
-		checksum ^= wyhash.wyhash_c(&str.str, u64(str.len), 1)
+		checksum ^= wyhash.wyhash_c(unsafe { bytepile.data + start_pos }, u64(len), 1)
 		start_pos = end_pos
 	}
-	bhashing_1.measure('wyhash.wyhash_c     | checksum: ${checksum:22}')
+	bhashing_1.measure('wyhash.wyhash_c  | checksum: ${checksum:22}')
 	mut bhashing_2 := benchmark.start()
 	start_pos = 0
 	checksum = 0
 	for len in str_lens {
 		end_pos := start_pos + len
-		str := string(bytepile[start_pos..end_pos], len)
-		checksum ^= wyhash.sum64_string(str, 1)
+		checksum ^= wyhash.sum64(bytepile[start_pos..end_pos], 1)
 		start_pos = end_pos
 	}
-	bhashing_2.measure('wyhash.sum64_string | checksum: ${checksum:22}')
+	bhashing_2.measure('wyhash.sum64     | checksum: ${checksum:22}')
 	mut bhashing_3 := benchmark.start()
 	start_pos = 0
 	checksum = 0
 	for len in str_lens {
 		end_pos := start_pos + len
-		str := string(bytepile[start_pos..end_pos], len)
-		checksum ^= fnv1a.sum64_string(str)
+		checksum ^= fnv1a.sum64(bytepile[start_pos..end_pos])
 		start_pos = end_pos
 	}
-	bhashing_3.measure('fnv1a.sum64_string  | checksum: ${checksum:22}')
+	bhashing_3.measure('fnv1a.sum64      | checksum: ${checksum:22}')
 }
