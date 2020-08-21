@@ -1,6 +1,6 @@
 module websocket
 
-import emily33901.net
+import x.net
 
 fn error_code() int {
 	return C.WSAGetLastError()
