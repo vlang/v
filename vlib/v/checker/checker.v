@@ -2329,10 +2329,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('cannot cast `$from_type_sym.source_name` to `$to_type_sym.source_name`',
 						node.pos)
 				}
-			} else if node.typ == table.string_type && (from_type_sym.kind in [.byte, .byteptr] ||
+			} else if node.typ == table.string_type &&
+				(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
 				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(node.expr_type)
-				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
+				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
+					node.pos)
 			} else if node.expr_type == table.string_type {
 				if to_type_sym.kind != .alias {
 					mut error_msg := 'cannot cast a string'
