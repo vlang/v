@@ -872,6 +872,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if is_filter_map {
 				scope.update_var_type('it', array_info.elem_type)
 			} else if is_sort {
+				c.fail_if_immutable(call_expr.left)
 				scope.update_var_type('a', array_info.elem_type)
 				scope.update_var_type('b', array_info.elem_type)
 				// Verify `.sort(a < b)`
