@@ -321,7 +321,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			}
 		}
 		sym := c.table.get_type_symbol(field.typ)
-		if sym.kind == .placeholder && decl.language != .c && !sym.source_name.starts_with('C.') {
+		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error(util.new_suggestion(sym.source_name, c.table.known_type_names()).say('unknown type `$sym.source_name`'),
 				field.pos)
 		}
@@ -388,10 +388,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	}
 	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod {
 		c.error('type `$type_sym.source_name` is private', struct_init.pos)
-	}
-	// println('check struct $typ_sym.source_name')
-	if c.file.path.ends_with('abc.v') {
-		println(type_sym.kind)
 	}
 	match type_sym.kind {
 		.placeholder {
@@ -2333,11 +2329,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('cannot cast `$from_type_sym.source_name` to `$to_type_sym.source_name`',
 						node.pos)
 				}
-			} else if node.typ == table.string_type && !(from_type_sym.kind in [.byte, .byteptr] ||
+			} else if node.typ == table.string_type && (from_type_sym.kind in [.byte, .byteptr] ||
 				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 				type_name := c.table.type_to_str(node.expr_type)
-				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
-					node.pos)
+				c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
 			} else if node.expr_type == table.string_type {
 				if to_type_sym.kind != .alias {
 					mut error_msg := 'cannot cast a string'
@@ -3149,8 +3144,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	node.left_type = typ
 	typ_sym := c.table.get_type_symbol(typ)
-	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.source_name[0].is_capital() &&
-		typ_sym.source_name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
+	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
+		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.source_name` does not support indexing', node.pos)
 	}
 	if typ_sym.kind == .string && !typ.is_ptr() && node.is_setter {
@@ -3418,7 +3413,7 @@ fn (mut c Checker) sql_expr(mut node ast.SqlExpr) table.Type {
 	info := sym.info as table.Struct
 	fields := c.fetch_and_verify_orm_fields(info, node.pos, node.table_name)
 	node.fields = fields
-	node.table_name = sym.source_name
+	node.table_name = sym.name
 	if node.has_where {
 		c.expr(node.where_expr)
 	}
