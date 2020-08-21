@@ -38,7 +38,7 @@ pub fn load(path string) Image {
 	flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
 	res.data = C.stbi_load(path.str, &res.width, &res.height,	&res.nr_channels, flag)
 	if isnil(res.data) {
-		panic('stbi image failed to load')
+		panic('stbi image failed to load from "$path"')
 	}
 	return res
 }
