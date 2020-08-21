@@ -347,7 +347,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
 				field_type_sym := c.table.get_type_symbol(field.typ)
 				c.error('default expression for field `$field.name` ' +
-					'has type `$field_expr_type_sym.source_name`, but should be `$field_type_sym.source_name`', field.default_expr.position())
+					'has type `$field_expr_type_sym.source_name`, but should be `$field_type_sym.source_name`',
+					field.default_expr.position())
 			}
 		}
 	}
@@ -390,8 +391,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	}
 	// println('check struct $typ_sym.source_name')
 	if c.file.path.ends_with('abc.v') {
-
-	println(type_sym.kind)
+		println(type_sym.kind)
 	}
 	match type_sym.kind {
 		.placeholder {
@@ -634,7 +634,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('$infix_expr.op.str(): type `$typ_sym.source_name` does not exist', type_expr.pos)
+				c.error('$infix_expr.op.str(): type `$typ_sym.source_name` does not exist',
+					type_expr.pos)
 			}
 			if left.kind != .interface_ && left.kind != .sum_type {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
@@ -1901,7 +1902,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 			if !c.check_types(typ, elem_type) {
 				elem_type_sym := c.table.get_type_symbol(elem_type)
-				c.error('expected array element with type `$elem_type_sym.source_name`', array_init.pos)
+				c.error('expected array element with type `$elem_type_sym.source_name`',
+					array_init.pos)
 			}
 		}
 		if expecting_interface_array {
@@ -2279,12 +2281,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('unknown type `$type_sym.source_name`', node.pos)
 				}
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot cast `$expr_type_sym.source_name` to `$type_sym.source_name`', node.pos)
+					c.error('cannot cast `$expr_type_sym.source_name` to `$type_sym.source_name`',
+						node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
 				//
-				c.error('cannot cast non sum type `$type_sym.source_name` using `as`', node.pos)
+				c.error('cannot cast non sum type `$type_sym.source_name` using `as`',
+					node.pos)
 			}
 			return node.typ.to_ptr()
 			// return node.typ
