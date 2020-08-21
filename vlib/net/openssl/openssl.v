@@ -12,16 +12,16 @@ pub fn ssl_error(ret int, ssl voidptr) ?SSLError {
 }
 
 pub enum SSLError {
-	ssl_error_none = C.SSL_ERROR_NONE
-	ssl_error_ssl = C.SSL_ERROR_SSL
-	ssl_error_want_read = C.SSL_ERROR_WANT_READ
-	ssl_error_want_write = C.SSL_ERROR_WANT_WRITE
-	ssl_error_want_x509_lookup = C.SSL_ERROR_WANT_X509_LOOKUP
-	ssl_error_syscall = C.SSL_ERROR_SYSCALL
-	ssl_error_zero_return = C.SSL_ERROR_ZERO_RETURN
-	ssl_error_want_connect = C.SSL_ERROR_WANT_CONNECT
-	ssl_error_want_accept = C.SSL_ERROR_WANT_ACCEPT
-	ssl_error_want_async = C.SSL_ERROR_WANT_ASYNC
-	ssl_error_want_async_job = C.SSL_ERROR_WANT_ASYNC_JOB
-	ssl_error_want_client_hello_cb = C.SSL_ERROR_WANT_CLIENT_HELLO_CB
+	ssl_error_none = 0 				//SSL_ERROR_NONE
+	ssl_error_ssl = 1				//SSL_ERROR_SSL
+	ssl_error_want_read = 2			//SSL_ERROR_WANT_READ
+	ssl_error_want_write = 3		//SSL_ERROR_WANT_WRITE
+	ssl_error_want_x509_lookup = 4	//SSL_ERROR_WANT_X509_LOOKUP
+	ssl_error_syscall = 5			//SSL_ERROR_SYSCALL
+	ssl_error_zero_return = 6		//SSL_ERROR_ZERO_RETURN
+	ssl_error_want_connect = 7		//SSL_ERROR_WANT_CONNECT
+	ssl_error_want_accept = 8		//SSL_ERROR_WANT_ACCEPT
+	ssl_error_want_async = 9		//SSL_ERROR_WANT_ASYNC
+	ssl_error_want_async_job = 10	//SSL_ERROR_WANT_ASYNC_JOB
+	ssl_error_want_early = 11		//SSL_ERROR_WANT_EARLY
 }
