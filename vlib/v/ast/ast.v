@@ -472,9 +472,10 @@ pub:
 	pos          token.Position
 	body_pos     token.Position
 	comments     []Comment
+	left_as_name string // `name` in `if cond is SumType as name`
+	mut_name     bool // `if mut name is`
 pub mut:
-	smartcast    bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
-	left_as_name string // only used in x is SumType check
+	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr
 }
 
 pub struct UnsafeExpr {

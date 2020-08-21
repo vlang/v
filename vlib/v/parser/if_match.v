@@ -21,15 +21,11 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := p.tok.position()
-		if p.tok.kind == .key_if {
-			p.next()
-		} else {
+		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
 			p.check(.key_else)
 			comments << p.eat_comments()
-			if p.tok.kind == .key_if {
-				p.next()
-			} else {
+			if p.tok.kind == .lcbr {
 				// else {
 				has_else = true
 				p.inside_if = false
@@ -64,9 +60,18 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				break
 			}
 		}
+		// `if` or `else if`
+		p.check(.key_if)
+		comments << p.eat_comments()
+		// `if mut name is T`
+		mut mut_name := false
+		if p.tok.kind == .key_mut && p.peek_tok2.kind == .key_is {
+			mut_name = true
+			p.next()
+			comments << p.eat_comments()
+		}
 		mut cond := ast.Expr{}
 		mut is_guard := false
-		comments << p.eat_comments()
 		// `if x := opt() {`
 		if p.peek_tok.kind == .decl_assign {
 			p.open_scope()
@@ -121,6 +126,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
 			left_as_name: left_as_name
+			mut_name: mut_name
 		}
 		comments = p.eat_comments()
 		if p.tok.kind != .key_else {
