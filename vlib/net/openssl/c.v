@@ -6,9 +6,6 @@ module openssl
 // the next flag is harmless, since it will still use the
 // (older) system openssl.
 #flag linux -I/usr/local/include/openssl -L/usr/local/lib
-#flag darwin -I/usr/local/include/openssl -L/usr/local/lib
-
-#flag windows -l libssl -l libcrypto
 #flag -l ssl -l crypto
 // MacPorts
 #flag darwin -I/opt/local/include
