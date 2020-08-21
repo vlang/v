@@ -1537,9 +1537,11 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		if alias[0].is_capital() {
 			idx := p.table.add_placeholder_type(name)
 			typ := table.new_type(idx)
+			prepend_mod_name := p.prepend_mod(alias)
 			p.table.register_type_symbol({
 				kind: .alias
-				name: p.prepend_mod(alias)
+				name: prepend_mod_name
+				source_name: prepend_mod_name
 				parent_idx: idx
 				mod: p.mod
 				info: table.Alias{
@@ -1761,6 +1763,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
+		source_name: name
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
@@ -1821,9 +1824,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			p.check(.pipe)
 		}
+		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
-			name: p.prepend_mod(name)
+			name: prepend_mod_name
+			source_name: prepend_mod_name
 			mod: p.mod
 			info: table.SumType{
 				variants: sum_variants
@@ -1848,9 +1853,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	} else {
 		table.Language.v
 	}
+	prepend_mod_name := p.prepend_mod(name)
 	p.table.register_type_symbol({
 		kind: .alias
-		name: p.prepend_mod(name)
+		name: prepend_mod_name
+		source_name: prepend_mod_name
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{

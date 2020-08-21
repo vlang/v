@@ -230,6 +230,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	t := table.TypeSymbol{
 		kind: .struct_
 		name: name
+		source_name: name
 		info: table.Struct{
 			fields: fields
 			is_typedef: attrs.contains('typedef')
@@ -359,6 +360,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
+		source_name: interface_name
 		mod: p.mod
 		info: table.Interface{
 			types: []
@@ -386,9 +388,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		// field_names << name
 		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
+		sym := p.table.get_type_symbol(typ)
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ
+			type_source_name: sym.source_name
 			is_hidden: true
 		}]
 		args << args2
@@ -406,10 +410,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		methods << method
 		// println('register method $name')
+		return_type_sym := p.table.get_type_symbol(method.return_type)
 		ts.register_method(table.Fn{
 			name: name
 			args: args
 			return_type: method.return_type
+			return_type_source_name: return_type_sym.source_name
 			is_pub: true
 		})
 	}
