@@ -70,6 +70,25 @@ pub fn (c TcpConn) write_string(s string) ? {
 	return c.write_ptr(s.str, s.len)
 }
 
+pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
+	res := C.recv(c.sock.handle, buf_ptr, len, 0)
+
+	if res >= 0 {
+		return res
+	}
+
+	code := error_code()
+	match code {
+		error_ewouldblock {
+			c.wait_for_read()?
+			return socket_error(C.recv(c.sock.handle, buf_ptr, len, 0))
+		}
+		else {
+			wrap_error(code)?
+		}
+	}
+}
+
 pub fn (c TcpConn) read_into(mut buf []byte) ?int {
 	res := C.recv(c.sock.handle, buf.data, buf.len, 0)
 
