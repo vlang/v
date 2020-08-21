@@ -1,0 +1,20 @@
+version: '3'
+services:
+  web:
+    container_name: autobahn_server
+    build: fuzzing_server
+
+    ports:
+      - "9001:9001"
+      - "8080:8080"
+  client:
+    container_name: autobahn_client
+    build: 
+      #vlib/x/websocket/tests/autobahn/ws_test/Dockerfile
+      dockerfile: tests/autobahn/ws_test/Dockerfile 
+      context: ../../
+    # volumes: 
+    #   - ../../:/src
+#   redis:
+#     container_name: redis-backend
+#     image: "redis:alpine"

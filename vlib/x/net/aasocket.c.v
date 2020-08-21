@@ -92,4 +92,4 @@ fn C.FD_SET()
 fn C.FD_ISSET() bool
 
 [typedef]
-struct C.fd_set {}
+pub struct C.fd_set {}
