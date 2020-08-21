@@ -1357,35 +1357,30 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			}
 		}
 		if i == 0 {
+			// first `if`
 			f.comments(branch.comments, {})
-			f.write('if ')
-			f.expr(branch.cond)
-			if smartcast_as {
-				f.write(' as $branch.left_as_name')
-			}
-			f.write(' {')
-		} else if i < it.branches.len - 1 || !it.has_else {
+		} else {
+			// `else`, close previous branch
 			if branch.comments.len > 0 {
 				f.writeln('}')
 				f.comments(branch.comments, {})
 			} else {
 				f.write('} ')
 			}
-			f.write('else if ')
-			f.expr(branch.cond)
-			if smartcast_as {
-				f.write(' as $branch.left_as_name')
-			}
-			f.write(' {')
-		} else if i == it.branches.len - 1 && it.has_else {
-			if branch.comments.len > 0 {
-				f.writeln('}')
-				f.comments(branch.comments, {})
-			} else {
-				f.write('} ')
-			}
-			f.write('else {')
+			f.write('else ')
 		}
+		if i < it.branches.len - 1 || !it.has_else {
+			f.write('if ')
+			if branch.mut_name {
+				f.write('mut ')
+			}
+			f.expr(branch.cond)
+			if smartcast_as {
+				f.write(' as $branch.left_as_name')
+			}
+			f.write(' ')
+		}
+		f.write('{')
 		if single_line {
 			f.write(' ')
 		} else {
