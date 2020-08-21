@@ -2,7 +2,7 @@
 
 module main
 
-import websocket
+import x.websocket
 
 fn main() {
 	for i in 1 ..304  {

@@ -2,7 +2,7 @@
 
 module main
 
-import websocket
+import x.websocket
 
 fn main() {
 	mut s := websocket.new_server(9002, '/')
