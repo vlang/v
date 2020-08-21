@@ -10,7 +10,7 @@ services:
   client:
     container_name: autobahn_client
     build: 
-      dockerfile: tests/autobahn/ws_test/Dockerfile
+      dockerfile: vlib/x/websocket/tests/autobahn/ws_test/Dockerfile
       context: ../../
     # volumes: 
     #   - ../../:/src
