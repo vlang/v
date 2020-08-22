@@ -2991,10 +2991,18 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						if branch.mut_name {
-							left := infix.left as ast.Ident
-							if var := scope.find_var(left.name) {
-								if !var.is_mut {
-									c.error('`mut` used with immutable `$left.name`', left.pos)
+							if infix.left is ast.Ident as left {
+								if var := scope.find_var(left.name) {
+									if !var.is_mut {
+										c.error('`mut` used with immutable `$left.name`', left.pos)
+									}
+								}
+							} else if infix.left is ast.SelectorExpr as selector {
+								if field := c.table.struct_find_field(left_sym, selector.field_name) {
+									if !field.is_mut {
+										c.error('`mut` used with immutable `$selector`', selector.pos)
+
+									}
 								}
 							}
 						}

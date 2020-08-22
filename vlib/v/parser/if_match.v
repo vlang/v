@@ -100,16 +100,17 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		mut left_as_name := ''
 		if cond is ast.InfixExpr as infix {
 			// if sum is T
-			is_is_cast := infix.op == .key_is
-			is_ident := infix.left is ast.Ident
-			left_as_name = if is_is_cast && p.tok.kind == .key_as {
+			if infix.op == .key_is && p.tok.kind == .key_as {
 				p.next()
-				p.check_name()
-			} else if is_ident {
-				ident := infix.left as ast.Ident
-				ident.name
-			} else {
-				''
+				comments << p.eat_comments()
+				if p.tok.kind == .key_mut {
+					p.next()
+					comments << p.eat_comments()
+					mut_name = true
+				}
+				left_as_name = p.check_name()
+			} else if infix.left is ast.Ident as ident {
+				left_as_name = ident.name
 			}
 		}
 		end_pos := p.prev_tok.position()
