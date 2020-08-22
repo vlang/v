@@ -1500,7 +1500,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	last := mod_name.split('.').last()
 	if is_alias && mod_alias == last {
-		p.error_with_pos('import alias `$mod_name as $last` is reduntant', p.prev_tok.position())
+		p.error_with_pos('import alias `$mod_name as $last` is redundant', p.prev_tok.position())
 	}
 	node := ast.Import{
 		pos: pos
