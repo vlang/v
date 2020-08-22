@@ -2766,8 +2766,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				g.expr(node.left)
 			} else if sym.kind == .array {
 				g.write('array_slice(')
-				if node.left_type.is_ptr(){
-				  	g.write('*')
+				if node.left_type.is_ptr() {
+					g.write('*')
 				}
 				g.expr(node.left)
 			} else if sym.kind == .array_fixed {
