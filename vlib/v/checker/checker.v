@@ -2979,8 +2979,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		// smartcast sumtypes when using `is`
-		if branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
+		if branch.cond is ast.InfixExpr as infix {
 			if infix.op == .key_is &&
 				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
 				right_expr := infix.right as ast.Type
@@ -2990,25 +2989,21 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
 					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
-						mut is_mut := false
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						if infix.left is ast.Ident as infix_left {
-							if var := scope.find_var(infix_left.name) {
-								is_mut = var.is_mut
+						if branch.mut_name {
+							left := infix.left as ast.Ident
+							if var := scope.find_var(left.name) {
+								if !var.is_mut {
+									c.error('`mut` used with immutable `$left.name`', left.pos)
+								}
 							}
-						} else if infix.left is ast.SelectorExpr {
-							selector := infix.left as ast.SelectorExpr
-							field := c.table.struct_find_field(left_sym, selector.field_name) or {
-								table.Field{}
-							}
-							is_mut = field.is_mut
 						}
 						scope.register(branch.left_as_name, ast.Var{
 							name: branch.left_as_name
 							typ: right_expr.typ.to_ptr()
 							pos: infix.left.position()
 							is_used: true
-							is_mut: is_mut
+							is_mut: branch.mut_name
 						})
 						node.branches[i].smartcast = true
 					}
