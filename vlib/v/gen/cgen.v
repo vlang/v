@@ -4442,6 +4442,7 @@ fn (mut g Gen) type_default(typ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
+		.interface_ { '{0}' }
 		.sum_type { '{0}' }
 		.array_fixed { '{0}' }
 		else { '0' }
