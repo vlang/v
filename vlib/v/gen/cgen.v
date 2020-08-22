@@ -3997,13 +3997,15 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		compare_fn += '_reverse'
 	}
 	//
+	deref := if node.left_type.is_ptr() || node.left_type.is_pointer() { '->' } else { '.' }
+	// eprintln('> qsort: pointer $node.left_type | deref: `$deref`')
 	g.write('qsort(')
 	g.expr(node.left)
-	g.write('.data, ')
+	g.write('${deref}data, ')
 	g.expr(node.left)
-	g.write('.len, ')
+	g.write('${deref}len, ')
 	g.expr(node.left)
-	g.writeln('.element_size, $compare_fn);')
+	g.writeln('${deref}element_size, $compare_fn);')
 }
 
 // `nums.filter(it % 2 == 0)`
