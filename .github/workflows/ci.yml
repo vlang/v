@@ -490,7 +490,7 @@ jobs:
       - name: Run autobahn services
         run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
       - name: Build client test
-        run: docker exec autobahn_client "v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client.v" 
+        run: docker exec autobahn_client "v" "/src/tests/autobahn/autobahn_client.v" 
       - name: Run client test
         run: docker exec autobahn_client "/src/tests/autobahn/autobahn_client"  
       - name: Run server test
