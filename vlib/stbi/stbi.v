@@ -28,7 +28,7 @@ fn init() {
 	set_flip_vertically_on_load(false)
 }
 
-pub fn load(path string) Image {
+pub fn load(path string) ?Image {
 	ext := path.all_after_last('.')
 	mut res := Image {
 		ok: true
@@ -38,12 +38,12 @@ pub fn load(path string) Image {
 	flag := if ext == 'png' { C.STBI_rgb_alpha } else { 0 }
 	res.data = C.stbi_load(path.str, &res.width, &res.height,	&res.nr_channels, flag)
 	if isnil(res.data) {
-		panic('stbi image failed to load from "$path"')
+		return error('stbi image failed to load from "$path"')
 	}
 	return res
 }
 
-pub fn load_from_memory(buf byteptr, bufsize int) Image {
+pub fn load_from_memory(buf byteptr, bufsize int) ?Image {
 	mut res := Image {
 		ok: true
 		data: 0
@@ -51,7 +51,7 @@ pub fn load_from_memory(buf byteptr, bufsize int) Image {
 	flag := C.STBI_rgb_alpha
 	res.data = C.stbi_load_from_memory(buf, bufsize, &res.width, &res.height, &res.nr_channels, flag)
 	if isnil(res.data) {
-		panic('stbi image failed to load from memory')
+		return error('stbi image failed to load from memory')
 	}
 	return res
 }
