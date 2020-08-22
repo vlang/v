@@ -24,7 +24,7 @@ fn (mut ws Client) read_handshake(seckey string) {
 	unsafe {
 		buffer[max_buffer - 1] = `\0`
 	}
-	ws.handshake_handler(string(byteptr(buffer)), seckey)
+	ws.handshake_handler(unsafe{ byteptr(buffer).vstring_with_len(max_buffer-1) }, seckey)
 }
 
 fn (mut ws Client) handshake_handler(handshake_response, seckey string) {

@@ -195,11 +195,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if is_atomic {
 			rec_type = rec_type.set_flag(.atomic_f)
 		}
+		sym := p.table.get_type_symbol(rec_type)
 		args << table.Arg{
 			pos: rec_start_pos
 			name: rec_name
 			is_mut: rec_mut
 			typ: rec_type
+			type_source_name: sym.source_name
 		}
 		p.check(.rpar)
 	}
@@ -254,11 +256,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
+		ret_type_sym := p.table.get_type_symbol(return_type)
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
 			args: args
 			return_type: return_type
+			return_type_source_name: ret_type_sym.source_name
 			is_variadic: is_variadic
 			is_generic: is_generic
 			is_pub: is_pub
@@ -279,10 +283,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			p.fn_redefinition_error(name)
 		}
 		// p.warn('reg functn $name ()')
+		ret_type_sym := p.table.get_type_symbol(return_type)
 		p.table.register_fn(table.Fn{
 			name: name
 			args: args
 			return_type: return_type
+			return_type_source_name: ret_type_sym.source_name
 			is_variadic: is_variadic
 			is_generic: is_generic
 			is_pub: is_pub
@@ -358,10 +364,12 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		stmts = p.parse_block_no_scope(false)
 	}
 	p.close_scope()
+	ret_type_sym := p.table.get_type_symbol(return_type)
 	mut func := table.Fn{
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type
+		return_type_source_name: ret_type_sym.source_name
 	}
 	name := 'anon_${p.tok.pos}_$func.signature()'
 	func.name = name
@@ -447,11 +455,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				}
 				p.next()
 			}
+			sym := p.table.get_type_symbol(arg_type)
 			args << table.Arg{
 				pos: pos
 				name: arg_name
 				is_mut: is_mut
 				typ: arg_type
+				type_source_name: sym.source_name
 			}
 			arg_no++
 		}
@@ -507,11 +517,13 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				typ = typ.set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
+				sym := p.table.get_type_symbol(typ)
 				args << table.Arg{
 					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut
 					typ: typ
+					type_source_name: sym.source_name
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
