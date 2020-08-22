@@ -1371,12 +1371,18 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		}
 		if i < it.branches.len - 1 || !it.has_else {
 			f.write('if ')
-			if branch.mut_name {
-				f.write('mut ')
-			}
-			f.expr(branch.cond)
 			if smartcast_as {
-				f.write(' as $branch.left_as_name')
+				f.expr(branch.cond)
+				f.write(' as ')
+				if branch.mut_name {
+					f.write('mut ')
+				}
+				f.write('$branch.left_as_name')
+			} else {
+				if branch.mut_name {
+					f.write('mut ')
+				}
+				f.expr(branch.cond)
 			}
 			f.write(' ')
 		}

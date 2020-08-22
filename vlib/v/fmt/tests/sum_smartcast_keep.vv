@@ -8,15 +8,16 @@ struct S2 {
 
 type Sum = S1 | S2
 
-fn f(sum Sum) {
+fn f() {
+	mut sum := Sum(S1{})
 	if mut sum is S1 {
 		sum.i++
 	}
 	if sum is S1 as s1 {
 	}
-	a := [sum]
+	mut a := [sum]
 	if a[0] is S2 {
 	}
-	if a[0] is S2 as s2 {
+	if a[0] is S2 as mut s2 {
 	}
 }
