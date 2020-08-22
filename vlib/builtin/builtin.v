@@ -115,11 +115,9 @@ const (
 )
 
 //#include "@VROOT/vlib/darwin/darwin.m"
-
 //fn C.nsstring2(s string) voidptr
 //fn C.NSLog(x voidptr)
-#include <asl.h>
-
+//#include <asl.h>
 
 fn C.asl_log(voidptr, voidptr, int, charptr)
 
