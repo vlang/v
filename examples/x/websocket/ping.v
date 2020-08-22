@@ -58,7 +58,7 @@ fn start_client() ? {
 	// use on_message_ref if you want to send any reference object
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		if msg.payload.len > 0 {
-			message := string(msg.payload, msg.payload.len)
+			message := msg.payload.bytestr()
 			println('client got type: $msg.opcode payload:\n$message')
 		}
 	})
