@@ -16,7 +16,7 @@ mut:
 // this function gets an array of channels for `St` references
 fn do_rec_calc_send(chs []chan mut St) {
 	for {
-		s := <-chs[0] or {
+		mut s := <-chs[0] or {
 			break
 		}
 		s.n++
@@ -32,7 +32,7 @@ fn test_channel_array_mut() {
 	}
 	for _ in 0 .. num_iterations {
 		chs[0] <- t
-		t <- chs[1]
+		t = <-chs[1]
 	}
 	(&sync.Channel(chs[0])).close()
 	assert t.n == 100 + num_iterations
