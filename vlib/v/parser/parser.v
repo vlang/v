@@ -1478,6 +1478,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
 	}
+	mut is_alias := false
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
 		p.next()
@@ -1494,7 +1495,12 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	if p.tok.kind == .key_as {
 		p.next()
+		is_alias = true
 		mod_alias = p.check_name()
+	}
+	last := mod_name.split('.').last()
+	if is_alias && mod_alias == last {
+		p.error_with_pos('import alias `$mod_name as $last` is reduntant', p.prev_tok.position())
 	}
 	node := ast.Import{
 		pos: pos
