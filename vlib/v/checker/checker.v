@@ -2465,6 +2465,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.op == .arrow {
 				right := c.table.get_type_symbol(right_type)
 				if right.kind == .chan {
+					c.stmts(node.or_block.stmts)
 					return right.chan_info().elem_type
 				} else {
 					c.error('<- operator can only be used with `chan` types', node.pos)
