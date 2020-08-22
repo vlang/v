@@ -30,8 +30,8 @@ pub:
 pub mut:
 	info        TypeInfo
 	kind        Kind
-	name        string
-	source_name string
+	name        string // the internal name of the type, i.e. `array_fixed_int_5`. See also .source_name below.
+	source_name string // the original source name of the type, i.e. `[5]int`. Do not use this for logic, but just for formatting/errors.
 	methods     []Fn
 	mod         string
 	is_public   bool
