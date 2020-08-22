@@ -54,8 +54,9 @@ fn ws_test(uri string) ? {
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		println('client got type: $msg.opcode payload:\n$msg.payload')
 		if msg.opcode == .text_frame {
-			println('Message: ${string(msg.payload, msg.payload.len)}')
-			assert string(msg.payload, msg.payload.len) == 'a'
+			smessage := msg.payload.bytestr()
+			println('Message: $smessage')
+			assert smessage == 'a'
 		} else {
 			println('Binary message: $msg')
 		}

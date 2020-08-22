@@ -183,7 +183,7 @@ pub fn (mut ws Client) listen() ? {
 					if ws.state !in [.closing, .closed] {
 						// sending close back according to spec
 						ws.debug_log('close with reason, code: $code, reason: $reason')
-						r := if reason.len > 0 { string(reason, reason.len) } else { '' }
+						r := reason.bytestr()
 						ws.close(code, r)?
 					}
 					unsafe {

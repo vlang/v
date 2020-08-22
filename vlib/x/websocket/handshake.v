@@ -128,7 +128,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 			break
 		}
 	}
-	res := string(msg[..total_bytes_read])
+	res := msg[..total_bytes_read].bytestr()
 	return res
 }
 
