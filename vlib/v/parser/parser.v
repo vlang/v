@@ -1495,6 +1495,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if p.tok.kind == .key_as {
 		p.next()
 		mod_alias = p.check_name()
+		if mod_alias == mod_name.split('.').last() {
+			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
+		}
 	}
 	node := ast.Import{
 		pos: pos

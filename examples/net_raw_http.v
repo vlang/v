@@ -1,5 +1,5 @@
 // Simple raw HTTP head request
-import x.net as net
+import x.net
 import time
 
 // Make a new connection

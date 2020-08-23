@@ -1,4 +1,4 @@
-import math.stats as stats
+import math.stats
 import math
 
 fn test_freq() {
