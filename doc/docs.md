@@ -254,7 +254,7 @@ Try compiling the program above after removing `mut` from the first line.
 
 ### Initialization vs assignment
 
-Note the (important) difference between `:=` and `=`
+Note the (important) difference between `:=` and `=`.
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
 ```v
