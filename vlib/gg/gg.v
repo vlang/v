@@ -274,7 +274,29 @@ pub fn (gg &Context) end() {
 	}
 }
 
+fn abs(a f32) f32 {
+	if a >= 0 {
+		return a
+	}
+	return -a
+}
+
+
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
+	if ctx.scale > 1 {
+		// Make the line more clear on hi dpi screens: draw a rectangle
+		mut width := abs(x2 - x)
+		mut height := abs(y2 - y)
+		if width == 0   {
+			width = 1
+		}
+		else if height == 0 {
+			height = 1
+		}
+
+		ctx.draw_rect(x, y, width, height, c)
+		return
+	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
