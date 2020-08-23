@@ -2285,8 +2285,8 @@ but may impact the size of your executable.
 `[direct_array_access]` - in functions tagged with `[direct_array_access]`
 the compiler will translate array operations directly into C array operations - 
 omiting bounds checking. This may save a lot of time in a function that iterates
-over an array but at the cost of making the function unsafe
-- unless the boundries will be checked by the user.
+over an array but at the cost of making the function unsafe - unless
+the boundries will be checked by the user.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly
