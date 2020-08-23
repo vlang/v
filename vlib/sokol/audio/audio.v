@@ -9,8 +9,15 @@ pub type FNStreamingCB = fn (buffer &f32, num_frames, num_channels int)
 
 pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames, num_channels int, user_data voidptr)
 
+pub fn (x FNStreamingCB) str() string {
+	return '&FNStreamingCB{ ${ptr_str(x)} }'
+}
+
+pub fn (x FnStreamingCBWithUserData) str() string {
+	return '&FnStreamingCBWithUserData{ ${ptr_str(x)} }'
+}
+
 //
-[typedef]
 pub struct C.saudio_desc {
 	sample_rate        int
 	num_channels       int
@@ -82,7 +89,7 @@ pub fn channels() int {
 	return C.saudio_channels()
 }
 
-// audio.expect - get current number of frames to fill packet queue
+// audio.expect - get current number of frames to fill packet queue; use in combination with audio.push/2
 pub fn expect() int {
 	return C.saudio_expect()
 }
@@ -100,6 +107,20 @@ pub fn fclamp(x, flo, fhi f32) f32 {
 	}
 	if x < flo {
 		return flo
+	}
+	return x
+}
+
+pub fn min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
+pub fn max(x, y int) int {
+	if x < y {
+		return y
 	}
 	return x
 }

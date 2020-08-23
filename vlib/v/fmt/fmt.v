@@ -1728,6 +1728,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	f.write(']')
 	// `[100]byte`
 	if it.is_fixed {
+		if it.has_val {
+			f.write('!!')
+			return
+		}
 		f.write(f.type_to_str(it.elem_type))
 		if it.has_default {
 			f.write('{init: $it.default_expr}')
