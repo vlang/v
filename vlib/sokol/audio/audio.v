@@ -4,6 +4,7 @@ module audio
 #define SOKOL_IMPL
 #include "sokol_audio.h"
 #flag linux -lasound
+#flag darwin -framework AudioToolbox
 //
 pub type FNStreamingCB = fn (buffer &f32, num_frames, num_channels int)
 
