@@ -8,7 +8,7 @@ pub const (
 #flag -I @VROOT/thirdparty/sokol/util
 
 #flag darwin -fobjc-arc
-#flag linux -lX11 -lGL
+#flag linux -lX11 -lGL -lXcursor -lXi
 
 #flag windows -lgdi32
 
