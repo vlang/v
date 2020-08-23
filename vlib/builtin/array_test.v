@@ -1001,3 +1001,34 @@ fn test_array_string_pop() {
 	assert a.len == 0
 	assert a.cap == 3
 }
+
+
+[direct_array_access]
+fn test_direct_array_access() {
+	mut a := [11,22,33,44]
+	assert a[0] == 11
+	assert a[2] == 33
+	x := a[0]
+	a[0] = 21
+	a[1] += 2
+	a[2] = x + 3
+	a[3] -= a[1]
+	assert a == [21, 24, 14, 20]
+}
+
+[direct_array_access]
+fn test_direct_array_access_via_ptr() {
+	mut b := [11,22,33,44]
+	unsafe {
+		mut a := &b
+		assert a[0] == 11
+		assert a[2] == 33
+		x := a[0]
+		a[0] = 21
+		a[1] += 2
+		a[2] = x + 3
+		a[3] -= a[1]
+		assert a == [21, 24, 14, 20]
+	}
+}
+

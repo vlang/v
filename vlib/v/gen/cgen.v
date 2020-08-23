@@ -2814,7 +2814,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
 				if g.is_assign_lhs && !is_selector && node.is_setter {
-					// --- kerbal ----------------------------------------------
 					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
 					array_ptr_type_str := match elem_typ.kind {
 						.function { 'voidptr*' }
@@ -2830,6 +2829,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						}
 					}
 					g.expr(node.left)
+					// TODO: test direct_array_access when 'shared' is implemented
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -2838,7 +2838,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						}
 					}
 					if is_direct_array_access {
-						g.write('.data)[')
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+							g.write('->')
+						} else {
+							g.write('.')
+						}
+						g.write('data)[')
 						g.expr(node.index)
 						g.write(']')
 					} else {
@@ -2902,7 +2907,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						}
 					}
 				} else {
-					// --- kerbal ----------------------------------------------
 					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
 					
 					array_ptr_type_str := match elem_typ.kind {
@@ -2913,15 +2917,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('(($array_ptr_type_str)')
 					} else {
 						g.write('(*($array_ptr_type_str)array_get(')
-					}
-					// TODO combine ifs above and below g.expr
-					// TODO: 1 test cases - when 'shared' is implemented
-					// TODO: 1 test cases
-					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-						g.write('*')
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+							g.write('*')
+						}
 					}
 					g.expr(node.left)
-					// TODO: 2 test cases - when 'shared' is implemented
+					// TODO: test direct_array_access when 'shared' is implemented
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -2930,8 +2931,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						}
 					}
 					if is_direct_array_access {
-						g.write('.data)')
-						g.write('[')
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+							g.write('->')
+						} else {
+							g.write('.')
+						}
+						g.write('data)[')
 						g.expr(node.index)
 						g.write(']')
 					} else {
