@@ -74,23 +74,7 @@ pub:
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut g := &Context(user_data)
-	mtl_desc := C.sg_mtl_context_desc {
-		device: sapp.metal_get_device()
-		renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
-		drawable_cb: sapp.metal_get_drawable
-	}
-	d3d11_desc := C.sg_d3d11_context_desc {
-		device: sapp.d3d11_get_device()
-		device_context: sapp.d3d11_get_device_context()
-		render_target_view_cb: sapp.d3d11_get_render_target_view
-		depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
-	}
-	desc := C.sg_desc{
-		context: C.sg_context_desc{
-			metal: mtl_desc
-			d3d11: d3d11_desc
-		}
-		}
+	desc := sapp.create_desc()
 	/*
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()

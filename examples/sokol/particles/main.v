@@ -68,15 +68,7 @@ fn (a App) draw() {
 }
 
 fn init(user_data voidptr) {
-	desc := C.sg_desc{
-		mtl_device: sapp.metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp.metal_get_drawable
-		d3d11_device: sapp.d3d11_get_device()
-		d3d11_device_context: sapp.d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
-	}
+	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{
 		max_vertices: 50 * 65536
