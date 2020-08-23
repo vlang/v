@@ -65,6 +65,7 @@ mut:
 	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
 	vlines_path           string // set to the proper path for generating #line directives
 	optionals             []string // to avoid duplicates TODO perf, use map
+	chan_pop_optionals    []string // types for `x := <-ch or {...}`
 	shareds               []int // types with hidden mutex for which decl has been emitted
 	inside_ternary        int // ?: comma separated statements on a single line
 	inside_map_postfix    bool // inside map++/-- postfix expr
@@ -460,6 +461,22 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	return sh_typ
 }
 
+fn (mut g Gen) register_chan_pop_optional_call(opt_el_type, styp string) {
+	if opt_el_type !in g.chan_pop_optionals {
+		g.chan_pop_optionals << opt_el_type
+		g.channel_definitions.writeln('
+static inline $opt_el_type __Option_${styp}_popval($styp ch) {
+	$opt_el_type _tmp;
+	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
+		Option _tmp2 = v_error(tos_lit("channel closed"));
+		return *($opt_el_type*)&_tmp2;
+	}
+	_tmp.ok = true; _tmp.is_none = false; _tmp.v_error = (string){.str=(byteptr)""}; _tmp.ecode = 0;
+	return _tmp;
+}')
+	}
+}
+
 // cc_type returns the Cleaned Concrete Type name, *without ptr*,
 // i.e. it's always just Cat, not Cat_ptr:
 fn (g &Gen) cc_type(t table.Type) string {
@@ -519,7 +536,8 @@ typedef struct {
 				if typ.name != 'chan' {
 					styp := util.no_dots(typ.name)
 					g.type_definitions.writeln('typedef chan $styp;')
-					el_stype := g.typ(typ.chan_info().elem_type)
+					chan_inf := typ.chan_info()
+					el_stype := g.typ(chan_inf.elem_type)
 					g.channel_definitions.writeln('
 static inline $el_stype __${styp}_popval($styp ch) {
 	$el_stype val;
@@ -1997,22 +2015,45 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 		}
 		ast.PrefixExpr {
+			gen_or := node.op == .arrow && node.or_block.kind != .absent
 			if node.op == .amp {
 				g.is_amp = true
 			}
 			if node.op == .arrow {
-				right_type := g.unwrap_generic(node.right_type)
-				right_sym := g.table.get_type_symbol(right_type)
-				styp := util.no_dots(right_sym.name)
-				g.write('__${styp}_popval(')
+				styp := g.typ(node.right_type)
+				right_sym := g.table.get_type_symbol(node.right_type)
+				mut right_inf := right_sym.info as table.Chan
+				elem_type := right_inf.elem_type
+				is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
+				cur_line := if is_gen_or_and_assign_rhs {
+					line := g.go_before_stmt(0)
+					g.out.write(tabs[g.indent])
+					line
+				} else {
+					''
+				}
+				tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+				if gen_or {
+					opt_elem_type := g.typ(elem_type.set_flag(.optional))
+					g.register_chan_pop_optional_call(opt_elem_type, styp)
+					g.write('$opt_elem_type $tmp_opt = __Option_${styp}_popval(')
+				} else {
+					g.write('__${styp}_popval(')
+				}
+				g.expr(node.right)
+				g.write(')')
+				if gen_or {
+					g.or_block(tmp_opt, node.or_block, elem_type)
+					if is_gen_or_and_assign_rhs {
+						elem_styp := g.typ(elem_type)
+						g.write('\n$cur_line*($elem_styp*)${tmp_opt}.data')
+					}
+				}
 			} else {
 				// g.write('/*pref*/')
 				g.write(node.op.str())
 				// g.write('(')
-			}
-			g.expr(node.right)
-			if node.op == .arrow {
-				g.write(')')
+				g.expr(node.right)
 			}
 			g.is_amp = false
 		}
