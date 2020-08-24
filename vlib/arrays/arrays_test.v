@@ -4,24 +4,30 @@ module arrays
 fn test_min() {
 	a := [8, 2, 6, 4]
 	assert min<int>(a)==2
+	assert min<int>(a[2..])==4
 	
 	b := [f32(5.1), 3.1, 1.1, 9.1]
 	assert min<f32>(b) == f32(1.1)
+	assert min<f32>(b[..2]) == f32(3.1)
 	
 	c := [byte(4), 9, 3, 1]
 	assert min<byte>(c) == byte(1)
+	assert min<byte>(c[..3]) == byte(3)
 }
 
 
 fn test_max() {
 	a := [8, 2, 6, 4]
 	assert max<int>(a)==8
+	assert max<int>(a[1..])==6
 	
 	b := [f32(5.1), 3.1, 1.1, 9.1]
 	assert max<f32>(b) == f32(9.1)
+	assert max<f32>(b[..3]) == f32(5.1)
 	
 	c := [byte(4), 9, 3, 1]
 	assert max<byte>(c) == byte(9)
+	assert max<byte>(c[2..]) == byte(3)
 }
 
 
@@ -72,6 +78,8 @@ fn test_all() {
 	b := [1,1,2,2]
 	assert all<int>(b, 1) == false
 	assert all<int>(b, 2) == false
+	assert all<int>(b[2..], 1) == false
+	assert all<int>(b[2..], 2) == true
 	c := [f32(1.1), 1.1, 1.1]
 	assert all<f32>(c, 1.1) == true
 	assert all<f32>(c, 1.2) == false
