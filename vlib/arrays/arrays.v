@@ -71,6 +71,7 @@ pub fn shuffle<T>(mut a []T) {
 // all checks if all array items are equal to given value
 [direct_array_access]
 pub fn all<T>(a []T, value T) bool {
+	if a.len == 0 { return false }
 	for i in 0..a.len {
 		if a[i] != value { return false }
 	}

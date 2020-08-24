@@ -75,6 +75,7 @@ fn test_all() {
 	a := [1,1,1,1]
 	assert all<int>(a, 1) == true
 	assert all<int>(a, 2) == false
+	assert all<int>(a[0..0], 1) == false
 	b := [1,1,2,2]
 	assert all<int>(b, 1) == false
 	assert all<int>(b, 2) == false
