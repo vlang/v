@@ -128,7 +128,7 @@ mut:
 	shifts int
 }
 
-//
+[no_inline]
 fn (t TileLine) to_left() TileLine {
 	right_border_idx := 5
 	mut res := t
