@@ -801,6 +801,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.FnDecl {
+			g.gen_attrs(node.attrs)
 			// g.tmp_count = 0 TODO
 			mut skip := false
 			pos := g.out.buf.len
@@ -2857,12 +2858,22 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				// `(*(Val*)array_get(vals, i)).field = x;`
 				is_selector := node.left is ast.SelectorExpr
 				if g.is_assign_lhs && !is_selector && node.is_setter {
-					g.is_array_set = true
-					g.write('array_set(')
-					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
-						g.write('&')
+					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+					array_ptr_type_str := match elem_typ.kind {
+						.function { 'voidptr*' }
+						else { '$elem_type_str*' }
+					}
+					if is_direct_array_access {
+						g.write('(($array_ptr_type_str)')
+					} else {
+						g.is_array_set = true // special handling of assign_op and closing with '})'
+						g.write('array_set(')
+						if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+							g.write('&')
+						}
 					}
 					g.expr(node.left)
+					// TODO: test direct_array_access when 'shared' is implemented
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -2870,72 +2881,89 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', ')
-					g.expr(node.index)
-					mut need_wrapper := true
-					/*
-					match node.right {
-						ast.EnumVal, ast.Ident {
-							// `&x` is enough for variables and enums
-							// `&(Foo[]){ ... }` is only needed for function calls and literals
-							need_wrapper = false
-						}
-						else {}
-					}
-					*/
-					if need_wrapper {
-						if elem_typ.kind == .function {
-							g.write(', &(voidptr[]) { ')
+					if is_direct_array_access {
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+							g.write('->')
 						} else {
-							g.write(', &($elem_type_str[]) { ')
+							g.write('.')
 						}
+						g.write('data)[')
+						g.expr(node.index)
+						g.write(']')
 					} else {
-						g.write(', &')
+						g.write(', ')
+						g.expr(node.index)
+						mut need_wrapper := true
+						/*
+						match node.right {
+							ast.EnumVal, ast.Ident {
+								// `&x` is enough for variables and enums
+								// `&(Foo[]){ ... }` is only needed for function calls and literals
+								need_wrapper = false
+							}
+							else {}
+						}
+						*/
+						if need_wrapper {
+							if elem_typ.kind == .function {
+								g.write(', &(voidptr[]) { ')
+							} else {
+								g.write(', &($elem_type_str[]) { ')
+							}
+						} else {
+							g.write(', &')
+						}
+						// `x[0] *= y`
+						if g.assign_op != .assign &&
+							g.assign_op in token.assign_tokens && info.elem_type != table.string_type {
+							// TODO move this
+							g.write('*($elem_type_str*)array_get(')
+							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+								g.write('*')
+							}
+							g.expr(node.left)
+							if node.left_type.has_flag(.shared_f) {
+								if left_is_ptr {
+									g.write('->val')
+								} else {
+									g.write('.val')
+								}
+							}
+							g.write(', ')
+							g.expr(node.index)
+							g.write(') ')
+							op := match g.assign_op {
+								.mult_assign { '*' }
+								.plus_assign { '+' }
+								.minus_assign { '-' }
+								.div_assign { '/' }
+								.xor_assign { '^' }
+								.mod_assign { '%' }
+								.or_assign { '|' }
+								.and_assign { '&' }
+								.left_shift_assign { '<<' }
+								.right_shift_assign { '>>' }
+								else { '' }
+							}
+							g.write(op)
+						}
 					}
-					// `x[0] *= y`
-					if g.assign_op != .assign &&
-						g.assign_op in token.assign_tokens && info.elem_type != table.string_type {
-						// TODO move this
-						g.write('*($elem_type_str*)array_get(')
+				} else {
+					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
+					array_ptr_type_str := match elem_typ.kind {
+						.function { 'voidptr*' }
+						else { '$elem_type_str*' }
+					}
+					if is_direct_array_access {
+						g.write('(($array_ptr_type_str)')
+					} else {
+						g.write('(*($array_ptr_type_str)array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('*')
 						}
-						g.expr(node.left)
-						if node.left_type.has_flag(.shared_f) {
-							if left_is_ptr {
-								g.write('->val')
-							} else {
-								g.write('.val')
-							}
-						}
-						g.write(', ')
-						g.expr(node.index)
-						g.write(') ')
-						op := match g.assign_op {
-							.mult_assign { '*' }
-							.plus_assign { '+' }
-							.minus_assign { '-' }
-							.div_assign { '/' }
-							.xor_assign { '^' }
-							.mod_assign { '%' }
-							.or_assign { '|' }
-							.and_assign { '&' }
-							.left_shift_assign { '<<' }
-							.right_shift_assign { '>>' }
-							else { '' }
-						}
-						g.write(op)
-					}
-				} else {
-					if elem_typ.kind == .function {
-						g.write('(*(voidptr*)array_get(')
-					} else {
-						g.write('(*($elem_type_str*)array_get(')
-					}
-					if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-						g.write('*')
 					}
 					g.expr(node.left)
+					// TODO: test direct_array_access when 'shared' is implemented
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -2943,9 +2971,20 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', ')
-					g.expr(node.index)
-					g.write('))')
+					if is_direct_array_access {
+						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
+							g.write('->')
+						} else {
+							g.write('.')
+						}
+						g.write('data)[')
+						g.expr(node.index)
+						g.write(']')
+					} else {
+						g.write(', ')
+						g.expr(node.index)
+						g.write('))')
+					}
 				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map

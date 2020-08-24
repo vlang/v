@@ -132,6 +132,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
 	is_deprecated := p.attrs.contains('deprecated')
+	is_direct_arr := p.attrs.contains('direct_array_access')
 	mut is_unsafe := p.attrs.contains('unsafe')
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -318,6 +319,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		return_type: return_type
 		args: args
 		is_deprecated: is_deprecated
+		is_direct_arr: is_direct_arr
 		is_pub: is_pub
 		is_generic: is_generic
 		is_variadic: is_variadic
