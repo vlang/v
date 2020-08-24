@@ -1470,7 +1470,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
-	if typ.has_flag(.variadic) {
+	if typ.has_flag(.variadic) || sym.kind == .array_fixed {
 		if field_name == 'len' {
 			selector_expr.typ = table.int_type
 			return table.int_type

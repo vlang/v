@@ -2100,6 +2100,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
+			sym := g.table.get_type_symbol(node.expr_type)
+			if sym.kind == .array_fixed {
+				assert node.field_name == 'len'
+				info := sym.info as table.ArrayFixed
+				g.write('$info.size')
+				return
+			}
 			g.expr(node.expr)
 			if node.expr_type.is_ptr() {
 				g.write('->')

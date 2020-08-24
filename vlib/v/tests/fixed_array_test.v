@@ -11,7 +11,7 @@ fn test_fixed_array_can_be_assigned() {
 	v = [8]f64{}
 	assert v[1] == 0
 	// test slicing
-	for e in v[0..8] {
+	for e in v[0..v.len] {
 		assert e == 0
 	}
 	v = [8]f64{init: 3.0}
@@ -21,6 +21,7 @@ fn test_fixed_array_can_be_assigned() {
 fn test_fixed_array_can_be_used_in_declaration() {
 	x := 2.32
 	v := [1.0, x, 3.0,4.0,5.0,6.0,7.0,8.0]!!
+	assert v.len == 8
 	assert v[1] == x
 }
 
@@ -32,6 +33,7 @@ struct Context {
 
 fn test_fixed_array_can_be_assigned_to_a_struct_field() {
 	mut ctx := Context{}
+	assert ctx.vb.len == 8
 	x := 2.32
 	ctx.vb = [1.1, x, 3.3, 4.4, 5.0, 6.0, 7.0, 8.9]!!
 	assert ctx.vb[1] == x
