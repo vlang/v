@@ -1435,6 +1435,7 @@ interface Speaker {
 fn perform(s Speaker) string {
     if s is Dog { // use `is` to check the underlying type of an interface
         println('perform(dog)')
+	println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
     } else if s is Cat {
         println('perform(cat)')
     }
@@ -1460,8 +1461,17 @@ enum Color {
 mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
-println(color) // "1"  TODO: print "green"?
+println(color) // "green"
+
+match color {
+    .red { ... }
+    .green { ... }
+    .blue { ... }
+}
+
 ```
+
+Enum match must be exhaustive or have an `else` branch. This ensures that if a new enum field is added, it's handled everywhere in the code.
 
 ### Sum types
 
@@ -1532,7 +1542,7 @@ fn (v Venus) sweat()
 
 fn pass_time(w World) {
     match w {
-        // using the shadowed match variable, in this case `w`
+        // using the shadowed match variable, in this case `w` (smart cast)
         Moon { w.moon_walk() }
         Mars { w.shiver() }
         else {}
