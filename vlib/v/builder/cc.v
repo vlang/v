@@ -274,6 +274,12 @@ fn (mut v Builder) cc() {
 	if v.pref.is_prod {
 		args << optimization_options
 	}
+	if v.pref.is_prod && !debug_mode {
+		// sokol and other C libraries that use asserts 
+		// have much better performance when NDEBUG is defined
+		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+		args << '-DNDEBUG'
+	}
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
