@@ -56,7 +56,6 @@ pub fn (mut s SSLConn) shutdown() ? {
 					}
 					continue
 				} else {
-					println('error: $err_res')
 					return error('unexepedted ssl error $err_res')
 				}
 				C.SSL_free(s.ssl)
@@ -116,7 +115,6 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn) ? {
 			}
 			return error('Could not connect using SSL. ($err_res),err')
 		}
-		println('CONNECT OK')
 		break
 	}
 }
