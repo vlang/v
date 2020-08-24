@@ -2817,7 +2817,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
 					array_ptr_type_str := match elem_typ.kind {
 						.function { 'voidptr*' }
-						else      { '$elem_type_str*' }
+						else { '$elem_type_str*' }
 					}
 					if is_direct_array_access {
 						g.write('(($array_ptr_type_str)')
@@ -2849,7 +2849,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write(', ')
 						g.expr(node.index)
-
 						mut need_wrapper := true
 						/*
 						match node.right {
@@ -2874,7 +2873,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						if g.assign_op != .assign &&
 							g.assign_op in token.assign_tokens && info.elem_type != table.string_type {
 							// TODO move this
-							
 							g.write('*($elem_type_str*)array_get(')
 							if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 								g.write('*')
@@ -2908,10 +2906,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 				} else {
 					is_direct_array_access := g.fn_decl != 0 && g.fn_decl.is_direct_arr
-					
 					array_ptr_type_str := match elem_typ.kind {
 						.function { 'voidptr*' }
-						else      { '$elem_type_str*' }
+						else { '$elem_type_str*' }
 					}
 					if is_direct_array_access {
 						g.write('(($array_ptr_type_str)')
