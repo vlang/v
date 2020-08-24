@@ -124,7 +124,7 @@ jobs:
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
-      run: ./v test-fixed
+      run: VJOBS=1 ./v test-fixed
     - name: Build examples
       run: ./v build-examples
     - name: v vet
