@@ -2453,8 +2453,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			if node.op == .amp && !right_type.is_ptr() {
 				return right_type.to_ptr()
 			}
-			if node.op == .mul && right_type.is_ptr() {
-				return right_type.deref()
+			if node.op == .mul {
+				if right_type.is_ptr() {
+					return right_type.deref()
+				}
+				if !right_type.is_pointer() {
+					s := c.table.type_to_str(right_type)
+					c.error('prefix operator `*` not defined for type `$s`', node.pos)
+				}
 			}
 			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
 				c.error('operator ~ only defined on int types', node.pos)
