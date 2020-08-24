@@ -1134,20 +1134,20 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type)
 			got_sym := g.table.get_type_symbol(got_type)
 			if expected_is_ptr && got_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){.obj = ')
+				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._object = ')
 				g.expr(expr)
 				g.write(', .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if expected_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){.obj = memdup(&($got_styp[]) {')
+				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._object = memdup(&($got_styp[]) {')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if got_is_ptr {
-				g.write('/* sum type cast */ ($exp_styp) {.obj = ')
+				g.write('/* sum type cast */ ($exp_styp) {._object = ')
 				g.expr(expr)
 				g.write(', .typ = $got_idx /* $got_sym.name */}')
 			} else {
-				g.write('/* sum type cast */ ($exp_styp) {.obj = memdup(&($got_styp[]) {')
+				g.write('/* sum type cast */ ($exp_styp) {._object = memdup(&($got_styp[]) {')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
 			}
@@ -2604,7 +2604,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.expr(node.cond)
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
-					g.writeln('obj; // ST it')
+					g.writeln('_object; // ST it')
 					if node.var_name.len > 0 {
 						// for now we just copy it
 						g.writeln('\t$it_type* $node.var_name = it;')
@@ -2788,7 +2788,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			} else {
 				g.write('.')
 			}
-			g.writeln('obj;')
+			g.writeln('_object;')
 			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
 		g.stmts(branch.stmts)
@@ -3773,7 +3773,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 					g.type_definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
 				}
 				g.type_definitions.writeln('typedef struct {')
-				g.type_definitions.writeln('    void* obj;')
+				g.type_definitions.writeln('    void* _object;')
 				g.type_definitions.writeln('    int typ;')
 				g.type_definitions.writeln('} $name;')
 				g.type_definitions.writeln('')
@@ -4704,7 +4704,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write('/* as */ ($styp*)__as_cast(')
 		g.expr(node.expr)
 		g.write(dot)
-		g.write('obj, ')
+		g.write('_object, ')
 		g.expr(node.expr)
 		g.write(dot)
 		g.write('typ, /*expected:*/$node.typ)')

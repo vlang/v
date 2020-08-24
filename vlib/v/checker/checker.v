@@ -2983,7 +2983,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.error('non-bool type `$typ_sym.source_name` used as if condition', branch.pos)
 			}
 		}
-		// smartcast sumtypes when using `is`
+		// smartcast sumtypes and interfaces when using `is`
 		if branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is &&
@@ -2994,7 +2994,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				// Register shadow variable or `as` variable with actual type
 				if is_variable {
 					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind == .sum_type && branch.left_as_name.len > 0 {
+					if left_sym.kind in [.sum_type, .interface_] && branch.left_as_name.len > 0 {
 						mut is_mut := false
 						mut scope := c.file.scope.innermost(branch.body_pos.pos)
 						if infix.left is ast.Ident as infix_left {
