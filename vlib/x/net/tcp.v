@@ -273,8 +273,8 @@ fn new_tcp_socket() ?TcpSocket {
 	s := TcpSocket {
 		handle: sockfd
 	}
-	s.set_option_bool(.reuse_addr, true)?
-	//s.set_option_int(.reuse_addr, 1)?
+	//s.set_option_bool(.reuse_addr, true)?
+	s.set_option_int(.reuse_addr, 1)?
 	$if windows {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?

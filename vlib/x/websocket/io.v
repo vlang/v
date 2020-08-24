@@ -8,7 +8,7 @@ interface WebsocketIO {
 	socket_write(bytes []byte) ?
 }
 
-// socket_read_into reads into the provided buffer with it's lenght
+// socket_read_into reads into the provided buffer with its length
 fn (mut ws Client) socket_read_into(mut buffer []byte) ?int {
 	lock  {
 		if ws.is_ssl {
