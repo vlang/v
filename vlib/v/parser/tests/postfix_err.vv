@@ -1,0 +1,11 @@
+fn f(i, j int) {}
+
+fn test_postfix() {
+	mut x := 1
+	_ = (x++)
+	f(x--, x)
+	f(x, x++)
+	a := [x]
+	_ = a[x--]
+}
+
