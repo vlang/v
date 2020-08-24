@@ -48,7 +48,7 @@ you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println](#println)
+* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -1324,7 +1324,7 @@ vs
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println
+## println and other builtin functions
 
 `println` is a simple yet powerful builtin function. It can print anything:
 strings, numbers, arrays, maps, structs.
@@ -1353,6 +1353,15 @@ println(red)
 ```
 
 If you don't want to print a newline, use `print()` instead.
+
+The number of builtin functions is low. Other builtin functions are:
+
+
+```
+fn exit(exit_code int)
+fn panic(message string)
+fn print_backtrace()
+```
 
 ## Modules
 
