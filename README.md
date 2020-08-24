@@ -175,6 +175,9 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
+on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
+
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
 ```bash
