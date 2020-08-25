@@ -265,7 +265,12 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.base_dir(single_test_v_file)
 	}
-	is_real_file := os.exists(dir) && !os.is_dir(dir)
+	does_exist := os.exists(dir)
+	if !does_exist {
+		verror("$dir doesn't exist")
+		exit(1)
+	}
+	is_real_file := does_exist && !os.is_dir(dir)
 	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh') || dir.ends_with('.vv')) {
 		single_v_file := dir
 		// Just compile one file and get parent dir
