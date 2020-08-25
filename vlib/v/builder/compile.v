@@ -33,8 +33,8 @@ pub fn compile(command string, pref &pref.Preferences) {
 	mut output_folder := odir
 	if odir.len == pref.out_name.len {
 		output_folder = os.getwd()
-	}        
-	os.is_writable_folder(output_folder) or { 
+	}
+	os.is_writable_folder(output_folder) or {
 		// An early error here, is better than an unclear C error later:
 		verror(err)
 		exit(1)
@@ -266,19 +266,24 @@ pub fn (v &Builder) get_user_files() []string {
 		dir = os.base_dir(single_test_v_file)
 	}
 	is_real_file := os.exists(dir) && !os.is_dir(dir)
-	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh')) {
+	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh') || dir.ends_with('.vv')) {
 		single_v_file := dir
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
 			v.log('> just compile one file: "$single_v_file"')
 		}
-	} else {
+	} else if os.is_dir(dir) {
 		if v.pref.is_verbose {
 			v.log('> add all .v files from directory "$dir" ...')
 		}
 		// Add .v files from the directory being compiled
 		user_files << v.v_files_from_dir(dir)
+	} else {
+		println('usage: `v file.v` or `v directory`')
+		ext := os.file_ext(dir)
+		println('unknown file extension `$ext`')
+		exit(1)
 	}
 	if user_files.len == 0 {
 		println('No input .v files')

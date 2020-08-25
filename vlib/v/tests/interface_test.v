@@ -251,6 +251,7 @@ fn new_animal2() Animal {
 }
 
 /*
+// TODO
 fn animal_match(a Animal) {
 	match a {
 		Dog { println('(dog)') }
