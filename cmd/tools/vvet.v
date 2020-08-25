@@ -37,11 +37,15 @@ fn main() {
 			eprintln('skipping $path')
 			continue
 		}
-		if path.ends_with('.v') {
+		if path.ends_with('.v') || path.ends_with('.vv') {
 			vet_options.vet_file(path)
 		} else if os.is_dir(path) {
 			vet_options.vprintln("vetting folder '$path'...")
-			files := os.walk_ext(path, '.v')
+			vfiles := os.walk_ext(path, '.v')
+			vvfiles := os.walk_ext(path, '.vv')
+			mut files := []string{}
+			files << vfiles
+			files << vvfiles
 			for file in files {
 				if file.ends_with('_test.v') || file.contains('/tests/') { // TODO copy pasta
 					continue
