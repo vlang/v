@@ -6,9 +6,9 @@ import v.util.vtest
 
 const (
 	skip_valgrind_files = [
-		'vlib/v/tests/valgrind/struct_field.vv',
-		'vlib/v/tests/valgrind/fn_returning_string_param.vv',
-		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.vv',
+		'vlib/v/tests/valgrind/struct_field.v',
+		'vlib/v/tests/valgrind/fn_returning_string_param.v',
+		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
 	]
 )
 
@@ -59,7 +59,8 @@ fn test_all() {
 			}
 		}
 		//
-		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree $test'
+		full_path_to_source_file := os.join_path(vroot, test)
+		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()
