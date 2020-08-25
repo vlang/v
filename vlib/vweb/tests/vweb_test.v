@@ -226,7 +226,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int    = 10
+	retries int    = 20
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
@@ -243,7 +243,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 			if tries > config.retries {
 				return error(err)
 			}
-			time.sleep_ms(150)
+			time.sleep_ms(100)
 			continue
 		}
 		break
