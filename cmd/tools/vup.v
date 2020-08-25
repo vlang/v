@@ -11,7 +11,7 @@ struct App {
 }
 
 fn new_app() App {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(pref.vexe_path())
 	return App{
 		is_verbose: '-v' in os.args
 		vexe: vexe
@@ -23,6 +23,26 @@ fn main() {
 	app := new_app()
 	os.chdir(app.vroot)
 	println('Updating V...')
+	app.update_from_master()    
+	v_hash := util.githash(false)
+	current_hash := util.githash(true)
+	// println(v_hash)
+	// println(current_hash)
+	if v_hash == current_hash {
+		app.show_current_v_version()
+		return
+	}
+	$if windows {
+		app.backup('cmd/tools/vup.exe')
+	}
+    app.recompile_v()
+	os.exec('$app.vexe cmd/tools/vup.v') or {
+		panic(err)
+	}
+	app.show_current_v_version()
+}
+
+fn (app App) update_from_master() {
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
 		app.git_command('init')
@@ -34,37 +54,30 @@ fn main() {
 		// pull latest
 		app.git_command('pull origin master')
 	}
-	v_hash := util.githash(false)
-	current_hash := util.githash(true)
-	// println(v_hash)
-	// println(current_hash)
-	if v_hash == current_hash {
-		app.show_current_v_version()
-		return
+}
+
+fn (app App) recompile_v() {
+	// NB: app.vexe is more reliable than just v (which may be a symlink)
+	vself := '$app.vexe self'
+	if self_result := os.exec(vself) {
+		println(self_result.output)
+		if self_result.exit_code == 0 {
+			return
+		}
 	}
-	mut vself := 'v self'
+	app.make(vself)
+}
+
+fn (app App) make(vself string) {
 	mut make := 'make'
 	$if windows {
-		vself = 'v.exe self'
 		make = 'make.bat'
-		app.backup('cmd/tools/vup.exe')
 	}
-	self_result := os.exec(vself) or {
+	println('`$vself` failed, running `$make`...')
+	make_result := os.exec(make) or {
 		panic(err)
 	}
-	println(self_result.output)
-	if self_result.exit_code != 0 {
-		// v self failed, have to use make
-		println('v self failed, running make...')
-		make_result := os.exec(make) or {
-			panic(err)
-		}
-		println(make_result.output)
-	}
-	os.exec('v cmd/tools/vup.v') or {
-		panic(err)
-	}
-	app.show_current_v_version()
+	println(make_result.output)
 }
 
 fn (app App) show_current_v_version() {
