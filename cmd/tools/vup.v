@@ -42,26 +42,24 @@ fn main() {
 		app.show_current_v_version()
 		return
 	}
+	mut vself := 'v self'
+	mut make := 'make'
 	$if windows {
-		app.backup('v.exe')
-		make_result := os.exec('make.bat') or {
+		vself = 'v self'
+		make = 'make.bat'
+		app.backup('cmd/tools/vup.exe')
+	}
+	self_result := os.exec(vself) or {
+		panic(err)
+	}
+	println(self_result.output)
+	if self_result.exit_code != 0 {
+		// v self failed, have to use make
+		println('v self failed, running make...')
+		make_result := os.exec(make) or {
 			panic(err)
 		}
 		println(make_result.output)
-		app.backup('cmd/tools/vup.exe')
-	} $else {
-		self_result := os.exec('./v self') or {
-			panic(err)
-		}
-		println(self_result.output)
-		if self_result.exit_code != 0 {
-			// v self failed, have to use make
-			println('v self failed, running make...')
-			make_result := os.exec('make') or {
-				panic(err)
-			}
-			println(make_result.output)
-		}
 	}
 	os.exec('v cmd/tools/vup.v') or {
 		panic(err)
