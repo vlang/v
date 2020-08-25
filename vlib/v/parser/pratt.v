@@ -261,6 +261,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		} else if p.tok.kind in [.inc, .dec] {
 			// Postfix
+			// detect `f(x++)`, `a[x++]`
+			if p.peek_tok.kind in [.rpar, .rsbr] &&
+				p.mod !in ['builtin', 'regex', 'strconv'] { // temp
+				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement', p.peek_tok.position())
+			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
