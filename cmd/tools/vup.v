@@ -45,7 +45,7 @@ fn main() {
 	mut vself := 'v self'
 	mut make := 'make'
 	$if windows {
-		vself = 'v self'
+		vself = 'v.exe self'
 		make = 'make.bat'
 		app.backup('cmd/tools/vup.exe')
 	}
