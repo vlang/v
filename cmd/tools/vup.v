@@ -43,6 +43,9 @@ fn main() {
 }
 
 fn (app App) update_from_master() {
+	if app.is_verbose {
+		println('> updating from master ...')
+	}        
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
 		app.git_command('init')
@@ -59,6 +62,9 @@ fn (app App) update_from_master() {
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
 	vself := '$app.vexe self'
+	if app.is_verbose {
+		println('> recompiling v itself with `$vself` ...')
+	}        
 	if self_result := os.exec(vself) {
 		println(self_result.output)
 		if self_result.exit_code == 0 {
