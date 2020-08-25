@@ -226,6 +226,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
+	retries int    = 10
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
@@ -234,12 +235,23 @@ struct SimpleTcpClientConfig {
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
-	client := net.dial('127.0.0.1', sport) or {
-		return error(err)
+	mut client := net.Socket{}
+	mut tries := 0
+	for tries < config.retries {
+		tries++
+		client = net.dial('127.0.0.1', sport) or {
+			if tries > config.retries {
+				return error(err)
+			}
+			time.sleep_ms(150)
+			continue
+		}
+		break
 	}
 	defer {
 		client.close() or { }
 	}
+	//
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host
 User-Agent: $config.agent
