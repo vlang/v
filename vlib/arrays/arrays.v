@@ -27,10 +27,10 @@ pub fn max<T>(a []T) T {
 	return val
 }
 
-// argmax returns the index of the first minimum
+// idxmax returns the index of the first minimum
 [direct_array_access]
-pub fn argmin<T>(a []T) int {
-	if a.len==0 { panic('.argmin called on an empty array') } // TODO
+pub fn idxmin<T>(a []T) int {
+	if a.len==0 { panic('.idxmin called on an empty array') } // TODO
 	mut idx := 0
 	mut val := a[0]
 	for i in 0..a.len {
@@ -42,10 +42,10 @@ pub fn argmin<T>(a []T) int {
 	return idx
 }
 
-// argmax returns the index of the first maximum
+// idxmax returns the index of the first maximum
 [direct_array_access]
-pub fn argmax<T>(a []T) int {
-	if a.len==0 { panic('.argmax called on an empty array') } // TODO
+pub fn idxmax<T>(a []T) int {
+	if a.len==0 { panic('.idxmax called on an empty array') } // TODO
 	mut idx := 0
 	mut val := a[0]
 	for i in 0..a.len {
@@ -74,7 +74,7 @@ pub fn shuffle<T>(mut a []T, n int) {
 }
 
 
-// merge two sorted arrays (ascending)
+// merge two sorted arrays (ascending) and maintain sorted order
 [direct_array_access]
 pub fn merge<T>(a []T, b []T) []T {
 	mut m := []T{len:a.len + b.len}

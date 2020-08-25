@@ -31,27 +31,27 @@ fn test_max() {
 }
 
 
-fn test_argmin() {
+fn test_idxmin() {
 	a := [8, 2, 6, 4]
-	assert argmin<int>(a)==1
+	assert idxmin<int>(a)==1
 	
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert argmin<f32>(b) == 2
+	assert idxmin<f32>(b) == 2
 	
 	c := [byte(4), 9, 3, 1]
-	assert argmin<byte>(c) == 3
+	assert idxmin<byte>(c) == 3
 }
 
 
-fn test_argmax() {
+fn test_idxmax() {
 	a := [8, 2, 6, 4]
-	assert argmax<int>(a)==0
+	assert idxmax<int>(a)==0
 	
 	b := [f32(5.1), 3.1, 1.1, 9.1]
-	assert argmax<f32>(b) == 3
+	assert idxmax<f32>(b) == 3
 	
 	c := [byte(4), 9, 3, 1]
-	assert argmax<byte>(c) == 1
+	assert idxmax<byte>(c) == 1
 }
 
 
