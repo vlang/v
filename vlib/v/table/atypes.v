@@ -15,8 +15,8 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst | Interface |
-	Map | MultiReturn | Struct | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -305,7 +305,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t']
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
 )
 
 pub struct MultiReturn {
@@ -338,6 +338,7 @@ pub enum Kind {
 	f64
 	char
 	size_t
+	rune
 	bool
 	none_
 	string
@@ -593,6 +594,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		source_name: 'size_t'
 		mod: 'builtin'
 	})
+	t.register_type_symbol({
+		kind: .size_t
+		name: 'rune'
+		source_name: 'rune'
+		mod: 'builtin'
+	})
 	// TODO: remove. for v1 map compatibility
 	map_string_string_idx := t.find_or_register_map(string_type, string_type)
 	map_string_int_idx := t.find_or_register_map(string_type, int_type)
@@ -671,6 +678,7 @@ pub fn (k Kind) str() string {
 		.interface_ { 'interface' }
 		.ustring { 'ustring' }
 		.generic_struct_inst { 'generic_struct_inst' }
+		.rune { 'rune' }
 	}
 	return k_str
 }
@@ -756,7 +764,7 @@ pub mut:
 
 pub struct Chan {
 pub mut:
-	elem_type   Type
+	elem_type Type
 }
 
 pub struct Map {

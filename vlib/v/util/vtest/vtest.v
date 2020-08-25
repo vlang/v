@@ -7,6 +7,7 @@ pub struct FilterVTestConfig {
 	fix_slashes bool = true
 }
 
+// if VTEST_ONLY env var is set, returns tests that match the query
 pub fn filter_vtest_only(paths []string, config FilterVTestConfig) []string {
 	mut res := []string{}
 	patterns := os.getenv('VTEST_ONLY').split(',')

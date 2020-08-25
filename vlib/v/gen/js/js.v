@@ -280,12 +280,19 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.interface_ {
 			styp = g.js_name(sym.name)
 		}
+		.rune {
+			styp = 'any'
+		}
 	}
-		/* else {
+	/*
+	else {
 			println('jsgen.typ: Unhandled type $t')
 			styp = sym.name
-		} */
-	if styp.starts_with('JS.') { return styp[3..] }
+		}
+	*/
+	if styp.starts_with('JS.') {
+		return styp[3..]
+	}
 	return styp
 }
 
@@ -1108,7 +1115,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 	// 2)  Give the code unnecessary complexity
 	// 3)  Have several limitations like missing most `Array.prototype` methods
 	// 4)  Modern engines can optimize regular arrays into typed arrays anyways,
-	//     offering similar performance
+	// offering similar performance
 	if it.has_len {
 		t1 := g.new_tmp_var()
 		t2 := g.new_tmp_var()
@@ -1259,17 +1266,21 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 				g.expr(branch.cond)
 				g.writeln(') {')
 			} else if i == node.branches.len - 1 && node.has_else {
-				/* if is_guard {
+				/*
+				if is_guard {
 					//g.writeln('} if (!$guard_ok) { /* else */')
-				} else { */
+				} else {
+				*/
 				g.writeln('} else {')
 				// }
 			}
 			g.stmts(branch.stmts)
 		}
-		/* if is_guard {
+		/*
+		if is_guard {
 			g.write('}')
-		} */
+		}
+		*/
 		g.writeln('}')
 		g.writeln('')
 	}
@@ -1334,7 +1345,8 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.write('.push(')
 		if r_sym.kind == .array {
 			g.write('...')
-		} // arr << [1, 2]
+		}
+		// arr << [1, 2]
 		g.expr(it.right)
 		g.write(')')
 	} else if r_sym.kind in [.array, .map, .string] && it.op in [.key_in, .not_in] {

@@ -3,6 +3,7 @@
 
 - make `-autofree` the default
 - coroutines
++ channels
 - lock{}
 - thread safe arrays/maps
 - C2V translator
