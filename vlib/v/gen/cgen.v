@@ -2107,8 +2107,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('$info.size')
 				return
 			}
+			if sym.kind == .chan && node.field_name == 'len' {
+				g.write('sync__Channel_len(')
+				g.expr(node.expr)
+				g.write(')')
+				return
+			}
 			g.expr(node.expr)
-			if node.expr_type.is_ptr() {
+			if node.expr_type.is_ptr() || sym.kind == .chan {
 				g.write('->')
 			} else {
 				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
