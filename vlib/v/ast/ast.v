@@ -106,7 +106,7 @@ pub:
 pub struct SelectorExpr {
 pub:
 	pos        token.Position
-	expr       Expr
+	expr       Expr // expr.field_name
 	field_name string
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
