@@ -1,4 +1,4 @@
-vlib/v/checker/tests/lock_needed.v:10:2: error: `abc` is `shared` and needs explicit lock for `v.ast.SelectorExpr` 
+vlib/v/checker/tests/lock_needed.vv:10:2: error: `abc` is `shared` and needs explicit lock for `v.ast.SelectorExpr` 
     8 |         x: 5
     9 |     }
    10 |     abc.x++

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_declare_element_b.v:3:5: error: non-name `arr[1]` on left side of `:=` 
+vlib/v/checker/tests/array_declare_element_b.vv:3:5: error: non-name `arr[1]` on left side of `:=` 
     1 | fn main() {
     2 |     arr := [1, 2]
     3 |     arr[1] := 1

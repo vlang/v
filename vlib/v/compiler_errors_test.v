@@ -121,22 +121,18 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 
 // actual processing; NB: no output is done here at all
 fn (mut task TaskDescription) execute() {
-	program := task.path.replace('.vv', '.v')
-	os.cp(task.path, program) or {
+	program := task.path
+    cli_cmd := '$task.vexe $task.voptions $program'
+	res := os.exec(cli_cmd) or {
 		panic(err)
 	}
-	res := os.exec('$task.vexe $task.voptions $program') or {
-		panic(err)
-	}
-	mut expected := os.read_file(program.replace('.v', '') + task.result_extension) or {
+	mut expected := os.read_file(program.replace('.vv', '') + task.result_extension) or {
 		panic(err)
 	}
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
 	if task.expected != task.found___ {
 		task.is_error = true
-	} else {
-		os.rm(program)
 	}
 }
 

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unknown_array_element_type_a.v:2:9: error: unknown type `abc`
+vlib/v/checker/tests/unknown_array_element_type_a.vv:2:9: error: unknown type `abc`
     1 | fn main() {
     2 |     a := []abc{}
       |            ~~~
