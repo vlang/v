@@ -24,17 +24,13 @@ fn test_all() {
 	})
 	for path in paths {
 		print(path + ' ')
-		program := path.replace('.vv', '.v')
-		os.cp(path, program) or {
-			panic(err)
-		}
+		program := path
 		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		// os.rm(program)
 		res := os.exec('./test') or {
 			println('nope')
 			panic(err)
@@ -52,7 +48,7 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or {
 			panic(err)
 		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
