@@ -14,7 +14,7 @@ const (
 )
 
 fn test_vlib_fmt() {
-	$if !freebsd {
+	$if !vfmt_everything ? {
 		return
 	}
 	fmt_message := "checking that all V source files are vfmt'ed"
@@ -30,7 +30,8 @@ fn test_vlib_fmt() {
 		''
 	}
 	mut fmt_bench := benchmark.new_benchmark()
-	input_files := os.walk_ext('$vroot/vlib/v/', '.v')
+	os.chdir(vroot)
+	input_files := os.walk_ext('vlib/v/', '.v').filter(!it.contains('/tests/'))
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
