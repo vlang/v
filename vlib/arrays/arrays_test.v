@@ -59,18 +59,32 @@ fn test_shuffle() {
 	a := [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
 	mut b := a.clone()
 	mut c := a.clone()
-	shuffle<int>(mut b)
-	shuffle<int>(mut c)
+	shuffle<int>(mut b, 0)
+	shuffle<int>(mut c, 0)
 	assert a != b // false negative chance: 1/20!
 	assert a != c // false negative chance: 1/20!
 	assert b != c // false negative chance: 1/20!
+	
+	// test shuffling a slice
 	mut d := a.clone()
-	shuffle<int>(mut d[..15])
+	shuffle<int>(mut d[..15], 0)
 	assert d[..15] != a[..15] // false negative chance: 1/15!
 	assert d[15..] == a[15..]
+	
+	// test shuffling n items
+	mut e := a.clone()
+	shuffle<int>(mut e, 15)
+	assert e[..15] != a[..15] // false negative chance: 1/15!
+	assert e[15..] != a[15..] // false negative chance: TODO
 }
 
+fn test_merge() {
+	a := [1,3,5,5,7]
+	b := [2,4,4,5,6,8]
+	assert merge<int>(a,b) == [1,2,3,4,4,5,5,5,6,7,8]
+}
 
+/*
 fn test_all() {
 	a := [1,1,1,1]
 	assert all<int>(a, 1) == true
@@ -88,7 +102,7 @@ fn test_all() {
 	assert all<f32>(d, 1.1) == false
 	assert all<f32>(d, 2.2) == false
 }
-
+*/
 
 /*
 fn test_replace() {

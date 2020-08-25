@@ -57,17 +57,62 @@ pub fn argmax<T>(a []T) int {
 	return idx
 }
 
-// shuffle randomizes the items of an array in place
+// shuffle randomizes the first n items of an array in place (all if n=0)
 [direct_array_access]
-pub fn shuffle<T>(mut a []T) {
-	for i in 0..a.len-1 {
+pub fn shuffle<T>(mut a []T, n int) {
+	assert n <= a.len
+	cnt := if n==0 { a.len-1 } else { n }
+	for i in 0..cnt {
 		x := rand.int_in_range(i,a.len)
 		if i != x {
-			a[i],a[x] = a[x],a[i] // swap
+			// swap
+			a_i := a[i]
+			a[i] = a[x]
+			a[x] = a_i
 		}
 	}
 }
 
+
+// merge two sorted arrays (ascending)
+[direct_array_access]
+pub fn merge<T>(a []T, b []T) []T {
+	mut m := []T{len:a.len + b.len}
+	mut ia := 0
+	mut ib := 0
+	mut j := 0
+	
+	// TODO efficient approach to merge_desc where: a[ia] >= b[ib]
+	for ia<a.len && ib<b.len {
+		if a[ia] <= b[ib] {
+			m[j] = a[ia]
+			ia++
+		} else {
+			m[j] = b[ib]
+			ib++
+		}
+		j++
+	}
+	
+	// a leftovers
+	for ia < a.len {
+		m[j] = a[ia]
+		ia++
+		j++
+	}
+	
+	// b leftovers
+	for ib < b.len {
+		m[j] = b[ib]
+		ib++
+		j++
+	}
+	
+	return m
+}
+
+
+/*
 // all checks if all array items are equal to given value
 [direct_array_access]
 pub fn all<T>(a []T, value T) bool {
@@ -77,7 +122,7 @@ pub fn all<T>(a []T, value T) bool {
 	}
 	return true
 }
-
+*/
 
 /*
 // replace values given in old_value with new_value
