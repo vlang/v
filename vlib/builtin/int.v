@@ -398,6 +398,23 @@ pub fn (c byte) str() string {
 	return str
 }
 
+/*
+type rune = int
+
+pub fn (r rune) str() string {
+	mut str := string{
+		str: malloc(2)
+		len: 1
+	}
+	unsafe {
+		str.str[0] = r
+		str.str[1] = `\0`
+	}
+
+	return str
+}
+*/
+
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
