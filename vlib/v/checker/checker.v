@@ -1470,8 +1470,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
 	// variadic
-	if typ.has_flag(.variadic) || sym.kind == .array_fixed {
-		if field_name == 'len' {
+	if typ.has_flag(.variadic) || sym.kind == .array_fixed || sym.kind == .chan {
+		if field_name == 'len' || (sym.kind == .chan && field_name == 'cap') {
 			selector_expr.typ = table.int_type
 			return table.int_type
 		}
@@ -3262,6 +3262,9 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).chan_info()
 		node.elem_type = info.elem_type
+		if node.has_cap {
+			c.check_array_init_para_type('cap', node.cap_expr, node.pos)
+		}
 		return node.typ
 	} else {
 		c.error('`chan` of unknown type', node.pos)
