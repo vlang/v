@@ -1092,10 +1092,14 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `/` {
 					start := s.pos + 1
 					s.ignore_line()
-					comment_line_end := s.pos
-					s.pos--
-					// fix line_nr, \n was read; the comment is marked on the next line
-					s.line_nr--
+					mut comment_line_end := s.pos
+					if s.text[s.pos-1] == `\r` {
+						comment_line_end--
+					} else {
+						// fix line_nr, \n was read; the comment is marked on the next line
+						s.pos--
+						s.line_nr--
+					}                    
 					if s.should_parse_comment() {
 						s.line_comment = s.text[start + 1..comment_line_end]
 						mut comment := s.line_comment.trim_space()
