@@ -10,3 +10,4 @@ v/checker/tests/
 v/gen/js/
 v/gen/x64/
 v/gen/tests/
+sokol/sapp
