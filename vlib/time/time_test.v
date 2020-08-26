@@ -8,6 +8,7 @@ const (
 		hour: 21
 		minute: 23
 		second: 42
+		microsecond: 123456
 		unix: 332198622
 	}
 )
@@ -85,6 +86,16 @@ fn test_unix() {
 
 fn test_format_ss() {
 	assert '11.07.1980 21:23:42' == time_to_test.get_fmt_str(.dot, .hhmmss24, .ddmmyyyy)
+}
+
+fn test_format_ss_milli() {
+	assert '11.07.1980 21:23:42.123' == time_to_test.get_fmt_str(.dot, .hhmmss24_milli, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123' == time_to_test.format_ss_milli()
+}
+
+fn test_format_ss_micro() {
+	assert '11.07.1980 21:23:42.123456' == time_to_test.get_fmt_str(.dot, .hhmmss24_micro, .ddmmyyyy)
+	assert '1980-07-11 21:23:42.123456' == time_to_test.format_ss_micro()
 }
 
 fn test_smonth() {
@@ -180,4 +191,22 @@ fn test_utc() {
 	assert now.second 			<= 60 // <= 60 cause of leap seconds
 	assert now.microsecond 		>= 0
 	assert now.microsecond 		< 1000000
+}
+
+fn test_unix_time() {
+	t1 := time.utc()
+	time.sleep_ms(50)
+	t2 := time.utc()
+	ut1 := t1.unix_time()
+	ut2 := t2.unix_time()
+	assert ut2 - ut1 < 2
+	//
+	utm1 := t1.unix_time_milli()
+	utm2 := t2.unix_time_milli()
+	assert (utm1 - u64(ut1)*1000) < 1000
+	assert (utm2 - u64(ut2)*1000) < 1000
+	//
+	//println('utm1: $utm1 | utm2: $utm2')
+	assert utm2 - utm1 > 2
+	assert utm2 - utm1 < 999
 }

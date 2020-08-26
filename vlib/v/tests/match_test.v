@@ -11,14 +11,19 @@ pub fn (c Color) str() string {
 fn test_match_integers() {
 	mut a := 3
 	mut b := 0
-	match a {
-		2 { println('two') }
-		3 {
-			println('three')
-			b = 3
-		}
-		4 { println('four') }
-		else { println('???') }
+	match a
+	2 {
+		println('two')
+	}
+	3 {
+		println('three')
+		b = 3
+	}
+	4 {
+		println('four')
+	}
+	else {
+		println('???')
 	}
 	assert b == 3
 	assert match 2 {
@@ -36,8 +41,12 @@ fn test_match_integers() {
 	} == 5
 	a = 0
 	match 2 {
-		0 { a = 1 }
-		1 { a = 2 }
+		0 {
+			a = 1
+		}
+		1 {
+			a = 2
+		}
 		else {
 			a = 3
 			println('a is $a')
@@ -46,7 +55,9 @@ fn test_match_integers() {
 	assert a == 3
 	a = 0
 	match 1 {
-		0 { a = 1 }
+		0 {
+			a = 1
+		}
 		1 {
 			a = 2
 			a = a + 2
@@ -83,18 +94,24 @@ fn test_match_range() {
 fn test_match_enums() {
 	mut b := Color.red
 	match b {
-		.red { b = .green }
-		.green { b = .blue }
+		.red {
+			b = .green
+		}
+		.green {
+			b = .blue
+		}
 		else {
-			println('b is ${b.str()}')
+			println('b is $b.str()')
 			b = .red
 		}
 	}
 	assert b == .green
 	match b {
-		.red { b = .green }
+		.red {
+			b = .green
+		}
 		else {
-			println('b is ${b.str()}')
+			println('b is $b.str()')
 			b = .blue
 		}
 	}
@@ -106,23 +123,22 @@ type Sum = A1 | B1
 struct A1 {
 	pos int
 }
+
 struct B1 {
 	val string
 }
 
 fn f(s Sum) string {
-    match s {
-        A1 {
-            return typeof(s)
-        }
-        B1 {
-			return ''
-		}
-    }
+	match s {
+		A1 { return typeof(s) }
+		B1 { return '' }
+	}
 	return ''
 }
 
 fn test_sum_type_name() {
-	a := A1{pos: 22}
+	a := A1{
+		pos: 22
+	}
 	assert f(a) == 'A1'
 }

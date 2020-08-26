@@ -24,7 +24,7 @@ mut:
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File
-	cached_msvc			MsvcResult
+	cached_msvc         MsvcResult
 	table               &table.Table
 }
 
@@ -42,7 +42,9 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 		if pref.ccompiler == 'msvc' {
 			verror('Cannot find MSVC on this OS')
 		}
-		MsvcResult { valid: false }
+		MsvcResult{
+			valid: false
+		}
 	}
 	return Builder{
 		pref: pref
@@ -65,9 +67,25 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 // parse all deps from already parsed files
 pub fn (mut b Builder) parse_imports() {
 	mut done_imports := []string{}
-		if b.pref.is_script {
-			done_imports << 'os'
+	if b.pref.is_vsh {
+		done_imports << 'os'
+	}
+	// TODO (joe): decide if this is correct solution.
+	// in the case of building a module, the actual module files
+	// are passed via cmd line, so they have already been parsed
+	// by this stage. note that if one files from a module was
+	// parsed (but not all of them), then this will cause a problem.
+	// we could add a list of parsed files instead, but I think
+	// there is a better solution all around, I will revisit this.
+	// NOTE: there is a very similar occurance with the way
+	// internal module test's work, and this was the reason there
+	// were issues with duplicate declarations, so we should sort
+	// that out in a similar way.
+	for file in b.parsed_files {
+		if file.mod.name != 'main' && file.mod.name !in done_imports {
+			done_imports << file.mod.name
 		}
+	}
 	// NB: b.parsed_files is appended in the loop,
 	// so we can not use the shorter `for in` form.
 	for i := 0; i < b.parsed_files.len; i++ {
@@ -160,7 +178,7 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			deps << 'builtin'
 			if b.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if b.pref.is_script && p.mod.name != 'os' {
+				if b.pref.is_vsh && p.mod.name != 'os' {
 					deps << 'os'
 				}
 			}
@@ -210,9 +228,9 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b Builder) find_module_path(mod, fpath string) ?string {
+pub fn (b &Builder) find_module_path(mod, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
-	mcache := vmod.get_cache()
+	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_file(fpath)
 	mod_path := module_path(mod)
 	mut module_lookup_paths := []string{}
@@ -237,7 +255,16 @@ pub fn (b Builder) find_module_path(mod, fpath string) ?string {
 	return error('module "$mod" not found in:\n$smodule_lookup_paths')
 }
 
+fn (b &Builder) show_total_warns_and_errors_stats() {
+	if b.pref.is_stats {
+		println('checker summary: ${util.bold(b.checker.nr_errors.str())} V errors, ${util.bold(b.checker.nr_warnings.str())} V warnings')
+	}
+}
+
 fn (b &Builder) print_warnings_and_errors() {
+	defer {
+		b.show_total_warns_and_errors_stats()
+	}
 	if b.pref.output_mode == .silent {
 		if b.checker.nr_errors > 0 {
 			exit(1)
@@ -278,6 +305,7 @@ fn (b &Builder) print_warnings_and_errors() {
 				return
 			}
 		}
+		b.show_total_warns_and_errors_stats()
 		exit(1)
 	}
 	if b.table.redefined_fns.len > 0 {
@@ -295,6 +323,7 @@ fn (b &Builder) print_warnings_and_errors() {
 					}
 				}
 			}
+			b.show_total_warns_and_errors_stats()
 			exit(1)
 		}
 	}
@@ -304,10 +333,11 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string) {
+pub fn (mut b Builder) timing_message(msg string, ms i64) {
+	formatted_message := '$msg: ${util.bold(ms.str())} ms'
 	if b.pref.show_timings {
-		println(msg)
+		println(formatted_message)
 	} else {
-		b.info(msg)
+		b.info(formatted_message)
 	}
 }

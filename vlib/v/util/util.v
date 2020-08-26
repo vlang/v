@@ -7,12 +7,12 @@ import os
 import v.pref
 
 pub const (
-	v_version = '0.1.28'
+	v_version = '0.1.29'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings', 'builtin']
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
 )
 
 pub const (
@@ -23,9 +23,11 @@ pub const (
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+	unsafe {
+		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
+	}
 	return tos_clone(buf)
 }
 
@@ -93,9 +95,11 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
-	C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+	unsafe {
+		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
+	}
 	return tos_clone(buf)
 }
 
@@ -206,11 +210,13 @@ pub fn read_file(file_path string) ?string {
 	}
 	// BOM check
 	if raw_text.len >= 3 {
-		c_text := raw_text.str
-		if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
-			// skip three BOM bytes
-			offset_from_begin := 3
-			raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+		unsafe {
+			c_text := raw_text.str
+			if c_text[0] == 0xEF && c_text[1] == 0xBB && c_text[2] == 0xBF {
+				// skip three BOM bytes
+				offset_from_begin := 3
+				raw_text = tos(c_text[offset_from_begin], vstrlen(c_text) - offset_from_begin)
+			}
 		}
 	}
 	return raw_text

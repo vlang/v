@@ -4,6 +4,9 @@ import term
 
 // TODO some logic copy pasted from valgrind_test.v and compiler_test.v, move to a module
 fn test_x64() {
+	$if !amd64 {
+		return
+	}
 	if os.user_os() != 'linux' {
 		eprintln('x64 tests can only be run on Linux for now.')
 		exit(0)

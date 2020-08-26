@@ -4,7 +4,8 @@
 
 V is a statically typed compiled programming language designed for building maintainable software.
 
-It's similar to Go and its design has also been influenced by Oberon, Rust, Swift, and Python.
+It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
+Kotlin, and Python.
 
 V is a very simple language. Going through this documentation will take you about half an hour,
 and by the end of it you will have pretty much learned the entire language.
@@ -22,28 +23,32 @@ you can do in V.
 * [Hello world](#hello-world)
 * [Comments](#comments)
 * [Functions](#functions)
+    * [Returning multiple values](#returning-multiple-values)
+    * [Variable number of arguments](#variable-number-of-arguments)
+* [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
-    * [Primitive types](#primitive-types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Imports](#imports)
-* [Statements & Expressions](#statements--expressions)
+* [Module imports](#module-imports)
+* [Statements & expressions](#statements--expressions)
     * [If](#if)
-    * [In Operator](#in-operator)
+    * [In operator](#in-operator)
     * [For loop](#for-loop)
     * [Match](#match)
     * [Defer](#defer)
 * [Structs](#structs)
-    * [Trailing struct literal syntax](#short-struct-initialization-syntax)
+    * [Embedded structs](#embedded-structs)
+    * [Default field values](#default-field-values)
+    * [Short struct literal syntax](#short-struct-initialization-syntax)
     * [Access modifiers](#access-modifiers)
     * [Methods](#methods)
 
 </td><td width=33% valign=top>
 
-* [println](#println)
+* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -70,11 +75,12 @@ you can do in V.
     * [vfmt](#vfmt)
     * [Profiling](#profiling)
 * [Advanced](#advanced)
+    * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
-    * [Reflection via codegen](#reflection-via-codegen)
+    * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
     * [Translating C/C++ to V](#translating-cc-to-v)
@@ -166,7 +172,7 @@ Functions can be used before their declaration:
 This is true for all declarations in V and eliminates the need for header files
 or thinking about the order of files and declarations.
 
-<p>&nbsp;</p>
+### Returning multiple values
 
 ```v
 fn foo() (int, int) {
@@ -179,10 +185,22 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
-Functions can return multiple values.
+### Variable number of arguments
 
-<p>&nbsp;</p>
+```v
+fn sum(a ...int) int {
+    mut total := 0
+    for x in a {
+        total += x
+    }
+    return total
+}
+println(sum())    // Output: 0
+println(sum(1))   //         1
+println(sum(2,3)) //         5
+```
 
+## Symbol visibility
 
 ```v
 pub fn public_function() {
@@ -192,11 +210,9 @@ fn private_function() {
 }
 ```
 
-Like constants and types, functions are private (not exported) by default.
+Functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
-
-
 
 ## Variables
 
@@ -219,9 +235,10 @@ the expression `T(v)` converts the value `v` to the
 type `T`.
 
 Unlike most other languages, V only allows defining variables in functions.
-Global (module level) variables are not allowed. There's no global state in V.
+Global (module level) variables are not allowed. There's no global state in V
+(see [Pure functions by default](#pure-functions-by-default) for details).
 
-<p>&nbsp;</p>
+### Mutable variables
 
 ```v
 mut age := 20
@@ -235,10 +252,10 @@ immutable by default. To be able to change the value of the variable, you have t
 
 Try compiling the program above after removing `mut` from the first line.
 
+### Initialization vs assignment
+
 Note the (important) difference between `:=` and `=`
 `:=` is used for declaring and initializing, `=` is used for assigning.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -248,8 +265,6 @@ fn main() {
 
 This code will not compile, because the variable `age` is not declared.
 All variables need to be declared in V.
-
-<p>&nbsp;</p>
 
 ```v
 fn main() {
@@ -262,14 +277,13 @@ fn main() {
 In development mode the compiler will warn you that you haven't used the variable (you'll get an "unused variable" warning).
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`) it will not compile at all (like in Go).
 
-<p>&nbsp;</p>
-
 ```v
 fn main() {
     a := 10
     if true {
-        a := 20
+        a := 20 // error: shadowed variable
     }
+    // warning: unused variable `a`
 }
 ```
 
@@ -431,7 +445,7 @@ f := 1.0
 f1 := f64(3.14)
 f2 := f32(3.14)
 ```
-If you do not specify the type explicitly, by default float literals 
+If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 ### Arrays
@@ -449,22 +463,20 @@ println(nums.len) // "0"
 
 // Declare an empty array:
 users := []int{}
-
-// We can also preallocate a certain amount of elements.
-ids := []int{ len: 50, init: 0 } // This creates an array with 50 zeros
 ```
 
 The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(0x0E), 0x1F, 0xBA, 0x0E]`
-
+If V is unable to infer the type of an array, the user can explicitly specify it for the first element: `[byte(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type). This means that code like `[1, 'a']` will not compile.
 
-`.len` field returns the length of the array. Note that it's a read-only field,
+The `.len` field returns the length of the array. Note that it's a read-only field,
 and it can't be modified by the user. Exported fields are read-only by default in V.
 See [Access modifiers](#access-modifiers).
+
+#### Array operations
 
 ```v
 mut nums := [1, 2, 3]
@@ -488,26 +500,26 @@ It can also append an entire array.
 
 `val in array` returns true if the array contains `val`. See [`in` operator](#in-operator).
 
-&nbsp;
+#### Initializing array properties
 
 During initialization you can specify the capacity of the array (`cap`), its initial length (`len`),
-and the default element (`init`).
-
-Setting the capacity improves performance of insertions, as it reduces the amount of reallocations in
-dynamic arrays:
+and the default element (`init`):
 
 ```v
-numbers := []int{ cap: 1000 }
-// Now adding new elements is as efficient as setting them directly
-for i in 0 .. 1000 {
-    numbers << i
-    // same as
-    // numbers[i] = i
-}
+arr := []int{ len: 5, init: -1 } // `[-1, -1, -1, -1, -1]`
 ```
 
-`[]int{ len: 5, init: -1 }` will create `[-1, -1, -1, -1, -1]`.
+Setting the capacity improves performance of insertions, as it reduces the number of reallocations needed:
 
+```v
+mut numbers := []int{ cap: 1000 }
+println(numbers.len) // 0
+// Now appending elements won't reallocate
+for i in 0 .. 1000 {
+    numbers << i
+}
+```
+Note: The above code uses a [range `for`](#range-for) statement.
 
 #### Array methods
 
@@ -529,6 +541,42 @@ println(upper) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension.
+
+2d array example:
+```v
+mut a := [][]int{len:2, init: []int{len:3}}
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
+3d array example:
+```v
+mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
+a[0][1][1] = 2
+println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
+#### Sorting arrays
+
+Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
+are used when providing a custom sorting condition.
+
+```v
+mut numbers := [1, 3, 2]
+numbers.sort()      // 1, 2, 3
+numbers.sort(a > b) // 3, 2, 1
+```
+
+```v
+struct User { age int  name string }
+mut users := [...]
+users.sort(a.age < b.age)   // sort by User.age int field
+users.sort(a.name > b.name) // reverse sort by User.name string field
+```
+
 ### Maps
 
 ```v
@@ -547,7 +595,13 @@ numbers := {
 }
 ```
 
-## Imports
+## Module imports
+
+For information about creating a module, see [Modules](#modules)
+
+### Importing a module
+
+Modules can be imported using keyword `import`.
 
 ```v
 import os
@@ -558,9 +612,50 @@ fn main() {
 }
 ```
 
-Modules can be imported using keyword `import`. When using types, functions, and constants from other modules, the full path must be specified. In the example above, `name := input()` wouldn't work. That means that it's always clear from which module a function is called.
+When using constants from other modules, the module name must be prefixed. However,
+you can import functions and types from other modules directly:
 
-## Statements & Expressions
+```v
+import os { input }
+import crypto.sha256 { sum }
+import time { Time }
+```
+
+### Module import aliasing
+
+Any imported module name can be aliased using the `as` keyword:
+
+NOTE: this example will not compile unless you have created `mymod/sha256.v`
+```v
+import crypto.sha256
+import mymod.sha256 as mysha256
+
+fn main() {
+    v_hash := sha256.sum('hi'.bytes()).hex()
+    my_hash := mysha256.sum('hi'.bytes()).hex()
+    assert my_hash == v_hash
+}
+```
+
+You cannot alias an imported function or type.
+However, you _can_ redeclare a type.
+
+```v
+import time
+
+type MyTime time.Time
+
+fn main() {
+    my_time := MyTime{
+        year: 2020,
+        month: 12,
+        day: 25
+    }
+    println(my_time.unix_time())
+}
+```
+
+## Statements & expressions
 
 ### If
 
@@ -647,7 +742,9 @@ V optimizes such expressions, so both `if` statements above produce the same mac
 
 ### For loop
 
-V has only one looping construct: `for`.
+V has only one looping keyword: `for`, with several forms.
+
+#### Array `for`
 
 ```v
 numbers := [1, 2, 3, 4, 5]
@@ -657,11 +754,11 @@ for num in numbers {
 names := ['Sam', 'Peter']
 for i, name in names {
     println('$i) $name')  // Output: 0) Sam
-}                             //         1) Peter
+}                         //         1) Peter
 ```
 
-The `for value in` loop is used for going through elements of an array.
-If an index is required, an alternative form `for index, value in` can be used.
+The `for value in arr` form is used for going through elements of an array.
+If an index is required, an alternative form `for index, value in arr` can be used.
 
 Note, that the value is read-only. If you need to modify the array while looping, you have to use indexing:
 
@@ -674,6 +771,43 @@ println(numbers) // [1, 2, 3]
 ```
 When an identifier is just a single underscore, it is ignored.
 
+#### Map `for`
+
+```v
+m := {'one':1, 'two':2}
+for key, value in m {
+    println("$key -> $value")  // Output: one -> 1
+}                              //         two -> 2
+```
+
+Either key or value can be ignored by using a single underscore as the identifer.
+```v
+m := {'one':1, 'two':2}
+
+// iterate over keys
+for key, _ in m {
+    println(key)  // Output: one
+}                 //         two
+
+// iterate over values
+for _, value in m {
+    println(value)  // Output: 1
+}                   //         2
+```
+
+#### Range `for`
+
+```v
+// Prints '01234'
+for i in 0..5 {
+    print(i)
+}
+```
+`low..high` means an *exclusive* range, which represents all values
+from `low` up to *but not including* `high`.
+
+#### Condition `for`
+
 ```v
 mut sum := 0
 mut i := 0
@@ -685,15 +819,15 @@ println(sum) // "5050"
 ```
 
 This form of the loop is similar to `while` loops in other languages.
-
 The loop will stop iterating once the boolean condition evaluates to false.
-
 Again, there are no parentheses surrounding the condition, and the braces are always required.
+
+#### Bare `for`
 
 ```v
 mut num := 0
 for {
-    num++
+    num += 2
     if num >= 10 {
         break
     }
@@ -703,8 +837,10 @@ println(num) // "10"
 
 The condition can be omitted, resulting in an infinite loop.
 
+#### C `for`
+
 ```v
-for i := 0; i < 10; i++ {
+for i := 0; i < 10; i += 2 {
     // Don't print 6
     if i == 6 {
         continue
@@ -766,6 +902,24 @@ A match statement can also be used to branch on the variants of an `enum`
 by using the shorthand `.variant_here` syntax. An `else` branch is not allowed
 when all the branches are exhaustive.
 
+```v
+c := `v`
+typ := match c {
+    `0`...`9` { 'digit' }
+    `A`...`Z` { 'uppercase' }
+    `a`...`z` { 'lowercase' }
+    else      { 'other' }
+}
+println(typ) // 'lowercase'
+```
+
+You can also use ranges as `match` patterns. If the value falls within the range
+of a branch, that branch will be executed.
+
+Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
+because the range is *inclusive* of the last element, rather than exclusive
+(as `..` ranges are). Using `..` in a match branch will throw an error.
+
 ### Defer
 
 A defer statement defers the execution of a block of statements until the surrounding function returns.
@@ -802,15 +956,9 @@ println(p.x) // Struct fields are accessed using a dot
 // Alternative literal syntax for structs with 3 fields or fewer
 p = Point{10, 20}
 assert p.x == 10
-
-// you can omit the struct name when it's already known
-p = {x: 30, y: 4}
-assert p.y == 4
 ```
 
-Omitting the struct name also works for function arguments.
-
-<p>&nbsp;</p>
+### Heap structs
 
 Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
@@ -821,10 +969,10 @@ p := &Point{10, 10}
 println(p.x)
 ```
 
-The type of `p` is `&Point`. It's a reference to `Point`.
+The type of `p` is `&Point`. It's a [reference](#references) to `Point`.
 References are similar to Go pointers and C++ references.
 
-<p>&nbsp;</p>
+### Embedded structs
 
 V doesn't allow subclassing, but it supports embedded structs:
 
@@ -842,7 +990,7 @@ button.set_pos(x, y)
 button.widget.set_pos(x,y)
 ```
 
-<p>&nbsp;</p>
+### Default field values
 
 ```v
 struct Foo {
@@ -859,9 +1007,24 @@ It's also possible to define custom default values.
 
 
 <a id='short-struct-initialization-syntax' />
-### Trailing struct literal syntax
 
-There are no default function arguments or named arguments, for that trailing struct literal syntax can be used instead:
+### Short struct literal syntax
+
+```v
+mut p := Point{x: 10, y: 20}
+
+// you can omit the struct name when it's already known
+p = {x: 30, y: 4}
+assert p.y == 4
+```
+
+Omitting the struct name also works for returning a struct literal or passing one
+as a function argument.
+
+#### Trailing struct literal arguments
+
+V doesn't have default function arguments or named arguments, for that trailing struct
+literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
@@ -884,19 +1047,13 @@ button := new_button(text:'Click me', width:100)
 assert button.height == 20
 ```
 
-As you can see, we can use
-
-```
-new_button(text:'Click me', width:100)
-```
-
-instead of
+As you can see, both the struct name and braces can be omitted, instead of:
 
 ```
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
-This only works for functions that have a struct for the last argument.
+This only works for functions that take a struct for the last argument.
 
 ### Access modifiers
 
@@ -961,10 +1118,8 @@ user2 := User{age: 20}
 println(user2.can_register()) // "true"
 ```
 
-V doesn't have classes. But you can define methods on types.
-
+V doesn't have classes, but you can define methods on types.
 A method is a function with a special receiver argument.
-
 The receiver appears in its own argument list between the `fn` keyword and the method name.
 
 In this example, the `can_register` method has a receiver of type `User` named `u`.
@@ -976,7 +1131,7 @@ but a short, preferably one letter long, name.
 ### Pure functions by default
 
 V functions are pure by default, meaning that their return values are a function of their arguments only,
-and their evaluation has no side effects.
+and their evaluation has no side effects (besides I/O).
 
 This is achieved by a lack of global variables and all function arguments being immutable by default,
 even when [references](#references) are passed.
@@ -1169,7 +1324,7 @@ vs
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println
+## println and other builtin functions
 
 `println` is a simple yet powerful builtin function. It can print anything:
 strings, numbers, arrays, maps, structs.
@@ -1198,6 +1353,15 @@ println(red)
 ```
 
 If you don't want to print a newline, use `print()` instead.
+
+The number of builtin functions is low. Other builtin functions are:
+
+
+```
+fn exit(exit_code int)
+fn panic(message string)
+fn print_backtrace()
+```
 
 ## Modules
 
@@ -1280,6 +1444,7 @@ interface Speaker {
 fn perform(s Speaker) string {
     if s is Dog { // use `is` to check the underlying type of an interface
         println('perform(dog)')
+	println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
     } else if s is Cat {
         println('perform(cat)')
     }
@@ -1305,8 +1470,17 @@ enum Color {
 mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
-println(color) // "1"  TODO: print "green"?
+println(color) // "green"
+
+match color {
+    .red { ... }
+    .green { ... }
+    .blue { ... }
+}
+
 ```
+
+Enum match must be exhaustive or have an `else` branch. This ensures that if a new enum field is added, it's handled everywhere in the code.
 
 ### Sum types
 
@@ -1377,7 +1551,7 @@ fn (v Venus) sweat()
 
 fn pass_time(w World) {
     match w {
-        // using the shadowed match variable, in this case `w`
+        // using the shadowed match variable, in this case `w` (smart cast)
         Moon { w.moon_walk() }
         Mars { w.shiver() }
         else {}
@@ -1466,11 +1640,11 @@ fn f(url string) ?string {
 }
 ```
 
-`http.get` returns `?http.Response`. Because `?` follows the call, the 
-error will be propagated to the caller of `f`. When using `?` after a 
-function call producing an optional, the enclosing function must return 
-an optional as well. If error propagation is used in the `main()` 
-function it will `panic` instead, since the error cannot be propagated 
+`http.get` returns `?http.Response`. Because `?` follows the call, the
+error will be propagated to the caller of `f`. When using `?` after a
+function call producing an optional, the enclosing function must return
+an optional as well. If error propagation is used in the `main()`
+function it will `panic` instead, since the error cannot be propagated
 any further.
 
 The body of `f` is essentially a condensed version of:
@@ -1522,7 +1696,7 @@ if resp := http.get(url) {
     println(err)
 }
 ```
-Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first 
+Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
 
 ## Generics
@@ -1549,11 +1723,67 @@ user := users_repo.find_by_id(1)?
 post := posts_repo.find_by_id(1)?
 ```
 
+Another example:
+```v
+fn compare<T>(a, b T) int {
+    if a < b {
+        return -1
+    }
+    if a > b {
+        return 1
+    }
+    return 0
+}
+
+println(compare<int>(1,0)) // Outputs: 1
+println(compare<int>(1,1)) //          0
+println(compare<int>(1,2)) //         -1
+
+println(compare<string>('1','0')) // Outputs: 1
+println(compare<string>('1','1')) //          0
+println(compare<string>('1','2')) //         -1
+
+println(compare<float>(1.1, 1.0)) // Outputs: 1
+println(compare<float>(1.1, 1.1)) //          0
+println(compare<float>(1.1, 1.2)) //         -1
+```
+
+
 ## Concurrency
 
 V's model of concurrency is very similar to Go's. To run `foo()` concurrently, just
 call it with `go foo()`. Right now, it launches the function on a new system
 thread. Soon coroutines and a scheduler will be implemented.
+
+```v
+import sync
+import time
+
+fn task(id, duration int, mut wg sync.WaitGroup) {
+    println("task ${id} begin")
+    time.sleep_ms(duration)
+    println("task ${id} end")
+    wg.done()
+}
+
+fn main() {
+    mut wg := sync.new_waitgroup()
+    wg.add(3)
+    go task(1, 500, mut wg)
+    go task(2, 900, mut wg)
+    go task(3, 100, mut wg)
+    wg.wait()
+    println('done')
+}
+
+// Output: task 1 begin
+//         task 2 begin
+//         task 3 begin
+//         task 3 end
+//         task 1 end
+//         task 2 end
+//         done
+```
 
 Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between a coroutine
 and the calling thread via a shared variable. This variable should be created as reference and passed to
@@ -1701,21 +1931,21 @@ fn test() []int {
 
 ## ORM
 
-(this is still in an alpha state)
+(This is still in an alpha state)
 
 V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
-- One syntax for all SQL dialects. Migrating between databases becomes much easier.
-- Queries are constructed using V's syntax. There's no need to learn another syntax.
-- Safety. All queries are automatically sanitised to prevent SQL injection.
-- Compile time checks. This prevents typos which can only be caught during runtime.
-- Readability and simplicity. You don't need to manually parse the results of a query and then manually construct objects from the parsed results.
+- One syntax for all SQL dialects. (Migrating between databases becomes much easier.)
+- Queries are constructed using V's syntax. (There's no need to learn another syntax.)
+- Safety. (All queries are automatically sanitised to prevent SQL injection.)
+- Compile time checks. (This prevents typos which can only be caught during runtime.)
+- Readability and simplicity. (You don't need to manually parse the results of a query and then manually construct objects from the parsed results.)
 
 ```v
 struct Customer { // struct name has to be the same as the table name (for now)
-    id int // an field named `id` of integer type must be the first field
+    id int // a field named `id` of integer type must be the first field
     name string
     nr_orders int
     country string
@@ -1808,6 +2038,51 @@ fn main(){
 
 # Advanced Topics
 
+## Memory-unsafe code
+
+Sometimes for efficiency you may want to write low-level code that can potentially
+corrupt memory or be vulnerable to security exploits. V supports writing such code,
+but not by default.
+
+V requires that any potentially memory-unsafe operations are marked intentionally.
+Marking them also indicates to anyone reading the code that there could be
+memory-safety violations if there was a mistake.
+
+Examples of potentially memory-unsafe operations are:
+
+* Pointer arithmetic
+* Pointer indexing
+* Conversion to pointer from an incompatible type
+* Calling certain C functions, e.g. `free`, `strlen` and `strncmp`.
+
+To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
+
+```v
+// allocate 2 uninitialized bytes & return a reference to them
+mut p := unsafe { &byte(malloc(2)) }
+p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
+unsafe {
+    p[0] = `h`
+    p[1] = `i`
+}
+p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks
+unsafe {
+    p++ // OK
+}
+assert *p == `i`
+```
+
+Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
+so that the reason for using `unsafe` is as clear as possible. Generally any code
+you think is memory-safe should not be inside an `unsafe` block, so the compiler
+can verify it.
+
+If you suspect your program does violate memory-safety, you have a head start on
+finding the cause: look at the `unsafe` blocks (and how they interact with
+surrounding code).
+
+* Note: This is work in progress.
+
 ## Calling C functions from V
 
 ```v
@@ -1839,9 +2114,9 @@ fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int 
 }
 
 fn main() {
-    path := 'users.db'
-    db := &C.sqlite3(0) // a temporary hack meaning `sqlite3* db = 0`
-    C.sqlite3_open(path.str, &db)
+    db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+    C.sqlite3_open('users.db', &db) // passing a string literal to a C function call results in a C string, not a V string
+    // C.sqlite3_open(db_path.str, &db) // you can also use `.str byteptr` field to convert a V string to a C char pointer
     query := 'select count(*) from users'
     stmt := &C.sqlite3_stmt(0)
     C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
@@ -1972,6 +2247,9 @@ $if linux {
 $if macos {
     println('macOS')
 }
+$else {
+    println('different OS')
+}
 
 $if debug {
     println('debugging')
@@ -2011,7 +2289,7 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 The generated C code is usually fast enough, when you compile your code
 with `-prod`. There are some situations though, where you may want to give
-additional hints to the C compiler, so that it can further optimize some
+additional hints to the compiler, so that it can further optimize some
 blocks of code.
 
 NB: These are *rarely* needed, and should not be used, unless you
@@ -2023,6 +2301,12 @@ how their programs actually perform".
 try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
+`[direct_array_access]` - in functions tagged with `[direct_array_access]`
+the compiler will translate array operations directly into C array operations - 
+omiting bounds checking. This may save a lot of time in a function that iterates
+over an array but at the cost of making the function unsafe - unless
+the boundries will be checked by the user.
+
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
@@ -2031,26 +2315,38 @@ that does nothing.
 `if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
 the boolean expression is highly improbable. In the JS backend, that does nothing.
 
-## Reflection via codegen
+<a id='Reflection via codegen'>
+
+## Compile-time reflection
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format:
+serializers for any data format. V has compile-time `if` and `for` constructs:
 
 ```v
 // TODO: not implemented yet
+
+struct User {
+    name string
+    age  int
+}
+
+// Note: T should be passed a struct name only
 fn decode<T>(data string) T {
     mut result := T{}
-    for field in T.fields {
-        if field.typ == 'string' {
-            result.$field = get_string(data, field.name)
-        } else if field.typ == 'int' {
-            result.$field = get_int(data, field.name)
+    // compile-time `for` loop
+    // T.fields gives an array of a field metadata type
+    $for field in T.fields {
+        $if field.Type is string {
+            // $(string_expr) produces an identifier
+            result.$(field.name) = get_string(data, field.name)
+        } else $if field.Type is int {
+            result.$(field.name) = get_int(data, field.name)
         }
     }
     return result
 }
 
-// generates to:
+// `decode<User>` generates:
 fn decode_User(data string) User {
     mut result := User{}
     result.name = get_string(data, 'name')
@@ -2264,7 +2560,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
+An attribute is specified inside `[]` right before a function/struct declaration and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning
@@ -2339,6 +2635,8 @@ unsafe
 See also [Types](#types).
 
 ## Appendix II: Operators
+
+This lists operators for [primitive types](#primitive-types) only.
 
 ```v
 +    sum                    integers, floats, strings

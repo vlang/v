@@ -16,7 +16,10 @@ pub const (
 pub fn new_live_reload_info(original string, vexe string, vopts string, live_fn_mutex voidptr, live_linkfn live.FNLinkLiveSymbols) &live.LiveReloadInfo {
 	file_base := os.file_name(original).replace('.v', '')
 	so_dir := os.cache_dir()
-	so_extension := dl.dl_ext
+	mut so_extension := dl.dl_ext
+	$if macos {
+		so_extension = '.dylib'
+	}
 	// $if msvc { so_extension = '.dll' } $else { so_extension = '.so' }
 	return &live.LiveReloadInfo{
 		original: original

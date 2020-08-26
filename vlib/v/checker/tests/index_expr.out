@@ -1,0 +1,41 @@
+vlib/v/checker/tests/index_expr.vv:3:7: error: type `int` does not support indexing 
+    1 | fn test_invalid_index() {
+    2 |     v := 4
+    3 |     _ = v[0]
+      |          ~~~
+    4 |     
+    5 |     a := [2]
+vlib/v/checker/tests/index_expr.vv:6:7: error: non-integer index `[]int` (array type `[]int`) 
+    4 |     
+    5 |     a := [2]
+    6 |     _ = a[a]
+      |          ~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/index_expr.vv:11:7: error: type `int` does not support indexing 
+    9 | fn test_invalid_slice() {
+   10 |     v := 4
+   11 |     _ = v[1..]
+      |          ~~~~~
+   12 |     _ = v[..1]
+   13 |
+vlib/v/checker/tests/index_expr.vv:12:7: error: type `int` does not support indexing 
+   10 |     v := 4
+   11 |     _ = v[1..]
+   12 |     _ = v[..1]
+      |          ~~~~~
+   13 |     
+   14 |     a := [2]
+vlib/v/checker/tests/index_expr.vv:15:7: error: non-integer index `[]int` (array type `[]int`) 
+   13 |     
+   14 |     a := [2]
+   15 |     _ = a[a..]
+      |          ~~~~~
+   16 |     _ = a[..a]
+   17 | }
+vlib/v/checker/tests/index_expr.vv:16:7: error: non-integer index `[]int` (array type `[]int`) 
+   14 |     a := [2]
+   15 |     _ = a[a..]
+   16 |     _ = a[..a]
+      |          ~~~~~
+   17 | }

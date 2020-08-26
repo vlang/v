@@ -11,9 +11,9 @@ const (
 	0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 	17, 18, 19, 20, 21, 22, 23, 24, 25, 0, 0, 0, 0, 63, 0, 26, 27, 28, 29,
 	30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46,
-	47, 48, 49, 50, 51]
+	47, 48, 49, 50, 51]!!
 
-	ending_table = [0, 2, 1]
+	ending_table = [0, 2, 1]!!
 	enc_table = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 )
 
@@ -84,26 +84,28 @@ pub fn decode_in_buffer(data &string, buffer byteptr) int {
 		mut char_c := 0
 		mut char_d := 0
 		if i < input_length {
-			char_a = index[d[i]]
+			char_a = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_b = index[d[i]]
+			char_b = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_c = index[d[i]]
+			char_c = index[unsafe {d[i]}]
 			i++
 		}
 		if i < input_length {
-			char_d = index[d[i]]
+			char_d = index[unsafe {d[i]}]
 			i++
 		}
 
 		decoded_bytes := (char_a << 18) | (char_b << 12) | (char_c << 6) | (char_d << 0)
-		b[j]   = byte(decoded_bytes >> 16)
-		b[j+1] = byte((decoded_bytes >> 8) & 0xff)
-		b[j+2] = byte((decoded_bytes >> 0) & 0xff)
+		unsafe {
+			b[j]   = byte(decoded_bytes >> 16)
+			b[j+1] = byte((decoded_bytes >> 8) & 0xff)
+			b[j+2] = byte((decoded_bytes >> 0) & 0xff)
+		}
 		j += 3
 	}
 	return output_length
@@ -139,30 +141,34 @@ pub fn encode_in_buffer(data &string, buffer byteptr) int {
 		mut octet_c := 0
 
 		if i < input_length {
-			octet_a = int(d[i])
+			octet_a = int(unsafe {d[i]})
 			i++
 		}
 		if i < input_length {
-			octet_b = int(d[i])
+			octet_b = int(unsafe {d[i]})
 			i++
 		}
 		if i < input_length {
-			octet_c = int(d[i])
+			octet_c = int(unsafe {d[i]})
 			i++
 		}
 
 		triple := ((octet_a << 0x10) + (octet_b << 0x08) + octet_c)
 
-		b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
-		b[j+1] = etable[ (triple >> 2 * 6) & 63 ]
-		b[j+2] = etable[ (triple >> 1 * 6) & 63 ]
-		b[j+3] = etable[ (triple >> 0 * 6) & 63 ]
+		unsafe {
+			b[j]   = etable[ (triple >> 3 * 6) & 63 ]  // 63 is 0x3F
+			b[j+1] = etable[ (triple >> 2 * 6) & 63 ]
+			b[j+2] = etable[ (triple >> 1 * 6) & 63 ]
+			b[j+3] = etable[ (triple >> 0 * 6) & 63 ]
+		}
 		j += 4
 	}
 
 	padding_length := ending_table[input_length % 3]
 	for i = 0; i < padding_length; i++ {
-		b[output_length - 1 - i] = `=`
+		unsafe {
+			b[output_length - 1 - i] = `=`
+		}
 	}
 	return output_length
 }

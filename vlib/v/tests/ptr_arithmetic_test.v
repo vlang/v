@@ -1,18 +1,24 @@
 fn test_ptr_arithmetic(){
-	v := 4
-	mut p := &v
 	unsafe {
+		// Do NOT move this outside unsafe{}.
+		// It causes too much churn in CI when new checks are implemented.
+		// If you want to implement a specific failing test, do so inside
+		// vlib/v/checker/tests/ , NOT here.
+		v := 4
+		mut p := &v
 		p++
 		p += 2
 		p = p - 1
+		assert p == &v + 2
+		p = p + 1
+		assert p == &v + 3
+		r := p++
+		assert r == &v + 3
+		assert p == &v + 4
 	}
-	assert p == unsafe {&v + 2}
-	p = unsafe { p + 1 }
-	assert p == unsafe {&v + 3}
-	r := unsafe { p++ }
-	assert r == unsafe {&v + 3}
-	assert p == unsafe {&v + 4}
-	
+}
+
+fn test_ptr_arithmetic_over_byteptr() {	
 	// byteptr, voidptr, charptr are handled differently
 	mut q := byteptr(10)
 	unsafe {

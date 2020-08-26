@@ -32,11 +32,15 @@ pub fn setenv(name string, value string, overwrite bool) int {
 	$if windows {
 		format := '$name=$value'
 		if overwrite {
-			return C._putenv(format.str)
+			unsafe {
+				return C._putenv(format.str)
+			}
 		}
 		return -1
 	} $else {
-		return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+		unsafe {
+			return C.setenv(charptr(name.str), charptr(value.str), overwrite)
+		}
 	}
 }
 
@@ -72,8 +76,8 @@ pub fn environ() map[string]string {
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
 		e := &charptr(C.environ)
-		for i := 0; !isnil(e[i]); i++ {
-			eline := cstring_to_vstring(byteptr(e[i]))
+		for i := 0; !isnil(unsafe {e[i]}); i++ {
+			eline := unsafe {cstring_to_vstring(byteptr(e[i]))}
 			eq_index := eline.index_byte(`=`)
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]

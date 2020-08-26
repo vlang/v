@@ -40,10 +40,13 @@ pub fn new_error_manager() &EManager {
 }
 
 pub fn (e &EManager) set_support_color(b bool) {
-	e.support_color = b
+	unsafe {
+		mut me := e
+		me.support_color = b
+	}
 }
 
-fn bold(msg string) string {
+pub fn bold(msg string) string {
 	if !emanager.support_color {
 		return msg
 	}
@@ -95,7 +98,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 	final_msg := emsg
 	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
-	return '$final_position $final_kind $final_msg $final_context'.trim_space()
+	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
 pub fn source_context(kind, source string, column int, pos token.Position) []string {
@@ -137,4 +140,15 @@ pub fn verror(kind, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('$final_kind: $s')
 	exit(1)
+}
+
+pub fn vlines_escape_path(path string, ccompiler string) string {
+	is_cc_tcc := ccompiler.contains('tcc')
+	if is_cc_tcc {
+		// tcc currently has a bug, causing all #line files,
+		// to be prefixed with the *same folder as the .tmp.c file*
+		// this ../../ escaping, is a temporary workaround for that
+		return '../../../../../..' + cescaped_path(os.real_path(path))
+	}
+	return cescaped_path(os.real_path(path))
 }

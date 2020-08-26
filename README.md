@@ -34,7 +34,8 @@
 - Built-in graphics library
 - Easy cross compilation
 - REPL
-- Built-in ORM
+- [Built-in ORM](https://github.com/vlang/v/blob/master/doc/docs.md#orm)
+- [Built-in web framework](https://github.com/vlang/v/blob/master/vlib/vweb/README.md)
 - C and JavaScript backends
 
 ## Stability guarantee and future changes
@@ -51,10 +52,8 @@ they are stabilized in 2020. Of course the APIs will grow after that, but withou
 existing code.
 
 Unlike many other languages, V is not going to be always changing, with new features
-being introduced and old features modified. It is always going to be a small and simple 
+being introduced and old features modified. It is always going to be a small and simple
 language, very similar to the way it is right now.
-
-
 
 ## Installing V from source
 
@@ -66,7 +65,7 @@ cd v
 make
 ```
 
-That's it! Now you have a V executable at `[path to V repo]/v`. 
+That's it! Now you have a V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
 
 (On Windows `make` means running `make.bat`, so make sure you use `cmd.exe`)
@@ -75,7 +74,7 @@ Now you can try `./v run examples/hello_world.v` (`v.exe` on Windows).
 
 V is being constantly updated. To update V, simply run:
 
-```
+```bash
 v up
 ```
 
@@ -94,7 +93,7 @@ However, if none is found when running `make` on Linux or Windows, TCC would be 
 ### Symlinking
 
 NB: it is *highly recommended*, that you put V on your PATH. That saves
-you the effort to type in the full path to your v executable everytime.
+you the effort to type in the full path to your v executable every time.
 V provides a convenience `v symlink` command to do that more easily.
 
 On Unix systems, it creates a `/usr/local/bin/v` symlink to your
@@ -104,20 +103,22 @@ executable. To do that, run:
 sudo ./v symlink
 ```
 
-On Windows, start a new shell with administrative privileges, for 
+On Windows, start a new shell with administrative privileges, for
 example by <kbd>Windows Key</kbd>, then type `cmd.exe`, right click on its menu
-entry, and choose `Run as administrator`. In the new administrative 
+entry, and choose `Run as administrator`. In the new administrative
 shell, cd to the path, where you have compiled v.exe, then type:
+
 ```bat
 .\v.exe symlink
 ```
-That will make v available everywhere, by adding it to your PATH. 
-Please restart your shell/editor after that, so that it can pick 
+
+That will make v available everywhere, by adding it to your PATH.
+Please restart your shell/editor after that, so that it can pick
 the new PATH variable.
 
-NB: there is no need to run `v symlink` more than once - v will 
-continue to be available, even after `v up`, restarts and so on. 
-You only need to run it again, if you decide to move the V repo 
+NB: there is no need to run `v symlink` more than once - v will
+continue to be available, even after `v up`, restarts and so on.
+You only need to run it again, if you decide to move the V repo
 folder somewhere else.
 
 ### Docker
@@ -132,7 +133,8 @@ docker run --rm -it vlang:latest
 v
 ```
 
-### Docker with Alpine/musl:
+### Docker with Alpine/musl
+
 ```bash
 git clone https://github.com/vlang/v
 cd v
@@ -140,15 +142,15 @@ docker build -t vlang --file=Dockerfile.alpine .
 docker run --rm -it vlang:latest
 /usr/local/v/v
 ```
-</details>
 
+</details>
 
 ### Testing and running the examples
 
 Make sure V can compile itself:
 
-```
-v -o v2 cmd/v
+```bash
+v self
 ```
 
 ```bash
@@ -173,24 +175,24 @@ v run tetris/tetris.v
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
 
-In order to build Tetris and anything else using the graphics module on non-Windows systems, you will need to install freetype libraries.
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
+on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 
-```
+```bash
 macOS:
-brew install freetype openssl
+brew install openssl
 
 Debian/Ubuntu:
-sudo apt install libfreetype6-dev libssl-dev
+sudo apt install libssl-dev
 
 Arch/Manjaro:
-sudo pacman -S freetype2
+openssl is installed by default
 
 Fedora:
-sudo dnf install freetype-devel
+sudo dnf install openssl-devel
 ```
-
 
 ## V UI
 
@@ -229,7 +231,6 @@ tutorial and Gitly, a light and fast alternative to GitHub/GitLab:
 https://github.com/vlang/gitly
 
 <img src="https://user-images.githubusercontent.com/687996/85933714-b195fe80-b8da-11ea-9ddd-09cadc2103e4.png">
-
 
 ## Troubleshooting
 

@@ -177,7 +177,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	return res.join(''), needs_braces
 }
 
-// string representaiton of expr
+// string representation of expr
 pub fn (x Expr) str() string {
 	match x {
 		BoolLiteral {
@@ -215,13 +215,22 @@ pub fn (x Expr) str() string {
 			return '${it.left.str()} $it.op.str() ${it.right.str()}'
 		}
 		ParExpr {
-			return it.expr.str()
+			return '($it.expr)'
 		}
 		PrefixExpr {
 			return it.op.str() + it.right.str()
 		}
+		RangeExpr {
+			mut s := '..'
+			if it.has_low {s = '$it.low ' + s}
+			if it.has_high {s = s + ' $it.high'}
+			return s
+		}
 		SelectorExpr {
 			return '${it.expr.str()}.${it.field_name}'
+		}
+		SizeOf {
+			return 'sizeof($it.expr)'
 		}
 		StringInterLiteral {
 			mut res := []string{}
@@ -257,10 +266,9 @@ pub fn (x Expr) str() string {
 		UnsafeExpr {
 			return 'unsafe { $it.stmts.len stmts }'
 		}
-		else {
-			return '[unhandled expr type ${typeof(x)}]'
-		}
+		else {}
 	}
+	return '[unhandled expr type ${typeof(x)}]'
 }
 
 pub fn (a CallArg) str() string {
@@ -312,5 +320,12 @@ pub fn (node Stmt) str() string {
 		else {
 			return '[unhandled stmt str type: ${typeof(node)} ]'
 		}
+	}
+}
+
+pub fn (e CompForKind) str() string {
+	match e {
+		.methods { return 'methods' }
+		.fields { return 'fields' }
 	}
 }

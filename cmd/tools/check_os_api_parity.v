@@ -12,7 +12,7 @@ const (
 	os_names     = ['linux', 'macos', 'windows']
 	skip_modules = [
 		'builtin.bare', 'builtin.js',
-		'strconv', 'strconv.ftoa', 'hash.wyhash', 'strings',
+		'strconv', 'strconv.ftoa', 'hash', 'strings',
 		'crypto.rand',
 		'os.bare', 'os2',
 		'picohttpparser', 'picoev',

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/for_in_map_one_variable_err.v:3:6: error: declare a key and a value variable when ranging a map: `for key, val in map {`
+vlib/v/checker/tests/for_in_map_one_variable_err.vv:3:6: error: declare a key and a value variable when ranging a map: `for key, val in map {`
 use `_` if you do not need the variable
     1 | fn main() {
     2 |     kvs := {'foo':'bar'}

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/immutable_array_struct_assign.v:8:2: error: `a` is immutable, declare it with `mut` to make it mutable
+vlib/v/checker/tests/immutable_array_struct_assign.vv:8:2: error: `a` is immutable, declare it with `mut` to make it mutable
     6 | fn main() {
     7 |     a := Aaa{}
     8 |     a.i[0] += 3

@@ -10,7 +10,7 @@ const (
 	is_used = openssl.is_used
 )
 
-fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
+fn (req &Request) ssl_do(port int, method Method, host_name, path string) ?Response {
 	// ssl_method := C.SSLv23_method()
 	ssl_method := C.TLSv1_2_method()
 	ctx := C.SSL_CTX_new(ssl_method)
@@ -38,9 +38,10 @@ fn (req &Request) ssl_do(port int, method, host_name, path string) ?Response {
 	res = C.SSL_get_verify_result(ssl)
 	// /////
 	req_headers := req.build_request_headers(method, host_name, path)
+	//println(req_headers)
 	C.BIO_puts(web, req_headers.str)
 	mut content := strings.new_builder(100)
-	mut buff := [bufsize]byte
+	mut buff := [bufsize]byte{}
 	mut readcounter := 0
 	for {
 		readcounter++

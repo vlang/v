@@ -3,7 +3,7 @@ module gen
 import v.pref
 import v.util
 
-fn (g &Gen) generate_hotcode_reloading_declarations() {
+fn (mut g Gen) generate_hotcode_reloading_declarations() {
 	if g.pref.os == .windows {
 		if g.pref.is_livemain {
 			g.hotcode_definitions.writeln('HANDLE live_fn_mutex = 0;')
@@ -29,7 +29,7 @@ void pthread_mutex_unlock(HANDLE *m) {
 	}
 }
 
-fn (g &Gen) generate_hotcode_reloader_code() {
+fn (mut g Gen) generate_hotcode_reloader_code() {
 	if g.pref.is_liveshared {
 		g.hotcode_definitions.writeln('')
 		return
@@ -40,12 +40,13 @@ fn (g &Gen) generate_hotcode_reloader_code() {
 		mut load_code := []string{}
 		if g.pref.os != .windows {
 			for so_fn in g.hotcode_fn_names {
-				load_code << 'impl_live_${so_fn} = dlsym(live_lib, "impl_live_${so_fn}");'
+				load_code << 'impl_live_$so_fn = dlsym(live_lib, "impl_live_$so_fn");'
 			}
 			phd = posix_hotcode_definitions_1
 		} else {
 			for so_fn in g.hotcode_fn_names {
-				load_code << 'impl_live_${so_fn} = (void *)GetProcAddress(live_lib, "impl_live_${so_fn}");  '
+				load_code <<
+					'impl_live_$so_fn = (void *)GetProcAddress(live_lib, "impl_live_$so_fn");  '
 			}
 			phd = windows_hotcode_definitions_1
 		}
@@ -54,19 +55,19 @@ fn (g &Gen) generate_hotcode_reloader_code() {
 }
 
 const (
-	posix_hotcode_definitions_1 = '
+	posix_hotcode_definitions_1   = '
 void v_bind_live_symbols(void* live_lib){
-    @LOAD_FNS@
+	@LOAD_FNS@
 }
 '
 	windows_hotcode_definitions_1 = '
 void v_bind_live_symbols(void* live_lib){
-    @LOAD_FNS@
+	@LOAD_FNS@
 }
 '
 )
 
-fn (g &Gen) generate_hotcode_reloading_main_caller() {
+fn (mut g Gen) generate_hotcode_reloading_main_caller() {
 	if !g.pref.is_livemain {
 		return
 	}
@@ -76,10 +77,10 @@ fn (g &Gen) generate_hotcode_reloading_main_caller() {
 	g.writeln('\t{')
 	g.writeln('\t\t// initialization of live function pointers')
 	for fname in g.hotcode_fn_names {
-		g.writeln('\t\timpl_live_${fname} = 0;')
+		g.writeln('\t\timpl_live_$fname = 0;')
 	}
-	vexe := util.cescaped_path( pref.vexe_path() )
-	file := util.cescaped_path( g.pref.path )
+	vexe := util.cescaped_path(pref.vexe_path())
+	file := util.cescaped_path(g.pref.path)
 	msvc := if g.pref.ccompiler == 'msvc' { '-cc msvc' } else { '' }
 	so_debug_flag := if g.pref.is_debug { '-cg' } else { '' }
 	vopts := '$msvc $so_debug_flag -sharedlive -shared'

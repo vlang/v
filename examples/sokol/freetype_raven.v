@@ -92,16 +92,8 @@ fn main() {
 
 fn init(user_data voidptr) {
 	mut state := &AppState(user_data)
-	// dont actually alocate this on the heap in real life
-	gfx.setup(&C.sg_desc{
-		mtl_device: sapp.metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp.metal_get_drawable
-		d3d11_device: sapp.d3d11_get_device()
-		d3d11_device_context: sapp.d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
-	})
+	desc := sapp.create_desc()
+	gfx.setup(&desc)
 	s := &C.sgl_desc_t{}
 	C.sgl_setup(s)
 	state.fons = sfons.create(512, 512, 1)
@@ -128,7 +120,7 @@ const (
 black = C.sfons_rgba(0, 0, 0, 255)
 )
 
-fn (state &AppState) render_font() {
+fn (mut state AppState) render_font() {
 	lh := 30
 	mut dy := lh
 	if !state.inited {

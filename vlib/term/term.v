@@ -52,27 +52,38 @@ pub fn header(text, divider string) string {
 	if text.len == 0 {
 		return h_divider(divider)
 	}
-	cols,_ := get_terminal_size()
-	tlimit := if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len }
+	xcols,_ := get_terminal_size()
+	cols := imax(1, xcols)    
+	tlimit := imax(1, if cols > text.len + 2 + 2 * divider.len { text.len } else { cols - 3 - 2 * divider.len })
 	tlimit_alligned := if (tlimit % 2) != (cols % 2) { tlimit + 1 } else { tlimit }
-	tstart := (cols - tlimit_alligned) / 2
+	tstart := imax(0, (cols - tlimit_alligned) / 2)
 	ln := if divider.len > 0 { divider.repeat(1 + cols / divider.len)[0..cols] } else { " ".repeat(1 + cols) }
+	if ln.len == 1 {
+		return ln + ' ' + text[0..tlimit] + ' ' + ln
+	}
 	return ln[0..tstart] + ' ' + text[0..tlimit] + ' ' + ln[tstart + tlimit + 2..cols]
 }
 
+fn imax(x,y int) int {
+	return if x > y { x } else { y }
+}
+
 fn supports_escape_sequences(fd int) bool {
-	//println('TERM=' + os.getenv('TERM'))
-	if os.getenv('TERM') == 'dumb' {
-		return false
-	}
 	vcolors_override := os.getenv('VCOLORS')
 	if vcolors_override == 'always' {
 		return true
 	}
+	if vcolors_override == 'never' {
+		return false
+	}
+	if os.getenv('TERM') == 'dumb' {
+		return false
+	}
 	$if windows {
-		return (is_atty(fd) & 0x0004) > 0 && os.getenv('TERM') != 'dumb' // enable_virtual_terminal_processing
+		// 4 is enable_virtual_terminal_processing
+		return (is_atty(fd) & 0x0004) > 0
 	} $else {
-		return is_atty(fd) > 0 && os.getenv('TERM') != 'dumb'
+		return is_atty(fd) > 0
 	}
 }
 

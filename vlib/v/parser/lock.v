@@ -4,6 +4,8 @@ import v.ast
 import v.table
 
 fn (mut p Parser) lock_expr() ast.LockExpr {
+	// TODO Handle aliasing sync
+	p.register_used_import('sync')
 	pos := p.tok.position()
 	is_rlock := p.tok.kind == .key_rlock
 	p.next()
@@ -11,8 +13,10 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 	for p.tok.kind == .name {
 		lockeds << ast.Ident{
 			language: table.Language.v
-			kind: .variable
+			// kind is set in checker once ident is processed
+			// kind: .variable
 			pos: p.tok.position()
+			mod: p.mod
 			name: p.tok.lit
 			is_mut: true
 			info: ast.IdentVar{}

@@ -1,5 +1,7 @@
 module gen
 
+import v.util
+
 pub fn (mut g Gen) gen_c_main() {
 	if !g.has_main {
 		return
@@ -7,13 +9,34 @@ pub fn (mut g Gen) gen_c_main() {
 	if g.pref.is_liveshared {
 		return
 	}
-	g.out.writeln('')    
+	g.out.writeln('')
 	main_fn_start_pos := g.out.len
-	g.gen_c_main_header()
-	g.writeln('\tmain__main();')
-	g.gen_c_main_footer()    
-	if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
-		println(g.out.after(main_fn_start_pos))
+	if g.pref.os == .android && g.pref.is_apk {
+		g.gen_c_android_sokol_main()
+	} else {
+		g.gen_c_main_header()
+		g.writeln('\tmain__main();')
+		g.gen_c_main_footer()
+		if g.pref.printfn_list.len > 0 && 'main' in g.pref.printfn_list {
+			println(g.out.after(main_fn_start_pos))
+		}
+	}
+}
+
+fn (mut g Gen) gen_vlines_reset() {
+	if g.pref.is_vlines {
+		// At this point, the v files are transpiled.
+		// The rest is auto generated code, which will not have
+		// different .v source file/line numbers.
+		//
+		// TODO: calculate the proper line here, based on
+		// the actual C lines in all the buffers
+		lines_so_far := 1000000
+		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
+		g.writeln('')
+		g.writeln('\n// Reset the file/line numbers')
+		g.writeln('\n#line $lines_so_far "${g.vlines_path}"')
+		g.writeln('')
 	}
 }
 
@@ -37,13 +60,11 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
 	}
 	g.writeln('\t_vinit();')
-
 	if g.pref.is_prof {
 		g.writeln('')
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
 	}
-
 	if g.is_importing_os() {
 		if g.autofree {
 			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
@@ -63,8 +84,25 @@ pub fn (mut g Gen) gen_c_main_footer() {
 	if g.autofree {
 		g.writeln('\t_vcleanup();')
 	}
-
 	g.writeln('\treturn 0;')
+	g.writeln('}')
+}
+
+pub fn (mut g Gen) gen_c_android_sokol_main() {
+	// TODO get autofree weaved into android lifecycle somehow
+	/*
+	if g.autofree {
+		g.writeln('\t_vcleanup();')
+	}
+	*/
+	// TODO do proper check for the global g_desc field we need
+	g.writeln('sapp_desc sokol_main(int argc, char* argv[]) {')
+	g.writeln('\t(void)argc; (void)argv;')
+	g.writeln('')
+	g.writeln('\t_vinit();')
+	g.writeln('\tmain__main();')
+	g.writeln('')
+	g.writeln('\treturn g_desc;')
 	g.writeln('}')
 }
 

@@ -48,7 +48,7 @@ fn (dtp DTP) read() []byte {
 			break
 		}
 		for i in 0 .. len {
-			data << buf[i]
+			data << unsafe { buf[i] }
 		}
 		unsafe {
 			free(buf)
@@ -156,7 +156,7 @@ pub fn (ftp FTP) pwd() string {
 		return ''
 	}
 	_, data := ftp.read()
-	spl := data.split('"')
+	spl := data.split('"') // "
 	if spl.len >= 2 {
 		return spl[1]
 	}
@@ -236,7 +236,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	}
 	dtp.close()
 	mut dir := []string{}
-	sdir := string(byteptr(list_dir.data))
+	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
 		if lfile.len > 1 {
 			spl := lfile.split(' ')

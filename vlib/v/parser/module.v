@@ -9,6 +9,7 @@ pub fn (p &Parser) known_import(mod string) bool {
 }
 
 fn (p &Parser) prepend_mod(name string) string {
+	// println('prepend_mod() name=$name p.mod=$p.mod expr_mod=$p.expr_mod')
 	if p.expr_mod != '' {
 		return p.expr_mod + '.' + name
 	}
@@ -29,15 +30,16 @@ fn (mut p Parser) register_used_import(alias string) {
 }
 
 fn (mut p Parser) check_unused_imports() {
-	if p.pref.is_repl {
+	if p.pref.is_repl || p.pref.is_fmt {
 		// The REPL should be much more liberal, and should not warn about
 		// unused imports, because they probably will be in the next few lines...
+		// vfmt doesn't care about unused imports either
 		return
 	}
 	for import_m in p.ast_imports {
 		alias := import_m.alias
 		mod := import_m.mod
-		if !p.is_used_import(alias) && !p.pref.is_fmt {
+		if !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
 			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.pos)
 		}

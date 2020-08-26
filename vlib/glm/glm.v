@@ -64,7 +64,7 @@ pub fn (m Mat4) str() string {
 			s += '  '
 		}
 		for j in 0..4 {
-			val := m.data[i * 4 + j]
+			val := unsafe {m.data[i * 4 + j]}
 			s += '${val:5.2f} '
 		}
 		if i != 3 {
@@ -141,16 +141,18 @@ pub fn translate(m Mat4, v Vec3) Mat4 {
 	x := v.x
 	y := v.y
 	z := v.z
-	a00 := a[0] a01 := a[1] a02 := a[2]  a03 := a[3]
-	a10 := a[4] a11 := a[5] a12 := a[6]  a13 := a[7]
-	a20 := a[8] a21 := a[9] a22 := a[10] a23 := a[11]
-	out[0] = a00 out[1] = a01 out[2] = a02 out[3] = a03
-	out[4] = a10 out[5] = a11 out[6] = a12 out[7] = a13
-	out[8] = a20 out[9] = a21 out[10] = a22 out[11] = a23
-	out[12] = a00 * x + a10 * y + a20 * z + a[12]
-	out[13] = a01 * x + a11 * y + a21 * z + a[13]
-	out[14] = a02 * x + a12 * y + a22 * z + a[14]
-	out[15] = a03 * x + a13 * y + a23 * z + a[15]
+	unsafe {
+		a00 := a[0] a01 := a[1] a02 := a[2]  a03 := a[3]
+		a10 := a[4] a11 := a[5] a12 := a[6]  a13 := a[7]
+		a20 := a[8] a21 := a[9] a22 := a[10] a23 := a[11]
+		out[0] = a00 out[1] = a01 out[2] = a02 out[3] = a03
+		out[4] = a10 out[5] = a11 out[6] = a12 out[7] = a13
+		out[8] = a20 out[9] = a21 out[10] = a22 out[11] = a23
+		out[12] = a00 * x + a10 * y + a20 * z + a[12]
+		out[13] = a01 * x + a11 * y + a21 * z + a[13]
+		out[14] = a02 * x + a12 * y + a22 * z + a[14]
+		out[15] = a03 * x + a13 * y + a23 * z + a[15]
+	}
 	return mat4(out)
 }
 
@@ -166,12 +168,14 @@ pub fn ortho(left, right, bottom, top f32) Mat4 {
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
 	mut res := f32_calloc(n)
-	res[0] = 2.0 / (right - left)
-	res[5] = 2.0 / (top - bottom)
-	res[10] = 1.0
-	res[12] = - (right + left) / (right - left)
-	res[13] = - (top + bottom) / (top - bottom)
-	res[15] = 1.0
+	unsafe {
+		res[0] = 2.0 / (right - left)
+		res[5] = 2.0 / (top - bottom)
+		res[10] = 1.0
+		res[12] = - (right + left) / (right - left)
+		res[13] = - (top + bottom) / (top - bottom)
+		res[15] = 1.0
+	}
 	return mat4(res)
 }
 
@@ -181,13 +185,15 @@ pub fn ortho_zo(left, right, bottom, top, zNear, zFar f32) Mat4 {
 	// mat<4, 4, T, defaultp> Result(static_cast<T>(1));
 	n := 16
 	mut res := f32_calloc(n)
-	res[0] = 2.0 / (right - left)
-	res[5] = 2.0 / (top - bottom)
-	res[10] = 1.0
-	res[12] = - (right + left) / (right - left)
-	res[13] = - (top + bottom) / (top - bottom)
-	res[14] = - zNear / (zFar - zNear)
-	res[15] = 1.0
+	unsafe {
+		res[0] = 2.0 / (right - left)
+		res[5] = 2.0 / (top - bottom)
+		res[10] = 1.0
+		res[12] = - (right + left) / (right - left)
+		res[13] = - (top + bottom) / (top - bottom)
+		res[14] = - zNear / (zFar - zNear)
+		res[15] = 1.0
+	}
 	return mat4(res)
 }
 
@@ -198,22 +204,24 @@ pub fn scale(m Mat4, v Vec3) Mat4 {
 	x := v.x
 	y := v.y
 	z := v.z
-	out[0] = a[0] * v.x
-	out[1] = a[1] * x
-	out[2] = a[2] * x
-	out[3] = a[3] * x
-	out[4] = a[4] * y
-	out[5] = a[5] * y
-	out[6] = a[6] * y
-	out[7] = a[7] * y
-	out[8] = a[8] * z
-	out[9] = a[9] * z
-	out[10] = a[10] * z
-	out[11] = a[11] * z
-	out[12] = a[12]
-	out[13] = a[13]
-	out[14] = a[14]
-	out[15] = a[15]
+	unsafe {
+		out[0] = a[0] * v.x
+		out[1] = a[1] * x
+		out[2] = a[2] * x
+		out[3] = a[3] * x
+		out[4] = a[4] * y
+		out[5] = a[5] * y
+		out[6] = a[6] * y
+		out[7] = a[7] * y
+		out[8] = a[8] * z
+		out[9] = a[9] * z
+		out[10] = a[10] * z
+		out[11] = a[11] * z
+		out[12] = a[12]
+		out[13] = a[13]
+		out[14] = a[14]
+		out[15] = a[15]
+	}
 	return mat4(out)
 }
 
@@ -224,9 +232,11 @@ pub fn mult(a, b Mat4) Mat4 {
 		for r in 0..4 {
 			mut prod := f32(0)
 			for c in 0..4 {
-				prod += a.data[c*4+r] * b.data[i*4+c]
+				prod += unsafe {a.data[c*4+r] * b.data[i*4+c]}
 			}
-			out[i*4+r] = prod
+			unsafe {
+				out[i*4+r] = prod
+			}
 		}
 	}
 	return mat4(out)
@@ -257,28 +267,29 @@ pub fn rotate(angle f32, axis Vec3, src Mat4) Mat4 {
 	f22 := axis.z  *axis.z * oneminusc + c
 
 	data := src.data
+	unsafe {
+		t00 := data[0] * f00 + data[4] * f01 + data[8] * f02
+		t01 := data[1] * f00 + data[5] * f01 + data[9] * f02
+		t02 := data[2] * f00 + data[6] * f01 + data[10] * f02
+		t03 := data[3] * f00 + data[7] * f01 + data[11] * f02
 
-	t00 := data[0] * f00 + data[4] * f01 + data[8] * f02
-	t01 := data[1] * f00 + data[5] * f01 + data[9] * f02
-	t02 := data[2] * f00 + data[6] * f01 + data[10] * f02
-	t03 := data[3] * f00 + data[7] * f01 + data[11] * f02
+		t10 := data[0] * f10 + data[4] * f11 + data[8] * f12
+		t11 := data[1] * f10 + data[5] * f11 + data[9] * f12
+		t12 := data[2] * f10 + data[6] * f11 + data[10] * f12
+		t13 := data[3] * f10 + data[7] * f11 + data[11] * f12
 
-	t10 := data[0] * f10 + data[4] * f11 + data[8] * f12
-	t11 := data[1] * f10 + data[5] * f11 + data[9] * f12
-	t12 := data[2] * f10 + data[6] * f11 + data[10] * f12
-	t13 := data[3] * f10 + data[7] * f11 + data[11] * f12
+		mut dest := src.data
 
-	mut dest := src.data
+		dest[8] = data[0] * f20 + data[4] * f21 + data[8] * f22
+		dest[9] = data[1] * f20 + data[5] * f21 + data[9] * f22
+		dest[10] = data[2] * f20 + data[6] * f21 + data[10] * f22
+		dest[11] = data[3] * f20 + data[7] * f21 + data[11] * f22
 
-	dest[8] = data[0] * f20 + data[4] * f21 + data[8] * f22
-	dest[9] = data[1] * f20 + data[5] * f21 + data[9] * f22
-	dest[10] = data[2] * f20 + data[6] * f21 + data[10] * f22
-	dest[11] = data[3] * f20 + data[7] * f21 + data[11] * f22
+		dest[0] = t00	dest[1] = t01	dest[2] = t02	dest[3] = t03
+		dest[4] = t10	dest[5] = t11	dest[6] = t12	dest[7] = t13
 
-	dest[0] = t00	dest[1] = t01	dest[2] = t02	dest[3] = t03
-	dest[4] = t10	dest[5] = t11	dest[6] = t12	dest[7] = t13
-
-	return mat4(dest)
+		return mat4(dest)
+	}
 }
 
 // fn rotate_z(a *f32, rad f32) *f32 {
@@ -287,31 +298,33 @@ pub fn rotate_z(m Mat4, rad f32) Mat4 {
 	mut out := f32_calloc(16)
 	s := f32(math.sin(rad))
 	c := f32(math.cos(rad))
-	a00 := a[0]
-	a01 := a[1]
-	a02 := a[2]
-	a03 := a[3]
-	a10 := a[4]
-	a11 := a[5]
-	a12 := a[6]
-	a13 := a[7]
-	out[8] = a[8]
-	out[9] = a[9]
-	out[10] = a[10]
-	out[11] = a[11]
-	out[12] = a[12]
-	out[13] = a[13]
-	out[14] = a[14]
-	out[15] = a[15]
-	// Perform axis-specific matrix multiplication
-	out[0] = a00 * c + a10 * s
-	out[1] = a01 * c + a11 * s
-	out[2] = a02 * c + a12 * s
-	out[3] = a03 * c + a13 * s
-	out[4] = a10 * c - a00 * s
-	out[5] = a11 * c - a01 * s
-	out[6] = a12 * c - a02 * s
-	out[7] = a13 * c - a03 * s
+	unsafe {
+		a00 := a[0]
+		a01 := a[1]
+		a02 := a[2]
+		a03 := a[3]
+		a10 := a[4]
+		a11 := a[5]
+		a12 := a[6]
+		a13 := a[7]
+		out[8] = a[8]
+		out[9] = a[9]
+		out[10] = a[10]
+		out[11] = a[11]
+		out[12] = a[12]
+		out[13] = a[13]
+		out[14] = a[14]
+		out[15] = a[15]
+		// Perform axis-specific matrix multiplication
+		out[0] = a00 * c + a10 * s
+		out[1] = a01 * c + a11 * s
+		out[2] = a02 * c + a12 * s
+		out[3] = a03 * c + a13 * s
+		out[4] = a10 * c - a00 * s
+		out[5] = a11 * c - a01 * s
+		out[6] = a12 * c - a02 * s
+		out[7] = a13 * c - a03 * s
+	}
 	return mat4(out)
 }
 
@@ -322,10 +335,12 @@ pub fn identity() Mat4 {
 	// 0 0 0 1
 	n := 16
 	mut res := f32_calloc(int(sizeof(f32)) * n)
-	res[0] = 1
-	res[5] = 1
-	res[10] = 1
-	res[15] = 1
+	unsafe {
+		res[0] = 1
+		res[5] = 1
+		res[10] = 1
+		res[15] = 1
+	}
 	return mat4(res)
 }
 
@@ -357,25 +372,26 @@ fn ortho_js(left, right, bottom, top f32) &f32 {
 	lr := 1.0 / (left - right)
 	bt := 1.0 / (bottom - top)
 	nf := f32(1.0) / 1.0// (mynear -myfar)
-	mut out := &f32(0)
-	unsafe { out = &f32( malloc (int(sizeof(f32) * 16))) }
-	out[0] = -2.0 * lr
-	out[1] = 0
-	out[2] = 0
-	out[3] = 0
-	out[4] = 0
-	out[5] = -2.0 * bt
-	out[6] = 0
-	out[7] = 0
-	out[8] = 0
-	out[9] = 0
-	out[10] = 2.0 * nf
-	out[11] = 0
-	out[12] = (left + right) * lr
-	out[13] = (top + bottom) * bt
-	out[14] = 1.0 * nf//(far + near) * nf;
-	out[15] = 1
-	return out
+	unsafe {
+		mut out := &f32( malloc (int(sizeof(f32) * 16)))
+		out[0] = -2.0 * lr
+		out[1] = 0
+		out[2] = 0
+		out[3] = 0
+		out[4] = 0
+		out[5] = -2.0 * bt
+		out[6] = 0
+		out[7] = 0
+		out[8] = 0
+		out[9] = 0
+		out[10] = 2.0 * nf
+		out[11] = 0
+		out[12] = (left + right) * lr
+		out[13] = (top + bottom) * bt
+		out[14] = 1.0 * nf//(far + near) * nf;
+		out[15] = 1
+		return out
+	}
 	//f := 0.0
 	//return &f
 }

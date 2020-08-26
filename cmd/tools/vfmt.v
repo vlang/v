@@ -204,6 +204,7 @@ fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string)
 		}
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
+			println("$file is not vfmt'ed")
 			exit(1)
 		}
 		return

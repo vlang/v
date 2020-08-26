@@ -46,7 +46,7 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	r.seed = seed_data[0]
-	C.srand(int(r.seed))
+	unsafe { C.srand(int(r.seed)) }
 }
 
 // r.default_rand() exposes the default behavior of the system's RNG

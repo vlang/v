@@ -11,6 +11,8 @@ fn vararg_test() {
 	variadic(1, 2, 3)
 }
 
+// TODO Remove `fn main` once vet supports scripts
+fn main() {
 vararg_test()
 
 arr1 := ['Hello', 'JS', 'Backend']
@@ -118,3 +120,4 @@ $f1
 $f2
 $f3
 $f4')
+}

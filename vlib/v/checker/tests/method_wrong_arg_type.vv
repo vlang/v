@@ -1,0 +1,9 @@
+enum MyEnum { x y z }
+pub fn (e MyEnum) str() string { return int(e).str() }
+struct Sss { }
+fn (s Sss) info(msg string) { println(msg) }
+fn main() {
+	e := MyEnum.x
+	s := Sss{}
+	s.info(e)
+}

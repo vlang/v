@@ -1,13 +1,13 @@
 module builder
 
 import os
+import time
 import v.pref
 import v.cflag
 
 #flag windows -l shell32
 #flag windows -l dbghelp
 #flag windows -l advapi32
-
 struct MsvcResult {
 	full_cl_exe_path    string
 	exe_path            string
@@ -18,7 +18,7 @@ struct MsvcResult {
 	ucrt_include_path   string
 	vs_include_path     string
 	shared_include_path string
-	valid				bool
+	valid               bool
 }
 
 // shell32 for RegOpenKeyExW etc
@@ -50,7 +50,8 @@ fn find_windows_kit_internal(key RegKey, versions []string) ?string {
 					continue
 				}
 				//
-				else{}
+				else {
+				}
 				result2 := C.RegQueryValueEx(key, version.to_wide(), 0, 0, value, &alloc_length)
 				if result2 != 0 {
 					continue
@@ -95,9 +96,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		}
 		kit_lib := kit_root + 'Lib'
 		// println(kit_lib)
-		files := os.ls(kit_lib) or {
-			panic(err)
-		}
+		files := os.ls(kit_lib)?
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
@@ -142,7 +141,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
-		//println('Unable to find msvc version')
+		// println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
@@ -213,13 +212,11 @@ pub fn (mut v Builder) cc_msvc() {
 	} else {
 		a << '/MDd'
 	}
-
 	if v.pref.is_debug {
 		// /Zi generates a .pdb
 		// /Fd sets the pdb file name (so its not just vc140 all the time)
 		a << ['/Zi', '/Fd"$out_name_pdb"']
 	}
-
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
 			v.pref.out_name += '.dll'
@@ -260,17 +257,19 @@ pub fn (mut v Builder) cc_msvc() {
 	// Not all of these are needed (but the compiler should discard them if they are not used)
 	// these are the defaults used by msbuild and visual studio
 	mut real_libs := ['kernel32.lib', 'user32.lib', 'advapi32.lib']
-	//sflags := v.get_os_cflags().msvc_string_flags()
+	// sflags := v.get_os_cflags().msvc_string_flags()
 	sflags := msvc_string_flags(v.get_os_cflags())
 	real_libs << sflags.real_libs
 	inc_paths := sflags.inc_paths
 	lib_paths := sflags.lib_paths
+	defines := sflags.defines
 	other_flags := sflags.other_flags
 	// Include the base paths
 	a << '-I "$r.ucrt_include_path"'
 	a << '-I "$r.vs_include_path"'
 	a << '-I "$r.um_include_path"'
 	a << '-I "$r.shared_include_path"'
+	a << defines
 	a << inc_paths
 	a << other_flags
 	// Libs are passed to cl.exe which passes them to the linker
@@ -302,11 +301,14 @@ pub fn (mut v Builder) cc_msvc() {
 		println('==========\n')
 	}
 	// println('$cmd')
+	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
 	}
+	diff := time.ticks() - ticks
+	v.timing_message('C msvc', diff)
 	if res.exit_code != 0 {
 		verror(res.output)
 	}
@@ -318,7 +320,6 @@ pub fn (mut v Builder) cc_msvc() {
 
 fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags []cflag.CFlag) {
 	msvc := v.cached_msvc
-
 	if msvc.valid == false {
 		verror('Cannot find MSVC on this OS')
 		return
@@ -362,7 +363,7 @@ mut:
 	other_flags []string
 }
 
-//pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
+// pub fn (cflags []CFlag) msvc_string_flags() MsvcStringFlags {
 pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut real_libs := []string{}
 	mut inc_paths := []string{}

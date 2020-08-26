@@ -3,7 +3,6 @@
 module main
 
 import v.vet
-import v.ast
 import v.pref
 import v.parser
 import v.util
@@ -13,6 +12,7 @@ import os.cmdline
 
 struct VetOptions {
 	is_verbose bool
+	errors     []string
 }
 
 fn (vet_options &VetOptions) vprintln(s string) {
@@ -29,15 +29,37 @@ fn main() {
 		is_verbose: '-verbose' in args || '-v' in args
 	}
 	for path in paths {
-		if path.ends_with('.v') {
+		if !os.exists(path) {
+			eprintln('File/folder $path does not exist')
+			continue
+		}
+		if path.ends_with('_test.v') || (path.contains('/tests/') && !path.contains('vlib/v/vet/')) {
+			eprintln('skipping $path')
+			continue
+		}
+		if path.ends_with('.v') || path.ends_with('.vv') {
 			vet_options.vet_file(path)
 		} else if os.is_dir(path) {
 			vet_options.vprintln("vetting folder '$path'...")
-			files := os.walk_ext(path, '.v')
+			vfiles := os.walk_ext(path, '.v')
+			vvfiles := os.walk_ext(path, '.vv')
+			mut files := []string{}
+			files << vfiles
+			files << vvfiles
 			for file in files {
+				if file.ends_with('_test.v') || file.contains('/tests/') { // TODO copy pasta
+					continue
+				}
 				vet_options.vet_file(file)
 			}
 		}
+	}
+	if vet_options.errors.len > 0 {
+		for err in vet_options.errors {
+			eprintln(err)
+		}
+		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
+		exit(1)
 	}
 }
 
@@ -45,12 +67,7 @@ fn (vet_options &VetOptions) vet_file(path string) {
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	table := table.new_table()
-	if path.contains('/tests') {
-		return
-	}
-	file_ast := parser.parse_file(path, table, .parse_comments, prefs, &ast.Scope{
-		parent: 0
-	})
 	vet_options.vprintln("vetting file '$path'...")
+	file_ast := parser.parse_vet_file(path, table, prefs, vet_options.errors)
 	vet.vet(file_ast, table, true)
 }

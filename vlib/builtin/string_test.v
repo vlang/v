@@ -361,6 +361,23 @@ fn test_contains() {
 	assert 'abc'.contains('')
 }
 
+fn test_contains_any() {
+	assert !'team'.contains_any('i')
+	assert 'fail'.contains_any('ui')
+	assert 'ure'.contains_any('ui')
+	assert 'failure'.contains_any('ui')
+	assert !'foo'.contains_any('')
+	assert !''.contains_any('')
+}
+
+fn test_contains_any_substr() {
+	s := 'Some random text'
+	assert s.contains_any_substr(['false', 'not', 'rand'])
+	assert !s.contains_any_substr(['ABC', 'invalid'])
+	assert ''.contains_any_substr([])
+	assert 'abc'.contains_any_substr([''])
+}
+
 fn test_arr_contains() {
 	a := ['a', 'b', 'c']
 	assert a.contains('b')
@@ -478,15 +495,17 @@ fn test_reverse() {
 
 fn test_bytes_to_string() {
 	mut buf := vcalloc(10)
-	buf[0] = `h`
-	buf[1] = `e`
-	buf[2] = `l`
-	buf[3] = `l`
-	buf[4] = `o`
-	assert string(buf) == 'hello'
-	assert string(buf, 2) == 'he'
+	unsafe {
+		buf[0] = `h`
+		buf[1] = `e`
+		buf[2] = `l`
+		buf[3] = `l`
+		buf[4] = `o`
+	}
+	assert unsafe { buf.vstring() } == 'hello'
+	assert unsafe { buf.vstring_with_len(2) } == 'he'
 	bytes := [`h`, `e`, `l`, `l`, `o`]
-	assert string(bytes, 5) == 'hello'
+	assert bytes.bytestr() == 'hello'
 }
 
 fn test_count() {
@@ -556,10 +575,11 @@ fn test_capitalize() {
 	assert s.capitalize() == ''
 	s = 'TEST IT'
 	assert !s.is_capital()
-	assert s.capitalize() == 'Test it'
+	assert s.capitalize() == 'TEST IT'
 	s = 'Test it'
 	assert s.is_capital()
 	assert s.capitalize() == 'Test it'
+	assert 'GameMission_t'.capitalize() == 'GameMission_t'
 }
 
 fn test_title() {
@@ -568,7 +588,7 @@ fn test_title() {
 	assert s.title() == 'Hello World'
 	s = 'HELLO WORLD'
 	assert !s.is_title()
-	assert s.title() == 'Hello World'
+	assert s.title() == 'HELLO WORLD'
 	s = 'Hello World'
 	assert s.is_title()
 	assert s.title() == 'Hello World'

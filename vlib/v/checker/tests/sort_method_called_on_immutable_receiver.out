@@ -1,0 +1,13 @@
+vlib/v/checker/tests/sort_method_called_on_immutable_receiver.vv:2:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    1 | fn abc (a []int) {
+    2 |     a.sort()
+      |     ^
+    3 | }
+    4 |
+vlib/v/checker/tests/sort_method_called_on_immutable_receiver.vv:7:2: error: `a` is immutable, declare it with `mut` to make it mutable
+    5 | fn main() {
+    6 |     a := [2,30,10,20,1]
+    7 |     a.sort(a>b)
+      |     ^
+    8 |     eprintln(' a: $a')
+    9 | }

@@ -47,6 +47,8 @@ pub:
     mouse_button MouseButton
     mouse_x f32
     mouse_y f32
+    mouse_dx f32
+    mouse_dy f32
     scroll_x f32
     scroll_y f32
     num_touches int
@@ -68,6 +70,8 @@ pub:
     mouse_button MouseButton
     mouse_x f32
     mouse_y f32
+    mouse_dx f32
+    mouse_dy f32
     scroll_x f32
     scroll_y f32
     num_touches int

@@ -65,7 +65,7 @@ const(
 
 // max 46 char
 // -3.40282346638528859811704183484516925440e+38
-fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
+pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string {
 	n_digit          := i_n_digit + 1
 	pad_digit        := i_pad_digit + 1
 	mut out          := d.m

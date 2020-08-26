@@ -1,4 +1,4 @@
-vlib/v/checker/tests/blank_modify.v:2:2: error: cannot modify blank `_` identifier
+vlib/v/checker/tests/blank_modify.vv:2:2: error: cannot modify blank `_` identifier
     1 | fn main() {
     2 |     _ += 1
       |     ^

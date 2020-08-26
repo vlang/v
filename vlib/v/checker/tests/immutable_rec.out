@@ -1,4 +1,4 @@
-vlib/v/checker/tests/immutable_rec.v:13:2: error: `a` is immutable, declare it with `mut` to make it mutable 
+vlib/v/checker/tests/immutable_rec.vv:13:2: error: `a` is immutable, declare it with `mut` to make it mutable 
    11 | fn main() {
    12 |     a := St{e: 2}
    13 |     a.f()

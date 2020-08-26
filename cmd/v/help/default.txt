@@ -31,10 +31,15 @@ V supports the following commands:
    remove            Remove a module that was installed from VPM.
    search            Search for a module from VPM.
    update            Update an installed module from VPM.
-   outdated          List installed modules that need updates.
+   upgrade           Upgrade all the outdated modules.
+   list              List all installed modules.
+   outdated          Show installed modules that need updates.
 * Others:
-   build             Build a V code in the provided path (the default, so you can skip the word `build`).
+   build             Build V code in the provided path (the default, so you can skip the word `build`).
    translate         Translate C code to V (coming soon in 0.3).
+   tracev            Produce a tracing version of the v compiler.
+                     Use `tracev yourfile.v` when the compiler panics.
+                     NB: `tracev` is much slower and more verbose than ordinary `v`
 
 Use "v help <command>" for more information about a command, example: `v help build`, `v help build-c`
 Use "v help other" to see less frequently used commands.

@@ -1,3 +1,5 @@
+module main
+
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 //
@@ -5,8 +7,6 @@
 // structure of the program in the _current_ directory, while `new`
 // makes the program structure in a _sub_ directory. Besides that, the
 // functionality is essentially the same.
-module main
-
 import os
 
 struct Create {
@@ -22,11 +22,11 @@ fn cerror(e string) {
 fn vmod_content(name, desc string) string {
 	return [
 		'Module {',
-		"	name: '$name',",
-		"	description: '$desc',",
-		"	version: '0.0.0',",
+		"	name: '$name'",
+		"	description: '$desc'",
+		"	version: '0.0.0'",
 		'	dependencies: []',
-		'}'
+		'}',
 	].join('\n')
 }
 
@@ -35,7 +35,7 @@ fn main_content() string {
 		'module main\n',
 		'fn main() {',
 		"	println('Hello World!')",
-		'}'
+		'}',
 	].join('\n')
 }
 
@@ -45,7 +45,7 @@ fn gen_gitignore(name string) string {
 		'$name',
 		'*.so',
 		'*.dylib',
-		'*.dll'
+		'*.dll',
 	].join('\n')
 }
 

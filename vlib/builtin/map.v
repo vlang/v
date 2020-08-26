@@ -3,8 +3,8 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
-import hash.wyhash
+//import hash.wyhash as hash
+import hash
 
 /*
 This is a highly optimized hashmap implementation. It has several traits that
@@ -87,7 +87,9 @@ fn fast_string_eq(a, b string) bool {
 	if a.len != b.len {
 		return false
 	}
-	return C.memcmp(a.str, b.str, b.len) == 0
+	unsafe {
+		return C.memcmp(a.str, b.str, b.len) == 0
+	}
 }
 
 // Dynamic array with very low growth factor
@@ -102,7 +104,7 @@ mut:
 }
 
 [inline]
-[unsafe_fn]
+[unsafe]
 fn new_dense_array(value_bytes int) DenseArray {
 	return DenseArray{
 		value_bytes: value_bytes
@@ -121,8 +123,9 @@ fn (mut d DenseArray) push(key string, value voidptr) u32 {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
-			d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
-			d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
+			x := v_realloc(byteptr(d.keys), sizeof(string) * d.cap)
+			d.keys = &string(x)
+			d.values = v_realloc(byteptr(d.values), u32(d.value_bytes) * d.cap)
 		}
 	}
 	push_index := d.len
@@ -171,8 +174,9 @@ fn (mut d DenseArray) zeros_to_end() {
 	d.len = count
 	d.cap = if count < 8 { u32(8) } else { count }
 	unsafe {
-		d.keys = &string(v_realloc(d.keys, sizeof(string) * d.cap))
-		d.values = v_realloc(d.values, u32(d.value_bytes) * d.cap)
+		x := v_realloc(byteptr(d.keys), sizeof(string) * d.cap)
+		d.keys = &string(x)
+		d.values = v_realloc(byteptr(d.values), u32(d.value_bytes) * d.cap)
 	}
 }
 
@@ -225,7 +229,7 @@ fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
 
 [inline]
 fn (m &map) key_to_index(key string) (u32,u32) {
-	hash := wyhash.wyhash_c(key.str, u64(key.len), 0)
+	hash := hash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index),u32(meta)
@@ -277,7 +281,8 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 		m.extra_metas += extra_metas_inc
 		mem_size := (m.cap + 2 + m.extra_metas)
 		unsafe {
-			m.metas = &u32(v_realloc(m.metas, sizeof(u32) * mem_size))
+			x := v_realloc(byteptr(m.metas), sizeof(u32) * mem_size)
+			m.metas = &u32(x)
 			C.memset(m.metas + mem_size - extra_metas_inc, 0, sizeof(u32) * extra_metas_inc)
 		}
 		// Should almost never happen
@@ -339,7 +344,8 @@ fn (mut m map) expand() {
 fn (mut m map) rehash() {
 	meta_bytes := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	unsafe {
-		m.metas = &u32(v_realloc(m.metas, meta_bytes))
+		x := v_realloc(byteptr(m.metas), meta_bytes)
+		m.metas = &u32(x)
 		C.memset(m.metas, 0, meta_bytes)
 	}
 	for i := u32(0); i < m.key_values.len; i++ {
@@ -494,22 +500,24 @@ pub fn (m &map) keys() []string {
 	return keys
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (d DenseArray) clone() DenseArray {
 	res := DenseArray {
 		value_bytes: d.value_bytes
 		cap:         d.cap
 		len:        d.len
 		deletes:     d.deletes
-		keys:        &string(malloc(int(d.cap * sizeof(string))))
-		values:      byteptr(malloc(int(d.cap * u32(d.value_bytes))))
+		keys:        unsafe {&string(malloc(int(d.cap * sizeof(string))))}
+		values:      unsafe {byteptr(malloc(int(d.cap * u32(d.value_bytes))))}
 	}
-	C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
-	C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
+	unsafe {
+		C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
+		C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
+	}
 	return res
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (m map) clone() map {
 	metas_size := sizeof(u32) * (m.cap + 2 + m.extra_metas)
 	res := map{
@@ -528,7 +536,7 @@ pub fn (m map) clone() map {
 	return res
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn (m &map) free() {
 	unsafe {
 		free(m.metas)
@@ -547,6 +555,7 @@ pub fn (m &map) free() {
 	}
 }
 
+/*
 pub fn (m map_string) str() string {
 	if m.len == 0 {
 		return '{}'
@@ -559,3 +568,4 @@ pub fn (m map_string) str() string {
 	sb.writeln('}')
 	return sb.str()
 }
+*/

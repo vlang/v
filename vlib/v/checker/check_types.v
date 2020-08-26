@@ -7,7 +7,7 @@ import v.table
 import v.token
 import v.ast
 
-pub fn (c &Checker) check_basic(got, expected table.Type) bool {
+pub fn (mut c Checker) check_basic(got, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -58,7 +58,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	}
 	// TODO: this should no longer be needed
 	// if expected == table.t_type && got == table.t_type {
-	// 	return true
+	// return true
 	// }
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
@@ -91,8 +91,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	// TODO
 	// accept [] when an expected type is an array
 	if got_type_sym.kind == .array &&
-		got_type_sym.name == 'array_void' &&
-		exp_type_sym.kind == .array {
+		got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
 		return true
 	}
 	// type alias
@@ -112,7 +111,7 @@ pub fn (c &Checker) check_basic(got, expected table.Type) bool {
 	return false
 }
 
-pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymbol, exp_type_sym &table.TypeSymbol) bool {
+pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sym &table.TypeSymbol) bool {
 	got_info := got_type_sym.info as table.FnType
 	exp_info := exp_type_sym.info as table.FnType
 	got_fn := got_info.func
@@ -132,7 +131,7 @@ pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymb
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail('`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness')
+			c.add_error_detail("`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness")
 			return false
 		}
 		if !c.check_basic(got_arg.typ, exp_arg.typ) {
@@ -143,10 +142,18 @@ pub fn (c &Checker) check_matching_function_symbols(got_type_sym &table.TypeSymb
 }
 
 [inline]
-fn (c &Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
+fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
-		c.error('cannot shift type ${c.table.get_type_symbol(right_type).name} into non-integer type ${c.table.get_type_symbol(left_type).name}',
-			left_pos)
+		// maybe it's an int alias? TODO move this to is_int() ?
+		sym := c.table.get_type_symbol(left_type)
+		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_int() {
+			return left_type
+		}
+		if c.pref.translated && left_type == table.bool_type {
+			// allow `bool << 2` in translated C code
+			return table.int_type
+		}
+		c.error('invalid operation: shift of type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
@@ -220,7 +227,7 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 }
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (c &Checker) check_types(got, expected table.Type) bool {
+pub fn (mut c Checker) check_types(got, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -258,7 +265,7 @@ pub fn (c &Checker) check_types(got, expected table.Type) bool {
 	return true
 }
 
-pub fn (c &Checker) symmetric_check(left, right table.Type) bool {
+pub fn (mut c Checker) symmetric_check(left, right table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
@@ -303,14 +310,15 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 	}
 }
 
-pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
+pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type {
 	for i, expr in node.exprs {
 		ftyp := c.expr(expr)
 		node.expr_types << ftyp
 		typ := c.table.unalias_num_type(ftyp)
 		mut fmt := node.fmts[i]
 		// analyze and validate format specifier
-		if fmt !in [`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
+		if fmt !in
+			[`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
@@ -347,7 +355,7 @@ pub fn (c &Checker) string_inter_lit(mut node ast.StringInterLiteral) table.Type
 	return table.string_type
 }
 
-pub fn (c &Checker) check_sumtype_compatibility(a table.Type, b table.Type) bool {
+pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
 	if c.table.sumtype_has_variant(a, b) {
 		return true
 	}

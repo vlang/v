@@ -62,7 +62,9 @@ const (
 fn builtin_init() {
 	if is_atty(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
-		C.setbuf(C.stdout, 0)
+		unsafe {
+			C.setbuf(C.stdout, 0)
+		}
 	}
 	add_unhandled_exception_handler()
 }
@@ -84,7 +86,7 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 $if msvc {
 	mut offset := u64(0)
-	backtraces := [100]voidptr
+	backtraces := [100]voidptr{}
 	sic := SymbolInfoContainer{}
 	mut si := &sic.syminfo
 	si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
@@ -101,10 +103,14 @@ $if msvc {
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
 		eprintln('Failed getting process: Aborting backtrace.\n')
-		return true
+		return false
 	}
 
 	frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0))
+	if frames < 2 {
+		eprintln('C.CaptureStackBackTrace returned less than 2 frames')
+		return false
+	}
 	for i in 0..frames {
 		frame_addr := backtraces[i]
 		if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {
@@ -162,7 +168,7 @@ pub:
 	// status_ constants
 	code u32
 	flags u32
-	
+
 	record &ExceptionRecord
 	address voidptr
 	param_count u32
@@ -189,7 +195,7 @@ fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 [windows_stdcall]
 fn unhandled_exception_handler(e &ExceptionPointers) u32 {
 	match e.exception_record.code {
-		// These are 'used' by the backtrace printer 
+		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
 		0x4001000A, 0x40010006 {
 			return 0
@@ -213,7 +219,7 @@ fn C.__debugbreak()
 fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
-			ptr := &voidptr(0)
+			mut ptr := &voidptr(0)
 			*ptr = 0
 		}
 	} $else {

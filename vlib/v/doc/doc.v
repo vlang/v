@@ -431,7 +431,7 @@ fn (mut d Doc) generate() ?Doc {
 	d.time_generated = time.now()
 	d.contents.sort_by_name()
 	d.contents.sort_by_category()
-	return d
+	return *d
 }
 
 pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {

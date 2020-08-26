@@ -14,7 +14,7 @@ const (
 )
 
 fn main() {
-	app := &App{
+	mut app := &App{
 		width: 800
 		height: 400
 		pass_action: gfx.create_clear_pass(0.1, 0.1, 0.1, 1.0)
@@ -46,12 +46,12 @@ fn (mut a App) cleanup() {
 	a.ps.free()
 }
 
-fn (a App) run() {
+fn (mut a App) run() {
 	title := 'V Particle Example'
 	desc := C.sapp_desc{
 		width: a.width
 		height: a.height
-		user_data: &a
+		user_data: a
 		init_userdata_cb: init
 		frame_userdata_cb: frame
 		event_userdata_cb: event
@@ -59,6 +59,7 @@ fn (a App) run() {
 		html5_canvas_name: title.str
 		cleanup_userdata_cb: cleanup
 	}
+
 	sapp.run(&desc)
 }
 
@@ -67,15 +68,7 @@ fn (a App) draw() {
 }
 
 fn init(user_data voidptr) {
-	desc := C.sg_desc{
-		mtl_device: sapp.metal_get_device()
-		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
-		mtl_drawable_cb: sapp.metal_get_drawable
-		d3d11_device: sapp.d3d11_get_device()
-		d3d11_device_context: sapp.d3d11_get_device_context()
-		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
-		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
-	}
+	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{
 		max_vertices: 50 * 65536
@@ -124,6 +117,15 @@ fn event(ev &C.sapp_event, user_data voidptr) {
 			if is_pressed {
 				app.ps.reset()
 			}
+		}
+	}
+
+	if ev.@type == .touches_began || ev.@type == .touches_moved {
+		if ev.num_touches > 0 {
+
+			touch_point := ev.touches[0]
+			app.ps.explode(touch_point.pos_x, touch_point.pos_y)
+
 		}
 	}
 }

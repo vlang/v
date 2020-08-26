@@ -7,7 +7,7 @@ import v.ast
 import v.table
 import v.util
 
-fn (g &Gen) comptime_call(node ast.ComptimeCall) {
+fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
@@ -43,9 +43,21 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 		if m.args.len > 1 {
 			g.write(', ')
 		}
-		for i in 0 .. m.args.len - 1 {
-			g.write('((string*)${node.args_var}.data) [$i] ')
-			if i < m.args.len - 2 {
+		for i in 1 .. m.args.len {
+			if node.left is ast.Ident {
+				left_name := node.left as ast.Ident
+				if m.args[i].name == left_name.name {
+					continue
+				}
+			}
+			if m.args[i].typ.is_int() || m.args[i].typ.idx() == table.bool_type_idx {
+				// Gets the type name and cast the string to the type with the string_<type> function
+				type_name := g.table.types[int(m.args[i].typ)].str()
+				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
+			} else {
+				g.write('((string*)${node.args_var}.data) [${i-1}] ')
+			}
+			if i < m.args.len - 1 {
 				g.write(', ')
 			}
 		}
@@ -76,8 +88,50 @@ fn (g &Gen) comptime_call(node ast.ComptimeCall) {
 	}
 }
 
-fn (mut g Gen) comp_if(it ast.CompIf) {
+fn cgen_attrs(attrs []table.Attr) []string {
+	mut res := []string{cap: attrs.len}
+	for attr in attrs {
+		// we currently don't quote 'arg' (otherwise we could just use `s := attr.str()`)
+		mut s := attr.name
+		if attr.arg.len > 0 {
+			s += ': $attr.arg'
+		}
+		res << 'tos_lit("$s")'
+	}
+	return res
+}
+
+fn (mut g Gen) comp_if(mut it ast.CompIf) {
 	if it.stmts.len == 0 && it.else_stmts.len == 0 {
+		return
+	}
+	if it.kind == .typecheck {
+		mut comptime_var_type := table.Type(0)
+		if it.tchk_expr is ast.SelectorExpr {
+			se := it.tchk_expr as ast.SelectorExpr
+			x := se.expr.str()
+			comptime_var_type = g.comptime_var_type_map[x]
+		}
+		if comptime_var_type == 0 {
+			$if trace_gen ? {
+				eprintln('Known compile time types: ')
+				eprintln(g.comptime_var_type_map.str())
+			}
+			verror('the compile time type of `$it.tchk_expr.str()` is unknown')
+		}
+		ret_type_name := g.table.get_type_symbol(comptime_var_type).name
+		it_type_name := g.table.get_type_symbol(it.tchk_type).name
+		types_match := comptime_var_type == it.tchk_type
+		g.writeln('{ // \$if $it.val is $it_type_name, typecheck start, $comptime_var_type == $it.tchk_type => $ret_type_name == $it_type_name => $types_match ')
+		mut stmts := it.stmts
+		if !types_match {
+			stmts = []ast.Stmt{}
+			if it.has_else {
+				stmts = it.else_stmts
+			}
+		}
+		g.stmts(stmts)
+		g.writeln('} // typecheck end')
 		return
 	}
 	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
@@ -109,38 +163,80 @@ fn (mut g Gen) comp_if(it ast.CompIf) {
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {
-	g.writeln('// 2comptime $' + 'for {')
 	sym := g.table.get_type_symbol(g.unwrap_generic(node.typ))
-	vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
+	g.writeln('{ // 2comptime: \$for $node.val_var in ${sym.name}($node.kind.str()) {')
+	// vweb_result_type := table.new_type(g.table.find_type_idx('vweb.Result'))
 	mut i := 0
 	// g.writeln('string method = tos_lit("");')
-	mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
-	methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods without attrs first
-	methods << methods_with_attrs
-	for method in methods { // sym.methods {
-		// if method.attrs.len == 0 {
-		// continue
-		// }
-		if method.return_type != vweb_result_type { // table.void_type {
-			continue
+	if node.kind == .methods {
+		mut methods := sym.methods.filter(it.attrs.len == 0) // methods without attrs first
+		methods_with_attrs := sym.methods.filter(it.attrs.len > 0) // methods with attrs second
+		methods << methods_with_attrs
+		if methods.len > 0 {
+			g.writeln('\tFunctionData $node.val_var;')
+			g.writeln('\tmemset(&$node.val_var, 0, sizeof(FunctionData));')
 		}
-		g.comp_for_method = method.name
-		g.writeln('\t// method $i')
-		if i == 0 {
-			g.write('\tstring ')
+		for method in methods { // sym.methods {
+			/*
+			if method.return_type != vweb_result_type { // table.void_type {
+				continue
+			}
+			*/
+			g.comp_for_method = method.name
+			g.writeln('\t// method $i')
+			g.writeln('\t${node.val_var}.name = tos_lit("$method.name");')
+			if method.attrs.len == 0 {
+				g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+			} else {
+				attrs := cgen_attrs(method.attrs)
+				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
+					attrs.join(', ') + '}));')
+			}
+			method_sym := g.table.get_type_symbol(method.return_type)
+			g.writeln('\t${node.val_var}.ret_type = tos_lit("$method_sym.name");')
+			styp := int(method.return_type).str()
+			g.writeln('\t${node.val_var}.type = $styp;')
+			//
+			g.comptime_var_type_map[node.val_var] = method.return_type
+			g.stmts(node.stmts)
+			i++
+			g.writeln('')
 		}
-		g.writeln('method = tos_lit("$method.name");')
-		if i == 0 {
-			g.write('\tstring ')
+		g.comptime_var_type_map.delete(node.val_var)
+	} else if node.kind == .fields {
+		// TODO add fields
+		if sym.info is table.Struct {
+			info := sym.info as table.Struct
+			mut fields := info.fields.filter(it.attrs.len == 0)
+			fields_with_attrs := info.fields.filter(it.attrs.len > 0)
+			fields << fields_with_attrs
+			if fields.len > 0 {
+				g.writeln('\tFieldData $node.val_var;')
+				g.writeln('\tmemset(&$node.val_var, 0, sizeof(FieldData));')
+			}
+			for field in fields {
+				g.writeln('\t// field $i')
+				g.writeln('\t${node.val_var}.name = tos_lit("$field.name");')
+				if field.attrs.len == 0 {
+					g.writeln('\t${node.val_var}.attrs = __new_array_with_default(0, 0, sizeof(string), 0);')
+				} else {
+					attrs := cgen_attrs(field.attrs)
+					g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
+						attrs.join(', ') + '}));')
+				}
+				field_sym := g.table.get_type_symbol(field.typ)
+				g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
+				styp := int(field.typ).str()
+				g.writeln('\t${node.val_var}.type = $styp;')
+				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
+				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
+				g.comptime_var_type_map[node.val_var] = field.typ
+				g.stmts(node.stmts)
+				i++
+				g.writeln('')
+			}
+			g.comptime_var_type_map.delete(node.val_var)
 		}
-		if method.attrs.len == 0 {
-			g.writeln('attrs = tos_lit("");')
-		} else {
-			g.writeln('attrs = tos_lit("${method.attrs[0]}");')
-		}
-		g.stmts(node.stmts)
-		i++
-		g.writeln('')
 	}
-	g.writeln('// } comptime for')
+	g.writeln('} // } comptime for')
 }

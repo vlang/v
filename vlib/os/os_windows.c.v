@@ -4,6 +4,7 @@ import strings
 
 #flag -lws2_32
 #include <winsock2.h>
+#include <process.h>
 
 pub const (
 	path_separator = '\\'
@@ -80,7 +81,7 @@ mut:
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string{}
 	for i in 0..argc {
-		args << string_from_wide(&u16(argv[i]))
+		args << string_from_wide(unsafe {&u16(argv[i])})
 	}
 	return args
 }
@@ -241,13 +242,15 @@ pub fn exec(cmd string) ?Result {
 	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
 		voidptr(&child_stdout_write), voidptr(&sa), 0)
 	if !create_pipe_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		return error('exec failed (CreatePipe): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (CreatePipe): $error_msg', error_num)
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
-		error_msg := get_error_msg(int(C.GetLastError()))
-		panic('exec failed (SetHandleInformation): $error_msg')
+		error_num := int(C.GetLastError())
+		error_msg := get_error_msg(error_num)
+		return error_with_code('exec failed (SetHandleInformation): $error_msg', error_num)
 	}
 
 	proc_info := ProcessInformation{}
@@ -261,17 +264,17 @@ pub fn exec(cmd string) ?Result {
 		h_std_error: child_stdout_write
 		dw_flags: u32(C.STARTF_USESTDHANDLES)
 	}
-	command_line := [32768]u16
+	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
 	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd')
+		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd', error_num)
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
-	buf := [4096]byte
+	buf := [4096]byte{}
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
@@ -305,10 +308,10 @@ pub fn symlink(origin, target string) ?bool {
 }
 
 pub fn (mut f File) close() {
-	if !f.opened {
+	if !f.is_opened {
 		return
 	}
-	f.opened = false
+	f.is_opened = false
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
 }
@@ -365,4 +368,28 @@ pub fn uname() Uname {
 		version: unknown
 		machine: unknown
 	}
+}
+
+
+// `is_writable_folder` - `folder` exists and is writable to the process
+pub fn is_writable_folder(folder string) ?bool {
+	if !os.exists(folder) {
+		return error('`$folder` does not exist')
+	}
+	if !os.is_dir(folder) {
+		return error('`folder` is not a folder')
+	}
+	tmp_perm_check := os.join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
+	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+		return error('cannot write to folder $folder: $err')
+	}
+	f.close()
+	os.rm(tmp_perm_check)
+	return true
+}
+
+fn C._getpid() int
+[inline]
+pub fn getpid() int {
+	return C._getpid()
 }

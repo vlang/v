@@ -16,16 +16,15 @@ pub fn (mut b Builder) build_x64(v_files []string, out_file string) {
 	b.parse_imports()
 	t1 := time.ticks()
 	parse_time := t1 - t0
-	b.timing_message('PARSE: ${parse_time}ms')
-    
+	b.timing_message('PARSE', parse_time)
 	b.checker.check_files(b.parsed_files)
 	t2 := time.ticks()
 	check_time := t2 - t1
-	b.timing_message('CHECK: ${check_time}ms')
-	x64.gen(b.parsed_files, out_file, b.pref)
+	b.timing_message('CHECK', check_time)
+	x64.gen(b.parsed_files, b.table, out_file, b.pref)
 	t3 := time.ticks()
 	gen_time := t3 - t2
-	b.timing_message('x64 GEN: ${gen_time}ms')
+	b.timing_message('x64 GEN', gen_time)
 }
 
 pub fn (mut b Builder) compile_x64() {

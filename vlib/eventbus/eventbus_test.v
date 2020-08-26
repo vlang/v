@@ -28,6 +28,8 @@ fn test_eventbus(){
 	assert !eb.subscriber.is_subscribed("on_test")
 }
 
-fn on_test(sender voidptr, ev &EventData, x voidptr) {
+fn on_test(receiver voidptr, ev &EventData, sender voidptr) {
+	assert receiver == 0
+	assert sender != 0
 	assert ev.data == "hello"
 }

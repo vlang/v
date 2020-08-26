@@ -18,14 +18,16 @@ const (
 )
 
 fn (mut p Parser) resolve_vroot(flag string) string {
-	mcache := vmod.get_cache()
+	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
 	if vmod_file_location.vmod_file.len == 0 {
 		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' +
-			' or in one of its parent folders.')
+		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' + ' or in one of its parent folders.')
 	}
 	vmod_path := vmod_file_location.vmod_folder
+	if p.pref.is_fmt {
+		return flag
+	}
 	return flag.replace('@VROOT', os.real_path(vmod_path))
 }
 
@@ -88,11 +90,8 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
-
 	fn_path := p.cur_fn_name.split('_')
 	html_name := '${fn_path.last()}.html'
-
-
 	// Looking next to the vweb program
 	dir := os.dir(p.scanner.file_path)
 	mut path := os.join_path(dir, fn_path.join('/'))
@@ -130,7 +129,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
 			if stmt.name == 'main.vweb_tmpl_$p.cur_fn_name' {
-				tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
+				mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
 						mut v := obj
@@ -152,26 +151,37 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 }
 
 fn (mut p Parser) comp_for() ast.CompFor {
+	// p.comp_for() handles these special forms:
+	// $for method in App(methods) {
+	// $for field in App(fields) {
 	p.next()
 	p.check(.key_for)
 	val_var := p.check_name()
-	p.scope.register(val_var, ast.Var{
-		name: val_var
-		typ: table.string_type
-	})
-	p.scope.register('attrs', ast.Var{
-		name: 'attrs'
-		typ: table.string_type
-	})
 	p.check(.key_in)
-	// expr := p.expr(0)
-	typ := p.parse_type()
-	// p.check(.dot)
-	// p.check_name()
+	lang := p.parse_language()
+	typ := p.parse_any_type(lang, false, false)
+	p.check(.dot)
+	for_val := p.check_name()
+	mut kind := ast.CompForKind.methods
+	if for_val == 'methods' {
+		p.scope.register(val_var, ast.Var{
+			name: val_var
+			typ: p.table.find_type_idx('FunctionData')
+		})
+	} else if for_val == 'fields' {
+		p.scope.register(val_var, ast.Var{
+			name: val_var
+			typ: p.table.find_type_idx('FieldData')
+		})
+		kind = .fields
+	} else {
+		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
+	}
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
+		kind: kind
 		typ: typ
 	}
 }
@@ -187,21 +197,54 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if is_not {
 		p.next()
 	}
-	val := p.check_name()
+	//
+	name_pos_start := p.tok.position()
+	mut val := ''
+	mut tchk_expr := ast.Expr{}
+	if p.peek_tok.kind == .dot {
+		vname := p.parse_ident(table.Language.v)
+		cobj := p.scope.find(vname.name) or {
+			p.error_with_pos('unknown variable `$vname.name`', name_pos_start)
+			return ast.Stmt{}
+		}
+		if cobj is ast.Var {
+			tchk_expr = p.dot_expr(vname)
+			val = vname.name
+			if tchk_expr is ast.SelectorExpr {
+				if tchk_expr.field_name !in ['type', '@type'] {
+					p.error_with_pos('only the `.@type` field name is supported for now',
+						name_pos_start)
+				}
+			}
+		} else {
+			p.error_with_pos('`$vname.name` is not a variable', name_pos_start)
+		}
+	} else {
+		val = p.check_name()
+	}
+	name_pos := name_pos_start.extend(p.tok.position())
+	//
 	mut stmts := []ast.Stmt{}
-	mut skip := false
+	mut skip_os := false
+	mut skip_cc := false
 	if val in supported_platforms {
 		os := os_from_string(val)
 		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
-			skip = true
+			skip_os = true
 		}
 	} else if val in supported_ccompilers {
-		cc := cc_from_string(val)
-		user_cc := cc_from_string(p.pref.ccompiler)
-		if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
-			skip = true
+		if p.pref.ccompiler.len == 2 && p.pref.ccompiler == 'cc' {
+			// we just do not know, so we can not skip:
+			skip_cc = false
+		}else {
+			cc := cc_from_string(val)
+			user_cc := cc_from_string(p.pref.ccompiler)
+			if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
+				skip_cc = true
+			}
 		}
 	}
+	mut skip := skip_os || skip_cc
 	// `$if os {` or `$if compiler {` for a different target, skip everything inside
 	// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
 	// on non-Windows systems)
@@ -232,18 +275,36 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		skip = false
 	}
 	mut is_opt := false
+	mut is_typecheck := false
+	mut tchk_type := table.Type(0)
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
+	} else if p.tok.kind == .key_is {
+		p.next()
+		tchk_type = p.parse_type()
+		is_typecheck = true
 	}
 	if !skip {
 		stmts = p.parse_block()
 	}
+	if !is_typecheck && val.len == 0 {
+		p.error_with_pos('Only `\$if compvarname.field is type {}` is supported', name_pos)
+	}
+	if is_typecheck {
+		match tchk_expr {
+			ast.SelectorExpr {}
+			else { p.error_with_pos('Only compvarname.field is supported', name_pos) }
+		}
+	}
 	mut node := ast.CompIf{
 		is_not: is_not
 		is_opt: is_opt
+		kind: if is_typecheck { ast.CompIfKind.typecheck } else { ast.CompIfKind.platform }
 		pos: pos
 		val: val
+		tchk_type: tchk_type
+		tchk_expr: tchk_expr
 		stmts: stmts
 	}
 	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
@@ -267,6 +328,9 @@ fn os_from_string(os string) pref.OS {
 		}
 		'windows' {
 			return .windows
+		}
+		'ios' {
+			return .ios
 		}
 		'mac' {
 			return .mac
