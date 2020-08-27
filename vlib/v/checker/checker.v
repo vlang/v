@@ -2212,8 +2212,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error('Hash statements are not allowed in the main module. Please place them in a separate module.',
 				node.pos)
 		}
-	}
-	if node.val.starts_with('include') {
+	} else if node.val.starts_with('include') {
 		mut flag := node.val[8..]
 		if flag.contains('@VROOT') {
 			vroot := util.resolve_vroot(flag, c.file.path) or {
@@ -2222,8 +2221,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 		}
-	}
-	if node.val.starts_with('flag') {
+	} else if node.val.starts_with('flag') {
 		// #flag linux -lm
 		mut flag := node.val[5..]
 		// expand `@VROOT` to its absolute path
