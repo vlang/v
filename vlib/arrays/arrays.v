@@ -1,10 +1,17 @@
 module arrays
+
+// Common arrays functions:
+// - min / max - return the value of the minumum / maximum
+// - idxmin / idxmax - return the index of the first minumum / maximum
+// - shuffle - randomize array items order in place (allowing exit after n items)
+// - merge - combine two sorted arrays and maintain sorted order
+
 import rand
 
 // min returns the minimum
 [direct_array_access]
 pub fn min<T>(a []T) T {
-	if a.len==0 { panic('.min called on an empty array') } // TODO
+	if a.len==0 { panic('.min called on an empty array') }
 	mut val := a[0]
 	for i in 0..a.len {
 		if a[i] < val {
@@ -17,7 +24,7 @@ pub fn min<T>(a []T) T {
 // max returns the maximum
 [direct_array_access]
 pub fn max<T>(a []T) T {
-	if a.len==0 { panic('.max called on an empty array') } // TODO
+	if a.len==0 { panic('.max called on an empty array') }
 	mut val := a[0]
 	for i in 0..a.len {
 		if a[i] > val {
@@ -30,7 +37,7 @@ pub fn max<T>(a []T) T {
 // idxmax returns the index of the first minimum
 [direct_array_access]
 pub fn idxmin<T>(a []T) int {
-	if a.len==0 { panic('.idxmin called on an empty array') } // TODO
+	if a.len==0 { panic('.idxmin called on an empty array') }
 	mut idx := 0
 	mut val := a[0]
 	for i in 0..a.len {
@@ -45,7 +52,7 @@ pub fn idxmin<T>(a []T) int {
 // idxmax returns the index of the first maximum
 [direct_array_access]
 pub fn idxmax<T>(a []T) int {
-	if a.len==0 { panic('.idxmax called on an empty array') } // TODO
+	if a.len==0 { panic('.idxmax called on an empty array') }
 	mut idx := 0
 	mut val := a[0]
 	for i in 0..a.len {
@@ -60,7 +67,7 @@ pub fn idxmax<T>(a []T) int {
 // shuffle randomizes the first n items of an array in place (all if n=0)
 [direct_array_access]
 pub fn shuffle<T>(mut a []T, n int) {
-	assert n <= a.len
+	if n < 0 || n > a.len { panic("shuffle's argument 'n' must be in range [0,a.len]") }
 	cnt := if n==0 { a.len-1 } else { n }
 	for i in 0..cnt {
 		x := rand.int_in_range(i,a.len)
@@ -111,27 +118,3 @@ pub fn merge<T>(a []T, b []T) []T {
 	return m
 }
 
-
-/*
-// all checks if all array items are equal to given value
-[direct_array_access]
-pub fn all<T>(a []T, value T) bool {
-	if a.len == 0 { return false }
-	for i in 0..a.len {
-		if a[i] != value { return false }
-	}
-	return true
-}
-*/
-
-/*
-// replace values given in old_value with new_value
-[direct_array_access]
-pub fn replace<T>(mut a[]T, old_value T, new_value T) {
-	for i in 0..a.len {
-		if a[i] == old_value {
-			a[i] = new_value
-		}
-	}
-}
-*/

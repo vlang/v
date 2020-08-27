@@ -76,40 +76,20 @@ fn test_shuffle() {
 	shuffle<int>(mut e, 15)
 	assert e[..15] != a[..15] // false negative chance: 1/15!
 	assert e[15..] != a[15..] // false negative chance: TODO
+	
+	// test shuffling empty array
+	mut f := a.clone()
+	f.trim(0)
+	shuffle<int>(mut f,0)
 }
 
 fn test_merge() {
 	a := [1,3,5,5,7]
 	b := [2,4,4,5,6,8]
+	c := []int{}
+	d := []int{}
 	assert merge<int>(a,b) == [1,2,3,4,4,5,5,5,6,7,8]
+	assert merge<int>(c,d) == []
+	assert merge<int>(a,c) == a
+	assert merge<int>(d,b) == b
 }
-
-/*
-fn test_all() {
-	a := [1,1,1,1]
-	assert all<int>(a, 1) == true
-	assert all<int>(a, 2) == false
-	assert all<int>(a[0..0], 1) == false
-	b := [1,1,2,2]
-	assert all<int>(b, 1) == false
-	assert all<int>(b, 2) == false
-	assert all<int>(b[2..], 1) == false
-	assert all<int>(b[2..], 2) == true
-	c := [f32(1.1), 1.1, 1.1]
-	assert all<f32>(c, 1.1) == true
-	assert all<f32>(c, 1.2) == false
-	d := [f32(1.1), 1.1, 2.2]
-	assert all<f32>(d, 1.1) == false
-	assert all<f32>(d, 2.2) == false
-}
-*/
-
-/*
-fn test_replace() {
-	mut a := [1,1,2,2,3,3]
-	replace<int>(mut a, 2, 1)
-	assert a == [1,1,1,1,3,3]
-	replace<int>(mut a, 0, 1)
-	assert a == [1,1,1,1,3,3]
-}
-*/
