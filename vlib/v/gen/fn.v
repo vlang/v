@@ -501,19 +501,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
-	// Generate tmp vars for values that have to be freed.
-	/*
-	mut tmps := []string{}
-	for arg in node.args {
-		if arg.typ == table.string_type_idx || is_print {
-			tmp := g.new_tmp_var()
-			tmps << tmp
-			g.write('string $tmp = ')
-			g.expr(arg.expr)
-			g.writeln('; //memory')
-		}
-	}
-	*/
 	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod && g.cur_mod !=
@@ -540,7 +527,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	// Handle `print(x)`
-	if is_print && node.args[0].typ != table.string_type && !free_tmp_arg_vars {
+	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
@@ -628,6 +615,8 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
+		use_tmp_var_autofree := g.autofree && g.pref.experimental && arg.typ == table.string_type &&
+			g.tmp_arg_vars_to_free.len > 0
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
 		// when these are fixed we wont need this check
@@ -645,8 +634,7 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			}
 			if is_interface {
 				g.expr(arg.expr)
-			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
-				g.tmp_arg_vars_to_free.len > 0 { // && g.tmp_arg_vars_to_free.contains('_$i') { // && i in g.tmp_idxs {
+			} else if use_tmp_var_autofree {
 				for name in g.tmp_arg_vars_to_free {
 					// Save expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
@@ -659,7 +647,16 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				g.ref_or_deref_arg(arg, expected_types[i])
 			}
 		} else {
-			g.expr(arg.expr)
+			if use_tmp_var_autofree {
+				// TODO copypasta, move to an inline fn
+				for name in g.tmp_arg_vars_to_free {
+					if name.contains('_$i') {
+						g.write(name)
+					}
+				}
+			} else {
+				g.expr(arg.expr)
+			}
 		}
 		if is_interface {
 			g.write(')')
