@@ -677,8 +677,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write('\n')
 	}
+	f.comments_after_last_field(node.end_comments)
+	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 	// Handle comments after last field
-	for comment in node.end_comments {
+	for comment in comments {
 		f.indent++
 		f.empty_line = true
 		f.comment(comment, {
@@ -687,7 +692,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.writeln('')
 		f.indent--
 	}
-	f.writeln('}\n')
 }
 
 pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
@@ -1814,6 +1818,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.expr(field.expr)
 		f.writeln('')
 	}
+	f.comments_after_last_field(it.end_comments)
 	f.indent--
 	f.writeln(')\n')
 }
