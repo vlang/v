@@ -19,7 +19,7 @@ vlib/v/checker/tests/in_mismatch_type.vv:16:7: error: the data type on the left 
       |          ~~
    17 |         println('dope')
    18 |     }
-vlib/v/checker/tests/in_mismatch_type.vv:19:9: error: the data type on the left of `in` must be a string (is `byte`) 
+vlib/v/checker/tests/in_mismatch_type.vv:19:9: error: the data type on the left of `in` must be a string (is `rune`)
    17 |         println('dope')
    18 |     }
    19 |     if `a` in s {
