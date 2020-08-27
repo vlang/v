@@ -463,7 +463,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
-				return p.comp_if()
+				return ast.ExprStmt{
+					expr: p.if_expr(true)
+				}
 			}
 			.hash {
 				return p.hash()
@@ -1605,13 +1607,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	}
 	p.next() // (
 	mut fields := []ast.ConstField{}
-	for p.tok.kind != .rpar {
-		mut comments := []ast.Comment{}
-		for p.tok.kind == .comment {
-			comments << p.comment()
-			if p.tok.kind == .rpar {
-				break
-			}
+	mut comments := []ast.Comment{}
+	for {
+		comments = p.eat_comments()
+		if p.tok.kind == .rpar {
+			break
 		}
 		pos := p.tok.position()
 		name := p.check_name()
@@ -1633,6 +1633,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
+		comments = []
 	}
 	p.top_level_statement_end()
 	p.check(.rpar)
@@ -1640,6 +1641,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		pos: start_pos.extend(end_pos)
 		fields: fields
 		is_pub: is_pub
+		end_comments: comments
 	}
 }
 

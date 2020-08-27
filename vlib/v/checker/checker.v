@@ -1,6 +1,5 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
-// Use of this source code is governed by an MIT license
-// that can be found in the LICENSE file.
+// Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
 import v.ast
@@ -266,7 +265,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 	match node {
 		ast.AliasTypeDecl {
 			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
-			if c.file.mod.name != 'time' {
+			if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {
 				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
@@ -300,6 +299,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				typ_sym := c.table.get_type_symbol(typ)
 				if typ_sym.kind == .placeholder {
 					c.error("type `$typ_sym.source_name` doesn't exist", node.pos)
+				} else if typ_sym.kind == .interface_ {
+					c.error('sum type cannot hold an interface', node.pos)
 				}
 			}
 		}
@@ -519,8 +520,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.key_in, .not_in {
 			match right.kind {
 				.array {
+					elem_type := right.array_info().elem_type
 					right_sym := c.table.get_type_symbol(c.table.mktyp(right.array_info().elem_type))
-					if left_default.kind != right_sym.kind {
+					// if left_default.kind != right_sym.kind {
+					if !c.check_types(left_type, elem_type) {
 						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.source_name`)',
 							infix_expr.pos)
 					}
@@ -2374,7 +2377,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.chan_init(mut node)
 		}
 		ast.CharLiteral {
-			return table.byte_type
+			// return any_int, not rune, so that we can do "bytes << `A`" without a cast etc
+			// return table.any_int_type
+			return table.rune_type
+			// return table.byte_type
 		}
 		ast.Comment {
 			return table.void_type
@@ -3033,7 +3039,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
 				last_expr.typ = c.expr(last_expr.expr)
-				if last_expr.typ != node.typ {
+				// if last_expr.typ != node.typ {
+				// if !c.check_types(node.typ, last_expr.typ) {
+				if !c.check_types(last_expr.typ, node.typ) {
 					if node.typ == table.void_type {
 						// first branch of if expression
 						node.is_expr = true

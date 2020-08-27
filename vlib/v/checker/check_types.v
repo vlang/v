@@ -257,6 +257,11 @@ pub fn (mut c Checker) check_types(got, expected table.Type) bool {
 		return false
 	}
 	if got.is_number() && expected.is_number() {
+		if got == table.rune_type && expected == table.byte_type {
+			return true
+		} else if expected == table.rune_type && got == table.byte_type {
+			return true
+		}
 		if c.promote_num(expected, got) != expected {
 			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
 			return false

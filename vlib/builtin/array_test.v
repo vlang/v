@@ -639,7 +639,7 @@ fn test_map() {
 	assert strs.map( it.len + strs.map(it.len)[0] ) == [2, 3, 8]
 
 	// nested (different it types)
-	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
+	assert strs.map( it[ nums.map(it - it)[0] ] ) == [byte(`v`), `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
 
 	assert nums.map(map_test_helper_1) == [1,4,9,16,25,36]

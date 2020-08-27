@@ -186,6 +186,154 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	}
 }
 
+/*
+fn (mut p Parser) comp_if() ast.Stmt {
+	pos := p.tok.position()
+	p.next()
+	// if p.tok.kind == .name && p.tok.lit == 'vweb' {
+	// return p.vweb()
+	// }
+	p.check(.key_if)
+	mut is_not := p.tok.kind == .not
+	inversion_pos := p.tok.position()
+	if is_not {
+		p.next()
+	}
+	//
+	name_pos_start := p.tok.position()
+	mut val := ''
+	mut tchk_expr := ast.Expr{}
+	if p.peek_tok.kind == .dot {
+		vname := p.parse_ident(.v)
+		cobj := p.scope.find(vname.name) or {
+			p.error_with_pos('unknown variable `$vname.name`', name_pos_start)
+			return ast.Stmt{}
+		}
+		if cobj is ast.Var {
+			tchk_expr = p.dot_expr(vname)
+			val = vname.name
+			if tchk_expr is ast.SelectorExpr as tchk_expr2 {
+				if p.tok.kind == .lsbr && tchk_expr2.field_name == 'args' {
+					tchk_expr = p.index_expr(tchk_expr)
+					if p.tok.kind == .dot && p.peek_tok.lit == 'Type' {
+						tchk_expr = p.dot_expr(tchk_expr)
+					} else {
+					p.error_with_pos('only the `Type` field is supported for arguments',
+						p.peek_tok.position())
+					}
+				} else if tchk_expr2.field_name !in ['Type', 'ReturnType'] {
+					p.error_with_pos('only the `Type` and `ReturnType` fields are supported for now',
+						name_pos_start)
+				}
+			}
+		} else {
+			p.error_with_pos('`$vname.name` is not a variable', name_pos_start)
+		}
+	} else {
+		val = p.check_name()
+	}
+	name_pos := name_pos_start.extend(p.tok.position())
+	//
+	mut stmts := []ast.Stmt{}
+	mut skip_os := false
+	mut skip_cc := false
+	if val in supported_platforms {
+		os := os_from_string(val)
+		if (!is_not && os != p.pref.os) || (is_not && os == p.pref.os) {
+			skip_os = true
+		}
+	} else if val in supported_ccompilers {
+		if p.pref.ccompiler.len == 2 && p.pref.ccompiler == 'cc' {
+			// we just do not know, so we can not skip:
+			skip_cc = false
+		}else {
+			cc := cc_from_string(val)
+			user_cc := cc_from_string(p.pref.ccompiler)
+			if (!is_not && cc != user_cc) || (is_not && cc == user_cc) {
+				skip_cc = true
+			}
+		}
+	}
+	mut skip := skip_os || skip_cc
+	// `$if os {` or `$if compiler {` for a different target, skip everything inside
+	// to avoid compilation errors (like including <windows.h> or calling WinAPI fns
+	// on non-Windows systems)
+	if !p.pref.is_fmt && !p.pref.output_cross_c && skip {
+		p.check(.lcbr)
+		// p.warn('skipping $if $val os=$os p.pref.os=$p.pref.os')
+		mut stack := 1
+		for {
+			if p.tok.kind == .key_return {
+				p.returns = true
+			}
+			if p.tok.kind == .lcbr {
+				stack++
+			} else if p.tok.kind == .rcbr {
+				stack--
+			}
+			if p.tok.kind == .eof {
+				break
+			}
+			if stack <= 0 && p.tok.kind == .rcbr {
+				// p.warn('exiting $stack')
+				p.next()
+				break
+			}
+			p.next()
+		}
+	} else {
+		skip = false
+	}
+	mut is_opt := false
+	mut is_typecheck := false
+	mut tchk_type := table.Type(0)
+	if p.tok.kind == .question {
+		p.next()
+		is_opt = true
+	} else if p.tok.kind in [.key_is, .not_is] {
+		typecheck_inversion := p.tok.kind == .not_is
+		p.next()
+		tchk_type = p.parse_type()
+		is_typecheck = true
+		if is_not {
+			name := p.table.get_type_name(tchk_type)
+			p.error_with_pos('use `\$if $tchk_expr !is $name {`, not `\$if !$tchk_expr is $name {`',
+			inversion_pos)
+		}
+		is_not = typecheck_inversion
+	}
+	if !skip {
+		stmts = p.parse_block()
+	}
+	if !is_typecheck && val.len == 0 {
+		p.error_with_pos('Only `\$if compvarname.field is type {}` is supported', name_pos)
+	}
+	if is_typecheck {
+		match tchk_expr {
+			ast.SelectorExpr {}
+			else { p.error_with_pos('Only compvarname.field is supported', name_pos) }
+		}
+	}
+	mut node := ast.CompIf{
+		is_not: is_not
+		is_opt: is_opt
+		kind: if is_typecheck { ast.CompIfKind.typecheck } else { ast.CompIfKind.platform }
+		pos: pos
+		val: val
+		tchk_type: tchk_type
+		tchk_expr: tchk_expr
+		stmts: stmts
+	}
+	if p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
+		p.next()
+		p.next()
+		node.has_else = true
+		node.else_stmts = p.parse_block()
+	}
+	return node
+}
+*/
+
 // TODO import warning bug
 const (
 	todo_delete_me = pref.OS.linux

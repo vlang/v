@@ -15,6 +15,14 @@ fn foo() {
 	// nums.free() // this should result in a double free and a CI error
 }
 
+fn handle_strings(s, p string) {
+}
+
+fn str_expr() {
+	println('a' + 'b') // tmp expression result must be freed
+	handle_strings('c' + 'd', 'e' + 'f')
+}
+
 fn str_replace() {
 	s := 'hello world'
 	r := s.replace('hello', 'hi')
@@ -27,6 +35,7 @@ fn str_replace() {
 fn main() {
 	println('start')
 	foo()
+	// str_expr()
 	// str_replace()
 	println('end')
 }

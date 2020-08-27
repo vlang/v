@@ -163,3 +163,31 @@ pub fn (ctx &Context) text_size(s string) (int, int) {
 	return int((buf[2] - buf[0]) / ctx.scale), int((buf[3] - buf[1]) / ctx.scale)
 }
 
+
+pub fn system_font_path() string {
+	env_font := os.getenv('VUI_FONT')
+	if env_font != '' && os.exists(env_font) {
+		return env_font
+	}
+	$if windows {
+		return 'C:\\Windows\\Fonts\\arial.ttf'
+	}
+	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
+	'FreeSans.ttf', 'DejaVuSans.ttf']
+	$if macos {
+		return '/System/Library/Fonts/SFNS.ttf'
+		//fonts = ['SFNS.ttf', 'SFNSText.ttf']
+	}
+	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
+	system_fonts := s.output.split('\n')
+	for line in system_fonts {
+		for font in fonts {
+			if line.contains(font) && line.contains(':') {
+				res := line.all_before(':')
+				println('Using font $res')
+				return res
+			}
+		}
+	}
+	panic('failed to init the font')
+}

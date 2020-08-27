@@ -15,9 +15,9 @@ fn main() {
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
 	println('Fetching updates...')
-	ret := os.system('git pull --rebase')
+	ret := os.system('$vdir/v up')
 	if ret != 0 {
-		println('failed to git pull')
+		println('failed to update V')
 		return
 	}
 	mut commit_hash := exec('git rev-parse HEAD')

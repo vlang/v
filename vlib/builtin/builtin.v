@@ -291,26 +291,25 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
-pub struct MethodAttr {
+pub struct MethodArgs {
 pub:
-	value string
-	method string
+	Type int
 }
 
 pub struct FunctionData {
 pub:
-	name string
-	attrs []string
-	ret_type string
-	@type int
+	name       string
+	attrs      []string
+	args       []MethodArgs
+	ReturnType int
+	Type       int
 }
 
 pub struct FieldData {
 pub:
-	name string
-	attrs []string
-	typ string
+	name   string
+	attrs  []string
 	is_pub bool
 	is_mut bool
-	@type int
+	Type   int
 }

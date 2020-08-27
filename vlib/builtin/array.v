@@ -607,6 +607,15 @@ pub fn (a []byte) index(v byte) int {
 	return -1
 }
 
+pub fn (a []rune) index(v rune) int {
+	for i in 0..a.len {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
 // []char.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 // TODO is `char` type yet in the language?

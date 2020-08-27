@@ -207,7 +207,7 @@ pub fn (re RE) get_parse_error_string(err int) string {
 
 // utf8_str convert and utf8 sequence to a printable string
 [inline]
-fn utf8_str(ch u32) string {
+fn utf8_str(ch rune) string {
 	mut i := 4
 	mut res := ""
 	for i > 0 {
@@ -233,33 +233,33 @@ fn simple_log(txt string) {
 pub type FnValidator fn (byte) bool
 struct Token{
 mut:
-	ist u32 = u32(0)
+	ist rune
 
 	// char
-	ch u32                 = u32(0)  // char of the token if any
-	ch_len byte            = byte(0) // char len
+	ch rune   // char of the token if any
+	ch_len byte             // char len
 
 	// Quantifiers / branch
-	rep_min         int    = 0     // used also for jump next in the OR branch [no match] pc jump
-	rep_max         int    = 0     // used also for jump next in the OR branch [   match] pc jump
-	greedy          bool   = false // greedy quantifier flag
+	rep_min         int         // used also for jump next in the OR branch [no match] pc jump
+	rep_max         int         // used also for jump next in the OR branch [   match] pc jump
+	greedy          bool    // greedy quantifier flag
 
 	// Char class
 	cc_index        int    = -1
 
 	// counters for quantifier check (repetitions)
-	rep             int    = 0
+	rep             int
 
 	// validator function pointer
 	validator FnValidator
 
 	// groups variables
-	group_rep          int = 0     // repetition of the group
+	group_rep          int      // repetition of the group
 	group_id           int = -1    // id of the group
 	goto_pc            int = -1    // jump to this PC if is needed
 
 	// OR flag for the token
-	next_is_or bool        = false // true if the next token is an OR
+	next_is_or bool        // true if the next token is an OR
 }
 
 [inline]
@@ -380,7 +380,7 @@ Backslashes chars
 
 */
 struct BslsStruct {
-	ch u32                   // meta char
+	ch rune                   // meta char
 	validator FnValidator    // validator function pointer
 }
 
@@ -466,8 +466,8 @@ const(
 struct CharClass {
 mut:
 	cc_type int = cc_null      // type of cc token
-	ch0 u32     = u32(0)       // first char of the interval a-b  a in this case
-	ch1 u32     = u32(0)	   // second char of the interval a-b b in this case
+	ch0 rune       // first char of the interval a-b  a in this case
+	ch1 rune	   // second char of the interval a-b b in this case
 	validator FnValidator      // validator function pointer
 }
 
@@ -540,7 +540,7 @@ fn (re RE) get_char_class(pc int) string {
 	return tos_clone( buf_ptr )
 }
 
-fn (re RE) check_char_class(pc int, ch u32) bool {
+fn (re RE) check_char_class(pc int, ch rune) bool {
 	mut cc_i := re.prog[pc].cc_index
 	for cc_i >= 0 && cc_i < re.cc.len && re.cc[cc_i].cc_type != cc_end {
 		if re.cc[cc_i].cc_type == cc_bsls {
@@ -557,7 +557,7 @@ fn (re RE) check_char_class(pc int, ch u32) bool {
 }
 
 // parse_char_class return (index, str_len, cc_type) of a char class [abcm-p], char class start after the [ char
-fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, u32) {
+fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
 	mut status := CharClass_parse_state.start
 	mut i := in_i
 
@@ -915,7 +915,7 @@ fn (re RE) parse_groups(in_txt string, in_i int) (int, bool, string, int) {
 [deprecated]
 pub fn (mut re RE) compile(in_txt string) (int,int) {
 	return re.impl_compile(in_txt)
-}    
+}
 
 fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	mut i        := 0      // input string index
@@ -1493,14 +1493,14 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut first_match := -1             //index of the first match
 
 	mut i := 0                       // source string index
-	mut ch := u32(0)                 // examinated char
+	mut ch := rune(0)                 // examinated char
 	mut char_len := 0                // utf8 examinated char len
 	mut m_state := Match_state.start // start point for the matcher FSM
 
 	mut pc := -1                     // program counter
 	mut state := StateObj{}          // actual state
-	mut ist := u32(0)                // actual instruction
-	mut l_ist := u32(0)              // last matched instruction
+	mut ist := rune(0)                // actual instruction
+	mut l_ist :=rune(0)              // last matched instruction
 
 	mut group_stack      := [-1].repeat(re.group_max)
 	mut group_data       := [-1].repeat(re.group_max)
@@ -2213,7 +2213,7 @@ pub fn new_regex() RE {
 [deprecated]
 pub fn new_regex_by_size(mult int) RE {
 	return impl_new_regex_by_size(mult)
-}    
+}
 fn impl_new_regex_by_size(mult int) RE {
 	mut re := RE{}
 	re.prog = [Token{}].repeat(max_code_len*mult)       // max program length, default 256 istructions

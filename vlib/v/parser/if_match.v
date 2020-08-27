@@ -29,9 +29,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
 		start_pos := if is_comptime { p.prev_tok.position().extend(p.tok.position()) } else { p.tok.position() }
-		if p.tok.kind == .key_if {
-			p.next()
-		} else {
+		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
 			p.check(.key_else)
 			comments << p.eat_comments()

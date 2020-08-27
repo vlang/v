@@ -504,7 +504,7 @@ fn test_bytes_to_string() {
 	}
 	assert unsafe { buf.vstring() } == 'hello'
 	assert unsafe { buf.vstring_with_len(2) } == 'he'
-	bytes := [`h`, `e`, `l`, `l`, `o`]
+	bytes := [byte(`h`), `e`, `l`, `l`, `o`]
 	assert bytes.bytestr() == 'hello'
 }
 

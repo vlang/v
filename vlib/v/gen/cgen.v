@@ -106,8 +106,9 @@ mut:
 	comptime_var_type_map map[string]table.Type
 	match_sumtype_exprs   []ast.Expr
 	match_sumtype_syms    []table.TypeSymbol
-	tmp_idxs              []int
+	tmp_arg_vars_to_free  []string
 	called_fn_name        string
+	cur_mod               string
 }
 
 const (
@@ -932,6 +933,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			g.is_builtin_mod = node.name == 'builtin'
+			g.cur_mod = node.name
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
