@@ -6,7 +6,6 @@ module parser
 import os
 import v.ast
 import v.pref
-import v.vmod
 import v.table
 import vweb.tmpl
 
@@ -17,67 +16,14 @@ const (
 	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
 
-fn (mut p Parser) resolve_vroot(flag string) string {
-	mut mcache := vmod.get_cache()
-	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
-	if vmod_file_location.vmod_file.len == 0 {
-		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' + ' or in one of its parent folders.')
-	}
-	vmod_path := vmod_file_location.vmod_folder
-	if p.pref.is_fmt {
-		return flag
-	}
-	return flag.replace('@VROOT', os.real_path(vmod_path))
-}
-
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
 	mut val := p.tok.lit
 	p.next()
-	if p.pref.backend == .js {
-		if !p.file_name.ends_with('.js.v') {
-			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
-		}
-		if p.mod == 'main' {
-			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
-		}
-	}
-	if val.starts_with('include') {
-		mut flag := val[8..]
-		if flag.contains('@VROOT') {
-			vroot := p.resolve_vroot(flag)
-			val = 'include $vroot'
-		}
-	}
-	if val.starts_with('flag') {
-		// #flag linux -lm
-		mut flag := val[5..]
-		// expand `@VROOT` to its absolute path
-		if flag.contains('@VROOT') {
-			flag = p.resolve_vroot(flag)
-		}
-		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-			if flag.contains(deprecated) {
-				p.error('$deprecated had been deprecated, use @VROOT instead.')
-			}
-		}
-		// println('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod, p.pref.compile_defines_all) or {
-			p.error(err)
-		}
-		/*
-		words := val.split(' ')
-		if words.len > 1 && words[1] in supported_platforms {
-			if p.pref.os == .mac && words[1] == 'darwin' {
-				p.pref.cflags += val.after('darwin')
-			}
-		}
-		*/
-	}
 	return ast.HashStmt{
 		val: val
 		mod: p.mod
+		pos: p.prev_tok.position()
 	}
 }
 

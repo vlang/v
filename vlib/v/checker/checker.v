@@ -2171,7 +2171,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.GotoLabel {}
 		ast.GotoStmt {}
-		ast.HashStmt {}
+		ast.HashStmt {
+			c.hash_stmt(node)
+		}
 		ast.Import {
 			c.import_stmt(node)
 		}
@@ -2196,6 +2198,49 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.TypeDecl {
 			c.type_decl(node)
+		}
+	}
+}
+
+fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
+	if c.pref.backend == .js {
+		if !c.file.path.ends_with('.js.v') {
+			c.error('Hash statements are only allowed in backend specific files such "x.js.v"',
+				node.pos)
+		}
+		if c.mod == 'main' {
+			c.error('Hash statements are not allowed in the main module. Please place them in a separate module.',
+				node.pos)
+		}
+	}
+	if node.val.starts_with('include') {
+		mut flag := node.val[8..]
+		if flag.contains('@VROOT') {
+			vroot := util.resolve_vroot(flag, c.file.path) or {
+				c.error(err, node.pos)
+				return
+			}
+			node.val = 'include $vroot'
+		}
+	}
+	if node.val.starts_with('flag') {
+		// #flag linux -lm
+		mut flag := node.val[5..]
+		// expand `@VROOT` to its absolute path
+		if flag.contains('@VROOT') {
+			flag = util.resolve_vroot(flag, c.file.path) or {
+				c.error(err, node.pos)
+				return
+			}
+		}
+		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
+			if flag.contains(deprecated) {
+				c.error('$deprecated had been deprecated, use @VROOT instead.', node.pos)
+			}
+		}
+		// println('adding flag "$flag"')
+		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
+			c.error(err, node.pos)
 		}
 	}
 }
