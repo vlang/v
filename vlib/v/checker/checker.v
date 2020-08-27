@@ -294,7 +294,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				if typ_sym.kind == .placeholder {
 					c.error("type `$typ_sym.source_name` doesn't exist", node.pos)
 				} else if typ_sym.kind == .interface_ {
-					c.error("sum type cannot hold an interface", node.pos)
+					c.error('sum type cannot hold an interface', node.pos)
 				}
 			}
 		}
