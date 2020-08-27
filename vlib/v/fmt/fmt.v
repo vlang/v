@@ -725,12 +725,20 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-	map_prefix := 'map[string]'
 	cur_mod := f.cur_mod + '.'
+	//
+	map_prefix := 'map[string]'
 	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
 		res = res.replace(map_prefix, '')
 	}
+	//
+	chan_prefix := 'chan '
+	has_chan_prefix := res.starts_with(chan_prefix)
+	if has_chan_prefix {
+		res = res.replace(chan_prefix, '')
+	}
+	//
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(cur_mod)
 	//
@@ -751,6 +759,9 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 	}
 	if should_shorten {
 		res = res.replace_once(cur_mod, '')
+	}
+	if has_chan_prefix {
+		res = chan_prefix + res
 	}
 	if has_map_prefix {
 		res = map_prefix + res
