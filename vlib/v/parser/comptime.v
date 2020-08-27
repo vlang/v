@@ -193,7 +193,8 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	// return p.vweb()
 	// }
 	p.check(.key_if)
-	is_not := p.tok.kind == .not
+	mut is_not := p.tok.kind == .not
+	inversion_pos := p.tok.position()
 	if is_not {
 		p.next()
 	}
@@ -202,7 +203,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	mut val := ''
 	mut tchk_expr := ast.Expr{}
 	if p.peek_tok.kind == .dot {
-		vname := p.parse_ident(table.Language.v)
+		vname := p.parse_ident(.v)
 		cobj := p.scope.find(vname.name) or {
 			p.error_with_pos('unknown variable `$vname.name`', name_pos_start)
 			return ast.Stmt{}
@@ -210,9 +211,17 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		if cobj is ast.Var {
 			tchk_expr = p.dot_expr(vname)
 			val = vname.name
-			if tchk_expr is ast.SelectorExpr {
-				if tchk_expr.field_name !in ['type', '@type'] {
-					p.error_with_pos('only the `.@type` field name is supported for now',
+			if tchk_expr is ast.SelectorExpr as tchk_expr2 {
+				if p.tok.kind == .lsbr && tchk_expr2.field_name == 'args' {
+					tchk_expr = p.index_expr(tchk_expr)
+					if p.tok.kind == .dot && p.peek_tok.lit == 'Type' {
+						tchk_expr = p.dot_expr(tchk_expr)
+					} else {
+					p.error_with_pos('only the `Type` field is supported for arguments',
+						p.peek_tok.position())
+					}
+				} else if tchk_expr2.field_name !in ['Type', 'ReturnType'] {
+					p.error_with_pos('only the `Type` and `ReturnType` fields are supported for now',
 						name_pos_start)
 				}
 			}
@@ -280,10 +289,17 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
-	} else if p.tok.kind == .key_is {
+	} else if p.tok.kind in [.key_is, .not_is] {
+		typecheck_inversion := p.tok.kind == .not_is
 		p.next()
 		tchk_type = p.parse_type()
 		is_typecheck = true
+		if is_not {
+			name := p.table.get_type_name(tchk_type)
+			p.error_with_pos('use `\$if $tchk_expr !is $name {`, not `\$if !$tchk_expr is $name {`',
+			inversion_pos)
+		}
+		is_not = typecheck_inversion
 	}
 	if !skip {
 		stmts = p.parse_block()
