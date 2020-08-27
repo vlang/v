@@ -462,7 +462,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		if is_json_encode {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
-
 			// `json__encode` => `json__encode_User`
 			encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
 			g.writeln('// json.encode')
@@ -517,9 +516,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	*/
 	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	free_tmp_arg_vars := g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional)
+	free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod && g.cur_mod !=
+		'os' && node.args.len > 0 && !node.args[0].typ.has_flag(.optional)
 	if free_tmp_arg_vars {
-		g.tmp_idxs = []int{cap: 10} // TODO perf
+		g.tmp_arg_vars_to_free = []string{cap: 10} // TODO perf
 		for i, arg in node.args {
 			if arg.typ != table.string_type {
 				continue
@@ -527,7 +527,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
 				continue
 			}
-			t := '_arg_expr_${name}_$i' // g.new_tmp_var()
+			t := g.new_tmp_var() + '_arg_expr_${name}_$i' // g.new_tmp_var()
 			g.called_fn_name = name
 			/*
 			g.write('string $t = ')
@@ -535,12 +535,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.writeln('; // to free $i ')
 			*/
 			str_expr := g.write_expr_to_string(arg.expr)
-			g.insert_before_stmt('string $t = $str_expr; // to free $i ')
-			g.tmp_idxs << i
+			g.insert_before_stmt('string $t = $str_expr; // new. to free $i ')
+			g.tmp_arg_vars_to_free << t // i
 		}
 	}
 	// Handle `print(x)`
-	if is_print && node.args[0].typ != table.string_type {
+	if is_print && node.args[0].typ != table.string_type && !free_tmp_arg_vars {
 		typ := node.args[0].typ
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
@@ -609,8 +609,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	g.is_c_call = false
 	g.is_json_fn = false
-	if free_tmp_arg_vars {
-		g.tmp_idxs.clear()
+	if free_tmp_arg_vars && g.tmp_arg_vars_to_free.len > 0 {
+		// Now free the tmp arg vars right after the function call
+		g.writeln(';')
+		for tmp in g.tmp_arg_vars_to_free {
+			g.writeln('string_free(&$tmp);')
+		}
+		g.writeln('')
+		g.tmp_arg_vars_to_free.clear()
 	}
 }
 
@@ -640,10 +646,15 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			if is_interface {
 				g.expr(arg.expr)
 			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
-				g.tmp_idxs.len > 0 && i in g.tmp_idxs {
-				// Save expressions in temp variables so that they can be freed later.
-				// `foo(str + str2) => x := str + str2; foo(x); x.free()`
-				g.write('_arg_expr_${g.called_fn_name}_$i')
+				g.tmp_arg_vars_to_free.len > 0 { // && g.tmp_arg_vars_to_free.contains('_$i') { // && i in g.tmp_idxs {
+				for name in g.tmp_arg_vars_to_free {
+					// Save expressions in temp variables so that they can be freed later.
+					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
+					// g.write('_arg_expr_${g.called_fn_name}_$i')
+					if name.contains('_$i') {
+						g.write(name)
+					}
+				}
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i])
 			}
