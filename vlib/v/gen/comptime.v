@@ -235,8 +235,12 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			g.stmts(node.stmts)
 			i++
 			g.writeln('')
+			for key, _ in g.comptime_var_type_map {
+				if key.starts_with(node.val_var) {
+					g.comptime_var_type_map.delete(key)
+				}
+			}
 		}
-		g.comptime_var_type_map.delete(node.val_var)
 	} else if node.kind == .fields {
 		// TODO add fields
 		if sym.info is table.Struct {
