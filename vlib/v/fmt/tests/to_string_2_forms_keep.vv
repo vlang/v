@@ -5,7 +5,7 @@ fn abc() string {
 		fullpath[1] = `b`
 		fullpath[2] = `c`
 		fullpath[3] = 0
-		return string(fullpath)
+		return fullpath.vstring()
 	}
 	return ''
 }
@@ -17,7 +17,7 @@ fn def() string {
 		fullpath[1] = `b`
 		fullpath[2] = `c`
 		fullpath[3] = 0
-		return string(fullpath, 3)
+		return fullpath.vstring_with_len(3)
 	}
 	return ''
 }

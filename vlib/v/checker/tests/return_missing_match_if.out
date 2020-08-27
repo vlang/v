@@ -1,4 +1,4 @@
-vlib/v/checker/tests/return_missing_match_if.v:3:1: error: missing return at end of function `foo`
+vlib/v/checker/tests/return_missing_match_if.vv:3:1: error: missing return at end of function `foo`
     1 | fn main() {}
     2 |
     3 | fn foo() string {

@@ -4,7 +4,8 @@
 
 V is a statically typed compiled programming language designed for building maintainable software.
 
-It's similar to Go and its design has also been influenced by Oberon, Rust, Swift, and Python.
+It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
+Kotlin, and Python.
 
 V is a very simple language. Going through this documentation will take you about half an hour,
 and by the end of it you will have pretty much learned the entire language.
@@ -23,6 +24,7 @@ you can do in V.
 * [Comments](#comments)
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
+    * [Variable number of arguments](#variable-number-of-arguments)
 * [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
@@ -46,7 +48,7 @@ you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println](#println)
+* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -78,7 +80,7 @@ you can do in V.
     * [Debugging generated C code](#debugging-generated-c-code)
     * [Conditional compilation](#conditional-compilation)
     * [Compile time pseudo variables](#compile-time-pseudo-variables)
-    * [Reflection via codegen](#reflection-via-codegen)
+    * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
     * [Translating C/C++ to V](#translating-cc-to-v)
@@ -181,6 +183,21 @@ a, b := foo()
 println(a) // 2
 println(b) // 3
 c, _ := foo() // ignore values using `_`
+```
+
+### Variable number of arguments
+
+```v
+fn sum(a ...int) int {
+    mut total := 0
+    for x in a {
+        total += x
+    }
+    return total
+}
+println(sum())    // Output: 0
+println(sum(1))   //         1
+println(sum(2,3)) //         5
 ```
 
 ## Symbol visibility
@@ -428,7 +445,7 @@ f := 1.0
 f1 := f64(3.14)
 f2 := f32(3.14)
 ```
-If you do not specify the type explicitly, by default float literals 
+If you do not specify the type explicitly, by default float literals
 will have the type of `f64`.
 
 ### Arrays
@@ -523,6 +540,42 @@ println(upper) // ['HELLO', 'WORLD']
 ```
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
+
+#### Multidimensional Arrays
+
+Arrays can have more than one dimension.
+
+2d array example:
+```v
+mut a := [][]int{len:2, init: []int{len:3}}
+a[0][1] = 2
+println(a) // [[0, 2, 0], [0, 0, 0]]
+```
+
+3d array example:
+```v
+mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
+a[0][1][1] = 2
+println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
+```
+
+#### Sorting arrays
+
+Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
+are used when providing a custom sorting condition.
+
+```v
+mut numbers := [1, 3, 2]
+numbers.sort()      // 1, 2, 3
+numbers.sort(a > b) // 3, 2, 1
+```
+
+```v
+struct User { age int  name string }
+mut users := [...]
+users.sort(a.age < b.age)   // sort by User.age int field
+users.sort(a.name > b.name) // reverse sort by User.name string field
+```
 
 ### Maps
 
@@ -750,7 +803,7 @@ for i in 0..5 {
     print(i)
 }
 ```
-`low..high` means an *exclusive* range, which represents all values 
+`low..high` means an *exclusive* range, which represents all values
 from `low` up to *but not including* `high`.
 
 #### Condition `for`
@@ -1271,7 +1324,7 @@ vs
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println
+## println and other builtin functions
 
 `println` is a simple yet powerful builtin function. It can print anything:
 strings, numbers, arrays, maps, structs.
@@ -1300,6 +1353,15 @@ println(red)
 ```
 
 If you don't want to print a newline, use `print()` instead.
+
+The number of builtin functions is low. Other builtin functions are:
+
+
+```
+fn exit(exit_code int)
+fn panic(message string)
+fn print_backtrace()
+```
 
 ## Modules
 
@@ -1382,6 +1444,7 @@ interface Speaker {
 fn perform(s Speaker) string {
     if s is Dog { // use `is` to check the underlying type of an interface
         println('perform(dog)')
+	println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
     } else if s is Cat {
         println('perform(cat)')
     }
@@ -1407,8 +1470,17 @@ enum Color {
 mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
-println(color) // "1"  TODO: print "green"?
+println(color) // "green"
+
+match color {
+    .red { ... }
+    .green { ... }
+    .blue { ... }
+}
+
 ```
+
+Enum match must be exhaustive or have an `else` branch. This ensures that if a new enum field is added, it's handled everywhere in the code.
 
 ### Sum types
 
@@ -1479,7 +1551,7 @@ fn (v Venus) sweat()
 
 fn pass_time(w World) {
     match w {
-        // using the shadowed match variable, in this case `w`
+        // using the shadowed match variable, in this case `w` (smart cast)
         Moon { w.moon_walk() }
         Mars { w.shiver() }
         else {}
@@ -1568,11 +1640,11 @@ fn f(url string) ?string {
 }
 ```
 
-`http.get` returns `?http.Response`. Because `?` follows the call, the 
-error will be propagated to the caller of `f`. When using `?` after a 
-function call producing an optional, the enclosing function must return 
-an optional as well. If error propagation is used in the `main()` 
-function it will `panic` instead, since the error cannot be propagated 
+`http.get` returns `?http.Response`. Because `?` follows the call, the
+error will be propagated to the caller of `f`. When using `?` after a
+function call producing an optional, the enclosing function must return
+an optional as well. If error propagation is used in the `main()`
+function it will `panic` instead, since the error cannot be propagated
 any further.
 
 The body of `f` is essentially a condensed version of:
@@ -1624,7 +1696,7 @@ if resp := http.get(url) {
     println(err)
 }
 ```
-Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first 
+Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
 `if` branch. `err` is only in scope for the `else` branch.
 
 ## Generics
@@ -1671,7 +1743,7 @@ println(compare<string>('1','0')) // Outputs: 1
 println(compare<string>('1','1')) //          0
 println(compare<string>('1','2')) //         -1
 
-println(compare<float>(1.1, 1.0)) // Outputs: 1 
+println(compare<float>(1.1, 1.0)) // Outputs: 1
 println(compare<float>(1.1, 1.1)) //          0
 println(compare<float>(1.1, 1.2)) //         -1
 ```
@@ -1969,7 +2041,7 @@ fn main(){
 ## Memory-unsafe code
 
 Sometimes for efficiency you may want to write low-level code that can potentially
-corrupt memory or be vulnerable to security exploits. V supports writing such code, 
+corrupt memory or be vulnerable to security exploits. V supports writing such code,
 but not by default.
 
 V requires that any potentially memory-unsafe operations are marked intentionally.
@@ -2001,12 +2073,12 @@ assert *p == `i`
 ```
 
 Best practice is to avoid putting memory-safe expressions inside an `unsafe` block,
-so that the reason for using `unsafe` is as clear as possible. Generally any code 
-you think is memory-safe should not be inside an `unsafe` block, so the compiler 
+so that the reason for using `unsafe` is as clear as possible. Generally any code
+you think is memory-safe should not be inside an `unsafe` block, so the compiler
 can verify it.
 
-If you suspect your program does violate memory-safety, you have a head start on 
-finding the cause: look at the `unsafe` blocks (and how they interact with 
+If you suspect your program does violate memory-safety, you have a head start on
+finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
 * Note: This is work in progress.
@@ -2175,6 +2247,9 @@ $if linux {
 $if macos {
     println('macOS')
 }
+$else {
+    println('different OS')
+}
 
 $if debug {
     println('debugging')
@@ -2214,7 +2289,7 @@ eprintln('$vm.name $vm.version\n $vm.description')
 
 The generated C code is usually fast enough, when you compile your code
 with `-prod`. There are some situations though, where you may want to give
-additional hints to the C compiler, so that it can further optimize some
+additional hints to the compiler, so that it can further optimize some
 blocks of code.
 
 NB: These are *rarely* needed, and should not be used, unless you
@@ -2226,6 +2301,12 @@ how their programs actually perform".
 try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
+`[direct_array_access]` - in functions tagged with `[direct_array_access]`
+the compiler will translate array operations directly into C array operations - 
+omiting bounds checking. This may save a lot of time in a function that iterates
+over an array but at the cost of making the function unsafe - unless
+the boundries will be checked by the user.
+
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly
 code, with less chance of branch misprediction. In the JS backend,
@@ -2234,26 +2315,38 @@ that does nothing.
 `if _unlikely_(bool expression) {` similar to `_likely_(x)`, but it hints that
 the boolean expression is highly improbable. In the JS backend, that does nothing.
 
-## Reflection via codegen
+<a id='Reflection via codegen'>
+
+## Compile-time reflection
 
 Having built-in JSON support is nice, but V also allows you to create efficient
-serializers for any data format:
+serializers for any data format. V has compile-time `if` and `for` constructs:
 
 ```v
 // TODO: not implemented yet
+
+struct User {
+    name string
+    age  int
+}
+
+// Note: T should be passed a struct name only
 fn decode<T>(data string) T {
     mut result := T{}
-    for field in T.fields {
-        if field.typ == 'string' {
-            result.$field = get_string(data, field.name)
-        } else if field.typ == 'int' {
-            result.$field = get_int(data, field.name)
+    // compile-time `for` loop
+    // T.fields gives an array of a field metadata type
+    $for field in T.fields {
+        $if field.Type is string {
+            // $(string_expr) produces an identifier
+            result.$(field.name) = get_string(data, field.name)
+        } else $if field.Type is int {
+            result.$(field.name) = get_int(data, field.name)
         }
     }
     return result
 }
 
-// generates to:
+// `decode<User>` generates:
 fn decode_User(data string) User {
     mut result := User{}
     result.name = get_string(data, 'name')
@@ -2467,7 +2560,7 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before the function/struct declaration and applies only to the following definition.
+An attribute is specified inside `[]` right before a function/struct declaration and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning

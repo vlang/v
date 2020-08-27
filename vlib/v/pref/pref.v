@@ -55,6 +55,7 @@ pub mut:
 	// nofmt            bool   // disable vfmt
 	is_test             bool // `v test string_test.v`
 	is_script           bool // single file mode (`v program.v`), main function can be skipped
+	is_vsh              bool // v script (`file.vsh`) file, the `os` module should be made global
 	is_livemain         bool // main program that contains live/hot code
 	is_liveshared       bool // a shared library, that will be used in a -live main program
 	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
@@ -70,7 +71,7 @@ pub mut:
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
 	show_cc             bool // -showcc, print cc command
-	// NB: passing -cg instead of -g will set is_vlines to false and is_g to true, thus making v generate cleaner C files,
+	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	use_cache           bool // turns on v usage of the module cache to speed up compilation.
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
@@ -101,6 +102,7 @@ pub mut:
 	output_cross_c      bool
 	prealloc            bool
 	vroot               string
+	out_name_c          string // full os.real_path to the generated .tmp.c file; set by builder.
 	out_name            string
 	display_name        string
 	bundle_id           string
@@ -121,6 +123,7 @@ pub mut:
 	experimental        bool // enable experimental features
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
+	is_apk              bool // build as Android .apk format
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -132,6 +135,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		arg := args[i]
 		current_args := args[i..]
 		match arg {
+			'-apk' {
+				res.is_apk = true
+			}
 			'-show-timings' {
 				res.show_timings = true
 			}
@@ -144,8 +150,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-silent' {
 				res.output_mode = .silent
 			}
+			'-g' {
+				res.is_debug = true
+				res.is_vlines = true
+			}
 			'-cg' {
 				res.is_debug = true
+				res.is_vlines = false
 			}
 			'-repl' {
 				res.is_repl = true
@@ -279,7 +290,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
-				res.lookup_path = path.split(os.path_delimiter)
+				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-custom-prelude' {

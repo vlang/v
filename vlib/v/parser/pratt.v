@@ -64,7 +64,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		.minus, .amp, .mul, .not, .bit_not {
+		.minus, .amp, .mul, .not, .bit_not, .arrow {
 			// -1, -a, !x, &x, ~x
 			node = p.prefix_expr()
 		}
@@ -265,6 +265,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		} else if p.tok.kind in [.inc, .dec] || (p.tok.kind == .question && p.inside_ct_if_expr) {
 			// Postfix
+			// detect `f(x++)`, `a[x++]`
+			if p.peek_tok.kind in [.rpar, .rsbr] &&
+				p.mod !in ['builtin', 'regex', 'strconv'] { // temp
+				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement', p.peek_tok.position())
+			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
 				expr: node
@@ -313,11 +318,45 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
+	mut right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
 	p.is_amp = false
+	if mut right is ast.CastExpr {
+		right.in_prexpr = true
+	}
+	mut or_stmts := []ast.Stmt{}
+	mut or_kind := ast.OrKind.absent
+	// allow `x := <-ch or {...}` to handle closed channel
+	if op == .arrow && p.tok.kind == .key_orelse {
+			p.next()
+			p.open_scope()
+			p.scope.register('errcode', ast.Var{
+				name: 'errcode'
+				typ: table.int_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			p.scope.register('err', ast.Var{
+				name: 'err'
+				typ: table.string_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			or_kind = .block
+			or_stmts = p.parse_block_no_scope(false)
+			p.close_scope()
+	}
+	if p.tok.kind == .question {
+		p.next()
+		or_kind = .propagate
+	}
 	return ast.PrefixExpr{
 		op: op
 		right: right
 		pos: pos
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+			kind: or_kind
+			pos: pos
+		}
 	}
 }

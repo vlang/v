@@ -45,7 +45,7 @@ pub fn connect(config Config) ?DB {
 	println("status=$status")
 	if status != C.CONNECTION_OK {
 		error_msg := C.PQerrorMessage(conn)
-		return error ('Connection to a PG database failed: ' + string(error_msg))
+		return error ('Connection to a PG database failed: ' + unsafe { error_msg.vstring() } )
 	}
 	return DB {conn: conn}
 }
@@ -58,7 +58,8 @@ fn res_to_rows(res voidptr) []Row {
 		mut row := Row{}
 		for j in 0..nr_cols {
 			val := C.PQgetvalue(res, i, j)
-			row.vals << string(val)
+			sval := unsafe { val.vstring() }
+			row.vals << sval
 		}
 		rows << row
 	}
@@ -100,7 +101,7 @@ pub fn (db DB) q_strings(query string) []Row {
 
 pub fn (db DB) exec(query string) []Row {
 	res := C.PQexec(db.conn, query.str)
-	e := string(C.PQerrorMessage(db.conn))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		println('pg exec error:')
 		println(e)
@@ -118,7 +119,7 @@ fn rows_first_or_empty(rows []Row) ?Row {
 
 pub fn (db DB) exec_one(query string) ?Row {
 	res := C.PQexec(db.conn, query.str)
-	e := string(C.PQerrorMessage(db.conn))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
@@ -141,7 +142,7 @@ pub fn (db DB) exec_param_many(query string, params []string) []Row {
 }
 
 pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
-	mut param_vals := [2]byteptr
+	mut param_vals := [2]byteptr{}
 	param_vals[0] = param.str
 	param_vals[1] = param2.str
 	res := C.PQexecParams(db.conn, query.str, 2, 0, param_vals, 0, 0, 0)
@@ -149,14 +150,14 @@ pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
 }
 
 pub fn (db DB) exec_param(query string, param string) []Row {
-	mut param_vals := [1]byteptr
+	mut param_vals := [1]byteptr{}
 	param_vals[0] = param.str
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
 	return db.handle_error_or_result(res, 'exec_param')
 }
 
 fn (db DB) handle_error_or_result(res voidptr, elabel string) []Row {
-	e := string(C.PQerrorMessage(db.conn))
+	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
 	if e != '' {
 		println('pg $elabel error:')
 		println(e)

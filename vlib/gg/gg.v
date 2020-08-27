@@ -3,12 +3,10 @@
 module gg
 
 import gx
-import os
 import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
-import stbi
 
 // import time
 pub type FNCb = fn (x voidptr)
@@ -52,12 +50,17 @@ pub:
 
 pub struct Context {
 	render_text bool
+mut:
+	// a cache with all images created by the user. used for sokol image init and to save space
+	// (so that the user can store image ids, not entire Image objects)
+	image_cache []Image
 pub mut:
 	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
 	clear_pass  C.sg_pass_action
 	window      C.sapp_desc
+	timage_pip  C.sgl_pipeline
 	config      Config
 	ft          &FT
 	font_inited bool
@@ -71,6 +74,8 @@ pub:
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut g := &Context(user_data)
+	desc := sapp.create_desc()
+	/*
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
@@ -80,6 +85,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
 		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
 	}
+	*/
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
@@ -105,8 +111,20 @@ fn gg_init_sokol_window(user_data voidptr) {
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
 	}
+	//
+	mut pipdesc := C.sg_pipeline_desc{}
+	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+	pipdesc.blend.enabled = true
+	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
+	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	g.timage_pip = sgl.make_pipeline(&pipdesc)
+	//
 	if g.config.init_fn != voidptr(0) {
 		g.config.init_fn(g.config.user_data)
+	}
+	// Create images now that we can do that after sg is inited
+	for i in 0..g.image_cache.len {
+		g.image_cache[i].init_sokol_image()
 	}
 }
 
@@ -170,12 +188,11 @@ pub fn new_context(cfg Config) &Context {
 	mut g := &Context{
 		width: cfg.width
 		height: cfg.height
-		clear_pass: gfx.create_clear_pass(f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
-			f32(cfg.bg_color.b) / 255.0, 1.0)
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
 	}
+	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
 		user_data: g
@@ -202,8 +219,14 @@ pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
 
+pub fn (mut ctx Context) set_bg_color(c gx.Color) {
+	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0,
+			f32(c.b) / 255.0, f32(c.a) / 255.0)
+}
+
+// TODO: Fix alpha
 pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
@@ -213,7 +236,7 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	if ctx.scale == 1 {
 		sgl.v2f(x, y)
@@ -232,67 +255,6 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
-}
-
-pub fn create_image(file string) u32 {
-	// println('gg create image "$file"')
-	if !os.exists(file) {
-		println('gg create image no such file "$file"')
-		return u32(0)
-	}
-	// img := stbi.load(file)
-	// img.free()
-	return 0 // texture
-}
-
-pub struct Image {
-pub mut:
-	width       int
-	height      int
-	nr_channels int
-	ok          bool
-	data        voidptr
-	ext         string
-	sokol_img   C.sg_image
-}
-
-pub fn create_image2(file string) Image {
-	if !os.exists(file) {
-		println('gg create image no such file "$file"')
-		return Image{} // none
-	}
-	stb_img := stbi.load(file)
-	mut img := Image{
-		width: stb_img.width
-		height: stb_img.height
-		nr_channels: stb_img.nr_channels
-		ok: stb_img.ok
-		data: stb_img.data
-		ext: stb_img.ext
-	}
-	mut img_desc := C.sg_image_desc{
-		width: img.width
-		height: img.height
-		num_mipmaps: 0
-		wrap_u: .clamp_to_edge
-		wrap_v: .clamp_to_edge
-		label: &byte(0)
-		d3d11_texture: 0
-	}
-	img_desc.content.subimage[0][0] = C.sg_subimage_content{
-		ptr: img.data
-		size: img.nr_channels * img.width * img.height
-	}
-	the_sokol_image := C.sg_make_image(&img_desc)
-	img.sokol_img = the_sokol_image
-	return img
-}
-
-pub fn create_image_from_memory(buf byteptr) u32 {
-	// texture := gl.gen_texture()
-	// img := stbi.load_from_memory(buf)
-	// img.free()
-	return 0 // texture
 }
 
 pub fn (gg &Context) begin() {
@@ -315,30 +277,34 @@ pub fn (gg &Context) end() {
 	}
 }
 
+fn abs(a f32) f32 {
+	if a >= 0 {
+		return a
+	}
+	return -a
+}
+
+
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 128)
+	if ctx.scale > 1 {
+		// Make the line more clear on hi dpi screens: draw a rectangle
+		mut width := abs(x2 - x)
+		mut height := abs(y2 - y)
+		if width == 0   {
+			width = 1
+		}
+		else if height == 0 {
+			height = 1
+		}
+
+		ctx.draw_rect(x, y, width, height, c)
+		return
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
 	sgl.end()
-}
-
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img u32) {
-}
-
-pub fn (ctx &Context) draw_image2(x, y, width, height f32, img Image) {
-	C.sgl_enable_texture()
-	C.sgl_texture(img.sokol_img)
-
-/*
-	sgl.c4b(c.r, c.g, c.b, 128)
-	sgl.begin_quads()
-	sgl.v2f(x * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
-	sgl.v2f((x + w) * ctx.scale, (y + h) * ctx.scale)
-	sgl.v2f(x * ctx.scale, (y + h) * ctx.scale)
-	sgl.end()
-	*/
 }
 
 pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {

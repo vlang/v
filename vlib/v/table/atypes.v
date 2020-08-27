@@ -15,8 +15,8 @@ import strings
 
 pub type Type int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Enum | FnType | GenericStructInst | Interface |
-	Map | MultiReturn | Struct | SumType
+pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -26,14 +26,15 @@ pub enum Language {
 
 pub struct TypeSymbol {
 pub:
-	parent_idx int
+	parent_idx  int
 pub mut:
-	info       TypeInfo
-	kind       Kind
-	name       string
-	methods    []Fn
-	mod        string
-	is_public  bool
+	info        TypeInfo
+	kind        Kind
+	name        string // the internal name of the type, i.e. `array_fixed_int_5`. See also .source_name below.
+	source_name string // the original source name of the type, i.e. `[5]int`. Do not use this for logic, but just for formatting/errors.
+	methods     []Fn
+	mod         string
+	is_public   bool
 }
 
 // max of 8
@@ -253,10 +254,11 @@ pub const (
 	ustring_type_idx = 19
 	array_type_idx   = 20
 	map_type_idx     = 21
-	any_type_idx     = 22
+	chan_type_idx    = 22
+	any_type_idx     = 23
 	// t_type_idx       = 23
-	any_flt_type_idx = 23
-	any_int_type_idx = 24
+	any_flt_type_idx = 24
+	any_int_type_idx = 25
 )
 
 pub const (
@@ -293,6 +295,7 @@ pub const (
 	ustring_type = new_type(ustring_type_idx)
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
+	chan_type    = new_type(chan_type_idx)
 	any_type     = new_type(any_type_idx)
 	// t_type       = new_type(t_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
@@ -302,7 +305,7 @@ pub const (
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'any', 'struct', 'mapnode', 'size_t']
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
 )
 
 pub struct MultiReturn {
@@ -335,6 +338,7 @@ pub enum Kind {
 	f64
 	char
 	size_t
+	rune
 	bool
 	none_
 	string
@@ -342,6 +346,7 @@ pub enum Kind {
 	array
 	array_fixed
 	map
+	chan
 	any
 	struct_
 	generic_struct_inst
@@ -392,6 +397,14 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 }
 
 [inline]
+pub fn (t &TypeSymbol) chan_info() Chan {
+	match t.info {
+		Chan { return *it }
+		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
+	}
+}
+
+[inline]
 pub fn (t &TypeSymbol) map_info() Map {
 	match t.info {
 		Map { return *it }
@@ -422,111 +435,139 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(TypeSymbol{
 		kind: .void
 		name: 'void'
+		source_name: 'void'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .voidptr
 		name: 'voidptr'
+		source_name: 'voidptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .byteptr
 		name: 'byteptr'
+		source_name: 'byteptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .charptr
 		name: 'charptr'
+		source_name: 'charptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i8
 		name: 'i8'
+		source_name: 'i8'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i16
 		name: 'i16'
+		source_name: 'i16'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .int
 		name: 'int'
+		source_name: 'int'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i64
 		name: 'i64'
+		source_name: 'i64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .byte
 		name: 'byte'
+		source_name: 'byte'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u16
 		name: 'u16'
+		source_name: 'u16'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u32
 		name: 'u32'
+		source_name: 'u32'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u64
 		name: 'u64'
+		source_name: 'u64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .f32
 		name: 'f32'
+		source_name: 'f32'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .f64
 		name: 'f64'
+		source_name: 'f64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .char
 		name: 'char'
+		source_name: 'char'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .bool
 		name: 'bool'
+		source_name: 'bool'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .none_
 		name: 'none'
+		source_name: 'none'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .string
 		name: 'string'
+		source_name: 'string'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .ustring
 		name: 'ustring'
+		source_name: 'ustring'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .array
 		name: 'array'
+		source_name: 'array'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .map
 		name: 'map'
+		source_name: 'map'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
+		kind: .chan
+		name: 'chan'
+		source_name: 'chan'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .any
 		name: 'any'
+		source_name: 'any'
 		mod: 'builtin'
 	})
 	// t.register_type_symbol({
@@ -538,16 +579,25 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol({
 		kind: .any_float
 		name: 'any_float'
+		source_name: 'any_float'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .any_int
 		name: 'any_int'
+		source_name: 'any_int'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .size_t
 		name: 'size_t'
+		source_name: 'size_t'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
+		kind: .size_t
+		name: 'rune'
+		source_name: 'rune'
 		mod: 'builtin'
 	})
 	// TODO: remove. for v1 map compatibility
@@ -556,12 +606,14 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol({
 		kind: .alias
 		name: 'map_string'
+		source_name: 'map_string'
 		mod: 'builtin'
 		parent_idx: map_string_string_idx
 	})
 	t.register_type_symbol({
 		kind: .alias
 		name: 'map_int'
+		source_name: 'map_int'
 		mod: 'builtin'
 		parent_idx: map_string_int_idx
 	})
@@ -616,6 +668,7 @@ pub fn (k Kind) str() string {
 		.array { 'array' }
 		.array_fixed { 'array_fixed' }
 		.map { 'map' }
+		.chan { 'chan' }
 		.multi_return { 'multi_return' }
 		.sum_type { 'sum_type' }
 		.alias { 'alias' }
@@ -625,6 +678,7 @@ pub fn (k Kind) str() string {
 		.interface_ { 'interface' }
 		.ustring { 'ustring' }
 		.generic_struct_inst { 'generic_struct_inst' }
+		.rune { 'rune' }
 	}
 	return k_str
 }
@@ -687,7 +741,7 @@ pub mut:
 	default_expr     FExpr
 	has_default_expr bool
 	default_val      string
-	attrs            []string
+	attrs            []Attr
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
@@ -704,6 +758,11 @@ pub struct ArrayFixed {
 pub:
 	nr_dims   int
 	size      int
+pub mut:
+	elem_type Type
+}
+
+pub struct Chan {
 pub mut:
 	elem_type Type
 }

@@ -177,7 +177,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	return res.join(''), needs_braces
 }
 
-// string representaiton of expr
+// string representation of expr
 pub fn (x Expr) str() string {
 	match x {
 		BoolLiteral {

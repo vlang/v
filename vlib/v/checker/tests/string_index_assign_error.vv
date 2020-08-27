@@ -1,0 +1,4 @@
+fn main() {
+    mut a := 'V is great!!'
+    a[0] = `R`
+}

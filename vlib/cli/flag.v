@@ -26,7 +26,7 @@ pub fn (flags []Flag) get_all_found() []Flag {
 
 pub fn (flag Flag) get_bool() ?bool {
 	if flag.flag != .bool {
-		return error('invalid flag type')
+		return error('Invalid flag type')
 	}
 	return flag.value == 'true'
 }
@@ -47,7 +47,7 @@ pub fn (flags []Flag) get_bool_or(name string, or_value bool) bool {
 
 pub fn (flag Flag) get_int() ?int {
 	if flag.flag != .int {
-		return error('invalid flag type')
+		return error('Invalid flag type')
 	}
 	return flag.value.int()
 }
@@ -68,7 +68,7 @@ pub fn (flags []Flag) get_int_or(name string, or_value int) int {
 
 pub fn (flag Flag) get_float() ?f64 {
 	if flag.flag != .float {
-		return error('invalid flag type')
+		return error('Invalid flag type')
 	}
 	return flag.value.f64()
 }
@@ -89,7 +89,7 @@ pub fn (flags []Flag) get_float_or(name string, or_value f64) f64 {
 
 pub fn (flag Flag) get_string() ?string {
 	if flag.flag != .string {
-		return error('invalid flag type')
+		return error('Invalid flag type')
 	}
 	return flag.value
 }
@@ -148,7 +148,7 @@ fn (mut flag Flag) parse_raw(args []string) ?[]string {
 		flag.value = args[1]
 		return args[2..]
 	}
-	return error('missing argument for $flag.name')
+	return error('Missing argument for `$flag.name`')
 }
 
 fn (mut flag Flag) parse_bool(args []string) ?[]string {
@@ -171,7 +171,7 @@ fn (flags []Flag) get(name string) ?Flag {
 			return flag
 		}
 	}
-	return error('flag $name not found.')
+	return error('Flag `$name` not found')
 }
 
 fn (flags []Flag) contains(name string) bool {
@@ -183,8 +183,12 @@ fn (flags []Flag) contains(name string) bool {
 	return false
 }
 
-fn (mut flags []Flag) sort() {
-	flags.sort_with_compare(fn (a, b &Flag) int {
-		return compare_strings(&a.name, &b.name)
-	})
+fn (flags []Flag) have_abbrev() bool {
+	mut have_abbrev := false
+	for flag in flags {
+		if flag.abbrev != '' {
+			have_abbrev = true
+		}
+	}
+	return have_abbrev
 }

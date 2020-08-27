@@ -1,24 +1,24 @@
-vlib/v/checker/tests/division_by_zero_int_err.v:2:12: error: division by zero
+vlib/v/checker/tests/division_by_zero_int_err.vv:2:12: error: division by zero
     1 | fn main() {
     2 |     println(1/0)
       |               ^
     3 |     println(1/0x0)
     4 |     println(1/0b0)
-vlib/v/checker/tests/division_by_zero_int_err.v:3:12: error: division by zero
+vlib/v/checker/tests/division_by_zero_int_err.vv:3:12: error: division by zero
     1 | fn main() {
     2 |     println(1/0)
     3 |     println(1/0x0)
       |               ~~~
     4 |     println(1/0b0)
     5 |     println(1/0o0)
-vlib/v/checker/tests/division_by_zero_int_err.v:4:12: error: division by zero
+vlib/v/checker/tests/division_by_zero_int_err.vv:4:12: error: division by zero
     2 |     println(1/0)
     3 |     println(1/0x0)
     4 |     println(1/0b0)
       |               ~~~
     5 |     println(1/0o0)
     6 | }
-vlib/v/checker/tests/division_by_zero_int_err.v:5:12: error: division by zero
+vlib/v/checker/tests/division_by_zero_int_err.vv:5:12: error: division by zero
     3 |     println(1/0x0)
     4 |     println(1/0b0)
     5 |     println(1/0o0)

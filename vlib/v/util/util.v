@@ -7,14 +7,12 @@ import os
 import v.pref
 
 pub const (
-	v_version = '0.1.28'
+	v_version = '0.1.29'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings',
-		'builtin',
-	]
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
 )
 
 pub const (
@@ -25,7 +23,7 @@ pub const (
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
@@ -97,7 +95,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)

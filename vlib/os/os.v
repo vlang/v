@@ -39,7 +39,7 @@ pub fn read_file(path string) ?string {
 		mut str := malloc(fsize + 1)
 		C.fread(str, fsize, 1, fp)
 		str[fsize] = 0
-		return string(str,fsize)
+		return str.vstring_with_len(fsize)
 	}
 }
 
@@ -75,9 +75,8 @@ pub fn cp(old, new string) ? {
 	$if windows {
 		w_old := old.replace('/', '\\')
 		w_new := new.replace('/', '\\')
-		C.CopyFile(w_old.to_wide(), w_new.to_wide(), false)
-		result := C.GetLastError()
-		if result != 0 {
+		if C.CopyFile(w_old.to_wide(), w_new.to_wide(), false) == 0 {
+			result := C.GetLastError()
 			return error_with_code('failed to copy $old to $new', int(result))
 		}
 	} $else {
@@ -88,9 +87,9 @@ pub fn cp(old, new string) ? {
 		fp_to := C.open(charptr(new.str), C.O_WRONLY | C.O_CREAT | C.O_TRUNC, C.S_IWUSR | C.S_IRUSR)
 		if fp_to < 0 { // Check if file opened (permissions problems ...)
 			C.close(fp_from)
-			return error_with_code('cp: failed to write to $new', int(fp_to))
+			return error_with_code('cp (permission): failed to write to $new (fp_to: $fp_to)', int(fp_to))
 		}
-		mut buf := [1024]byte
+		mut buf := [1024]byte{}
 		mut count := 0
 		for {
 			// FIXME: use sizeof, bug: 'os__buf' undeclared
@@ -110,6 +109,8 @@ pub fn cp(old, new string) ? {
 		if C.chmod(charptr(new.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $new', int(-1))
 		}
+		C.close(fp_to)
+		C.close(fp_from)
 	}
 }
 
@@ -512,23 +513,6 @@ pub fn is_executable(path string) bool {
   return C.access(charptr(path.str), x_ok) != -1
 }
 
-// `is_writable_folder` - `folder` exists and is writable to the process
-pub fn is_writable_folder(folder string) ?bool {
-	if !os.exists(folder) {
-		return error('`$folder` does not exist')
-	}
-	if !os.is_dir(folder) {
-		return error('`folder` is not a folder')
-	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check')
-	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
-		return error('cannot write to folder `$folder`: $err')
-	}
-	f.close()
-	os.rm(tmp_perm_check)
-	return true
-}
-
 // `is_writable` returns `true` if `path` is writable.
 pub fn is_writable(path string) bool {
   $if windows {
@@ -639,7 +623,7 @@ pub fn dir(path string) string {
 
 pub fn base_dir(path string) string {
 	posx := path.last_index(path_separator) or {
-		return path
+		return path.clone()
 	}
 	// NB: *without* terminating /
 	return path[..posx]
@@ -691,7 +675,7 @@ pub fn get_raw_line() string {
 				}
 				offset++
 			}
-			return string(buf, offset)
+			return buf.vstring_with_len(offset)
 		}
 	} $else {
 		max := size_t(0)
@@ -876,7 +860,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	$if windows {
 		max := 512
@@ -914,7 +898,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	$if freebsd {
 		mut result := vcalloc(max_path_len)
@@ -923,7 +907,7 @@ pub fn executable() string {
 		unsafe {
 			C.sysctl(mib.data, 4, result, &size, 0, 0)
 		}
-		return string(result)
+		return unsafe { result.vstring() }
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
 	$if openbsd {}
@@ -936,7 +920,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		return string(result,count)
+		return result.vstring_with_len(count)
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)
@@ -945,7 +929,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		return string(result,count)
+		return unsafe { result.vstring_with_len(count) }
 	}
 	return executable_fallback()
 }
@@ -983,7 +967,7 @@ fn executable_fallback() string {
 // the absolute path of the executable if found
 pub fn find_abs_path_of_executable(exepath string) ?string {
 	if os.is_abs_path(exepath) {
-		return exepath
+		return os.real_path(exepath)
 	}
 	mut res := ''
 	env_path_delimiter := if os.user_os() == 'windows' { ';' } else { ':' }
@@ -996,7 +980,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		}
 	}
 	if res.len>0 {
-		return res
+		return os.real_path(res)
 	}
 	return error('failed to find executable')
 }
@@ -1074,7 +1058,7 @@ pub fn getwd() string {
 		if C.getcwd(charptr(buf), 512) == 0 {
 			return ''
 		}
-		return string(buf)
+		return unsafe { buf.vstring() }
 	}
 }
 
@@ -1097,7 +1081,7 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	}
-	return string(fullpath)
+	return unsafe { fullpath.vstring() }
 }
 
 // is_abs_path returns true if `path` is absolute.
@@ -1165,7 +1149,7 @@ pub fn walk(path string, f fn(path string)) {
 	return
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn signal(signum int, handler voidptr) {
 	unsafe {
 		C.signal(signum, handler)
@@ -1274,8 +1258,11 @@ pub fn temp_dir() string {
 			}
 		}
 	}
-	if path == '' {
-		path = os.cache_dir()
+	$if android {
+		// TODO test+use '/data/local/tmp' on Android before using cache_dir()
+		if path == '' {
+			path = os.cache_dir()
+		}
 	}
 	if path == '' {
 		path = '/tmp'

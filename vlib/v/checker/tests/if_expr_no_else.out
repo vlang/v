@@ -1,4 +1,4 @@
-vlib/v/checker/tests/if_expr_no_else.v:2:9: error: `if` expression needs `else` clause
+vlib/v/checker/tests/if_expr_no_else.vv:2:9: error: `if` expression needs `else` clause
     1 | fn main() {
     2 |     _ = if true { 1 }
       |         ~~

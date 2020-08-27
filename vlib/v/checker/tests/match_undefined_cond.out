@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_undefined_cond.v:4:15: error: undefined ident: `Asd`
+vlib/v/checker/tests/match_undefined_cond.vv:4:15: error: undefined ident: `Asd`
     2 |
     3 | fn main() {
     4 |     res := match Asd {

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/enum_field_value_overflow.v:3:10: error: enum value `2147483648` overflows int
+vlib/v/checker/tests/enum_field_value_overflow.vv:3:10: error: enum value `2147483648` overflows int
     1 | enum Color {
     2 |     red
     3 |     green = 2147483648

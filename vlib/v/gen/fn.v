@@ -7,10 +7,10 @@ import v.ast
 import v.table
 import v.util
 
-pub fn kek_cheburek() {
-}
-
 fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
+	// TODO For some reason, build fails with autofree with this line
+	// as it's only informative, comment it for now
+	// g.gen_attrs(it.attrs)
 	if it.language == .c {
 		// || it.no_body {
 		return
@@ -33,9 +33,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// g.cur_fn = it
 	fn_start_pos := g.out.len
-	msvc_attrs := g.write_fn_attrs()
+	g.write_v_source_line_info(it.pos)
+	msvc_attrs := g.write_fn_attrs(it.attrs)
 	// Live
-	is_livefn := 'live' in g.attrs
+	is_livefn := it.attrs.contains('live')
 	is_livemain := g.pref.is_livemain && is_livefn
 	is_liveshared := g.pref.is_liveshared && is_livefn
 	is_livemode := g.pref.is_livemain || g.pref.is_liveshared
@@ -142,7 +143,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
 	if g.pref.is_prof {
-		g.profile_fn(it.name)
+		g.profile_fn(it)
 	}
 	g.stmts(it.stmts)
 	//
@@ -337,6 +338,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_filter(node)
 				return
 			}
+			'sort' {
+				g.gen_array_sort(node)
+				return
+			}
 			'insert' {
 				g.gen_array_insert(node)
 				return
@@ -449,19 +454,42 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	is_json_decode := name == 'json.decode'
 	g.is_json_fn = is_json_encode || is_json_decode
 	mut json_type_str := ''
+	mut json_obj := ''
 	if g.is_json_fn {
-		if name == 'json.encode' {
-			g.write('json__json_print(')
+		json_obj = g.new_tmp_var()
+		mut tmp2 := ''
+		cur_line := g.go_before_stmt(0)
+		if is_json_encode {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
+
+			// `json__encode` => `json__encode_User`
+			encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
+			g.writeln('// json.encode')
+			g.write('cJSON* $json_obj = ${encode_name}(')
+			g.call_args(node.args, node.expected_arg_types)
+			g.writeln(');')
+			tmp2 = g.new_tmp_var()
+			g.writeln('string $tmp2 = json__json_print($json_obj);')
 		} else {
-			g.insert_before_stmt('// json.decode')
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)
-			sym := g.table.get_type_symbol(ast_type.typ)
-			name += '_' + sym.name
+			typ := c_name(g.table.get_type_symbol(ast_type.typ).name)
+			fn_name := c_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
+			g.writeln('// json.decode')
+			g.write('cJSON* $json_obj = json__json_parse(')
+			// Skip the first argument in json.decode which is a type
+			// its name was already used to generate the function call
+			g.call_args(node.args[1..], node.expected_arg_types)
+			g.writeln(');')
+			tmp2 = g.new_tmp_var()
+			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
+		g.write('cJSON_Delete($json_obj);')
+		g.write('\n$cur_line')
+		name = ''
+		json_obj = tmp2
 	}
 	if node.language == .c {
 		// Skip "C."
@@ -469,10 +497,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = util.no_dots(name[2..])
 	} else {
 		name = c_name(name)
-	}
-	if is_json_encode {
-		// `json__encode` => `json__encode_User`
-		name += '_' + util.no_dots(json_type_str)
 	}
 	if node.generic_type != table.void_type && node.generic_type != 0 {
 		// `foo<int>()` => `foo_int()`
@@ -493,22 +517,28 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	*/
 	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	/*
-	if g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) {
+	free_tmp_arg_vars := g.autofree && g.pref.experimental && node.args.len > 0 && !node.args[0].typ.has_flag(.optional)
+	if free_tmp_arg_vars {
+		g.tmp_idxs = []int{cap: 10} // TODO perf
 		for i, arg in node.args {
 			if arg.typ != table.string_type {
 				continue
 			}
-			if arg.expr is ast.Ident {
+			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
 				continue
 			}
-			t := g.new_tmp_var()
+			t := '_arg_expr_${name}_$i' // g.new_tmp_var()
+			g.called_fn_name = name
+			/*
 			g.write('string $t = ')
 			g.expr(arg.expr)
-			g.writeln('// to free $i ')
+			g.writeln('; // to free $i ')
+			*/
+			str_expr := g.write_expr_to_string(arg.expr)
+			g.insert_before_stmt('string $t = $str_expr; // to free $i ')
+			g.tmp_idxs << i
 		}
 	}
-	*/
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type {
 		typ := node.args[0].typ
@@ -570,20 +600,17 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write(')')
 	} else {
 		g.write('${g.get_ternary_name(name)}(')
-		if is_json_decode {
-			g.write('json__json_parse(')
-			// Skip the first argument in json.decode which is a type
-			// its name was already used to generate the function call
-			g.call_args(node.args[1..], node.expected_arg_types)
+		if g.is_json_fn {
+			g.write(json_obj)
 		} else {
 			g.call_args(node.args, node.expected_arg_types)
 		}
 		g.write(')')
 	}
 	g.is_c_call = false
-	if g.is_json_fn {
-		g.write(')')
-		g.is_json_fn = false
+	g.is_json_fn = false
+	if free_tmp_arg_vars {
+		g.tmp_idxs.clear()
 	}
 }
 
@@ -612,6 +639,11 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 			}
 			if is_interface {
 				g.expr(arg.expr)
+			} else if g.autofree && g.pref.experimental && arg.typ == table.string_type &&
+				g.tmp_idxs.len > 0 && i in g.tmp_idxs {
+				// Save expressions in temp variables so that they can be freed later.
+				// `foo(str + str2) => x := str + str2; foo(x); x.free()`
+				g.write('_arg_expr_${g.called_fn_name}_$i')
 			} else {
 				g.ref_or_deref_arg(arg, expected_types[i])
 			}
@@ -699,10 +731,10 @@ fn (g &Gen) fileis(s string) bool {
 	return g.file.path.contains(s)
 }
 
-fn (mut g Gen) write_fn_attrs() string {
+fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 	mut msvc_attrs := ''
-	for attr in g.attrs {
-		match attr {
+	for attr in attrs {
+		match attr.name {
 			'inline' {
 				g.write('inline ')
 			}

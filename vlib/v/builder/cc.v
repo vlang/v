@@ -274,6 +274,12 @@ fn (mut v Builder) cc() {
 	if v.pref.is_prod {
 		args << optimization_options
 	}
+	if v.pref.is_prod && !debug_mode {
+		// sokol and other C libraries that use asserts 
+		// have much better performance when NDEBUG is defined
+		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+		args << '-DNDEBUG'
+	}
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
@@ -744,18 +750,18 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfile := '${path[..path.len-2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
 	res := os.exec(cmd) or {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
 		return
 	}

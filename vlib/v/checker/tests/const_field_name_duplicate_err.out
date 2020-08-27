@@ -1,4 +1,4 @@
-vlib/v/checker/tests/const_field_name_duplicate_err.v:3:2: error: duplicate const `aaa`
+vlib/v/checker/tests/const_field_name_duplicate_err.vv:3:2: error: duplicate const `aaa`
     1 | const (
     2 |     aaa = 1
     3 |     aaa = 2

@@ -1,3 +1,5 @@
+type MyInt int
+
 fn test_shift_operators() {
 	// check that shift works with all integer types
 	// as the right-hand side operand
@@ -63,4 +65,7 @@ fn test_shift_operators() {
 	assert e3 == b
 	e3 >>= u64(i)
 	assert e3 == a
+	// Test shifts with custom int types
+	x := MyInt(2)
+	assert x << 2 == 8
 }

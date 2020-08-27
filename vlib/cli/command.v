@@ -1,6 +1,6 @@
 module cli
 
-type FnCommandCallback fn (cmd Command)?
+type FnCommandCallback = fn (cmd Command) ?
 
 pub fn (f FnCommandCallback) str() string {
 	return 'FnCommandCallback=>' + ptr_str(f)
@@ -23,6 +23,7 @@ pub mut:
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
+	required_args   int
 	args            []string
 }
 
@@ -48,6 +49,7 @@ pub fn (cmd Command) str() string {
 	}
 	res << '	commands: $cmd.commands'
 	res << '	flags: $cmd.flags'
+	res << '	required_args: $cmd.required_args'
 	res << '	args: $cmd.args'
 	res << '}'
 	return res.join('\n')
@@ -78,13 +80,13 @@ pub fn (mut cmd Command) add_commands(commands []Command) {
 }
 
 pub fn (mut cmd Command) add_command(command Command) {
-	for existing_cmd in cmd.commands {
-		if existing_cmd.name == command.name {
-			println("command with the same name \'$command.name\' already exists")
-			exit(1)
-		}
+	mut subcmd := command
+	if cmd.commands.contains(subcmd.name) {
+		println('Command with the name `$subcmd.name` already exists')
+		exit(1)
 	}
-	cmd.commands << command
+	subcmd.parent = cmd
+	cmd.commands << subcmd
 }
 
 pub fn (mut cmd Command) add_flags(flags []Flag) {
@@ -94,11 +96,9 @@ pub fn (mut cmd Command) add_flags(flags []Flag) {
 }
 
 pub fn (mut cmd Command) add_flag(flag Flag) {
-	for existing_flag in cmd.flags {
-		if existing_flag.name == flag.name {
-			println("flag with the same name \'$flag.name\' already exists")
-			exit(1)
-		}
+	if cmd.flags.contains(flag.name) {
+		println('Flag with the name `$flag.name` already exists')
+		exit(1)
 	}
 	cmd.flags << flag
 }
@@ -109,15 +109,12 @@ pub fn (mut cmd Command) parse(args []string) {
 	}
 	cmd.add_default_commands()
 	if cmd.sort_flags {
-		cmd.flags.sort()
+		cmd.flags.sort(a.name < b.name)
 	}
 	if cmd.sort_commands {
-		cmd.commands.sort()
+		cmd.commands.sort(a.name < b.name)
 	}
 	cmd.args = args[1..]
-	for i in 0 .. cmd.commands.len {
-		cmd.commands[i].parent = cmd
-	}
 	if !cmd.disable_flags {
 		cmd.parse_flags()
 	}
@@ -126,10 +123,12 @@ pub fn (mut cmd Command) parse(args []string) {
 
 fn (mut cmd Command) add_default_flags() {
 	if !cmd.disable_help && !cmd.flags.contains('help') {
-		cmd.add_flag(help_flag(!cmd.flags.contains('h') && cmd.has_abbrev_flags()))
+		use_help_abbrev := !cmd.flags.contains('h') && cmd.flags.have_abbrev()
+		cmd.add_flag(help_flag(use_help_abbrev))
 	}
-	if cmd.version != '' && !cmd.flags.contains('version') {
-		cmd.add_flag(version_flag(!cmd.flags.contains('v') && cmd.has_abbrev_flags()))
+	if !cmd.disable_version && cmd.version != '' && !cmd.flags.contains('version') {
+		use_version_abbrev := !cmd.flags.contains('v') && cmd.flags.have_abbrev()
+		cmd.add_flag(version_flag(use_version_abbrev))
 	}
 }
 
@@ -137,7 +136,7 @@ fn (mut cmd Command) add_default_commands() {
 	if !cmd.disable_help && !cmd.commands.contains('help') && cmd.is_root() {
 		cmd.add_command(help_cmd())
 	}
-	if cmd.version != '' && !cmd.commands.contains('version') {
+	if !cmd.disable_version && cmd.version != '' && !cmd.commands.contains('version') {
 		cmd.add_command(version_cmd())
 	}
 }
@@ -150,18 +149,18 @@ fn (mut cmd Command) parse_flags() {
 		mut found := false
 		for i in 0 .. cmd.flags.len {
 			mut flag := &cmd.flags[i]
-			if flag.matches(cmd.args, cmd.has_abbrev_flags()) {
+			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
 				found = true
 				flag.found = true
-				cmd.args = flag.parse(cmd.args, cmd.has_abbrev_flags()) or {
-					println('failed to parse flag ${cmd.args[0]}: $err')
+				cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
+					println('Failed to parse flag `${cmd.args[0]}`: $err')
 					exit(1)
 				}
 				break
 			}
 		}
 		if !found {
-			println('invalid flag: ${cmd.args[0]}')
+			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
 			exit(1)
 		}
 	}
@@ -190,6 +189,12 @@ fn (mut cmd Command) parse_commands() {
 			cmd.execute_help()
 		}
 	} else {
+		if cmd.required_args > 0 {
+			if cmd.required_args > cmd.args.len {
+				println('Command `$cmd.name` needs at least $cmd.required_args arguments')
+				exit(1)
+			}
+		}
 		cmd.check_required_flags()
 		if int(cmd.pre_execute) > 0 {
 			cmd.pre_execute(*cmd) or {
@@ -210,16 +215,6 @@ fn (mut cmd Command) parse_commands() {
 	}
 }
 
-fn (cmd Command) has_abbrev_flags() bool {
-	mut has_abbrev := false
-	for flag in cmd.flags {
-		if flag.abbrev != '' {
-			has_abbrev = true
-		}
-	}
-	return has_abbrev
-}
-
 fn (cmd Command) check_help_flag() {
 	if !cmd.disable_help && cmd.flags.contains('help') {
 		help_flag := cmd.flags.get_bool('help') or {
@@ -233,7 +228,7 @@ fn (cmd Command) check_help_flag() {
 }
 
 fn (cmd Command) check_version_flag() {
-	if cmd.version != '' && cmd.flags.contains('version') {
+	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
 		version_flag := cmd.flags.get_bool('version') or {
 			return
 		} // ignore error and handle command normally
@@ -251,7 +246,7 @@ fn (cmd Command) check_required_flags() {
 	for flag in cmd.flags {
 		if flag.required && flag.value == '' {
 			full_name := cmd.full_name()
-			println("flag \'$flag.name\' is required by \'$full_name\'")
+			println('Flag `$flag.name` is required by `$full_name`')
 			exit(1)
 		}
 	}
@@ -274,7 +269,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error("command \'$name\' not found.")
+	return error('Command `$name` not found')
 }
 
 fn (cmds []Command) contains(name string) bool {
@@ -284,10 +279,4 @@ fn (cmds []Command) contains(name string) bool {
 		}
 	}
 	return false
-}
-
-fn (mut cmds []Command) sort() {
-	cmds.sort_with_compare(fn (a, b &Command) int {
-		return compare_strings(&a.name, &b.name)
-	})
 }

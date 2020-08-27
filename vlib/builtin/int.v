@@ -271,12 +271,12 @@ pub fn (n int) hex1() string {
 [inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
-	mut i := 0    
+	mut i := 0
 	for i=len-1; i>=0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }        
+		x := if d < 10 { d + `0` } else { d + 87 }
 		buf[i] = x
 		n = n >> 4
 	}
@@ -289,12 +289,12 @@ fn u64_to_hex(nn u64, len byte) string {
 [inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
 	for i=len-1; i>=0; i-- {
 		d := byte(n & 0xF)
-		x := if d < 10 { d + `0` } else { d + 87 }        
+		x := if d < 10 { d + `0` } else { d + 87 }
 		buf[i] = x
 		n = n >> 4
 		if n == 0 {
@@ -398,6 +398,23 @@ pub fn (c byte) str() string {
 	return str
 }
 
+/*
+type rune = int
+
+pub fn (r rune) str() string {
+	mut str := string{
+		str: malloc(2)
+		len: 1
+	}
+	unsafe {
+		str.str[0] = r
+		str.str[1] = `\0`
+	}
+
+	return str
+}
+*/
+
 pub fn (c byte) is_capital() bool {
 	return c >= `A` && c <= `Z`
 }
@@ -408,6 +425,19 @@ pub fn (b []byte) clone() []byte {
 	for i in 0..b.len {
 		res[i] = b[i]
 	}
+	return res
+}
+
+// TODO remove this once runes are implemented
+pub fn (b []byte) bytestr() string {
+	return bytes2string(b)
+}
+
+// TODO copy pasted from builder.v
+fn bytes2string(b []byte) string {
+	mut copy := b.clone()
+	copy << `\0`
+	res := tos(copy.data, copy.len-1)
 	return res
 }
 

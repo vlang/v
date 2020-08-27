@@ -113,11 +113,25 @@ pub fn print(s string) {
 const (
 	new_line_character = '\n'
 )
+
+//#include "@VROOT/vlib/darwin/darwin.m"
+//fn C.nsstring2(s string) voidptr
+//fn C.NSLog(x voidptr)
+//#include <asl.h>
+
+fn C.asl_log(voidptr, voidptr, int, charptr)
+
 pub fn println(s string) {
 	$if windows {
 		print(s)
 		print(new_line_character)
 	} $else {
+		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
+		/*
+		$if macos {
+			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
+		}
+		*/
 		//  TODO: a syscall sys_write on linux works, except for the v repl.
 		//  Probably it is a stdio buffering issue. Needs more testing...
 		//	$if linux {
@@ -136,7 +150,7 @@ __global nr_mallocs int=0
 
 fn looo(){} // TODO remove, [ pratt
 
-[unsafe_fn]
+[unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
 		panic('malloc(<=0)')
@@ -174,7 +188,7 @@ TODO
 //#include <malloc/malloc.h>
 //fn malloc_size(b byteptr) int
 
-[unsafe_fn]
+[unsafe]
 pub fn v_realloc(b byteptr, n u32) byteptr {
 	$if prealloc {
 		unsafe {
@@ -192,12 +206,12 @@ pub fn v_realloc(b byteptr, n u32) byteptr {
 	}
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
@@ -207,7 +221,7 @@ pub fn vcalloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn free(ptr voidptr) {
 	$if prealloc {
 		return

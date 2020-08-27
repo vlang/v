@@ -1,4 +1,4 @@
-vlib/v/checker/tests/lock_already_rlocked.v:11:8: error: `a` is already read-locked 
+vlib/v/checker/tests/lock_already_rlocked.vv:11:8: error: `a` is already read-locked 
     9 |     }
    10 |     rlock a {
    11 |         lock a {

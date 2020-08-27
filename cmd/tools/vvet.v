@@ -29,12 +29,27 @@ fn main() {
 		is_verbose: '-verbose' in args || '-v' in args
 	}
 	for path in paths {
-		if path.ends_with('.v') {
+		if !os.exists(path) {
+			eprintln('File/folder $path does not exist')
+			continue
+		}
+		if path.ends_with('_test.v') || (path.contains('/tests/') && !path.contains('vlib/v/vet/')) {
+			eprintln('skipping $path')
+			continue
+		}
+		if path.ends_with('.v') || path.ends_with('.vv') {
 			vet_options.vet_file(path)
 		} else if os.is_dir(path) {
 			vet_options.vprintln("vetting folder '$path'...")
-			files := os.walk_ext(path, '.v')
+			vfiles := os.walk_ext(path, '.v')
+			vvfiles := os.walk_ext(path, '.vv')
+			mut files := []string{}
+			files << vfiles
+			files << vvfiles
 			for file in files {
+				if file.ends_with('_test.v') || file.contains('/tests/') { // TODO copy pasta
+					continue
+				}
 				vet_options.vet_file(file)
 			}
 		}

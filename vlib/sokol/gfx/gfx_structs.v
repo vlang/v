@@ -8,21 +8,59 @@ pub struct C.sg_desc {
     pipeline_pool_size int
     pass_pool_size int
     context_pool_size int
-    /* GL specific */
+    context C.sg_context_desc
+   /*
+    // GL specific
     gl_force_gles2 bool
-    /* Metal-specific */
+    // Metal-specific
     mtl_device voidptr
     mtl_renderpass_descriptor_cb fn() voidptr
     mtl_drawable_cb fn() voidptr
     mtl_global_uniform_buffer_size int
     mtl_sampler_cache_size int
-    /* D3D11-specific */
+    // D3D11-specific
     d3d11_device voidptr
     d3d11_device_context voidptr
     d3d11_render_target_view_cb fn() voidptr
     d3d11_depth_stencil_view_cb fn() voidptr
+   */
     _end_canary u32
 }
+
+
+pub struct C.sg_context_desc {
+	/*
+    sg_pixel_format color_format;
+    sg_pixel_format depth_format;
+    int sample_count;
+    sg_wgpu_context_desc wgpu;
+   */
+  sample_count int
+gl     C.sg_gl_context_desc
+metal    C.sg_mtl_context_desc
+d3d11    C.sg_d3d11_context_desc
+
+    color_format PixelFormat
+    depth_format PixelFormat
+}
+
+pub struct C.sg_gl_context_desc {
+    gl_force_gles2 bool
+}
+
+pub struct C.sg_mtl_context_desc {
+    device voidptr
+    renderpass_descriptor_cb fn() voidptr
+    drawable_cb fn() voidptr
+}
+
+pub struct C.sg_d3d11_context_desc {
+   device voidptr
+    device_context voidptr
+    render_target_view_cb fn() voidptr
+    depth_stencil_view_cb fn() voidptr
+}
+
 
 pub struct C.sg_pipeline_desc {
 pub mut:
@@ -383,6 +421,7 @@ pub struct C.sg_stencil_state {
 }
 
 pub struct C.sg_blend_state {
+pub mut:
     enabled bool
     src_factor_rgb BlendFactor
     dst_factor_rgb BlendFactor
