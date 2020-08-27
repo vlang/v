@@ -128,7 +128,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 	// allocate exp+32 chars for the return string
 	//mut res := []byte{len:exp+32,init:`0`}
-	mut res := [`0`].repeat(exp+32) // TODO: Slow!! is there other possibilities to allocate this?
+	mut res := []byte{len: exp+32, init: 0}
 	mut r_i := 0  // result string buffer index
 
 	//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -182,7 +182,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 		}
 		res[r_i] = 0
 		//println("result: [${tos(&res[0],r_i)}]")
-		return tos(&res[0],r_i)
+		return tos(res.data, r_i)
 	} else {
 		if dec_digit > 0 {
 			mut c := 0
@@ -193,7 +193,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 			}
 			res[r_i] = 0
 		}
-		return tos(&res[0],r_i)
+		return tos(res.data, r_i)
 	}
 }
 

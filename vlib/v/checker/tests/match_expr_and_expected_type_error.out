@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_expr_and_expected_type_error.vv:2:1: error: cannot use type `byte` as type `string`
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:2:1: error: cannot use type `rune` as type `string`
     1 | ch := `a`
     2 | match ch {
       | ~~~~~~~~~~
