@@ -636,9 +636,10 @@ fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 				g.expr(arg.expr)
 			} else if use_tmp_var_autofree {
 				for name in g.tmp_arg_vars_to_free {
-					// Save expressions in temp variables so that they can be freed later.
+					// We saved expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
 					// g.write('_arg_expr_${g.called_fn_name}_$i')
+					// Use these variables here.
 					if name.contains('_$i') {
 						g.write(name)
 					}
