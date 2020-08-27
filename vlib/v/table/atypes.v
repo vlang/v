@@ -259,16 +259,20 @@ pub const (
 	// t_type_idx       = 23
 	any_flt_type_idx = 24
 	any_int_type_idx = 25
+	sizet_type_idx   = 26
+	rune_type_idx    = 27
 )
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx]
+		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
 	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, any_flt_type_idx]
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, any_flt_type_idx,
+		rune_type_idx,
+	]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
@@ -300,6 +304,7 @@ pub const (
 	// t_type       = new_type(t_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
 	any_int_type = new_type(any_int_type_idx)
+	rune_type    = new_type(rune_type_idx)
 )
 
 pub const (

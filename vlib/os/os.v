@@ -16,7 +16,7 @@ pub fn read_bytes(path string) ?[]byte {
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
-	mut res := [`0`].repeat(fsize)
+	mut res := [byte(`0`)].repeat(fsize)
 	nr_read_elements := C.fread(res.data, fsize, 1, fp)
 	C.fclose(fp)
 	return res[0..nr_read_elements * fsize]

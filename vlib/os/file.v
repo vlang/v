@@ -72,7 +72,8 @@ pub fn (f &File) read_bytes(size int) []byte {
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f &File) read_bytes_at(size, pos int) []byte {
-	mut arr := [`0`].repeat(size)
+	//mut arr := [`0`].repeat(size)
+	mut arr := []byte{ len:size }
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)

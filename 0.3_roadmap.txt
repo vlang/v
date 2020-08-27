@@ -17,4 +17,5 @@
 - struct and interface embedding
 - vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
 - method expressions with an explicit receiver as the first argument
+- fix all remaining generics issues (`foo(5)` instead of `foo<int>(5)` etc)
 

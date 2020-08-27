@@ -52,7 +52,7 @@ pub fn (mut b Builder) go_back(n int) {
 
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
-	copy << `\0`
+	copy << byte(`\0`)
 	res := tos(copy.data, copy.len-1)
 	return res
 }
