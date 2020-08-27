@@ -55,7 +55,7 @@ fn greet_func(cmd Command) {
 			}
 			else {
 				println('Unsupported language')
-				println('Supported are `englisch`, `german` and `dutch`.')
+				println('Supported languages are `english`, `german` and `dutch`.')
 				break
 			}
 		}
