@@ -55,7 +55,7 @@ fn (app App) update_from_master() {
 		app.git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
 	} else {
 		// pull latest
-		app.git_command('pull origin master')
+		app.git_command('pull https://github.com/vlang/v master')
 	}
 }
 
