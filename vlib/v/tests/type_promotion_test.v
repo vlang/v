@@ -80,3 +80,21 @@ fn test_f32_int() {
 	d := u64(300)
 	assert d + c == 316.75
 }
+
+fn test_rune() {
+	a := 3
+	mut b := rune(67)
+	b = a
+	assert b == rune(3)
+	b = rune(67)
+	mut x := 5
+	x = int(b)
+	assert x == 67
+	c := b + a
+	assert c == rune(70)
+	assert typeof(c) == 'rune'
+	d := i64(12)
+	e := b + d
+	assert e == i64(79)
+	assert typeof(e) == 'i64'
+}
