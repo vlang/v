@@ -141,24 +141,18 @@ os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 				return error('Destination file path already exist')
 			}
 		}
-		os.cp(source_path, adjusted_path) or {
-			return error(err)
-		}
+		os.cp(source_path, adjusted_path)?
 		return
 	}
 	if !os.is_dir(dest_path) {
 		return error('Destination path is not a valid directory')
 	}
-	files := os.ls(source_path) or {
-		return error(err)
-	}
+	files := os.ls(source_path)?
 	for file in files {
 		sp := os.join_path(source_path, file)
 		dp := os.join_path(dest_path, file)
 		if os.is_dir(sp) {
-			os.mkdir(dp) or {
-				return error(err)
-			}
+			os.mkdir(dp)?
 		}
 		cp_all(sp, dp, overwrite) or {
 			os.rmdir(dp)
@@ -170,12 +164,8 @@ os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 // mv_by_cp first copies the source file, and if it is copied successfully, deletes the source file.
 // may be used when you are not sure that the source and target are on the same mount/partition.
 pub fn mv_by_cp(source string, target string) ? {
-	os.cp(source, target) or {
-		return error(err)
-	}
-	os.rm(source) or {
-		return error(err)
-	}
+	os.cp(source, target)?
+	os.rm(source)?
 }
 
 // vfopen returns an opened C file, given its path and open mode.
@@ -204,17 +194,13 @@ pub fn fileno(cfile voidptr) int {
 
 // read_lines reads the file in `path` into an array of lines.
 pub fn read_lines(path string) ?[]string {
-	buf := read_file(path) or {
-		return error(err)
-	}
+	buf := read_file(path)?
 	return buf.split_into_lines()
 }
 
 // read_ulines reads the file in `path` into an array of ustring lines.
 fn read_ulines(path string) ?[]ustring {
-	lines := read_lines(path) or {
-		return error(err)
-	}
+	lines := read_lines(path)?
 	// mut ulines := new_array(0, lines.len, sizeof(ustring))
 	mut ulines := []ustring{}
 	for myline in lines {
@@ -590,9 +576,7 @@ pub fn rmdir_recursive(path string) {
 // rmdir_all recursively removes the specified directory.
 pub fn rmdir_all(path string) ? {
 	mut ret_err := ''
-	items := os.ls(path) or {
-		return error(err)
-	}
+	items := os.ls(path)?
 	for item in items {
 		if os.is_dir(os.join_path(path, item)) {
 			rmdir_all(os.join_path(path, item))
@@ -822,18 +806,14 @@ pub fn home_dir() string {
 
 // write_file writes `text` data to a file in `path`.
 pub fn write_file(path, text string) ? {
-	mut f := os.create(path) or {
-		return error(err)
-	}
+	mut f := os.create(path)?
 	f.write(text)
 	f.close()
 }
 
 // write_file_array writes the data in `buffer` to a file in `path`.
 pub fn write_file_array(path string, buffer array) ? {
-	mut f := os.create(path) or {
-		return error(err)
-	}
+	mut f := os.create(path)?
 	f.write_bytes_at(buffer.data, (buffer.len * buffer.element_size), 0)
 	f.close()
 }
