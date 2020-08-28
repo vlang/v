@@ -445,9 +445,6 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_branch_stmt(node)
 		}
 		ast.CompFor {}
-		// ast.CompIf {
-		// 	// skip: JS has no compile time if
-		// }
 		ast.ConstDecl {
 			g.gen_const_decl(node)
 		}
