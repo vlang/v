@@ -593,6 +593,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				return_type = promoted_type
 			}
 		}
+		.gt, .lt, .ge, .le {
+			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
+				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
+			}
+		}
 		.left_shift {
 			if left.kind == .array {
 				// `array << elm`
