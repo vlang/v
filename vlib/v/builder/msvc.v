@@ -138,19 +138,19 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') or {
 		return error(err)
 	}
-	res_output := res.output.trim_space().trim_right('\r\n')
+	path := res.output.trim_space().trim_right('\r\n')
 	// println('res: "$res"')
-	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+	version := os.read_file('$path\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		// println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
 	// println('version: $version')
 	v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
-	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
+	lib_path := '$path\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
+	include_path := '$path\\VC\\Tools\\MSVC\\$v\\include'
 	if os.exists('$lib_path\\vcruntime.lib') {
-		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
+		p := '$path\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
 		// println('$lib_path $include_path')
 		return VsInstallation{
 			exe_path: p
