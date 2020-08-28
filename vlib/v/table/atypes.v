@@ -810,6 +810,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		res = res.replace('map_string_', 'map[string]')
 		map_start = 'map[string]'
 	}
+	if sym.kind == .chan || 'chan_' in res {
+		res = res.replace('chan_', '')
+	}
 	// mod.submod.submod2.Type => submod2.Type
 	if res.contains('.') {
 		vals := res.split('.')
@@ -826,6 +829,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 		if sym.kind == .map && !res.starts_with('map') {
 			res = map_start + res
 		}
+		if sym.kind == .chan && !res.starts_with('chan') {
+			res = 'chan ' + res
+		}
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
@@ -838,11 +844,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 			res = '?' + res
 		}
 	}
-	/*
-	if res.starts_with(cur_mod +'.') {
-	res = res[cur_mod.len+1.. ]
-	}
-	*/
 	return res
 }
 

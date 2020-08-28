@@ -43,13 +43,18 @@ fn test_all() {
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')), {
+	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
+		{
 		basepath: valgrind_test_path
 	})
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
-		exe_filename := '$wrkdir/x'
+		if !test.contains('1.') {
+			bench.skip()
+			eprintln(bench.step_message_skip(test))
+			continue
+		}
 		//
 		if test in skip_valgrind_files {
 			$if !noskip ? {
@@ -59,8 +64,9 @@ fn test_all() {
 			}
 		}
 		//
+		exe_filename := '$wrkdir/x'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
+		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -experimental -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()

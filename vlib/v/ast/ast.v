@@ -579,8 +579,10 @@ pub:
 // #include etc
 pub struct HashStmt {
 pub:
-	val string
 	mod string
+	pos token.Position
+pub mut:
+	val string
 }
 
 /*
