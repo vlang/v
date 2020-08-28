@@ -10,10 +10,7 @@ pub const (
 
 // read_bytes returns all bytes read from file in `path`.
 pub fn read_bytes(path string) ?[]byte {
-	mut fp := vfopen(path, 'rb')
-	if isnil(fp) {
-		return error('failed to open file "$path"')
-	}
+	mut fp := vfopen(path, 'rb')?
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
@@ -27,10 +24,7 @@ pub fn read_bytes(path string) ?[]byte {
 // read_file reads the file in `path` and returns the contents.
 pub fn read_file(path string) ?string {
 	mode := 'rb'
-	mut fp := vfopen(path, mode)
-	if isnil(fp) {
-		return error('failed to open file "$path"')
-	}
+	mut fp := vfopen(path, mode)?
 	defer { C.fclose(fp) }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
@@ -181,11 +175,17 @@ pub fn mv_by_cp(source string, target string) ? {
 // vfopen returns an opened C file, given its path and open mode.
 // NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
-pub fn vfopen(path, mode string) &C.FILE {
+pub fn vfopen(path, mode string) ?&C.FILE {
+	mut fp = voidptr(0)
 	$if windows {
-		return C._wfopen(path.to_wide(), mode.to_wide())
+		fp = C._wfopen(path.to_wide(), mode.to_wide())
 	} $else {
-		return C.fopen(charptr(path.str), charptr(mode.str))
+		fp = C.fopen(charptr(path.str), charptr(mode.str))
+	}
+	if isnil(fp) {
+		return error('failed to open file "$path"')
+	} else {
+		return fp
 	}
 }
 
@@ -843,10 +843,7 @@ pub fn read_file_array<T>(path string) []T {
 	a := T{}
 	tsize := int(sizeof(a))
 	// prepare for reading, get current file size
-	mut fp := vfopen(path, 'rb')
-	if isnil(fp) {
-		return array{}
-	}
+	mut fp := vfopen(path, 'rb') or { return array{} }
 	C.fseek(fp, 0, C.SEEK_END)
 	fsize := C.ftell(fp)
 	C.rewind(fp)
@@ -1342,10 +1339,7 @@ pub fn open(path string) ?File {
 		}
 	}
   */
-	cfile := vfopen(path, 'rb')
-	if cfile == voidptr(0) {
-		return error('failed to open file "$path"')
-	}
+	cfile := vfopen(path, 'rb')?
 	fd := fileno(cfile)
 	return File {
 		cfile: cfile
@@ -1379,10 +1373,7 @@ pub fn create(path string) ?File {
 		}
 	}
   */
-	cfile := vfopen(path, 'wb')
-	if cfile == voidptr(0) {
-		return error('failed to create file "$path"')
-	}
+	cfile := vfopen(path, 'wb')?
 	fd := fileno(cfile)
 	return File {
 		cfile: cfile
