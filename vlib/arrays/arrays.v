@@ -71,12 +71,10 @@ pub fn shuffle<T>(mut a []T, n int) {
 	cnt := if n==0 { a.len-1 } else { n }
 	for i in 0..cnt {
 		x := rand.int_in_range(i,a.len)
-		if i != x {
-			// swap
-			a_i := a[i]
-			a[i] = a[x]
-			a[x] = a_i
-		}
+		// swap
+		a_i := a[i]
+		a[i] = a[x]
+		a[x] = a_i
 	}
 }
 

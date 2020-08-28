@@ -1,5 +1,6 @@
 module arrays
 
+import rand
 
 fn test_min() {
 	a := [8, 2, 6, 4]
@@ -56,31 +57,34 @@ fn test_idx_max() {
 
 
 fn test_shuffle() {
+	rand.seed([u32(1),2]) // seed verified for not producing false positives
+	
 	a := [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
 	mut b := a.clone()
 	mut c := a.clone()
 	shuffle<int>(mut b, 0)
 	shuffle<int>(mut c, 0)
-	assert a != b // false negative chance: 1/20!
-	assert a != c // false negative chance: 1/20!
-	assert b != c // false negative chance: 1/20!
+	assert a != b
+	assert a != c
+	assert b != c
 	
 	// test shuffling a slice
 	mut d := a.clone()
 	shuffle<int>(mut d[..15], 0)
-	assert d[..15] != a[..15] // false negative chance: 1/15!
+	assert d[..15] != a[..15]
 	assert d[15..] == a[15..]
 	
 	// test shuffling n items
 	mut e := a.clone()
 	shuffle<int>(mut e, 15)
-	assert e[..15] != a[..15] // false negative chance: 1/15!
-	assert e[15..] != a[15..] // false negative chance: TODO
+	assert e[..15] != a[..15]
+	assert e[15..] != a[15..]
 	
 	// test shuffling empty array
 	mut f := a.clone()
 	f.trim(0)
 	shuffle<int>(mut f,0)
+	assert f == []int{}
 }
 
 fn test_merge() {
