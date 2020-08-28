@@ -18,9 +18,21 @@ fn foo() {
 fn handle_strings(s, p string) {
 }
 
-fn str_expr() {
+fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
 	handle_strings('c' + 'd', 'e' + 'f')
+}
+
+struct Foo {
+	a int
+	b string
+}
+
+fn str_inter() {
+	a := 10
+	println('a = $a')
+	// foo := Foo{10, 'x' + 'x'}
+	// println('foo = $foo') // TODO
 }
 
 fn str_replace() {
@@ -35,7 +47,8 @@ fn str_replace() {
 fn main() {
 	println('start')
 	foo()
-	// str_expr()
+	str_tmp_expr()
+	str_inter()
 	// str_replace()
 	println('end')
 }

@@ -43,13 +43,19 @@ fn test_all() {
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')), {
+	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
+		{
 		basepath: valgrind_test_path
 	})
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
 		exe_filename := '$wrkdir/x'
+		if !test.starts_with('1.') {
+			bench.skip()
+			eprintln(bench.step_message_skip(test))
+			continue
+		}
 		//
 		if test in skip_valgrind_files {
 			$if !noskip ? {
