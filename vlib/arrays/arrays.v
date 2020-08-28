@@ -2,7 +2,7 @@ module arrays
 
 // Common arrays functions:
 // - min / max - return the value of the minumum / maximum
-// - idxmin / idxmax - return the index of the first minumum / maximum
+// - idx_min / idx_max - return the index of the first minumum / maximum
 // - shuffle - randomize array items order in place (allowing exit after n items)
 // - merge - combine two sorted arrays and maintain sorted order
 
@@ -34,9 +34,9 @@ pub fn max<T>(a []T) T {
 	return val
 }
 
-// idxmax returns the index of the first minimum
+// idx_min returns the index of the first minimum
 [direct_array_access]
-pub fn idxmin<T>(a []T) int {
+pub fn idx_min<T>(a []T) int {
 	if a.len==0 { panic('.idxmin called on an empty array') }
 	mut idx := 0
 	mut val := a[0]
@@ -49,9 +49,9 @@ pub fn idxmin<T>(a []T) int {
 	return idx
 }
 
-// idxmax returns the index of the first maximum
+// idx_max returns the index of the first maximum
 [direct_array_access]
-pub fn idxmax<T>(a []T) int {
+pub fn idx_max<T>(a []T) int {
 	if a.len==0 { panic('.idxmax called on an empty array') }
 	mut idx := 0
 	mut val := a[0]
