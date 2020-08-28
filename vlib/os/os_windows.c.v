@@ -281,7 +281,7 @@ pub fn exec(cmd string) ?Result {
 			break
 		}
 	}
-	soutput := read_data.str()
+	soutput := read_data.str().trim_space()
 	read_data.free()
 	exit_code := u32(0)
 	C.WaitForSingleObject(proc_info.h_process, C.INFINITE)
