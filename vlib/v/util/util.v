@@ -5,6 +5,7 @@ module util
 
 import os
 import v.pref
+import v.vmod
 
 pub const (
 	v_version = '0.1.29'
@@ -110,6 +111,17 @@ pub fn set_vroot_folder(vroot_path string) {
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+}
+
+pub fn resolve_vroot(str, dir string) ?string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(dir)
+	if vmod_file_location.vmod_file.len == 0 {
+		// There was no actual v.mod file found.
+		return error('To use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+	}
+	vmod_path := vmod_file_location.vmod_folder
+	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
