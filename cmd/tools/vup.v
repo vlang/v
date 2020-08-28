@@ -55,7 +55,7 @@ fn (app App) update_from_master() {
 		app.git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
 	} else {
 		// pull latest
-		app.git_command('pull origin master')
+		app.git_command('pull https://github.com/vlang/v master')
 	}
 }
 
@@ -66,7 +66,7 @@ fn (app App) recompile_v() {
 		println('> recompiling v itself with `$vself` ...')
 	}        
 	if self_result := os.exec(vself) {
-		println(self_result.output)
+		println(self_result.output.trim_space())
 		if self_result.exit_code == 0 {
 			return
 		}

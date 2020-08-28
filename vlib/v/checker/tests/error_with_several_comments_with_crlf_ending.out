@@ -1,4 +1,4 @@
-vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:9:2: error: undefined ident: `a` (use `:=` to assign a variable)
+vlib/v/checker/tests/error_with_several_comments_with_crlf_ending.vv:9:2: error: undefined ident: `a` (use `:=` to declare a variable)
     7 | fn main() {
     8 |     func1()
     9 |     a = 2
