@@ -138,7 +138,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') or {
 		return error(err)
 	}
-	res_output := res.output.trim_right('\r\n')
+	res_output := res.output.trim_space()
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		// println('Unable to find msvc version')
@@ -303,14 +303,14 @@ pub fn (mut v Builder) cc_msvc() {
 	// println('$cmd')
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
-		println(err)
+		println(err.trim_space())
 		verror('msvc error')
 		return
 	}
 	diff := time.ticks() - ticks
 	v.timing_message('C msvc', diff)
 	if res.exit_code != 0 {
-		verror(res.output)
+		verror(res.output.trim_space())
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -343,15 +343,15 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	// println('thirdparty cmd line: $cmd')
 	res := os.exec(cmd) or {
 		println('msvc: failed thirdparty object build cmd: $cmd')
-		verror(err)
+		verror(err.trim_space())
 		return
 	}
 	if res.exit_code != 0 {
 		println('msvc: failed thirdparty object build cmd: $cmd')
-		verror(res.output)
+		verror(res.output.trim_space())
 		return
 	}
-	println(res.output)
+	println(res.output.trim_space())
 }
 
 struct MsvcStringFlags {
