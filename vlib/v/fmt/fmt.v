@@ -1136,7 +1136,7 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 			}
 		}
 		.propagate {
-			f.write('?')
+			f.write(' ?')
 		}
 	}
 }

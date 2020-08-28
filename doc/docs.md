@@ -1635,7 +1635,7 @@ propagate the error:
 import net.http
 
 fn f(url string) ?string {
-    resp := http.get(url)?
+    resp := http.get(url) ?
     return resp.text
 }
 ```
