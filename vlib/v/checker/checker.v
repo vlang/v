@@ -2621,6 +2621,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		return info.typ
 	} else if ident.kind == .unresolved {
 		// first use
+		if ident.tok_kind == .assign && ident.is_mut {
+			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
+		}
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj1 := start_scope.find(ident.name) {
 			match mut obj1 as obj {
@@ -2731,7 +2734,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			ident.mod = saved_mod
 		}
 		if ident.tok_kind == .assign {
-			c.error('undefined ident: `$ident.name` (use `:=` to assign a variable)',
+			c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)',
 				ident.pos)
 		} else {
 			c.error('undefined ident: `$ident.name`', ident.pos)
