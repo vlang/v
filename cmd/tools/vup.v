@@ -66,7 +66,7 @@ fn (app App) recompile_v() {
 		println('> recompiling v itself with `$vself` ...')
 	}        
 	if self_result := os.exec(vself) {
-		println(self_result.output)
+		println(self_result.output.trim_space())
 		if self_result.exit_code == 0 {
 			return
 		}
