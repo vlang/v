@@ -14,12 +14,16 @@ const (
 	match_exhaustive_cutoff_limit = 10
 	enum_min                      = int(0x80000000)
 	enum_max                      = 0x7FFFFFFF
-	valid_comp_if_platforms       = ['windows', 'ios', 'mac', 'macos', 'mach', 'darwin', 'hpux',
-	 'gnu', 'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly',
-		'android', 'solaris', 'haiku', 'linux_or_macos', 'js', /* Compilers */ 'tinyc', 'clang',
-		'mingw', 'msvc', 'cplusplus', /* Other */ 'debug', 'test', 'glibc', 'prealloc',
-		'no_bounds_checking', 'x64', 'x32', 'little_endian', 'big_endian'
+)
+
+const (
+	valid_comp_if_os        = ['windows', 'ios', 'mac', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris', 'haiku',
+		'linux_or_macos',
 	]
+	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
+	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
 )
 
 pub struct Checker {
@@ -3015,24 +3019,22 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	is_ct := node.is_comptime
 	if_kind := if is_ct { '\$if' } else { 'if' }
-	mut expr_required := false
-	if c.expected_type != table.void_type {
-		// sym := c.table.get_type_symbol(c.expected_type)
-		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.source_name)
-		expr_required = true
-	}
+	expr_required := c.expected_type != table.void_type
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
 	mut require_return := false
 	mut branch_without_return := false
-	for i, branch in node.branches {
+	mut should_skip := false
+	mut should_skip_else := false
+	for i in 0 .. node.branches.len {
+		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
 			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
 			if is_ct {
-				c.comp_if_branch(branch.cond, branch.pos)
+				should_skip = c.comp_if_branch(branch.cond, branch.pos)
 			} else {
 				// check condition type is boolean
 				cond_typ := c.expr(branch.cond)
@@ -3081,7 +3083,23 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		c.stmts(branch.stmts)
+		if is_ct {
+			if node.has_else && i == node.branches.len - 1 {
+				if should_skip_else {
+					node.branches[i].stmts = []
+				} else {
+					c.stmts(branch.stmts)
+				}
+			} else if !should_skip {
+				c.stmts(branch.stmts)
+				should_skip_else = true
+			} else {
+				node.branches[i].stmts = []
+				should_skip = false
+			}
+		} else {
+			c.stmts(branch.stmts)
+		}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
@@ -3127,6 +3145,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 		}
+		// We need to check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				require_return = true
@@ -3149,35 +3168,42 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	if expr_required {
 		if !node.has_else {
-			c.error('`$if_kind` expression needs `else` clause', node.pos)
-			// dollar := if is_ct { '$' } else { '' }
-			// c.error('`${dollar}if` expression needs `${dollar}else` clause', node.pos)
+			d := if is_ct { '$' } else { '' }
+			c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
 		}
 		return node.typ
 	}
 	return table.bool_type
 }
 
-fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) ast.Expr {
+fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
 		ast.ParExpr {
-			c.comp_if_branch(cond.expr, pos)
+			return c.comp_if_branch(cond.expr, pos)
 		} ast.PrefixExpr {
 			if cond.op != .not {
-				// $if !windows
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-			c.comp_if_branch(cond.right, cond.pos)
+			return !c.comp_if_branch(cond.right, cond.pos)
 		} ast.PostfixExpr {
-			if cond.op != .question || cond.expr !is ast.Ident {
+			if cond.op != .question {
+				c.error('invalid \$if postfix operator', cond.pos)
+			} else if cond.expr is ast.Ident as ident {
+				return ident.name !in c.pref.compile_defines_all
+			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
 		} ast.InfixExpr {
 			match cond.op {
-				.and, .logical_or {
-					c.comp_if_branch(cond.left, cond.pos)
-					c.comp_if_branch(cond.right, cond.pos)
+				.and {
+					l := c.comp_if_branch(cond.left, cond.pos)
+					r := c.comp_if_branch(cond.right, cond.pos)
+					return l && r
+				} .logical_or {
+					l := c.comp_if_branch(cond.left, cond.pos)
+					r := c.comp_if_branch(cond.right, cond.pos)
+					return l || r
 				}
 				.key_is, .not_is {
 					// $if method.@type is string
@@ -3196,14 +3222,31 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) ast.Expr {
 				}
 			}
 		} ast.Ident {
-			if cond.name !in valid_comp_if_platforms {
-				c.error('invalid `\$if` platform', cond.pos)
+			if cond.name in valid_comp_if_os {
+				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', pos)
+				return cond.name != c.pref.os.str().to_lower() // TODO hack
+				// c.warn('$cond.name -- ${c.pref.os.str().to_lower()}', cond.pos)
+			} else if cond.name in valid_comp_if_compilers {
+				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
+			} else if cond.name in valid_comp_if_platforms { 
+				return false // TODO
+			} else if cond.name in valid_comp_if_other {
+				// TODO: This should probably be moved
+				match cond.name as name {
+					'js' { return c.pref.backend != .js }
+					'debug' { return !c.pref.is_debug }
+					'test' { return !c.pref.is_test }
+					'glibc' { return false } // TODO
+					'prealloc' { return !c.pref.prealloc }
+					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
+					else { return false }
+				}
 			}
 		} else {
 			c.error('invalid `\$if` condition', pos)
 		}
 	}
-	return cond
+	return false
 }
 
 fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {

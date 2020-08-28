@@ -67,6 +67,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				comments = []
 				break
 			}
+			if is_comptime { p.check(.dollar) }
 		}
 		// `if` or `else if`
 		p.check(.key_if)
@@ -139,8 +140,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			mut_name: mut_name
 		}
 		comments = p.eat_comments()
-		if is_comptime && p.tok.kind == .dollar && p.peek_tok.kind == .key_else {
-			p.next()
+		if is_comptime {
+			if p.tok.kind == .key_else {
+				p.error('use `\$else` instead of `else` in compile-time `if` branches')
+			}
+			if p.peek_tok.kind == .key_else {
+				p.check(.dollar)
+			}
 		}
 		if p.tok.kind != .key_else {
 			break

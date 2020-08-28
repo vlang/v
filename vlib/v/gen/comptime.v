@@ -139,6 +139,7 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 			match cond.op {
 				.and, .logical_or {
 					g.comp_if_expr(cond.left)
+					g.write(' $cond.op ')
 					g.comp_if_expr(cond.right)
 				}
 				.key_is, .not_is {

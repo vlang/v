@@ -471,13 +471,13 @@ pub mut:
 pub struct IfBranch {
 pub:
 	cond         Expr
-	stmts        []Stmt
 	pos          token.Position
 	body_pos     token.Position
 	comments     []Comment
 	left_as_name string // `name` in `if cond is SumType as name`
 	mut_name     bool // `if mut name is`
 pub mut:
+	stmts        []Stmt
 	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr
 }
 

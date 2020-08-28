@@ -32,11 +32,12 @@ pub enum Backend {
 }
 
 pub enum CompilerType {
+	gcc
 	tinyc
 	clang
 	mingw
 	msvc
-	gcc
+	cplusplus
 }
 
 const (
@@ -82,6 +83,7 @@ pub mut:
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
 	ccompiler           string // the name of the used C compiler
+	compiler_type       CompilerType // the parsed  to the compiler
 	third_party_option  string
 	building_v          bool
 	autofree            bool
@@ -374,6 +376,19 @@ pub fn backend_from_string(s string) ?Backend {
 		'x64' { return .x64 }
 		else { return error('Unknown backend type $s') }
 	}
+}
+
+// Helper function to convert string names to CC enum
+pub fn ccompiler_from_string(cc_str string) CompilerType {
+	if cc_str.len == 0 { return .gcc } // TODO
+	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
+	if '++'    in cc { return .cplusplus }
+	if 'tcc'   in cc { return .tinyc }
+	if 'tinyc' in cc { return .tinyc }
+	if 'clang' in cc { return .clang }
+	if 'mingw' in cc { return .mingw }
+	if 'msvc'  in cc { return .msvc  }
+	return .gcc
 }
 
 fn parse_define(mut prefs Preferences, define string) {
