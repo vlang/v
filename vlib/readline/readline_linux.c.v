@@ -129,9 +129,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
 
 // Returns the string from the utf8 ustring
 pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt) or {
-		return error(err)
-	}
+	s := r.read_line_utf8(prompt)?
 	return s.s
 }
 
@@ -139,9 +137,7 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 // Returns utf8 based ustring
 pub fn read_line_utf8(prompt string) ?ustring {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt) or {
-		return error(err)
-	}
+	s := r.read_line_utf8(prompt)?
 	return s
 }
 
@@ -149,9 +145,7 @@ pub fn read_line_utf8(prompt string) ?ustring {
 // Return string from utf8 ustring
 pub fn read_line(prompt string) ?string {
 	mut r := Readline{}
-	s := r.read_line(prompt) or {
-		return error(err)
-	}
+	s := r.read_line(prompt)?
 	return s
 }
 

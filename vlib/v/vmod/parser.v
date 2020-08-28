@@ -233,18 +233,14 @@ fn (mut p Parser) parse() ?Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1) or {
-							return error(err)
-						}
+						deps, idx := get_array_content(tokens, i + 1)?
 						mn.dependencies = deps
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1) or {
-								return error(err)
-							}
+							vals, idx := get_array_content(tokens, i + 1)?
 							mn.unknown[field_name] = vals
 							i = idx
 							continue

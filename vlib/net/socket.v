@@ -153,15 +153,9 @@ pub fn listen(port int) ?Socket {
 	$if debug {
 		println('net.listen($port)')
 	}
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
-		return error(err)
-	}
-	s.bind(port) or {
-		return error(err)
-	}
-	s.listen() or {
-		return error(err)
-	}
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
+	s.bind(port)?
+	s.listen()?
 	return s
 }
 
@@ -228,12 +222,8 @@ pub fn (s Socket) connect(address string, port int) ?int {
 
 // helper method to create socket and connect
 pub fn dial(address string, port int) ?Socket {
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
-		return error(err)
-	}
-	s.connect(address, port) or {
-		return error(err)
-	}
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
+	s.connect(address, port)?
 	return s
 }
 

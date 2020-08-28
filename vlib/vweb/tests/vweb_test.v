@@ -261,9 +261,7 @@ $config.content'
 	$if debug_net_socket_client ? {
 		eprintln('sending:\n$message')
 	}
-	client.send(message.str, message.len) or {
-		return error(err)
-	}
+	client.send(message.str, message.len)?
 	bytes, blen := client.recv(4096)
 	received := unsafe {bytes.vstring_with_len(blen)}
 	$if debug_net_socket_client ? {
