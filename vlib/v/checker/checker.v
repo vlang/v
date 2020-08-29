@@ -3027,8 +3027,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	node.typ = table.void_type
 	mut require_return := false
 	mut branch_without_return := false
-	mut should_skip := false
-	mut should_skip_else := false
+	mut should_skip := false // Whether the current branch should be skipped
+	mut should_skip_else := false // Whether the `else` branch (if it exists) should be skipped
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
@@ -3045,7 +3045,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					// void types are skipped, because they mean the var was initialized incorrectly
 					// (via missing function etc)
 					typ_sym := c.table.get_type_symbol(cond_typ)
-					c.error('non-bool type `$typ_sym.source_name` used as if condition', branch.pos)
+					c.error('non-bool type `$typ_sym.source_name` used as if condition',
+						branch.pos)
 				}
 			}
 		}
@@ -3086,19 +3087,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		if is_ct {
-			if node.has_else && i == node.branches.len - 1 {
+		if is_ct { // Skip checking if needed
+			if node.has_else && i == node.branches.len - 1 { // `else` branch
 				if should_skip_else {
 					node.branches[i].stmts = []
 				} else {
 					c.stmts(branch.stmts)
 				}
-			} else if !should_skip {
-				c.stmts(branch.stmts)
-				should_skip_else = true
-			} else {
+			} else if should_skip {
 				node.branches[i].stmts = []
-				should_skip = false
+				should_skip = false // Reset the value of `should_skip` for the next branch
+			} else {
+				c.stmts(branch.stmts)
+				should_skip_else = true // If a regular branch wasn't skipped, then `else` must be
 			}
 		} else {
 			c.stmts(branch.stmts)
@@ -3179,17 +3180,21 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	return table.bool_type
 }
 
+// comp_if_branch checks the condition of a compile-time `if` branch. It returns a `bool` that
+// tells us whether that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
 		ast.ParExpr {
 			return c.comp_if_branch(cond.expr, pos)
-		} ast.PrefixExpr {
+		}
+		ast.PrefixExpr {
 			if cond.op != .not {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
 			return !c.comp_if_branch(cond.right, cond.pos)
-		} ast.PostfixExpr {
+		}
+		ast.PostfixExpr {
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
 			} else if cond.expr is ast.Ident as ident {
@@ -3197,13 +3202,15 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
-		} ast.InfixExpr {
+		}
+		ast.InfixExpr {
 			match cond.op {
 				.and {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
 					return l && r
-				} .logical_or {
+				}
+				.logical_or {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
 					return l || r
@@ -3214,24 +3221,27 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					if cond.left !is ast.SelectorExpr || cond.right !is ast.Type {
 						c.error('invalid `\$if` condition', cond.pos)
 					}
-				} .eq, .ne {
+				}
+				.eq, .ne {
 					// $if method.args.len == 1
 					// TODO better checks here, will be done in comp. for PR
 					if cond.left !is ast.SelectorExpr || cond.right !is ast.IntegerLiteral {
 						c.error('invalid `\$if` condition', cond.pos)
 					}
-				} else {
+				}
+				else {
 					c.error('invalid `\$if` condition', cond.pos)
 				}
 			}
-		} ast.Ident {
+		}
+		ast.Ident {
 			if cond.name in valid_comp_if_os {
 				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', pos)
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
 				// c.warn('$cond.name -- ${c.pref.os.str().to_lower()}', cond.pos)
 			} else if cond.name in valid_comp_if_compilers {
 				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
-			} else if cond.name in valid_comp_if_platforms { 
+			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
 			} else if cond.name in valid_comp_if_other {
 				// TODO: This should probably be moved
@@ -3245,7 +3255,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					else { return false }
 				}
 			}
-		} else {
+		}
+		else {
 			c.error('invalid `\$if` condition', pos)
 		}
 	}
