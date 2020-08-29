@@ -1478,7 +1478,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		if selector_expr.field_name == 'name' {
 			return table.string_type
 		} else {
-			c.error('expected `.name`, not `.$selector_expr.field_name` after `typeof` expression', selector_expr.pos)
+			c.error('expected `.name`, not `.$selector_expr.field_name` after `typeof` expression',
+				selector_expr.pos)
 		}
 	}
 	selector_expr.expr_type = typ
