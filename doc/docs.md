@@ -891,8 +891,7 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red   { true  }
-        .blue  { true  }
+        .red, .blue  { true } // comma can be used to test multiple values
         .green { false }
     }
 }
