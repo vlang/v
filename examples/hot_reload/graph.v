@@ -44,8 +44,12 @@ fn frame(mut ctx Context) {
 
 [live]
 fn (ctx &Context) draw() {
-	w := sapp.width()
-	h := sapp.height()
+	mut w := sapp.width()
+	mut h := sapp.height()
+	if sapp.high_dpi() {
+		w /= 2
+		h /= 2
+	}
 	ctx.gg.draw_line(0, h/2, w, h/2, gx.gray) // x axis
 	ctx.gg.draw_line(w/2, 0, w/2, h, gx.gray) // y axis
 	atime := f64(time.ticks() / 10)
@@ -54,7 +58,7 @@ fn (ctx &Context) draw() {
 	blue := gx.Color {r:100, g:100, b:200}
 	red := gx.Color {r:200, g:100, b:100}
 	y = 1.0
-	max := f32(w)/scale
+	max := f32(w)/(2*scale)
 	min := -max
 	for x := min; x <= max; x += 0.01 {
 		// y = x*x + 2
