@@ -9,7 +9,6 @@ import math
 const (
 	size  = 700
 	scale = 50.0
-	pi    = math.pi
 )
 
 struct Context {
@@ -50,7 +49,7 @@ fn (ctx &Context) draw() {
 	ctx.gg.draw_line(0, h/2, w, h/2, gx.gray) // x axis
 	ctx.gg.draw_line(w/2, 0, w/2, h, gx.gray) // y axis
 	atime := f64(time.ticks() / 10)
-	stime := math.sin(2.0 * pi * f64(time.ticks() % 6000) / 6000)
+	stime := math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	mut y := 0.0
 	blue := gx.Color {r:100, g:100, b:200}
 	red := gx.Color {r:200, g:100, b:100}
