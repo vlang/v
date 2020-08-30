@@ -438,7 +438,6 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 			}
 		}
 	}
-	println('SEND CONTROL FRAME $code, $control_frame.len from server? ($ws.is_server)')
 	ws.socket_write(control_frame) or {
 		return error('send_control_frame: error sending $frame_typ control frame.')
 	}
