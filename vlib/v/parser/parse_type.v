@@ -52,6 +52,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 }
 
 pub fn (mut p Parser) parse_chan_type() table.Type {
+	p.register_auto_import('sync')
 	p.next()
 	if p.tok.kind != .name && p.tok.kind != .key_mut && p.tok.kind != .amp {
 		return table.chan_type

@@ -6,24 +6,21 @@
 // The receive threads add all received numbers and send them to the
 // main thread where the total sum is compare to the expected value.
 
-import sync
 import time
 import os
 
-fn do_rec(mut ch sync.Channel, mut resch sync.Channel, n int) {
+fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
 	for _ in 0 .. n {
-		mut a := 0
-		ch.pop(&a)
-		sum += a
+		sum += <-ch
 	}
 	println(sum)
-	resch.push(&sum)
+	resch <- sum
 }
 
-fn do_send(mut ch sync.Channel, start, end int) {
+fn do_send(ch chan int, start, end int) {
 	for i in start .. end {
-		ch.push(&i)
+		ch <- i
 	}
 }
 
@@ -37,12 +34,12 @@ fn main() {
 	buflen := os.args[3].int()
 	nobj := os.args[4].int()
 	stopwatch := time.new_stopwatch({})
-	mut ch := sync.new_channel<int>(buflen)
-	mut resch := sync.new_channel<i64>(0)
+	ch := chan int{cap: buflen}
+	resch := chan i64{}
 	mut no := nobj
 	for i in 0 .. nrec {
 		n := no / (nrec - i)
-		go do_rec(mut ch, mut resch, n)
+		go do_rec(ch, resch, n)
 		no -= n
 	}
 	assert no == 0
@@ -51,14 +48,12 @@ fn main() {
 		n := no / (nsend - i)
 		end := no
 		no -= n
-		go do_send(mut ch, no, end)
+		go do_send(ch, no, end)
 	}
 	assert no == 0
 	mut sum := i64(0)
 	for _ in 0 .. nrec {
-		mut r := i64(0)
-		resch.pop(&r)
-		sum += r
+		sum += <-resch
 	}
 	elapsed := stopwatch.elapsed()
 	rate := f64(nobj)/elapsed*time.microsecond

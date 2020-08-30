@@ -174,7 +174,7 @@ pub fn (mut ch Channel) try_push(src voidptr) TransactionState {
 	return ch.try_push_priv(src, false)
 }
 
-fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
+pub fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
@@ -333,7 +333,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) TransactionState {
 	return ch.try_pop_priv(dest, false)
 }
 
-fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
+pub fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
 	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
 	mut have_swapped := false
 	mut write_in_progress := false
