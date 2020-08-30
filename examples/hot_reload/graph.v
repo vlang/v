@@ -2,13 +2,13 @@ module main
 
 import gx
 import gg
+import sokol.sapp
 import time
 import math
 
 const (
 	size  = 700
 	scale = 50.0
-	pi    = math.pi
 )
 
 struct Context {
@@ -29,6 +29,7 @@ fn main() {
 		window_title: 'Graph builder'
 		create_window: true
 		frame_fn: frame
+		resizable: true
 		bg_color: gx.white
 		font_path: gg.system_font_path()
 	})
@@ -43,24 +44,30 @@ fn frame(mut ctx Context) {
 
 [live]
 fn (ctx &Context) draw() {
-	center := f32(size / 2)
-	ctx.gg.draw_line(0, center, size, center, gx.gray) // x axis
-	ctx.gg.draw_line(center, 0, center, size, gx.gray) // y axis
+	w := sapp.width()
+	h := sapp.height()
+	ctx.gg.draw_line(0, h/2, w, h/2, gx.gray) // x axis
+	ctx.gg.draw_line(w/2, 0, w/2, h, gx.gray) // y axis
 	atime := f64(time.ticks() / 10)
-	stime := math.sin(2.0 * pi * f64(time.ticks() % 6000) / 6000)
+	stime := math.sin(2.0 * math.pi * f64(time.ticks() % 6000) / 6000)
 	mut y := 0.0
+	blue := gx.Color {r:100, g:100, b:200}
+	red := gx.Color {r:200, g:100, b:100}
 	y = 1.0
-	for x := -10.0; x <= 10.0; x += 0.02 {
+	max := f32(w)/scale
+	min := -max
+	for x := min; x <= max; x += 0.01 {
 		// y = x*x + 2
-		y = x * x + stime * stime
+		// y = x * x + stime * stime
 		// y = stime
-		// y = stime * x
-		y = stime * 1.0 * math.sin(x + stime + atime / 50) * x
+		// y = stime * h
+		y = stime * 1.0 * math.sin((x) + stime + atime / 32) * ((h/256) + x)
 		// y = (stime * x) * x + stime
 		// y = (x + 3) * (x + 3) / stime + stime*2.5
 		// y = math.sqrt(30.0 - x * x) * stime
 		// y -= (stime-0.5) + stime
-		ctx.gg.draw_rect(f32(center + x * scale), f32(center - y * scale), 1, 1, gx.blue)
-		ctx.gg.draw_rect(f32(center + x * scale), f32(center + y * scale), 1, 1, gx.red)
+		// ctx.gg.draw_rect(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, 2, blue)
+		ctx.gg.draw_rect(f32((w/2) + x * scale), f32((h/2) - y * scale), 2, (f32(y) * scale), blue)
+		ctx.gg.draw_rect(f32((w/2) + x * scale), f32((h/2) + y * scale), 2, (f32(y) * scale) + 32, red)
 	}
 }
