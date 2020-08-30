@@ -146,7 +146,7 @@ pub fn path_unescape(s string) ?string {
 // unescape unescapes a string; the mode specifies
 // which section of the URL string is being unescaped.
 fn unescape(s_ string, mode EncodingMode) ?string {
-	mut s := s_
+	mut s := s_.replace('\r\n','')
 	// Count %, check that they're well-formed.
 	mut n := 0
 	mut has_plus := false
