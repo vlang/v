@@ -494,7 +494,9 @@ fn (mut ctx Context) parse_form(s string) {
 		}
 		keyval := word.trim_space().split('=')
 		if keyval.len != 2 { continue }
-		key := keyval[0]
+		key := urllib.query_unescape(keyval[0]) or {
+			continue
+		}
 		val := urllib.query_unescape(keyval[1]) or {
 			continue
 		}
