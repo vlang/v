@@ -13,7 +13,7 @@ pub const (
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'time', 'builtin']
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'time', 'os', 'runtime', 'sync', 'builtin']
 )
 
 pub const (

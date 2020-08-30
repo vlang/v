@@ -1,7 +1,6 @@
 module sync
 
 import time
-import rand
 
 #flag windows -I @VROOT/thirdparty/stdatomic/win
 #flag linux -I @VROOT/thirdparty/stdatomic/nix
@@ -528,7 +527,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	stopwatch := if timeout <= 0 { time.StopWatch{} } else { time.new_stopwatch({}) }
 	mut event_idx := -1 // negative index means `timed out`
 	for {
-		rnd := rand.u32_in_range(0, u32(channels.len))
+		// this will be replaced with something more random
+		rnd := time.now().unix % u32(channels.len)
 		mut num_closed := 0
 		for j, _ in channels {
 			mut i := j + int(rnd)
