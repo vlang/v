@@ -255,12 +255,11 @@ pub const (
 	array_type_idx   = 20
 	map_type_idx     = 21
 	chan_type_idx    = 22
-	any_type_idx     = 23
-	// t_type_idx       = 23
-	any_flt_type_idx = 24
-	any_int_type_idx = 25
-	sizet_type_idx   = 26
-	rune_type_idx    = 27
+	sizet_type_idx   = 23
+	rune_type_idx    = 24
+	any_type_idx     = 25
+	any_flt_type_idx = 26
+	any_int_type_idx = 27
 )
 
 pub const (
@@ -300,11 +299,10 @@ pub const (
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	chan_type    = new_type(chan_type_idx)
+	rune_type    = new_type(rune_type_idx)
 	any_type     = new_type(any_type_idx)
-	// t_type       = new_type(t_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
 	any_int_type = new_type(any_int_type_idx)
-	rune_type    = new_type(rune_type_idx)
 )
 
 pub const (
@@ -570,17 +568,23 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
+		kind: .size_t
+		name: 'size_t'
+		source_name: 'size_t'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
+		kind: .rune
+		name: 'rune'
+		source_name: 'rune'
+		mod: 'builtin'
+	})
+	t.register_type_symbol({
 		kind: .any
 		name: 'any'
 		source_name: 'any'
 		mod: 'builtin'
 	})
-	// t.register_type_symbol({
-	// kind: .any
-	// name: 'T'
-	// mod: 'builtin'
-	// is_public: true
-	// })
 	t.register_type_symbol({
 		kind: .any_float
 		name: 'any_float'
@@ -591,18 +595,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .any_int
 		name: 'any_int'
 		source_name: 'any_int'
-		mod: 'builtin'
-	})
-	t.register_type_symbol({
-		kind: .size_t
-		name: 'size_t'
-		source_name: 'size_t'
-		mod: 'builtin'
-	})
-	t.register_type_symbol({
-		kind: .size_t
-		name: 'rune'
-		source_name: 'rune'
 		mod: 'builtin'
 	})
 	// TODO: remove. for v1 map compatibility

@@ -38,9 +38,7 @@ pub fn new_reader(data string) &Reader {
 
 // read() reads one row from the csv file
 pub fn (mut r Reader) read() ?[]string {
-	l := r.read_record() or {
-		return error(err)
-	}
+	l := r.read_record()?
 	return l
 }
 
@@ -106,9 +104,7 @@ fn (mut r Reader) read_record() ?[]string {
 
 	for {
 		if need_read {
-			l := r.read_line() or {
-				return error(err)
-			}
+			l := r.read_line()?
 			if l.len <= 0 {
 				if keep_raw { line += '\n'}
 				continue

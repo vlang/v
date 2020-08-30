@@ -53,11 +53,12 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('int main(int ___argc, char** ___argv){')
 	}
 	if g.pref.os == .windows && g.is_gui_app() {
+		g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
 		g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
 		g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
 		g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
 		g.writeln('\tint ___argc;')
-		g.writeln('\twchar_t** ___argv = CommandLineToArgvW(cmd_line, &___argc);')
+		g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
 	}
 	g.writeln('\t_vinit();')
 	if g.pref.is_prof {

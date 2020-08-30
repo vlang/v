@@ -123,7 +123,7 @@ pub fn (db DB) exec_one(query string) ?Row {
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
-	row := rows_first_or_empty( res_to_rows(res) ) or { return error(err) }
+	row := rows_first_or_empty( res_to_rows(res) )?
 	return row
 }
 

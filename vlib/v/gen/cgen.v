@@ -2098,6 +2098,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
+			if node.expr is ast.TypeOf as left {
+				// typeof(expr).name
+				g.typeof_name(left)
+				return
+			}
 			sym := g.table.get_type_symbol(node.expr_type)
 			if sym.kind == .array_fixed {
 				assert node.field_name == 'len'
@@ -2150,6 +2155,22 @@ fn (mut g Gen) expr(node ast.Expr) {
 			es := node.stmts[0] as ast.ExprStmt
 			g.expr(es.expr)
 		}
+	}
+}
+
+// typeof(expr).name
+fn (mut g Gen) typeof_name(node ast.TypeOf) {
+	sym := g.table.get_type_symbol(node.expr_type)
+	if sym.kind == .array {
+		info := sym.info as table.Array
+		mut s := g.table.get_type_name(info.elem_type)
+		s = util.strip_main_name(s)
+		g.write('tos_lit("[]$s")')
+	} else if sym.kind == .sum_type {
+		// new typeof() must be known at compile-time
+		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
+	} else {
+		g.typeof_expr(node)
 	}
 }
 

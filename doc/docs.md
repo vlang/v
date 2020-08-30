@@ -891,8 +891,7 @@ enum Color {
 
 fn is_red_or_blue(c Color) bool {
     return match c {
-        .red   { true  }
-        .blue  { true  }
+        .red, .blue  { true } // comma can be used to test multiple values
         .green { false }
     }
 }
@@ -1635,7 +1634,7 @@ propagate the error:
 import net.http
 
 fn f(url string) ?string {
-    resp := http.get(url)?
+    resp := http.get(url) ?
     return resp.text
 }
 ```
@@ -1979,7 +1978,7 @@ For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
-write documentation seperately for your code, vdoc will generate it from docstrings in the source code.
+write documentation separately for your code, vdoc will generate it from docstrings in the source code.
 
 Documentation for each function/type/const must be placed right before the declaration:
 
