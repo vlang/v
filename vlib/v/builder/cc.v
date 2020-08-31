@@ -593,11 +593,11 @@ fn (mut b Builder) cc_linux_cross() {
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
 	}
-	sysroot := os.home_dir() + '.vmodules/linuxroot/'
+	sysroot := os.home_dir() + '.vmodules/linuxroot'
 	zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
-		zip_file := sysroot[..sysroot.len - 1] + '.zip'
+		zip_file := sysroot + '.zip'
 		os.system('curl -L -o $zip_file $zip_url')
 		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
