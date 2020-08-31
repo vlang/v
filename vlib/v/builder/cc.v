@@ -605,7 +605,8 @@ fn (mut b Builder) cc_linux_cross() {
 			exit(1)
 		}
 	}
-	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $b.out_name_c -I $sysroot/include '
+	obj_file := b.out_name_c + ".o"
+	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o $obj_file $b.out_name_c -I $sysroot/include '
 	cflags := b.get_os_cflags()
 	cc_args += cflags.c_options_without_object_files()
 	if b.pref.show_cc {
@@ -618,7 +619,7 @@ fn (mut b Builder) cc_linux_cross() {
 		exit(1)
 	}
 	linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64',
-		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o x.o',
+		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o $obj_file',
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', cflags.c_options_only_object_files()]
 	// -ldl
 	linker_args_str := linker_args.join(' ')
