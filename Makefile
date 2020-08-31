@@ -11,7 +11,7 @@ TCCREPO ?= https://github.com/vlang/tccbin
 
 VCFILE := v.c
 TMPTCC := $(VROOT)/thirdparty/tcc
-TCCBRANCH := thirdparty-linux-amd64
+TCCBRANCH := thirdparty-unknown-unknown
 GITCLEANPULL := git clean -xf && git pull --quiet
 GITFASTCLONE := git clone --depth 1 --quiet --single-branch
 
@@ -111,6 +111,7 @@ ifndef ANDROID
 ifndef MAC
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
+	rm -rf /var/tmp/tcc && git clone https://github.com/vlang/tccbin /var/tmp/tcc ## TODO: remove
 endif
 endif
 
