@@ -611,9 +611,7 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println('cc $cc_args')
 	}
-	cc_res := os.exec('cc $cc_args') or {
-		return
-	}
+	cc_res := os.exec('cc $cc_args') or { panic(err) }
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, clang). Make sure you have clang installed.')
 		println(cc_res.output)
@@ -630,9 +628,7 @@ fn (mut b Builder) cc_linux_cross() {
 	if b.pref.show_cc {
 		println(cmd)
 	}
-	res := os.exec(cmd) or {
-		return
-	}
+	res := os.exec(cmd) or { panic(err) }
 	if res.exit_code != 0 {
 		println('Cross compilation for Linux failed (second step, lld):')
 		println(res.output)
