@@ -411,8 +411,14 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			} else {
 				info = type_sym.info as table.Struct
 			}
-			if struct_init.is_short && struct_init.fields.len > info.fields.len {
-				c.error('too many fields', struct_init.pos)
+			if struct_init.is_short {
+				exp_len := info.fields.len
+				got_len := struct_init.fields.len
+				if exp_len != got_len {
+					amount := if exp_len < got_len { 'many' } else { 'few' }
+					c.error('too $amount fields in `$type_sym.source_name` literal (expecting $exp_len, got $got_len)',
+						struct_init.pos)
+				}
 			}
 			mut inited_fields := []string{}
 			for i, field in struct_init.fields {
