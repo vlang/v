@@ -599,7 +599,7 @@ fn (mut b Builder) cc_linux_cross() {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_file := sysroot[..sysroot.len - 1] + '.zip'
 		os.system('curl -L -o $zip_file $zip_url')
-		os.system('unzip -q $zip_file -d $parent_dir')
+		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
 			println('Failed to download.')
 			exit(1)
