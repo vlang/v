@@ -589,12 +589,11 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut b Builder) cc_linux_cross() {
-	parent_dir := os.home_dir() + '.vmodules'
+	parent_dir := os.join_path(os.home_dir(), '.vmodules')
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
 	}
-	sysroot := os.home_dir() + '.vmodules/linuxroot'
-	zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
+	sysroot := os.join_path(os.home_dir(), '.vmodules', 'linuxroot')
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_file := sysroot + '.zip'
