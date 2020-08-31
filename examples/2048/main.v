@@ -180,7 +180,7 @@ fn (t TileLine) to_left() TileLine {
 fn (b Board) to_left() Board {
 	mut res := b
 	for y := 0; y < 4; y++ {
-		mut hline := TileLine{y}
+		mut hline := TileLine{ypos: y}
 		for x := 0; x < 4; x++ {
 			hline.field[x] = b.field[y][x]
 		}

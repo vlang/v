@@ -480,6 +480,20 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					c.warn('reference field `${type_sym.source_name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
+				// Check for `[required]` struct attr
+				if field.attrs.contains('required') && !struct_init.is_short {
+					mut found := false
+					for init_field in struct_init.fields {
+						if field.name == init_field.name {
+							found = true
+							break
+						}
+					}
+					if !found {
+						c.error('field `${type_sym.source_name}.$field.name` is required',
+							struct_init.pos)
+					}
+				}
 			}
 		}
 		else {}
