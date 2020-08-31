@@ -472,7 +472,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				struct_init.fields[i].expected_type = info_field.typ
 			}
 			// Check uninitialized refs
-			for i, field in info.fields {
+			for field in info.fields {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
