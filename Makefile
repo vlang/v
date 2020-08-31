@@ -2,15 +2,18 @@ CC ?= cc
 CFLAGS ?=
 LDFLAGS ?=
 TMPDIR ?= /tmp
+VROOT  ?= .
 VC     ?= ./vc
-V      := ./v
+V      ?= ./v
+=======
+VCREPO ?= https://github.com/vlang/vc
+TCCREPO ?= https://github.com/vlang/tccbin
 
 VCFILE := v.c
-TMPTCC := /var/tmp/tcc
-VCREPO := https://github.com/vlang/vc
-TCCREPO := https://github.com/vlang/tccbin
+TMPTCC := $(VROOT)/thirdparty/tcc
+TCCBRANCH := thirdparty-linux-amd64
 GITCLEANPULL := git clean -xf && git pull --quiet
-GITFASTCLONE := git clone --depth 1 --quiet
+GITFASTCLONE := git clone --depth 1 --quiet --single-branch
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -24,10 +27,12 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
+TCCBRANCH := thirdparty-linux-amd64
 endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
+TCCBRANCH := thirdparty-macos-amd64
 endif
 
 ifeq ($(_SYS),FreeBSD)
@@ -37,11 +42,12 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
+TCCBRANCH := thirdparty-linux-arm64
 endif
 #####
 
 ifdef WIN32
-TCCREPO := https://github.com/vlang/tccbin_win
+TCCBRANCH := thirdparty-windows-amd64
 VCFILE := v_win.c
 endif
 
@@ -104,7 +110,7 @@ fresh_tcc:
 ifndef ANDROID
 ifndef MAC
 	rm -rf $(TMPTCC)
-	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
+	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
 endif
 endif
 

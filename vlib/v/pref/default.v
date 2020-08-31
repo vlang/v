@@ -53,7 +53,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
 	}
-	if p.ccompiler == '' {
+	if p.ccompiler == '' || p.ccompiler == 'tcc' {
 		p.ccompiler = default_c_compiler()
 	}
 	p.ccompiler_type = cc_from_string(p.ccompiler)
@@ -84,6 +84,12 @@ pub fn (mut p Preferences) fill_with_defaults() {
 }
 
 fn default_c_compiler() string {
+	vexe := vexe_path()
+	vroot := os.dir(vexe)
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.exists(vtccexe) {
+		return vtccexe
+	}
 	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	// if os.exists(fast_clang) {
 	// return fast_clang
