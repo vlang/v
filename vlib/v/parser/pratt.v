@@ -282,6 +282,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	op := p.tok.kind
+	if op == .arrow {
+		p.register_auto_import('sync')
+	}
 	// mut typ := p.
 	// println('infix op=$op.str()')
 	precedence := p.tok.precedence()
@@ -310,6 +313,9 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	if op == .amp {
 		p.is_amp = true
 	}
+	if op == .arrow {
+		p.register_auto_import('sync')
+	}
 	// if op == .mul && !p.inside_unsafe {
 	// p.warn('unsafe')
 	// }
@@ -322,7 +328,8 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
 	// allow `x := <-ch or {...}` to handle closed channel
-	if op == .arrow && p.tok.kind == .key_orelse {
+	if op == .arrow {
+		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
 			p.scope.register('errcode', ast.Var{
@@ -340,10 +347,11 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			or_kind = .block
 			or_stmts = p.parse_block_no_scope(false)
 			p.close_scope()
-	}
-	if p.tok.kind == .question {
-		p.next()
-		or_kind = .propagate
+		}
+		if p.tok.kind == .question {
+			p.next()
+			or_kind = .propagate
+		}
 	}
 	return ast.PrefixExpr{
 		op: op
