@@ -481,24 +481,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						struct_init.pos)
 				}
 				// Check for `[required]` struct attr
-				if field.attrs.contains('required') {
-					if struct_init.is_short {
-						if struct_init.fields.len <= i {
-							c.error('field `${type_sym.source_name}.$field.name` is required',
-								struct_init.pos)
+				if field.attrs.contains('required') && !struct_init.is_short {
+					mut found := false
+					for init_field in struct_init.fields {
+						if field.name == init_field.name {
+							found = true
+							break
 						}
-					} else {
-						mut found := false
-						for init_field in struct_init.fields {
-							if field.name == init_field.name {
-								found = true
-								break
-							}
-						}
-						if !found {
-							c.error('field `${type_sym.source_name}.$field.name` is required',
-								struct_init.pos)
-						}
+					}
+					if !found {
+						c.error('field `${type_sym.source_name}.$field.name` is required',
+							struct_init.pos)
 					}
 				}
 			}
