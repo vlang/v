@@ -108,7 +108,9 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
+	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+	arg_str := g.out.after(arg_start_pos)
 	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
@@ -159,6 +161,18 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
+	}
+	for attr in it.attrs {
+		if attr.name == 'export' {
+			g.writeln('// export alias: $attr.arg -> $name')
+			export_alias := '$type_name ${attr.arg}($arg_str)'
+			g.definitions.writeln('$export_alias;')
+			g.writeln('$export_alias {')
+			g.write('\treturn ${name}(')
+			g.write(fargs.join(', '))
+			g.writeln(');')
+			g.writeln('}')
+		}
 	}
 }
 
