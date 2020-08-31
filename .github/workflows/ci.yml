@@ -83,6 +83,7 @@ jobs:
     - name: Build v
       run: |
         echo $VFLAGS
+        sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
         make -j4
         ./v -cg -o v cmd/v
     - name: Test v->c
