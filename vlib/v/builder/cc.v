@@ -596,12 +596,15 @@ fn (mut b Builder) cc_linux_cross() {
 	sysroot := os.join_path(os.home_dir(), '.vmodules', 'linuxroot')
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
+		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
 		zip_file := sysroot + '.zip'
 		os.system('curl -L -o $zip_file $zip_url')
+		if !os.exists(zip_file) {
+			verror('Failed to download `$zip_url` as $zip_file')
+		}
 		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
-			println('Failed to download.')
-			exit(1)
+			verror('Failed to unzip $zip_file to $parent_dir')
 		}
 	}
 	obj_file := b.out_name_c + ".o"
@@ -613,11 +616,15 @@ fn (mut b Builder) cc_linux_cross() {
 		println(cc_cmd)
 	}
 	cc_res := os.exec(cc_cmd) or {
-	if cc_res.exit_code != 0 {
-		println('Cross compilation for Linux failed (first step, clang). Make sure you have clang installed.')
-		println(cc_res.output)
-		exit(1)
+		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
+		verror(err)
+		return
 	}
+	if cc_res.exit_code != 0 {
+		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
+		verror(cc_res.output)
+	}
+
 	linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o $obj_file',
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', cflags.c_options_only_object_files()]
@@ -630,10 +637,13 @@ fn (mut b Builder) cc_linux_cross() {
 		println(linker_cmd)
 	}
 	res := os.exec(linker_cmd) or {
+		println('Cross compilation for Linux failed (second step, lld).')
+		verror(err)
+		return
+	}
 	if res.exit_code != 0 {
-		println('Cross compilation for Linux failed (second step, lld):')
-		println(res.output)
-		exit(1)
+		println('Cross compilation for Linux failed (second step, lld).')
+		verror(res.output)
 	}
 	println(b.pref.out_name + ' has been successfully compiled')
 }
@@ -659,8 +669,7 @@ fn (mut c Builder) cc_windows_cross() {
 	if false && c.pref.build_mode == .default_mode {
 		libs = '"$pref.default_module_path/vlib/builtin.o"'
 		if !os.exists(libs) {
-			println('`$libs` not found')
-			exit(1)
+			verror('`$libs` not found')
 		}
 		for imp in c.table.imports {
 			libs += ' "$pref.default_module_path/vlib/${imp}.o"'
