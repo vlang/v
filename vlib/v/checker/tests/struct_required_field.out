@@ -5,10 +5,3 @@ vlib/v/checker/tests/struct_required_field.vv:12:6: error: field `Abc.f3` is req
       |         ~~~~
    13 |         f1: 123
    14 |         f2: 789
-vlib/v/checker/tests/struct_required_field.vv:16:6: error: field `Abc.f3` is required
-   14 |         f2: 789
-   15 |     }
-   16 |     _ = Abc{123, 456}
-      |         ~~~~~~~~~~~~~
-   17 |     _ = Abc{123, 456, 789}
-   18 | }
