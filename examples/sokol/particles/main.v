@@ -36,7 +36,7 @@ mut:
 fn (mut a App) init() {
 	a.frame = 0
 	a.last = time.ticks()
-	a.ps = particle.System{a.width, a.height}
+	a.ps = particle.System{width: a.width, height: a.height}
 	a.ps.init(particle.SystemConfig{
 		pool: 20000
 	})
