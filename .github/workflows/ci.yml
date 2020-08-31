@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc tcc -cflags -bt10
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -87,8 +87,7 @@ jobs:
         ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
-        sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
-        tcc -version
+        thirdparty/tcc/tcc.exe -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
 #        ./v -silent test-compiler
     - name: v self compilation
@@ -112,7 +111,7 @@ jobs:
       image: thevlang/vlang:alpine-build
       env:
         V_CI_MUSL: 1
-
+        VFLAGS: -cc gcc
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:
