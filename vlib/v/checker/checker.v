@@ -3353,7 +3353,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		value_sym := c.table.get_type_symbol(info.value_type)
 		if key_sym.kind == .placeholder {
 			c.error('unknown type `$key_sym.source_name`', node.pos)
-		} else if value_sym.kind == .placeholder {
+		}
+		if value_sym.kind == .placeholder {
 			c.error('unknown type `$value_sym.source_name`', node.pos)
 		}
 		node.key_type = info.key_type
