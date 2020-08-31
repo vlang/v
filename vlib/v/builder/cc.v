@@ -252,29 +252,9 @@ fn (mut v Builder) cc() {
 	// TODO if -cc = cc, TCC is still used, default compiler should be
 	// used instead.
 	if v.pref.fast {
-		$if linux {
-			$if !android {
-				tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
-				// println('tcc third "$tcc_3rd"')
-				tcc_path := '/var/tmp/tcc/bin/tcc'
-				if os.exists(tcc_3rd) && !os.exists(tcc_path) {
-					// println('moving tcc')
-					// if there's tcc in thirdparty/, that means this is
-					// a prebuilt V_linux.zip.
-					// Until the libtcc1.a bug is fixed, we neeed to move
-					// it to /var/tmp/
-					os.system('mv $vdir/thirdparty/tcc /var/tmp/')
-				}
-				if v.pref.ccompiler == 'cc' && os.exists(tcc_path) {
-					// TODO tcc bug, needs an empty libtcc1.a fila
-					// os.mkdir('/var/tmp/tcc/lib/tcc/') or { panic(err) }
-					// os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
-					v.pref.ccompiler = tcc_path
-					args << '-m64'
-				}
-			}
-		} $else {
-			verror('-fast is only supported on Linux right now')
+		tcc_path := os.join_path(vdir, 'thirdparty', 'tcc', 'tcc.exe')
+		if os.exists(tcc_path) {
+			v.pref.ccompiler = tcc_path
 		}
 	}
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
@@ -535,9 +515,11 @@ fn (mut v Builder) cc() {
 		v.pref.cleanup_files << v.out_name_c
 		v.pref.cleanup_files << response_file
 	}
+	original_pwd := os.getwd()
+	// TODO remove
 	start:
 	todo()
-	// TODO remove
+	os.chdir(vdir)
 	cmd := '$ccompiler @$response_file'
 	v.show_cc(cmd, response_file, response_file_content)
 	// Run
@@ -546,6 +528,7 @@ fn (mut v Builder) cc() {
 		// C compilation failed.
 		// If we are on Windows, try msvc
 		println('C compilation failed.')
+		os.chdir(original_pwd)
 		/*
 		if os.user_os() == 'windows' && v.pref.ccompiler != 'msvc' {
 			println('Trying to build with MSVC')
@@ -562,6 +545,8 @@ fn (mut v Builder) cc() {
 		v.show_c_compiler_output(res)
 	}
 	if res.exit_code == 127 {
+	os.chdir(original_pwd)
+	if res.exit_code != 0 {
 		// the command could not be found by the system
 		$if linux {
 			// TCC problems on linux? Try GCC.
