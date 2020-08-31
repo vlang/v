@@ -472,13 +472,34 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				struct_init.fields[i].expected_type = info_field.typ
 			}
 			// Check uninitialized refs
-			for field in info.fields {
+			for i, field in info.fields {
 				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
 				if field.typ.is_ptr() && !c.pref.translated {
 					c.warn('reference field `${type_sym.source_name}.$field.name` must be initialized',
 						struct_init.pos)
+				}
+				// Check for `[required]` struct attr
+				if field.attrs.contains('required') {
+					if struct_init.is_short {
+						if struct_init.fields.len <= i {
+							c.error('field `${type_sym.source_name}.$field.name` is required',
+								struct_init.pos)
+						}
+					} else {
+						mut found := false
+						for init_field in struct_init.fields {
+							if field.name == init_field.name {
+								found = true
+								break
+							}
+						}
+						if !found {
+							c.error('field `${type_sym.source_name}.$field.name` is required',
+								struct_init.pos)
+						}
+					}
 				}
 			}
 		}
