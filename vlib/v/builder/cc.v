@@ -609,10 +609,11 @@ fn (mut b Builder) cc_linux_cross() {
 	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o $obj_file $b.out_name_c -I $sysroot/include '
 	cflags := b.get_os_cflags()
 	cc_args += cflags.c_options_without_object_files()
+	cc_cmd := 'cc $cc_args'
 	if b.pref.show_cc {
-		println('cc $cc_args')
+		println(cc_cmd)
 	}
-	cc_res := os.exec('cc $cc_args') or { panic(err) }
+	cc_res := os.exec(cc_cmd) or {
 	if cc_res.exit_code != 0 {
 		println('Cross compilation for Linux failed (first step, clang). Make sure you have clang installed.')
 		println(cc_res.output)
@@ -623,13 +624,13 @@ fn (mut b Builder) cc_linux_cross() {
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', cflags.c_options_only_object_files()]
 	// -ldl
 	linker_args_str := linker_args.join(' ')
-	cmd := '$sysroot/ld.lld ' + linker_args_str
+	linker_cmd := '$sysroot/ld.lld $linker_args_str'
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
-		println(cmd)
+		println(linker_cmd)
 	}
-	res := os.exec(cmd) or { panic(err) }
+	res := os.exec(linker_cmd) or {
 	if res.exit_code != 0 {
 		println('Cross compilation for Linux failed (second step, lld):')
 		println(res.output)
