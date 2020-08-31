@@ -1,7 +1,7 @@
 import term
 
 fn test_get_terminal_size() {
-	cols,_ := term.get_terminal_size()
+	cols, _ := term.get_terminal_size()
 	assert cols > 0
 }
 
@@ -48,10 +48,22 @@ fn test_header() {
 	eprintln(term.header('123', '_-/\\\/'))
 	eprintln(term.header('1234', '_-/\\/\\'))
 	eprintln(term.header('', '-'))
-    */
+	*/
 	assert term_width == empty_header.len
 	assert term_width == short_header.len
 	assert term_width == very_long_header.len
 	assert term_width == very_long_header_2.len
 	assert term_width == term.header('1234', '_-/\\/\\').len
+}
+
+fn test_get_cursor_position() {
+	cursor_position := term.get_cursor_position()
+	cursor_position_1 := term.get_cursor_position()
+	assert cursor_position.x == cursor_position_1.x
+	assert cursor_position.y == cursor_position_1.y
+}
+
+fn test_set_terminal_title() {
+	title_change := term.set_terminal_title('v is awesome!')
+	assert title_change == true
 }
