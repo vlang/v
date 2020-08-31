@@ -1505,6 +1505,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 	}
+	if f.is_generic && call_expr.generic_type == table.void_type {
+		// no type arguments given in call, attempt implicit instantiation
+		c.infer_fn_types(f, mut call_expr)
+	}
 	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
 		// Handle `foo<T>() T` => `foo<int>() int` => return int
 		return_sym := c.table.get_type_symbol(f.return_type)
