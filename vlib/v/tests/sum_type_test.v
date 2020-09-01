@@ -373,7 +373,7 @@ fn test_sum_type_match() {
 	assert as_string(true) == 'This is the string representation of "true"'
 	assert as_string(Foo(Color.red)) == 'This is the string representation of "enum1_red"'
 	assert as_string(Foo(Color.green)) == 'This is the string representation of "enum2_green"'
-	assert as_string(Foo(Color.blue)) == 'This is the string representation of "enum1_blue"'
+	assert as_string(Foo(Color.blue)) == 'This is the string representation of "enum3_blue"'
 	assert sumtype_match_with_string_interpolation(true) == "it's an int: 5"
 	assert sumtype_match_with_string_interpolation(false) == "it's a string: hello"
 }
