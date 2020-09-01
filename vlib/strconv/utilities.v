@@ -242,7 +242,7 @@ pub fn f64_to_str_l(f f64) string {
 
 	m_sgn_flag := false
 	mut sgn        := 1
-	mut b          := [26]byte
+	mut b          := [26]byte{}
 	mut d_pos      := 1
 	mut i          := 0
 	mut i1         := 0
@@ -290,7 +290,7 @@ pub fn f64_to_str_l(f f64) string {
 	}
 
 	// allocate exp+32 chars for the return string
-	mut res := [`0`].repeat(exp+32) // TODO: Slow!! is there other possibilities to allocate this?
+	mut res := []byte{len: exp+32, init: 0}
 	mut r_i := 0  // result string buffer index
 
 	//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -335,5 +335,5 @@ pub fn f64_to_str_l(f f64) string {
 		}
 	}
 	res[r_i] = 0
-	return tos(&res[0],r_i)
+	return tos(res.data,r_i)
 }

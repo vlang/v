@@ -217,8 +217,8 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 		}
 	} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
 		return type_hi
-	} else if idx_lo >= table.i8_type_idx && idx_hi <= table.i64_type_idx { // both signed
-		return type_hi
+	} else if idx_lo >= table.i8_type_idx && (idx_hi <= table.i64_type_idx || idx_hi == table.rune_type_idx) { // both signed
+		return if idx_lo == table.i64_type_idx { type_lo } else { type_hi }
 	} else if idx_hi - idx_lo < (table.byte_type_idx - table.i8_type_idx) {
 		return type_lo // conversion unsigned -> signed if signed type is larger
 	} else {
@@ -257,6 +257,11 @@ pub fn (mut c Checker) check_types(got, expected table.Type) bool {
 		return false
 	}
 	if got.is_number() && expected.is_number() {
+		if got == table.rune_type && expected == table.byte_type {
+			return true
+		} else if expected == table.rune_type && got == table.byte_type {
+			return true
+		}
 		if c.promote_num(expected, got) != expected {
 			// println('could not promote ${c.table.get_type_symbol(got).name} to ${c.table.get_type_symbol(expected).name}')
 			return false

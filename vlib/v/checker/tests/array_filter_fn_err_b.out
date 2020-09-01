@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_filter_fn_err_b.v:5:23: error: type mismatch, should use `fn(a int) bool {...}`
+vlib/v/checker/tests/array_filter_fn_err_b.vv:5:23: error: type mismatch, should use `fn(a int) bool {...}`
     3 | }
     4 | fn main() {
     5 |     a := [1,2,3,4].filter(fil)

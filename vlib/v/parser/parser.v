@@ -298,7 +298,12 @@ pub fn (mut p Parser) open_scope() {
 }
 
 pub fn (mut p Parser) close_scope() {
-	p.scope.end_pos = p.tok.pos
+	// p.scope.end_pos = p.tok.pos
+	// NOTE: since this is usually called after `p.parse_block()`
+	// ie. when `prev_tok` is rcbr `}` we most likely want `prev_tok`
+	// we could do the following, but probably not needed in 99% of cases:
+	// `end_pos = if p.prev_tok.kind == .rcbr { p.prev_tok.pos } else { p.tok.pos }`
+	p.scope.end_pos = p.prev_tok.pos
 	p.scope.parent.children << p.scope
 	p.scope = p.scope.parent
 }
@@ -853,7 +858,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
 		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
-		(left0 as ast.InfixExpr).op == .left_shift) && left0 !is ast.ComptimeCall {
+		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
 	if left.len == 1 {
@@ -958,6 +963,42 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			typ: map_type
 		}
 	}
+	// `chan typ{...}`
+	if p.tok.lit == 'chan' {
+		first_pos := p.tok.position()
+		mut last_pos := first_pos
+		chan_type := p.parse_chan_type()
+		mut has_cap := false
+		mut cap_expr := ast.Expr{}
+		p.check(.lcbr)
+		if p.tok.kind == .rcbr {
+			last_pos = p.tok.position()
+			p.next()
+		} else {
+			key := p.check_name()
+			p.check(.colon)
+			match key {
+				'cap' {
+					has_cap = true
+					cap_expr = p.expr(0)
+				}
+				'len', 'init' {
+					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
+				}
+				else {
+					p.error('wrong field `$key`, expecting `cap`')
+				}
+			}
+			last_pos = p.tok.position()
+			p.check(.rcbr)
+		}
+		return ast.ChanInit{
+			pos: first_pos.extend(last_pos)
+			has_cap: has_cap
+			cap_expr: cap_expr
+			typ: chan_type
+		}
+	}
 	// Raw string (`s := r'hello \n ')
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
@@ -988,10 +1029,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
-	// fn call or type cast
-	if p.peek_tok.kind == .lpar ||
+	same_line := p.tok.line_nr == p.peek_tok.line_nr
+	// `(` must be on same line as name token otherwise it's a ParExpr
+	if !same_line && p.peek_tok.kind == .lpar {
+		node = p.parse_ident(language)
+	} else if p.peek_tok.kind == .lpar ||
 		(p.peek_tok.kind == .lt && !lit0_is_capital && p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) {
-		// foo() or foo<int>()
+		// foo(), foo<int>() or type() cast
 		mut name := p.tok.lit
 		if mod.len > 0 {
 			name = '${mod}.$name'
@@ -1133,6 +1177,19 @@ fn (mut p Parser) scope_register_it() {
 	})
 }
 
+fn (mut p Parser) scope_register_ab() {
+	p.scope.register('a', ast.Var{
+		name: 'a'
+		pos: p.tok.position()
+		is_used: true
+	})
+	p.scope.register('b', ast.Var{
+		name: 'b'
+		pos: p.tok.position()
+		is_used: true
+	})
+}
+
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
@@ -1149,6 +1206,10 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		// defer {
 		// p.close_scope()
 		// }
+	} else if field_name == 'sort' {
+		p.open_scope()
+		name_pos = p.tok.position()
+		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -1208,7 +1269,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: pos
 			}
 		}
-		if is_filter {
+		if is_filter || field_name == 'sort' {
 			p.close_scope()
 		}
 		return mcall_expr
@@ -1434,6 +1495,9 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if p.tok.kind == .key_as {
 		p.next()
 		mod_alias = p.check_name()
+		if mod_alias == mod_name.split('.').last() {
+			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
+		}
 	}
 	node := ast.Import{
 		pos: pos
@@ -1476,9 +1540,11 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		if alias[0].is_capital() {
 			idx := p.table.add_placeholder_type(name)
 			typ := table.new_type(idx)
+			prepend_mod_name := p.prepend_mod(alias)
 			p.table.register_type_symbol({
 				kind: .alias
-				name: p.prepend_mod(alias)
+				name: prepend_mod_name
+				source_name: prepend_mod_name
 				parent_idx: idx
 				mod: p.mod
 				info: table.Alias{
@@ -1536,13 +1602,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	}
 	p.next() // (
 	mut fields := []ast.ConstField{}
-	for p.tok.kind != .rpar {
-		mut comments := []ast.Comment{}
-		for p.tok.kind == .comment {
-			comments << p.comment()
-			if p.tok.kind == .rpar {
-				break
-			}
+	mut comments := []ast.Comment{}
+	for {
+		comments = p.eat_comments()
+		if p.tok.kind == .rpar {
+			break
 		}
 		pos := p.tok.position()
 		name := p.check_name()
@@ -1564,6 +1628,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		}
 		fields << field
 		p.global_scope.register(field.name, field)
+		comments = []
 	}
 	p.top_level_statement_end()
 	p.check(.rpar)
@@ -1571,6 +1636,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		pos: start_pos.extend(end_pos)
 		fields: fields
 		is_pub: is_pub
+		end_comments: comments
 	}
 }
 
@@ -1595,7 +1661,7 @@ fn (mut p Parser) return_stmt() ast.Return {
 
 const (
 	// modules which allow globals by default
-	global_enabled_mods = ['rand']
+	global_enabled_mods = ['rand', 'sokol.sapp']
 )
 
 // left hand side of `=` or `:=` in `a,b,c := 1,2,3`
@@ -1700,6 +1766,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
+		source_name: name
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
@@ -1760,9 +1827,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			p.check(.pipe)
 		}
+		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
-			name: p.prepend_mod(name)
+			name: prepend_mod_name
+			source_name: prepend_mod_name
 			mod: p.mod
 			info: table.SumType{
 				variants: sum_variants
@@ -1787,9 +1856,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	} else {
 		table.Language.v
 	}
+	prepend_mod_name := p.prepend_mod(name)
 	p.table.register_type_symbol({
 		kind: .alias
-		name: p.prepend_mod(name)
+		name: prepend_mod_name
+		source_name: prepend_mod_name
 		parent_idx: pid
 		mod: p.mod
 		info: table.Alias{

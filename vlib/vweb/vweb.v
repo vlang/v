@@ -16,7 +16,7 @@ pub const (
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
-	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${headers_close}404 Not Found'
+	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types = {
 		'.css': 'text/css; charset=utf-8',
@@ -134,7 +134,6 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 
 pub fn (mut ctx Context) set_cookie_old(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
-	//println('Set-Cookie $key=$val')
 	//ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
 	ctx.add_header('Set-Cookie', '${key}=${val}; HttpOnly')
 }
@@ -255,7 +254,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	mut body_len := 0
 	//for line in lines[1..] {
 	for _ in 0..100 {
 		//println(j)
@@ -281,9 +279,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				//println('GOT CL=$len')
 			}
 		} else {
-			body += sline + '\r\n'
-			body_len += body.len
-			if body_len >= len {
+			body += line.trim_left('\r\n')
+			if body.len >= len {
 				break
 			}
 			//println('body:$body')
@@ -346,7 +343,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	app.init()
 
 	// Call the right action
-	println('route matching...')
+	$if debug {
+		println('route matching...')
+	}
 	//t := time.ticks()
 	//mut action := ''
 	mut route_words_a := [][]string{}
@@ -372,7 +371,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
 	$for method in T.methods {
-		$if method.@type is Result {
+		$if method.ReturnType is Result {
 			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
@@ -381,7 +380,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
 				if (req.method == .get && url_words[0] == method.name && url_words.len == 1) || (req.method == .post && url_words[0] + '_post' == method.name) {
-					println('easy match method=$method.name')
+					$if debug {
+						println('easy match method=$method.name')
+					}
 					app.$method(vars)
 					return
 				}
@@ -471,7 +472,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		return
 	}
 	$for method in T.methods {
-		$if method.@type is Result {
+		$if method.ReturnType is Result {
 			// search again for method
 			if action == method.name && method.attrs.len > 0 {
 				// call action method
@@ -496,7 +497,9 @@ fn (mut ctx Context) parse_form(s string) {
 		}
 		keyval := word.trim_space().split('=')
 		if keyval.len != 2 { continue }
-		key := keyval[0]
+		key := urllib.query_unescape(keyval[0]) or {
+			continue
+		}
 		val := urllib.query_unescape(keyval[1]) or {
 			continue
 		}

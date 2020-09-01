@@ -6,6 +6,8 @@ module openssl
 // the next flag is harmless, since it will still use the
 // (older) system openssl.
 #flag linux -I/usr/local/include/openssl -L/usr/local/lib
+#flag windows -l libssl -l libcrypto
+
 #flag -l ssl -l crypto
 // MacPorts
 #flag darwin -I/opt/local/include
@@ -40,6 +42,7 @@ fn C.SSL_set_fd() int
 fn C.SSL_connect() int
 fn C.SSL_set_cipher_list() int
 fn C.SSL_get_peer_certificate() int
+fn C.SSL_get_error() int
 fn C.SSL_get_verify_result() int
 fn C.SSL_set_tlsext_host_name() int
 fn C.SSL_shutdown()
@@ -52,6 +55,7 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 fn C.TLSv1_2_method() voidptr
 
 fn init() {
+	C.SSL_load_error_strings()
 	C.SSL_library_init()
 }
 

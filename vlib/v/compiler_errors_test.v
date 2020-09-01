@@ -41,8 +41,6 @@ fn test_all() {
 	tasks << new_tasks(vexe, run_dir, 'run', '.run.out', run_tests)
 	tasks << new_tasks(vexe, parser_dir, '-prod', '.out', parser_tests)
 	tasks.run()
-	total_errors := tasks.filter(it.is_error).len
-	assert total_errors == 0
 }
 
 fn new_tasks(vexe, dir, voptions, result_extension string, tests []string) []TaskDescription {
@@ -76,11 +74,13 @@ fn (mut tasks []TaskDescription) run() {
 	for _ in 0 .. vjobs {
 		go work_processor(mut work, mut results)
 	}
+	mut total_errors := 0
 	for _ in 0 .. tasks.len {
 		mut task := TaskDescription{}
 		results.pop(&task)
 		bench.step()
 		if task.is_error {
+			total_errors++
 			bench.fail()
 			eprintln(bench.step_message_with_label_and_duration(benchmark.b_fail, task.path,
 				task.took))
@@ -101,6 +101,7 @@ fn (mut tasks []TaskDescription) run() {
 	bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(bench.total_message('all tests'))
+	assert total_errors == 0
 }
 
 // a single worker thread spends its time getting work from the `work` channel,
@@ -120,22 +121,18 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 
 // actual processing; NB: no output is done here at all
 fn (mut task TaskDescription) execute() {
-	program := task.path.replace('.vv', '.v')
-	os.cp(task.path, program) or {
+	program := task.path
+    cli_cmd := '$task.vexe $task.voptions $program'
+	res := os.exec(cli_cmd) or {
 		panic(err)
 	}
-	res := os.exec('$task.vexe $task.voptions $program') or {
-		panic(err)
-	}
-	mut expected := os.read_file(program.replace('.v', '') + task.result_extension) or {
+	mut expected := os.read_file(program.replace('.vv', '') + task.result_extension) or {
 		panic(err)
 	}
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
 	if task.expected != task.found___ {
 		task.is_error = true
-	} else {
-		os.rm(program)
 	}
 }
 

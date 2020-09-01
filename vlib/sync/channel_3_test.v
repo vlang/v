@@ -1,38 +1,32 @@
-import sync
-
-fn do_rec(mut ch sync.Channel, mut resch sync.Channel) {
+fn do_rec(ch chan int, resch chan i64) {
 	mut sum := i64(0)
 	for _ in 0 .. 2000 {
-		mut a := 0
-		ch.pop(&a)
-		sum += a
+		sum += <-ch
 	}
 	println(sum)
-	resch.push(&sum)
+	resch <- sum
 }
 
-fn do_send(mut ch sync.Channel) {
+fn do_send(ch chan int) {
 	for i in 0 .. 2000 {
-		ch.push(&i)
+		ch <- i
 	}
 }
 
 fn test_channel_multi_unbuffered() {
-	mut ch := sync.new_channel<int>(0)
-	mut resch := sync.new_channel<i64>(0)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_rec(mut ch, mut resch)
-	go do_send(mut ch)
-	go do_send(mut ch)
-	go do_send(mut ch)
-	go do_send(mut ch)
+	ch := chan int{}
+	resch := chan i64{}
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_rec(ch, resch)
+	go do_send(ch)
+	go do_send(ch)
+	go do_send(ch)
+	go do_send(ch)
 	mut sum := i64(0)
 	for _ in 0 .. 4 {
-		mut r := i64(0)
-		resch.pop(&r)
-		sum += r
+		sum += <-resch
 	}
 	assert sum == i64(4) * 2000 * (2000 - 1) / 2
 }

@@ -38,11 +38,11 @@ pub fn new_suggestion(wanted string, possibilities []string) Suggestion {
 }
 
 pub fn (mut s Suggestion) add(val string) {
-	if val in [ s.wanted, s.swanted ] {
+	if val in [s.wanted, s.swanted] {
 		return
 	}
 	sval := short_module_name(val)
-	if sval in [ s.wanted, s.swanted ] {
+	if sval in [s.wanted, s.swanted] {
 		return
 	}
 	s.known << Possibility{
@@ -69,7 +69,7 @@ pub fn (s Suggestion) say(msg string) string {
 		if top_posibility.similarity > 0.10 {
 			val := top_posibility.value
 			if !val.starts_with('[]') {
-				res += '. Did you mean `$val` ?'
+				res += '.\nDid you mean `$val`?'
 			}
 		}
 	}

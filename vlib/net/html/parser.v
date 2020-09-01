@@ -157,8 +157,10 @@ pub fn (mut parser Parser) split_parse(data string) {
 				parser.lexycal_attributes.write_lexeme(word)
 				temp_lexeme := parser.builder_str()
 				if parser.lexycal_attributes.current_tag.last_attribute != '' {
-					parser.lexycal_attributes.current_tag.attributes[parser.lexycal_attributes.current_tag.last_attribute] = temp_lexeme.substr(1,
-						temp_lexeme.len - 1) // parser.print_debug(parser.lexycal_attributes.current_tag.last_attribute + " = " + temp_lexeme)
+					lattr := parser.lexycal_attributes.current_tag.last_attribute
+					nval := temp_lexeme.substr(1, temp_lexeme.len - 1)
+					// parser.print_debug(lattr + " = " + temp_lexeme)
+					parser.lexycal_attributes.current_tag.attributes[lattr] = nval
 					parser.lexycal_attributes.current_tag.last_attribute = ''
 				} else {
 					parser.lexycal_attributes.current_tag.attributes[temp_lexeme.to_lower()] = '' // parser.print_debug(temp_lexeme)

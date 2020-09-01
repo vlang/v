@@ -39,7 +39,7 @@ pub enum Kind {
 	comma
 	semicolon
 	colon
-	arrow // =>
+	arrow // <-
 	amp
 	hash
 	dollar
@@ -181,7 +181,7 @@ fn build_token_str() []string {
 	// s[Kind.at] = '@'
 	s[Kind.semicolon] = ';'
 	s[Kind.colon] = ':'
-	s[Kind.arrow] = '=>'
+	s[Kind.arrow] = '<-'
 	s[Kind.assign] = '='
 	s[Kind.decl_assign] = ':='
 	s[Kind.plus_assign] = '+='
@@ -339,6 +339,7 @@ pub fn build_precedences() []Precedence {
 	p[Kind.left_shift] = .product
 	p[Kind.right_shift] = .product
 	p[Kind.amp] = .product
+	p[Kind.arrow] = .product
 	// `+` |  `-` |  `|` | `^`
 	p[Kind.plus] = .sum
 	p[Kind.minus] = .sum
@@ -394,7 +395,7 @@ pub fn (tok Token) is_scalar() bool {
 pub fn (tok Token) is_unary() bool {
 	return tok.kind in [
 	// `+` | `-` | `!` | `~` | `*` | `&`
-	.plus, .minus, .not, .bit_not, .mul, .amp]
+	.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
 pub fn (tok Kind) is_relational() bool {
@@ -412,5 +413,5 @@ pub fn (kind Kind) is_infix() bool {
 	//
 	.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is,
 	//
-	.and, .dot, .pipe, .amp, .left_shift, .right_shift]
+	.and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
 }

@@ -51,6 +51,18 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	return table.new_type(idx)
 }
 
+pub fn (mut p Parser) parse_chan_type() table.Type {
+	if p.peek_tok.kind != .name && p.peek_tok.kind != .key_mut && p.peek_tok.kind != .amp {
+		p.next()
+		return table.chan_type
+	}
+	p.register_auto_import('sync')
+	p.next()
+	elem_type := p.parse_type()
+	idx := p.table.find_or_register_chan(elem_type)
+	return table.new_type(idx)
+}
+
 pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
 	mut mr_types := []table.Type{}
@@ -78,11 +90,13 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
+	ret_type_sym := p.table.get_type_symbol(return_type)
 	func := table.Fn{
 		name: name
 		args: args
 		is_variadic: is_variadic
 		return_type: return_type
+		return_type_source_name: ret_type_sym.source_name
 	}
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, false)
 	return table.new_type(idx)
@@ -134,6 +148,9 @@ pub fn (mut p Parser) parse_type() table.Type {
 		nr_muls++
 		p.next()
 	}
+	if p.tok.kind == .mul {
+		p.error('use `&Type` instead of `*Type` when declaring references')
+	}
 	// &Type
 	for p.tok.kind == .amp {
 		nr_muls++
@@ -183,6 +200,9 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		p.check(.dot)
 		// prefix with full module
 		name = '${p.imports[name]}.$p.tok.lit'
+		if !p.tok.lit[0].is_capital() {
+			p.error('imported types must start with a capital letter')
+		}
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
 	} else if p.mod != 'builtin' && name !in p.table.type_idxs && name.len > 1 {
@@ -211,8 +231,15 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 			if name == 'map' {
 				return p.parse_map_type()
 			}
+			if name == 'chan' {
+				return p.parse_chan_type()
+			}
 			defer {
 				p.next()
+			}
+			if name == '' {
+				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
+				p.error('bad type syntax')
 			}
 			match name {
 				'voidptr' {
@@ -297,6 +324,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	}
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
+		source_name: name
 		kind: .any
 		is_public: true
 	})
@@ -334,6 +362,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		idx := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
+			source_name: bs_name
 			info: table.GenericStructInst{
 				parent_idx: p.table.type_idxs[name]
 				generic_types: generic_types

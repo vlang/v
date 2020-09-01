@@ -6,8 +6,9 @@ import v.util.vtest
 
 const (
 	skip_valgrind_files = [
-		'vlib/v/tests/valgrind/struct_field.vv',
-		'vlib/v/tests/valgrind/fn_returning_string_param.vv',
+		'vlib/v/tests/valgrind/struct_field.v',
+		'vlib/v/tests/valgrind/fn_returning_string_param.v',
+		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
 	]
 )
 
@@ -42,38 +43,39 @@ fn test_all() {
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.vv')), {
+	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
+		{
 		basepath: valgrind_test_path
 	})
 	bench.set_total_expected_steps(tests.len)
-	for dir_test_path in tests {
+	for test in tests {
 		bench.step()
-		test_basename := os.file_name(dir_test_path).replace('.vv', '')
-		v_filename := '$wrkdir/${test_basename}.v'
-		exe_filename := '$wrkdir/$test_basename'
-		full_test_path := os.real_path(os.join_path(vroot, dir_test_path))
+		if !test.contains('1.') {
+			bench.skip()
+			eprintln(bench.step_message_skip(test))
+			continue
+		}
 		//
-		if dir_test_path in skip_valgrind_files {
+		if test in skip_valgrind_files {
 			$if !noskip ? {
 				bench.skip()
-				eprintln(bench.step_message_skip(dir_test_path))
+				eprintln(bench.step_message_skip(test))
 				continue
 			}
 		}
-		vprintln('$dir_test_path => $v_filename')
 		//
-		vprintln('cp $full_test_path $v_filename')
-		os.cp(full_test_path, v_filename)
-		compile_cmd := '$vexe -cg -cflags "-w" -autofree $v_filename'
+		exe_filename := '$wrkdir/x'
+		full_path_to_source_file := os.join_path(vroot, test)
+		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -experimental -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()
-			eprintln(bench.step_message_fail('valgrind $dir_test_path failed'))
+			eprintln(bench.step_message_fail('valgrind $test failed'))
 			continue
 		}
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('file: $dir_test_path could not be compiled.'))
+			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
 			eprintln(res.output)
 			continue
 		}
@@ -86,12 +88,12 @@ fn test_all() {
 		}
 		if valgrind_res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(dir_test_path)}'))
+			eprintln(bench.step_message_fail('failed valgrind check for ${util.bold(test)}'))
 			eprintln(valgrind_res.output)
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok(dir_test_path))
+		eprintln(bench.step_message_ok(test))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))

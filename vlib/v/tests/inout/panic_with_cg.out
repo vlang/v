@@ -2,5 +2,5 @@
    module: main
  function: buggy_function()
   message: panicing...
-     file: vlib/v/tests/inout/panic_with_cg.v
+     file: vlib/v/tests/inout/panic_with_cg.vv
      line: 3

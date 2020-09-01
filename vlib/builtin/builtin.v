@@ -113,11 +113,25 @@ pub fn print(s string) {
 const (
 	new_line_character = '\n'
 )
+
+//#include "@VROOT/vlib/darwin/darwin.m"
+//fn C.nsstring2(s string) voidptr
+//fn C.NSLog(x voidptr)
+//#include <asl.h>
+
+fn C.asl_log(voidptr, voidptr, int, charptr)
+
 pub fn println(s string) {
 	$if windows {
 		print(s)
 		print(new_line_character)
 	} $else {
+		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
+		/*
+		$if macos {
+			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
+		}
+		*/
 		//  TODO: a syscall sys_write on linux works, except for the v repl.
 		//  Probably it is a stdio buffering issue. Needs more testing...
 		//	$if linux {
@@ -277,26 +291,25 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
-pub struct MethodAttr {
+pub struct MethodArgs {
 pub:
-	value string
-	method string
+	Type int
 }
 
 pub struct FunctionData {
 pub:
-	name string
-	attrs []string
-	ret_type string
-	@type int
+	name       string
+	attrs      []string
+	args       []MethodArgs
+	ReturnType int
+	Type       int
 }
 
 pub struct FieldData {
 pub:
-	name string
-	attrs []string
-	typ string
+	name   string
+	attrs  []string
 	is_pub bool
 	is_mut bool
-	@type int
+	Type   int
 }

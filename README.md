@@ -93,7 +93,7 @@ However, if none is found when running `make` on Linux or Windows, TCC would be 
 ### Symlinking
 
 NB: it is *highly recommended*, that you put V on your PATH. That saves
-you the effort to type in the full path to your v executable everytime.
+you the effort to type in the full path to your v executable every time.
 V provides a convenience `v symlink` command to do that more easily.
 
 On Unix systems, it creates a `/usr/local/bin/v` symlink to your
@@ -174,6 +174,9 @@ v run tetris/tetris.v
 ```
 
 <img src='https://raw.githubusercontent.com/vlang/v/master/examples/tetris/screenshot.png' width=300>
+
+NB: In order to build Tetris or 2048 (or anything else using `sokol` or  `gg` graphics modules)
+on some Linux systems, you need to install `libxi-dev` and `libxcursor-dev` .
 
 If you plan to use the http package, you also need to install OpenSSL on non-Windows systems.
 

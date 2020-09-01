@@ -271,7 +271,7 @@ pub fn (n int) hex1() string {
 [inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
 	for i=len-1; i>=0; i-- {
@@ -289,7 +289,7 @@ fn u64_to_hex(nn u64, len byte) string {
 [inline]
 fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut n := nn
-	mut buf := [256]byte
+	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
 	for i=len-1; i>=0; i-- {
@@ -368,62 +368,20 @@ pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
 
-// ----- utilities functions -----
-
-/*
-pub fn (c rune) str() string {
-	fst_byte := int(c)>>8 * 3 & 0xff
-	len := utf8_char_len(fst_byte)
-	mut str := string{
-		len: len
-		str: malloc(len + 1)
-	}
-	for i in 0..len {
-		str.str[i] = int(c)>>8 * (3 - i) & 0xff
-	}
-	str.str[len] = `\0`
-	return str
-}
-*/
-
-pub fn (c byte) str() string {
+pub fn (b byte) str() string {
+	// TODO
+	//return int(b).str_l(7)
 	mut str := string{
 		str: malloc(2)
 		len: 1
 	}
 	unsafe {
-		str.str[0] = c
+		str.str[0] = b
 		str.str[1] = `\0`
 	}
+	//println(str)
 	return str
 }
-
-pub fn (c byte) is_capital() bool {
-	return c >= `A` && c <= `Z`
-}
-
-pub fn (b []byte) clone() []byte {
-	mut res := []byte{len: b.len}
-	//mut res := make([]byte, {repeat:b.len})
-	for i in 0..b.len {
-		res[i] = b[i]
-	}
-	return res
-}
-
-// TODO remove this once runes are implemented
-pub fn (b []byte) bytestr() string {
-	return bytes2string(b)
-}
-
-// TODO copy pasted from builder.v
-fn bytes2string(b []byte) string {
-	mut copy := b.clone()
-	copy << `\0`
-	res := tos(copy.data, copy.len-1)
-	return res
-}
-
 
 // TODO generic
 pub fn (a []byte) contains(val byte) bool {

@@ -153,10 +153,16 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	}
 }
 
+pub fn new_vdoc_preferences() &pref.Preferences {
+	// vdoc should be able to parse as much user code as possible
+	// so its preferences should be permissive:
+	return &pref.Preferences{ enable_globals: true }
+}
+
 pub fn new(input_path string) Doc {
 	mut d := Doc{
 		input_path: os.real_path(input_path)
-		prefs: &pref.Preferences{}
+		prefs: new_vdoc_preferences()
 		table: table.new_table()
 		head: DocNode{}
 		contents: []DocNode{}
@@ -219,6 +225,12 @@ pub fn (nodes []DocNode) find_nodes_with_attr(attr_name, value string) []DocNode
 	return subgroup
 }
 
+// get_parent_mod - return the parent mod name, in dot format.
+// It works by climbing up the folder hierarchy, until a folder,
+// that either contains main .v files, or a v.mod file is reached.
+// For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
+// it returns `x.websocket.tests`, because /languages/v/ has v.mod file in it.
+// NB: calling this is expensive, so keep the result, instead of recomputing it.
 fn get_parent_mod(dir string) ?string {
 	$if windows {
 		// windows root path is C: or D:
@@ -231,20 +243,23 @@ fn get_parent_mod(dir string) ?string {
 		}
 	}
 	base_dir := os.base_dir(dir)
-	if os.file_name(base_dir) in ['encoding', 'v'] && 'vlib' in base_dir {
-		return os.file_name(base_dir)
-	}
-	prefs := &pref.Preferences{}
-	files := os.ls(base_dir) or {
+	fname_base_dir := os.file_name(base_dir)
+	prefs := new_vdoc_preferences()
+	fentries := os.ls(base_dir) or {
 		[]string{}
+	}
+	files := fentries.filter(!os.is_dir(it))
+	if 'v.mod' in files {
+		// the top level is reached, no point in climbing up further
+		return ''
 	}
 	v_files := prefs.should_compile_filtered_files(base_dir, files)
 	if v_files.len == 0 {
 		parent_mod := get_parent_mod(base_dir) or {
-			''
+			return fname_base_dir
 		}
 		if parent_mod.len > 0 {
-			return parent_mod + '.' + os.file_name(base_dir)
+			return parent_mod + '.' + fname_base_dir
 		}
 		return error('No V files found.')
 	}
@@ -257,7 +272,7 @@ fn get_parent_mod(dir string) ?string {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or {
-		''
+		return fname_base_dir
 	}
 	if parent_mod.len > 0 {
 		return parent_mod + '.' + file_ast.mod.name

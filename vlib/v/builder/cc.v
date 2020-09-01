@@ -211,7 +211,7 @@ fn (mut v Builder) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$pref.default_module_path${os.path_separator}cache$os.path_separator$v.pref.path' } else { '$pref.default_module_path${os.path_separator}cache/$v.pref.path' }
+		out_dir := os.join_path(pref.default_module_path, 'cache', v.pref.path)
 		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
@@ -274,6 +274,12 @@ fn (mut v Builder) cc() {
 	if v.pref.is_prod {
 		args << optimization_options
 	}
+	if v.pref.is_prod && !debug_mode {
+		// sokol and other C libraries that use asserts 
+		// have much better performance when NDEBUG is defined
+		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+		args << '-DNDEBUG'
+	}
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
@@ -293,7 +299,7 @@ fn (mut v Builder) cc() {
 		args << '-c'
 	} else if v.pref.use_cache {
 		mut built_modules := []string{}
-		builtin_obj_path := pref.default_module_path + os.path_separator + 'cache' + os.path_separator + 'vlib' + os.path_separator + 'builtin.o'
+		builtin_obj_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
 		if !os.exists(builtin_obj_path) {
 			os.system('$vexe build-module vlib/builtin')
 		}
@@ -327,10 +333,9 @@ fn (mut v Builder) cc() {
 				// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
 				// 	continue
 				// }
-				
-				imp_path := 'vlib' + os.path_separator + mod_path
-				cache_path := pref.default_module_path + os.path_separator + 'cache'
-				obj_path := cache_path + os.path_separator + '${imp_path}.o'
+				imp_path := os.join_path('vlib', mod_path)
+				cache_path := os.join_path(pref.default_module_path, 'cache')
+				obj_path := os.join_path(cache_path, '${imp_path}.o')
 				if os.exists(obj_path) {
 					libs += ' ' + obj_path
 				} else {
@@ -716,14 +721,15 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (mut c Builder) build_thirdparty_obj_files() {
-	for flag in c.get_os_cflags() {
+fn (mut v Builder) build_thirdparty_obj_files() {
+	v.log('build_thirdparty_obj_files: v.table.cflags: $v.table.cflags')
+	for flag in v.get_os_cflags() {
 		if flag.value.ends_with('.o') {
-			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
-			if c.pref.ccompiler == 'msvc' {
-				c.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+			rest_of_module_flags := v.get_rest_of_module_cflags(flag)
+			if v.pref.ccompiler == 'msvc' {
+				v.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
-				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+				v.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}
@@ -744,18 +750,18 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfile := '${path[..path.len-2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
 	res := os.exec(cmd) or {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
 		return
 	}

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_pub_field.v:9:4: error: field `i` of struct `Foo` is immutable
+vlib/v/checker/tests/struct_pub_field.vv:9:4: error: field `i` of struct `Foo` is immutable
     7 |         i: 1
     8 |     }
     9 |     a.i = 2

@@ -301,7 +301,7 @@ struct Foooj {
 }
 
 fn test_fixed() {
-	mut nums := [4]int
+	mut nums := [4]int{}
 	//x := nums[1..3]
 	//assert x.len == 2
 	assert nums[0] == 0
@@ -310,7 +310,7 @@ fn test_fixed() {
 	assert nums[3] == 0
 	nums[1] = 7
 	assert nums[1] == 7
-	nums2 := [5]int // c_n
+	nums2 := [5]int{} // c_n
 	assert nums2[c_n - 1] == 0
 }
 
@@ -639,7 +639,7 @@ fn test_map() {
 	assert strs.map( it.len + strs.map(it.len)[0] ) == [2, 3, 8]
 
 	// nested (different it types)
-	assert strs.map( it[ nums.map(it - it)[0] ] ) == [`v`, `i`, `a`]
+	assert strs.map( it[ nums.map(it - it)[0] ] ) == [byte(`v`), `i`, `a`]
 	assert nums[0..3].map('$it' + strs.map(it)[it-1]) == ['1v','2is','3awesome']
 
 	assert nums.map(map_test_helper_1) == [1,4,9,16,25,36]
@@ -695,6 +695,11 @@ fn test_eq() {
 	*/
 }
 
+struct User {
+	age int
+	name string
+}
+
 fn test_sort() {
 	mut a := ['hi', '1', '5', '3']
 	a.sort()
@@ -710,6 +715,30 @@ fn test_sort() {
 	assert nums[2] == 42
 	assert nums[3] == 67
 	assert nums[4] == 108
+	//
+	nums.sort(a < b)
+	assert nums[0] == -3
+	assert nums[1] == 7
+	assert nums[2] == 42
+	assert nums[3] == 67
+	assert nums[4] == 108
+	//
+	mut users := [User{22, 'Peter'}, User{20, 'Bob'}, User{25, 'Alice'}]
+	users.sort(a.age < b.age)
+	assert(users[0].age == 20)
+	assert(users[1].age == 22)
+	assert(users[2].age == 25)
+	assert(users[0].name == 'Bob')
+	assert(users[1].name == 'Peter')
+	assert(users[2].name == 'Alice')
+	//
+	users.sort(a.age > b.age)
+	assert(users[0].age == 25)
+	assert(users[1].age == 22)
+	assert(users[2].age == 20)
+	//
+	users.sort(a.name < b.name) // Test sorting by string fields
+	//assert users.map(it.name).join(' ') == 'Alice Bob Peter'
 }
 
 fn test_f32_sort() {
@@ -972,3 +1001,34 @@ fn test_array_string_pop() {
 	assert a.len == 0
 	assert a.cap == 3
 }
+
+
+[direct_array_access]
+fn test_direct_array_access() {
+	mut a := [11,22,33,44]
+	assert a[0] == 11
+	assert a[2] == 33
+	x := a[0]
+	a[0] = 21
+	a[1] += 2
+	a[2] = x + 3
+	a[3] -= a[1]
+	assert a == [21, 24, 14, 20]
+}
+
+[direct_array_access]
+fn test_direct_array_access_via_ptr() {
+	mut b := [11,22,33,44]
+	unsafe {
+		mut a := &b
+		assert a[0] == 11
+		assert a[2] == 33
+		x := a[0]
+		a[0] = 21
+		a[1] += 2
+		a[2] = x + 3
+		a[3] -= a[1]
+		assert a == [21, 24, 14, 20]
+	}
+}
+

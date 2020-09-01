@@ -3,7 +3,6 @@
 module gg
 
 import gx
-import os
 import sokol
 import sokol.sapp
 import sokol.sgl
@@ -75,6 +74,8 @@ pub:
 
 fn gg_init_sokol_window(user_data voidptr) {
 	mut g := &Context(user_data)
+	desc := sapp.create_desc()
+	/*
 	desc := C.sg_desc{
 		mtl_device: sapp.metal_get_device()
 		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
@@ -84,6 +85,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
 		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
 	}
+	*/
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{}
 	sgl.setup(&sgl_desc)
@@ -186,13 +188,11 @@ pub fn new_context(cfg Config) &Context {
 	mut g := &Context{
 		width: cfg.width
 		height: cfg.height
-		clear_pass: gfx.create_clear_pass(f32(cfg.bg_color.r) / 255.0, f32(cfg.bg_color.g) / 255.0,
-			f32(cfg.bg_color.b) / 255.0, 1.0)
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
-
 	}
+	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
 	window := C.sapp_desc{
 		user_data: g
@@ -219,8 +219,14 @@ pub fn (gg &Context) run() {
 	sapp.run(&gg.window)
 }
 
+pub fn (mut ctx Context) set_bg_color(c gx.Color) {
+	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0,
+			f32(c.b) / 255.0, f32(c.a) / 255.0)
+}
+
+// TODO: Fix alpha
 pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f((x + w) * ctx.scale, y * ctx.scale)
@@ -230,7 +236,7 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	if ctx.scale == 1 {
 		sgl.v2f(x, y)
@@ -271,8 +277,30 @@ pub fn (gg &Context) end() {
 	}
 }
 
+fn abs(a f32) f32 {
+	if a >= 0 {
+		return a
+	}
+	return -a
+}
+
+
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
-	sgl.c4b(c.r, c.g, c.b, 255)
+	if ctx.scale > 1 {
+		// Make the line more clear on hi dpi screens: draw a rectangle
+		mut width := abs(x2 - x)
+		mut height := abs(y2 - y)
+		if width == 0   {
+			width = 1
+		}
+		else if height == 0 {
+			height = 1
+		}
+
+		ctx.draw_rect(x, y, width, height, c)
+		return
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
 	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)

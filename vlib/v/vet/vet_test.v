@@ -8,7 +8,8 @@ fn test_vet() {
 	os.chdir(vroot)
 	test_dir := 'vlib/v/vet/tests'
 	tests := get_tests_in_dir(test_dir)
-	assert check_path(vexe, test_dir, tests) == 0
+	fails := check_path(vexe, test_dir, tests)
+	assert fails == 0
 }
 
 fn get_tests_in_dir(dir string) []string {
@@ -26,15 +27,12 @@ fn check_path(vexe, dir string, tests []string) int {
 		basepath: dir
 	})
 	for path in paths {
-		program := path.replace('.vv', '.v')
+		program := path
 		print(path + ' ')
-		os.cp(path, program) or {
-			panic(err)
-		}
 		res := os.exec('$vexe vet $program') or {
 			panic(err)
 		}
-		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or {
 			panic(err)
 		}
 		expected = clean_line_endings(expected)
@@ -51,7 +49,6 @@ fn check_path(vexe, dir string, tests []string) int {
 			nb_fail++
 		} else {
 			println(term.green('OK'))
-			os.rm(program)
 		}
 	}
 	return nb_fail

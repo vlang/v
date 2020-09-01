@@ -437,6 +437,13 @@ fn C.sem_trywait(voidptr) int
 fn C.sem_timedwait(voidptr, voidptr) int
 fn C.sem_destroy(voidptr) int
 
+// MacOS semaphore functions
+fn C.dispatch_semaphore_create(i64) voidptr
+fn C.dispatch_semaphore_signal(voidptr) i64
+fn C.dispatch_semaphore_wait(voidptr, u64) i64
+fn C.dispatch_time(u64, i64) u64
+fn C.dispatch_release(voidptr)
+
 fn C.read(fd int, buf voidptr, count size_t) int
 fn C.write(fd int, buf voidptr, count size_t) int
 fn C.close(fd int) int

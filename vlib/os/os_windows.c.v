@@ -146,10 +146,7 @@ pub fn mkdir(path string) ?bool {
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
-    cfile := vfopen(path, 'rb')
-    if cfile == voidptr(0) {
-	    return HANDLE(invalid_handle_value)
-    }
+    cfile := vfopen(path, 'rb') or { return HANDLE(invalid_handle_value) }
     handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
     return handle
 }
@@ -264,7 +261,7 @@ pub fn exec(cmd string) ?Result {
 		h_std_error: child_stdout_write
 		dw_flags: u32(C.STARTF_USESTDHANDLES)
 	}
-	command_line := [32768]u16
+	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
 	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
 	if !create_process_ok {
@@ -274,7 +271,7 @@ pub fn exec(cmd string) ?Result {
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
-	buf := [4096]byte
+	buf := [4096]byte{}
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {

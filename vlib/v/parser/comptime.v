@@ -6,7 +6,6 @@ module parser
 import os
 import v.ast
 import v.pref
-import v.vmod
 import v.table
 import vweb.tmpl
 
@@ -17,67 +16,14 @@ const (
 	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
 
-fn (mut p Parser) resolve_vroot(flag string) string {
-	mut mcache := vmod.get_cache()
-	vmod_file_location := mcache.get_by_folder(p.file_name_dir)
-	if vmod_file_location.vmod_file.len == 0 {
-		// There was no actual v.mod file found.
-		p.error('To use @VROOT, you need' + ' to have a "v.mod" file in $p.file_name_dir,' + ' or in one of its parent folders.')
-	}
-	vmod_path := vmod_file_location.vmod_folder
-	if p.pref.is_fmt {
-		return flag
-	}
-	return flag.replace('@VROOT', os.real_path(vmod_path))
-}
-
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
 	mut val := p.tok.lit
 	p.next()
-	if p.pref.backend == .js {
-		if !p.file_name.ends_with('.js.v') {
-			p.error('Hash statements are only allowed in backend specific files such "x.js.v"')
-		}
-		if p.mod == 'main' {
-			p.error('Hash statements are not allowed in the main module. Please place them in a separate module.')
-		}
-	}
-	if val.starts_with('include') {
-		mut flag := val[8..]
-		if flag.contains('@VROOT') {
-			vroot := p.resolve_vroot(flag)
-			val = 'include $vroot'
-		}
-	}
-	if val.starts_with('flag') {
-		// #flag linux -lm
-		mut flag := val[5..]
-		// expand `@VROOT` to its absolute path
-		if flag.contains('@VROOT') {
-			flag = p.resolve_vroot(flag)
-		}
-		for deprecated in ['@VMOD', '@VMODULE', '@VPATH', '@VLIB_PATH'] {
-			if flag.contains(deprecated) {
-				p.error('$deprecated had been deprecated, use @VROOT instead.')
-			}
-		}
-		// println('adding flag "$flag"')
-		p.table.parse_cflag(flag, p.mod, p.pref.compile_defines_all) or {
-			p.error(err)
-		}
-		/*
-		words := val.split(' ')
-		if words.len > 1 && words[1] in supported_platforms {
-			if p.pref.os == .mac && words[1] == 'darwin' {
-				p.pref.cflags += val.after('darwin')
-			}
-		}
-		*/
-	}
 	return ast.HashStmt{
 		val: val
 		mod: p.mod
+		pos: p.prev_tok.position()
 	}
 }
 
@@ -193,7 +139,8 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	// return p.vweb()
 	// }
 	p.check(.key_if)
-	is_not := p.tok.kind == .not
+	mut is_not := p.tok.kind == .not
+	inversion_pos := p.tok.position()
 	if is_not {
 		p.next()
 	}
@@ -202,7 +149,7 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	mut val := ''
 	mut tchk_expr := ast.Expr{}
 	if p.peek_tok.kind == .dot {
-		vname := p.parse_ident(table.Language.v)
+		vname := p.parse_ident(.v)
 		cobj := p.scope.find(vname.name) or {
 			p.error_with_pos('unknown variable `$vname.name`', name_pos_start)
 			return ast.Stmt{}
@@ -210,9 +157,17 @@ fn (mut p Parser) comp_if() ast.Stmt {
 		if cobj is ast.Var {
 			tchk_expr = p.dot_expr(vname)
 			val = vname.name
-			if tchk_expr is ast.SelectorExpr {
-				if tchk_expr.field_name !in ['type', '@type'] {
-					p.error_with_pos('only the `.@type` field name is supported for now',
+			if tchk_expr is ast.SelectorExpr as tchk_expr2 {
+				if p.tok.kind == .lsbr && tchk_expr2.field_name == 'args' {
+					tchk_expr = p.index_expr(tchk_expr)
+					if p.tok.kind == .dot && p.peek_tok.lit == 'Type' {
+						tchk_expr = p.dot_expr(tchk_expr)
+					} else {
+					p.error_with_pos('only the `Type` field is supported for arguments',
+						p.peek_tok.position())
+					}
+				} else if tchk_expr2.field_name !in ['Type', 'ReturnType'] {
+					p.error_with_pos('only the `Type` and `ReturnType` fields are supported for now',
 						name_pos_start)
 				}
 			}
@@ -280,10 +235,17 @@ fn (mut p Parser) comp_if() ast.Stmt {
 	if p.tok.kind == .question {
 		p.next()
 		is_opt = true
-	} else if p.tok.kind == .key_is {
+	} else if p.tok.kind in [.key_is, .not_is] {
+		typecheck_inversion := p.tok.kind == .not_is
 		p.next()
 		tchk_type = p.parse_type()
 		is_typecheck = true
+		if is_not {
+			name := p.table.get_type_name(tchk_type)
+			p.error_with_pos('use `\$if $tchk_expr !is $name {`, not `\$if !$tchk_expr is $name {`',
+			inversion_pos)
+		}
+		is_not = typecheck_inversion
 	}
 	if !skip {
 		stmts = p.parse_block()

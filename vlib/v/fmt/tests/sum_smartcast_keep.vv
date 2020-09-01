@@ -1,4 +1,6 @@
 struct S1 {
+mut:
+	i int
 }
 
 struct S2 {
@@ -7,7 +9,8 @@ struct S2 {
 type Sum = S1 | S2
 
 fn f(sum Sum) {
-	if sum is S1 {
+	if mut sum is S1 {
+		sum.i++
 	}
 	if sum is S1 as s1 {
 	}

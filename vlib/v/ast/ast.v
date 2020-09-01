@@ -10,10 +10,11 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
+	CharLiteral | ChanInit | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr |
 	IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr |
 	None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectorExpr | SizeOf |
 	SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
+
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
@@ -105,7 +106,7 @@ pub:
 pub struct SelectorExpr {
 pub:
 	pos        token.Position
-	expr       Expr
+	expr       Expr // expr.field_name
 	field_name string
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
@@ -161,6 +162,7 @@ pub:
 	pos    token.Position
 pub mut:
 	fields []ConstField
+	end_comments []Comment
 }
 
 pub struct StructDecl {
@@ -257,6 +259,7 @@ pub:
 	body_pos      token.Position
 	file          string
 	is_generic    bool
+	is_direct_arr bool // direct array access
 	attrs         []table.Attr
 pub mut:
 	stmts         []Stmt
@@ -434,9 +437,12 @@ pub mut:
 
 pub struct PrefixExpr {
 pub:
-	op    token.Kind
-	right Expr
-	pos   token.Position
+	op         token.Kind
+	right      Expr
+	pos        token.Position
+pub mut:
+	right_type table.Type
+	or_block   OrExpr
 }
 
 pub struct IndexExpr {
@@ -469,9 +475,10 @@ pub:
 	pos          token.Position
 	body_pos     token.Position
 	comments     []Comment
+	left_as_name string // `name` in `if cond is SumType as name`
+	mut_name     bool // `if mut name is`
 pub mut:
-	smartcast    bool // should only be true if cond is `x is sumtype`, it will be set in checker - if_expr
-	left_as_name string // only used in x is SumType check
+	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr
 }
 
 pub struct UnsafeExpr {
@@ -608,16 +615,19 @@ pub:
 // #include etc
 pub struct HashStmt {
 pub:
-	val string
 	mod string
+	pos token.Position
+pub mut:
+	val string
 }
 
-// filter(), map()
+/*
+// filter(), map(), sort()
 pub struct Lambda {
 pub:
 	name string
 }
-
+*/
 pub struct AssignStmt {
 pub:
 	right         []Expr
@@ -731,13 +741,13 @@ pub struct ArrayInit {
 pub:
 	pos             token.Position
 	elem_type_pos   token.Position
-	exprs           []Expr
+	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	is_fixed        bool
-	has_val         bool
+	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
 	len_expr        Expr
 	cap_expr        Expr
-	default_expr    Expr
+	default_expr    Expr // init: expr
 	has_len         bool
 	has_cap         bool
 	has_default     bool
@@ -747,6 +757,16 @@ pub mut:
 	interface_type  table.Type // Animal
 	elem_type       table.Type
 	typ             table.Type
+}
+
+pub struct ChanInit {
+pub:
+	pos        token.Position
+	cap_expr   Expr
+	has_cap    bool
+pub mut:
+	typ        table.Type
+	elem_type  table.Type
 }
 
 pub struct MapInit {
@@ -1045,6 +1065,16 @@ pub fn (expr Expr) position() token.Position {
 			return token.Position{}
 		}
 	}
+}
+
+pub fn (expr Expr) is_lvalue() bool {
+	match expr {
+		Ident {return true}
+		IndexExpr {return expr.left.is_lvalue()}
+		SelectorExpr {return expr.expr.is_lvalue()}
+		else {}
+	}
+	return false
 }
 
 pub fn (stmt Stmt) position() token.Position {

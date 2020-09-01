@@ -141,3 +141,14 @@ pub fn verror(kind, s string) {
 	eprintln('$final_kind: $s')
 	exit(1)
 }
+
+pub fn vlines_escape_path(path string, ccompiler string) string {
+	is_cc_tcc := ccompiler.contains('tcc')
+	if is_cc_tcc {
+		// tcc currently has a bug, causing all #line files,
+		// to be prefixed with the *same folder as the .tmp.c file*
+		// this ../../ escaping, is a temporary workaround for that
+		return '../../../../../..' + cescaped_path(os.real_path(path))
+	}
+	return cescaped_path(os.real_path(path))
+}

@@ -123,7 +123,7 @@ pub fn (db DB) exec_one(query string) ?Row {
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
-	row := rows_first_or_empty( res_to_rows(res) ) or { return error(err) }
+	row := rows_first_or_empty( res_to_rows(res) )?
 	return row
 }
 
@@ -142,7 +142,7 @@ pub fn (db DB) exec_param_many(query string, params []string) []Row {
 }
 
 pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
-	mut param_vals := [2]byteptr
+	mut param_vals := [2]byteptr{}
 	param_vals[0] = param.str
 	param_vals[1] = param2.str
 	res := C.PQexecParams(db.conn, query.str, 2, 0, param_vals, 0, 0, 0)
@@ -150,7 +150,7 @@ pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
 }
 
 pub fn (db DB) exec_param(query string, param string) []Row {
-	mut param_vals := [1]byteptr
+	mut param_vals := [1]byteptr{}
 	param_vals[0] = param.str
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
 	return db.handle_error_or_result(res, 'exec_param')

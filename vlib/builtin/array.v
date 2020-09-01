@@ -539,6 +539,36 @@ fn compare_ints(a, b &int) int {
 	return 0
 }
 
+fn compare_ints_reverse(a, b &int) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_floats(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_floats_reverse(a, b &f64) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
 // []int.sort sorts array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
@@ -569,6 +599,15 @@ pub fn (a []int) index(v int) int {
 // []byte.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []byte) index(v byte) int {
+	for i in 0..a.len {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (a []rune) index(v rune) int {
 	for i in 0..a.len {
 		if a[i] == v {
 			return i
