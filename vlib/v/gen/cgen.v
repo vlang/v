@@ -2472,7 +2472,7 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 				for i := g.match_sumtype_exprs.len - 1; i >= 0; i-- {
 					s_expr := g.match_sumtype_exprs[i]
 					if s_expr is ast.Ident && expr.name == (s_expr as ast.Ident).name {
-						return g.table.get_type_symbol(typ).kind !in [.sum_type, .struct_]
+						return g.table.get_type_symbol(typ).kind !in [.sum_type, .struct_, .string]
 					}
 				}
 			}
@@ -3645,13 +3645,17 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		if is_p && str_method_expects_ptr {
 			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
 		}
-		if is_p && !str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
+		else if is_p && !str_method_expects_ptr {
+			if sym.kind == .struct_ {
+				g.write('string_add(_SLIT("&"), ${str_fn_name}( (*(')
+			} else {
+				g.write('${str_fn_name}( *(')
+			}
 		}
-		if !is_p && !str_method_expects_ptr {
+		else if !is_p && !str_method_expects_ptr {
 			g.write('${str_fn_name}(  ')
 		}
-		if !is_p && str_method_expects_ptr {
+		else {
 			g.write('${str_fn_name}( &')
 		}
 		g.expr(expr)
