@@ -127,11 +127,10 @@ jobs:
           v -silent test-fixed
 
   macos:
-    runs-on: ${{ matrix.os }}
+    runs-on: macOS-latest
     timeout-minutes: 30
-    strategy:
-      matrix:
-        os: [macOS-latest]
+    env:
+      VFLAGS: -cc clang
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
