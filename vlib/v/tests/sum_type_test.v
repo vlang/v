@@ -328,20 +328,40 @@ fn (c CommonType) str() string {
 	}
 }
 
-type IntString = int | string
-fn sumtype_match_with_string_interpolation(int_switch_on bool) string {
-	mut bar := IntString(5)
-	if int_switch_on {
-		match bar {
- 			int { return "it's an int: $bar" }
-			string { return "shouldn't happen" }
+type IntStringColor = int | string | Color
+fn sumtype_match_with_string_interpolation(code int) string {
+	mut bar := IntStringColor(5)
+	match code {
+		1 {
+			match bar {
+				int { return "it's an int: $bar" }
+				string { return "shouldn't happen" }
+				Color { return "shouldn't happen" }
+			}
 		}
-	} else {
-		bar = IntString('hello')
-		match bar {
-			string { return "it's a string: $bar" }
-			int { return "shouldn't happen" }
+		2 {
+			bar = IntStringColor('hello')
+			match bar {
+				string { return "it's a string: $bar" }
+				int { return "shouldn't happen" }
+				Color { return "shouldn't happen" }
+			}
 		}
+		3 {
+			bar = IntStringColor(Color.green)
+			match bar {
+				string { return "shouldn't happen" }
+				int { return "shouldn't happen" }
+				Color {
+					match bar {
+						.red { return 'red_$bar'}
+						.green { return 'green_$bar' }
+						.blue { return 'blue_$bar' }
+					}
+				}
+			}
+		}
+		else { return 'wrong' }
 	}
 }
 
@@ -375,6 +395,7 @@ fn test_sum_type_match() {
 	assert as_string(CommonType(Color.red)) == 'This is the string representation of "enum1_red"'
 	assert as_string(CommonType(Color.green)) == 'This is the string representation of "enum2_green"'
 	assert as_string(CommonType(Color.blue)) == 'This is the string representation of "enum3_blue"'
-	assert sumtype_match_with_string_interpolation(true) == "it's an int: 5"
-	assert sumtype_match_with_string_interpolation(false) == "it's a string: hello"
+	assert sumtype_match_with_string_interpolation(1) == "it's an int: 5"
+	assert sumtype_match_with_string_interpolation(2) == "it's a string: hello"
+	assert sumtype_match_with_string_interpolation(3) == "green_green"
 }
