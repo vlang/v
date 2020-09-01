@@ -3937,7 +3937,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			else { false }
 		}
 		if is_var {
-			str_fn_name := g.gen_str_for_type(etype)
+			str_fn_name := if etype.is_ptr() { g.gen_str_for_type(etype.deref()) } else { g.gen_str_for_type(etype) }
 			g.write('${str_fn_name}(')
 			g.enum_expr(expr)
 			g.write(')')
@@ -3952,18 +3952,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		str_fn_name := g.gen_str_for_type(val_type)
 		if is_p && str_method_expects_ptr {
 			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
-		}
-		else if is_p && !str_method_expects_ptr {
+		} else if is_p && !str_method_expects_ptr {
 			if sym.kind == .struct_ {
 				g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
 			} else {
 				g.write('${str_fn_name}(( *(')
 			}
-		}
-		else if !is_p && !str_method_expects_ptr {
+		} else if !is_p && !str_method_expects_ptr {
 			g.write('${str_fn_name}(  ')
-		}
-		else {
+		} else {
 			g.write('${str_fn_name}( &')
 		}
 		if expr is ast.ArrayInit {
