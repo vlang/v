@@ -328,6 +328,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				if res.out_name.ends_with('.js') {
 					res.backend = .js
 				}
+				if !os.is_abs_path(res.out_name) {
+					res.out_name = os.join_path(os.getwd(), res.out_name)
+				}
 				i++
 			}
 			'-b' {
