@@ -3955,9 +3955,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		}
 		else if is_p && !str_method_expects_ptr {
 			if sym.kind == .struct_ {
-				g.write('string_add(_SLIT("&"), ${str_fn_name}( (*(')
+				g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
 			} else {
-				g.write('${str_fn_name}( *(')
+				g.write('${str_fn_name}(( *(')
 			}
 		}
 		else if !is_p && !str_method_expects_ptr {
