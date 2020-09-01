@@ -287,7 +287,7 @@ struct IntAndStr {
 	baz &IntAndStr
 }
 
-enum Color { reg green blue }
+enum Color { red green blue }
 type CommonType = int | f64 | string | IntAndStr | bool | Color
 
 fn as_string(val CommonType) string {
