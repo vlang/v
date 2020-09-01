@@ -537,12 +537,13 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 		} else {
 			expr := node.args[0].expr
+			should_write_asterisk := g.should_write_asterisk_due_to_match_sumtype(expr)
 			is_var := match expr {
 				ast.SelectorExpr { true }
 				ast.Ident { true }
 				else { false }
 			}
-			if typ.is_ptr() && sym.kind != .struct_ && !g.should_write_asterisk_due_to_match_sumtype(expr) {
+			if typ.is_ptr() && sym.kind != .struct_ && should_write_asterisk {
 				// ptr_str() for pointers
 				styp = 'ptr'
 				str_fn_name = 'ptr_str'
@@ -554,7 +555,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 					// when no var, print string directly
 					g.write('${print_method}(tos3("')
 				}
-				if typ.is_ptr() {
+				if should_write_asterisk {
 					// dereference
 					g.write('*')
 				}
