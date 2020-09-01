@@ -357,9 +357,15 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 
 fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 	s := util.no_dots(styp)
+	styp_is_ptr := '*' in styp
+	s_deref := s.trim('*')
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
-	g.auto_str_funcs.writeln('\tswitch(it) {')
+	if styp_is_ptr {
+		g.auto_str_funcs.writeln('\tswitch(*it) {')
+	} else {
+		g.auto_str_funcs.writeln('\tswitch(it) {')
+	}
 	// Only use the first multi value on the lookup
 	mut seen := []string{len: info.vals.len}
 	for val in info.vals {
@@ -368,7 +374,7 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 		} else if info.is_multi_allowed {
 			seen << val
 		}
-		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos_lit("$val");')
+		g.auto_str_funcs.writeln('\t\tcase ${s_deref}_$val: return tos_lit("$val");')
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return tos_lit("unknown enum value");')
 	g.auto_str_funcs.writeln('\t}')
