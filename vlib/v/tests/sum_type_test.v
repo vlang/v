@@ -287,7 +287,8 @@ struct IntAndStr {
 	baz &IntAndStr
 }
 
-type CommonType = int | f64 | string | IntAndStr | bool | byte
+enum Color { reg green blue }
+type CommonType = int | f64 | string | IntAndStr | bool | Color
 
 fn as_string(val CommonType) string {
 	return 'This is the string representation of "' + val.str() + '"'
@@ -315,8 +316,30 @@ fn (c CommonType) str() string {
 			d := c
 			return if d { 'true' } else { 'false' }
 		}
-		byte {
-			return c.str()
+		Color {
+			d := c
+			match d {
+				.red { return 'enum1_' + d.str() }
+				.green { return 'enum2_' + d.str() }
+				.blue { return 'enum3_' + d.str() }
+			}
+		}
+	}
+}
+
+type IntString = int | string
+fn sumtype_match_with_string_interpolation(int_switch_on bool) string {
+	mut bar := Foo(5)
+	if int_switch_on {
+		match bar {
+ 			int { return "it's an int: $bar" }
+			string { return "shouldn't happen" }
+		}
+	} else {
+		bar = Foo('hello')
+		match bar {
+			string { return "it's a string: $bar" }
+			int { return "shouldn't happen" }
 		}
 	}
 }
@@ -348,5 +371,9 @@ fn test_sum_type_match() {
 	assert as_string('String') == 'This is the string representation of "String"'
 	assert as_string(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}}) == 'This is the string representation of "5_hi_hello"'
 	assert as_string(true) == 'This is the string representation of "true"'
-	assert as_string(`i`) == 'This is the string representation of "i"'
+	assert as_string(Foo(Color.red)) == 'This is the string representation of "enum1_red"'
+	assert as_string(Foo(Color.green)) == 'This is the string representation of "enum2_green"'
+	assert as_string(Foo(Color.blue)) == 'This is the string representation of "enum1_blue"'
+	assert sumtype_match_with_string_interpolation(true) == "it's an int: 5"
+	assert sumtype_match_with_string_interpolation(false) == "it's a string: hello"
 }
