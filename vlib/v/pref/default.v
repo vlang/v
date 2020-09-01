@@ -54,7 +54,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		p.os = get_host_os()
 	}
 	//
-	p.try_to_use_tcc_by_default()    
+	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
@@ -107,7 +107,6 @@ pub fn default_tcc_compiler() string {
 	if os.exists(vtccexe) {
 		return vtccexe
 	}
-	eprintln('Your platform does not have yet a `$vtccexe` file')
 	return ''
 }
 
