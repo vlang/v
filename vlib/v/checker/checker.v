@@ -50,6 +50,7 @@ pub mut:
 	mod              string // current module name
 	is_builtin_mod   bool // are we in `builtin`?
 	inside_unsafe    bool
+	skip_flags       bool // should `#flag` and `#include` be skipped
 	cur_generic_type table.Type
 mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
@@ -2235,6 +2236,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
+	if c.skip_flags { return }
 	if c.pref.backend == .js {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('Hash statements are only allowed in backend specific files such "x.js.v"',
@@ -3116,19 +3118,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		if is_ct { // Skip checking if needed
+			cur_skip_flags := c.skip_flags
 			if node.has_else && i == node.branches.len - 1 { // `else` branch
 				if should_skip_else {
-					node.branches[i].stmts = []
-				} else {
-					c.stmts(branch.stmts)
+					c.skip_flags = true
 				}
 			} else if should_skip {
-				node.branches[i].stmts = []
+				c.skip_flags = true
 				should_skip = false // Reset the value of `should_skip` for the next branch
 			} else {
-				c.stmts(branch.stmts)
 				should_skip_else = true // If a regular branch wasn't skipped, then `else` must be
 			}
+			c.stmts(branch.stmts)
+			c.skip_flags = cur_skip_flags
 		} else {
 			c.stmts(branch.stmts)
 		}
