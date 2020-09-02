@@ -32,7 +32,7 @@ pub fn dial_udp(laddr, raddr string) ?UdpConn {
 	}
 
 	return UdpConn {
-		sock
+		sock: sock
 	}
 }
 
