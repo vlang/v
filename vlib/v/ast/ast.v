@@ -22,11 +22,6 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor  | ConstD
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
-// pub type Type = StructType | ArrayType
-// pub struct StructType {
-// fields []Field
-// }
-// pub struct ArrayType {}
 pub struct Type {
 pub:
 	typ table.Type
