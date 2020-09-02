@@ -102,6 +102,11 @@ fn cgen_attrs(attrs []table.Attr) []string {
 }
 
 fn (mut g Gen) comp_if(node ast.IfExpr) {
+	line := if node.is_expr {
+		stmt_str := g.go_before_stmt(0)
+		g.write(tabs[g.indent])
+		stmt_str.trim_space()
+	} else { '' }
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
@@ -117,10 +122,33 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		}
 		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
 		g.defer_ifdef = expr_str
-		g.stmts(branch.stmts)
+		if node.is_expr {
+			len := branch.stmts.len
+			if len > 0 {
+				last := branch.stmts[len - 1] as ast.ExprStmt
+				if len > 1 {
+					tmp := g.new_tmp_var()
+					styp := g.typ(last.typ)
+					g.indent++
+					g.writeln('$styp $tmp;')
+					g.writeln('{')
+					g.stmts(branch.stmts[0 .. len - 1])
+					g.write('\t$tmp = ')
+					g.stmt(last)
+					g.writeln('}')
+					g.indent--
+					g.writeln('$line $tmp;')
+				} else {
+					g.write('$line ')
+					g.stmt(last)
+				}
+			}
+		} else {
+			g.stmts(branch.stmts)
+		}
 		g.defer_ifdef = ''
 	}
-	g.writeln('#endif')
+	if node.is_expr { g.write('#endif') } else { g.writeln('#endif') }
 }
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
