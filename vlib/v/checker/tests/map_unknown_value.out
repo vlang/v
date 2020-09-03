@@ -1,5 +1,13 @@
+<<<<<<< HEAD:vlib/v/checker/tests/map_unknown_value.out
 vlib/v/checker/tests/map_unkown_value.vv:2:5: error: unknown type `DoesNotExist`
     1 | struct App {
     2 |     my_map map[string]DoesNotExist
       |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     3 | }
+=======
+vlib/v/checker/tests/map_unkown_value.vv:2:5: error: unknown type `DoesNotExist`
+    1 | struct App {
+    2 |     my_map map[string]DoesNotExist
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 | }
+>>>>>>> ba45aa53378616d063244d251cb23343e8096578:vlib/v/checker/tests/map_unknown_type.out
