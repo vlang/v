@@ -112,7 +112,10 @@ fn test_inttypes_string_interpolation() {
 	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
 		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
 		'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
-		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C' ||
+		// 32-bit platform
+		'${vp:p}:$bp' == 'CBF6EFC7:9E53208C' ||
+		'${vp:p}:$bp' == 'cbf6efc7:9e53208c'
 }
 
 fn test_utf8_string_interpolation() {
