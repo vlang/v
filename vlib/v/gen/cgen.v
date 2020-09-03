@@ -2381,7 +2381,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				else {}
 			}
 			if left_sym.kind == .function {
-				g.write('_IN(u64, ')
+				g.write('_IN(int, ')
 			} else {
 				styp := g.typ(g.table.mktyp(left_type))
 				g.write('_IN($styp, ')
