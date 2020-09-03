@@ -35,6 +35,7 @@ const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
+	long_days= ['Monday', 'Tuesday', 'Wednesday', 'Thusday', 'Friday', 'Saturday', 'Sunday']
 )
 
 pub struct Time {
@@ -272,6 +273,12 @@ pub fn (t Time) weekday_str() string {
 	return days_string[i * 3..(i + 1) * 3]
 }
 
+// weekday_str returns the current day as a string.
+pub fn (t Time) long_weekday_str() string {
+	i := t.day_of_week() - 1
+	return long_days[i]
+}
+
 // ticks returns a number of milliseconds elapsed since system start.
 pub fn ticks() i64 {
 	$if windows {
@@ -356,9 +363,10 @@ pub const(
 	nanosecond  = Duration(1)
 	microsecond = Duration(1000) * nanosecond
 	millisecond = Duration(1000) * microsecond
-	second       = Duration(1000) * millisecond
-	minute       = Duration(60) * second
-	hour         = Duration(60) * minute
+	second      = Duration(1000) * millisecond
+	minute      = Duration(60) * second
+	hour        = Duration(60) * minute
+	infinite    = Duration(-1)
 )
 
 // nanoseconds returns the duration as an integer number of nanoseconds.

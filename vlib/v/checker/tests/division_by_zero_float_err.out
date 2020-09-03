@@ -1,4 +1,4 @@
-vlib/v/checker/tests/division_by_zero_float_err.v:2:14: error: division by zero
+vlib/v/checker/tests/division_by_zero_float_err.vv:2:14: error: division by zero
     1 | fn main() {
     2 |     println(1.0/0.0)
       |                 ~~~

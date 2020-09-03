@@ -309,7 +309,9 @@ fn (mut cb Clipboard) start_listener(){
 						C.XDeleteProperty(event.xselection.display, event.xselection.requestor, event.xselection.property)
 						if cb.is_supported_target(prop.actual_type) {
 							cb.got_text = true
-							cb.text = string(prop.data) //TODO: return byteptr to support other mimetypes
+							unsafe {
+								cb.text = byteptr(prop.data).vstring() //TODO: return byteptr to support other mimetypes
+							}
 						}
 						cb.mutex.unlock()
 					}

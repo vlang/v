@@ -3,7 +3,7 @@ module benchmark
 import time
 import term
 
-const (
+pub const (
 	b_ok = term.ok_message('OK  ')
 	b_fail = term.fail_message('FAIL')
 	b_skip  = term.warn_message('SKIP')
@@ -111,8 +111,8 @@ pub fn (mut b Benchmark) measure(label string) i64 {
 	return res
 }
 
-pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
-	timed_line := b.tdiff_in_ms(msg, b.step_timer.elapsed().microseconds())
+pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg string, sduration time.Duration) string {
+	timed_line := b.tdiff_in_ms(msg, sduration.microseconds())
 	if b.nexpected_steps > 1 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
@@ -135,6 +135,10 @@ pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
 		return '${label:-5s} [${sprogress}] ${timed_line}'
 	}
 	return '${label:-5s}${timed_line}'
+}
+
+pub fn (b &Benchmark) step_message_with_label(label string, msg string) string {
+	return b.step_message_with_label_and_duration(label, msg, b.step_timer.elapsed())
 }
 
 pub fn (b &Benchmark) step_message(msg string) string {

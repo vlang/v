@@ -74,7 +74,7 @@ fn test_stack_array_of_structs_can_be_printed_when_structs_have_ordinary_str() {
 	t[2] = Anything{
 		name: '678'
 	}
-	for test in t {
+	for test in t[0..3] {
 		println(test)
 		assert true
 	}
@@ -96,7 +96,7 @@ fn test_stack_array_of_structs_can_be_printed_when_structs_have_str_with_ptr() {
 	pt[2] = PstrAnything{
 		name: 'P678'
 	}
-	for test in pt {
+	for test in pt[0..3] {
 		println(test)
 		assert true
 	}

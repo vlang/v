@@ -1,9 +1,9 @@
-vlib/v/checker/tests/fn_type_exists.v:1:1: error: type `Pants` doesn't exist
+vlib/v/checker/tests/fn_type_exists.vv:1:1: error: type `Pants` doesn't exist
     1 | type PantsCreator = fn (a Shirt) Pants
       | ~~~~~~~~~~~~~~~~~
     2 |
     3 | type PantsConsumer = fn (p Pants)
-vlib/v/checker/tests/fn_type_exists.v:3:1: error: type `Pants` doesn't exist
+vlib/v/checker/tests/fn_type_exists.vv:3:1: error: type `Pants` doesn't exist
     1 | type PantsCreator = fn (a Shirt) Pants
     2 |
     3 | type PantsConsumer = fn (p Pants)

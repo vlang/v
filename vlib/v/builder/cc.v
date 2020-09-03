@@ -211,7 +211,7 @@ fn (mut v Builder) cc() {
 	}
 	if v.pref.build_mode == .build_module {
 		// Create the modules & out directory if it's not there.
-		mut out_dir := if v.pref.path.starts_with('vlib') { '$pref.default_module_path${os.path_separator}cache$os.path_separator$v.pref.path' } else { '$pref.default_module_path${os.path_separator}cache/$v.pref.path' }
+		out_dir := os.join_path(pref.default_module_path, 'cache', v.pref.path)
 		pdir := out_dir.all_before_last(os.path_separator)
 		if !os.is_dir(pdir) {
 			os.mkdir_all(pdir)
@@ -274,6 +274,12 @@ fn (mut v Builder) cc() {
 	if v.pref.is_prod {
 		args << optimization_options
 	}
+	if v.pref.is_prod && !debug_mode {
+		// sokol and other C libraries that use asserts 
+		// have much better performance when NDEBUG is defined
+		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
+		args << '-DNDEBUG'
+	}
 	if debug_mode && os.user_os() != 'windows' {
 		linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
@@ -292,47 +298,57 @@ fn (mut v Builder) cc() {
 	if v.pref.build_mode == .build_module {
 		args << '-c'
 	} else if v.pref.use_cache {
-		/*
-		QTODO
-		builtin_o_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
-		args << builtin_o_path.replace('builtin.o', 'strconv.o') // TODO hack no idea why this is needed
-		if os.exists(builtin_o_path) {
-			libs = builtin_o_path
+		mut built_modules := []string{}
+		builtin_obj_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
+		if !os.exists(builtin_obj_path) {
+			os.system('$vexe build-module vlib/builtin')
 		}
-		else {
-			println('$builtin_o_path not found... building module builtin')
-			os.system('$vexe build module vlib${os.path_separator}builtin')
-		}
-		*/
-		// TODO add `.unique()` to V arrays
-		mut unique_imports := []string{cap: v.table.imports.len}
-		for imp in v.table.imports {
-			if imp !in unique_imports {
-				unique_imports << imp
+		libs += ' ' + builtin_obj_path
+		for ast_file in v.parsed_files {
+			for imp_stmt in ast_file.imports {
+				imp := imp_stmt.mod
+				if imp in built_modules {
+					continue
+				}
+				// not working
+				if imp == 'webview' {
+					continue
+				}
+				// println('cache: import "$imp"')
+				mod_path := imp.replace('.', os.path_separator)
+
+				// TODO: to get import path all imports (even relative) we can use:
+				// import_path := v.find_module_path(imp, ast_file.path) or {
+				// 	verror('cannot import module "$imp" (not found)')
+				// 	break
+				// }
+
+				// The problem is cmd/v is in module main and imports
+				// the relative module named help, which is built as cmd.v.help not help
+				// currently this got this workign by building into main, see ast.FnDecl in cgen
+				if imp == 'help' {
+					continue
+				}
+				// we are skipping help manually above, this code will skip all relative imports
+				// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
+				// 	continue
+				// }
+				imp_path := os.join_path('vlib', mod_path)
+				cache_path := os.join_path(pref.default_module_path, 'cache')
+				obj_path := os.join_path(cache_path, '${imp_path}.o')
+				if os.exists(obj_path) {
+					libs += ' ' + obj_path
+				} else {
+					println('$obj_path not found... building module $imp')
+					os.system('$vexe build-module $imp_path')
+				}
+				if obj_path.ends_with('vlib/ui.o') {
+					args << '-framework Cocoa -framework Carbon'
+				}
+				built_modules << imp
 			}
 		}
-		for imp in unique_imports {
-			if imp.contains('vweb') {
-				continue
-			}
-			// not working
-			if imp == 'webview' {
-				continue
-			}
-			// println('cache: import "$imp"')
-			imp_path := imp.replace('.', os.path_separator)
-			path := '$pref.default_module_path${os.path_separator}cache${os.path_separator}vlib$os.path_separator${imp_path}.o'
-			// println('adding ${imp_path}.o')
-			if os.exists(path) {
-				libs += ' ' + path
-			} else {
-				println('$path not found... building module $imp')
-				os.system('$vexe build-module vlib$os.path_separator$imp_path')
-			}
-			if path.ends_with('vlib/ui.o') {
-				args << '-framework Cocoa -framework Carbon'
-			}
-		}
+
 	}
 	if v.pref.sanitize {
 		args << '-fsanitize=leak'
@@ -386,19 +402,20 @@ fn (mut v Builder) cc() {
 		args << '-fpermissive'
 		args << '-w'
 	}
+	// TODO: why is this duplicated from above?
 	if v.pref.use_cache {
 		// vexe := pref.vexe_path()
-		cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'] // , 'strconv.ftoa']
-		for cfile in cached_modules {
-			ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
-				'.o')
-			if !os.exists(ofile) {
-				println('${cfile}.o is missing. Building...')
-				println('$vexe build-module vlib/$cfile')
-				os.system('$vexe build-module vlib/$cfile')
-			}
-			args << ofile
-		}
+		// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
+		// for cfile in cached_modules {
+		// 	ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
+		// 		'.o')
+		// 	if !os.exists(ofile) {
+		// 		println('${cfile}.o is missing. Building...')
+		// 		println('$vexe build-module vlib/$cfile')
+		// 		os.system('$vexe build-module vlib/$cfile')
+		// 	}
+		// 	args << ofile
+		// }
 		if !is_cc_tcc {
 			$if linux {
 				linker_flags << '-Xlinker -z'
@@ -407,7 +424,7 @@ fn (mut v Builder) cc() {
 		}
 	}
 	if is_cc_tcc {
-		args << '-bt10'
+		args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
 	// || os.user_os() == 'linux'
@@ -582,7 +599,7 @@ fn (mut b Builder) cc_linux_cross() {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_file := sysroot[..sysroot.len - 1] + '.zip'
 		os.system('curl -L -o $zip_file $zip_url')
-		os.system('unzip -q $zip_file -d $parent_dir')
+		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
 			println('Failed to download.')
 			exit(1)
@@ -704,14 +721,15 @@ fn (mut c Builder) cc_windows_cross() {
 	println(c.pref.out_name + ' has been successfully compiled')
 }
 
-fn (mut c Builder) build_thirdparty_obj_files() {
-	for flag in c.get_os_cflags() {
+fn (mut v Builder) build_thirdparty_obj_files() {
+	v.log('build_thirdparty_obj_files: v.table.cflags: $v.table.cflags')
+	for flag in v.get_os_cflags() {
 		if flag.value.ends_with('.o') {
-			rest_of_module_flags := c.get_rest_of_module_cflags(flag)
-			if c.pref.ccompiler == 'msvc' {
-				c.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
+			rest_of_module_flags := v.get_rest_of_module_cflags(flag)
+			if v.pref.ccompiler == 'msvc' {
+				v.build_thirdparty_obj_file_with_msvc(flag.value, rest_of_module_flags)
 			} else {
-				c.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
+				v.build_thirdparty_obj_file(flag.value, rest_of_module_flags)
 			}
 		}
 	}
@@ -732,18 +750,18 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfile := '${path[..path.len-2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" $cfiles $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
 	res := os.exec(cmd) or {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('failed thirdparty object build cmd: $cmd')
+		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
 		return
 	}

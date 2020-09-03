@@ -19,6 +19,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
+	mut has_default := false
+	mut default_expr := ast.Expr{}
 	if p.tok.kind == .rsbr {
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
@@ -28,7 +30,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
 			sym := p.table.get_type_symbol(elem_type)
-			// this is set here becasue its a known type, others could be the
+			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
 			idx := p.table.find_or_register_array(elem_type, 1, sym.mod)
 			array_type = table.new_type(idx)
@@ -55,6 +57,23 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			// [100]byte
 			elem_type = p.parse_type()
 			is_fixed = true
+			if p.tok.kind == .lcbr {
+				p.next()
+				if p.tok.kind != .rcbr {
+					pos := p.tok.position()
+					n := p.check_name()
+					if n != 'init' {
+						p.error_with_pos('expected `init:`, not `$n`', pos)
+					}
+					p.check(.colon)
+					has_default = true
+					default_expr = p.expr(0)
+				}
+				last_pos = p.tok.position()
+				p.check(.rcbr)
+			} else {
+				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`', last_pos)
+			}
 		} else {
 			if p.tok.kind == .not {
 				last_pos = p.tok.position()
@@ -73,10 +92,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 	mut has_len := false
 	mut has_cap := false
-	mut has_default := false
 	mut len_expr := ast.Expr{}
 	mut cap_expr := ast.Expr{}
-	mut default_expr := ast.Expr{}
 	if p.tok.kind == .lcbr && exprs.len == 0 {
 		// `[]int{ len: 10, cap: 100}` syntax
 		p.next()

@@ -70,7 +70,7 @@ fn (mut cb Clipboard) get_text() string {
 	#}
 
 	#utf8_clip = [ns_clip UTF8String];
-	return string(utf8_clip)
+	return unsafe { utf8_clip.vstring() }
 }
 
 pub fn new_primary() &Clipboard {

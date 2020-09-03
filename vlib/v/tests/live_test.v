@@ -107,9 +107,9 @@ fn atomic_write_source(source string) {
 
 //
 fn testsuite_begin() {
-	if os.user_os() !in ['linux', 'solaris'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
+	if os.user_os() !in ['linux', 'solaris', 'macos'] && os.getenv('FORCE_LIVE_TEST').len == 0 {
 		eprintln('Testing the runtime behaviour of -live mode,')
-		eprintln('is reliable only on Linux for now.')
+		eprintln('is reliable only on Linux/macOS for now.')
 		eprintln('You can still do it by setting FORCE_LIVE_TEST=1 .')
 		exit(0)
 	}

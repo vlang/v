@@ -1,0 +1,13 @@
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:2:1: error: cannot use type `rune` as type `string`
+    1 | ch := `a`
+    2 | match ch {
+      | ~~~~~~~~~~
+    3 |   'a' {}
+    4 |   else {}
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:8:1: error: cannot use type `int` as type `string`
+    6 | 
+    7 | char := 123
+    8 | match char {
+      | ~~~~~~~~~~~~
+    9 |   'a' {}
+   10 |   else {}

@@ -10,6 +10,8 @@ import v.util
 
 fn (mut p Parser) struct_decl() ast.StructDecl {
 	p.top_level_statement_start()
+	// save attributes, they will be changed later in fields
+	attrs := p.attrs
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -32,9 +34,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // C || JS
 		p.next() // .
 	}
-	is_typedef := 'typedef' in p.attrs
 	name_pos := p.tok.position()
 	mut name := p.check_name()
+	// defer {
+	// if name.contains('App') {
+	// println('end of struct decl $name')
+	// }
+	// }
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
@@ -55,7 +61,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
 	}
-	if language == .v && p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() {
+	if language == .v &&
+		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
 	}
 	if name.len == 1 {
@@ -151,12 +158,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				pos: field_start_pos.pos
 				len: p.tok.position().pos - field_start_pos.pos
 			}
-			/*
-			if name == '_net_module_s' {
-			s := p.table.get_type_symbol(typ)
-			println('XXXX' + s.str())
-		}
-			*/
+			// if name == '_net_module_s' {
+			// if name.contains('App') {
+			// s := p.table.get_type_symbol(typ)
+			// println('struct decl field type ' + s.str())
+			// }
 			// Comments after type (same line)
 			line_pos := field_pos.line_nr
 			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
@@ -168,12 +174,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					break
 				}
 			}
-			mut attrs := []string{}
 			if p.tok.kind == .lsbr {
-				parsed_attrs := p.attributes(false)
-				for attr in parsed_attrs {
-					attrs << attr.name
-				}
+				// attrs are stored in `p.attrs`
+				p.attributes()
 			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
@@ -198,7 +201,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				comments: comments
 				default_expr: default_expr
 				has_default_expr: has_default_expr
-				attrs: attrs
+				attrs: p.attrs
 				is_public: is_field_pub
 			}
 			fields << table.Field{
@@ -209,8 +212,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_pub: is_field_pub
 				is_mut: is_field_mut
 				is_global: is_field_global
-				attrs: attrs
+				attrs: p.attrs
 			}
+			p.attrs = []
 			// println('struct field $ti.name $field_name')
 		}
 		p.top_level_statement_end()
@@ -226,11 +230,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	t := table.TypeSymbol{
 		kind: .struct_
 		name: name
+		source_name: name
 		info: table.Struct{
 			fields: fields
-			is_typedef: is_typedef
+			is_typedef: attrs.contains('typedef')
 			is_union: is_union
-			is_ref_only: 'ref_only' in p.attrs
+			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
 		}
 		mod: p.mod
@@ -260,13 +265,20 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		pub_mut_pos: pub_mut_pos
 		language: language
 		is_union: is_union
-		attrs: p.attrs
+		attrs: attrs
 		end_comments: end_comments
 	}
 }
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
+	/*
+	defer {
+		if p.fileis('x.v') {
+			p.warn('end of struct init $short_syntax')
+		}
+	}
+	*/
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
@@ -348,6 +360,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .interface_
 		name: interface_name
+		source_name: interface_name
 		mod: p.mod
 		info: table.Interface{
 			types: []
@@ -375,9 +388,11 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		// field_names << name
 		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
+		sym := p.table.get_type_symbol(typ)
 		mut args := [table.Arg{
 			name: 'x'
 			typ: typ
+			type_source_name: sym.source_name
 			is_hidden: true
 		}]
 		args << args2
@@ -395,10 +410,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		methods << method
 		// println('register method $name')
+		return_type_sym := p.table.get_type_symbol(method.return_type)
 		ts.register_method(table.Fn{
 			name: name
 			args: args
 			return_type: method.return_type
+			return_type_source_name: return_type_sym.source_name
 			is_pub: true
 		})
 	}

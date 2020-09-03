@@ -54,7 +54,7 @@ fn (context Context) file2v(file string) string {
 	mut sb := strings.new_builder(1000)
 	fname := os.file_name(file)
 	fname_no_dots := fname.replace('.', '_')
-	byte_name := '${context.prefix}${fname_no_dots}'
+	byte_name := '${context.prefix}${fname_no_dots}'.to_lower()
 	fbytes := os.read_bytes(file) or {
 		eprintln('Error: $err')
 		return ''

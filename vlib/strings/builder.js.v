@@ -38,7 +38,7 @@ pub fn (mut b Builder) writeln(s string) {
 }
 
 pub fn (b Builder) str() string {
-	return string(b.buf, b.len)
+	return unsafe { byteptr(b.buf.data).vstring_with_len(b.len) }
 }
 
 pub fn (mut b Builder) cut(n int) {

@@ -86,7 +86,7 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 $if msvc {
 	mut offset := u64(0)
-	backtraces := [100]voidptr
+	backtraces := [100]voidptr{}
 	sic := SymbolInfoContainer{}
 	mut si := &sic.syminfo
 	si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
@@ -103,10 +103,14 @@ $if msvc {
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
 		eprintln('Failed getting process: Aborting backtrace.\n')
-		return true
+		return false
 	}
 
 	frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0))
+	if frames < 2 {
+		eprintln('C.CaptureStackBackTrace returned less than 2 frames')
+		return false
+	}
 	for i in 0..frames {
 		frame_addr := backtraces[i]
 		if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {

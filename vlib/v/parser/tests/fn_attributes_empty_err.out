@@ -1,4 +1,4 @@
-vlib/v/parser/tests/fn_attributes_empty_err.v:1:1: error: attributes cannot be empty
+vlib/v/parser/tests/fn_attributes_empty_err.vv:1:1: error: attributes cannot be empty
     1 | [] fn tt() {
       | ~~
     2 |     println('text')

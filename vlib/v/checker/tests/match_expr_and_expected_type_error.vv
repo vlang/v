@@ -1,0 +1,11 @@
+ch := `a`
+match ch {
+  'a' {}
+  else {}
+}
+
+char := 123
+match char {
+  'a' {}
+  else {}
+}

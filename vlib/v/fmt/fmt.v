@@ -286,14 +286,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.expr(node.expr)
 			f.writeln('')
 		}
-		ast.Attr {
-			if node.is_string {
-				f.writeln("['$node.name']")
-			} else {
-				f.writeln('[$node.name]')
-			}
-		}
 		ast.Block {
+			if node.is_unsafe {
+				f.write('unsafe ')
+			}
 			f.writeln('{')
 			f.stmts(node.stmts)
 			f.writeln('}')
@@ -512,11 +508,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			// already handled in f.imports
 			f.type_decl(it)
 		}
-		ast.UnsafeStmt {
-			f.writeln('unsafe {')
-			f.stmts(it.stmts)
-			f.writeln('}')
-		}
 	}
 }
 
@@ -539,10 +530,12 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
 			for i, arg in fn_info.args {
+				if arg.is_mut {
+					f.write(arg.typ.share().str() + ' ')
+				}
 				f.write(arg.name)
 				mut s := f.no_cur_mod(f.table.type_to_str(arg.typ))
 				if arg.is_mut {
-					f.write(arg.typ.share().str() + ' ')
 					if s.starts_with('&') {
 						s = s[1..]
 					}
@@ -564,7 +557,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write(')')
 			if fn_info.return_type.idx() != table.void_type_idx {
 				ret_str := f.no_cur_mod(f.table.type_to_str(fn_info.return_type))
-				f.write(' ' + ret_str)
+				f.write(' $ret_str')
+			} else if fn_info.return_type.has_flag(.optional) {
+				f.write(' ?')
 			}
 		}
 		ast.SumTypeDecl {
@@ -591,6 +586,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 }
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
+	f.attrs(node.attrs)
 	if node.is_pub {
 		f.write('pub ')
 	}
@@ -599,6 +595,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	name := node.name.after('.')
 	f.writeln('$name {')
 	mut max := 0
+	mut max_type := 0
+	mut field_types := []string{cap: node.fields.len}
 	for field in node.fields {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -612,6 +610,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
+		}
+		ft := f.type_to_str(field.typ)
+		field_types << ft
+		if ft.len > max_type {
+			max_type = ft.len
 		}
 	}
 	for i, field in node.fields {
@@ -627,9 +630,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments.len == 0 {
 			f.write('\t$field.name ')
 			f.write(strings.repeat(` `, max - field.name.len))
-			f.write(f.type_to_str(field.typ))
-			if field.attrs.len > 0 {
-				f.write(' [' + field.attrs.join(';') + ']')
+			f.write(field_types[i])
+			if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only]			attr being added to fields, fix it
+				f.write(strings.repeat(` `, max_type - field_types[i].len))
+				f.inline_attrs(field.attrs)
 			}
 			if field.has_default_expr {
 				f.write(' = ')
@@ -660,10 +664,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			j++
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
-		f.write(f.type_to_str(field.typ))
-		if field.attrs.len > 0 {
-			f.write(' [' + field.attrs.join(';') + ']')
-		}
+		f.write(field_types[i])
+		f.inline_attrs(field.attrs)
 		if field.has_default_expr {
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
@@ -675,8 +677,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write('\n')
 	}
+	f.comments_after_last_field(node.end_comments)
+	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 	// Handle comments after last field
-	for comment in node.end_comments {
+	for comment in comments {
 		f.indent++
 		f.empty_line = true
 		f.comment(comment, {
@@ -685,7 +692,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.writeln('')
 		f.indent--
 	}
-	f.writeln('}\n')
 }
 
 pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
@@ -719,12 +725,20 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (f &Fmt) type_to_str(t table.Type) string {
 	mut res := f.table.type_to_str(t)
-	map_prefix := 'map[string]'
 	cur_mod := f.cur_mod + '.'
+	//
+	map_prefix := 'map[string]'
 	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
 		res = res.replace(map_prefix, '')
 	}
+	//
+	chan_prefix := 'chan '
+	has_chan_prefix := res.starts_with(chan_prefix)
+	if has_chan_prefix {
+		res = res.replace(chan_prefix, '')
+	}
+	//
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(cur_mod)
 	//
@@ -745,6 +759,9 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 	}
 	if should_shorten {
 		res = res.replace_once(cur_mod, '')
+	}
+	if has_chan_prefix {
+		res = chan_prefix + res
 	}
 	if has_map_prefix {
 		res = map_prefix + res
@@ -788,10 +805,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			node.typname = f.table.get_type_symbol(node.typ).name
 			f.write(f.type_to_str(node.typ) + '(')
 			f.expr(node.expr)
+			if node.has_arg {
+				f.write(', ')
+				f.expr(node.arg)
+			}
 			f.write(')')
 		}
 		ast.CallExpr {
 			f.call_expr(node)
+		}
+		ast.ChanInit {
+			f.chan_init(mut node)
 		}
 		ast.CharLiteral {
 			f.write('`$node.val`')
@@ -899,12 +923,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.OrExpr {
 			// shouldn't happen, an or expression
 			// is always linked to a call expr
-			panic('fmt: OrExpr should to linked to CallExpr')
+			panic('fmt: OrExpr should be linked to CallExpr')
 		}
 		ast.ParExpr {
-			if node.is_unsafe {
-				f.write('unsafe')
-			}
 			f.write('(')
 			f.par_level++
 			f.expr(node.expr)
@@ -1059,9 +1080,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.UnsafeExpr {
-			f.writeln('unsafe {')
-			f.stmts(node.stmts)
-			f.writeln('}')
+			f.write('unsafe {')
+			es := node.stmts[0] as ast.ExprStmt
+			f.expr(es.expr)
+			f.write('}')
 		}
 	}
 }
@@ -1114,9 +1136,29 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 			}
 		}
 		.propagate {
-			f.write('?')
+			f.write(' ?')
 		}
 	}
+}
+
+fn (mut f Fmt) attrs(attrs []table.Attr) {
+	for attr in attrs {
+		f.writeln('[$attr]')
+	}
+}
+
+fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
+	if attrs.len == 0 {
+		return
+	}
+	f.write(' [')
+	for i, attr in attrs {
+		if i > 0 {
+			f.write('; ')
+		}
+		f.write('$attr')
+	}
+	f.write(']')
 }
 
 enum CommentsLevel {
@@ -1177,6 +1219,7 @@ pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
+	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		f.writeln(' {')
@@ -1312,46 +1355,40 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		// NOTE: taken from checker in if_expr(). used for smartcast
-		mut is_variable := false
-		if branch.cond is ast.InfixExpr {
-			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is &&
-				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
-				// right_expr := infix.right as ast.Type
-				is_variable = if infix.left is ast.Ident { (infix.left as ast.Ident).kind == .variable } else { true }
+		// Check `sum is T` smartcast
+		mut smartcast_as := false
+		if branch.cond is ast.InfixExpr as infix {
+			if infix.op == .key_is {
+				// left_as_name is either empty, infix.left.str() or the `as` name
+				smartcast_as = branch.left_as_name.len > 0 &&
+					infix.left.str() != branch.left_as_name
 			}
 		}
 		if i == 0 {
+			// first `if`
 			f.comments(branch.comments, {})
-			f.write('if ')
-			f.expr(branch.cond)
-			if is_variable && branch.left_as_name.len > 0 {
-				f.write(' as $branch.left_as_name')
-			}
-			f.write(' {')
-		} else if i < it.branches.len - 1 || !it.has_else {
+		} else {
+			// `else`, close previous branch
 			if branch.comments.len > 0 {
 				f.writeln('}')
 				f.comments(branch.comments, {})
 			} else {
 				f.write('} ')
 			}
-			f.write('else if ')
-			f.expr(branch.cond)
-			if is_variable && branch.left_as_name.len > 0 {
-				f.write(' as $branch.left_as_name')
-			}
-			f.write(' {')
-		} else if i == it.branches.len - 1 && it.has_else {
-			if branch.comments.len > 0 {
-				f.writeln('}')
-				f.comments(branch.comments, {})
-			} else {
-				f.write('} ')
-			}
-			f.write('else {')
+			f.write('else ')
 		}
+		if i < it.branches.len - 1 || !it.has_else {
+			f.write('if ')
+			if branch.mut_name {
+				f.write('mut ')
+			}
+			f.expr(branch.cond)
+			if smartcast_as {
+				f.write(' as $branch.left_as_name')
+			}
+			f.write(' ')
+		}
+		f.write('{')
 		if single_line {
 			f.write(' ')
 		} else {
@@ -1432,12 +1469,16 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		mut name := f.short_module(node.name)
-		f.mark_module_as_used(name)
-		if node.name in f.mod2alias {
-			name = f.mod2alias[node.name]
+		if node.left is ast.AnonFn as anon_fn {
+			f.fn_decl(anon_fn.decl)
+		} else {
+			mut name := f.short_module(node.name)
+			f.mark_module_as_used(name)
+			if node.name in f.mod2alias {
+				name = f.mod2alias[node.name]
+			}
+			f.write('$name')
 		}
-		f.write('$name')
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')
 			f.write(f.type_to_str(node.generic_type))
@@ -1586,6 +1627,21 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	return true
 }
 
+pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
+	if it.elem_type == 0 && it.typ > 0 {
+		info := f.table.get_type_symbol(it.typ).chan_info()
+		it.elem_type = info.elem_type
+	}
+	f.write('chan ')
+	f.write(f.type_to_str(it.elem_type))
+	f.write('{')
+	if it.has_cap {
+		f.write('cap: ')
+		f.expr(it.cap_expr)
+	}
+	f.write('}')
+}
+
 pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
@@ -1695,7 +1751,16 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	f.write(']')
 	// `[100]byte`
 	if it.is_fixed {
+		if it.has_val {
+			f.write('!!')
+			return
+		}
 		f.write(f.type_to_str(it.elem_type))
+		if it.has_default {
+			f.write('{init: $it.default_expr}')
+		} else {
+			f.write('{}')
+		}
 	}
 }
 
@@ -1772,6 +1837,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.expr(field.expr)
 		f.writeln('')
 	}
+	f.comments_after_last_field(it.end_comments)
 	f.indent--
 	f.writeln(')\n')
 }

@@ -11,7 +11,7 @@ struct App {
 }
 
 fn new_app() App {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(pref.vexe_path())
 	return App{
 		is_verbose: '-v' in os.args
 		vexe: vexe
@@ -23,17 +23,7 @@ fn main() {
 	app := new_app()
 	os.chdir(app.vroot)
 	println('Updating V...')
-	if !os.exists('.git') {
-		// initialize as if it had been cloned
-		app.git_command('init')
-		app.git_command('remote add origin https://github.com/vlang/v')
-		app.git_command('fetch')
-		app.git_command('reset --hard origin/master')
-		app.git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
-	} else {
-		// pull latest
-		app.git_command('pull origin master')
-	}
+	app.update_from_master()    
 	v_hash := util.githash(false)
 	current_hash := util.githash(true)
 	// println(v_hash)
@@ -43,30 +33,57 @@ fn main() {
 		return
 	}
 	$if windows {
-		app.backup('v.exe')
-		make_result := os.exec('make.bat') or {
-			panic(err)
-		}
-		println(make_result.output)
 		app.backup('cmd/tools/vup.exe')
-	} $else {
-		self_result := os.exec('./v self') or {
-			panic(err)
-		}
-		println(self_result.output)
-		if self_result.exit_code != 0 {
-			// v self failed, have to use make
-			println('v self failed, running make...')
-			make_result := os.exec('make') or {
-				panic(err)
-			}
-			println(make_result.output)
-		}
 	}
-	os.exec('v cmd/tools/vup.v') or {
+    app.recompile_v()
+	os.exec('$app.vexe cmd/tools/vup.v') or {
 		panic(err)
 	}
 	app.show_current_v_version()
+}
+
+fn (app App) update_from_master() {
+	if app.is_verbose {
+		println('> updating from master ...')
+	}        
+	if !os.exists('.git') {
+		// initialize as if it had been cloned
+		app.git_command('init')
+		app.git_command('remote add origin https://github.com/vlang/v')
+		app.git_command('fetch')
+		app.git_command('reset --hard origin/master')
+		app.git_command('clean --quiet -xdf --exclude v.exe --exclude cmd/tools/vup.exe')
+	} else {
+		// pull latest
+		app.git_command('pull https://github.com/vlang/v master')
+	}
+}
+
+fn (app App) recompile_v() {
+	// NB: app.vexe is more reliable than just v (which may be a symlink)
+	vself := '$app.vexe self'
+	if app.is_verbose {
+		println('> recompiling v itself with `$vself` ...')
+	}        
+	if self_result := os.exec(vself) {
+		println(self_result.output.trim_space())
+		if self_result.exit_code == 0 {
+			return
+		}
+	}
+	app.make(vself)
+}
+
+fn (app App) make(vself string) {
+	mut make := 'make'
+	$if windows {
+		make = 'make.bat'
+	}
+	println('`$vself` failed, running `$make`...')
+	make_result := os.exec(make) or {
+		panic(err)
+	}
+	println(make_result.output)
 }
 
 fn (app App) show_current_v_version() {

@@ -180,7 +180,7 @@ NOTE: #TOFIX need one char after the last char of the number
 fn parser(s string) (int,PrepNumber) {
 	mut state := fsm_a
 	mut digx := 0
-	mut c := ` ` // initial value for kicking off the state machine
+	mut c := byte(` `) // initial value for kicking off the state machine
 	mut result := parser_ok
 	mut expneg := false
 	mut expexp := 0
@@ -192,7 +192,8 @@ fn parser(s string) (int,PrepNumber) {
 			// skip starting spaces
 			fsm_a {
 				if is_space(c) == true {
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else {
 					state = fsm_b
@@ -202,12 +203,13 @@ fn parser(s string) (int,PrepNumber) {
 			fsm_b {
 				state = fsm_c
 				if c == c_plus {
-					c = s[i++]
-					//i++
+					c = s[i]
+					i++
 				}
 				else if c == c_minus {
 					pn.negative = true
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if is_digit(c) {
 				}

@@ -69,42 +69,40 @@ fn test_write_and_read_string_to_file() {
 
 // test_write_and_read_bytes checks for regressions made in the functions
 // read_bytes, read_bytes_at and write_bytes.
-/*
 fn test_write_and_read_bytes() {
-        file_name :=  './byte_reader_writer.tst'
-        payload   :=  [`I`, `D`, `D`, `Q`, `D`]
+	file_name :=  './byte_reader_writer.tst'
+	payload   :=  [byte(`I`), `D`, `D`, `Q`, `D`]
 
-        mut file_write := os.create(os.real_path(file_name)) or {
-                eprintln('failed to create file $file_name')
-                return
-        }
+	mut file_write := os.create(os.real_path(file_name)) or {
+		eprintln('failed to create file $file_name')
+		return
+	}
 
-        // We use the standard write_bytes function to write the payload and
-        // compare the length of the array with the file size (have to match).
-        file_write.write_bytes(payload.data, 5)
+	// We use the standard write_bytes function to write the payload and
+	// compare the length of the array with the file size (have to match).
+	file_write.write_bytes(payload.data, 5)
 
-        file_write.close()
+	file_write.close()
 
-        assert payload.len == os.file_size(file_name)
+	assert payload.len == os.file_size(file_name)
 
-        mut file_read := os.open(os.real_path(file_name)) or {
-          eprintln('failed to open file $file_name')
-          return
-        }
+	mut file_read := os.open(os.real_path(file_name)) or {
+		eprintln('failed to open file $file_name')
+		return
+	}
 
-        // We only need to test read_bytes because this function calls
-        // read_bytes_at with second parameter zeroed (size, 0).
-        red_bytes := file_read.read_bytes(5)
+	// We only need to test read_bytes because this function calls
+	// read_bytes_at with second parameter zeroed (size, 0).
+	rbytes := file_read.read_bytes(5)
 
-        file_read.close()
+	file_read.close()
+	// eprintln('rbytes: $rbytes')
+	// eprintln('payload: $payload')
+	assert rbytes == payload
 
-        assert red_bytes.str() == payload.str()
-
-        // We finally delete the test file.
-        os.rm(file_name)
+	// We finally delete the test file.
+	os.rm(file_name)
 }
-*/
-
 
 fn test_create_and_delete_folder() {
 	folder := './test1'

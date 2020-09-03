@@ -5,16 +5,15 @@ module util
 
 import os
 import v.pref
+import v.vmod
 
 pub const (
-	v_version = '0.1.28'
+	v_version = '0.1.29'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
-	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings',
-		'builtin',
-	]
+	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
 )
 
 pub const (
@@ -25,7 +24,7 @@ pub const (
 
 // vhash() returns the build string C.V_COMMIT_HASH . See cmd/tools/gen_vc.v .
 pub fn vhash() string {
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
@@ -97,7 +96,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 		}
 		break
 	}
-	mut buf := [50]byte
+	mut buf := [50]byte{}
 	buf[0] = 0
 	unsafe {
 		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
@@ -112,6 +111,17 @@ pub fn set_vroot_folder(vroot_path string) {
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+}
+
+pub fn resolve_vroot(str, dir string) ?string {
+	mut mcache := vmod.get_cache()
+	vmod_file_location := mcache.get_by_folder(dir)
+	if vmod_file_location.vmod_file.len == 0 {
+		// There was no actual v.mod file found.
+		return error('To use @VROOT, you need to have a "v.mod" file in $dir, or in one of its parent folders.')
+	}
+	vmod_path := vmod_file_location.vmod_folder
+	return str.replace('@VROOT', os.real_path(vmod_path))
 }
 
 pub fn launch_tool(is_verbose bool, tool_name string, args []string) {

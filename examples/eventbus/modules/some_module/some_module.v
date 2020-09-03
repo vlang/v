@@ -30,5 +30,5 @@ pub fn do_work(){
 }
 
 pub fn get_subscriber() eventbus.Subscriber {
-	return eb.subscriber
+	return *eb.subscriber
 }

@@ -219,7 +219,7 @@ pub fn (mut a array) trim(index int) {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline] [unsafe_fn]
+[inline] [unsafe]
 fn (a array) get_unsafe(i int) voidptr {
 	unsafe {
 		return byteptr(a.data) + i * a.element_size
@@ -379,7 +379,7 @@ fn (a &array) slice_clone(start, _end int) array {
 }
 
 // we manually inline this for single operations for performance without -prod
-[inline] [unsafe_fn]
+[inline] [unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
 	unsafe {
 		C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)
@@ -462,7 +462,7 @@ pub fn (a array) reverse() array {
 }
 
 // pub fn (a []int) free() {
-[unsafe_fn]
+[unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
 		return
@@ -539,6 +539,36 @@ fn compare_ints(a, b &int) int {
 	return 0
 }
 
+fn compare_ints_reverse(a, b &int) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_floats(a, b &f64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_floats_reverse(a, b &f64) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
 // []int.sort sorts array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
@@ -569,6 +599,15 @@ pub fn (a []int) index(v int) int {
 // []byte.index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []byte) index(v byte) int {
+	for i in 0..a.len {
+		if a[i] == v {
+			return i
+		}
+	}
+	return -1
+}
+
+pub fn (a []rune) index(v rune) int {
 	for i in 0..a.len {
 		if a[i] == v {
 			return i

@@ -58,38 +58,38 @@ pub fn inode(path string) FileMode {
 		return FileMode{
 			typ: typ
 			owner: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IREAD))
-				write: bool(attr.st_mode & u32(C.S_IWRITE))
-				execute: bool(attr.st_mode & u32(C.S_IEXEC))
+				read: (attr.st_mode & u32(C.S_IREAD)) != 0
+				write: (attr.st_mode & u32(C.S_IWRITE)) != 0
+				execute: (attr.st_mode & u32(C.S_IEXEC)) != 0
 			}
 			group: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IREAD))
-				write: bool(attr.st_mode & u32(C.S_IWRITE))
-				execute: bool(attr.st_mode & u32(C.S_IEXEC))
+				read: (attr.st_mode & u32(C.S_IREAD)) != 0
+				write: (attr.st_mode & u32(C.S_IWRITE)) != 0
+				execute: (attr.st_mode & u32(C.S_IEXEC)) != 0
 			}
 			others: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IREAD))
-				write: bool(attr.st_mode & u32(C.S_IWRITE))
-				execute: bool(attr.st_mode & u32(C.S_IEXEC))
+				read: (attr.st_mode & u32(C.S_IREAD)) != 0
+				write: (attr.st_mode & u32(C.S_IWRITE)) != 0
+				execute: (attr.st_mode & u32(C.S_IEXEC)) != 0
 			}
 		}
 	} $else {
 		return FileMode{
 			typ: typ
 			owner: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IRUSR))
-				write: bool(attr.st_mode & u32(C.S_IWUSR))
-				execute: bool(attr.st_mode & u32(C.S_IXUSR))
+				read: (attr.st_mode & u32(C.S_IRUSR)) != 0
+				write: (attr.st_mode & u32(C.S_IWUSR)) != 0
+				execute: (attr.st_mode & u32(C.S_IXUSR)) != 0
 			}
 			group: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IRGRP))
-				write: bool(attr.st_mode & u32(C.S_IWGRP))
-				execute: bool(attr.st_mode & u32(C.S_IXGRP))
+				read: (attr.st_mode & u32(C.S_IRGRP)) != 0
+				write: (attr.st_mode & u32(C.S_IWGRP)) != 0
+				execute: (attr.st_mode & u32(C.S_IXGRP)) != 0
 			}
 			others: FilePermission{
-				read: bool(attr.st_mode & u32(C.S_IROTH))
-				write: bool(attr.st_mode & u32(C.S_IWOTH))
-				execute: bool(attr.st_mode & u32(C.S_IXOTH))
+				read: (attr.st_mode & u32(C.S_IROTH)) != 0
+				write: (attr.st_mode & u32(C.S_IWOTH)) != 0
+				execute: (attr.st_mode & u32(C.S_IXOTH)) != 0
 			}
 		}
 	}
