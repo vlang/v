@@ -57,32 +57,30 @@ fn test_idx_max() {
 
 
 fn test_shuffle() {
-	rand.seed([u32(1),2]) // seed verified for not producing false positives
-	
-	a := [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]
+	rand.seed([u32(1),2]) // set seed to produce same results in order
+
+	a := [1,2,3,4,5,6,7,8,9,10]
 	mut b := a.clone()
 	mut c := a.clone()
 	shuffle<int>(mut b, 0)
 	shuffle<int>(mut c, 0)
-	assert a != b
-	assert a != c
-	assert b != c
-	
+	assert b == [6, 4, 5, 1, 9, 2, 10, 3, 8, 7]
+	assert c == [1, 6, 5, 8, 7, 2, 10, 9, 3, 4]
+
 	// test shuffling a slice
 	mut d := a.clone()
-	shuffle<int>(mut d[..15], 0)
-	assert d[..15] != a[..15]
-	assert d[15..] == a[15..]
-	
+	shuffle<int>(mut d[..5], 0)
+	assert d == [5, 2, 1, 3, 4, 6, 7, 8, 9, 10]
+	assert d[5..] == a[5..]
+
 	// test shuffling n items
 	mut e := a.clone()
-	shuffle<int>(mut e, 15)
-	assert e[..15] != a[..15]
-	assert e[15..] != a[15..]
-	
+	shuffle<int>(mut e, 5)
+	assert e[..5] == [10, 3, 1, 8, 4]
+	assert e[5..] == [6, 7, 5, 9, 2]
+
 	// test shuffling empty array
-	mut f := a.clone()
-	f.trim(0)
+	mut f := a[..0]
 	shuffle<int>(mut f,0)
 	assert f == []int{}
 }
