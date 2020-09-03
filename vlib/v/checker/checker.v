@@ -346,10 +346,10 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			key_sym := c.table.get_type_symbol(info.key_type)
 			value_sym := c.table.get_type_symbol(info.value_type)
 			if key_sym.kind == .placeholder {
-				c.error('unknown type `$key_sym.source_name`', node.pos)
+				c.error('unknown type `$key_sym.source_name`', field.pos)
 			}
 			if value_sym.kind == .placeholder {
-				c.error('unknown type `$value_sym.source_name`', node.pos)
+				c.error('unknown type `$value_sym.source_name`', field.pos)
 			}
 		}
 		if field.has_default_expr {
