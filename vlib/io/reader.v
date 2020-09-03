@@ -2,15 +2,10 @@ module io
 
 import os
 
-const (
-	default_buf_len = 128*1024 // large for fast reading of big(ish) files
-	default_buf_max = 0        // 0 -> no limit
-)
-
 pub struct ReaderOptions {
-	buf_len int = 128*1024
-	buf_max int = 0
-	//buf     &[]byte = 0 // TODO - ability to pass external buffer ([]byte)
+	buf_len int = 128*1024 // large for fast reading of big(ish) files
+	buf_max int = 0        // 0 -> no limit
+	//buf     &[]byte = 0  // TODO - ability to pass external buffer ([]byte)
 	filename string = ""
 	file    os.File
 }
