@@ -2,14 +2,6 @@ module io
 
 import os
 
-pub struct ReaderOptions {
-	buf_len int = 128*1024 // large for fast reading of big(ish) files
-	buf_max int = 0        // 0 -> no limit
-	//buf     &[]byte = 0  // TODO - ability to pass external buffer ([]byte)
-	filename string = ""
-	file    os.File
-}
-
 struct Reader {
 mut:
 	file      os.File
@@ -22,6 +14,15 @@ mut:
 	do_read   bool // file read operation should be perfomed on next call
 }
 
+pub struct ReaderOptions {
+	buf_len int = 128*1024 // large for fast reading of big(ish) files
+	buf_max int = 0        // 0 -> no limit
+	//buf     &[]byte = 0  // TODO - ability to pass external buffer ([]byte)
+	filename string = ""
+	file    os.File
+}
+
+// new_reader creates new buffered line-reader
 pub fn new_reader(o ReaderOptions) ? &Reader {
 	assert o.buf_len >= 2
 	assert o.buf_len <= o.buf_max || o.buf_max==0
@@ -55,7 +56,9 @@ pub fn (mut r Reader) close() {
 // NOTICE abstracting read_line into read_string(delim) and calling that in
 //        read_line + stripping \r reduces the performance by 2 times
 
-// read_line
+// read_line tries to return a single line, without the end-of-line characters.
+// If the line is too long for the buffer then is_prefix is set and the beginning
+// of the line is returned. Future calls will return the rest of the line.
 [direct_array_access]
 pub fn (mut r Reader) read_line() ? (string,bool) {
 	unsafe {
