@@ -342,7 +342,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			}
 		}
 		if sym.kind == .map {
-			info := c.table.get_type_symbol(node.typ).map_info()
+			info := sym.map_info()
 			key_sym := c.table.get_type_symbol(info.key_type)
 			value_sym := c.table.get_type_symbol(info.value_type)
 			if key_sym.kind == .placeholder {
