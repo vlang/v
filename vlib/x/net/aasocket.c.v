@@ -77,7 +77,7 @@ fn C.ntohs() int
 
 fn C.inet_ntop() int
 
-fn C.WSAStringToAddressW() int
+fn C.WSAStringToAddress() int
 
 fn C.getsockname() int
 
