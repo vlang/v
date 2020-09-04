@@ -598,10 +598,10 @@ fn (mut b Builder) cc_linux_cross() {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
 		zip_file := sysroot + '.zip'		
-    os.system('curl -L -o $zip_file $zip_url')
+        os.system('curl -L -o $zip_file $zip_url')
 		if !os.exists(zip_file) {
 			verror('Failed to download `$zip_url` as $zip_file')
-		}    
+		}
 		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
 			verror('Failed to unzip $zip_file to $parent_dir')
