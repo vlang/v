@@ -269,6 +269,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
 				c.error('type `$typ_sym.str()` is an alias, use the original alias type `$orig_sym.source_name` instead',
 					node.pos)
+			} else if typ_sym.kind == .chan {
+				c.error('aliases of `chan` types are not allowed.', node.pos)
 			}
 		}
 		ast.FnTypeDecl {
