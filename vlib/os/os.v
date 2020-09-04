@@ -922,7 +922,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		return result.vstring_with_len(count)
+		return unsafe { result.vstring_with_len(count) }
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)

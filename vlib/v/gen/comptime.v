@@ -144,7 +144,11 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 				}
 			}
 		} else {
+			// Only wrap the contents in {} if we're inside a function, not on the top level scope
+			should_create_scope := g.fn_decl != 0
+			if should_create_scope { g.writeln('{') }
 			g.stmts(branch.stmts)
+			if should_create_scope { g.writeln('}') }
 		}
 		g.defer_ifdef = ''
 	}

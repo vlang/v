@@ -2856,7 +2856,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			}
 		}
 	}
-	if require_return && branch_without_return {
+	if /* require_return && */ branch_without_return {
 		c.returns = false
 	} else {
 		// if inner if branch has not covered all branches but this one
@@ -3129,7 +3129,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				should_skip_else = true // If a regular branch wasn't skipped, then `else` must be
 			}
-			c.stmts(branch.stmts)
+			if !c.skip_flags || c.pref.output_cross_c {
+				c.stmts(branch.stmts)
+			} else {
+				node.branches[i].stmts = []
+			}
 			c.skip_flags = cur_skip_flags
 		} else {
 			c.stmts(branch.stmts)
@@ -3266,9 +3270,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 		ast.Ident {
 			if cond.name in valid_comp_if_os {
-				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', pos)
+				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', cond.pos)
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
-				// c.warn('$cond.name -- ${c.pref.os.str().to_lower()}', cond.pos)
 			} else if cond.name in valid_comp_if_compilers {
 				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
 			} else if cond.name in valid_comp_if_platforms {
