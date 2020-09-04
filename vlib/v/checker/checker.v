@@ -343,6 +343,17 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					field.pos)
 			}
 		}
+		if sym.kind == .map {
+			info := sym.map_info()
+			key_sym := c.table.get_type_symbol(info.key_type)
+			value_sym := c.table.get_type_symbol(info.value_type)
+			if key_sym.kind == .placeholder {
+				c.error('unknown type `$key_sym.source_name`', field.pos)
+			}
+			if value_sym.kind == .placeholder {
+				c.error('unknown type `$value_sym.source_name`', field.pos)
+			}
+		}
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
@@ -3365,6 +3376,14 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x ;= map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
+		key_sym := c.table.get_type_symbol(info.key_type)
+		value_sym := c.table.get_type_symbol(info.value_type)
+		if key_sym.kind == .placeholder {
+			c.error('unknown type `$key_sym.source_name`', node.pos)
+		}
+		if value_sym.kind == .placeholder {
+			c.error('unknown type `$value_sym.source_name`', node.pos)
+		}
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
