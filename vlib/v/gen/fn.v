@@ -391,6 +391,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
+	if left_sym.kind == .chan {
+		if node.name in ['close', 'try_pop', 'try_push'] {
+			name = 'sync__Channel_$node.name'
+		}
+	}
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
 	// if so, then instead of calling array_clone(&array_slice(...))
 	// call array_clone_static(array_slice(...))
