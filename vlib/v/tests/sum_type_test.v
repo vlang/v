@@ -372,7 +372,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 		4 {
 			bar = CommonType(1.5)
 			match bar {
-				string { return "it's a string: $bar" }
+				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "it's a f64: $bar" }
@@ -383,7 +383,7 @@ fn sumtype_match_with_string_interpolation(code int) string {
 		5 {
 			bar = CommonType(false)
 			match bar {
-				string { return "it's a string: $bar" }
+				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
@@ -391,12 +391,11 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
-		// TODO: uncomment until string interpolation for recursive struct is fixed 
 		/*
 		6 {
 			bar = CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
 			match bar {
-				string { return "it's a string: $bar" }
+				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
@@ -443,7 +442,6 @@ fn test_sum_type_match() {
 	assert sumtype_match_with_string_interpolation(2) == "it's a string: hello"
 	assert sumtype_match_with_string_interpolation(3) == "green_green"
 	assert sumtype_match_with_string_interpolation(4) == "it's a f64: 1.5"
-	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false"
-	// TODO: uncomment until string interpolation for recursive struct is fixed 
+	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false" 
 	//assert sumtype_match_with_string_interpolation(6) == "it's an IntAndStr: 5_hi_hello"
 }
