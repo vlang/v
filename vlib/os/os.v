@@ -60,10 +60,12 @@ pub fn file_size(path string) int {
 pub fn mv(src, dst string) {
 	mut rdst := dst
 	if is_dir(rdst) {
-		rdst = join_path(rdst,file_name(src.trim_right(path_separator)))
+		rdst = join_path(rdst.trim_right(path_separator),file_name(src.trim_right(path_separator)))
 	}
 	$if windows {
-		C._wrename(src.to_wide(), rdst.to_wide())
+		w_src := src.replace('/', '\\')
+		w_dst := rdst.replace('/', '\\')
+		C._wrename(w_src.to_wide(), w_dst.to_wide())
 	} $else {
 		C.rename(charptr(src.str), charptr(rdst.str))
 	}
