@@ -58,10 +58,14 @@ pub fn file_size(path string) int {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(src, dst string) {
+	mut rdst := dst
+	if is_dir(rdst) {
+		rdst = join_path(rdst,file_name(src.trim_right(path_separator)))
+	}
 	$if windows {
-		C._wrename(src.to_wide(), dst.to_wide())
+		C._wrename(src.to_wide(), rdst.to_wide())
 	} $else {
-		C.rename(charptr(src.str), charptr(dst.str))
+		C.rename(charptr(src.str), charptr(rdst.str))
 	}
 }
 
