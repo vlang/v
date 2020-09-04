@@ -1028,6 +1028,11 @@ pub fn is_dir(path string) bool {
 	}
 }
 
+// is_file returns a `bool` indicating whether the given `path` is a file.
+pub fn is_file(path string) bool {
+	return exists(path) && !is_dir(path)
+}
+
 // is_link returns a boolean indicating whether `path` is a link.
 pub fn is_link(path string) bool {
 	$if windows {

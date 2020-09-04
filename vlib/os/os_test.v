@@ -54,7 +54,37 @@ fn test_create_file() {
 	assert hello.len == os.file_size(filename)
 	os.rm(filename)
 }
-
+/*
+fn test_is_file() {
+	// Setup
+	work_dir := os.join_path(os.getwd(),'is_file_test')
+	os.mkdir_all(work_dir)
+	tfile := os.join_path(work_dir,'tmp_file')
+	// Test things that shouldn't be a file
+	assert os.is_file(work_dir) == false
+	assert os.is_file('non-existent_file.tmp') == false
+	// Test file
+	tfile_content := 'temporary file'
+	os.write_file(tfile, tfile_content)
+	assert os.is_file(tfile)
+	// Test dir symlinks
+	$if windows {
+		assert true
+	} $else {
+		dsymlink := os.join_path(work_dir,'dir_symlink')
+		os.system('ln -s $work_dir $dsymlink')
+		assert os.is_file(dsymlink) == false
+	}
+	// Test file symlinks
+	$if windows {
+		assert true
+	} $else {
+		fsymlink := os.join_path(work_dir,'file_symlink')
+		os.system('ln -s $tfile $fsymlink')
+		assert os.is_file(fsymlink)
+	}
+}
+*/
 fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
