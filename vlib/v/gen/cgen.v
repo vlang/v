@@ -2384,9 +2384,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				$if x64 {
 					g.write('_IN(u64, ')
 				}
-				//$else {
-				//	g.write('_IN(u32, ')
-				//}
+				// $else {
+				// g.write('_IN(u32, ')
+				// }
 			} else {
 				styp := g.typ(g.table.mktyp(left_type))
 				g.write('_IN($styp, ')
