@@ -316,12 +316,7 @@ static inline int atomic_compare_exchange_strong_u16(unsigned short* object, uns
                                                  unsigned short desired)
 {
     unsigned short old = *expected;
-// TODO: on tcc+win32 shared_lock_test.v, e.g., can be compiled but "cannot find entry point of InterlockedCompareExchange16" at runtime
-#if defined(__TINYC__) && defined(WIN32)
-    *expected = InterlockedCompareExchange(object, desired, old);
-#else
     *expected = InterlockedCompareExchange16(object, desired, old);
-#endif
     return *expected == old;
 }
 
