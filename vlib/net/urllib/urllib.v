@@ -153,52 +153,52 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	for i := 0; i < s.len;  {
 		x := s[i]
 		match x {
-			`%` {
-				if s == '' {
-					break
-				}
-				n++
-				if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
-					s = s[i..]
-					if s.len > 3 {
-						s = s[..3]
-					}
-					return error(error_msg(err_msg_escape, s))
-				}
-				// Per https://tools.ietf.org/html/rfc3986#page-21
-				// in the host component %-encoding can only be used
-				// for non-ASCII bytes.
-				// But https://tools.ietf.org/html/rfc6874#section-2
-				// introduces %25 being allowed to escape a percent sign
-				// in IPv6 scoped-address literals. Yay.
-				if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
-					return error(error_msg(err_msg_escape, s[i..i + 3]))
-				}
-				if mode == .encode_zone {
-					// RFC 6874 says basically 'anything goes' for zone identifiers
-					// and that even non-ASCII can be redundantly escaped,
-					// but it seems prudent to restrict %-escaped bytes here to those
-					// that are valid host name bytes in their unescaped form.
-					// That is, you can use escaping in the zone identifier but not
-					// to introduce bytes you couldn't just write directly.
-					// But Windows puts spaces here! Yay.
-					v := ( (unhex(s[i + 1])<<byte(4)) | unhex(s[i + 2]))
-					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
-					}
-				}
-				i += 3
+		`%` {
+			if s == '' {
+				break
 			}
-			`+` {
-				has_plus = mode == .encode_query_component
-				i++
-			}
-			else {
-				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+			n++
+			if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
+				s = s[i..]
+				if s.len > 3 {
+					s = s[..3]
 				}
-				i++
-			}}
+				return error(error_msg(err_msg_escape, s))
+			}
+			// Per https://tools.ietf.org/html/rfc3986#page-21
+			// in the host component %-encoding can only be used
+			// for non-ASCII bytes.
+			// But https://tools.ietf.org/html/rfc6874#section-2
+			// introduces %25 being allowed to escape a percent sign
+			// in IPv6 scoped-address literals. Yay.
+			if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
+				return error(error_msg(err_msg_escape, s[i..i + 3]))
+			}
+			if mode == .encode_zone {
+				// RFC 6874 says basically 'anything goes' for zone identifiers
+				// and that even non-ASCII can be redundantly escaped,
+				// but it seems prudent to restrict %-escaped bytes here to those
+				// that are valid host name bytes in their unescaped form.
+				// That is, you can use escaping in the zone identifier but not
+				// to introduce bytes you couldn't just write directly.
+				// But Windows puts spaces here! Yay.
+				v := ( (unhex(s[i + 1])<<byte(4)) | unhex(s[i + 2]))
+				if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
+					error(error_msg(err_msg_escape, s[i..i + 3]))
+				}
+			}
+			i += 3
+		}
+		`+` {
+			has_plus = mode == .encode_query_component
+			i++
+		}
+		else {
+			if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
+				error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+			}
+			i++
+		}}
 	}
 	if n == 0 && !has_plus {
 		return s

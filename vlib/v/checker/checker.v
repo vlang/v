@@ -846,10 +846,22 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
-	if call_expr.is_method {
-		return c.call_method(call_expr)
+	typ := if call_expr.is_method { c.call_method(call_expr) } else { c.call_fn(call_expr) }
+	// autofree
+	free_tmp_arg_vars := c.pref.autofree && c.pref.experimental && !c.is_builtin_mod &&
+		call_expr.args.len > 0 && !call_expr.args[0].typ.has_flag(.optional)
+	if free_tmp_arg_vars {
+		for i, arg in call_expr.args {
+			if arg.typ != table.string_type {
+				continue
+			}
+			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
+				continue
+			}
+			call_expr.args[i].is_tmp_autofree = true
+		}
 	}
-	return c.call_fn(call_expr)
+	return typ
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
@@ -2228,7 +2240,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			c.mod = node.name
-			c.is_builtin_mod = node.name == 'builtin'
+			c.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {

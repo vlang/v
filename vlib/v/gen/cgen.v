@@ -53,7 +53,8 @@ mut:
 	file                  ast.File
 	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name        string
-	tmp_count             int
+	tmp_count             int // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count2            int // a separate tmp var counter for autofree fn calls
 	variadic_args         map[string]int
 	is_c_call             bool // e.g. `C.printf("v")`
 	is_assign_lhs         bool // inside left part of assign expr (for array_set(), etc)
@@ -106,9 +107,10 @@ mut:
 	comptime_var_type_map map[string]table.Type
 	match_sumtype_exprs   []ast.Expr
 	match_sumtype_syms    []table.TypeSymbol
-	tmp_arg_vars_to_free  []string
+	// tmp_arg_vars_to_free  []string
 	called_fn_name        string
 	cur_mod               string
+	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
 }
 
 const (
@@ -663,6 +665,12 @@ pub fn (mut g Gen) new_tmp_var() string {
 	return '_t$g.tmp_count'
 }
 
+/*
+pub fn (mut g Gen) new_tmp_var2() string {
+	g.tmp_count2++
+	return '_tt$g.tmp_count2'
+}
+*/
 pub fn (mut g Gen) reset_tmp_count() {
 	g.tmp_count = 0
 }
@@ -717,8 +725,9 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	g.stmt_path_pos << g.out.len
+	/*
 	defer {
-		// If have temporary string exprs to free after this statement, do it. e.g.:
+		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
 		if g.pref.autofree {
 			if g.strs_to_free != '' {
@@ -727,6 +736,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 	}
+	*/
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {
@@ -932,7 +942,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			// definitions are sorted and added in write_types
 		}
 		ast.Module {
-			g.is_builtin_mod = node.name == 'builtin'
+			// g.is_builtin_mod = node.name == 'builtin'
+			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
 			g.cur_mod = node.name
 		}
 		ast.Return {
