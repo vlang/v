@@ -441,5 +441,5 @@ fn test_sum_type_match() {
 	assert sumtype_match_with_string_interpolation(3) == "green_green"
 	assert sumtype_match_with_string_interpolation(4) == "it's a f64: 1.5"
 	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false" 
-	assert sumtype_match_with_string_interpolation(6) == "it's a bool: 2_hi_3_hello"
+	assert sumtype_match_with_string_interpolation(6) == "it's an IntAndStr: 2_hi_3_hello"
 }
