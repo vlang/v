@@ -1947,12 +1947,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// `g.match_sumtype_exprs.len > 0` greatly reduces numbers of function calling
 			if g.match_sumtype_exprs.len > 0 && g.should_write_asterisk_due_to_match_sumtype(node) &&
 				!g.is_decl_and_rhs_ident {
-				g.write('(*')
-				g.ident(node)
-				g.write(')')
-			} else {
-				g.ident(node)
+				g.write('*')
 			}
+			g.ident(node)
 		}
 		ast.IfExpr {
 			g.if_expr(node)
