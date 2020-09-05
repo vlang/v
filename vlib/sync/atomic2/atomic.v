@@ -49,3 +49,25 @@ pub fn sub_i64(ptr &i64, delta int) bool {
 	res := C.atomic_fetch_sub_u64(ptr, delta)
 	return res == 0
 }
+
+// atomic store/load operations have to be used when there might be another concurrent access
+
+// atomicall set a value
+pub fn store_u64(ptr &u64, val u64) {
+	C.atomic_store_u64(ptr, val)
+}
+
+// atomicall get a value
+pub fn load_u64(ptr &u64) u64 {
+	return C.atomic_load_u64(ptr)
+}
+
+// atomicall set a value
+pub fn store_i64(ptr &i64, val i64) {
+	C.atomic_store_u64(ptr, val)
+}
+
+// atomicall get a value
+pub fn load_i64(ptr &i64) i64 {
+	return i64(C.atomic_load_u64(ptr))
+}
