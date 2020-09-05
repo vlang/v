@@ -391,7 +391,6 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
-		/*
 		6 {
 			bar = CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
 			match bar {
@@ -400,10 +399,9 @@ fn sumtype_match_with_string_interpolation(code int) string {
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: $bar" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
 			}
 		}
-		*/
 		else { return 'wrong' }
 	}
 }
@@ -443,5 +441,5 @@ fn test_sum_type_match() {
 	assert sumtype_match_with_string_interpolation(3) == "green_green"
 	assert sumtype_match_with_string_interpolation(4) == "it's a f64: 1.5"
 	assert sumtype_match_with_string_interpolation(5) == "it's a bool: false" 
-	//assert sumtype_match_with_string_interpolation(6) == "it's an IntAndStr: 5_hi_hello"
+	assert sumtype_match_with_string_interpolation(6) == "it's a bool: 2_hi_3_hello"
 }
