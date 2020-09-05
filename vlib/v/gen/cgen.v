@@ -2381,7 +2381,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				else {}
 			}
 			if left_sym.kind == .function {
-				g.write('_IN(int, ')
+				$if x64 {
+					g.write('_IN(u64, ')
+				}
+				//$else {
+				//	g.write('_IN(u32, ')
+				//}
 			} else {
 				styp := g.typ(g.table.mktyp(left_type))
 				g.write('_IN($styp, ')
