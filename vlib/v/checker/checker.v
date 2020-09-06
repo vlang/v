@@ -691,7 +691,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					c.fail_if_immutable(infix_expr.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
-					c.error('cannon push non-reference `$right.name` on `$left.name`', right_pos)
+					c.error('cannon push non-reference `$right.name` on `$left.name`',
+						right_pos)
 				}
 			} else {
 				c.error('cannot push on non-channel `$left.name`', left_pos)
