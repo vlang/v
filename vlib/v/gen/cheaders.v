@@ -242,17 +242,17 @@ void* g_live_info = NULL;
 #define _IN_MAP(val, m) map_exists(m, val)
 
 // these macros have corresponding implementations in builtin/int.v with different signedness
-#define array_i8_contains(a, b) array_byte_contains((array_byte)(a), (byte)(b))
-#define array_i16_contains(a, b) array_u16_contains((array_u16)(a), (u16)(b))
-#define array_u32_contains(a, b) array_int_contains((array_int)(a), (int)(b))
-#define array_i64_contains(a, b) array_u64_contains((array_u64)(a), (u64)(b))
-#define array_rune_contains(a, b) array_int_contains((array_int)(a), (int)(b))
-#define array_f32_contains(a, b) array_int_contains((array_int)(a), *(int*)&((f32[]){(b)}))
-#define array_f64_contains(a, b) array_u64_contains((array_u64)(a), *(u64*)&((f64[]){(b)}))
+#define array_i8_contains(a, b) array_byte_contains(a, (byte)(b))
+#define array_i16_contains(a, b) array_u16_contains(a, (u16)(b))
+#define array_u32_contains(a, b) array_int_contains(a, (int)(b))
+#define array_i64_contains(a, b) array_u64_contains(a, (u64)(b))
+#define array_rune_contains(a, b) array_int_contains(a, (int)(b))
+#define array_f32_contains(a, b) array_int_contains(a, *(int*)&((f32[]){(b)}))
+#define array_f64_contains(a, b) array_u64_contains(a, *(u64*)&((f64[]){(b)}))
 #ifdef TARGET_IS_64BIT
-#define array_voidptr_contains(a, b) array_u64_contains((array_u64)(a), (u64)(b))
+#define array_voidptr_contains(a, b) array_u64_contains(a, (u64)(b))
 #else
-#define array_voidptr_contains(a, b) array_int_contains((array_int)(a), (int)(b))
+#define array_voidptr_contains(a, b) array_int_contains(a, (int)(b))
 #endif
 
 // unsigned/signed comparisons
