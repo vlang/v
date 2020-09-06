@@ -232,22 +232,22 @@ fn test_in_expression_numeric() {
 	f := [f32(12.5), 0, -17.25]
 	f2 := [1.0625, 3, 17.125]
 	assert byte(4) in b
-	assert byte(3) !in b
-	assert i8(-4) in b2
+	assert 3 !in b
+	assert -4 in b2
 	assert i8(5) !in b2
-	assert u16(1) in s
+	assert 1 in s
 	assert u16(3) !in s
-	assert i16(45) in s2
+	assert 45 in s2
 	assert i16(0) !in s2
 	assert 7 in i
 	assert 8 !in i
-	assert u32(12) in i2
+	assert 12 in i2
 	assert u32(13) !in i2
 	assert u64(1) in l
-	assert u64(2) !in l
-	assert i64(-45) in l2
+	assert 2 !in l
+	assert -45 in l2
 	assert i64(-17) !in l2
-	assert f32(-17.25) in f
+	assert -17.25 in f
 	assert f32(1) !in f
 	assert 1.0625 in f2
 	assert 3.5 !in f2
