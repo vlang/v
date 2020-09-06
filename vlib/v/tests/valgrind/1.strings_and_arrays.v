@@ -15,12 +15,17 @@ fn foo() {
 	// nums.free() // this should result in a double free and a CI error
 }
 
-fn handle_strings(s, p string) {
+fn handle_strings(s, p string) int {
+	return 0
+}
+
+fn handle_int(n int) {
 }
 
 fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
-	handle_strings('c' + 'd', 'e' + 'f')
+	handle_strings('c' + 'd', 'e' + 'f') // multiple tmp expressions must be freed
+	handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
 }
 
 struct Foo {

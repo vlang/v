@@ -58,10 +58,16 @@ pub fn file_size(path string) int {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(src, dst string) {
+	mut rdst := dst
+	if is_dir(rdst) {
+		rdst = join_path(rdst.trim_right(path_separator),file_name(src.trim_right(path_separator)))
+	}
 	$if windows {
-		C._wrename(src.to_wide(), dst.to_wide())
+		w_src := src.replace('/', '\\')
+		w_dst := rdst.replace('/', '\\')
+		C._wrename(w_src.to_wide(), w_dst.to_wide())
 	} $else {
-		C.rename(charptr(src.str), charptr(dst.str))
+		C.rename(charptr(src.str), charptr(rdst.str))
 	}
 }
 
@@ -1022,6 +1028,11 @@ pub fn is_dir(path string) bool {
 		val:= int(statbuf.st_mode) & os.s_ifmt
 		return val == s_ifdir
 	}
+}
+
+// is_file returns a `bool` indicating whether the given `path` is a file.
+pub fn is_file(path string) bool {
+	return exists(path) && !is_dir(path)
 }
 
 // is_link returns a boolean indicating whether `path` is a link.

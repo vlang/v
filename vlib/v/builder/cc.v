@@ -138,9 +138,10 @@ fn (mut v Builder) cc() {
 	}
 	if v.pref.os == .ios {
 		ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-		ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or { panic('Couldn\'t find iphonesimulator') }
+		ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
+			panic("Couldn\'t find iphonesimulator")
+		}
 		mut isysroot := ios_sdk_path_res.output.replace('\n', '')
-
 		ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
 	}
 	// arguments for the C compiler
@@ -275,7 +276,7 @@ fn (mut v Builder) cc() {
 		args << optimization_options
 	}
 	if v.pref.is_prod && !debug_mode {
-		// sokol and other C libraries that use asserts 
+		// sokol and other C libraries that use asserts
 		// have much better performance when NDEBUG is defined
 		// See also http://www.open-std.org/jtc1/sc22/wg14/www/docs/n1256.pdf
 		args << '-DNDEBUG'
@@ -316,13 +317,11 @@ fn (mut v Builder) cc() {
 				}
 				// println('cache: import "$imp"')
 				mod_path := imp.replace('.', os.path_separator)
-
 				// TODO: to get import path all imports (even relative) we can use:
 				// import_path := v.find_module_path(imp, ast_file.path) or {
-				// 	verror('cannot import module "$imp" (not found)')
-				// 	break
+				// verror('cannot import module "$imp" (not found)')
+				// break
 				// }
-
 				// The problem is cmd/v is in module main and imports
 				// the relative module named help, which is built as cmd.v.help not help
 				// currently this got this workign by building into main, see ast.FnDecl in cgen
@@ -331,7 +330,7 @@ fn (mut v Builder) cc() {
 				}
 				// we are skipping help manually above, this code will skip all relative imports
 				// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
-				// 	continue
+				// continue
 				// }
 				imp_path := os.join_path('vlib', mod_path)
 				cache_path := os.join_path(pref.default_module_path, 'cache')
@@ -348,7 +347,6 @@ fn (mut v Builder) cc() {
 				built_modules << imp
 			}
 		}
-
 	}
 	if v.pref.sanitize {
 		args << '-fsanitize=leak'
@@ -407,14 +405,14 @@ fn (mut v Builder) cc() {
 		// vexe := pref.vexe_path()
 		// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
 		// for cfile in cached_modules {
-		// 	ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
-		// 		'.o')
-		// 	if !os.exists(ofile) {
-		// 		println('${cfile}.o is missing. Building...')
-		// 		println('$vexe build-module vlib/$cfile')
-		// 		os.system('$vexe build-module vlib/$cfile')
-		// 	}
-		// 	args << ofile
+		// ofile := os.join_path(pref.default_module_path, 'cache', 'vlib', cfile.replace('.', '/') +
+		// '.o')
+		// if !os.exists(ofile) {
+		// println('${cfile}.o is missing. Building...')
+		// println('$vexe build-module vlib/$cfile')
+		// os.system('$vexe build-module vlib/$cfile')
+		// }
+		// args << ofile
 		// }
 		if !is_cc_tcc {
 			$if linux {
@@ -581,62 +579,68 @@ fn (mut v Builder) cc() {
 		}
 	}
 	// if v.pref.os == .ios {
-	// 	ret := os.system('ldid2 -S $v.pref.out_name')
-	// 	if ret != 0 {
-	// 		eprintln('failed to run ldid2, try: brew install ldid')
-	// 	}
+	// ret := os.system('ldid2 -S $v.pref.out_name')
+	// if ret != 0 {
+	// eprintln('failed to run ldid2, try: brew install ldid')
+	// }
 	// }
 }
 
 fn (mut b Builder) cc_linux_cross() {
-	parent_dir := os.home_dir() + '.vmodules'
+	parent_dir := os.join_path(os.home_dir(), '.vmodules')
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
 	}
-	sysroot := os.home_dir() + '.vmodules/linuxroot/'
-	zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
+	sysroot := os.join_path(os.home_dir(), '.vmodules', 'linuxroot')
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
-		zip_file := sysroot[..sysroot.len - 1] + '.zip'
+		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
+		zip_file := sysroot + '.zip'
 		os.system('curl -L -o $zip_file $zip_url')
+		if !os.exists(zip_file) {
+			verror('Failed to download `$zip_url` as $zip_file')
+		}
 		os.system('tar -C $parent_dir -xf $zip_file')
 		if !os.is_dir(sysroot) {
-			println('Failed to download.')
-			exit(1)
+			verror('Failed to unzip $zip_file to $parent_dir')
 		}
 	}
-	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o x.o $b.out_name_c -I $sysroot/include '
+	obj_file := b.out_name_c + '.o'
+	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o $obj_file $b.out_name_c -I $sysroot/include '
 	cflags := b.get_os_cflags()
 	cc_args += cflags.c_options_without_object_files()
+	cc_cmd := 'cc $cc_args'
 	if b.pref.show_cc {
-		println('cc $cc_args')
+		println(cc_cmd)
 	}
-	cc_res := os.exec('cc $cc_args') or {
+	cc_res := os.exec(cc_cmd) or {
+		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
+		verror(err)
 		return
 	}
 	if cc_res.exit_code != 0 {
-		println('Cross compilation for Linux failed (first step, clang). Make sure you have clang installed.')
-		println(cc_res.output)
-		exit(1)
+		println('Cross compilation for Linux failed (first step, cc). Make sure you have clang installed.')
+		verror(cc_res.output)
 	}
 	linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64',
-		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o x.o',
+		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o $obj_file',
 		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', cflags.c_options_only_object_files()]
 	// -ldl
 	linker_args_str := linker_args.join(' ')
-	cmd := '$sysroot/ld.lld ' + linker_args_str
+	linker_cmd := '$sysroot/ld.lld $linker_args_str'
 	// s = s.replace('SYSROOT', sysroot) // TODO $ inter bug
 	// s = s.replace('-o hi', '-o ' + c.pref.out_name)
 	if b.pref.show_cc {
-		println(cmd)
+		println(linker_cmd)
 	}
-	res := os.exec(cmd) or {
+	res := os.exec(linker_cmd) or {
+		println('Cross compilation for Linux failed (second step, lld).')
+		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('Cross compilation for Linux failed (second step, lld):')
-		println(res.output)
-		exit(1)
+		println('Cross compilation for Linux failed (second step, lld).')
+		verror(res.output)
 	}
 	println(b.pref.out_name + ' has been successfully compiled')
 }
@@ -662,8 +666,7 @@ fn (mut c Builder) cc_windows_cross() {
 	if false && c.pref.build_mode == .default_mode {
 		libs = '"$pref.default_module_path/vlib/builtin.o"'
 		if !os.exists(libs) {
-			println('`$libs` not found')
-			exit(1)
+			verror('`$libs` not found')
 		}
 		for imp in c.table.imports {
 			libs += ' "$pref.default_module_path/vlib/${imp}.o"'

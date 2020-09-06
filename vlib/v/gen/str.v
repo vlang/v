@@ -194,11 +194,12 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	mut cur_line := ''
 	mut tmp := ''
-	free := !g.pref.experimental && g.pref.autofree && g.inside_call && !g.inside_return &&
+	free := false && !g.pref.experimental && g.pref.autofree && g.inside_call && !g.inside_return &&
 		g.inside_ternary == 0 && !g.inside_const
 	// && g.cur_fn != 0 &&
 	// g.cur_fn.name != ''
-	if free {
+	/*
+	if false && free {
 		// Save the string expr in a temporary variable, so that it can be removed after the call.
 		tmp = g.new_tmp_var()
 		/*
@@ -214,6 +215,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		g.write('string $tmp = ')
 		g.strs_to_free += 'string_free(&$tmp); /*tmp str*/'
 	}
+	*/
 	g.write('_STR("')
 	// Build the string with %
 	mut end_string := false

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/map_unknown_value.vv:2:5: error: unknown type `DoesNotExist`
+    1 | struct App {
+    2 |     my_map map[string]DoesNotExist
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 | }

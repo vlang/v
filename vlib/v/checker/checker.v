@@ -343,6 +343,17 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					field.pos)
 			}
 		}
+		if sym.kind == .map {
+			info := sym.map_info()
+			key_sym := c.table.get_type_symbol(info.key_type)
+			value_sym := c.table.get_type_symbol(info.value_type)
+			if key_sym.kind == .placeholder {
+				c.error('unknown type `$key_sym.source_name`', field.pos)
+			}
+			if value_sym.kind == .placeholder {
+				c.error('unknown type `$value_sym.source_name`', field.pos)
+			}
+		}
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
@@ -835,10 +846,22 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
-	if call_expr.is_method {
-		return c.call_method(call_expr)
+	typ := if call_expr.is_method { c.call_method(call_expr) } else { c.call_fn(call_expr) }
+	// autofree
+	free_tmp_arg_vars := c.pref.autofree && c.pref.experimental && !c.is_builtin_mod &&
+		call_expr.args.len > 0 && !call_expr.args[0].typ.has_flag(.optional)
+	if free_tmp_arg_vars {
+		for i, arg in call_expr.args {
+			if arg.typ != table.string_type {
+				continue
+			}
+			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
+				continue
+			}
+			call_expr.args[i].is_tmp_autofree = true
+		}
 	}
-	return c.call_fn(call_expr)
+	return typ
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
@@ -2217,7 +2240,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			c.mod = node.name
-			c.is_builtin_mod = node.name == 'builtin'
+			c.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
 			c.check_valid_snake_case(node.name, 'module name', node.pos)
 		}
 		ast.Return {
@@ -3365,6 +3388,14 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x ;= map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
+		key_sym := c.table.get_type_symbol(info.key_type)
+		value_sym := c.table.get_type_symbol(info.value_type)
+		if key_sym.kind == .placeholder {
+			c.error('unknown type `$key_sym.source_name`', node.pos)
+		}
+		if value_sym.kind == .placeholder {
+			c.error('unknown type `$value_sym.source_name`', node.pos)
+		}
 		node.key_type = info.key_type
 		node.value_type = info.value_type
 		return node.typ
