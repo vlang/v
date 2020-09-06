@@ -246,8 +246,8 @@ void* g_live_info = NULL;
 #define array_i16_contains(a, b) array_u16_contains((array_u16)(a), (u16)(b))
 #define array_u32_contains(a, b) array_int_contains((array_int)(a), (int)(b))
 #define array_i64_contains(a, b) array_u64_contains((array_u64)(a), (u64)(b))
-#define array_f32_contains(a, b) array_int_contains((array_int)(a), (int)(b))
-#define array_f64_contains(a, b) array_u64_contains((array_u64)(a), (u64)(b))
+#define array_f32_contains(a, b) array_int_contains((array_int)(a), *(int*)&((f32[]){(b)}))
+#define array_f64_contains(a, b) array_u64_contains((array_u64)(a), *(u64*)&((f64[]){(b)}))
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }
