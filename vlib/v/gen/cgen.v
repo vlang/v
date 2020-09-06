@@ -99,7 +99,7 @@ mut:
 	sql_side              SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl      bool
 	inside_return         bool
-	strs_to_free          string
+	strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -725,18 +725,21 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 
 fn (mut g Gen) stmt(node ast.Stmt) {
 	g.stmt_path_pos << g.out.len
-	/*
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
 		if g.pref.autofree {
-			if g.strs_to_free != '' {
-				g.writeln(g.strs_to_free)
-				g.strs_to_free = ''
+			if g.strs_to_free.len != 0 {
+				g.writeln('// strs_to_free:')
+				for s in g.strs_to_free {
+					g.writeln(s)
+				}
+				g.strs_to_free = []
+				// s := g.strs_to_free.str()
+				// g.strs_to_free.free()
 			}
 		}
 	}
-	*/
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
 	match node {

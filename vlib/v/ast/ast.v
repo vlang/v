@@ -307,7 +307,7 @@ pub:
 	comments        []Comment
 pub mut:
 	typ             table.Type
-	is_tmp_autofree bool // for autofree
+	is_tmp_autofree bool
 	// tmp_name        string // for autofree
 }
 

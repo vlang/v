@@ -632,15 +632,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// g.write(cur_line + ' /* cur line*/')
 		// g.write(tmp)
 		// Now free the tmp arg vars right after the function call
-		g.writeln(';')
+		g.strs_to_free << (';')
 		for i, arg in node.args {
 			if arg.is_tmp_autofree {
 				fn_name := node.name.replace('.', '_')
 				tmp := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-				g.writeln('string_free(&$tmp);')
+				g.strs_to_free << ('string_free(&$tmp);')
+				// g.writeln('string_free(&$tmp);')
 			}
 		}
-		g.writeln('')
+		// g.writeln('')
 	}
 }
 

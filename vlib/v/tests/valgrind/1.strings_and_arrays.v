@@ -25,7 +25,7 @@ fn handle_int(n int) {
 fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
 	handle_strings('c' + 'd', 'e' + 'f') // multiple tmp expressions must be freed
-	// handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
+	handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
 }
 
 struct Foo {
