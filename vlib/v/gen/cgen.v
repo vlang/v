@@ -2392,9 +2392,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				else {}
 			}
 			if left_sym.kind == .function {
-				g.write('_IN(u64, ')
+				g.write('_IN(voidptr, ')
 			} else {
-				styp := g.typ(g.table.mktyp(left_type))
+				elem_type := right_sym.array_info().elem_type
+				styp := g.typ(g.table.mktyp(elem_type))
 				g.write('_IN($styp, ')
 			}
 			g.expr(node.left)

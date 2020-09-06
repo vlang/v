@@ -394,6 +394,16 @@ pub fn (a []byte) contains(val byte) bool {
 }
 
 // TODO generic
+pub fn (a []u16) contains(val u16) bool {
+	for aa in a {
+		if aa == val {
+			return true
+		}
+	}
+	return false
+}
+
+// TODO generic
 fn (ar []int) contains(val int) bool {
 	for s in ar {
 		if s == val {
