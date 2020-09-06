@@ -155,7 +155,7 @@ fn test_cp() {
 	os.rm(old_file_name)
 	os.rm(new_file_name)
 }
-/*
+
 fn test_mv() {
 	work_dir := os.join_path(os.getwd(),'mv_test')
 	os.mkdir_all(work_dir)
@@ -196,7 +196,7 @@ fn test_mv() {
 	expected = tfile3
 	assert os.exists(expected) && !is_dir(expected) == true
 }
-*/
+
 fn test_cp_r() {
 	// fileX -> dir/fileX
 	// NB: clean up of the files happens inside the cleanup_leftovers function
