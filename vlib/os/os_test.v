@@ -54,7 +54,7 @@ fn test_create_file() {
 	assert hello.len == os.file_size(filename)
 	os.rm(filename)
 }
-/*
+
 fn test_is_file() {
 	// Setup
 	work_dir := os.join_path(os.getwd(),'is_file_test')
@@ -84,7 +84,7 @@ fn test_is_file() {
 		assert os.is_file(fsymlink)
 	}
 }
-*/
+
 fn test_write_and_read_string_to_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
