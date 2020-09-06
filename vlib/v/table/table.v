@@ -357,16 +357,26 @@ pub fn (t &Table) array_fixed_source_name(elem_type Type, size int) string {
 }
 
 [inline]
-pub fn (t &Table) chan_name(elem_type Type) string {
+pub fn (t &Table) chan_name(elem_type Type, is_mut bool) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	suffix := if elem_type.is_ptr() { '_ptr' } else { '' }
+	mut suffix := ''
+	if is_mut {
+		suffix = '_mut'
+	} else if elem_type.is_ptr() {
+		suffix = '_ptr'
+	}
 	return 'chan_$elem_type_sym.name' + suffix
 }
 
 [inline]
-pub fn (t &Table) chan_source_name(elem_type Type) string {
+pub fn (t &Table) chan_source_name(elem_type Type, is_mut bool) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	ptr := if elem_type.is_ptr() { '&' } else { '' }
+	mut ptr := ''
+	if is_mut {
+		ptr = 'mut '
+	} else if elem_type.is_ptr() {
+		ptr = '&'
+	}
 	return 'chan $ptr$elem_type_sym.source_name'
 }
 
@@ -389,9 +399,9 @@ pub fn (t &Table) map_source_name(key_type, value_type Type) string {
 	return 'map[${key_type_sym.source_name}]$ptr$value_type_sym.source_name'
 }
 
-pub fn (mut t Table) find_or_register_chan(elem_type Type) int {
-	name := t.chan_name(elem_type)
-	source_name := t.chan_source_name(elem_type)
+pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
+	name := t.chan_name(elem_type, is_mut)
+	source_name := t.chan_source_name(elem_type, is_mut)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -405,6 +415,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type) int {
 		source_name: source_name
 		info: Chan{
 			elem_type: elem_type
+			is_mut:    is_mut
 		}
 	}
 	return t.register_type_symbol(chan_typ)

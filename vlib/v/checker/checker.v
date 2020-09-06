@@ -682,9 +682,18 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		}
 		.arrow { // `chan <- elem`
 			if left.kind == .chan {
-				elem_type := left.chan_info().elem_type
+				chan_info := left.chan_info()
+				elem_type := chan_info.elem_type
 				if !c.check_types(right_type, elem_type) {
 					c.error('cannot push `$right.name` on `$left.name`', right_pos)
+				}
+				if chan_info.is_mut {
+					// TODO: The error message of the following could be more specific...
+					c.fail_if_immutable(infix_expr.right)
+				}
+				if elem_type.is_ptr() && !right_type.is_ptr() {
+					c.error('cannon push non-reference `$right.source_name` on `$left.source_name`',
+						right_pos)
 				}
 			} else {
 				c.error('cannot push on non-channel `$left.name`', left_pos)
@@ -1687,8 +1696,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 	right_first := assign_stmt.right[0]
 	mut right_len := assign_stmt.right.len
+	mut right_type0 := table.void_type
 	if right_first is ast.CallExpr || right_first is ast.IfExpr || right_first is ast.MatchExpr {
-		right_type0 := c.expr(right_first)
+		right_type0 = c.expr(right_first)
 		assign_stmt.right_types = [
 			c.check_expr_opt_call(right_first, right_type0),
 		]
@@ -1710,19 +1720,34 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		return
 	}
-	// Check `x := &y`
+	// Check `x := &y` and `mut x := <-ch`
 	if right_first is ast.PrefixExpr {
 		node := right_first
 		left_first := assign_stmt.left[0]
-		if node.op == .amp && node.right is ast.Ident {
-			ident := node.right as ast.Ident
-			scope := c.file.scope.innermost(node.pos.pos)
-			if v := scope.find_var(ident.name) {
-				if left_first is ast.Ident {
-					assigned_var := left_first
-					if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-						c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
-							node.pos)
+		if left_first is ast.Ident {
+			assigned_var := left_first
+			if node.right is ast.Ident {
+				ident := node.right as ast.Ident
+				scope := c.file.scope.innermost(node.pos.pos)
+				if v := scope.find_var(ident.name) {
+					right_type0 = v.typ
+					if node.op == .amp {
+						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
+							c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
+								node.pos)
+						}
+					}
+				}
+			}
+			if node.op == .arrow {
+				if assigned_var.is_mut {
+					right_sym := c.table.get_type_symbol(right_type0)
+					if right_sym.kind == .chan {
+						chan_info := right_sym.chan_info()
+						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
+							c.error('cannot have a mutable reference to object from `$right_sym.source_name`',
+								node.pos)
+						}
 					}
 				}
 			}

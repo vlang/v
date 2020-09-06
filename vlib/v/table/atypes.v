@@ -762,6 +762,7 @@ pub mut:
 pub struct Chan {
 pub mut:
 	elem_type Type
+	is_mut    bool
 }
 
 pub struct Map {
