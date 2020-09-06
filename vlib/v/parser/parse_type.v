@@ -58,8 +58,9 @@ pub fn (mut p Parser) parse_chan_type() table.Type {
 	}
 	p.register_auto_import('sync')
 	p.next()
+	is_mut := p.tok.kind == .key_mut
 	elem_type := p.parse_type()
-	idx := p.table.find_or_register_chan(elem_type)
+	idx := p.table.find_or_register_chan(elem_type, is_mut)
 	return table.new_type(idx)
 }
 

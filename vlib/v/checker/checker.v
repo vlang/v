@@ -682,9 +682,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		}
 		.arrow { // `chan <- elem`
 			if left.kind == .chan {
-				elem_type := left.chan_info().elem_type
+				chan_info := left.chan_info()
+				elem_type := chan_info.elem_type
 				if !c.check_types(right_type, elem_type) {
 					c.error('cannot push `$right.name` on `$left.name`', right_pos)
+				}
+				if chan_info.is_mut {
+					c.fail_if_immutable(infix_expr.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
 					c.error('cannon push non-reference `$right.name` on `$left.name`', right_pos)
