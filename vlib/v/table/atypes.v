@@ -804,32 +804,36 @@ pub fn (table &Table) type_to_str(t Type) string {
 		map_start = 'map[string]'
 	}
 	if sym.kind == .chan || 'chan_' in res {
-		res = res.replace('chan_', '')
+		res = res.replace('chan_', 'chan ')
 	}
 	// mod.submod.submod2.Type => submod2.Type
-	if res.contains('.') {
-		vals := res.split('.')
-		if vals.len > 2 {
-			res = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+	mut parts := res.split(' ')
+	for i, _ in parts {
+		if parts[i].contains('.') {
+			vals := parts[i].split('.')
+			if vals.len > 2 {
+				parts[i] = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+			}
+			if parts[i].starts_with(table.cmod_prefix) ||
+				(sym.kind == .array && parts[i].starts_with('[]' + table.cmod_prefix)) {
+				parts[i] = parts[i].replace_once(table.cmod_prefix, '')
+			}
+			if sym.kind == .array && !parts[i].starts_with('[]') {
+				parts[i] = '[]' + parts[i]
+			}
+			if sym.kind == .map && !parts[i].starts_with('map') {
+				parts[i] = map_start + parts[i]
+			}
 		}
-		if res.starts_with(table.cmod_prefix) ||
-			(sym.kind == .array && res.starts_with('[]' + table.cmod_prefix)) {
-			res = res.replace_once(table.cmod_prefix, '')
+		if parts[i].contains('_mut') {
+			parts[i] = 'mut ' + parts[i].replace('_mut', '')
 		}
-		if sym.kind == .array && !res.starts_with('[]') {
-			res = '[]' + res
-		}
-		if sym.kind == .map && !res.starts_with('map') {
-			res = map_start + res
-		}
-		if sym.kind == .chan && !res.starts_with('chan') {
-			res = 'chan ' + res
+		nr_muls := t.nr_muls()
+		if nr_muls > 0 {
+			parts[i] = strings.repeat(`&`, nr_muls) + parts[i]
 		}
 	}
-	nr_muls := t.nr_muls()
-	if nr_muls > 0 {
-		res = strings.repeat(`&`, nr_muls) + res
-	}
+	res = parts.join(' ')
 	if t.has_flag(.optional) {
 		if sym.kind == .void {
 			res = '?'
