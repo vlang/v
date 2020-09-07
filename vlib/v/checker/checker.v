@@ -1332,7 +1332,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.fail_if_immutable(call_arg.expr)
 			if !arg.is_mut {
 				tok := call_arg.share.str()
-				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`', call_arg.expr.position())
+				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
+					call_arg.expr.position())
 			} else if arg.typ.share() != call_arg.share {
 				c.error('wrong shared type', call_arg.expr.position())
 			}
