@@ -1331,31 +1331,15 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		if call_arg.is_mut {
 			c.fail_if_immutable(call_arg.expr)
 			if !arg.is_mut {
-				mut words := 'mutable'
-				mut tok := 'mut'
-				if call_arg.share == .shared_t {
-					words = 'shared'
-					tok = 'shared'
-				} else if call_arg.share == .atomic_t {
-					words = 'atomic'
-					tok = 'atomic'
-				}
-				c.error('`$arg.name` argument is not $words, `$tok` is not needed`', call_arg.expr.position())
+				tok := call_arg.share.str()
+				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`', call_arg.expr.position())
 			} else if arg.typ.share() != call_arg.share {
 				c.error('wrong shared type', call_arg.expr.position())
 			}
 		} else {
 			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
-				mut words := ' mutable'
-				mut tok := 'mut'
-				if arg.typ.share() == .shared_t {
-					words = ' shared'
-					tok = 'shared'
-				} else if arg.typ.share() == .atomic_t {
-					words = 'n atomic'
-					tok = 'atomic'
-				}
-				c.error('`$arg.name` is a$words argument, you need to provide `$tok`: `${call_expr.name}($tok ...)`',
+				tok := call_arg.share.str()
+				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
 					call_arg.expr.position())
 			}
 		}
