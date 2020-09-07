@@ -16,8 +16,8 @@ Be careful, if you introduce a breaking change and rebuild V, you will no longer
 be able to use V to build itself. So it's a good idea to make a backup copy of a
 working compiler executable.
 
-But don't worry, you can always simply run `make`, it will download the C
-version of the compiler and rebuild it from scratch.
+But don't worry, you can always simply run `make` (or `make.bat`), it will
+download the C version of the compiler and rebuild it from scratch.
 
 
 The main files are:
@@ -138,7 +138,7 @@ feature/bugfix* that you make.
 
 ### Testing your commits locally:
 You can test locally whether your changes have not broken something by
-running: `v test-compiler`
+running: `v test-compiler`. See `TESTS.md` for more details.
 
 ### Publishing your commits to GitHub:
 
