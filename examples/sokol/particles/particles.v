@@ -36,7 +36,10 @@ mut:
 fn (mut a App) init() {
 	a.frame = 0
 	a.last = time.ticks()
-	a.ps = particle.System{width: a.width, height: a.height}
+	a.ps = particle.System{
+		width: a.width
+		height: a.height
+	}
 	a.ps.init(particle.SystemConfig{
 		pool: 20000
 	})
@@ -59,7 +62,6 @@ fn (mut a App) run() {
 		html5_canvas_name: title.str
 		cleanup_userdata_cb: cleanup
 	}
-
 	sapp.run(&desc)
 }
 
@@ -119,13 +121,10 @@ fn event(ev &C.sapp_event, user_data voidptr) {
 			}
 		}
 	}
-
 	if ev.@type == .touches_began || ev.@type == .touches_moved {
 		if ev.num_touches > 0 {
-
 			touch_point := ev.touches[0]
 			app.ps.explode(touch_point.pos_x, touch_point.pos_y)
-
 		}
 	}
 }

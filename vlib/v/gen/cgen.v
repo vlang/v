@@ -2561,15 +2561,17 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			g.match_sumtype_syms.pop()
 		}
 	}
-	mut tmp := ''
-	if type_sym.kind != .void {
-		tmp = g.new_tmp_var()
+	cur_line := if is_expr {
+		g.empty_line = true
+		g.go_before_stmt(0)
+	} else {
+		''
 	}
-	// styp := g.typ(node.expr_type)
-	// g.write('$styp $tmp = ')
-	// g.expr(node.cond)
-	// g.writeln(';') // $it.blocks.len')
-	// mut sum_type_str = ''
+	cond_var := g.new_tmp_var()
+	g.write('${g.typ(node.cond_type)} $cond_var = ')
+	g.expr(node.cond)
+	g.writeln(';')
+	g.write(cur_line)
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (node.is_expr && is_last) {
@@ -2596,7 +2598,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 			for i, expr in branch.exprs {
 				if node.is_sum_type {
-					g.expr(node.cond)
+					g.write(cond_var)
 					sym := g.table.get_type_symbol(node.cond_type)
 					// branch_sym := g.table.get_type_symbol(branch.typ)
 					if sym.kind == .sum_type {
@@ -2610,26 +2612,23 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.expr(expr)
 				} else if type_sym.kind == .string {
 					g.write('string_eq(')
-					//
-					g.expr(node.cond)
+					g.write(cond_var)
 					g.write(', ')
-					// g.write('string_eq($tmp, ')
 					g.expr(expr)
 					g.write(')')
 				} else if expr is ast.RangeExpr {
 					g.write('(')
-					g.expr(node.cond)
+					g.write(cond_var)
 					g.write(' >= ')
 					g.expr(expr.low)
 					g.write(' && ')
-					g.expr(node.cond)
+					g.write(cond_var)
 					g.write(' <= ')
 					g.expr(expr.high)
 					g.write(')')
 				} else {
-					g.expr(node.cond)
+					g.write(cond_var)
 					g.write(' == ')
-					// g.write('$tmp == ')
 					g.expr(expr)
 				}
 				if i < branch.exprs.len - 1 {
@@ -2652,7 +2651,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					it_type := g.typ(first_expr.typ)
 					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
 					g.write('\t$it_type* it = ($it_type*)')
-					g.expr(node.cond)
+					g.write(cond_var)
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.writeln('_object; // ST it')
