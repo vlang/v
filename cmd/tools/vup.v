@@ -105,7 +105,7 @@ fn (app App) git_command(command string) {
 	}
 	if git_result.exit_code != 0 {
 		if git_result.output.contains('Permission denied') {
-			eprintln('have no access `$app.vroot`: Permission denied')
+			eprintln('No access to `$app.vroot`: Permission denied')
 		} else {
 			eprintln(git_result.output)
 		}
