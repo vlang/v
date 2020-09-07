@@ -4,6 +4,10 @@ const (
 	num_iterations = 10000
 )
 
+struct St {
+	a int
+}
+
 fn get_val_from_chan(ch chan i64) ?i64 {
 	r := <-ch ?
 	return r
@@ -52,4 +56,10 @@ fn test_channel_array_mut() {
 	d := ch[o].len
 	sem.wait()
 	assert t == 100 + num_iterations
+	ch2 := chan mut St{cap: 10}
+	go g(ch2)
+}
+
+fn g(ch chan mut St) {
+	return
 }

@@ -825,6 +825,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 				parts[i] = map_start + parts[i]
 			}
 		}
+		if parts[i].contains('_mut') {
+			parts[i] = 'mut ' + parts[i].replace('_mut', '')
+		}
 		nr_muls := t.nr_muls()
 		if nr_muls > 0 {
 			parts[i] = strings.repeat(`&`, nr_muls) + parts[i]

@@ -1636,12 +1636,17 @@ fn expr_is_single_line(expr ast.Expr) bool {
 }
 
 pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
+	info := f.table.get_type_symbol(it.typ).chan_info()
 	if it.elem_type == 0 && it.typ > 0 {
-		info := f.table.get_type_symbol(it.typ).chan_info()
 		it.elem_type = info.elem_type
 	}
+	is_mut := info.is_mut
+	el_typ := if is_mut { it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1) } else { it.elem_type }
 	f.write('chan ')
-	f.write(f.type_to_str(it.elem_type))
+	if is_mut {
+		f.write('mut ')
+	}
+	f.write(f.type_to_str(el_typ))
 	f.write('{')
 	if it.has_cap {
 		f.write('cap: ')
