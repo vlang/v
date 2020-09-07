@@ -9,6 +9,14 @@ fn get_val_from_chan(ch chan i64) ?i64 {
 	return r
 }
 
+fn get_val_from_chan2(ch chan i64) ?i64 {
+	r := <-ch or {
+		println('error')
+		return error(err)
+	}
+	return r
+}
+
 // this function gets an array of channels for `i64`
 fn do_rec_calc_send(chs []chan i64, sem sync.Semaphore) {
 	mut msg := ''
@@ -33,7 +41,15 @@ fn test_channel_array_mut() {
 		chs[0] <- t
 		t = <-chs[1]
 	}
-	chs[0].close()
+	(&sync.Channel(chs[0])).close()
+	orr := &sync.Channel(chs[0])
+	chs[1].close()
+	ch := chan int{}
+	ch.close()
+	a := ch.cap
+	b := ch.len
+	c := ch[1].cap
+	d := ch[o].len
 	sem.wait()
 	assert t == 100 + num_iterations
 }
