@@ -717,9 +717,17 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 			is_pe_amp_ce = true
 			f.expr(ce)
 		}
+	} else if fexpr is ast.CastExpr {
+		last := f.out.cut_last(1)
+		if last != '&' {
+			f.out.write(last)
+		}
 	}
 	if !is_pe_amp_ce {
 		f.expr(fexpr)
+		if fexpr is ast.PrefixExpr {
+			f.or_expr(fexpr.or_block)
+		}
 	}
 }
 
