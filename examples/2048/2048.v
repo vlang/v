@@ -94,7 +94,7 @@ fn new_board(sb []string) Board {
 	mut b := Board{}
 	for y := 0; y < 4; y++ {
 		for x := 0; x < 4; x++ {
-		b.field[y][x] = sb[y][x] - 64
+			b.field[y][x] = sb[y][x] - 64
 		}
 	}
 	return b
@@ -180,7 +180,9 @@ fn (t TileLine) to_left() TileLine {
 fn (b Board) to_left() Board {
 	mut res := b
 	for y := 0; y < 4; y++ {
-		mut hline := TileLine{ypos: y}
+		mut hline := TileLine{
+			ypos: y
+		}
 		for x := 0; x < 4; x++ {
 			hline.field[x] = b.field[y][x]
 		}
@@ -264,8 +266,8 @@ fn (app &App) draw() {
 
 fn (app &App) draw_background() {
 	tw, th := 128, 128
-	for y := 30; y <= window_height; y+=tw {
-		for x := 0; x <= window_width; x+=th {
+	for y := 30; y <= window_height; y += tw {
+		for x := 0; x <= window_width; x += th {
 			app.gg.draw_image(x, y, tw, th, app.tiles[0].image)
 		}
 	}
@@ -379,7 +381,8 @@ fn (mut app App) game_over() {
 	app.state = .over
 }
 
-type BoardMoveFN fn(b Board) Board
+type BoardMoveFN = fn (b Board) Board
+
 fn (mut app App) move(move_fn BoardMoveFN) {
 	old := app.board
 	new := move_fn(old)
@@ -400,7 +403,7 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 		.n {
 			app.new_game()
 		}
-		//.t {/* fast setup for a victory situation: */ app.board = new_board(['JJ@@', '@@@@', '@@@@', '@@@@'])}
+		// .t {/* fast setup for a victory situation: */ app.board = new_board(['JJ@@', '@@@@', '@@@@', '@@@@'])}
 		.backspace {
 			if app.undo.len > 0 {
 				app.state = .play
