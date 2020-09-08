@@ -94,7 +94,13 @@ fn test_inttypes_string_interpolation() {
 	i := -1622999040
 	ui := u32(3421958087)
 	vp := voidptr(ui)
-	bp := byteptr(15541149836)
+	mut bp := byteptr(0)
+	$if x64 {
+		bp = byteptr(15541149836)
+	}
+	$else {
+		bp = byteptr(3541149836)
+	}
 	l := i64(-7694555558525237396)
 	ul := u64(17234006112912956370)
 	assert '$s $us' == '-23456 54321'
@@ -109,10 +115,17 @@ fn test_inttypes_string_interpolation() {
 	assert '${l:x}:${ul:X}' == '9537727cad98876c:EF2B7D4001165BD2'
 	// default pointer format is platform dependent, so try a few
 	eprintln("platform pointer format: '${vp:p}:$bp'")
-	assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
-		'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
-		'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
-		'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+	$if x64 {
+		assert '${vp:p}:$bp' == '0xcbf6efc7:0x39e53208c' ||
+			'${vp:p}:$bp' == 'CBF6EFC7:39E53208C' ||
+			'${vp:p}:$bp' == 'cbf6efc7:39e53208c' ||
+			'${vp:p}:$bp' == '00000000CBF6EFC7:000000039E53208C'
+	}
+	$else {
+		assert '${vp:p}:$bp' == 'CBF6EFC7:D311A88C' ||
+			'${vp:p}:$bp' == 'cbf6efc7:d311a88c' ||
+			'${vp:p}:$bp' == '0xcbf6efc7:0xd311a88c'
+	}
 }
 
 fn test_utf8_string_interpolation() {
