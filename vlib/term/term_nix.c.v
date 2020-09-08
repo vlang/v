@@ -44,8 +44,8 @@ pub fn get_cursor_position() Coord {
 	// ESC [ YYY `;` XXX `R`
 	mut reading_x := false
 	mut reading_y := false
-	mut x := i16(0)
-	mut y := i16(0)
+	mut x := 0
+	mut y := 0
 	for {
 		ch = C.getchar()
 		b := byte(ch)
@@ -83,7 +83,7 @@ pub fn get_cursor_position() Coord {
 	}
 }
 
-// set_terminal_title sets the terminal title to a sepcified string
+// set_terminal_title change the terminal title
 pub fn set_terminal_title(title string) bool {
 	print('\033]0;${title}\007')
 	return true
