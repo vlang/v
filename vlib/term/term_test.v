@@ -57,19 +57,38 @@ fn test_header() {
 }
 
 fn test_get_cursor_position() {
-	cursor_position := term.get_cursor_position()
+	original_position := term.get_cursor_position()
 	cursor_position_1 := term.get_cursor_position()
-	assert cursor_position.x == cursor_position_1.x
-	assert cursor_position.y == cursor_position_1.y
+	assert original_position.x == cursor_position_1.x
+	assert original_position.y == cursor_position_1.y
 	//
 	term.set_cursor_position({
 		x: 10
 		y: 11
 	})
 	cursor_position_2 := term.get_cursor_position()
-	term.set_cursor_position(cursor_position)
-	eprintln('cursor_position: $cursor_position')
+	//
+	term.set_cursor_position({
+		x: 5
+		y: 6
+	})
+	cursor_position_3 := term.get_cursor_position()
+	//
+	term.set_cursor_position(original_position)
+	eprintln('original_position: $original_position')
 	eprintln('cursor_position_2: $cursor_position_2')
+	eprintln('cursor_position_3: $cursor_position_3')
+	// 0,0 is returned on dumb terminals
+	if cursor_position_2.x == 0 && cursor_position_2.y == 0 {
+		return
+	}
+	if cursor_position_3.x == 0 && cursor_position_3.y == 0 {
+		return
+	}
+	assert cursor_position_2.x == 10
+	assert cursor_position_2.y == 11
+	assert cursor_position_3.x == 5
+	assert cursor_position_3.y == 6
 }
 
 fn test_set_terminal_title() {
