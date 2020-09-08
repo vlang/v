@@ -61,6 +61,15 @@ fn test_get_cursor_position() {
 	cursor_position_1 := term.get_cursor_position()
 	assert cursor_position.x == cursor_position_1.x
 	assert cursor_position.y == cursor_position_1.y
+	//
+	term.set_cursor_position({
+		x: 10
+		y: 11
+	})
+	cursor_position_2 := term.get_cursor_position()
+	term.set_cursor_position(cursor_position)
+	eprintln('cursor_position: $cursor_position')
+	eprintln('cursor_position_2: $cursor_position_2')
 }
 
 fn test_set_terminal_title() {

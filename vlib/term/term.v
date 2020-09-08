@@ -6,6 +6,13 @@ const (
 	default_columns_size = 80
 	default_rows_size = 25
 )
+
+pub struct Coord {
+pub:
+	x i16
+	y i16
+}
+
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
 pub fn can_show_color_on_stdout() bool {

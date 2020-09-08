@@ -13,8 +13,8 @@ module term
 // Setting cursor to the given position
 // x is the x coordinate
 // y is the y coordinate
-pub fn set_cursor_position(x int, y int) {
-	print('\x1b[$y;$x' + 'H')
+pub fn set_cursor_position(c Coord) {
+	print('\x1b[$c.y;$c.x' + 'H')
 }
 
 // n is number of cells

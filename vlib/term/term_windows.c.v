@@ -2,12 +2,6 @@ module term
 
 import os
 
-pub struct Coord {
-pub:
-	x i16
-	y i16
-}
-
 struct SmallRect {
 	left   i16
 	top    i16
