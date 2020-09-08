@@ -9,7 +9,7 @@ const (
 
 // Coord - used by term.get_cursor_position and term.set_cursor_position
 pub struct Coord {
-pub:
+pub mut:
 	x int
 	y int
 }
