@@ -23,7 +23,7 @@ fn new_addr(addr C.sockaddr, _saddr string, _port int) ?Addr {
 		// Convert to string representation
 		buf := []byte{ len: max_ipv4_addr_len, init: 0 }
 		$if windows {
-			res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
+			res := C.WSAStringToAddress(&addr, SocketFamily.inet, C.NULL, &buf.data, &buf.len)
 			if res == 0 {
 				socket_error(-1)?
 			}

@@ -1209,7 +1209,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	}
 
 	// init the state stack
-	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)
+	re.state_stack = []StateDotObj{len: tmp_count+1, init: StateDotObj{}}
 
 	// OR branch
 	// a|b|cd
