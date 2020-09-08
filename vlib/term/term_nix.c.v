@@ -85,6 +85,9 @@ pub fn get_cursor_position() Coord {
 
 // set_terminal_title change the terminal title
 pub fn set_terminal_title(title string) bool {
+	if is_atty(1) <= 0 || os.getenv('TERM') == 'dumb' {
+		return false
+	}        
 	print('\033]0;${title}\007')
 	return true
 }

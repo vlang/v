@@ -1,3 +1,4 @@
+import os
 import term
 
 fn test_get_terminal_size() {
@@ -92,6 +93,10 @@ fn test_get_cursor_position() {
 }
 
 fn test_set_terminal_title() {
+	// do not change the current terminal title outside of CI:
+	if os.getenv('CI') != 'true' {
+		return
+	}
 	title_change := term.set_terminal_title('v is awesome!')
 	assert title_change == true
 }
