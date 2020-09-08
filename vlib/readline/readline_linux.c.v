@@ -451,7 +451,7 @@ fn (mut r Readline) switch_overwrite() {
 }
 
 fn (mut r Readline) clear_screen() {
-	term.set_cursor_position(1, 1)
+	term.set_cursor_position(x:1, y:1)
 	term.erase_clear()
 	r.refresh_line()
 }
