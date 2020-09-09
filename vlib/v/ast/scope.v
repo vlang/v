@@ -60,7 +60,8 @@ pub fn (s &Scope) is_known(name string) bool {
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
 		match obj {
-			Var { return obj }
+			// obj here is not the local variable. no problem to return &obj
+			Var { return &obj }
 			else {}
 		}
 	}
@@ -70,7 +71,8 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
 		match obj {
-			ConstField { return obj }
+			// obj here is not the local variable. no problem to return &obj
+			ConstField { return &obj }
 			else {}
 		}
 	}

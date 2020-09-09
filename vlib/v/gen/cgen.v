@@ -780,7 +780,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.comp_if(node)
 		}
 		ast.DeferStmt {
-			mut defer_stmt := *node
+			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.defer_stmts << defer_stmt
 		}
@@ -844,7 +844,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			keep_fn_decl := g.fn_decl
-			g.fn_decl = node
+			g.fn_decl = &node
 			if node.name == 'main.main' {
 				g.has_main = true
 			}
@@ -1458,7 +1458,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		if left is ast.Ident {
-			ident = *left
+			ident = left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
@@ -1495,7 +1495,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.fn_args(val.decl.args, val.decl.is_variadic)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(') = ')
-				g.expr(*val)
+				g.expr(val)
 				g.writeln(';')
 				if blank_assign {
 					g.write('}')
@@ -1776,7 +1776,7 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 				// // TODO why 0?
 				// continue
 				// }
-				v := *obj
+				v := obj
 				is_optional := v.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
