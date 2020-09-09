@@ -21,7 +21,7 @@ const (
 
 // Client represents websocket client state
 pub struct Client {
-	is_server         bool = false
+	is_server         bool
 mut:
 	ssl_conn          &openssl.SSLConn
 	flags             []Flag
@@ -38,7 +38,7 @@ pub:
 pub mut:
 	conn              net.TcpConn
 	nonce_size        int = 16 // you can try 18 too
-	panic_on_callback bool = false
+	panic_on_callback bool
 	state             State
 	resource_name     string
 	last_pong_ut      u64

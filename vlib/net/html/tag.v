@@ -16,7 +16,7 @@ mut:
 	last_attribute     string
 	parent             &Tag = C.NULL
 	position_in_parent int
-	closed             bool = false
+	closed             bool
 	close_type         CloseTagType = .in_name
 }
 

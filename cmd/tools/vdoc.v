@@ -96,14 +96,14 @@ enum OutputType {
 struct DocConfig {
 mut:
 	pub_only       bool = true
-	show_loc       bool = false // for plaintext
-	serve_http     bool = false // for html
-	is_multi       bool = false
-	is_verbose     bool = false
-	include_readme bool = false
-	open_docs      bool = false
+	show_loc       bool        // for plaintext
+	serve_http     bool        // for html
+	is_multi       bool
+	is_verbose     bool
+	include_readme bool
+	open_docs      bool
 	server_port    int  = 8046
-	inline_assets  bool = false
+	inline_assets  bool
 	output_path    string
 	input_path     string
 	output_type    OutputType = .unset

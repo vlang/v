@@ -4,28 +4,28 @@ module websocket
 struct MessageEventHandler {
 	handler  SocketMessageFn
 	handler2 SocketMessageFn2
-	is_ref   bool = false
+	is_ref   bool
 	ref      voidptr
 }
 
 struct ErrorEventHandler {
 	handler  SocketErrorFn
 	handler2 SocketErrorFn2
-	is_ref   bool = false
+	is_ref   bool
 	ref      voidptr
 }
 
 struct OpenEventHandler {
 	handler  SocketOpenFn
 	handler2 SocketOpenFn2
-	is_ref   bool = false
+	is_ref   bool
 	ref      voidptr
 }
 
 struct CloseEventHandler {
 	handler  SocketCloseFn
 	handler2 SocketCloseFn2
-	is_ref   bool = false
+	is_ref   bool
 	ref      voidptr
 }
 

@@ -62,7 +62,7 @@ mut:
 	state    []u64 = calculate_state(util.time_seed_array(2), mut []u64{len: nn})
 	mti      int = nn
 	next_rnd u32
-	has_next bool = false
+	has_next bool
 }
 
 fn calculate_state(seed_data []u32, mut state []u64) []u64 {
