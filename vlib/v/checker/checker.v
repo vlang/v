@@ -371,12 +371,12 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if field.default_expr is ast.IntegerLiteral as x {
 				if x.val == '0' {
 					c.error('unnecessary default value of `0`: struct fields are zeroed by default',
-						field.pos)
+						x.pos)
 				}
 			} else if field.default_expr is ast.StringLiteral as x {
 				if x.val == '' {
 					c.error("unnecessary default value of '': struct fields are zeroed by default",
-						field.pos)
+						x.pos)
 				}
 			}
 		}
