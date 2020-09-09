@@ -199,7 +199,7 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 }
 
 // fn decl args
-fn (mut g Gen) fn_args(args []table.Arg, is_variadic bool) ([]string, []string) {
+fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
 	no_names := args.len > 0 && args[0].name == 'arg_1'

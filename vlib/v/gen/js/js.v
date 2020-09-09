@@ -296,7 +296,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 	return styp
 }
 
-fn (mut g JsGen) fn_typ(args []table.Arg, return_type table.Type) string {
+fn (mut g JsGen) fn_typ(args []table.Param, return_type table.Type) string {
 	mut res := '('
 	for i, arg in args {
 		res += '$arg.name: ${g.typ(arg.typ)}'
@@ -897,7 +897,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.fn_decl = voidptr(0)
 }
 
-fn (mut g JsGen) fn_args(args []table.Arg, is_variadic bool) {
+fn (mut g JsGen) fn_args(args []table.Param, is_variadic bool) {
 	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		name := g.js_name(arg.name)
