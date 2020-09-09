@@ -2426,7 +2426,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.error('cannot cast non sum type `$type_sym.source_name` using `as`',
 					node.pos)
 			}
-			return node.typ.to_ptr()
+			return node.typ
 			// return node.typ
 		}
 		ast.Assoc {
@@ -2888,6 +2888,12 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 					c.error('cannot use `$typ_sym.source_name` as `$cond_type_sym.source_name` in `match`',
 						node.pos)
 				}
+				mut scope := c.file.scope.innermost(branch.pos.pos)
+				if node.var_name.len > 0 {
+					//pub fn (s &Scope) find_var(name string) ?&Var
+					scope.update_var_type(node.var_name, typ)
+				}
+				scope.update_var_type('it', typ)
 			}
 		}
 		c.stmts(branch.stmts)
@@ -3162,7 +3168,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						}
 						scope.register(branch.left_as_name, ast.Var{
 							name: branch.left_as_name
-							typ: right_expr.typ.to_ptr()
+							typ: right_expr.typ
 							pos: infix.left.position()
 							is_used: true
 							is_mut: is_mut
