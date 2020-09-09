@@ -5,7 +5,7 @@ import os
 pub struct DocumentObjectModel {
 mut:
 	root           &Tag
-	constructed    bool = false
+	constructed    bool
 	btree          BTree
 	all_tags       []&Tag
 	all_attributes map[string][]&Tag

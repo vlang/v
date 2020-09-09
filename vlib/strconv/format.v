@@ -207,9 +207,9 @@ pub struct BF_param {
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
 	positive     bool       = true    // mandatory: the sign of the number passed
-	sign_flag    bool       = false   // flag for print sign as prefix in padding
+	sign_flag    bool                 // flag for print sign as prefix in padding
 	allign       Align_text = .right  // alignment of the string
-	rm_tail_zero bool       = false   // remove the tail zeros from floats
+	rm_tail_zero bool                 // remove the tail zeros from floats
 }
 
 pub fn format_str(s string, p BF_param) string {

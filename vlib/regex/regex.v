@@ -1482,7 +1482,7 @@ fn state_str(s Match_state) string {
 
 struct StateObj {
 pub mut:
-	match_flag bool = false
+	match_flag bool
 	match_index int = -1
 	match_first int = -1
 }

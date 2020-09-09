@@ -35,7 +35,7 @@ pub mut:
 	headers    map[string]string
 	cookies    map[string]string
 	user_agent string = 'v.http'
-	verbose    bool = false
+	verbose    bool
 }
 
 pub struct Response {

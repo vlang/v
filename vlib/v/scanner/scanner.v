@@ -44,7 +44,7 @@ pub mut:
 	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
 	comments_mode               CommentsMode
-	is_inside_toplvl_statement  bool = false // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
@@ -1099,7 +1099,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						// fix line_nr, \n was read; the comment is marked on the next line
 						s.pos--
 						s.line_nr--
-					}                    
+					}
 					if s.should_parse_comment() {
 						s.line_comment = s.text[start + 1..comment_line_end]
 						mut comment := s.line_comment.trim_space()
