@@ -15,7 +15,7 @@ mut:
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
 	parent             &Tag = C.NULL
-	position_in_parent int = 0
+	position_in_parent int
 	closed             bool = false
 	close_type         CloseTagType = .in_name
 }

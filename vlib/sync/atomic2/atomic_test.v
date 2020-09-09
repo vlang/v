@@ -7,7 +7,7 @@ const (
 
 struct Counter {
 mut:
-	counter u64 = 0    
+	counter u64
 }
 
 // without proper syncronization this would fail

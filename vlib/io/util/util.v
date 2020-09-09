@@ -11,7 +11,7 @@ const (
 
 pub struct TempFileOptions {
 	path    string = os.temp_dir()
-	pattern string = ''
+	pattern string
 }
 
 // temp_file returns an uniquely named, open, writable, `os.File` and it's path
@@ -49,7 +49,7 @@ pub fn temp_file(tfo TempFileOptions) ?(os.File, string) {
 
 pub struct TempDirOptions {
 	path    string = os.temp_dir()
-	pattern string = ''
+	pattern string
 }
 
 // temp_dir returns an uniquely named, writable, directory path

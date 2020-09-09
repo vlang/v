@@ -230,8 +230,8 @@ struct SimpleTcpClientConfig {
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
-	headers string = ''
-	content string = ''
+	headers string
+	content string
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) ?string {

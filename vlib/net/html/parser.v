@@ -7,11 +7,11 @@ mut:
 	current_tag      &Tag
 	open_tag         bool = false
 	open_code        bool = false
-	open_string      int = 0
+	open_string      int
 	open_comment     bool = false
 	is_attribute     bool = false
-	opened_code_type string = ''
-	line_count       int = 0
+	opened_code_type string
+	line_count       int
 	lexeme_builder   string
 	code_tags        map[string]bool = {
 		'script': true
