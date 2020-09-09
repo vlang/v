@@ -22,7 +22,7 @@ pub mut:
 
 pub struct Fn {
 pub:
-	args                    []Arg // parameters
+	args                    []Param
 	return_type             Type
 	return_type_source_name string
 	is_variadic             bool
@@ -39,8 +39,7 @@ pub mut:
 	name                    string
 }
 
-// parameter
-pub struct Arg {
+pub struct Param {
 pub:
 	pos              token.Position
 	name             string
