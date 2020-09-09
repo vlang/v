@@ -851,9 +851,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// 1, a, c ... }       // multi-expression
 	// a, mut b ... :=/=   // multi-assign
 	// collect things upto hard boundaries
-	$if debug {
-		p.warn('xxx')
-	}
 	tok := p.tok
 	left, left_comments := p.expr_list()
 	left0 := left[0]
