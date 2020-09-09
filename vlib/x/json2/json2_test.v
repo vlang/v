@@ -14,7 +14,7 @@ struct Employee {
 }
 
 fn (e Employee) to_json() string {
-	mut mp := map[string]json.Any
+	mut mp := map[string]json2.Any
 	mp['name'] = e.name
 	mp['age'] = e.age
 	mp['salary'] = f64(e.salary)
@@ -35,16 +35,16 @@ fn (e Employee) to_json() string {
 
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
-	s := json.encode<Employee>(x)
+	s := json2.encode<Employee>(x)
 	eprintln('Employee x: $s')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	// y := json.decode(Employee, s) or {
 	// 	assert false
 	// 	Employee{}
 	// }
-	y := json.raw_decode(s) or {
+	y := json2.raw_decode(s) or {
 		assert false
-		json.Any{}
+		json2.Any{}
 	}
 	eprintln('Employee y: $y')
 	ym := y.as_map()
@@ -143,10 +143,10 @@ fn test_simple() {
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
-		'one': json.Any(1)
-		'two': json.Any(2)
-		'three': json.Any(3)
-		'four': json.Any(4)
+		'one': json2.Any(1)
+		'two': json2.Any(2)
+		'three': json2.Any(3)
+		'four': json2.Any(4)
 	}
 	out := numbers.str()
 	// out := json.encode(numbers)
