@@ -380,7 +380,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				}
 			} else if field.default_expr is ast.BoolLiteral as lit {
 				if lit.val == false {
-					c.error("unnecessary default value of `false`: struct fields are zeroed by default",
+					c.error('unnecessary default value `false`: struct fields are zeroed by default',
 						lit.pos)
 				}
 			}
