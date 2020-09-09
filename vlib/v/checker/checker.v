@@ -580,18 +580,24 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				if left.has_method(infix_expr.op.str()) {
 					return_type = left_type
 				} else {
-					c.error('mismatched types `$left.name` and `$right.name`', left_pos)
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					c.error('mismatched types `$left_name` and `$right_name`', left_pos)
 				}
 			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
 				if right.has_method(infix_expr.op.str()) {
 					return_type = right_type
 				} else {
-					c.error('mismatched types `$left.name` and `$right.name`', right_pos)
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					c.error('mismatched types `$left_name` and `$right_name`', right_pos)
 				}
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
 				if promoted_type.idx() == table.void_type_idx {
-					c.error('mismatched types `$left.name` and `$right.name`', infix_expr.pos)
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
 				} else if promoted_type.is_float() {
 					if infix_expr.op in [.mod, .xor, .amp, .pipe] {
 						side := if left_type == promoted_type { 'left' } else { 'right' }
