@@ -326,7 +326,7 @@ pub mut:
 	// Debug/log
 	debug int                          // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
 	log_func FnLog       = simple_log  // log function, can be customized by the user
-	query string         = ""          // query string
+	query string                   // query string
 }
 
 // Reset RE object

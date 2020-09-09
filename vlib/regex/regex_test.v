@@ -141,8 +141,8 @@ match_test_suite_re = [
 struct TestItemCGroup {
 	src string
 	q string
-	s int = 0
-	e int = 0
+	s int
+	e int
 	cg []int
 	cgn map[string]int
 }
