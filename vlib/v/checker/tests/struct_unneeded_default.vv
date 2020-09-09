@@ -1,0 +1,7 @@
+struct Test {
+	n int = 0
+	s string = ''
+}
+
+fn main() {
+}

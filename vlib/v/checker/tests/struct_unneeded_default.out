@@ -1,0 +1,6 @@
+vlib/v/checker/tests/struct_unneeded_default.vv:2:2: error: unnecessary default value of `0`: struct fields are zeroed by default
+    1 | struct Test {
+    2 |     n int = 0
+      |     ~~~~~~
+    3 |     s string = ''
+    4 | }

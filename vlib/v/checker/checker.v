@@ -364,6 +364,18 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					'has type `$field_expr_type_sym.source_name`, but should be `$field_type_sym.source_name`',
 					field.default_expr.position())
 			}
+			// Check for unnecessary inits like ` = 0` and ` = ''`
+			if field.default_expr is ast.IntegerLiteral as x {
+				if x.val == '0' {
+					c.error('unnecessary default value of `0`: struct fields are zeroed by default',
+						field.pos)
+				}
+			} else if field.default_expr is ast.StringLiteral as x {
+				if x.val == "''" {
+					c.error("unnecessary default value of '': struct fields are zeroed by default",
+						field.pos)
+				}
+			}
 		}
 	}
 }
