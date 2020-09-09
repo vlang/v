@@ -105,13 +105,13 @@ mut:
 	inside_const          bool
 	comp_for_method       string // $for method in T {
 	comptime_var_type_map map[string]table.Type
-	match_sumtype_exprs   []ast.Expr
-	match_sumtype_syms    []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
+	variants_to_deref     []string // active variants to be deref, for smaartcast, for if and match
 }
+
 
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
@@ -1951,10 +1951,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if g.should_write_asterisk_due_to_match_sumtype(node) {
-				g.write('*')
+			if node.name in g.variants_to_deref {
+				g.write('(*')
+				g.ident(node)
+				g.write(')')
+			} else {
+				g.ident(node)
 			}
-			g.ident(node)
 		}
 		ast.IfExpr {
 			g.if_expr(node)
@@ -2144,7 +2147,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(')')
 				return
 			}
-			g.expr(node.expr)
+			selector_str := g.write_expr_to_string(node.expr)
+			selector_head := selector_str.all_before('.')
+			if selector_head in g.variants_to_deref {
+				deref_sel_str := '(*' + selector_head + ').' + selector_str.all_after('.')
+				g.write(deref_sel_str)
+			} else {
+				g.expr(node.expr)
+			}
 			if node.expr_type.is_ptr() || sym.kind == .chan {
 				g.write('->')
 			} else {
@@ -2561,16 +2571,6 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
 	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
-	if node.is_sum_type {
-		g.match_sumtype_exprs << node.cond
-		g.match_sumtype_syms << type_sym
-	}
-	defer {
-		if node.is_sum_type {
-			g.match_sumtype_exprs.pop()
-			g.match_sumtype_syms.pop()
-		}
-	}
 	cur_line := if is_expr {
 		g.empty_line = true
 		g.go_before_stmt(0)
@@ -2582,6 +2582,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	g.expr(node.cond)
 	g.writeln(';')
 	g.write(cur_line)
+	mut variants_to_pop := 0
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
 		if branch.is_else || (node.is_expr && is_last) {
@@ -2652,6 +2653,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
+		variants_to_pop = 0
 		if node.is_sum_type && branch.exprs.len > 0 && !node.is_expr {
 			// The first node in expr is an ast.Type
 			// Use it to generate `it` variable.
@@ -2660,14 +2662,26 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 				ast.Type {
 					it_type := g.typ(first_expr.typ)
 					// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
-					g.write('\t$it_type* it = ($it_type*)')
-					g.write(cond_var)
+					it_aux := g.new_tmp_var()
+					g.write('\t$it_type* $it_aux = ($it_type*)')
+					g.expr(node.cond)
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.writeln('_object; // ST it')
+					star_or_empty := if first_expr.typ.is_ptr() { '*' } else { '' }
+					deref_or_empty := if first_expr.typ.is_ptr() { '' } else { '*' }
+					g.writeln('\t$it_type$star_or_empty $deref_or_empty/**/it = $it_aux;')
+					if !first_expr.typ.is_ptr() {
+						g.variants_to_deref << 'it'
+						variants_to_pop++
+					}
 					if node.var_name.len > 0 {
 						// for now we just copy it
-						g.writeln('\t$it_type* $node.var_name = it;')
+						g.writeln('\t$it_type$star_or_empty $deref_or_empty$node.var_name = $it_aux;')
+						if !first_expr.typ.is_ptr() {
+							g.variants_to_deref << node.var_name
+							variants_to_pop++
+						}
 					}
 				}
 				else {
@@ -2676,6 +2690,9 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		g.stmts(branch.stmts)
+		for _ in 0..variants_to_pop {
+			g.variants_to_deref.pop()
+		}
 		if g.inside_ternary == 0 && node.branches.len > 1 {
 			g.write('}')
 		}
@@ -2716,36 +2733,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-}
-
-[unlikely]
-fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
-	if expr is ast.Ident {
-		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
-		return if typ.is_ptr() && g.match_sumtype_has_no_struct_and_contains(expr) {
-			true
-		} else {
-			false
-		}
-	} else {
-		return false
-	}
-}
-
-[unlikely]
-fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
-	for i, expr in g.match_sumtype_exprs {
-		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			sumtype := g.match_sumtype_syms[i].info as table.SumType
-			for typ in sumtype.variants {
-				if g.table.get_type_symbol(typ).kind == .struct_ {
-					return false
-				}
-			}
-			return true
-		}
-	}
-	return false
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
@@ -2805,6 +2792,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('${g.typ(cond.expr_type)} $var_name;')
 		}
 	}
+	mut needs_pop := false
 	for i, branch in node.branches {
 		if i > 0 {
 			g.write('} else ')
@@ -2836,22 +2824,30 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				}
 			}
 		}
+		needs_pop = false
 		if branch.smartcast && branch.stmts.len > 0 {
 			infix := branch.cond as ast.InfixExpr
 			right_type := infix.right as ast.Type
 			left_type := infix.left_type
 			it_type := g.typ(right_type.typ)
-			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
+			it_aux := g.new_tmp_var()
+			g.write('\t$it_type* $it_aux = ($it_type*)')
 			g.expr(infix.left)
-			if left_type.is_ptr() {
-				g.write('->')
-			} else {
-				g.write('.')
-			}
+			dot_or_ptr := if left_type.is_ptr() { '->' } else { '.' }
+			g.write(dot_or_ptr)
 			g.writeln('_object;')
-			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
+			star_or_empty := if right_type.typ.is_ptr() { '*' } else { '' }
+			deref_or_empty := if right_type.typ.is_ptr() { '' } else { '*' }
+			g.writeln('\t$it_type$star_or_empty $deref_or_empty$branch.left_as_name = $it_aux;')
+			if !right_type.typ.is_ptr() {
+				g.variants_to_deref << branch.left_as_name
+				needs_pop = true
+			}
 		}
 		g.stmts(branch.stmts)
+		if needs_pop {
+			g.variants_to_deref.pop()
+		}
 	}
 	if is_guard {
 		g.write('}')
@@ -4760,13 +4756,14 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.expr(node.expr)
 		g.write('.obj')
 		*/
-		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ ($styp*)__as_cast(')
+		dot_or_ptr := if node.expr_type.is_ptr() { '->' } else { '.' }
+		deref_or_empty := if node.typ.is_ptr() { '' } else { '*' }
+		g.write('$deref_or_empty/* as */($styp*)__as_cast(')
 		g.expr(node.expr)
-		g.write(dot)
+		g.write(dot_or_ptr)
 		g.write('_object, ')
 		g.expr(node.expr)
-		g.write(dot)
+		g.write(dot_or_ptr)
 		g.write('typ, /*expected:*/$node.typ)')
 	}
 }
