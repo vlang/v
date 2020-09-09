@@ -9,7 +9,7 @@ pub fn (b &Builder) generic_struct_insts_to_concrete() {
 		if typ.kind == .generic_struct_inst {
 			info := typ.info as table.GenericStructInst
 			parent := b.table.types[info.parent_idx]
-			mut parent_info := *(parent.info as table.Struct)
+			mut parent_info := parent.info as table.Struct
 			mut fields := parent_info.fields.clone()
 			for i, _ in fields {
 				mut field := fields[i]

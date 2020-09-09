@@ -2058,7 +2058,7 @@ fn const_int_value(cfield ast.ConstField) ?int {
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	match cfield.expr {
-		ast.IntegerLiteral { return *it }
+		ast.IntegerLiteral { return it }
 		else {}
 	}
 	return none
