@@ -14,7 +14,7 @@ import v.util
 
 pub struct Doc {
 pub mut:
-	input_path     string = ''
+	input_path     string
 	prefs          &pref.Preferences = &pref.Preferences{}
 	table          &table.Table = &table.Table{}
 	pub_only       bool = true
@@ -34,10 +34,10 @@ pub:
 pub struct DocNode {
 pub mut:
 	name      string
-	content   string = ''
+	content   string
 	comment   string
 	pos       DocPos = DocPos{-1, -1}
-	file_path string = ''
+	file_path string
 	attrs     map[string]string
 }
 
@@ -60,29 +60,29 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
-			//			break
+			// break
 		}
 		mut cmt_content := cmt.text.trim_left('|')
 		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
 			// if cmt_content.len == 0 {
-			// 	continue
+			// continue
 			// }
 			// mut new_cmt_content := ''
 			// mut is_codeblock := false
 			// // println(cmt_content)
 			// lines := cmt_content.split_into_lines()
 			// for j, line in lines {
-			// 	trimmed := line.trim_space().trim_left(cmt_prefix)
-			// 	if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
-			// 		new_cmt_content += line + '\n'
-			// 	} else if line.starts_with('```') {
-			// 		is_codeblock = !is_codeblock
-			// 		new_cmt_content += line + '\n'
-			// 	} else {
-			// 		new_cmt_content += trimmed + '\n'
-			// 	}
+			// trimmed := line.trim_space().trim_left(cmt_prefix)
+			// if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
+			// new_cmt_content += line + '\n'
+			// } else if line.starts_with('```') {
+			// is_codeblock = !is_codeblock
+			// new_cmt_content += line + '\n'
+			// } else {
+			// new_cmt_content += trimmed + '\n'
+			// }
 			// }
 			// return new_cmt_content
 		}
@@ -156,7 +156,9 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
-	return &pref.Preferences{ enable_globals: true }
+	return &pref.Preferences{
+		enable_globals: true
+	}
 }
 
 pub fn new(input_path string) Doc {
@@ -424,13 +426,8 @@ fn (mut d Doc) generate() ?Doc {
 				ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
 				ast.StructDecl { node.attrs['category'] = 'Structs' }
 				ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
-				ast.FnDecl {
-					node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') {
-						'Functions'
-					} else {
-						'Methods'
-					}
-				}
+				ast.FnDecl { node.attrs['category'] = if node.attrs['parent'] in ['void', ''] ||
+						!node.attrs.exists('parent') { 'Functions' } else { 'Methods' } }
 				else {}
 			}
 			d.contents << node
