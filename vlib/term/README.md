@@ -15,9 +15,9 @@ import os
 fn main() {
         term.clear() // clears the content in the terminal
         width, height := term.get_terminal_size() // get the size of the terminal 
-        term.set_cursor_position(width / 2, height / 2) // now we point the cursor to the middle of  the terminal 
+        term.set_cursor_position(x: width / 2, y: height / 2) // now we point the cursor to the middle of  the terminal 
         println(term.strikethrough(term.bright_green("hello world")))  // Print green text
-        term.set_cursor_position(0, height) // Sets the position of the cursor to the bottom of the terminal
+        term.set_cursor_position(x: 0, y: height) // Sets the position of the cursor to the bottom of the terminal
         mut var := os.input('press q to quit: ')
         // Keep prompting until the user presses the q key
         for {
@@ -68,7 +68,7 @@ term.underline(string)
 term.bg_<color>(string)
 
 // sets the position of the cursor at a given place in the terminal
-term.set_cursor_position(x,y)
+term.set_cursor_position(term.Coord)
 
 // moves the cursor up
 term.cursor_up()
