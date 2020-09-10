@@ -38,7 +38,7 @@ mut:
 	n_tok token.Token
 	nn_tok token.Token
 	mode ParseMode = .invalid
-	n_level int = 0
+	n_level int
 }
 
 fn (mut p Parser) next() {

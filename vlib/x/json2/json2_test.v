@@ -44,11 +44,11 @@ fn test_simple() {
 	y := json.decode(Employee, s) or {
 		assert false
 		Employee{}
-	}
+	}*/
 	y := json2.raw_decode(s) or {
 		assert false
 		json2.Any{}
-	}*/
+	}
 	eprintln('Employee y: $y')
 	ym := y.as_map()
 	assert ym['name'].as_string() == 'Peter'
