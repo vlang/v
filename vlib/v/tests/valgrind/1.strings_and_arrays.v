@@ -49,11 +49,22 @@ fn str_replace() {
 	println(r)
 }
 
+fn match_expr() string {
+	x := 2
+	res := match x {
+		1 { 'one' }
+		2 { 'two' }
+		else { 'unknown' }
+	}
+	return res
+}
+
 fn main() {
 	println('start')
 	foo()
 	str_tmp_expr()
 	str_inter()
+	match_expr()
 	// str_replace()
 	println('end')
 }
