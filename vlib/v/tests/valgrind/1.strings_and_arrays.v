@@ -59,6 +59,7 @@ fn match_expr() string {
 	return res
 }
 
+/*
 fn optional_str() {
 	q := 'select'
 	s := 'x'
@@ -68,7 +69,7 @@ fn optional_str() {
 	}
 	println(pos)
 }
-
+*/
 fn main() {
 	println('start')
 	foo()
