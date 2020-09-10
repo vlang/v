@@ -16,9 +16,9 @@ fn main() {
 
     // Casting `Any` type / Navigating
     person := raw_person.as_map()
-    name := person['name'].as_str() // Bob
-    age := person['age'].as_int() // 19
-    pi := person['pi'].as_f() // 3.14.... 
+    name := person['name'].str() // Bob
+    age := person['age'].int() // 19
+    pi := person['pi'].f64() // 3.14.... 
 
     // Constructing an `Any` type
     mut me := map[string]json2.Any
@@ -62,9 +62,9 @@ fn (mut p Person) from_json(f json2.Any) {
     obj := f.as_map()
     for k, v in obj {
         match k {
-            'name' { p.name = v.as_str() }
-            'age' { p.age = v.as_int() }
-            'pets' { p.pets = v.as_arr().map(it.as_str()) }
+            'name' { p.name = v.str() }
+            'age' { p.age = v.int() }
+            'pets' { p.pets = v.arr().map(it.str()) }
             else {}
         }
     }
@@ -109,7 +109,7 @@ In `json`, you can specify the field name you're mapping into the struct field b
 ```v
 fn (mut p Person) from_json(f json2.Any) {
     obj := f.as_map()
-    p.name = obj['nickname'].as_str()
+    p.name = obj['nickname'].str()
 }
 ```
 
@@ -127,7 +127,7 @@ Getting undefined values has the same behavior as regular V types. If you're cas
 ## Casting a value to an incompatible type
 `x.json2` provides methods for turning `Any` types into usable types. The following list shows the possible outputs when casting a value to an incompatible type.
 
-1. Casting non-array values as array (`as_arr()`) will return an array with the value as the content.
+1. Casting non-array values as array (`arr()`) will return an array with the value as the content.
 2. Casting non-map values as map (`as_map()`) will return a map with the value as the content.
-3. Casting non-string values to string (`as_str()`) will return the stringified representation of the value.
-4. Casting non-numeric values to int/float (`as_int()`/`as_f()`) will return zero. 
+3. Casting non-string values to string (`str()`) will return the stringified representation of the value.
+4. Casting non-numeric values to int/float (`int()`/`f64()`) will return zero. 

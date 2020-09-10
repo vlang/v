@@ -51,11 +51,11 @@ fn test_simple() {
 	}
 	eprintln('Employee y: $y')
 	ym := y.as_map()
-	assert ym['name'].as_string() == 'Peter'
-	assert ym['age'].as_int() == 28
-	assert ym['salary'].as_float() == 95000.5
+	assert ym['name'].str() == 'Peter'
+	assert ym['age'].int() == 28
+	assert ym['salary'].f64() == 95000.5
 	// assert y['title'] == .worker
-	assert ym['title'].as_int() == 2
+	assert ym['title'].int() == 2
 }
 
 /*

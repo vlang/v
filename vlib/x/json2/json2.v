@@ -88,16 +88,9 @@ pub fn (f Any) as_map() map[string]Any {
 		}
 	}
 }
-// Use `Any` as a string.
-pub fn (f Any) as_string() string {
-	if f is string {
-		return f.trim_left('"').trim_right('"')
-	}
 
-	return f.str()
-}
 // Use `Any` as an integer.
-pub fn (f Any) as_int() int {
+pub fn (f Any) int() int {
 	match f {
 		int  { return *f }
 		f64  { return f.str().int() }
@@ -105,7 +98,7 @@ pub fn (f Any) as_int() int {
 	}
 }
 // Use `Any` as a float.
-pub fn (f Any) as_float() f64 {
+pub fn (f Any) f64() f64 {
 	match f {
 		int { return *f }
 		f64 { return *f }
@@ -113,7 +106,7 @@ pub fn (f Any) as_float() f64 {
 	}
 }
 // Use `Any` as an array.
-pub fn (f Any) as_array() []Any {
+pub fn (f Any) arr() []Any {
 	if f is []Any {
 		return *f
 	}
