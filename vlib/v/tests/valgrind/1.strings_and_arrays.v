@@ -59,6 +59,16 @@ fn match_expr() string {
 	return res
 }
 
+fn optional_str() {
+	q := 'select'
+	s := 'x'
+	pos := s.index('query: $q') or {
+		println('exiting')
+		return
+	}
+	println(pos)
+}
+
 fn main() {
 	println('start')
 	foo()
