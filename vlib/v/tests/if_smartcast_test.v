@@ -54,18 +54,26 @@ fn test_mutable_with_struct() {
 	if c.abc is Abc as abc {
 		assert abc.val == 'original'
 		mut mabc := abc
-		// NB: since `abc` is a pointer,
-		// `mabc` points to the same data:
 		assert mabc.val == 'original'
-		// Modifying `mabc`, modifies the data of abc too.
+		// NB: since `abc` is now an ordinary struct,
+		// `mabc` will be a local copy. Changing it,
+		// would NOT affect abc:
 		mabc.val = 'xyz'
-		assert abc.val == 'xyz'
+		assert abc.val == 'original'
 	}
 	if c.abc is Abc as another {
 		// NB: in this second smart cast, `another` is
-		// the same wrapped value, that was changed in
-		// the first smart cast:
-		assert another.val == 'xyz'
+		// the same wrapped value. It was not changed
+		// in the first smart cast at all:
+		assert another.val == 'original'
+		// ... and now for something completely different ...
+		unsafe {
+			mut mabc := &another
+			mabc.val = '12345'
+		}
+	}
+	if c.abc is Abc as changed {
+		assert changed.val == '12345'
 	}
 }
 
