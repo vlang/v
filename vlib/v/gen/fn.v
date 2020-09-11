@@ -308,6 +308,7 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 		g.or_block(tmp_opt, node.or_block, node.return_type)
 		if is_gen_or_and_assign_rhs {
 			g.write('\n$cur_line$tmp_opt')
+			// g.insert_before_stmt('\n /* VVV */ $tmp_opt')
 		}
 	}
 }
@@ -544,10 +545,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 			g.called_fn_name = name
 			str_expr := g.write_expr_to_string(arg.expr)
-			// g.insert_before_stmt('string $t = $str_expr; // new. to free $i ')
+			g.insert_before_stmt('string $t = $str_expr; // new3. to free $i ')
+			/*
 			cur_line = g.go_before_stmt(0)
 			// println('cur line ="$cur_line"')
 			g.writeln('string $t = $str_expr; // new. to free $i ')
+			*/
 		}
 	}
 	// Handle `print(x)`
