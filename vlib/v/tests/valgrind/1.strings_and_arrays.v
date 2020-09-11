@@ -49,6 +49,11 @@ fn str_replace() {
 	println(r)
 }
 
+fn reassign_str() {
+	mut s := 'a' + 'b'
+	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
+}
+
 fn match_expr() string {
 	x := 2
 	res := match x {
@@ -76,6 +81,7 @@ fn main() {
 	str_tmp_expr()
 	str_inter()
 	match_expr()
+	reassign_str()
 	// str_replace()
 	println('end')
 }
