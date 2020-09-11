@@ -165,14 +165,14 @@ pub fn (mut ch Channel) push(src voidptr) {
 
 [inline]
 pub fn (mut ch Channel) try_push(src voidptr) ChanState {
-	return ch.try_push_priv(src, false)
+	return ch.try_push_priv(src, true)
 }
 
 fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -200,6 +200,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			got_sem = ch.writesem.try_wait()
 		}
 		if !got_sem {
+			if no_block {
+				return .not_ready
+			}
 			ch.writesem.wait()
 		}
 		if ch.cap == 0 {
@@ -311,6 +314,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				}
 				return .success
 			} else {
+				if no_block {
+					return .not_ready
+				}
 				ch.writesem.post()
 			}
 		}
@@ -324,11 +330,11 @@ pub fn (mut ch Channel) pop(dest voidptr) bool {
 
 [inline]
 pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
-	return ch.try_pop_priv(dest, false)
+	return ch.try_pop_priv(dest, true)
 }
 
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
-	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem } 
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
