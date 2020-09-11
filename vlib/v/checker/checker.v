@@ -326,21 +326,21 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error(util.new_suggestion(sym.source_name, c.table.known_type_names()).say('unknown type `$sym.source_name`'),
-				field.pos)
+				field.type_pos)
 		}
 		if sym.kind == .array {
 			array_info := sym.array_info()
 			elem_sym := c.table.get_type_symbol(array_info.elem_type)
 			if elem_sym.kind == .placeholder {
 				c.error(util.new_suggestion(elem_sym.source_name, c.table.known_type_names()).say('unknown type `$elem_sym.source_name`'),
-					field.pos)
+					field.type_pos)
 			}
 		}
 		if sym.kind == .struct_ {
 			info := sym.info as table.Struct
 			if info.is_ref_only && !field.typ.is_ptr() {
 				c.error('`$sym.source_name` type can only be used as a reference: `&$sym.source_name`',
-					field.pos)
+					field.type_pos)
 			}
 		}
 		if sym.kind == .map {
@@ -348,10 +348,10 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			key_sym := c.table.get_type_symbol(info.key_type)
 			value_sym := c.table.get_type_symbol(info.value_type)
 			if key_sym.kind == .placeholder {
-				c.error('unknown type `$key_sym.source_name`', field.pos)
+				c.error('unknown type `$key_sym.source_name`', field.type_pos)
 			}
 			if value_sym.kind == .placeholder {
-				c.error('unknown type `$value_sym.source_name`', field.pos)
+				c.error('unknown type `$value_sym.source_name`', field.type_pos)
 			}
 		}
 		if field.has_default_expr {
