@@ -12,7 +12,7 @@ pub fn (flds map[string]Any) str() string {
 	for k, v in flds {
 		wr.write('"$k":')
 		if v is string {
-			wr.write('"' + *v + '"')
+			wr.write('"' + v + '"')
 		} else {
 			wr.write(v.str())
 		}
@@ -28,7 +28,7 @@ pub fn (flds []Any) str() string {
 	wr.write('[')
 	for i, v in flds {
 		if v is string {
-			wr.write('"' + *v + '"')
+			wr.write('"' + v + '"')
 		} else {
 			wr.write(v.str())
 		}
@@ -40,18 +40,18 @@ pub fn (flds []Any) str() string {
 // String representation of the `Any` type.
 pub fn (f Any) str() string {
 	match f {
-		string { return *f }
-		int { return (*f).str() }
-		f64 { return (*f).str() }
-		any_int {	return (*f).str() }
-		any_float {	return (*f).str() }
-		bool { return (*f).str() }
-		map[string]Any { return (*f).str() }
+		string { return f }
+		int { return f.str() }
+		f64 { return f.str() }
+		any_int {	return f.str() }
+		any_float {	return f.str() }
+		bool { return f.str() }
+		map[string]Any { return f.str() }
 		Null { return 'null' }
 		else {
 			if f is []Any {
 				arr := f
-				return (*arr).str()
+				return arr.str()
 			}
 			return ''
 		}

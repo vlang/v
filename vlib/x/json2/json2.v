@@ -52,7 +52,7 @@ pub fn (f Any) as_map() map[string]Any {
 
 	match f {
 		map[string]Any {
-			return *f
+			return f
 		}
 		string {
 			mp['0'] = f
@@ -92,7 +92,7 @@ pub fn (f Any) as_map() map[string]Any {
 // Use `Any` as an integer.
 pub fn (f Any) int() int {
 	match f {
-		int  { return *f }
+		int  { return f }
 		f64  { return f.str().int() }
 		else { return 0 }
 	}
@@ -100,20 +100,20 @@ pub fn (f Any) int() int {
 // Use `Any` as a float.
 pub fn (f Any) f64() f64 {
 	match f {
-		int { return *f }
-		f64 { return *f }
+		int { return f }
+		f64 { return f }
 		else { return 0.0 }
 	}
 }
 // Use `Any` as an array.
 pub fn (f Any) arr() []Any {
 	if f is []Any {
-		return *f
+		return f
 	}
 
 	if f is map[string]Any {
 		mut arr := []Any{}
-		mp := *f
+		mp := f
 		for _, v in mp {
 			arr << v
 		}
