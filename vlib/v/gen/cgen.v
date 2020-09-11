@@ -1328,9 +1328,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// Free the old value assigned to this string var (only if it's `str = [new value]`)
 	if g.pref.autofree && assign_stmt.op == .assign && assign_stmt.left_types.len == 1 &&
 		assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident {
-		g.write('string_free(&')
-		g.expr(assign_stmt.left[0])
-		g.writeln('); // free str on re-assignment')
+		ident := assign_stmt.left[0] as ast.Ident
+		if ident.name != '_' {
+			g.write('string_free(&')
+			g.expr(assign_stmt.left[0])
+			g.writeln('); // free str on re-assignment')
+		}
 	}
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
