@@ -2890,7 +2890,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 				}
 				mut scope := c.file.scope.innermost(branch.pos.pos)
 				if node.var_name.len > 0 {
-					//pub fn (s &Scope) find_var(name string) ?&Var
+					// pub fn (s &Scope) find_var(name string) ?&Var
 					scope.update_var_type(node.var_name, typ)
 				}
 				scope.update_var_type('it', typ)
