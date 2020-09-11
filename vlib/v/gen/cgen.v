@@ -112,7 +112,6 @@ mut:
 	variants_to_deref     []string // active variants to be deref, for smaartcast, for if and match
 }
 
-
 const (
 	tabs = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
@@ -2690,7 +2689,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 			}
 		}
 		g.stmts(branch.stmts)
-		for _ in 0..variants_to_pop {
+		for _ in 0 .. variants_to_pop {
 			g.variants_to_deref.pop()
 		}
 		if g.inside_ternary == 0 && node.branches.len > 1 {
