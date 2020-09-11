@@ -59,7 +59,7 @@ fn test_assignment_and_push() {
 			arr1 << it
 			// should ref/dereference on assignent be made automatic?
 			// currently it is done for return stmt and fn args
-			expr1 = *it
+			expr1 = it
 		}
 		else {}
 	}
