@@ -1,13 +1,32 @@
 import gg
-import gx
 import os
 import rand
 import sokol.sapp
+import time
 
-struct Tile {
-	id      int
-	points  int
-	picname string
+struct App {
+mut:
+	gg            &gg.Context = 0
+	touch         TouchInfo
+	ui            Ui
+	theme         &Theme = themes[0]
+	theme_idx     int
+	board         Board
+	undo          []Board
+	atickers      [4][4]int
+	state         GameState = .play
+	tile_format   TileFormat = .normal
+	moves         int
+	perf          &Perf = 0
+}
+
+// Used for performance monitoring when `-d showfps` is passed, unused / optimized out otherwise
+struct Perf {
+mut:
+	frame     int
+	frame_old int
+	frame_sw  time.StopWatch = time.new_stopwatch({})
+	second_sw time.StopWatch = time.new_stopwatch({})
 }
 
 struct Pos {
@@ -15,109 +34,11 @@ struct Pos {
 	y int = -1
 }
 
-struct ImageLabel {
-	pos Pos
-	dim Pos
-}
-
-struct TextLabel {
-	text string
-	pos  Pos
-	cfg  gx.TextCfg
-}
-
-const (
-	window_title        = 'V 2048'
-	window_width        = 562
-	window_height       = 580
-	points_label        = TextLabel{
-		text: 'Points: '
-		pos: Pos{10, 5}
-		cfg: gx.TextCfg{
-			align: .left
-			size: 24
-			color: gx.rgb(0, 0, 0)
-		}
-	}
-	moves_label         = TextLabel{
-		text: 'Moves: '
-		pos: Pos{window_width - 160, 5}
-		cfg: gx.TextCfg{
-			align: .left
-			size: 24
-			color: gx.rgb(0, 0, 0)
-		}
-	}
-	game_over_label     = TextLabel{
-		text: 'Game Over'
-		pos: Pos{80, 220}
-		cfg: gx.TextCfg{
-			align: .left
-			size: 100
-			color: gx.rgb(0, 0, 255)
-		}
-	}
-	victory_image_label = ImageLabel{
-		pos: Pos{80, 220}
-		dim: Pos{430, 130}
-	}
-	all_tiles           = [
-		Tile{0, 0, '1.png'},
-		Tile{1, 2, '2.png'},
-		Tile{2, 4, '4.png'},
-		Tile{3, 8, '8.png'},
-		Tile{4, 16, '16.png'},
-		Tile{5, 32, '32.png'},
-		Tile{6, 64, '64.png'},
-		Tile{7, 128, '128.png'},
-		Tile{8, 256, '256.png'},
-		Tile{9, 512, '512.png'},
-		Tile{10, 1024, '1024.png'},
-		Tile{11, 2048, '2048.png'},
-	]
-)
-
-struct TileImage {
-	tile  Tile
-mut:
-	image gg.Image
-}
-
 struct Board {
 mut:
 	field  [4][4]int
 	points int
 	shifts int
-}
-
-fn new_board(sb []string) Board {
-	mut b := Board{}
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
-			b.field[y][x] = sb[y][x] - 64
-		}
-	}
-	return b
-}
-
-fn (b Board) transpose() Board {
-	mut res := b
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
-			res.field[y][x] = b.field[x][y]
-		}
-	}
-	return res
-}
-
-fn (b Board) hmirror() Board {
-	mut res := b
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
-			res.field[y][x] = b.field[y][4 - x - 1]
-		}
-	}
-	return res
 }
 
 struct TileLine {
@@ -128,6 +49,47 @@ mut:
 	shifts int
 }
 
+struct TouchInfo {
+mut:
+	start_pos Pos
+}
+
+enum TileFormat {
+	normal
+	log
+	exponent
+	shifts
+	none_
+	end_ // To know when to wrap around
+}
+
+enum GameState {
+	play
+	over
+	victory
+}
+
+fn (b Board) transpose() Board {
+	mut res := b
+	for y in 0..4 {
+		for x in 0..4 {
+			res.field[y][x] = b.field[x][y]
+		}
+	}
+	return res
+}
+
+fn (b Board) hmirror() Board {
+	mut res := b
+	for y in 0..4 {
+		for x in 0..4 {
+			res.field[y][x] = b.field[y][3 - x]
+		}
+	}
+	return res
+}
+
+// GCC optimization bug; inlining fails when compiled with -prod
 [no_inline]
 fn (t TileLine) to_left() TileLine {
 	right_border_idx := 5
@@ -135,12 +97,8 @@ fn (t TileLine) to_left() TileLine {
 	mut zeros := 0
 	mut nonzeros := 0
 	// gather meta info about the line:
-	for x := 0; x < 4; x++ {
-		if res.field[x] == 0 {
-			zeros++
-		} else {
-			nonzeros++
-		}
+	for x in res.field {
+		if x == 0 { zeros++ } else { nonzeros++ }
 	}
 	if nonzeros == 0 {
 		// when all the tiles are empty, there is nothing left to do
@@ -171,7 +129,7 @@ fn (t TileLine) to_left() TileLine {
 			}
 			res.shifts++
 			res.field[x]++
-			res.points += all_tiles[res.field[x]].points
+			res.points += 1 << res.field[x]
 		}
 	}
 	return res
@@ -179,65 +137,24 @@ fn (t TileLine) to_left() TileLine {
 
 fn (b Board) to_left() Board {
 	mut res := b
-	for y := 0; y < 4; y++ {
-		mut hline := TileLine{
-			ypos: y
-		}
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		mut hline := TileLine{ypos: y}
+		for x in 0..4 {
 			hline.field[x] = b.field[y][x]
 		}
 		reshline := hline.to_left()
 		res.shifts += reshline.shifts
 		res.points += reshline.points
-		for x := 0; x < 4; x++ {
+		for x in 0..4 {
 			res.field[y][x] = reshline.field[x]
 		}
 	}
 	return res
 }
 
-//
-enum GameState {
-	play
-	over
-	victory
-}
-
-struct App {
-mut:
-	gg            &gg.Context
-	tiles         []TileImage
-	victory_image gg.Image
-	//
-	board         Board
-	undo          []Board
-	atickers      [4][4]int
-	state         GameState = .play
-	moves         int
-}
-
-fn (mut app App) new_image(imagename string) gg.Image {
-	ipath := os.resource_abs_path(os.join_path('assets', imagename))
-	return app.gg.create_image(ipath)
-}
-
-fn (mut app App) new_tile(t Tile) TileImage {
-	mut timage := TileImage{
-		tile: t
-	}
-	timage.image = app.new_image(t.picname)
-	return timage
-}
-
-fn (mut app App) load_tiles() {
-	for t in all_tiles {
-		app.tiles << app.new_tile(t)
-	}
-}
-
 fn (mut app App) update_tickers() {
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		for x in 0..4 {
 			mut old := app.atickers[y][x]
 			if old > 0 {
 				old--
@@ -247,57 +164,10 @@ fn (mut app App) update_tickers() {
 	}
 }
 
-fn (app &App) draw() {
-	app.draw_background()
-	app.draw_tiles()
-	plabel := '$points_label.text ${app.board.points:08}'
-	mlabel := '$moves_label.text ${app.moves:5d}'
-	app.gg.draw_text(points_label.pos.x, points_label.pos.y, plabel, points_label.cfg)
-	app.gg.draw_text(moves_label.pos.x, moves_label.pos.y, mlabel, moves_label.cfg)
-	if app.state == .over {
-		app.gg.draw_text(game_over_label.pos.x, game_over_label.pos.y, game_over_label.text,
-			game_over_label.cfg)
-	}
-	if app.state == .victory {
-		app.gg.draw_image(victory_image_label.pos.x, victory_image_label.pos.y, victory_image_label.dim.x,
-			victory_image_label.dim.y, app.victory_image)
-	}
-}
-
-fn (app &App) draw_background() {
-	tw, th := 128, 128
-	for y := 30; y <= window_height; y += tw {
-		for x := 0; x <= window_width; x += th {
-			app.gg.draw_image(x, y, tw, th, app.tiles[0].image)
-		}
-	}
-}
-
-fn (app &App) draw_tiles() {
-	border := 10
-	xstart := 10
-	ystart := 30
-	tsize := 128
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
-			tidx := app.board.field[y][x]
-			if tidx == 0 {
-				continue
-			}
-			tile := app.tiles[tidx]
-			tw := tsize - 10 * app.atickers[y][x]
-			th := tsize - 10 * app.atickers[y][x]
-			tx := xstart + x * (tsize + border) + (tsize - tw) / 2
-			ty := ystart + y * (tsize + border) + (tsize - th) / 2
-			app.gg.draw_image(tx, ty, tw, th, tile.image)
-		}
-	}
-}
-
 fn (mut app App) new_game() {
 	app.board = Board{}
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		for x in 0..4 {
 			app.board.field[y][x] = 0
 			app.atickers[y][x] = 0
 		}
@@ -310,8 +180,8 @@ fn (mut app App) new_game() {
 }
 
 fn (mut app App) check_for_victory() {
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		for x in 0..4 {
 			fidx := app.board.field[y][x]
 			if fidx == 11 {
 				app.victory()
@@ -324,23 +194,17 @@ fn (mut app App) check_for_victory() {
 fn (mut app App) check_for_game_over() {
 	mut zeros := 0
 	mut remaining_merges := 0
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		for x in 0..4 {
 			fidx := app.board.field[y][x]
 			if fidx == 0 {
 				zeros++
 				continue
 			}
-			if x > 0 && fidx == app.board.field[y][x - 1] {
-				remaining_merges++
-			}
-			if x < 4 - 1 && fidx == app.board.field[y][x + 1] {
-				remaining_merges++
-			}
-			if y > 0 && fidx == app.board.field[y - 1][x] {
-				remaining_merges++
-			}
-			if y < 4 - 1 && fidx == app.board.field[y + 1][x] {
+			if (x > 0 && fidx == app.board.field[y][x - 1])
+				|| (x < 4 - 1 && fidx == app.board.field[y][x + 1])
+				|| (y > 0 && fidx == app.board.field[y - 1][x])
+				|| (y < 4 - 1 && fidx == app.board.field[y + 1][x]) {
 				remaining_merges++
 			}
 		}
@@ -353,11 +217,12 @@ fn (mut app App) check_for_game_over() {
 fn (mut app App) new_random_tile() {
 	mut etiles := [16]Pos{}
 	mut empty_tiles_max := 0
-	for y := 0; y < 4; y++ {
-		for x := 0; x < 4; x++ {
+	for y in 0..4 {
+		for x in 0..4 {
 			fidx := app.board.field[y][x]
 			if fidx == 0 {
 				etiles[empty_tiles_max] = Pos{x, y}
+				app.atickers[y][x] = 0
 				empty_tiles_max++
 			}
 		}
@@ -365,9 +230,10 @@ fn (mut app App) new_random_tile() {
 	if empty_tiles_max > 0 {
 		new_random_tile_index := rand.intn(empty_tiles_max)
 		empty_pos := etiles[new_random_tile_index]
-		random_value := 1 + rand.intn(2)
+		// 1/8 chance of creating a `4` tile
+		random_value := if rand.intn(8) == 0 { 2 } else { 1 }
 		app.board.field[empty_pos.y][empty_pos.x] = random_value
-		app.atickers[empty_pos.y][empty_pos.x] = 30
+		app.atickers[empty_pos.y][empty_pos.x] = animation_length
 	}
 	app.check_for_victory()
 	app.check_for_game_over()
@@ -381,11 +247,14 @@ fn (mut app App) game_over() {
 	app.state = .over
 }
 
-type BoardMoveFN = fn (b Board) Board
-
-fn (mut app App) move(move_fn BoardMoveFN) {
+fn (mut app App) move(d Direction) {
 	old := app.board
-	new := move_fn(old)
+	new := match d {
+		.left  { old.to_left() }
+		.right { old.hmirror().to_left().hmirror() }
+		.up    { old.transpose().to_left().transpose() }
+		.down  { old.transpose().hmirror().to_left().hmirror().transpose() }
+	}
 	if old.shifts != new.shifts {
 		app.moves++
 		app.board = new
@@ -399,73 +268,132 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 	match key {
 		.escape {
 			exit(0)
-		}
-		.n {
+		} .n {
 			app.new_game()
-		}
-		// .t {/* fast setup for a victory situation: */ app.board = new_board(['JJ@@', '@@@@', '@@@@', '@@@@'])}
-		.backspace {
+		} .backspace {
 			if app.undo.len > 0 {
 				app.state = .play
 				app.board = app.undo.pop()
 				app.moves--
 				return
 			}
-		}
-		else {}
+		} .enter {
+			app.tile_format = int(app.tile_format) + 1
+			if app.tile_format == .end_ {
+				app.tile_format = .normal
+			}
+		} .j {
+			app.game_over()
+		} .t {
+			app.set_theme(if app.theme_idx == themes.len - 1 { 0 } else { app.theme_idx + 1 })
+		} else {}
 	}
+
 	if app.state == .play {
 		match key {
-			.up, .w { app.move(fn (b Board) Board {
-					return b.transpose().to_left().transpose()
-				}) }
-			.left, .a { app.move(fn (b Board) Board {
-					return b.to_left()
-				}) }
-			.down, .s { app.move(fn (b Board) Board {
-					return b.transpose().hmirror().to_left().hmirror().transpose()
-				}) }
-			.right, .d { app.move(fn (b Board) Board {
-					return b.hmirror().to_left().hmirror()
-				}) }
+			.w, .up    { app.move(.up) }
+			.a, .left  { app.move(.left) }
+			.s, .down  { app.move(.down) }
+			.d, .right { app.move(.right) }
 			else {}
 		}
 	}
 }
 
-//
 fn on_event(e &sapp.Event, mut app App) {
-	if e.typ == .key_down {
-		app.on_key_down(e.key_code)
+	match e.typ {
+		.key_down {
+			app.on_key_down(e.key_code)
+		} .resized, .restored, .resumed {
+			app.resize()
+		} .touches_began {
+			if e.num_touches > 0 {
+				t := e.touches[0]
+				app.touch.start_pos = { x: int(t.pos_x), y: int(t.pos_y) }
+			}
+		} .touches_ended {
+			if e.num_touches > 0 {
+				t := e.touches[0]
+				end_pos := Pos{ x: int(t.pos_x), y: int(t.pos_y) }
+				app.handle_swipe(app.touch.start_pos, end_pos)
+			}
+		} else {}
 	}
 }
 
+
 fn frame(mut app App) {
-	app.update_tickers()
+	$if showfps? { app.perf.frame_sw.restart() }
 	app.gg.begin()
+	app.update_tickers()
 	app.draw()
 	app.gg.end()
+	$if showfps? { app.showfps() }
+}
+
+fn init(mut app App) {
+	app.resize()
+	$if showfps? {
+		app.perf.frame_sw.restart()
+		app.perf.second_sw.restart()
+	}
+}
+
+fn (mut app App) showfps() {
+	println(app.perf.frame_sw.elapsed().microseconds())
+	app.perf.frame++
+	f := app.perf.frame
+	if (f & 127) == 0 {
+		last_frame_us := app.perf.frame_sw.elapsed().microseconds()
+		ticks := f64(app.perf.second_sw.elapsed().milliseconds())
+		fps := f64(app.perf.frame - app.perf.frame_old) * ticks / 1000 / 4.5
+		last_fps := 128_000.0 / ticks
+		eprintln('frame ${f:-5} | avg. fps: ${fps:-5.1f} | avg. last 128 fps: ${last_fps:-5.1f} | last frame time: ${last_frame_us:-4}µs')
+		app.perf.second_sw.restart()
+		app.perf.frame_old = f
+	}
+}
+
+// TODO: Move this somewhere else (vlib?) once Android support is merged
+$if android {
+	#include <android/log.h>
+	#define LOG_TAG "v_logcat_test"
+	#define printf(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+	#define fprintf(a, ...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 }
 
 fn main() {
-	mut app := &App{
-		gg: 0
-		state: .play
-	}
+	mut app := &App{}
 	app.new_game()
+
+	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
+	$if android {
+		font_path = 'assets/RobotoMono-Regular.ttf'
+	}
+
+	mut window_title := 'V 2048'
+	// TODO: Make emcc a real platform ifdef
+	$if emscripten? {
+		// in emscripten, sokol uses `window_title` as the selector to the canvas it'll render to,
+		// and since `document.querySelector('V 2048')` isn't valid JS, we use `canvas` instead
+		window_title = 'canvas'
+	}
+
+	$if showfps? {
+		app.perf = &Perf{}
+	}
+
 	app.gg = gg.new_context({
-		bg_color: gx.white
-		width: window_width
-		height: window_height
-		use_ortho: true
+		bg_color: app.theme.bg_color
+		width: default_window_width
+		height: default_window_height
 		create_window: true
 		window_title: window_title
 		frame_fn: frame
 		event_fn: on_event
+		init_fn: init
 		user_data: app
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
+		font_path: font_path
 	})
-	app.load_tiles()
-	app.victory_image = app.new_image('victory.png')
 	app.gg.run()
 }
