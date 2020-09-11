@@ -25,6 +25,7 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
+		'.json': 'application/json',
 		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
