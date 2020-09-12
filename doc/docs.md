@@ -2598,16 +2598,19 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 ## Appendix I: Keywords
 
-V has 29 keywords (3 are literals):
+V has 41 reserved keywords (3 are literals):
 
 ```v
 as
+asm
 assert
+atomic
 break
 const
 continue
 defer
 else
+embed
 enum
 false
 fn
@@ -2619,6 +2622,7 @@ import
 in
 interface
 is
+lock
 match
 module
 mut
@@ -2626,9 +2630,16 @@ none
 or
 pub
 return
+rlock
+select
+shared 
+sizeof
+static
 struct
 true
 type
+typeof
+union
 unsafe
 ```
 See also [Types](#types).
