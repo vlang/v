@@ -711,7 +711,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		return
 	}
 	cfg.vprintln('Rendering docs...')
-	if cfg.output_path.len == 0 {
+	if cfg.output_path.len == 0 || cfg.output_path == 'stdout' {
 		outputs := cfg.render()
 		if outputs.len == 0 {
 			println('No documentation for $dirs')
@@ -908,7 +908,7 @@ fn main() {
 			}
 			'-o' {
 				opath := cmdline.option(current_args, '-o', '')
-				cfg.output_path = os.real_path(opath)
+				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
 				i++
 			}
 			'-open' {
