@@ -34,7 +34,7 @@ pub fn (r Result) rows() []Row {
 			if rr[i] == 0 {
 				row.vals << ''
 			} else {
-				row.vals << string(&byte(rr[i]))
+				row.vals << mystring( byteptr(rr[i]) )
 			}
 		}
 		rows << row
@@ -64,12 +64,12 @@ pub fn (r Result) fields() []Field {
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0..nr_cols {
 		fields << Field{
-			name: string(orig_fields[i].name)
-			org_name: string(orig_fields[i].org_name)
-			table: string(orig_fields[i].table)
-			org_table: string(orig_fields[i].org_table)
-			db: string(orig_fields[i].db)
-			catalog: string(orig_fields[i].catalog)
+			name: mystring(orig_fields[i].name)
+			org_name: mystring(orig_fields[i].org_name)
+			table: mystring(orig_fields[i].table)
+			org_table: mystring(orig_fields[i].org_table)
+			db: mystring(orig_fields[i].db)
+			catalog: mystring(orig_fields[i].catalog)
 			def: resolve_nil_str(orig_fields[i].def)
 			length: orig_fields.length
 			max_length: orig_fields.max_length

@@ -1,5 +1,42 @@
 module sapp
 
+// Android needs a global reference to `g_desc`
+__global g_desc C.sapp_desc
+
+pub fn create_desc() C.sg_desc {
+	mtl_desc := C.sg_mtl_context_desc {
+		device: metal_get_device()
+		renderpass_descriptor_cb: metal_get_renderpass_descriptor
+		drawable_cb: metal_get_drawable
+	}
+	d3d11_desc := C.sg_d3d11_context_desc {
+		device: d3d11_get_device()
+		device_context: d3d11_get_device_context()
+		render_target_view_cb: d3d11_get_render_target_view
+		depth_stencil_view_cb: d3d11_get_depth_stencil_view
+	}
+
+	/*
+	// Old Sokol
+	return C.sg_desc{
+		mtl_device: sapp.metal_get_device()
+		mtl_renderpass_descriptor_cb: sapp.metal_get_renderpass_descriptor
+		mtl_drawable_cb: sapp.metal_get_drawable
+		d3d11_device: sapp.d3d11_get_device()
+		d3d11_device_context: sapp.d3d11_get_device_context()
+		d3d11_render_target_view_cb: sapp.d3d11_get_render_target_view
+		d3d11_depth_stencil_view_cb: sapp.d3d11_get_depth_stencil_view
+	}
+	*/
+
+	return C.sg_desc{
+		context: C.sg_context_desc{
+			metal: mtl_desc
+			d3d11: d3d11_desc
+		}
+	}
+}
+
 /* returns true after sokol-app has been initialized */
 [inline]
 pub fn isvalid() bool {
@@ -111,6 +148,7 @@ pub fn get_clipboard_string() byteptr {
 /* special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub) */
 [inline]
 pub fn run(desc &C.sapp_desc) int {
+	g_desc = desc
 	return C.sapp_run(desc)
 }
 

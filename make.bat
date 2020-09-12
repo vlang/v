@@ -4,7 +4,7 @@ echo Building V
 
 REM default tcc
 set tcc_url=https://github.com/vlang/tccbin_win
-set tcc_dir=%~dp0thirdparty\tcc
+set tcc_dir="%~dp0thirdparty\tcc"
 
 REM let a particular environment specify their own tcc
 if "%TCC_GIT%" =="" goto :init
@@ -108,10 +108,10 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :fresh_tcc
-rd /s /q %tcc_dir%
+rd /s /q "%tcc_dir%"
 
 :clone_tcc
-git clone --depth 1 --quiet %tcc_url% %tcc_dir%
+git clone --depth 1 --quiet "%tcc_url%" "%tcc_dir%"
 set cloned_tcc=1
 goto :tcc_strap
 
@@ -122,7 +122,7 @@ echo Attempting to build v.c with TCC...
 where /q tcc
 if %ERRORLEVEL% NEQ 0 (
 	if exist "%tcc_dir%" (
-		set tcc_exe=%tcc_dir%\tcc.exe
+		set tcc_exe="%tcc_dir%\tcc.exe"
 	) else if "%cloned_tcc%"=="" (
 		echo  ^> TCC not found
 		echo  ^> Downloading TCC from %tcc_url%
@@ -143,8 +143,7 @@ if exist "%tcc_dir%" (
 		popd
 	)
 )
-
-%tcc_exe% -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
+"%tcc_exe%" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self

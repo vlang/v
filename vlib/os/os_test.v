@@ -43,6 +43,23 @@ fn test_open_file() {
 	os.rm(filename)
 }
 
+fn test_file_get_line() {
+	filename := './fgetline.txt'
+	os.write_file(filename, 'line 1\nline 2')
+	mut f := os.open_file(filename, 'r', 0) or {
+		assert false
+		return
+	}
+	line1 := f.get_line() or { '' }
+	line2 := f.get_line() or { '' }
+	f.close()
+	//
+	//eprintln('line1: $line1')
+	//eprintln('line2: $line2')
+	assert line1 == 'line 1\n'
+	assert line2 == 'line 2'
+}
+
 fn test_create_file() {
 	filename := './test1.txt'
 	hello := 'hello world!'
@@ -53,6 +70,36 @@ fn test_create_file() {
 	f.close()
 	assert hello.len == os.file_size(filename)
 	os.rm(filename)
+}
+
+fn test_is_file() {
+	// Setup
+	work_dir := os.join_path(os.getwd(),'is_file_test')
+	os.mkdir_all(work_dir)
+	tfile := os.join_path(work_dir,'tmp_file')
+	// Test things that shouldn't be a file
+	assert os.is_file(work_dir) == false
+	assert os.is_file('non-existent_file.tmp') == false
+	// Test file
+	tfile_content := 'temporary file'
+	os.write_file(tfile, tfile_content)
+	assert os.is_file(tfile)
+	// Test dir symlinks
+	$if windows {
+		assert true
+	} $else {
+		dsymlink := os.join_path(work_dir,'dir_symlink')
+		os.system('ln -s $work_dir $dsymlink')
+		assert os.is_file(dsymlink) == false
+	}
+	// Test file symlinks
+	$if windows {
+		assert true
+	} $else {
+		fsymlink := os.join_path(work_dir,'file_symlink')
+		os.system('ln -s $tfile $fsymlink')
+		assert os.is_file(fsymlink)
+	}
 }
 
 fn test_write_and_read_string_to_file() {
@@ -69,42 +116,40 @@ fn test_write_and_read_string_to_file() {
 
 // test_write_and_read_bytes checks for regressions made in the functions
 // read_bytes, read_bytes_at and write_bytes.
-/*
 fn test_write_and_read_bytes() {
-        file_name :=  './byte_reader_writer.tst'
-        payload   :=  [`I`, `D`, `D`, `Q`, `D`]
+	file_name :=  './byte_reader_writer.tst'
+	payload   :=  [byte(`I`), `D`, `D`, `Q`, `D`]
 
-        mut file_write := os.create(os.real_path(file_name)) or {
-                eprintln('failed to create file $file_name')
-                return
-        }
+	mut file_write := os.create(os.real_path(file_name)) or {
+		eprintln('failed to create file $file_name')
+		return
+	}
 
-        // We use the standard write_bytes function to write the payload and
-        // compare the length of the array with the file size (have to match).
-        file_write.write_bytes(payload.data, 5)
+	// We use the standard write_bytes function to write the payload and
+	// compare the length of the array with the file size (have to match).
+	file_write.write_bytes(payload.data, 5)
 
-        file_write.close()
+	file_write.close()
 
-        assert payload.len == os.file_size(file_name)
+	assert payload.len == os.file_size(file_name)
 
-        mut file_read := os.open(os.real_path(file_name)) or {
-          eprintln('failed to open file $file_name')
-          return
-        }
+	mut file_read := os.open(os.real_path(file_name)) or {
+		eprintln('failed to open file $file_name')
+		return
+	}
 
-        // We only need to test read_bytes because this function calls
-        // read_bytes_at with second parameter zeroed (size, 0).
-        red_bytes := file_read.read_bytes(5)
+	// We only need to test read_bytes because this function calls
+	// read_bytes_at with second parameter zeroed (size, 0).
+	rbytes := file_read.read_bytes(5)
 
-        file_read.close()
+	file_read.close()
+	// eprintln('rbytes: $rbytes')
+	// eprintln('payload: $payload')
+	assert rbytes == payload
 
-        assert red_bytes.str() == payload.str()
-
-        // We finally delete the test file.
-        os.rm(file_name)
+	// We finally delete the test file.
+	os.rm(file_name)
 }
-*/
-
 
 fn test_create_and_delete_folder() {
 	folder := './test1'
@@ -156,6 +201,47 @@ fn test_cp() {
 	assert old_file == new_file
 	os.rm(old_file_name)
 	os.rm(new_file_name)
+}
+
+fn test_mv() {
+	work_dir := os.join_path(os.getwd(),'mv_test')
+	os.mkdir_all(work_dir)
+	// Setup test files
+	tfile1 := os.join_path(work_dir,'file')
+	tfile2 := os.join_path(work_dir,'file.test')
+	tfile3 := os.join_path(work_dir,'file.3')
+	tfile_content := 'temporary file'
+	os.write_file(tfile1, tfile_content)
+	os.write_file(tfile2, tfile_content)
+	// Setup test dirs
+	tdir1 := os.join_path(work_dir,'dir')
+	tdir2 := os.join_path(work_dir,'dir2')
+	tdir3 := os.join_path(work_dir,'dir3')
+	mkdir(tdir1)
+	mkdir(tdir2)
+	// Move file with no extension to dir
+	os.mv(tfile1,tdir1)
+	mut expected := os.join_path(tdir1,'file')
+	assert os.exists(expected) && !is_dir(expected) == true
+	// Move dir with contents to other dir
+	os.mv(tdir1,tdir2)
+	expected = os.join_path(tdir2,'dir')
+	assert os.exists(expected) && is_dir(expected) == true
+	expected = os.join_path(tdir2,'dir','file')
+	assert os.exists(expected) && !is_dir(expected) == true
+	// Move dir with contents to other dir (by renaming)
+	os.mv(os.join_path(tdir2,'dir'),tdir3)
+	expected = tdir3
+	assert os.exists(expected) && is_dir(expected) == true
+	assert os.is_dir_empty(tdir2) == true
+	// Move file with extension to dir
+	os.mv(tfile2,tdir2)
+	expected = os.join_path(tdir2,'file.test')
+	assert os.exists(expected) && !is_dir(expected) == true
+	// Move file to dir (by renaming)
+	os.mv(os.join_path(tdir2,'file.test'),tfile3)
+	expected = tfile3
+	assert os.exists(expected) && !is_dir(expected) == true
 }
 
 fn test_cp_r() {

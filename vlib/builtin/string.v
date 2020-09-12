@@ -66,14 +66,14 @@ pub mut:
 	len   int
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn vstrlen(s byteptr) int {
 	return unsafe {C.strlen(charptr(s))}
 }
 
 // Converts a C string to a V string.
 // String data is reused, not copied.
-[unsafe_fn]
+[unsafe]
 pub fn tos(s byteptr, len int) string {
 	// This should never happen.
 	if s == 0 {
@@ -120,6 +120,23 @@ pub fn tos_lit(s charptr) string {
 	}
 }
 
+// byteptr.vstring() - converts a C style string to a V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring() string {
+	return string{
+		str: bp
+		len: unsafe {C.strlen(bp)}
+	}
+}
+
+// byteptr.vstring_with_len() - converts a C style string to a V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (bp byteptr) vstring_with_len(len int) string {
+	return string{
+		str: bp
+		len: len
+	}
+}
 
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
@@ -147,7 +164,7 @@ pub fn (s string) cstr() byteptr {
 */
 
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
-[unsafe_fn]
+[unsafe]
 pub fn cstring_to_vstring(cstr byteptr) string {
 	return tos_clone(cstr)
 }
@@ -233,7 +250,7 @@ fn compare_rep_index(a, b &RepIndex) int {
 }
 
 
-fn (mut a []RepIndex) sort() {
+fn (mut a []RepIndex) sort2() {
 	a.sort_with_compare(compare_rep_index)
 }
 
@@ -275,7 +292,7 @@ pub fn (s string) replace_each(vals []string) string {
 				idx:idx
 				val_idx:rep_i
 			}
-			idx++
+			idx += rep.len
 			new_len += with.len - rep.len
 		}
 	}
@@ -283,7 +300,7 @@ pub fn (s string) replace_each(vals []string) string {
 	if idxs.len == 0 {
 		return s
 	}
-	idxs.sort()
+	idxs.sort2()
 	mut b := malloc(new_len + 1) // add a \0 just in case
 	// Fill the new string
 	mut idx_pos := 0
@@ -743,14 +760,35 @@ pub fn (s string) count(substr string) int {
 	return 0 // TODO can never get here - v doesn't know that
 }
 
-pub fn (s string) contains(p string) bool {
-	if p.len == 0 {
+pub fn (s string) contains(substr string) bool {
+	if substr.len == 0 {
 		return true
 	}
-	s.index(p) or {
+	s.index(substr) or {
 		return false
 	}
 	return true
+}
+
+pub fn (s string) contains_any(chars string) bool {
+	for c in chars {
+		if c.str() in s {
+			return true
+		}
+	}
+	return false
+}
+
+pub fn (s string) contains_any_substr(substrs []string) bool {
+	if substrs.len == 0 {
+		return true
+	}
+	for sub in substrs {
+		if s.contains(sub) {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn (s string) starts_with(p string) bool {
@@ -820,9 +858,10 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	sl := s.to_lower()
-	cap := sl[0].str().to_upper() + sl.right(1)
-	return cap
+	return s[0].str().to_upper() + s[1..]
+	//sl := s.to_lower()
+	//cap := sl[0].str().to_upper() + sl.right(1)
+	//return cap
 }
 
 pub fn (s string) is_capital() bool {
@@ -1195,7 +1234,7 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
-[unsafe_fn]
+[unsafe]
 fn (u &ustring) free() {
 	$if prealloc {
 		return
@@ -1407,9 +1446,10 @@ pub fn (s string) repeat(count int) string {
 		}
 	}
 	unsafe {
-		ret[s.len * count] = 0
+		new_len := s.len * count
+		ret[new_len] = 0
+		return ret.vstring_with_len(new_len)
 	}
-	return string(ret)
 }
 
 pub fn (s string) fields() []string {
@@ -1441,7 +1481,7 @@ pub fn (s string) filter(func fn(b byte) bool) string {
 	}
 	unsafe {
 		buf[new_len] = 0
-		return string(buf, new_len)
+		return buf.vstring_with_len(new_len)
 	}
 }
 
@@ -1502,6 +1542,6 @@ pub fn (s string) strip_margin_custom(del byte) string {
 	}
 	unsafe {
 		ret[count] = 0
+		return ret.vstring_with_len(count)
 	}
-	return string(ret)
 }

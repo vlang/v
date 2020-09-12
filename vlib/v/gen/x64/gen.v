@@ -10,11 +10,13 @@ import v.errors
 import v.pref
 import term
 import strings
+import v.table
 
 pub struct Gen {
 	out_name             string
 	pref                 &pref.Preferences // Preferences shared from V struct
 mut:
+	table                &table.Table
 	buf                  []byte
 	sect_header_name_pos int
 	offset               i64
@@ -78,8 +80,9 @@ enum Size {
 	_64
 }
 
-pub fn gen(files []ast.File, out_name string, pref &pref.Preferences) {
+pub fn gen(files []ast.File, table &table.Table, out_name string, pref &pref.Preferences) {
 	mut g := Gen{
+		table: table
 		sect_header_name_pos: 0
 		out_name: out_name
 		pref: pref
@@ -604,6 +607,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.AssignStmt {
 			g.assign_stmt(node)
 		}
+		ast.Block {
+			g.stmts(node.stmts)
+		}
 		ast.ConstDecl {}
 		ast.ExprStmt {
 			g.expr(node.expr)
@@ -632,9 +638,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.ret()
 		}
 		ast.StructDecl {}
-		ast.UnsafeStmt {
-			g.stmts(node.stmts)
-		}
 		else {
 			println('x64.stmt(): bad node: ' + typeof(node))
 		}
@@ -725,11 +728,22 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				g.allocate_var(name, 4, 0)
 				// `mov DWORD PTR [rbp-0x8],eax`
 				offset := g.get_var_offset(name)
-				println('ASS $name offset=$offset.hex2()')
+				println('infix assignment $name offset=$offset.hex2()')
 				g.mov_reg_to_rbp(offset, .eax)
 			}
+			ast.StructInit {
+				sym := g.table.get_type_symbol(right.typ)
+				// println(sym)
+				// println(typeof(sym.info))
+				info := sym.info as table.Struct
+				for field in info.fields {
+					field_name := name + '.' + field.name
+					println(field_name)
+					g.allocate_var(field_name, 4, 0)
+				}
+			}
 			else {
-				g.error_with_pos('assign_stmt unhandled expr: ' + typeof(right), right.position())
+				g.error_with_pos('x64 assign_stmt unhandled expr: ' + typeof(right), right.position())
 			}
 		}
 		// }

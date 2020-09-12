@@ -21,21 +21,21 @@ module strconv
 
 struct Uint128 {
 mut:
-	lo u64 = u64(0)
-	hi u64 = u64(0)
+	lo u64
+	hi u64
 }
 
 // dec64 is a floating decimal type representing m * 10^e.
 struct Dec64 {
 mut:
-	m u64 = 0
-	e int = 0
+	m u64
+	e int
 }
 
 // support union for convert f64 to u64
 union Uf64 {
 mut:
-	f f64 = 0
+	f f64
 	u u64
 }
 

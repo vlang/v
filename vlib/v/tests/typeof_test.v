@@ -6,6 +6,7 @@ fn test_typeof_on_simple_expressions() {
 	assert typeof(f64(1.0) * 12.2) == 'f64'
 	// assert typeof(1.0 * f32(12.2)) == 'f32'
 	assert typeof(a) == 'int'
+	assert typeof(a).name == 'int'
 	// a2 := 123
 	// assert typeof(a2) == 'any_int'
 	// assert typeof(42) == 'any_int'
@@ -19,6 +20,7 @@ fn test_typeof_on_atypes() {
 	astring := []string{}
 	assert typeof(aint) == 'array_int'
 	assert typeof(astring) == 'array_string'
+	assert typeof(astring).name == '[]string'
 }
 
 struct FooBar {
@@ -27,10 +29,12 @@ struct FooBar {
 
 fn test_typeof_on_structs() {
 	assert typeof(FooBar{}) == 'FooBar'
-	astruct_static := [2]FooBar
+	astruct_static := [2]FooBar{}
 	astruct_dynamic := [FooBar{}, FooBar{}]
 	assert typeof(astruct_static) == '[2]FooBar'
+	assert typeof(astruct_static).name == '[2]FooBar'
 	assert typeof(astruct_dynamic) == 'array_FooBar'
+	assert typeof(astruct_dynamic).name == '[]FooBar'
 }
 
 type MySumType = int | f32 | FooBar
@@ -51,6 +55,9 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
+	assert typeof(a).name == 'MySumType'
+	assert typeof(b).name == 'MySumType'
+	assert typeof(c).name == 'MySumType'
 }
 
 //
@@ -96,4 +103,8 @@ fn test_typeof_on_fn() {
 	assert typeof(myfn2) == 'fn ()'
 	assert typeof(myfn3) == 'fn (int, string) byte'
 	assert typeof(myfn4) == 'fn () i8'
+	assert typeof(myfn).name == typeof(myfn)
+	assert typeof(myfn2).name == typeof(myfn2)
+	assert typeof(myfn3).name == typeof(myfn3)
+	assert typeof(myfn4).name == typeof(myfn4)
 }

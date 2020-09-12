@@ -153,15 +153,9 @@ pub fn listen(port int) ?Socket {
 	$if debug {
 		println('net.listen($port)')
 	}
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
-		return error(err)
-	}
-	s.bind(port) or {
-		return error(err)
-	}
-	s.listen() or {
-		return error(err)
-	}
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
+	s.bind(port)?
+	s.listen()?
 	return s
 }
 
@@ -186,7 +180,7 @@ pub fn (s Socket) accept() ?Socket {
 }
 
 pub fn (s Socket) peer_ip() ?string {
-	buf := [44]byte
+	buf := [44]byte{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
 	ok := C.getpeername(s.sockfd, &C.sockaddr(&peeraddr), &speeraddr)
@@ -228,12 +222,8 @@ pub fn (s Socket) connect(address string, port int) ?int {
 
 // helper method to create socket and connect
 pub fn dial(address string, port int) ?Socket {
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) or {
-		return error(err)
-	}
-	s.connect(address, port) or {
-		return error(err)
-	}
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
+	s.connect(address, port)?
 	return s
 }
 
@@ -327,7 +317,7 @@ pub fn (s Socket) write(str string) ?int {
 
 // read_line - retrieves a line from the socket s (i.e. a string ended with \n)
 pub fn (s Socket) read_line() string {
-	mut buf := [max_read]byte // where C.recv will store the network data
+	mut buf := [max_read]byte{} // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {
 		mut line := '' // The current line. Can be a partial without \n in it.
@@ -373,7 +363,7 @@ pub fn (s Socket) read_line() string {
 
 // TODO
 pub fn (s Socket) read_all() string {
-	mut buf := [max_read]byte // where C.recv will store the network data
+	mut buf := [max_read]byte{} // where C.recv will store the network data
 	mut res := '' // The final result, including the ending \n.
 	for {
 		n := C.recv(s.sockfd, buf, max_read - 1, 0)

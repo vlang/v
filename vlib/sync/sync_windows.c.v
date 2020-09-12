@@ -128,9 +128,14 @@ pub fn (mut m Mutex) destroy() {
 	m.state = .destroyed // setting up reference to invalid state
 }
 
+[inline]
 pub fn new_semaphore() Semaphore {
+	return new_semaphore_init(0)
+}
+
+pub fn new_semaphore_init(n u32) Semaphore {
 	return Semaphore{
-		sem: SHANDLE(C.CreateSemaphore(0, 0, C.INT32_MAX, 0))
+		sem: SHANDLE(C.CreateSemaphore(0, n, C.INT32_MAX, 0))
 	}
 }
 
@@ -148,4 +153,8 @@ pub fn (s Semaphore) try_wait() bool {
 
 pub fn (s Semaphore) timed_wait(timeout time.Duration) bool {
 	return C.WaitForSingleObject(s.sem, timeout / time.millisecond) == 0
+}
+
+pub fn (s Semaphore) destroy() bool {
+	return C.CloseHandle(s.sem) != 0
 }

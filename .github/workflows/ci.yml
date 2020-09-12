@@ -28,9 +28,10 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependencies
       run: |
-           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update; 
-           sudo apt-get install --quiet -y libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev      
+           sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; sudo apt-get update;
+           sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
+           sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+           ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build v
       run: |
         echo $VFLAGS
@@ -44,6 +45,8 @@ jobs:
 #        ./v -silent test-compiler
     - name: Fixed tests
       run: ./v test-fixed
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Test building v tools
       run: ./v build-tools
     - name: v vet
@@ -53,8 +56,10 @@ jobs:
     - name: v fmt
       run: |
         ./v fmt -verify vlib/v/checker/checker.v
+        ./v fmt -verify vlib/v/fmt/fmt.v
         ./v fmt -verify vlib/v/parser/parser.v
         ./v fmt -verify vlib/v/gen/cgen.v
+        ./v fmt -verify vlib/v/gen/x64/gen.v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
@@ -95,7 +100,7 @@ jobs:
         ##brew install libpq openssl freetype ### these are *already installed* on Catalina ...
         brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
         brew install postgresql
-        brew install glfw 
+        brew install glfw
         ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
@@ -119,9 +124,13 @@ jobs:
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
-      run: ./v test-fixed
+      run: VJOBS=1 ./v test-fixed
     - name: Build examples
       run: ./v build-examples
+    - name: v vet
+      run: |
+        ./v vet vlib/sqlite
+        ./v vet vlib/v
     - name: Cross-compilation to Linux
       run: ./v -os linux cmd/v
 #    - name: Test vsh
@@ -149,9 +158,10 @@ jobs:
         node-version: 12.x
     - name: Install dependencies
       run: |
-         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-         sudo apt-get update; 
-         sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4 && ./v -cc gcc -o v cmd/v
@@ -206,16 +216,16 @@ jobs:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
-  ubuntu-autofree-selfcompile:
-    runs-on: ubuntu-18.04
-    env:
-      VFLAGS: -cc gcc
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make -j4
-    - name: V self compilation with -autofree
-      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+#  ubuntu-autofree-selfcompile:
+#    runs-on: ubuntu-18.04
+#    env:
+#      VFLAGS: -cc gcc
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: Build V
+#      run: make -j4
+#    - name: V self compilation with -autofree
+#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
 
   # Ubuntu docker pre-built container
@@ -253,10 +263,10 @@ jobs:
 #         node-version: 12.x
 #     - name: Install dependencies
 #       run: |
-#          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-#          sudo apt-get update; 
+#          sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+#          sudo apt-get update;
 #          sudo apt-get install --quiet -y musl musl-tools libssl-dev sqlite3 libsqlite3-dev valgrind
-#          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
+#          sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
 #     - name: Build v
 #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 # #    - name: Test v binaries
@@ -422,19 +432,20 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install dependencies
       run: |
-        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list; 
-        sudo apt-get update; 
-        sudo apt-get install --quiet -y postgresql libpq-dev libglfw3 libglfw3-dev libfreetype6-dev libssl-dev sqlite3 libsqlite3-dev 
-        sudo apt-get install --quiet -y valgrind g++-9 
-        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev 
+        sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+        sudo apt-get update;
+        sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev
+        sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+        sudo apt-get install --quiet -y valgrind g++-9
+        ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4
     - name: g++ version
       run: g++-9 --version
-#    - name: Running tests with g++
-#      run: ./v -cc g++-9 test-fixed
-#    - name: V self compilation with g++
-#      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+    - name: V self compilation with g++
+      run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
+##    - name: Running tests with g++
+##      run: ./v -cc g++-9 test-fixed
 
   install-modules:
     runs-on: ubuntu-latest
@@ -466,3 +477,42 @@ jobs:
         ../v .
         ../v -autofree .
         cd ..
+
+  # TODO: ACTIVATE THIS AFTER MERGE
+
+  websocket_autobahn:
+    name: Autobahn integrations tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Run autobahn services
+        run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
+      - name: Build client test
+        run: docker exec autobahn_client "v" "/src/tests/autobahn/autobahn_client.v"
+      - name: Run client test
+        run: docker exec autobahn_client "/src/tests/autobahn/autobahn_client"
+      - name: Run server test
+        run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
+      - name: Copy reports
+        run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
+      - name: Test success
+        run: docker exec autobahn_server "python" "/check_results.py"
+
+      - name: Publish all reports
+        uses: actions/upload-artifact@v2
+        with:
+            name: full report
+            path: ${{github.workspace}}/reports
+      - name: Publish report client
+        uses: actions/upload-artifact@v2
+        with:
+            name: client
+            path: ${{github.workspace}}/reports/clients/index.html
+      - name: Publish report server
+        uses: actions/upload-artifact@v2
+        with:
+            name: server
+            path: ${{github.workspace}}/reports/servers/index.html
+

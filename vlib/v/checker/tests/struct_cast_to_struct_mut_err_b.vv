@@ -1,0 +1,13 @@
+struct Abc {
+	name string
+}
+
+struct Xyz {
+mut:
+	name string
+}
+
+fn main() {
+	abc := Abc{}
+	_ := Xyz(abc)
+}

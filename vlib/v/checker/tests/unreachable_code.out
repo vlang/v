@@ -1,4 +1,4 @@
-vlib/v/checker/tests/unreachable_code.v:3:4: error: unreachable code
+vlib/v/checker/tests/unreachable_code.vv:3:4: error: unreachable code
     1 | fn foo() int {
     2 |     return if 1 == 1 { 1 } else { 2 }
     3 |     a := 1

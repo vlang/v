@@ -1,0 +1,24 @@
+vlib/v/checker/tests/prefix_err.vv:2:5: error: prefix operator `*` not defined for type `int`
+    1 | a := 1
+    2 | _ = *a
+      |     ^
+    3 | a <- 4
+    4 |
+vlib/v/checker/tests/prefix_err.vv:3:1: error: cannot push on non-channel `int`
+    1 | a := 1
+    2 | _ = *a
+    3 | a <- 4
+      | ^
+    4 |
+    5 | _ = ~true
+vlib/v/checker/tests/prefix_err.vv:5:5: error: operator ~ only defined on int types
+    3 | a <- 4
+    4 |
+    5 | _ = ~true
+      |     ^
+    6 | _ = !4
+vlib/v/checker/tests/prefix_err.vv:6:5: error: ! operator can only be used with bool types
+    4 |
+    5 | _ = ~true
+    6 | _ = !4
+      |     ^

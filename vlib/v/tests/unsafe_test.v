@@ -3,9 +3,17 @@ fn test_ptr_assign() {
 	mut p := &v[0]
 	unsafe {
 		(*p)++
-		p++ // p now points to v[1]
+	}
+	unsafe {
+		p++
+	} // p now points to v[1]
+	unsafe {
 		(*p) += 2
-		p += 2 // p now points to v[3]
+	}
+	unsafe {
+		p += 2
+	} // p now points to v[3]
+	unsafe {
 		*p = 31
 	}
 	assert v[0] == 6
@@ -16,15 +24,16 @@ fn test_ptr_assign() {
 
 fn test_ptr_infix() {
 	v := 4
-	mut q := unsafe(&v - 1)
-	q = unsafe(q + 3)
-	assert q == unsafe(&v + 2)
+	mut q := unsafe {&v - 1}
+	q = unsafe {q + 3}
+	_ := q
+	_ := v
 }
 
 struct S1 {
 }
 
-[unsafe_fn]
+[unsafe]
 fn (s S1) f() {
 }
 
@@ -33,4 +42,5 @@ fn test_funcs() {
 	unsafe {
 		s.f()
 	}
+	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
 }

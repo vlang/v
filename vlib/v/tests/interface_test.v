@@ -23,7 +23,7 @@ fn (c &Cat) speak(s string) {
 }
 
 fn (c Cat) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(c)}, breed:${c.breed}'
+	return '$pet_name the ${typeof(c)}, breed:$c.breed'
 }
 
 fn (mut c Cat) set_breed(new string) {
@@ -46,7 +46,7 @@ fn (d Dog) name() string {
 }
 
 fn (d Dog) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(d)}, breed:${d.breed}'
+	return '$pet_name the ${typeof(d)}, breed:$d.breed'
 }
 
 fn (mut d Dog) set_breed(new string) {
@@ -67,10 +67,12 @@ fn perform_speak(a Animal) {
 	assert name == 'Dog' || name == 'Cat'
 	if a is Dog {
 		assert name == 'Dog'
+		assert a.breed == 'Labrador Retriever' // test smart casting
+		println(a.breed)
 	}
 	println(a.name())
 	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
-	// assert a is Dog || a is Cat // TODO: enable when available
+	assert a is Dog || a is Cat
 }
 
 fn perform_speak_on_ptr(a &Animal) {
@@ -78,12 +80,12 @@ fn perform_speak_on_ptr(a &Animal) {
 	assert true
 	name := a.name()
 	assert name == 'Dog' || name == 'Cat'
-	// if a is Dog {
-	// assert name == 'Dog'
-	// }
+	if a is Dog {
+		assert name == 'Dog'
+	}
 	println(a.name())
 	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
-	// assert a is Dog || a is Cat // TODO: enable when available
+	assert a is Dog || a is Cat
 }
 
 fn test_perform_speak() {
@@ -249,6 +251,7 @@ fn new_animal2() Animal {
 }
 
 /*
+// TODO
 fn animal_match(a Animal) {
 	match a {
 		Dog { println('(dog)') }

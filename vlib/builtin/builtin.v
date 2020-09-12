@@ -6,6 +6,9 @@ module builtin
 __global g_m2_buf byteptr
 __global g_m2_ptr byteptr
 
+type FnExitCb fn()
+fn C.atexit(f FnExitCb) int
+
 pub fn exit(code int) {
 	C.exit(code)
 }
@@ -66,58 +69,49 @@ pub fn eprintln(s string) {
 	if s.str == 0 {
 		eprintln('eprintln(NIL)')
 	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s\n', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	// TODO issues with stderr and cross compiling for Linux
-	println(s)
+	C.fflush(C.stdout)
+	C.fflush(C.stderr)
+	C.write(2, s.str, s.len)	
+	C.write(2, c'\n', 1)	
+	C.fflush(C.stderr)
 }
 
 pub fn eprint(s string) {
 	if s.str == 0 {
 		eprintln('eprint(NIL)')
 	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	print(s)
+	C.fflush(C.stdout)
+	C.fflush(C.stderr)
+	C.write(2, s.str, s.len)	
+	C.fflush(C.stderr)
 }
 
 pub fn print(s string) {
-	$if windows {
-		output_handle := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
-		mut bytes_written := 0
-		if is_atty(1) > 0 {
-			wide_str := s.to_wide()
-			wide_len := C.wcslen(wide_str)
-			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
-			unsafe {
-				free(wide_str)
-			}
-		} else {
-			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
-		}
-	} $else {
-		C.printf('%.*s', s.len, s.str)
-	}
+	C.write(1, s.str, s.len)	
 }
 
 const (
 	new_line_character = '\n'
 )
+
+//#include "@VROOT/vlib/darwin/darwin.m"
+//fn C.nsstring2(s string) voidptr
+//fn C.NSLog(x voidptr)
+//#include <asl.h>
+
+fn C.asl_log(voidptr, voidptr, int, charptr)
+
 pub fn println(s string) {
 	$if windows {
 		print(s)
 		print(new_line_character)
 	} $else {
+		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
+		/*
+		$if macos {
+			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
+		}
+		*/
 		//  TODO: a syscall sys_write on linux works, except for the v repl.
 		//  Probably it is a stdio buffering issue. Needs more testing...
 		//	$if linux {
@@ -136,7 +130,7 @@ __global nr_mallocs int=0
 
 fn looo(){} // TODO remove, [ pratt
 
-[unsafe_fn]
+[unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
 		panic('malloc(<=0)')
@@ -174,7 +168,7 @@ TODO
 //#include <malloc/malloc.h>
 //fn malloc_size(b byteptr) int
 
-[unsafe_fn]
+[unsafe]
 pub fn v_realloc(b byteptr, n u32) byteptr {
 	$if prealloc {
 		unsafe {
@@ -192,12 +186,12 @@ pub fn v_realloc(b byteptr, n u32) byteptr {
 	}
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
 		panic('calloc(<=0)')
@@ -207,7 +201,7 @@ pub fn vcalloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
-[unsafe_fn]
+[unsafe]
 pub fn free(ptr voidptr) {
 	$if prealloc {
 		return
@@ -277,26 +271,25 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
-pub struct MethodAttr {
+pub struct MethodArgs {
 pub:
-	value string
-	method string
+	Type int
 }
 
 pub struct FunctionData {
 pub:
-	name string
-	attrs []string
-	ret_type string
-	@type int
+	name       string
+	attrs      []string
+	args       []MethodArgs
+	ReturnType int
+	Type       int
 }
 
 pub struct FieldData {
 pub:
-	name string
-	attrs []string
-	typ string
+	name   string
+	attrs  []string
 	is_pub bool
 	is_mut bool
-	@type int
+	Type   int
 }

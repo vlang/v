@@ -1,4 +1,4 @@
-vlib/v/checker/tests/incorrect_name_enum_field.v:2:5: error: field name `Green` cannot contain uppercase letters, use snake_case instead
+vlib/v/checker/tests/incorrect_name_enum_field.vv:2:5: error: field name `Green` cannot contain uppercase letters, use snake_case instead
     1 | enum Color {
     2 |     Green
       |     ~~~~~

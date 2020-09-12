@@ -1,4 +1,4 @@
-vlib/v/checker/tests/enum_field_name_duplicate_err.v:5:2: error: field name `green` duplicate
+vlib/v/checker/tests/enum_field_name_duplicate_err.vv:5:2: error: field name `green` duplicate
     3 |     yellow
     4 |     blue
     5 |     green

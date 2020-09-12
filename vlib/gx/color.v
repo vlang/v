@@ -105,3 +105,15 @@ pub fn (c Color) eq(c2 Color) bool {
 pub fn (c Color) str() string {
 	return 'Color{$c.r, $c.g, $c.b, $c.a}'
 }
+
+const (
+string_colors = {
+	'black': black
+	'blue': blue
+	'red': red
+}
+)
+
+pub fn color_from_string(s string) Color {
+	return string_colors[s]
+}

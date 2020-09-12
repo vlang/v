@@ -153,52 +153,52 @@ fn unescape(s_ string, mode EncodingMode) ?string {
 	for i := 0; i < s.len;  {
 		x := s[i]
 		match x {
-			`%` {
-				if s == '' {
-					break
-				}
-				n++
-				if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
-					s = s[i..]
-					if s.len > 3 {
-						s = s[..3]
-					}
-					return error(error_msg(err_msg_escape, s))
-				}
-				// Per https://tools.ietf.org/html/rfc3986#page-21
-				// in the host component %-encoding can only be used
-				// for non-ASCII bytes.
-				// But https://tools.ietf.org/html/rfc6874#section-2
-				// introduces %25 being allowed to escape a percent sign
-				// in IPv6 scoped-address literals. Yay.
-				if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
-					return error(error_msg(err_msg_escape, s[i..i + 3]))
-				}
-				if mode == .encode_zone {
-					// RFC 6874 says basically 'anything goes' for zone identifiers
-					// and that even non-ASCII can be redundantly escaped,
-					// but it seems prudent to restrict %-escaped bytes here to those
-					// that are valid host name bytes in their unescaped form.
-					// That is, you can use escaping in the zone identifier but not
-					// to introduce bytes you couldn't just write directly.
-					// But Windows puts spaces here! Yay.
-					v := ( (unhex(s[i + 1])<<byte(4)) | unhex(s[i + 2]))
-					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
-					}
-				}
-				i += 3
+		`%` {
+			if s == '' {
+				break
 			}
-			`+` {
-				has_plus = mode == .encode_query_component
-				i++
-			}
-			else {
-				if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
-					error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+			n++
+			if i + 2 >= s.len || !ishex(s[i + 1]) || !ishex(s[i + 2]) {
+				s = s[i..]
+				if s.len > 3 {
+					s = s[..3]
 				}
-				i++
-			}}
+				return error(error_msg(err_msg_escape, s))
+			}
+			// Per https://tools.ietf.org/html/rfc3986#page-21
+			// in the host component %-encoding can only be used
+			// for non-ASCII bytes.
+			// But https://tools.ietf.org/html/rfc6874#section-2
+			// introduces %25 being allowed to escape a percent sign
+			// in IPv6 scoped-address literals. Yay.
+			if mode == .encode_host && unhex(s[i + 1]) < 8 && s[i..i + 3] != '%25' {
+				return error(error_msg(err_msg_escape, s[i..i + 3]))
+			}
+			if mode == .encode_zone {
+				// RFC 6874 says basically 'anything goes' for zone identifiers
+				// and that even non-ASCII can be redundantly escaped,
+				// but it seems prudent to restrict %-escaped bytes here to those
+				// that are valid host name bytes in their unescaped form.
+				// That is, you can use escaping in the zone identifier but not
+				// to introduce bytes you couldn't just write directly.
+				// But Windows puts spaces here! Yay.
+				v := ( (unhex(s[i + 1])<<byte(4)) | unhex(s[i + 2]))
+				if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
+					error(error_msg(err_msg_escape, s[i..i + 3]))
+				}
+			}
+			i += 3
+		}
+		`+` {
+			has_plus = mode == .encode_query_component
+			i++
+		}
+		else {
+			if (mode == .encode_host || mode == .encode_zone) && s[i] < 0x80 && should_escape(s[i], mode) {
+				error(error_msg('unescape: invalid character in host name', s[i..i + 1]))
+			}
+			i++
+		}}
 	}
 	if n == 0 && !has_plus {
 		return s
@@ -272,7 +272,7 @@ fn escape(s string, mode EncodingMode) string {
 				t[i] = `+`
 			}
 		}
-		return string(t,t.len)
+		return t.bytestr()
 	}
 	upperhex := '0123456789ABCDEF'
 	mut j := 0
@@ -293,7 +293,7 @@ fn escape(s string, mode EncodingMode) string {
 			j++
 		}
 	}
-	return string(t,t.len)
+	return t.bytestr()
 }
 
 // A URL represents a parsed URL (technically, a URI reference).
@@ -367,7 +367,7 @@ fn (u &Userinfo) empty() bool {
 
 // string returns the encoded userinfo information in the standard form
 // of 'username[:password]'.
-fn (u &Userinfo) string() string {
+fn (u &Userinfo) str() string {
 	if u.empty() {
 		return ''
 	}
@@ -479,9 +479,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	}
 	// Split off possible leading 'http:', 'mailto:', etc.
 	// Cannot contain escaped characters.
-	p := split_by_scheme(rawurl) or {
-		return error(err)
-	}
+	p := split_by_scheme(rawurl)?
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
@@ -524,9 +522,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	if ((url.scheme != '' || !via_request) && !rest.starts_with('///')) && rest.starts_with('//') {
 		authority,r := split(rest[2..], `/`, false)
 		rest = r
-		a := parse_authority(authority) or {
-			return error(err)
-		}
+		a := parse_authority(authority)?
 		url.user = a.user
 		url.host = a.host
 	}
@@ -534,9 +530,7 @@ fn parse_url(rawurl string, via_request bool) ?URL {
 	// raw_path is a hint of the encoding of path. We don't want to set it if
 	// the default escaping of path is equivalent, to help make sure that people
 	// don't rely on it in general.
-	url.set_path(rest) or {
-		return error(err)
-	}
+	url.set_path(rest)?
 	return url
 }
 
@@ -552,15 +546,11 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 	mut host := ''
 	mut zuser := user('')
 	if i < 0 {
-		h := parse_host(authority) or {
-			return error(err)
-		}
+		h := parse_host(authority)?
 		host = h
 	}
 	else {
-		h := parse_host(authority[i + 1..]) or {
-			return error(err)
-		}
+		h := parse_host(authority[i + 1..])?
 		host = h
 	}
 	if i < 0 {
@@ -574,21 +564,15 @@ fn parse_authority(authority string) ?ParseAuthorityRes {
 		return error(error_msg('parse_authority: invalid userinfo', ''))
 	}
 	if !userinfo.contains(':') {
-		u := unescape(userinfo, .encode_user_password) or {
-			return error(err)
-		}
+		u := unescape(userinfo, .encode_user_password)?
 		userinfo = u
 		zuser = user(userinfo)
 	}
 	else {
 		mut username,mut password := split(userinfo, `:`, true)
-		u := unescape(username, .encode_user_password) or {
-			return error(err)
-		}
+		u := unescape(username, .encode_user_password)?
 		username = u
-		p := unescape(password, .encode_user_password) or {
-			return error(err)
-		}
+		p := unescape(password, .encode_user_password)?
 		password = p
 		zuser = user_password(username, password)
 	}
@@ -652,9 +636,7 @@ fn parse_host(host string) ?string {
 // set_path will return an error only if the provided path contains an invalid
 // escaping.
 pub fn (mut u URL) set_path(p string) ?bool {
-	path := unescape(p, .encode_path) or {
-		return error(err)
-	}
+	path := unescape(p, .encode_path)?
 	u.path = path
 	escp := escape(path, .encode_path)
 	if p == escp {
@@ -771,7 +753,7 @@ pub fn (u URL) str() string {
 				buf.write('//')
 			}
 			if !u.user.empty() {
-				buf.write(u.user.string())
+				buf.write(u.user.str())
 				buf.write('@')
 			}
 			if u.host != '' {
@@ -822,9 +804,7 @@ pub fn (u URL) str() string {
 // interpreted as a key set to an empty value.
 pub fn parse_query(query string) ?Values {
 	mut m := new_values()
-	parse_query_values(mut m, query) or {
-		return error(err)
-	}
+	parse_query_values(mut m, query)?
 	return m
 }
 
@@ -956,9 +936,7 @@ pub fn (u &URL) is_abs() bool {
 // may be relative or absolute. parse returns nil, err on parse
 // failure, otherwise its return value is the same as resolve_reference.
 pub fn (u &URL) parse(ref string) ?URL {
-	refurl := parse(ref) or {
-		return error(err)
-	}
+	refurl := parse(ref)?
 	return u.resolve_reference(refurl)
 }
 
@@ -977,9 +955,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 		// The 'absoluteURI' or 'net_path' cases.
 		// We can ignore the error from set_path since we know we provided a
 		// validly-escaped path.
-		url.set_path(resolve_path(ref.escaped_path(), '')) or {
-			return error(err)
-		}
+		url.set_path(resolve_path(ref.escaped_path(), ''))?
 		return url
 	}
 	if ref.opaque != '' {
@@ -997,9 +973,7 @@ pub fn (u &URL) resolve_reference(ref &URL) ?URL {
 	// The 'abs_path' or 'rel_path' cases.
 	url.host = u.host
 	url.user = u.user
-	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path())) or {
-		return error(err)
-	}
+	url.set_path(resolve_path(u.escaped_path(), ref.escaped_path()))?
 	return url
 }
 

@@ -6,6 +6,7 @@ import term
 import benchmark
 import sync
 import v.pref
+import v.util.vtest
 
 pub struct TestMessageHandler {
 mut:
@@ -69,7 +70,6 @@ pub fn (mut ts TestSession) test() {
 	//
 	ts.init()
 	mut remaining_files := []string{}
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
 	for dot_relative_file in ts.files {
 		relative_file := dot_relative_file.replace('./', '')
 		file := os.real_path(relative_file)
@@ -93,20 +93,9 @@ pub fn (mut ts TestSession) test() {
 				continue
 			}
 		}
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if file.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
 		remaining_files << dot_relative_file
 	}
+	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 	mut pool_of_test_runners := sync.new_pool_processor({

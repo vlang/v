@@ -1,0 +1,27 @@
+vlib/v/checker/tests/cannot_cast_to_struct.vv:10:12: error: cannot convert struct `Abc` to struct `Test`
+    8 |
+    9 | fn main() {
+   10 |     _ := Test(Abc{})
+      |               ~~~~~
+   11 |     sum := Alphabet(Xyz{})
+   12 |     _ = Xyz(sum)
+vlib/v/checker/tests/cannot_cast_to_struct.vv:12:10: error: cannot cast `Alphabet` to struct
+   10 |     _ := Test(Abc{})
+   11 |     sum := Alphabet(Xyz{})
+   12 |     _ = Xyz(sum)
+      |             ~~~
+   13 |     _ = Xyz(5)
+   14 |     s := Abc{}
+vlib/v/checker/tests/cannot_cast_to_struct.vv:13:10: error: cannot cast `any_int` to struct
+   11 |     sum := Alphabet(Xyz{})
+   12 |     _ = Xyz(sum)
+   13 |     _ = Xyz(5)
+      |             ^
+   14 |     s := Abc{}
+   15 |     _ = Xyz(&s)
+vlib/v/checker/tests/cannot_cast_to_struct.vv:15:10: error: cannot cast `&Abc` to struct
+   13 |     _ = Xyz(5)
+   14 |     s := Abc{}
+   15 |     _ = Xyz(&s)
+      |             ^
+   16 | }

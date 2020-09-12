@@ -6,6 +6,14 @@ const (
 	default_columns_size = 80
 	default_rows_size = 25
 )
+
+// Coord - used by term.get_cursor_position and term.set_cursor_position
+pub struct Coord {
+pub mut:
+	x int
+	y int
+}
+
 // can_show_color_on_stdout returns true if colors are allowed in stdout;
 // returns false otherwise.
 pub fn can_show_color_on_stdout() bool {

@@ -6,6 +6,7 @@ pub const (
   used_import = 1 + fontstash.used_import
 )
 
+/*
 #flag windows -I @VROOT/thirdparty/freetype/include
 #flag windows -L @VROOT/thirdparty/freetype/win64
 
@@ -22,6 +23,12 @@ pub const (
 #flag darwin -lfreetype
 
 #flag darwin -lpng -lbz2 -lz
+*/
+
+
+
+
+
 
 #flag linux -I.
 

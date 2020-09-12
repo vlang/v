@@ -174,6 +174,8 @@ FONS_DEF void fonsDrawDebug(FONScontext* s, float x, float y);
 
 #undef FONS_USE_FREETYPE
 
+//#define FONS_USE_FREETYPE
+
 #ifdef FONS_USE_FREETYPE
 
 #include <ft2build.h>

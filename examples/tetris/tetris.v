@@ -19,18 +19,18 @@ const (
 	win_width = block_size * field_width
 	win_height = block_size * field_height
 	timer_period = 250 // ms
-	text_size = 12
+	text_size = 24
 	limit_thickness = 3
 )
 
 const (
 	text_cfg = gx.TextCfg{
-		align:gx.align_left
+		align:.left
 		size:text_size
 		color:gx.rgb(0, 0, 0)
 	}
 	over_cfg = gx.TextCfg{
-		align:gx.align_left
+		align:.left
 		size:text_size
 		color:gx.white
 	}

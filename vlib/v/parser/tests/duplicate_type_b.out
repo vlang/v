@@ -1,4 +1,4 @@
-vlib/v/parser/tests/duplicate_type_b.v:3:8: error: cannot register struct `Foo`, another type with this name exists
+vlib/v/parser/tests/duplicate_type_b.vv:3:8: error: cannot register struct `Foo`, another type with this name exists
     1 | interface Foo {}
     2 |
     3 | struct Foo {}
