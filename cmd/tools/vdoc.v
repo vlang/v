@@ -95,7 +95,7 @@ enum OutputType {
 
 struct DocConfig {
 mut:
-	local_mode     bool
+	is_local       bool
 	local_filename string
 	local_pos      int
 	pub_only       bool = true
@@ -109,6 +109,7 @@ mut:
 	inline_assets  bool
 	output_path    string
 	input_path     string
+	symbol_name    string
 	output_type    OutputType = .unset
 	docs           []doc.Doc
 	manifest       vmod.Manifest
@@ -658,7 +659,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		if cfg.local_mode && !cfg.is_multi {
+		if cfg.is_local && !cfg.is_multi {
 			dcs := doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
 				mut err_msg := err
 				if errcode == 1 {
@@ -697,6 +698,16 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				for i, c in dcs.contents {
 					dcs.contents[i].content = c.content.all_after('pub ')
 				}
+			}
+			if !cfg.is_multi && cfg.symbol_name.len > 0 {
+				mut new_contents := []doc.DocNode{}
+				for cn in dcs.contents {
+					if cn.name != cfg.symbol_name { continue }
+					new_contents << cn
+					break
+				}
+				new_contents << dcs.contents.find_children_of(cfg.symbol_name)
+				dcs.contents = new_contents
 			}
 			cfg.docs << dcs
 		}
@@ -883,7 +894,7 @@ fn main() {
 				cfg.pub_only = false
 			}
 			'-filename' {
-				cfg.local_mode = true
+				cfg.is_local = true
 				cfg.local_filename = cmdline.option(current_args, '-filename', '')
 				i++
 			}
@@ -915,7 +926,7 @@ fn main() {
 				cfg.open_docs = true
 			}
 			'-pos' {
-				if !cfg.local_mode {
+				if !cfg.is_local {
 					eprintln('vdoc: `-pos` is only allowed with `-filename` flag.')
 					exit(1)
 				}
@@ -950,8 +961,12 @@ fn main() {
 				cfg.is_verbose = true
 			}
 			else {
-				cfg.input_path = arg
-				break
+				if cfg.input_path.len < 1 {
+					cfg.input_path = arg
+				} else{
+					cfg.symbol_name = arg
+				}
+				if i == args.len-1 { break }
 			}
 		}
 	}
