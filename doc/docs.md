@@ -925,7 +925,7 @@ A defer statement defers the execution of a block of statements until the surrou
 
 ```v
 fn read_log() {
-    f := os.open('log.txt')
+    f := os.open('log.txt') or { panic(err) }
     defer { f.close() }
     ...
     if !ok {

@@ -3,9 +3,9 @@ module os
 import strings
 
 pub struct File {
-	cfile  voidptr // Using void* instead of FILE*
+	cfile     voidptr // Using void* instead of FILE*
 pub:
-	fd     int
+	fd        int
 pub mut:
 	is_opened bool
 }
@@ -22,9 +22,9 @@ pub fn (f File) is_opened() bool {
 }
 
 // **************************** Write ops  ***************************
-pub fn (mut f File) write(s string) {
+pub fn (mut f File) write(s string) ?int {
 	if !f.is_opened {
-		return
+		return error('file is not opened')
 	}
 	/*
 	$if linux {
@@ -34,12 +34,16 @@ pub fn (mut f File) write(s string) {
 		}
 	}
 	*/
-	C.fwrite(s.str, s.len, 1, f.cfile)
+	written := C.fwrite(s.str, s.len, 1, f.cfile)
+	if written == 0 && s.len != 0 {
+		return error('0 bytes written')
+	}
+	return written
 }
 
-pub fn (mut f File) writeln(s string) {
+pub fn (mut f File) writeln(s string) ?int {
 	if !f.is_opened {
-		return
+		return error('file is not opened')
 	}
 	/*
 	$if linux {
@@ -51,8 +55,15 @@ pub fn (mut f File) writeln(s string) {
 	}
 	*/
 	// TODO perf
-	C.fwrite(s.str, s.len, 1, f.cfile)
-	C.fputs('\n', f.cfile)
+	written := C.fwrite(s.str, s.len, 1, f.cfile)
+	if written == 0 && s.len != 0 {
+		return error('0 bytes written')
+	}
+	x := C.fputs('\n', f.cfile)
+	if x < 0 {
+		return error('could not add newline')
+	}
+	return (written + 1)
 }
 
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
@@ -74,8 +85,8 @@ pub fn (f &File) read_bytes(size int) []byte {
 
 // read_bytes_at reads an amount of bytes at the given position in the file
 pub fn (f &File) read_bytes_at(size, pos int) []byte {
-	//mut arr := [`0`].repeat(size)
-	mut arr := []byte{ len:size }
+	// mut arr := [`0`].repeat(size)
+	mut arr := []byte{len: size}
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	nreadbytes := C.fread(arr.data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_SET)
@@ -143,7 +154,7 @@ pub fn (mut f File) get_line() ?string {
 		mut blen := vstrlen(bufbp)
 		res.write_bytes(bufbp, blen)
 		unsafe {
-			if blen == 0 || bufbp[blen-1] == `\n` || bufbp[blen-1] == `\r` {
+			if blen == 0 || bufbp[blen - 1] == `\n` || bufbp[blen - 1] == `\r` {
 				break
 			}
 		}
