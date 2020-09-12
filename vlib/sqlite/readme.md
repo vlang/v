@@ -7,6 +7,7 @@ for **Fedora 31**:
 
 
  for **Ubuntu 20.04**:
+ 
      sudo apt install -y `libsqlite3-dev`
      
 
