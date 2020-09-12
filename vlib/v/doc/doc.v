@@ -35,6 +35,7 @@ pub struct DocPos {
 pub:
 	line int
 	col  int
+	len  int
 }
 
 pub struct DocNode {
@@ -42,7 +43,7 @@ pub mut:
 	name      string
 	content   string
 	comment   string
-	pos       DocPos = DocPos{-1, -1}
+	pos       DocPos = DocPos{-1, -1, 0}
 	file_path string
 	attrs     map[string]string
 }
@@ -108,7 +109,8 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	column := util.imax(0, pos.pos - p - 1)
 	return DocPos{
 		line: pos.line_nr + 1
-		col: util.imax(1, column + 1)
+		col: util.imax(1, column + 1),
+		len: pos.len
 	}
 }
 

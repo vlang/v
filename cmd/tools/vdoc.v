@@ -267,7 +267,7 @@ fn (cfg DocConfig) gen_json(idx int) string {
 		name := cn.name.all_after(dcs.head.name)
 		jw.write('{"name":"$name","signature":"${escape(cn.content)}",')
 		jw.write('"description":"${escape(cn.comment)}",')
-		jw.write('"position":[${cn.pos.line},${cn.pos.col}],')
+		jw.write('"position":[${cn.pos.line},${cn.pos.col},${cn.pos.len}],')
 		jw.write('"file_path":"${cn.file_path}",')
 		jw.write('"attrs":{')
 		mut j := 0
