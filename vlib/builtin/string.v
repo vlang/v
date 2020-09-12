@@ -292,7 +292,7 @@ pub fn (s string) replace_each(vals []string) string {
 				idx:idx
 				val_idx:rep_i
 			}
-			idx++
+			idx += rep.len
 			new_len += with.len - rep.len
 		}
 	}

@@ -285,6 +285,11 @@ fn test_replace_each() {
 		'[b]', '<b>',
 		'[/b]', '</b>',
 	]) == '<b>cool</b>'
+	t := 'aaaaaaaa'
+	y := t.replace_each([
+		'aa', 'b'
+	])
+	assert y == 'bbbb'
 }
 
 fn test_itoa() {
