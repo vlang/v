@@ -18,7 +18,11 @@ pub mut:
 	input_path     string
 	prefs          &pref.Preferences = &pref.Preferences{}
 	table          &table.Table = &table.Table{}
-	checker		   checker.Checker = checker.Checker{ table: 0, cur_fn: 0, pref: 0 }
+	checker        checker.Checker = checker.Checker{
+	table: 0
+	cur_fn: 0
+	pref: 0
+}
 	pub_only       bool = true
 	head           DocNode
 	with_comments  bool = true
@@ -109,7 +113,7 @@ fn convert_pos(file_path string, pos token.Position) DocPos {
 	column := util.imax(0, pos.pos - p - 1)
 	return DocPos{
 		line: pos.line_nr + 1
-		col: util.imax(1, column + 1),
+		col: util.imax(1, column + 1)
 		len: pos.len
 	}
 }
@@ -173,7 +177,7 @@ pub fn new(input_path string) Doc {
 	mut d := Doc{
 		input_path: os.real_path(input_path)
 		prefs: new_vdoc_preferences()
-		table: table.new_table(),
+		table: table.new_table()
 		head: DocNode{}
 		contents: []DocNode{}
 		time_generated: time.now()
@@ -466,7 +470,9 @@ fn (mut d Doc) generate() ?Doc {
 		if file_ast.path == d.filename {
 			lscope := file_ast.scope.innermost(d.pos)
 			for name, val in lscope.objects {
-				if val !is ast.Var { continue }
+				if val !is ast.Var {
+					continue
+				}
 				vr_data := val as ast.Var
 				vr_expr := vr_data.expr
 				l_node := DocNode{
@@ -476,8 +482,8 @@ fn (mut d Doc) generate() ?Doc {
 					pos: convert_pos(file_ast.path, vr_data.pos)
 					file_path: file_ast.path
 					attrs: {
-						'category': 'Variable',
-						'return_type': d.expr_typ_to_string(vr_expr),
+						'category': 'Variable'
+						'return_type': d.expr_typ_to_string(vr_expr)
 						'local': 'true'
 					}
 				}
