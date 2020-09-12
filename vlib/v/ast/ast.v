@@ -850,6 +850,15 @@ pub:
 	pos   token.Position
 }
 
+// `or { ... }`
+pub struct OrExpr2 {
+pub:
+	call_expr CallExpr
+	stmts     []Stmt // inside `or { }`
+	kind      OrKind
+	pos       token.Position
+}
+
 pub struct Assoc {
 pub:
 	var_name string

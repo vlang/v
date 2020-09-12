@@ -1335,6 +1335,33 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln('); // free str on re-assignment')
 		}
 	}
+	// Handle optionals. We need to declare a temp variable for them, that's why they are handled
+	// here, not in call_expr().
+	// `pos := s.index('x') or { return }`
+	// ==========>
+	// Option_int _t190 = string_index(s, _STR("x"));
+	// if (!_t190.ok) {
+	// string err = _t190.v_error;
+	// int errcode = _t190.ecode;
+	// return;
+	// }
+	// int pos = *(int*)_t190.data;
+	mut gen_or := false
+	if g.pref.autofree && assign_stmt.op == .decl_assign && assign_stmt.left_types.len == 1 &&
+		assign_stmt.right[0] is ast.CallExpr {
+		call_expr := assign_stmt.right[0] as ast.CallExpr
+		if call_expr.or_block.kind != .absent {
+			styp := g.typ(call_expr.return_type.set_flag(.optional))
+			tmp_opt := g.new_tmp_var()
+			g.write('/*AF opt*/$styp $tmp_opt = ')
+			g.expr(assign_stmt.right[0])
+			gen_or = true
+			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
+			g.writeln('/*=============ret*/')
+			// return
+		}
+	}
+	//
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)

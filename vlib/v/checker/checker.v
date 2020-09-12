@@ -2629,6 +2629,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			// never happens
 			return table.void_type
 		}
+		// ast.OrExpr2 {
+		// return node.typ
+		// }
 		ast.ParExpr {
 			return c.expr(node.expr)
 		}

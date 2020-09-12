@@ -9,6 +9,7 @@ import v.token
 import v.util
 
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
+	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
 		'C.$p.check_name()'
@@ -88,6 +89,25 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			fn_name = registered.name
 		}
 	}
+	/*
+	call_expr := ast.CallExpr{
+		name: fn_name
+		args: args
+		mod: fn_mod
+		pos: pos
+		language: language
+		generic_type: generic_type
+	}
+	if or_kind != .absent {
+		return ast.OrExpr2{
+			call_expr: call_expr
+			stmts: or_stmts
+			kind: or_kind
+			pos: pos
+		}
+	}
+	return call_expr
+	*/
 	return ast.CallExpr{
 		name: fn_name
 		args: args

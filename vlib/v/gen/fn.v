@@ -280,9 +280,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	defer {
 		g.inside_call = false
 	}
-	gen_or := node.or_block.kind != .absent
+	gen_or := node.or_block.kind != .absent && !g.pref.autofree
+	// if gen_or {
+	// g.writeln('/*start*/')
+	// }
 	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
-	cur_line := if is_gen_or_and_assign_rhs {
+	cur_line := if is_gen_or_and_assign_rhs && !g.pref.autofree {
 		line := g.go_before_stmt(0)
 		g.out.write(tabs[g.indent])
 		line
@@ -304,10 +307,13 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		g.fn_call(node)
 	}
-	if gen_or {
-		g.or_block(tmp_opt, node.or_block, node.return_type)
+	if gen_or { // && !g.pref.autofree {
+		if !g.pref.autofree {
+			g.or_block(tmp_opt, node.or_block, node.return_type)
+		}
 		if is_gen_or_and_assign_rhs {
-			g.write('\n$cur_line$tmp_opt')
+			g.write('\n $cur_line $tmp_opt')
+			// g.write('\n /*call_expr cur_line:*/ $cur_line /*C*/ $tmp_opt /*end*/')
 			// g.insert_before_stmt('\n /* VVV */ $tmp_opt')
 		}
 	}
@@ -545,13 +551,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 			g.called_fn_name = name
 			str_expr := g.write_expr_to_string(arg.expr)
-			g.insert_before_stmt('string $t = $str_expr; // new3. to free $i ')
-			/*
+			// g.insert_before_stmt('string $t = $str_expr; // new3. to free $i ')
 			cur_line = g.go_before_stmt(0)
 			// println('cur line ="$cur_line"')
-			g.writeln('string $t = $str_expr; // new. to free $i ')
-			*/
+			g.writeln('string $t = $str_expr; // new3. to free $i ')
+			// Now free the tmp arg vars right after the function call
+			g.strs_to_free << 'string_free(&$t);'
 		}
+		// g.strs_to_free << (';')
 	}
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
@@ -617,7 +624,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// Simple function call
 		if free_tmp_arg_vars {
 			// g.writeln(';')
-			g.write(cur_line + ' /* cur line*/')
+			g.write(cur_line + ' /* <== af cur line*/')
 		}
 		g.write('${g.get_ternary_name(name)}(')
 		if g.is_json_fn {
@@ -630,22 +637,6 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	g.is_c_call = false
 	g.is_json_fn = false
-	if free_tmp_arg_vars { // && tmp_arg_vars_to_free.len > 0 {
-		// g.writeln(';')
-		// g.write(cur_line + ' /* cur line*/')
-		// g.write(tmp)
-		// Now free the tmp arg vars right after the function call
-		g.strs_to_free << (';')
-		for i, arg in node.args {
-			if arg.is_tmp_autofree {
-				fn_name := node.name.replace('.', '_')
-				tmp := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-				g.strs_to_free << ('string_free(&$tmp);')
-				// g.writeln('string_free(&$tmp);')
-			}
-		}
-		// g.writeln('')
-	}
 }
 
 // fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type, tmp_arg_vars_to_free []string) {

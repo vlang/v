@@ -64,17 +64,21 @@ fn match_expr() string {
 	return res
 }
 
-/*
+fn opt(s string) ?int {
+	return 1
+}
+
 fn optional_str() {
 	q := 'select'
 	s := 'x'
-	pos := s.index('query: $q') or {
+	pos2 := opt('query:$q') or {
+		// pos := s.index('query: $q') or {
 		println('exiting')
 		return
 	}
-	println(pos)
+	println(pos2)
 }
-*/
+
 fn main() {
 	println('start')
 	foo()
@@ -82,6 +86,7 @@ fn main() {
 	str_inter()
 	match_expr()
 	reassign_str()
+	// optional_str()
 	// str_replace()
 	println('end')
 }
