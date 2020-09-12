@@ -95,6 +95,9 @@ enum OutputType {
 
 struct DocConfig {
 mut:
+	local_mode     bool
+	local_filename string
+	local_pos      int
 	pub_only       bool = true
 	show_loc       bool        // for plaintext
 	serve_http     bool        // for html
@@ -252,24 +255,31 @@ fn js_compress(str string) string {
 }
 
 fn escape(str string) string {
-	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+	return str.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '\t', '\\t'])
 }
 
 fn (cfg DocConfig) gen_json(idx int) string {
 	dcs := cfg.docs[idx]
 	mut jw := strings.new_builder(200)
-	jw.writeln('{\n\t"module_name": "$dcs.head.name",\n\t"description": "${escape(dcs.head.comment)}",\n\t"contents": [')
+	jw.write('{"module_name":"$dcs.head.name","description":"${escape(dcs.head.comment)}","contents":[')
 	for i, cn in dcs.contents {
 		name := cn.name.all_after(dcs.head.name)
-		jw.writeln('\t\t{')
-		jw.writeln('\t\t\t"name": "$name",')
-		jw.writeln('\t\t\t"signature": "${escape(cn.content)}",')
-		jw.writeln('\t\t\t"description": "${escape(cn.comment)}"')
-		jw.write('\t\t}')
-		if i < dcs.contents.len-1 { jw.writeln(',') }
+		jw.write('{"name":"$name","signature":"${escape(cn.content)}",')
+		jw.write('"description":"${escape(cn.comment)}",')
+		jw.write('"position":[${cn.pos.line},${cn.pos.col}],')
+		jw.write('"file_path":"${cn.file_path}",')
+		jw.write('"attrs":{')
+		mut j := 0
+		for n, v in cn.attrs {
+			jw.write('"$n":"$v"')
+			if j < cn.attrs.len-1 { jw.write(',') }
+			j++
+		}
+		jw.write('}')
+		jw.write('}')
+		if i < dcs.contents.len-1 { jw.write(',') }
 	}
-	jw.writeln('\n\t],')
-	jw.write('\t"generator": "vdoc",\n\t"time_generated": "${dcs.time_generated.str()}"\n}')
+	jw.write('],"generator":"vdoc","time_generated":"${dcs.time_generated.str()}"}')
 	return jw.str()
 }
 
@@ -648,30 +658,48 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] }
 	for dirpath in dirs {
 		cfg.vprintln('Generating docs for ${dirpath}...')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
-			mut err_msg := err
-			if errcode == 1 {
-				mod_list := get_modules_list(cfg.input_path, []string{})
-				println('Available modules:\n==================')
-				for mod in mod_list {
-					println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+		if cfg.local_mode && !cfg.is_multi {
+			dcs := doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
+				mut err_msg := err
+				if errcode == 1 {
+					mod_list := get_modules_list(cfg.input_path, []string{})
+					println('Available modules:\n==================')
+					for mod in mod_list {
+						println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+					}
+					err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 				}
-				err_msg += ' Use the `-m` flag if you are generating docs of a directory containing multiple modules.'
+				eprintln(err_msg)
+				exit(1)
 			}
-			eprintln(err_msg)
-			exit(1)
-		}
-		if dcs.contents.len == 0 { continue }
-		if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
-			readme_contents := cfg.get_readme(dirpath)
-			dcs.head.comment = readme_contents
-		}
-		if cfg.pub_only {
-			for i, c in dcs.contents {
-				dcs.contents[i].content = c.content.all_after('pub ')
+			if dcs.contents.len == 0 { continue }
+			cfg.docs << dcs
+		} else {
+			mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
+				mut err_msg := err
+				if errcode == 1 {
+					mod_list := get_modules_list(cfg.input_path, []string{})
+					println('Available modules:\n==================')
+					for mod in mod_list {
+						println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
+					}
+					err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
+				}
+				eprintln(err_msg)
+				exit(1)
 			}
+			if dcs.contents.len == 0 { continue }
+			if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
+				readme_contents := cfg.get_readme(dirpath)
+				dcs.head.comment = readme_contents
+			}
+			if cfg.pub_only {
+				for i, c in dcs.contents {
+					dcs.contents[i].content = c.content.all_after('pub ')
+				}
+			}
+			cfg.docs << dcs
 		}
-		cfg.docs << dcs
 	}
 	if 'vlib' in cfg.input_path {
 		mut docs := cfg.docs.filter(it.head.name == 'builtin')
@@ -854,6 +882,11 @@ fn main() {
 			'-all' {
 				cfg.pub_only = false
 			}
+			'-filename' {
+				cfg.local_mode = true
+				cfg.local_filename = cmdline.option(current_args, '-filename', '')
+				i++
+			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
 				allowed_str := allowed_formats.join(', ')
@@ -880,6 +913,15 @@ fn main() {
 			}
 			'-open' {
 				cfg.open_docs = true
+			}
+			'-pos' {
+				if !cfg.local_mode {
+					eprintln('vdoc: `-pos` is only allowed with `-filename` flag.')
+					exit(1)
+				}
+
+				cfg.local_pos = cmdline.option(current_args, '-pos', '').int()
+				i++
 			}
 			'-p' {
 				s_port := cmdline.option(current_args, '-o', '')
