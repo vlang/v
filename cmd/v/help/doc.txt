@@ -1,8 +1,9 @@
 Usage:
-  v doc [flags] [module_name / folder / V file]
+  v doc [flags] [module_name / folder / V file] [symbol name]
 
 Examples:
   v doc os
+  v doc os File
   v doc -o math.html math
   v doc -m -f html vlib/
 
@@ -18,6 +19,8 @@ Options:
   -o              Specifies the output file/folder path where to store the generated docs.
   -readme         Include README.md to docs if present.
   -v              Enables verbose logging. For debugging purposes.
+  -filename       Specifies the specific file to document.
+  -pos            Specifies the position. Used with `-filename`.
 
 For HTML mode:
   -inline-assets  Embeds the contents of the CSS and JS assets into the webpage directly.
