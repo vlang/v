@@ -170,6 +170,7 @@ enum LabelKind {
 	tile
 	victory
 	game_over
+	score_end
 }
 
 enum Direction {
@@ -381,11 +382,17 @@ fn (mut app App) move(d Direction) {
 		.up    { old.transpose().to_left().transpose() }
 		.down  { old.transpose().hmirror().to_left().hmirror().transpose() }
 	}
-	if old.shifts != new.shifts {
-		app.moves++
-		app.board = new
-		app.undo << old
-		app.new_random_tile()
+	// If the board hasn't changed, it's an illegal move, don't allow it.
+	for x in 0..4 {
+		for y in 0..4 {
+			if old.field[x][y] != new.field[x][y] {
+				app.moves++
+				app.board = new
+				app.undo << old
+				app.new_random_tile()
+				return
+			}
+		}
 	}
 }
 
@@ -423,6 +430,13 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 				align: .center
 				vertical_align: .middle
 				size: app.ui.font_size * 2
+			}
+		} .score_end {
+			return {
+				color: app.theme.padding_color
+				align: .center
+				vertical_align: .middle
+				size: app.ui.font_size
 			}
 		}
 	}
@@ -473,11 +487,13 @@ fn (app &App) draw() {
 	// TODO: Make transparency work in `gg`
 	if app.state == .over {
 		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(15, 0, 0, 44))
-		app.gg.draw_text(ww / 2, wh / 2, 'Game Over', app.label_format(.game_over))
+		app.gg.draw_text(ww / 2, wh / 3, 'Game Over', app.label_format(.game_over))
+		app.gg.draw_text(ww / 2, wh * 2 / 3, 'Score: $app.board.points', app.label_format(.score_end))
 	}
 	if app.state == .victory {
 		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(0, 15, 0, 44))
-		app.gg.draw_text(ww / 2, wh / 2, 'Victory!', app.label_format(.victory))
+		app.gg.draw_text(ww / 2, wh / 3, 'Victory!', app.label_format(.victory))
+		app.gg.draw_text(ww / 2, wh * 2 / 3, 'Score: $app.board.points', app.label_format(.score_end))
 	}
 }
 
