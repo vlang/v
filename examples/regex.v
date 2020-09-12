@@ -113,15 +113,11 @@ fn main() {
 	println('enter `exit` to quit\n')
 	for {
 		cnt++
-		print('[$cnt] ')
-		print('enter source string: ')
-		src := os.get_line()
+		src := os.input('[$cnt] enter source string: ')
 		if src == 'exit' {
 			break
 		}
-		print('[$cnt] ')
-		print('enter pattern string: ')
-		pat := os.get_line()
+		pat := os.input('[$cnt] enter pattern string: ')
 		if pat == 'exit' {
 			break
 		}
