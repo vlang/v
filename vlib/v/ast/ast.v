@@ -850,6 +850,7 @@ pub:
 	pos   token.Position
 }
 
+/*
 // `or { ... }`
 pub struct OrExpr2 {
 pub:
@@ -858,7 +859,7 @@ pub:
 	kind      OrKind
 	pos       token.Position
 }
-
+*/
 pub struct Assoc {
 pub:
 	var_name string

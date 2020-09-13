@@ -1347,12 +1347,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// }
 	// int pos = *(int*)_t190.data;
 	mut gen_or := false
+	mut tmp_opt := ''
 	if g.pref.autofree && assign_stmt.op == .decl_assign && assign_stmt.left_types.len == 1 &&
 		assign_stmt.right[0] is ast.CallExpr {
 		call_expr := assign_stmt.right[0] as ast.CallExpr
 		if call_expr.or_block.kind != .absent {
 			styp := g.typ(call_expr.return_type.set_flag(.optional))
-			tmp_opt := g.new_tmp_var()
+			tmp_opt = g.new_tmp_var()
 			g.write('/*AF opt*/$styp $tmp_opt = ')
 			g.expr(assign_stmt.right[0])
 			gen_or = true
@@ -1631,7 +1632,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			unwrap_optional := !var_type.has_flag(.optional) && val_type.has_flag(.optional)
 			if unwrap_optional {
+				// Unwrap the optional now that the testing code has been prepended.
+				// `pos := s.index(...
+				// `int pos = *(int)_t10.data;`
 				g.write('*($styp*)')
+				if g.pref.autofree {
+					g.write(tmp_opt + '.data/*FF*/')
+					g.right_is_opt = false
+					g.is_assign_rhs = false
+					if g.inside_ternary == 0 && !assign_stmt.is_simple {
+						g.writeln(';')
+					}
+					return
+				}
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
@@ -1663,7 +1676,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				}
 			}
 			if unwrap_optional {
-				g.write('.data')
+				if g.pref.autofree {
+					// g.write(tmp_opt + '/*FF*/')
+				} else {
+					g.write('.data')
+				}
 			}
 			if str_add {
 				g.write(')')

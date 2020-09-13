@@ -554,7 +554,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			// g.insert_before_stmt('string $t = $str_expr; // new3. to free $i ')
 			cur_line = g.go_before_stmt(0)
 			// println('cur line ="$cur_line"')
-			g.writeln('string $t = $str_expr; // new3. to free $i ')
+			g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
 			// Now free the tmp arg vars right after the function call
 			g.strs_to_free << 'string_free(&$t);'
 		}
