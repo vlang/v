@@ -1439,9 +1439,13 @@ fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position
 		}
 		c.error("`$styp` doesn't implement method `$imethod.name`", pos)
 	}
-	mut inter_info := inter_sym.info as table.Interface
-	if typ !in inter_info.types && typ_sym.kind != .interface_ {
-		inter_info.types << typ
+	match mut inter_sym.info as inter_info {
+		table.Interface {
+			if typ !in inter_info.types && typ_sym.kind != .interface_ {
+				inter_info.types << typ
+			}
+		}
+		else {}
 	}
 	return true
 }
