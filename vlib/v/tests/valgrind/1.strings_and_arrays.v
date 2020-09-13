@@ -79,13 +79,11 @@ fn optional_str() {
 	}
 	println(pos2 + 1)
 	// optional method args must be freed
-	/*
 	pos := s.index('query: $q') or {
 		println('exiting')
 		return
 	}
 	println(pos + 1)
-	*/
 }
 
 fn main() {

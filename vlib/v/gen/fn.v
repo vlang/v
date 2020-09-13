@@ -419,6 +419,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
+	g.generate_tmp_autofree_arg_vars(node, name)
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
