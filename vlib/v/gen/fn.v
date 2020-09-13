@@ -533,6 +533,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
+	// g.generate_tmp_autofree_arg_vars()
 	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&

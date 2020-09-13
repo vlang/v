@@ -475,7 +475,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree .
+#        ../v -autofree .
         cd ..
 
   # TODO: ACTIVATE THIS AFTER MERGE

@@ -71,12 +71,21 @@ fn opt(s string) ?int {
 fn optional_str() {
 	q := 'select'
 	s := 'x'
+	// optional fn args must be freed
 	pos2 := opt('query:$q') or {
 		// pos := s.index('query: $q') or {
 		println('exiting')
 		return
 	}
-	println(pos2)
+	println(pos2 + 1)
+	// optional method args must be freed
+	/*
+	pos := s.index('query: $q') or {
+		println('exiting')
+		return
+	}
+	println(pos + 1)
+	*/
 }
 
 fn main() {
