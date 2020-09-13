@@ -1372,9 +1372,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		*/
 		if !c.check_types(typ, arg.typ) {
 			// str method, allow type with str method if fn arg is string
-			if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-				continue
-			}
+			// Passing an int or a string array produces a c error here
+			// Deleting this condition results in propper V error messages
+			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
+			// 	continue
+			// }
+
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 				continue
 			}
