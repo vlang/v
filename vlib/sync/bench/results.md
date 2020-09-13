@@ -18,7 +18,7 @@ nobj .... number of objects to pass thru the channel
 
 10000000 Objects transfered, results in Objects/µs
 
-| nsend | nrec | buflen | **V (gcc -O2)** | **V (clang)** | **V (tcc)** | **Go (glang)** | **Go (gccgo -O2)** |
+| nsend | nrec | buflen | **V (gcc -O2)** | **V (clang)** | **V (tcc)** | **Go (golang)** | **Go (gccgo -O2)** |
 | :---: | :---:| :---:  |      :---:      |    :---:      |    :---:    |     :---:      |      :---:         |
 |   1   |   1  |    0   |      1.97       |    1.63       |    2.08     |      4.65      |       0.56         |
 |   1   |   1  |   100  |      3.05       |    2.29       |    1.93     |     18.90      |       6.08         |
@@ -38,7 +38,7 @@ nobj .... number of objects to pass thru the channel
 
 10000000 Objects transfered, results in Objects/µs
 
-| nsend | nrec | buflen | **V (gcc -O2)** | **Go (glang)** |
+| nsend | nrec | buflen | **V (gcc -O2)** | **Go (golang)** |
 | :---: | :---:| :---:  |      :---:      |     :---:      |
 |   1   |   1  |    0   |      0.37       |     0.21       |
 |   1   |   1  |   100  |      1.03       |     0.74       |
