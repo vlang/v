@@ -191,6 +191,9 @@ pub fn mv_by_cp(source string, target string) ? {
 // NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
 pub fn vfopen(path, mode string) ?&C.FILE {
+	if path.len == 0 {
+		return error('vfopen called with ""')
+	}
 	mut fp := voidptr(0)
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
