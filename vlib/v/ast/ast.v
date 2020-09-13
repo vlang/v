@@ -127,6 +127,7 @@ pub struct StructField {
 pub:
 	name             string
 	pos              token.Position
+	type_pos         token.Position
 	comments         []Comment
 	default_expr     Expr
 	has_default_expr bool

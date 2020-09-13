@@ -49,11 +49,39 @@ fn str_replace() {
 	println(r)
 }
 
+fn reassign_str() {
+	mut s := 'a' + 'b'
+	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
+}
+
+fn match_expr() string {
+	x := 2
+	res := match x {
+		1 { 'one' }
+		2 { 'two' }
+		else { 'unknown' }
+	}
+	return res
+}
+
+/*
+fn optional_str() {
+	q := 'select'
+	s := 'x'
+	pos := s.index('query: $q') or {
+		println('exiting')
+		return
+	}
+	println(pos)
+}
+*/
 fn main() {
 	println('start')
 	foo()
 	str_tmp_expr()
 	str_inter()
+	match_expr()
+	reassign_str()
 	// str_replace()
 	println('end')
 }

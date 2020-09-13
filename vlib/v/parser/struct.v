@@ -152,12 +152,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			// println(p.tok.position())
 			typ := p.parse_type()
-			// field_pos := field_start_pos.extend(p.tok.position())
-			field_pos := token.Position{
-				line_nr: field_start_pos.line_nr
-				pos: field_start_pos.pos
-				len: p.tok.position().pos - field_start_pos.pos
-			}
+			type_pos := p.prev_tok.position()
+			field_pos := field_start_pos.extend(type_pos)
 			// if name == '_net_module_s' {
 			// if name.contains('App') {
 			// s := p.table.get_type_symbol(typ)
@@ -197,6 +193,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
+				type_pos: type_pos
 				typ: typ
 				comments: comments
 				default_expr: default_expr

@@ -2,9 +2,11 @@ struct Abc {
 mut:
 	val string
 }
+
 struct Xyz {
 	name string
 }
+
 type Alphabet = Abc | Xyz
 
 fn test_if_smartcast() {
@@ -15,14 +17,14 @@ fn test_if_smartcast() {
 }
 
 fn test_mutable() {
-	mut x := Alphabet(Abc{'test'})
+	mut x := Alphabet(Abc{'original'})
 	if x is Abc {
-		y := Abc{}
-		mut mx := x
-		mx = &y
-		assert mx == &y
-		assert u64(mx) == u64(&y)
-		assert u64(x) != u64(&y)
+		assert x.val == 'original'
+		x.val = 'changed'
+		assert x.val == 'changed'
+	}
+	if x is Abc {
+		assert x.val == 'changed'
 	}
 }
 
@@ -43,39 +45,80 @@ fn test_as_cast() {
 	}
 }
 
-struct Test {
+struct Container {
 	abc Alphabet
 }
 
 fn test_mutable_with_struct() {
-	mut x := Test{Abc{'test'}}
-	if x.abc is Abc as test {
-		mut ttt := test
-		assert u64(ttt) == u64(ttt)
-		ttt.val = 'test'
-		assert ttt.val == 'test'
+	mut c := Container{Abc{'original'}}
+	if c.abc is Abc as abc {
+		assert abc.val == 'original'
+		mut mabc := abc
+		assert mabc.val == 'original'
+		// NB: since `abc` is now an ordinary struct,
+		// `mabc` will be a local copy. Changing it,
+		// would NOT affect abc:
+		mabc.val = 'xyz'
+		assert abc.val == 'original'
+	}
+	if c.abc is Abc as another {
+		// NB: in this second smart cast, `another` is
+		// the same wrapped value. It was not changed
+		// in the first smart cast at all:
+		assert another.val == 'original'
+		// ... and now for something completely different ...
+		unsafe {
+			mut mabc := &another
+			mabc.val = '12345'
+		}
+	}
+	if c.abc is Abc as changed {
+		assert changed.val == '12345'
 	}
 }
 
 fn test_as_cast_with_struct() {
-	x := Test{Abc{'test'}}
+	x := Container{Abc{'test'}}
 	if x.abc is Abc as test {
 		assert test.val == 'test'
 	}
 }
 
-struct CellStr { str string }
-struct CellInt { itg i64 }
-struct CellFloat { flt f64 }
-type Cell = CellStr | CellInt | CellFloat
+struct CellStr {
+	str string
+}
+
+struct CellInt {
+	itg i64
+}
+
+struct CellFloat {
+	flt f64
+}
+
+struct CellU32 {
+	u u32
+}
+
+type Cell = CellFloat | CellInt | CellStr | CellU32
+
 fn test_mutability() {
 	my_str := 'the quick brown fox jumps over the lazy dog.'
 	my_itg := -1234567890
 	my_flt := 3.14159265358979323846
-	my_u32 := u32(4294967296)
-	cell_str := CellStr{ str: my_str }
-	cell_itg := CellInt{ itg: my_itg }
-	cell_flt := CellFloat{ flt: my_flt }
+	my_u32 := u32(4294967295)
+	cell_str := CellStr{
+		str: my_str
+	}
+	cell_itg := CellInt{
+		itg: my_itg
+	}
+	cell_flt := CellFloat{
+		flt: my_flt
+	}
+	cell_u32 := CellU32{
+		u: my_u32
+	}
 	mut cell := Cell{}
 	cell = cell_str
 	if cell is CellStr {
@@ -84,5 +127,13 @@ fn test_mutability() {
 	cell = cell_itg
 	if cell is CellInt {
 		println('$cell.itg')
+	}
+	cell = cell_flt
+	if cell is CellFloat {
+		println('$cell.flt')
+	}
+	cell = cell_u32
+	if cell is CellU32 {
+		println('$cell.u')
 	}
 }
