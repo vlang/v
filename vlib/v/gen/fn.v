@@ -533,34 +533,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
-	// g.generate_tmp_autofree_arg_vars()
-	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
-	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
-		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
-	// mut cur_line := ''
-	if free_tmp_arg_vars {
-		free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
-		g.tmp_count2++
-		for i, arg in node.args {
-			if !arg.is_tmp_autofree {
-				continue
-			}
-			free_tmp_arg_vars = true
-			// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
-			fn_name := node.name.replace('.', '_')
-			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-			g.called_fn_name = name
-			str_expr := g.write_expr_to_string(arg.expr)
-			g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
-			// cur_line = g.go_before_stmt(0)
-			// println('cur line ="$cur_line"')
-			// g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
-			// Now free the tmp arg vars right after the function call
-			g.strs_to_free << 'string_free(&$t);'
-		}
-		// g.strs_to_free << (';')
-	}
+	g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
 		typ := node.args[0].typ
@@ -638,6 +611,36 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	g.is_c_call = false
 	g.is_json_fn = false
+}
+
+fn (mut g Gen) generate_tmp_autofree_arg_vars(node ast.CallExpr, name string) {
+	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
+	// like `foo(get_string())` or `foo(a + b)`
+	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
+		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	// mut cur_line := ''
+	if free_tmp_arg_vars {
+		free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
+		g.tmp_count2++
+		for i, arg in node.args {
+			if !arg.is_tmp_autofree {
+				continue
+			}
+			free_tmp_arg_vars = true
+			// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
+			fn_name := node.name.replace('.', '_') // can't use name...
+			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+			g.called_fn_name = name
+			str_expr := g.write_expr_to_string(arg.expr)
+			g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
+			// cur_line = g.go_before_stmt(0)
+			// println('cur line ="$cur_line"')
+			// g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
+			// Now free the tmp arg vars right after the function call
+			g.strs_to_free << 'string_free(&$t);'
+		}
+		// g.strs_to_free << (';')
+	}
 }
 
 // fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type, tmp_arg_vars_to_free []string) {
