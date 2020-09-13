@@ -538,7 +538,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
 		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
-	mut cur_line := ''
+	// mut cur_line := ''
 	if free_tmp_arg_vars {
 		free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
 		g.tmp_count2++
@@ -552,10 +552,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 			g.called_fn_name = name
 			str_expr := g.write_expr_to_string(arg.expr)
-			// g.insert_before_stmt('string $t = $str_expr; // new3. to free $i ')
-			cur_line = g.go_before_stmt(0)
+			g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
+			// cur_line = g.go_before_stmt(0)
 			// println('cur line ="$cur_line"')
-			g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
+			// g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
 			// Now free the tmp arg vars right after the function call
 			g.strs_to_free << 'string_free(&$t);'
 		}
@@ -623,10 +623,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		g.write(')')
 	} else {
 		// Simple function call
-		if free_tmp_arg_vars {
-			// g.writeln(';')
-			g.write(cur_line + ' /* <== af cur line*/')
-		}
+		// if free_tmp_arg_vars {
+		// g.writeln(';')
+		// g.write(cur_line + ' /* <== af cur line*/')
+		// }
 		g.write('${g.get_ternary_name(name)}(')
 		if g.is_json_fn {
 			g.write(json_obj)
