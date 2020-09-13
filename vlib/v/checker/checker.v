@@ -1386,9 +1386,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
 			// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
-			// 	continue
+			// continue
 			// }
-
 			if typ_sym.kind == .void && arg_typ_sym.kind == .string {
 				continue
 			}
