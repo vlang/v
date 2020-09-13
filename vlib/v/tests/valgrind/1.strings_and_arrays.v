@@ -70,7 +70,7 @@ fn opt(s string) ?int {
 
 fn optional_str() {
 	q := 'select'
-	s := 'x'
+	s := 'query: select'
 	// optional fn args must be freed
 	pos2 := opt('query:$q') or {
 		// pos := s.index('query: $q') or {
@@ -93,7 +93,7 @@ fn main() {
 	str_inter()
 	match_expr()
 	reassign_str()
-	// optional_str()
+	optional_str()
 	// str_replace()
 	println('end')
 }
