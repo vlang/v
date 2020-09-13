@@ -11,11 +11,20 @@ pub const (
 // read_bytes returns all bytes read from file in `path`.
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')?
-	C.fseek(fp, 0, C.SEEK_END)
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	if cseek != 0 {
+		return error('fseek failed')
+	}
 	fsize := C.ftell(fp)
+	if fsize < 0 {
+		return error('ftell failed')
+	}
 	C.rewind(fp)
-	mut res := [byte(`0`)].repeat(fsize)
+	mut res := []byte{len: fsize}
 	nr_read_elements := C.fread(res.data, fsize, 1, fp)
+	if nr_read_elements == 0 && fsize > 0 {
+		return error('fread failed')
+	}
 	C.fclose(fp)
 	return res[0..nr_read_elements * fsize]
 }
@@ -26,13 +35,23 @@ pub fn read_file(path string) ?string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)?
 	defer { C.fclose(fp) }
-	C.fseek(fp, 0, C.SEEK_END)
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	if cseek != 0 {
+		return error('fseek failed')
+	}
 	fsize := C.ftell(fp)
+	if fsize < 0 {
+		return error('ftell failed')
+	}
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		C.fread(str, fsize, 1, fp)
+		nelements := C.fread(str, fsize, 1, fp)
+		if nelements == 0 && fsize > 0 {
+			free(str)
+			return error('fread failed')
+		}
 		str[fsize] = 0
 		return str.vstring_with_len(fsize)
 	}
