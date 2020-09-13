@@ -99,6 +99,7 @@ mut:
 	sql_side              SqlExprSide // left or right, to distinguish idents in `name == name`
 	inside_vweb_tmpl      bool
 	inside_return         bool
+	inside_or_block       bool
 	strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
@@ -728,7 +729,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
-		if g.pref.autofree {
+		if g.pref.autofree && !g.inside_or_block {
+			// TODO remove the inside_or_block hack. strings are not freed in or{} atm
 			if g.strs_to_free.len != 0 {
 				g.writeln('// strs_to_free:')
 				for s in g.strs_to_free {
@@ -4337,6 +4339,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	is_none_ok := mr_styp == 'void'
+	g.inside_or_block = true
+	defer {
+		g.inside_or_block = false
+	}
 	g.writeln(';') // or')
 	if is_none_ok {
 		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
