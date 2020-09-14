@@ -2185,8 +2185,8 @@ Module {
 
 * Add these lines to the top of your module:
 ```v
-#flag -I @VROOT/c
-#flag @VROOT/c/implementation.o
+#flag -I @VROOT/modules/c
+#flag @VROOT/modules/c/implementation.o
 #include "header.h"
 ```
 NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
@@ -2196,7 +2196,7 @@ modules under your @VROOT, by just naming them.
 
 The instructions above will make V look for an compiled .o file in your module `folder/c/implementation.o`.
 If V finds it, the .o file will get linked to the main executable, that used the module.
-If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
+If it does not find it, V assumes that there is a `@VROOT/modules/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
 
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
