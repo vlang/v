@@ -238,6 +238,9 @@ Unlike most other languages, V only allows defining variables in functions.
 Global (module level) variables are not allowed. There's no global state in V
 (see [Pure functions by default](#pure-functions-by-default) for details).
 
+For consistency across different code bases, all variable and function names
+must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
+
 ### Mutable variables
 
 ```v
