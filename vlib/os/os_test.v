@@ -142,11 +142,19 @@ fn test_write_and_read_bytes() {
 	// read_bytes_at with second parameter zeroed (size, 0).
 	rbytes := file_read.read_bytes(5)
 
-	file_read.close()
 	// eprintln('rbytes: $rbytes')
 	// eprintln('payload: $payload')
 	assert rbytes == payload
 
+	// check that trying to read data from EOF doesn't error and returns 0
+	mut a := []byte{len: 5}
+	nread := file_read.read_bytes_into(5, a) or {
+		eprintln(err)
+		int(-1)
+	}
+	assert nread == 0
+
+	file_read.close()
 	// We finally delete the test file.
 	os.rm(file_name)
 }
