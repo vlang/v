@@ -352,9 +352,9 @@ println(s) // "hello world"
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 
-Strings are immutable by default which means their values cannot be changed like how it is in Go and Java.
+Just like Go and Java, strings are immutable which means their values cannot be changed.
 
-The following code will raise an error if you try to do so:
+The following code will raise an error:
 
 ```v
 fn main() {
