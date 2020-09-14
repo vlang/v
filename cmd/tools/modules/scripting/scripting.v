@@ -1,6 +1,11 @@
 module scripting
 
 import os
+import term
+
+const (
+	term_colors = term.can_show_color_on_stdout()
+)
 
 pub fn set_verbose(on bool) {
 	// setting a global here would be the obvious solution,
@@ -13,24 +18,30 @@ pub fn set_verbose(on bool) {
 	}
 }
 
+pub fn cprintln(message string) {
+	mut omessage := message
+	omessage = if term_colors { term.green(omessage) } else { omessage }
+	println(omessage)
+}
+
 pub fn verbose_trace(label string, message string) {
 	if os.getenv('VERBOSE').len > 0 {
 		slabel := 'scripting.${label}'
-		println('# ${slabel:-25s} : $message')
+		cprintln('# ${slabel:-25s} : $message')
 	}
 }
 
 pub fn verbose_trace_exec_result(x os.Result) {
 	if os.getenv('VERBOSE').len > 0 {
-		println('#   cmd.exit_code : ${x.exit_code.str():-4s}  cmd.output:')
-		println('# ----------------------------------- #')
+		cprintln('#   cmd.exit_code : ${x.exit_code.str():-4s}  cmd.output:')
+		cprintln('# ----------------------------------- #')
 		mut lnum := 1
 		lines := x.output.split_into_lines()
 		for line in lines {
-			println('# ${lnum:3d}: $line')
+			cprintln('# ${lnum:3d}: $line')
 			lnum++
 		}
-		println('# ----------------------------------- #')
+		cprintln('# ----------------------------------- #')
 	}
 }
 

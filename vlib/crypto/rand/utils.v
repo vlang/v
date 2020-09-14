@@ -19,9 +19,7 @@ pub fn int_u64(max u64) ?u64 {
 	}
 	mut n := u64(0)
 	for {
-		mut bytes := read(k) or {
-			return error(err)
-		}
+		mut bytes := read(k)?
 		bytes[0] &= byte(int(u64(1)<<b) - 1)
 		x := bytes_to_u64(bytes)
 		n = x[0]

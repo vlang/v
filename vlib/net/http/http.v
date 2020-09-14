@@ -35,7 +35,7 @@ pub mut:
 	headers    map[string]string
 	cookies    map[string]string
 	user_agent string = 'v.http'
-	verbose    bool = false
+	verbose    bool
 }
 
 pub struct Response {
@@ -147,9 +147,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		user_ptr: 0
 		verbose: config.verbose
 	}
-	res := req.do() or {
-		return error(err)
-	}
+	res := req.do()?
 	return res
 }
 
@@ -179,9 +177,7 @@ fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
 }
 
 fn build_url_from_fetch(_url string, config FetchConfig) ?string {
-	mut url := urllib.parse(_url) or {
-		return error(err)
-	}
+	mut url := urllib.parse(_url)?
 	params := config.params
 	if params.keys().len == 0 {
 		return url.str()
@@ -242,9 +238,7 @@ pub fn (req &Request) do() ?Response {
 		if no_redirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl) or {
-			return error(err)
-		}
+		qresp := req.method_and_url_to_response(req.method, rurl)?
 		resp = qresp
 		if resp.status_code !in [301, 302, 303, 307, 308] {
 			break
@@ -283,15 +277,11 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path) or {
-			return error(err)
-		}
+		res := req.ssl_do(nport, method, host_name, path)?
 		return res
 	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do(nport, method, host_name, path) or {
-			return error(err)
-		}
+		res := req.http_do(nport, method, host_name, path)?
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
@@ -410,12 +400,10 @@ pub fn escape(s string) string {
 }
 
 fn (req &Request) http_do(port int, method Method, host_name, path string) ?Response {
-	rbuffer := [bufsize]byte
+	rbuffer := [bufsize]byte{}
 	mut sb := strings.new_builder(100)
 	s := req.build_request_headers(method, host_name, path)
-	client := net.dial(host_name, port) or {
-		return error(err)
-	}
+	client := net.dial(host_name, port)?
 	client.send(s.str, s.len) or {
 	}
 	for {

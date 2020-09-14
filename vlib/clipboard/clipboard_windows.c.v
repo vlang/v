@@ -133,7 +133,9 @@ fn to_wide(text string) &C.HGLOBAL {
     if buf != C.HGLOBAL(C.NULL) {
         mut locked := &u16(C.GlobalLock(buf))
         C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1, locked, len_required)
-        locked[len_required - 1] = u16(0)
+        unsafe {
+            locked[len_required - 1] = u16(0)
+        }
         C.GlobalUnlock(buf)
     }
     return buf

@@ -11,20 +11,19 @@ pub fn (c Color) str() string {
 fn test_match_integers() {
 	mut a := 3
 	mut b := 0
-	match a {
-		2 {
-			println('two')
-		}
-		3 {
-			println('three')
-			b = 3
-		}
-		4 {
-			println('four')
-		}
-		else {
-			println('???')
-		}
+	match a
+	2 {
+		println('two')
+	}
+	3 {
+		println('three')
+		b = 3
+	}
+	4 {
+		println('four')
+	}
+	else {
+		println('???')
 	}
 	assert b == 3
 	assert match 2 {
@@ -117,6 +116,28 @@ fn test_match_enums() {
 		}
 	}
 	assert b == .blue
+}
+
+struct Counter {
+mut:
+	val int
+}
+
+fn (mut c Counter) next() int {
+	c.val++
+	return c.val
+}
+
+fn test_method_call() {
+	mut c := Counter{
+		val: 1
+	}
+	assert match c.next() {
+		1 { false }
+		2 { true }
+		3 { false }
+		else { false }
+	}
 }
 
 type Sum = A1 | B1

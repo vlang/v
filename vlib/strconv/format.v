@@ -77,7 +77,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 	m_sgn_flag := false
 	mut sgn        := 1
-	mut b          := [26]byte
+	mut b          := [26]byte{}
 	mut d_pos      := 1
 	mut i          := 0
 	mut i1         := 0
@@ -128,7 +128,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 	// allocate exp+32 chars for the return string
 	//mut res := []byte{len:exp+32,init:`0`}
-	mut res := [`0`].repeat(exp+32) // TODO: Slow!! is there other possibilities to allocate this?
+	mut res := []byte{len: exp+32, init: 0}
 	mut r_i := 0  // result string buffer index
 
 	//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -182,7 +182,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 		}
 		res[r_i] = 0
 		//println("result: [${tos(&res[0],r_i)}]")
-		return tos(&res[0],r_i)
+		return tos(res.data, r_i)
 	} else {
 		if dec_digit > 0 {
 			mut c := 0
@@ -193,7 +193,7 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 			}
 			res[r_i] = 0
 		}
-		return tos(&res[0],r_i)
+		return tos(res.data, r_i)
 	}
 }
 
@@ -203,13 +203,13 @@ pub fn f64_to_str_lnd(f f64, dec_digit int) string {
 
 */
 pub struct BF_param {
-	pad_ch       byte       = ` `     // padding char
+	pad_ch       byte       = byte(` `)     // padding char
 	len0         int        = -1      // default len for whole the number or string
 	len1         int        = 6       // number of decimal digits, if needed
 	positive     bool       = true    // mandatory: the sign of the number passed
-	sign_flag    bool       = false   // flag for print sign as prefix in padding
+	sign_flag    bool                 // flag for print sign as prefix in padding
 	allign       Align_text = .right  // alignment of the string
-	rm_tail_zero bool       = false   // remove the tail zeros from floats
+	rm_tail_zero bool                 // remove the tail zeros from floats
 }
 
 pub fn format_str(s string, p BF_param) string {
@@ -438,7 +438,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut len0         := -1               // forced length, if -1 free length
 	mut len1         := -1               // decimal part for floats
 	def_len1         := 6                // default value for len1
-	mut pad_ch       := ` `              // pad char
+	mut pad_ch       := byte(` `)              // pad char
 	mut th_separator := false            // thousands separator flag
 
 	// prefix chars for Length field

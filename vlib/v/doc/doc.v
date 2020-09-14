@@ -14,7 +14,7 @@ import v.util
 
 pub struct Doc {
 pub mut:
-	input_path     string = ''
+	input_path     string
 	prefs          &pref.Preferences = &pref.Preferences{}
 	table          &table.Table = &table.Table{}
 	pub_only       bool = true
@@ -34,10 +34,10 @@ pub:
 pub struct DocNode {
 pub mut:
 	name      string
-	content   string = ''
+	content   string
 	comment   string
 	pos       DocPos = DocPos{-1, -1}
-	file_path string = ''
+	file_path string
 	attrs     map[string]string
 }
 
@@ -60,29 +60,29 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
-			//			break
+			// break
 		}
 		mut cmt_content := cmt.text.trim_left('|')
 		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
 			// if cmt_content.len == 0 {
-			// 	continue
+			// continue
 			// }
 			// mut new_cmt_content := ''
 			// mut is_codeblock := false
 			// // println(cmt_content)
 			// lines := cmt_content.split_into_lines()
 			// for j, line in lines {
-			// 	trimmed := line.trim_space().trim_left(cmt_prefix)
-			// 	if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
-			// 		new_cmt_content += line + '\n'
-			// 	} else if line.starts_with('```') {
-			// 		is_codeblock = !is_codeblock
-			// 		new_cmt_content += line + '\n'
-			// 	} else {
-			// 		new_cmt_content += trimmed + '\n'
-			// 	}
+			// trimmed := line.trim_space().trim_left(cmt_prefix)
+			// if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
+			// new_cmt_content += line + '\n'
+			// } else if line.starts_with('```') {
+			// is_codeblock = !is_codeblock
+			// new_cmt_content += line + '\n'
+			// } else {
+			// new_cmt_content += trimmed + '\n'
+			// }
 			// }
 			// return new_cmt_content
 		}
@@ -153,10 +153,18 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	}
 }
 
+pub fn new_vdoc_preferences() &pref.Preferences {
+	// vdoc should be able to parse as much user code as possible
+	// so its preferences should be permissive:
+	return &pref.Preferences{
+		enable_globals: true
+	}
+}
+
 pub fn new(input_path string) Doc {
 	mut d := Doc{
 		input_path: os.real_path(input_path)
-		prefs: &pref.Preferences{}
+		prefs: new_vdoc_preferences()
 		table: table.new_table()
 		head: DocNode{}
 		contents: []DocNode{}
@@ -219,6 +227,12 @@ pub fn (nodes []DocNode) find_nodes_with_attr(attr_name, value string) []DocNode
 	return subgroup
 }
 
+// get_parent_mod - return the parent mod name, in dot format.
+// It works by climbing up the folder hierarchy, until a folder,
+// that either contains main .v files, or a v.mod file is reached.
+// For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
+// it returns `x.websocket.tests`, because /languages/v/ has v.mod file in it.
+// NB: calling this is expensive, so keep the result, instead of recomputing it.
 fn get_parent_mod(dir string) ?string {
 	$if windows {
 		// windows root path is C: or D:
@@ -231,20 +245,23 @@ fn get_parent_mod(dir string) ?string {
 		}
 	}
 	base_dir := os.base_dir(dir)
-	if os.file_name(base_dir) in ['encoding', 'v'] && 'vlib' in base_dir {
-		return os.file_name(base_dir)
-	}
-	prefs := &pref.Preferences{}
-	files := os.ls(base_dir) or {
+	fname_base_dir := os.file_name(base_dir)
+	prefs := new_vdoc_preferences()
+	fentries := os.ls(base_dir) or {
 		[]string{}
+	}
+	files := fentries.filter(!os.is_dir(it))
+	if 'v.mod' in files {
+		// the top level is reached, no point in climbing up further
+		return ''
 	}
 	v_files := prefs.should_compile_filtered_files(base_dir, files)
 	if v_files.len == 0 {
 		parent_mod := get_parent_mod(base_dir) or {
-			''
+			return fname_base_dir
 		}
 		if parent_mod.len > 0 {
-			return parent_mod + '.' + os.file_name(base_dir)
+			return parent_mod + '.' + fname_base_dir
 		}
 		return error('No V files found.')
 	}
@@ -257,7 +274,7 @@ fn get_parent_mod(dir string) ?string {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or {
-		''
+		return fname_base_dir
 	}
 	if parent_mod.len > 0 {
 		return parent_mod + '.' + file_ast.mod.name
@@ -409,13 +426,8 @@ fn (mut d Doc) generate() ?Doc {
 				ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
 				ast.StructDecl { node.attrs['category'] = 'Structs' }
 				ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
-				ast.FnDecl {
-					node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') {
-						'Functions'
-					} else {
-						'Methods'
-					}
-				}
+				ast.FnDecl { node.attrs['category'] = if node.attrs['parent'] in ['void', ''] ||
+						!node.attrs.exists('parent') { 'Functions' } else { 'Methods' } }
 				else {}
 			}
 			d.contents << node
@@ -431,7 +443,7 @@ fn (mut d Doc) generate() ?Doc {
 	d.time_generated = time.now()
 	d.contents.sort_by_name()
 	d.contents.sort_by_category()
-	return d
+	return *d
 }
 
 pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {

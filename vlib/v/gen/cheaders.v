@@ -28,6 +28,30 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
+#if defined(__x86_64__) 
+#define __V_amd64  1
+#endif
+#if defined(__aarch64__) || defined(__arm64__)
+#define __V_aarch64  1
+#endif
+
+// Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
+#ifdef __GNUC__
+	#define __V_GCC__
+#endif    
+#ifdef __TINYC__
+	#undef __V_GCC__
+#endif
+#ifdef __cplusplus
+	#undef __V_GCC__
+#endif
+#ifdef __clang__
+	#undef __V_GCC__
+#endif
+#ifdef _MSC_VER
+	#undef __V_GCC__
+#endif
+
 #ifdef __TINYC__
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
@@ -208,7 +232,7 @@ $c_common_macros
 #endif
 
 // g_live_info is used by live.info()
-static void* g_live_info = NULL;
+void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
@@ -216,6 +240,20 @@ static void* g_live_info = NULL;
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map_exists(m, val)
+
+// these macros have corresponding implementations in builtin/int.v with different signedness
+#define array_i8_contains(a, b) array_byte_contains(a, (byte)(b))
+#define array_i16_contains(a, b) array_u16_contains(a, (u16)(b))
+#define array_u32_contains(a, b) array_int_contains(a, (int)(b))
+#define array_i64_contains(a, b) array_u64_contains(a, (u64)(b))
+#define array_rune_contains(a, b) array_int_contains(a, (int)(b))
+#define array_f32_contains(a, b) array_int_contains(a, *(int*)&((f32[]){(b)}))
+#define array_f64_contains(a, b) array_u64_contains(a, *(u64*)&((f64[]){(b)}))
+#ifdef TARGET_IS_64BIT
+#define array_voidptr_contains(a, b) array_u64_contains(a, (u64)(b))
+#else
+#define array_voidptr_contains(a, b) array_int_contains(a, (int)(b))
+#endif
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }
@@ -248,7 +286,7 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 
 //================================== GLOBALS =================================*/
 //byte g_str_buf[1024];
-static byte* g_str_buf;
+byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
 void _vinit();
@@ -397,6 +435,8 @@ typedef map map_int;
 typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
+
+typedef struct sync__Channel* chan;
 
 #ifndef __cplusplus
 	#ifndef bool

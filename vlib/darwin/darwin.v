@@ -8,13 +8,18 @@ module darwin
 
 struct C.NSString { }
 
+#include "@VROOT/vlib/darwin/darwin.m"
+
+fn C.nsstring2(s string) voidptr
+
 // macOS and iOS helpers
 //pub fn nsstring(s string) *C.NSString {
 pub fn nsstring(s string) voidptr {
+	return C.nsstring2(s)
 	// println('ns $s len=$s.len')
-	# return [ [ NSString alloc ] initWithBytesNoCopy:s.str  length:s.len
-	# encoding:NSUTF8StringEncoding freeWhenDone: false];
-	return 0
+	//# return [ [ NSString alloc ] initWithBytesNoCopy:s.str  length:s.len
+	//# encoding:NSUTF8StringEncoding freeWhenDone: false];
+	//return 0
 
 	//ns := C.alloc_NSString()
 	//return ns.initWithBytesNoCopy(s.str, length: s.len,
@@ -44,7 +49,7 @@ pub fn resource_path() string {
 	if conv_result == 0 {
 		panic('CFURLGetFileSystemRepresentation failed')
 	}
-	result := string(buffer)
+	result := unsafe { buffer.vstring() }
 	C.CFRelease(resource_dir_url)
 	return result
 }

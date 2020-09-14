@@ -2194,7 +2194,8 @@ tinfl_status tinfl_decompress(tinfl_decompressor *r,
             } else
               tree_cur = pTable->m_tree[-tree_cur - 1];
           }
-          tree_cur -= ((rev_code >>= 1) & 1);
+          rev_code >>= 1;
+          tree_cur -= (rev_code & 1);
           pTable->m_tree[-tree_cur - 1] = (mz_int16)sym_index;
         }
         if (r->m_type == 2) {
@@ -6142,7 +6143,7 @@ mz_bool mz_zip_writer_add_mem_ex(mz_zip_archive *pZip,
   if (!mz_zip_writer_validate_archive_name(pArchive_name))
     return MZ_FALSE;
 
-#ifndef MINIZ_NO_TIME
+#if !defined(MINIZ_NO_TIME) && !defined(MINIZ_NO_ARCHIVE_WRITING_APIS)
   {
     time_t cur_time;
     time(&cur_time);
@@ -6327,9 +6328,13 @@ mz_bool mz_zip_writer_add_file(mz_zip_archive *pZip, const char *pArchive_name,
     return MZ_FALSE;
 
   memset(&file_modified_time, 0, sizeof(file_modified_time));
+#if !defined(MINIZ_NO_TIME) && !defined(MINIZ_NO_ARCHIVE_WRITING_APIS)
+#ifndef MINIZ_NO_STDIO
   if (!mz_zip_get_file_modified_time(pSrc_filename, &file_modified_time))
     return MZ_FALSE;
+#endif
   mz_zip_time_t_to_dos_time(file_modified_time, &dos_time, &dos_date);
+#endif
 
   pSrc_file = MZ_FOPEN(pSrc_filename, "rb");
   if (!pSrc_file)

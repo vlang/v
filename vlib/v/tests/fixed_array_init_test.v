@@ -1,4 +1,4 @@
-fn test_fixed_array_init() {
+fn test_fixed_array_lit_init() {
 	a1 := ['1', '2', '3']!!
 	assert typeof(a1) == '[3]string'
 	assert '$a1' == "['1', '2', '3']"
@@ -30,4 +30,27 @@ fn test_fixed_array_init() {
 	mut d2 := [f32(1.1), 2.2, 3.3]!!
 	assert typeof(d2) == '[3]f32'
 	assert '$d2' == '[1.1, 2.2, 3.3]'
+}
+
+fn test_fixed_type_init() {
+	a := [2]int
+	assert a == [2]int
+	assert a == [0,0]!!
+	assert a == a
+	mut c := [3,3]!!
+	assert a != c
+	assert c == [3,3]!!
+	c = [2]int
+	assert a == c
+}
+
+fn test_fixed_custom_init() {
+	a := [2]byte{init: 7}
+	assert a == [byte(7), 7]!!
+
+	mut b := [3]int{}
+	assert b == [0,0,0]!!
+	// assign
+	b = [3]int{init:5}
+	assert b == [5,5,5]!!
 }

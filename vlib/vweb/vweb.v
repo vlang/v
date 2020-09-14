@@ -16,7 +16,7 @@ pub const (
 	header_server = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close = '${header_server}${header_connection_close}\r\n'
-	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\n${headers_close}404 Not Found'
+	http_404 = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500 = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types = {
 		'.css': 'text/css; charset=utf-8',
@@ -25,6 +25,7 @@ pub const (
 		'.html': 'text/html; charset=utf-8',
 		'.jpg': 'image/jpeg',
 		'.js': 'application/javascript',
+		'.json': 'application/json',
 		'.md': 'text/markdown; charset=utf-8',
 		'.pdf': 'application/pdf',
 		'.png': 'image/png',
@@ -42,6 +43,7 @@ mut:
 	static_files map[string]string
 	static_mime_types map[string]string
 	content_type string = 'text/plain'
+	status string = '200 OK'
 pub:
 	req http.Request
 	conn net.Socket
@@ -71,8 +73,9 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	ctx.done = true
 	mut sb := strings.new_builder(1024)
 	defer { sb.free() }
-	sb.write('HTTP/1.1 200 OK\r\nContent-Type: ') sb.write(mimetype)
-	sb.write('\r\nContent-Length: ')              sb.write(res.len.str())
+	sb.write('HTTP/1.1 ${ctx.status}')
+	sb.write('\r\nContent-Type: ${mimetype}')
+	sb.write('\r\nContent-Length: ${res.len}')
 	sb.write(ctx.headers)
 	sb.write('\r\n')
 	sb.write(headers_close)
@@ -132,7 +135,6 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 
 pub fn (mut ctx Context) set_cookie_old(key, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
-	//println('Set-Cookie $key=$val')
 	//ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
 	ctx.add_header('Set-Cookie', '${key}=${val}; HttpOnly')
 }
@@ -162,6 +164,14 @@ pub fn (ctx &Context) get_cookie(key string) ?string { // TODO refactor
 		return cookie.trim_space()
 	}
 	return error('Cookie not found')
+}
+
+pub fn (mut ctx Context) set_status(code int, desc string) {
+	if code < 100 || code > 599 {
+		ctx.status = '500 Internal Server Error'
+	} else {
+		ctx.status = '$code $desc'
+	}
 }
 
 pub fn (mut ctx Context) add_header(key, val string) {
@@ -245,7 +255,6 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	mut body_len := 0
 	//for line in lines[1..] {
 	for _ in 0..100 {
 		//println(j)
@@ -271,9 +280,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				//println('GOT CL=$len')
 			}
 		} else {
-			body += sline + '\r\n'
-			body_len += body.len
-			if body_len >= len {
+			body += line.trim_left('\r\n')
+			if body.len >= len {
 				break
 			}
 			//println('body:$body')
@@ -336,7 +344,9 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	app.init()
 
 	// Call the right action
-	println('route matching...')
+	$if debug {
+		println('route matching...')
+	}
 	//t := time.ticks()
 	//mut action := ''
 	mut route_words_a := [][]string{}
@@ -362,7 +372,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
 	$for method in T.methods {
-		$if method.@type is Result {
+		$if method.ReturnType is Result {
 			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
@@ -371,35 +381,37 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
 				if (req.method == .get && url_words[0] == method.name && url_words.len == 1) || (req.method == .post && url_words[0] + '_post' == method.name) {
-					println('easy match method=$method.name')
+					$if debug {
+						println('easy match method=$method.name')
+					}
 					app.$method(vars)
 					return
 				}
 			} else {
 				// Get methods
 				// Get is default
-				if 'post' in attrs {
-					if req.method == .post {
+				if req.method == .post {
+					if 'post' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
 					}
-				} else if 'put' in attrs {
-					if req.method == .put {
+				} else if req.method == .put {
+					if 'put' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
 					}
-				} else if 'patch' in attrs {
-					if req.method == .patch {
+				} else if req.method == .patch {
+					if 'patch' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
 					}
-				} else if 'delete' in attrs {
-					if req.method == .delete {
+				} else if req.method == .delete {
+					if 'delete' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
 					}
-				} else if 'head' in attrs {
-					if req.method == .head {
+				} else if req.method == .head {
+					if 'head' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
 					}
-				} else if 'options' in attrs {
-					if req.method == .options {
+				} else if req.method == .options {
+					if 'options' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
 					}
 				} else {
@@ -460,13 +472,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 		conn.send_string(http_404) or {}
 		return
 	}
-	send_action<T>(action, vars, mut app)
-}
-
-fn send_action<T>(action string, vars []string, mut app T) {
-	// TODO remove this function
 	$for method in T.methods {
-		$if method.@type is Result {
+		$if method.ReturnType is Result {
 			// search again for method
 			if action == method.name && method.attrs.len > 0 {
 				// call action method
@@ -491,7 +498,9 @@ fn (mut ctx Context) parse_form(s string) {
 		}
 		keyval := word.trim_space().split('=')
 		if keyval.len != 2 { continue }
-		key := keyval[0]
+		key := urllib.query_unescape(keyval[0]) or {
+			continue
+		}
 		val := urllib.query_unescape(keyval[1]) or {
 			continue
 		}
@@ -578,7 +587,7 @@ fn readall(conn net.Socket) string {
 	for {
 		n := C.recv(conn.sockfd, buf, 1024, 0)
 		m := conn.crecv(buf, 1024)
-		message += string( byteptr(buf), m )
+		message += unsafe { byteptr(buf).vstring_with_len(m) }
 		if message.len > max_http_post_size { break }
 		if n == m { break }
 	}

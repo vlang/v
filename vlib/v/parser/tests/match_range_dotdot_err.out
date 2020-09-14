@@ -1,4 +1,4 @@
-vlib/v/parser/tests/match_range_dotdot_err.v:3:4: error: match only supports inclusive (`...`) ranges, not exclusive (`..`) 
+vlib/v/parser/tests/match_range_dotdot_err.vv:3:4: error: match only supports inclusive (`...`) ranges, not exclusive (`..`) 
     1 | fn test_match() {
     2 |     match 5 {
     3 |         0..10 { '0-9' }

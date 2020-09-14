@@ -156,7 +156,7 @@ pub fn (ftp FTP) pwd() string {
 		return ''
 	}
 	_, data := ftp.read()
-	spl := data.split('"')
+	spl := data.split('"') // "
 	if spl.len >= 2 {
 		return spl[1]
 	}
@@ -210,9 +210,7 @@ fn (ftp FTP) pasv() ?DTP {
 	if code != passive_mode {
 		return error('pasive mode not allowed')
 	}
-	dtp := new_dtp(data) or {
-		return error(err)
-	}
+	dtp := new_dtp(data)?
 	return dtp
 }
 
@@ -236,7 +234,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	}
 	dtp.close()
 	mut dir := []string{}
-	sdir := string(byteptr(list_dir.data))
+	sdir := list_dir.bytestr()
 	for lfile in sdir.split('\n') {
 		if lfile.len > 1 {
 			spl := lfile.split(' ')

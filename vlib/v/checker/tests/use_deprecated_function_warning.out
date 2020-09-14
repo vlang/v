@@ -1,4 +1,4 @@
-vlib/v/checker/tests/use_deprecated_function_warning.v:3:5: error: function `os.cp_r` has been deprecated
+vlib/v/checker/tests/use_deprecated_function_warning.vv:3:5: error: function `os.cp_r` has been deprecated
     1 | import os
     2 | fn main() {
     3 |     os.cp_r('./aa', './bb', true)

@@ -8,8 +8,8 @@ import vhelp
 import v.vmod
 
 const (
-	default_vpm_server_urls      = ['https://vpm.best', 'https://vpm.vlang.io']
-	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'outdated', 'list', 'remove']
+	default_vpm_server_urls      = ['https://vpm.vlang.io']
+	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove']
 	excluded_dirs                = ['cache', 'vlib']
 	supported_vcs_systems        = ['git', 'hg']
 	supported_vcs_folders        = ['.git', '.hg']
@@ -75,6 +75,9 @@ fn main() {
 		}
 		'update' {
 			vpm_update(module_names)
+		}
+		'upgrade' {
+			vpm_upgrade()
 		}
 		'outdated' {
 			vpm_outdated()
@@ -215,7 +218,7 @@ fn vpm_update(m []string) {
 			continue
 		}
 		vcs_cmd := supported_vcs_update_cmds[vcs[0]]
-		verbose_println('      command: $vcs_cmd')
+		verbose_println('    command: $vcs_cmd')
 		vcs_res := os.exec('$vcs_cmd') or {
 			errors++
 			println('Could not update module "$name".')
@@ -229,6 +232,8 @@ fn vpm_update(m []string) {
 			verbose_println('Failed command: $vcs_cmd')
 			verbose_println('Failed details:\n$vcs_res.output')
 			continue
+		} else {
+			verbose_println('    $vcs_res.output.trim_space()')
 		}
 		resolve_dependencies(name, final_module_path, module_names)
 	}
@@ -237,9 +242,8 @@ fn vpm_update(m []string) {
 	}
 }
 
-fn vpm_outdated() {
+fn get_outdated() ?[]string {
 	module_names := get_installed_modules()
-	mut errors := 0
 	mut outdated := []string{}
 	for name in module_names {
 		final_module_path := valid_final_path_of_existing_module(name) or {
@@ -258,11 +262,9 @@ fn vpm_outdated() {
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
 			res := os.exec(step) or {
-				errors++
-				println('Error while checking latest commits for "$name".')
 				verbose_println('Error command: git fetch')
 				verbose_println('Error details:\n$err')
-				continue
+				return error('Error while checking latest commits for "$name".')
 			}
 			outputs << res.output
 		}
@@ -270,6 +272,20 @@ fn vpm_outdated() {
 			outdated << name
 		}
 	}
+	return outdated
+}
+
+fn vpm_upgrade() {
+	outdated := get_outdated() or { exit(1) }
+	if outdated.len > 0 {
+		vpm_update(outdated)
+	} else {
+		println('Modules are up to date.')
+	}
+}
+
+fn vpm_outdated() {
+	outdated := get_outdated() or { exit(1) }
 	if outdated.len > 0 {
 		println('Outdated modules:')
 		for m in outdated {
@@ -277,9 +293,6 @@ fn vpm_outdated() {
 		}
 	} else {
 		println('Modules are up to date.')
-	}
-	if errors > 0 {
-		exit(1)
 	}
 }
 
@@ -289,8 +302,9 @@ fn vpm_list() {
 		println('You have no modules installed.')
 		exit(0)
 	}
+	println('Installed modules:')
 	for mod in module_names {
-		println(mod)
+		println('  $mod')
 	}
 }
 
@@ -534,7 +548,8 @@ fn get_module_meta_info(name string) ?Mod {
 			continue
 		}
 		if r.status_code == 404 || r.text.contains('404') {
-			errors << 'Skipping module "$name", since $server_url reported that "$name" does not exist.'
+			errors <<
+				'Skipping module "$name", since $server_url reported that "$name" does not exist.'
 			continue
 		}
 		if r.status_code != 200 {

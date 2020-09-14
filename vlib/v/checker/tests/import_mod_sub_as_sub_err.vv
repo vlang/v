@@ -1,0 +1,5 @@
+import encoding.utf8 as utf8
+
+fn main() {
+    println(utf8.validate_str('añçá'))
+}

@@ -15,9 +15,9 @@ fn main() {
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
 	println('Fetching updates...')
-	ret := os.system('git pull --rebase')
+	ret := os.system('$vdir/v up')
 	if ret != 0 {
-		println('failed to git pull')
+		println('failed to update V')
 		return
 	}
 	mut commit_hash := exec('git rev-parse HEAD')
@@ -59,6 +59,8 @@ fn main() {
 		message := exec('git log --pretty=format:"%s" -n1 $commit')
 		println('\n${i + 1}/$commits.len Benchmarking commit $commit "$message"')
 		// Build an optimized V
+		println('Checking out ${commit}...')
+		exec('git checkout $commit')
 		println('  Building vprod...')
 		exec('v -o $vdir/vprod -prod $vdir/cmd/v')
 		diff1 := measure('$vdir/vprod -cc clang -o v.c $vdir/cmd/v', 'v.c')
@@ -92,6 +94,7 @@ fn main() {
 		res.writeln(footer)
 		res.close()
 	}
+	exec('git checkout master')
 	os.write_file('last_commit.txt', commits[commits.len-1])?
 }
 

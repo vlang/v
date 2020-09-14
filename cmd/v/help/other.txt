@@ -7,7 +7,7 @@ but which are used less frequently by users:
    build-examples    Test if all examples can be built.
    build-tools       Test if all tools can be built.
    build-vbinaries   Test if V can be built with different configuration.
-   test-fmt          Test if all files in the current directory is formatted properly.
+   test-fmt          Test if all files in the current directory are formatted properly.
    test-compiler     Test if V is working properly by running all tests, including the compiler ones.
                      NB: this can take a minute or two to run
 

@@ -1,6 +1,7 @@
 import os
 import term
 import v.util
+import v.util.vtest
 
 fn test_all() {
 	mut total_errors := 0
@@ -18,37 +19,18 @@ fn test_all() {
 		println('no compiler tests found')
 		assert false
 	}
-	vtest_only := os.getenv('VTEST_ONLY').split(',')
-	mut paths := []string{}
-	for test in tests {
-		path := os.join_path(dir, test).replace('\\', '/')
-		if vtest_only.len > 0 {
-			mut found := 0
-			for substring in vtest_only {
-				if path.contains(substring) {
-					found++
-					break
-				}
-			}
-			if found == 0 {
-				continue
-			}
-		}
-		paths << path
-	}
+	paths := vtest.filter_vtest_only(tests, {
+		basepath: dir
+	})
 	for path in paths {
 		print(path + ' ')
-		program := path.replace('.vv', '.v')
-		os.cp(path, program) or {
-			panic(err)
-		}
+		program := path
 		compilation := os.exec('$vexe -o test -cflags "-w" -cg $program') or {
 			panic(err)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: $compilation.output')
 		}
-		// os.rm(program)
 		res := os.exec('./test') or {
 			println('nope')
 			panic(err)
@@ -66,7 +48,7 @@ fn test_all() {
 		// println(res.output)
 		// println('============')
 		mut found := res.output.trim_right('\r\n').replace('\r\n', '\n')
-		mut expected := os.read_file(program.replace('.v', '') + '.out') or {
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or {
 			panic(err)
 		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')

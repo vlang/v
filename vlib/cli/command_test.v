@@ -51,12 +51,11 @@ fn test_if_command_has_default_version_subcommand_if_version_is_set() {
 	assert has_command(cmd, 'version')
 }
 
-
 fn flag_should_be_set(cmd cli.Command) ? {
 	flag := cmd.flags.get_string('flag')?
 	assert flag == 'value'
 }
-        
+
 fn test_if_flag_gets_set() {
 	mut cmd := cli.Command{
 		name: 'command'
@@ -83,7 +82,6 @@ fn test_if_flag_gets_set_with_abbrev() {
 	cmd.parse(['command', '--flag', 'value'])
 }
 
-
 fn flag_should_have_value_of_42(cmd cli.Command) ? {
 	flag := cmd.flags.get_string('flag')?
 	assert flag == 'value'
@@ -106,7 +104,6 @@ fn test_if_multiple_flags_get_set() {
 	})
 	cmd.parse(['command', '-flag', 'value', '-value', '42'])
 }
-
 
 fn flag_is_set_in_subcommand(cmd cli.Command) ? {
 	flag := cmd.flags.get_string('flag') or {

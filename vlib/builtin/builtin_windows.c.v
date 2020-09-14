@@ -59,11 +59,25 @@ const (
 	symopt_debug = 0x80000000
 )
 
+// g_original_codepage - used to restore the original windows console code page when exiting
+__global g_original_codepage u32=0
+// utf8 to stdout needs C.SetConsoleOutputCP(C.CP_UTF8)
+fn C.GetConsoleOutputCP() u32
+fn C.SetConsoleOutputCP(wCodePageID u32) bool
+fn restore_codepage() {
+	C.SetConsoleOutputCP( g_original_codepage )
+}
+
 fn builtin_init() {
+	g_original_codepage = C.GetConsoleOutputCP()
+	C.SetConsoleOutputCP(C.CP_UTF8)	
+	C.atexit(restore_codepage)
 	if is_atty(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
+		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		unsafe {
 			C.setbuf(C.stdout, 0)
+			C.setbuf(C.stderr, 0)
 		}
 	}
 	add_unhandled_exception_handler()
@@ -86,7 +100,7 @@ fn print_backtrace_skipping_top_frames(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 $if msvc {
 	mut offset := u64(0)
-	backtraces := [100]voidptr
+	backtraces := [100]voidptr{}
 	sic := SymbolInfoContainer{}
 	mut si := &sic.syminfo
 	si.f_size_of_struct = sizeof(SymbolInfo) // Note: C.SYMBOL_INFO is 88
@@ -103,10 +117,14 @@ $if msvc {
 	syminitok := C.SymInitialize( handle, 0, 1)
 	if syminitok != 1 {
 		eprintln('Failed getting process: Aborting backtrace.\n')
-		return true
+		return false
 	}
 
 	frames := int(C.CaptureStackBackTrace(skipframes + 1, 100, backtraces, 0))
+	if frames < 2 {
+		eprintln('C.CaptureStackBackTrace returned less than 2 frames')
+		return false
+	}
 	for i in 0..frames {
 		frame_addr := backtraces[i]
 		if C.SymFromAddr(handle, frame_addr, &offset, si) == 1 {

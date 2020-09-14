@@ -27,6 +27,18 @@ fn get_vtmp_filename(base_file_name, postfix string) string {
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
+	odir := os.base_dir(pref.out_name)
+	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
+	// without a folder component, just use the current folder instead:
+	mut output_folder := odir
+	if odir.len == pref.out_name.len {
+		output_folder = os.getwd()
+	}
+	os.is_writable_folder(output_folder) or {
+		// An early error here, is better than an unclear C error later:
+		verror(err)
+		exit(1)
+	}
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref)
 	if pref.is_verbose {
@@ -52,7 +64,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 }
 
 // Temporary, will be done by -autofree
-[unsafe_fn]
+[unsafe]
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
@@ -156,8 +168,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		return []
 	}
 	*/
-	// println('get_builtin_files() lookuppath:')
-	// println(v.pref.lookup_path)
+	v.log('v.pref.lookup_path: $v.pref.lookup_path')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
@@ -172,7 +183,7 @@ pub fn (v Builder) get_builtin_files() []string {
 			}
 			if v.pref.backend == .c {
 				// TODO JavaScript backend doesn't handle os for now
-				if v.pref.is_script && os.exists(os.join_path(location, 'os')) {
+				if v.pref.is_vsh && os.exists(os.join_path(location, 'os')) {
 					builtin_files << v.v_files_from_dir(os.join_path(location, 'os'))
 				}
 			}
@@ -254,20 +265,30 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << single_test_v_file
 		dir = os.base_dir(single_test_v_file)
 	}
-	is_real_file := os.exists(dir) && !os.is_dir(dir)
-	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh')) {
+	does_exist := os.exists(dir)
+	if !does_exist {
+		verror("$dir doesn't exist")
+		exit(1)
+	}
+	is_real_file := does_exist && !os.is_dir(dir)
+	if is_real_file && (dir.ends_with('.v') || dir.ends_with('.vsh') || dir.ends_with('.vv')) {
 		single_v_file := dir
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
 			v.log('> just compile one file: "$single_v_file"')
 		}
-	} else {
+	} else if os.is_dir(dir) {
 		if v.pref.is_verbose {
 			v.log('> add all .v files from directory "$dir" ...')
 		}
 		// Add .v files from the directory being compiled
 		user_files << v.v_files_from_dir(dir)
+	} else {
+		println('usage: `v file.v` or `v directory`')
+		ext := os.file_ext(dir)
+		println('unknown file extension `$ext`')
+		exit(1)
 	}
 	if user_files.len == 0 {
 		println('No input .v files')

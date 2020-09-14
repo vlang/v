@@ -1,0 +1,21 @@
+vlib/v/checker/tests/chan_ref.vv:10:8: error: cannon push non-reference `St` on `chan &St`
+    8 | fn f(ch chan &St, sem sync.Semaphore) {
+    9 |     w := St{}
+   10 |     ch <- w
+      |           ^
+   11 |     mut x := St{}
+   12 |     ch <- x
+vlib/v/checker/tests/chan_ref.vv:12:8: error: cannon push non-reference `St` on `chan &St`
+   10 |     ch <- w
+   11 |     mut x := St{}
+   12 |     ch <- x
+      |           ^
+   13 |     // the following works
+   14 |     y := &St{}
+vlib/v/checker/tests/chan_ref.vv:28:11: error: cannot have a mutable reference to object from `chan &St`
+   26 |     y := <-c
+   27 |     // this should fail
+   28 |     mut z := <-c
+      |              ~~
+   29 |     z.n = 9
+   30 |     sem.post()

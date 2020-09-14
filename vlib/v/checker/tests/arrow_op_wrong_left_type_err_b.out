@@ -1,0 +1,6 @@
+vlib/v/checker/tests/arrow_op_wrong_left_type_err_b.vv:4:8: error: cannot assign `string` to `obj` of type `int`
+    2 |     ch := chan string{}
+    3 |     mut obj := 9
+    4 |     obj = <-ch
+      |           ~~
+    5 | }
