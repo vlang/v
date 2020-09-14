@@ -23,7 +23,7 @@ These build flags are enabled on `build` and `run` as long as the backend is set
 
    -printfn <fn_name>
       Prints the content of the generated C function named fn_name. You can repeat that many times.
-      This is useful when you just want to quickly tweak the generated C code, 
+      This is useful when you just want to quickly tweak the generated C code,
       without opening the generated .c file in an text editor.
 
    -cg
@@ -58,11 +58,11 @@ These build flags are enabled on `build` and `run` as long as the backend is set
    -shared
       Tell V to compile a shared object instead of an executable.
       The resulting file extension will be `.dll` on Windows and `.so` on Unix systems
-      
+
    -no-prelude
-      Prevents V from generating a prelude in generated .c files, useful for freestanding targets 
+      Prevents V from generating a prelude in generated .c files, useful for freestanding targets
       where eg. you replace C standard library with your own, or some definitions/headers break something.
 
    -custom-prelude <path>
-      Useful for similar use-case as above option, except it replaces V-generated prelude with 
+      Useful for similar use-case as above option, except it replaces V-generated prelude with
       your custom one loaded from specified <path>.
