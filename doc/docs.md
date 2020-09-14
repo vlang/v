@@ -317,7 +317,7 @@ any // similar to C's void* and Go's interface{}
 
 Please note that unlike C and Go, `int` is always a 32 bit integer.
 
-There is an exceptions to the rule that all operators
+There is an exception to the rule that all operators
 in V must have values of the same type on both sides. A small primitive type
 on one side can be automatically promoted if it fits
 completely into the data range of the type on the other side.
