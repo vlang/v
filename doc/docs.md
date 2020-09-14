@@ -352,15 +352,13 @@ println(s) // "hello world"
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 
-Just like in Go and Java, strings are immutable which means their values cannot be changed.
+Just like in Go and Java, strings are immutable, which means their values cannot be changed.
 
 The following code will raise an error:
 
 ```v
-fn main() {
-    mut a := 'V is great!!'
-    a[0] = `R`
-}
+mut s := 'hello'
+s[0] = `H`
 ```
 
 Both single and double quotes can be used to denote strings. For consistency,
