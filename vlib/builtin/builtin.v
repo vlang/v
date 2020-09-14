@@ -5,8 +5,8 @@ module builtin
 
 __global g_m2_buf byteptr
 __global g_m2_ptr byteptr
+type FnExitCb = fn ()
 
-type FnExitCb fn()
 fn C.atexit(f FnExitCb) int
 
 pub fn exit(code int) {
@@ -23,7 +23,6 @@ fn on_panic(f fn(int)int) {
 	// TODO
 }
 */
-
 pub fn print_backtrace() {
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
@@ -71,8 +70,8 @@ pub fn eprintln(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
-	C.write(2, c'\n', 1)	
+	C.write(2, s.str, s.len)
+	C.write(2, '\n', 1)
 	C.fflush(C.stderr)
 }
 
@@ -82,24 +81,23 @@ pub fn eprint(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
+	C.write(2, s.str, s.len)
 	C.fflush(C.stderr)
 }
 
 pub fn print(s string) {
-	C.write(1, s.str, s.len)	
+	C.write(1, s.str, s.len)
 }
 
 const (
 	new_line_character = '\n'
 )
 
-//#include "@VROOT/vlib/darwin/darwin.m"
-//fn C.nsstring2(s string) voidptr
-//fn C.NSLog(x voidptr)
-//#include <asl.h>
-
-fn C.asl_log(voidptr, voidptr, int, charptr)
+// #include "@VROOT/vlib/darwin/darwin.m"
+// fn C.nsstring2(s string) voidptr
+// fn C.NSLog(x voidptr)
+// #include <asl.h>
+fn C.asl_log(arg_1, arg_2 voidptr, arg_3 int, arg_4 charptr)
 
 pub fn println(s string) {
 	$if windows {
@@ -112,31 +110,35 @@ pub fn println(s string) {
 			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
 		}
 		*/
-		//  TODO: a syscall sys_write on linux works, except for the v repl.
-		//  Probably it is a stdio buffering issue. Needs more testing...
-		//	$if linux {
-		//		$if !android {
-		//			snl := s + '\n'
-		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-		//			return
-		//		}
-		//	}
-		C.printf('%.*s\n', s.len, s.str)
+		// TODO: a syscall sys_write on linux works, except for the v repl.
+		// Probably it is a stdio buffering issue. Needs more testing...
+		// $if linux {
+		// $if !android {
+		// snl := s + '\n'
+		// C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
+		// return
+		// }
+		// }
+		// Escapes the \0 null character
+		// C.printf('%.*s\n', s.len, s.str)
+		C.write(1, s.str, s.len)
+		C.write(1, '\n', 1)
 	}
 }
 
-__global total_m i64=0
-__global nr_mallocs int=0
+__global total_m i64 = 0
+__global nr_mallocs int = 0
+fn looo() {
+}
 
-fn looo(){} // TODO remove, [ pratt
-
+// TODO remove, [ pratt
 [unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
 		panic('malloc(<=0)')
 	}
 	$if prealloc {
-		//println('p')
+		// println('p')
 		res := g_m2_ptr
 		unsafe {
 			g_m2_ptr += n
@@ -151,7 +153,7 @@ pub fn malloc(n int) byteptr {
 		return ptr
 	}
 	/*
-TODO
+	TODO
 #ifdef VPLAY
 	if n > 10000 {
 		panic('allocating more than 10 KB is not allowed in the playground')
@@ -162,18 +164,17 @@ TODO
 	println('\n\n\nmalloc($n) total=$total_m')
 	print_backtrace()
 #endif
-*/
+	*/
 }
 
-//#include <malloc/malloc.h>
-//fn malloc_size(b byteptr) int
-
+// #include <malloc/malloc.h>
+// fn malloc_size(b byteptr) int
 [unsafe]
 pub fn v_realloc(b byteptr, n u32) byteptr {
 	$if prealloc {
 		unsafe {
 			new_ptr := malloc(int(n))
-			size := 0 //malloc_size(b)
+			size := 0 // malloc_size(b)
 			C.memcpy(new_ptr, b, size)
 			return new_ptr
 		}
@@ -249,7 +250,7 @@ fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
 pub struct VAssertMetaInfo {
 pub:
 	fpath   string // the source file path of the assertion
-	line_nr int    // the line number of the assertion
+	line_nr int // the line number of the assertion
 	fn_name string // the function name in which the assertion is
 	src     string // the actual source line of the assertion
 	op      string // the operation of the assertion, i.e. '==', '<', 'call', etc ...
@@ -258,15 +259,15 @@ pub:
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
+
 fn __print_assert_failure(i &VAssertMetaInfo) {
-	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
+	eprintln('$i.fpath:${i.line_nr+1}: FAIL: fn $i.fn_name: assert $i.src')
 	if i.op.len > 0 && i.op != 'call' {
-		eprintln('   left value: ${i.llabel} = ${i.lvalue}')
+		eprintln('   left value: $i.llabel = $i.lvalue')
 		if i.rlabel == i.rvalue {
 			eprintln('  right value: $i.rlabel')
-		}
-		else {
-			eprintln('  right value: ${i.rlabel} = ${i.rvalue}')
+		} else {
+			eprintln('  right value: $i.rlabel = $i.rvalue')
 		}
 	}
 }
