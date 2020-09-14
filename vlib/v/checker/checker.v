@@ -783,21 +783,25 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		ast.Ident {
-			if expr.obj is ast.Var {
-				mut v := expr.obj as ast.Var
-				if !v.is_mut && !c.pref.translated {
-					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
-						expr.pos)
-				}
-				v.is_changed = true
-				if v.typ.share() == .shared_t {
-					if expr.name !in c.locked_names {
-						to_lock = expr.name
-						pos = expr.pos
+			match mut expr.obj as v {
+				ast.Var {
+					if !v.is_mut && !c.pref.translated {
+						c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
+							expr.pos)
+					}
+					v.is_changed = true
+					if v.typ.share() == .shared_t {
+						if expr.name !in c.locked_names {
+							to_lock = expr.name
+							pos = expr.pos
+						}
 					}
 				}
-			} else if expr.name in c.const_names {
-				c.error('cannot modify constant `$expr.name`', expr.pos)
+				else {
+					if expr.name in c.const_names {
+						c.error('cannot modify constant `$expr.name`', expr.pos)
+					}
+				}
 			}
 		}
 		ast.IndexExpr {
@@ -3185,9 +3189,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		c.stmts(branch.stmts)
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
-				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
+				match mut branch.stmts[branch.stmts.len - 1] as last_expr {
+					ast.ExprStmt { last_expr.typ = c.expr(last_expr.expr) }
+					else {}
+				}
+				last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
-				last_expr.typ = c.expr(last_expr.expr)
 				// if last_expr.typ != node.typ {
 				// if !c.check_types(node.typ, last_expr.typ) {
 				if !c.check_types(last_expr.typ, node.typ) {
