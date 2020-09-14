@@ -142,7 +142,6 @@ fn test_write_and_read_bytes() {
 	// read_bytes_at with second parameter zeroed (size, 0).
 	rbytes := file_read.read_bytes(5)
 
-	file_read.close()
 	// eprintln('rbytes: $rbytes')
 	// eprintln('payload: $payload')
 	assert rbytes == payload
@@ -155,6 +154,7 @@ fn test_write_and_read_bytes() {
 	}
 	assert nread == 0
 
+	file_read.close()
 	// We finally delete the test file.
 	os.rm(file_name)
 }
