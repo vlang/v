@@ -98,9 +98,8 @@ pub fn (f &File) read_bytes_at(size, pos int) []byte {
 // Returns number of bytes read or an error.
 pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 	assert buf.len > 0
-	if C.fseek(f.cfile, pos, C.SEEK_SET) != 0 {
-		return error(posix_get_error_msg(C.errno))
-	}
+	// Note: fseek errors if pos == os.file_size, which we accept
+	C.fseek(f.cfile, pos, C.SEEK_SET)
 	// errno is only set if fread fails, so clear it first to tell
 	C.errno = 0
 	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
