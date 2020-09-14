@@ -29,8 +29,6 @@ The build flags are shared by the build and run commands:
       * `c` (default)       - V outputs C source code which is passed to a C compiler to be compiled.
       * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
       * `x64`               - V outputs Linux 64-bit executable directly (highly experimental!).
-      * `v2`/`experimental` - Invokes the experimental AST-powered V compiler that will replace the
-                              current backends when finished
 
    -d <flag>[=<value>], -define <flag>[=<value>]
       Define the provided flag.
@@ -112,14 +110,14 @@ The build flags are shared by the build and run commands:
 
    -check-syntax
       Only scan and parse the files, but then stop. Useful for very quick syntax checks.
-   
+
    -show-timings
       Print a summary about how long each compiler stage took, for example:
          PARSE: 152ms
          CHECK: 62ms
          C GEN: 103ms
          C tcc: 95ms
-      
+
 For C-specific build flags, use `v help build-c`.
 
 See also:

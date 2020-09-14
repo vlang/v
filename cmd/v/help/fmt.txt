@@ -29,4 +29,3 @@ Environment Variables:
   VDIFF_OPTIONS   A set of command-line options to be sent immediately after the
                   `diff` command. e.g.
                   VDIFF_OPTIONS="-W 80 -y" v fmt -diff path/to/file.v /tmp/v/vfmt_file.v
-
