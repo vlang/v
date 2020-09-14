@@ -1,4 +1,4 @@
-Usage: 
+Usage:
   v doc [flags] [module_name / folder / V file]
 
 Examples:
@@ -6,8 +6,8 @@ Examples:
   v doc -o math.html math
   v doc -m -f html vlib/
 
-Generates the documentation of a given directory, module, or V source file 
-and prints or saves them to its desired format. It can generate HTML, JSON, 
+Generates the documentation of a given directory, module, or V source file
+and prints or saves them to its desired format. It can generate HTML, JSON,
 or Markdown format.
 
 Options:
