@@ -5,13 +5,13 @@ import os
 struct LexycalAttributes {
 mut:
 	current_tag      &Tag
-	open_tag         bool = false
-	open_code        bool = false
-	open_string      int = 0
-	open_comment     bool = false
-	is_attribute     bool = false
-	opened_code_type string = ''
-	line_count       int = 0
+	open_tag         bool
+	open_code        bool
+	open_string      int
+	open_comment     bool
+	is_attribute     bool
+	opened_code_type string
+	line_count       int
 	lexeme_builder   string
 	code_tags        map[string]bool = {
 		'script': true
@@ -32,7 +32,7 @@ mut:
 		current_tag: &Tag{}
 	}
 	filename           string = 'direct-parse'
-	initialized        bool = false
+	initialized        bool
 	tags               []&Tag
 	debug_file         os.File
 }

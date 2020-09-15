@@ -1,5 +1,3 @@
-import sync
-
 const (
 	num_iterations = 10000
 )
@@ -34,6 +32,6 @@ fn test_channel_array_mut() {
 		chs[0] <- t
 		t = <-chs[1]
 	}
-	(&sync.Channel(chs[0])).close()
+	chs[0].close()
 	assert t.n == 100 + num_iterations
 }

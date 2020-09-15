@@ -238,6 +238,9 @@ Unlike most other languages, V only allows defining variables in functions.
 Global (module level) variables are not allowed. There's no global state in V
 (see [Pure functions by default](#pure-functions-by-default) for details).
 
+For consistency across different code bases, all variable and function names
+must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
+
 ### Mutable variables
 
 ```v
@@ -254,7 +257,7 @@ Try compiling the program above after removing `mut` from the first line.
 
 ### Initialization vs assignment
 
-Note the (important) difference between `:=` and `=`
+Note the (important) difference between `:=` and `=`.
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
 ```v
@@ -352,7 +355,14 @@ println(s) // "hello world"
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 
-Strings are immutable.
+Just like in Go and Java, strings are immutable, which means their values cannot be changed.
+
+The following code will raise an error:
+
+```v
+mut s := 'hello'
+s[0] = `H`
+```
 
 Both single and double quotes can be used to denote strings. For consistency,
 `vfmt` converts double quotes to single quotes unless the string contains a single quote character.
@@ -925,7 +935,7 @@ A defer statement defers the execution of a block of statements until the surrou
 
 ```v
 fn read_log() {
-    f := os.open('log.txt')
+    f := os.open('log.txt') or { panic(err) }
     defer { f.close() }
     ...
     if !ok {
@@ -2598,16 +2608,19 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 ## Appendix I: Keywords
 
-V has 29 keywords (3 are literals):
+V has 41 reserved keywords (3 are literals):
 
 ```v
 as
+asm
 assert
+atomic
 break
 const
 continue
 defer
 else
+embed
 enum
 false
 fn
@@ -2619,6 +2632,7 @@ import
 in
 interface
 is
+lock
 match
 module
 mut
@@ -2626,9 +2640,16 @@ none
 or
 pub
 return
+rlock
+select
+shared 
+sizeof
+static
 struct
 true
 type
+typeof
+union
 unsafe
 ```
 See also [Types](#types).

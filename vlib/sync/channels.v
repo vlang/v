@@ -76,12 +76,6 @@ enum Direction {
 	push
 }
 
-enum TransactionState {
-	success
-	not_ready // push()/pop() would have to wait, but no_block was requested
-	closed
-}
-
 struct Channel {
 	writesem           Semaphore // to wake thread that wanted to write, but buffer was full
 	readsem            Semaphore // to wake thread that wanted to read, but buffer was empty
@@ -116,7 +110,7 @@ pub fn new_channel<T>(n u32) &Channel {
 
 fn new_channel_st(n u32, st u32) &Channel {
 	return &Channel{
-		writesem: new_semaphore_init(if n > 0 { n + 1 } else { 1 })
+		writesem: new_semaphore_init(if n > 0 { n } else { 1 })
 		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
@@ -170,15 +164,15 @@ pub fn (mut ch Channel) push(src voidptr) {
 }
 
 [inline]
-pub fn (mut ch Channel) try_push(src voidptr) TransactionState {
-	return ch.try_push_priv(src, false)
+pub fn (mut ch Channel) try_push(src voidptr) ChanState {
+	return ch.try_push_priv(src, true)
 }
 
-fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
+fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
 	}
-	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	for {
 		mut got_sem := false
@@ -206,6 +200,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
 			got_sem = ch.writesem.try_wait()
 		}
 		if !got_sem {
+			if no_block {
+				return .not_ready
+			}
 			ch.writesem.wait()
 		}
 		if ch.cap == 0 {
@@ -317,6 +314,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) TransactionState {
 				}
 				return .success
 			} else {
+				if no_block {
+					return .not_ready
+				}
 				ch.writesem.post()
 			}
 		}
@@ -329,12 +329,12 @@ pub fn (mut ch Channel) pop(dest voidptr) bool {
 }
 
 [inline]
-pub fn (mut ch Channel) try_pop(dest voidptr) TransactionState {
-	return ch.try_pop_priv(dest, false)
+pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
+	return ch.try_pop_priv(dest, true)
 }
 
-fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
-	spinloops_sem_, spinloops_ := if no_block { spinloops, spinloops_sem } else { 1, 1 }
+fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
+	spinloops_sem_, spinloops_ := if no_block { 1, 1 } else { spinloops, spinloops_sem } 
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
@@ -355,7 +355,11 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
 				}
 			}
 			if no_block {
-				return if C.atomic_load_u16(&ch.closed) == 0 { TransactionState.not_ready } else { TransactionState.closed }
+				if C.atomic_load_u16(&ch.closed) == 0 {
+					return .not_ready
+				} else {
+					return .closed
+				}
 			}
 		}
 		// get token to read
@@ -367,7 +371,11 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) TransactionState {
 		}
 		if !got_sem {
 			if no_block {
-				return if C.atomic_load_u16(&ch.closed) == 0 { TransactionState.not_ready } else { TransactionState.closed }
+				if C.atomic_load_u16(&ch.closed) == 0 {
+					return .not_ready
+				} else {
+					return .closed
+				}
 			}
 			ch.readsem.wait()
 		}

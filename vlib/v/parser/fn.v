@@ -9,6 +9,7 @@ import v.token
 import v.util
 
 pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
+	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
 		'C.$p.check_name()'
@@ -40,7 +41,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		}
 	}
 	p.check(.lpar)
-	args := p.call_args()
+	mut args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
 	// ! in mutable methods
@@ -88,6 +89,25 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			fn_name = registered.name
 		}
 	}
+	/*
+	call_expr := ast.CallExpr{
+		name: fn_name
+		args: args
+		mod: fn_mod
+		pos: pos
+		language: language
+		generic_type: generic_type
+	}
+	if or_kind != .absent {
+		return ast.OrExpr2{
+			call_expr: call_expr
+			stmts: or_stmts
+			kind: or_kind
+			pos: pos
+		}
+	}
+	return call_expr
+	*/
 	return ast.CallExpr{
 		name: fn_name
 		args: args
@@ -158,7 +178,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut receiver_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
-	mut args := []table.Arg{}
+	mut args := []table.Param{}
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
@@ -197,7 +217,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			rec_type = rec_type.set_flag(.atomic_f)
 		}
 		sym := p.table.get_type_symbol(rec_type)
-		args << table.Arg{
+		args << table.Param{
 			pos: rec_start_pos
 			name: rec_name
 			is_mut: rec_mut
@@ -397,9 +417,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
+fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	p.check(.lpar)
-	mut args := []table.Arg{}
+	mut args := []table.Param{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
@@ -458,7 +478,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 				p.next()
 			}
 			sym := p.table.get_type_symbol(arg_type)
-			args << table.Arg{
+			args << table.Param{
 				pos: pos
 				name: arg_name
 				is_mut: is_mut
@@ -520,7 +540,7 @@ fn (mut p Parser) fn_args() ([]table.Arg, bool, bool) {
 			}
 			for i, arg_name in arg_names {
 				sym := p.table.get_type_symbol(typ)
-				args << table.Arg{
+				args << table.Param{
 					pos: arg_pos[i]
 					name: arg_name
 					is_mut: is_mut

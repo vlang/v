@@ -118,6 +118,28 @@ fn test_match_enums() {
 	assert b == .blue
 }
 
+struct Counter {
+mut:
+	val int
+}
+
+fn (mut c Counter) next() int {
+	c.val++
+	return c.val
+}
+
+fn test_method_call() {
+	mut c := Counter{
+		val: 1
+	}
+	assert match c.next() {
+		1 { false }
+		2 { true }
+		3 { false }
+		else { false }
+	}
+}
+
 type Sum = A1 | B1
 
 struct A1 {

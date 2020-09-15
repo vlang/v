@@ -18,7 +18,7 @@ mut:
 	close_callbacks         []CloseEventHandler
 pub:
 	port                    int
-	is_ssl                  bool = false
+	is_ssl                  bool
 pub mut:
 	ping_interval           int = 30 // in seconds
 	state                   State

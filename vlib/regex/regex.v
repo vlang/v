@@ -302,7 +302,7 @@ pub mut:
 
 	// char classes storage
 	cc []CharClass             // char class list
-	cc_index int         = 0   // index
+	cc_index int               // index
 
 	// state index
 	state_stack_index int= -1
@@ -310,7 +310,7 @@ pub mut:
 
 
 	// groups
-	group_count int      = 0   // number of groups in this regex struct
+	group_count int        // number of groups in this regex struct
 	groups []int               // groups index results
 	group_max_nested int = 3   // max nested group
 	group_max int        = 8   // max allowed number of different groups
@@ -321,12 +321,12 @@ pub mut:
 	group_map map[string]int   // groups names map
 
 	// flags
-	flag int             = 0   // flag for optional parameters
+	flag int                   // flag for optional parameters
 
 	// Debug/log
-	debug int            = 0           // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
+	debug int                          // enable in order to have the unroll of the code 0 = NO_DEBUG, 1 = LIGHT 2 = VERBOSE
 	log_func FnLog       = simple_log  // log function, can be customized by the user
-	query string         = ""          // query string
+	query string                   // query string
 }
 
 // Reset RE object
@@ -1209,7 +1209,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	}
 
 	// init the state stack
-	re.state_stack = [StateDotObj{}].repeat(tmp_count+1)
+	re.state_stack = []StateDotObj{len: tmp_count+1, init: StateDotObj{}}
 
 	// OR branch
 	// a|b|cd
@@ -1482,7 +1482,7 @@ fn state_str(s Match_state) string {
 
 struct StateObj {
 pub mut:
-	match_flag bool = false
+	match_flag bool
 	match_index int = -1
 	match_first int = -1
 }

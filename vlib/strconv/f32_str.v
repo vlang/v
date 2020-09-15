@@ -22,14 +22,14 @@ module strconv
 // dec32 is a floating decimal type representing m * 10^e.
 struct Dec32 {
 mut:
-	m u32 = 0
-	e int = 0
+	m u32
+	e int
 }
 
 // support union for convert f32 to u32
 union Uf32 {
 mut:
-	f f32 = 0
+	f f32
 	u u32
 }
 

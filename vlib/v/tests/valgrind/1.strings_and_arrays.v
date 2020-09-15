@@ -15,12 +15,17 @@ fn foo() {
 	// nums.free() // this should result in a double free and a CI error
 }
 
-fn handle_strings(s, p string) {
+fn handle_strings(s, p string) int {
+	return 0
+}
+
+fn handle_int(n int) {
 }
 
 fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
-	handle_strings('c' + 'd', 'e' + 'f')
+	handle_strings('c' + 'd', 'e' + 'f') // multiple tmp expressions must be freed
+	handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
 }
 
 struct Foo {
@@ -44,11 +49,51 @@ fn str_replace() {
 	println(r)
 }
 
+fn reassign_str() {
+	mut s := 'a' + 'b'
+	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
+}
+
+fn match_expr() string {
+	x := 2
+	res := match x {
+		1 { 'one' }
+		2 { 'two' }
+		else { 'unknown' }
+	}
+	return res
+}
+
+fn opt(s string) ?int {
+	return 1
+}
+
+fn optional_str() {
+	q := 'select'
+	s := 'query: select'
+	// optional fn args must be freed
+	pos2 := opt('query:$q') or {
+		// pos := s.index('query: $q') or {
+		println('exiting')
+		return
+	}
+	println(pos2 + 1)
+	// optional method args must be freed
+	pos := s.index('query: $q') or {
+		println('exiting')
+		return
+	}
+	println(pos + 1)
+}
+
 fn main() {
 	println('start')
 	foo()
 	str_tmp_expr()
 	str_inter()
+	match_expr()
+	reassign_str()
+	optional_str()
 	// str_replace()
 	println('end')
 }

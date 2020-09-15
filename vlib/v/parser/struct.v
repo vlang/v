@@ -152,12 +152,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			// println(p.tok.position())
 			typ := p.parse_type()
-			// field_pos := field_start_pos.extend(p.tok.position())
-			field_pos := token.Position{
-				line_nr: field_start_pos.line_nr
-				pos: field_start_pos.pos
-				len: p.tok.position().pos - field_start_pos.pos
-			}
+			type_pos := p.prev_tok.position()
+			field_pos := field_start_pos.extend(type_pos)
 			// if name == '_net_module_s' {
 			// if name.contains('App') {
 			// s := p.table.get_type_symbol(typ)
@@ -197,6 +193,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			ast_fields << ast.StructField{
 				name: field_name
 				pos: field_pos
+				type_pos: type_pos
 				typ: typ
 				comments: comments
 				default_expr: default_expr
@@ -387,9 +384,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
 		}
 		// field_names << name
-		args2, _, _ := p.fn_args() // TODO merge table.Arg and ast.Arg to avoid this
+		args2, _, _ := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
 		sym := p.table.get_type_symbol(typ)
-		mut args := [table.Arg{
+		mut args := [table.Param{
 			name: 'x'
 			typ: typ
 			type_source_name: sym.source_name

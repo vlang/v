@@ -216,16 +216,16 @@ jobs:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
 
-  ubuntu-autofree-selfcompile:
-    runs-on: ubuntu-18.04
-    env:
-      VFLAGS: -cc gcc
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make -j4
-    - name: V self compilation with -autofree
-      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
+#  ubuntu-autofree-selfcompile:
+#    runs-on: ubuntu-18.04
+#    env:
+#      VFLAGS: -cc gcc
+#    steps:
+#    - uses: actions/checkout@v2
+#    - name: Build V
+#      run: make -j4
+#    - name: V self compilation with -autofree
+#      run: ./v -o v2 -autofree cmd/v && ./v2 -o v3 -autofree cmd/v && ./v3 -o v4 -autofree cmd/v
 
 
   # Ubuntu docker pre-built container
@@ -475,7 +475,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree .
+        # ../v -autofree .
         cd ..
 
   # TODO: ACTIVATE THIS AFTER MERGE
@@ -490,16 +490,16 @@ jobs:
       - name: Run autobahn services
         run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
       - name: Build client test
-        run: docker exec autobahn_client "v" "/src/tests/autobahn/autobahn_client.v" 
+        run: docker exec autobahn_client "v" "/src/tests/autobahn/autobahn_client.v"
       - name: Run client test
-        run: docker exec autobahn_client "/src/tests/autobahn/autobahn_client"  
+        run: docker exec autobahn_client "/src/tests/autobahn/autobahn_client"
       - name: Run server test
-        run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json" 
+        run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
       - name: Copy reports
         run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
       - name: Test success
         run: docker exec autobahn_server "python" "/check_results.py"
-      
+
       - name: Publish all reports
         uses: actions/upload-artifact@v2
         with:
@@ -515,4 +515,4 @@ jobs:
         with:
             name: server
             path: ${{github.workspace}}/reports/servers/index.html
-  
+

@@ -1,0 +1,8 @@
+struct Test {
+	n int = 0
+	s string = ''
+	b bool = false
+}
+
+fn main() {
+}

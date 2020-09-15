@@ -11,11 +11,20 @@ pub const (
 // read_bytes returns all bytes read from file in `path`.
 pub fn read_bytes(path string) ?[]byte {
 	mut fp := vfopen(path, 'rb')?
-	C.fseek(fp, 0, C.SEEK_END)
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	if cseek != 0 {
+		return error('fseek failed')
+	}
 	fsize := C.ftell(fp)
+	if fsize < 0 {
+		return error('ftell failed')
+	}
 	C.rewind(fp)
-	mut res := [byte(`0`)].repeat(fsize)
+	mut res := []byte{len: fsize}
 	nr_read_elements := C.fread(res.data, fsize, 1, fp)
+	if nr_read_elements == 0 && fsize > 0 {
+		return error('fread failed')
+	}
 	C.fclose(fp)
 	return res[0..nr_read_elements * fsize]
 }
@@ -26,13 +35,23 @@ pub fn read_file(path string) ?string {
 	mode := 'rb'
 	mut fp := vfopen(path, mode)?
 	defer { C.fclose(fp) }
-	C.fseek(fp, 0, C.SEEK_END)
+	cseek := C.fseek(fp, 0, C.SEEK_END)
+	if cseek != 0 {
+		return error('fseek failed')
+	}
 	fsize := C.ftell(fp)
+	if fsize < 0 {
+		return error('ftell failed')
+	}
 	// C.fseek(fp, 0, SEEK_SET)  // same as `C.rewind(fp)` below
 	C.rewind(fp)
 	unsafe {
 		mut str := malloc(fsize + 1)
-		C.fread(str, fsize, 1, fp)
+		nelements := C.fread(str, fsize, 1, fp)
+		if nelements == 0 && fsize > 0 {
+			free(str)
+			return error('fread failed')
+		}
 		str[fsize] = 0
 		return str.vstring_with_len(fsize)
 	}
@@ -58,10 +77,16 @@ pub fn file_size(path string) int {
 
 // mv moves files or folders from `src` to `dst`.
 pub fn mv(src, dst string) {
+	mut rdst := dst
+	if is_dir(rdst) {
+		rdst = join_path(rdst.trim_right(path_separator),file_name(src.trim_right(path_separator)))
+	}
 	$if windows {
-		C._wrename(src.to_wide(), dst.to_wide())
+		w_src := src.replace('/', '\\')
+		w_dst := rdst.replace('/', '\\')
+		C._wrename(w_src.to_wide(), w_dst.to_wide())
 	} $else {
-		C.rename(charptr(src.str), charptr(dst.str))
+		C.rename(charptr(src.str), charptr(rdst.str))
 	}
 }
 
@@ -166,6 +191,9 @@ pub fn mv_by_cp(source string, target string) ? {
 // NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
 pub fn vfopen(path, mode string) ?&C.FILE {
+	if path.len == 0 {
+		return error('vfopen called with ""')
+	}
 	mut fp := voidptr(0)
 	$if windows {
 		fp = C._wfopen(path.to_wide(), mode.to_wide())
@@ -1022,6 +1050,11 @@ pub fn is_dir(path string) bool {
 		val:= int(statbuf.st_mode) & os.s_ifmt
 		return val == s_ifdir
 	}
+}
+
+// is_file returns a `bool` indicating whether the given `path` is a file.
+pub fn is_file(path string) bool {
+	return exists(path) && !is_dir(path)
 }
 
 // is_link returns a boolean indicating whether `path` is a link.

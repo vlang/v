@@ -859,6 +859,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	tok := p.tok
 	left, left_comments := p.expr_list()
 	left0 := left[0]
+	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
+		p.error('expecting `:=` (e.g. `mut x :=`)')
+	}
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
 	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&

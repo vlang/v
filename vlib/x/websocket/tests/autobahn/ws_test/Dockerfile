@@ -6,6 +6,6 @@ FROM thevlang/vlang:buster-dev
 COPY ./ /src/
 # COPY tests/autobahn/ws_test/run.sh /run.sh
 # RUN chmod +x /run.sh
-RUN v -autofree /src/tests/autobahn/autobahn_server.v
+RUN v /src/tests/autobahn/autobahn_server.v
 RUN chmod +x /src/tests/autobahn/autobahn_server
 ENTRYPOINT [ "/src/tests/autobahn/autobahn_server" ]

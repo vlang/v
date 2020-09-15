@@ -22,5 +22,5 @@ framework. You can use `assert condition` inside each test_ function.
 If the asserted condition fails, then v will record that and produce a
 more detailed error message about where the failure was.
 
-After all test_ functions are called, if you passed -stats, v will 
+After all test_ functions are called, if you passed -stats, v will
 produce a report about how many tests passed, and how many failed.

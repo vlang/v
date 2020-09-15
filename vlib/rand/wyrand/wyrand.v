@@ -17,7 +17,7 @@ const (
 pub struct WyRandRNG {
 mut:
 	state     u64 = util.time_seed_64()
-	has_extra bool = false
+	has_extra bool
 	extra     u32
 }
 

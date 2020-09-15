@@ -5,7 +5,7 @@ struct Stack {
 	null_element int = C.INT_MIN
 mut:
 	elements     []int
-	size         int = 0
+	size         int
 }
 
 fn (stack Stack) is_null(data int) bool {
@@ -44,7 +44,7 @@ fn (mut stack Stack) push(item int) {
 struct BTree {
 mut:
 	all_tags     []Tag
-	node_pointer int = 0
+	node_pointer int
 	childrens    [][]int
 	parents      []int
 }

@@ -8,8 +8,8 @@ import regex
 struct TestItem {
 	src string
 	q string
-	s int = 0
-	e int = 0
+	s int
+	e int
 }
 
 const(
@@ -141,8 +141,8 @@ match_test_suite_re = [
 struct TestItemCGroup {
 	src string
 	q string
-	s int = 0
-	e int = 0
+	s int
+	e int
 	cg []int
 	cgn map[string]int
 }
@@ -239,7 +239,7 @@ fn test_regex(){
 		if res.len != to.r.len {
 			println("ERROR: find_all, array of different size.")
 			assert false
-			continue            
+			continue
 		}
 
 		for c1,i in res {
@@ -268,7 +268,7 @@ fn test_regex(){
 			println("ERROR: replace.")
 			assert false
 			continue
-		}		
+		}
 	}
 
 	// check match and find
@@ -282,7 +282,7 @@ fn test_regex(){
 				eprintln('err: $err')
 				assert false
 				continue
-			}                
+			}
 			// q_str := re.get_query()
 			// println("Query: $q_str")
 			start,end := re.find(to.src)
