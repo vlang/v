@@ -3283,7 +3283,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 }
 
 // comp_if_branch checks the condition of a compile-time `if` branch. It returns a `bool` that
-// tells us whether that branch's contents should be skipped (targets a different os for example)
+// saying whether that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
@@ -3341,6 +3341,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', cond.pos)
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
 			} else if cond.name in valid_comp_if_compilers {
+				cc_str := pref.ccompiler_from_string(cond.name)
+				c.warn('$cc_str != ${c.pref.compiler_type}', cond.pos)
 				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
 			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
