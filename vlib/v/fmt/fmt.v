@@ -921,7 +921,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.PostfixExpr {
 			f.expr(node.expr)
 			// `$if foo ?`
-			if node.op == .question { f.write(' ?') } else { f.write('$node.op') }
+			if node.op == .question {
+				f.write(' ?')
+			} else {
+				f.write('$node.op')
+			}
 		}
 		ast.PrefixExpr {
 			f.write(node.op.str())
