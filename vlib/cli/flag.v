@@ -32,7 +32,7 @@ pub fn (flag Flag) get_bool() ?bool {
 }
 
 pub fn (flags []Flag) get_bool(name string) ?bool {
-	flag := flags.get(name)?
+	flag := flags.get(name) ?
 	return flag.get_bool()
 }
 
@@ -51,7 +51,7 @@ pub fn (flag Flag) get_int() ?int {
 }
 
 pub fn (flags []Flag) get_int(name string) ?int {
-	flag := flags.get(name)?
+	flag := flags.get(name) ?
 	return flag.get_int()
 }
 
@@ -70,7 +70,7 @@ pub fn (flag Flag) get_float() ?f64 {
 }
 
 pub fn (flags []Flag) get_float(name string) ?f64 {
-	flag := flags.get(name)?
+	flag := flags.get(name) ?
 	return flag.get_float()
 }
 
@@ -89,7 +89,7 @@ pub fn (flag Flag) get_string() ?string {
 }
 
 pub fn (flags []Flag) get_string(name string) ?string {
-	flag := flags.get(name)?
+	flag := flags.get(name) ?
 	return flag.get_string()
 }
 
@@ -104,10 +104,10 @@ pub fn (flags []Flag) get_string_or(name, or_value string) string {
 fn (mut flag Flag) parse(args []string, with_abbrev bool) ?[]string {
 	if flag.matches(args, with_abbrev) {
 		if flag.flag == .bool {
-			new_args := flag.parse_bool(args)?
+			new_args := flag.parse_bool(args) ?
 			return new_args
 		} else {
-			new_args := flag.parse_raw(args)?
+			new_args := flag.parse_raw(args) ?
 			return new_args
 		}
 	} else {
