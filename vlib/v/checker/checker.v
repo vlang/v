@@ -3126,7 +3126,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut require_return := false
 	mut branch_without_return := false
 	mut should_skip := false // Whether the current branch should be skipped
-	mut should_skip_else := false // Whether the `else` branch (if it exists) should be skipped
+	mut found_branch := false // Whether a matching branch was found- skip the rest
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
@@ -3187,15 +3187,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		}
 		if is_ct { // Skip checking if needed
 			cur_skip_flags := c.skip_flags
-			if node.has_else && i == node.branches.len - 1 { // `else` branch
-				if should_skip_else {
-					c.skip_flags = true
-				}
+			if found_branch {
+				c.skip_flags = true
 			} else if should_skip {
 				c.skip_flags = true
 				should_skip = false // Reset the value of `should_skip` for the next branch
 			} else {
-				should_skip_else = true // If a regular branch wasn't skipped, then `else` must be
+				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
 			if !c.skip_flags || c.pref.output_cross_c {
 				c.stmts(branch.stmts)
