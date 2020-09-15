@@ -2085,12 +2085,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
+			cur_exp_typ := c.expected_type
 			assert_type := c.expr(node.expr)
 			if assert_type != table.bool_type_idx {
 				atype_name := c.table.get_type_symbol(assert_type).name
 				c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 					node.pos)
 			}
+			c.expected_type = cur_exp_typ
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
