@@ -1,3 +1,6 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module main
 
 import os
@@ -23,6 +26,7 @@ const (
 	}
 	supported_vcs_outdated_steps = {
 		'git': ['git fetch', 'git rev-parse @', 'git rev-parse @{u}']
+		'hg': ['hg incoming']
 	}
 )
 
@@ -253,22 +257,23 @@ fn get_outdated() ?[]string {
 		vcs := vcs_used_in_dir(final_module_path) or {
 			continue
 		}
-		if vcs[0] != 'git' {
-			println('Check for $name was skipped.')
-			verbose_println('VCS ${vcs[0]} does ot support `v outdated`.')
-			continue
-		}
 		vcs_cmd_steps := supported_vcs_outdated_steps[vcs[0]]
 		mut outputs := []string{}
 		for step in vcs_cmd_steps {
 			res := os.exec(step) or {
-				verbose_println('Error command: git fetch')
+				verbose_println('Error command: $step')
 				verbose_println('Error details:\n$err')
 				return error('Error while checking latest commits for "$name".')
 			}
-			outputs << res.output
+			if vcs[0] == 'hg' {
+				if res.exit_code == 1 {
+					outdated << name
+				}
+			} else {
+				outputs << res.output
+			}
 		}
-		if outputs[1] != outputs[2] {
+		if vcs[0] == 'git' && outputs[1] != outputs[2] {
 			outdated << name
 		}
 	}

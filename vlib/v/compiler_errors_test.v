@@ -7,6 +7,12 @@ import sync
 import runtime
 import benchmark
 
+const (
+	skip_files = [
+		'nonexisting'
+	]
+)
+
 struct TaskDescription {
 	vexe             string
 	dir              string
@@ -15,6 +21,7 @@ struct TaskDescription {
 	path             string
 mut:
 	is_error         bool
+	is_skipped       bool
 	expected         string
 	found___         string
 	took             time.Duration
@@ -67,7 +74,14 @@ fn (mut tasks []TaskDescription) run() {
 	bench.set_total_expected_steps(tasks.len)
 	mut work := sync.new_channel<TaskDescription>(tasks.len)
 	mut results := sync.new_channel<TaskDescription>(tasks.len)
+	mut m_skip_files := skip_files
+	$if noskip ? {
+		m_skip_files = []
+	}
 	for i in 0 .. tasks.len {
+		if tasks[i].path in m_skip_files {
+			tasks[i].is_skipped = true
+		}
 		work.push(&tasks[i])
 	}
 	work.close()
@@ -79,6 +93,12 @@ fn (mut tasks []TaskDescription) run() {
 		mut task := TaskDescription{}
 		results.pop(&task)
 		bench.step()
+		if task.is_skipped {
+			bench.skip()
+			eprintln(bench.step_message_with_label_and_duration(benchmark.b_skip, task.path,
+				task.took))
+			continue
+		}                                                                                        
 		if task.is_error {
 			total_errors++
 			bench.fail()
@@ -121,6 +141,9 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 
 // actual processing; NB: no output is done here at all
 fn (mut task TaskDescription) execute() {
+	if task.is_skipped {
+		return    
+	}    
 	program := task.path
     cli_cmd := '$task.vexe $task.voptions $program'
 	res := os.exec(cli_cmd) or {
