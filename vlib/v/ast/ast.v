@@ -267,6 +267,7 @@ pub mut:
 	return_type   table.Type
 }
 
+// break, continue
 pub struct BranchStmt {
 pub:
 	tok token.Token
