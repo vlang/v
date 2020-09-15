@@ -2301,7 +2301,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
-	if c.skip_flags { return }
+	if c.skip_flags {
+		return
+	}
 	if c.pref.backend == .js {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('Hash statements are only allowed in backend specific files such "x.js.v"',
@@ -2924,7 +2926,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			}
 		}
 	}
-	if /* require_return && */ branch_without_return {
+	// require_return &&
+	if branch_without_return {
 		c.returns = false
 	} else {
 		// if inner if branch has not covered all branches but this one
@@ -3336,8 +3339,11 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 		ast.Ident {
 			if cond.name in valid_comp_if_os {
+				c.warn('$cond.name != ${c.pref.os.str().to_lower()}', cond.pos)
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
 			} else if cond.name in valid_comp_if_compilers {
+				// cc_str := pref.ccompiler_from_string(cond.name)
+				// c.warn('$cc_str != ${c.pref.compiler_type}', cond.pos)
 				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
 			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
