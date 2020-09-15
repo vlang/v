@@ -288,3 +288,139 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		var_name: var_name
 	}
 }
+
+fn (mut p Parser) select_expr() ast.SelectExpr {
+	match_first_pos := p.tok.position()
+	p.check(.key_select)
+	no_lcbr := p.tok.kind != .lcbr
+	if !no_lcbr {
+		p.check(.lcbr)
+	}
+	mut branches := []ast.SelectBranch{}
+	mut has_else := false
+	mut has_timeout := false
+	for {
+		branch_first_pos := p.tok.position()
+		comment := p.check_comment() // comment before {}
+		p.open_scope()
+		// final else
+		mut is_else := false
+		mut is_timeout := false
+		mut stmt := ast.Stmt{}
+		if p.tok.kind == .key_else {
+			if has_timeout {
+				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys', p.tok.position())
+			}
+			if has_else {
+				p.error_with_pos('at most one `else` branch allowed in `select` block', p.tok.position())
+			}
+			is_else = true
+			has_else = true
+			p.next()
+		} else if p.tok.kind == .gt {
+			if has_else {
+				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys', p.tok.position())
+			}
+			if has_timeout {
+				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block', p.tok.position())
+			}
+			is_timeout = true
+			has_timeout = true
+			p.next()
+			p.inside_match = true
+			expr := p.expr(0)
+			p.inside_match = false
+			stmt = ast.ExprStmt{
+				expr: expr
+				pos: expr.position()
+				comments: [comment]
+				is_expr: true
+			}
+		} else {
+			p.inside_match = true
+			exprs, comments := p.expr_list()
+			if exprs.len != 1 {
+				p.error('only one expression allowed as `select` key')
+			}
+			if p.tok.kind in [.assign, .decl_assign] {
+				stmt = p.partial_assign_stmt(exprs, comments)
+			} else {
+				stmt = ast.ExprStmt{
+					expr: exprs[0]
+					pos: exprs[0].position()
+					comments: [comment]
+					is_expr: true
+				}
+			}
+			p.inside_match = false
+			match stmt {
+				ast.ExprStmt {
+					if !stmt.is_expr {
+						p.error_with_pos('select: invalid expression', stmt.pos)
+					} else {
+						match stmt.expr as expr {
+							ast.InfixExpr {
+								if expr.op != .arrow {
+									p.error_with_pos('select key: `<-` operator expected', expr.pos)
+								}
+							}
+							else {
+								p.error_with_pos('select key: send expression (`ch <- x`) expected', stmt.pos)
+							}
+						}
+					}
+				}
+				ast.AssignStmt {
+					match stmt.right[0] as expr {
+						ast.PrefixExpr {
+							if expr.op != .arrow {
+								p.error_with_pos('select key: `<-` operator expected', expr.pos)
+							}
+						} else {
+							p.error_with_pos(arrow_expect_error, stmt.right[0].position())
+						}
+					}
+				}
+				else {
+					p.error_with_pos('select: transmission statement expected', stmt.position())
+				}
+			}
+		}
+		branch_last_pos := p.tok.position()
+		p.inside_match_body = true
+		stmts := p.parse_block_no_scope(false)
+		p.close_scope()
+		p.inside_match_body = false
+		pos := token.Position{
+			line_nr: branch_first_pos.line_nr
+			pos: branch_first_pos.pos
+			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
+		}
+		post_comments := p.eat_comments()
+		branches << ast.SelectBranch{
+			stmt: stmt
+			stmts: stmts
+			pos: pos
+			comment: comment
+			is_else: is_else
+			is_timeout: is_timeout
+			post_comments: post_comments
+		}
+		if p.tok.kind == .rcbr || ((is_else || is_timeout) && no_lcbr) {
+			break
+		}
+	}
+	match_last_pos := p.tok.position()
+	pos := token.Position{
+		line_nr: match_first_pos.line_nr
+		pos: match_first_pos.pos
+		len: match_last_pos.pos - match_first_pos.pos + match_last_pos.len
+	}
+	if p.tok.kind == .rcbr {
+		p.check(.rcbr)
+	}
+	return ast.SelectExpr{
+		branches: branches
+		pos: pos
+	}
+}

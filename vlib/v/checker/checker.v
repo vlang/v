@@ -2641,6 +2641,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			// never happens
 			return table.void_type
 		}
+		ast.SelectExpr {
+			// TODO: to be implemented
+			return table.void_type
+		}
 		ast.SelectorExpr {
 			return c.selector_expr(mut node)
 		}
