@@ -2926,8 +2926,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			}
 		}
 	}
-	// require_return &&
-	if branch_without_return {
+	if require_return && branch_without_return {
 		c.returns = false
 	} else {
 		// if inner if branch has not covered all branches but this one
@@ -3151,7 +3150,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		// smartcast sumtypes when using `is`
+		// smartcast sumtypes and interfaces when using `is`
 		if !is_ct && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is &&
@@ -3252,7 +3251,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 		}
-		// We need to check for returns inside a comp.if's statements, even if its contents aren't parsed
+		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				require_return = true

@@ -16,7 +16,7 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type |
 	TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor  | ConstDecl | DeferStmt |
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
 	StructDecl | TypeDecl

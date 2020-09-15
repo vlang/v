@@ -175,16 +175,13 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 					g.comp_if_expr(cond.right)
 				}
 				.key_is, .not_is {
-					// mut exp_type := table.Type(0)
-					// mut name := ''
 					se := cond.left as ast.SelectorExpr
 					name := '${se.expr}.$se.field_name'
 					exp_type := g.comptime_var_type_map[name]
 					got_type := (cond.right as ast.Type).typ
 					g.write('$exp_type == $got_type')
 				} .eq, .ne {
-					// $if method.args.len == 1
-					// TODO: Implementation for this is in #5997
+					// TODO Implement `$if method.args.len == 1`
 				} else {}
 			}
 		} ast.Ident {
