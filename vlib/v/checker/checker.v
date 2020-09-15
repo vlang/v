@@ -3338,11 +3338,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 		ast.Ident {
 			if cond.name in valid_comp_if_os {
-				// c.warn('$cond.name != ${c.pref.os.str().to_lower()}', cond.pos)
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
 			} else if cond.name in valid_comp_if_compilers {
-				cc_str := pref.ccompiler_from_string(cond.name)
-				c.warn('$cc_str != ${c.pref.compiler_type}', cond.pos)
 				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
 			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
