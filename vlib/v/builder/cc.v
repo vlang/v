@@ -64,9 +64,11 @@ fn (mut v Builder) find_win_cc() ? {
 			}
 			v.pref.ccompiler = thirdparty_tcc
 			v.pref.compiler_type = .tinyc
+			return
 		}
 		v.pref.ccompiler = 'msvc'
 		v.pref.compiler_type = .msvc
+		return
 	}
 	v.pref.compiler_type = pref.ccompiler_from_string(v.pref.ccompiler)
 }
