@@ -63,11 +63,12 @@ fn (cmd Command) help_message() string {
 	if cmd.commands.len > 0 {
 		help += ' [commands]'
 	}
-	for i in 0 .. cmd.required_args {
-		help += ' <arg$i>'
-	}
 	if cmd.usage.len > 0 {
 		help += ' $cmd.usage'
+	} else {
+		for i in 0 .. cmd.required_args {
+			help += ' <arg$i>'
+		}
 	}
 	help += '\n\n'
 	if cmd.description != '' {
