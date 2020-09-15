@@ -42,7 +42,7 @@ const (
 fn todo() {
 }
 
-fn (v &Builder) find_win_cc() ?string {
+fn (v &Builder) find_win_cc() ? {
 	$if !windows {
 		return none
 	}
@@ -58,15 +58,17 @@ fn (v &Builder) find_win_cc() ?string {
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
 			os.exec('$thirdparty_tcc -v') or {
 				if v.pref.is_verbose {
-					println('No C compiler found')
+					println('tcc not found')
 				}
 				return none
 			}
-			return thirdparty_tcc
+			v.pref.ccompiler = thirdparty_tcc
+			v.pref.compiler_type = .tcc
 		}
-		return 'msvc'
+		v.pref.ccompiler = 'msvc'
+		v.pref.compiler_type = .msvc
 	}
-	return v.pref.ccompiler
+	v.pref.compiler_type = util.ccompiler_from_string(v.pref.ccompiler)
 }
 
 fn (mut v Builder) cc() {
