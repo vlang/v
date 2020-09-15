@@ -377,7 +377,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 								p.error_with_pos('select key: `<-` operator expected', expr.pos)
 							}
 						} else {
-							p.error_with_pos(arrow_expect_error, stmt.right[0].position())
+							p.error_with_pos('select key: receive expression expected', stmt.right[0].position())
 						}
 					}
 				}
