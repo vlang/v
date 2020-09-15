@@ -269,7 +269,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error('Command `$name` not found')
+	return error('Command `$name` not found in $cmds')
 }
 
 fn (cmds []Command) contains(name string) bool {
