@@ -42,7 +42,7 @@ const (
 fn todo() {
 }
 
-fn (v &Builder) find_win_cc() ? {
+fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return none
 	}
@@ -63,12 +63,12 @@ fn (v &Builder) find_win_cc() ? {
 				return none
 			}
 			v.pref.ccompiler = thirdparty_tcc
-			v.pref.compiler_type = .tcc
+			v.pref.compiler_type = .tinyc
 		}
 		v.pref.ccompiler = 'msvc'
 		v.pref.compiler_type = .msvc
 	}
-	v.pref.compiler_type = util.ccompiler_from_string(v.pref.ccompiler)
+	v.pref.compiler_type = pref.ccompiler_from_string(v.pref.ccompiler)
 }
 
 fn (mut v Builder) cc() {
