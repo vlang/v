@@ -6,6 +6,9 @@ module sync
 import time
 
 #flag -lpthread
+$if macos {
+	#include <dispatch/dispatch.h>
+}
 #include <semaphore.h>
 
 // [init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
