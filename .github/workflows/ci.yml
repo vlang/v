@@ -107,6 +107,8 @@ jobs:
       run:  make -j4 && ./v -cg -o v cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+    - name: Temp debug
+      run: ./v -showcc -cg vlib/sync/channel_select_test.v
     - name: Test symlink
       run:  sudo ./v symlink
 #    - name: Set up pg database
