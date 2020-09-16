@@ -70,7 +70,7 @@ fn restore_codepage() {
 
 fn builtin_init() {
 	g_original_codepage = C.GetConsoleOutputCP()
-	C.SetConsoleOutputCP(C.CP_UTF8)	
+	C.SetConsoleOutputCP(C.CP_UTF8)
 	C.atexit(restore_codepage)
 	if is_atty(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
@@ -201,9 +201,9 @@ pub:
 
 type VectoredExceptionHandler fn(&ExceptionPointers)u32
 
-fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+fn C.AddVectoredExceptionHandler(u32, C.PVECTORED_EXCEPTION_HANDLER)
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(1, handler)
+	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
 [windows_stdcall]
