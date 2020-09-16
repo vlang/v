@@ -2137,6 +2137,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.RangeExpr {
 			// Only used in IndexExpr
 		}
+		ast.SelectExpr {
+			// TODO: to be implemented
+		}
 		ast.SizeOf {
 			if node.is_type {
 				node_typ := g.unwrap_generic(node.typ)

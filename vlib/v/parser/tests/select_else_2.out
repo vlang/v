@@ -1,0 +1,7 @@
+vlib/v/parser/tests/select_else_2.vv:12:3: error: timeout `> t` and `else` are mutually exclusive `select` keys
+   10 |             println('bad')
+   11 |         }
+   12 |         else {
+      |         ~~~~
+   13 |             println("shouldn't get here")
+   14 |         }
