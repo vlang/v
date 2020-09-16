@@ -24,7 +24,11 @@ pub enum Language {
 	js
 }
 
-// for pointers, gives T for `&T`
+// Represents a type that only needs an identifier, e.g. int, array_int.
+// A pointer type `&T` would have a TypeSymbol `T`.
+// Note: For a Type, use Table.type_to_str(typ) not TypeSymbol.name.
+// Each TypeSymbol is entered into `Table.types`.
+// See also: Table.get_type_symbol.
 pub struct TypeSymbol {
 pub:
 	parent_idx  int
