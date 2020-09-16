@@ -859,8 +859,9 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
-	} else if is_top_level && tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock] &&
-		left0 !is ast.CallExpr && left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
+	} else if is_top_level && tok.kind !in
+		[.key_if, .key_match, .key_lock, .key_rlock, .key_select] && left0 !is ast.CallExpr &&
+		left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
 		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}

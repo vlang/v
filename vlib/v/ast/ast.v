@@ -12,7 +12,7 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
+	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
 	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type |
 	TypeOf | UnsafeExpr
 
@@ -533,6 +533,27 @@ pub:
 	pos           token.Position
 	comment       Comment // comment above `xxx {`
 	is_else       bool
+	post_comments []Comment
+}
+
+pub struct SelectExpr {
+pub:
+	branches      []SelectBranch
+	pos           token.Position
+pub mut:
+	is_expr       bool // returns a value
+	return_type   table.Type
+	expected_type table.Type // for debugging only
+}
+
+pub struct SelectBranch {
+pub:
+	stmt          Stmt // `a := <-ch` or `ch <- a`
+	stmts         []Stmt // right side
+	pos           token.Position
+	comment       Comment // comment above `select {`
+	is_else       bool
+	is_timeout    bool
 	post_comments []Comment
 }
 
@@ -1062,6 +1083,9 @@ pub fn (expr Expr) position() token.Position {
 			return expr.pos
 		}
 		// ast.ParExpr { }
+		SelectExpr {
+			return expr.pos
+		}
 		SelectorExpr {
 			return expr.pos
 		}
