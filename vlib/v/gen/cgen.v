@@ -1963,6 +1963,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// }
 				// g.write(')(')
 				g.expr(node.expr)
+				if node.expr is ast.IntegerLiteral &&
+					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
+					g.write('U')
+				}
 				g.write('))')
 			}
 		}
