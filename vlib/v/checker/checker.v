@@ -1846,7 +1846,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			else {
 				if is_decl {
-					c.error('unexpected expression `${typeof(left)}`', left.position())
+					c.error('non-name `$left` on left side of `:=`', left.position())
 				}
 			}
 		}
