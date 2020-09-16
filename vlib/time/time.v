@@ -133,6 +133,9 @@ pub fn utc() Time {
 
 // smonth returns month name.
 pub fn (t Time) smonth() string {
+	if t.month <= 0 || t.month > 12 {
+		return '---'
+	}
 	i := t.month - 1
 	return months_string[i * 3..(i + 1) * 3]
 }

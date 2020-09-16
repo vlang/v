@@ -118,16 +118,16 @@ pub fn (t Time) get_fmt_date_str(fmt_dlmtr FormatDelimiter, fmt_date FormatDate)
 		return ''
 	}
 	month := '$t.smonth()'
-	year := t.year.str()[2..]
+	year := '${(t.year % 100):02d}'
 	mut res := match fmt_date {
 		.ddmmyy { '${t.day:02d}|${t.month:02d}|$year' }
-		.ddmmyyyy { '${t.day:02d}|${t.month:02d}|$t.year' }
+		.ddmmyyyy { '${t.day:02d}|${t.month:02d}|${t.year:04d}' }
 		.mmddyy { '${t.month:02d}|${t.day:02d}|$year' }
-		.mmddyyyy { '${t.month:02d}|${t.day:02d}|$t.year' }
+		.mmddyyyy { '${t.month:02d}|${t.day:02d}|${t.year:04d}' }
 		.mmmd { '$month|$t.day' }
 		.mmmdd { '$month|${t.day:02d}' }
-		.mmmddyyyy { '$month|${t.day:02d}|$t.year' }
-		.yyyymmdd { '$t.year|${t.month:02d}|${t.day:02d}' }
+		.mmmddyyyy { '$month|${t.day:02d}|${t.year:04d}' }
+		.yyyymmdd { '${t.year:04d}|${t.month:02d}|${t.day:02d}' }
 		else { 'unknown enumeration $fmt_date' }
 	}
 	del := match fmt_dlmtr {
