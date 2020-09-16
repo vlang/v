@@ -78,6 +78,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.key_match {
 			node = p.match_expr()
 		}
+		.key_select {
+			node = p.select_expr()
+		}
 		.number {
 			node = p.parse_number_literal()
 		}

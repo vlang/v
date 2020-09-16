@@ -12,7 +12,7 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
+	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
 	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type |
 	TypeOf | UnsafeExpr
 
@@ -532,6 +532,63 @@ pub:
 	post_comments []Comment
 }
 
+pub struct SelectExpr {
+pub:
+	branches      []SelectBranch
+	pos           token.Position
+pub mut:
+	is_expr       bool // returns a value
+	return_type   table.Type
+	expected_type table.Type // for debugging only
+}
+
+pub struct SelectBranch {
+pub:
+	stmt          Stmt // `a := <-ch` or `ch <- a`
+	stmts         []Stmt // right side
+	pos           token.Position
+	comment       Comment // comment above `select {`
+	is_else       bool
+	is_timeout    bool
+	post_comments []Comment
+}
+
+/*
+CompIf.is_opt:
+`$if xyz? {}` => this compile time `if` is optional,
+and .is_opt reflects the presence of ? at the end.
+When .is_opt is true, the code should compile, even
+if `xyz` is NOT defined.
+If .is_opt is false, then when `xyz` is not defined,
+the compilation will fail.
+
+`$if method.type is string {}` will produce CompIf with:
+.is_typecheck true,
+.tchk_expr: method.type
+.tchk_type: string
+.tchk_match: true on each iteration, having a string `method.type`
+*/
+pub enum CompIfKind {
+	platform
+	typecheck
+}
+
+pub struct CompIf {
+pub:
+	val        string
+	stmts      []Stmt
+	is_not     bool
+	kind       CompIfKind
+	tchk_expr  Expr
+	tchk_type  table.Type
+	pos        token.Position
+pub mut:
+	tchk_match bool
+	is_opt     bool
+	has_else   bool
+	else_stmts []Stmt
+}
+
 pub enum CompForKind {
 	methods
 	fields
@@ -1022,6 +1079,9 @@ pub fn (expr Expr) position() token.Position {
 			return expr.pos
 		}
 		// ast.ParExpr { }
+		SelectExpr {
+			return expr.pos
+		}
 		SelectorExpr {
 			return expr.pos
 		}

@@ -345,7 +345,7 @@ pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
 
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), handler)
+	C.AddVectoredExceptionHandler(u32(first), C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
 // this is defined in builtin_windows.c.v in builtin

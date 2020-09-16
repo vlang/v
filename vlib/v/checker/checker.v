@@ -1855,7 +1855,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						assign_stmt.pos)
 				}
 			}
-			else {}
+			else {
+				if is_decl {
+					c.error('non-name `$left` on left side of `:=`', left.position())
+				}
+			}
 		}
 		left_type_unwrapped := c.unwrap_generic(left_type)
 		right_type_unwrapped := c.unwrap_generic(right_type)
@@ -2644,6 +2648,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.RangeExpr {
 			// never happens
+			return table.void_type
+		}
+		ast.SelectExpr {
+			// TODO: to be implemented
 			return table.void_type
 		}
 		ast.SelectorExpr {

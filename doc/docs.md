@@ -355,9 +355,7 @@ println(s) // "hello world"
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 
-Just like in Go and Java, strings are immutable, which means their values cannot be changed.
-
-The following code will raise an error:
+String values are immutable. The following code will raise an error:
 
 ```v
 mut s := 'hello'
@@ -655,13 +653,18 @@ import time
 
 type MyTime time.Time
 
+fn (mut t MyTime) century() int {
+    return 1 + t.year % 100
+}
+
 fn main() {
     my_time := MyTime{
         year: 2020,
         month: 12,
         day: 25
     }
-    println(my_time.unix_time())
+    println(time.new_time(my_time).utc_string())
+    println('Century: ${my_time.century()}')
 }
 ```
 

@@ -23,7 +23,7 @@ fn main() {
 	app := new_app()
 	os.chdir(app.vroot)
 	println('Updating V...')
-	app.update_from_master()    
+	app.update_from_master()
 	v_hash := util.githash(false)
 	current_hash := util.githash(true)
 	// println(v_hash)
@@ -35,8 +35,8 @@ fn main() {
 	$if windows {
 		app.backup('cmd/tools/vup.exe')
 	}
-    app.recompile_v()
-	os.exec('$app.vexe cmd/tools/vup.v') or {
+	app.recompile_v()
+	os.exec('"$app.vexe" cmd/tools/vup.v') or {
 		panic(err)
 	}
 	app.show_current_v_version()
@@ -45,7 +45,7 @@ fn main() {
 fn (app App) update_from_master() {
 	if app.is_verbose {
 		println('> updating from master ...')
-	}        
+	}
 	if !os.exists('.git') {
 		// initialize as if it had been cloned
 		app.git_command('init')
@@ -61,10 +61,10 @@ fn (app App) update_from_master() {
 
 fn (app App) recompile_v() {
 	// NB: app.vexe is more reliable than just v (which may be a symlink)
-	vself := '$app.vexe self'
+	vself := '"$app.vexe" self'
 	if app.is_verbose {
 		println('> recompiling v itself with `$vself` ...')
-	}        
+	}
 	if self_result := os.exec(vself) {
 		println(self_result.output.trim_space())
 		if self_result.exit_code == 0 {
@@ -88,7 +88,7 @@ fn (app App) make(vself string) {
 
 fn (app App) show_current_v_version() {
 	println('Current V version:')
-	os.system('$app.vexe version')
+	os.system('"$app.vexe" version')
 }
 
 fn (app App) backup(file string) {

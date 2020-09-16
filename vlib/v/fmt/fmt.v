@@ -936,6 +936,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('..')
 			f.expr(node.high)
 		}
+		ast.SelectExpr {
+			// TODO: implement this
+		}
 		ast.SelectorExpr {
 			f.expr(node.expr)
 			f.write('.')

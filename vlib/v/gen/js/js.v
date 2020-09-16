@@ -616,6 +616,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
 		}
+		ast.SelectExpr {
+			// TODO: to be implemented
+		}
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
