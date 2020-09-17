@@ -16,18 +16,13 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | C
 	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type |
 	TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | CompIf | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
-	SqlStmt | StructDecl | TypeDecl
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
+	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
+	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
+	StructDecl | TypeDecl
 
 pub type ScopeObject = ConstField | GlobalDecl | Var
 
-// pub type Type = StructType | ArrayType
-// pub struct StructType {
-// fields []Field
-// }
-// pub struct ArrayType {}
 pub struct Type {
 pub:
 	typ table.Type
@@ -468,6 +463,7 @@ pub mut:
 
 pub struct IfExpr {
 pub:
+	is_comptime   bool
 	tok_kind      token.Kind
 	left          Expr // `a` in `a := if ...`
 	pos           token.Position
@@ -482,13 +478,13 @@ pub mut:
 pub struct IfBranch {
 pub:
 	cond         Expr
-	stmts        []Stmt
 	pos          token.Position
 	body_pos     token.Position
 	comments     []Comment
 	left_as_name string // `name` in `if cond is SumType as name`
 	mut_name     bool // `if mut name is`
 pub mut:
+	stmts        []Stmt
 	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr
 }
 
@@ -555,42 +551,6 @@ pub:
 	is_else       bool
 	is_timeout    bool
 	post_comments []Comment
-}
-
-/*
-CompIf.is_opt:
-`$if xyz? {}` => this compile time `if` is optional,
-and .is_opt reflects the presence of ? at the end.
-When .is_opt is true, the code should compile, even
-if `xyz` is NOT defined.
-If .is_opt is false, then when `xyz` is not defined,
-the compilation will fail.
-
-`$if method.type is string {}` will produce CompIf with:
-.is_typecheck true,
-.tchk_expr: method.type
-.tchk_type: string
-.tchk_match: true on each iteration, having a string `method.type`
-*/
-pub enum CompIfKind {
-	platform
-	typecheck
-}
-
-pub struct CompIf {
-pub:
-	val        string
-	stmts      []Stmt
-	is_not     bool
-	kind       CompIfKind
-	tchk_expr  Expr
-	tchk_type  table.Type
-	pos        token.Position
-pub mut:
-	tchk_match bool
-	is_opt     bool
-	has_else   bool
-	else_stmts []Stmt
 }
 
 pub enum CompForKind {
@@ -1134,7 +1094,6 @@ pub fn (stmt Stmt) position() token.Position {
 		// BranchStmt {
 		// }
 		*/
-		CompIf { return stmt.pos }
 		ConstDecl { return stmt.pos }
 		/*
 		// DeferStmt {

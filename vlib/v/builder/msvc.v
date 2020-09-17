@@ -84,18 +84,19 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
 		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
 			key_enumerate_sub_keys, &root_key)
-		defer {
-			C.RegCloseKey(root_key)
-		}
+		// TODO: Fix defer inside ifs
+		// defer {
+		// C.RegCloseKey(root_key)
+		// }
 		if rc != 0 {
 			return error('Unable to open root key')
 		}
 		// Try and find win10 kit
 		kit_root := find_windows_kit_internal(root_key, ['KitsRoot10', 'KitsRoot81']) or {
+			C.RegCloseKey(root_key)
 			return error('Unable to find a windows kit')
 		}
 		kit_lib := kit_root + 'Lib'
-		// println(kit_lib)
 		files := os.ls(kit_lib)?
 		mut highest_path := ''
 		mut highest_int := 0
@@ -109,7 +110,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		}
 		kit_lib_highest := kit_lib + '\\$highest_path'
 		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
-		// println('$kit_lib_highest $kit_include_highest')
+		C.RegCloseKey(root_key)
 		return WindowsKit{
 			um_lib_path: kit_lib_highest + '\\um\\$host_arch'
 			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$host_arch'

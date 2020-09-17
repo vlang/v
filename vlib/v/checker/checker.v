@@ -16,6 +16,16 @@ const (
 	enum_max                      = 0x7FFFFFFF
 )
 
+const (
+	valid_comp_if_os        = ['windows', 'ios', 'mac', 'macos', 'mach', 'darwin', 'hpux', 'gnu',
+		'qnx', 'linux', 'freebsd', 'openbsd', 'netbsd', 'bsd', 'dragonfly', 'android', 'solaris', 'haiku',
+		'linux_or_macos',
+	]
+	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
+	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
+	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+)
+
 pub struct Checker {
 pub mut:
 	table            &table.Table
@@ -40,6 +50,7 @@ pub mut:
 	mod              string // current module name
 	is_builtin_mod   bool // are we in `builtin`?
 	inside_unsafe    bool
+	skip_flags       bool // should `#flag` and `#include` be skipped
 	cur_generic_type table.Type
 mut:
 	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
@@ -2078,12 +2089,14 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	// c.expected_type = table.void_type
 	match mut node {
 		ast.AssertStmt {
+			cur_exp_typ := c.expected_type
 			assert_type := c.expr(node.expr)
 			if assert_type != table.bool_type_idx {
 				atype_name := c.table.get_type_symbol(assert_type).name
 				c.error('assert can be used only with `bool` expressions, but found `$atype_name` instead',
 					node.pos)
 			}
+			c.expected_type = cur_exp_typ
 		}
 		ast.AssignStmt {
 			c.assign_stmt(mut node)
@@ -2106,17 +2119,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
 			c.stmts(node.stmts)
-		}
-		ast.CompIf {
-			c.stmts(node.stmts)
-			if node.has_else {
-				c.stmts(node.else_stmts)
-			}
-			mut stmts := node.stmts.clone()
-			stmts << node.else_stmts
-			if has_return := c.has_return(stmts) {
-				c.returns = has_return
-			}
 		}
 		ast.ConstDecl {
 			mut field_names := []string{}
@@ -2303,6 +2305,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 }
 
 fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
+	if c.skip_flags {
+		return
+	}
 	if c.pref.backend == .js {
 		if !c.file.path.ends_with('.js.v') {
 			c.error('Hash statements are only allowed in backend specific files such "x.js.v"',
@@ -3123,33 +3128,38 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
-	mut expr_required := false
-	if c.expected_type != table.void_type {
-		// sym := c.table.get_type_symbol(c.expected_type)
-		// println('$c.file.path  $node.pos.line_nr IF is expr: checker exp type = ' + sym.source_name)
-		expr_required = true
-	}
+	is_ct := node.is_comptime
+	if_kind := if is_ct { '\$if' } else { 'if' }
+	expr_required := c.expected_type != table.void_type
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
 	mut require_return := false
 	mut branch_without_return := false
-	for i, branch in node.branches {
+	mut should_skip := false // Whether the current branch should be skipped
+	mut found_branch := false // Whether a matching branch was found- skip the rest
+	for i in 0 .. node.branches.len {
+		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
-			c.error('unnecessary `()` in an if condition. use `if expr {` instead of `if (expr) {`.',
+			c.error('unnecessary `()` in `$if_kind` condition, use `$if_kind expr {` instead of `$if_kind (expr) {`.',
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
-			// check condition type is boolean
-			cond_typ := c.expr(branch.cond)
-			if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
-				// void types are skipped, because they mean the var was initialized incorrectly
-				// (via missing function etc)
-				typ_sym := c.table.get_type_symbol(cond_typ)
-				c.error('non-bool type `$typ_sym.source_name` used as if condition', branch.pos)
+			if is_ct {
+				should_skip = c.comp_if_branch(branch.cond, branch.pos)
+			} else {
+				// check condition type is boolean
+				cond_typ := c.expr(branch.cond)
+				if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
+					// void types are skipped, because they mean the var was initialized incorrectly
+					// (via missing function etc)
+					typ_sym := c.table.get_type_symbol(cond_typ)
+					c.error('non-bool type `$typ_sym.source_name` used as if condition',
+						branch.pos)
+				}
 			}
 		}
 		// smartcast sumtypes and interfaces when using `is`
-		if branch.cond is ast.InfixExpr {
+		if !is_ct && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is &&
 				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
@@ -3185,7 +3195,25 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		c.stmts(branch.stmts)
+		if is_ct { // Skip checking if needed
+			cur_skip_flags := c.skip_flags
+			if found_branch {
+				c.skip_flags = true
+			} else if should_skip {
+				c.skip_flags = true
+				should_skip = false // Reset the value of `should_skip` for the next branch
+			} else {
+				found_branch = true // If a branch wasn't skipped, the rest must be
+			}
+			if !c.skip_flags || c.pref.output_cross_c {
+				c.stmts(branch.stmts)
+			} else {
+				node.branches[i].stmts = []
+			}
+			c.skip_flags = cur_skip_flags
+		} else {
+			c.stmts(branch.stmts)
+		}
 		if expr_required {
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
@@ -3227,10 +3255,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						node.pos)
 				}
 			} else {
-				c.error('`if` expression requires an expression as the last statement of every branch',
+				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
 		}
+		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
 				require_return = true
@@ -3253,21 +3282,99 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	if expr_required {
 		if !node.has_else {
-			c.error('`if` expression needs `else` clause', node.pos)
+			d := if is_ct { '$' } else { '' }
+			c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
 		}
 		return node.typ
 	}
 	return table.bool_type
 }
 
+// comp_if_branch checks the condition of a compile-time `if` branch. It returns a `bool` that
+// saying whether that branch's contents should be skipped (targets a different os for example)
+fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
+	// TODO: better error messages here
+	match cond {
+		ast.ParExpr {
+			return c.comp_if_branch(cond.expr, pos)
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				c.error('invalid `\$if` condition', cond.pos)
+			}
+			return !c.comp_if_branch(cond.right, cond.pos)
+		}
+		ast.PostfixExpr {
+			if cond.op != .question {
+				c.error('invalid \$if postfix operator', cond.pos)
+			} else if cond.expr is ast.Ident as ident {
+				return ident.name !in c.pref.compile_defines_all
+			} else {
+				c.error('invalid `\$if` condition', cond.pos)
+			}
+		}
+		ast.InfixExpr {
+			match cond.op {
+				.and {
+					l := c.comp_if_branch(cond.left, cond.pos)
+					r := c.comp_if_branch(cond.right, cond.pos)
+					return l && r
+				}
+				.logical_or {
+					l := c.comp_if_branch(cond.left, cond.pos)
+					r := c.comp_if_branch(cond.right, cond.pos)
+					return l || r
+				}
+				.key_is, .not_is {
+					// $if method.@type is string
+					// TODO better checks here, will be done in comp. for PR
+					if cond.left !is ast.SelectorExpr || cond.right !is ast.Type {
+						c.error('invalid `\$if` condition', cond.pos)
+					}
+				}
+				.eq, .ne {
+					// $if method.args.len == 1
+					// TODO better checks here, will be done in comp. for PR
+					if cond.left !is ast.SelectorExpr || cond.right !is ast.IntegerLiteral {
+						c.error('invalid `\$if` condition', cond.pos)
+					}
+				}
+				else {
+					c.error('invalid `\$if` condition', cond.pos)
+				}
+			}
+		}
+		ast.Ident {
+			if cond.name in valid_comp_if_os {
+				return cond.name != c.pref.os.str().to_lower() // TODO hack
+			} else if cond.name in valid_comp_if_compilers {
+				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
+			} else if cond.name in valid_comp_if_platforms {
+				return false // TODO
+			} else if cond.name in valid_comp_if_other {
+				// TODO: This should probably be moved
+				match cond.name as name {
+					'js' { return c.pref.backend != .js }
+					'debug' { return !c.pref.is_debug }
+					'test' { return !c.pref.is_test }
+					'glibc' { return false } // TODO
+					'prealloc' { return !c.pref.prealloc }
+					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
+					else { return false }
+				}
+			}
+		}
+		else {
+			c.error('invalid `\$if` condition', pos)
+		}
+	}
+	return false
+}
+
 fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
 	// complexity means either more match or ifs
 	mut has_complexity := false
 	for s in stmts {
-		if s is ast.CompIf {
-			has_complexity = true
-			break
-		}
 		if s is ast.ExprStmt {
 			if s.expr is ast.IfExpr || s.expr is ast.MatchExpr {
 				has_complexity = true

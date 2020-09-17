@@ -307,28 +307,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}
-		ast.CompIf {
-			inversion := if it.is_not { '!' } else { '' }
-			is_opt := if it.is_opt { ' ?' } else { '' }
-			mut typecheck := ''
-			if it.kind == .typecheck {
-				typ := f.no_cur_mod(f.table.type_to_str(it.tchk_type))
-				typecheck = ' is $typ'
-				f.write('\$if $inversion')
-				f.expr(it.tchk_expr)
-				f.write(is_opt)
-				f.write(typecheck)
-				f.writeln(' {')
-			} else {
-				f.writeln('\$if $inversion$it.val$is_opt {')
-			}
-			f.stmts(it.stmts)
-			if it.has_else {
-				f.writeln('} \$else {')
-				f.stmts(it.else_stmts)
-			}
-			f.writeln('}')
-		}
 		ast.ConstDecl {
 			f.const_decl(it)
 		}
@@ -942,7 +920,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.PostfixExpr {
 			f.expr(node.expr)
-			f.write(node.op.str())
+			// `$if foo ?`
+			if node.op == .question {
+				f.write(' ?')
+			} else {
+				f.write('$node.op')
+			}
 		}
 		ast.PrefixExpr {
 			f.write(node.op.str())
@@ -1361,6 +1344,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
+	dollar := if it.is_comptime { '$' } else { '' }
 	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
 		it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
@@ -1386,10 +1370,10 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			} else {
 				f.write('} ')
 			}
-			f.write('else ')
+			f.write('${dollar}else ')
 		}
 		if i < it.branches.len - 1 || !it.has_else {
-			f.write('if ')
+			f.write('${dollar}if ')
 			if branch.mut_name {
 				f.write('mut ')
 			}
