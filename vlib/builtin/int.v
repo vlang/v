@@ -384,7 +384,7 @@ pub fn (b byte) str() string {
 }
 
 pub fn (b byte) str_escaped() string {
-	if b >= 20 {
+	if b >= 32 {
 		return b.str()
 	}
 	if (b > 0 && b < 7) || (b > 13 && b < 32) {
