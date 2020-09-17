@@ -1509,12 +1509,6 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 	}
 	mut last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
-		if !(last_stmt is ast.Return || last_stmt is ast.BranchStmt || last_stmt is ast.ExprStmt) {
-			expected_type_name := c.table.get_type_symbol(ret_type).name
-			c.error('last statement in the `or {}` block should return `$expected_type_name`',
-				or_expr.pos)
-			return
-		}
 		match mut last_stmt {
 			ast.ExprStmt {
 				last_stmt.typ = c.expr(last_stmt.expr)
@@ -1523,8 +1517,8 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 				if type_fits || is_panic_or_exit {
 					return
 				}
-				type_name := c.table.get_type_symbol(last_stmt.typ).name
-				expected_type_name := c.table.get_type_symbol(ret_type).name
+				type_name := c.table.type_to_str(last_stmt.typ)
+				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 					last_stmt.pos)
 				return
@@ -1536,9 +1530,14 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 					return
 				}
 			}
-			else {}
+			ast.Return {}
+			else {
+				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
+				c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
+					or_expr.pos)
+				return
+			}
 		}
-		return
 	}
 }
 
