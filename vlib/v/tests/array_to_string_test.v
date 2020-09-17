@@ -13,6 +13,9 @@ fn test_array_to_string_conversion() {
 
 	e := [i64(1), 2, 3]
 	assert e.str() == '[1, 2, 3]'
+
+	f := [byte(66), 32, 126, 10, 13, 5, 18, 127, 255]
+	assert f.str() == '[B,  , ~, `\\n`, `\\r`, 0x05, 0x12, 0x7f, 0xff]'
 }
 
 fn test_interpolation_array_to_string() {
