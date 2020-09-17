@@ -713,15 +713,15 @@ type Alphabet = Abc | Xyz
 
 x := Alphabet(Abc{'test'}) // sum type
 if x is Abc {
-    // x is automatically castet to Abc and can be used here
+    // x is automatically cast to Abc and can be used here
     println(x)
 }
 ```
 
 If you have a struct field which should be checked, there is also a way to name a alias.
-```
+```v
 if x.bar is MyStruct as bar {
-    // x.bar cannot be castet automatically, instead you say "as bar" which creates a variable with the MyStruct typing
+    // x.bar cannot be cast automatically, you must explicitly state "as bar" to create a variable with the MyStruct type
     println(bar)
 }
 ```
@@ -738,7 +738,7 @@ m := {'one': 1, 'two': 2}
 println('one' in m) // true
 ```
 
-It's also useful for writing clearer and more compact boolean expressions:
+It's also useful for writing more clear and compact boolean expressions:
 
 ```v
 if parser.token == .plus || parser.token == .minus ||
@@ -1061,7 +1061,7 @@ assert button.height == 20
 
 As you can see, both the struct name and braces can be omitted, instead of:
 
-```
+```v
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
@@ -1580,7 +1580,8 @@ fn pass_time(w World) {
 }
 ```
 
-Note: shadowing only works when the match expression is a variable. It will not work on struct fields, arrays indexing, or map key lookup.
+Note: shadowing only works when the match expression is a variable.
+It will not work on struct fields, array indexes, or map keys.
 
 ### Option/Result types and error handling
 
