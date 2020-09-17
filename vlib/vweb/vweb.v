@@ -567,10 +567,10 @@ pub fn (ctx &Context) ip() string {
 	if ip.contains(',') {
 		ip = ip.all_before(',')
 	}
+	if ip == '' {
+		ip = ctx.conn.peer_ip() or { '' }
+	}
 	return ip
-	// TODO make return ctx.conn.peer_ip() or { '' } work
-	//res := ctx.conn.peer_ip() or { '' }
-	//return res
 }
 
 pub fn (mut ctx Context) error(s string) {
