@@ -178,8 +178,8 @@ fn test_mt19937_u64_in_range() {
 }
 
 fn test_mt19937_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		mut rng := mt19937.MT19937RNG{}
 		rng.seed(seed)

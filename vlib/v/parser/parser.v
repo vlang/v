@@ -1417,9 +1417,19 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 			pos: pos
 		}
 	} else {
+		mut is_large := false
+		if lit.len > 8 {
+			val := lit.i64()
+			if (p.prev_tok.kind != .minus &&
+				val > 2147483647) ||
+				(p.prev_tok.kind == .minus && val > 2147483648) {
+				is_large = true
+			}
+		}
 		node = ast.IntegerLiteral{
 			val: lit
 			pos: pos
+			is_large: is_large
 		}
 	}
 	p.next()

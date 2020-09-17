@@ -1789,6 +1789,18 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_type := assign_stmt.right_types[i]
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
+			if left_type == table.int_type {
+				mut expr := right
+				if right is ast.PrefixExpr {
+					expr = right.right
+				}
+				if expr is ast.IntegerLiteral {
+					if expr.is_large {
+						c.error('overflow in implicit type `int`, use explicit type casting instead',
+							expr.pos)
+					}
+				}
+			}
 			// we are unwrapping here instead if check_expr_opt_call currently
 			if left_type.has_flag(.optional) {
 				left_type = left_type.clear_flag(.optional)

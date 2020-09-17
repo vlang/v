@@ -179,10 +179,7 @@ fn test_int_decl() {
 	assert typeof(x3) == 'int'
 	assert typeof(x4) == 'int'
 	assert typeof(x5) == 'int'
-	// integers are always 'int' by default
-	x6 := 989898932113111
 	x7 := u64(-321314588900011)
-	assert typeof(x6) == 'int'
 	assert typeof(x7) == 'u64'
 }
 
