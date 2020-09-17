@@ -1056,6 +1056,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				// Handle `&Foo(0)`
 				to_typ = to_typ.to_ptr()
 			}
+			// this prevents inner casts to also have an `&`
+			// example: &Foo(malloc(int(num)))
+			// without the next line int would result in int*
+			p.is_amp = false
 			p.check(.lpar)
 			mut expr := ast.Expr{}
 			mut arg := ast.Expr{}
