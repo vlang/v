@@ -3148,7 +3148,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
 				}
-				if (infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
+				if (infix.left is ast.Ident ||
+					infix.left is ast.SelectorExpr) &&
+					infix.right is ast.Type {
 					is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
 							.variable } else { true }
 					// Register shadow variable or `as` variable with actual type
