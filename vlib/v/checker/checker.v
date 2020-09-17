@@ -618,6 +618,10 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
 					c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
+				} else if promoted_type.has_flag(.optional) {
+					s := c.table.type_to_str(promoted_type)
+					c.error('`$infix_expr.op` cannot be used with `$s`',
+						infix_expr.pos)
 				} else if promoted_type.is_float() {
 					if infix_expr.op in [.mod, .xor, .amp, .pipe] {
 						side := if left_type == promoted_type { 'left' } else { 'right' }
