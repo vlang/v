@@ -74,6 +74,9 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	if sym_has_str_method {
 		elem_str_fn_name = if is_elem_ptr { field_styp.replace('*', '') + '_str' } else { field_styp +
 				'_str' }
+		if sym.kind == .byte {
+			elem_str_fn_name = elem_str_fn_name + '_escaped'
+		}
 	} else {
 		elem_str_fn_name = styp_to_str_fn_name(field_styp)
 	}
@@ -96,9 +99,6 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
 	} else {
-		if sym.kind == .byte {
-			g.auto_str_funcs.writeln('\t\tif (it == 0) break;')
-		}
 		// There is a custom .str() method, so use it.
 		// NB: we need to take account of whether the user has defined
 		// `fn (x T) str() {` or `fn (x &T) str() {`, and convert accordingly
