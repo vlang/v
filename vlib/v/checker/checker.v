@@ -1996,6 +1996,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			// The first element's type
 			if i == 0 {
 				elem_type = c.table.mktyp(typ)
+				elem_type_sym := c.table.get_type_symbol(elem_type)
+				if elem_type_sym.kind == .void {
+					c.error('array type cannot be void', array_init.elem_type_pos)
+				}
 				c.expected_type = elem_type
 				continue
 			}

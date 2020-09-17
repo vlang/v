@@ -1,0 +1,5 @@
+vlib/v/checker/tests/array_void_init.vv:2:7: error: array type cannot be void
+    1 | fn main() {
+    2 |     _ := [_, _]
+      |          ^
+    3 | } 
