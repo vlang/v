@@ -182,6 +182,9 @@ pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
 	}
 	if right_type.is_number() && left_type.is_number() {
 		return c.promote_num(left_type, right_type)
+	} else if left_type.derive(right_type) != left_type {
+		// incompatible flags
+		return table.void_type
 	} else {
 		return left_type // default to left if not automatic promotion possible
 	}
