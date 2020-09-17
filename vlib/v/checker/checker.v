@@ -180,6 +180,9 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 			}
 			ast.FnDecl {
 				if stmt.name == 'main.main' {
+					if has_main_fn {
+						c.error('function `main` is already defined', stmt.pos)
+					}
 					has_main_fn = true
 					if stmt.is_pub {
 						c.error('function `main` cannot be declared public', stmt.pos)
