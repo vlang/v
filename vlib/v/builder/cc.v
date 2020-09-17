@@ -63,14 +63,14 @@ fn (mut v Builder) find_win_cc() ? {
 				return none
 			}
 			v.pref.ccompiler = thirdparty_tcc
-			v.pref.compiler_type = .tinyc
+			v.pref.ccompiler_type = .tinyc
 			return
 		}
 		v.pref.ccompiler = 'msvc'
-		v.pref.compiler_type = .msvc
+		v.pref.ccompiler_type = .msvc
 		return
 	}
-	v.pref.compiler_type = pref.ccompiler_from_string(v.pref.ccompiler)
+	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
 }
 
 fn (mut v Builder) cc() {

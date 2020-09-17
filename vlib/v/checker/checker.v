@@ -3348,7 +3348,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			if cond.name in valid_comp_if_os {
 				return cond.name != c.pref.os.str().to_lower() // TODO hack
 			} else if cond.name in valid_comp_if_compilers {
-				return pref.ccompiler_from_string(cond.name) != c.pref.compiler_type
+				return pref.cc_from_string(cond.name) != c.pref.ccompiler_type
 			} else if cond.name in valid_comp_if_platforms {
 				return false // TODO
 			} else if cond.name in valid_comp_if_other {

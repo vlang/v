@@ -9,7 +9,6 @@ import benchmark
 
 const (
 	skip_files = [
-		'nonexisting'
 		'vlib/v/checker/tests/return_missing_comp_if.vv'
 		'vlib/v/checker/tests/return_missing_comp_if_nested.vv'
 	]
