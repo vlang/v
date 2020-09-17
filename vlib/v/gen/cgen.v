@@ -1921,6 +1921,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				// &Foo(0) => ((Foo*)0)
 				g.out.go_back(1)
 			}
+			g.is_amp = false
 			sym := g.table.get_type_symbol(node.typ)
 			if sym.kind == .string && !node.typ.is_ptr() {
 				// `string(x)` needs `tos()`, but not `&string(x)
@@ -1950,14 +1951,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(node.expr)
 				g.write('))')
 			} else {
-				// styp := g.table.Type_to_str(it.typ)
 				styp := g.typ(node.typ)
-				// g.write('($styp)(')
 				g.write('(($styp)(')
-				// if g.is_amp {
-				// g.write('*')
-				// }
-				// g.write(')(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
 					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
