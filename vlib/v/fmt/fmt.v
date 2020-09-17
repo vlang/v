@@ -1537,9 +1537,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				single_line = false
 				break
 			}
-		} else if stmt is ast.Comment {
-			single_line = false
-			break
 		}
 	}
 	for branch in it.branches {
