@@ -1,0 +1,26 @@
+type IoS = int | string
+
+interface Animal {
+	speak()
+}
+
+struct Dog {}
+
+fn (d Dog) speak() {}
+
+struct Cat {}
+
+fn main() {
+	match IoS(1) {
+		byte {
+			println('not cool')
+		}
+	}
+	a := Animal(Dog{})
+	match a {
+		Cat {
+			println('not cool either')
+		}
+		else {}
+	}
+}
