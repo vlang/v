@@ -523,7 +523,6 @@ pub mut:
 	cond_type     table.Type // type of `x` in `match x {`
 	expected_type table.Type // for debugging only
 	is_sum_type   bool
-	is_interface  bool
 }
 
 pub struct MatchBranch {

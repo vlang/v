@@ -361,11 +361,5 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 }
 
 pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
-	if c.table.sumtype_has_variant(a, b) {
-		return true
-	}
-	if c.table.sumtype_has_variant(b, a) {
-		return true
-	}
-	return false
+	return c.table.sumtype_has_variant(a, b) || c.table.sumtype_has_variant(b, a)
 }
