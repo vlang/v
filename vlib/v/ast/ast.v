@@ -553,42 +553,6 @@ pub:
 	post_comments []Comment
 }
 
-/*
-CompIf.is_opt:
-`$if xyz? {}` => this compile time `if` is optional,
-and .is_opt reflects the presence of ? at the end.
-When .is_opt is true, the code should compile, even
-if `xyz` is NOT defined.
-If .is_opt is false, then when `xyz` is not defined,
-the compilation will fail.
-
-`$if method.type is string {}` will produce CompIf with:
-.is_typecheck true,
-.tchk_expr: method.type
-.tchk_type: string
-.tchk_match: true on each iteration, having a string `method.type`
-*/
-pub enum CompIfKind {
-	platform
-	typecheck
-}
-
-pub struct CompIf {
-pub:
-	val        string
-	stmts      []Stmt
-	is_not     bool
-	kind       CompIfKind
-	tchk_expr  Expr
-	tchk_type  table.Type
-	pos        token.Position
-pub mut:
-	tchk_match bool
-	is_opt     bool
-	has_else   bool
-	else_stmts []Stmt
-}
-
 pub enum CompForKind {
 	methods
 	fields
