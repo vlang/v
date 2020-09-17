@@ -384,33 +384,17 @@ pub fn (b byte) str() string {
 }
 
 pub fn (b byte) str_escaped() string {
-	if b >= 32 {
-		return b.str()
-	}
-	if (b > 0 && b < 7) || (b > 13 && b < 32) {
-		return '0x' + b.hex()
-	}
-	mut str := string{
-		str: malloc(5)
-		len: 4
-	}
-	char := match b {
-		0 { `0` }
-		7 { `a` }
-		8 { `b` }
-		9 { `t` }
-		10 { `n` }
-		11 { `v` }
-		12 { `f` }
-		13 { `r` }
-		else { `0` }
-	}
-	unsafe {
-		str.str[0] = `\``
-		str.str[1] = `\\`
-		str.str[2] = char
-		str.str[3] = `\``
-		str.str[4] = `\0`
+	str := match b {
+		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
+		7 { '`\\a`' }
+		8 { '`\\b`' }
+		9 { '`\\t`' }
+		10 { '`\\n`' }
+		11 { '`\\v`' }
+		12 { '`\\f`' }
+		13 { '`\\r`' }
+		32...126 { b.str() }
+		else { '0x' + b.hex() }
 	}
 	return str
 }
