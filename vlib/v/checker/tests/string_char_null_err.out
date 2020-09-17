@@ -1,0 +1,5 @@
+vlib/v/checker/tests/string_char_null_err.vv:2:31: error: 0 character in a string literal
+    1 | fn main() {
+    2 |     println('Null character: \0')
+      |                               ^
+    3 | }
