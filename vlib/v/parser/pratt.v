@@ -47,10 +47,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			node = p.enum_val()
 		}
 		.dollar {
-			if p.peek_tok.kind == .name {
-				return p.vweb()
-			} else {
-				p.error('unexpected $')
+			match p.peek_tok.kind {
+				.name {
+					return p.vweb()
+				} .key_if {
+					return p.if_expr(true)
+				} else {
+					p.error('unexpected $')
+				}
 			}
 		}
 		.chartoken {
@@ -89,7 +93,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		.key_if {
-			node = p.if_expr()
+			node = p.if_expr(false)
 		}
 		.key_unsafe {
 			p.next()
@@ -191,25 +195,34 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.rcbr)
 		}
 		.key_fn {
-			// Anonymous function
-			node = p.anon_fn()
-			// its a call
-			// NOTE: this could be moved to just before the pratt loop
-			// then anything can be a call, eg. `index[2]()` or `struct.field()`
-			// but this would take a bit of modification
-			if p.tok.kind == .lpar {
-				p.next()
-				pos := p.tok.position()
-				args := p.call_args()
-				p.check(.rpar)
-				node = ast.CallExpr{
-					name: 'anon'
-					left: node
-					args: args
-					pos: pos
+			if p.expecting_type {
+				// Anonymous function type
+				start_pos := p.tok.position()
+				return ast.Type{
+					typ: p.parse_type()
+					pos: start_pos.extend(p.prev_tok.position())
 				}
+			} else {
+				// Anonymous function
+				node = p.anon_fn()
+				// its a call
+				// NOTE: this could be moved to just before the pratt loop
+				// then anything can be a call, eg. `index[2]()` or `struct.field()`
+				// but this would take a bit of modification
+				if p.tok.kind == .lpar {
+					p.next()
+					pos := p.tok.position()
+					args := p.call_args()
+					p.check(.rpar)
+					node = ast.CallExpr{
+						name: 'anon'
+						left: node
+						args: args
+						pos: pos
+					}
+				}
+				return node
 			}
-			return node
 		}
 		else {
 			p.error('expr(): bad token `$p.tok.kind.str()`')
@@ -262,7 +275,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.tok.kind == .key_as && p.inside_if {
 				return node
 			}
-		} else if p.tok.kind in [.inc, .dec] {
+		} else if p.tok.kind in [.inc, .dec] || (p.tok.kind == .question && p.inside_ct_if_expr) {
 			// Postfix
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] &&
@@ -294,10 +307,12 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	pos := p.tok.position()
 	p.next()
 	mut right := ast.Expr{}
+	prev_expecting_type := p.expecting_type
 	if op in [.key_is, .not_is] {
 		p.expecting_type = true
 	}
 	right = p.expr(precedence)
+	p.expecting_type = prev_expecting_type
 	if p.pref.is_vet && op in [.key_in, .not_in] &&
 		right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len == 1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr)

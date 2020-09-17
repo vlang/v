@@ -29,6 +29,7 @@ mut:
 	language          table.Language
 	inside_if         bool
 	inside_if_expr    bool
+	inside_ct_if_expr bool
 	inside_or_expr    bool
 	inside_for        bool
 	inside_fn         bool
@@ -462,7 +463,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 				return p.struct_decl()
 			}
 			.dollar {
-				return p.comp_if()
+				return ast.ExprStmt{
+					expr: p.if_expr(true)
+				}
 			}
 			.hash {
 				return p.hash()
@@ -599,7 +602,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.dollar {
 			if p.peek_tok.kind == .key_if {
-				return p.comp_if()
+				return ast.ExprStmt{
+					expr: p.if_expr(true)
+				}
 			} else if p.peek_tok.kind == .key_for {
 				return p.comp_for()
 			} else if p.peek_tok.kind == .name {

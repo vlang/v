@@ -101,67 +101,94 @@ fn cgen_attrs(attrs []table.Attr) []string {
 	return res
 }
 
-fn (mut g Gen) comp_if(mut it ast.CompIf) {
-	if it.stmts.len == 0 && it.else_stmts.len == 0 {
-		return
-	}
-	if it.kind == .typecheck {
-		mut comptime_var_type := table.Type(0)
-		mut name := ''
-		if it.tchk_expr is ast.SelectorExpr {
-			se := it.tchk_expr as ast.SelectorExpr
-			name = '${se.expr}.$se.field_name'
-			comptime_var_type = g.comptime_var_type_map[name]
+fn (mut g Gen) comp_if(node ast.IfExpr) {
+	line := if node.is_expr {
+		stmt_str := g.go_before_stmt(0)
+		g.write(tabs[g.indent])
+		stmt_str.trim_space()
+	} else { '' }
+	for i, branch in node.branches {
+		start_pos := g.out.len
+		if i == node.branches.len - 1 && node.has_else {
+			g.writeln('#else')
+		} else {
+			if i == 0 {
+				g.write('#if ')
+			} else {
+				g.write('#elif ')
+			}
+			g.comp_if_expr(branch.cond)
+			g.writeln('')
 		}
-		// if comptime_var_type == 0 {
-		// 	$if trace_gen ? {
-		// 		eprintln('Known compile time types: ')
-		// 		eprintln(g.comptime_var_type_map.str())
-		// 	}
-		// 	// verror('the compile time type of `$it.tchk_expr.str()` is unknown')
-		// 	return
-		// }
-		it_type_name := g.table.get_type_name(it.tchk_type)
-		should_write := (comptime_var_type == it.tchk_type && !it.is_not) ||
-			(comptime_var_type != it.tchk_type && it.is_not)
-		if should_write {
-			inversion := if it.is_not { '!' } else { '' }
-			g.writeln('/* \$if $name ${inversion}is $it_type_name */ {')
-			g.stmts(it.stmts)
-			g.writeln('}')
-		} else if it.has_else {
-			g.writeln('/* \$else */ {')
-			g.stmts(it.else_stmts)
-			g.writeln('}')
+		expr_str := g.out.last_n(g.out.len - start_pos).trim_space()
+		g.defer_ifdef = expr_str
+		if node.is_expr {
+			len := branch.stmts.len
+			if len > 0 {
+				last := branch.stmts[len - 1] as ast.ExprStmt
+				if len > 1 {
+					tmp := g.new_tmp_var()
+					styp := g.typ(last.typ)
+					g.indent++
+					g.writeln('$styp $tmp;')
+					g.writeln('{')
+					g.stmts(branch.stmts[0 .. len - 1])
+					g.write('\t$tmp = ')
+					g.stmt(last)
+					g.writeln('}')
+					g.indent--
+					g.writeln('$line $tmp;')
+				} else {
+					g.write('$line ')
+					g.stmt(last)
+				}
+			}
+		} else {
+			// Only wrap the contents in {} if we're inside a function, not on the top level scope
+			should_create_scope := g.fn_decl != 0
+			if should_create_scope { g.writeln('{') }
+			g.stmts(branch.stmts)
+			if should_create_scope { g.writeln('}') }
 		}
-		return
-	}
-	ifdef := g.comp_if_to_ifdef(it.val, it.is_opt)
-	g.empty_line = false
-	if it.is_not {
-		g.writeln('// \$if !$it.val {\n#ifndef ' + ifdef)
-	} else {
-		g.writeln('// \$if  $it.val {\n#ifdef ' + ifdef)
-	}
-	// NOTE: g.defer_ifdef is needed for defers called witin an ifdef
-	// in v1 this code would be completely excluded
-	g.defer_ifdef = if it.is_not { '#ifndef ' + ifdef } else { '#ifdef ' + ifdef }
-	// println('comp if stmts $g.file.path:$it.pos.line_nr')
-	g.indent--
-	g.stmts(it.stmts)
-	g.indent++
-	g.defer_ifdef = ''
-	if it.has_else {
-		g.empty_line = false
-		g.writeln('#else')
-		g.defer_ifdef = if it.is_not { '#ifdef ' + ifdef } else { '#ifndef ' + ifdef }
-		g.indent--
-		g.stmts(it.else_stmts)
-		g.indent++
 		g.defer_ifdef = ''
 	}
-	g.empty_line = false
-	g.writeln('#endif\n// } $it.val')
+	if node.is_expr { g.write('#endif') } else { g.writeln('#endif') }
+}
+
+fn (mut g Gen) comp_if_expr(cond ast.Expr) {
+	match cond {
+		ast.ParExpr {
+			g.write('(')
+			g.comp_if_expr(cond.expr)
+			g.write(')')
+		} ast.PrefixExpr {
+			g.write(cond.op.str())
+			g.comp_if_expr(cond.right)
+		} ast.PostfixExpr {
+			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true)
+			g.write('defined($ifdef)')
+		} ast.InfixExpr {
+			match cond.op {
+				.and, .logical_or {
+					g.comp_if_expr(cond.left)
+					g.write(' $cond.op ')
+					g.comp_if_expr(cond.right)
+				}
+				.key_is, .not_is {
+					se := cond.left as ast.SelectorExpr
+					name := '${se.expr}.$se.field_name'
+					exp_type := g.comptime_var_type_map[name]
+					got_type := (cond.right as ast.Type).typ
+					g.write('$exp_type == $got_type')
+				} .eq, .ne {
+					// TODO Implement `$if method.args.len == 1`
+				} else {}
+			}
+		} ast.Ident {
+			ifdef := g.comp_if_to_ifdef(cond.name, false)
+			g.write('defined($ifdef)')
+		} else {}
+	}
 }
 
 fn (mut g Gen) comp_for(node ast.CompFor) {

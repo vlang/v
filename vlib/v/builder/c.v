@@ -58,9 +58,8 @@ pub fn (mut b Builder) compile_c() {
 		// println(files)
 	}
 	$if windows {
-		b.pref.ccompiler = b.find_win_cc() or {
-			panic(no_compiler_error)
-		}
+		b.find_win_cc() or { verror(no_compiler_error) }
+		// TODO Probably extend this to other OS's?
 	}
 	// v1 compiler files
 	// v.add_v_files_to_compile()

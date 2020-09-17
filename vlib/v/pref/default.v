@@ -59,6 +59,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
+	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')

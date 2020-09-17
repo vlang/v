@@ -7,20 +7,28 @@ import v.ast
 import v.table
 import v.token
 
-fn (mut p Parser) if_expr() ast.IfExpr {
+fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
+	was_inside_ct_if_expr := p.inside_ct_if_expr
 	defer {
 		p.inside_if_expr = was_inside_if_expr
+		p.inside_ct_if_expr = was_inside_ct_if_expr
 	}
 	p.inside_if_expr = true
-	pos := p.tok.position()
+	pos := if is_comptime {
+		p.inside_ct_if_expr = true
+		p.next() // `$`
+		p.prev_tok.position().extend(p.tok.position())
+	} else {
+		p.tok.position()
+	}
 	mut branches := []ast.IfBranch{}
 	mut has_else := false
 	mut comments := []ast.Comment{}
 	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
-		start_pos := p.tok.position()
+		start_pos := if is_comptime { p.prev_tok.position().extend(p.tok.position()) } else { p.tok.position() }
 		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
 			p.check(.key_else)
@@ -59,6 +67,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 				comments = []
 				break
 			}
+			if is_comptime { p.check(.dollar) }
 		}
 		// `if` or `else if`
 		p.check(.key_if)
@@ -73,7 +82,7 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 		mut cond := ast.Expr{}
 		mut is_guard := false
 		// `if x := opt() {`
-		if p.peek_tok.kind == .decl_assign {
+		if !is_comptime && p.peek_tok.kind == .decl_assign {
 			p.open_scope()
 			is_guard = true
 			var_pos := p.tok.position()
@@ -102,7 +111,9 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			// if sum is T
 			is_is_cast := infix.op == .key_is
 			is_ident := infix.left is ast.Ident
-			left_as_name = if is_is_cast && p.tok.kind == .key_as {
+			left_as_name = if is_comptime {
+				''
+			} else if is_is_cast && p.tok.kind == .key_as {
 				p.next()
 				p.check_name()
 			} else if is_ident {
@@ -129,11 +140,20 @@ fn (mut p Parser) if_expr() ast.IfExpr {
 			mut_name: mut_name
 		}
 		comments = p.eat_comments()
+		if is_comptime {
+			if p.tok.kind == .key_else {
+				p.error('use `\$else` instead of `else` in compile-time `if` branches')
+			}
+			if p.peek_tok.kind == .key_else {
+				p.check(.dollar)
+			}
+		}
 		if p.tok.kind != .key_else {
 			break
 		}
 	}
 	return ast.IfExpr{
+		is_comptime: is_comptime
 		branches: branches
 		post_comments: comments
 		pos: pos
