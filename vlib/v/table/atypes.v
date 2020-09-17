@@ -24,14 +24,19 @@ pub enum Language {
 	js
 }
 
+// Represents a type that only needs an identifier, e.g. int, array_int.
+// A pointer type `&T` would have a TypeSymbol `T`.
+// Note: For a Type, use Table.type_to_str(typ) not TypeSymbol.name.
+// Each TypeSymbol is entered into `Table.types`.
+// See also: Table.get_type_symbol.
 pub struct TypeSymbol {
 pub:
 	parent_idx  int
 pub mut:
 	info        TypeInfo
 	kind        Kind
-	name        string // the internal name of the type, i.e. `array_fixed_int_5`. See also .source_name below.
-	source_name string // the original source name of the type, i.e. `[5]int`. Do not use this for logic, but just for formatting/errors.
+	name        string // the internal name of the type or underlying type, i.e. `array_fixed_int_5`. See also .source_name below.
+	source_name string // the original source name of the type, i.e. `[5]int`.
 	methods     []Fn
 	mod         string
 	is_public   bool
