@@ -383,6 +383,22 @@ pub fn (b byte) str() string {
 	return str
 }
 
+pub fn (b byte) str_escaped() string {
+	str := match b {
+		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
+		7 { '`\\a`' }
+		8 { '`\\b`' }
+		9 { '`\\t`' }
+		10 { '`\\n`' }
+		11 { '`\\v`' }
+		12 { '`\\f`' }
+		13 { '`\\r`' }
+		32...126 { b.str() }
+		else { '0x' + b.hex() }
+	}
+	return str
+}
+
 // TODO generic
 pub fn (a []byte) contains(val byte) bool {
 	for aa in a {
