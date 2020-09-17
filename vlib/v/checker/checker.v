@@ -711,7 +711,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				c.error('$infix_expr.op.str(): type `$typ_sym.source_name` does not exist',
 					type_expr.pos)
 			}
-			if left.kind != .interface_ && left.kind != .sum_type {
+			if left.kind !in [.interface_, .sum_type] {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
 					infix_expr.pos)
 			}
@@ -2891,23 +2891,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	mut require_return := false
 	mut branch_without_return := false
 	for branch in node.branches {
-		for expr in branch.exprs {
-			c.expected_type = cond_type
-			typ := c.expr(expr)
-			typ_sym := c.table.get_type_symbol(typ)
-			if node.is_sum_type || node.is_interface {
-				ok := if cond_type_sym.kind == .sum_type {
-					c.table.sumtype_has_variant(cond_type, typ)
-				} else {
-					// interface match
-					c.type_implements(typ, cond_type, node.pos)
-				}
-				if !ok {
-					c.error('cannot use `$typ_sym.source_name` as `$cond_type_sym.source_name` in `match`',
-						node.pos)
-				}
-			}
-		}
 		c.stmts(branch.stmts)
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
@@ -2953,6 +2936,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
+	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch in node.branches {
 		for expr in branch.exprs {
 			mut key := ''
@@ -3001,7 +2985,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			}
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
-			if !c.check_types(expr_type, c.expected_type) {
+			if cond_type_sym.kind == .interface_ {
+				c.type_implements(expr_type, c.expected_type, branch.pos)
+			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
 				c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
@@ -3161,36 +3147,47 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// smartcast sumtypes and interfaces when using `is`
 		if !is_ct && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
-			if infix.op == .key_is &&
-				(infix.left is ast.Ident || infix.left is ast.SelectorExpr) && infix.right is ast.Type {
+			if infix.op == .key_is {
 				right_expr := infix.right as ast.Type
-				is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
-						.variable } else { true }
-				// Register shadow variable or `as` variable with actual type
-				if is_variable {
-					left_sym := c.table.get_type_symbol(infix.left_type)
-					if left_sym.kind in [.sum_type, .interface_] && branch.left_as_name.len > 0 {
-						mut is_mut := false
-						mut scope := c.file.scope.innermost(branch.body_pos.pos)
-						if infix.left is ast.Ident as infix_left {
-							if var := scope.find_var(infix_left.name) {
-								is_mut = var.is_mut
+				left_sym := c.table.get_type_symbol(infix.left_type)
+				expr_type := c.expr(infix.left)
+				if left_sym.kind == .interface_ {
+					c.type_implements(right_expr.typ, expr_type, branch.pos)
+				} else if !c.check_types(expr_type, right_expr.typ) {
+					expect_str := c.table.type_to_str(right_expr.typ)
+					expr_str := c.table.type_to_str(expr_type)
+					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
+				}
+				if (infix.left is ast.Ident ||
+					infix.left is ast.SelectorExpr) &&
+					infix.right is ast.Type {
+					is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+							.variable } else { true }
+					// Register shadow variable or `as` variable with actual type
+					if is_variable {
+						if left_sym.kind in [.sum_type, .interface_] && branch.left_as_name.len > 0 {
+							mut is_mut := false
+							mut scope := c.file.scope.innermost(branch.body_pos.pos)
+							if infix.left is ast.Ident as infix_left {
+								if var := scope.find_var(infix_left.name) {
+									is_mut = var.is_mut
+								}
+							} else if infix.left is ast.SelectorExpr {
+								selector := infix.left as ast.SelectorExpr
+								field := c.table.struct_find_field(left_sym, selector.field_name) or {
+									table.Field{}
+								}
+								is_mut = field.is_mut
 							}
-						} else if infix.left is ast.SelectorExpr {
-							selector := infix.left as ast.SelectorExpr
-							field := c.table.struct_find_field(left_sym, selector.field_name) or {
-								table.Field{}
-							}
-							is_mut = field.is_mut
+							scope.register(branch.left_as_name, ast.Var{
+								name: branch.left_as_name
+								typ: right_expr.typ.to_ptr()
+								pos: infix.left.position()
+								is_used: true
+								is_mut: is_mut
+							})
+							node.branches[i].smartcast = true
 						}
-						scope.register(branch.left_as_name, ast.Var{
-							name: branch.left_as_name
-							typ: right_expr.typ.to_ptr()
-							pos: infix.left.position()
-							is_used: true
-							is_mut: is_mut
-						})
-						node.branches[i].smartcast = true
 					}
 				}
 			}

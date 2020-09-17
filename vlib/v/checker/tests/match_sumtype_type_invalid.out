@@ -1,0 +1,14 @@
+vlib/v/checker/tests/match_sumtype_type_invalid.vv:14:2: error: cannot use type `IoS` as type `byte`
+   12 |
+   13 | fn main() {
+   14 |     match IoS(1) {
+      |     ~~~~~~~~~~~~~~
+   15 |         byte {
+   16 |             println('not cool')
+vlib/v/checker/tests/match_sumtype_type_invalid.vv:21:3: error: `Cat` doesn't implement method `speak`
+   19 |     a := Animal(Dog{})
+   20 |     match a {
+   21 |         Cat {
+      |         ~~~~~
+   22 |             println('not cool either')
+   23 |         }
