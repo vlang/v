@@ -3445,9 +3445,17 @@ fn (mut g Gen) go_back_out(n int) {
 	g.out.go_back(n)
 }
 
+const (
+	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'struct stat', 'struct addrinfo']
+)
+
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
+	if styp in skip_struct_init {
+		g.go_back_out(3)
+		return
+	}
 	sym := g.table.get_final_type_symbol(struct_init.typ)
 	is_amp := g.is_amp
 	is_multiline := struct_init.fields.len > 5
