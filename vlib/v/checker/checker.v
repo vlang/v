@@ -2848,8 +2848,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		ident.mod = saved_mod
 	}
 	if ident.tok_kind == .assign {
-		c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)',
-			ident.pos)
+		c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)', ident.pos)
 	} else {
 		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
