@@ -2251,18 +2251,34 @@ To see a detailed list of all flags that V supports, use `v help`, `v help build
 ## Conditional compilation
 
 ```v
-$if windows {
-    println('Windows')
-} $else $if linux {
-    println('Linux')
-} $else $if macos {
-    println('macOS')
+// Support for multiple conditions in one branch
+$if ios || android {
+    println('Running on a mobile device!')
+}
+$if linux && x64 {
+    println('64-bit Linux.')
+}
+
+// Usage as expression
+os := $if windows { 'Windows' } $else { 'UNIX' }
+println('Using $os')
+
+// $else-$if branches
+$if tinyc {
+    println('tinyc')
+} $else $if clang {
+    println('clang')
+} $else $if gcc {
+    println('gcc')
 } $else {
-    println('different OS')
+    println('different compiler')
 }
 
 $if debug {
     println('debugging')
+}
+$if test {
+    println('testing')
 }
 ```
 
