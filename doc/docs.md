@@ -2278,7 +2278,7 @@ $if test {
     println('testing')
 }
 
-// v -debug ...
+// v -cg ...
 $if debug {
     println('debugging')
 }
