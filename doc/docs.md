@@ -2274,17 +2274,26 @@ $if tinyc {
     println('different compiler')
 }
 
-$if debug {
-    println('debugging')
-}
 $if test {
     println('testing')
 }
+
+// v -debug ...
+$if debug {
+    println('debugging')
+}
+
+// v -d option ...
+$if option ? {
+    println('custom option')
+}
 ```
 
-If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can be used to detect
-an OS, compiler, platform or a `-debug` compilation option.
-You can find the full list of supported values [here](https://github.com/vlang/v/blob/master/vlib/v/checker/checker.v#L19-L27).
+If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. 
+Right now it can be used to detect an OS, compiler, platform or compilation options.
+`$if debug` is a special option like `$if windows` or `$if x32`.
+If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
+You can find the full list of builtin options [here](../vlib/v/checker/checker.v#L19-L27).
 
 ## Compile time pseudo variables
 
