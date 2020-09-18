@@ -58,7 +58,7 @@ const(
 // This implementation is the quickest with gcc -O2
 [inline]
 pub fn (nn int) str_l(max int) string {
-	mut n := nn
+	mut n := i64(nn)
 	mut d := 0
 	if n == 0 {
 		return '0'
@@ -76,8 +76,8 @@ pub fn (nn int) str_l(max int) string {
 		buf[index--] = `\0`
 	}
 	for n > 0 {
-		n1 := n / 100
-		d = ((n - (n1 * 100)) << 1)
+		n1 := int(n / 100)
+		d = ((int(n) - (n1 * 100)) << 1)
 		n = n1
 		unsafe {
 			buf[index--] = digit_pairs.str[d++]
