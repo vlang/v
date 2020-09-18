@@ -3446,15 +3446,14 @@ fn (mut g Gen) go_back_out(n int) {
 }
 
 const (
-	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
-		'struct addrinfo',
-	]
+	skip_struct_init = ['struct stat', 'struct addrinfo']
 )
 
 fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
 	if styp in skip_struct_init {
+		// needed for c++ compilers
 		g.go_back_out(3)
 		return
 	}
