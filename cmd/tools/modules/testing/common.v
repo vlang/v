@@ -27,6 +27,7 @@ pub mut:
 	benchmark     benchmark.Benchmark
 	show_ok_tests bool
 	message_handler &TestMessageHandler
+	root_relative bool // used by CI runs, so that the output is stable everywhere
 }
 
 pub fn (mut mh TestMessageHandler) append_message(msg string) {
@@ -63,6 +64,10 @@ pub fn (mut ts TestSession) init() {
 pub fn (mut ts TestSession) test() {
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
+	current_wd := os.getwd()
+	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
+		ts.root_relative = true
+	}
 	now := time.sys_mono_now()
 	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
 	os.mkdir_all(new_vtmp_dir)
@@ -145,7 +150,10 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
-	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
+	mut relative_file := dot_relative_file
+	if ts.root_relative {
+		relative_file = relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
+	}
 	file := os.real_path(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
