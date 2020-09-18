@@ -2129,7 +2129,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// Only used in IndexExpr
 		}
 		ast.SelectExpr {
-			// TODO: to be implemented
+			g.select_expr(node)
 		}
 		ast.SizeOf {
 			if node.is_type {
@@ -2737,6 +2737,123 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	if is_expr {
 		g.decrement_inside_ternary()
 	}
+}
+
+fn (mut g Gen) select_expr(node ast.SelectExpr) {
+	n_channels := if node.has_exception { node.branches.len - 1 } else { node.branches.len }
+	mut channels := []ast.Expr{ cap: n_channels }
+	mut objs := []ast.Expr{ cap: n_channels }
+	mut tmp_objs := []string{ cap: n_channels }
+	mut elem_types := []string{ cap: n_channels }
+	mut is_push := []bool{ cap: n_channels }
+	mut has_else := false
+	mut has_timeout := false
+	mut timeout_expr := ast.Expr{}
+	mut exception_branch := -1
+	for j, branch in node.branches {
+		if branch.is_else {
+			has_else = true
+			exception_branch = j
+		} else if branch.is_timeout {
+			has_timeout = true
+			exception_branch = j
+			timeout_expr = (branch.stmt as ast.ExprStmt).expr
+		} else {
+			match branch.stmt as stmt {
+				ast.ExprStmt {
+					expr := stmt.expr as ast.InfixExpr
+					channels << expr.left
+					objs << expr.right
+					tmp_objs << ''
+					elem_types << ''
+					is_push << true
+				}
+				ast.AssignStmt {
+					rec_expr := stmt.right[0] as ast.PrefixExpr
+					channels << rec_expr.right
+					is_push << false
+					// create tmp unless the object with *exactly* the type we need exists already
+					if stmt.op == .decl_assign || stmt.right_types[0] != stmt.left_types[0] {
+						tmp_obj := g.new_tmp_var()
+						tmp_objs << tmp_obj
+						el_stype := g.typ(stmt.right_types[0])
+						elem_types << if stmt.op == .decl_assign { el_stype + ' ' } else { '' }
+						g.writeln('$el_stype $tmp_obj;')
+					} else {
+						tmp_objs << ''
+						elem_types << ''
+					}
+					objs << stmt.left[0]
+				}
+				else {}
+			}
+		}
+	}
+	chan_array := g.new_tmp_var()
+	g.write('array_sync__Channel_ptr $chan_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Channel*), _MOV((sync__Channel*[$n_channels]){')
+	for i in 0 .. n_channels {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('(sync__Channel*)(')
+		g.expr(channels[i])
+		g.write(')')
+	}
+	g.writeln('}));')
+	directions_array := g.new_tmp_var()
+	g.write('array_sync__Direction $directions_array = new_array_from_c_array($n_channels, $n_channels, sizeof(sync__Direction), _MOV((sync__Direction[$n_channels]){')
+	for i in 0 .. n_channels {
+		if i > 0 {
+			g.write(', ')
+		}
+		if is_push[i] {
+			g.write('sync__Direction_push')
+		} else {
+			g.write('sync__Direction_pop')
+		}
+	}
+	g.writeln('}));')
+	objs_array := g.new_tmp_var()
+	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
+	for i in 0 .. n_channels {
+		g.write(if i > 0 {', &'} else { '&' })
+		if tmp_objs[i] == '' {
+			g.expr(objs[i])
+		} else {
+			g.write(tmp_objs[i])
+		}
+	}
+	g.writeln('}));')
+	select_result := g.new_tmp_var()
+	g.write('int $select_result = sync__channel_select(&/*arr*/$chan_array, $directions_array, &/*arr*/$objs_array, ')
+	if has_timeout {
+		g.expr(timeout_expr)
+	} else if has_else {
+		g.write('0')
+	} else {
+		g.write('-1')
+	}
+	g.writeln(');')
+	mut i := 0
+	for j in 0 .. node.branches.len {
+		if j > 0 {
+			g.write('} else ')
+		}
+		g.write('if ($select_result == ')
+		if j == exception_branch {
+			g.writeln('-1) {')
+		} else {
+			g.writeln('$i) {')
+			if tmp_objs[i] != '' {
+				g.write('\t${elem_types[i]}')
+				g.expr(objs[i])
+				g.writeln(' = ${tmp_objs[i]};')
+			}
+			i++
+		}
+		g.stmts(node.branches[j].stmts)
+	}
+	g.writeln('}')
 }
 
 fn (mut g Gen) ident(node ast.Ident) {

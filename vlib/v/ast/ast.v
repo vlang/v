@@ -536,6 +536,7 @@ pub struct SelectExpr {
 pub:
 	branches      []SelectBranch
 	pos           token.Position
+	has_exception bool
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type
