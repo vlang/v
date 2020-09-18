@@ -28,7 +28,7 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
-#if defined(__x86_64__) 
+#if defined(__x86_64__)
 #define __V_amd64  1
 #endif
 #if defined(__aarch64__) || defined(__arm64__)
@@ -38,7 +38,7 @@ const (
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
 	#define __V_GCC__
-#endif    
+#endif
 #ifdef __TINYC__
 	#undef __V_GCC__
 #endif
@@ -187,8 +187,11 @@ $c_common_macros
 	#endif
 	#define _WIN32_WINNT 0x0600
 	#define WIN32_LEAN_AND_MEAN
-	#define _UNICODE
+	#ifdef _UNICODE
+	#ifndef UNICODE
 	#define UNICODE
+	#endif
+	#endif
 	#include <windows.h>
 
 	#include <io.h> // _waccess
