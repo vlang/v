@@ -2253,14 +2253,11 @@ To see a detailed list of all flags that V supports, use `v help`, `v help build
 ```v
 $if windows {
     println('Windows')
-}
-$else $if linux {
+} $else $if linux {
     println('Linux')
-}
-$else $if macos {
+} $else $if macos {
     println('macOS')
-}
-$else {
+} $else {
     println('different OS')
 }
 
@@ -2337,7 +2334,7 @@ Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile-time `if` and `for` constructs:
 
 ```v
-// TODO: not implemented yet
+// TODO: not fully implemented
 
 struct User {
     name string
@@ -2353,7 +2350,7 @@ fn decode<T>(data string) T {
         $if field.Type is string {
             // $(string_expr) produces an identifier
             result.$(field.name) = get_string(data, field.name)
-        } else $if field.Type is int {
+        } $else $if field.Type is int {
             result.$(field.name) = get_int(data, field.name)
         }
     }
