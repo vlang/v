@@ -2674,7 +2674,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					// if type is unsigned and low is 0, check is unneeded
 					mut skip_low := false
 					if expr.low is ast.IntegerLiteral as expr_low {
-						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] && expr_low.val == '0' {
+						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] &&
+							expr_low.val == '0' {
 							skip_low = true
 						}
 					}
