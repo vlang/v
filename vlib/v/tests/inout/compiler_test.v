@@ -7,6 +7,7 @@ fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
+	os.chdir(vroot)
 	diff_cmd := util.find_working_diff_command() or {
 		''
 	}
