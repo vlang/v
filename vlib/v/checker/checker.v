@@ -3060,11 +3060,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 }
 
 pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
+	node.is_expr = c.expected_type != table.void_type
+	node.expected_type = c.expected_type
 	for branch in node.branches {
 		c.stmt(branch.stmt)
 		c.stmts(branch.stmts)
 	}
-	return table.void_type
+	return table.bool_type
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {

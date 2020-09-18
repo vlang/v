@@ -2740,12 +2740,19 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) select_expr(node ast.SelectExpr) {
+	is_expr := node.is_expr || g.inside_ternary > 0
+	cur_line := if is_expr {
+		g.empty_line = true
+		g.go_before_stmt(0)
+	} else {
+		''
+	}
 	n_channels := if node.has_exception { node.branches.len - 1 } else { node.branches.len }
-	mut channels := []ast.Expr{ cap: n_channels }
-	mut objs := []ast.Expr{ cap: n_channels }
-	mut tmp_objs := []string{ cap: n_channels }
-	mut elem_types := []string{ cap: n_channels }
-	mut is_push := []bool{ cap: n_channels }
+	mut channels := []ast.Expr{cap: n_channels}
+	mut objs := []ast.Expr{cap: n_channels}
+	mut tmp_objs := []string{cap: n_channels}
+	mut elem_types := []string{cap: n_channels}
+	mut is_push := []bool{cap: n_channels}
 	mut has_else := false
 	mut has_timeout := false
 	mut timeout_expr := ast.Expr{}
@@ -2777,7 +2784,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(stmt.right_types[0])
-						elem_types << if stmt.op == .decl_assign { el_stype + ' ' } else { '' }
+						elem_types << if stmt.op == .decl_assign {
+							el_stype + ' '
+						} else {
+							''
+						}
 						g.writeln('$el_stype $tmp_obj;')
 					} else {
 						tmp_objs << ''
@@ -2816,7 +2827,11 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	objs_array := g.new_tmp_var()
 	g.write('array_voidptr $objs_array = new_array_from_c_array($n_channels, $n_channels, sizeof(voidptr), _MOV((voidptr[$n_channels]){')
 	for i in 0 .. n_channels {
-		g.write(if i > 0 {', &'} else { '&' })
+		g.write(if i > 0 {
+			', &'
+		} else {
+			'&'
+		})
 		if tmp_objs[i] == '' {
 			g.expr(objs[i])
 		} else {
@@ -2854,6 +2869,10 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		g.stmts(node.branches[j].stmts)
 	}
 	g.writeln('}')
+	if is_expr {
+		g.write(cur_line)
+		g.write('($select_result != -2)')
+	}
 }
 
 fn (mut g Gen) ident(node ast.Ident) {

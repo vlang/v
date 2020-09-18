@@ -539,7 +539,6 @@ pub:
 	has_exception bool
 pub mut:
 	is_expr       bool // returns a value
-	return_type   table.Type
 	expected_type table.Type // for debugging only
 }
 
