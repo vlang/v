@@ -7,9 +7,11 @@
 module readline
 
 import term
+import os
 
 #include <termios.h>
 #include <sys/ioctl.h>
+
 // Defines actions to execute
 enum Action {
 	eof
@@ -35,8 +37,11 @@ fn C.tcgetattr() int
 
 fn C.tcsetattr() int
 
-// fn C.ioctl() int
 fn C.raise()
+
+fn C.kill(int, int) int
+
+fn C.getppid() int
 
 // Enable the raw mode of the terminal
 // In raw mode all keypresses are directly sent to the program and no interpretation is done
@@ -480,6 +485,18 @@ fn (mut r Readline) history_next() {
 }
 
 fn (mut r Readline) suspend() {
+	is_standalone := os.getenv('VCHILD') != 'true'
+
+	r.disable_raw_mode()
+	if !is_standalone {
+		// We have to SIGSTOP the parent v process
+		ppid := C.getppid()
+		C.kill(ppid, C.SIGSTOP)
+	}
 	C.raise(C.SIGSTOP)
+	r.enable_raw_mode()
 	r.refresh_line()
+	if r.is_tty {
+		r.refresh_line()
+	}
 }

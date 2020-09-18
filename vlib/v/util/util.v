@@ -111,6 +111,7 @@ pub fn set_vroot_folder(vroot_path string) {
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+	os.setenv('VCHILD', 'true', true)
 }
 
 pub fn resolve_vroot(str, dir string) ?string {
