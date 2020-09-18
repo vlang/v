@@ -2254,10 +2254,10 @@ To see a detailed list of all flags that V supports, use `v help`, `v help build
 $if windows {
     println('Windows')
 }
-$if linux {
+$else $if linux {
     println('Linux')
 }
-$if macos {
+$else $if macos {
     println('macOS')
 }
 $else {
@@ -2269,8 +2269,9 @@ $if debug {
 }
 ```
 
-If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can only be used to detect
-an OS or a `-debug` compilation option.
+If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can be used to detect
+an OS, compiler, platform or a `-debug` compilation option.
+You can find the full list of supported values [here](https://github.com/vlang/v/blob/master/vlib/v/checker/checker.v#L19-L27).
 
 ## Compile time pseudo variables
 
@@ -2315,7 +2316,7 @@ try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
 `[direct_array_access]` - in functions tagged with `[direct_array_access]`
-the compiler will translate array operations directly into C array operations - 
+the compiler will translate array operations directly into C array operations -
 omiting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
 the boundries will be checked by the user.
@@ -2646,7 +2647,7 @@ pub
 return
 rlock
 select
-shared 
+shared
 sizeof
 static
 struct
