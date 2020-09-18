@@ -125,7 +125,7 @@ pub fn tos_lit(s charptr) string {
 pub fn (bp byteptr) vstring() string {
 	return string{
 		str: bp
-		len: unsafe {C.strlen(bp)}
+		len: unsafe {C.strlen(charptr(bp))}
 	}
 }
 
