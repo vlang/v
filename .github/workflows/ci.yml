@@ -249,7 +249,7 @@ jobs:
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Test V fixed tests
         run: |
-          v test-fixed
+          ./v test-fixed
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
