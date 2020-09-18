@@ -2251,26 +2251,56 @@ To see a detailed list of all flags that V supports, use `v help`, `v help build
 ## Conditional compilation
 
 ```v
-$if windows {
-    println('Windows')
+// Support for multiple conditions in one branch
+$if ios || android {
+    println('Running on a mobile device!')
 }
-$if linux {
-    println('Linux')
-}
-$if macos {
-    println('macOS')
-}
-$else {
-    println('different OS')
+$if linux && x64 {
+    println('64-bit Linux.')
 }
 
+// Usage as expression
+os := $if windows { 'Windows' } $else { 'UNIX' }
+println('Using $os')
+
+// $else-$if branches
+$if tinyc {
+    println('tinyc')
+} $else $if clang {
+    println('clang')
+} $else $if gcc {
+    println('gcc')
+} $else {
+    println('different compiler')
+}
+
+$if test {
+    println('testing')
+}
+
+// v -cg ...
 $if debug {
     println('debugging')
 }
+
+// v -d option ...
+$if option ? {
+    println('custom option')
+}
 ```
 
-If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. Right now it can only be used to detect
-an OS or a `-debug` compilation option.
+If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. 
+Right now it can be used to detect an OS, compiler, platform or compilation options.
+`$if debug` is a special option like `$if windows` or `$if x32`.
+If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.
+Full list of builtin options:
+| OS                            | Compilers         | Platforms             | Other                 |
+| ---                           | ---               | ---                   | ---                   |
+| `windows`, `linux`, `macos`   | `gcc`, `tinyc`    | `amd64`, `aarch64`    | `debug`, `test`, `js` |
+| `mac`, `darwin`, `ios`,       | `clang`, `mingw`  | `x64`, `x32`          | `glibc`, `prealloc`   |
+| `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
+| `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
+| `solaris`, `linux_or_macos`   | | | |
 
 ## Compile time pseudo variables
 
@@ -2315,7 +2345,7 @@ try to inline them, which in some cases, may be beneficial for performance,
 but may impact the size of your executable.
 
 `[direct_array_access]` - in functions tagged with `[direct_array_access]`
-the compiler will translate array operations directly into C array operations - 
+the compiler will translate array operations directly into C array operations -
 omiting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
 the boundries will be checked by the user.
@@ -2336,7 +2366,7 @@ Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile-time `if` and `for` constructs:
 
 ```v
-// TODO: not implemented yet
+// TODO: not fully implemented
 
 struct User {
     name string
@@ -2352,7 +2382,7 @@ fn decode<T>(data string) T {
         $if field.Type is string {
             // $(string_expr) produces an identifier
             result.$(field.name) = get_string(data, field.name)
-        } else $if field.Type is int {
+        } $else $if field.Type is int {
             result.$(field.name) = get_int(data, field.name)
         }
     }
@@ -2646,7 +2676,7 @@ pub
 return
 rlock
 select
-shared 
+shared
 sizeof
 static
 struct
