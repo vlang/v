@@ -2671,11 +2671,20 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.expr(expr)
 					g.write(')')
 				} else if expr is ast.RangeExpr {
+					// if type is unsigned and low is 0, check is unneeded
+					mut skip_low := false
+					if expr.low is ast.IntegerLiteral as expr_low {
+						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] && expr_low.val == '0' {
+							skip_low = true
+						}
+					}
 					g.write('(')
-					g.write(cond_var)
-					g.write(' >= ')
-					g.expr(expr.low)
-					g.write(' && ')
+					if !skip_low {
+						g.write(cond_var)
+						g.write(' >= ')
+						g.expr(expr.low)
+						g.write(' && ')
+					}
 					g.write(cond_var)
 					g.write(' <= ')
 					g.expr(expr.high)
