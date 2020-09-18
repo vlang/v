@@ -3446,7 +3446,7 @@ fn (mut g Gen) go_back_out(n int) {
 }
 
 const (
-	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'strconv__Float64u', 'struct stat',
+	skip_struct_init = ['strconv__ftoa__Uf32', 'strconv__ftoa__Uf64', 'struct stat',
 		'struct addrinfo',
 	]
 )
