@@ -187,10 +187,11 @@ $c_common_macros
 	#endif
 	#define _WIN32_WINNT 0x0600
 	#define WIN32_LEAN_AND_MEAN
-	#ifdef _UNICODE
+	#ifndef _UNICODE
+	#define _UNICODE
+	#endif
 	#ifndef UNICODE
 	#define UNICODE
-	#endif
 	#endif
 	#include <windows.h>
 
