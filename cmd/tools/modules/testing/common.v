@@ -150,9 +150,9 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
-	mut relative_file := dot_relative_file
+	mut relative_file := dot_relative_file.replace('./', '')
 	if ts.root_relative {
-		relative_file = relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
+		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
 	}
 	file := os.real_path(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
