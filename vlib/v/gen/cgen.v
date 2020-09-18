@@ -3453,7 +3453,7 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	styp := g.typ(struct_init.typ)
 	mut shared_styp := '' // only needed for shared &St{...
 	if styp in skip_struct_init {
-		// needed for c++ compilers    
+		// needed for c++ compilers
 		g.go_back_out(3)
 		return
 	}
