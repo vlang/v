@@ -2718,6 +2718,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		c.const_deps << name
 	}
 	if ident.kind == .blank_ident {
+		if ident.tok_kind !in [.assign, .decl_assign] {
+			c.error('undefined ident: `_` (may only be used in assignments)', ident.pos)
+		}
 		return table.void_type
 	}
 	// second use
@@ -2828,29 +2831,26 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 	if ident.language == .c {
 		return table.int_type
 	}
-	if ident.name != '_' {
-		if c.inside_sql {
-			if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
-				return field.typ
-			}
+	if c.inside_sql {
+		if field := c.table.struct_find_field(c.cur_orm_ts, ident.name) {
+			return field.typ
 		}
-		if ident.kind == .unresolved && ident.mod != 'builtin' {
-			// search in the `builtin` idents, for example
-			// main.compare_f32 may actually be builtin.compare_f32
-			saved_mod := ident.mod
-			ident.mod = 'builtin'
-			builtin_type := c.ident(ident)
-			if builtin_type != table.void_type {
-				return builtin_type
-			}
-			ident.mod = saved_mod
+	}
+	if ident.kind == .unresolved && ident.mod != 'builtin' {
+		// search in the `builtin` idents, for example
+		// main.compare_f32 may actually be builtin.compare_f32
+		saved_mod := ident.mod
+		ident.mod = 'builtin'
+		builtin_type := c.ident(ident)
+		if builtin_type != table.void_type {
+			return builtin_type
 		}
-		if ident.tok_kind == .assign {
-			c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)',
-				ident.pos)
-		} else {
-			c.error('undefined ident: `$ident.name`', ident.pos)
-		}
+		ident.mod = saved_mod
+	}
+	if ident.tok_kind == .assign {
+		c.error('undefined ident: `$ident.name` (use `:=` to declare a variable)', ident.pos)
+	} else {
+		c.error('undefined ident: `$ident.name`', ident.pos)
 	}
 	if c.table.known_type(ident.name) {
 		// e.g. `User`  in `json.decode(User, '...')`
