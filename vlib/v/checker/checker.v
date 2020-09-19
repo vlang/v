@@ -2363,7 +2363,7 @@ fn (mut c Checker) import_stmt(imp ast.Import) {
 		}
 		if sym.kind == .type_ {
 			if type_sym := c.table.find_type(name) {
-				if type_sym.kind == .placeholder {
+				if type_sym.kind == .placeholder || !type_sym.is_public {
 					c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
 				}
 			} else {
