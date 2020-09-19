@@ -47,6 +47,7 @@ mut:
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
+	inside_select     bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case bool // to separate `match_expr { }` from `Struct{}`
 	inside_match_body bool // to fix eval not used TODO
 	inside_unsafe     bool
@@ -920,6 +921,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {
+	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.Expr{}
 	if p.expecting_type {
 		p.expecting_type = false
@@ -1073,7 +1075,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	} else if (p.peek_tok.kind == .lcbr ||
 		(p.peek_tok.kind == .lt && lit0_is_capital)) &&
-		!p.inside_match && !p.inside_match_case && !p.inside_if && !p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
+		(!p.inside_match || (p.inside_select && prev_tok_kind == .arrow && lit0_is_capital)) && !p.inside_match_case && !p.inside_if && !p.inside_for { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
 		// `Color.green`

@@ -358,6 +358,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 		} else {
 			p.inside_match = true
+			p.inside_select = true
 			exprs, comments := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
@@ -373,6 +374,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				}
 			}
 			p.inside_match = false
+			p.inside_select = false
 			match stmt {
 				ast.ExprStmt {
 					if !stmt.is_expr {

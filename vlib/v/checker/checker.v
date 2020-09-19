@@ -3064,6 +3064,48 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 	node.expected_type = c.expected_type
 	for branch in node.branches {
 		c.stmt(branch.stmt)
+		match branch.stmt as stmt {
+			ast.ExprStmt {
+				if branch.is_timeout {
+					if !stmt.typ.is_int() {
+						tsym := c.table.get_type_symbol(stmt.typ)
+						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`', stmt.pos)
+					}
+				} else {
+					match stmt.expr as expr {
+						ast.InfixExpr {
+							if expr.left !is ast.Ident && expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
+								c.error('channel in `select` key must be predefined', expr.right.position())
+							}
+						}
+						else {
+							c.error('invalid expression for `select` key', stmt.expr.position())
+						}
+					}
+				}
+			}
+			ast.AssignStmt {
+				match stmt.right[0] as expr {
+					ast.PrefixExpr {
+						if expr.right !is ast.Ident && expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
+							c.error('channel in `select` key must be predefined', expr.right.position())
+						}
+						if expr.or_block.kind != .absent {
+							err_prefix := if expr.or_block.kind == .block { 'or block' } else { 'error propagation' }
+							c.error('$err_prefix not allowed in `select` key', expr.or_block.pos)
+						}
+					}
+					else {
+						c.error('`<-` receive expression expected', stmt.right[0].position())
+					}
+				}
+			}
+			else {
+				if !branch.is_else {
+					c.error('receive or send statement expected as `select` key', branch.stmt.position())
+				}
+			}
+		}
 		c.stmts(branch.stmts)
 	}
 	return table.bool_type
