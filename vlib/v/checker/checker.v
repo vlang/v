@@ -3069,25 +3069,25 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 				if branch.is_timeout {
 					if !stmt.typ.is_int() {
 						tsym := c.table.get_type_symbol(stmt.typ)
-						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`', stmt.pos)
+						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`',
+							stmt.pos)
 					}
 				} else {
-					match stmt.expr as expr {
-						ast.InfixExpr {
-							if expr.left !is ast.Ident && expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
-								c.error('channel in `select` key must be predefined', expr.right.position())
-							}
+					if stmt.expr is ast.InfixExpr as expr {
+						if expr.left !is ast.Ident &&
+							expr.left !is ast.SelectorExpr && expr.left !is ast.IndexExpr {
+							c.error('channel in `select` key must be predefined', expr.left.position())
 						}
-						else {
-							c.error('invalid expression for `select` key', stmt.expr.position())
-						}
+					} else {
+						c.error('invalid expression for `select` key', stmt.expr.position())
 					}
 				}
 			}
 			ast.AssignStmt {
 				match stmt.right[0] as expr {
 					ast.PrefixExpr {
-						if expr.right !is ast.Ident && expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
+						if expr.right !is ast.Ident &&
+							expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
 							c.error('channel in `select` key must be predefined', expr.right.position())
 						}
 						if expr.or_block.kind != .absent {
