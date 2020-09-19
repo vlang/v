@@ -36,31 +36,22 @@ fn test_select() {
 	go do_send_int(chi)
 	go do_send_byte(chb)
 	go do_send_i64(chl)
-	mut channels := [&sync.Channel(chi), &sync.Channel(recch), &sync.Channel(chl), &sync.Channel(chb)]
-	directions := [sync.Direction.pop, .push, .pop, .pop]
 	mut sum := i64(0)
 	mut rl := i64(0)
-	mut ri := int(0)
-	mut rb := byte(0)
 	mut sl := i64(0)
-	mut objs := [voidptr(&ri), &sl, &rl, &rb]
 	for _ in 0 .. 1200 {
-		idx := sync.channel_select(mut channels, directions, mut objs, -1)
-		match idx {
-			0 {
+		select {
+			ri := <-chi {
 				sum += ri
 			}
-			1 {
+			recch <- sl {
 				sl++
 			}
-			2 {
+			rl = <-chl {
 				sum += rl
 			}
-			3 {
+			rb := <-chb {
 				sum += rb
-			}
-			else {
-				println('got $idx (timeout)')
 			}
 		}
 	}
