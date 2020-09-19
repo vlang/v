@@ -623,27 +623,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			}
 		}
 		.key_unsafe {
-			if p.peek_tok.kind == .lcbr {
-				// unsafe {
-				p.next()
-				assert !p.inside_unsafe
-				p.inside_unsafe = true
-				stmts := p.parse_block()
-				p.inside_unsafe = false
-				return ast.Block{
-					stmts: stmts
-					is_unsafe: true
-				}
-			} else {
-				p.error_with_pos('please use `unsafe {`', p.tok.position())
-			}
-			// unsafe( ; NB: this will be never reached
-			pos := p.tok.position()
-			ex := p.expr(0)
-			return ast.ExprStmt{
-				expr: ex
-				pos: pos
-			}
+			return p.unsafe_stmt()
 		}
 		.hash {
 			return p.hash()
@@ -1987,4 +1967,56 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 		}
 	}
 	return false
+}
+
+fn (mut p Parser) unsafe_stmt() ast.Stmt {
+	pos := p.tok.position()
+	p.next()
+	if p.tok.kind != .lcbr {
+		p.error_with_pos('please use `unsafe {`', p.tok.position())
+	}
+	p.next()
+	assert !p.inside_unsafe
+	if p.tok.kind == .rcbr {
+		// `unsafe {}`
+		p.next()
+		return ast.Block{
+			is_unsafe: true
+		}
+	}
+	p.inside_unsafe = true
+	p.open_scope() // needed in case of `unsafe {stmt}`
+	defer {
+		p.inside_unsafe = false
+		p.close_scope()
+	}
+	stmt := p.stmt(false)
+	if p.tok.kind == .rcbr {
+		if stmt is ast.ExprStmt {
+			// `unsafe {expr}`
+			if stmt.expr.is_expr() {
+				p.next()
+				ue := ast.UnsafeExpr{
+					expr: stmt.expr
+					pos: pos
+				}
+				// parse e.g. `unsafe {expr}.foo()`
+				expr := p.expr_with_left(ue, 0, p.is_stmt_ident)
+				return ast.ExprStmt{
+					expr: expr
+					pos: pos
+				}
+			}
+		}
+	}
+	// unsafe {stmts}
+	mut stmts := [stmt]
+	for p.tok.kind != .rcbr {
+		stmts << p.stmt(false)
+	}
+	p.next()
+	return ast.Block{
+		stmts: stmts
+		is_unsafe: true
+	}
 }
