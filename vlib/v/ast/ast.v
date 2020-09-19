@@ -57,7 +57,6 @@ pub struct IntegerLiteral {
 pub:
 	val string
 	pos token.Position
-	is_large bool
 }
 
 pub struct FloatLiteral {
