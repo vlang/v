@@ -725,6 +725,10 @@ fn test_raw() {
 	println(lines)
 	assert lines.len == 1
 	println('raw string: "$raw"')
+
+	raw2 := r'Hello V\0'
+	assert raw2[7] == `\\`
+	assert raw2[8] == `0`
 }
 
 fn test_raw_with_quotes() {
