@@ -80,10 +80,11 @@ fn setup_symlink_windows(vexe string){
 			warn_and_exit(err)
 			return
 		}
-		defer {
-			C.RegCloseKey(reg_sys_env_handle)
-		}
-
+		// TODO: Fix defers inside ifs
+		// defer {
+		// 		C.RegCloseKey(reg_sys_env_handle)
+		// }
+		
 		// if the above succeeded, and we cannot get the value, it may simply be empty
 		sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
 
@@ -104,6 +105,7 @@ fn setup_symlink_windows(vexe string){
 			print('not configured.\nAdding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				warn_and_exit(err)
+				C.RegCloseKey(reg_sys_env_handle)
 				return
 			}
 			println('done.')
@@ -113,9 +115,11 @@ fn setup_symlink_windows(vexe string){
 		send_setting_change_msg('Environment') or {
 			eprintln('\n' + err)
 			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
+			C.RegCloseKey(reg_sys_env_handle)
 			return
 		}
 
+		C.RegCloseKey(reg_sys_env_handle)
 		println('finished.\n\nNote: restart your shell/IDE to load the new %PATH%.')
 		println('After restarting your shell/IDE, give `v version` a try in another dir!')
 	}
