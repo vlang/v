@@ -1075,8 +1075,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.UnsafeExpr {
 			f.write('unsafe {')
-			es := node.stmts[0] as ast.ExprStmt
-			f.expr(es.expr)
+			f.expr(node.expr)
 			f.write('}')
 		}
 	}

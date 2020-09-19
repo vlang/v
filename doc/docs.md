@@ -2075,7 +2075,7 @@ To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
 mut p := unsafe { &byte(malloc(2)) }
 p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
 unsafe {
-    p[0] = `h`
+    p[0] = `h` // OK
     p[1] = `i`
 }
 p++ // Error: pointer arithmetic is only allowed in `unsafe` blocks

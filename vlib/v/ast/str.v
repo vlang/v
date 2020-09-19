@@ -264,7 +264,7 @@ pub fn (x Expr) str() string {
 			return '_likely_(${it.expr.str()})'
 		}
 		UnsafeExpr {
-			return 'unsafe { $it.stmts.len stmts }'
+			return 'unsafe { $it.expr }'
 		}
 		else {}
 	}
