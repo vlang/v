@@ -2656,8 +2656,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.void_type
 		}
 		ast.SelectExpr {
-			// TODO: to be implemented
-			return table.void_type
+			return c.select_expr(mut node)
 		}
 		ast.SelectorExpr {
 			return c.selector_expr(mut node)
@@ -3058,6 +3057,16 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		err_details += ' (add `else {}` at the end)'
 	}
 	c.error(err_details, node.pos)
+}
+
+pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
+	node.is_expr = c.expected_type != table.void_type
+	node.expected_type = c.expected_type
+	for branch in node.branches {
+		c.stmt(branch.stmt)
+		c.stmts(branch.stmts)
+	}
+	return table.bool_type
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {

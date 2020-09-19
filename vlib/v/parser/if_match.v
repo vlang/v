@@ -442,5 +442,6 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 	return ast.SelectExpr{
 		branches: branches
 		pos: pos
+		has_exception: has_else || has_timeout
 	}
 }
