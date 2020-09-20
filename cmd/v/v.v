@@ -17,7 +17,7 @@ const (
 		'repl',
 		'build-tools', 'build-examples',
 		'build-vbinaries',
-		'setup-freetype', 'doc'
+		'setup-freetype', 'doc', 'doctor'
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
