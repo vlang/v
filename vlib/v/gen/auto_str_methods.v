@@ -8,8 +8,12 @@ import v.util
 
 // already generated styp, reuse it
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
-	sym := g.table.get_type_symbol(typ)
-	str_fn_name := styp_to_str_fn_name(styp)
+	mut sym := g.table.get_type_symbol(typ)
+	mut str_fn_name := styp_to_str_fn_name(styp)
+	if sym.info is table.Alias {
+		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+		str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
+	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
 	// generate for type
 	if sym_has_str_method && str_method_expects_ptr && str_nr_args == 1 {

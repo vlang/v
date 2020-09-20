@@ -23,6 +23,7 @@ struct TaskDescription {
 mut:
 	is_error         bool
 	is_skipped       bool
+	is_module bool
 	expected         string
 	found___         string
 	took             time.Duration
@@ -33,25 +34,28 @@ fn test_all() {
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
 	classic_dir := 'vlib/v/checker/tests'
-	classic_tests := get_tests_in_dir(classic_dir)
+	classic_tests := get_tests_in_dir(classic_dir, false)
 	global_dir := '$classic_dir/globals'
-	global_tests := get_tests_in_dir(global_dir)
+	global_tests := get_tests_in_dir(global_dir, false)
+	module_dir := '$classic_dir/modules'
+	module_tests := get_tests_in_dir(module_dir, true)	
 	run_dir := '$classic_dir/run'
-	run_tests := get_tests_in_dir(run_dir)
+	run_tests := get_tests_in_dir(run_dir, false)
 	parser_dir := 'vlib/v/parser/tests'
-	parser_tests := get_tests_in_dir(parser_dir)
+	parser_tests := get_tests_in_dir(parser_dir, false)
 	// -prod so that warns are errors
 	mut tasks := []TaskDescription{}
-	tasks << new_tasks(vexe, classic_dir, '-prod', '.out', classic_tests)
-	tasks << new_tasks(vexe, global_dir, '--enable-globals', '.out', global_tests)
+	tasks << new_tasks(vexe, classic_dir, '-prod', '.out', classic_tests, false)
+	tasks << new_tasks(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
 	tasks <<
-		new_tasks(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'])
-	tasks << new_tasks(vexe, run_dir, 'run', '.run.out', run_tests)
-	tasks << new_tasks(vexe, parser_dir, '-prod', '.out', parser_tests)
+		new_tasks(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'], false)
+	tasks << new_tasks(vexe, module_dir, '-prod run', '.out', module_tests, true)
+	tasks << new_tasks(vexe, run_dir, 'run', '.run.out', run_tests, false)
+	tasks << new_tasks(vexe, parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.run()
 }
 
-fn new_tasks(vexe, dir, voptions, result_extension string, tests []string) []TaskDescription {
+fn new_tasks(vexe, dir, voptions, result_extension string, tests []string, is_module bool) []TaskDescription {
 	paths := vtest.filter_vtest_only(tests, {
 		basepath: dir
 	})
@@ -63,6 +67,7 @@ fn new_tasks(vexe, dir, voptions, result_extension string, tests []string) []Tas
 			voptions: voptions
 			result_extension: result_extension
 			path: path
+			is_module: is_module
 		}
 	}
 	return res
@@ -155,6 +160,11 @@ fn (mut task TaskDescription) execute() {
 	}
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
+	$if windows {
+		if task.is_module {
+			task.found___ = task.found___.replace_once('\\', '/')
+		}
+	}
 	if task.expected != task.found___ {
 		task.is_error = true
 	}
@@ -178,11 +188,16 @@ fn diff_content(s1, s2 string) {
 	println('============\n')
 }
 
-fn get_tests_in_dir(dir string) []string {
+fn get_tests_in_dir(dir string, is_module bool) []string {
 	files := os.ls(dir) or {
 		panic(err)
 	}
-	mut tests := files.filter(it.ends_with('.vv'))
+	mut tests := files
+	if !is_module {
+		tests = files.filter(it.ends_with('.vv'))
+	} else {
+		tests = files.filter(!it.ends_with('.out'))
+	}
 	tests.sort()
 	return tests
 }
