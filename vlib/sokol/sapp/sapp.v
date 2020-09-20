@@ -34,6 +34,7 @@ pub fn create_desc() C.sg_desc {
 			metal: mtl_desc
 			d3d11: d3d11_desc
 		}
+		image_pool_size:1000
 	}
 }
 
