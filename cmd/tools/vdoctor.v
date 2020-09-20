@@ -32,22 +32,23 @@ fn main(){
 	//
 	mut os_details := ''
 	if os_kind == 'linux' {
-		if os.is_file('/usr/bin/lsb_release') {
-			os_details = cmd(command: '/usr/bin/lsb_release -d -s')
+		exists := cmd(command:'type lsb_release')
+		if !exists.starts_with('Error') {
+			os_details = cmd(command: 'lsb_release -d -s')
 		} else {
-			ouname := os.uname()
-			os_details = '$ouname.release, $ouname.version'
+			os_details = cmd(command: 'cat /proc/version')
 		}
-	}
-	if os_kind == 'mac' {
+	} else if os_kind == 'mac' {
 		mut details := []string
 		details << cmd(command: 'sw_vers -productName')
 		details << cmd(command: 'sw_vers -productVersion')
 		details << cmd(command: 'sw_vers -buildVersion')
 		os_details = details.join(', ')
-	}
-	if os_kind == 'windows' {
+	} else if os_kind == 'windows' {
 		os_details = cmd(command:'wmic os get name, buildnumber, osarchitecture', line: 1)
+	} else {
+		ouname := os.uname()
+		os_details = '$ouname.release, $ouname.version'
 	}
 	line('OS', '$os_kind, $os_details')
 	line('Processor', arch_details.join(', '))
@@ -81,8 +82,7 @@ fn cmd(c CmdConfig) string {
 	if x.exit_code == 0 {
 		return x.output.split_into_lines()[c.line]
 	}
-	println('cmd error: $x.output')
-	return 'Error'
+	return 'Error: $x.output'
 }
 
 fn line(label string, value string) {
