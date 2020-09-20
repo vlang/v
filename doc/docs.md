@@ -1844,8 +1844,8 @@ y = <-ch2  // pop into existing variable
 ```
 
 A channel can be closed to indicate that no further objects can be pushed. Any attempt
-to do so will then result in a runtime panic (with the exception of `select` and `try_push()`
-- see below). Attempts to pop will return immediately if the
+to do so will then result in a runtime panic (with the exception of `select` and
+`try_push()` - see below). Attempts to pop will return immediately if the
 associated channel has been closed and the buffer is empty. This situation can be
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
@@ -1873,7 +1873,7 @@ select {
         // do something with predeclared variable `b`
     }
     ch3 <- c {
-        // do something if `c` could be sent
+        // do something if `c` was sent
     }
     > 500 * time.millisecond {
         // do something if no channel has become ready within 0.5s
@@ -1882,10 +1882,10 @@ select {
 ```
 
 The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
-In order to process immediately if no channel is ready an `else { ... }` branch can be used. `else` and `> timeout` are
-mutually exclusive.
+It is also possible to proceed immediately if no channel is ready in the moment `select` is called
+by adding an `else { ... }` branch. `else` and `> timeout` are mutually exclusive.
 
-The `select` command can be used as an expression of type `bool` that becomes `false` if all channels are closed:
+The `select` command can be used as an *expression* of type `bool` that becomes `false` if all channels are closed:
 ```v
 if select {
     ch <- a {
