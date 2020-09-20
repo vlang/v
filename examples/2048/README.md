@@ -1,6 +1,9 @@
 # V 2048
 
-This is a simple [2048 game](https://play2048.co/), written in [the V programming language](https://vlang.io/).
+This is a simple 2048 game, written in [the V programming language](https://vlang.io/).
+
+WebAssembly demo: https://v2048.vercel.app
+
 ![screenshot](demo.png)
 
 ## Description:
