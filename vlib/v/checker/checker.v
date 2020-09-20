@@ -610,10 +610,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			return table.bool_type
 		}
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
-			if right.info is table.Alias && (right.info as table.Alias).language != .c && c.mod == c.table.type_to_str(right_type).split('.')[0] {
+			if right.info is table.Alias &&
+				(right.info as table.Alias).language != .c && c.mod == c.table.type_to_str(right_type).split('.')[0] {
 				right = c.table.get_type_symbol((right.info as table.Alias).parent_type)
 			}
-			if left.info is table.Alias && (left.info as table.Alias).language != .c && c.mod == c.table.type_to_str(left_type).split('.')[0] {
+			if left.info is table.Alias &&
+				(left.info as table.Alias).language != .c && c.mod == c.table.type_to_str(left_type).split('.')[0] {
 				left = c.table.get_type_symbol((left.info as table.Alias).parent_type)
 			}
 			if left.kind in [.array, .array_fixed, .map, .struct_] {
