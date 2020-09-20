@@ -2542,9 +2542,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
-		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c) {
+		// Check if aliased type is a struct
+		d := !b &&
+			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
+		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c || d) {
 			// Overloaded operators
-			g.write(g.typ(left_type))
+			g.write(g.typ(if !d {
+				left_type
+			} else {
+				(left_sym.info as table.Alias).parent_type
+			}))
 			g.write('_')
 			g.write(util.replace_op(node.op.str()))
 			g.write('(')
@@ -4119,7 +4126,10 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
-	sym := g.table.get_type_symbol(etype)
+	mut sym := g.table.get_type_symbol(etype)
+	if sym.info is table.Alias {
+		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	if etype.has_flag(.variadic) {
 		str_fn_name := g.gen_str_for_type(etype)
