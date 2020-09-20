@@ -612,19 +612,37 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
 			if left.kind in [.array, .array_fixed, .map, .struct_] {
 				if left.has_method(infix_expr.op.str()) {
-					return_type = left_type
+					if method := left.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = left_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							left_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+					}
 				}
 			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
 				if right.has_method(infix_expr.op.str()) {
-					return_type = right_type
+					if method := right.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							right_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+					}
 				}
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
