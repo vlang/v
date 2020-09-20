@@ -562,8 +562,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
-	right := c.table.get_type_symbol(right_type)
-	left := c.table.get_type_symbol(left_type)
+	mut right := c.table.get_type_symbol(right_type)
+	mut left := c.table.get_type_symbol(left_type)
+	if right.info is table.Alias && (right.info as table.Alias).language != .c && c.mod == c.table.type_to_str(right_type).split('.')[0] {
+		right = c.table.get_type_symbol((right.info as table.Alias).parent_type)
+	}
+	if left.info is table.Alias && (left.info as table.Alias).language != .c && c.mod == c.table.type_to_str(left_type).split('.')[0] {
+		left = c.table.get_type_symbol((left.info as table.Alias).parent_type)
+	}
 	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
