@@ -100,8 +100,8 @@ fn test_rand_i64_in_range() {
 }
 
 fn test_rand_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for _ in 0 .. rnd_count {
 		value := rand.int31()
 		assert value >= 0
