@@ -91,7 +91,8 @@ fn test_select_blocks() {
 	ch1.close()
 	ch2.close()
 	mut h := 7
-	u := select {
+	mut is_open := true
+	if select {
 		b := <- ch2 {
 			h = 0
 		}
@@ -101,11 +102,15 @@ fn test_select_blocks() {
 		else {
 			h = 2
 		}
+	} {
+		panic('channel is still open')
+	} else {
+		is_open = false
 	}
 	// no branch should have run
 	assert h == 7
 	// since all channels are closed `select` should return `false`
-	assert u == false
+	assert is_open == false
 }
 
 			
