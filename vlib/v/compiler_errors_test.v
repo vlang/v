@@ -23,6 +23,7 @@ struct TaskDescription {
 mut:
 	is_error         bool
 	is_skipped       bool
+	is_module bool
 	expected         string
 	found___         string
 	took             time.Duration
@@ -66,6 +67,7 @@ fn new_tasks(vexe, dir, voptions, result_extension string, tests []string, is_mo
 			voptions: voptions
 			result_extension: result_extension
 			path: path
+			is_module: is_module
 		}
 	}
 	return res
@@ -158,6 +160,11 @@ fn (mut task TaskDescription) execute() {
 	}
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
+	$if windows {
+		if task.is_module {
+			task.found___ = task.found___.replace_once('\\', '/')
+		}
+	}
 	if task.expected != task.found___ {
 		task.is_error = true
 	}
