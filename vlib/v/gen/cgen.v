@@ -2767,11 +2767,23 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 		} else {
 			match branch.stmt as stmt {
 				ast.ExprStmt {
+					// send expression
 					expr := stmt.expr as ast.InfixExpr
 					channels << expr.left
-					objs << expr.right
-					tmp_objs << ''
-					elem_types << ''
+					if expr.right is ast.Ident ||
+						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
+						// addressable objects in the `C` output
+						objs << expr.right
+						tmp_objs << ''
+						elem_types << ''
+					} else {
+						// must be evaluated to tmp var before real `select` is performed
+						objs << ast.Expr{}
+						tmp_obj := g.new_tmp_var()
+						tmp_objs << tmp_obj
+						el_stype := g.typ(g.table.mktyp(expr.right_type))
+						g.writeln('$el_stype $tmp_obj;')
+					}
 					is_push << true
 				}
 				ast.AssignStmt {
@@ -2858,7 +2870,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			g.writeln('-1) {')
 		} else {
 			g.writeln('$i) {')
-			if tmp_objs[i] != '' {
+			if !is_push[i] && tmp_objs[i] != '' {
 				g.write('\t${elem_types[i]}')
 				g.expr(objs[i])
 				g.writeln(' = ${tmp_objs[i]};')

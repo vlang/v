@@ -5,9 +5,12 @@ struct St {
 	a int
 }
 
-fn f1(ch1 chan int, ch2 chan St, ch3 chan int, sem sync.Semaphore) {
+fn getint() int {
+	return 8
+}
+
+fn f1(ch1 chan int, ch2 chan St, ch3 chan int, ch4 chan int, ch5 chan int, sem sync.Semaphore) {
 	mut a := 5
-	st := St{}
 	select {
 		a = <-ch3 {
 			a = 0
@@ -15,8 +18,17 @@ fn f1(ch1 chan int, ch2 chan St, ch3 chan int, sem sync.Semaphore) {
 		b := <-ch2 {
 			a = b.a
 		}
-		ch2 <- st {
+		ch3 <- 5 {
+			a = 1
+		}
+		ch2 <- St{a: 37} {
 			a = 2
+		}
+		ch4 <- (6 + 7 * 9) {
+			a = 8
+		}
+		ch5 <- getint() {
+			a = 9
 		}
 		> 300 * time.millisecond {
 			a = 3
@@ -30,7 +42,7 @@ fn f2(ch1 chan St, ch2 chan int, sem sync.Semaphore) {
 	mut r := 23
 	for i in 0 .. 2 {
 		select {
-			b := <- ch1 {
+			b := <-ch1 {
 				r = b.a
 			}
 			ch2 <- r {
@@ -50,6 +62,8 @@ fn test_select_blocks() {
 	ch1 := chan int{cap: 1}
 	ch2 := chan St{}
 	ch3 := chan int{}
+	ch4 := chan int{}
+	ch5 := chan int{}
 	sem := sync.new_semaphore()
 	mut r := false
 	t := select {
@@ -69,7 +83,7 @@ fn test_select_blocks() {
 	ch2 <- St{a: 13}
 	sem.wait()
 	stopwatch := time.new_stopwatch({})
-	go f1(ch1, ch2, ch3, sem)
+	go f1(ch1, ch2, ch3, ch4, ch5, sem)
 	sem.wait()
 	elapsed_ms := f64(stopwatch.elapsed()) / time.millisecond
 	assert elapsed_ms >= 295.0
