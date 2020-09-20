@@ -63,6 +63,7 @@ you can do in V.
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
+    * [Channels](#channels)
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
@@ -1799,100 +1800,117 @@ fn main() {
 ```
 
 ### Channels
-Channels in V work basically like those in Go. You can `push()` objects into
-a channel and `pop()` objects from a channel. They can be buffered or unbuffered
-and it is possible to `select` from multiple channels.
+Channels are the preferred way to communicate between coroutines. V's channels work basically like
+those in Go. You can push objects into a channel on one end and pop objects from the other end.
+Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
 #### Syntax and Usage
-There is no support for channels in the core language (yet), so all functions
-are in the `sync` library. Channels must be created as `mut` objects.
+Channels have the type `chan objtype`. An optional buffer length can specified as `cap` property
+in the declaration:
 
 ```v
-mut ch := sync.new_channel<int>(0)    // unbuffered
-mut ch2 := sync.new_channel<f64>(100) // buffer length 100
+ch := chan int{}          // unbuffered - "synchronous"
+ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
-Channels can be passed to coroutines like normal `mut` variables:
+Channels do not have to be declared as `mut`. The buffer length is not part of the type but
+a property of the individual channel object. Channels can be passed to coroutines like normal
+variables:
 
 ```v
-fn f(mut ch sync.Channel) {
+fn f(ch chan int) {
     ...
 }
 
 fn main() {
     ...
-    go f(mut ch)
+    go f(ch)
     ...
 }
 ```
 
-The routines `push()` and `pop()` both use *references* to objects. This way
-unnecessary copies of large objects are avoided and the call to `cannel_select()`
-(see below) is simpler:
+Objects can be pushed to channels using the arrow operator. The same operator can be used to
+pop objects from the other end:
 
 ```v
 n := 5
 x := 7.3
-ch.push(&n)
-ch2.push(&x)
+ch <- n    // push
+ch2 <- x
 
-mut m := int(0)
 mut y := f64(0.0)
-ch.pop(&m)
-ch2.pop(&y)
+m := <-ch  // pop creating new variable
+y = <-ch2  // pop into existing variable
 ```
 
 A channel can be closed to indicate that no further objects can be pushed. Any attempt
-to do so will then result in a runtime panic. The `pop()` method will return immediately `false`
-if the associated channel has been closed and the buffer is empty.
+to do so will then result in a runtime panic (with the exception of `select` and `try_push()`
+- see below). Attempts to pop will return immediately if the
+associated channel has been closed and the buffer is empty. This situation can be
+handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v
 ch.close()
 ...
-if ch.pop(&m) {
-    println('got $m')
-} else {
+m := <-ch or {
     println('channel has been closed')
 }
+
+// propagate error
+y := <-ch2 ?
 ```
 
-There are also methods `try_push()` and `try_pop()` which return immediatelly with the return value `.not_ready` if the transaction
-cannot be performed without waiting. The return value is of type `sync.TransactionState` which can also be
-`.success` or `.closed`.
+#### Channel Select
 
-To monitor a channel there is a method `len()` which returns the number of elements currently in the queue and the attribute
-`cap` for the queue length. Please be aware that in general `channel.len() > 0` does not guarantee that the next
-`pop()` will succeed without waiting, since other threads may already have "stolen" elements from the queue. Use `try_pop()` to
-accomplish this kind of task.
-
-The select call is somewhat tricky. The `channel_select()` function needs three arrays that
-contain the channels, the directions (pop/push) and the object references and
-a timeout of type `time.Duration` (`time.infinite` or `-1` to wait unlimited) as parameters. It returns the
-index of the object that was pushed or popped or `-1` for timeout.
-
+The `select` command allows monitoring several channels at the same time without noticeable CPU load. It consists
+of a list of possible transfers and associated branches of statements - similar to the [match](#match) command:
 ```v
-mut chans := [ch, ch2]                    // the channels to monitor
-directions := [sync.Direction.pop, .pop]  // .push or .pop
-mut objs := [voidptr(&m), &y]             // the objects to push or pop
-
-// idx contains the index of the object that was pushed or popped, -1 means timeout occured
-idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
-match idx {
-    0 {
-        println('got $m')
+select {
+    a := <-ch {
+        // do something with `a`
     }
-    1 {
-        println('got $y')
+    b = <-ch2 {
+        // do something with predeclared variable `b`
     }
-    else {
-        // idx = -1
-        println('Timeout')
+    ch3 <- c {
+        // do something if `c` could be sent
+    }
+    > 500 * time.millisecond {
+        // do something if no channel has become ready within 0.5s
     }
 }
 ```
-If all channels have been closed `-2` is returned as index.
 
-Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between a coroutine
+The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
+In order to process immediately if no channel is ready an `else { ... }` branch can be used. `else` and `> timeout` are
+mutually exclusive.
+
+The `select` command can be used as an expression of type `bool` that becomes `false` if all channels are closed:
+```v
+if select {
+    ch <- a {
+        ...
+    }
+} else {
+    // channel is closed
+}
+```
+
+#### Special Channel Features
+
+For special purposes there are some builtin properties and methods:
+```v
+res := ch.try_push(a)      // try to perform `ch <- a`
+res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+l := ch.len                // number of elements in queue
+c := ch.cap                // maximum queue length
+```
+The `try_push/pop()` methods will return immediately with one of the results `.success`, `.not_ready`
+or `.closed` - dependent on whether the object has been transferred or the reason why not. Usage
+of these methods and properties in production is not recommended - algorithms based on them are often subject
+to race conditions. Use `select` instead.
+
+Data can be exchanged between a coroutine
 and the calling thread via a shared variable. This variable should be created as reference and passed to
 the coroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
 
