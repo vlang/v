@@ -100,6 +100,7 @@ const (
 	o_rdwr                             = 0x0002 // open the file read-write.
 	o_append                           = 0x0008 // append data to the file when writing.
 	o_create                           = 0x0100 // create a new file if none exists.
+	o_binary                           = 0x8000 // input and output is not translated.
 	o_trunc                            = 0x0200 // truncate regular writable file when opened.
 	o_excl                             = 0x0400 // used with o_create, file must not exist.
 	o_sync                             = 0x0000 // open for synchronous I/O (ignored on Windows)
