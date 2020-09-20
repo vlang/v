@@ -5,6 +5,7 @@ import v.util
 import runtime
 
 fn main(){
+	mut os_kind := os.user_os()
 	mut arch_details := []string{}
 	arch_details << '${runtime.nr_cpus()} cpus'
 	if runtime.is_32bit() {
@@ -19,14 +20,32 @@ fn main(){
 	if runtime.is_little_endian() {
 		arch_details << 'little endian'
 	}
-	line('Processor', arch_details.join(', '))
-	mut os_kind := os.user_os()
+	if os_kind == 'mac' {
+		arch_details << first_line_of_cmd('sysctl -n machdep.cpu.brand_string')
+	}
+	if os_kind == 'linux' {
+		arch_details << first_line_of_cmd('grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
+	}
+	if os_kind == 'windows' {
+		arch_details << first_line_of_cmd('wmic cpu get name /format:table|more +1')
+	}
+	//
 	mut os_details := ''
 	if os_kind == 'linux' {
 		os_details = first_line_of_cmd('lsb_release -d -s')
 	}
-	line('OS', os_kind)
-	line('OS details', os_details)
+	if os_kind == 'mac' {
+		mut details := []string
+		details << first_line_of_cmd('sw_vers -productName')
+		details << first_line_of_cmd('sw_vers -productVersion')
+		details << first_line_of_cmd('sw_vers -buildVersion')
+		os_details = details.join(', ')
+	}
+	if os_kind == 'windows' {
+		os_details = first_line_of_cmd('wmic os get name, buildnumber, osarchitecture /format:table|more +1')
+	}
+	line('OS', '$os_kind, $os_details')
+	line('Processor', arch_details.join(', '))
 	line('CC version', first_line_of_cmd('cc --version'))
 	println(util.bold(term.h_divider('-')))
 	vexe := os.getenv('VEXE')
