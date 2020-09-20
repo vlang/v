@@ -32,7 +32,12 @@ fn main(){
 	//
 	mut os_details := ''
 	if os_kind == 'linux' {
-		os_details = cmd(command: 'lsb_release -d -s')
+		if os.is_file('/usr/bin/lsb_release') {
+			os_details = cmd(command: '/usr/bin/lsb_release -d -s')
+		} else {
+			ouname := os.uname()
+			os_details = '$ouname.release, $ouname.version'
+		}
 	}
 	if os_kind == 'mac' {
 		mut details := []string
