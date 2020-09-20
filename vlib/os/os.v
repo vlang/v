@@ -267,6 +267,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		match m {
 			`r` { flags |= o_rdonly }
 			`w` { flags |= o_create | o_trunc }
+			`b` { flags |= o_binary }
 			`a` { flags |= o_create | o_append }
 			`s` { flags |= o_sync }
 			`n` { flags |= o_nonblock }

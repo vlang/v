@@ -43,6 +43,27 @@ fn test_open_file() {
 	os.rm(filename)
 }
 
+fn test_open_file_binary() {
+	filename := './test1.dat'
+	hello := 'hello \n world!'
+	os.open_file(filename, 'r+', 0o666) or {
+		assert err == 'No such file or directory'
+		os.File{}
+	}
+	mut file := os.open_file(filename, 'wb+', 0o666) or {
+		panic(err)
+	}
+	bytes:=hello.bytes()
+	file.write_bytes(bytes.data, bytes.len)
+	file.close()
+	assert hello.len == os.file_size(filename)
+	read_hello := os.read_bytes(filename) or {
+		panic('error reading file $filename')
+	}
+	assert bytes == read_hello
+	os.rm(filename)
+}
+
 fn test_file_get_line() {
 	filename := './fgetline.txt'
 	os.write_file(filename, 'line 1\nline 2')
