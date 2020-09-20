@@ -87,7 +87,7 @@ const (
 	]
 
 	background_color = gx.white
-	ui_color = gx.red
+	ui_color = gx.rgba(255,0,0, 210)
 )
 
 // TODO: type Tetro [tetro_size]struct{ x, y int }
