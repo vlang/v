@@ -63,6 +63,7 @@ you can do in V.
     * [Option/Result types & error handling](#optionresult-types-and-error-handling)
 * [Generics](#generics)
 * [Concurrency](#concurrency)
+    * [Channels](#channels)
 * [Decoding JSON](#decoding-json)
 * [Testing](#testing)
 * [Memory management](#memory-management)
@@ -1798,7 +1799,118 @@ fn main() {
 //         done
 ```
 
-Unlike Go, V has no channels (yet). Nevertheless, data can be exchanged between a coroutine
+### Channels
+Channels are the preferred way to communicate between coroutines. V's channels work basically like
+those in Go. You can push objects into a channel on one end and pop objects from the other end.
+Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
+
+#### Syntax and Usage
+Channels have the type `chan objtype`. An optional buffer length can specified as `cap` property
+in the declaration:
+
+```v
+ch := chan int{}          // unbuffered - "synchronous"
+ch2 := chan f64{cap: 100} // buffer length 100
+```
+
+Channels do not have to be declared as `mut`. The buffer length is not part of the type but
+a property of the individual channel object. Channels can be passed to coroutines like normal
+variables:
+
+```v
+fn f(ch chan int) {
+    ...
+}
+
+fn main() {
+    ...
+    go f(ch)
+    ...
+}
+```
+
+Objects can be pushed to channels using the arrow operator. The same operator can be used to
+pop objects from the other end:
+
+```v
+n := 5
+x := 7.3
+ch <- n    // push
+ch2 <- x
+
+mut y := f64(0.0)
+m := <-ch  // pop creating new variable
+y = <-ch2  // pop into existing variable
+```
+
+A channel can be closed to indicate that no further objects can be pushed. Any attempt
+to do so will then result in a runtime panic (with the exception of `select` and
+`try_push()` - see below). Attempts to pop will return immediately if the
+associated channel has been closed and the buffer is empty. This situation can be
+handled using an or branch (see [Handling Optionals](#handling-optionals)).
+
+```v
+ch.close()
+...
+m := <-ch or {
+    println('channel has been closed')
+}
+
+// propagate error
+y := <-ch2 ?
+```
+
+#### Channel Select
+
+The `select` command allows monitoring several channels at the same time without noticeable CPU load. It consists
+of a list of possible transfers and associated branches of statements - similar to the [match](#match) command:
+```v
+select {
+    a := <-ch {
+        // do something with `a`
+    }
+    b = <-ch2 {
+        // do something with predeclared variable `b`
+    }
+    ch3 <- c {
+        // do something if `c` was sent
+    }
+    > 500 * time.millisecond {
+        // do something if no channel has become ready within 0.5s
+    }
+}
+```
+
+The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
+It is also possible to proceed immediately if no channel is ready in the moment `select` is called
+by adding an `else { ... }` branch. `else` and `> timeout` are mutually exclusive.
+
+The `select` command can be used as an *expression* of type `bool` that becomes `false` if all channels are closed:
+```v
+if select {
+    ch <- a {
+        ...
+    }
+} else {
+    // channel is closed
+}
+```
+
+#### Special Channel Features
+
+For special purposes there are some builtin properties and methods:
+```v
+res := ch.try_push(a)      // try to perform `ch <- a`
+res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+l := ch.len                // number of elements in queue
+c := ch.cap                // maximum queue length
+```
+The `try_push/pop()` methods will return immediately with one of the results `.success`, `.not_ready`
+or `.closed` - dependent on whether the object has been transferred or the reason why not. Usage
+of these methods and properties in production is not recommended - algorithms based on them are often subject
+to race conditions. Use `select` instead.
+
+Data can be exchanged between a coroutine
 and the calling thread via a shared variable. This variable should be created as reference and passed to
 the coroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
 
