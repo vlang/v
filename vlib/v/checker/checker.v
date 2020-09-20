@@ -12,8 +12,8 @@ import v.errors
 const (
 	max_nr_errors                 = 300
 	match_exhaustive_cutoff_limit = 10
-	enum_min                      = int(0x80000000)
-	enum_max                      = 0x7FFFFFFF
+	int_min                       = int(0x80000000)
+	int_max                       = 0x7FFFFFFF
 )
 
 pub struct Checker {
@@ -1666,7 +1666,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			match field.expr as field_expr {
 				ast.IntegerLiteral {
 					val := field_expr.val.i64()
-					if val < enum_min || val > enum_max {
+					if val < int_min || val > int_max {
 						c.error('enum value `$val` overflows int', field_expr.pos)
 					} else if !decl.is_multi_allowed && int(val) in seen {
 						c.error('enum value `$val` already exists', field_expr.pos)
@@ -1691,7 +1691,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 		} else {
 			if seen.len > 0 {
 				last := seen[seen.len - 1]
-				if last == enum_max {
+				if last == int_max {
 					c.error('enum value overflows', field.pos)
 				}
 				seen << last + 1
@@ -1802,7 +1802,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					mut is_large := false
 					if expr.val.len > 8 {
 						val := expr.val.i64()
-						if (!negative && val > 2147483647) || (negative && val > 2147483648) {
+						if (!negative && val > int_max) || (negative && -val < int_min) {
 							is_large = true
 						}
 					}
