@@ -3,6 +3,7 @@
 module gg
 
 import sokol.sfons
+import sokol.sgl
 import gx
 import os
 
@@ -94,7 +95,10 @@ fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
 	ctx.ft.fons.set_size(scale * f32(size))
 	C.fonsSetAlign(ctx.ft.fons, int(cfg.align) | int(cfg.vertical_align))
-	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, 255)
+	color := C.sfons_rgba(cfg.color.r, cfg.color.g, cfg.color.b, cfg.color.a)
+	if cfg.color.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
 	C.fonsSetColor(ctx.ft.fons, color)
 	ascender := f32(0.0)
 	descender := f32(0.0)

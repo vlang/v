@@ -226,6 +226,9 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 
 // TODO: Fix alpha
 pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
@@ -236,6 +239,9 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_triangle(x, y, x2, y2, x3, y3 f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_quads()
 	sgl.v2f(x * ctx.scale, y * ctx.scale)
@@ -245,6 +251,9 @@ pub fn (ctx &Context) draw_triangle(x, y, x2, y2, x3, y3 f32, c gx.Color) {
 }
 
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()
 	if ctx.scale == 1 {
@@ -295,6 +304,9 @@ fn abs(a f32) f32 {
 
 
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
 	if ctx.scale > 1 {
 		// Make the line more clear on hi dpi screens: draw a rectangle
 		mut width := abs(x2 - x)
