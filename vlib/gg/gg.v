@@ -235,6 +235,15 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
+pub fn (ctx &Context) draw_triangle(x, y, x2, y2, x3, y3 f32, c gx.Color) {
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	sgl.begin_quads()
+	sgl.v2f(x * ctx.scale, y * ctx.scale)
+	sgl.v2f(x2 * ctx.scale, y2 * ctx.scale)
+	sgl.v2f(x3 * ctx.scale, y3 * ctx.scale)
+	sgl.end()
+}
+
 pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.c4b(c.r, c.g, c.b, c.a)
 	sgl.begin_line_strip()

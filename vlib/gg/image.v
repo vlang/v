@@ -140,6 +140,38 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
 	sgl.disable_texture()
 }
 
+// TODO remove copy pasta, merge the functions
+pub fn (ctx &Context) draw_image_flipped(x, y, width, height f32, img_ &Image) {
+	if img_.id >= ctx.image_cache.len {
+		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+		return
+	}
+	img := ctx.image_cache[img_.id] // fetch the image from cache
+	if !img.simg_ok {
+		return
+	}
+	u0 := f32(0.0)
+	v0 := f32(0.0)
+	u1 := f32(1.0)
+	v1 := f32(1.0)
+	x0 := f32(x) * ctx.scale
+	y0 := f32(y) * ctx.scale
+	x1 := f32(x + width) * ctx.scale
+	y1 := f32(y + height) * ctx.scale
+	//
+	sgl.load_pipeline(ctx.timage_pip)
+	sgl.enable_texture()
+	sgl.texture(img.simg)
+	sgl.begin_quads()
+	sgl.c4b(255, 255, 255, 255)
+	sgl.v2f_t2f(x0, y0,   u1, v0)
+	sgl.v2f_t2f(x1, y0,   u0, v0)
+	sgl.v2f_t2f(x1, y1,   u0, v1)
+	sgl.v2f_t2f(x0, y1,   u1, v1)
+	sgl.end()
+	sgl.disable_texture()
+}
+
 pub fn (ctx &Context) draw_image_by_id(x, y, width, height f32, id int) {
 	img := ctx.image_cache[id]
 	ctx.draw_image(x,y,width,height,img)
