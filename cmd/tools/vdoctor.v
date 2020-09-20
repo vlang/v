@@ -21,32 +21,38 @@ fn main(){
 		arch_details << 'little endian'
 	}
 	if os_kind == 'mac' {
-		arch_details << first_line_of_cmd('sysctl -n machdep.cpu.brand_string')
+		arch_details << cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
-		arch_details << first_line_of_cmd('grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
+		arch_details << cmd(command:'grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
 	}
 	if os_kind == 'windows' {
-		arch_details << first_line_of_cmd('wmic cpu get name /format:table|more +1')
+		arch_details << cmd(command:'wmic cpu get name /format:table', line: 1)
 	}
 	//
 	mut os_details := ''
 	if os_kind == 'linux' {
-		os_details = first_line_of_cmd('lsb_release -d -s')
-	}
-	if os_kind == 'mac' {
+		exists := cmd(command:'type lsb_release')
+		if !exists.starts_with('Error') {
+			os_details = cmd(command: 'lsb_release -d -s')
+		} else {
+			os_details = cmd(command: 'cat /proc/version')
+		}
+	} else if os_kind == 'mac' {
 		mut details := []string
-		details << first_line_of_cmd('sw_vers -productName')
-		details << first_line_of_cmd('sw_vers -productVersion')
-		details << first_line_of_cmd('sw_vers -buildVersion')
+		details << cmd(command: 'sw_vers -productName')
+		details << cmd(command: 'sw_vers -productVersion')
+		details << cmd(command: 'sw_vers -buildVersion')
 		os_details = details.join(', ')
-	}
-	if os_kind == 'windows' {
-		os_details = first_line_of_cmd('wmic os get name, buildnumber, osarchitecture /format:table|more +1')
+	} else if os_kind == 'windows' {
+		os_details = cmd(command:'wmic os get name, buildnumber, osarchitecture', line: 1)
+	} else {
+		ouname := os.uname()
+		os_details = '$ouname.release, $ouname.version'
 	}
 	line('OS', '$os_kind, $os_details')
 	line('Processor', arch_details.join(', '))
-	line('CC version', first_line_of_cmd('cc --version'))
+	line('CC version', cmd(command:'cc --version'))
 	println(util.bold(term.h_divider('-')))
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
@@ -58,21 +64,25 @@ fn main(){
 	line('is vroot writable', is_writable_vroot.str())
 	line('V full version', util.full_v_version(true))
 	println(util.bold(term.h_divider('-')))
-	line('Git version', first_line_of_cmd('git --version'))
-	line('Git vroot status', first_line_of_cmd('git describe --dirty --tags'))
+	line('Git version', cmd(command:'git --version'))
+	line('Git vroot status', cmd(command:'git -C . describe --abbrev=8 --dirty --always --tags'))
 	line('.git/config present', os.is_file('.git/config').str())
 	println(util.bold(term.h_divider('-')))
 }
 
-fn first_line_of_cmd(cmd string) string {
-	x := os.exec(cmd) or {
+struct CmdConfig {
+	line int
+	command string
+}
+
+fn cmd(c CmdConfig) string {
+	x := os.exec(c.command) or {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
-		return x.output.split_into_lines()[0]
+		return x.output.split_into_lines()[c.line]
 	}
-	println('first_line_of_cmd error: $x.output')
-	return 'Error'
+	return 'Error: $x.output'
 }
 
 fn line(label string, value string) {
