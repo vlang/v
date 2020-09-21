@@ -17,6 +17,8 @@ pub type FNFail = fn (msg string, x voidptr)
 
 pub type FNKeyDown = fn (c sapp.KeyCode, m sapp.Modifier, x voidptr)
 
+pub type FNMove = fn (x, y f32, z voidptr)
+
 pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Config {
@@ -41,6 +43,8 @@ pub:
 	event_fn          FNEvent = voidptr(0)
 	keydown_fn        FNKeyDown = voidptr(0) // special case of event_fn
 	char_fn           FNChar = voidptr(0) // special case of event_fn
+	move_fn           FNMove= voidptr(0) // special case of event_fn
+	click_fn           FNMove= voidptr(0) // special case of event_fn
 	wait_events       bool // set this to true for UIs, to save power
 	fullscreen        bool
 	scale             f32 = 1.0 // vid needs this
@@ -135,14 +139,6 @@ fn gg_frame_fn(user_data voidptr) {
 	}
 }
 
-// TODO: remove this hacky workaround...
-// NB: todo_remove_this is needed to workaround a v bug,
-// where it thinks that &sapp.Event(x) is a function call,
-// instead of a cast, if v has not yet seen &sapp.Event used
-// as a parameter type.
-fn todo_remove_this(e &sapp.Event) {
-}
-
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	e := &sapp.Event(ce)
 	mut g := &Context(user_data)
@@ -160,6 +156,18 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 			if g.config.char_fn != voidptr(0) {
 				cfn := g.config.char_fn
 				cfn(e.char_code, g.config.user_data)
+			}
+		}
+		.mouse_move{
+			if g.config.move_fn != voidptr(0) {
+				cfn := g.config.move_fn
+				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
+			}
+		}
+		.mouse_down{
+			if g.config.click_fn != voidptr(0) {
+				cfn := g.config.click_fn
+				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
 			}
 		}
 		else {}

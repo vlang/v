@@ -37,6 +37,7 @@ fn C.PQnfields(voidptr) int
 fn C.PQexec(voidptr) voidptr
 fn C.PQexecParams(voidptr) voidptr
 fn C.PQclear(voidptr) voidptr
+fn C.PQfinish(voidptr)
 
 pub fn connect(config Config) ?DB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
@@ -65,6 +66,11 @@ fn res_to_rows(res voidptr) []Row {
 	}
 	C.PQclear(res)
 	return rows
+}
+
+// close frees the underlaying resource allocated by the database connection
+pub fn (db DB) close() {
+	C.PQfinish(db.conn)
 }
 
 pub fn (db DB) q_int(query string) int {

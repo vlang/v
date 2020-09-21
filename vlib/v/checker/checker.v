@@ -562,8 +562,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	right_type := c.expr(infix_expr.right)
 	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
-	right := c.table.get_type_symbol(right_type)
-	left := c.table.get_type_symbol(left_type)
+	mut right := c.table.get_type_symbol(right_type)
+	mut left := c.table.get_type_symbol(left_type)
 	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
@@ -610,21 +610,47 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			return table.bool_type
 		}
 		.plus, .minus, .mul, .div, .mod, .xor, .amp, .pipe { // binary operators that expect matching types
+			if right.info is table.Alias &&
+				(right.info as table.Alias).language != .c && c.mod == c.table.type_to_str(right_type).split('.')[0] {
+				right = c.table.get_type_symbol((right.info as table.Alias).parent_type)
+			}
+			if left.info is table.Alias &&
+				(left.info as table.Alias).language != .c && c.mod == c.table.type_to_str(left_type).split('.')[0] {
+				left = c.table.get_type_symbol((left.info as table.Alias).parent_type)
+			}
 			if left.kind in [.array, .array_fixed, .map, .struct_] {
 				if left.has_method(infix_expr.op.str()) {
-					return_type = left_type
+					if method := left.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = left_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							left_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+					}
 				}
 			} else if right.kind in [.array, .array_fixed, .map, .struct_] {
 				if right.has_method(infix_expr.op.str()) {
-					return_type = right_type
+					if method := right.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
 				} else {
 					left_name := c.table.type_to_str(left_type)
 					right_name := c.table.type_to_str(right_type)
-					c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							right_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+					}
 				}
 			} else {
 				promoted_type := c.promote(c.table.unalias_num_type(left_type), c.table.unalias_num_type(right_type))
@@ -3194,6 +3220,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
 			} else {
 				// check condition type is boolean
+				c.expected_type = table.bool_type
 				cond_typ := c.expr(branch.cond)
 				if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
 					// void types are skipped, because they mean the var was initialized incorrectly
