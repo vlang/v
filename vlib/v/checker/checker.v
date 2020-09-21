@@ -3220,6 +3220,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
 			} else {
 				// check condition type is boolean
+				c.expected_type = table.bool_type
 				cond_typ := c.expr(branch.cond)
 				if cond_typ.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
 					// void types are skipped, because they mean the var was initialized incorrectly
