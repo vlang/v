@@ -729,6 +729,14 @@ fn test_raw() {
 	raw2 := r'Hello V\0'
 	assert raw2[7] == `\\`
 	assert raw2[8] == `0`
+
+	raw3 := r'Hello V\x00'
+	assert raw3[7] == `\\`
+	assert raw3[8] == `x`
+	assert raw3[9] == `0`
+	assert raw3[10] == `0`
+	
+	
 }
 
 fn test_raw_with_quotes() {
