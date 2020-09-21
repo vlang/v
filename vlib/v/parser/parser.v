@@ -996,8 +996,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
-		char_type := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
-		p.error('cannot use $char_type with `byte` and `rune`')
+		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
+		p.error('cannot use $opt with `byte` and `rune`')
 	}
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
