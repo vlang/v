@@ -32,14 +32,9 @@ fn main(){
 	//
 	mut os_details := ''
 	if os_kind == 'linux' {
-		exists := cmd(command:'type lsb_release')
-		if !exists.starts_with('Error') {
-			os_details = cmd(command: 'lsb_release -d -s')
-		} else {
-			os_details = cmd(command: 'cat /proc/version')
-		}
+		os_details = get_linux_os_name()
 	} else if os_kind == 'mac' {
-		mut details := []string
+		mut details := []string{}
 		details << cmd(command: 'sw_vers -productName')
 		details << cmd(command: 'sw_vers -productVersion')
 		details << cmd(command: 'sw_vers -buildVersion')
@@ -63,6 +58,14 @@ fn main(){
 	is_writable_vroot := os.is_writable_folder(vroot) or { false }
 	line('is vroot writable', is_writable_vroot.str())
 	line('V full version', util.full_v_version(true))
+	vtmp := os.getenv('VTMP')
+	if vtmp != '' {
+		line('env VTMP', '"$vtmp"')
+	}
+	vflags := os.getenv('VFLAGS')
+	if vflags != '' {
+		line('env VFLAGS', '"$vflags"')
+	}
 	println(util.bold(term.h_divider('-')))
 	line('Git version', cmd(command:'git --version'))
 	line('Git vroot status', cmd(command:'git -C . describe --abbrev=8 --dirty --always --tags'))
@@ -87,4 +90,53 @@ fn cmd(c CmdConfig) string {
 
 fn line(label string, value string) {
 	println('$label: ${util.bold(value)}')
+}
+
+fn get_linux_os_name() string {
+	mut os_details := ''
+	linux_os_methods := ['os-release', 'lsb_release', 'kernel', 'uname']
+	for m in linux_os_methods {
+		match m {
+			'os-release' {
+				if !os.is_file('/etc/os-release') {
+					continue
+				}
+				lines := os.read_lines('/etc/os-release') or {
+					continue
+				}
+				mut vals := map[string]string
+				for line in lines {
+					x := line.split('=')
+					vals[x[0]] = x[1].trim('"')
+				}
+				if vals['PRETTY_NAME'] == '' {
+					continue
+				}
+				os_details = vals['PRETTY_NAME']
+				break
+			}
+			'lsb_release' {
+				exists := cmd(command:'type lsb_release')
+				if exists.starts_with('Error') {
+					continue
+				}
+				os_details = cmd(command: 'lsb_release -d -s')
+				break
+			}
+			'kernel' {
+				if !os.is_file('/proc/version') {
+					continue
+				}
+				os_details = cmd(command: 'cat /proc/version')
+				break
+			}
+			'uname' {
+				ouname := os.uname()
+				os_details = '$ouname.release, $ouname.version'
+				break
+			}
+			else {}
+		}
+	}
+	return os_details
 }
