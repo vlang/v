@@ -1891,6 +1891,8 @@ if select {
     ch <- a {
         ...
     }
+} {
+    // channel was open
 } else {
     // channel is closed
 }
