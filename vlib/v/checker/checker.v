@@ -1358,7 +1358,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return f.return_type
 	}
 	// println can print anything
-	if (fn_name == 'println' || fn_name == 'print') && call_expr.args.len > 0 {
+	if fn_name in ['println', 'print'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		// check optional argument
