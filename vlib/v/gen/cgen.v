@@ -897,13 +897,15 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
-			g.write('while (')
-			if node.is_inf {
-				g.write('1')
-			} else {
+			g.writeln('while (1) {')
+			if !node.is_inf {
+				g.indent++
+				g.stmt_path_pos << g.out.len
+				g.write('if (!(')
 				g.expr(node.cond)
+				g.writeln(')) break;')
+				g.indent--
 			}
-			g.writeln(') {')
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
 			g.writeln('}')
@@ -2888,6 +2890,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 	}
 	g.writeln('}')
 	if is_expr {
+		g.empty_line = false
 		g.write(cur_line)
 		g.write('($select_result != -2)')
 	}

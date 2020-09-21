@@ -2293,6 +2293,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.ForStmt {
 			c.in_for_count++
+			c.expected_type = table.bool_type
 			typ := c.expr(node.cond)
 			if !node.is_inf && typ.idx() != table.bool_type_idx && !c.pref.translated {
 				c.error('non-bool used as for condition', node.pos)
