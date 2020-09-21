@@ -734,9 +734,7 @@ fn test_raw() {
 	assert raw3[7] == `\\`
 	assert raw3[8] == `x`
 	assert raw3[9] == `0`
-	assert raw3[10] == `0`
-	
-	
+	assert raw3[10] == `0`	
 }
 
 fn test_raw_with_quotes() {
