@@ -143,7 +143,9 @@ fn (mut game Game) showfps() {
 	ticks := f64(game.second_sw.elapsed().microseconds())/1000.0
 	if ticks > 999.0 {
 		fps := f64(game.frame - game.frame_old)*ticks/1000.0
-		eprintln('fps: ${fps:5.1f} | last frame took: ${last_frame_ms:6.3f}ms | frame: ${game.frame:6} ')
+		$if debug {
+			eprintln('fps: ${fps:5.1f} | last frame took: ${last_frame_ms:6.3f}ms | frame: ${game.frame:6} ')
+		}
 		game.second_sw.restart()
 		game.frame_old = game.frame
 	}
