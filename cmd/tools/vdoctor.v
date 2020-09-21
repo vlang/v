@@ -131,7 +131,9 @@ fn (mut a App) get_linux_os_name() string {
 				mut vals := map[string]string
 				for line in lines {
 					x := line.split('=')
-					vals[x[0]] = x[1].trim('"')
+					if x.len > 1 {
+						vals[x[0]] = x[1].trim('"')
+					}
 				}
 				if vals['PRETTY_NAME'] == '' {
 					continue
