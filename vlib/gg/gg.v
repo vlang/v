@@ -139,14 +139,6 @@ fn gg_frame_fn(user_data voidptr) {
 	}
 }
 
-// TODO: remove this hacky workaround...
-// NB: todo_remove_this is needed to workaround a v bug,
-// where it thinks that &sapp.Event(x) is a function call,
-// instead of a cast, if v has not yet seen &sapp.Event used
-// as a parameter type.
-//fn todo_remove_this(e &sapp.Event) {
-//}
-
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	e := &sapp.Event(ce)
 	mut g := &Context(user_data)
