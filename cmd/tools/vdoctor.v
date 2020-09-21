@@ -24,7 +24,13 @@ fn main(){
 		arch_details << cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
-		arch_details << cmd(command:'grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
+		mname := cmd(command:'grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
+		if !mname.starts_with('Error:') {
+			arch_details << mname
+		} else {
+			hinfo := cmd(command:'grep "Hardware" /proc/cpuinfo | sed "s/.*: //gm"')
+			arch_details << hinfo
+		}
 	}
 	if os_kind == 'windows' {
 		arch_details << cmd(command:'wmic cpu get name /format:table', line: 1)
@@ -83,7 +89,10 @@ fn cmd(c CmdConfig) string {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
-		return x.output.split_into_lines()[c.line]
+		output := x.output.split_into_lines()
+		if output.len > 0 && output.len > c.line {
+			return output[c.line]
+		}
 	}
 	return 'Error: $x.output'
 }
