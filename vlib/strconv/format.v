@@ -472,7 +472,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		}
 
 		// single char, manage it here
-		if ch == `c` && status == .field_char {        
+		if ch == `c` && status == .field_char {
 			v_sprintf_panic(p_index, pt.len)
 			d1 := unsafe {*(&byte(pt[p_index]))}
 			res.write_b(d1)
@@ -777,7 +777,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			if ch in [`f`, `F`] {
 				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write(if ch == `F` {s.to_upper()} else {s})
@@ -789,7 +789,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			else if ch in [`e`, `E`] {
 				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write(if ch == `E` {s.to_upper()} else {s})
@@ -801,7 +801,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			else if ch in [`g`, `G`] {
 				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				mut s := ""
 				tx := fabs(x)
 				if tx < 999_999.0 && tx >= 0.00001 {
@@ -844,11 +844,11 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	return res.str()
 }
 
-[inline]                
+[inline]
 fn v_sprintf_panic( idx, len int) {
 	if idx >= len {
 		panic('${idx+1} % conversion specifiers, but given only ${len} args')
-	}        
+	}
 }
 
 fn fabs(x f64) f64 {
