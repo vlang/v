@@ -6,7 +6,8 @@ import runtime
 
 struct App {
 mut:
-	report_lines []string
+	report_lines   []string
+	cached_cpuinfo map[string]string
 }
 
 fn (mut a App) println(s string) {
@@ -33,12 +34,11 @@ fn (mut a App) collect_info() {
 		arch_details << a.cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
-		mname := a.cmd(command:'grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
-		if !mname.starts_with('Error:') {
-			arch_details << mname
+		info := a.cpu_info()
+		if info['model name'] != '' {
+			arch_details << info['model name']
 		} else {
-			hinfo := a.cmd(command:'grep "Hardware" /proc/cpuinfo | sed "s/.*: //gm"')
-			arch_details << hinfo
+			arch_details << info['hardware']
 		}
 	}
 	if os_kind == 'windows' {
@@ -48,6 +48,18 @@ fn (mut a App) collect_info() {
 	mut os_details := ''
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
+		info := a.cpu_info()
+		if 'hypervisor' in info['flags'] {
+			if 'microsoft' in a.cmd(command: 'cat /proc/sys/kernel/osrelease') {
+				os_details += ' (WSL)'
+			} else {
+				os_details += ' (VM)'
+			}
+		}
+		// From https://unix.stackexchange.com/a/14346
+		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
+			os_details += ' (chroot)'
+		}
 	} else if os_kind == 'mac' {
 		mut details := []string{}
 		details << a.cmd(command: 'sw_vers -productName')
@@ -173,6 +185,29 @@ fn (mut a App) get_linux_os_name() string {
 		}
 	}
 	return os_details
+}
+
+fn (mut a App) cpu_info() map[string]string {
+	if a.cached_cpuinfo.len > 0 {
+		return a.cached_cpuinfo
+	}
+
+	info := os.exec('cat /proc/cpuinfo') or { return a.cached_cpuinfo }
+	mut vals := map[string]string
+	for line in info.output.split_into_lines() {
+		sline := line.trim(' ')
+		if sline.len < 1 || sline[0] == `#`{
+			continue
+		}
+		x := sline.split(':')
+		if x.len < 2 {
+			continue
+		}
+		vals[x[0].trim_space().to_lower()] = x[1].trim_space().trim('"')
+	}
+
+	a.cached_cpuinfo = vals
+	return vals
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
