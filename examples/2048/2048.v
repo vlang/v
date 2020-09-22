@@ -19,6 +19,7 @@ mut:
 	tile_format   TileFormat = .normal
 	moves         int
 	perf          &Perf = 0
+	is_ai_mode    bool
 }
 
 struct Ui {
@@ -279,6 +280,44 @@ fn (b Board) to_left() Board {
 	return res
 }
 
+fn (b Board) move(d Direction) (Board, bool) {
+	new := match d {
+		.left  { b.to_left() }
+		.right { b.hmirror().to_left().hmirror() }
+		.up    { b.transpose().to_left().transpose() }
+		.down  { b.transpose().hmirror().to_left().hmirror().transpose() }
+	}
+	// If the board hasn't changed, it's an illegal move, don't allow it.
+	for x in 0..4 {
+		for y in 0..4 {
+			if b.field[x][y] != new.field[x][y] {
+				return new, true
+			}
+		}
+	}
+	return new, false
+}
+
+fn (mut b Board) is_game_over() bool {
+	for y in 0..4 {
+		for x in 0..4 {
+			fidx := b.field[y][x]
+			if fidx == 0 {
+				// there are remaining zeros
+				return false
+			}
+			if (x > 0 && fidx == b.field[y][x - 1])
+			|| (x < 4 - 1 && fidx == b.field[y][x + 1])
+			|| (y > 0 && fidx == b.field[y - 1][x])
+			|| (y < 4 - 1 && fidx == b.field[y + 1][x]) {
+				// there are remaining merges
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn (mut app App) update_tickers() {
 	for y in 0..4 {
 		for x in 0..4 {
@@ -300,7 +339,7 @@ fn (mut app App) new_game() {
 		}
 	}
 	app.state = .play
-	app.undo = []
+	app.undo = []Board{cap:4096}
 	app.moves = 0
 	app.new_random_tile()
 	app.new_random_tile()
@@ -319,37 +358,19 @@ fn (mut app App) check_for_victory() {
 }
 
 fn (mut app App) check_for_game_over() {
-	mut zeros := 0
-	mut remaining_merges := 0
-	for y in 0..4 {
-		for x in 0..4 {
-			fidx := app.board.field[y][x]
-			if fidx == 0 {
-				zeros++
-				continue
-			}
-			if (x > 0 && fidx == app.board.field[y][x - 1])
-				|| (x < 4 - 1 && fidx == app.board.field[y][x + 1])
-				|| (y > 0 && fidx == app.board.field[y - 1][x])
-				|| (y < 4 - 1 && fidx == app.board.field[y + 1][x]) {
-				remaining_merges++
-			}
-		}
-	}
-	if remaining_merges == 0 && zeros == 0 {
+	if app.board.is_game_over() {
 		app.game_over()
 	}
 }
 
-fn (mut app App) new_random_tile() {
+fn (mut b Board) place_random_tile() (Pos, int) {
 	mut etiles := [16]Pos{}
 	mut empty_tiles_max := 0
 	for y in 0..4 {
 		for x in 0..4 {
-			fidx := app.board.field[y][x]
+			fidx := b.field[y][x]
 			if fidx == 0 {
 				etiles[empty_tiles_max] = Pos{x, y}
-				app.atickers[y][x] = 0
 				empty_tiles_max++
 			}
 		}
@@ -357,9 +378,25 @@ fn (mut app App) new_random_tile() {
 	if empty_tiles_max > 0 {
 		new_random_tile_index := rand.intn(empty_tiles_max)
 		empty_pos := etiles[new_random_tile_index]
-		// 1/8 chance of creating a `4` tile
-		random_value := if rand.intn(8) == 0 { 2 } else { 1 }
-		app.board.field[empty_pos.y][empty_pos.x] = random_value
+		// 10% chance of getting a `4` tile
+		random_value := if rand.f64n(1.0) < 0.9 { 1 } else { 2 }
+		b.field[empty_pos.y][empty_pos.x] = random_value
+		return empty_pos, random_value
+	}
+	return Pos{}, 0
+}
+
+fn (mut app App) new_random_tile() {
+	for y in 0..4 {
+		for x in 0..4 {
+			fidx := app.board.field[y][x]
+			if fidx == 0 {
+				app.atickers[y][x] = 0
+			}
+		}
+	}
+	empty_pos, random_value := app.board.place_random_tile()
+	if random_value > 0 {
 		app.atickers[empty_pos.y][empty_pos.x] = animation_length
 	}
 	app.check_for_victory()
@@ -374,26 +411,82 @@ fn (mut app App) game_over() {
 	app.state = .over
 }
 
-fn (mut app App) move(d Direction) {
+fn (mut app App) apply_new_board(new Board) {
 	old := app.board
-	new := match d {
-		.left  { old.to_left() }
-		.right { old.hmirror().to_left().hmirror() }
-		.up    { old.transpose().to_left().transpose() }
-		.down  { old.transpose().hmirror().to_left().hmirror().transpose() }
+	app.moves++
+	app.board = new
+	app.undo << old
+	app.new_random_tile()
+}
+
+fn (mut app App) move(d Direction) {
+	new, is_valid := app.board.move(d)
+	if !is_valid {
+		return
 	}
-	// If the board hasn't changed, it's an illegal move, don't allow it.
-	for x in 0..4 {
-		for y in 0..4 {
-			if old.field[x][y] != new.field[x][y] {
-				app.moves++
-				app.board = new
-				app.undo << old
-				app.new_random_tile()
-				return
+	app.apply_new_board(new)
+}
+
+const (
+	possible_moves = [Direction.up, .right, .down, .left]
+	predictions_per_move = 200
+	prediction_depth = 100
+)
+struct Prediction {
+mut:
+	move Direction
+	mpoints f64
+}
+
+fn (p Prediction) str() string {
+	return 'Prediction{move: ${p.move:5} | mpoints: ${p.mpoints:6.2f} }'
+}
+fn (mut app App) ai_move() {
+	mut predictions := [4]Prediction{}
+	mut nboard := app.board
+	mut is_valid := false
+	think_watch := time.new_stopwatch({})
+	for move in possible_moves {
+		move_idx := int(move)
+		predictions[move_idx].move = move
+		mut mpoints := 0
+		mut mshifts := 0
+		for i := 0; i < predictions_per_move; i++ {
+			mut cboard := app.board
+			cboard, is_valid = cboard.move(move)
+			if !is_valid {
+				continue
 			}
+			if cboard.is_game_over() {
+				continue
+			}
+			mpoints += cboard.points
+			cboard.place_random_tile()
+			mut cmoves := 0
+			for !cboard.is_game_over() {
+				nmove := possible_moves[rand.intn(possible_moves.len)]
+				nboard, is_valid = cboard.move(nmove)
+				if !is_valid {
+					continue
+				}
+				cboard = nboard
+				cboard.place_random_tile()
+				cmoves++
+			}
+			mpoints += cboard.points
+			mshifts += cboard.shifts
+		}
+		predictions[move_idx].mpoints = f64(mpoints)/predictions_per_move
+	}
+	think_time := think_watch.elapsed().microseconds()
+	mut bestprediction := Prediction{mpoints:-1}
+	for move_idx in 0..possible_moves.len {
+		if bestprediction.mpoints < predictions[move_idx].mpoints {
+			bestprediction = predictions[move_idx]
 		}
 	}
+	eprintln('Simulation time: ${think_time:6}µs |  best $bestprediction')
+	app.move( bestprediction.move )
 }
 
 fn (app &App) label_format(kind LabelKind) gx.TextCfg {
@@ -483,7 +576,7 @@ fn (app &App) draw() {
 	app.draw_tiles()
 	app.gg.draw_text(labelx, labely, 'Points: $app.board.points', app.label_format(.points))
 	app.gg.draw_text(ww - labelx, labely, 'Moves: $app.moves', app.label_format(.moves))
-	
+
 	// TODO: Make transparency work in `gg`
 	if app.state == .over {
 		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(15, 0, 0, 44))
@@ -522,13 +615,13 @@ fn (app &App) draw_tiles() {
 			xoffset := xstart + app.ui.padding_size + x * toffset + (app.ui.tile_size - tw) / 2
 			yoffset := ystart + app.ui.padding_size + y * toffset + (app.ui.tile_size - th) / 2
 			app.gg.draw_rect(xoffset, yoffset, tw, th, tile_color)
-			
+
 			if tidx != 0 { // 0 == blank spot
 				xpos := xoffset + tw / 2
 				ypos := yoffset + th / 2
 				mut fmt := app.label_format(.tile)
 				fmt = { fmt | size: int(f32(fmt.size - 1) / animation_length * anim_size) }
-				
+
 				match app.tile_format {
 					.normal {
 						app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
@@ -558,7 +651,7 @@ fn (mut app App) handle_swipe(start, end Pos) {
 	ady := abs(dy)
 	dmax := max(adx, ady)
 	dmin := min(adx, ady)
-	
+
 	if dmax < min_swipe_distance { return } // Swipe was too short
 	if dmax / dmin < 2 { return } // Swiped diagonally
 
@@ -572,7 +665,9 @@ fn (mut app App) handle_swipe(start, end Pos) {
 fn (mut app App) on_key_down(key sapp.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
-		.escape {
+		.a {
+			app.is_ai_mode = !app.is_ai_mode
+		} .escape {
 			exit(0)
 		} .n {
 			app.new_game()
@@ -595,7 +690,7 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 		} else {}
 	}
 
-	if app.state == .play {
+	if app.state in [.play, .victory] {
 		match key {
 			.w, .up    { app.move(.up) }
 			.a, .left  { app.move(.left) }
@@ -633,8 +728,12 @@ fn frame(mut app App) {
 	app.gg.begin()
 	app.update_tickers()
 	app.draw()
-	app.gg.end()
+	app.perf.frame++
+	if app.is_ai_mode && app.perf.frame % 15 == 0 {
+		app.ai_move()
+	}
 	$if showfps? { app.showfps() }
+	app.gg.end()
 }
 
 fn init(mut app App) {
@@ -647,7 +746,6 @@ fn init(mut app App) {
 
 fn (mut app App) showfps() {
 	println(app.perf.frame_sw.elapsed().microseconds())
-	app.perf.frame++
 	f := app.perf.frame
 	if (f & 127) == 0 {
 		last_frame_us := app.perf.frame_sw.elapsed().microseconds()
@@ -685,9 +783,7 @@ fn main() {
 		window_title = 'canvas'
 	}
 
-	$if showfps? {
-		app.perf = &Perf{}
-	}
+	app.perf = &Perf{}
 
 	app.gg = gg.new_context({
 		bg_color: app.theme.bg_color
