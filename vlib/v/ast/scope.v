@@ -37,8 +37,7 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	for sc := s; true; sc = sc.parent
-	 {
+	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
 			return sc.objects[name]
 		}
@@ -85,6 +84,7 @@ pub fn (s &Scope) known_var(name string) bool {
 }
 
 pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
+	s.end_pos = s.end_pos // TODO mut bug
 	match mut s.objects[name] {
 		Var {
 			if it.typ == typ {

@@ -44,7 +44,7 @@ pub mut:
 	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
 	// string values when generating formatted code.
 	comments_mode               CommentsMode
-	is_inside_toplvl_statement  bool          // *only* used in comments_mode: .toplevel_comments, toggled by parser
+	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
@@ -178,8 +178,8 @@ fn (mut s Scanner) ident_name() string {
 	return name
 }
 
-// ident_fn_name look ahead and return name of function if possible, otherwise empty string
-fn (mut s Scanner) ident_fn_name() string {
+// ident_fn_name looks ahead and returns name of the function if possible, otherwise an empty string
+fn (s &Scanner) ident_fn_name() string {
 	start := s.pos
 	mut pos := s.pos
 	pos++
@@ -221,9 +221,8 @@ fn (mut s Scanner) ident_fn_name() string {
 	if pos <= start || pos >= s.text.len {
 		return ''
 	}
-	if s.text[start_pos].is_digit() || end_pos > s.text.len ||
-		end_pos <= start_pos || end_pos <= start ||
-		start_pos < start {
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos ||
+		end_pos <= start || start_pos < start {
 		return ''
 	}
 	fn_name := s.text[start_pos..end_pos]
@@ -231,7 +230,7 @@ fn (mut s Scanner) ident_fn_name() string {
 }
 
 // ident_mod_name look ahead and return name of module this file belongs to if possible, otherwise empty string
-fn (mut s Scanner) ident_mod_name() string {
+fn (s &Scanner) ident_mod_name() string {
 	start := s.pos
 	mut pos := s.pos
 	pos++
@@ -259,7 +258,7 @@ fn (mut s Scanner) ident_mod_name() string {
 }
 
 // ident_struct_name look ahead and return name of last encountered struct if possible, otherwise empty string
-fn (mut s Scanner) ident_struct_name() string {
+fn (s &Scanner) ident_struct_name() string {
 	start := s.pos
 	mut pos := s.pos
 	// Return last known stuct_name encountered to avoid using high order/anonymous function definitions
@@ -303,9 +302,8 @@ fn (mut s Scanner) ident_struct_name() string {
 		return ''
 	}
 	start_pos := pos + 1
-	if s.text[start_pos].is_digit() || end_pos > s.text.len ||
-		end_pos <= start_pos || end_pos <= start ||
-		start_pos <= start {
+	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos ||
+		end_pos <= start || start_pos <= start {
 		return ''
 	}
 	struct_name := s.text[start_pos..end_pos]
@@ -354,8 +352,7 @@ fn (mut s Scanner) ident_bin_number() string {
 	}
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
-	}
-	else if start_pos + 2 == s.pos {
+	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this binary is not provided')
 	} else if has_wrong_digit {
@@ -394,8 +391,7 @@ fn (mut s Scanner) ident_hex_number() string {
 	}
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
-	}
-	else if start_pos + 2 == s.pos {
+	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this hexadecimal is not provided')
 	} else if has_wrong_digit {
@@ -434,8 +430,7 @@ fn (mut s Scanner) ident_oct_number() string {
 	}
 	if s.text[s.pos - 1] == num_sep {
 		s.error('cannot use `_` at the end of a numeric literal')
-	}
-	else if start_pos + 2 == s.pos {
+	} else if start_pos + 2 == s.pos {
 		s.pos-- // adjust error position
 		s.error('number part of this octal is not provided')
 	} else if has_wrong_digit {
@@ -455,7 +450,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	// scan integer part
 	for s.pos < s.text.len {
 		c := s.text[s.pos]
-		if c == num_sep && s.text[s.pos + 1]  == num_sep {
+		if c == num_sep && s.text[s.pos + 1] == num_sep {
 			s.error('cannot use `_` consecutively')
 		}
 		if !c.is_digit() && c != num_sep {
@@ -546,8 +541,7 @@ fn (mut s Scanner) ident_dec_number() string {
 		// error check: 5e
 		s.pos-- // adjust error position
 		s.error('exponent has no digits')
-	} else if s.pos < s.text.len &&
-		s.text[s.pos] == `.` && !is_range && !call_method {
+	} else if s.pos < s.text.len && s.text[s.pos] == `.` && !is_range && !call_method {
 		// error check: 1.23.4, 123.e+3.4
 		if has_exp {
 			s.error('exponential part should be integer')
@@ -608,7 +602,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	cmode := s.comments_mode
 	s.comments_mode = .parse_comments
 	for {
-		mut t := s.text_scan()
+		t := s.text_scan()
 		s.all_tokens << t
 		if t.kind == .eof {
 			break
@@ -1093,7 +1087,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 1
 					s.ignore_line()
 					mut comment_line_end := s.pos
-					if s.text[s.pos-1] == `\r` {
+					if s.text[s.pos - 1] == `\r` {
 						comment_line_end--
 					} else {
 						// fix line_nr, \n was read; the comment is marked on the next line
@@ -1216,7 +1210,8 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// Don't allow \0
 		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
-			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit()) || s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
+			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit()) ||
+				s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
@@ -1236,8 +1231,8 @@ fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// $var
-		if prevc == `$` && util.is_name_char(c) && !is_raw &&
-			s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
+		if prevc == `$` && util.is_name_char(c) && !is_raw && s.count_symbol_before(s.pos - 2, slash) %
+			2 == 0 {
 			s.is_inside_string = true
 			s.is_inter_start = true
 			s.pos -= 2

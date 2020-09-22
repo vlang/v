@@ -274,7 +274,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		e10 = int(q) + e2
 		i := -e2 - int(q)
 		k := pow5_bits(i) - pow5_num_bits_64
-		mut j := int(q) - k
+		j := int(q) - k
 		mul := pow5_split_64[i]
 		vr = mul_shift_64(u64(4) * m2                    , mul, j)
 		vp = mul_shift_64(u64(4) * m2 + u64(2)           , mul, j)

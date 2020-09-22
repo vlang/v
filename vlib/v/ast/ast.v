@@ -12,9 +12,9 @@ pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
 	ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr | SelectExpr |
-	SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit | Type |
-	TypeOf | UnsafeExpr
+	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
+	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
+	Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -491,8 +491,8 @@ pub mut:
 
 pub struct UnsafeExpr {
 pub:
-	expr  Expr
-	pos   token.Position
+	expr Expr
+	pos  token.Position
 }
 
 pub struct LockExpr {
@@ -966,7 +966,8 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match mut expr {
+	match expr {
+		// KEKW2
 		AnonFn {
 			return expr.decl.pos
 		}
@@ -1084,8 +1085,8 @@ pub fn (expr Expr) is_lvalue() bool {
 
 pub fn (expr Expr) is_expr() bool {
 	match expr {
-		IfExpr {return expr.is_expr}
-		MatchExpr {return expr.is_expr}
+		IfExpr { return expr.is_expr }
+		MatchExpr { return expr.is_expr }
 		else {}
 	}
 	return true
@@ -1151,16 +1152,12 @@ pub fn (stmt Stmt) position() token.Position {
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
 	res := Expr{}
-	unsafe {
-		C.memcpy(&res, &x, sizeof(Expr))
-	}
+	unsafe {C.memcpy(&res, &x, sizeof(Expr))}
 	return res
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
-	unsafe {
-		C.memcpy(&res, &x, sizeof(table.FExpr))
-	}
+	unsafe {C.memcpy(&res, &x, sizeof(table.FExpr))}
 	return res
 }
