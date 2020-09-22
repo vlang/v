@@ -49,6 +49,9 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Test building v tools
       run: ./v build-tools
+    - name: v doctor
+      run: |
+        ./v doctor
     - name: v vet
       run: |
         ./v vet vlib/sqlite
@@ -127,6 +130,9 @@ jobs:
       run: VJOBS=1 ./v test-fixed
     - name: Build examples
       run: ./v build-examples
+    - name: v doctor
+      run: |
+        ./v doctor
     - name: v vet
       run: |
         ./v vet vlib/sqlite
@@ -342,6 +348,9 @@ jobs:
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
         ./v test-fixed
+    - name: v doctor
+      run: |
+        ./v doctor
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
