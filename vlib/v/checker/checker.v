@@ -771,6 +771,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			return table.void_type
 		}
 		else {
+			if infix_expr.op in [.and, .logical_or] {
+				if infix_expr.left_type != table.bool_type_idx {
+					c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
+				}
+				if infix_expr.right_type != table.bool_type_idx {
+					c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
+				}
+			}
 			// use `()` to make the boolean expression clear error
 			// for example: `(a && b) || c` instead of `a && b || c`
 			if infix_expr.op in [.logical_or, .and] {
