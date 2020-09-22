@@ -33,13 +33,7 @@ fn (mut a App) collect_info() {
 		arch_details << a.cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
-		mname := a.cmd(command:'grep "model name" /proc/cpuinfo | sed "s/.*: //gm"')
-		if !mname.starts_with('Error:') {
-			arch_details << mname
-		} else {
-			hinfo := a.cmd(command:'grep "Hardware" /proc/cpuinfo | sed "s/.*: //gm"')
-			arch_details << hinfo
-		}
+		arch_details << a.cpuinfo()
 	}
 	if os_kind == 'windows' {
 		arch_details << a.cmd(command:'wmic cpu get name /format:table', line: 1)
@@ -173,6 +167,44 @@ fn (mut a App) get_linux_os_name() string {
 		}
 	}
 	return os_details
+}
+
+fn (mut a App) cpuinfo() string {
+	info := os.exec('cat /proc/cpuinfo') or { return 'N/A' } // os.read_file('/proc/cpuinfo') or { return 'N/A' }
+	mut vals := map[string]string
+	for line in info.output.split_into_lines() {
+		sline := line.trim(' ')
+		if sline.len < 1 || sline[0] == `#`{
+			continue
+		}
+		x := sline.split(':')
+		if x.len < 2 {
+			continue
+		}
+		vals[x[0].trim_space().to_lower()] = x[1].trim_space().trim('"')
+	}
+
+	mut out := ''
+	if vals['model name'] != '' {
+		out += vals['model name']
+	} else {
+		out += vals['hardware']
+	}
+
+	if 'hypervisor' in vals['flags'] {
+		out += ' (VM)'
+	}
+
+	if 'microsoft' in a.cmd(command: 'cat /proc/sys/kernel/osrelease') {
+		out += ' (WSL)'
+	}
+
+	// From https://unix.stackexchange.com/a/14346
+	if a.cmd(command: '[ "$(awk \'$5=="/" {print $1}\' </proc/1/mountinfo)" != "$(awk \'$5=="/" {print $1}\' </proc/$$/mountinfo)" ] ; echo $?') == '0' {
+		out += ' (chroot)'
+	}
+
+	return out
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
