@@ -55,31 +55,51 @@ fn test_array_of_strings() {
 }
 
 fn test_map_of_ints() {
-	aa := {'a': 1, 'b': 2, 'c': 3}
+	aa := {
+		'a': 1
+		'b': 2
+		'c': 3
+	}
 	assert aa.str() == "{'a': 1, 'b': 2, 'c': 3}"
 	assert '$aa' == "{'a': 1, 'b': 2, 'c': 3}"
 }
 
 fn test_map_of_strings() {
-	aa := {'a': '1', 'b': '2', 'c': '3'}
+	aa := {
+		'a': '1'
+		'b': '2'
+		'c': '3'
+	}
 	assert aa.str() == "{'a': '1', 'b': '2', 'c': '3'}"
 	assert '$aa' == "{'a': '1', 'b': '2', 'c': '3'}"
 }
 
 fn test_map_of_floats() {
-	aa := {'a': 1.1, 'b': 2.2, 'c': 3.3}
+	aa := {
+		'a': 1.1
+		'b': 2.2
+		'c': 3.3
+	}
 	assert aa.str() == "{'a': 1.1, 'b': 2.2, 'c': 3.3}"
 	assert '$aa' == "{'a': 1.1, 'b': 2.2, 'c': 3.3}"
 }
 
 fn test_map_of_bytes() {
-	aa := {'a': `a`, 'b': `b`, 'c': `c`}
+	aa := {
+		'a': `a`
+		'b': `b`
+		'c': `c`
+	}
 	assert aa.str() == "{'a': a, 'b': b, 'c': c}"
 	assert '$aa' == "{'a': a, 'b': b, 'c': c}"
 }
 
 fn test_map_of_bools() {
-	aa := {'a': true, 'b': false, 'c': true}
+	aa := {
+		'a': true
+		'b': false
+		'c': true
+	}
 	assert aa.str() == "{'a': true, 'b': false, 'c': true}"
 	assert '$aa' == "{'a': true, 'b': false, 'c': true}"
 }
@@ -138,4 +158,11 @@ fn test_fixed_array_of_strings() {
 	aa := ['aa', 'bb', 'cc']!!
 	assert aa.str() == "['aa', 'bb', 'cc']"
 	assert '$aa' == "['aa', 'bb', 'cc']"
+}
+
+fn test_quoted_strings() {
+	assert '\"' == '"'
+	assert r'"' == r'"'
+	assert '\"' == '"'
+	assert '\"' == r'"'
 }

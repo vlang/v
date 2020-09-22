@@ -128,13 +128,14 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		// `C.printf("hi")` => `printf("hi");`
 		g.write('"$escaped_val"')
 	} else {
+		value := escaped_val.replace_each(['\\\\"', '\\x22'])
 		// TODO calculate the literal's length in V, it's a bit tricky with all the
 		// escape characters.
 		// Clang and GCC optimize `strlen("lorem ipsum")` to `11`
 		// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
 		// g.write('tos4("$escaped_val", $it.val.len)')
 		// g.write('_SLIT("$escaped_val")')
-		g.write('tos_lit("$escaped_val")')
+		g.write('tos_lit("$value")')
 	}
 }
 
