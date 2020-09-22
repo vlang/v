@@ -55,17 +55,17 @@ pub fn parse_rfc2822(s string) ?Time {
 //			also checks and support for leapseconds should be added in future PR
 pub fn parse_iso8601(s string) ?Time {
 
-	mut year 		:= 0
-	mut month 		:= 0
-	mut day 	  	:= 0
-	mut hour 	  	:= 0
-	mut minute 	  	:= 0
-	mut second 	  	:= 0
-	mut mic_second 	:= 0
-	mut time_char 	:= `a`
-	mut plus_min 	:= `a`
-	mut offset_hour := 0
-	mut offset_min  := 0
+	year 		:= 0
+	month 		:= 0
+	day 	  	:= 0
+	hour 	  	:= 0
+	minute 	  	:= 0
+	second 	  	:= 0
+	mic_second 	:= 0
+	time_char 	:= `a`
+	plus_min 	:= `a`
+	offset_hour := 0
+	offset_min  := 0
 
 	count := unsafe {C.sscanf(charptr(s.str), "%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d", &year, &month, &day,
 													  &time_char, &hour, &minute,

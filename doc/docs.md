@@ -1386,9 +1386,9 @@ To create a new module, create a directory with your module's name and
 ```v
 cd ~/code/modules
 mkdir mymodule
-vim mymodule/mymodule.v
+vim mymodule/myfile.v
 
-// mymodule.v
+// myfile.v
 module mymodule
 
 // To export a function we have to use `pub`

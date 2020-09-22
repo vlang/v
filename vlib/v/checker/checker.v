@@ -96,10 +96,11 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 						}
 					}
 				}
-				// TODO: fix all of these warnings
-				// if obj.is_mut && !obj.is_changed {
-				// c.warn('`$obj.name` is declared as mutable, but it was never changed', obj.pos)
-				// }
+				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
+					// if obj.is_mut && !obj.is_changed && !c.is_builtin {  //TODO C error bad field not checked
+					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
+					// obj.pos)
+				}
 			}
 			else {}
 		}
@@ -555,7 +556,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.expected_type = former_expected_type
 	}
 	c.expected_type = table.void_type
-	mut left_type := c.expr(infix_expr.left)
+	left_type := c.expr(infix_expr.left)
 	// left_type = c.unwrap_genric(c.expr(infix_expr.left))
 	infix_expr.left_type = left_type
 	c.expected_type = left_type
@@ -816,6 +817,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 }
 
 // returns name and position of variable that needs write lock
+// also sets `is_changed` to true (TODO update the name to reflect this?)
 fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
@@ -1358,7 +1360,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return f.return_type
 	}
 	// println can print anything
-	if (fn_name == 'println' || fn_name == 'print') && call_expr.args.len > 0 {
+	if fn_name in ['println', 'print'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
 		// check optional argument
@@ -1518,7 +1520,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 	return ret_type
 }
 
-pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type) {
+pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
 			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
@@ -1536,7 +1538,7 @@ pub fn (mut c Checker) check_or_expr(mut or_expr ast.OrExpr, ret_type table.Type
 		// allow `f() or {}`
 		return
 	}
-	mut last_stmt := or_expr.stmts[stmts_len - 1]
+	last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
 		match mut last_stmt {
 			ast.ExprStmt {
@@ -2932,7 +2934,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	// since it is used in c.match_exprs() it saves checking twice
 	node.cond_type = cond_type
 	if cond_type == 0 {
-		c.error('match 0 cond type', node.pos)
+		c.error('compiler bug: match 0 cond type', node.pos)
 	}
 	cond_type_sym := c.table.get_type_symbol(cond_type)
 	if cond_type_sym.kind !in [.sum_type, .interface_] {
@@ -2981,7 +2983,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
-	// println('!m $expr_type')
+	if node.is_mut {
+		// Mark `x` in `match mut x {` as changed, and ensure it's mutable
+		// TODO2 enable when code is fixed
+		// c.fail_if_immutable(node.cond)
+	}
 	return ret_type
 }
 

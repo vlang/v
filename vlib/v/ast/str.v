@@ -13,17 +13,12 @@ pub fn (node &FnDecl) modname() string {
 	}
 	mut pamod := node.name.all_before_last('.')
 	if pamod == node.name.after('.') {
-		pamod = if node.is_builtin {
-			'builtin'
-		} else {
-			'main'
-		}
+		pamod = if node.is_builtin { 'builtin' } else { 'main' }
 	}
 	return pamod
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-
 pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
@@ -32,7 +27,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	mut receiver := ''
 	if node.is_method {
 		mut styp := util.no_cur_mod(t.type_to_str(node.receiver.typ), cur_mod)
-		mut m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
+		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
 		}
@@ -51,11 +46,10 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	mut name := if node.is_anon { '' } else { node.name.after('.') }
 	if node.language == .c {
 		name = 'C.$name'
-	}
-	else if node.language == .js {
+	} else if node.language == .js {
 		name = 'JS.$name'
 	}
-	f.write('fn ${receiver}${name}')
+	f.write('fn $receiver$name')
 	if node.is_generic {
 		f.write('<T>')
 	}
@@ -70,8 +64,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 			continue
 		}
 		is_last_arg := i == node.args.len - 1
-		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ || (node.is_variadic &&
-			i == node.args.len - 2)
+		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
+			(node.is_variadic && i == node.args.len - 2)
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
 		}
@@ -105,7 +99,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 }
 
 pub fn (x &InfixExpr) str() string {
-	return '${x.left.str()} $x.op.str() ${x.right.str()}'
+	return '$x.left.str() $x.op.str() $x.right.str()'
 }
 
 // Expressions in string interpolations may have to be put in braces if they
@@ -116,14 +110,14 @@ pub fn (x &InfixExpr) str() string {
 // This method creates the format specifier (including the colon) or an empty
 // string if none is needed and also returns (as bool) if the expression
 // must be enclosed in braces.
-
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
-	needs_fspec := lit.need_fmts[i] || lit.pluss[i] || (lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 0
+	needs_fspec := lit.need_fmts[i] || lit.pluss[i] ||
+		(lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 0
 	mut needs_braces := needs_fspec
 	if !needs_braces {
-		if i+1 < lit.vals.len && lit.vals[i+1].len > 0 {
-			next_char := lit.vals[i+1][0]
+		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
+			next_char := lit.vals[i + 1][0]
 			if util.is_func_char(next_char) || next_char == `.` || next_char == `(` {
 				needs_braces = true
 			}
@@ -181,90 +175,94 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 pub fn (x Expr) str() string {
 	match x {
 		BoolLiteral {
-			return it.val.str()
+			return x.val.str()
 		}
 		CastExpr {
-			return '${it.typname}(${it.expr.str()})'
+			return '${x.typname}($x.expr.str())'
 		}
 		CallExpr {
-			sargs := args2str(it.args)
-			if it.is_method {
-				return '${it.left.str()}.${it.name}($sargs)'
+			sargs := args2str(x.args)
+			if x.is_method {
+				return '${x.left.str()}.${x.name}($sargs)'
 			}
-			return '${it.mod}.${it.name}($sargs)'
+			return '${x.mod}.${x.name}($sargs)'
 		}
 		CharLiteral {
-			return '`$it.val`'
+			return '`$x.val`'
 		}
 		EnumVal {
-			return '.${it.val}'
+			return '.$x.val'
 		}
 		FloatLiteral {
-			return it.val
+			return x.val
 		}
 		Ident {
-			return it.name
+			return x.name
 		}
 		IndexExpr {
-			return '${it.left.str()}[${it.index.str()}]'
+			return '$x.left.str()[$x.index.str()]'
 		}
 		IntegerLiteral {
-			return it.val
+			return x.val
 		}
 		InfixExpr {
-			return '${it.left.str()} $it.op.str() ${it.right.str()}'
+			return '$x.left.str() $x.op.str() $x.right.str()'
 		}
 		ParExpr {
-			return '($it.expr)'
+			return '($x.expr)'
 		}
 		PrefixExpr {
-			return it.op.str() + it.right.str()
+			return x.op.str() + x.right.str()
 		}
 		RangeExpr {
 			mut s := '..'
-			if it.has_low {s = '$it.low ' + s}
-			if it.has_high {s = s + ' $it.high'}
+			if x.has_low {
+				s = '$x.low ' + s
+			}
+			if x.has_high {
+				s = s + ' $x.high'
+			}
 			return s
 		}
 		SelectorExpr {
-			return '${it.expr.str()}.${it.field_name}'
+			return '${x.expr.str()}.$x.field_name'
 		}
 		SizeOf {
-			return 'sizeof($it.expr)'
+			return 'sizeof($x.expr)'
 		}
 		StringInterLiteral {
 			mut res := []string{}
 			res << "'"
-			for i, val in it.vals {
+			for i, val in x.vals {
 				res << val
-				if i >= it.exprs.len {
+				if i >= x.exprs.len {
 					break
 				}
 				res << '$'
-				fspec_str, needs_braces := it.get_fspec_braces(i)
+				fspec_str, needs_braces := x.get_fspec_braces(i)
 				if needs_braces {
 					res << '{'
-					res << it.exprs[i].str()
+					res << x.exprs[i].str()
 					res << fspec_str
 					res << '}'
 				} else {
-					res << it.exprs[i].str()
+					res << x.exprs[i].str()
 				}
 			}
 			res << "'"
 			return res.join('')
 		}
 		StringLiteral {
-			return '"$it.val"'
+			return '"$x.val"'
 		}
 		TypeOf {
-			return 'typeof(${it.expr.str()})'
+			return 'typeof($x.expr.str())'
 		}
 		Likely {
-			return '_likely_(${it.expr.str()})'
+			return '_likely_($x.expr.str())'
 		}
 		UnsafeExpr {
-			return 'unsafe { $it.expr }'
+			return 'unsafe { $x.expr }'
 		}
 		else {}
 	}
@@ -273,9 +271,9 @@ pub fn (x Expr) str() string {
 
 pub fn (a CallArg) str() string {
 	if a.is_mut {
-		return 'mut ${a.expr.str()}'
+		return 'mut $a.expr.str()'
 	}
-	return '${a.expr.str()}'
+	return '$a.expr.str()'
 }
 
 pub fn args2str(args []CallArg) string {
@@ -290,7 +288,7 @@ pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
 			mut out := ''
-			for i, left in it.left {
+			for i, left in node.left {
 				if left is Ident {
 					var_info := left.var_info()
 					if var_info.is_mut {
@@ -302,20 +300,20 @@ pub fn (node Stmt) str() string {
 					out += ','
 				}
 			}
-			out += ' $it.op.str() '
-			for i, val in it.right {
+			out += ' $node.op.str() '
+			for i, val in node.right {
 				out += val.str()
-				if i < it.right.len - 1 {
+				if i < node.right.len - 1 {
 					out += ','
 				}
 			}
 			return out
 		}
 		ExprStmt {
-			return it.expr.str()
+			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${it.name}() { $it.stmts.len stmts }'
+			return 'fn ${node.name}() { $node.stmts.len stmts }'
 		}
 		else {
 			return '[unhandled stmt str type: ${typeof(node)} ]'

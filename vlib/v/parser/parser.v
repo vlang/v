@@ -994,6 +994,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
 		return p.string_expr()
 	}
+	// don't allow r`byte` and c`byte`
+	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
+		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
+		p.error('cannot use $opt with `byte` and `rune`')
+	}
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
 	if p.peek_tok.kind == .dot && !known_var &&

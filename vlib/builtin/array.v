@@ -145,7 +145,7 @@ pub fn (a array) repeat(count int) array {
 
 // array.sort sorts array in-place using given `compare` function as comparator
 pub fn (mut a array) sort_with_compare(compare voidptr) {
-	C.qsort(a.data, a.len, a.element_size, compare)
+	C.qsort(mut a.data, a.len, a.element_size, compare)
 }
 
 // array.insert

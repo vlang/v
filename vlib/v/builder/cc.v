@@ -31,7 +31,9 @@ If you think you have one installed, make sure it is in your PATH.
 If you do have one in your PATH, please raise an issue on GitHub:
 https://github.com/vlang/v/issues/new/choose
 
-You can also use #help on Discord: https://discord.gg/vlang
+You can also use `v doctor`, to see what V knows about your current environment.
+
+You can also seek #help on Discord: https://discord.gg/vlang
 '
 )
 

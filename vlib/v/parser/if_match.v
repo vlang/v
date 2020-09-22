@@ -229,6 +229,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					typ: typ.to_ptr()
 					pos: cond_pos
 					is_used: true
+					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
 			}

@@ -13,7 +13,7 @@ const (
 
 // compile_file compiles the content of a file by the given path as a template
 pub fn compile_file(path, fn_name string) string {
-	mut html := os.read_file(path) or {
+	html := os.read_file(path) or {
 		panic('html failed')
 	}
 	return compile_template(html, fn_name)
@@ -82,7 +82,7 @@ _ = footer
 			pos := line.index('@include ') or {
 				continue
 			}
-			mut file_name := line[pos + 9..]
+			file_name := line[pos + 9..]
 			file_path := os.join_path('templates', '${file_name}.html')
 			mut file_content := os.read_file(file_path) or {
 				panic('reading file $file_name failed')
