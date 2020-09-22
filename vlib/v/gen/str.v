@@ -221,7 +221,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build the string with %
 	mut end_string := false
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		escaped_val := val.replace_each(['"', '\\"', '\\\\"', '\\x22', '\r\n', '\\n', '\n', '\\n',
+			'%', '%%'])
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
