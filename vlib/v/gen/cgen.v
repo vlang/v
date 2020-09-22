@@ -724,6 +724,54 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 	}
 }
 
+fn (mut g Gen) is_simple_bool(expr ast.Expr) bool {
+	match expr {
+		ast.Ident {
+			return true
+		}
+		ast.BoolLiteral {
+			return true
+		}
+		ast.SelectorExpr {
+			return g.is_simple_bool(expr.expr)
+		}
+		ast.PrefixExpr {
+			return g.is_simple_bool(expr.right)
+		}
+		ast.CharLiteral {
+			return true
+		}
+		ast.IntegerLiteral {
+			return true
+		}
+		ast.StringLiteral {
+			return true
+		}
+		ast.StringInterLiteral {
+			return true
+		}
+		ast.SizeOf {
+			if expr.is_type {
+				return true
+			} else {
+				return g.is_simple_bool(expr.expr)
+			}
+		}
+		ast.IndexExpr {
+			return g.is_simple_bool(expr.left) && g.is_simple_bool(expr.index)
+		}
+		ast.ParExpr {
+			return g.is_simple_bool(expr.expr)
+		}
+		ast.InfixExpr {
+			return g.is_simple_bool(expr.left) && g.is_simple_bool(expr.right)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) stmt(node ast.Stmt) {
 	g.stmt_path_pos << g.out.len
 	defer {
@@ -897,14 +945,24 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
-			g.writeln('while (1) {')
+			inf_loop := node.is_inf || !g.is_simple_bool(node.cond)
+			g.write('while (')
+			if inf_loop {
+				g.writeln('1) {')
+				if !node.is_inf {
+					g.indent++
+					g.stmt_path_pos << g.out.len
+					g.write('if (!(')
+				}
+			}
+			g.expr(node.cond)
 			if !node.is_inf {
-				g.indent++
-				g.stmt_path_pos << g.out.len
-				g.write('if (!(')
-				g.expr(node.cond)
-				g.writeln(')) break;')
-				g.indent--
+				if inf_loop {
+					g.writeln(')) break;')
+					g.indent--
+				} else {
+					g.writeln(') {')
+				}
 			}
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
