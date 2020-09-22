@@ -6,7 +6,8 @@ import runtime
 
 struct App {
 mut:
-	report_lines []string
+	report_lines   []string
+	cached_cpuinfo map[string]string
 }
 
 fn (mut a App) println(s string) {
@@ -33,7 +34,12 @@ fn (mut a App) collect_info() {
 		arch_details << a.cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
-		arch_details << a.cpuinfo()
+		info := a.cpu_info()
+		if info['model name'] != '' {
+			arch_details << info['model name']
+		} else {
+			arch_details << info['hardware']
+		}
 	}
 	if os_kind == 'windows' {
 		arch_details << a.cmd(command:'wmic cpu get name /format:table', line: 1)
@@ -42,6 +48,18 @@ fn (mut a App) collect_info() {
 	mut os_details := ''
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
+		info := a.cpu_info()
+		if 'hypervisor' in info['flags'] {
+			if 'microsoft' in a.cmd(command: 'cat /proc/sys/kernel/osrelease') {
+				os_details += ' (WSL)'
+			} else {
+				os_details += ' (VM)'
+			}
+		}
+		// From https://unix.stackexchange.com/a/14346
+		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
+			os_details += ' (chroot)'
+		}
 	} else if os_kind == 'mac' {
 		mut details := []string{}
 		details << a.cmd(command: 'sw_vers -productName')
@@ -169,8 +187,12 @@ fn (mut a App) get_linux_os_name() string {
 	return os_details
 }
 
-fn (mut a App) cpuinfo() string {
-	info := os.exec('cat /proc/cpuinfo') or { return 'N/A' } // os.read_file('/proc/cpuinfo') or { return 'N/A' }
+fn (mut a App) cpu_info() map[string]string {
+	if a.cached_cpuinfo.len > 0 {
+		return a.cached_cpuinfo
+	}
+
+	info := os.exec('cat /proc/cpuinfo') or { return a.cached_cpuinfo }
 	mut vals := map[string]string
 	for line in info.output.split_into_lines() {
 		sline := line.trim(' ')
@@ -184,27 +206,8 @@ fn (mut a App) cpuinfo() string {
 		vals[x[0].trim_space().to_lower()] = x[1].trim_space().trim('"')
 	}
 
-	mut out := ''
-	if vals['model name'] != '' {
-		out += vals['model name']
-	} else {
-		out += vals['hardware']
-	}
-
-	if 'hypervisor' in vals['flags'] {
-		out += ' (VM)'
-	}
-
-	if 'microsoft' in a.cmd(command: 'cat /proc/sys/kernel/osrelease') {
-		out += ' (WSL)'
-	}
-
-	// From https://unix.stackexchange.com/a/14346
-	if a.cmd(command: '[ "$(awk \'$5=="/" {print $1}\' </proc/1/mountinfo)" != "$(awk \'$5=="/" {print $1}\' </proc/$$/mountinfo)" ] ; echo $?') == '0' {
-		out += ' (chroot)'
-	}
-
-	return out
+	a.cached_cpuinfo = vals
+	return vals
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
