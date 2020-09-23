@@ -7,6 +7,8 @@ import os
 import os.cmdline
 import time
 import strings
+import sync
+import runtime
 import v.doc
 import v.scanner
 import v.table
@@ -113,6 +115,11 @@ mut:
 	output_type    OutputType = .unset
 	docs           []doc.Doc
 	manifest       vmod.Manifest
+}
+
+struct ParallelDoc {
+	d doc.Doc
+	i int
 }
 
 fn slug(title string) string {
@@ -577,31 +584,67 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
+fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
+	// since builtin is generated first, ignore it
+	mut name := if ('vlib' in cfg.input_path &&
+		doc.head.name == 'builtin' && !cfg.include_readme) ||
+		doc.head.name == 'README' {
+		'index'
+	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
+		os.file_name(cfg.output_path)
+	} else {
+		doc.head.name
+	}
+	name = name + match cfg.output_type {
+		.html { '.html' }
+		.markdown { '.md' }
+		.json { '.json' }
+		else { '.txt' }
+	}
+	output := match cfg.output_type {
+		.html { cfg.gen_html(i) }
+		.markdown { cfg.gen_markdown(i, true) }
+		.json { cfg.gen_json(i) }
+		else { cfg.gen_plaintext(i) }
+	}
+	return name, output
+}
+
+fn (cfg DocConfig)work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+	for {
+		mut pdoc := ParallelDoc{}
+		if !work.pop(&pdoc) {
+			break
+		}
+		file_name, content := cfg.render_doc(pdoc.d, pdoc.i)
+		output_path := os.join_path(cfg.output_path, file_name)
+		println('Generating ${output_path}...')
+		os.write_file(output_path, content)
+	}
+	wg.done()
+}
+
+fn (cfg DocConfig) render_parallel() {
+	vjobs := runtime.nr_jobs()
+	mut work := sync.new_channel<ParallelDoc>(cfg.docs.len)
+	mut wg := sync.new_waitgroup()
+
+	for i in 0 .. cfg.docs.len {
+		p_doc := ParallelDoc{cfg.docs[i], i}
+		work.push(&p_doc)
+	}
+	work.close()
+	wg.add(vjobs)
+	for _ in 0 .. vjobs {
+		go cfg.work_processor(mut work, mut wg)
+	}
+	wg.wait()
+}
+
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
 	for i, doc in cfg.docs {
-		// since builtin is generated first, ignore it
-		mut name := if ('vlib' in cfg.input_path &&
-			doc.head.name == 'builtin' && !cfg.include_readme) ||
-			doc.head.name == 'README' {
-			'index'
-		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
-			os.file_name(cfg.output_path)
-		} else {
-			doc.head.name
-		}
-		name = name + match cfg.output_type {
-			.html { '.html' }
-			.markdown { '.md' }
-			.json { '.json' }
-			else { '.txt' }
-		}
-		output := match cfg.output_type {
-			.html { cfg.gen_html(i) }
-			.markdown { cfg.gen_markdown(i, true) }
-			.json { cfg.gen_json(i) }
-			else { cfg.gen_plaintext(i) }
-		}
+		name, output := cfg.render_doc(doc, i)
 		docs[name] = output.trim_space()
 	}
 	cfg.vprintln('Rendered: ' + docs.keys().str())
@@ -776,12 +819,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 			}
 		}
-		outputs := cfg.render()
-		for file_name, content in outputs {
-			output_path := os.join_path(cfg.output_path, file_name)
-			println('Generating ${output_path}...')
-			os.write_file(output_path, content)
-		}
+		cfg.render_parallel()
 	}
 }
 
@@ -929,8 +967,8 @@ fn main() {
 			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
-				allowed_str := allowed_formats.join(', ')
 				if format !in allowed_formats {
+					allowed_str := allowed_formats.join(', ')
 					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
 					exit(1)
 				}
