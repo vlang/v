@@ -16,7 +16,8 @@ fn escape_string(str string, raw, quotes, newlines, percentage, double_escape bo
 	if double_escape {
 		escaped_val = escaped_val.replace_each(['\\', '\\\\'])
 	}
-	if !percentage && !double_escape {
+	if quotes && !percentage && !double_escape {
+		escaped_val = escaped_val.replace_each(['"""', '"\\042"'])
 		escaped_val = escaped_val.replace_each(['\\\\"', '\\042'])
 	}
 	if newlines {
@@ -29,7 +30,7 @@ fn escape_string(str string, raw, quotes, newlines, percentage, double_escape bo
 }
 
 fn escape_all(str string) string {
-	return escape_string(str, true, true, true, true, true)
+	return escape_string(str, false, true, true, true, true)
 }
 
 fn (mut g Gen) write_str_fn_definitions() {
