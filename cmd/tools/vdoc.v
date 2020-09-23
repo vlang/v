@@ -115,6 +115,7 @@ mut:
 	output_type    OutputType = .unset
 	docs           []doc.Doc
 	manifest       vmod.Manifest
+	assets         map[string]string
 }
 
 struct ParallelDoc {
@@ -467,14 +468,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		write_toc(cn, dcs.contents, mut toc)
 	} // write head
-	// get resources
-	doc_css := cfg.get_resource(css_js_assets[0], true)
-	normalize_css := cfg.get_resource(css_js_assets[1], true)
-	doc_js := cfg.get_resource(css_js_assets[2], !cfg.serve_http)
-	light_icon := cfg.get_resource('light.svg', true)
-	dark_icon := cfg.get_resource('dark.svg', true)
-	menu_icon := cfg.get_resource('menu.svg', true)
-	arrow_icon := cfg.get_resource('arrow.svg', true)
 	// write css
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
@@ -497,7 +490,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				'./' + doc.head.name + '.html'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			dropdown := if submodules.len > 0 { arrow_icon } else { '' }
+			dropdown := if submodules.len > 0 { cfg.assets['arrow_icon'] } else { '' }
 			mut is_submodule_open := false
 			for _, cdoc in submodules {
 				if cdoc.head.name == dcs.head.name {
@@ -521,11 +514,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 	}
 	return html_content.replace('{{ title }}', dcs.head.name).replace('{{ head_name }}',
-		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', light_icon).replace('{{ dark_icon }}',
-		dark_icon).replace('{{ menu_icon }}', menu_icon).replace('{{ head_assets }}', if cfg.inline_assets {
-		'\n	<style>$doc_css</style>\n    <style>$normalize_css</style>'
+		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
+		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}', if cfg.inline_assets {
+		'\n	<style>'+ cfg.assets['doc_css'] + '</style>\n    <style>'+ cfg.assets['normalize_css'] +'</style>'
 	} else {
-		'\n	<link rel="stylesheet" href="$doc_css" />\n	<link rel="stylesheet" href="$normalize_css" />'
+		'\n	<link rel="stylesheet" href="'+cfg.assets['doc_css']+'" />\n	<link rel="stylesheet" href="'+cfg.assets['normalize_css']+'" />'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		toc2.str()
 	} else {
@@ -537,9 +530,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		''
 	}).replace('{{ footer_content }}', 'Powered by vdoc. Generated on: $time_gen').replace('{{ footer_assets }}',
 		if cfg.inline_assets {
-		'<script>$doc_js</script>'
+		'<script>'+cfg.assets['doc_js']+'</script>'
 	} else {
-		'<script src="$doc_js"></script>'
+		'<script src="'+cfg.assets['doc_js']+'"></script>'
 	})
 }
 
@@ -643,6 +636,18 @@ fn (cfg DocConfig) render_parallel() {
 
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
+	if cfg.output_type == .html {
+		cfg.assets = {
+			'doc_css': cfg.get_resource(css_js_assets[0], true),
+			'normalize_css': cfg.get_resource(css_js_assets[1], true),
+			'doc_js': cfg.get_resource(css_js_assets[2], !cfg.serve_http),
+			'light_icon': cfg.get_resource('light.svg', true),
+			'dark_icon': cfg.get_resource('dark.svg', true),
+			'menu_icon': cfg.get_resource('menu.svg', true),
+			'arrow_icon': cfg.get_resource('arrow.svg', true)
+		}
+	}
+	
 	for i, doc in cfg.docs {
 		name, output := cfg.render_doc(doc, i)
 		docs[name] = output.trim_space()
