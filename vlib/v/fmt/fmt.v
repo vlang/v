@@ -937,7 +937,46 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.expr(node.high)
 		}
 		ast.SelectExpr {
-			// TODO: implement this
+			f.writeln('select {')
+			f.indent++
+			for branch in node.branches {
+				if branch.comment.text != '' {
+					f.comment(branch.comment, {
+						inline: true
+					})
+					f.writeln('')
+				}
+				if branch.is_else {
+					f.write('else {')
+				} else {
+					if branch.is_timeout {
+						f.write('> ')
+					}
+					f.single_line_if = true
+					match branch.stmt as stmt {
+						ast.ExprStmt {
+							f.expr(stmt.expr)
+						}
+						else {
+							f.stmt(branch.stmt)
+						}
+					}
+					f.single_line_if = false
+					f.write(' {')
+				}
+				if branch.stmts.len > 0 {
+					f.writeln('')
+					f.stmts(branch.stmts)
+				}
+				f.writeln('}')
+				if branch.post_comments.len > 0 {
+					f.comments(branch.post_comments, {
+						inline: true
+					})
+				}
+			}
+			f.indent--
+			f.write('}')
 		}
 		ast.SelectorExpr {
 			f.expr(node.expr)
