@@ -4159,7 +4159,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			g.enum_expr(expr)
 			g.write('")')
 		}
-	} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return] {
+	} else if sym_has_str_method || sym.kind in [.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
 		is_p := etype.is_ptr()
 		val_type := if is_p { etype.deref() } else { etype }
 		str_fn_name := g.gen_str_for_type(val_type)
