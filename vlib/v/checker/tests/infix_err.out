@@ -32,8 +32,22 @@ vlib/v/checker/tests/infix_err.vv:13:9: error: `+` cannot be used with `?int`
    13 | _ = g() + int(3)
       |         ^
    14 | _ = g() + 3
+   15 |
 vlib/v/checker/tests/infix_err.vv:14:9: error: `+` cannot be used with `?int`
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
    14 | _ = g() + 3
       |         ^
+   15 |
+   16 | // binary operands
+vlib/v/checker/tests/infix_err.vv:17:5: error: left operand for `&&` is not a boolean
+   15 |
+   16 | // binary operands
+   17 | _ = 1 && 2
+      |     ^
+   18 | _ = true || 2
+vlib/v/checker/tests/infix_err.vv:18:13: error: right operand for `||` is not a boolean
+   16 | // binary operands
+   17 | _ = 1 && 2
+   18 | _ = true || 2
+      |             ^
