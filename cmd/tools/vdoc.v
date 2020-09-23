@@ -7,6 +7,8 @@ import os
 import os.cmdline
 import time
 import strings
+import sync
+import runtime
 import v.doc
 import v.scanner
 import v.table
@@ -113,6 +115,12 @@ mut:
 	output_type    OutputType = .unset
 	docs           []doc.Doc
 	manifest       vmod.Manifest
+	assets         map[string]string
+}
+
+struct ParallelDoc {
+	d doc.Doc
+	i int
 }
 
 fn slug(title string) string {
@@ -132,6 +140,7 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	cfg.render_static()
 	docs := cfg.render()
 	dkeys := docs.keys()
 	if dkeys.len < 1 {
@@ -460,14 +469,6 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 		write_toc(cn, dcs.contents, mut toc)
 	} // write head
-	// get resources
-	doc_css := cfg.get_resource(css_js_assets[0], true)
-	normalize_css := cfg.get_resource(css_js_assets[1], true)
-	doc_js := cfg.get_resource(css_js_assets[2], !cfg.serve_http)
-	light_icon := cfg.get_resource('light.svg', true)
-	dark_icon := cfg.get_resource('dark.svg', true)
-	menu_icon := cfg.get_resource('menu.svg', true)
-	arrow_icon := cfg.get_resource('arrow.svg', true)
 	// write css
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
 	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
@@ -490,7 +491,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 				'./' + doc.head.name + '.html'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			dropdown := if submodules.len > 0 { arrow_icon } else { '' }
+			dropdown := if submodules.len > 0 { cfg.assets['arrow_icon'] } else { '' }
 			mut is_submodule_open := false
 			for _, cdoc in submodules {
 				if cdoc.head.name == dcs.head.name {
@@ -514,11 +515,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		}
 	}
 	return html_content.replace('{{ title }}', dcs.head.name).replace('{{ head_name }}',
-		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', light_icon).replace('{{ dark_icon }}',
-		dark_icon).replace('{{ menu_icon }}', menu_icon).replace('{{ head_assets }}', if cfg.inline_assets {
-		'\n	<style>$doc_css</style>\n    <style>$normalize_css</style>'
+		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
+		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}', if cfg.inline_assets {
+		'\n	<style>'+ cfg.assets['doc_css'] + '</style>\n    <style>'+ cfg.assets['normalize_css'] +'</style>'
 	} else {
-		'\n	<link rel="stylesheet" href="$doc_css" />\n	<link rel="stylesheet" href="$normalize_css" />'
+		'\n	<link rel="stylesheet" href="'+cfg.assets['doc_css']+'" />\n	<link rel="stylesheet" href="'+cfg.assets['normalize_css']+'" />'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		toc2.str()
 	} else {
@@ -530,9 +531,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		''
 	}).replace('{{ footer_content }}', 'Powered by vdoc. Generated on: $time_gen').replace('{{ footer_assets }}',
 		if cfg.inline_assets {
-		'<script>$doc_js</script>'
+		'<script>'+cfg.assets['doc_js']+'</script>'
 	} else {
-		'<script src="$doc_js"></script>'
+		'<script src="'+cfg.assets['doc_js']+'"></script>'
 	})
 }
 
@@ -577,35 +578,86 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	return hw.str() + '\n' + cw.str()
 }
 
+fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
+	// since builtin is generated first, ignore it
+	mut name := if ('vlib' in cfg.input_path &&
+		doc.head.name == 'builtin' && !cfg.include_readme) ||
+		doc.head.name == 'README' {
+		'index'
+	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
+		os.file_name(cfg.output_path)
+	} else {
+		doc.head.name
+	}
+	name = name + match cfg.output_type {
+		.html { '.html' }
+		.markdown { '.md' }
+		.json { '.json' }
+		else { '.txt' }
+	}
+	output := match cfg.output_type {
+		.html { cfg.gen_html(i) }
+		.markdown { cfg.gen_markdown(i, true) }
+		.json { cfg.gen_json(i) }
+		else { cfg.gen_plaintext(i) }
+	}
+	return name, output
+}
+
+fn (cfg DocConfig)work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
+	for {
+		mut pdoc := ParallelDoc{}
+		if !work.pop(&pdoc) {
+			break
+		}
+		file_name, content := cfg.render_doc(pdoc.d, pdoc.i)
+		output_path := os.join_path(cfg.output_path, file_name)
+		println('Generating ${output_path}...')
+		os.write_file(output_path, content)
+	}
+	wg.done()
+}
+
+fn (cfg DocConfig) render_parallel() {
+	vjobs := runtime.nr_jobs()
+	mut work := sync.new_channel<ParallelDoc>(cfg.docs.len)
+	mut wg := sync.new_waitgroup()
+
+	for i in 0 .. cfg.docs.len {
+		p_doc := ParallelDoc{cfg.docs[i], i}
+		work.push(&p_doc)
+	}
+	work.close()
+	wg.add(vjobs)
+	for _ in 0 .. vjobs {
+		go cfg.work_processor(mut work, mut wg)
+	}
+	wg.wait()
+}
+
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
+
 	for i, doc in cfg.docs {
-		// since builtin is generated first, ignore it
-		mut name := if ('vlib' in cfg.input_path &&
-			doc.head.name == 'builtin' && !cfg.include_readme) ||
-			doc.head.name == 'README' {
-			'index'
-		} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
-			os.file_name(cfg.output_path)
-		} else {
-			doc.head.name
-		}
-		name = name + match cfg.output_type {
-			.html { '.html' }
-			.markdown { '.md' }
-			.json { '.json' }
-			else { '.txt' }
-		}
-		output := match cfg.output_type {
-			.html { cfg.gen_html(i) }
-			.markdown { cfg.gen_markdown(i, true) }
-			.json { cfg.gen_json(i) }
-			else { cfg.gen_plaintext(i) }
-		}
+		name, output := cfg.render_doc(doc, i)
 		docs[name] = output.trim_space()
 	}
 	cfg.vprintln('Rendered: ' + docs.keys().str())
 	return docs
+}
+
+fn (mut cfg DocConfig) render_static() {
+	if cfg.output_type == .html {
+		cfg.assets = {
+			'doc_css': cfg.get_resource(css_js_assets[0], true),
+			'normalize_css': cfg.get_resource(css_js_assets[1], true),
+			'doc_js': cfg.get_resource(css_js_assets[2], !cfg.serve_http),
+			'light_icon': cfg.get_resource('light.svg', true),
+			'dark_icon': cfg.get_resource('dark.svg', true),
+			'menu_icon': cfg.get_resource('menu.svg', true),
+			'arrow_icon': cfg.get_resource('arrow.svg', true)
+		}
+	}
 }
 
 fn (cfg DocConfig) get_readme(path string) string {
@@ -748,6 +800,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	}
 	cfg.vprintln('Rendering docs...')
 	if cfg.output_path.len == 0 || cfg.output_path == 'stdout' {
+		cfg.render_static()
 		outputs := cfg.render()
 		if outputs.len == 0 {
 			println('No documentation for $dirs')
@@ -776,12 +829,8 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 			}
 		}
-		outputs := cfg.render()
-		for file_name, content in outputs {
-			output_path := os.join_path(cfg.output_path, file_name)
-			println('Generating ${output_path}...')
-			os.write_file(output_path, content)
-		}
+		cfg.render_static()
+		cfg.render_parallel()
 	}
 }
 
@@ -929,8 +978,8 @@ fn main() {
 			}
 			'-f' {
 				format := cmdline.option(current_args, '-f', '')
-				allowed_str := allowed_formats.join(', ')
 				if format !in allowed_formats {
+					allowed_str := allowed_formats.join(', ')
 					eprintln('vdoc: "$format" is not a valid format. Only $allowed_str are allowed.')
 					exit(1)
 				}
