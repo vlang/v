@@ -954,12 +954,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					}
 					f.single_line_if = true
 					match branch.stmt as stmt {
-						ast.ExprStmt {
-							f.expr(stmt.expr)
-						}
-						else {
-							f.stmt(branch.stmt)
-						}
+						ast.ExprStmt { f.expr(stmt.expr) }
+						else { f.stmt(branch.stmt) }
 					}
 					f.single_line_if = false
 					f.write(' {')
