@@ -114,6 +114,10 @@ const (
 	default_window_width  = 544
 	default_window_height = 560
 	animation_length      = 10 // frames
+	frames_per_ai_move    = 8
+	possible_moves = [Direction.up, .right, .down, .left]
+	predictions_per_move = 200
+	prediction_depth = 8
 )
 
 // Used for performance monitoring when `-d showfps` is passed, unused / optimized out otherwise
@@ -427,19 +431,15 @@ fn (mut app App) move(d Direction) {
 	app.apply_new_board(new)
 }
 
-const (
-	possible_moves = [Direction.up, .right, .down, .left]
-	predictions_per_move = 200
-	prediction_depth = 100
-)
 struct Prediction {
 mut:
 	move Direction
 	mpoints f64
+	mcmoves f64
 }
 
 fn (p Prediction) str() string {
-	return 'Prediction{move: ${p.move:5} | mpoints: ${p.mpoints:6.2f} }'
+	return 'Prediction{move: ${p.move:5} | mpoints: ${p.mpoints:6.2f} | mcmoves: ${p.mcmoves:6.2f}}'
 }
 fn (mut app App) ai_move() {
 	mut predictions := [4]Prediction{}
@@ -451,6 +451,7 @@ fn (mut app App) ai_move() {
 		predictions[move_idx].move = move
 		mut mpoints := 0
 		mut mshifts := 0
+		mut mcmoves := 0
 		for i := 0; i < predictions_per_move; i++ {
 			mut cboard := app.board
 			cboard, is_valid = cboard.move(move)
@@ -472,11 +473,16 @@ fn (mut app App) ai_move() {
 				cboard = nboard
 				cboard.place_random_tile()
 				cmoves++
+				if cmoves > prediction_depth {
+					break
+				}
 			}
 			mpoints += cboard.points
 			mshifts += cboard.shifts
+			mcmoves += cmoves
 		}
 		predictions[move_idx].mpoints = f64(mpoints)/predictions_per_move
+		predictions[move_idx].mcmoves = f64(mcmoves)/predictions_per_move
 	}
 	think_time := think_watch.elapsed().microseconds()
 	mut bestprediction := Prediction{mpoints:-1}
@@ -729,7 +735,7 @@ fn frame(mut app App) {
 	app.update_tickers()
 	app.draw()
 	app.perf.frame++
-	if app.is_ai_mode && app.perf.frame % 15 == 0 {
+	if app.is_ai_mode && app.perf.frame % frames_per_ai_move == 0 {
 		app.ai_move()
 	}
 	$if showfps? { app.showfps() }
