@@ -50,3 +50,13 @@ fn test_nested_in_struct() {
 	c := Container{ST(abc)}
 	assert '$c' == 'Container {\n    st: ST(Abc {\n        foo: 0\n        bar: false\n        str: \'\'\n    })\n}'
 }
+
+fn test_pointer() {
+	st := ST(0)
+	assert '${&st}' == '&ST(0)'
+}
+
+fn test_pointer_in_struct() {
+	c := Container{ST(0)}
+	assert '$c' == 'Container {\n    st: &ST(0)\n}'
+}
