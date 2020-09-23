@@ -5073,6 +5073,8 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if typ == table.u64_type {
 		return '%lld\\000'
+	} else if sym.kind == .sum_type {
+		return '%.*s\\000'
 	}
 	return '%d\\000'
 }
