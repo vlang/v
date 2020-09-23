@@ -320,7 +320,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\treturn _STR("$clean_struct_v_type_name {\\n"')
 	for field in info.fields {
 		fmt := g.type_to_fmt(field.typ)
-		g.auto_str_funcs.writeln('\t\t"%.*s\\000	' + '$field.name: $fmt\\n"')
+		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\n"')
 	}
 	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+1)}')
 	if info.fields.len > 0 {
