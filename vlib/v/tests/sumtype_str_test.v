@@ -30,3 +30,23 @@ fn test_str() {
 	a := ST(false)
 	assert a.str() == 'ST(false)'
 }
+
+struct Container {
+	st ST
+}
+
+fn test_in_struct() {
+	c := Container{ST(0)}
+	assert '$c' == 'Container {\n    st: ST(0)\n}'
+}
+
+fn test_unknown_value() {
+	c := Container{}
+	assert '$c' == 'Container {\n    st: unknown sum type value\n}'
+}
+
+fn test_nested_in_struct() {
+	abc := Abc{}
+	c := Container{ST(abc)}
+	assert '$c' == 'Container {\n    st: ST(Abc {\n        foo: 0\n        bar: false\n        str: \'\'\n})\n}'
+}
