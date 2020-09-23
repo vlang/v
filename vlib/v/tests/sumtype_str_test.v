@@ -48,5 +48,5 @@ fn test_unknown_value() {
 fn test_nested_in_struct() {
 	abc := Abc{}
 	c := Container{ST(abc)}
-	assert '$c' == 'Container {\n    st: ST(Abc {\n        foo: 0\n        bar: false\n        str: \'\'\n})\n}'
+	assert '$c' == 'Container {\n    st: ST(Abc {\n        foo: 0\n        bar: false\n        str: \'\'\n    })\n}'
 }
