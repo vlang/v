@@ -140,6 +140,7 @@ fn open_url(url string) {
 }
 
 fn (mut cfg DocConfig) serve_html() {
+	cfg.render_static()
 	docs := cfg.render()
 	dkeys := docs.keys()
 	if dkeys.len < 1 {
@@ -634,8 +635,18 @@ fn (cfg DocConfig) render_parallel() {
 	wg.wait()
 }
 
-fn (mut cfg DocConfig) render() map[string]string {
+fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
+
+	for i, doc in cfg.docs {
+		name, output := cfg.render_doc(doc, i)
+		docs[name] = output.trim_space()
+	}
+	cfg.vprintln('Rendered: ' + docs.keys().str())
+	return docs
+}
+
+fn (mut cfg DocConfig) render_static() {
 	if cfg.output_type == .html {
 		cfg.assets = {
 			'doc_css': cfg.get_resource(css_js_assets[0], true),
@@ -647,13 +658,6 @@ fn (mut cfg DocConfig) render() map[string]string {
 			'arrow_icon': cfg.get_resource('arrow.svg', true)
 		}
 	}
-	
-	for i, doc in cfg.docs {
-		name, output := cfg.render_doc(doc, i)
-		docs[name] = output.trim_space()
-	}
-	cfg.vprintln('Rendered: ' + docs.keys().str())
-	return docs
 }
 
 fn (cfg DocConfig) get_readme(path string) string {
@@ -796,6 +800,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	}
 	cfg.vprintln('Rendering docs...')
 	if cfg.output_path.len == 0 || cfg.output_path == 'stdout' {
+		cfg.render_static()
 		outputs := cfg.render()
 		if outputs.len == 0 {
 			println('No documentation for $dirs')
@@ -824,6 +829,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				}
 			}
 		}
+		cfg.render_static()
 		cfg.render_parallel()
 	}
 }
