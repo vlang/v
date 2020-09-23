@@ -634,7 +634,7 @@ fn (cfg DocConfig) render_parallel() {
 	wg.wait()
 }
 
-fn (cfg DocConfig) render() map[string]string {
+fn (mut cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
 	if cfg.output_type == .html {
 		cfg.assets = {
