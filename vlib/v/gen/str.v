@@ -5,6 +5,33 @@ module gen
 import v.ast
 import v.table
 
+fn escape_string(str string, raw, quotes, newlines, percentage, double_escape bool) string {
+	mut escaped_val := str
+	if quotes {
+		escaped_val = escaped_val.replace_each(['"', '\\"'])
+	}
+	if raw {
+		return escaped_val
+	}
+	if double_escape {
+		escaped_val = escaped_val.replace_each(['\\', '\\\\'])
+	}
+	if !percentage && !double_escape {
+		escaped_val = escaped_val.replace_each(['\\\\"', '\\042'])
+	}
+	if newlines {
+		escaped_val = escaped_val.replace_each(['\r\n', '\\n', '\n', '\\n'])
+	}
+	if percentage {
+		escaped_val = escaped_val.replace_each(['%', '%%'])
+	}
+	return escaped_val
+}
+
+fn escape_all(str string) string {
+	return escape_string(str, true, true, true, true, true)
+}
+
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
 	g.writeln("
@@ -118,11 +145,11 @@ string _STR_TMP(const char *fmt, ...) {
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
-		escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
+		escaped_val := escape_string(node.val, true, true, false, false, true)
 		g.write('tos_lit("$escaped_val")')
 		return
 	}
-	escaped_val := node.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+	escaped_val := escape_string(node.val, false, true, true, false, false)
 	if g.is_c_call || node.language == .c {
 		// In C calls we have to generate C strings
 		// `C.printf("hi")` => `printf("hi");`
@@ -149,7 +176,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	is_nl := call_expr.name == 'writeln'
 	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		escaped_val := escape_string(val, false, true, true, true, false)
 		// if val == '' {
 		// break
 		// continue
@@ -220,7 +247,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build the string with %
 	mut end_string := false
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		escaped_val := escape_string(val, false, true, true, false, false)
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
