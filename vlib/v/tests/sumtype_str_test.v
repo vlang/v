@@ -55,8 +55,3 @@ fn test_pointer() {
 	st := ST(0)
 	assert '${&st}' == '&ST(0)'
 }
-
-fn test_pointer_in_struct() {
-	c := Container{ST(0)}
-	assert '$c' == 'Container {\n    st: &ST(0)\n}'
-}
