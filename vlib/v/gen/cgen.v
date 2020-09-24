@@ -729,7 +729,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
-		if g.pref.autofree && !g.inside_or_block {
+		if g.pref.autofree { // && !g.inside_or_block {
 			// TODO remove the inside_or_block hack. strings are not freed in or{} atm
 			if g.strs_to_free.len != 0 {
 				g.writeln('// strs_to_free:')

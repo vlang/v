@@ -1,5 +1,6 @@
 import os
 
+// import time
 fn return_array(array_arg []string) []int { // array argument must not be freed
 	s := [1, 2, 3] // escaping array must not be freed
 	return s
@@ -22,10 +23,18 @@ fn handle_strings(s, p string) int {
 fn handle_int(n int) {
 }
 
+fn add_strings(a, b string) string {
+	return a + b
+}
+
 fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
 	handle_strings('c' + 'd', 'e' + 'f') // multiple tmp expressions must be freed
 	handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
+}
+
+fn str_tmp_expr_advanced() {
+	// handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 }
 
 struct Foo {
@@ -68,6 +77,7 @@ fn opt(s string) ?int {
 	return 1
 }
 
+/*
 fn optional_str() {
 	q := 'select'
 	s := 'query: select'
@@ -85,15 +95,20 @@ fn optional_str() {
 	}
 	println(pos + 1)
 }
+*/
+fn tt() {
+	// time.parse_rfc2822('1234')
+}
 
 fn main() {
 	println('start')
 	foo()
 	str_tmp_expr()
+	str_tmp_expr_advanced()
 	str_inter()
 	match_expr()
 	reassign_str()
-	optional_str()
+	// optional_str()
 	// str_replace()
 	println('end')
 }
