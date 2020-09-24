@@ -75,7 +75,7 @@ fn (mut a App) collect_info() {
 	a.line('OS', '$os_kind, $os_details')
 	a.line('Processor', arch_details.join(', '))
 	a.line('CC version', a.cmd(command:'cc --version'))
-	a.println(util.bold(term.h_divider('-')))
+	a.println('')
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
@@ -93,7 +93,7 @@ fn (mut a App) collect_info() {
 	if vflags != '' {
 		a.line('env VFLAGS', '"$vflags"')
 	}
-	a.println(util.bold(term.h_divider('-')))
+	a.println('')
 	a.line('Git version', a.cmd(command:'git --version'))
 	a.line('Git vroot status', a.cmd(command:'git -C . describe --abbrev=8 --dirty --always --tags'))
 	a.line('.git/config present', os.is_file('.git/config').str())
@@ -102,8 +102,6 @@ fn (mut a App) collect_info() {
 		a.report_tcc_version('/var/tmp/tcc')
 	}
 	a.report_tcc_version('thirdparty/tcc')
-	//
-	a.println(util.bold(term.h_divider('-')))
 }
 
 struct CmdConfig {

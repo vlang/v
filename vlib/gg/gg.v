@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
+import os
 import gx
 import sokol
 import sokol.sapp
@@ -104,7 +105,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// fb_h := sapp.height()
 	// println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
 	// if g.config.init_text {
-	if g.config.font_path != '' {
+	if g.config.font_path != '' && os.is_file( g.config.font_path ) {
 		// t := time.ticks()
 		g.ft = new_ft({
 			font_path: g.config.font_path
