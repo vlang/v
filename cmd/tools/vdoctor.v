@@ -102,8 +102,6 @@ fn (mut a App) collect_info() {
 		a.report_tcc_version('/var/tmp/tcc')
 	}
 	a.report_tcc_version('thirdparty/tcc')
-	//
-	a.println('')
 }
 
 struct CmdConfig {
