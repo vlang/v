@@ -337,11 +337,15 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
 
 			g.auto_str_funcs.write('indents, ')
-			// struct has a special case through the _str function
-			if field.typ.is_ptr() && sym.kind != .struct_ {
-				g.auto_str_funcs.write('*')
-			}
 			func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+			if field.typ.is_ptr() {
+				g.auto_str_funcs.write('isnil(it->${c_name(field.name)})')
+				g.auto_str_funcs.write(' ? tos_lit("nil") : ')
+				// struct, floats and ints have a special case through the _str function
+				if sym.kind != .struct_ && !field.typ.is_int() && !field.typ.is_float() {
+					g.auto_str_funcs.write('*')
+				}
+			}
 			g.auto_str_funcs.write(func)
 
 			if i < info.fields.len - 1 {
@@ -376,6 +380,16 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, fi
 		mut method_str := 'it->${c_name(field_name)}'
 		if sym.kind == .bool {
 			method_str += ' ? _SLIT("true") : _SLIT("false")'
+		} else if (field_type.is_int() || field_type.is_float()) && field_type.is_ptr() {
+			// ptr int can be "nil", so this needs to be castet to a string
+			fmt := if sym.kind in [.f32, .f64] {
+				'%g\\000'
+			} else if sym.kind == .u64 {
+				'%lld\\000'
+			} else {
+				'%d\\000'
+			}
+			method_str = '_STR("$fmt", 2, *$method_str)'
 		}
 		return method_str
 	}

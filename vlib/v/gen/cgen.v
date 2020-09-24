@@ -5062,7 +5062,9 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
 
 fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if sym.kind in [.struct_, .array, .array_fixed, .map] {
+	if (typ.is_int() || typ.is_float()) && typ.is_ptr() {
+		return '%.*s\\000'
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "\'%.*s\\000\'"

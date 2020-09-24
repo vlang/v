@@ -180,3 +180,19 @@ fn test_struct_with_struct_pointer() {
 	assert '$w' == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
 	assert w.str() == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
 }
+
+fn test_struct_with_nil() {
+	w := Wrapper4{}
+	assert '$w' == 'Wrapper4 {\n    foo: &nil\n}'
+	assert w.str() == 'Wrapper4 {\n    foo: &nil\n}'
+}
+
+struct Wrapper5 {
+	foo &f32
+}
+fn test_struct_with_f32_pointer() {
+	i := f32(5.1)
+	w := Wrapper5{&i}
+	assert '$w' == 'Wrapper5 {\n    foo: &5.1\n}'
+	assert w.str() == 'Wrapper5 {\n    foo: &5.1\n}'
+}
