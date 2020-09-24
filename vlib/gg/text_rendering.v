@@ -208,7 +208,7 @@ pub fn system_font_path() string {
 
 fn get_font_path_variant(font_path string, variant FontVariant) string {
 	// TODO: find some way to make this shorter and more eye-pleasant
-	// NotoSans, DejaVuSans and SFNS should work
+	// NotoSans, LiberationSans, DejaVuSans, Arial and SFNS should work
 	mut fpath := font_path.replace('.ttf', '')
 	match variant {
 		.normal {}
@@ -217,6 +217,8 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 				fpath = fpath.replace('-Regular', '-Bold')
 			} else if fpath.starts_with('DejaVuSans') {
 				fpath += '-Bold'
+			} fpath.to_lower().starts_with('arial') {
+				fpath += 'bd'
 			} else {
 				fpath += '-bold'
 			}
@@ -226,6 +228,8 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 				fpath = fpath.replace('-Regular', '-Italic')
 			} else if fpath.starts_with('DejaVuSans') {
 				fpath += '-Oblique'
+			} else if fpath.to_lower().starts_with('arial') {
+				fpath += 'i'
 			} else {
 				fpath += 'Italic'
 			}
@@ -233,6 +237,8 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 		.mono {
 			if fpath.ends_with('-Regular') {
 				fpath = fpath.replace('-Regular', 'Mono-Regular')
+			} else if fpath.to_lower().starts_with('arial') {
+				// Arial has no mono variant
 			} else {
 				fpath += 'Mono'
 			}
