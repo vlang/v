@@ -217,7 +217,7 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 				fpath = fpath.replace('-Regular', '-Bold')
 			} else if fpath.starts_with('DejaVuSans') {
 				fpath += '-Bold'
-			} fpath.to_lower().starts_with('arial') {
+			} else if fpath.to_lower().starts_with('arial') {
 				fpath += 'bd'
 			} else {
 				fpath += '-bold'
