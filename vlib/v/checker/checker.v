@@ -2670,6 +2670,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.right_type = right_type
 			// TODO: testing ref/deref strategy
 			if node.op == .amp && !right_type.is_ptr() {
+				if node.right is ast.IntegerLiteral {
+					c.error('cannot take the address of an int', node.pos)
+				}
+				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
+					c.error('cannot take the address of a string', node.pos)
+				}
 				return right_type.to_ptr()
 			}
 			if node.op == .mul {
@@ -2678,7 +2684,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if !right_type.is_pointer() {
 					s := c.table.type_to_str(right_type)
-					c.error('prefix operator `*` not defined for type `$s`', node.pos)
+					c.error('invalid indirect of `$s`', node.pos)
 				}
 			}
 			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
