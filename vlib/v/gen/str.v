@@ -25,12 +25,16 @@ fn smart_quote(str string, raw bool) string {
 			break
 		}
 		if pos + 1 < len {
-			next = str.str[pos + 1].str()
+			unsafe {
+				next = str.str[pos + 1].str()
+			}
 		}
 		mut current := str
 		mut toadd := str
 		if len > 1 {
-			current = str.str[pos].str()
+			unsafe {
+				current = str.str[pos].str()
+			}
 			toadd = current
 		}
 		// double quote
