@@ -113,6 +113,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 				typ: table.int_type
 				pos: val_var_pos
 			})
+			if key_var_name.len > 0 {
+				p.error_with_pos('cannot declare index variable with range `for`', key_var_pos)
+			}
 		} else {
 			// this type will be set in checker
 			p.scope.register(val_var_name, ast.Var{
