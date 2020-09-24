@@ -291,7 +291,11 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if !sym.has_method('str') {
-			field_styp := g.typ(field.typ).replace('*', '')
+			mut typ := field.typ 
+			if typ.is_ptr() {
+				typ = typ.deref()
+			}
+			field_styp := g.typ(typ)
 			field_fn_name := g.gen_str_for_type_with_styp(field.typ, field_styp)
 			fnames2strfunc[field_styp] = field_fn_name
 		}
