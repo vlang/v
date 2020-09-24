@@ -213,6 +213,8 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 		.bold {
 			if fpath.ends_with('-Regular') {
 				fpath = fpath.replace('-Regular', '-Bold')
+			} else if fpath.starts_with('DejaVuSans') {
+				fpath += '-Bold'
 			} else {
 				fpath += '-bold'
 			}
@@ -220,6 +222,8 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 		.italic {
 			if fpath.ends_with('-Regular') {
 				fpath = fpath.replace('-Regular', '-Italic')
+			} else if fpath.starts_with('DejaVuSans') {
+				fpath += '-Oblique'
 			} else {
 				fpath += 'Italic'
 			}
