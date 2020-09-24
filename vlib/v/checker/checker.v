@@ -3913,6 +3913,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
+	if node.language == .v /*&& c.pref.is_vet*/ && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx && 
+		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
+		// simple heuristic
+		for st in node.stmts {
+			if st is ast.AssertStmt {
+				c.warn('tests will not be run because filename does not end with `_test.v`', node.pos)
+				break
+			}
+		}
+	}
 	c.expected_type = table.void_type
 	c.cur_fn = node
 	// Add return if `fn(...) ? {...}` have no return at end
