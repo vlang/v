@@ -207,6 +207,8 @@ pub fn system_font_path() string {
 }
 
 fn get_font_path_variant(font_path string, variant FontVariant) string {
+	// TODO: find some way to make this shorter and more eye-pleasant
+	// NotoSans, DejaVuSans and SFNS should work
 	mut fpath := font_path.replace('.ttf', '')
 	match variant {
 		.normal {}
