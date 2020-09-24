@@ -3913,7 +3913,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v /*&& c.pref.is_vet*/ && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx && 
+	// TODO c.pref.is_vet
+	if node.language == .v && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx && 
 		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
 		// simple heuristic
 		for st in node.stmts {
