@@ -2685,7 +2685,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if !right_type.is_pointer() {
 					s := c.table.type_to_str(right_type)
-					c.error('prefix operator `*` is not defined for type `$s`', node.pos)
+					c.error('prefix operator `*` not defined for type `$s`', node.pos)
 				}
 			}
 			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
