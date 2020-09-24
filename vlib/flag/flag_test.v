@@ -344,3 +344,11 @@ fn test_long_options_that_start_with_the_same_letter_as_another_short_option_bot
 	assert verbose == true
 	assert vabc == '/abc'
 }
+
+fn test_single_dash() {
+	mut fp := flag.new_flag_parser([
+		'-'
+	])
+	flag_update := fp.bool('update', `u`, false, 'Update tools')
+	assert flag_update == false
+}
