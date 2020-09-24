@@ -1986,10 +1986,11 @@ performance.
 
 ```v
 // hello.v
-fn hello() string {
+pub fn hello() string {
     return 'Hello world'
 }
-
+```
+```v
 // hello_test.v
 fn test_hello() {
     assert hello() == 'Hello world'
@@ -2006,13 +2007,15 @@ run *before* all other test functions in a `_test.v` file.
 You can also define a special test function: `testsuite_end`, which will be
 run *after* all other test functions in a `_test.v` file.
 
-To run the tests do `v hello_test.v`.
+### Running tests
 
-To test an entire module, do `v test mymodule`.
+To run the tests use `v hello_test.v`.
 
-You can also do `v test .` to test everything inside your current folder (and subdirectories).
+To test an entire module, use `v test mymodule`.
 
-You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
+You can also use `v test .` to test everything inside your current folder (and subdirectories).
+
+You can pass the `-stats` option to see more details about the individual tests run.
 
 ## Memory management
 
