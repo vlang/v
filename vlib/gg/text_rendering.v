@@ -203,18 +203,30 @@ pub fn system_font_path() string {
 }
 
 fn get_font_path_variant(font_path string, variant FontVariant) string {
-	return match variant {
-		. normal {
-			font_path
+	match variant {
+		.normal {
+			return font_path
 		}
 		.bold {
-			font_path.replace('.ttf', '-bold.ttf')
+			if font_path.ends_with('-Regular.ttf') {
+				return font_path.replace('-Regular.ttf', '-Bold.ttf')
+			} else {
+				return font_path.replace('.ttf', '-bold.ttf')
+			}
 		}
 		.italic {
-			font_path.replace('.ttf', 'Italic.ttf')
+			if font_path.ends_with('-Regular.ttf') {
+				return font_path.replace('-Regular.ttf', '-Italic.ttf')
+			} else {
+				return font_path.replace('.ttf', 'Italic.ttf')
+			}
 		}
 		.mono {
-			font_path.replace('.ttf', 'Mono.ttf')
+			if font_path.ends_with('-Regular.ttf') {
+				return font_path.replace('-Regular.ttf', 'Mono-Regular.ttf')
+			} else {
+				return font_path.replace('.ttf', 'Mono.ttf')
+			}
 		}
 	}
 }
