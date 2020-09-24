@@ -207,30 +207,30 @@ pub fn system_font_path() string {
 }
 
 fn get_font_path_variant(font_path string, variant FontVariant) string {
+	mut fpath := font_path.replace('.ttf', '')
 	match variant {
-		.normal {
-			return font_path
-		}
+		.normal {}
 		.bold {
-			if font_path.ends_with('-Regular.ttf') {
-				return font_path.replace('-Regular.ttf', '-Bold.ttf')
+			if fpath.ends_with('-Regular') {
+				fpath = fpath.replace('-Regular', '-Bold')
 			} else {
-				return font_path.replace('.ttf', '-bold.ttf')
+				fpath += '-bold'
 			}
 		}
 		.italic {
-			if font_path.ends_with('-Regular.ttf') {
-				return font_path.replace('-Regular.ttf', '-Italic.ttf')
+			if fpath.ends_with('-Regular') {
+				fpath = fpath.replace('-Regular', '-Italic')
 			} else {
-				return font_path.replace('.ttf', 'Italic.ttf')
+				fpath += 'Italic'
 			}
 		}
 		.mono {
-			if font_path.ends_with('-Regular.ttf') {
-				return font_path.replace('-Regular.ttf', 'Mono-Regular.ttf')
+			if fpath.ends_with('-Regular') {
+				fpath = fpath.replace('-Regular', 'Mono-Regular')
 			} else {
-				return font_path.replace('.ttf', 'Mono.ttf')
+				fpath += 'Mono'
 			}
 		}
 	}
+	return fpath + '.ttf'
 }
