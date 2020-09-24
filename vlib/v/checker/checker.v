@@ -2671,7 +2671,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			// TODO: testing ref/deref strategy
 			if node.op == .amp && !right_type.is_ptr() {
 				if node.right is ast.IntegerLiteral {
-					c.error('prefix operator `&` is not defined for integer literal', node.pos)
+					c.error('prefix operator `&` is not defined for integer literal',
+						node.pos)
 				}
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('prefix operator `&` is not defined for string literal', node.pos)
