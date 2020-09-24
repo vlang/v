@@ -7,6 +7,13 @@ import sokol.sgl
 import gx
 import os
 
+enum FontVariant {
+	normal = 0
+	bold
+	mono
+	italic
+}
+
 struct FT {
 pub:
 	fons &C.FONScontext
@@ -47,18 +54,17 @@ fn new_ft(c FTConfig) ?&FT{
 			return none
 		}
 	}
-
-	bold_path := 'SFNS-bold.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
+	bold_path := get_font_path_variant(c.font_path, .bold)
 	bytes_bold := os.read_bytes(bold_path) or {
 		println('failed to load font "$bold_path"')
 		bytes
 	}
-	mono_path := '/System/Library/Fonts/SFNSMono.ttf'// c.font_path.replace('.ttf', '-bold.ttf')
+	mono_path := get_font_path_variant(c.font_path, .mono)
 	bytes_mono:= os.read_bytes(mono_path) or {
 		println('failed to load font "$mono_path"')
 		bytes
 	}
-	italic_path := '/System/Library/Fonts/SFNSItalic.ttf'
+	italic_path := get_font_path_variant(c.font_path, .italic)
 	bytes_italic:= os.read_bytes(italic_path) or {
 		println('failed to load font "$italic_path"')
 		bytes
@@ -194,4 +200,21 @@ pub fn system_font_path() string {
 		}
 	}
 	panic('failed to init the font')
+}
+
+fn get_font_path_variant(font_path string, variant FontVariant) string {
+	return match variant {
+		. normal {
+			font_path
+		}
+		.bold {
+			font_path.replace('.ttf', '-bold.ttf')
+		}
+		.italic {
+			font_path.replace('.ttf', 'Italic.ttf')
+		}
+		.mono {
+			font_path.replace('.ttf', 'Mono.ttf')
+		}
+	}
 }
