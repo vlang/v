@@ -2671,8 +2671,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			// TODO: testing ref/deref strategy
 			if node.op == .amp && !right_type.is_ptr() {
 				if node.right is ast.IntegerLiteral {
-					c.error('cannot take the address of an int',
-						node.pos)
+					c.error('cannot take the address of an int', node.pos)
 				}
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
