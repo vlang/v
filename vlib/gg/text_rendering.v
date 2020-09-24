@@ -179,8 +179,12 @@ pub fn system_font_path() string {
 	mut fonts := ['Ubuntu-R.ttf', 'Arial.ttf', 'LiberationSans-Regular.ttf', 'NotoSans-Regular.ttf',
 	'FreeSans.ttf', 'DejaVuSans.ttf']
 	$if macos {
-		return '/System/Library/Fonts/SFNS.ttf'
-		//fonts = ['SFNS.ttf', 'SFNSText.ttf']
+		fonts = ['/System/Library/Fonts/SFNS.ttf', '/System/Library/Fonts/SFNSText.ttf', '/Library/Fonts/Arial.ttf']
+		for font in fonts {
+			if os.is_file(font) {
+				return font
+			}
+		}
 	}
 	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
 	system_fonts := s.output.split('\n')
