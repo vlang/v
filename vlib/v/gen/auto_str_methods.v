@@ -291,7 +291,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if !sym.has_method('str') {
-			field_styp := g.typ(field.typ)
+			field_styp := g.typ(field.typ).replace('*', '')
 			field_fn_name := g.gen_str_for_type_with_styp(field.typ, field_styp)
 			fnames2strfunc[field_styp] = field_fn_name
 		}
@@ -318,10 +318,13 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("$clean_struct_v_type_name {\\n"')
 	for field in info.fields {
-		fmt := g.type_to_fmt(field.typ)
-		g.auto_str_funcs.writeln('\t\t"%.*s\\000    ' + '$field.name: $fmt\\n"')
+		mut fmt := g.type_to_fmt(field.typ)
+		if field.typ.is_ptr() {
+			fmt = '&$fmt'
+		}
+		g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
 	}
-	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+1)}')
+	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
 	if info.fields.len > 0 {
 		g.auto_str_funcs.write(',\n\t\t')
 		for i, field in info.fields {
@@ -332,27 +335,15 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 				field_styp = field_styp.replace('*', '')
 			}
 			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
-			if sym.kind == .enum_ {
-				g.auto_str_funcs.write('indents, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)} ) ')
-			} else if sym.kind == .struct_ {
-				g.auto_str_funcs.write('indents, ')
-				if has_custom_str {
-					g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)} ) ')
-				} else {
-					g.auto_str_funcs.write('indent_${field_styp_fn_name}( it->${c_name(field.name)}, indent_count + 1 ) ')
-				}
-			} else if sym.kind in [.array, .array_fixed, .map] {
-				g.auto_str_funcs.write('indents, ')
-				g.auto_str_funcs.write('${field_styp_fn_name}( it->${c_name(field.name)}) ')
-			} else if sym.kind == .sum_type {
-				g.auto_str_funcs.write('indents, indent_${field_styp_fn_name}(it->${c_name(field.name)}, indent_count + 1)')
-			} else {
-				g.auto_str_funcs.write('indents, it->${c_name(field.name)}')
-				if field.typ == table.bool_type {
-					g.auto_str_funcs.write(' ? _SLIT("true") : _SLIT("false")')
-				}
+
+			g.auto_str_funcs.write('indents, ')
+			// struct has a special case through the _str function
+			if field.typ.is_ptr() && sym.kind != .struct_ {
+				g.auto_str_funcs.write('*')
 			}
+			func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+			g.auto_str_funcs.write(func)
+
 			if i < info.fields.len - 1 {
 				g.auto_str_funcs.write(',\n\t\t')
 			}
@@ -361,6 +352,33 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln(',')
 	g.auto_str_funcs.writeln('\t\tindents);')
 	g.auto_str_funcs.writeln('}')
+}
+
+fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, field_name string) string {
+	has_custom_str := sym.has_method('str')
+	if sym.kind == .enum_ {
+		return '${fn_name}(it->${c_name(field_name)})'
+	} else if sym.kind == .struct_ {
+		mut obj := 'it->${c_name(field_name)}'
+		if field_type.is_ptr() {
+			obj = '*$obj'
+		}
+		if has_custom_str {
+			return '${fn_name}($obj)'
+		} else {
+			return 'indent_${fn_name}($obj, indent_count + 1)'
+		}
+	} else if sym.kind in [.array, .array_fixed, .map] {
+		return '${fn_name}(it->${c_name(field_name)})'
+	} else if sym.kind == .sum_type {
+		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
+	} else {
+		mut method_str := 'it->${c_name(field_name)}'
+		if sym.kind == .bool {
+			method_str += ' ? _SLIT("true") : _SLIT("false")'
+		}
+		return method_str
+	}
 }
 
 fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {

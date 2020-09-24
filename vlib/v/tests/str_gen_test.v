@@ -139,3 +139,44 @@ fn test_fixed_array_of_strings() {
 	assert aa.str() == "['aa', 'bb', 'cc']"
 	assert '$aa' == "['aa', 'bb', 'cc']"
 }
+
+struct Wrapper {
+	foo &string
+}
+fn test_struct_with_string_pointer() {
+	s := 'test'
+	w := Wrapper{&s}
+	assert '$w' == 'Wrapper {\n    foo: &\'test\'\n}'
+	assert w.str() == 'Wrapper {\n    foo: &\'test\'\n}'
+}
+
+struct Wrapper2 {
+	foo &int
+}
+fn test_struct_with_int_pointer() {
+	i := 5
+	w := Wrapper2{&i}
+	assert '$w' == 'Wrapper2 {\n    foo: &5\n}'
+	assert w.str() == 'Wrapper2 {\n    foo: &5\n}'
+}
+
+struct Wrapper3 {
+	foo &bool
+}
+fn test_struct_with_bool_pointer() {
+	b := true
+	w := Wrapper3{&b}
+	assert '$w' == 'Wrapper3 {\n    foo: &true\n}'
+	assert w.str() == 'Wrapper3 {\n    foo: &true\n}'
+}
+
+struct Foo {}
+struct Wrapper4 {
+	foo &Foo
+}
+fn test_struct_with_struct_pointer() {
+	b := Foo{}
+	w := Wrapper4{&b}
+	assert '$w' == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
+	assert w.str() == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
+}
