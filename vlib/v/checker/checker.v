@@ -3423,12 +3423,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				.and {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
-					return l && r
+					return l || r // skip (return true) if at least one should be skipped
 				}
 				.logical_or {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
-					return l || r
+					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
 					// $if method.@type is string
