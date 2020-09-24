@@ -549,7 +549,7 @@ fn (mut app App) set_theme(idx int) {
 }
 
 fn (mut app App) resize() {
-	mut s := sapp.dpi_scale() || 1
+	mut s := if sapp.dpi_scale() == 0 { 1 } else { sapp.dpi_scale() }
 	w := int(sapp.width() / s)
 	h := int(sapp.height() / s)
 	m := f32(min(w, h))
