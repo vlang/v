@@ -126,6 +126,22 @@ fn (mut a App) line(label string, value string) {
 	a.println('$label: ${util.bold(value)}')
 }
 
+fn (app &App) parse(config, sep string) map[string]string {
+	mut m := map[string]string
+	for line in config.split_into_lines() {
+		sline := line.trim_space()
+		if sline.len == 0 || sline[0] == `#` {
+			continue
+		}
+		x := sline.split(sep)
+		if x.len < 2 {
+			continue
+		}
+		m[x[0].trim_space().to_lower()] = x[1].trim_space().trim('"')
+	}
+	return m
+}
+
 fn (mut a App) get_linux_os_name() string {
 	mut os_details := ''
 	linux_os_methods := ['os-release', 'lsb_release', 'kernel', 'uname']
@@ -135,27 +151,10 @@ fn (mut a App) get_linux_os_name() string {
 				if !os.is_file('/etc/os-release') {
 					continue
 				}
-				lines := os.read_lines('/etc/os-release') or {
-					continue
-				}
-				mut vals := map[string]string
-				for line in lines {
-					sline := line.trim(' ')
-					if sline.len == 0 {
-						continue
-					}
-					if sline[0] == `#` {
-						continue
-					}
-					x := sline.split('=')
-					if x.len < 2 {
-						continue
-					}
-					vals[x[0]] = x[1].trim('"')
-				}
-				if vals['PRETTY_NAME'] == '' {
-					continue
-				}
+				lines := os.read_file('/etc/os-release') or { continue }
+				vals := a.parse(lines, '=')
+
+				if vals['PRETTY_NAME'] == '' { continue }
 				os_details = vals['PRETTY_NAME']
 				break
 			}
@@ -191,19 +190,7 @@ fn (mut a App) cpu_info() map[string]string {
 	}
 
 	info := os.exec('cat /proc/cpuinfo') or { return a.cached_cpuinfo }
-	mut vals := map[string]string
-	for line in info.output.split_into_lines() {
-		sline := line.trim(' ')
-		if sline.len < 1 || sline[0] == `#`{
-			continue
-		}
-		x := sline.split(':')
-		if x.len < 2 {
-			continue
-		}
-		vals[x[0].trim_space().to_lower()] = x[1].trim_space().trim('"')
-	}
-
+	vals := a.parse(info.output, ':')
 	a.cached_cpuinfo = vals
 	return vals
 }
