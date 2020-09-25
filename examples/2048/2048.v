@@ -553,12 +553,6 @@ fn (mut app App) set_theme(idx int) {
 	app.gg.set_bg_color(theme.bg_color)
 }
 
-[inline]
-fn (mut app App) set_state(s GameState) {
-	println('$app.state -> $s')
-	app.state = s
-}
-
 fn (mut app App) resize() {
 	mut s := sapp.dpi_scale()
 	if s == 0.0 { s = 1.0 }
@@ -692,11 +686,8 @@ fn (mut app App) handle_tap() {
 	s, e := app.touch.start, app.touch.end
 	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
 
-
 	// TODO: Replace "touch spots" with actual buttons
 	// bottom left -> change theme
-	println('($avgx, $avgy) | ')
-
 	if avgx < 200 && h - avgy < 200 { app.next_theme() }
 	// bottom right -> change tile format
 	if w - avgx < 200 && h - avgy < 200 { app.next_tile_format() }
@@ -733,8 +724,6 @@ fn (mut app App) handle_swipe() {
 
 	// TODO: make this calculation more accurate (don't use arbitrary numbers)
 	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 60)) + 20
-
-	println('$tdiff | $dmax -> $min_swipe_distance')
 
 	if dmax < min_swipe_distance { return } // Swipe was too short
 	if dmax / dmin < 2 { return } // Swiped diagonally
