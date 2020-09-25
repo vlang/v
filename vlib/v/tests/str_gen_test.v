@@ -177,8 +177,8 @@ struct Wrapper4 {
 fn test_struct_with_struct_pointer() {
 	b := Foo{}
 	w := Wrapper4{&b}
-	assert '$w' == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
-	assert w.str() == 'Wrapper4 {\n    foo: &Foo {\n    }\n}'
+	assert '$w' == 'Wrapper4 {\n    foo: &Foo { }\n}'
+	assert w.str() == 'Wrapper4 {\n    foo: &Foo { }\n}'
 }
 
 fn test_struct_with_nil() {
