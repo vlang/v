@@ -3914,12 +3914,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	// TODO c.pref.is_vet
-	if node.language == .v && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx && 
+	if node.language == .v && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx &&
 		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
 		// simple heuristic
 		for st in node.stmts {
 			if st is ast.AssertStmt {
-				c.warn('tests will not be run because filename does not end with `_test.v`', node.pos)
+				c.warn('tests will not be run because filename does not end with `_test.v`',
+					node.pos)
 				break
 			}
 		}
