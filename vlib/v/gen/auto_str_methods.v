@@ -320,45 +320,49 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\treturn _STR("$clean_struct_v_type_name {\\n"')
-	for field in info.fields {
-		mut fmt := g.type_to_fmt(field.typ)
-		if field.typ.is_ptr() {
-			fmt = '&$fmt'
-		}
-		g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
-	}
-	g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
-	if info.fields.len > 0 {
-		g.auto_str_funcs.write(',\n\t\t')
-		for i, field in info.fields {
-			sym := g.table.get_type_symbol(field.typ)
-			has_custom_str := sym.has_method('str')
-			mut field_styp := g.typ(field.typ)
-			if field_styp.ends_with('*') {
-				field_styp = field_styp.replace('*', '')
-			}
-			field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
-
-			g.auto_str_funcs.write('indents, ')
-			func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+	if info.fields.len == 0 {
+		g.auto_str_funcs.write('\treturn tos_lit("$clean_struct_v_type_name { }");')
+	} else {
+		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name {\\n"')
+		for field in info.fields {
+			mut fmt := g.type_to_fmt(field.typ)
 			if field.typ.is_ptr() {
-				g.auto_str_funcs.write('isnil(it->${c_name(field.name)})')
-				g.auto_str_funcs.write(' ? tos_lit("nil") : ')
-				// struct, floats and ints have a special case through the _str function
-				if sym.kind != .struct_ && !field.typ.is_int() && !field.typ.is_float() {
-					g.auto_str_funcs.write('*')
+				fmt = '&$fmt'
+			}
+			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
+		}
+		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
+		if info.fields.len > 0 {
+			g.auto_str_funcs.write(',\n\t\t')
+			for i, field in info.fields {
+				sym := g.table.get_type_symbol(field.typ)
+				has_custom_str := sym.has_method('str')
+				mut field_styp := g.typ(field.typ)
+				if field_styp.ends_with('*') {
+					field_styp = field_styp.replace('*', '')
+				}
+				field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
+
+				g.auto_str_funcs.write('indents, ')
+				func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
+				if field.typ.is_ptr() {
+					g.auto_str_funcs.write('isnil(it->${c_name(field.name)})')
+					g.auto_str_funcs.write(' ? tos_lit("nil") : ')
+					// struct, floats and ints have a special case through the _str function
+					if sym.kind != .struct_ && !field.typ.is_int() && !field.typ.is_float() {
+						g.auto_str_funcs.write('*')
+					}
+				}
+				g.auto_str_funcs.write(func)
+
+				if i < info.fields.len - 1 {
+					g.auto_str_funcs.write(',\n\t\t')
 				}
 			}
-			g.auto_str_funcs.write(func)
-
-			if i < info.fields.len - 1 {
-				g.auto_str_funcs.write(',\n\t\t')
-			}
 		}
+		g.auto_str_funcs.writeln(',')
+		g.auto_str_funcs.writeln('\t\tindents);')
 	}
-	g.auto_str_funcs.writeln(',')
-	g.auto_str_funcs.writeln('\t\tindents);')
 	g.auto_str_funcs.writeln('}')
 }
 
