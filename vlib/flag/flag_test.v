@@ -352,3 +352,13 @@ fn test_single_dash() {
 	flag_update := fp.bool('update', `u`, false, 'Update tools')
 	assert flag_update == false
 }
+
+fn test_optional_flags() {
+	mut fp := flag.new_flag_parser(['-a', '10', '-b'])
+	a := fp.int_opt('some-flag', `a`, '') or {
+		assert false
+		return
+	}
+	b := fp.string_opt('another-flag', `b`, '') or { 'some_default_value' }
+	assert b == 'some_default_value'
+}

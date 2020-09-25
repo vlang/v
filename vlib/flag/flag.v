@@ -113,13 +113,13 @@ fn (mut fs FlagParser) parse_value(longhand string, shorthand byte) []string {
 		}
 		if (arg.len == 2 && arg[0] == `-` && arg[1] == shorthand ) || arg == full {
 			if i+1 >= fs.args.len {
-				panic("Missing argument for '$longhand'")
+				return []
 			}
 			nextarg := fs.args[i+1]
 			if nextarg.len > 2 && nextarg[..2] == '--' {
 				//It could be end of input (--) or another argument (--abc).
 				//Both are invalid so die.
-				panic("Missing argument for '$longhand'")
+				return []
 			}
 			found_entries << fs.args[i+1]
 			to_delete << i
