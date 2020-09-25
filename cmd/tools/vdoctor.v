@@ -95,7 +95,7 @@ fn (mut a App) collect_info() {
 	}
 	a.println('')
 	a.line('Git version', a.cmd(command:'git --version'))
-	a.line('Git vroot status', a.cmd(command:'git -C . describe --abbrev=8 --dirty --always --tags'))
+	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	//
 	if os_kind == 'linux' {
@@ -193,6 +193,15 @@ fn (mut a App) cpu_info() map[string]string {
 	vals := a.parse(info.output, ':')
 	a.cached_cpuinfo = vals
 	return vals
+}
+
+fn (mut a App) git_info() string {
+	mut out := a.cmd(command:'git -C . describe --abbrev=8 --dirty --always --tags').trim_space()
+	os.exec('git -C . remote add V_REPO https://github.com/vlang/v') or {} // ignore failure (i.e. remote exists)
+	os.exec('git -C . fetch V_REPO') or {}
+	commit_count := a.cmd(command:'git rev-list @{0}...V_REPO/master --right-only --count').int()
+	if commit_count > 0 { out += ' ($commit_count commit(s) behind V master)' }
+	return out
 }
 
 fn (mut a App) report_tcc_version(tccfolder string) {
