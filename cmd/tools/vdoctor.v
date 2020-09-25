@@ -67,7 +67,10 @@ fn (mut a App) collect_info() {
 		details << a.cmd(command: 'sw_vers -buildVersion')
 		os_details = details.join(', ')
 	} else if os_kind == 'windows' {
-		os_details = a.cmd(command:'wmic os get name, buildnumber, osarchitecture', line: 1)
+		wmic_info := a.cmd(command:'wmic os get * /format:value', line: -1)
+		p := a.parse(wmic_info, '=')
+		caption, build_number, os_arch := p['caption'], p['buildnumber'], p['osarchitecture']
+		os_details = '$caption v$build_number $os_arch'
 	} else {
 		ouname := os.uname()
 		os_details = '$ouname.release, $ouname.version'
@@ -114,6 +117,7 @@ fn (mut a App) cmd(c CmdConfig) string {
 		return 'N/A'
 	}
 	if x.exit_code == 0 {
+		if c.line < 0 { return x.output }
 		output := x.output.split_into_lines()
 		if output.len > 0 && output.len > c.line {
 			return output[c.line]
