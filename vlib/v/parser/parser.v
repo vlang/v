@@ -1802,9 +1802,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			decl_pos)
 	}
 	mut sum_variants := []table.Type{}
-	if p.tok.kind == .assign {
-		p.next() // TODO require `=`
-	}
+	p.check(.assign)
 	if p.tok.kind == .key_fn {
 		// function type: `type mycallback fn(string, int)`
 		fn_name := p.prepend_mod(name)

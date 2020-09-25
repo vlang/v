@@ -13,9 +13,9 @@ Float =
 	f64
 
  // Alias type
-     type  MyInt    int
+     type  MyInt  =  int
 
- pub type Abc f32
+ pub type Abc = f32
 
 
 // Fn type decl

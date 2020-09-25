@@ -652,7 +652,7 @@ However, you _can_ redeclare a type.
 ```v
 import time
 
-type MyTime time.Time
+type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
     return 1 + t.year % 100
@@ -2220,7 +2220,7 @@ surrounding code).
 struct C.sqlite3{}
 struct C.sqlite3_stmt{}
 
-type FnSqlite3Callback fn(voidptr, int, &charptr, &charptr) int
+type FnSqlite3Callback = fn(voidptr, int, &charptr, &charptr) int
 
 fn C.sqlite3_open(charptr, &&C.sqlite3) int
 fn C.sqlite3_close(&C.sqlite3) int
@@ -2403,7 +2403,7 @@ $if option ? {
 }
 ```
 
-If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. 
+If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign.
 Right now it can be used to detect an OS, compiler, platform or compilation options.
 `$if debug` is a special option like `$if windows` or `$if x32`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.

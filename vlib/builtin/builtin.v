@@ -6,7 +6,7 @@ module builtin
 __global g_m2_buf byteptr
 __global g_m2_ptr byteptr
 
-type FnExitCb fn()
+type FnExitCb = fn()
 fn C.atexit(f FnExitCb) int
 
 pub fn exit(code int) {
@@ -71,8 +71,8 @@ pub fn eprintln(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
-	C.write(2, c'\n', 1)	
+	C.write(2, s.str, s.len)
+	C.write(2, c'\n', 1)
 	C.fflush(C.stderr)
 }
 
@@ -82,12 +82,12 @@ pub fn eprint(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
+	C.write(2, s.str, s.len)
 	C.fflush(C.stderr)
 }
 
 pub fn print(s string) {
-	C.write(1, s.str, s.len)	
+	C.write(1, s.str, s.len)
 }
 
 const (
