@@ -100,7 +100,7 @@ pub fn now() Time {
 	$if solaris {
 		return solaris_now()
 	}
-	$if linux {
+	$if linux || android {
 		return linux_now()
 	}
 	// defaults to most common feature, the microsecond precision is not available
@@ -121,7 +121,7 @@ pub fn utc() Time {
 	$if solaris {
 		return solaris_utc()
 	}
-	$if linux {
+	$if linux || android {
 		return linux_utc()
 	}
 	// defaults to most common feature, the microsecond precision is not available
