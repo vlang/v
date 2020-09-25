@@ -360,7 +360,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 }
 
 // A lot of these are taken from the Go library
-pub type Duration i64
+pub type Duration = i64
 
 pub const(
 	nanosecond  = Duration(1)

@@ -91,7 +91,7 @@ fn test_cmp() {
 	assert 1 ⩾ 0
 }
 */
-type MyInt int
+type MyInt = int
 
 fn test_int_alias() {
 	i := MyInt(2)
@@ -168,7 +168,7 @@ fn test_num_separator() {
 	// f32 or f64
 	assert 312_2.55 == 3122.55
 	assert 312_2.55 == 3122.55
-	
+
 }
 
 fn test_int_decl() {

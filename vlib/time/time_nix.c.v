@@ -31,7 +31,7 @@ fn to_local_time(t Time) Time {
 	return convert_ctime(loc_tm, t.microsecond)
 }
 
-type time_t voidptr
+type time_t = voidptr
 
 // in most systems, these are __quad_t, which is an i64
 struct C.timespec {

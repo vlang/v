@@ -199,7 +199,7 @@ pub:
 	context_record &ContextRecord
 }
 
-type VectoredExceptionHandler fn(&ExceptionPointers)u32
+type VectoredExceptionHandler = fn(&ExceptionPointers)u32
 
 fn C.AddVectoredExceptionHandler(u32, C.PVECTORED_EXCEPTION_HANDLER)
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
