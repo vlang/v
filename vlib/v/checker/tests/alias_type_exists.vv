@@ -1,4 +1,4 @@
-type Pigeon Bird
+type Pigeon = Bird
 
 fn main() {
 

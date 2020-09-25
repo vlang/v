@@ -9,9 +9,9 @@ import time
 // was discussed. Needs consideration.
 
 // Mutex HANDLE
-type MHANDLE voidptr
+type MHANDLE = voidptr
 // Semaphore HANDLE
-type SHANDLE voidptr
+type SHANDLE = voidptr
 
 //[init_with=new_mutex] // TODO: implement support for this struct attribute, and disallow Mutex{} from outside the sync.new_mutex() function.
 

@@ -230,7 +230,7 @@ fn simple_log(txt string) {
 * Token Structs
 *
 ******************************************************************************/
-pub type FnValidator fn (byte) bool
+pub type FnValidator = fn (byte) bool
 struct Token{
 mut:
 	ist rune
@@ -293,7 +293,7 @@ mut:
 	group_stack_index int = -1  // continuous save on capturing groups
 }
 
-pub type FnLog fn (string)
+pub type FnLog = fn (string)
 
 pub
 struct RE {
