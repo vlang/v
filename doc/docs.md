@@ -610,7 +610,7 @@ For information about creating a module, see [Modules](#modules)
 
 ### Importing a module
 
-Modules can be imported using keyword `import`.
+Modules can be imported using the `import` keyword.
 
 ```v
 import os
@@ -1380,14 +1380,15 @@ fn print_backtrace()
 
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
-To create a new module, create a directory with your module's name and
+To create a new module, create a directory with your module's name containing
 .v files with code:
 
-```v
+```
 cd ~/code/modules
 mkdir mymodule
 vim mymodule/myfile.v
-
+```
+```v
 // myfile.v
 module mymodule
 
@@ -1397,13 +1398,9 @@ pub fn say_hi() {
 }
 ```
 
-You can have as many .v files in `mymodule/` as you want.
-
-That's it, you can now use it in your code:
+You can now use `mymodule` in your code:
 
 ```v
-module main
-
 import mymodule
 
 fn main() {
@@ -1411,20 +1408,23 @@ fn main() {
 }
 ```
 
-Note that you have to specify the module every time you call an external function.
+Note that you have to specify the module prefix every time you call an external function.
 This may seem verbose at first, but it makes code much more readable
-and easier to understand, since it's always clear which function from
-which module is being called. Especially in large code bases.
+and easier to understand - it's always clear which function from
+which module is being called. This is especially useful in large code bases.
 
-Module names should be short, under 10 characters. Circular imports are not allowed.
+* Module names should be short, under 10 characters.
+* Circular imports are not allowed.
+* You can have as many .v files in a module as you want.
+* You can create modules anywhere.
+* All modules are compiled statically into a single executable.
 
-You can create modules anywhere.
+See also: [Module imports](#module-imports).
 
-All modules are compiled statically into a single executable.
+### `init` functions
 
-If you want to write a module that will automatically call some
-setup/initialization code when imported (perhaps you want to call
-some C library functions), write a module `init` function inside the module:
+If you want a module to automatically call some setup/initialization code when it is imported, 
+you can use a module `init` function:
 
 ```v
 fn init() {
@@ -1432,7 +1432,8 @@ fn init() {
 }
 ```
 
-The init function cannot be public. It will be called automatically.
+The `init` function cannot be public - it will be called automatically. This feature is 
+particularly useful for initializing a C library.
 
 ## Types 2
 
