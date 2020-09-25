@@ -1984,6 +1984,21 @@ performance.
 
 ## Testing
 
+### Asserts
+
+```v 
+mut v := 2 
+foo(mut v)
+assert v < 4 
+``` 
+An `assert` statement checks that its expression evaluates to `true`. If an assert fails, 
+the program will abort. Asserts should only be used to detect programming errors. When an
+assert fails it is reported to *stderr*, and the values on each side of a comparison operator 
+(such as `<`, `==`) will be printed when possible. This is useful to easily find an 
+unexpected value. Assert statements can be used in any function.
+
+### Test files
+
 ```v
 // hello.v
 pub fn hello() string {
@@ -1996,26 +2011,25 @@ fn test_hello() {
     assert hello() == 'Hello world'
 }
 ```
+To run the test above, use `v hello_test.v`. This will check that the function `hello` is 
+producing the correct output. V executes all test functions in the file. 
 
-The `assert` keyword can be used outside of tests as well.
+* All test functions have to be inside a test file whose name ends in `_test.v`.
+* Test function names must begin with `test_` to mark them for execution.
+* Normal functions can also be defined in test files, and should be called manually. Other
+  symbols can also be defined in test files e.g. types.
 
-All test functions have to be placed in files named `<some name>_test.v` and test function names must begin with `test_`.
+You can also define special test functions in a test file:
+* `testsuite_begin` which will be run *before* all other test functions.
+* `testsuite_end` which will be run *after* all other test functions.
 
-You can also define a special test function: `testsuite_begin`, which will be
-run *before* all other test functions in a `_test.v` file.
+#### Running tests
 
-You can also define a special test function: `testsuite_end`, which will be
-run *after* all other test functions in a `_test.v` file.
+To run test functions in an individual test file, use `v foo_test.v`.
 
-### Running tests
-
-To run the tests use `v hello_test.v`.
-
-To test an entire module, use `v test mymodule`.
-
-You can also use `v test .` to test everything inside your current folder (and subdirectories).
-
-You can pass the `-stats` option to see more details about the individual tests run.
+To test an entire module, use `v test mymodule`. You can also use `v test .` to test 
+everything inside your current folder (and subfolders). You can pass the `-stats` 
+option to see more details about the individual tests run.
 
 ## Memory management
 
