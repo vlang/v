@@ -56,17 +56,17 @@ fn new_ft(c FTConfig) ?&FT{
 	}
 	bold_path := get_font_path_variant(c.font_path, .bold)
 	bytes_bold := os.read_bytes(bold_path) or {
-		println('failed to load font "$bold_path"')
+		debug_font_println('failed to load font "$bold_path"')
 		bytes
 	}
 	mono_path := get_font_path_variant(c.font_path, .mono)
 	bytes_mono:= os.read_bytes(mono_path) or {
-		println('failed to load font "$mono_path"')
+		debug_font_println('failed to load font "$mono_path"')
 		bytes
 	}
 	italic_path := get_font_path_variant(c.font_path, .italic)
 	bytes_italic:= os.read_bytes(italic_path) or {
-		println('failed to load font "$italic_path"')
+		debug_font_println('failed to load font "$italic_path"')
 		bytes
 	}
 	fons := sfons.create(512, 512, 1)
@@ -80,7 +80,6 @@ fn new_ft(c FTConfig) ?&FT{
 	}
 
 }
-
 fn (ctx &Context) set_cfg(cfg gx.TextCfg) {
 	if !ctx.font_inited {
 		return
@@ -245,4 +244,10 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 		}
 	}
 	return fpath + '.ttf'
+}
+
+fn debug_font_println(s string) {
+	$if debug_font? {
+		println(s)    
+	}
 }
