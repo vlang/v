@@ -3,6 +3,7 @@ module input
 import os
 
 pub enum TerminalEvent {
+	unknown
 	mouse_down
 	mouse_up
 	mouse_move
@@ -11,7 +12,7 @@ pub enum TerminalEvent {
 	// The rest are unimplemented
 	key_down
 	key_up
-	unknown
+	empty // There was nothing in stdin
 }
 
 pub enum Direction {
@@ -68,7 +69,7 @@ pub fn read() (TerminalEvent, EventData) {
 	} else if split[0] == '64' {
 		return TerminalEvent.mouse_scroll, EventData{ x: x, y: y, direction: .up }
 	} else if split[0] == '65' {
-		return TerminalEvent.mouse_scroll, EventData{ x: x, y: y, direction: .up }
+		return TerminalEvent.mouse_scroll, EventData{ x: x, y: y, direction: .down }
 	}
 
 	return TerminalEvent.unknown, EventData{}
