@@ -1955,6 +1955,9 @@ fn caller() {
 ```v
 import json
 
+struct Foo {
+	x int
+}
 struct User {
     name string
     age  int
@@ -1974,6 +1977,12 @@ user := json.decode(User, data) or {
 println(user.name)
 println(user.last_name)
 println(user.age)
+
+// You can also decode JSON arrays:
+sfoos := '[{"x":123},{"x":456}]'
+foos := json.decode([]Foo, sfoos)?
+println(foos[0].x)
+println(foos[1].x)
 ```
 
 Because of the ubiquitous nature of JSON, support for it is built directly into V.
