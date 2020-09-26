@@ -313,21 +313,19 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
-				mut should_continue := false
-				for flag_with_param in list_of_flags_with_param {
-					if '-$flag_with_param' == arg {
-						should_continue = true
+				if arg[0] == `-` {
+					if arg[1..] in list_of_flags_with_param {
 						i++
-						break
+						continue
 					}
-				}
-				if should_continue {
-					continue
-				}
-				if !arg.starts_with('-') && command == '' {
+				} else if command == '' {
 					command = arg
 					command_pos = i
+					continue
 				}
+				eprint('Unknown argument `$arg`')
+				eprintln(if command.len == 0 {''} else {' for command `$command`'})
+				exit(1)
 			}
 		}
 	}
