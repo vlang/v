@@ -58,6 +58,7 @@ pub fn new_test_session(_vargs string) TestSession {
 }
 
 pub fn (mut ts TestSession) init() {
+	ts.files.sort()
 	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
