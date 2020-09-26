@@ -325,9 +325,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						i++
 						continue
 					}
-				} else if command == '' {
-					command = arg
-					command_pos = i
+				} else {
+					if command == '' {
+						command = arg
+						command_pos = i
+					}
 					continue
 				}
 				if arg in ['-V', '-version', '--version'] {
