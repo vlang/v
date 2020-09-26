@@ -75,21 +75,6 @@ pub fn read() (TerminalEvent, EventData) {
 	return TerminalEvent.unknown, EventData{}
 }
 
-fn range(start, stop int) []int {
-	mut arr := []int{ cap: stop - start }
-	for i in 0..stop-start { arr << i + start }
-	return arr
-}
-
-pub struct SetupCfg {
-	reset []int = range(1, 33)
-}
-pub fn setup(cfg SetupCfg) {
-	setup_console()
-	C.atexit(reset_console)
-	for code in cfg.reset { os.signal(code, fn() { reset_console() exit(0) }) }
-}
-
 #include <termios.h>
 
 fn C.tcgetattr()
@@ -123,4 +108,18 @@ fn reset_console() {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 
 	println('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J')
+}
+
+fn range(start, stop int) []int {
+	mut arr := []int{ cap: stop - start }
+	for i in 0..stop-start { arr << i + start }
+	return arr
+}
+pub struct SetupCfg {
+	reset []int = range(1, 33)
+}
+pub fn setup(cfg SetupCfg) {
+	setup_console()
+	C.atexit(reset_console)
+	for code in cfg.reset { os.signal(code, fn() { reset_console() exit(0) }) }
 }
