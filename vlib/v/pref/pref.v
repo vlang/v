@@ -147,7 +147,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.only_check_syntax = true
 			}
 			'-v' {
-				res.is_verbose = true
+				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
+				if args.len > 1 {
+					res.is_verbose = true
+				} else {
+					command = 'version'
+					command_pos = i
+				}
 			}
 			'-silent' {
 				res.output_mode = .silent
@@ -315,11 +321,17 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			else {
 				if arg[0] == `-` {
 					if arg[1..] in list_of_flags_with_param {
+						// skip parameter
 						i++
 						continue
 					}
 				} else if command == '' {
 					command = arg
+					command_pos = i
+					continue
+				}
+				if arg in ['-V', '-version', '--version'] {
+					command = 'version'
 					command_pos = i
 					continue
 				}
