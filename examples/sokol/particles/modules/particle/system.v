@@ -46,12 +46,12 @@ pub fn (s System) draw() {
 }
 
 pub fn (mut s System) reset() {
-	for i in 0..s.pool.len {
+	for i in 0 .. s.pool.len {
 		mut p := s.pool[i]
 		p.reset()
 		p.life_time = 0
 	}
-	for i in 0..s.bin.len {
+	for i in 0 .. s.bin.len {
 		mut p := s.pool[i]
 		p.reset()
 		p.life_time = 0
@@ -82,9 +82,7 @@ pub fn (mut s System) free() {
 			print(ptr_str(p) + ' ouch')
 			continue
 		}
-		unsafe {
-			free(p)
-		}
+		unsafe {free(p)}
 	}
 	s.pool.clear()
 	for p in s.bin {
