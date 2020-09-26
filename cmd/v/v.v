@@ -35,10 +35,6 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(args_and_flags)
-	if command == 'version' {
-		println(util.full_v_version(prefs.is_verbose))
-		return
-	}
 	if prefs.is_verbose {
 		// println('args= ')
 		// println(args) // QTODO

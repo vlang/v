@@ -337,6 +337,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
+				if command !in ['', 'run', 'build', 'build-module'] {
+					// arguments for e.g. fmt are checked elsewhere
+					continue
+				}
 				eprint('Unknown argument `$arg`')
 				eprintln(if command.len == 0 {''} else {' for command `$command`'})
 				exit(1)
