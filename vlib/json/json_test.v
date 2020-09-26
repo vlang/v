@@ -218,7 +218,7 @@ fn test_nested_type() {
 			assert data2.countries[i].cities[j].name == data.countries[i].cities[j].name
 		}
 	}
-	
+
 	for key, user in data.users {
 		assert data2.users[key].age == user.age
 		assert data2.users[key].nums == user.nums
@@ -233,6 +233,25 @@ fn test_nested_type() {
 			assert data2.extra[k][k2] == v2
 		}
 	}
+}
+
+struct Foo<T> {
+pub:
+	name string
+	data T
+}
+
+fn test_generic_struct() {
+	foo_int := Foo<int>{'bar', 12}
+	foo_enc := json.encode(foo_int)
+	assert foo_enc == '{"name":"bar","data":12}'
+
+	foo_dec := json.decode(Foo<int>, foo_enc) or {
+		exit(1)
+	}
+
+	assert foo_dec.name == 'bar'
+	assert foo_dec.data == 12
 }
 
 fn test_errors() {
