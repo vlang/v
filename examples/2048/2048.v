@@ -1,5 +1,6 @@
 import gg
 import gx
+import math
 import os
 import rand
 import sokol.sapp
@@ -13,7 +14,7 @@ mut:
 	theme         &Theme = themes[0]
 	theme_idx     int
 	board         Board
-	undo          []Board
+	undo          []Undo
 	atickers      [4][4]int
 	state         GameState = .play
 	tile_format   TileFormat = .normal
@@ -24,6 +25,7 @@ mut:
 
 struct Ui {
 mut:
+	dpi_scale     f32
 	tile_size     int
 	border_size   int
 	padding_size  int
@@ -141,6 +143,11 @@ mut:
 	shifts int
 }
 
+struct Undo {
+	board Board
+	state GameState
+}
+
 struct TileLine {
 	ypos   int
 mut:
@@ -151,7 +158,14 @@ mut:
 
 struct TouchInfo {
 mut:
-	start_pos Pos
+	start Touch
+	end   Touch
+}
+
+struct Touch {
+mut:
+	pos  Pos
+	time time.Time
 }
 
 enum TileFormat {
@@ -167,6 +181,7 @@ enum GameState {
 	play
 	over
 	victory
+	freeplay
 }
 
 enum LabelKind {
@@ -185,7 +200,7 @@ enum Direction {
 	right
 }
 
-// Utility functions, to avoid importing `math`
+// Utility functions
 [inline]
 fn min(a, b int) int {
 	if a < b { return a } else { return b }
@@ -199,6 +214,11 @@ fn max(a, b int) int {
 [inline]
 fn abs(a int) int {
 	if a < 0 { return -a } else { return a }
+}
+
+[inline]
+fn avg(a, b int) int {
+	return (a + b) / 2
 }
 
 fn (b Board) transpose() Board {
@@ -343,27 +363,29 @@ fn (mut app App) new_game() {
 		}
 	}
 	app.state = .play
-	app.undo = []Board{cap:4096}
+	app.undo = []Undo{cap:4096}
 	app.moves = 0
 	app.new_random_tile()
 	app.new_random_tile()
 }
 
+[inline]
 fn (mut app App) check_for_victory() {
 	for y in 0..4 {
 		for x in 0..4 {
 			fidx := app.board.field[y][x]
 			if fidx == 11 {
-				app.victory()
+				app.state = .victory
 				return
 			}
 		}
 	}
 }
 
+[inline]
 fn (mut app App) check_for_game_over() {
 	if app.board.is_game_over() {
-		app.game_over()
+		app.state = .over
 	}
 }
 
@@ -403,23 +425,15 @@ fn (mut app App) new_random_tile() {
 	if random_value > 0 {
 		app.atickers[empty_pos.y][empty_pos.x] = animation_length
 	}
-	app.check_for_victory()
+	if app.state != .freeplay { app.check_for_victory() } 
 	app.check_for_game_over()
-}
-
-fn (mut app App) victory() {
-	app.state = .victory
-}
-
-fn (mut app App) game_over() {
-	app.state = .over
 }
 
 fn (mut app App) apply_new_board(new Board) {
 	old := app.board
 	app.moves++
 	app.board = new
-	app.undo << old
+	app.undo << Undo{ old, app.state }
 	app.new_random_tile()
 }
 
@@ -439,11 +453,11 @@ mut:
 }
 
 fn (p Prediction) str() string {
-	return 'Prediction{move: ${p.move:5} | mpoints: ${p.mpoints:6.2f} | mcmoves: ${p.mcmoves:6.2f}}'
+	return '{ move: ${p.move:5}, mpoints: ${p.mpoints:6.2f}, mcmoves: ${p.mcmoves:6.2f} }'
 }
+
 fn (mut app App) ai_move() {
 	mut predictions := [4]Prediction{}
-	mut nboard := app.board
 	mut is_valid := false
 	think_watch := time.new_stopwatch({})
 	for move in possible_moves {
@@ -452,60 +466,50 @@ fn (mut app App) ai_move() {
 		mut mpoints := 0
 		mut mshifts := 0
 		mut mcmoves := 0
-		for i := 0; i < predictions_per_move; i++ {
+		for _ in 0..predictions_per_move {
 			mut cboard := app.board
 			cboard, is_valid = cboard.move(move)
-			if !is_valid {
-				continue
-			}
-			if cboard.is_game_over() {
-				continue
-			}
+			if !is_valid || cboard.is_game_over() { continue }
 			mpoints += cboard.points
 			cboard.place_random_tile()
 			mut cmoves := 0
 			for !cboard.is_game_over() {
 				nmove := possible_moves[rand.intn(possible_moves.len)]
-				nboard, is_valid = cboard.move(nmove)
-				if !is_valid {
-					continue
-				}
-				cboard = nboard
+				cboard, is_valid = cboard.move(nmove)
+				if !is_valid { continue }
 				cboard.place_random_tile()
 				cmoves++
-				if cmoves > prediction_depth {
-					break
-				}
+				if cmoves > prediction_depth { break }
 			}
 			mpoints += cboard.points
 			mshifts += cboard.shifts
 			mcmoves += cmoves
 		}
-		predictions[move_idx].mpoints = f64(mpoints)/predictions_per_move
-		predictions[move_idx].mcmoves = f64(mcmoves)/predictions_per_move
+		predictions[move_idx].mpoints = f64(mpoints) / predictions_per_move
+		predictions[move_idx].mcmoves = f64(mcmoves) / predictions_per_move
 	}
-	think_time := think_watch.elapsed().microseconds()
+	think_time := think_watch.elapsed().milliseconds()
 	mut bestprediction := Prediction{mpoints:-1}
 	for move_idx in 0..possible_moves.len {
 		if bestprediction.mpoints < predictions[move_idx].mpoints {
 			bestprediction = predictions[move_idx]
 		}
 	}
-	eprintln('Simulation time: ${think_time:6}µs |  best $bestprediction')
-	app.move( bestprediction.move )
+	eprintln('Simulation time: ${think_time:4}ms |  best $bestprediction')
+	app.move(bestprediction.move)
 }
 
 fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 	match kind {
 		.points {
 			return {
-				color: app.theme.text_color
+				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .left
 				size: app.ui.font_size / 2
 			}
 		} .moves {
 			return {
-				color: app.theme.text_color
+				color: if app.state in [.over, .victory] { gx.white } else { app.theme.text_color }
 				align: .right
 				size: app.ui.font_size / 2
 			}
@@ -532,15 +536,16 @@ fn (app &App) label_format(kind LabelKind) gx.TextCfg {
 			}
 		} .score_end {
 			return {
-				color: app.theme.padding_color
+				color: gx.white
 				align: .center
 				vertical_align: .middle
-				size: app.ui.font_size
+				size: app.ui.font_size * 3 / 4
 			}
 		}
 	}
 }
 
+[inline]
 fn (mut app App) set_theme(idx int) {
 	theme := themes[idx]
 	app.theme_idx = idx
@@ -549,11 +554,13 @@ fn (mut app App) set_theme(idx int) {
 }
 
 fn (mut app App) resize() {
-	mut s := if sapp.dpi_scale() == 0 { 1 } else { sapp.dpi_scale() }
+	mut s := sapp.dpi_scale()
+	if s == 0.0 { s = 1.0 }
 	w := int(sapp.width() / s)
 	h := int(sapp.height() / s)
 	m := f32(min(w, h))
 
+	app.ui.dpi_scale = s
 	app.ui.window_width = w
 	app.ui.window_height = h
 	app.ui.padding_size = int(m / 38)
@@ -574,26 +581,38 @@ fn (mut app App) resize() {
 }
 
 fn (app &App) draw() {
+	xpad, ypad := app.ui.x_padding, app.ui.y_padding
 	ww := app.ui.window_width
 	wh := app.ui.window_height
-	labelx := app.ui.x_padding + app.ui.border_size
-	labely := app.ui.y_padding + app.ui.border_size / 2
+	m := min(ww, wh)
+	labelx := xpad + app.ui.border_size
+	labely := ypad + app.ui.border_size / 2
 
 	app.draw_tiles()
-	app.gg.draw_text(labelx, labely, 'Points: $app.board.points', app.label_format(.points))
-	app.gg.draw_text(ww - labelx, labely, 'Moves: $app.moves', app.label_format(.moves))
 
 	// TODO: Make transparency work in `gg`
 	if app.state == .over {
-		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(15, 0, 0, 44))
-		app.gg.draw_text(ww / 2, wh / 3, 'Game Over', app.label_format(.game_over))
-		app.gg.draw_text(ww / 2, wh * 2 / 3, 'Score: $app.board.points', app.label_format(.score_end))
+		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(10, 0, 0, 180))
+		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Game Over', app.label_format(.game_over))
+		
+		f := app.label_format(.tile)
+		msg := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
+		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg, { f | color: gx.white, size: f.size * 3 / 4 })
 	}
 	if app.state == .victory {
-		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(0, 15, 0, 44))
-		app.gg.draw_text(ww / 2, wh / 3, 'Victory!', app.label_format(.victory))
-		app.gg.draw_text(ww / 2, wh * 2 / 3, 'Score: $app.board.points', app.label_format(.score_end))
+		app.gg.draw_rect(0, 0, ww, wh, gx.rgba(0, 10, 0, 180))
+		app.gg.draw_text(ww / 2, (m * 4 / 10) + ypad, 'Victory!', app.label_format(.victory))
+
+		// f := app.label_format(.tile)
+		msg1 := $if android { 'Tap to continue' } $else { 'Press `space` to continue' }
+		msg2 := $if android { 'Tap to restart' } $else { 'Press `r` to restart' }
+		app.gg.draw_text(ww / 2, (m * 6 / 10) + ypad, msg1, app.label_format(.score_end))
+		app.gg.draw_text(ww / 2, (m * 8 / 10) + ypad, msg2, app.label_format(.score_end))
 	}
+
+	// Draw at the end, so that it's on top of the victory / game over overlays
+	app.gg.draw_text(labelx, labely, 'Points: $app.board.points', app.label_format(.points))
+	app.gg.draw_text(ww - labelx, labely, 'Moves: $app.moves', app.label_format(.moves))
 }
 
 fn (app &App) draw_tiles() {
@@ -649,14 +668,62 @@ fn (app &App) draw_tiles() {
 	}
 }
 
-fn (mut app App) handle_swipe(start, end Pos) {
-	min_swipe_distance := min(app.ui.window_width, app.ui.window_height) / 10
-	dx := end.x - start.x
-	dy := end.y - start.y
-	adx := abs(dx)
-	ady := abs(dy)
-	dmax := max(adx, ady)
-	dmin := min(adx, ady)
+fn (mut app App) handle_touches() {
+	s, e := app.touch.start, app.touch.end
+	adx, ady := abs(e.pos.x - s.pos.x), abs(e.pos.y - s.pos.y)
+	
+	if max(adx, ady) < 10 {
+		app.handle_tap()
+	} else {
+		app.handle_swipe()
+	}
+}
+
+fn (mut app App) handle_tap() {
+	_, ypad := app.ui.x_padding, app.ui.y_padding
+	w, h := app.ui.window_width, app.ui.window_height
+	m := min(w, h)
+	s, e := app.touch.start, app.touch.end
+	avgx, avgy := avg(s.pos.x, e.pos.x), avg(s.pos.y, e.pos.y)
+
+	// TODO: Replace "touch spots" with actual buttons
+	// bottom left -> change theme
+	if avgx < 200 && h - avgy < 200 { app.next_theme() }
+	// bottom right -> change tile format
+	if w - avgx < 200 && h - avgy < 200 { app.next_tile_format() }
+
+	if app.state == .victory {
+		if avgy > (m / 2) + ypad {
+			if avgy < (m * 7 / 10) + ypad {
+				app.state = .freeplay
+			} else if avgy < (m * 9 / 10) + ypad {
+				app.new_game()
+			} else {
+				// TODO remove and implement an actual way to toggle themes on mobile
+			}
+		}
+	} else if app.state == .over {
+		if avgy > (m / 2) + ypad && avgy < (m * 7 / 10) + ypad {
+			app.new_game()
+		}
+	}
+}
+
+fn (mut app App) handle_swipe() {
+	// Currently, swipes are only used to move the tiles. 
+	// If the user's not playing, exit early to avoid all the unnecessary calculations
+	if app.state !in [.play, .freeplay] { return }
+
+	s, e := app.touch.start, app.touch.end
+	w, h := app.ui.window_width, app.ui.window_height
+	dx, dy := e.pos.x - s.pos.x, e.pos.y - s.pos.y
+	adx, ady := abs(dx), abs(dy)
+	dmin := if min(adx, ady) > 0 { min(adx, ady) } else { 1 }
+	dmax := if max(adx, ady) > 0 { max(adx, ady) } else { 1 }
+	tdiff := int(e.time.unix_time_milli() - s.time.unix_time_milli())
+
+	// TODO: make this calculation more accurate (don't use arbitrary numbers)
+	min_swipe_distance := int(math.sqrt(min(w, h) * tdiff / 60)) + 20
 
 	if dmax < min_swipe_distance { return } // Swipe was too short
 	if dmax / dmin < 2 { return } // Swiped diagonally
@@ -668,6 +735,30 @@ fn (mut app App) handle_swipe(start, end Pos) {
 	}
 }
 
+[inline]
+fn (mut app App) next_theme() {
+	app.set_theme(if app.theme_idx == themes.len - 1 { 0 } else { app.theme_idx + 1 })
+}
+
+[inline]
+fn (mut app App) next_tile_format() {
+	app.tile_format = int(app.tile_format) + 1
+	if app.tile_format == .end_ {
+		app.tile_format = .normal
+	}
+}
+
+[inline]
+fn (mut app App) undo() {
+	if app.undo.len > 0 {
+		undo := app.undo.pop()
+		app.board = undo.board
+		app.state = undo.state
+		app.moves--
+	}
+}
+
+
 fn (mut app App) on_key_down(key sapp.KeyCode) {
 	// these keys are independent from the game state:
 	match key {
@@ -675,28 +766,20 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 			app.is_ai_mode = !app.is_ai_mode
 		} .escape {
 			exit(0)
-		} .n {
+		} .n, .r {
 			app.new_game()
 		} .backspace {
-			if app.undo.len > 0 {
-				app.state = .play
-				app.board = app.undo.pop()
-				app.moves--
-				return
-			}
+			app.undo()
 		} .enter {
-			app.tile_format = int(app.tile_format) + 1
-			if app.tile_format == .end_ {
-				app.tile_format = .normal
-			}
+			app.next_tile_format()
 		} .j {
-			app.game_over()
+			app.state = .over
 		} .t {
-			app.set_theme(if app.theme_idx == themes.len - 1 { 0 } else { app.theme_idx + 1 })
+			app.next_theme()
 		} else {}
 	}
 
-	if app.state in [.play, .victory] {
+	if app.state in [.play, .freeplay] {
 		match key {
 			.w, .up    { app.move(.up) }
 			.a, .left  { app.move(.left) }
@@ -704,6 +787,10 @@ fn (mut app App) on_key_down(key sapp.KeyCode) {
 			.d, .right { app.move(.right) }
 			else {}
 		}
+	}
+
+	if app.state == .victory {
+		if key == .space { app.state = .freeplay }
 	}
 }
 
@@ -716,18 +803,46 @@ fn on_event(e &sapp.Event, mut app App) {
 		} .touches_began {
 			if e.num_touches > 0 {
 				t := e.touches[0]
-				app.touch.start_pos = { x: int(t.pos_x), y: int(t.pos_y) }
+				app.touch.start = {
+					pos: {
+						x: int(t.pos_x / app.ui.dpi_scale),
+						y: int(t.pos_y / app.ui.dpi_scale)
+					},
+					time: time.now()
+				}
 			}
 		} .touches_ended {
 			if e.num_touches > 0 {
 				t := e.touches[0]
-				end_pos := Pos{ x: int(t.pos_x), y: int(t.pos_y) }
-				app.handle_swipe(app.touch.start_pos, end_pos)
+				app.touch.end = {
+					pos: {
+						x: int(t.pos_x / app.ui.dpi_scale),
+						y: int(t.pos_y / app.ui.dpi_scale)
+					},
+					time: time.now()
+				}
+				app.handle_touches()
 			}
+		} .mouse_down {
+			app.touch.start = {
+				pos: {
+					x: int(e.mouse_x / app.ui.dpi_scale),
+					y: int(e.mouse_y / app.ui.dpi_scale)
+				},
+				time: time.now()
+			}
+		} .mouse_up {
+			app.touch.end = {
+				pos: {
+					x: int(e.mouse_x / app.ui.dpi_scale),
+					y: int(e.mouse_y / app.ui.dpi_scale)
+				},
+				time: time.now()
+			}
+			app.handle_touches()
 		} else {}
 	}
 }
-
 
 fn frame(mut app App) {
 	$if showfps? { app.perf.frame_sw.restart() }
@@ -735,7 +850,7 @@ fn frame(mut app App) {
 	app.update_tickers()
 	app.draw()
 	app.perf.frame++
-	if app.is_ai_mode && app.perf.frame % frames_per_ai_move == 0 {
+	if app.is_ai_mode && app.state in [.play, .freeplay] && app.perf.frame % frames_per_ai_move == 0 {
 		app.ai_move()
 	}
 	$if showfps? { app.showfps() }
@@ -778,7 +893,7 @@ fn main() {
 
 	mut font_path := os.resource_abs_path(os.join_path('../assets/fonts/', 'RobotoMono-Regular.ttf'))
 	$if android {
-		font_path = 'assets/RobotoMono-Regular.ttf'
+		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
 
 	mut window_title := 'V 2048'
