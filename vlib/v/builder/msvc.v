@@ -23,7 +23,7 @@ struct MsvcResult {
 
 // shell32 for RegOpenKeyExW etc
 // Mimics a HKEY
-type RegKey voidptr
+type RegKey = voidptr
 
 // Taken from the windows SDK
 const (

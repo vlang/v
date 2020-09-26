@@ -100,7 +100,7 @@ pub fn now() Time {
 	$if solaris {
 		return solaris_now()
 	}
-	$if linux {
+	$if linux || android {
 		return linux_now()
 	}
 	// defaults to most common feature, the microsecond precision is not available
@@ -121,7 +121,7 @@ pub fn utc() Time {
 	$if solaris {
 		return solaris_utc()
 	}
-	$if linux {
+	$if linux || android {
 		return linux_utc()
 	}
 	// defaults to most common feature, the microsecond precision is not available
@@ -360,7 +360,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 }
 
 // A lot of these are taken from the Go library
-pub type Duration i64
+pub type Duration = i64
 
 pub const(
 	nanosecond  = Duration(1)

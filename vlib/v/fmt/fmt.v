@@ -496,7 +496,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.write('pub ')
 			}
 			ptype := f.type_to_str(node.parent_type)
-			f.write('type $node.name $ptype')
+			f.write('type $node.name = $ptype')
 		}
 		ast.FnTypeDecl {
 			if node.is_pub {
@@ -819,7 +819,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.ConcatExpr {
 			for i, val in node.vals {
 				if i != 0 {
-					f.write(' + ')
+					f.write(', ')
 				}
 				f.expr(val)
 			}

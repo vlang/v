@@ -6,7 +6,7 @@ module szip
 
 struct C.zip_t {}
 
-type Zip C.zip_t
+type Zip = C.zip_t
 
 fn C.zip_open(byteptr, int, byte) &Zip
 fn C.zip_close(&Zip)

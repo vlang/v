@@ -610,7 +610,7 @@ For information about creating a module, see [Modules](#modules)
 
 ### Importing a module
 
-Modules can be imported using keyword `import`.
+Modules can be imported using the `import` keyword.
 
 ```v
 import os
@@ -652,7 +652,7 @@ However, you _can_ redeclare a type.
 ```v
 import time
 
-type MyTime time.Time
+type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
     return 1 + t.year % 100
@@ -1380,14 +1380,15 @@ fn print_backtrace()
 
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
-To create a new module, create a directory with your module's name and
+To create a new module, create a directory with your module's name containing
 .v files with code:
 
-```v
+```
 cd ~/code/modules
 mkdir mymodule
 vim mymodule/myfile.v
-
+```
+```v
 // myfile.v
 module mymodule
 
@@ -1397,13 +1398,9 @@ pub fn say_hi() {
 }
 ```
 
-You can have as many .v files in `mymodule/` as you want.
-
-That's it, you can now use it in your code:
+You can now use `mymodule` in your code:
 
 ```v
-module main
-
 import mymodule
 
 fn main() {
@@ -1411,20 +1408,23 @@ fn main() {
 }
 ```
 
-Note that you have to specify the module every time you call an external function.
+Note that you have to specify the module prefix every time you call an external function.
 This may seem verbose at first, but it makes code much more readable
-and easier to understand, since it's always clear which function from
-which module is being called. Especially in large code bases.
+and easier to understand - it's always clear which function from
+which module is being called. This is especially useful in large code bases.
 
-Module names should be short, under 10 characters. Circular imports are not allowed.
+* Module names should be short, under 10 characters.
+* Circular imports are not allowed.
+* You can have as many .v files in a module as you want.
+* You can create modules anywhere.
+* All modules are compiled statically into a single executable.
 
-You can create modules anywhere.
+See also: [Module imports](#module-imports).
 
-All modules are compiled statically into a single executable.
+### `init` functions
 
-If you want to write a module that will automatically call some
-setup/initialization code when imported (perhaps you want to call
-some C library functions), write a module `init` function inside the module:
+If you want a module to automatically call some setup/initialization code when it is imported, 
+you can use a module `init` function:
 
 ```v
 fn init() {
@@ -1432,7 +1432,8 @@ fn init() {
 }
 ```
 
-The init function cannot be public. It will be called automatically.
+The `init` function cannot be public - it will be called automatically. This feature is 
+particularly useful for initializing a C library.
 
 ## Types 2
 
@@ -1954,6 +1955,9 @@ fn caller() {
 ```v
 import json
 
+struct Foo {
+	x int
+}
 struct User {
     name string
     age  int
@@ -1973,6 +1977,12 @@ user := json.decode(User, data) or {
 println(user.name)
 println(user.last_name)
 println(user.age)
+
+// You can also decode JSON arrays:
+sfoos := '[{"x":123},{"x":456}]'
+foos := json.decode([]Foo, sfoos)?
+println(foos[0].x)
+println(foos[1].x)
 ```
 
 Because of the ubiquitous nature of JSON, support for it is built directly into V.
@@ -1984,35 +1994,52 @@ performance.
 
 ## Testing
 
+### Asserts
+
+```v 
+mut v := 2 
+foo(mut v)
+assert v < 4 
+``` 
+An `assert` statement checks that its expression evaluates to `true`. If an assert fails, 
+the program will abort. Asserts should only be used to detect programming errors. When an
+assert fails it is reported to *stderr*, and the values on each side of a comparison operator 
+(such as `<`, `==`) will be printed when possible. This is useful to easily find an 
+unexpected value. Assert statements can be used in any function.
+
+### Test files
+
 ```v
 // hello.v
-fn hello() string {
+pub fn hello() string {
     return 'Hello world'
 }
-
+```
+```v
 // hello_test.v
 fn test_hello() {
     assert hello() == 'Hello world'
 }
 ```
+To run the test above, use `v hello_test.v`. This will check that the function `hello` is 
+producing the correct output. V executes all test functions in the file. 
 
-The `assert` keyword can be used outside of tests as well.
+* All test functions have to be inside a test file whose name ends in `_test.v`.
+* Test function names must begin with `test_` to mark them for execution.
+* Normal functions can also be defined in test files, and should be called manually. Other
+  symbols can also be defined in test files e.g. types.
 
-All test functions have to be placed in files named `<some name>_test.v` and test function names must begin with `test_`.
+You can also define special test functions in a test file:
+* `testsuite_begin` which will be run *before* all other test functions.
+* `testsuite_end` which will be run *after* all other test functions.
 
-You can also define a special test function: `testsuite_begin`, which will be
-run *before* all other test functions in a `_test.v` file.
+#### Running tests
 
-You can also define a special test function: `testsuite_end`, which will be
-run *after* all other test functions in a `_test.v` file.
+To run test functions in an individual test file, use `v foo_test.v`.
 
-To run the tests do `v hello_test.v`.
-
-To test an entire module, do `v test mymodule`.
-
-You can also do `v test .` to test everything inside your current folder (and subdirectories).
-
-You can pass `-stats` to v test, to see more details about the individual tests in each _test.v file.
+To test an entire module, use `v test mymodule`. You can also use `v test .` to test 
+everything inside your current folder (and subfolders). You can pass the `-stats` 
+option to see more details about the individual tests run.
 
 ## Memory management
 
@@ -2220,7 +2247,7 @@ surrounding code).
 struct C.sqlite3{}
 struct C.sqlite3_stmt{}
 
-type FnSqlite3Callback fn(voidptr, int, &charptr, &charptr) int
+type FnSqlite3Callback = fn(voidptr, int, &charptr, &charptr) int
 
 fn C.sqlite3_open(charptr, &&C.sqlite3) int
 fn C.sqlite3_close(&C.sqlite3) int
@@ -2403,7 +2430,7 @@ $if option ? {
 }
 ```
 
-If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign. 
+If you want an `if` to be evaluated at compile time it must be prefixed with a `$` sign.
 Right now it can be used to detect an OS, compiler, platform or compilation options.
 `$if debug` is a special option like `$if windows` or `$if x32`.
 If you're using a custom ifdef, then you do need `$if option ? {}` and compile with`v -d option`.

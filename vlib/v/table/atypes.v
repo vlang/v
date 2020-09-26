@@ -13,7 +13,7 @@ module table
 
 import strings
 
-pub type Type int
+pub type Type = int
 
 pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
 	Interface | Map | MultiReturn | Struct | SumType

@@ -13,7 +13,7 @@ pub const (
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
-pub type HANDLE voidptr
+pub type HANDLE = voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
@@ -335,7 +335,7 @@ pub:
 	context_record &ContextRecord
 }
 
-pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
+pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 
 // This is defined in builtin because we use vectored exception handling
 // for our unhandled exception handler on windows

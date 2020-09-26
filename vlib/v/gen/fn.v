@@ -615,7 +615,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) generate_tmp_autofree_arg_vars(node ast.CallExpr, name string) {
-	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
+	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
 		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v

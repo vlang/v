@@ -2670,6 +2670,12 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			node.right_type = right_type
 			// TODO: testing ref/deref strategy
 			if node.op == .amp && !right_type.is_ptr() {
+				if node.right is ast.IntegerLiteral {
+					c.error('cannot take the address of an int', node.pos)
+				}
+				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
+					c.error('cannot take the address of a string', node.pos)
+				}
 				return right_type.to_ptr()
 			}
 			if node.op == .mul {
@@ -2678,7 +2684,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if !right_type.is_pointer() {
 					s := c.table.type_to_str(right_type)
-					c.error('prefix operator `*` not defined for type `$s`', node.pos)
+					c.error('invalid indirect of `$s`', node.pos)
 				}
 			}
 			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
@@ -3417,12 +3423,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 				.and {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
-					return l && r
+					return l || r // skip (return true) if at least one should be skipped
 				}
 				.logical_or {
 					l := c.comp_if_branch(cond.left, cond.pos)
 					r := c.comp_if_branch(cond.right, cond.pos)
-					return l || r
+					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
 					// $if method.@type is string
@@ -3911,6 +3917,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if node.args.len != 1 {
 			c.error('.str() methods should have 0 arguments', node.pos)
+		}
+	}
+	// TODO c.pref.is_vet
+	if node.language == .v && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx &&
+		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
+		// simple heuristic
+		for st in node.stmts {
+			if st is ast.AssertStmt {
+				c.warn('tests will not be run because filename does not end with `_test.v`',
+					node.pos)
+				break
+			}
 		}
 	}
 	c.expected_type = table.void_type
