@@ -7,6 +7,40 @@ const (
 	default_rows_size = 25
 )
 
+pub const (
+	sighup    = 1
+	sigint    = 2
+	sigquit   = 3
+	sigill    = 4
+	sigtrap   = 5
+	sigabrt   = 6
+	sigbus    = 7
+	sigfpe    = 8
+	sigkill   = 9
+	sigusr1   = 10
+	sigsegv   = 11
+	sigusr2   = 12
+	sigpipe   = 13
+	sigalrm   = 14
+	sigterm   = 15
+	sigstkflt = 16
+	sigchld   = 17
+	sigcont   = 18
+	sigstop   = 19
+	sigtstp   = 20
+	sigttin   = 21
+	sigttou   = 22
+	sigurg    = 23
+	sigxcpu   = 24
+	sigxfsz   = 25
+	sigvtalrm = 26
+	sigprof   = 27
+	sigwinch  = 28
+	sigpoll   = 29
+	sigpwr    = 30
+	sigsys    = 31
+)
+
 // Coord - used by term.get_cursor_position and term.set_cursor_position
 pub struct Coord {
 pub mut:
