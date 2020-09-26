@@ -490,7 +490,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		cur_line := g.go_before_stmt(0)
 		if is_json_encode {
 			g.gen_json_for_type(node.args[0].typ)
-			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
+			json_type_str = g.typ(node.args[0].typ)
 			// `json__encode` => `json__encode_User`
 			encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
 			g.writeln('// json.encode')
@@ -503,7 +503,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		} else {
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)
-			typ := c_name(g.table.get_type_symbol(ast_type.typ).name)
+			typ := c_name(g.typ(ast_type.typ))
 			fn_name := c_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
 			g.writeln('// json.decode')
