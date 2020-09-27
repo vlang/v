@@ -51,7 +51,6 @@ pub fn read() (TerminalEvent, EventData) {
 		e, data := ansi(buf, len)
 		return e, data
 	}
-
 	return TerminalEvent.text, EventData{ bytes: buf }
 }
 
@@ -82,6 +81,9 @@ fn ansi(buf []byte, len int) (TerminalEvent, EventData) {
 		} else {
 			return TerminalEvent.unknown, EventData{}
 		}
+	}
+	unsafe {
+		buf.free()
 	}
 }
 
@@ -120,14 +122,9 @@ fn reset_console() {
 	println('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J\x1b[?25h')
 }
 
-// TODO Change this, this whole range thing is a hack
-fn range(start, stop int) []int {
-	mut arr := []int{ cap: stop - start }
-	for i in 0..stop-start { arr << i + start }
-	return arr
-}
 pub struct SetupCfg {
-	reset []int = range(1, 33).filter(it !in [28])
+	// All kill signals
+	reset []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
 }
 pub fn setup(cfg SetupCfg) {
 	setup_console()

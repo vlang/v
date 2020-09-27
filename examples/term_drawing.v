@@ -1,3 +1,4 @@
+import strings
 import time
 import term
 import term.input as ti
@@ -5,14 +6,16 @@ import term.input as ti
 struct App {
 mut:
 	header_text     []string
+	mouse_pos       term.Coord
 	tick            int
 	msg             string
 	msg_hide_tick   int
 	primary_color   Color = Color{200, 30, 0 }
 	secondary_color Color = Color{20, 60, 200 }
-	drawing         [][]string = [][]string{ len: 255, init: []string{ len: 255, init: ' ' } }
+	drawing         [][]string = [][]string{ len: 1080, init: []string{ len: 1920, init: ' ' } }
 	w               int
 	h               int
+	size            int
 }
 
 struct Color {
@@ -86,7 +89,12 @@ const (
 		Color{66, 66, 66}
 		Color{55, 71, 79}
 	]
+
+	plus  = term.bold('＋')
+	minus = term.bold('－')
 )
+
+fn C.setvbuf()
 
 fn main() {
 	mut app := App{}
@@ -96,14 +104,13 @@ fn main() {
 
 	for {
 		app.tick()
-		time.sleep_ms(10)
+		time.sleep_ms(20)
 	}
 }
 
 [inline]
-fn (app &App) clear_term() {
-	println('\x1b[1;1H\x1b[2J')
-	term.erase_del_clear()
+fn (mut app App) clear_term() {
+	println('\x1b[1;1H\x1b[2J\x1b[3J')
 }
 
 fn (mut app App) tick() {
@@ -123,7 +130,18 @@ fn (mut app App) tick() {
 				app.paint(data)
 			}
 		} .mouse_drag {
+			app.mouse_pos = { x: data.x, y: data.y }
 			app.paint(data)
+		} .mouse_move {
+			app.mouse_pos = { x: data.x, y: data.y }
+		} .mouse_scroll {
+			if data.direction == .down {
+				app.size++
+				app.show_msg('inc. size: $app.size', 100)
+			} else {
+				if app.size > 0 { app.size-- }
+				app.show_msg('dec. size: $app.size', 100)
+			}
 		} .text {
 			if data.bytes.len == 1 && data.bytes[0] == `c` {
 				app.drawing = [][]string{ len: 255, init: []string{ len: 255, init: ' ' } }
@@ -144,62 +162,112 @@ fn (mut app App) render() {
 	app.draw_footer()
 
 	if app.msg != '' {
+		term.set_cursor_position(x: 0, y: 0)
+		term.erase_line_toend()
 		if app.msg_hide_tick > 0 && app.tick > app.msg_hide_tick {
 			app.msg = ''
 			app.msg_hide_tick = -1
 		} else {
-			term.set_cursor_position(x: 0, y: 0)
 			print(term.bg_white(term.black(app.msg)))
 		}
 	}
-}
 
-fn (mut app App) paint(data ti.EventData) {
-	if data.y < 4 || app.h - data.y < 4 { return }
-	c := if data.button == .primary { app.primary_color } else { app.secondary_color }
-	app.drawing[data.y - 4][data.x - 1] = term.bg_rgb(c.r, c.g, c.b, ' ')
-}
-
-fn (mut app App) draw_content() {
-	h := app.h - 9
-	term.set_cursor_position(x: 0, y: 4)
-	for i in 0 .. h {
-		line := app.drawing[i]
-		print(line[0..app.w].join(''))
+	if app.mouse_pos.y > 4 && app.h - app.mouse_pos.y > 4 {
+		term.set_cursor_position(app.mouse_pos)
+		print(term.bg_rgb(127, 127, 127, ' '))
 	}
 }
 
-fn (app &App) draw_header() {
-	term.set_cursor_position(x: 4, y: 2)
-	println('tick: $app.tick | terminal size: ($app.w, $app.h) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
+fn (mut app App) set_pixel(x_, y_ int, c Color) {
+	// Term coords start at 1, and adjust for the header
+	x, y := x_ - 1, y_ - 4
+	if y < 0 || app.h - y < 3 { return }
+	if x < 0 || x >= 1920 || y < 0 || y >= 1080 { return }
+	app.drawing[y][x] = term.bg_rgb(c.r, c.g, c.b, ' ')
+}
+
+fn (mut app App) paint(data ti.EventData) {
+	x_size, y_size := 1 << ((app.size + 1) / 2), 1 << (app.size / 2)
+	x_start, y_start := data.x - x_size / 2, data.y - y_size / 2
+	color := if data.button == .primary { app.primary_color } else { app.secondary_color }
+
+	for x := x_start; x < x_start + x_size; x++ {
+		for y := y_start; y < y_start + y_size; y++ {
+			app.set_pixel(x, y, color)	
+		}
+	}
+
+}
+
+fn (mut app App) draw_content() {
+	h := app.h - 8
+	term.set_cursor_position(x: 0, y: 4)
+	for i in 0 .. h {
+		line_ := app.drawing[i]
+		line := line_[0..app.w]
+		print(line.join(''))
+	}
+}
+
+fn (mut app App) draw_header() {
+	term.set_cursor_position(y: 2)
+	println('   tick: $app.tick | terminal size: ($app.w, $app.h) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
 	println('⎽'.repeat(app.w))
 }
 
-fn (app &App) draw_footer() {
-	term.set_cursor_position(x: 0, y: app.h - 5)
+fn (mut app App) draw_footer() {
+	term.set_cursor_position(x: 0, y: app.h - 4)
 	color_map := colors.map(term.bg_rgb(it.r, it.g, it.b, '  '))
 
 	l := colors.len / 3
-	mut l1 := color_map[0..l]
-	mut l2 := color_map[l..l*2]
-	mut l3 := color_map[l*2..l*3]
-
-	if l * 3 + 18 > app.w {
-		l1 = l1[0 .. (app.w - 2 - 18) / 3]
-		l2 = l2[0 .. (app.w - 2 - 18) / 3]
-		l3 = l3[0 .. (app.w - 2 - 18) / 3]
+	l1, l2, l3 := if l * 3 + 18 < app.w {
+		color_map[0..l].join(' '),
+		color_map[l..l*2].join(' '),
+		color_map[l*2..l*3].join(' ')
+	} else {
+		max := (app.w - 2 - 18) / 3
+		color_map[0 .. max].join(' '),
+		color_map[l .. l + max].join(' '),
+		color_map[l*2 .. l*2 + max].join(' ')
 	}
 
 	println('⎽'.repeat(app.w))
 	println('')
-	println('                  ' + l1.join(' ') + '       ╭────────╮')
-	println('   Select color:  ' + l2.join(' ') + '       │  HELP  │')
-	println('                  ' + l3.join(' ') + '       ╰────────╯')
+	mut out1 := '  Select color\t  ' + l1
+	mut out2 := '              \t  ' + l2
+	mut out3 := '  Size  $plus  $minus\t  ' + l3
+
+	if l * 3 + 18 + l < app.w {
+		out1 += '       ╭────────╮'	
+		out2 += '       │  HELP  │'
+		out3 += '       ╰────────╯'
+	}
+
+	println(out1)
+	println(out2)
+	print(out3)
 }
 
 fn (mut app App) footer_click(data ti.EventData) {
-	if data.x > 18 && data.x < colors.len {
-		app.show_msg((app.h - data.y).str(), 400)
+	footer_y := 2 -  (app.h - data.y)
+	match data.x {
+		8...11 {
+			if footer_y == 2 {
+				app.size++
+				app.show_msg('inc. size: $app.size', 100)
+			}
+		} 12...15 {
+			if footer_y == 2 {
+				if app.size > 0 { app.size-- }
+				app.show_msg('dec. size: $app.size', 100)
+			}
+		} 18...75 {
+			if (data.x % 3) == 0 { return } // Inside the gap between tiles
+			idx := footer_y * 19 - 6 + data.x / 3
+			color := colors[idx]
+			if data.button == .primary { app.primary_color = color } else { app.secondary_color = color }
+			app.show_msg('set ${data.button.str().to_lower()} color idx: $idx', 100)
+		} else {}
 	}
 }
 
