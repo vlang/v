@@ -838,7 +838,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 		ast.Ident {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
-				if !v.is_mut && !c.pref.translated {
+				if !v.is_mut && !c.pref.translated && !c.inside_unsafe {
 					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
 						expr.pos)
 				}
