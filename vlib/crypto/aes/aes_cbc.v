@@ -105,7 +105,8 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 
 	// Loop over all but the first block.
 	for start > 0 {
-		x.b.decrypt(mut (*dst).slice(start, end), mut src.slice(start, end))
+		mut src_chunk := src.slice(start, end)
+		x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
 		cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), src.slice(prev, start))
 
 		end = start
@@ -114,7 +115,8 @@ pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {
 	}
 
 	// The first block is special because it uses the saved iv.
-	x.b.decrypt(mut (*dst).slice(start, end), mut src.slice(start, end))
+	mut src_chunk := src.slice(start, end)
+	x.b.decrypt(mut (*dst).slice(start, end), mut src_chunk)
 	cipher.xor_bytes(mut (*dst).slice(start, end), (*dst).slice(start, end), x.iv)
 
 

@@ -15,7 +15,7 @@ fn test_crypto_rc4() {
 	mut src := 'toencrypt'.bytes()
 	
 	// src & dst same, encrypt in place
-	c.xor_key_stream(mut src, src) // encrypt data
+	c.xor_key_stream(mut src, mut src) // encrypt data
 	
 	c.reset()
 
