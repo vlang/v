@@ -396,7 +396,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut method := ast.FnDecl{
 			name: name
 			mod: p.mod
-			args: args
+			params: args
 			file: p.file_name
 			return_type: table.void_type
 			is_pub: true
@@ -410,7 +410,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		return_type_sym := p.table.get_type_symbol(method.return_type)
 		ts.register_method(table.Fn{
 			name: name
-			args: args
+			params: args
 			return_type: method.return_type
 			return_type_source_name: return_type_sym.source_name
 			is_pub: true

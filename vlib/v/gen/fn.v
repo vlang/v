@@ -109,7 +109,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
@@ -235,7 +235,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			} else {
 				g.write('${g.typ(func.return_type)} (*$caname)(')
 				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
-				g.fn_args(func.args, func.is_variadic)
+				g.fn_args(func.params, func.is_variadic)
 				g.write(')')
 				g.definitions.write(')')
 			}

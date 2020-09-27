@@ -54,7 +54,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		f.write('<T>')
 	}
 	f.write('(')
-	for i, arg in node.args {
+	for i, arg in node.params {
 		// skip receiver
 		// if (node.is_method || node.is_interface) && i == 0 {
 		if node.is_method && i == 0 {
@@ -63,9 +63,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		if arg.is_hidden {
 			continue
 		}
-		is_last_arg := i == node.args.len - 1
-		should_add_type := is_last_arg || node.args[i + 1].typ != arg.typ ||
-			(node.is_variadic && i == node.args.len - 2)
+		is_last_arg := i == node.params.len - 1
+		should_add_type := is_last_arg || node.params[i + 1].typ != arg.typ ||
+			(node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
 		}

@@ -178,7 +178,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut receiver_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
-	mut args := []table.Param{}
+	mut params := []table.Param{}
 	if p.tok.kind == .lpar {
 		p.next() // (
 		is_method = true
@@ -217,7 +217,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			rec_type = rec_type.set_flag(.atomic_f)
 		}
 		sym := p.table.get_type_symbol(rec_type)
-		args << table.Param{
+		params << table.Param{
 			pos: rec_start_pos
 			name: rec_name
 			is_mut: rec_mut
@@ -252,16 +252,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
-	args << args2
-	for arg in args {
-		if p.scope.known_var(arg.name) {
-			p.error_with_pos('redefinition of parameter `$arg.name`', arg.pos)
+	params << args2
+	for param in params {
+		if p.scope.known_var(param.name) {
+			p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
 		}
-		p.scope.register(arg.name, ast.Var{
-			name: arg.name
-			typ: arg.typ
-			is_mut: arg.is_mut
-			pos: arg.pos
+		p.scope.register(param.name, ast.Var{
+			name: param.name
+			typ: param.typ
+			is_mut: param.is_mut
+			pos: param.pos
 			is_used: true
 			is_arg: true
 		})
@@ -281,7 +281,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym.register_method(table.Fn{
 			name: name
-			args: args
+			params: params
 			return_type: return_type
 			return_type_source_name: ret_type_sym.source_name
 			is_variadic: is_variadic
@@ -307,7 +307,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		ret_type_sym := p.table.get_type_symbol(return_type)
 		p.table.register_fn(table.Fn{
 			name: name
-			args: args
+			params: params
 			return_type: return_type
 			return_type_source_name: ret_type_sym.source_name
 			is_variadic: is_variadic
@@ -337,7 +337,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		mod: p.mod
 		stmts: stmts
 		return_type: return_type
-		args: args
+		params: params
 		is_deprecated: is_deprecated
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
@@ -388,7 +388,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	p.close_scope()
 	ret_type_sym := p.table.get_type_symbol(return_type)
 	mut func := table.Fn{
-		args: args
+		params: args
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_source_name: ret_type_sym.source_name
@@ -404,7 +404,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			mod: p.mod
 			stmts: stmts
 			return_type: return_type
-			args: args
+			params: args
 			is_variadic: is_variadic
 			is_method: false
 			is_anon: true

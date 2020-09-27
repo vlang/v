@@ -238,7 +238,7 @@ pub struct FnDecl {
 pub:
 	name          string
 	mod           string
-	args          []table.Param
+	params        []table.Param
 	is_deprecated bool
 	is_pub        bool
 	is_variadic   bool
