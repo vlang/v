@@ -274,8 +274,8 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 				if p.tok.kind == .mul && p.peek_tok2.kind == .assign {
 					return node
 				}
-				// later this will be parsed as PrefixExpr instead
-				p.warn_with_pos('move infix `$p.tok.kind` operator before new line if infix intended', p.tok.position())
+				// added 10/2020: LATER this will be parsed as PrefixExpr instead
+				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression', p.tok.position())
 			}
 			// continue on infix expr
 			node = p.infix_expr(node)
