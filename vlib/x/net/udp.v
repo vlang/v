@@ -115,7 +115,7 @@ pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 }
 
 pub fn (c UdpConn) read() ?([]byte, Addr) {
-	buf := []byte { len: 1024 }
+	mut buf := []byte { len: 1024 }
 	read, addr := c.read_into(mut buf)?
 	return buf[..read], addr
 }

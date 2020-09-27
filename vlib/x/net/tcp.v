@@ -109,8 +109,8 @@ pub fn (c TcpConn) read_into(mut buf []byte) ?int {
 }
 
 pub fn (c TcpConn) read() ?[]byte {
-	buf := []byte { len: 1024 }
-	read := c.read_into(buf)?
+	mut buf := []byte { len: 1024 }
+	read := c.read_into(mut buf)?
 	return buf[..read]
 }
 
