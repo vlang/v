@@ -199,15 +199,15 @@ pub:
 	context_record &ContextRecord
 }
 
-type VectoredExceptionHandler = fn(&ExceptionPointers)u32
+type VectoredExceptionHandler = fn(&ExceptionPointers)int
 
-fn C.AddVectoredExceptionHandler(u32, C.PVECTORED_EXCEPTION_HANDLER)
+fn C.AddVectoredExceptionHandler(int, C.PVECTORED_EXCEPTION_HANDLER)
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
 	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
 [windows_stdcall]
-fn unhandled_exception_handler(e &ExceptionPointers) u32 {
+fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
