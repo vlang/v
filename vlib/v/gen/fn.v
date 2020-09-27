@@ -50,7 +50,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
-		name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+		name = g.cc_type2(it.receiver.typ) + '_' + name
+		// name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 	}
 	if it.language == .c {
 		name = util.no_dots(name)
@@ -336,7 +337,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
 	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	mut receiver_type_name := util.no_dots(typ_sym.name)
+	// mut receiver_type_name := util.no_dots(typ_sym.name)
+	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		g.write('${c_name(receiver_type_name)}_name_table[')

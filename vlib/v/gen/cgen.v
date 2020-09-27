@@ -481,9 +481,9 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	}
 }
 
-// cc_type returns the Cleaned Concrete Type name, *without ptr*,
-// i.e. it's always just Cat, not Cat_ptr:
-fn (g &Gen) cc_type(t table.Type) string {
+// TODO: merge cc_type and cc_type2
+// cc_type but without the `struct` prefix
+fn (g &Gen) cc_type2(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := util.no_dots(sym.name)
 	if sym.kind == .struct_ {
@@ -500,6 +500,14 @@ fn (g &Gen) cc_type(t table.Type) string {
 			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
 		}
 	}
+	return styp
+}
+
+// cc_type returns the Cleaned Concrete Type name, *without ptr*,
+// i.e. it's always just Cat, not Cat_ptr:
+fn (g &Gen) cc_type(t table.Type) string {
+	sym := g.table.get_type_symbol(g.unwrap_generic(t))
+	mut styp := g.cc_type2(t)
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
