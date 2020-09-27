@@ -7,6 +7,7 @@ import v.parser
 import v.table
 import v.pref
 import v.util
+import v.util.vtest
 
 const (
 	error_missing_vexe = 1
@@ -22,25 +23,31 @@ fn test_fmt() {
 		exit(error_missing_vexe)
 	}
 	vroot := os.dir(vexe)
+	os.chdir(vroot)
+	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
 	diff_cmd := util.find_working_diff_command() or {
 		''
 	}
 	mut fmt_bench := benchmark.new_benchmark()
-	keep_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_keep.vv')
-	expected_input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_expected.vv')
+	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
+	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
 	mut input_files := []string{}
 	input_files << keep_input_files
 	input_files << expected_input_files
+	input_files = vtest.filter_vtest_only(input_files, {
+		basepath: vroot
+	})
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
 		ifilename := os.file_name(ipath)
+		vrelpath := ipath.replace(basepath, '')
 		opath := ipath
 		expected_ocontent := os.read_file(opath) or {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('cannot read from ${opath}'))
+			eprintln(fmt_bench.step_message_fail('cannot read from ${vrelpath}'))
 			continue
 		}
 		table := table.new_table()
@@ -53,7 +60,7 @@ fn test_fmt() {
 		result_ocontent := fmt.fmt(file_ast, table, false)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
-			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))
+			eprintln(fmt_bench.step_message_fail('file ${vrelpath} after formatting, does not look as expected.'))
 			if diff_cmd == '' {
 				eprintln('>> sorry, but no working "diff" CLI command can be found')
 				continue
@@ -64,7 +71,7 @@ fn test_fmt() {
 			continue
 		}
 		fmt_bench.ok()
-		eprintln(fmt_bench.step_message_ok('${ipath}'))
+		eprintln(fmt_bench.step_message_ok('${vrelpath}'))
 	}
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
