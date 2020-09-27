@@ -234,7 +234,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 					if j < len - 1 {
 						g.write(', ')
 					}
-					g.comptime_var_type_map['${node.val_var}.args[$j].Type'] = typ
+					g.comptime_var_type_map['${node.val_var}.args[$j].typ'] = typ
 				}
 				g.writeln('}));')
 			}
@@ -254,11 +254,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			// if styp == 0 { }
 			// TODO: type aliases
 			ret_typ := method.return_type.idx()
-			g.writeln('\t${node.val_var}.Type = $styp;')
-			g.writeln('\t${node.val_var}.ReturnType = $ret_typ;')
+			g.writeln('\t${node.val_var}.typ = $styp;')
+			g.writeln('\t${node.val_var}.return_type = $ret_typ;')
 			//
-			g.comptime_var_type_map['${node.val_var}.ReturnType'] = ret_typ
-			g.comptime_var_type_map['${node.val_var}.Type'] = styp
+			g.comptime_var_type_map['${node.val_var}.return_type'] = ret_typ
+			g.comptime_var_type_map['${node.val_var}.typ'] = styp
 			g.stmts(node.stmts)
 			i++
 			g.writeln('')
@@ -292,10 +292,10 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				// field_sym := g.table.get_type_symbol(field.typ)
 				// g.writeln('\t${node.val_var}.typ = tos_lit("$field_sym.name");')
 				styp := field.typ
-				g.writeln('\t${node.val_var}.Type = $styp;')
+				g.writeln('\t${node.val_var}.typ = $styp;')
 				g.writeln('\t${node.val_var}.is_pub = $field.is_pub;')
 				g.writeln('\t${node.val_var}.is_mut = $field.is_mut;')
-				g.comptime_var_type_map[node.val_var + '.Type'] = styp
+				g.comptime_var_type_map['${node.val_var}.typ'] = styp
 				g.stmts(node.stmts)
 				i++
 				g.writeln('')
