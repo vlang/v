@@ -839,7 +839,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
 				if !v.is_mut && !c.pref.translated && !c.inside_unsafe {
-					//c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',	expr.pos)
+					c.error('`$expr.name` is immutable, declare it with `mut` to make it mutable',
+						expr.pos)
 				}
 				v.is_changed = true
 				if v.typ.share() == .shared_t {
