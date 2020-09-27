@@ -421,7 +421,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	// TODO2
 	unsafe {
-//		g.generate_tmp_autofree_arg_vars(mut node, name)
+		g.generate_tmp_autofree_arg_vars(mut node, name)
 	}
 	//
 	// if node.receiver_type != 0 {
@@ -540,7 +540,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	}
 	// TODO2
 	unsafe {
-//		g.generate_tmp_autofree_arg_vars(mut node, name)
+		g.generate_tmp_autofree_arg_vars(mut node, name)
 	}
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
