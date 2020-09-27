@@ -18,7 +18,7 @@ fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
 	for _ in 0 .. n {
 		mut r := 0
-		for ch.try_pop(mut r) != .success {}
+		for ch.try_pop(r) != .success {}
 		sum += r
 	}
 	println(sum)
@@ -34,11 +34,11 @@ fn do_send(ch chan int, start, end int) {
 fn test_channel_polling() {
 	ch := chan int{cap: buflen}
 	resch := chan i64{}
-	for i in 0 .. nrec {
+	for _ in 0 .. nrec {
 		go do_rec(ch, resch, objs_per_thread)
 	}
 	mut n := nobj
-	for i in 0 .. nsend {
+	for _ in 0 .. nsend {
 		end := n
 		n -= objs_per_thread
 		go do_send(ch, n, end)

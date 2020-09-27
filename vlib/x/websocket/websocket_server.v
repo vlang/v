@@ -53,7 +53,7 @@ pub fn (mut s Server) listen() ? {
 	s.set_state(.open)
 	go s.handle_ping()
 	for {
-		c := s.accept_new_client() or {
+		mut c := s.accept_new_client() or {
 			continue
 		}
 		go s.serve_client(mut c)
@@ -104,7 +104,7 @@ fn (mut s Server) serve_client(mut c Client) ? {
 	defer {
 		c.logger.debug('server-> End serve client ($c.id)')
 	}
-	handshake_response, server_client := s.handle_server_handshake(mut c)?
+	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)?
 	accept := s.send_connect_event(mut server_client)?
 	if !accept {
 		s.logger.debug('server-> client not accepted')
@@ -148,7 +148,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 		lock  {
 			sc.server.clients.delete(sc.client.id)
 		}
-	}, mut sc)
+	}, sc)
 }
 
 fn (mut s Server) accept_new_client() ?&Client {

@@ -238,7 +238,7 @@ pub struct FnDecl {
 pub:
 	name          string
 	mod           string
-	args          []table.Param
+	params        []table.Param
 	is_deprecated bool
 	is_pub        bool
 	is_variadic   bool
@@ -286,6 +286,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
+	autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar
 	// autofree_vars_ids  []int
 }

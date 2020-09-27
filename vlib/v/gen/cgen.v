@@ -101,6 +101,7 @@ mut:
 	inside_return         bool
 	inside_or_block       bool
 	strs_to_free          []string // strings.Builder
+	strs_to_free0         []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -582,9 +583,9 @@ static inline void __${styp}_pushval($styp ch, $el_stype val) {
 						c_name(func.name)
 					}
 					g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
-					for i, arg in func.args {
-						g.type_definitions.write(g.typ(arg.typ))
-						if i < func.args.len - 1 {
+					for i, param in func.params {
+						g.type_definitions.write(g.typ(param.typ))
+						if i < func.params.len - 1 {
 							g.type_definitions.write(',')
 						}
 					}
@@ -1309,8 +1310,8 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	ret_styp := g.typ(func.func.return_type)
 	g.write('$ret_styp (*$ptr_name) (')
-	arg_len := func.func.args.len
-	for i, arg in func.func.args {
+	arg_len := func.func.params.len
+	for i, arg in func.func.params {
 		arg_styp := g.typ(arg.typ)
 		g.write('$arg_styp $arg.name')
 		if i < arg_len - 1 {
@@ -1528,7 +1529,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ret_styp := g.typ(val.decl.return_type)
 				g.write('$ret_styp (*$ident.name) (')
 				def_pos := g.definitions.len
-				g.fn_args(val.decl.args, val.decl.is_variadic)
+				g.fn_args(val.decl.params, val.decl.is_variadic)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(') = ')
 				g.expr(*val)
@@ -1608,7 +1609,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				ret_styp := g.typ(func.func.return_type)
 				g.write('$ret_styp (*${g.get_ternary_name(ident.name)}) (')
 				def_pos := g.definitions.len
-				g.fn_args(func.func.args, func.func.is_variadic)
+				g.fn_args(func.func.params, func.func.is_variadic)
 				g.definitions.go_back(g.definitions.len - def_pos)
 				g.write(')')
 			} else {
@@ -1923,7 +1924,21 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val.str())
 		}
 		ast.CallExpr {
+			// if g.fileis('1.strings') {
+			// println('\ncall_expr()()')
+			// }
 			g.call_expr(node)
+			// if g.fileis('1.strings') {
+			// println('before:' + node.autofree_pregen)
+			// }
+			if g.pref.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
+				// g.insert_before_stmt('/*START2*/' + g.strs_to_free0.join('\n') + '/*END*/')
+				g.insert_before_stmt('/*START3*/' + node.autofree_pregen + '/*END*/')
+				// for s in g.strs_to_free0 {
+				// //g.writeln(s)
+				// }
+				g.strs_to_free0 = []
+			}
 		}
 		ast.CastExpr {
 			// g.write('/*cast*/')
@@ -2272,7 +2287,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		info := sym.info as table.FnType
 		fn_info := info.func
 		mut repr := 'fn ('
-		for i, arg in fn_info.args {
+		for i, arg in fn_info.params {
 			if i > 0 {
 				repr += ', '
 			}
@@ -3866,8 +3881,8 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
 		g.definitions.write('\t\t$ret_styp (*v) (')
-		arg_len := func.func.args.len
-		for i, arg in func.func.args {
+		arg_len := func.func.params.len
+		for i, arg in func.func.params {
 			arg_styp := g.typ(arg.typ)
 			g.definitions.write('$arg_styp $arg.name')
 			if i < arg_len - 1 {
@@ -3931,7 +3946,7 @@ fn (mut g Gen) write_init_function() {
 		g.write(g.inits[mod_name].str())
 		init_fn_name := '${mod_name}.init'
 		if initfn := g.table.find_fn(init_fn_name) {
-			if initfn.return_type == table.void_type && initfn.args.len == 0 {
+			if initfn.return_type == table.void_type && initfn.params.len == 0 {
 				mod_c_name := util.no_dots(mod_name)
 				init_fn_c_name := '${mod_c_name}__init'
 				g.writeln('\t${init_fn_c_name}();')
@@ -5117,8 +5132,8 @@ fn (mut g Gen) interface_table() string {
 			ret_styp := g.typ(method.return_type)
 			methods_typ_def.write('typedef $ret_styp (*$typ_name)(void* _')
 			// the first param is the receiver, it's handled by `void*` above
-			for i in 1 .. method.args.len {
-				arg := method.args[i]
+			for i in 1 .. method.params.len {
+				arg := method.params[i]
 				methods_typ_def.write(', ${g.typ(arg.typ)} $arg.name')
 			}
 			// TODO g.fn_args(method.args[1..], method.is_variadic)
@@ -5177,14 +5192,14 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 				}
 				// .speak = Cat_speak
 				mut method_call := '${cctype}_$method.name'
-				if !method.args[0].typ.is_ptr() {
+				if !method.params[0].typ.is_ptr() {
 					// inline void Cat_speak_method_wrapper(Cat c) { return Cat_speak(*c); }
 					methods_wrapper.write('static inline ${g.typ(method.return_type)}')
 					methods_wrapper.write(' ${method_call}_method_wrapper(')
-					methods_wrapper.write('$cctype* ${method.args[0].name}')
+					methods_wrapper.write('$cctype* ${method.params[0].name}')
 					// TODO g.fn_args
-					for j in 1 .. method.args.len {
-						arg := method.args[j]
+					for j in 1 .. method.params.len {
+						arg := method.params[j]
 						methods_wrapper.write(', ${g.typ(arg.typ)} $arg.name')
 					}
 					methods_wrapper.writeln(') {')
@@ -5192,9 +5207,9 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 					if method.return_type != table.void_type {
 						methods_wrapper.write('return ')
 					}
-					methods_wrapper.write('${method_call}(*${method.args[0].name}')
-					for j in 1 .. method.args.len {
-						methods_wrapper.write(', ${method.args[j].name}')
+					methods_wrapper.write('${method_call}(*${method.params[0].name}')
+					for j in 1 .. method.params.len {
+						methods_wrapper.write(', ${method.params[j].name}')
 					}
 					methods_wrapper.writeln(');')
 					methods_wrapper.writeln('}')

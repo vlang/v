@@ -852,13 +852,13 @@ pub fn (table &Table) type_to_str(t Type) string {
 pub fn (t &Table) fn_to_str(func &Fn) string {
 	mut sb := strings.new_builder(20)
 	sb.write('${func.name}(')
-	for i in 1 .. func.args.len {
-		arg := func.args[i]
-		sb.write('$arg.name')
-		if i == func.args.len - 1 || func.args[i + 1].typ != arg.typ {
-			sb.write(' ${t.type_to_str(arg.typ)}')
+	for i in 1 .. func.params.len {
+		param := func.params[i]
+		sb.write('$param.name')
+		if i == func.params.len - 1 || func.params[i + 1].typ != param.typ {
+			sb.write(' ${t.type_to_str(param.typ)}')
 		}
-		if i != func.args.len - 1 {
+		if i != func.params.len - 1 {
 			sb.write(', ')
 		}
 	}
@@ -891,9 +891,9 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 	mut nr_args := 0
 	if sym_str_method := t.find_method('str') {
 		has_str_method = true
-		nr_args = sym_str_method.args.len
+		nr_args = sym_str_method.params.len
 		if nr_args > 0 {
-			expects_ptr = sym_str_method.args[0].typ.is_ptr()
+			expects_ptr = sym_str_method.params[0].typ.is_ptr()
 		}
 	}
 	return has_str_method, expects_ptr, nr_args

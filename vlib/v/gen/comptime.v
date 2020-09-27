@@ -40,24 +40,24 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		*/
 		g.write('${util.no_dots(node.sym.name)}_${g.comp_for_method}(')
 		g.expr(node.left)
-		if m.args.len > 1 {
+		if m.params.len > 1 {
 			g.write(', ')
 		}
-		for i in 1 .. m.args.len {
+		for i in 1 .. m.params.len {
 			if node.left is ast.Ident {
 				left_name := node.left as ast.Ident
-				if m.args[i].name == left_name.name {
+				if m.params[i].name == left_name.name {
 					continue
 				}
 			}
-			if m.args[i].typ.is_int() || m.args[i].typ.idx() == table.bool_type_idx {
+			if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
 				// Gets the type name and cast the string to the type with the string_<type> function
-				type_name := g.table.types[int(m.args[i].typ)].str()
+				type_name := g.table.types[int(m.params[i].typ)].str()
 				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
 			} else {
 				g.write('((string*)${node.args_var}.data) [${i-1}] ')
 			}
-			if i < m.args.len - 1 {
+			if i < m.params.len - 1 {
 				g.write(', ')
 			}
 		}
@@ -69,7 +69,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		if method.return_type != result_type {
 			continue
 		}
-		if method.args.len != 1 {
+		if method.params.len != 1 {
 			continue
 		}
 		// receiver := method.args[0]
@@ -221,14 +221,14 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 				g.writeln('\t${node.val_var}.attrs = new_array_from_c_array($attrs.len, $attrs.len, sizeof(string), _MOV((string[$attrs.len]){' +
 					attrs.join(', ') + '}));')
 			}
-			if method.args.len < 2 {
+			if method.params.len < 2 {
 				// 0 or 1 (the receiver) args
 				g.writeln('\t${node.val_var}.args = __new_array_with_default(0, 0, sizeof(MethodArgs), 0);')
 			} else {
-				len := method.args.len - 1
+				len := method.params.len - 1
 				g.write('\t${node.val_var}.args = new_array_from_c_array($len, $len, sizeof(MethodArgs), _MOV((MethodArgs[$len]){')
 				// Skip receiver arg
-				for j, arg in method.args[1..] {
+				for j, arg in method.params[1..] {
 					typ := arg.typ.idx()
 					g.write(typ.str())
 					if j < len - 1 {
@@ -240,11 +240,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			mut sig := 'anon_fn_'
 			// skip the first (receiver) arg
-			for j, arg in method.args[1..] {
+			for j, arg in method.params[1..] {
 				// TODO: ignore mut/pts in sig for now
 				typ := arg.typ.set_nr_muls(0)
 				sig += '$typ'
-				if j < method.args.len - 2 {
+				if j < method.params.len - 2 {
 					sig += '_'
 				}
 			}

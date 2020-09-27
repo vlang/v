@@ -94,7 +94,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	ret_type_sym := p.table.get_type_symbol(return_type)
 	func := table.Fn{
 		name: name
-		args: args
+		params: args
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_source_name: ret_type_sym.source_name
