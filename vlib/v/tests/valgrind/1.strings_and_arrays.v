@@ -34,6 +34,13 @@ fn str_tmp_expr() {
 }
 
 fn str_tmp_expr_advanced() {
+	// t1 = 'c' + 'd'
+	// t2 = 'e + f'
+	// t3 = add_strings(t2, 'g')
+	// handle_strings(t1, t3)
+	// t1.free()
+	// t2.free()
+	// t3.free()
 	// handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 }
 
@@ -112,3 +119,11 @@ fn main() {
 	// str_replace()
 	println('end')
 }
+
+/*
+s := s.replace().replace()
+tmp := s.replace()
+s.free()
+s = tmp.replace()
+tmp.free()
+*/

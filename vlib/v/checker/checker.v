@@ -934,7 +934,30 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	c.stmts(call_expr.or_block.stmts)
-	typ := if call_expr.is_method { c.call_method(call_expr) } else { c.call_fn(call_expr) }
+	// First check everything that applies to both fns and methods
+	// TODO merge logic from call_method and call_fn
+	/*
+	for i, call_arg in call_expr.args {
+		if call_arg.is_mut {
+			c.fail_if_immutable(call_arg.expr)
+			if !arg.is_mut {
+				tok := call_arg.share.str()
+				c.error('`$call_expr.name` parameter `$arg.name` is not `$tok`, `$tok` is not needed`',
+					call_arg.expr.position())
+			} else if arg.typ.share() != call_arg.share {
+				c.error('wrong shared type', call_arg.expr.position())
+			}
+		} else {
+			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
+				tok := call_arg.share.str()
+				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
+					call_arg.expr.position())
+			}
+		}
+	}
+	*/
+	// Now call `call_method` or `call_fn` for specific checks.
+	typ := if call_expr.is_method { c.call_method(mut call_expr) } else { c.call_fn(mut call_expr) }
 	// autofree
 	free_tmp_arg_vars := c.pref.autofree && c.pref.experimental && !c.is_builtin_mod &&
 		call_expr.args.len > 0 && !call_expr.args[0].typ.has_flag(.optional)
@@ -1151,6 +1174,24 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				if got_arg_typ != table.void_type {
 					c.error('cannot use type `$got_arg_sym.source_name` as type `$exp_arg_sym.source_name` in argument ${i+1} to `${left_type_sym.source_name}.$method_name`',
 						call_expr.pos)
+				}
+			}
+			param := if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len -
+					1] } else { method.args[i + 1] }
+			if arg.is_mut {
+				c.fail_if_immutable(arg.expr)
+				if !param.is_mut {
+					tok := arg.share.str()
+					c.error('`$call_expr.name` parameter `$param.name` is not `$tok`, `$tok` is not needed`',
+						arg.expr.position())
+				} else if param.typ.share() != arg.share {
+					c.error('wrong shared type', arg.expr.position())
+				}
+			} else {
+				if param.is_mut && (!arg.is_mut || param.typ.share() != arg.share) {
+					tok := arg.share.str()
+					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
+						arg.expr.position())
 				}
 			}
 		}
@@ -2339,7 +2380,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.GotoLabel {}
 		ast.GotoStmt {}
 		ast.HashStmt {
-			c.hash_stmt(node)
+			c.hash_stmt(mut node)
 		}
 		ast.Import {
 			c.import_stmt(node)
@@ -2358,7 +2399,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.scope_returns = true
 		}
 		ast.SqlStmt {
-			c.sql_stmt(node)
+			c.sql_stmt(mut node)
 		}
 		ast.StructDecl {
 			c.struct_decl(node)
@@ -2663,7 +2704,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.match_expr(mut node)
 		}
 		ast.PostfixExpr {
-			return c.postfix_expr(node)
+			return c.postfix_expr(mut node)
 		}
 		ast.PrefixExpr {
 			right_type := c.expr(node.right)
@@ -2731,7 +2772,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.u32_type
 		}
 		ast.SqlExpr {
-			return c.sql_expr(node)
+			return c.sql_expr(mut node)
 		}
 		ast.StringLiteral {
 			if node.language == .c {
@@ -2906,7 +2947,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		// main.compare_f32 may actually be builtin.compare_f32
 		saved_mod := ident.mod
 		ident.mod = 'builtin'
-		builtin_type := c.ident(ident)
+		builtin_type := c.ident(mut ident)
 		if builtin_type != table.void_type {
 			return builtin_type
 		}
@@ -3182,8 +3223,9 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	for id in node.lockeds {
-		c.ident(mut id)
+	for i, id in node.lockeds {
+		// c.ident(mut id)
+		c.ident(mut node.lockeds[i])
 		if id.obj is ast.Var as v {
 			if v.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
