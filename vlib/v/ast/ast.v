@@ -1092,6 +1092,18 @@ pub fn (expr Expr) is_expr() bool {
 	return true
 }
 
+// check if stmt can be an expression in C
+pub fn (stmt Stmt) check_c_expr()? {
+	match stmt {
+		AssignStmt {return}
+		ExprStmt {
+			if stmt.expr.is_expr() {return}
+		}
+		else {}
+	}
+	return error(typeof(stmt))
+}
+
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }

@@ -2962,6 +2962,13 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	mut branch_without_return := false
 	for branch in node.branches {
 		c.stmts(branch.stmts)
+		if node.is_expr {
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`match` expression branch cannot have this kind of statement (`$err`)', st.position())
+				}
+			}
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			match mut branch.stmts[branch.stmts.len - 1] as stmt {
@@ -3320,6 +3327,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`if` expression branch cannot have this kind of statement (`$err`)', st.position())
+				}
+			}
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
