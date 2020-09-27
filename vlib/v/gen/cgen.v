@@ -101,6 +101,7 @@ mut:
 	inside_return         bool
 	inside_or_block       bool
 	strs_to_free          []string // strings.Builder
+	strs_to_free0         []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -1915,7 +1916,21 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val.str())
 		}
 		ast.CallExpr {
+			// if g.fileis('1.strings') {
+			// println('\ncall_expr()()')
+			// }
 			g.call_expr(node)
+			// if g.fileis('1.strings') {
+			// println('before:' + node.autofree_pregen)
+			// }
+			if g.pref.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
+				// g.insert_before_stmt('/*START2*/' + g.strs_to_free0.join('\n') + '/*END*/')
+				g.insert_before_stmt('/*START3*/' + node.autofree_pregen + '/*END*/')
+				// for s in g.strs_to_free0 {
+				// //g.writeln(s)
+				// }
+				g.strs_to_free0 = []
+			}
 		}
 		ast.CastExpr {
 			// g.write('/*cast*/')

@@ -86,7 +86,7 @@ pub fn (f &File) read_bytes(size int) []byte {
 // read_bytes_at reads bytes at the given position in the file
 pub fn (f &File) read_bytes_at(size, pos int) []byte {
 	mut arr := []byte{len: size}
-	nreadbytes := f.read_bytes_into(pos, arr) or {
+	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
 		return []
 	}
