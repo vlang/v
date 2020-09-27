@@ -165,7 +165,7 @@ fn test_write_and_read_bytes() {
 	assert rbytes == payload
 	// check that trying to read data from EOF doesn't error and returns 0
 	mut a := []byte{len: 5}
-	nread := file_read.read_bytes_into(5, a) or {
+	nread := file_read.read_bytes_into(5, mut a) or {
 		eprintln(err)
 		int(-1)
 	}

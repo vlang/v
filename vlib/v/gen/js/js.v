@@ -275,7 +275,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		// 'anon_fn_7_7_1' => '(a number, b number) => void'
 		.function {
 			info := sym.info as table.FnType
-			styp = g.fn_typ(info.func.args, info.func.return_type)
+			styp = g.fn_typ(info.func.params, info.func.return_type)
 		}
 		.interface_ {
 			styp = g.js_name(sym.name)
@@ -874,7 +874,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.push_pub_var(name)
 		}
 	}
-	mut args := it.args
+	mut args := it.params
 	if it.is_method {
 		args = args[1..]
 	}
@@ -882,7 +882,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.writeln(') {')
 	if it.is_method {
 		g.inc_indent()
-		g.writeln('const ${it.args[0].name} = this;')
+		g.writeln('const ${it.params[0].name} = this;')
 		g.dec_indent()
 	}
 	g.stmts(it.stmts)
@@ -1489,7 +1489,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 		info := sym.info as table.FnType
 		fn_info := info.func
 		mut repr := 'fn ('
-		for i, arg in fn_info.args {
+		for i, arg in fn_info.params {
 			if i > 0 {
 				repr += ', '
 			}

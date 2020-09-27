@@ -118,14 +118,14 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sy
 	exp_fn := exp_info.func
 	// we are using check() to compare return type & args as they might include
 	// functions themselves. TODO: optimize, only use check() when needed
-	if got_fn.args.len != exp_fn.args.len {
+	if got_fn.params.len != exp_fn.params.len {
 		return false
 	}
 	if !c.check_basic(got_fn.return_type, exp_fn.return_type) {
 		return false
 	}
-	for i, got_arg in got_fn.args {
-		exp_arg := exp_fn.args[i]
+	for i, got_arg in got_fn.params {
+		exp_arg := exp_fn.params[i]
 		exp_arg_is_ptr := exp_arg.typ.is_ptr() || exp_arg.typ.is_pointer()
 		got_arg_is_ptr := got_arg.typ.is_ptr() || got_arg.typ.is_pointer()
 		if exp_arg_is_ptr != got_arg_is_ptr {

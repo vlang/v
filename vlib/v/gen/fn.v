@@ -109,7 +109,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
@@ -235,7 +235,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			} else {
 				g.write('${g.typ(func.return_type)} (*$caname)(')
 				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
-				g.fn_args(func.args, func.is_variadic)
+				g.fn_args(func.params, func.is_variadic)
 				g.write(')')
 				g.definitions.write(')')
 			}
@@ -419,7 +419,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	g.generate_tmp_autofree_arg_vars(node, name)
+	// TODO2
+	unsafe {
+		g.generate_tmp_autofree_arg_vars(mut node, name)
+	}
+	//
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
@@ -534,7 +538,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
-	g.generate_tmp_autofree_arg_vars(node, name)
+	// TODO2
+	unsafe {
+		g.generate_tmp_autofree_arg_vars(mut node, name)
+	}
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
 		typ := node.args[0].typ
@@ -614,7 +621,10 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	g.is_json_fn = false
 }
 
-fn (mut g Gen) generate_tmp_autofree_arg_vars(node ast.CallExpr, name string) {
+fn (mut g Gen) generate_tmp_autofree_arg_vars(mut node ast.CallExpr, name string) {
+	// if g.fileis('1.strings') {
+	// println('gen tmp autofree()')
+	// }
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
@@ -633,7 +643,10 @@ fn (mut g Gen) generate_tmp_autofree_arg_vars(node ast.CallExpr, name string) {
 			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 			g.called_fn_name = name
 			str_expr := g.write_expr_to_string(arg.expr)
-			g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
+			// g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
+			// g.strs_to_free0 << 'string $t = $str_expr; // new5. to free arg #$i name=$name'
+			node.autofree_pregen += 'string $t = $str_expr; // new6. to free arg #$i name=$name\n'
+			// println('setting pregen to ' + node.autofree_pregen)
 			// cur_line = g.go_before_stmt(0)
 			// println('cur line ="$cur_line"')
 			// g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')

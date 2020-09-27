@@ -1501,13 +1501,13 @@ fn (mut p Parser) import_stmt() ast.Import {
 			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
 		}
 	}
-	node := ast.Import{
+	mut node := ast.Import{
 		pos: pos
 		mod: mod_name
 		alias: mod_alias
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
-		p.import_syms(node)
+		p.import_syms(mut node)
 		p.register_used_import(mod_name) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.position()

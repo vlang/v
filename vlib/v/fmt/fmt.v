@@ -507,7 +507,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			fn_info := fn_typ_info.func
 			fn_name := f.no_cur_mod(node.name)
 			f.write('type $fn_name = fn (')
-			for i, arg in fn_info.args {
+			for i, arg in fn_info.params {
 				if arg.is_mut {
 					f.write(arg.typ.share().str() + ' ')
 				}
@@ -518,9 +518,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 						s = s[1..]
 					}
 				}
-				is_last_arg := i == fn_info.args.len - 1
-				should_add_type := is_last_arg || fn_info.args[i + 1].typ != arg.typ ||
-					(fn_info.is_variadic && i == fn_info.args.len - 2)
+				is_last_arg := i == fn_info.params.len - 1
+				should_add_type := is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
+					(fn_info.is_variadic && i == fn_info.params.len - 2)
 				if should_add_type {
 					if fn_info.is_variadic && is_last_arg {
 						f.write(' ...' + s)
@@ -1260,7 +1260,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 		f.writeln('\n')
 	}
 	// Mark all function's used type so that they are not removed from imports
-	for arg in node.args {
+	for arg in node.params {
 		f.mark_types_module_as_used(arg.typ)
 	}
 	f.mark_types_module_as_used(node.return_type)
