@@ -8,7 +8,7 @@ fn echo_server(_c net.UdpConn) {
 	c.set_read_timeout(10 * time.second)
 	c.set_write_timeout(10 * time.second)
 	for {
-		buf := []byte{ len: 100, init: 0 }
+		mut buf := []byte{ len: 100, init: 0 }
 		read, addr := c.read_into(mut buf) or {
 			continue
 		}
@@ -33,7 +33,7 @@ fn echo() ? {
 
 	c.write_string(data)?
 
-	buf := []byte{ len: 100, init: 0 }
+	mut buf := []byte{ len: 100, init: 0 }
 	read, addr := c.read_into(mut buf)?
 
 	assert read == data.len
