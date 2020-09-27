@@ -199,7 +199,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 					if stmt.is_pub {
 						c.error('function `main` cannot be declared public', stmt.pos)
 					}
-					if stmt.args.len > 0 {
+					if stmt.params.len > 0 {
 						c.error('function `main` cannot have arguments', stmt.pos)
 					}
 					if stmt.return_type != table.void_type {
@@ -297,7 +297,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			if ret_sym.kind == .placeholder {
 				c.error("type `$ret_sym.source_name` doesn't exist", node.pos)
 			}
-			for arg in fn_info.args {
+			for arg in fn_info.params {
 				arg_sym := c.table.get_type_symbol(arg.typ)
 				if arg_sym.kind == .placeholder {
 					c.error("type `$arg_sym.source_name` doesn't exist", node.pos)
@@ -979,14 +979,14 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 	elem_sym := c.table.get_type_symbol(elem_typ)
 	match call_expr.args[0].expr as arg_expr {
 		ast.AnonFn {
-			if arg_expr.decl.args.len > 1 {
+			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', call_expr.pos)
 			} else if is_map &&
-				(arg_expr.decl.return_type != elem_typ || arg_expr.decl.args[0].typ != elem_typ) {
+				(arg_expr.decl.return_type != elem_typ || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.source_name) $elem_sym.source_name {...}`',
 					call_expr.pos)
 			} else if !is_map &&
-				(arg_expr.decl.return_type != table.bool_type || arg_expr.decl.args[0].typ != elem_typ) {
+				(arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.source_name) bool {...}`',
 					call_expr.pos)
 			}
@@ -997,13 +997,13 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 					c.error('$arg_expr.name is not exist', arg_expr.pos)
 					return
 				}
-				if func.args.len > 1 {
+				if func.params.len > 1 {
 					c.error('function needs exactly 1 argument', call_expr.pos)
-				} else if is_map && (func.return_type != elem_typ || func.args[0].typ != elem_typ) {
+				} else if is_map && (func.return_type != elem_typ || func.params[0].typ != elem_typ) {
 					c.error('type mismatch, should use `fn(a $elem_sym.source_name) $elem_sym.source_name {...}`',
 						call_expr.pos)
 				} else if !is_map &&
-					(func.return_type != table.bool_type || func.args[0].typ != elem_typ) {
+					(func.return_type != table.bool_type || func.params[0].typ != elem_typ) {
 					c.error('type mismatch, should use `fn(a $elem_sym.source_name) bool {...}`',
 						call_expr.pos)
 				}
@@ -1121,7 +1121,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// println('warn $method_name lef.mod=$left_type_sym.mod c.mod=$c.mod')
 			c.error('method `${left_type_sym.source_name}.$method_name` is private', call_expr.pos)
 		}
-		if method.args[0].is_mut {
+		if method.params[0].is_mut {
 			c.fail_if_immutable(call_expr.left)
 			// call_expr.is_mut = true
 		}
@@ -1129,8 +1129,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			method.ctdefine.len > 0 && method.ctdefine !in c.pref.compile_defines {
 			call_expr.should_be_skipped = true
 		}
-		nr_args := if method.args.len == 0 { 0 } else { method.args.len - 1 }
-		min_required_args := method.args.len - if method.is_variadic && method.args.len > 1 { 2 } else { 1 }
+		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
+		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
 			c.error('too few arguments in call to `${left_type_sym.source_name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
 				call_expr.pos)
@@ -1145,8 +1145,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		// call_expr.args << method.args[0].typ
 		// call_expr.exp_arg_types << method.args[0].typ
 		for i, arg in call_expr.args {
-			exp_arg_typ := if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len -
-					1].typ } else { method.args[i + 1].typ }
+			exp_arg_typ := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
+					1].typ } else { method.params[i + 1].typ }
 			exp_arg_sym := c.table.get_type_symbol(exp_arg_typ)
 			c.expected_type = exp_arg_typ
 			got_arg_typ := c.expr(arg.expr)
@@ -1176,8 +1176,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 						call_expr.pos)
 				}
 			}
-			param := if method.is_variadic && i >= method.args.len - 1 { method.args[method.args.len -
-					1] } else { method.args[i + 1] }
+			param := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
+					1] } else { method.params[i + 1] }
 			if arg.is_mut {
 				c.fail_if_immutable(arg.expr)
 				if !param.is_mut {
@@ -1201,16 +1201,16 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		// TODO: typ optimize.. this node can get processed more than once
 		if call_expr.expected_arg_types.len == 0 {
-			for i in 1 .. method.args.len {
-				call_expr.expected_arg_types << method.args[i].typ
+			for i in 1 .. method.params.len {
+				call_expr.expected_arg_types << method.params[i].typ
 			}
 		}
 		if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
-			call_expr.receiver_type = left_type.derive(method.args[0].typ).set_flag(.generic)
+			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			call_expr.receiver_type = method.args[0].typ
+			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
 		return method.return_type
@@ -1399,12 +1399,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 		return f.return_type
 	}
-	min_required_args := if f.is_variadic { f.args.len - 1 } else { f.args.len }
+	min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
 	if call_expr.args.len < min_required_args {
 		c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)',
 			call_expr.pos)
-	} else if !f.is_variadic && call_expr.args.len > f.args.len {
-		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.args.len)',
+	} else if !f.is_variadic && call_expr.args.len > f.params.len {
+		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.params.len)',
 			call_expr.pos)
 		return f.return_type
 	}
@@ -1433,12 +1433,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: typ optimize.. this node can get processed more than once
 	if call_expr.expected_arg_types.len == 0 {
-		for arg in f.args {
-			call_expr.expected_arg_types << arg.typ
+		for param in f.params {
+			call_expr.expected_arg_types << param.typ
 		}
 	}
 	for i, call_arg in call_expr.args {
-		arg := if f.is_variadic && i >= f.args.len - 1 { f.args[f.args.len - 1] } else { f.args[i] }
+		arg := if f.is_variadic && i >= f.params.len - 1 { f.params[f.params.len - 1] } else { f.params[i] }
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
@@ -3946,7 +3946,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	}
 	if node.language == .v {
 		// Make sure all types are valid
-		for arg in node.args {
+		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
 			if sym.kind == .placeholder {
 				c.error('unknown type `$sym.source_name`', node.pos)
@@ -3957,12 +3957,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if node.return_type != table.string_type {
 			c.error('.str() methods should return `string`', node.pos)
 		}
-		if node.args.len != 1 {
+		if node.params.len != 1 {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
 	// TODO c.pref.is_vet
-	if node.language == .v && !node.is_method && node.args.len == 0 && node.return_type == table.void_type_idx &&
+	if node.language == .v && !node.is_method && node.params.len == 0 && node.return_type == table.void_type_idx &&
 		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
 		// simple heuristic
 		for st in node.stmts {

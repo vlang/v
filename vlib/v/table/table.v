@@ -22,7 +22,7 @@ pub mut:
 
 pub struct Fn {
 pub:
-	args                    []Param
+	params                  []Param
 	return_type             Type
 	return_type_source_name string
 	is_variadic             bool
@@ -66,7 +66,7 @@ pub fn new_table() &Table {
 // used to compare fn's & for naming anon fn's
 pub fn (f &Fn) signature() string {
 	mut sig := ''
-	for i, arg in f.args {
+	for i, arg in f.params {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
 		// if arg.is_mut {
@@ -74,7 +74,7 @@ pub fn (f &Fn) signature() string {
 		// }
 		// sig += '$arg.typ'
 		sig += '$typ'
-		if i < f.args.len - 1 {
+		if i < f.params.len - 1 {
 			sig += '_'
 		}
 	}
@@ -85,12 +85,12 @@ pub fn (f &Fn) signature() string {
 // source_signature generates the signature of a function which looks like in the V source
 pub fn (f &Fn) source_signature() string {
 	mut sig := '('
-	for i, arg in f.args {
+	for i, arg in f.params {
 		if arg.is_mut {
 			sig += 'mut '
 		}
 		sig += '$arg.type_source_name'
-		if i < f.args.len - 1 {
+		if i < f.params.len - 1 {
 			sig += ', '
 		}
 	}
@@ -102,11 +102,11 @@ pub fn (f &Fn) is_same_method_as(func &Fn) bool {
 	if f.return_type != func.return_type {
 		return false
 	}
-	if f.args.len != func.args.len {
+	if f.params.len != func.params.len {
 		return false
 	}
-	for i in 1 .. f.args.len {
-		if f.args[i].typ != func.args[i].typ {
+	for i in 1 .. f.params.len {
+		if f.params[i].typ != func.params[i].typ {
 			return false
 		}
 	}

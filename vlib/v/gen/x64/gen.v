@@ -834,13 +834,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// if !is_main {
 	g.sub8(.rsp, 0x10)
 	// }
-	if node.args.len > 0 {
+	if node.params.len > 0 {
 		// g.mov(.r12, 0x77777777)
 	}
 	// Copy values from registers to local vars (calling convention)
 	mut offset := 0
-	for i in 0 .. node.args.len {
-		name := node.args[i].name
+	for i in 0 .. node.params.len {
+		name := node.params[i].name
 		// TODO optimize. Right now 2 mov's are used instead of 1.
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
