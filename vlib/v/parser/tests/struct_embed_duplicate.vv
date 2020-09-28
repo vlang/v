@@ -4,6 +4,6 @@ struct Abc {
 
 struct Xyz {
 	Abc
-    Abc
+	Abc
 	bar int
 }
