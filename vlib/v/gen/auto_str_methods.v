@@ -126,7 +126,6 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
 	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
-	// g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
@@ -171,7 +170,9 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -214,7 +215,9 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("}"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -230,7 +233,9 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 
@@ -278,7 +283,9 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_nam
 		}
 	}
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit(")"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
+	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
+	g.auto_str_funcs.writeln('\treturn res;')
 	g.auto_str_funcs.writeln('}')
 }
 

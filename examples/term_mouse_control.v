@@ -1,14 +1,16 @@
 import time
 import term
-import term.input as ti
+import term.input
 
-ti.setup({})
+mut ti := input.init({ buf_size: 32 })
 println('\x1b[1;1H\x1b[2J')
 term.erase_del_clear()
 term.hide_cursor()
 
 for i in 0 .. 5000 {
 	event, data := ti.read()
+	// if event != .empty { println('  - $data') }
+	// /*
 	match event {
 		.mouse_down, .mouse_drag {
 			// Uncomment this to clear the terminal on every click
@@ -21,5 +23,6 @@ for i in 0 .. 5000 {
 	}
 	term.set_cursor_position(x: 5, y: 3)
 	println('Frame #$i')
-	time.sleep_ms(16)
+	// */
+	time.sleep_ms(5)
 }

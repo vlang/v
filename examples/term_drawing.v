@@ -12,7 +12,7 @@ mut:
 	msg_hide_tick   int
 	primary_color   Color = Color{200, 30, 0 }
 	secondary_color Color = Color{20, 60, 200 }
-	drawing         [][]string = [][]string{ len: 1080, init: []string{ len: 1920, init: ' ' } }
+	drawing         [][]Color = [][]Color{ len: 1080, init: []Color{ len: 1920 } }
 	w               int
 	h               int
 	size            int
@@ -144,8 +144,7 @@ fn (mut app App) tick() {
 			}
 		} .text {
 			if data.bytes.len == 1 && data.bytes[0] == `c` {
-				app.drawing = [][]string{ len: 255, init: []string{ len: 255, init: ' ' } }
-				app.clear_term()
+				[][]Color{ len: 1080, init: []string{ len: 1920 } }
 			} else {
 				app.show_msg(data.bytes.bytestr(), 1000)
 			}
@@ -182,8 +181,8 @@ fn (mut app App) set_pixel(x_, y_ int, c Color) {
 	// Term coords start at 1, and adjust for the header
 	x, y := x_ - 1, y_ - 4
 	if y < 0 || app.h - y < 3 { return }
-	if x < 0 || x >= 1920 || y < 0 || y >= 1080 { return }
-	app.drawing[y][x] = term.bg_rgb(c.r, c.g, c.b, ' ')
+	if x < 0 || x >= app.drawing.len || y < 0 || y >= app.drawing[0].len { return }
+	app.drawing[y][x] = c
 }
 
 fn (mut app App) paint(data ti.EventData) {
@@ -196,16 +195,37 @@ fn (mut app App) paint(data ti.EventData) {
 			app.set_pixel(x, y, color)	
 		}
 	}
-
 }
 
 fn (mut app App) draw_content() {
+	// account for header/footer
 	h := app.h - 8
 	term.set_cursor_position(x: 0, y: 4)
-	for i in 0 .. h {
-		line_ := app.drawing[i]
-		line := line_[0..app.w]
-		print(line.join(''))
+	max_x := if app.w >= app.drawing[0].len { app.drawing[0].len } else { app.w }
+	max_y := if h >= app.drawing.len { app.drawing.len } else { h }
+	mut sb := strings.new_builder(24)
+	for y in 0 .. max_y {
+		line := app.drawing[y]
+		for x in 0 .. max_x {
+			c := line[x]
+			if c.r == 0 && c.r == 0 && c.b == 0 {
+				print(' ')
+			} else {
+				sb.write('\x1b[48;2;')
+				sb.write('$c.r')
+				sb.write(';')
+				sb.write('$c.g')
+				sb.write(';')
+				sb.write('$c.b')
+				sb.write('m \x1b[49m')
+
+				print(sb.str())
+				unsafe {
+					sb.free()
+					C.memset(sb.buf.data, 0, 24)
+				}
+			}
+		}
 	}
 }
 
