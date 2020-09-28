@@ -574,8 +574,13 @@ fn (mut s Scanner) skip_whitespace() {
 			return
 		}
 		// Count \r\n as one line
-		if util.is_nl(s.text[s.pos]) && !s.expect('\r\n', s.pos - 1) {
-			s.inc_line_number()
+		if util.is_nl(s.text[s.pos]) {
+			if s.expect('\r\n', s.pos) {
+				s.pos++
+				s.inc_line_number()
+			} else {
+				s.inc_line_number()
+			}
 		}
 		s.pos++
 	}
