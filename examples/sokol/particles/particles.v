@@ -31,6 +31,7 @@ mut:
 	frame       i64
 	last        i64
 	ps          particle.System
+	alpha_pip   C.sgl_pipeline
 }
 
 fn (mut a App) init() {
@@ -66,16 +67,24 @@ fn (mut a App) run() {
 }
 
 fn (a App) draw() {
+	sgl.load_pipeline(a.alpha_pip)
 	a.ps.draw()
 }
 
 fn init(user_data voidptr) {
+	mut app := &App(user_data)
 	desc := sapp.create_desc()
 	gfx.setup(&desc)
 	sgl_desc := C.sgl_desc_t{
 		max_vertices: 50 * 65536
 	}
 	sgl.setup(&sgl_desc)
+	mut pipdesc := C.sg_pipeline_desc{}
+	unsafe {C.memset(&pipdesc, 0, sizeof(pipdesc))}
+	pipdesc.blend.enabled = true
+	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
+	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	app.alpha_pip = sgl.make_pipeline(&pipdesc)
 }
 
 fn cleanup(user_data voidptr) {
@@ -93,6 +102,7 @@ fn frame(user_data voidptr) {
 	app.ps.update(dt)
 	draw(app)
 	gfx.begin_default_pass(&app.pass_action, app.width, app.height)
+	sgl.default_pipeline()
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
