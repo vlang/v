@@ -330,7 +330,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
 	for i, field in decl.fields {
-		if !c.is_builtin_mod && decl.language == .v {
+		if decl.language == .v {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
@@ -1130,7 +1130,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.should_be_skipped = true
 		}
 		nr_args := if method.params.len == 0 { 0 } else { method.params.len - 1 }
-		min_required_args := method.params.len - if method.is_variadic && method.params.len > 1 { 2 } else { 1 }
+		min_required_args := method.params.len - if method.is_variadic && method.params.len >
+			1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
 			c.error('too few arguments in call to `${left_type_sym.source_name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
 				call_expr.pos)
@@ -3223,7 +3224,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 }
 
 pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
-	for i in 0..node.lockeds.len {
+	for i in 0 .. node.lockeds.len {
 		c.ident(mut node.lockeds[i])
 		id := node.lockeds[i]
 		if id.obj is ast.Var as v {

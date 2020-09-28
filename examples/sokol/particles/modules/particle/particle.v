@@ -27,7 +27,7 @@ fn remap(v, min, max, new_min, new_max f64) f64 {
 	return (((v - min) * (new_max - new_min)) / (max - min)) + new_min
 }
 
-// * Particle
+// Particle
 pub struct Particle {
 mut:
 	location       vec2.Vec2
@@ -49,7 +49,7 @@ pub fn (mut p Particle) update(dt f64) {
 		p.color.r = p.color.r - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.r))
 		p.color.g = p.color.g - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.g))
 		p.color.b = p.color.b - 1 // byte(remap(p.life_time,0.0,p.life_time_init,0,p.color.b))
-		// p.color.a = byte(remap(p.life_time,0.0,p.life_time_init,0,255))
+		p.color.a = byte(int(remap(p.life_time, 0.0, p.life_time_init, 0, 255))) - 10
 	} else {
 		p.life_time = 0
 	}

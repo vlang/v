@@ -463,7 +463,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	// generate toc first
 	contents.writeln(doc_node_html(dcs.head, '', true, dcs.table))
 	for cn in dcs.contents {
-		cfg.write_content(&cn, &dcs, &contents)
+		cfg.write_content(&cn, &dcs, mut contents)
 		if cn.attrs['parent'] == 'Constants' || cn.attrs['category'] == 'Methods' {
 			continue
 		}
