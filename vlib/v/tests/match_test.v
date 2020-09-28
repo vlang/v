@@ -164,3 +164,16 @@ fn test_sum_type_name() {
 	}
 	assert f(a) == 'A1'
 }
+
+type Integers = byte | u16 | u32 | u64
+
+fn test_match_sum_type_multiple_type() {
+	match Integers(byte(1)) {
+		byte, u16, u32 {
+			assert true
+		}
+		u64 {
+			assert false
+		}
+	}
+}

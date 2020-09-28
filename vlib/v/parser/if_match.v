@@ -210,33 +210,38 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					}
 				}
 			}
-			// Sum type match
-			typ := p.parse_type()
-			exprs << ast.Type{
-				typ: typ
+			// We declare the variable outside so it's available in the next condition
+			mut typ := table.void_type
+			for {
+				// Sum type match
+				typ = p.parse_type()
+				exprs << ast.Type{
+					typ: typ
+				}
+				if p.tok.kind != .comma {
+					break
+				}
+				p.check(.comma)
 			}
-			p.scope.register('it', ast.Var{
-				name: 'it'
-				typ: typ.to_ptr()
-				pos: cond_pos
-				is_used: true
-				is_mut: is_mut
-			})
-			if var_name.len > 0 {
-				// Register shadow variable or `as` variable with actual type
-				p.scope.register(var_name, ast.Var{
-					name: var_name
+			if exprs.len == 1 {
+				p.scope.register('it', ast.Var{
+					name: 'it'
 					typ: typ.to_ptr()
 					pos: cond_pos
 					is_used: true
-					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
-			}
-			// TODO
-			if p.tok.kind == .comma {
-				p.next()
-				p.parse_type()
+				if var_name.len > 0 {
+					// Register shadow variable or `as` variable with actual type
+					p.scope.register(var_name, ast.Var{
+						name: var_name
+						typ: typ.to_ptr()
+						pos: cond_pos
+						is_used: true
+						is_changed: true // TODO mut unchanged warning hack, remove
+						is_mut: is_mut
+					})
+				}
 			}
 			is_sum_type = true
 		} else {
