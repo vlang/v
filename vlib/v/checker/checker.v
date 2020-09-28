@@ -329,7 +329,9 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
+	struct_sym := c.table.find_type(decl.name) or {
+		table.TypeSymbol{}
+	}
 	mut struct_info := struct_sym.info as table.Struct
 	for embedding in decl.embeddings {
 		sym := c.table.get_type_symbol(embedding.typ)
