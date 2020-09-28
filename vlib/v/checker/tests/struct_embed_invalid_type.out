@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_embed_invalid_type.vv:4:5: error: `Foo` is not a struct
+vlib/v/checker/tests/struct_embed_invalid_type.vv:4:2: error: `Foo` is not a struct
     2 |
     3 | struct Bar {
     4 |     Foo
