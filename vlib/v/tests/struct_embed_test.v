@@ -31,12 +31,12 @@ fn test_initialize() {
 
 struct Bar3 {
 	Foo
-	y int = 10
+	y string = 'test'
 }
 
 fn test_overwrite_field() {
 	b := Bar3{}
-	assert b.y == 10
+	assert b.y == 'test'
 }
 
 struct TestEmbedFromModule {
