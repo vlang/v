@@ -24,7 +24,7 @@ fn (e Employee) to_json() string {
 	$for field in Employee.fields {
 		d := e.$(field.name)
 
-		$if field.Type is JobTitle {
+		$if field.typ is JobTitle {
 			mp[field.name] = json.encode<int>(d)
 		} $else {
 			mp[field.name] = d
