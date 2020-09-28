@@ -734,14 +734,26 @@ pub fn (f &Fmt) type_to_str(t table.Type) string {
 		start_pos := 2 * res.count('[]')
 		res = res[0..start_pos] + '&' + res[start_pos..res.len]
 	}
-	if res.starts_with('[]fixed_') {
-		prefix := '[]fixed_'
-		res = res[prefix.len..]
-		last_underscore_idx := res.last_index('_') or {
-			return '[]' + if should_shorten { res.replace_once(cur_mod, '') } else { res }
+	arr_fixed_prefix := '[]fixed_'
+	if res.starts_with(arr_fixed_prefix) {
+		// res: `[]fixed_[]fixed_int_5_10`
+		// transforms to: `[10][5]int`
+		mut last_underscore_idx := 0
+		mut dimensions := []string{}
+		for {
+			res = res[arr_fixed_prefix.len..]
+			last_underscore_idx = res.last_index('_') or {
+				return dimensions.join('') + '[]' +
+					if should_shorten { res.replace_once(cur_mod, '') } else { res }
+			}
+			limit := res[last_underscore_idx + 1..]
+			dimensions << '[$limit]'
+			res = res[..last_underscore_idx]
+			if !res.starts_with(arr_fixed_prefix) {
+				break
+			}
 		}
-		limit := res[last_underscore_idx + 1..]
-		res = '[' + limit + ']' + res[..last_underscore_idx]
+		res = dimensions.join('') + res[..last_underscore_idx]
 	}
 	if should_shorten {
 		res = res.replace_once(cur_mod, '')
