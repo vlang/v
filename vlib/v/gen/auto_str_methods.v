@@ -89,16 +89,18 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\t$field_styp it = (*($field_styp*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym_has_str_method {
 		if is_elem_ptr {
-			g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(*it);')
+			g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(*it, indent_count);')
 		} else {
-			g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}(it);')
+			g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(it, indent_count);')
 		}
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
@@ -147,12 +149,14 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
 	if sym.kind == .struct_ && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i], indent_count));')
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 	} else if sym.kind == .string {
@@ -189,7 +193,9 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	}
 	zero := g.type_default(info.value_type)
 	g.type_definitions.writeln('string ${str_fn_name}($styp m); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { /* gen_str_for_map */')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp m, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; ++i) {')
@@ -203,7 +209,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	if val_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
 	} else if val_sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
 	} else {
@@ -381,7 +387,7 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, fi
 			return 'indent_${fn_name}($obj, indent_count + 1)'
 		}
 	} else if sym.kind in [.array, .array_fixed, .map] {
-		return '${fn_name}(it->${c_name(field_name)})'
+		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
 	} else if sym.kind == .sum_type {
 		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
 	} else {
