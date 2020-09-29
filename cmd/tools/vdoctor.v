@@ -30,7 +30,7 @@ fn (mut a App) collect_info() {
 	if runtime.is_little_endian() {
 		arch_details << 'little endian'
 	}
-	if os_kind == 'mac' {
+	if os_kind == 'macos' {
 		arch_details << a.cmd(command:'sysctl -n machdep.cpu.brand_string')
 	}
 	if os_kind == 'linux' {
@@ -60,7 +60,7 @@ fn (mut a App) collect_info() {
 		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
 			os_details += ' (chroot)'
 		}
-	} else if os_kind == 'mac' {
+	} else if os_kind == 'macos' {
 		mut details := []string{}
 		details << a.cmd(command: 'sw_vers -productName')
 		details << a.cmd(command: 'sw_vers -productVersion')

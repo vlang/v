@@ -792,7 +792,7 @@ pub fn user_os() string {
 		return 'linux'
 	}
 	$if macos {
-		return 'mac'
+		return 'macos'
 	}
 	$if windows {
 		return 'windows'

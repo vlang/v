@@ -4655,9 +4655,6 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		'ios' {
 			return '__TARGET_IOS__'
 		}
-		'mac' {
-			return '__APPLE__'
-		}
 		'macos' {
 			return '__APPLE__'
 		}
