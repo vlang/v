@@ -422,6 +422,8 @@ pub fn (i &Ident) var_info() IdentVar {
 	}
 }
 
+// left op right
+// See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
 	op          token.Kind
@@ -434,6 +436,7 @@ pub mut:
 	auto_locked string
 }
 
+// ++, --
 pub struct PostfixExpr {
 pub:
 	op          token.Kind
@@ -443,6 +446,7 @@ pub mut:
 	auto_locked string
 }
 
+// See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
 	op         token.Kind
