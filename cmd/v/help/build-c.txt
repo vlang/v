@@ -7,10 +7,6 @@ For help regarding building an executable, see `v help build`.
 
 These build flags are enabled on `build` and `run` as long as the backend is set to `c`:
 
-   -arch <architecture>
-      Change the architecture that V will tell the C compiler to build.
-      List of supported architectures: `x86` and `x64` (default).
-
    -cc <compiler>
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
@@ -40,10 +36,6 @@ These build flags are enabled on `build` and `run` as long as the backend is set
 
    -live
       Build the executable with live capabilities (`[live]`).
-
-   -manual-free
-      Enable manually freeing on all V code. This will cause memory leaks in vlib.
-      Currently enabled until a stable auto-free system is in place.
 
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
