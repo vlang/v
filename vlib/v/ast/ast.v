@@ -34,6 +34,7 @@ pub struct Block {
 pub:
 	stmts     []Stmt
 	is_unsafe bool
+	pos       token.Position
 }
 
 // | IncDecStmt k
@@ -1112,8 +1113,9 @@ pub fn (stmt Stmt) position() token.Position {
 		/*
 		// Attr {
 		// }
-		// Block {
-		// }
+		*/
+		Block { return stmt.pos }
+		/*
 		// BranchStmt {
 		// }
 		*/
