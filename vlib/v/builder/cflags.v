@@ -12,7 +12,8 @@ fn (v &Builder) get_os_cflags() []cflag.CFlag {
 	for flag in v.table.cflags {
 		if flag.os == '' ||
 			(flag.os == 'linux' && v.pref.os == .linux) ||
-			(flag.os == 'darwin' && v.pref.os == .mac) ||
+			(flag.os == 'macos' && v.pref.os == .macos) ||
+			(flag.os == 'darwin' && v.pref.os == .macos) ||
 			(flag.os == 'freebsd' && v.pref.os == .freebsd) ||
 			(flag.os == 'windows' && v.pref.os == .windows) ||
 			(flag.os == 'mingw' && v.pref.os == .windows && v.pref.ccompiler != 'msvc') ||

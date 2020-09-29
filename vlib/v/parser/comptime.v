@@ -11,7 +11,7 @@ import vweb.tmpl
 
 // #flag darwin -I.
 const (
-	supported_platforms  = ['windows', 'mac', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
+	supported_platforms  = ['windows', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
 		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
@@ -148,11 +148,8 @@ fn os_from_string(os string) pref.OS {
 		'ios' {
 			return .ios
 		}
-		'mac' {
-			return .mac
-		}
 		'macos' {
-			return .mac
+			return .macos
 		}
 		'freebsd' {
 			return .freebsd
