@@ -38,8 +38,7 @@ pub:
 }
 
 pub fn (d EventData) str() string {
-	return d.bytes.str()
-	// return '{ x: ${d.x:-3} | y: ${d.y:-3} | button: .${d.button:-9} | direction: .${d.direction:-9} }'
+	return '{ x: ${d.x:-3} | y: ${d.y:-3} | button: .${d.button:-9} | direction: .${d.direction:-9} | bytes: ${d.bytes.str()} }'
 }
 
 struct TermInput {
@@ -70,7 +69,7 @@ pub fn (mut ti TermInput) read() (TerminalEvent, EventData) {
 		if len == 0 { return TerminalEvent.empty, EventData{} }
 		mut l := &ti.buf.len
 		unsafe { *l = len }
-		println('NEW DATA - $len $ti.buf.len')		
+		// println('NEW DATA - $len $ti.buf.len')		
 	}
 
 	if ti.buf.len > 2 && ti.buf[0] == 0x1b && ti.buf[1] == `[` {
@@ -83,35 +82,35 @@ pub fn (mut ti TermInput) read() (TerminalEvent, EventData) {
 	return TerminalEvent.text, EventData{ bytes: ret_buf }
 }
 
+[inline]
+// shifts the array left, to remove any data that was just read, and updates its len
+fn (mut ti TermInput) shift(len int) {
+	unsafe {
+		C.memmove(ti.buf.data, ti.buf.data + len, ti.buf_size - len)
+		ti.resize_arr(ti.buf.len - len)
+	}
+}
+
 // [direct_array_access]
 fn (mut ti TermInput) ansi() (TerminalEvent, EventData) {
-	buf := ti.buf
-	mut i := 2
-	mut cur_char := byte(0)
+	mut buf := ti.buf
 
-	for !cur_char.is_letter() {
+	mut i := 2
+	// Get all data up to the next letter (== ending of the escape sequence)
+	for !buf[i++].is_letter() {
 		if i >= buf.len {
 			// TODO: possibility of infinite loop? clear / grow buffer if that's the case
 			return TerminalEvent.empty, EventData{}
 		}
-		cur_char = buf[i]
-		i++
 	}
 
 	data := buf[..i]
 
 	if data.len > 3 && data[2] == `<` { // Mouse control
-		str := data.bytestr()
+		str := data[3..].bytestr()
 		split := str.split(';')
 		typ, x, y := split[0].int(), split[1].int(), split[2].int()
-
-		unsafe {
-			// Shift the array left
-			println('$ti.buf.len  - $i                | $ti.buf.data | ${ti.buf.data[0]} | $ti.buf')
-			C.memmove(ti.buf.data, ti.buf.data + i, ti.buf_size - i)
-			ti.resize_arr(ti.buf.len - i)
-			// println('$ti.buf.len                      | $ti.buf.data | ${ti.buf.data[0]} | $ti.buf')
-		}
+		ti.shift(i)
 
 		match typ {
 			0, 2 {
@@ -132,6 +131,15 @@ fn (mut ti TermInput) ansi() (TerminalEvent, EventData) {
 				return TerminalEvent.mouse_scroll, EventData{ x: x, y: y, direction: direction }
 			} else {}
 		}
+		unsafe {
+			str.free()
+			split.free()
+		}
+	}
+
+	unsafe {
+		data.free()
+		buf.free()
 	}
 
 	return TerminalEvent.unknown, EventData{}
