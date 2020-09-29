@@ -2011,11 +2011,16 @@ unexpected value. Assert statements can be used in any function.
 
 ```v
 // hello.v
-pub fn hello() string {
+module main
+fn hello() string {
     return 'Hello world'
+}
+fn main() {
+    println(hello())
 }
 ```
 ```v
+module main
 // hello_test.v
 fn test_hello() {
     assert hello() == 'Hello world'
@@ -2028,6 +2033,19 @@ producing the correct output. V executes all test functions in the file.
 * Test function names must begin with `test_` to mark them for execution.
 * Normal functions can also be defined in test files, and should be called manually. Other
   symbols can also be defined in test files e.g. types.
+* There are 2 kinds of tests: external and internal.
+* The internal tests, have to *declare* their module, just like all other .v
+files from the same module. Internal tests can call even private functions in
+the same module. 
+* The external tests, have to *import* the modules which they test. They do not 
+have access to the private functions/types of the modules. They can test only 
+the external/public API that a module provides.
+
+In the example above, `test_hello` is an internal test, that can call
+the private function `hello()` because `hello_test.v` has `module main`,
+just like `hello.v`, i.e. both are part of the same module. Note also that 
+since `module main` is a regular module like the others, internal tests can 
+be used to test private functions in your main program .v files too.
 
 You can also define special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
