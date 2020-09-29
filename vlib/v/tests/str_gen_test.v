@@ -196,3 +196,25 @@ fn test_struct_with_f32_pointer() {
 	assert '$w' == 'Wrapper5 {\n    foo: &5.1\n}'
 	assert w.str() == 'Wrapper5 {\n    foo: &5.1\n}'
 }
+
+
+struct TestStruct {
+	x int
+}
+struct ArrayWithStruct {
+	foo []TestStruct
+}
+fn test_array_with_struct() {
+	a := ArrayWithStruct{[TestStruct{}]}
+	assert a.str() == 'ArrayWithStruct {\n    foo: [TestStruct {\n        x: 0\n    }]\n}'
+	assert '$a' == 'ArrayWithStruct {\n    foo: [TestStruct {\n        x: 0\n    }]\n}'
+}
+
+struct MapWithStruct {
+	foo map[string]TestStruct
+}
+fn test_map_with_struct() {
+	a := MapWithStruct{{'test': TestStruct{}}}
+	assert a.str() == 'MapWithStruct {\n    foo: {\'test\': TestStruct {\n        x: 0\n    }}\n}'
+	assert '$a' == 'MapWithStruct {\n    foo: {\'test\': TestStruct {\n        x: 0\n    }}\n}'
+}
