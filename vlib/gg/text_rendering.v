@@ -234,7 +234,7 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 			}
 		}
 		.mono {
-			if fpath.ends_with('-Regular') {
+			if !fpath.ends_with('Mono-Regular') && fpath.ends_with('-Regular') {
 				fpath = fpath.replace('-Regular', 'Mono-Regular')
 			} else if fpath.to_lower().starts_with('arial') {
 				// Arial has no mono variant
@@ -248,6 +248,6 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 
 fn debug_font_println(s string) {
 	$if debug_font? {
-		println(s)    
+		println(s)
 	}
 }
