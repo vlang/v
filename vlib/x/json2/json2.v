@@ -122,3 +122,12 @@ pub fn (f Any) arr() []Any {
 
 	return [f]
 }
+
+// Use `Any` as a bool
+pub fn (f Any) bool() bool {
+	match f {
+		bool { return *f }
+		string { return (*f).bool() }
+		else { return false }
+	}
+}
