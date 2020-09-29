@@ -42,7 +42,7 @@ pub enum CompilerType {
 
 const (
 	list_of_flags_with_param = ['o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os',
-		'arch', 'csource', 'cf', 'cflags', 'path']
+		'cf', 'cflags', 'path']
 )
 
 pub struct Preferences {
@@ -380,14 +380,29 @@ pub fn backend_from_string(s string) ?Backend {
 
 // Helper function to convert string names to CC enum
 pub fn cc_from_string(cc_str string) CompilerType {
-	if cc_str.len == 0 { return .gcc } // TODO
+	if cc_str.len == 0 {
+		return .gcc
+	}
+	// TODO
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
-	if '++'    in cc { return .cplusplus }
-	if 'tcc'   in cc { return .tinyc }
-	if 'tinyc' in cc { return .tinyc }
-	if 'clang' in cc { return .clang }
-	if 'mingw' in cc { return .mingw }
-	if 'msvc'  in cc { return .msvc  }
+	if '++' in cc {
+		return .cplusplus
+	}
+	if 'tcc' in cc {
+		return .tinyc
+	}
+	if 'tinyc' in cc {
+		return .tinyc
+	}
+	if 'clang' in cc {
+		return .clang
+	}
+	if 'mingw' in cc {
+		return .mingw
+	}
+	if 'msvc' in cc {
+		return .msvc
+	}
 	return .gcc
 }
 
