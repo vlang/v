@@ -2965,7 +2965,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		if node.is_expr {
 			for st in branch.stmts {
 				st.check_c_expr() or {
-					c.error('`match` expression branch cannot have this kind of statement (`$err`)', st.position())
+					c.error('`match` expression branch has $err', st.position())
 				}
 			}
 		}
@@ -3329,7 +3329,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		if expr_required {
 			for st in branch.stmts {
 				st.check_c_expr() or {
-					c.error('`if` expression branch cannot have this kind of statement (`$err`)', st.position())
+					c.error('`if` expression branch has $err', st.position())
 				}
 			}
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {

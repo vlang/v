@@ -1098,10 +1098,11 @@ pub fn (stmt Stmt) check_c_expr()? {
 		AssignStmt {return}
 		ExprStmt {
 			if stmt.expr.is_expr() {return}
+			return error('unsupported statement (`${typeof(stmt.expr)}`)')
 		}
 		else {}
 	}
-	return error(typeof(stmt))
+	return error('unsupported statement (`${typeof(stmt)}`)')
 }
 
 pub fn (stmt Stmt) position() token.Position {
