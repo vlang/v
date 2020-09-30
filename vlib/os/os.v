@@ -151,7 +151,7 @@ pub fn cp_all(src, dst string, overwrite bool) ? {
 	// single file copy
 	if !os.is_dir(source_path) {
 		adjusted_path := if os.is_dir(dest_path) {
-os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
+		os.join_path(dest_path,os.file_name(source_path)) } else { dest_path }
 		if os.exists(adjusted_path) {
 			if overwrite {
 				os.rm(adjusted_path)
@@ -1134,6 +1134,14 @@ pub fn join_path(base string, dirs ...string) string {
 	mut result := []string{}
 	result << base.trim_right('\\/')
 	for d in dirs {
+		if d == '..' {
+			last_r :=result.last()
+			result.delete(result.len - 1)
+			if last_r.contains(path_separator) {
+				result << dir(last_r)
+			}
+			continue
+		}
 		result << d
 	}
 	return result.join(path_separator)
