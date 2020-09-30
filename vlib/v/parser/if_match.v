@@ -235,7 +235,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					if i > 0 {
 						agg_name.write(' | ')
 					}
-					// TODO does this prepend the module ? If not, it must be done manually
 					type_str := p.table.type_to_str(typ)
 					agg_name.write(p.prepend_mod(type_str))
 				}

@@ -39,6 +39,18 @@ pub mut:
 	name                    string
 }
 
+fn (f &Fn) method_equals(o &Fn) bool {
+	return f.params[1..].equals(o.params[1..])
+		&& f.return_type == o.return_type
+		&& f.return_type_source_name == o.return_type_source_name
+		&& f.is_variadic == o.is_variadic
+		&& f.language == o.language
+		&& f.is_generic == o.is_generic
+		&& f.is_pub == o.is_pub
+		&& f.mod == o.mod
+		&& f.name == o.name
+}
+
 pub struct Param {
 pub:
 	pos              token.Position
@@ -47,6 +59,26 @@ pub:
 	typ              Type
 	type_source_name string
 	is_hidden        bool // interface first arg
+}
+
+fn (p &Param) equals(o &Param) bool {
+	return p.name == o.name
+		&& p.is_mut == o.is_mut
+		&& p.typ == o.typ
+		&& p.type_source_name == o.type_source_name
+		&& p.is_hidden == o.is_hidden
+}
+
+fn (p []Param) equals(o []Param) bool {
+	if p.len != o.len {
+		return false
+	}
+	for i in 0..p.len {
+		if !p[i].equals(o[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 pub struct Var {
@@ -139,6 +171,32 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
 	t.methods << new_fn
 }
 
+pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
+	if sym.kind != .aggregate {
+		panic('Unexpected type symbol: $sym.kind')
+	}
+	agg_info := sym.info as Aggregate
+	// an aggregate always has at least 2 types
+	mut found_once := false
+	mut new_fn := Fn{}
+	for typ in agg_info.types {
+		ts := t.get_type_symbol(typ)
+		if type_method := ts.find_method(name) {
+			if !found_once {
+				found_once = true
+				new_fn = type_method
+			} else if !new_fn.method_equals(type_method) {
+				return error('method `${t.type_to_str(typ)}.$name` signature is different')
+			}
+		} else {
+			return error('unknown method: `${t.type_to_str(typ)}.$name`')
+		}
+	}
+	// register the method in the aggregate, so lookup is faster next time
+	sym.register_method(new_fn)
+	return new_fn
+}
+
 pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
 	// println('type_has_method($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	if _ := t.type_find_method(s, name) {
@@ -153,6 +211,10 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 	mut ts := s
 	for {
 		if method := ts.find_method(name) {
+			return method
+		}
+		if ts.kind == .aggregate {
+			method := t.register_aggregate_method(mut ts, name) ?
 			return method
 		}
 		if ts.parent_idx == 0 {
