@@ -733,6 +733,8 @@ pub:
 }
 
 pub struct Aggregate {
+mut:
+	fields []Field // used for faster lookup inside the module
 pub:
 	types []Type
 }
@@ -754,6 +756,15 @@ pub mut:
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
+}
+
+fn (f &Field) equals(o &Field) bool {
+	return f.name == o.name
+		&& f.typ == o.typ
+		// TODO Should those be checked ?
+		&& f.is_pub == o.is_pub
+		&& f.is_mut == o.is_mut
+		&& f.is_global == o.is_global
 }
 
 pub struct Array {
@@ -904,6 +915,15 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 		}
 	}
 	return has_str_method, expects_ptr, nr_args
+}
+
+fn (a &Aggregate) find_field(name string) ?Field {
+	for field in a.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

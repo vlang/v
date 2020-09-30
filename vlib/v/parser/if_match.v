@@ -244,6 +244,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					name: name
 					source_name: name
 					kind: .aggregate
+					mod: p.mod
 					info: table.Aggregate{
 						types: types
 					}
