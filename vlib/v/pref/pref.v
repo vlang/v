@@ -41,8 +41,8 @@ pub enum CompilerType {
 }
 
 const (
-	list_of_flags_with_param = ['o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os',
-		'cf', 'cflags', 'path']
+	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
+		'cflags', 'path']
 )
 
 pub struct Preferences {
@@ -342,7 +342,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {''} else {' for command `$command`'})
+				eprintln(if command.len == 0 {
+					''
+				} else {
+					' for command `$command`'
+				})
 				exit(1)
 			}
 		}
