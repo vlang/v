@@ -283,6 +283,9 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		.rune {
 			styp = 'any'
 		}
+		.aggregate {
+			panic('TODO: unhandled aggregate in JS')
+		}
 	}
 	/*
 	else {

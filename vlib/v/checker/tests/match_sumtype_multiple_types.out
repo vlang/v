@@ -1,0 +1,14 @@
+vlib/v/checker/tests/match_sumtype_multiple_types.vv:25:13: error: type `Charlie` has no field or method `char`
+   23 |     match NATOAlphabet(a) as l {
+   24 |         Alfa, Charlie {
+   25 |             assert l.char == `a`
+      |                      ~~~~
+   26 |             assert l.letter() == 'a'
+   27 |         }
+vlib/v/checker/tests/match_sumtype_multiple_types.vv:26:13: error: unknown method: `Charlie.letter`
+   24 |         Alfa, Charlie {
+   25 |             assert l.char == `a`
+   26 |             assert l.letter() == 'a'
+      |                      ~~~~~~~~~
+   27 |         }
+   28 |         Bravo {
