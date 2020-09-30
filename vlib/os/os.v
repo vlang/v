@@ -651,7 +651,6 @@ pub fn dir(path string) string {
 }
 
 // base_dir will return the base directory of `path`.
-// The `path_separator` is included.
 pub fn base_dir(path string) string {
 	posx := path.last_index(path_separator) or {
 		return path.clone()
@@ -824,12 +823,12 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + os.path_separator
+		return os.getenv('USERPROFILE')
 	} $else {
 		//println('home_dir() call')
-		//res:= os.getenv('HOME') + os.path_separator
+		//res:= os.getenv('HOME')
 		//println('res="$res"')
-		return os.getenv('HOME') + os.path_separator
+		return os.getenv('HOME')
 	}
 }
 
@@ -1283,7 +1282,7 @@ pub fn cache_dir() string {
 			return xdg_cache_home
 		}
 	}
-	cdir := os.home_dir() + '.cache'
+	cdir := os.join_path(os.home_dir(), '.cache')
 	if !os.is_dir(cdir) && !os.is_link(cdir) {
 		os.mkdir(cdir) or {
 			panic(err)

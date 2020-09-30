@@ -3002,6 +3002,13 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	mut branch_without_return := false
 	for branch in node.branches {
 		c.stmts(branch.stmts)
+		if node.is_expr {
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`match` expression branch has $err', st.position())
+				}
+			}
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			match mut branch.stmts[branch.stmts.len - 1] as stmt {
@@ -3403,6 +3410,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
+			}
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`if` expression branch has $err', st.position())
+				}
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
