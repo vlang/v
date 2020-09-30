@@ -144,7 +144,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 
-			is_embed := (p.tok.lit[0].str().is_upper() || p.peek_tok.kind == .dot) && language == .v
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) || p.peek_tok.kind == .dot) && language == .v
 
 			mut field_name := ''
 			mut typ := table.Type(0)
@@ -197,18 +197,20 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
-			if p.tok.kind == .assign {
-				// Default value
-				p.next()
-				// default_expr = p.tok.lit
-				// p.expr(0)
-				default_expr = p.expr(0)
-				match mut default_expr {
-					ast.EnumVal { default_expr.typ = typ }
-					// TODO: implement all types??
-					else {}
+			if !is_embed {
+				if p.tok.kind == .assign {
+					// Default value
+					p.next()
+					// default_expr = p.tok.lit
+					// p.expr(0)
+					default_expr = p.expr(0)
+					match mut default_expr {
+						ast.EnumVal { default_expr.typ = typ }
+						// TODO: implement all types??
+						else {}
+					}
+					has_default_expr = true
 				}
-				has_default_expr = true
 			}
 
 			// TODO merge table and ast Fields?

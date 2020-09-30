@@ -5,8 +5,8 @@ struct Foo {
 struct Test {}
 
 struct Bar {
-	y int
+	y    int
 	Foo
-	z string
+	z    string
 	Test
 }
