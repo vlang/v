@@ -747,6 +747,7 @@ pub mut:
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
+	is_embed         bool
 }
 
 pub struct Array {

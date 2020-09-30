@@ -329,35 +329,8 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	struct_sym := c.table.find_type(decl.name) or {
-		table.TypeSymbol{}
-	}
-	mut struct_info := struct_sym.info as table.Struct
-	for embedding in decl.embeddings {
-		sym := c.table.get_type_symbol(embedding.typ)
-		if sym.info is table.Struct as sym_info {
-			for field in sym_info.fields {
-				already_exists := struct_info.fields.filter(it.name == field.name).len > 0
-				if !already_exists {
-					decl.fields << ast.StructField{
-						name: field.name
-						pos: embedding.pos
-						type_pos: embedding.pos
-						typ: field.typ
-						default_expr: ast.fe2ex(field.default_expr)
-						has_default_expr: field.has_default_expr
-						attrs: field.attrs
-						is_public: field.is_pub
-					}
-					struct_info.fields << field
-				}
-			}
-		} else {
-			c.error('`$sym.name` is not a struct', embedding.pos)
-		}
-	}
 	for i, field in decl.fields {
-		if decl.language == .v {
+		if decl.language == .v && !field.is_embed {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
 		for j in 0 .. i {
