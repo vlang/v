@@ -154,6 +154,13 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			if is_embed {
 				// struct embedding
 				typ = p.parse_type()
+				sym := p.table.get_type_symbol(typ)
+				// main.Abc<int> => Abc
+				mut symbol_name := sym.name.split('.')[1]
+				// remove generic part from name
+				if '<' in symbol_name {
+					symbol_name = symbol_name.split('<')[0]
+				}
 				for p.tok.kind == .comment {
 					comments << p.comment()
 					if p.tok.kind == .rcbr {
@@ -162,7 +169,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				type_pos = p.prev_tok.position()
 				field_pos = p.prev_tok.position()
-				field_name = p.prev_tok.lit
+				field_name = symbol_name
 				if typ in embedded_structs {
 					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
 				}

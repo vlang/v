@@ -43,3 +43,16 @@ fn test_overwrite_field() {
 struct TestEmbedFromModule {
 	flag.Flag
 }
+
+
+struct BarGeneric<T> {
+pub:
+	foo T
+}
+struct BarGenericContainer {
+	BarGeneric<int>
+}
+fn test_generic_embed() {
+	b := BarGenericContainer{}
+	assert b.BarGeneric.foo == 0
+}
