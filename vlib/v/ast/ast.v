@@ -165,7 +165,7 @@ pub struct StructDecl {
 pub:
 	pos          token.Position
 	name         string
-	fields       []StructField
+	embeddings   []StructEmbedding
 	is_pub       bool
 	mut_pos      int // mut:
 	pub_pos      int // pub:
@@ -174,6 +174,15 @@ pub:
 	is_union     bool
 	attrs        []table.Attr
 	end_comments []Comment
+pub mut:
+	fields       []StructField
+}
+
+pub struct StructEmbedding {
+pub:
+	name string
+	typ  table.Type
+	pos  token.Position
 }
 
 pub struct InterfaceDecl {

@@ -71,6 +71,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
+	mut embeddings := []ast.StructEmbedding{}
+	mut embedded_field_names := []string{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -142,7 +144,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			field_start_pos := p.tok.position()
-			field_name := p.check_name()
+			mut field_name := p.check_name()
 			// p.warn('field $field_name')
 			for p.tok.kind == .comment {
 				comments << p.comment()
@@ -150,69 +152,100 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					break
 				}
 			}
-			// println(p.tok.position())
-			typ := p.parse_type()
-			type_pos := p.prev_tok.position()
-			field_pos := field_start_pos.extend(type_pos)
-			// if name == '_net_module_s' {
-			// if name.contains('App') {
-			// s := p.table.get_type_symbol(typ)
-			// println('struct decl field type ' + s.str())
-			// }
-			// Comments after type (same line)
-			line_pos := field_pos.line_nr
-			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
-				if p.tok.lit.contains('\n') {
-					break
+			next_is_dot := p.tok.kind == .dot
+			if (field_name.is_lower() && !next_is_dot) || language != .v {
+				// struct field
+				typ := p.parse_type()
+				type_pos := p.prev_tok.position()
+				field_pos := field_start_pos.extend(type_pos)
+				// Comments after type (same line)
+				line_pos := field_pos.line_nr
+				for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
+					if p.tok.lit.contains('\n') {
+						break
+					}
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
 				}
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
+				if p.tok.kind == .lsbr {
+					// attrs are stored in `p.attrs`
+					p.attributes()
+				}
+				mut default_expr := ast.Expr{}
+				mut has_default_expr := false
+				if p.tok.kind == .assign {
+					// Default value
+					p.next()
+					// default_expr = p.tok.lit
+					// p.expr(0)
+					default_expr = p.expr(0)
+					match mut default_expr {
+						ast.EnumVal { default_expr.typ = typ }
+						// TODO: implement all types??
+						else {}
+					}
+					has_default_expr = true
+				}
+				// TODO merge table and ast Fields?
+				ast_fields << ast.StructField{
+					name: field_name
+					pos: field_pos
+					type_pos: type_pos
+					typ: typ
+					comments: comments
+					default_expr: default_expr
+					has_default_expr: has_default_expr
+					attrs: p.attrs
+					is_public: is_field_pub
+				}
+				fields << table.Field{
+					name: field_name
+					typ: typ
+					default_expr: ast.ex2fe(default_expr)
+					has_default_expr: has_default_expr
+					is_pub: is_field_pub
+					is_mut: is_field_mut
+					is_global: is_field_global
+					attrs: p.attrs
+				}
+				p.attrs = []
+			} else {
+				mut embedding_pos := field_start_pos
+				if next_is_dot {
+					p.next()
+					field_name += '.${p.check_name()}'
+					embedding_pos = embedding_pos.extend(p.tok.position())
+				}
+				// struct embedding
+				if field_name !in embedded_field_names {
+					mut full_name := field_name
+					if '.' in field_name {
+						mod := field_name.split('.')[0]
+						if !p.known_import(mod) {
+							p.error_with_pos('unknown module `$mod`', field_start_pos)
+						}
+						if mod in p.imports {
+							p.register_used_import(mod)
+						}
+					} else if p.expr_mod != '' {
+						full_name = '${p.expr_mod}.$field_name'
+					} else if p.mod != 'builtin' && name !in p.table.type_idxs && name.len > 1 {
+						// `Foo` in module `mod` means `mod.Foo`
+						full_name = '${p.mod}.$field_name'
+					}
+					embedding := ast.StructEmbedding{
+						name: field_name
+						typ: p.parse_enum_or_struct_type(full_name)
+						pos: embedding_pos
+					}
+					embeddings << embedding
+					embedded_field_names << field_name
+				} else {
+					p.error_with_pos('cannot embed `$field_name` more than once', field_start_pos)
 				}
 			}
-			if p.tok.kind == .lsbr {
-				// attrs are stored in `p.attrs`
-				p.attributes()
-			}
-			mut default_expr := ast.Expr{}
-			mut has_default_expr := false
-			if p.tok.kind == .assign {
-				// Default value
-				p.next()
-				// default_expr = p.tok.lit
-				// p.expr(0)
-				default_expr = p.expr(0)
-				match mut default_expr {
-					ast.EnumVal { default_expr.typ = typ }
-					// TODO: implement all types??
-					else {}
-				}
-				has_default_expr = true
-			}
-			// TODO merge table and ast Fields?
-			ast_fields << ast.StructField{
-				name: field_name
-				pos: field_pos
-				type_pos: type_pos
-				typ: typ
-				comments: comments
-				default_expr: default_expr
-				has_default_expr: has_default_expr
-				attrs: p.attrs
-				is_public: is_field_pub
-			}
-			fields << table.Field{
-				name: field_name
-				typ: typ
-				default_expr: ast.ex2fe(default_expr)
-				has_default_expr: has_default_expr
-				is_pub: is_field_pub
-				is_mut: is_field_mut
-				is_global: is_field_global
-				attrs: p.attrs
-			}
-			p.attrs = []
-			// println('struct field $ti.name $field_name')
 		}
 		p.top_level_statement_end()
 		p.check(.rcbr)
@@ -256,6 +289,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
+		embeddings: embeddings
 		pos: start_pos.extend(name_pos)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
