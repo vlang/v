@@ -47,7 +47,7 @@ fn main() {
 	// exit(1)
 	// }
 	toolexe := os.executable()
-	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
+	util.set_vroot_folder(os.join_path(os.dir(toolexe), '..', '..'))
 	args := util.join_env_vflags_and_os_args()
 	foptions := FormatOptions{
 		is_c: '-c' in args
