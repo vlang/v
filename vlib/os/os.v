@@ -1129,12 +1129,14 @@ pub fn is_abs_path(path string) bool {
 }
 
 // join_path returns a path as string from input string parameter(s).
-pub fn join_path(base string, dirs ...string) string {
+pub fn join_path(dirs ...string) string {
 	mut result := []string{}
-	result << base.trim_right('\\/')
-	for d in dirs {
-		if d == '..' {
-			last_r :=result.last()
+	for i, d in dirs {
+		if d == '.' && dirs.len > 1 {
+			continue
+		}
+		if d == '..' && i > 0 {
+			last_r := result.last()
 			result.delete(result.len - 1)
 			if last_r.contains(path_separator) {
 				result << dir(last_r)
