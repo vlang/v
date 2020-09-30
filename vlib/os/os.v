@@ -642,12 +642,12 @@ pub fn file_ext(path string) string {
 	return path[pos..]
 }
 
-// dir will return the part of `path` until the last occurence of a `path_separator`.
+// dir will return the part of `path` before the last occurence of a `path_separator`.
 pub fn dir(path string) string {
 	pos := path.last_index(path_separator) or {
 		return '.'
 	}
-	return path[..pos] + path_separator
+	return path[..pos]
 }
 
 // base_dir will return the base directory of `path`.
@@ -657,7 +657,7 @@ pub fn base_dir(path string) string {
 		return path.clone()
 	}
 	// NB: *without* terminating /
-	return path[..posx] + path_separator
+	return path[..posx]
 }
 
 // file_name will return all characters found after the last occurence of `path_separator`.
@@ -1272,7 +1272,7 @@ pub fn cache_dir() string {
 	$if !windows {
 		xdg_cache_home := os.getenv('XDG_CACHE_HOME')
 		if xdg_cache_home != '' {
-			return xdg_cache_home + os.path_separator
+			return xdg_cache_home
 		}
 	}
 	cdir := os.home_dir() + '.cache'
@@ -1281,7 +1281,7 @@ pub fn cache_dir() string {
 			panic(err)
 		}
 	}
-	return cdir + os.path_separator
+	return cdir
 }
 
 // temp_dir returns the path to a folder, that is suitable for storing temporary files.
@@ -1310,7 +1310,7 @@ pub fn temp_dir() string {
 	if path == '' {
 		path = '/tmp'
 	}
-	return path + os.path_separator
+	return path
 }
 
 // chmod change file access attributes of `path` to `mode`.
