@@ -575,9 +575,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut max := 0
 	mut max_type := 0
 	mut field_types := []string{cap: node.fields.len}
-	for embedding in node.embeddings {
-		f.writeln('\t$embedding.name')
-	}
+
 	for field in node.fields {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -598,7 +596,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			max_type = ft.len
 		}
 	}
-	for i, field in node.fields {
+	for i, field in node.fields.filter(it.is_embed) {
+		f.writeln('\t$field.name')
+	}
+	for i, field in node.fields.filter(!it.is_embed) {
 		if i == node.mut_pos {
 			f.writeln('mut:')
 		} else if i == node.pub_pos {
