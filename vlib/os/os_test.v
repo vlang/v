@@ -446,13 +446,15 @@ fn test_dir() {
 	assert os.dir('os') == '.'
 }
 
-fn test_basedir() {
+fn test_base() {
 	$if windows {
-		assert os.base_dir('v\\vlib\\os') == 'v\\vlib'
+		assert os.base('v\\vlib\\os') == 'os'
+		assert os.base('v\\vlib\\os\\') == 'os'
 	} $else {
-		assert os.base_dir('v/vlib/os') == 'v/vlib'
+		assert os.base('v/vlib/os') == 'os'
+		assert os.base('v/vlib/os/') == 'os'
 	}
-	assert os.base_dir('filename') == 'filename'
+	assert os.base('filename') == 'filename'
 }
 
 fn test_uname() {
