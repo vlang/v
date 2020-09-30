@@ -759,12 +759,12 @@ pub mut:
 }
 
 fn (f &Field) equals(o &Field) bool {
-	return f.name == o.name
-		&& f.typ == o.typ
+	return f.name == o.name &&
+		f.typ == o.typ &&
 		// TODO Should those be checked ?
-		&& f.is_pub == o.is_pub
-		&& f.is_mut == o.is_mut
-		&& f.is_global == o.is_global
+		f.is_pub == o.is_pub &&
+		f.is_mut == o.is_mut &&
+		f.is_global == o.is_global
 }
 
 pub struct Array {

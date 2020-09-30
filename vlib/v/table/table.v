@@ -40,15 +40,15 @@ pub mut:
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..])
-		&& f.return_type == o.return_type
-		&& f.return_type_source_name == o.return_type_source_name
-		&& f.is_variadic == o.is_variadic
-		&& f.language == o.language
-		&& f.is_generic == o.is_generic
-		&& f.is_pub == o.is_pub
-		&& f.mod == o.mod
-		&& f.name == o.name
+	return f.params[1..].equals(o.params[1..]) &&
+		f.return_type == o.return_type &&
+		f.return_type_source_name == o.return_type_source_name &&
+		f.is_variadic == o.is_variadic &&
+		f.language == o.language &&
+		f.is_generic == o.is_generic &&
+		f.is_pub == o.is_pub &&
+		f.mod == o.mod &&
+		f.name == o.name
 }
 
 pub struct Param {
@@ -490,7 +490,7 @@ pub fn (t &Table) map_source_name(key_type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	ptr := if value_type.is_ptr() { '&' } else { '' }
-	return 'map[${key_type_sym.source_name}]$ptr$value_type_sym.source_name'
+	return 'map[$key_type_sym.source_name]$ptr$value_type_sym.source_name'
 }
 
 pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
@@ -509,7 +509,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 		source_name: source_name
 		info: Chan{
 			elem_type: elem_type
-			is_mut:    is_mut
+			is_mut: is_mut
 		}
 	}
 	return t.register_type_symbol(chan_typ)

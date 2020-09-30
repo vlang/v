@@ -1252,8 +1252,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	if left_type != table.void_type {
 		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
-		c.error(suggestion.say(unknown_method_msg),
-			call_expr.pos)
+		c.error(suggestion.say(unknown_method_msg), call_expr.pos)
 	}
 	return table.void_type
 }
