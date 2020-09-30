@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | Aggregate
 
 pub enum Language {
 	v
@@ -366,6 +366,7 @@ pub enum Kind {
 	interface_
 	any_float
 	any_int
+	aggregate
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -681,6 +682,7 @@ pub fn (k Kind) str() string {
 		.ustring { 'ustring' }
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
+		.aggregate { 'aggregate' }
 	}
 	return k_str
 }
@@ -728,6 +730,11 @@ pub struct Alias {
 pub:
 	parent_type Type
 	language    Language
+}
+
+pub struct Aggregate {
+pub:
+	types []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .

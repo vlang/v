@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.table
 import v.token
+import strings
 
 fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
@@ -210,38 +211,62 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					}
 				}
 			}
-			// We declare the variable outside so it's available in the next condition
-			mut typ := table.void_type
+			mut types := []table.Type{}
 			for {
 				// Sum type match
-				typ = p.parse_type()
+				parsed_type := p.parse_type()
+				types << parsed_type
 				exprs << ast.Type{
-					typ: typ
+					typ: parsed_type
 				}
 				if p.tok.kind != .comma {
 					break
 				}
 				p.check(.comma)
 			}
-			if exprs.len == 1 {
-				p.scope.register('it', ast.Var{
-					name: 'it'
-					typ: typ.to_ptr()
+			mut it_typ := table.void_type
+			if types.len == 1 {
+				it_typ = types[0]
+			} else {
+				// there is more than one types, so we must create a type aggregate
+				mut agg_name := strings.new_builder(20)
+				agg_name.write('(')
+				for i, typ in types {
+					if i > 0 {
+						agg_name.write(' | ')
+					}
+					// TODO does this prepend the module ? If not, it must be done manually
+					type_str := p.table.type_to_str(typ)
+					agg_name.write(p.prepend_mod(type_str))
+				}
+				agg_name.write(')')
+				name := agg_name.str()
+				it_typ = p.table.register_type_symbol(table.TypeSymbol{
+					name: name
+					source_name: name
+					kind: .aggregate
+					info: table.Aggregate{
+						types: types
+					}
+				})
+			}
+			p.scope.register('it', ast.Var{
+				name: 'it'
+				typ: it_typ.to_ptr()
+				pos: cond_pos
+				is_used: true
+				is_mut: is_mut
+			})
+			if var_name.len > 0 {
+				// Register shadow variable or `as` variable with actual type
+				p.scope.register(var_name, ast.Var{
+					name: var_name
+					typ: it_typ.to_ptr()
 					pos: cond_pos
 					is_used: true
+					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
-				if var_name.len > 0 {
-					// Register shadow variable or `as` variable with actual type
-					p.scope.register(var_name, ast.Var{
-						name: var_name
-						typ: typ.to_ptr()
-						pos: cond_pos
-						is_used: true
-						is_changed: true // TODO mut unchanged warning hack, remove
-						is_mut: is_mut
-					})
-				}
 			}
 			is_sum_type = true
 		} else {
