@@ -576,7 +576,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	mut max := 0
 	mut max_type := 0
 	mut field_types := []string{cap: node.fields.len}
-
 	for field in node.fields {
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
