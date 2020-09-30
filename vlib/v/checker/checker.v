@@ -334,6 +334,12 @@ pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 		if decl.language == .v && !field.is_embed {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
+		if field.is_embed {
+			sym := c.table.get_type_symbol(field.typ)
+			if sym.info !is table.Struct {
+				c.error('`$sym.name` is not a struct', field.pos)
+			}
+		}
 		for j in 0 .. i {
 			if field.name == decl.fields[j].name {
 				c.error('field name `$field.name` duplicate', field.pos)
