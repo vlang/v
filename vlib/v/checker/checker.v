@@ -3327,11 +3327,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			c.stmts(branch.stmts)
 		}
 		if expr_required {
-			for st in branch.stmts {
-				st.check_c_expr() or {
-					c.error('`if` expression branch has $err', st.position())
-				}
-			}
 			if branch.stmts.len > 0 && branch.stmts[branch.stmts.len - 1] is ast.ExprStmt {
 				mut last_expr := branch.stmts[branch.stmts.len - 1] as ast.ExprStmt
 				c.expected_type = former_expected_type
@@ -3374,6 +3369,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
+			}
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`if` expression branch has $err', st.position())
+				}
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
