@@ -1,0 +1,22 @@
+// only C expressions are allowed for each statement
+
+_ = if true {
+	if true {} // FIXME should error, if statement
+	_ = if true {1} else {-1} // OK
+	if true {1} else {-1} // OK
+} else {
+	for {break}
+	{}
+	-1
+}
+
+_ = match true {
+	true {
+		assert true
+		1
+	}
+	else {
+		if true {} // statement not expression
+		(-1) // parens needed ATM due to bug
+	}
+}
