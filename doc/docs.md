@@ -1440,8 +1440,12 @@ particularly useful for initializing a C library.
 ### Interfaces
 
 ```v
-struct Dog {}
-struct Cat {}
+struct Dog {
+    breed string
+}
+
+struct Cat {
+}
 
 fn (d Dog) speak() string {
     return 'woof'
@@ -1458,15 +1462,16 @@ interface Speaker {
 fn perform(s Speaker) string {
     if s is Dog { // use `is` to check the underlying type of an interface
         println('perform(dog)')
-	println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
+        println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
     } else if s is Cat {
         println('perform(cat)')
     }
     return s.speak()
 }
 
-dog := Dog{}
+dog := Dog{'Leonberger'}
 cat := Cat{}
+
 println(perform(dog)) // "woof"
 println(perform(cat)) // "meow"
 ```
