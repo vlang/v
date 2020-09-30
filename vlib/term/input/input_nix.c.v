@@ -165,7 +165,6 @@ fn setup_console() {
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
-
 	println('\x1b[?1003h\x1b[?1015h\x1b[?1006h')
 }
 
@@ -173,10 +172,9 @@ fn reset_console() {
 	mut termios := C.termios{}
 	C.tcgetattr(C.STDIN_FILENO, &termios)
 	// Set ICANON and ECHO back to normal on exit
-	termios.c_lflag &= u32(C.ICANON)
-	termios.c_lflag &= u32(C.ECHO)
+	termios.c_lflag |= u32(C.ICANON)
+	termios.c_lflag |= u32(C.ECHO)
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
-
 	println('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J\x1b[?25h')
 }
 
@@ -190,8 +188,12 @@ pub fn init(cfg SetupCfg) TermInput {
 		buf_size: cfg.buf_size,
 		buf: []byte { cap: cfg.buf_size }
 	}
-	setup_console()
 	C.atexit(reset_console)
-	for code in cfg.reset { os.signal(code, fn() { reset_console() exit(0) }) }
+	setup_console()
+	for code in cfg.reset { 
+		os.signal(code, fn() {
+			exit(0)
+		})
+	}
 	return ti
 }
