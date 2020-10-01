@@ -35,7 +35,7 @@ mut:
 
 pub fn new_error_manager() &EManager {
 	return &EManager{
-		support_color: term.can_show_color_on_stderr()
+		support_color: term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
 	}
 }
 
