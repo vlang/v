@@ -206,7 +206,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		}
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if p.mod != 'builtin' && ((name.len > 1 && name !in p.table.type_idxs) || (name.len == 1 && p.mod + '.' + name in p.table.type_idxs)) {
+	} else if p.mod != 'builtin' && name.len > 1 && name !in p.table.type_idxs {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}

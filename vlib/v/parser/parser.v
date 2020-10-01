@@ -1723,6 +1723,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.key_enum)
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
+	if enum_name.len == 1 {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			end_pos)
+	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	enum_decl_comments := p.eat_comments()

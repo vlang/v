@@ -74,24 +74,6 @@ fn test_nums() {
 	assert d == -10
 }
 
-enum E {
-	v w
-}
-
-fn single_return() E {
-	return .v
-}
-fn single_opt_return() ?E {
-	return none
-}
-
-fn test_single_letter() {
-	a := single_return()
-	b := single_opt_return() or { E.w }
-	assert a == .v
-	assert b == .w
-}
-
 /*
 enum Expr {
 	BoolExpr(bool)
