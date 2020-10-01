@@ -9,6 +9,7 @@ struct CmdResult {
 mut:
 	runs int
 	outputs []string
+	oms map[string][]int
 	timings []int
 }
 struct Context {
@@ -88,7 +89,7 @@ fn (mut context Context) run() {
 				eprintln('${i:10} non 0 exit code for cmd: $cmd')
 				continue
 			}
-			context.results[icmd].outputs << res.output
+			context.results[icmd].outputs << res.output.trim_right('\r\n').replace('\r\n', '\n').split("\n")
 			context.results[icmd].timings << duration
 			sum += duration
 			runs++
@@ -97,10 +98,23 @@ fn (mut context Context) run() {
 		context.results[icmd].runs = runs
 		println('')
 	}
+	for icmd in 0..context.results.len{
+		mut m := map[string][]int
+		for o in context.results[icmd].outputs {
+			x := o.split(':')
+			if x.len > 1 {
+				k := x[0]
+				v := x[1].trim_left(' ').int()
+				m[k] << v
+			}
+		}
+		context.results[icmd].oms = m
+	}
 }
 
 fn (mut context Context) show_diff_summary() {
 	// TODO
+	//eprintln("$context.results")
 }
 fn (mut context Context) show_stddev() {
 	// TODO
