@@ -2241,6 +2241,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				return
 			}
 			g.expr(node.expr)
+			// struct embedding
+			if sym.kind == .struct_ {
+				sym_info := sym.info as table.Struct
+				field := sym_info.fields.filter(it.name == node.field_name)[0]
+				if field.embed_alias_for != '' {
+					g.write('.$field.embed_alias_for')
+				}
+			}
 			if node.expr_type.is_ptr() || sym.kind == .chan {
 				g.write('->')
 			} else {
@@ -3705,6 +3713,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
+		if sym.info is table.Struct as struct_info {
+			tfield := struct_info.fields.filter(it.name == field.name)[0]
+			if tfield.embed_alias_for.len != 0 {
+				continue
+			}
+		}
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
 			g.write('.$field_name = ')
@@ -3743,6 +3757,12 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for field in info.fields {
+			if sym.info is table.Struct as struct_info {
+				tfield := struct_info.fields.filter(it.name == field.name)[0]
+				if tfield.embed_alias_for.len != 0 {
+					continue
+				}
+			}
 			if field.name in inited_fields {
 				sfield := struct_init.fields[inited_fields[field.name]]
 				field_name := c_name(sfield.name)
@@ -4059,7 +4079,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 					g.type_definitions.writeln('struct $name {')
 				}
 				if info.fields.len > 0 {
-					for field in info.fields {
+					for field in info.fields.filter(it.embed_alias_for == '') {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to

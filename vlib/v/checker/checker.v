@@ -327,13 +327,22 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
+	struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
+	mut struct_info := struct_sym.info as table.Struct
 	for i, field in decl.fields {
 		if decl.language == .v && !field.is_embed {
 			c.check_valid_snake_case(field.name, 'field name', field.pos)
 		}
+		sym := c.table.get_type_symbol(field.typ)
 		if field.is_embed {
-			sym := c.table.get_type_symbol(field.typ)
-			if sym.info !is table.Struct {
+			if sym.info is table.Struct as sym_info {
+				for embed_field in sym_info.fields {
+					already_exists := struct_info.fields.filter(it.name == embed_field.name).len > 0
+					if !already_exists {
+						struct_info.fields << { embed_field | embed_alias_for: field.name }
+					}
+				}
+			} else {
 				c.error('`$sym.name` is not a struct', field.pos)
 			}
 		}
@@ -342,7 +351,6 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				c.error('field name `$field.name` duplicate', field.pos)
 			}
 		}
-		sym := c.table.get_type_symbol(field.typ)
 		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 			c.error(util.new_suggestion(sym.source_name, c.table.known_type_names()).say('unknown type `$sym.source_name`'),
 				field.type_pos)
@@ -495,6 +503,27 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 							break
 						}
 					}
+					if c.file.path.ends_with('abc.v') {
+						for f in info.fields {
+							if f.name == field_name {
+								if f.embed_alias_for.len != 0 {
+									mut has_embed_init := false
+									for embedding in struct_init.fields {
+										if embedding.name == f.embed_alias_for {
+											has_embed_init = true
+										}
+									}
+									if !has_embed_init {
+										n := { f | embed_alias_for: '' }
+										println(field)
+										// struct_init.fields << { f | embed_alias_for: '' }
+									}
+								}
+								break
+							}
+
+						}
+					}
 					if !exists {
 						c.error('unknown field `$field.name` in struct literal of type `$type_sym.source_name`',
 							field.pos)
@@ -525,7 +554,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			}
 			// Check uninitialized refs
 			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields {
+				if field.has_default_expr || field.name in inited_fields || field.embed_alias_for != '' {
 					continue
 				}
 				if field.typ.is_ptr() && !c.pref.translated {
