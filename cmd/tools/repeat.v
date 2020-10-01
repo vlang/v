@@ -24,6 +24,13 @@ mut:
 
 fn main(){
 	mut context := Context{}
+	context.parse_options()
+	context.run()
+	context.show_diff_summary()
+	context.show_stddev()
+}
+
+fn (mut context Context) parse_options() {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application(os.file_name(os.executable()))
 	fp.version('0.0.1')
@@ -47,12 +54,11 @@ fn main(){
 		eprintln('Error: ' + err)
 		exit(1)
 	}
-	//
-	if context.verbose {
-		eprintln('context: $context')
-	}
-	print('')
 	context.results = []CmdResult{ len: context.commands.len, init: CmdResult{} }
+}
+
+fn (mut context Context) run() {
+	print('')
 	for icmd, cmd in context.commands {
 		mut runs := 0
 		mut duration := 0
@@ -91,5 +97,11 @@ fn main(){
 		context.results[icmd].runs = runs
 		println('')
 	}
-	//println(context)
+}
+
+fn (mut context Context) show_diff_summary() {
+	// TODO
+}
+fn (mut context Context) show_stddev() {
+	// TODO
 }
