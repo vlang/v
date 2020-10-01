@@ -506,27 +506,6 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 							break
 						}
 					}
-					if c.file.path.ends_with('abc.v') {
-						for f in info.fields {
-							if f.name == field_name {
-								if f.embed_alias_for.len != 0 {
-									mut has_embed_init := false
-									for embedding in struct_init.fields {
-										if embedding.name == f.embed_alias_for {
-											has_embed_init = true
-										}
-									}
-									if !has_embed_init {
-										n := { f | embed_alias_for: '' }
-										println(field)
-										// struct_init.fields << { f | embed_alias_for: '' }
-									}
-								}
-								break
-							}
-
-						}
-					}
 					if !exists {
 						c.error('unknown field `$field.name` in struct literal of type `$type_sym.source_name`',
 							field.pos)
