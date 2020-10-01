@@ -14,6 +14,7 @@ mut:
 struct Context {
 mut:
 	count int
+	warmup int
 	show_help bool
 	show_result bool
 	verbose bool
@@ -31,6 +32,7 @@ fn main(){
 	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)
 	context.count = fp.int('count', `c`, 10, 'Repetition count')
+	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.show_result = fp.bool('result', `r`, true, 'Show the result too.')
@@ -56,9 +58,17 @@ fn main(){
 		mut duration := 0
 		mut sum := 0
 		mut oldres := ''
+		if context.warmup > 0 {
+			for i in 1..context.warmup+1 {
+				print('\r warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
+				mut sw := time.new_stopwatch({})
+				os.exec(cmd) or { continue }
+				duration = int(sw.elapsed().milliseconds())
+			}
+		}
 		for i in 1..(context.count+1) {
 			avg := f64(sum)/f64(i)
-			print('\r average: ${avg:9.3f} ms | run: ${(i-1):4} | took ${duration:6} ms | cmd: ${cmd:-50s}')
+			print('\r average: ${avg:9.3f} ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms | cmd: ${cmd:-50s}')
 			if context.show_result {
 				print(' | result: ${oldres:-s}')
 			}
