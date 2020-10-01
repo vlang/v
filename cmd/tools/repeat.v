@@ -3,14 +3,20 @@ module main
 import os
 import flag
 import time
+import term
+import math
 import scripting
+import v.util
 
 struct CmdResult {
 mut:
 	runs int
+	cmd string
 	outputs []string
 	oms map[string][]int
+	summary map[string]Aints
 	timings []int
+	atiming Aints
 }
 struct Context {
 mut:
@@ -21,14 +27,52 @@ mut:
 	verbose bool
 	commands []string
 	results []CmdResult
+	cline string // a terminal clearing line
 }
+
+struct Aints {
+	values []int
+mut:
+	imin int
+	imax int
+	average f64
+	stddev f64
+}
+fn new_aints(vals []int) Aints {
+	mut res := Aints{ values: vals }
+	mut sum := i64(0)
+	mut imin :=  math.max_i32
+	mut imax := -math.max_i32
+	for i in vals {
+		sum+=i
+		if i < imin {
+			imin = i
+		}
+		if i > imax {
+			imax = i
+		}
+	}
+	res.imin = imin
+	res.imax = imax
+	if vals.len > 0 {
+		res.average = sum / f64(vals.len)
+	}
+	//
+	mut devsum := f64(0.0)
+	for i in vals {
+		x := f64(i) - res.average
+		devsum += (x * x)
+	}
+	res.stddev = math.sqrt( devsum / f64(vals.len) )
+	return res
+}
+fn (a Aints) str() string { return util.bold('${a.average:9.3f}') + 'ms ± σ: ${a.stddev:-5.1f}ms, min … max: ${a.imin}ms … ${a.imax}ms' }
 
 fn main(){
 	mut context := Context{}
 	context.parse_options()
 	context.run()
 	context.show_diff_summary()
-	context.show_stddev()
 }
 
 fn (mut context Context) parse_options() {
@@ -56,15 +100,20 @@ fn (mut context Context) parse_options() {
 		exit(1)
 	}
 	context.results = []CmdResult{ len: context.commands.len, init: CmdResult{} }
+	context.cline = '\r' + term.h_divider('')
+}
+
+fn (mut context Context) clear_line() {
+	print(context.cline)
 }
 
 fn (mut context Context) run() {
-	print('')
 	for icmd, cmd in context.commands {
 		mut runs := 0
 		mut duration := 0
 		mut sum := 0
 		mut oldres := ''
+		println('Command: $cmd')
 		if context.warmup > 0 {
 			for i in 1..context.warmup+1 {
 				print('\r warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
@@ -73,9 +122,10 @@ fn (mut context Context) run() {
 				duration = int(sw.elapsed().milliseconds())
 			}
 		}
+		context.clear_line()
 		for i in 1..(context.count+1) {
 			avg := f64(sum)/f64(i)
-			print('\r average: ${avg:9.3f} ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms | cmd: ${cmd:-50s}')
+			print('\rAverage: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
 			if context.show_result {
 				print(' | result: ${oldres:-s}')
 			}
@@ -95,10 +145,11 @@ fn (mut context Context) run() {
 			runs++
 			oldres = res.output.replace('\n', ' ')
 		}
+		context.results[icmd].cmd = cmd
 		context.results[icmd].runs = runs
-		println('')
-	}
-	for icmd in 0..context.results.len{
+		context.results[icmd].atiming = new_aints(context.results[icmd].timings)
+		context.clear_line()
+		print('\r')
 		mut m := map[string][]int
 		for o in context.results[icmd].outputs {
 			x := o.split(':')
@@ -109,13 +160,31 @@ fn (mut context Context) run() {
 			}
 		}
 		context.results[icmd].oms = m
+		oms := context.results[icmd].oms
+		mut summary := map[string]Aints{}
+		for k,v in oms {
+			s := new_aints(v)
+			println('  $k: $s')
+			summary[k] = s
+		}
+		context.results[icmd].summary = summary
+		//println('')
 	}
 }
-
 fn (mut context Context) show_diff_summary() {
-	// TODO
-	//eprintln("$context.results")
-}
-fn (mut context Context) show_stddev() {
-	// TODO
+	context.results.sort_with_compare(fn (a, b &CmdResult) int {
+		if a.atiming.average < b.atiming.average {
+			return -1
+		}
+		if a.atiming.average > b.atiming.average {
+			return 1
+		}
+		return 0
+	})
+	println('Summary (commands ordered by ascending average time), after $context.count repeats:')
+	base := context.results[0].atiming.average
+	for i, r in context.results {
+		cpercent := (r.atiming.average / base) * 100
+		println('   ${(i+1):3}. ${cpercent:6.1f}% ${r.cmd:60} | ${r.atiming}')
+	}
 }
