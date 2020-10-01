@@ -334,7 +334,8 @@ fn verror(s string) {
 }
 
 pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	formatted_message := '$msg: ${util.bold(ms.str())} ms'
+	value := util.bold('$ms')
+	formatted_message := '$msg: $value ms'
 	if b.pref.show_timings {
 		println(formatted_message)
 	} else {
