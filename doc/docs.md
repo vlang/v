@@ -12,8 +12,8 @@ and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
 
-Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
-you can do in V.
+Despite being simple, V gives the developer a lot of power.
+Anything you can do in other languages, you can do in V.
 
 ## Table of Contents
 
@@ -105,32 +105,32 @@ fn main() {
     println('hello world')
 }
 ```
-Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
+
+Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you have not yet, you have to type the path to V manually.
+If you haven't yet, you have to type the path to V manually.
 
-Congratulations - you just wrote your first V program, and executed it!
+Congratulations - you just wrote and executed your first V program!
 
-> You can compile a program without execution with `v hello.v`.
+You can compile a program without execution with `v hello.v`.
 See `v help` for all supported commands.
 
-In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't
-return anything, so the return type can be omitted.
+From the example above, you can see that functions are declared with the `fn` keyword.
+The return type is specified after the function name.
+In this case `main` doesn't return anything, so the return type can be omitted.
 
-As in many other languages (such as C, Go and Rust), `main` is an entry point.
+As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
 
-`println` is one of the few built-in functions. It prints the value passed to it
-to standard output.
+`println` is one of the few built-in functions.
+It prints the value passed to it to the standard output.
 
 `fn main()` declaration can be skipped in one file programs.
-This is useful when writing small programs, "scripts", or just learning
-the language. For brevity, `fn main()` will be skipped in this
-tutorial.
+This is useful when writing small programs, "scripts", or just learning the language.
+For brevity, `fn main()` will be skipped in this tutorial.
 
-This means that a "hello world" program can be as simple as
+This means that a "hello world" program in V is as simple as
 
 ```v
 println('hello world')
