@@ -124,7 +124,7 @@ In this case `main` doesn't return anything, so the return type can be omitted.
 As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
 
 `println` is one of the few built-in functions.
-It prints the value passed to it to the standard output.
+It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
 This is useful when writing small programs, "scripts", or just learning the language.
