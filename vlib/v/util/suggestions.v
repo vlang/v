@@ -64,12 +64,26 @@ pub fn (mut s Suggestion) sort() {
 
 pub fn (s Suggestion) say(msg string) string {
 	mut res := msg
+	mut found := false
 	if s.known.len > 0 {
 		top_posibility := s.known.last()
 		if top_posibility.similarity > 0.10 {
 			val := top_posibility.value
 			if !val.starts_with('[]') {
 				res += '.\nDid you mean `$val`?'
+				found = true
+			}
+		}
+	}
+	if !found {
+		if s.known.len > 0 {
+			mut values := s.known.map('`$it.svalue`')
+			values.sort()
+			if values.len == 1 {
+				res += '.\n1 possibility: ${values[0]}.'
+			} else if values.len < 25 {
+				// it is hard to read/use too many suggestions
+				res += '.\n$values.len possibilities: ' + values.join(', ') + '.'
 			}
 		}
 	}

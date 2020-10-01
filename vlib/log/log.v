@@ -51,7 +51,7 @@ pub fn (mut l Log) set_output_level(level Level) {
 pub fn (mut l Log) set_full_logpath(full_log_path string) {
 	rlog_file := os.real_path(full_log_path)
 	l.set_output_label(os.file_name(rlog_file))
-	l.set_output_path(os.base_dir(rlog_file))
+	l.set_output_path(os.dir(rlog_file))
 }
 
 pub fn (mut l Log) set_output_label(label string) {

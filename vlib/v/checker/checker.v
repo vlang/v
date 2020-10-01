@@ -1017,6 +1017,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
+	mut unknown_method_msg := 'unknown method: `${left_type_sym.source_name}.$method_name`'
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
@@ -1213,6 +1214,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		call_expr.return_type = method.return_type
 		return method.return_type
+	} else {
+		if left_type_sym.kind == .aggregate {
+			// the error message contains the problematic type
+			unknown_method_msg = err
+		}
 	}
 	// TODO: str methods
 	if method_name == 'str' {
@@ -1246,8 +1252,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	if left_type != table.void_type {
 		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
-		c.error(suggestion.say('unknown method: `${left_type_sym.source_name}.$method_name`'),
-			call_expr.pos)
+		c.error(suggestion.say(unknown_method_msg), call_expr.pos)
 	}
 	return table.void_type
 }
@@ -1651,19 +1656,29 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			return table.int_type
 		}
 	}
+	mut unknown_field_msg := 'type `$sym.source_name` has no field or method `$field_name`'
 	if field := c.table.struct_find_field(sym, field_name) {
 		if sym.mod != c.mod && !field.is_pub {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
 		}
 		selector_expr.typ = field.typ
 		return field.typ
+	} else {
+		if sym.kind == .aggregate {
+			unknown_field_msg = err
+		}
 	}
-	if sym.kind != .struct_ {
+	if sym.kind !in [.struct_, .aggregate] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.source_name` is not a struct', selector_expr.pos)
 		}
 	} else {
-		c.error('type `$sym.source_name` has no field or method `$field_name`', selector_expr.pos)
+		if sym.kind == .struct_ {
+			sss := sym.info as table.Struct
+			suggestion := util.new_suggestion(field_name, sss.fields.map(it.name))
+			c.error(suggestion.say(unknown_field_msg), selector_expr.pos)
+		}
+		c.error(unknown_field_msg, selector_expr.pos)
 	}
 	return table.void_type
 }
