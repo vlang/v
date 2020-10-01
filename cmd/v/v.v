@@ -35,16 +35,6 @@ fn main() {
 	}
 	args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args(args_and_flags)
-	// if prefs.is_verbose {
-	// println('command = "$command"')
-	// println(util.full_v_version(prefs.is_verbose))
-	// }
-	if args.len > 0 && (args[0] in ['version', '-V', '-version', '--version'] || (args[0] ==
-		'-v' && args.len == 1)) {
-		// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
-		println(util.full_v_version(prefs.is_verbose))
-		return
-	}
 	if prefs.is_verbose {
 		// println('args= ')
 		// println(args) // QTODO

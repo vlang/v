@@ -37,7 +37,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	// decode_TYPE funcs receive an actual cJSON* object to decode
 	// cJSON_Parse(str) call is added by the compiler
 	// Code gen decoder
-	dec_fn_name := js_dec_name(sym.name)
+	dec_fn_name := js_dec_name(styp)
 	// Make sure that this optional type actually exists
 	g.register_optional(typ)
 	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
@@ -58,7 +58,7 @@ $dec_fn_dec {
 	g.json_forward_decls.writeln('$dec_fn_dec;')
 	// Code gen encoder
 	// encode_TYPE funcs receive an object to encode
-	enc_fn_name := js_enc_name(sym.name)
+	enc_fn_name := js_enc_name(styp)
 	enc_fn_dec := 'cJSON* ${enc_fn_name}($styp val)'
 	g.json_forward_decls.writeln('$enc_fn_dec;\n')
 	enc.writeln('

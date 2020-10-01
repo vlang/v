@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | Aggregate
 
 pub enum Language {
 	v
@@ -366,6 +366,7 @@ pub enum Kind {
 	interface_
 	any_float
 	any_int
+	aggregate
 }
 
 pub fn (t &TypeSymbol) str() string {
@@ -681,6 +682,7 @@ pub fn (k Kind) str() string {
 		.ustring { 'ustring' }
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
+		.aggregate { 'aggregate' }
 	}
 	return k_str
 }
@@ -730,6 +732,13 @@ pub:
 	language    Language
 }
 
+pub struct Aggregate {
+mut:
+	fields []Field // used for faster lookup inside the module
+pub:
+	types []Type
+}
+
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
@@ -748,6 +757,15 @@ pub mut:
 	is_mut           bool
 	is_global        bool
 	is_embed         bool
+}
+
+fn (f &Field) equals(o &Field) bool {
+	return f.name == o.name &&
+		f.typ == o.typ &&
+		// TODO Should those be checked ?
+		f.is_pub == o.is_pub &&
+		f.is_mut == o.is_mut &&
+		f.is_global == o.is_global
 }
 
 pub struct Array {
@@ -898,6 +916,15 @@ pub fn (t &TypeSymbol) str_method_info() (bool, bool, int) {
 		}
 	}
 	return has_str_method, expects_ptr, nr_args
+}
+
+fn (a &Aggregate) find_field(name string) ?Field {
+	for field in a.fields {
+		if field.name == name {
+			return field
+		}
+	}
+	return none
 }
 
 pub fn (s Struct) find_field(name string) ?Field {

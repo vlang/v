@@ -41,8 +41,8 @@ pub enum CompilerType {
 }
 
 const (
-	list_of_flags_with_param = ['o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os',
-		'arch', 'csource', 'cf', 'cflags', 'path']
+	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
+		'cflags', 'path']
 )
 
 pub struct Preferences {
@@ -147,7 +147,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.only_check_syntax = true
 			}
 			'-v' {
-				res.is_verbose = true
+				// `-v` flag is for setting verbosity, but without any args it prints the version, like Clang
+				if args.len > 1 {
+					res.is_verbose = true
+				} else {
+					command = 'version'
+					command_pos = i
+				}
 			}
 			'-silent' {
 				res.output_mode = .silent
@@ -313,21 +319,35 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
-				mut should_continue := false
-				for flag_with_param in list_of_flags_with_param {
-					if '-$flag_with_param' == arg {
-						should_continue = true
+				if arg[0] == `-` {
+					if arg[1..] in list_of_flags_with_param {
+						// skip parameter
 						i++
-						break
+						continue
 					}
-				}
-				if should_continue {
+				} else {
+					if command == '' {
+						command = arg
+						command_pos = i
+					}
 					continue
 				}
-				if !arg.starts_with('-') && command == '' {
-					command = arg
+				if arg in ['-V', '-version', '--version'] {
+					command = 'version'
 					command_pos = i
+					continue
 				}
+				if command !in ['', 'run', 'build', 'build-module'] {
+					// arguments for e.g. fmt are checked elsewhere
+					continue
+				}
+				eprint('Unknown argument `$arg`')
+				eprintln(if command.len == 0 {
+					''
+				} else {
+					' for command `$command`'
+				})
+				exit(1)
 			}
 		}
 	}
@@ -380,14 +400,29 @@ pub fn backend_from_string(s string) ?Backend {
 
 // Helper function to convert string names to CC enum
 pub fn cc_from_string(cc_str string) CompilerType {
-	if cc_str.len == 0 { return .gcc } // TODO
+	if cc_str.len == 0 {
+		return .gcc
+	}
+	// TODO
 	cc := cc_str.replace('\\', '/').split('/').last().all_before('.')
-	if '++'    in cc { return .cplusplus }
-	if 'tcc'   in cc { return .tinyc }
-	if 'tinyc' in cc { return .tinyc }
-	if 'clang' in cc { return .clang }
-	if 'mingw' in cc { return .mingw }
-	if 'msvc'  in cc { return .msvc  }
+	if '++' in cc {
+		return .cplusplus
+	}
+	if 'tcc' in cc {
+		return .tinyc
+	}
+	if 'tinyc' in cc {
+		return .tinyc
+	}
+	if 'clang' in cc {
+		return .clang
+	}
+	if 'mingw' in cc {
+		return .mingw
+	}
+	if 'msvc' in cc {
+		return .msvc
+	}
 	return .gcc
 }
 

@@ -34,6 +34,7 @@ pub struct Block {
 pub:
 	stmts     []Stmt
 	is_unsafe bool
+	pos       token.Position
 }
 
 // | IncDecStmt k
@@ -431,6 +432,8 @@ pub fn (i &Ident) var_info() IdentVar {
 	}
 }
 
+// left op right
+// See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
 	op          token.Kind
@@ -443,6 +446,7 @@ pub mut:
 	auto_locked string
 }
 
+// ++, --
 pub struct PostfixExpr {
 pub:
 	op          token.Kind
@@ -452,6 +456,7 @@ pub mut:
 	auto_locked string
 }
 
+// See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
 	op         token.Kind
@@ -1102,6 +1107,19 @@ pub fn (expr Expr) is_expr() bool {
 	return true
 }
 
+// check if stmt can be an expression in C
+pub fn (stmt Stmt) check_c_expr()? {
+	match stmt {
+		AssignStmt {return}
+		ExprStmt {
+			if stmt.expr.is_expr() {return}
+			return error('unsupported statement (`${typeof(stmt.expr)}`)')
+		}
+		else {}
+	}
+	return error('unsupported statement (`${typeof(stmt)}`)')
+}
+
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }
@@ -1109,8 +1127,9 @@ pub fn (stmt Stmt) position() token.Position {
 		/*
 		// Attr {
 		// }
-		// Block {
-		// }
+		*/
+		Block { return stmt.pos }
+		/*
 		// BranchStmt {
 		// }
 		*/

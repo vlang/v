@@ -297,7 +297,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
 			linker_flags << '-rdynamic'
 		}
-		if v.pref.os == .mac || os.user_os() == 'mac' {
+		if v.pref.os == .macos || os.user_os() == 'macos' {
 			args << '-flat_namespace'
 		}
 	}
@@ -377,16 +377,16 @@ fn (mut v Builder) cc() {
 		verror("'$v.pref.out_name' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .mac || v.pref.os == .ios {
+	if v.pref.os == .macos || v.pref.os == .ios {
 		args << '-x objective-c'
 	}
 	// The C file we are compiling
 	args << '"$v.out_name_c"'
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-x none'
 	}
 	// Min macos version is mandatory I think?
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-mmacosx-version-min=10.7'
 	}
 	if v.pref.os == .ios {
@@ -695,7 +695,7 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['mac', 'darwin', 'linux'] {
+	if os.user_os() !in ['macos', 'linux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}

@@ -110,6 +110,8 @@ mut:
 	match_sumtype_exprs   []ast.Expr
 	match_sumtype_syms    []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
+	// autofree_pregen       map[string]string
+	autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
@@ -482,9 +484,9 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	}
 }
 
-// cc_type returns the Cleaned Concrete Type name, *without ptr*,
-// i.e. it's always just Cat, not Cat_ptr:
-fn (g &Gen) cc_type(t table.Type) string {
+// TODO: merge cc_type and cc_type2
+// cc_type but without the `struct` prefix
+fn (g &Gen) cc_type2(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := util.no_dots(sym.name)
 	if sym.kind == .struct_ {
@@ -501,6 +503,14 @@ fn (g &Gen) cc_type(t table.Type) string {
 			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
 		}
 	}
+	return styp
+}
+
+// cc_type returns the Cleaned Concrete Type name, *without ptr*,
+// i.e. it's always just Cat, not Cat_ptr:
+fn (g &Gen) cc_type(t table.Type) string {
+	sym := g.table.get_type_symbol(g.unwrap_generic(t))
+	mut styp := g.cc_type2(t)
 	if styp.starts_with('C__') {
 		styp = styp[3..]
 		if sym.kind == .struct_ {
@@ -730,6 +740,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
+		/*
 		if g.pref.autofree { // && !g.inside_or_block {
 			// TODO remove the inside_or_block hack. strings are not freed in or{} atm
 			if g.strs_to_free.len != 0 {
@@ -742,6 +753,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// g.strs_to_free.free()
 			}
 		}
+		*/
 	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
@@ -808,7 +820,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info(node.pos)
+			af := g.pref.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
+			if af {
+				g.autofree_call_pregen(node.expr as ast.CallExpr)
+			}
 			g.expr(node.expr)
+			if af {
+				if g.strs_to_free.len > 0 {
+					g.writeln(';\n// strs_to_free2:')
+					for s in g.strs_to_free {
+						g.writeln('string_free(&$s);')
+					}
+					g.strs_to_free = []
+				}
+			}
 			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
 				g.writeln(';')
 			}
@@ -1923,14 +1948,24 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
 			// }
-			if g.pref.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
-				// g.insert_before_stmt('/*START2*/' + g.strs_to_free0.join('\n') + '/*END*/')
-				g.insert_before_stmt('/*START3*/' + node.autofree_pregen + '/*END*/')
-				// for s in g.strs_to_free0 {
+			if g.pref.autofree {
+				// println('pos=$node.pos.pos')
+			}
+			// if g.pref.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {
+			/*
+			if g.pref.autofree {
+				s := g.autofree_pregen[node.pos.pos.str()]
+				if s != '' {
+					// g.insert_before_stmt('/*START2*/' + g.strs_to_free0.join('\n') + '/*END*/')
+					// g.insert_before_stmt('/*START3*/' + node.autofree_pregen + '/*END*/')
+					g.insert_before_stmt('/*START3*/' + s + '/*END*/')
+					// for s in g.strs_to_free0 {
+				}
 				// //g.writeln(s)
 				// }
 				g.strs_to_free0 = []
 			}
+			*/
 		}
 		ast.CastExpr {
 			// g.write('/*cast*/')
@@ -4646,9 +4681,6 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 		}
 		'ios' {
 			return '__TARGET_IOS__'
-		}
-		'mac' {
-			return '__APPLE__'
 		}
 		'macos' {
 			return '__APPLE__'

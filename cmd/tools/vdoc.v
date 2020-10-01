@@ -38,7 +38,7 @@ const (
 	exe_path        = os.executable()
 	exe_dir         = os.dir(exe_path)
 	res_path        = os.join_path(exe_dir, 'vdoc-resources')
-	vexe_path       = os.base_dir(@VEXE)
+	vexe_path       = os.dir(@VEXE)
 	html_content    = '
 	<!DOCTYPE html>
 	<html lang="en">
@@ -440,7 +440,7 @@ fn write_toc(cn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 }
 
 fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.Builder) {
-	base_dir := os.base_dir(os.real_path(cfg.input_path))
+	base_dir := os.dir(os.real_path(cfg.input_path))
 	file_path_name := if cfg.is_multi { cn.file_path.replace('$base_dir/', '') } else { os.file_name(cn.file_path) }
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	children := dcs.contents.find_children_of(cn.name)
@@ -702,7 +702,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
 	} else {
-		os.base_dir(cfg.input_path)
+		os.dir(cfg.input_path)
 	}
 	manifest_path := os.join_path(dir_path, 'v.mod')
 	if os.exists(manifest_path) {
@@ -877,7 +877,7 @@ fn get_ignore_paths(path string) ?[]string {
 
 fn lookup_module(mod string) ?string {
 	mod_path := mod.replace('.', os.path_separator)
-	compile_dir := os.real_path(os.base_dir('.'))
+	compile_dir := os.real_path(os.dir('.'))
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
 	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
