@@ -1193,7 +1193,7 @@ fn (mut s Scanner) ident_string() string {
 	for {
 		s.pos++
 		if s.pos >= s.text.len {
-			break
+			s.error('unfinished string literal')
 		}
 		c := s.text[s.pos]
 		prevc := s.text[s.pos - 1]

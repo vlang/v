@@ -642,22 +642,46 @@ pub fn file_ext(path string) string {
 	return path[pos..]
 }
 
-// dir will return the part of `path` before the last occurence of a `path_separator`.
+// dir returns all but the last element of path, typically the path's directory.
+// After dropping the final element, trailing slashes are removed.
+// If the path is empty, dir returns ".". If the path consists entirely of separators,
+// dir returns a single separator.
+// The returned path does not end in a separator unless it is the root directory.
 pub fn dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	if path == '' {
 		return '.'
+	}
+	mut pos := path.last_index(path_separator) or {
+		return '.'
+	}
+	if path.ends_with(path_separator) {
+		pos--
 	}
 	return path[..pos]
 }
 
-// base_dir will return the base directory of `path`.
-// The `path_separator` is included.
-pub fn base_dir(path string) string {
-	posx := path.last_index(path_separator) or {
+// base returns the last element of path.
+// Trailing path separators are removed before extracting the last element.
+// If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
+// single separator.
+pub fn base(path string) string {
+	if path == '' {
+		return '.'
+	}
+	if path == path_separator {
+		return path_separator
+	}
+	if path.ends_with(path_separator) {
+		path2 := path[..path.len-1]
+		pos := path2.last_index(path_separator) or {
+			return path2.clone()
+		}
+		return path2[pos+1..]
+	}
+	pos := path.last_index(path_separator) or {
 		return path.clone()
 	}
-	// NB: *without* terminating /
-	return path[..posx]
+	return path[pos+1..]
 }
 
 // file_name will return all characters found after the last occurence of `path_separator`.
@@ -824,12 +848,12 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + os.path_separator
+		return os.getenv('USERPROFILE')
 	} $else {
 		//println('home_dir() call')
-		//res:= os.getenv('HOME') + os.path_separator
+		//res:= os.getenv('HOME')
 		//println('res="$res"')
-		return os.getenv('HOME') + os.path_separator
+		return os.getenv('HOME')
 	}
 }
 
@@ -1275,7 +1299,7 @@ pub fn cache_dir() string {
 			return xdg_cache_home
 		}
 	}
-	cdir := os.home_dir() + '.cache'
+	cdir := os.join_path(os.home_dir(), '.cache')
 	if !os.is_dir(cdir) && !os.is_link(cdir) {
 		os.mkdir(cdir) or {
 			panic(err)
