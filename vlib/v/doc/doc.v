@@ -257,7 +257,7 @@ fn get_parent_mod(dir string) ?string {
 			return error('root folder reached')
 		}
 	}
-	base_dir := os.base_dir(dir)
+	base_dir := os.dir(dir)
 	fname_base_dir := os.file_name(base_dir)
 	prefs := new_vdoc_preferences()
 	fentries := os.ls(base_dir) or {
@@ -420,7 +420,7 @@ fn (mut d Doc) expr_typ_to_string(ex ast.Expr) string {
 
 fn (mut d Doc) generate() ?Doc {
 	// get all files
-	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.base_dir(d.input_path)) }
+	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.dir(d.input_path)) }
 	d.is_vlib = 'vlib' !in base_path
 	project_files := os.ls(base_path) or {
 		return error_with_code(err, 0)

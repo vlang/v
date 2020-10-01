@@ -10,7 +10,7 @@ pub const (
 )
 
 fn mpath() string {
-	return os.home_dir() + '.vmodules'
+	return os.join_path(os.home_dir(), '.vmodules')
 }
 
 pub fn new_preferences() Preferences {

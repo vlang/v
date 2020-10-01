@@ -557,9 +557,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
+			pos := p.tok.position()
 			stmts := p.parse_block()
 			return ast.Block{
 				stmts: stmts
+				pos: pos
 			}
 		}
 		.key_assert {
@@ -1989,6 +1991,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		p.next()
 		return ast.Block{
 			is_unsafe: true
+			pos: pos
 		}
 	}
 	p.inside_unsafe = true
@@ -2025,5 +2028,6 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true
+		pos: pos
 	}
 }

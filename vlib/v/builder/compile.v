@@ -27,7 +27,7 @@ fn get_vtmp_filename(base_file_name, postfix string) string {
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
-	odir := os.base_dir(pref.out_name)
+	odir := os.dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
 	mut output_folder := odir
@@ -55,9 +55,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('compilation took: ${util.bold(sw.elapsed().milliseconds().str())} ms')
 	}
 	// running does not require the parsers anymore
-	unsafe {
-		b.myfree()
-	}
+	unsafe {b.myfree()}
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
@@ -68,9 +66,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
-	unsafe {
-		b.parsed_files.free()
-	}
+	unsafe {b.parsed_files.free()}
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
@@ -142,7 +138,7 @@ fn (mut v Builder) set_module_lookup_paths() {
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_search_paths = []
 	if v.pref.is_test {
-		v.module_search_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
+		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
@@ -263,7 +259,7 @@ pub fn (v &Builder) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.base_dir(single_test_v_file)
+		dir = os.dir(single_test_v_file)
 	}
 	does_exist := os.exists(dir)
 	if !does_exist {
