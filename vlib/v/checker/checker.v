@@ -3018,7 +3018,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	for branch in node.branches {
 		c.stmts(branch.stmts)
 		if node.is_expr {
-			for st in branch.stmts {
+			// ignore last statement - workaround
+			// currently the last statement in a match branch does not have an
+			// expected value set, so e.g. IfExpr.is_expr is not set.
+			// probably any mismatch will be caught by not producing a value instead
+			for st in branch.stmts[0..branch.stmts.len - 1] {
 				st.check_c_expr() or {
 					c.error('`match` expression branch has $err', st.position())
 				}
