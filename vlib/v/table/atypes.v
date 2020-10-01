@@ -758,6 +758,7 @@ pub mut:
 	is_mut           bool
 	is_global        bool
 	is_embed         bool
+	embed_alias_for  string // name of the struct which contains this field name
 }
 
 fn (f &Field) equals(o &Field) bool {
