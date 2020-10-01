@@ -1673,6 +1673,11 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			c.error('`$sym.source_name` is not a struct', selector_expr.pos)
 		}
 	} else {
+		if sym.kind == .struct_ {
+			sss := sym.info as table.Struct
+			suggestion := util.new_suggestion(field_name, sss.fields.map(it.name))
+			c.error(suggestion.say(unknown_field_msg), selector_expr.pos)
+		}
 		c.error(unknown_field_msg, selector_expr.pos)
 	}
 	return table.void_type
