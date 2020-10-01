@@ -325,6 +325,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						i++
 						continue
 					}
+					if arg[1..].int() != 0 {
+						i++
+						continue
+					}
 				} else {
 					if command == '' {
 						command = arg
