@@ -2395,7 +2395,9 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		if node.op in [.eq, .ne] &&
 			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
 			arrow := if left_type.is_ptr() { '->' } else { '.' }
+			g.write('(')
 			g.expr(node.left)
+			g.write(')')
 			g.write('${arrow}len $node.op 0')
 		} else {
 			fn_name := match node.op {
