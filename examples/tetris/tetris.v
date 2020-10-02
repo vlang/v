@@ -104,6 +104,8 @@ struct Game {
 	mut:
 	// Score of the current game
 	score        int
+	// Lines of the current game
+	lines        int
 	// State of the current game
 	state    GameState
 	// Position of the current tetro
@@ -201,6 +203,7 @@ fn (mut g Game) init_game() {
 		last_row[j] = - 1
 	}
 	g.score = 0
+	g.lines = 0
 	g.state = .running
 }
 
@@ -277,6 +280,7 @@ fn (mut g Game) delete_completed_line(y int) {
 		}
 	}
 	g.score += 10
+	g.lines++
 	// Move everything down by 1 position
 	for yy := y - 1; yy >= 1; yy-- {
 		for x := 1; x <= field_width; x++ {
@@ -339,6 +343,8 @@ fn (g &Game) draw_field() {
 
 fn (mut g Game) draw_ui() {
 	g.gg.draw_text(1, 3, g.score.str(), text_cfg)
+	lines := g.lines.str()
+	g.gg.draw_text(win_width - lines.len * text_size, 3, lines, text_cfg)
 	if g.state == .gameover {
 		g.gg.draw_rect(0, win_height / 2 - text_size, win_width,
 	 								5 * text_size, ui_color)
