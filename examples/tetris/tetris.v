@@ -127,6 +127,7 @@ struct Game {
 	// gg context for drawing
 	gg          &gg.Context = voidptr(0)
 	font_loaded bool
+	show_ghost  bool
 	// frame/time counters:
 	frame int
 	frame_old int
@@ -225,6 +226,33 @@ fn (mut g Game) run() {
 	}
 }
 
+fn (g &Game) draw_ghost() {
+	if g.state != .gameover && g.show_ghost {
+		pos_y := g.move_ghost()
+		for i in 0..tetro_size {
+			tetro := g.tetro[i]
+			g.draw_block_ghost(pos_y + tetro.y, g.pos_x + tetro.x)
+		}
+	}
+}
+
+fn (g Game) move_ghost() int {
+	mut pos_y := g.pos_y
+	mut end := false
+	for !end {
+		for block in g.tetro {
+			y := block.y + pos_y + 1
+			x := block.x + g.pos_x
+			if g.field[y][x] != 0 {
+				end = true
+				break
+			}
+		}
+		pos_y++
+	}
+	return pos_y - 1
+}
+
 fn (mut g Game) move_tetro() bool {
 	// Check each block in current tetro
 	for block in g.tetro {
@@ -320,10 +348,18 @@ fn (g &Game) draw_tetro() {
 	}
 }
 
-fn (g &Game) draw_block(i, j, color_idx int) {
-	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
+fn (g &Game) draw_block_ghost(i, j int) {
+	g.draw_block_color(i, j, gx.gray)
+}
+
+fn (g &Game) draw_block_color(i, j int, color gx.Color) {
 	g.gg.draw_rect(f32((j - 1) * block_size), f32((i - 1) * block_size),
 		f32(block_size - 1), f32(block_size - 1), color)
+}
+
+fn (g &Game) draw_block(i, j, color_idx int) {
+	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
+	g.draw_block_color(i, j, color)
 }
 
 fn (g &Game) draw_field() {
@@ -354,6 +390,7 @@ fn (mut g Game) draw_ui() {
 }
 
 fn (mut g Game) draw_scene() {
+	g.draw_ghost()
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_ui()
@@ -442,6 +479,9 @@ fn (mut game Game) key_down(key sapp.KeyCode) {
 		}
 		.d {
 			for game.move_tetro() {}
+		}
+		.g {
+			game.show_ghost = !game.show_ghost
 		}
 		else { }
 	}
