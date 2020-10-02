@@ -1032,3 +1032,18 @@ fn test_direct_array_access_via_ptr() {
 	}
 }
 
+const (
+	grid_size_1 = 2
+	grid_size_2 = 3
+	grid_size_3 = 4
+	cell_value = 123
+)
+
+fn test_multidimensional_array_initialization_with_consts() {
+	mut data := [][][]int{ len: grid_size_1, init: [][]int{ len: grid_size_2, init: []int{ len: grid_size_3, init: cell_value } } }
+	assert data.len == grid_size_1
+	assert data[0].len == grid_size_2
+	assert data[0][0].len == grid_size_3
+	assert data[0][0][0] == cell_value
+	assert data[1][1][1] == cell_value
+}
