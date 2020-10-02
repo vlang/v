@@ -48,14 +48,24 @@ fn C.PQclear(arg_1 voidptr) voidptr
 
 fn C.PQfinish(arg_1 voidptr)
 
+// Makes a new connection to the database server using
+// the parameters from the `Config` structure, returning
+// a connection error when something goes wrong
 pub fn connect(config Config) ?DB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
+	if conn == 0 {
+		return error('libpq memory allocation error')
+	}
 	status := C.PQstatus(conn)
-	println('status=$status')
 	if status != C.CONNECTION_OK {
-		error_msg := C.PQerrorMessage(conn)
-		return error('Connection to a PG database failed: ' + unsafe {error_msg.vstring()})
+		// We force the construction of a new string as the
+		// error message will be freed by the next `PQfinish`
+		// call
+		c_error_msg := unsafe {C.PQerrorMessage(conn).vstring()}
+		error_msg := '$c_error_msg'
+		C.PQfinish(conn)
+		return error('Connection to a PG database failed: $error_msg')
 	}
 	return DB{
 		conn: conn
