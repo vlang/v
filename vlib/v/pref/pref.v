@@ -442,7 +442,7 @@ fn parse_define(mut prefs Preferences, define string) {
 			}
 			else {
 				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					'Expected `0` or `1`.')
+					' Expected `0` or `1`.')
 				exit(1)
 			}
 		}
