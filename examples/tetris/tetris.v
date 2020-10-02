@@ -127,6 +127,7 @@ struct Game {
 	// gg context for drawing
 	gg          &gg.Context = voidptr(0)
 	font_loaded bool
+	show_ghost  bool
 	// frame/time counters:
 	frame int
 	frame_old int
@@ -226,7 +227,7 @@ fn (mut g Game) run() {
 }
 
 fn (g &Game) draw_ghost() {
-	if g.state != .gameover {
+	if g.state != .gameover && g.show_ghost {
 		pos_y := g.move_ghost()
 		for i in 0..tetro_size {
 			tetro := g.tetro[i]
@@ -478,6 +479,9 @@ fn (mut game Game) key_down(key sapp.KeyCode) {
 		}
 		.d {
 			for game.move_tetro() {}
+		}
+		.g {
+			game.show_ghost = !game.show_ghost
 		}
 		else { }
 	}
