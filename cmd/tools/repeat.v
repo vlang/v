@@ -12,6 +12,7 @@ struct CmdResult {
 mut:
 	runs int
 	cmd string
+	icmd int
 	outputs []string
 	oms map[string][]int
 	summary map[string]Aints
@@ -24,6 +25,7 @@ mut:
 	warmup int
 	show_help bool
 	show_result bool
+	fail_on_regress_percent int
 	verbose bool
 	commands []string
 	results []CmdResult
@@ -68,6 +70,9 @@ fn new_aints(vals []int) Aints {
 }
 fn (a Aints) str() string { return util.bold('${a.average:9.3f}') + 'ms ± σ: ${a.stddev:-5.1f}ms, min … max: ${a.imin}ms … ${a.imax}ms' }
 
+const (
+	max_fail_percent = 100000
+)
 fn main(){
 	mut context := Context{}
 	context.parse_options()
@@ -87,7 +92,7 @@ fn (mut context Context) parse_options() {
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
-	context.show_result = fp.bool('result', `r`, true, 'Show the result too.')
+	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with 1 exit code, when first cmd is X% slower than the rest (regression).')
 	if context.show_help {
 		println(fp.usage())
 		exit(0)
@@ -146,6 +151,7 @@ fn (mut context Context) run() {
 			oldres = res.output.replace('\n', ' ')
 		}
 		context.results[icmd].cmd = cmd
+		context.results[icmd].icmd = icmd
 		context.results[icmd].runs = runs
 		context.results[icmd].atiming = new_aints(context.results[icmd].timings)
 		context.clear_line()
@@ -181,10 +187,24 @@ fn (mut context Context) show_diff_summary() {
 		}
 		return 0
 	})
-	println('Summary (commands ordered by ascending average time), after $context.count repeats:')
+	println('Summary (commands are ordered by ascending mean time), after $context.count repeats:')
 	base := context.results[0].atiming.average
+	mut first_cmd_percentage := f64(100.0)
 	for i, r in context.results {
-		cpercent := (r.atiming.average / base) * 100
-		println('   ${(i+1):3}. ${cpercent:6.1f}% ${r.cmd:60} | ${r.atiming}')
+		cpercent := (r.atiming.average / base) * 100 - 100
+		first_marker := if r.icmd == 0 { util.bold('>') } else { ' ' }
+		if r.icmd == 0 {
+			first_cmd_percentage = cpercent
+		}
+		println(' ${first_marker}${(i+1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | ${r.atiming}')
+	}
+	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {
+		return
+	}
+	fail_threshold_max := f64(context.fail_on_regress_percent)
+	if first_cmd_percentage > fail_threshold_max {
+		print('Performance regression detected, failing since ')
+		println('${first_cmd_percentage:5.1f}% > ${fail_threshold_max:5.1f}% threshold.')
+		exit(1)
 	}
 }
