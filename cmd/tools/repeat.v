@@ -25,7 +25,7 @@ mut:
 	series int
 	warmup int
 	show_help bool
-	show_result bool
+	show_output bool
 	fail_on_regress_percent int
 	verbose bool
 	commands []string
@@ -93,6 +93,7 @@ fn (mut context Context) parse_options() {
 	context.series = fp.int('series', `s`, 2, 'Series count. `-s 2 -c 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -c 2 a b` => aabbaabbaabb.')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs. These are done *only at the start*, and are ignored.')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
+	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. NB: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with 1 exit code, when first cmd is X% slower than the rest (regression).')
 	if context.show_help {
@@ -136,7 +137,7 @@ fn (mut context Context) run() {
 			for i in 1..(context.count+1) {
 				avg := f64(sum)/f64(i)
 				print('\rAverage: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
-				if context.show_result {
+				if context.show_output {
 					print(' | result: ${oldres:-s}')
 				}
 				mut sw := time.new_stopwatch({})
