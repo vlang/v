@@ -383,15 +383,12 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, fi
 		}
 		if has_custom_str {
 			return '${fn_name}($obj)'
-		} else {
-			return 'indent_${fn_name}($obj, indent_count + 1)'
 		}
-	} else if sym.kind in [.array, .array_fixed, .map] {
+		return 'indent_${fn_name}($obj, indent_count + 1)'
+	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		if has_custom_str {
 			return '${fn_name}(it->${c_name(field_name)})'
 		}
-		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
-	} else if sym.kind == .sum_type {
 		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
 	} else {
 		mut method_str := 'it->${c_name(field_name)}'

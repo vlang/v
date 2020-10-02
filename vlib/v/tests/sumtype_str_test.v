@@ -57,3 +57,21 @@ fn test_pointer() {
 	st := ST(0)
 	assert '${&st}' == '&ST(0)'
 }
+
+struct Xyz {}
+
+type Hola = Abc | Xyz
+
+fn (h Hola) str() string {
+	return 'Hola'
+}
+
+struct HolaContainer {
+	h Hola
+}
+
+fn test_custom_str_method() {
+	h := HolaContainer{}
+	assert h.str() == 'HolaContainer {\n    h: Hola\n}'
+	assert '$h' == 'HolaContainer {\n    h: Hola\n}'
+}
