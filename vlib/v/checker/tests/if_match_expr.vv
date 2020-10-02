@@ -3,20 +3,25 @@
 _ = if true {
 	if true {} // FIXME should error, if statement
 	_ = if true {1} else {-1} // OK
-	if true {1} else {-1} // OK
+	if true {1} else {-1} // result
 } else {
 	for {break}
 	{}
-	-1
+	match true {true {} else {}} // statement not expression
+	_ = match true {true {1} else {-1}} // OK
+	match true {true {1} else {-1}} // result
 }
 
 _ = match true {
 	true {
-		assert true
-		1
+		if true {} // statement not expression
+		_ = if true {1} else {-1} // OK
+		if true {1} else {-1} // result
 	}
 	else {
-		if true {} // statement not expression
-		(-1) // parens needed ATM due to bug
+		assert true
+		match true {true {} else {}} // statement not expression
+		_ = match true {true {1} else {-1}} // OK
+		match true {true {1} else {-1}} // result
 	}
 }
