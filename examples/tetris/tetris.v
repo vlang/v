@@ -493,6 +493,9 @@ fn (mut game Game) key_down(key sapp.KeyCode) {
 		.d {
 			for game.move_tetro() {}
 		}
+		.g {
+			game.show_ghost = !game.show_ghost
+		}
 		else { }
 	}
 }
