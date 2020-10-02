@@ -38,7 +38,7 @@ pub mut:
 	const_decl       string
 	const_deps       []string
 	const_names      []string
-	global_names	 []string
+	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
 	pref             &pref.Preferences // Preferences shared from V struct
