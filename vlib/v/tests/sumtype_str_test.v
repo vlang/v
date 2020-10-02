@@ -72,6 +72,6 @@ struct HolaContainer {
 
 fn test_custom_str_method() {
 	h := HolaContainer{}
-	assert h.str() == 'HolaContainer {\n    h: Hola\n}'
-	assert '$h' == 'HolaContainer {\n    h: Hola\n}'
+	assert h.str() == 'HolaContainer{\n    h: Hola\n}'
+	assert '$h' == 'HolaContainer{\n    h: Hola\n}'
 }
