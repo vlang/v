@@ -224,7 +224,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 }
 
 fn add_unhandled_exception_handler() {
-	add_vectored_exception_handler(unhandled_exception_handler)
+	add_vectored_exception_handler(VectoredExceptionHandler(voidptr(unhandled_exception_handler)))
 }
 
 fn C.IsDebuggerPresent() bool
