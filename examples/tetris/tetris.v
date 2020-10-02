@@ -122,6 +122,8 @@ struct Game {
 	tetros_cache []Block
 	// Index of the current tetro. Refers to its color.
 	tetro_idx    int
+	// Idem for the next tetro
+	next_tetro_idx       int
 	// Index of the rotation (0-3)
 	rotation_idx int
 	// gg context for drawing
@@ -186,6 +188,7 @@ fn main() {
 
 fn (mut g Game) init_game() {
 	g.parse_tetros()
+	g.next_tetro_idx = rand.intn(b_tetros.len)	// generate initial "next"
 	g.generate_tetro()
 	g.field = []
 	// Generate the field, fill it with 0's, add -1's on each edge
@@ -231,7 +234,7 @@ fn (g &Game) draw_ghost() {
 		pos_y := g.move_ghost()
 		for i in 0..tetro_size {
 			tetro := g.tetro[i]
-			g.draw_block_ghost(pos_y + tetro.y, g.pos_x + tetro.x)
+			g.draw_block_color(pos_y + tetro.y, g.pos_x + tetro.x, gx.gray)
 		}
 	}
 }
@@ -319,7 +322,8 @@ fn (mut g Game) delete_completed_line(y int) {
 fn (mut g Game) generate_tetro() {
 	g.pos_y = 0
 	g.pos_x = field_width / 2 - tetro_size / 2
-	g.tetro_idx = rand.intn(b_tetros.len)
+	g.tetro_idx = g.next_tetro_idx
+	g.next_tetro_idx = rand.intn(b_tetros.len)
 	g.rotation_idx = 0
 	g.get_tetro()
 }
@@ -348,8 +352,17 @@ fn (g &Game) draw_tetro() {
 	}
 }
 
-fn (g &Game) draw_block_ghost(i, j int) {
-	g.draw_block_color(i, j, gx.gray)
+fn (g &Game) draw_next_tetro() {
+	if g.state != .gameover {
+		idx := g.next_tetro_idx * tetro_size * tetro_size
+		next_tetro := g.tetros_cache[idx..idx+tetro_size]
+		pos_y := 0
+		pos_x := field_width / 2 - tetro_size / 2
+		for i in 0..tetro_size {
+			block := next_tetro[i]
+			g.draw_block_color(pos_y + block.y, pos_x + block.x, gx.rgb(220, 220, 220))
+		}
+	}
 }
 
 fn (g &Game) draw_block_color(i, j int, color gx.Color) {
@@ -361,7 +374,6 @@ fn (g &Game) draw_block(i, j, color_idx int) {
 	color := if g.state == .gameover { gx.gray } else { colors[color_idx] }
 	g.draw_block_color(i, j, color)
 }
-
 fn (g &Game) draw_field() {
 	for i := 1; i < field_height + 1; i++ {
 		for j := 1; j < field_width + 1; j++ {
@@ -391,6 +403,7 @@ fn (mut g Game) draw_ui() {
 
 fn (mut g Game) draw_scene() {
 	g.draw_ghost()
+	g.draw_next_tetro()
 	g.draw_tetro()
 	g.draw_field()
 	g.draw_ui()
