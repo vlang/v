@@ -38,6 +38,7 @@ pub mut:
 	const_decl       string
 	const_deps       []string
 	const_names      []string
+	global_names	 []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
 	pref             &pref.Preferences // Preferences shared from V struct
@@ -1954,7 +1955,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if left_type != 0 {
 						match mut left.obj as v {
 							ast.Var { v.typ = left_type }
-							ast.GlobalDecl { v.typ = left_type }
+							ast.GlobalField { v.typ = left_type }
 							else {}
 						}
 						/*
@@ -2369,7 +2370,13 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.in_for_count--
 		}
 		ast.GlobalDecl {
-			c.check_valid_snake_case(node.name, 'global name', node.pos)
+			for field in node.fields {
+				c.check_valid_snake_case(field.name, 'global name', field.pos)
+				if field.name in c.global_names {
+					c.error('duplicate global `$field.name`', field.pos)
+				}
+				c.global_names << field.name
+			}
 		}
 		ast.GoStmt {
 			if node.call_expr !is ast.CallExpr {
@@ -2862,7 +2869,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj1 := start_scope.find(ident.name) {
 			match mut obj1 as obj {
-				ast.GlobalDecl {
+				ast.GlobalField {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: obj.typ

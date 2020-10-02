@@ -937,8 +937,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.GlobalDecl {
-			styp := g.typ(node.typ)
-			g.definitions.writeln('$styp $node.name; // global')
+			g.global_decl(node)
 		}
 		ast.GoStmt {
 			g.go_stmt(node)
@@ -3644,6 +3643,17 @@ fn (mut g Gen) const_decl_init_later(mod, name, val string, typ table.Type) {
 		}
 		if styp == 'string' {
 			g.cleanups[mod].writeln('\tstring_free(&$cname);')
+		}
+	}
+}
+
+fn (mut g Gen) global_decl(node ast.GlobalDecl) {
+	for field in node.fields {
+		styp := g.typ(field.typ)
+		if field.has_expr {
+			g.definitions.writeln('$styp $field.name = $field.expr; // global')
+		} else {
+			g.definitions.writeln('$styp $field.name; // global')
 		}
 	}
 }

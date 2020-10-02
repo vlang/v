@@ -1,5 +1,5 @@
 
-__global rfcnt int
+__global ( rfcnt int )
 
 fn abc(){
 	rfcnt = 2

@@ -399,13 +399,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.GlobalDecl {
-			f.write('__global $it.name ')
-			f.write(f.type_to_str(it.typ))
-			if it.has_expr {
-				f.write(' = ')
-				f.expr(it.expr)
-			}
-			f.writeln('')
+			f.global_decl(it)
 		}
 		ast.GoStmt {
 			f.write('go ')
@@ -1882,6 +1876,57 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
+	f.writeln(')\n')
+}
+
+fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
+	single := it.fields.len == 1
+	if single {
+		f.write('__global ( ')
+	} else {
+		f.write('__global (')
+		f.writeln('')
+		f.indent++
+	}
+	mut max := 0
+	mut has_assign := false
+	for field in it.fields {
+		if field.name.len > max {
+			max = field.name.len
+		}
+		if field.has_expr {
+			has_assign = true
+		}
+	}
+	for field in it.fields {
+		comments := field.comments
+		for comment in comments {
+			f.comment(comment, {
+				inline: true
+			})
+			f.writeln('')
+		}
+		f.write('$field.name ')
+		f.write(strings.repeat(` `, max - field.name.len))
+		if field.has_expr {
+			f.write('= ')
+			f.write(f.type_to_str(field.typ))
+			f.write('(')
+			f.expr(field.expr)
+			f.write(')')
+		} else {
+			if !single && has_assign {
+				f.write('  ')
+			}
+			f.write('${f.type_to_str(field.typ)} ')
+		}
+		if !single {
+			f.writeln('')
+		}
+	}
+	if !single {
+		f.indent--
+	}
 	f.writeln(')\n')
 }
 
