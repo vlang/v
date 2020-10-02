@@ -327,9 +327,9 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	if info.fields.len == 0 {
-		g.auto_str_funcs.write('\treturn tos_lit("$clean_struct_v_type_name { }");')
+		g.auto_str_funcs.write('\treturn tos_lit("$clean_struct_v_type_name{}");')
 	} else {
-		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name {\\n"')
+		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name{\\n"')
 		for field in info.fields {
 			mut fmt := g.type_to_fmt(field.typ)
 			if field.typ.is_ptr() {
