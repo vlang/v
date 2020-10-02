@@ -360,7 +360,7 @@ fn (g &Game) draw_next_tetro() {
 		pos_x := field_width / 2 - tetro_size / 2
 		for i in 0..tetro_size {
 			block := next_tetro[i]
-			g.draw_block_color(pos_y + block.y, pos_x + block.x, gx.gray)
+			g.draw_block_color(pos_y + block.y, pos_x + block.x, gx.rgb(220, 220, 220))
 		}
 	}
 }
