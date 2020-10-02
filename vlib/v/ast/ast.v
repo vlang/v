@@ -977,47 +977,6 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit {
-			return expr.pos
-		}
-		AsCast {
-			return expr.pos
-		}
-		Assoc {
-			return expr.pos
-		}
-		BoolLiteral {
-			return expr.pos
-		}
-		// ast.Ident { }
-		CallExpr {
-			return expr.pos
-		}
-		CastExpr {
-			return expr.pos
-		}
-		CharLiteral {
-			return expr.pos
-		}
-		Comment {
-			return expr.pos
-		}
-		EnumVal {
-			return expr.pos
-		}
-		FloatLiteral {
-			return expr.pos
-		}
-		Ident {
-			return expr.pos
-		}
-		IfExpr {
-			return expr.pos
-		}
-		// ast.IfGuardExpr { }
-		IndexExpr {
-			return expr.pos
-		}
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
@@ -1030,46 +989,11 @@ pub fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		IntegerLiteral {
-			return expr.pos
-		}
-		MapInit {
-			return expr.pos
-		}
-		MatchExpr {
-			return expr.pos
-		}
-		None {
-			return expr.pos
-		}
-		PostfixExpr {
-			return expr.pos
-		}
-		// ast.None { }
-		PrefixExpr {
-			return expr.pos
-		}
-		// ast.ParExpr { }
-		SelectExpr {
-			return expr.pos
-		}
-		SelectorExpr {
-			return expr.pos
-		}
-		SizeOf {
-			return expr.pos
-		}
-		StringLiteral {
-			return expr.pos
-		}
-		StringInterLiteral {
-			return expr.pos
-		}
-		// ast.Type { }
-		StructInit {
-			return expr.pos
-		}
-		Likely {
+		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral,
+		Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr,
+		IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr,
+		SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral,
+		StructInit, Likely {
 			return expr.pos
 		}
 		// ast.TypeOf { }
@@ -1091,19 +1015,22 @@ pub fn (expr Expr) is_lvalue() bool {
 
 pub fn (expr Expr) is_expr() bool {
 	match expr {
-		IfExpr { return expr.is_expr }
-		MatchExpr { return expr.is_expr }
+		IfExpr, MatchExpr { return expr.is_expr }
 		else {}
 	}
 	return true
 }
 
 // check if stmt can be an expression in C
-pub fn (stmt Stmt) check_c_expr()? {
+pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {
-		AssignStmt {return}
+		AssignStmt {
+			return
+		}
 		ExprStmt {
-			if stmt.expr.is_expr() {return}
+			if stmt.expr.is_expr() {
+				return
+			}
 			return error('unsupported statement (`${typeof(stmt.expr)}`)')
 		}
 		else {}
@@ -1113,54 +1040,10 @@ pub fn (stmt Stmt) check_c_expr()? {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt { return stmt.pos }
-		AssignStmt { return stmt.pos }
-		/*
-		// Attr {
-		// }
-		*/
-		Block { return stmt.pos }
-		/*
-		// BranchStmt {
-		// }
-		*/
-		ConstDecl { return stmt.pos }
-		/*
-		// DeferStmt {
-		// }
-		*/
-		EnumDecl { return stmt.pos }
-		ExprStmt { return stmt.pos }
-		FnDecl { return stmt.pos }
-		ForCStmt { return stmt.pos }
-		ForInStmt { return stmt.pos }
-		ForStmt { return stmt.pos }
-		/*
-		// GlobalDecl {
-		// }
-		// GoStmt {
-		// }
-		// GotoLabel {
-		// }
-		// GotoStmt {
-		// }
-		// HashStmt {
-		// }
-		*/
-		Import { return stmt.pos }
-		/*
-		// InterfaceDecl {
-		// }
-		// Module {
-		// }
-		*/
-		Return { return stmt.pos }
-		StructDecl { return stmt.pos }
-		/*
-		// TypeDecl {
-		// }
-		*/
-		//
+		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl,
+		ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl {
+			return stmt.pos
+		}
 		else { return token.Position{} }
 	}
 }
