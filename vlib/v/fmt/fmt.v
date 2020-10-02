@@ -1927,6 +1927,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	if !single {
 		f.indent--
 	}
+	f.comments_after_last_field(it.end_comments)
 	f.writeln(')\n')
 }
 
