@@ -269,13 +269,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
-	/*
-	defer {
-		if p.fileis('x.v') {
-			p.warn('end of struct init $short_syntax')
-		}
-	}
-	*/
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)

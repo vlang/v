@@ -97,14 +97,7 @@ fn (mut f Fmt) find_comment(line_nr int) {
 pub fn (mut f Fmt) write(s string) {
 	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
-			if f.indent < tabs.len {
-				f.out.write(tabs[f.indent])
-			} else {
-				// too many indents, do it the slow way:
-				for _ in 0 .. f.indent {
-					f.out.write('\t')
-				}
-			}
+			f.write_indent()
 			f.line_len += f.indent * 4
 		}
 		f.out.write(s)
@@ -133,8 +126,7 @@ pub fn (mut f Fmt) writeln(s string) {
 		f.precedences = []int{}
 	}
 	if f.indent > 0 && f.empty_line {
-		// println(f.indent.str() + s)
-		f.out.write(tabs[f.indent])
+		f.write_indent()
 	}
 	f.out.writeln(if empty_fifo {
 		''
@@ -143,6 +135,17 @@ pub fn (mut f Fmt) writeln(s string) {
 	})
 	f.empty_line = true
 	f.line_len = 0
+}
+
+fn (mut f Fmt) write_indent() {
+	if f.indent < tabs.len {
+		f.out.write(tabs[f.indent])
+	} else {
+		// too many indents, do it the slow way:
+		for _ in 0 .. f.indent {
+			f.out.write('\t')
+		}
+	}
 }
 
 // adjustments that can only be done after full line is processed. For now
@@ -1129,11 +1132,14 @@ pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
-	f.write('\n' + tabs[f.indent + if add_indent {
-		1
-	} else {
-		0
-	}])
+	f.write('\n')
+	if add_indent {
+		f.indent++
+	}
+	f.write_indent()
+	if add_indent {
+		f.indent--
+	}
 	f.line_len = 0
 	return true
 }
