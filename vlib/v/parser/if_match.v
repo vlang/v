@@ -34,6 +34,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			comments << p.eat_comments()
 			p.check(.key_else)
 			comments << p.eat_comments()
+			if p.tok.kind == .key_match {
+				p.error('cannot use `match` with `if` statements')
+			}
 			if p.tok.kind == .lcbr {
 				// else {
 				has_else = true
@@ -72,6 +75,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		// `if` or `else if`
 		p.check(.key_if)
+		if p.tok.kind == .key_match {
+			p.error('cannot use `match` with `if` statements')
+		}
 		comments << p.eat_comments()
 		// `if mut name is T`
 		mut mut_name := false

@@ -1,24 +1,24 @@
 fn test_for_match() {
 	mut a := 2
 	mut b := 0
-	for match a {
-		2 {
-			println('a == 2')
-			a = 0
-			true
+	for {
+		match a {
+			2 {
+				println('a == 2')
+				a = 0
+				continue
+			}
+			0 {
+				println('a == 0')
+				a = 5
+				b++
+				break
+			}
+			else {
+				println('unexpected branch')
+				break
+			}
 		}
-		0 {
-			println('a == 0')
-			a = 5
-			false
-		}
-		else {
-			println('unexpected branch')
-			false
-		}
-	} {
-		b++
-		println('${b}. run')
 	}
 	assert a == 5
 	assert b == 1
@@ -34,7 +34,7 @@ fn test_for_select() {
 		x := <-ch1 {
 			a += x
 		}
-		y := <- ch2 {
+		y := <-ch2 {
 			a += int(y)
 		}
 	} {
