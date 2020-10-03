@@ -933,6 +933,8 @@ Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
 because the range is *inclusive* of the last element, rather than exclusive
 (as `..` ranges are). Using `..` in a match branch will throw an error.
 
+Note: `match` as an expression is not usable in `for` loop and `if` statements.
+
 ### Defer
 
 A defer statement defers the execution of a block of statements until the surrounding function returns.
