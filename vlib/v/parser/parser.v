@@ -1676,41 +1676,79 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()
-	p.next()
-	pos := start_pos.extend(p.tok.position())
-	name := p.check_name()
-	// println(name)
-	typ := p.parse_type()
-	mut expr := ast.Expr{}
-	has_expr := p.tok.kind == .assign
-	if has_expr {
-		p.next()
-		expr = p.expr(0)
+	end_pos := p.tok.position()
+	p.check(.key_global)
+	if p.tok.kind != .lpar {
+		// Need to work for intermediate V Compiler for PRs process
+		// p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
+		pos := p.tok.position()
+		name := p.check_name()
+		typ := p.parse_type()
+		mut expr := ast.Expr{}
+		has_expr := p.tok.kind == .assign
+		if has_expr {
+			p.next()
+			expr = p.expr(0)
+		}
+		mut fields := []ast.GlobalField{}
+		field := ast.GlobalField{
+			name: name
+			has_expr: has_expr
+			expr: expr
+			pos: pos
+			typ: typ
+			comments: []ast.Comment{}
+		}
+		fields << field
+		p.global_scope.register(field.name, field)
+		return ast.GlobalDecl{
+			fields: fields
+			pos: start_pos.extend(end_pos)
+			end_comments: []ast.Comment{}
+		}
 	}
-	// p.genln(p.table.cgen_name_type_pair(name, typ))
-	/*
-	mut g := p.table.cgen_name_type_pair(name, typ)
-	if p.tok == .assign {
-		p.next()
-		g += ' = '
-		_,expr := p.tmp_expr()
-		g += expr
+	p.next() // (
+	mut fields := []ast.GlobalField{}
+	mut comments := []ast.Comment{}
+	for {
+		comments = p.eat_comments()
+		if p.tok.kind == .rpar {
+			break
+		}
+		pos := p.tok.position()
+		name := p.check_name()
+		has_expr := p.tok.kind == .assign
+		if has_expr {
+			p.next() // =
+		}
+		typ := p.parse_type()
+		mut expr := ast.Expr{}
+		if has_expr {
+			if p.tok.kind != .lpar {
+				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
+			}
+			p.next() // (
+			expr = p.expr(0)
+			p.check(.rpar)
+		}
+		field := ast.GlobalField{
+			name: name
+			has_expr: has_expr
+			expr: expr
+			pos: pos
+			typ: typ
+			comments: comments
+		}
+		fields << field
+		p.global_scope.register(field.name, field)
+		comments = []
 	}
-	// p.genln('; // global')
-	g += '; // global'
-	if !p.cgen.nogen {
-		p.cgen.consts << g
+	p.check(.rpar)
+	return ast.GlobalDecl{
+		pos: start_pos.extend(end_pos)
+		fields: fields
+		end_comments: comments
 	}
-	*/
-	glob := ast.GlobalDecl{
-		name: name
-		typ: typ
-		pos: pos
-		has_expr: has_expr
-		expr: expr
-	}
-	p.global_scope.register(name, glob)
-	return glob
 }
 
 fn (mut p Parser) enum_decl() ast.EnumDecl {
