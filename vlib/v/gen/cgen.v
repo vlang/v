@@ -2693,8 +2693,11 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	g.expr(node.cond)
 	g.writeln(';')
 	g.write(cur_line)
+	// TODO refactor, there are far too many indents
 	for j, branch in node.branches {
 		mut sumtype_index := 0
+		// iterates through all types in sumtype branches
+		// it loops only once for other types
 		for {
 			is_last := j == node.branches.len - 1
 			if branch.is_else || (node.is_expr && is_last) {
@@ -2720,6 +2723,8 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 					g.write('if (')
 				}
 				if node.is_sum_type && branch.exprs.len > 0 {
+					// the multiple expressions of sumtypes are treated by the immediate `for` loop
+					// TODO move sumtype match to there own function
 					g.write(cond_var)
 					sym := g.table.get_type_symbol(node.cond_type)
 					// branch_sym := g.table.get_type_symbol(branch.typ)
