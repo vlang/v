@@ -406,16 +406,15 @@ pub fn (t &Table) known_type(name string) bool {
 
 [inline]
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_$elem_type_sym.name' + if elem_type.is_ptr() {
-		'_ptr'.repeat(elem_type.nr_muls())
-	} else {
-		''
-	} + if nr_dims > 1 {
-		'_${nr_dims}d'
-	} else {
-		''
-	}
+        elem_type_sym := t.get_type_symbol(elem_type)
+        mut res := ''
+        if elem_type.is_ptr() {
+                res = '_ptr'.repeat(elem_type.nr_muls())
+        }
+        if nr_dims > 1 {
+                res += '_${nr_dims}d'
+        }
+        return 'array_$elem_type_sym.name' + res
 }
 
 // array_source_name generates the original name for the v source.
@@ -429,16 +428,15 @@ pub fn (t &Table) array_source_name(elem_type Type) string {
 
 [inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_fixed_${elem_type_sym.name}_$size' + if elem_type.is_ptr() {
-		'_ptr'
-	} else {
-		''
-	} + if nr_dims > 1 {
-		'_${nr_dims}d'
-	} else {
-		''
-	}
+        elem_type_sym := t.get_type_symbol(elem_type)
+        mut res := ''
+        if elem_type.is_ptr() {
+                res = '_ptr'
+        }
+        if nr_dims > 1 {
+                res += '_${nr_dims}d'
+        }
+        return 'array_fixed_${elem_type_sym.name}_$size' + res
 }
 
 // array_fixed_source_name generates the original name for the v source.
