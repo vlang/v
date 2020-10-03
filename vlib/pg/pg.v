@@ -6,7 +6,6 @@ module pg
 #flag windows -I @VROOT/thirdparty/pg/include
 #flag windows -L @VROOT/thirdparty/pg/win64
 #include <libpq-fe.h>
-
 pub struct DB {
 mut:
 	conn &C.PGconn
@@ -17,49 +16,71 @@ pub mut:
 	vals []string
 }
 
-struct C.PGResult { }
+struct C.PGResult {
+}
 
 pub struct Config {
 pub:
-	host string
-	port int = 5432
-	user string
+	host     string
+	port     int = 5432
+	user     string
 	password string
-	dbname string
+	dbname   string
 }
 
 fn C.PQconnectdb(a byteptr) &C.PGconn
-fn C.PQerrorMessage(voidptr) byteptr
-fn C.PQgetvalue(voidptr, int, int) byteptr
-fn C.PQstatus(voidptr) int
-fn C.PQntuples(voidptr) int
-fn C.PQnfields(voidptr) int
-fn C.PQexec(voidptr) voidptr
-fn C.PQexecParams(voidptr) voidptr
-fn C.PQclear(voidptr) voidptr
-fn C.PQfinish(voidptr)
 
+fn C.PQerrorMessage(arg_1 voidptr) byteptr
+
+fn C.PQgetvalue(arg_1 voidptr, arg_2, arg_3 int) byteptr
+
+fn C.PQstatus(arg_1 voidptr) int
+
+fn C.PQntuples(arg_1 voidptr) int
+
+fn C.PQnfields(arg_1 voidptr) int
+
+fn C.PQexec(arg_1 voidptr) voidptr
+
+fn C.PQexecParams(arg_1 voidptr) voidptr
+
+fn C.PQclear(arg_1 voidptr) voidptr
+
+fn C.PQfinish(arg_1 voidptr)
+
+// Makes a new connection to the database server using
+// the parameters from the `Config` structure, returning
+// a connection error when something goes wrong
 pub fn connect(config Config) ?DB {
 	conninfo := 'host=$config.host port=$config.port user=$config.user dbname=$config.dbname password=$config.password'
 	conn := C.PQconnectdb(conninfo.str)
-	status := C.PQstatus(conn)
-	println("status=$status")
-	if status != C.CONNECTION_OK {
-		error_msg := C.PQerrorMessage(conn)
-		return error ('Connection to a PG database failed: ' + unsafe { error_msg.vstring() } )
+	if conn == 0 {
+		return error('libpq memory allocation error')
 	}
-	return DB {conn: conn}
+	status := C.PQstatus(conn)
+	if status != C.CONNECTION_OK {
+		// We force the construction of a new string as the
+		// error message will be freed by the next `PQfinish`
+		// call
+		c_error_msg := unsafe {C.PQerrorMessage(conn).vstring()}
+		error_msg := '$c_error_msg'
+		C.PQfinish(conn)
+		return error('Connection to a PG database failed: $error_msg')
+	}
+	return DB{
+		conn: conn
+	}
 }
 
 fn res_to_rows(res voidptr) []Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 	mut rows := []Row{}
-	for i in 0..nr_rows {
+	for i in 0 .. nr_rows {
 		mut row := Row{}
-		for j in 0..nr_cols {
+		for j in 0 .. nr_cols {
 			val := C.PQgetvalue(res, i, j)
-			sval := unsafe { val.vstring() }
+			sval := unsafe {val.vstring()}
 			row.vals << sval
 		}
 		rows << row
@@ -107,7 +128,7 @@ pub fn (db DB) q_strings(query string) []Row {
 
 pub fn (db DB) exec(query string) []Row {
 	res := C.PQexec(db.conn, query.str)
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
 	if e != '' {
 		println('pg exec error:')
 		println(e)
@@ -125,11 +146,11 @@ fn rows_first_or_empty(rows []Row) ?Row {
 
 pub fn (db DB) exec_one(query string) ?Row {
 	res := C.PQexec(db.conn, query.str)
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
 	if e != '' {
 		return error('pg exec error: "$e"')
 	}
-	row := rows_first_or_empty( res_to_rows(res) )?
+	row := rows_first_or_empty(res_to_rows(res)) ?
 	return row
 }
 
@@ -138,7 +159,7 @@ pub fn (db DB) exec_one(query string) ?Row {
 pub fn (db DB) exec_param_many(query string, params []string) []Row {
 	unsafe {
 		mut param_vals := &byteptr(malloc(params.len * 8))
-		for i in 0..params.len {
+		for i in 0 .. params.len {
 			param_vals[i] = params[i].str
 		}
 		res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals, 0, 0, 0)
@@ -147,7 +168,7 @@ pub fn (db DB) exec_param_many(query string, params []string) []Row {
 	}
 }
 
-pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
+pub fn (db DB) exec_param2(query, param, param2 string) []Row {
 	mut param_vals := [2]byteptr{}
 	param_vals[0] = param.str
 	param_vals[1] = param2.str
@@ -155,7 +176,7 @@ pub fn (db DB) exec_param2(query string, param, param2 string) []Row {
 	return db.handle_error_or_result(res, 'exec_param2')
 }
 
-pub fn (db DB) exec_param(query string, param string) []Row {
+pub fn (db DB) exec_param(query, param string) []Row {
 	mut param_vals := [1]byteptr{}
 	param_vals[0] = param.str
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
@@ -163,7 +184,7 @@ pub fn (db DB) exec_param(query string, param string) []Row {
 }
 
 fn (db DB) handle_error_or_result(res voidptr, elabel string) []Row {
-	e := unsafe { C.PQerrorMessage(db.conn).vstring() }
+	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
 	if e != '' {
 		println('pg $elabel error:')
 		println(e)
