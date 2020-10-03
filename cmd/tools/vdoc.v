@@ -856,6 +856,7 @@ fn get_ignore_paths(path string) ?[]string {
 	ignore_content := os.read_file(ignore_file_path) or {
 		return error_with_code('ignore file not found.', 1)
 	}
+	mut res := []string{}
 	if ignore_content.trim_space().len > 0 {
 		rules := ignore_content.split_into_lines().map(it.trim_space())
 		mut final := []string{}
@@ -866,13 +867,14 @@ fn get_ignore_paths(path string) ?[]string {
 			}
 			final << rule
 		}
-		return final.map(os.join_path(path, it.trim_right('/')))
+		res = final.map(os.join_path(path, it.trim_right('/')))
 	} else {
 		mut dirs := os.ls(path) or {
 			return []string{}
 		}
-		return dirs.map(os.join_path(path, it)).filter(os.is_dir(it))
+		res = dirs.map(os.join_path(path, it)).filter(os.is_dir(it))
 	}
+	return res.map(it.replace('/', os.path_separator))
 }
 
 fn lookup_module(mod string) ?string {
