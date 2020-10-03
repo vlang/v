@@ -1679,33 +1679,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 	end_pos := p.tok.position()
 	p.check(.key_global)
 	if p.tok.kind != .lpar {
-		// Need to work for intermediate V Compiler for PRs process
-		// p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
-		pos := p.tok.position()
-		name := p.check_name()
-		typ := p.parse_type()
-		mut expr := ast.Expr{}
-		has_expr := p.tok.kind == .assign
-		if has_expr {
-			p.next()
-			expr = p.expr(0)
-		}
-		mut fields := []ast.GlobalField{}
-		field := ast.GlobalField{
-			name: name
-			has_expr: has_expr
-			expr: expr
-			pos: pos
-			typ: typ
-			comments: []ast.Comment{}
-		}
-		fields << field
-		p.global_scope.register(field.name, field)
-		return ast.GlobalDecl{
-			fields: fields
-			pos: start_pos.extend(end_pos)
-			end_comments: []ast.Comment{}
-		}
+		p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
 	}
 	p.next() // (
 	mut fields := []ast.GlobalField{}
@@ -1722,6 +1696,9 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			p.next() // =
 		}
 		typ := p.parse_type()
+		if p.tok.kind == .assign {
+			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
+		}
 		mut expr := ast.Expr{}
 		if has_expr {
 			if p.tok.kind != .lpar {

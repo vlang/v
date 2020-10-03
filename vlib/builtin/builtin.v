@@ -3,8 +3,10 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global g_m2_buf byteptr
-__global g_m2_ptr byteptr
+__global (
+	g_m2_buf byteptr
+	g_m2_ptr byteptr
+)
 
 type FnExitCb = fn()
 fn C.atexit(f FnExitCb) int
@@ -125,10 +127,10 @@ pub fn println(s string) {
 	}
 }
 
-__global total_m i64=0
-__global nr_mallocs int=0
-
-fn looo(){} // TODO remove, [ pratt
+__global (
+	total_m    = i64(0)
+	nr_mallocs = int(0)
+)
 
 [unsafe]
 pub fn malloc(n int) byteptr {
