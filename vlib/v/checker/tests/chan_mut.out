@@ -5,7 +5,7 @@ vlib/v/checker/tests/chan_mut.vv:8:8: error: `v` is immutable, declare it with `
       |           ^
     9 |     mut w := St{}
    10 |     ch <- w
-vlib/v/checker/tests/chan_mut.vv:10:8: error: cannon push non-reference `St` on `chan mut St`
+vlib/v/checker/tests/chan_mut.vv:10:8: error: cannot push non-reference `St` on `chan mut St`
     8 |     ch <- v
     9 |     mut w := St{}
    10 |     ch <- w
@@ -19,7 +19,7 @@ vlib/v/checker/tests/chan_mut.vv:12:8: error: `x` is immutable, declare it with 
       |           ^
    13 |     mut y := St{}
    14 |     ch <- y
-vlib/v/checker/tests/chan_mut.vv:14:8: error: cannon push non-reference `St` on `chan mut St`
+vlib/v/checker/tests/chan_mut.vv:14:8: error: cannot push non-reference `St` on `chan mut St`
    12 |     ch <- x
    13 |     mut y := St{}
    14 |     ch <- y
