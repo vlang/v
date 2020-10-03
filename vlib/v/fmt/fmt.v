@@ -319,6 +319,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.EnumDecl {
+			f.attrs(it.attrs)
 			if it.is_pub {
 				f.write('pub ')
 			}

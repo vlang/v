@@ -1804,6 +1804,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_multi_allowed: is_multi_allowed
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		attrs: p.attrs
 		comments: enum_decl_comments
 	}
 }

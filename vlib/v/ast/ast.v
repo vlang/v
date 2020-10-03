@@ -686,6 +686,7 @@ pub:
 	is_multi_allowed bool
 	comments         []Comment // enum Abc { /* comments */ ... }
 	fields           []EnumField
+	attrs            []table.Attr
 	pos              token.Position
 }
 
