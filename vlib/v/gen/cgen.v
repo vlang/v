@@ -5044,11 +5044,13 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write('.obj')
 		*/
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ ($styp*)__as_cast(')
+		g.write('/* as */ ($styp*)__as_cast((')
 		g.expr(node.expr)
+		g.write(')')
 		g.write(dot)
-		g.write('_object, ')
+		g.write('_object, (')
 		g.expr(node.expr)
+		g.write(')')
 		g.write(dot)
 		g.write('typ, /*expected:*/$node.typ)')
 	}
@@ -5056,7 +5058,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	eq := if node.op == .key_is { '==' } else { '!=' }
+	g.write('(')
 	g.expr(node.left)
+	g.write(')')
 	if node.left_type.is_ptr() {
 		g.write('->')
 	} else {
