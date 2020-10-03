@@ -760,7 +760,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					c.fail_if_immutable(infix_expr.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
-					c.error('cannon push non-reference `$right.source_name` on `$left.source_name`',
+					c.error('cannot push non-reference `$right.source_name` on `$left.source_name`',
 						right_pos)
 				}
 			} else {
@@ -3721,7 +3721,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 }
 
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
-	// `x ;= map[string]string` - set in parser
+	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		key_sym := c.table.get_type_symbol(info.key_type)
