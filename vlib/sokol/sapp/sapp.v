@@ -1,7 +1,7 @@
 module sapp
 
 // Android needs a global reference to `g_desc`
-__global g_desc C.sapp_desc
+__global ( g_desc C.sapp_desc )
 
 pub fn create_desc() C.sg_desc {
 	mtl_desc := C.sg_mtl_context_desc {
