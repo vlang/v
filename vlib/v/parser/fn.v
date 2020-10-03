@@ -562,10 +562,6 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	return args, types_only, is_variadic
 }
 
-fn (p &Parser) fileis(s string) bool {
-	return p.file_name.contains(s)
-}
-
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr() {
