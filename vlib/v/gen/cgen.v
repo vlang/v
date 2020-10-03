@@ -5058,7 +5058,9 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 
 fn (mut g Gen) is_expr(node ast.InfixExpr) {
 	eq := if node.op == .key_is { '==' } else { '!=' }
+	g.write('(')
 	g.expr(node.left)
+	g.write(')')
 	if node.left_type.is_ptr() {
 		g.write('->')
 	} else {
