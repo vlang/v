@@ -40,15 +40,9 @@ pub mut:
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) &&
-		f.return_type == o.return_type &&
-		f.return_type_source_name == o.return_type_source_name &&
-		f.is_variadic == o.is_variadic &&
-		f.language == o.language &&
-		f.is_generic == o.is_generic &&
-		f.is_pub == o.is_pub &&
-		f.mod == o.mod &&
-		f.name == o.name
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.return_type_source_name ==
+		o.return_type_source_name && f.is_variadic == o.is_variadic && f.language == o.language &&
+		f.is_generic == o.is_generic && f.is_pub == o.is_pub && f.mod == o.mod && f.name == o.name
 }
 
 pub struct Param {
@@ -62,18 +56,15 @@ pub:
 }
 
 fn (p &Param) equals(o &Param) bool {
-	return p.name == o.name
-		&& p.is_mut == o.is_mut
-		&& p.typ == o.typ
-		&& p.type_source_name == o.type_source_name
-		&& p.is_hidden == o.is_hidden
+	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.type_source_name ==
+		o.type_source_name && p.is_hidden == o.is_hidden
 }
 
 fn (p []Param) equals(o []Param) bool {
 	if p.len != o.len {
 		return false
 	}
-	for i in 0..p.len {
+	for i in 0 .. p.len {
 		if !p[i].equals(o[i]) {
 			return false
 		}
@@ -406,15 +397,15 @@ pub fn (t &Table) known_type(name string) bool {
 
 [inline]
 pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
-        elem_type_sym := t.get_type_symbol(elem_type)
-        mut res := ''
-        if elem_type.is_ptr() {
-                res = '_ptr'.repeat(elem_type.nr_muls())
-        }
-        if nr_dims > 1 {
-                res += '_${nr_dims}d'
-        }
-        return 'array_$elem_type_sym.name' + res
+	elem_type_sym := t.get_type_symbol(elem_type)
+	mut res := ''
+	if elem_type.is_ptr() {
+		res = '_ptr'.repeat(elem_type.nr_muls())
+	}
+	if nr_dims > 1 {
+		res += '_${nr_dims}d'
+	}
+	return 'array_$elem_type_sym.name' + res
 }
 
 // array_source_name generates the original name for the v source.
@@ -428,15 +419,15 @@ pub fn (t &Table) array_source_name(elem_type Type) string {
 
 [inline]
 pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
-        elem_type_sym := t.get_type_symbol(elem_type)
-        mut res := ''
-        if elem_type.is_ptr() {
-                res = '_ptr'
-        }
-        if nr_dims > 1 {
-                res += '_${nr_dims}d'
-        }
-        return 'array_fixed_${elem_type_sym.name}_$size' + res
+	elem_type_sym := t.get_type_symbol(elem_type)
+	mut res := ''
+	if elem_type.is_ptr() {
+		res = '_ptr'
+	}
+	if nr_dims > 1 {
+		res += '_${nr_dims}d'
+	}
+	return 'array_fixed_${elem_type_sym.name}_$size' + res
 }
 
 // array_fixed_source_name generates the original name for the v source.
