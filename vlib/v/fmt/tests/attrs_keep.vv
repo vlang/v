@@ -14,3 +14,9 @@ struct User {
 	typ           int    [json: 'type']
 	pets          string [raw; json: 'pet_animals']
 }
+
+[_allow_multiple_values]
+enum Example {
+	value1 = 1
+	value1_again = 1
+}
