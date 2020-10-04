@@ -220,9 +220,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		unsafe {
-			ts = &t.types[ts.parent_idx]
-		}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }
@@ -281,9 +279,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		unsafe {
-		  ts = &t.types[ts.parent_idx]
-		}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }

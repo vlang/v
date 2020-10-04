@@ -5,9 +5,7 @@ import v.table
 // generic struct instantiations to concrete types
 pub fn (b &Builder) generic_struct_insts_to_concrete() {
 	for idx, _ in b.table.types {
-		unsafe{
-			mut typ := &b.table.types[idx]
-		
+		mut typ := unsafe { &b.table.types[idx] }
 		if typ.kind == .generic_struct_inst {
 			info := typ.info as table.GenericStructInst
 			parent := b.table.types[info.parent_idx]
@@ -34,7 +32,6 @@ pub fn (b &Builder) generic_struct_insts_to_concrete() {
 			typ.is_public = true
 			typ.kind = .struct_
 			typ.info = parent_info
-		}
 		}
 	}
 }
