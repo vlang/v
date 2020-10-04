@@ -6,6 +6,7 @@ module parser
 import v.ast
 import v.table
 import v.token
+import strings
 
 fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	was_inside_if_expr := p.inside_if_expr
@@ -33,6 +34,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			comments << p.eat_comments()
 			p.check(.key_else)
 			comments << p.eat_comments()
+			if p.tok.kind == .key_match {
+				p.error('cannot use `match` with `if` statements')
+			}
 			if p.tok.kind == .lcbr {
 				// else {
 				has_else = true
@@ -71,6 +75,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		// `if` or `else if`
 		p.check(.key_if)
+		if p.tok.kind == .key_match {
+			p.error('cannot use `match` with `if` statements')
+		}
 		comments << p.eat_comments()
 		// `if mut name is T`
 		mut mut_name := false
@@ -210,14 +217,48 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					}
 				}
 			}
-			// Sum type match
-			typ := p.parse_type()
-			exprs << ast.Type{
-				typ: typ
+			mut types := []table.Type{}
+			for {
+				// Sum type match
+				parsed_type := p.parse_type()
+				types << parsed_type
+				exprs << ast.Type{
+					typ: parsed_type
+				}
+				if p.tok.kind != .comma {
+					break
+				}
+				p.check(.comma)
+			}
+			mut it_typ := table.void_type
+			if types.len == 1 {
+				it_typ = types[0]
+			} else {
+				// there is more than one types, so we must create a type aggregate
+				mut agg_name := strings.new_builder(20)
+				agg_name.write('(')
+				for i, typ in types {
+					if i > 0 {
+						agg_name.write(' | ')
+					}
+					type_str := p.table.type_to_str(typ)
+					agg_name.write(p.prepend_mod(type_str))
+				}
+				agg_name.write(')')
+				name := agg_name.str()
+				it_typ = p.table.register_type_symbol(table.TypeSymbol{
+					name: name
+					source_name: name
+					kind: .aggregate
+					mod: p.mod
+					info: table.Aggregate{
+						types: types
+					}
+				})
 			}
 			p.scope.register('it', ast.Var{
 				name: 'it'
-				typ: typ.to_ptr()
+				typ: it_typ.to_ptr()
 				pos: cond_pos
 				is_used: true
 				is_mut: is_mut
@@ -226,17 +267,12 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				// Register shadow variable or `as` variable with actual type
 				p.scope.register(var_name, ast.Var{
 					name: var_name
-					typ: typ.to_ptr()
+					typ: it_typ.to_ptr()
 					pos: cond_pos
 					is_used: true
 					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
-			}
-			// TODO
-			if p.tok.kind == .comma {
-				p.next()
-				p.parse_type()
 			}
 			is_sum_type = true
 		} else {

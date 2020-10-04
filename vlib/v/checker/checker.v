@@ -38,6 +38,7 @@ pub mut:
 	const_decl       string
 	const_deps       []string
 	const_names      []string
+	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
 	pref             &pref.Preferences // Preferences shared from V struct
@@ -760,7 +761,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					c.fail_if_immutable(infix_expr.right)
 				}
 				if elem_type.is_ptr() && !right_type.is_ptr() {
-					c.error('cannon push non-reference `$right.source_name` on `$left.source_name`',
+					c.error('cannot push non-reference `$right.source_name` on `$left.source_name`',
 						right_pos)
 				}
 			} else {
@@ -1017,6 +1018,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	call_expr.left_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
+	mut unknown_method_msg := 'unknown method: `${left_type_sym.source_name}.$method_name`'
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
@@ -1213,6 +1215,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		call_expr.return_type = method.return_type
 		return method.return_type
+	} else {
+		if left_type_sym.kind == .aggregate {
+			// the error message contains the problematic type
+			unknown_method_msg = err
+		}
 	}
 	// TODO: str methods
 	if method_name == 'str' {
@@ -1246,8 +1253,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	if left_type != table.void_type {
 		suggestion := util.new_suggestion(method_name, left_type_sym.methods.map(it.name))
-		c.error(suggestion.say('unknown method: `${left_type_sym.source_name}.$method_name`'),
-			call_expr.pos)
+		c.error(suggestion.say(unknown_method_msg), call_expr.pos)
 	}
 	return table.void_type
 }
@@ -1651,19 +1657,29 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			return table.int_type
 		}
 	}
+	mut unknown_field_msg := 'type `$sym.source_name` has no field or method `$field_name`'
 	if field := c.table.struct_find_field(sym, field_name) {
 		if sym.mod != c.mod && !field.is_pub {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
 		}
 		selector_expr.typ = field.typ
 		return field.typ
+	} else {
+		if sym.kind == .aggregate {
+			unknown_field_msg = err
+		}
 	}
-	if sym.kind != .struct_ {
+	if sym.kind !in [.struct_, .aggregate] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.source_name` is not a struct', selector_expr.pos)
 		}
 	} else {
-		c.error('type `$sym.source_name` has no field or method `$field_name`', selector_expr.pos)
+		if sym.kind == .struct_ {
+			sss := sym.info as table.Struct
+			suggestion := util.new_suggestion(field_name, sss.fields.map(it.name))
+			c.error(suggestion.say(unknown_field_msg), selector_expr.pos)
+		}
+		c.error(unknown_field_msg, selector_expr.pos)
 	}
 	return table.void_type
 }
@@ -1939,7 +1955,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if left_type != 0 {
 						match mut left.obj as v {
 							ast.Var { v.typ = left_type }
-							ast.GlobalDecl { v.typ = left_type }
+							ast.GlobalField { v.typ = left_type }
 							else {}
 						}
 						/*
@@ -2006,19 +2022,23 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			.mult_assign, .div_assign {
-				if !left_sym.is_number() {
+				if !left_sym.is_number() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.source_name`',
 						left.position())
-				} else if !right_sym.is_number() {
+				} else if !right_sym.is_number() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.source_name`',
 						right.position())
 				}
 			}
 			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
-				if !left_sym.is_int() {
+				if !left_sym.is_int() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.source_name`',
 						left.position())
-				} else if !right_sym.is_int() {
+				} else if !right_sym.is_int() &&
+					!c.table.get_final_type_symbol(right_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.source_name`',
 						right.position())
 				}
@@ -2055,6 +2075,9 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 		}
 		sym := c.table.get_type_symbol(array_init.elem_type)
+		if array_init.has_default {
+			c.expr(array_init.default_expr)
+		}
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.source_name`', array_init.elem_type_pos)
 		}
@@ -2354,7 +2377,13 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.in_for_count--
 		}
 		ast.GlobalDecl {
-			c.check_valid_snake_case(node.name, 'global name', node.pos)
+			for field in node.fields {
+				c.check_valid_snake_case(field.name, 'global name', field.pos)
+				if field.name in c.global_names {
+					c.error('duplicate global `$field.name`', field.pos)
+				}
+				c.global_names << field.name
+			}
 		}
 		ast.GoStmt {
 			if node.call_expr !is ast.CallExpr {
@@ -2602,8 +2631,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
-			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type && !node.expr_type.is_ptr() &&
-				to_type_sym.kind == .byte {
+			} else if to_type_sym.kind == .byte &&
+				node.expr_type != table.voidptr_type && from_type_sym.kind != .enum_ && !node.expr_type.is_int() &&
+				!node.expr_type.is_float() && !node.expr_type.is_ptr() {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
@@ -2847,7 +2877,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		start_scope := c.file.scope.innermost(ident.pos.pos)
 		if obj1 := start_scope.find(ident.name) {
 			match mut obj1 as obj {
-				ast.GlobalDecl {
+				ast.GlobalField {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: obj.typ
@@ -3002,6 +3032,17 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	mut branch_without_return := false
 	for branch in node.branches {
 		c.stmts(branch.stmts)
+		if node.is_expr {
+			// ignore last statement - workaround
+			// currently the last statement in a match branch does not have an
+			// expected value set, so e.g. IfExpr.is_expr is not set.
+			// probably any mismatch will be caught by not producing a value instead
+			for st in branch.stmts[0..branch.stmts.len - 1] {
+				st.check_c_expr() or {
+					c.error('`match` expression branch has $err', st.position())
+				}
+			}
+		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
 			match mut branch.stmts[branch.stmts.len - 1] as stmt {
@@ -3404,6 +3445,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				c.error('`$if_kind` expression requires an expression as the last statement of every branch',
 					branch.pos)
 			}
+			for st in branch.stmts {
+				st.check_c_expr() or {
+					c.error('`if` expression branch has $err', st.position())
+				}
+			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
@@ -3687,7 +3733,7 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 }
 
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
-	// `x ;= map[string]string` - set in parser
+	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
 		info := c.table.get_type_symbol(node.typ).map_info()
 		key_sym := c.table.get_type_symbol(info.key_type)

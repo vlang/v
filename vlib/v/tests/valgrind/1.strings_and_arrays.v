@@ -31,6 +31,7 @@ fn str_tmp_expr() {
 	println('a' + 'b') // tmp expression result must be freed
 	handle_strings('c' + 'd', 'e' + 'f') // multiple tmp expressions must be freed
 	handle_int(handle_strings('x' + 'y', 'f')) // exprs 2 levels deep must bee freed
+	handle_strings('1', add_strings('2', '3')) // test a fn that returns a string
 }
 
 fn str_tmp_expr_advanced() {
@@ -41,7 +42,8 @@ fn str_tmp_expr_advanced() {
 	// t1.free()
 	// t2.free()
 	// t3.free()
-	// handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
+	//
+	handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 }
 
 struct Foo {

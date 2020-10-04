@@ -41,8 +41,8 @@ pub enum CompilerType {
 }
 
 const (
-	list_of_flags_with_param = ['o', 'output', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os',
-		'cf', 'cflags', 'path']
+	list_of_flags_with_param = ['o', 'd', 'define', 'b', 'backend', 'cc', 'os', 'target-os', 'cf',
+		'cflags', 'path']
 )
 
 pub struct Preferences {
@@ -337,12 +337,16 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'run', 'build', 'build-module'] {
-					// arguments for e.g. fmt are checked elsewhere
+				if command !in ['', 'build', 'build-module'] {
+					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
 				eprint('Unknown argument `$arg`')
-				eprintln(if command.len == 0 {''} else {' for command `$command`'})
+				eprintln(if command.len == 0 {
+					''
+				} else {
+					' for command `$command`'
+				})
 				exit(1)
 			}
 		}
@@ -438,7 +442,7 @@ fn parse_define(mut prefs Preferences, define string) {
 			}
 			else {
 				println('V error: Unknown define argument value `${define_parts[1]}` for ${define_parts[0]}.' +
-					'Expected `0` or `1`.')
+					' Expected `0` or `1`.')
 				exit(1)
 			}
 		}

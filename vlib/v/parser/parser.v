@@ -557,9 +557,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
+			pos := p.tok.position()
 			stmts := p.parse_block()
 			return ast.Block{
 				stmts: stmts
+				pos: pos
 			}
 		}
 		.key_assert {
@@ -1674,41 +1676,56 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()
-	p.next()
-	pos := start_pos.extend(p.tok.position())
-	name := p.check_name()
-	// println(name)
-	typ := p.parse_type()
-	mut expr := ast.Expr{}
-	has_expr := p.tok.kind == .assign
-	if has_expr {
-		p.next()
-		expr = p.expr(0)
+	end_pos := p.tok.position()
+	p.check(.key_global)
+	if p.tok.kind != .lpar {
+		p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
 	}
-	// p.genln(p.table.cgen_name_type_pair(name, typ))
-	/*
-	mut g := p.table.cgen_name_type_pair(name, typ)
-	if p.tok == .assign {
-		p.next()
-		g += ' = '
-		_,expr := p.tmp_expr()
-		g += expr
+	p.next() // (
+	mut fields := []ast.GlobalField{}
+	mut comments := []ast.Comment{}
+	for {
+		comments = p.eat_comments()
+		if p.tok.kind == .rpar {
+			break
+		}
+		pos := p.tok.position()
+		name := p.check_name()
+		has_expr := p.tok.kind == .assign
+		if has_expr {
+			p.next() // =
+		}
+		typ := p.parse_type()
+		if p.tok.kind == .assign {
+			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
+		}
+		mut expr := ast.Expr{}
+		if has_expr {
+			if p.tok.kind != .lpar {
+				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
+			}
+			p.next() // (
+			expr = p.expr(0)
+			p.check(.rpar)
+		}
+		field := ast.GlobalField{
+			name: name
+			has_expr: has_expr
+			expr: expr
+			pos: pos
+			typ: typ
+			comments: comments
+		}
+		fields << field
+		p.global_scope.register(field.name, field)
+		comments = []
 	}
-	// p.genln('; // global')
-	g += '; // global'
-	if !p.cgen.nogen {
-		p.cgen.consts << g
+	p.check(.rpar)
+	return ast.GlobalDecl{
+		pos: start_pos.extend(end_pos)
+		fields: fields
+		end_comments: comments
 	}
-	*/
-	glob := ast.GlobalDecl{
-		name: name
-		typ: typ
-		pos: pos
-		has_expr: has_expr
-		expr: expr
-	}
-	p.global_scope.register(name, glob)
-	return glob
 }
 
 fn (mut p Parser) enum_decl() ast.EnumDecl {
@@ -1721,6 +1738,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.key_enum)
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
+	if enum_name.len == 1 {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			end_pos)
+	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	enum_decl_comments := p.eat_comments()
@@ -1783,6 +1804,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_multi_allowed: is_multi_allowed
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		attrs: p.attrs
 		comments: enum_decl_comments
 	}
 }
@@ -1989,6 +2011,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		p.next()
 		return ast.Block{
 			is_unsafe: true
+			pos: pos
 		}
 	}
 	p.inside_unsafe = true
@@ -2025,5 +2048,6 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	return ast.Block{
 		stmts: stmts
 		is_unsafe: true
+		pos: pos
 	}
 }

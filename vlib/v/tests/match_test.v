@@ -164,3 +164,39 @@ fn test_sum_type_name() {
 	}
 	assert f(a) == 'A1'
 }
+
+struct Alfa {
+	char rune = `a`
+}
+
+fn (a Alfa) letter() rune {
+	return a.char
+}
+
+struct Bravo {
+	// A field so that Alfa and Bravo structures aren't the same
+	dummy_field int
+	char        rune = `b`
+}
+
+fn (b Bravo) letter() rune {
+	return b.char
+}
+
+struct Charlie {}
+
+type NATOAlphabet = Alfa | Bravo | Charlie
+
+fn test_match_sum_type_multiple_type() {
+	a := Alfa{}
+	match NATOAlphabet(a) as l {
+		Alfa, Bravo {
+			assert l.char == `a`
+			// TODO make methods work
+			// assert l.letter() == `a`
+		}
+		Charlie {
+			assert false
+		}
+	}
+}

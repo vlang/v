@@ -297,7 +297,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
 		if !sym.has_method('str') {
-			mut typ := field.typ 
+			mut typ := field.typ
 			if typ.is_ptr() {
 				typ = typ.deref()
 			}
@@ -327,9 +327,9 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	if info.fields.len == 0 {
-		g.auto_str_funcs.write('\treturn tos_lit("$clean_struct_v_type_name { }");')
+		g.auto_str_funcs.write('\treturn tos_lit("$clean_struct_v_type_name{}");')
 	} else {
-		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name {\\n"')
+		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name{\\n"')
 		for field in info.fields {
 			mut fmt := g.type_to_fmt(field.typ)
 			if field.typ.is_ptr() {
@@ -383,15 +383,12 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, fi
 		}
 		if has_custom_str {
 			return '${fn_name}($obj)'
-		} else {
-			return 'indent_${fn_name}($obj, indent_count + 1)'
 		}
-	} else if sym.kind in [.array, .array_fixed, .map] {
+		return 'indent_${fn_name}($obj, indent_count + 1)'
+	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		if has_custom_str {
 			return '${fn_name}(it->${c_name(field_name)})'
 		}
-		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
-	} else if sym.kind == .sum_type {
 		return 'indent_${fn_name}(it->${c_name(field_name)}, indent_count + 1)'
 	} else {
 		mut method_str := 'it->${c_name(field_name)}'

@@ -1070,7 +1070,7 @@ pub fn (s string) ustring() ustring {
 // A hack that allows to create ustring without allocations.
 // It's called from functions like draw_text() where we know that the string is going to be freed
 // right away. Uses global buffer for storing runes []int array.
-__global g_ustring_runes []int
+__global ( g_ustring_runes []int )
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
