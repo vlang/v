@@ -48,7 +48,7 @@ fn C.PQclear(arg_1 voidptr) voidptr
 
 fn C.PQfinish(arg_1 voidptr)
 
-// Makes a new connection to the database server using
+// connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning
 // a connection error when something goes wrong
 pub fn connect(config Config) ?DB {
@@ -94,11 +94,14 @@ pub fn (db DB) close() {
 	C.PQfinish(db.conn)
 }
 
-pub fn (db DB) q_int(query string) int {
-	rows := db.exec(query)
+// q_int submit a command to the database server and
+// returns an the first field in the first tuple
+// converted to an int. If no row is found or on
+// command failure, an error is returned
+pub fn (db DB) q_int(query string) ?int {
+	rows := db.exec(query) ?
 	if rows.len == 0 {
-		println('q_int "$query" not found')
-		return 0
+		return error('q_int "$query" not found')
 	}
 	row := rows[0]
 	if row.vals.len == 0 {
@@ -108,11 +111,14 @@ pub fn (db DB) q_int(query string) int {
 	return val.int()
 }
 
-pub fn (db DB) q_string(query string) string {
-	rows := db.exec(query)
+// q_int submit a command to the database server and
+// returns an the first field in the first tuple
+// as a string. If no row is found or on
+// command failure, an error is returned
+pub fn (db DB) q_string(query string) ?string {
+	rows := db.exec(query) ?
 	if rows.len == 0 {
-		println('q_string "$query" not found')
-		return ''
+		return error('q_string "$query" not found')
 	}
 	row := rows[0]
 	if row.vals.len == 0 {
@@ -122,17 +128,22 @@ pub fn (db DB) q_string(query string) string {
 	return val
 }
 
-pub fn (db DB) q_strings(query string) []Row {
+// q_strings submit a command to the database server and
+// returns the resulting row set. Alias of `exec`
+pub fn (db DB) q_strings(query string) ?[]Row {
 	return db.exec(query)
 }
 
-pub fn (db DB) exec(query string) []Row {
+// exec submit a command to the database server and wait
+// for the result, returning an error on failure and a
+// row set on success
+pub fn (db DB) exec(query string) ?[]Row {
 	res := C.PQexec(db.conn, query.str)
 	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
 	if e != '' {
-		println('pg exec error:')
-		println(e)
-		return res_to_rows(res)
+		error_msg := '$e'
+		C.PQclear(res)
+		return error(error_msg)
 	}
 	return res_to_rows(res)
 }
