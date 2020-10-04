@@ -220,7 +220,9 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		unsafe {
+			ts = &t.types[ts.parent_idx]
+		}
 	}
 	return none
 }
@@ -279,7 +281,9 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		unsafe {
+		  ts = &t.types[ts.parent_idx]
+		}
 	}
 	return none
 }
@@ -303,7 +307,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return &t.types[idx]
+		return unsafe{ &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
@@ -319,7 +323,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return &t.types[idx]
+		return unsafe { &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')

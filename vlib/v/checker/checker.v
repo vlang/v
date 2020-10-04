@@ -2741,6 +2741,19 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
 				}
+				if node.right is ast.IndexExpr as index {
+					typ_sym := c.table.get_type_symbol(index.left_type)
+					if !c.inside_unsafe {
+						if typ_sym.kind == .map {
+							c.error('cannot get address of map values outside unsafe blocks',
+								index.pos)
+						}
+						if typ_sym.kind == .array {
+							c.error('cannot get address of array elements outside unsafe blocks',
+								index.pos)
+						}
+					}
+				}
 				return right_type.to_ptr()
 			}
 			if node.op == .mul {
