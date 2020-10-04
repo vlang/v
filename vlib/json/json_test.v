@@ -166,7 +166,7 @@ fn test_parse_map() {
 struct Data {
 	countries []Country
 	users     map[string]User
-	extra     map[string]int
+	extra     map[string]map[string]int
 }
 
 fn test_nested_type() {
@@ -249,7 +249,7 @@ fn test_nested_type() {
 	}
 }
 
-struct Foo {
+struct Foo<T> {
 pub:
 	name string
 	data T
