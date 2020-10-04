@@ -900,7 +900,6 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 }
 
 fn (mut g JsGen) fn_args(args []table.Param, is_variadic bool) {
-	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		name := g.js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
