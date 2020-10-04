@@ -30,23 +30,23 @@ pub:
 
 fn C.PQconnectdb(a byteptr) &C.PGconn
 
-fn C.PQerrorMessage(arg_1 voidptr) byteptr
+fn C.PQerrorMessage(voidptr) byteptr
 
-fn C.PQgetvalue(arg_1 voidptr, arg_2, arg_3 int) byteptr
+fn C.PQgetvalue(voidptr, int, int) byteptr
 
-fn C.PQstatus(arg_1 voidptr) int
+fn C.PQstatus(voidptr) int
 
-fn C.PQntuples(arg_1 voidptr) int
+fn C.PQntuples(voidptr) int
 
-fn C.PQnfields(arg_1 voidptr) int
+fn C.PQnfields(voidptr) int
 
-fn C.PQexec(arg_1 voidptr) voidptr
+fn C.PQexec(voidptr) voidptr
 
-fn C.PQexecParams(arg_1 voidptr) voidptr
+fn C.PQexecParams(voidptr) voidptr
 
-fn C.PQclear(arg_1 voidptr) voidptr
+fn C.PQclear(voidptr) voidptr
 
-fn C.PQfinish(arg_1 voidptr)
+fn C.PQfinish(voidptr)
 
 // connect makes a new connection to the database server using
 // the parameters from the `Config` structure, returning

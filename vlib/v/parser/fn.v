@@ -253,18 +253,20 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
 	params << args2
-	for param in params {
-		if p.scope.known_var(param.name) {
-			p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+	if !are_args_type_only {
+		for param in params {
+			if p.scope.known_var(param.name) {
+				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+			}
+			p.scope.register(param.name, ast.Var{
+				name: param.name
+				typ: param.typ
+				is_mut: param.is_mut
+				pos: param.pos
+				is_used: true
+				is_arg: true
+			})
 		}
-		p.scope.register(param.name, ast.Var{
-			name: param.name
-			typ: param.typ
-			is_mut: param.is_mut
-			pos: param.pos
-			is_used: true
-			is_arg: true
-		})
 	}
 	mut end_pos := p.prev_tok.position()
 	// Return type
@@ -430,7 +432,6 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
-			arg_name := 'arg_$arg_no'
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -480,7 +481,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			sym := p.table.get_type_symbol(arg_type)
 			args << table.Param{
 				pos: pos
-				name: arg_name
+				name: ''
 				is_mut: is_mut
 				typ: arg_type
 				type_source_name: sym.source_name
