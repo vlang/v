@@ -2022,19 +2022,23 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			.mult_assign, .div_assign {
-				if !left_sym.is_number() {
+				if !left_sym.is_number() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.source_name`',
 						left.position())
-				} else if !right_sym.is_number() {
+				} else if !right_sym.is_number() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.source_name`',
 						right.position())
 				}
 			}
 			.and_assign, .or_assign, .xor_assign, .mod_assign, .left_shift_assign, .right_shift_assign {
-				if !left_sym.is_int() {
+				if !left_sym.is_int() &&
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.source_name`',
 						left.position())
-				} else if !right_sym.is_int() {
+				} else if !right_sym.is_int() &&
+					!c.table.get_final_type_symbol(right_type_unwrapped).is_int() {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.source_name`',
 						right.position())
 				}
