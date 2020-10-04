@@ -296,3 +296,26 @@ fn test_errors() {
 	invalid_array()
 	invalid_object()
 }
+
+type ID = string
+
+struct Message {
+	id ID
+}
+
+fn test_decode_alias_struct() {
+	msg := json.decode(Message, '{"id": "118499178790780929"}') or {
+		assert false
+		Message{}
+	}
+	// hacky way of comparing aliased strings
+	assert msg.id.str() == ID('118499178790780929')
+}
+
+fn test_encode_alias_struct() {
+	expected := '{"id":"118499178790780929"}'
+
+	msg := Message{'118499178790780929'}
+	out := json.encode(msg)
+	assert out == expected
+}
