@@ -301,7 +301,7 @@ fn test_decode_alias_struct() {
 		Message{}
 	}
 	// hacky way of comparing aliased strings
-	assert msg.id.str() == ID('118499178790780929')
+	assert msg.id.str() == '118499178790780929'
 }
 
 fn test_encode_alias_struct() {
