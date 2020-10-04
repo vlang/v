@@ -2627,8 +2627,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					c.error(error_msg, node.pos)
 				}
-			} else if !node.expr_type.is_int() && node.expr_type != table.voidptr_type && !node.expr_type.is_ptr() &&
-				to_type_sym.kind == .byte {
+			} else if to_type_sym.kind == .byte &&
+				node.expr_type != table.voidptr_type && from_type_sym.kind != .enum_ && !node.expr_type.is_int() &&
+				!node.expr_type.is_float() && !node.expr_type.is_ptr() {
 				type_name := c.table.type_to_str(node.expr_type)
 				c.error('cannot cast type `$type_name` to `byte`', node.pos)
 			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
