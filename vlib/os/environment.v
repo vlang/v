@@ -35,6 +35,12 @@ pub fn setenv(name string, value string, overwrite bool) int {
 			unsafe {
 				return C._putenv(format.str)
 			}
+		} else {
+			if getenv(name).len == 0 {
+				unsafe {
+					return C._putenv(format.str)
+				}
+			}
 		}
 		return -1
 	} $else {
