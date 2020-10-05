@@ -182,17 +182,6 @@ fn test_delete() {
 	println('two' in m) // => true, on Linux  and Windows  <-- wrong !
 }
 
-/*
-fn test_ref() {
-	m := { 'one': 1 }
-	// TODO "cannot take the address of m['one']"
-	mut one := &m['one']
-	one++
-	println(*one)
-
-}
-*/
-
 fn test_delete_size() {
     arr := ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     mut m := map[string]int
