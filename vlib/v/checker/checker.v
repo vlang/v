@@ -123,15 +123,13 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		unsafe {
-			file := &ast_files[i]
-			c.check(file)
-			if file.mod.name == 'main' {
-				files_from_main_module << file
-				has_main_mod_file = true
-				if c.check_file_in_main(file) {
-					has_main_fn = true
-				}
+		file := unsafe {&ast_files[i]}
+		c.check(file)
+		if file.mod.name == 'main' {
+			files_from_main_module << file
+			has_main_mod_file = true
+			if c.check_file_in_main(file) {
+				has_main_fn = true
 			}
 		}
 	}

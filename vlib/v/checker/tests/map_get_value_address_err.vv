@@ -1,0 +1,7 @@
+fn main() {
+    m := {'key' : 3}
+    a := &m['key']
+    b := &{'foo': 4}['foo']
+    println(a)
+    println(b)
+}

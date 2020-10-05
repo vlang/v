@@ -30,18 +30,13 @@ fn (s S1) f() {
 
 fn test_funcs() {
 	s := S1{}
-	unsafe {
-		s.f()
-	}
+	unsafe {s.f()}
 	_ = C.strerror(0) // [trusted] function prototype in builtin/cfns.c.v
 }
 
 fn test_if_expr_unsafe() {
 	i := 4
-	p := if true {
-		unsafe {&i}
-	}
-	else {unsafe {&i}}
+	p := if true { unsafe {&i} } else { unsafe {&i} }
 	assert *p == 4
 }
 
@@ -53,4 +48,15 @@ fn test_unsafe_if_stmt() int {
 		}
 	}
 	return i
+}
+
+fn test_map_address_index() {
+	m := {
+		'one': 1
+	}
+	unsafe {
+		mut one := &m['one']
+		one++
+		println(*one)
+	}
 }
