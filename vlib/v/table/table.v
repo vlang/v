@@ -40,15 +40,9 @@ pub mut:
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
-	return f.params[1..].equals(o.params[1..]) &&
-		f.return_type == o.return_type &&
-		f.return_type_source_name == o.return_type_source_name &&
-		f.is_variadic == o.is_variadic &&
-		f.language == o.language &&
-		f.is_generic == o.is_generic &&
-		f.is_pub == o.is_pub &&
-		f.mod == o.mod &&
-		f.name == o.name
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.return_type_source_name ==
+		o.return_type_source_name && f.is_variadic == o.is_variadic && f.language == o.language &&
+		f.is_generic == o.is_generic && f.is_pub == o.is_pub && f.mod == o.mod && f.name == o.name
 }
 
 pub struct Param {
@@ -62,11 +56,8 @@ pub:
 }
 
 fn (p &Param) equals(o &Param) bool {
-	return p.name == o.name
-		&& p.is_mut == o.is_mut
-		&& p.typ == o.typ
-		&& p.type_source_name == o.type_source_name
-		&& p.is_hidden == o.is_hidden
+	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.type_source_name ==
+		o.type_source_name && p.is_hidden == o.is_hidden
 }
 
 fn (p []Param) equals(o []Param) bool {
