@@ -407,6 +407,11 @@ void _vcleanup();
 		return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;
 	}
 #endif
+
+voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+	free(ptr);
+	return memdup(src, sz);
+}
 '
 	c_builtin_types = '
 //================================== builtin types ================================*/
