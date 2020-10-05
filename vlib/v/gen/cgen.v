@@ -534,7 +534,7 @@ typedef struct {
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
-				parent := &g.table.types[typ.parent_idx]
+				parent := unsafe {&g.table.types[typ.parent_idx]}
 				styp := util.no_dots(typ.name)
 				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 				parent_styp := if is_c_parent { 'struct ' + util.no_dots(parent.name[2..]) } else { util.no_dots(parent.name) }

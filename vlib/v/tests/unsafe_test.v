@@ -1,7 +1,7 @@
 fn test_ptr_assign() {
 	v := [int(5), 6, 77, 1]
-	mut p := &v[0]
 	unsafe {
+		mut p := &v[0]
 		(*p)++
 		p++ // p now points to v[1]
 		(*p) += 2

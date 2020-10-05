@@ -123,13 +123,15 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		file := &ast_files[i]
-		c.check(file)
-		if file.mod.name == 'main' {
-			files_from_main_module << file
-			has_main_mod_file = true
-			if c.check_file_in_main(file) {
-				has_main_fn = true
+		unsafe {
+			file := &ast_files[i]
+			c.check(file)
+			if file.mod.name == 'main' {
+				files_from_main_module << file
+				has_main_mod_file = true
+				if c.check_file_in_main(file) {
+					has_main_fn = true
+				}
 			}
 		}
 	}
@@ -2745,6 +2747,19 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
+				}
+				if node.right is ast.IndexExpr as index {
+					typ_sym := c.table.get_type_symbol(index.left_type)
+					if !c.inside_unsafe {
+						if typ_sym.kind == .map {
+							c.error('cannot get address of map values outside unsafe blocks',
+								index.pos)
+						}
+						if typ_sym.kind == .array {
+							c.error('cannot get address of array elements outside unsafe blocks',
+								index.pos)
+						}
+					}
 				}
 				return right_type.to_ptr()
 			}
