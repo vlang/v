@@ -30,6 +30,7 @@ pub mut:
 	fmt            fmt.Fmt
 	time_generated time.Time
 	with_pos       bool
+	with_head      bool = true
 	filename       string
 	pos            int
 	is_vlib        bool
@@ -295,8 +296,9 @@ fn get_parent_mod(dir string) ?string {
 	return file_ast.mod.name
 }
 
-fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) {
+pub fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) []DocNode {
 	mut const_idx := -1
+	mut contents := []DocNode{}
 	stmts := file_ast.stmts
 	d.fmt.file = file_ast
 	d.fmt.set_current_module_name(orig_mod_name)
@@ -319,6 +321,9 @@ fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) {
 		}
 		// TODO: Fetch head comment once
 		if stmt is ast.Module {
+			if !d.with_head {
+				continue
+			}
 			// the previous comments were probably a copyright/license one
 			module_comment := get_comment_block_right_before(prev_comments)
 			prev_comments = []
@@ -336,81 +341,109 @@ fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) {
 		if last_import_stmt_idx > 0 && sidx == last_import_stmt_idx {
 			// the accumulated comments were interspersed before/between the imports;
 			// just add them all to the module comment:
-			import_comments := merge_comments(prev_comments)
-			if d.head.comment != '' {
-				d.head.comment += '\n'
+			if d.with_head {
+				import_comments := merge_comments(prev_comments)
+				if d.head.comment != '' {
+					d.head.comment += '\n'
+				}
+				d.head.comment += import_comments
 			}
-			d.head.comment += import_comments
 			prev_comments = []
 			imports_section = false
 		}
 		if stmt is ast.Import {
 			continue
 		}
-		signature := d.get_signature(stmt, file_ast)
-		pos := d.get_pos(stmt)
-		mut name := d.get_name(stmt)
-		if (!signature.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
+		mut node := DocNode{
+			name: d.get_name(stmt)
+			content: d.get_signature(stmt, file_ast)
+			comment: ''
+			pos: convert_pos(file_ast.path, d.get_pos(stmt))
+			file_path: file_ast.path
+		}
+		if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
 			prev_comments = []
 			continue
 		}
-		if name.starts_with(orig_mod_name + '.') {
-			name = name.all_after(orig_mod_name + '.')
-		}
-		mut node := DocNode{
-			name: name
-			content: signature
-			comment: ''
-			pos: convert_pos(file_ast.path, pos)
-			file_path: file_ast.path
+		if node.name.starts_with(orig_mod_name + '.') {
+			node.name = node.name.all_after(orig_mod_name + '.')
 		}
 		if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
 			continue
 		}
-		if stmt is ast.FnDecl {
-			if stmt.is_deprecated {
-				continue
-			}
-			if stmt.receiver.typ != 0 {
-				node.attrs['parent'] = d.fmt.type_to_str(stmt.receiver.typ).trim_left('&')
-				p_idx := d.contents.index_by_name(node.attrs['parent'])
-				if p_idx == -1 && node.attrs['parent'] != 'void' {
-					d.contents << DocNode{
-						name: node.attrs['parent']
-						content: ''
-						comment: ''
-						attrs: {
-							'category': 'Structs'
-						}
-					}
-				}
-			}
-		}
-		if stmt is ast.ConstDecl {
-			if const_idx == -1 {
-				const_idx = sidx
-			} else {
-				node.attrs['parent'] = 'Constants'
-			}
-		}
 		match stmt {
-			ast.ConstDecl { node.attrs['category'] = 'Constants' }
+			ast.ConstDecl {
+				if const_idx == -1 {
+					const_idx = sidx
+				} else {
+					node.attrs['parent'] = 'Constants'
+				}
+				node.attrs['category'] = 'Constants'
+			}
 			ast.EnumDecl { node.attrs['category'] = 'Enums' }
 			ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
 			ast.StructDecl { node.attrs['category'] = 'Structs' }
 			ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
-			ast.FnDecl { node.attrs['category'] = if node.attrs['parent'] in ['void', ''] ||
-					!node.attrs.exists('parent') { 'Functions' } else { 'Methods' } }
+			ast.FnDecl {
+				if stmt.is_deprecated {
+					continue
+				}
+				if stmt.receiver.typ != 0 {
+					node.attrs['parent'] = d.fmt.type_to_str(stmt.receiver.typ).trim_left('&')
+					p_idx := contents.index_by_name(node.attrs['parent'])
+					if p_idx == -1 && node.attrs['parent'] != 'void' {
+						contents << DocNode{
+							name: node.attrs['parent']
+							content: ''
+							comment: ''
+							attrs: {
+								'category': 'Structs'
+							}
+						}
+					}
+				}
+				node.attrs['category'] = if node.attrs['parent'] in ['void', ''] ||
+					!node.attrs.exists('parent') { 'Functions' } else { 'Methods' }
+			}
 			else {}
 		}
-		d.contents << node
+		contents << node
 		if d.with_comments && (prev_comments.len > 0) {
-			last_comment := d.contents[d.contents.len - 1].comment
+			last_comment := contents[contents.len - 1].comment
 			cmt := last_comment + '\n' + get_comment_block_right_before(prev_comments)
-			d.contents[d.contents.len - 1].comment = cmt
+			contents[contents.len - 1].comment = cmt
 		}
 		prev_comments = []
 	}
+
+	return contents
+}
+
+pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) []DocNode {
+	lscope := file_ast.scope.innermost(pos)
+	mut contents := []DocNode{}
+	for name, val in lscope.objects {
+		if val !is ast.Var {
+			continue
+		}
+		vr_data := val as ast.Var
+		vr_expr := vr_data.expr
+		l_node := DocNode{
+			name: name
+			content: ''
+			comment: ''
+			pos: convert_pos(file_ast.path, vr_data.pos)
+			file_path: file_ast.path
+			attrs: {
+				'category': 'Variable'
+				'return_type': d.expr_typ_to_string(vr_expr)
+				'local': 'true'
+			}
+		}
+		contents << l_node
+	}
+
+	return contents
 }
 
 fn (mut d Doc) expr_typ_to_string(ex ast.Expr) string {
@@ -458,37 +491,19 @@ fn (mut d Doc) generate() ?Doc {
 			if module_name != 'main' && parent_mod_name.len > 0 {
 				module_name = parent_mod_name + '.' + module_name
 			}
-			d.head = DocNode{
-				name: module_name
-				content: 'module $module_name'
-				comment: ''
+			if d.with_head {
+				d.head = DocNode{
+					name: module_name
+					content: 'module $module_name'
+					comment: ''
+				}
 			}
 		} else if file_ast.mod.name != orig_mod_name {
 			continue
 		}
-		d.generate_from_ast(file_ast, orig_mod_name)
+		d.contents << d.generate_from_ast(file_ast, orig_mod_name)
 		if file_ast.path == d.filename {
-			lscope := file_ast.scope.innermost(d.pos)
-			for name, val in lscope.objects {
-				if val !is ast.Var {
-					continue
-				}
-				vr_data := val as ast.Var
-				vr_expr := vr_data.expr
-				l_node := DocNode{
-					name: name
-					content: ''
-					comment: ''
-					pos: convert_pos(file_ast.path, vr_data.pos)
-					file_path: file_ast.path
-					attrs: {
-						'category': 'Variable'
-						'return_type': d.expr_typ_to_string(vr_expr)
-						'local': 'true'
-					}
-				}
-				d.contents << l_node
-			}
+			d.contents << d.generate_from_ast_with_pos(file_ast, d.pos)
 		}
 		d.fmt.mod2alias = map[string]string{}
 	}
