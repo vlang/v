@@ -16,8 +16,8 @@ pub fn any_overlap(x, y []byte) bool {
 	return x.len > 0 && y.len > 0 &&
 		// &x.data[0] <= &y.data[y.len-1] &&
 		// &y.data[0] <= &x.data[x.len-1]
-		&x[0] <= &y[y.len-1] &&
-		&y[0] <= &x[x.len-1]
+		unsafe { &x[0] <= &y[y.len-1] &&
+		&y[0] <= &x[x.len-1] }
 }
 
 // inexact_overlap reports whether x and y share memory at any non-corresponding
@@ -27,7 +27,7 @@ pub fn any_overlap(x, y []byte) bool {
 // inexact_overlap can be used to implement the requirements of the crypto/cipher
 // AEAD, Block, BlockMode and Stream interfaces.
 pub fn inexact_overlap(x, y []byte) bool {
-	if x.len == 0 || y.len == 0 || &x[0] == &y[0] {
+	if x.len == 0 || y.len == 0 || unsafe { &x[0] == &y[0] } {
 		return false
 	}
 	return any_overlap(x, y)
