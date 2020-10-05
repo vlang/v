@@ -408,6 +408,7 @@ void _vcleanup();
 	}
 #endif
 
+voidptr memdup(voidptr src, int sz);
 voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	free(ptr);
 	return memdup(src, sz);
