@@ -97,10 +97,10 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner_file(file_path, comments_mode, pref, [])
+	return new_vet_scanner_file(file_path, comments_mode, pref)
 }
 
-pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors []string) &Scanner {
+pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -108,17 +108,17 @@ pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &
 		verror(err)
 		return voidptr(0)
 	}
-	mut s := new_vet_scanner(raw_text, comments_mode, pref, vet_errors)
+	mut s := new_vet_scanner(raw_text, comments_mode, pref)
 	s.file_path = file_path
 	return s
 }
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner(text, comments_mode, pref, [])
+	return new_vet_scanner(text, comments_mode, pref)
 }
 
-pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors []string) &Scanner {
+pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
 	is_fmt := pref.is_fmt
 	mut s := &Scanner{
 		pref: pref
@@ -128,7 +128,6 @@ pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Prefe
 		is_print_rel_paths_on_error: true
 		is_fmt: is_fmt
 		comments_mode: comments_mode
-		vet_errors: vet_errors
 	}
 	s.file_path = 'internal_memory'
 	return s
