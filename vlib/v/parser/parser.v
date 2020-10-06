@@ -55,7 +55,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
-	vet_errors        &[]string
+	vet_errors        []string
 	cur_fn_name       string
 }
 
@@ -72,7 +72,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 			start_pos: 0
 			parent: 0
 		}
-		vet_errors: 0
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -89,7 +88,6 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
@@ -117,12 +115,11 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors &[]string) ast.File {
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors []string) ast.File {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
