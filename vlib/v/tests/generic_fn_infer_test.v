@@ -6,10 +6,15 @@ fn simple<T>(p T) T {
 }
 
 fn test_infer() {
-	call<int>(2) // needed first
 	call(3)
 	i := 4
-	simple<int>(i) // needed first
 	r := simple(i)
 	assert r == 4
+}
+
+fn test_explicit_calls_should_also_work(){
+	call<int>(2)
+	assert true    
+	simple<int>(5)
+	assert true    
 }

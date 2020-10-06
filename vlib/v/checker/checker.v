@@ -56,6 +56,7 @@ mut:
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
 	error_details    []string
+	generic_funcs    []&ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -80,6 +81,7 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 		c.stmt(stmt)
 	}
 	c.check_scope_vars(c.file.scope)
+	c.post_process_generic_fns()
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
@@ -3966,10 +3968,15 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 	return fields
 }
 
-fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.returns = false
-	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
-		// loop thru each generic type and generate a function
+fn (mut c Checker) post_process_generic_fns() {
+	// loop thru each generic function concrete type and generate a specific fn instantiation (monomorphize it)
+	for i in 0..c.generic_funcs.len {
+		mut node := c.generic_funcs[i]
+		if c.table.fn_gen_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
+		}
+		//eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
 			// sym:=c.table.get_type_symbol(gen_type)
@@ -3977,6 +3984,19 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.fn_decl(mut node)
 		}
 		c.cur_generic_type = 0
+	}
+}
+
+fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	c.returns = false
+	if node.is_generic && c.cur_generic_type == 0 {
+		// Just remember the generic function for now.
+		// It will be processed later in c.post_process_generic_fns,
+		// after all other normal functions are processed.
+		// This is done so that all generic function calls can
+		// have a chance to populate c.table.fn_gen_types with
+		// the correct concrete types.
+		c.generic_funcs << node
 		return
 	}
 	if node.language == .v && !c.is_builtin_mod {
