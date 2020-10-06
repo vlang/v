@@ -49,7 +49,7 @@ pub mut:
 	tidx                        int
 	eofs                        int
 	pref                        &pref.Preferences
-	vet_errors                  &[]string
+	vet_errors                  []string
 }
 
 /*
@@ -97,10 +97,10 @@ pub enum CommentsMode {
 
 // new scanner from file.
 pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner_file(file_path, comments_mode, pref, voidptr(0))
+	return new_vet_scanner_file(file_path, comments_mode, pref, [])
 }
 
-pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
+pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors []string) &Scanner {
 	if !os.exists(file_path) {
 		verror("$file_path doesn't exist")
 	}
@@ -115,10 +115,10 @@ pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &
 
 // new scanner from string.
 pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	return new_vet_scanner(text, comments_mode, pref, voidptr(0))
+	return new_vet_scanner(text, comments_mode, pref, [])
 }
 
-pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors &[]string) &Scanner {
+pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences, vet_errors []string) &Scanner {
 	is_fmt := pref.is_fmt
 	mut s := &Scanner{
 		pref: pref
@@ -1395,7 +1395,7 @@ pub fn (s &Scanner) error(msg string) {
 
 fn (mut s Scanner) vet_error(msg string) {
 	eline := '$s.file_path:$s.line_nr: $msg'
-	if s.vet_errors == 0 {
+	if s.vet_errors.len == 0 {
 		eprintln(eline)
 		return
 	}
