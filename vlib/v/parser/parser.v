@@ -17,6 +17,7 @@ import time
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
+	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
@@ -34,7 +35,6 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt

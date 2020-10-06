@@ -14,9 +14,9 @@ import v.token
 import v.util
 
 pub struct Doc {
+	prefs          &pref.Preferences
 pub mut:
 	input_path     string
-	prefs          &pref.Preferences = &pref.Preferences{}
 	table          &table.Table = &table.Table{}
 	checker        checker.Checker = checker.Checker{
 	table: 0
@@ -380,10 +380,18 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) []
 				}
 				node.attrs['category'] = 'Constants'
 			}
-			ast.EnumDecl { node.attrs['category'] = 'Enums' }
-			ast.InterfaceDecl { node.attrs['category'] = 'Interfaces' }
-			ast.StructDecl { node.attrs['category'] = 'Structs' }
-			ast.TypeDecl { node.attrs['category'] = 'Typedefs' }
+			ast.EnumDecl {
+				node.attrs['category'] = 'Enums'
+			}
+			ast.InterfaceDecl {
+				node.attrs['category'] = 'Interfaces'
+			}
+			ast.StructDecl {
+				node.attrs['category'] = 'Structs'
+			}
+			ast.TypeDecl {
+				node.attrs['category'] = 'Typedefs'
+			}
 			ast.FnDecl {
 				if stmt.is_deprecated {
 					continue
@@ -402,8 +410,7 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) []
 						}
 					}
 				}
-				node.attrs['category'] = if node.attrs['parent'] in ['void', ''] ||
-					!node.attrs.exists('parent') { 'Functions' } else { 'Methods' }
+				node.attrs['category'] = if node.attrs['parent'] in ['void', ''] || !node.attrs.exists('parent') { 'Functions' } else { 'Methods' }
 			}
 			else {}
 		}
@@ -415,7 +422,6 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File, orig_mod_name string) []
 		}
 		prev_comments = []
 	}
-
 	return contents
 }
 
@@ -442,7 +448,6 @@ pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) []DocN
 		}
 		contents << l_node
 	}
-
 	return contents
 }
 
