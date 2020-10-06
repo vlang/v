@@ -70,6 +70,6 @@ fn (mut vet_options VetOptions) vet_file(path string) {
 	table := table.new_table()
 	vet_options.vprintln("vetting file '$path'...")
 	file_ast, errors := parser.parse_vet_file(path, table, prefs)
-	vet_options.errors = errors
+	vet_options.errors << errors
 	vet.vet(file_ast, table, true)
 }
