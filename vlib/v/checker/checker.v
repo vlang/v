@@ -25,6 +25,7 @@ const (
 )
 
 pub struct Checker {
+	pref             &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table            &table.Table
 	file             ast.File
@@ -41,7 +42,6 @@ pub mut:
 	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
-	pref             &pref.Preferences // Preferences shared from V struct
 	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
 	returns          bool
