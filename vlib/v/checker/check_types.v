@@ -376,7 +376,7 @@ pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
 pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
-	for i, arg in f.args {
+	for i, arg in f.params {
 		if arg.type_source_name == gt_name {
 			typ = call_expr.args[i].typ
 			break
