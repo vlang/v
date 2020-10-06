@@ -119,12 +119,12 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors []string) ast.File {
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []string) {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref, vet_errors)
+		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
 		file_name: path
@@ -137,7 +137,6 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: vet_errors
 	}
 	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or {
@@ -149,7 +148,8 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 			}
 		}
 	}
-	return p.parse()
+	file := p.parse()
+	return file, p.vet_errors
 }
 
 fn (mut p Parser) parse() ast.File {
