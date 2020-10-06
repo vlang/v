@@ -3984,7 +3984,10 @@ fn (mut c Checker) post_process_generic_fns() {
 			c.fn_decl(mut node)
 		}
 		c.cur_generic_type = 0
+		c.generic_funcs[i] = 0
 	}
+	// the generic funtions for each file/mod should be postprocessed just once:
+	c.generic_funcs = []
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
