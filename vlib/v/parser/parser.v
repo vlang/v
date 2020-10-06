@@ -149,6 +149,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		}
 	}
 	file := p.parse()
+	p.vet_errors << p.scanner.vet_errors
 	return file, p.vet_errors
 }
 

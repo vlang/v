@@ -1394,10 +1394,6 @@ pub fn (s &Scanner) error(msg string) {
 
 fn (mut s Scanner) vet_error(msg string) {
 	eline := '$s.file_path:$s.line_nr: $msg'
-	if s.vet_errors.len == 0 {
-		eprintln(eline)
-		return
-	}
 	s.vet_errors << eline
 }
 
