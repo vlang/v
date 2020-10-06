@@ -3969,14 +3969,15 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 }
 
 fn (mut c Checker) post_process_generic_fns() {
-	// loop thru each generic function concrete type and generate a specific fn instantiation (monomorphize it)
-	for i in 0..c.generic_funcs.len {
+	// Loop thru each generic function concrete type.
+	// Check each specific fn instantiation.
+	for i in 0 .. c.generic_funcs.len {
 		mut node := c.generic_funcs[i]
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
-		//eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
+		// eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
 			// sym:=c.table.get_type_symbol(gen_type)
@@ -3986,7 +3987,9 @@ fn (mut c Checker) post_process_generic_fns() {
 		c.cur_generic_type = 0
 		c.generic_funcs[i] = 0
 	}
-	// the generic funtions for each file/mod should be postprocessed just once:
+	// The generic funtions for each file/mod should be
+	// postprocessed just once in the checker, while the file/mod
+	// context is still the same.
 	c.generic_funcs = []
 }
 
