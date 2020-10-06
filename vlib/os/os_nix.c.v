@@ -28,7 +28,7 @@ mut:
 
 fn C.uname(name voidptr) int
 
-fn C.symlink(arg_1, arg_2 charptr) int
+fn C.symlink(charptr, charptr) int
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -124,7 +124,7 @@ pub fn mkdir(path string) ?bool {
 	r := unsafe {
 		C.mkdir(charptr(apath.str), 511)
 	}
-	
+
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}

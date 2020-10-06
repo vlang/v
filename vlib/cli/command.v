@@ -148,6 +148,7 @@ fn (mut cmd Command) parse_flags() {
 		}
 		mut found := false
 		for i in 0 .. cmd.flags.len {
+			unsafe {
 			mut flag := &cmd.flags[i]
 			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
 				found = true
@@ -158,6 +159,7 @@ fn (mut cmd Command) parse_flags() {
 				}
 				break
 			}
+		  }
 		}
 		if !found {
 			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')

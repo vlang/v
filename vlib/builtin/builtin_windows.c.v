@@ -60,7 +60,7 @@ const (
 )
 
 // g_original_codepage - used to restore the original windows console code page when exiting
-__global g_original_codepage u32=0
+__global ( g_original_codepage = u32(0) )
 // utf8 to stdout needs C.SetConsoleOutputCP(C.CP_UTF8)
 fn C.GetConsoleOutputCP() u32
 fn C.SetConsoleOutputCP(wCodePageID u32) bool
@@ -224,7 +224,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) int {
 }
 
 fn add_unhandled_exception_handler() {
-	add_vectored_exception_handler(unhandled_exception_handler)
+	add_vectored_exception_handler(VectoredExceptionHandler(voidptr(unhandled_exception_handler)))
 }
 
 fn C.IsDebuggerPresent() bool

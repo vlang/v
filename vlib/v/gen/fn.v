@@ -208,7 +208,6 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
-	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		caname := c_name(arg.name)
 		typ := g.unwrap_generic(arg.typ)
@@ -245,11 +244,6 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.write(')')
 				g.definitions.write(')')
 			}
-		} else if no_names {
-			g.write(arg_type_name)
-			g.definitions.write(arg_type_name)
-			fargs << ''
-			fargtypes << arg_type_name
 		} else {
 			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + caname

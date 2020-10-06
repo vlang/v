@@ -1346,7 +1346,7 @@ pub fn (re RE) get_query() string {
 
 	mut i := 0
 	for i < re.prog.len && re.prog[i].ist != ist_prog_end && re.prog[i].ist != 0{
-		tk := &re.prog[i]
+		tk := unsafe { &re.prog[i] }
 		ch := tk.ist
 
 		// GROUP start

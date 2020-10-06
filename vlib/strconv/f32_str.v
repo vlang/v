@@ -160,7 +160,9 @@ pub fn (d Dec32) get_string_32(neg bool, i_n_digit int, i_pad_digit int) string 
 		x++
 	}
 	*/
-	return tos(byteptr(&buf[0]), i)
+	return unsafe {
+		tos(byteptr(&buf[0]), i) 
+	}
 }
 
 fn f32_to_decimal_exact_int(i_mant u32, exp u32) (Dec32,bool) {

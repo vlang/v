@@ -97,14 +97,7 @@ fn (mut f Fmt) find_comment(line_nr int) {
 pub fn (mut f Fmt) write(s string) {
 	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
-			if f.indent < tabs.len {
-				f.out.write(tabs[f.indent])
-			} else {
-				// too many indents, do it the slow way:
-				for _ in 0 .. f.indent {
-					f.out.write('\t')
-				}
-			}
+			f.write_indent()
 			f.line_len += f.indent * 4
 		}
 		f.out.write(s)
@@ -133,8 +126,7 @@ pub fn (mut f Fmt) writeln(s string) {
 		f.precedences = []int{}
 	}
 	if f.indent > 0 && f.empty_line {
-		// println(f.indent.str() + s)
-		f.out.write(tabs[f.indent])
+		f.write_indent()
 	}
 	f.out.writeln(if empty_fifo {
 		''
@@ -143,6 +135,17 @@ pub fn (mut f Fmt) writeln(s string) {
 	})
 	f.empty_line = true
 	f.line_len = 0
+}
+
+fn (mut f Fmt) write_indent() {
+	if f.indent < tabs.len {
+		f.out.write(tabs[f.indent])
+	} else {
+		// too many indents, do it the slow way:
+		for _ in 0 .. f.indent {
+			f.out.write('\t')
+		}
+	}
 }
 
 // adjustments that can only be done after full line is processed. For now
@@ -316,6 +319,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.EnumDecl {
+			f.attrs(it.attrs)
 			if it.is_pub {
 				f.write('pub ')
 			}
@@ -399,13 +403,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.GlobalDecl {
-			f.write('__global $it.name ')
-			f.write(f.type_to_str(it.typ))
-			if it.has_expr {
-				f.write(' = ')
-				f.expr(it.expr)
-			}
-			f.writeln('')
+			f.global_decl(it)
 		}
 		ast.GoStmt {
 			f.write('go ')
@@ -1135,11 +1133,14 @@ pub fn (mut f Fmt) wrap_long_line(penalty int, add_indent bool) bool {
 	if f.out.buf[f.out.buf.len - 1] == ` ` {
 		f.out.go_back(1)
 	}
-	f.write('\n' + tabs[f.indent + if add_indent {
-		1
-	} else {
-		0
-	}])
+	f.write('\n')
+	if add_indent {
+		f.indent++
+	}
+	f.write_indent()
+	if add_indent {
+		f.indent--
+	}
 	f.line_len = 0
 	return true
 }
@@ -1882,6 +1883,58 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
+	f.writeln(')\n')
+}
+
+fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
+	single := it.fields.len == 1
+	if single {
+		f.write('__global ( ')
+	} else {
+		f.write('__global (')
+		f.writeln('')
+		f.indent++
+	}
+	mut max := 0
+	mut has_assign := false
+	for field in it.fields {
+		if field.name.len > max {
+			max = field.name.len
+		}
+		if field.has_expr {
+			has_assign = true
+		}
+	}
+	for field in it.fields {
+		comments := field.comments
+		for comment in comments {
+			f.comment(comment, {
+				inline: true
+			})
+			f.writeln('')
+		}
+		f.write('$field.name ')
+		f.write(strings.repeat(` `, max - field.name.len))
+		if field.has_expr {
+			f.write('= ')
+			f.write(f.type_to_str(field.typ))
+			f.write('(')
+			f.expr(field.expr)
+			f.write(')')
+		} else {
+			if !single && has_assign {
+				f.write('  ')
+			}
+			f.write('${f.type_to_str(field.typ)} ')
+		}
+		if !single {
+			f.writeln('')
+		}
+	}
+	if !single {
+		f.indent--
+	}
+	f.comments_after_last_field(it.end_comments)
 	f.writeln(')\n')
 }
 

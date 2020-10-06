@@ -1,0 +1,14 @@
+vlib/v/checker/tests/map_get_value_address_err.vv:3:12: error: cannot get address of map values outside unsafe blocks
+    1 | fn main() {
+    2 |     m := {'key' : 3}
+    3 |     a := &m['key']
+      |            ~~~~~~~
+    4 |     b := &{'foo': 4}['foo']
+    5 |     println(a)
+vlib/v/checker/tests/map_get_value_address_err.vv:4:21: error: cannot get address of map values outside unsafe blocks
+    2 |     m := {'key' : 3}
+    3 |     a := &m['key']
+    4 |     b := &{'foo': 4}['foo']
+      |                     ~~~~~~~
+    5 |     println(a)
+    6 |     println(b)

@@ -64,7 +64,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 			continue
 		}
 		is_last_arg := i == node.params.len - 1
-		should_add_type := is_last_arg || node.params[i + 1].typ != arg.typ ||
+		is_type_only := arg.name == ''
+		should_add_type := is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
 			(node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
@@ -79,11 +80,13 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		}
 		s = util.no_cur_mod(s, cur_mod)
 		if should_add_type {
-			if node.is_variadic && is_last_arg {
-				f.write(' ...' + s)
-			} else {
-				f.write(' ' + s)
+			if !is_type_only {
+				f.write(' ')
 			}
+			if node.is_variadic && is_last_arg {
+				f.write('...')
+			}
+			f.write(s)
 		}
 		if !is_last_arg {
 			f.write(', ')

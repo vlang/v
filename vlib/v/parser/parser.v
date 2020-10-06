@@ -17,6 +17,7 @@ import time
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
+	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
@@ -34,7 +35,6 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt
@@ -55,7 +55,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
-	vet_errors        &[]string
+	vet_errors        []string
 	cur_fn_name       string
 }
 
@@ -72,7 +72,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 			start_pos: 0
 			parent: 0
 		}
-		vet_errors: 0
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -89,7 +88,6 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
@@ -117,17 +115,16 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors &[]string) ast.File {
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []string) {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref, vet_errors)
+		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
 		file_name: path
@@ -140,7 +137,6 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: vet_errors
 	}
 	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or {
@@ -152,7 +148,9 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 			}
 		}
 	}
-	return p.parse()
+	file := p.parse()
+	p.vet_errors << p.scanner.vet_errors
+	return file, p.vet_errors
 }
 
 fn (mut p Parser) parse() ast.File {
@@ -1676,41 +1674,56 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.error('use `v --enable-globals ...` to enable globals')
 	}
 	start_pos := p.tok.position()
-	p.next()
-	pos := start_pos.extend(p.tok.position())
-	name := p.check_name()
-	// println(name)
-	typ := p.parse_type()
-	mut expr := ast.Expr{}
-	has_expr := p.tok.kind == .assign
-	if has_expr {
-		p.next()
-		expr = p.expr(0)
+	end_pos := p.tok.position()
+	p.check(.key_global)
+	if p.tok.kind != .lpar {
+		p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
 	}
-	// p.genln(p.table.cgen_name_type_pair(name, typ))
-	/*
-	mut g := p.table.cgen_name_type_pair(name, typ)
-	if p.tok == .assign {
-		p.next()
-		g += ' = '
-		_,expr := p.tmp_expr()
-		g += expr
+	p.next() // (
+	mut fields := []ast.GlobalField{}
+	mut comments := []ast.Comment{}
+	for {
+		comments = p.eat_comments()
+		if p.tok.kind == .rpar {
+			break
+		}
+		pos := p.tok.position()
+		name := p.check_name()
+		has_expr := p.tok.kind == .assign
+		if has_expr {
+			p.next() // =
+		}
+		typ := p.parse_type()
+		if p.tok.kind == .assign {
+			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
+		}
+		mut expr := ast.Expr{}
+		if has_expr {
+			if p.tok.kind != .lpar {
+				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
+			}
+			p.next() // (
+			expr = p.expr(0)
+			p.check(.rpar)
+		}
+		field := ast.GlobalField{
+			name: name
+			has_expr: has_expr
+			expr: expr
+			pos: pos
+			typ: typ
+			comments: comments
+		}
+		fields << field
+		p.global_scope.register(field.name, field)
+		comments = []
 	}
-	// p.genln('; // global')
-	g += '; // global'
-	if !p.cgen.nogen {
-		p.cgen.consts << g
+	p.check(.rpar)
+	return ast.GlobalDecl{
+		pos: start_pos.extend(end_pos)
+		fields: fields
+		end_comments: comments
 	}
-	*/
-	glob := ast.GlobalDecl{
-		name: name
-		typ: typ
-		pos: pos
-		has_expr: has_expr
-		expr: expr
-	}
-	p.global_scope.register(name, glob)
-	return glob
 }
 
 fn (mut p Parser) enum_decl() ast.EnumDecl {
@@ -1723,6 +1736,10 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	p.check(.key_enum)
 	end_pos := p.tok.position()
 	enum_name := p.check_name()
+	if enum_name.len == 1 {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			end_pos)
+	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
 	enum_decl_comments := p.eat_comments()
@@ -1785,6 +1802,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_multi_allowed: is_multi_allowed
 		fields: fields
 		pos: start_pos.extend(end_pos)
+		attrs: p.attrs
 		comments: enum_decl_comments
 	}
 }

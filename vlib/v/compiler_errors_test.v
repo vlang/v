@@ -88,7 +88,9 @@ fn (mut tasks []TaskDescription) run() {
 		if tasks[i].path in m_skip_files {
 			tasks[i].is_skipped = true
 		}
-		work.push(&tasks[i])
+		unsafe {
+			work.push(&tasks[i])
+		}
 	}
 	work.close()
 	for _ in 0 .. vjobs {

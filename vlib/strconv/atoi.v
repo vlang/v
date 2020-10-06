@@ -19,11 +19,23 @@ pub fn byte_to_lower(c byte) byte {
 // common_parse_uint is called by parse_uint and allows the parsing
 // to stop on non or invalid digit characters and return the result so far
 pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) u64 {
+	result, error := common_parse_uint2(s, _base, _bit_size)
+	if error != 0 {
+		if error > 0 && (error_on_non_digit || error_on_high_digit) {
+			return u64(0)
+		}
+	}
+	return result
+}
+
+// the first returned value contains the parsed value,
+// the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut bit_size := _bit_size
 	mut base := _base
 	if s.len < 1 || !underscore_ok(s) {
 		// return error('parse_uint: syntax error $s')
-		return u64(0)
+		return u64(0), 1
 	}
 	base0 := base == 0
 	mut start_index := 0
@@ -59,14 +71,14 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	}
 	else {
 		// return error('parse_uint: base error $s - $base')
-		return u64(0)
+		return u64(0), -1
 	}
 	if bit_size == 0 {
 		bit_size = int_size
 	}
 	else if bit_size < 0 || bit_size > 64 {
 		// return error('parse_uint: bitsize error $s - $bit_size')
-		return u64(0)
+		return u64(0), -2
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
@@ -90,42 +102,26 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 			d = cl - `a` + 10
 		}
 		else {
-			if error_on_non_digit {
-				// return error('parse_uint: syntax error $s')
-				return u64(0)
-			}
-			else {
-				break
-			}
+			return n, i + 1
 		}
 		if d >= byte(base) {
-			if error_on_high_digit {
-				// return error('parse_uint: syntax error $s')
-				return u64(0)
-			}
-			else {
-				break
-			}
+			return n, i + 1
 		}
 		if n >= cutoff {
 			// n*base overflows
 			// return error('parse_uint: range error $s')
-			return max_val
+			return max_val, -3
 		}
 		n *= u64(base)
 		n1 := n + u64(d)
 		if n1 < n || n1 > max_val {
 			// n+v overflows
 			// return error('parse_uint: range error $s')
-			return max_val
+			return max_val, -3
 		}
 		n = n1
 	}
-	if underscores && !underscore_ok(s) {
-		// return error('parse_uint: syntax error $s')
-		return u64(0)
-	}
-	return n
+	return n, 0
 }
 
 // parse_uint is like parse_int but for unsigned numbers.

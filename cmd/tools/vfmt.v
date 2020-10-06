@@ -37,7 +37,7 @@ const (
 		['openbsd', '_bsd.v', '_openbsd.v'],
 		['solaris', '_solaris.v'],
 		['haiku', '_haiku.v'],
-		['qnx', '_qnx.v']
+		['qnx', '_qnx.v'],
 	]
 )
 
@@ -83,7 +83,7 @@ fn main() {
 	}
 	mut files := []string{}
 	for file in possible_files {
-		if !file.ends_with('.v') && !file.ends_with('.vv') {
+		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
 			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
 			continue
 		}
