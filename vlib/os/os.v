@@ -1156,21 +1156,66 @@ pub fn is_abs_path(path string) bool {
 // join_path returns a path as string from input string parameter(s).
 pub fn join_path(dirs ...string) string {
 	mut result := []string{}
-	for i, d in dirs {
-		if d == '.' && dirs.len > 1 {
-			continue
-		}
-		if d == '..' && i > 0 {
-			last_r := result.last()
-			result.delete(result.len - 1)
-			if last_r.contains(path_separator) {
-				result << dir(last_r)
-			}
-			continue
-		}
+	for d in dirs {
 		result << d
 	}
-	return result.join(path_separator)
+	path := result.join('/')
+	mut dotdot := 0
+	mut out := ''
+	mut i := 0
+	for i < path.len {
+		c := path[i]
+		if c == `.` {
+			if i + 1 == path.len || path[i + 1] == `/` {
+				i += 2
+			} else if path[i + 1] == `.` && (i + 2 == path.len || path[i + 2] == `/`) {
+				i += 2
+				if out.len > dotdot {
+					out = out.trim_suffix('/')
+					last_slash := out.last_index('/') or { 0 }
+					out = out[..last_slash]
+					i++
+				} else {
+					if out.len > 0 {
+						out += '/'
+						i++
+					}
+					out += '..'
+					dotdot = out.len
+				}
+			}
+		} else {
+			out += c.str()
+			i++
+		}
+	}
+	// if path == '' {
+	// 	return '.'
+	// }
+	// rooted := path[0] == `/`
+	// n := path.len
+	// for r < n {
+	// if c == `.` && (r + 1 == n || path[r + 1] == `/`) {
+	// 		r++
+	// 	} else if c == `.` && path[r + 1] == `.` && (r + 2 == n || path[r + 2] == `/`) {
+	// 		r += 2
+	// 		if out.len > dotdot {
+	// 			last_slash := out.last_index('/') or { 0 }
+	// 			out = out[..last_slash]
+	// 		} else {
+	// 			out += '/..'
+	// 			dotdot = out.len
+	// 		}
+	// 	} else {
+	// 		for ; r < n && path[r] != `/`; r++ {
+	// 			out += path[r].str()
+	// 		}
+	// 	}
+	// }
+	if out.len == 0 {
+		return '.'
+	}
+	return out.replace('/', path_separator)
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
