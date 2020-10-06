@@ -372,3 +372,20 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
 	return c.table.sumtype_has_variant(a, b) || c.table.sumtype_has_variant(b, a)
 }
+
+pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
+	gt_name := 'T'
+	mut typ := table.void_type
+	for i, arg in f.params {
+		if arg.type_source_name == gt_name {
+			typ = call_expr.args[i].typ
+			break
+		}
+	}
+	if typ == table.void_type {
+		c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+	} else {
+		c.table.register_fn_gen_type(f.name, typ)
+		call_expr.generic_type = typ
+	}
+}
