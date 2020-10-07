@@ -1,0 +1,7 @@
+import os
+import cli {Command}
+
+fn main() {
+	mut cmd := Command {}                                                       
+	cmd.parse(os.args)
+}
