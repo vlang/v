@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 f32 to string
@@ -17,21 +19,7 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 */
-module strconv
 
-// dec32 is a floating decimal type representing m * 10^e.
-struct Dec32 {
-mut:
-	m u32
-	e int
-}
-
-// support union for convert f32 to u32
-union Uf32 {
-mut:
-	f f32
-	u u32
-}
 
 // pow of ten table used by n_digit reduction
 const(

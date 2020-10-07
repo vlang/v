@@ -204,6 +204,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	mut b := strings.new_builder(250000)
 	b.write(g.hashes())
+	b.writeln('\n// V comptime_defines:')
 	b.write(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
 	b.write(g.typedefs.str())
