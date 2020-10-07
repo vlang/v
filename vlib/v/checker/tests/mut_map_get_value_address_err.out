@@ -1,0 +1,7 @@
+vlib/v/checker/tests/mut_map_get_value_address_err.vv:3:12: error: cannot get address of mutable map values outside unsafe blocks
+    1 | fn main() {
+    2 |     mut m := {'key' : 3}
+    3 |     a := &m['key']
+      |            ~~~~~~~
+    4 |     println(a)
+    5 | }

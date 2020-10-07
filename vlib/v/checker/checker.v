@@ -2754,13 +2754,20 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if node.right is ast.IndexExpr as index {
 					typ_sym := c.table.get_type_symbol(index.left_type)
-					if !c.inside_unsafe {
+					mut is_mut := false
+					if index.left is ast.Ident as ident {
+						if ident.obj is ast.Var {
+							v := ident.obj as ast.Var
+							is_mut = v.is_mut
+						}
+					}
+					if !c.inside_unsafe && is_mut {
 						if typ_sym.kind == .map {
-							c.error('cannot get address of map values outside unsafe blocks',
+							c.error('cannot get address of mutable map values outside unsafe blocks',
 								index.pos)
 						}
 						if typ_sym.kind == .array {
-							c.error('cannot get address of array elements outside unsafe blocks',
+							c.error('cannot get address of mutable array elements outside unsafe blocks',
 								index.pos)
 						}
 					}
