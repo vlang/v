@@ -1041,7 +1041,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in table.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs ||
 			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
-			is_mod_cast {
+			is_mod_cast || (!(name.len > 1 && name[0] == `C` && name[1] == `.`) && name[0].is_capital()) {
+			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
