@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 printf/sprintf V implementation
@@ -9,7 +11,6 @@ that can be found in the LICENSE file.
 This file contains the printf/sprintf functions
 
 */
-module strconv
 
 import strings
 
