@@ -54,7 +54,7 @@ else
 	$(V) self
 endif
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
+	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) 
 ifdef ANDROID
 	chmod 755 v
 endif
