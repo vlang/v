@@ -2763,11 +2763,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 					if !c.inside_unsafe && is_mut {
 						if typ_sym.kind == .map {
-							c.error('cannot get address of mutable map values outside unsafe blocks',
+							c.error('cannot take the address of mutable map values outside unsafe blocks',
 								index.pos)
 						}
 						if typ_sym.kind == .array {
-							c.error('cannot get address of mutable array elements outside unsafe blocks',
+							c.error('cannot take the address of mutable array elements outside unsafe blocks',
 								index.pos)
 						}
 					}
