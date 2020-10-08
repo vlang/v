@@ -1937,6 +1937,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if assign_stmt.op !in [.assign, .decl_assign] {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
+				} else if left.info !is ast.IdentVar {
+					c.error('cannot assign to $left.kind `$left.name`', left.pos)
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
