@@ -228,6 +228,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		kind: .struct_
 		name: name
 		source_name: name
+		mod: p.mod
 		info: table.Struct{
 			fields: fields
 			is_typedef: attrs.contains('typedef')
@@ -235,7 +236,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
 		}
-		mod: p.mod
 		is_public: is_pub
 	}
 	mut ret := 0

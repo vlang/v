@@ -334,6 +334,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
 		source_name: name
+		mod: p.mod
 		kind: .any
 		is_public: true
 	})
@@ -372,6 +373,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
+			mod: p.mod
 			info: table.GenericStructInst{
 				parent_idx: p.table.type_idxs[name]
 				generic_types: generic_types
