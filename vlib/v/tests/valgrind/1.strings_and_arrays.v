@@ -91,7 +91,6 @@ fn opt(s string) ?int {
 	return 1
 }
 
-/*
 fn optional_str() {
 	q := 'select'
 	s := 'query: select'
@@ -109,7 +108,7 @@ fn optional_str() {
 	}
 	println(pos + 1)
 }
-*/
+
 fn tt() {
 	// time.parse_rfc2822('1234')
 }

@@ -20,3 +20,4 @@
 - method expressions with an explicit receiver as the first argument
 - fix all remaining generics issues (`foo(5)` instead of `foo<int>(5)` etc)
 - merge v.c and v_win.c
+- more advanced errors, not just `error('message')`
