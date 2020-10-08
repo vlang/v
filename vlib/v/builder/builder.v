@@ -15,8 +15,8 @@ pub:
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
-	checker             checker.Checker
 	pref                &pref.Preferences
+	checker             checker.Checker
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
@@ -334,7 +334,8 @@ fn verror(s string) {
 }
 
 pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	formatted_message := '$msg: ${util.bold(ms.str())} ms'
+	value := util.bold('$ms')
+	formatted_message := '$msg: $value ms'
 	if b.pref.show_timings {
 		println(formatted_message)
 	} else {

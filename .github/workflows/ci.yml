@@ -20,6 +20,29 @@ jobs:
 #    - name: Run v test-fmt
 #      run: echo "TODO" #./v test-fmt
 
+  performance-regressions:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Environment info
+      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+    - name: Build local v
+      run: (make -j4 && ./v -cg -o v cmd/v)
+    - name: Clone & Build vmaster/v
+      run: |
+        git clone --depth=1 https://github.com/vlang/v vmaster/
+        (cd vmaster; make -j4 && ./v -cg -o v cmd/v)
+    - name: V versions
+      run: ./v version && ./vmaster/v version
+    - name: Build the repeat tool
+      run: ./v cmd/tools/repeat.v
+    - name: Repeat -o hw.c examples/hello_world.v
+      run: cmd/tools/repeat --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o hw.c examples/hello_world.v' './vmaster/v -show-timings -o hw.c examples/hello_world.v'
+    - name: Repeat -o v.c cmd/v
+      run: cmd/tools/repeat --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o v.c cmd/v' './vmaster/v -show-timings -o v.c cmd/v'
+
   ubuntu-tcc:
     runs-on: ubuntu-18.04
     env:
@@ -61,7 +84,11 @@ jobs:
         ./v fmt -verify vlib/v/checker/checker.v
         ./v fmt -verify vlib/v/fmt/fmt.v
         ./v fmt -verify vlib/v/parser/parser.v
+        ./v fmt -verify vlib/v/parser/fn.v
+        ./v fmt -verify vlib/v/scanner/scanner.v
+        ./v fmt -verify vlib/v/table/table.v
         ./v fmt -verify vlib/v/gen/cgen.v
+        ./v fmt -verify vlib/v/gen/fn.v
         ./v fmt -verify vlib/v/gen/x64/gen.v
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
@@ -524,4 +551,3 @@ jobs:
         with:
             name: server
             path: ${{github.workspace}}/reports/servers/index.html
-

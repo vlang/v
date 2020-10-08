@@ -407,6 +407,12 @@ void _vcleanup();
 		return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;
 	}
 #endif
+
+voidptr memdup(voidptr src, int sz);
+voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+	free(ptr);
+	return memdup(src, sz);
+}
 '
 	c_builtin_types = '
 //================================== builtin types ================================*/
@@ -427,16 +433,16 @@ typedef void* voidptr;
 typedef char* charptr;
 typedef struct array array;
 typedef struct map map;
-typedef array array_string;
 typedef array array_int;
-typedef array array_byte;
 typedef array array_f32;
 typedef array array_f64;
 typedef array array_u16;
 typedef array array_u32;
 typedef array array_u64;
-typedef map map_int;
-typedef map map_string;
+//typedef map map_int;
+//typedef map map_string;
+//typedef array array_string;
+//typedef array array_byte;
 typedef byte array_fixed_byte_300 [300];
 typedef byte array_fixed_byte_400 [400];
 

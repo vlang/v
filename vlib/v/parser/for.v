@@ -11,6 +11,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	pos := p.tok.position()
 	p.open_scope()
 	p.inside_for = true
+	if p.tok.kind == .key_match {
+		p.error('cannot use `match` in `for` loop')
+	}
 	// defer { p.close_scope() }
 	// Infinite loop
 	if p.tok.kind == .lcbr {

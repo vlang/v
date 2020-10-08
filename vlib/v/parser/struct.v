@@ -228,6 +228,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		kind: .struct_
 		name: name
 		source_name: name
+		mod: p.mod
 		info: table.Struct{
 			fields: fields
 			is_typedef: attrs.contains('typedef')
@@ -235,7 +236,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
 		}
-		mod: p.mod
 		is_public: is_pub
 	}
 	mut ret := 0
@@ -269,13 +269,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
-	/*
-	defer {
-		if p.fileis('x.v') {
-			p.warn('end of struct init $short_syntax')
-		}
-	}
-	*/
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)

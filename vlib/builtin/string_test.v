@@ -99,6 +99,19 @@ fn test_sort() {
 	assert vals[3] == 'arr'
 }
 
+fn test_sort_reverse() {
+	mut vals := [
+		'arr', 'an', 'a', 'any'
+	]
+	len := vals.len
+	vals.sort(b>a)
+	assert len == vals.len
+	assert vals[3] == 'a'
+	assert vals[2] == 'an'
+	assert vals[1] == 'any'
+	assert vals[0] == 'arr'
+}
+
 fn test_split_nth() {
 	a := "1,2,3"
 	assert (a.split(',').len == 3)

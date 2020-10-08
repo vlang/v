@@ -52,7 +52,6 @@ fn append_to_file(fname, s string) {
 	f.writeln('\$s')
 	//info := live.info()
 	//f.writeln('>>> reloads: \${info.reloads} | ok reloads: \${info.reloads_ok}')
-	f.flush()
 	f.close()
 }
 
@@ -64,15 +63,19 @@ fn myprintln(s string) {
 
 [live]
 fn pmessage() string {
-	s := 'ORIGINAL'
-	myprintln(s)
-	return s
+	return 'ORIGINAL'
 }
 
 const (
-	delay = 5
+	delay = 20
 )
-
+fn edefault(name string, default string) string {
+	res := os.getenv(name)
+	if res == '' {
+		return default
+	}
+	return res
+}
 fn main() {
 	mut info := live.info()
 	info.recheck_period_ms = 5
@@ -80,14 +83,16 @@ fn main() {
 	myprintln('DATE: ' + time.now().str())
 	pmessage()
 	pmessage()
-	// NB: 1000 * 5 = maximum of ~5s runtime
-	for i:=0; i<1000; i++ {
+	max_cycles := edefault('LIVE_CYCLES', '1').int()
+	// NB: 1000 * 20 = maximum of ~20s runtime
+	for i:=0; i<max_cycles; i++ {
 		s := pmessage()
+		myprintln(s)
 		append_to_file(os.resource_abs_path(s + '.txt'), s)
-		time.sleep_ms(delay)
 		if s == 'STOP' {
 			break
 		}
+		time.sleep_ms(delay)
 	}
 	pmessage()
 	pmessage()
@@ -96,6 +101,14 @@ fn main() {
 }
 "
 )
+
+fn edefault(name string, default string) string {
+	res := os.getenv(name)
+	if res == '' {
+		return default
+	}
+	return res
+}
 
 fn atomic_write_source(source string) {
 	// NB: here wrtiting is done in 2 steps, since os.write_file can take some time,
@@ -158,7 +171,8 @@ fn wait_for_file(new string) {
 	time.sleep_ms(100)
 	expected_file := os.join_path(os.temp_dir(), new + '.txt')
 	eprintln('waiting for $expected_file ...')
-	for i := 0; i <= 400; i++ {
+	max_wait_cycles := edefault('WAIT_CYCLES', '1').int()
+	for i := 0; i <= max_wait_cycles; i++ {
 		if i % 25 == 0 {
 			vprintln('   checking ${i:-10d} for $expected_file ...')
 		}
@@ -172,8 +186,20 @@ fn wait_for_file(new string) {
 	}
 }
 
+fn setup_cycles_environment() {
+	mut max_live_cycles := 1000
+	mut max_wait_cycles := 400
+	if os.user_os() == 'macos' {
+//		max_live_cycles *= 5
+//		max_wait_cycles *= 5
+	}
+	os.setenv('LIVE_CYCLES', '$max_live_cycles', true)
+	os.setenv('WAIT_CYCLES', '$max_wait_cycles', true)
+}
+
 //
 fn test_live_program_can_be_compiled() {
+	setup_cycles_environment()
 	eprintln('Compiling...')
 	os.system('$vexe -live -o $genexe_file $source_file')
 	//

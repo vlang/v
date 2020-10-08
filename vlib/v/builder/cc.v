@@ -155,7 +155,7 @@ fn (mut v Builder) cc() {
 	// '-Werror',
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
-	mut args := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
+	mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
 		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
 	if v.pref.os == .ios {
 		args << '-framework Foundation'
@@ -297,7 +297,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
 			linker_flags << '-rdynamic'
 		}
-		if v.pref.os == .mac || os.user_os() == 'mac' {
+		if v.pref.os == .macos || os.user_os() == 'macos' {
 			args << '-flat_namespace'
 		}
 	}
@@ -377,16 +377,16 @@ fn (mut v Builder) cc() {
 		verror("'$v.pref.out_name' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .mac || v.pref.os == .ios {
+	if v.pref.os == .macos || v.pref.os == .ios {
 		args << '-x objective-c'
 	}
 	// The C file we are compiling
 	args << '"$v.out_name_c"'
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-x none'
 	}
 	// Min macos version is mandatory I think?
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-mmacosx-version-min=10.7'
 	}
 	if v.pref.os == .ios {
@@ -448,7 +448,9 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	str_args := args.join(' ') + ' ' + linker_flags.join(' ')
+	env_cflags := os.getenv('CFLAGS')
+	env_ldflags := os.getenv('LDFLAGS')
+	str_args := env_cflags + ' ' + args.join(' ') + ' ' + linker_flags.join(' ') + ' ' + env_ldflags
 	if v.pref.is_verbose {
 		println('cc args=$str_args')
 		println(args)
@@ -695,7 +697,7 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['mac', 'darwin', 'linux'] {
+	if os.user_os() !in ['macos', 'linux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}

@@ -237,6 +237,20 @@ fn test_generic_struct() {
 	// println(x.model.name)
 }
 
+struct Foo<T> {
+pub:
+	data T
+}
+
+fn (f Foo<int>) value() string {
+	return f.data.str()
+}
+
+fn test_generic_struct_method() {
+	foo_int := Foo<int>{2}
+	assert foo_int.value() == '2'
+}
+
 /*
 struct Abc{ x int y int z int }
 

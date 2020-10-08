@@ -1,39 +1,31 @@
-fn main() {
+#!/usr/local/bin/v run
+// The shebang above associates the file to V on Unix-like systems,
+// so it can be run just by specifying the path to the file
+// once it's made executable using `chmod +x`.
 
- for _ in 0..5 {
-   println('V script')
- }
-
- println('deploying...')
-
- println('Files')
- foo := ls('.') or { panic(err) }
- println(foo)
-
- println('')
- rm('a.out')
-
- println('Making dir name and creating foo.txt')
- os.mkdir('name')? // TODO mkdir()
- create('foo.txt')?
-
- foo_ls := ls('.') or { panic(err) }
- println(foo_ls)
- println('')
-
- println('Entering into name')
- chdir('name')
- foo_ls2 := ls('.') or { panic(err) }
- println(foo_ls2)
- println('')
-
- println('Removing name and foo.txt')
- println('')
- chdir('../')
- rmdir('name')
- rm('foo.txt')
-
- again := ls('.') or { panic(err) }
- println(again)
-
+for _ in 0..3 {
+	println('V script')
 }
+
+println('\nMaking dir "v_script_dir".')
+mkdir('v_script_dir')
+
+println("\nEntering into v_script_dir and listing it's files.")
+chdir('v_script_dir')
+files := ls('.') or { panic(err) }
+println(files)
+
+println('\nCreating foo.txt')
+create('foo.txt')?
+
+println('\nFiles:')
+again_ls := ls('.') or { panic(err) }
+println(again_ls)
+
+println('\nRemoving foo.txt and v_script_dir')
+rm('foo.txt')
+chdir('../')
+rmdir('v_script_dir')
+
+print('\nDoes v_script_dir still exist? ')
+println(exists('v_script_dir'))

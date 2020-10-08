@@ -12,8 +12,8 @@ and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
 
-Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
-you can do in V.
+Despite being simple, V gives the developer a lot of power.
+Anything you can do in other languages, you can do in V.
 
 ## Table of Contents
 
@@ -105,32 +105,32 @@ fn main() {
     println('hello world')
 }
 ```
-Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
+
+Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you have not yet, you have to type the path to V manually.
+If you haven't yet, you have to type the path to V manually.
 
-Congratulations - you just wrote your first V program, and executed it!
+Congratulations - you just wrote and executed your first V program!
 
-> You can compile a program without execution with `v hello.v`.
+You can compile a program without execution with `v hello.v`.
 See `v help` for all supported commands.
 
-In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't
-return anything, so the return type can be omitted.
+From the example above, you can see that functions are declared with the `fn` keyword.
+The return type is specified after the function name.
+In this case `main` doesn't return anything, so the return type can be omitted.
 
-As in many other languages (such as C, Go and Rust), `main` is an entry point.
+As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
 
-`println` is one of the few built-in functions. It prints the value passed to it
-to standard output.
+`println` is one of the few built-in functions.
+It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
-This is useful when writing small programs, "scripts", or just learning
-the language. For brevity, `fn main()` will be skipped in this
-tutorial.
+This is useful when writing small programs, "scripts", or just learning the language.
+For brevity, `fn main()` will be skipped in this tutorial.
 
-This means that a "hello world" program can be as simple as
+This means that a "hello world" program in V is as simple as
 
 ```v
 println('hello world')
@@ -933,6 +933,8 @@ Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
 because the range is *inclusive* of the last element, rather than exclusive
 (as `..` ranges are). Using `..` in a match branch will throw an error.
 
+Note: `match` as an expression is not usable in `for` loop and `if` statements.
+
 ### Defer
 
 A defer statement defers the execution of a block of statements until the surrounding function returns.
@@ -1440,8 +1442,12 @@ particularly useful for initializing a C library.
 ### Interfaces
 
 ```v
-struct Dog {}
-struct Cat {}
+struct Dog {
+    breed string
+}
+
+struct Cat {
+}
 
 fn (d Dog) speak() string {
     return 'woof'
@@ -1458,15 +1464,16 @@ interface Speaker {
 fn perform(s Speaker) string {
     if s is Dog { // use `is` to check the underlying type of an interface
         println('perform(dog)')
-	println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
+        println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
     } else if s is Cat {
         println('perform(cat)')
     }
     return s.speak()
 }
 
-dog := Dog{}
+dog := Dog{'Leonberger'}
 cat := Cat{}
+
 println(perform(dog)) // "woof"
 println(perform(cat)) // "meow"
 ```
@@ -2011,11 +2018,16 @@ unexpected value. Assert statements can be used in any function.
 
 ```v
 // hello.v
-pub fn hello() string {
+module main
+fn hello() string {
     return 'Hello world'
+}
+fn main() {
+    println(hello())
 }
 ```
 ```v
+module main
 // hello_test.v
 fn test_hello() {
     assert hello() == 'Hello world'
@@ -2028,6 +2040,19 @@ producing the correct output. V executes all test functions in the file.
 * Test function names must begin with `test_` to mark them for execution.
 * Normal functions can also be defined in test files, and should be called manually. Other
   symbols can also be defined in test files e.g. types.
+* There are 2 kinds of tests: external and internal.
+* The internal tests, have to *declare* their module, just like all other .v
+files from the same module. Internal tests can call even private functions in
+the same module. 
+* The external tests, have to *import* the modules which they test. They do not 
+have access to the private functions/types of the modules. They can test only 
+the external/public API that a module provides.
+
+In the example above, `test_hello` is an internal test, that can call
+the private function `hello()` because `hello_test.v` has `module main`,
+just like `hello.v`, i.e. both are part of the same module. Note also that 
+since `module main` is a regular module like the others, internal tests can 
+be used to test private functions in your main program .v files too.
 
 You can also define special test functions in a test file:
 * `testsuite_begin` which will be run *before* all other test functions.
@@ -2840,9 +2865,15 @@ This lists operators for [primitive types](#primitive-types) only.
 /    quotient               integers, floats
 %    remainder              integers
 
+~    bitwise NOT            integers
 &    bitwise AND            integers
 |    bitwise OR             integers
 ^    bitwise XOR            integers
+
+!    logical NOT            bools
+&&   logical AND            bools
+||   logical OR             bools
+!=   logical XOR            bools
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer

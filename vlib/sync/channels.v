@@ -514,9 +514,13 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].sem = sem
 			subscr[i].prev = &ch.write_subscriber
-			subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
+			unsafe {
+				subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
+			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i]
+				unsafe {
+					subscr[i].nxt.prev = &subscr[i]
+				}
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
@@ -526,9 +530,11 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].sem = sem
 			subscr[i].prev = &ch.read_subscriber
-			subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
+			unsafe {
+				subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
+			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i]
+				unsafe { subscr[i].nxt.prev = &subscr[i] }
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}

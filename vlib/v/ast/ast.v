@@ -21,7 +21,7 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
 	StructDecl | TypeDecl
 
-pub type ScopeObject = ConstField | GlobalDecl | Var
+pub type ScopeObject = ConstField | GlobalField | Var
 
 pub struct Type {
 pub:
@@ -34,6 +34,7 @@ pub struct Block {
 pub:
 	stmts     []Stmt
 	is_unsafe bool
+	pos       token.Position
 }
 
 // | IncDecStmt k
@@ -345,7 +346,7 @@ pub mut:
 	is_changed bool // to detect mutable vars that are never changed
 }
 
-pub struct GlobalDecl {
+pub struct GlobalField {
 pub:
 	name     string
 	expr     Expr
@@ -353,6 +354,15 @@ pub:
 	pos      token.Position
 pub mut:
 	typ      table.Type
+	comments []Comment
+}
+
+pub struct GlobalDecl {
+pub:
+	pos          token.Position
+pub mut:
+	fields       []GlobalField
+	end_comments []Comment
 }
 
 pub struct File {
@@ -422,6 +432,8 @@ pub fn (i &Ident) var_info() IdentVar {
 	}
 }
 
+// left op right
+// See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
 	op          token.Kind
@@ -434,6 +446,7 @@ pub mut:
 	auto_locked string
 }
 
+// ++, --
 pub struct PostfixExpr {
 pub:
 	op          token.Kind
@@ -443,6 +456,7 @@ pub mut:
 	auto_locked string
 }
 
+// See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
 	op         token.Kind
@@ -457,7 +471,7 @@ pub struct IndexExpr {
 pub:
 	pos       token.Position
 	left      Expr
-	index     Expr // [0] or RangeExpr [start..end]
+	index     Expr // [0], RangeExpr [start..end] or map[key]
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool
@@ -672,6 +686,7 @@ pub:
 	is_multi_allowed bool
 	comments         []Comment // enum Abc { /* comments */ ... }
 	fields           []EnumField
+	attrs            []table.Attr
 	pos              token.Position
 }
 
@@ -1093,6 +1108,19 @@ pub fn (expr Expr) is_expr() bool {
 	return true
 }
 
+// check if stmt can be an expression in C
+pub fn (stmt Stmt) check_c_expr()? {
+	match stmt {
+		AssignStmt {return}
+		ExprStmt {
+			if stmt.expr.is_expr() {return}
+			return error('unsupported statement (`${typeof(stmt.expr)}`)')
+		}
+		else {}
+	}
+	return error('unsupported statement (`${typeof(stmt)}`)')
+}
+
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt { return stmt.pos }
@@ -1100,8 +1128,9 @@ pub fn (stmt Stmt) position() token.Position {
 		/*
 		// Attr {
 		// }
-		// Block {
-		// }
+		*/
+		Block { return stmt.pos }
+		/*
 		// BranchStmt {
 		// }
 		*/
