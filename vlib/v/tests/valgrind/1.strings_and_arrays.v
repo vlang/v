@@ -46,6 +46,11 @@ fn str_tmp_expr_advanced() {
 	handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 }
 
+fn str_tmp_expr_advanced_var_decl() {
+	a := handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
+	println(a)
+}
+
 struct Foo {
 	a int
 	b string
@@ -114,6 +119,7 @@ fn main() {
 	foo()
 	str_tmp_expr()
 	str_tmp_expr_advanced()
+	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
 	reassign_str()
