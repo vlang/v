@@ -1361,6 +1361,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln('); // free str on re-assignment')
 		}
 	}
+	// Autofree tmp arg vars
+	first_right := assign_stmt.right[0]
+	af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
+	if af {
+		g.autofree_call_pregen(first_right as ast.CallExpr)
+	}
+	//
 	// Handle optionals. We need to declare a temp variable for them, that's why they are handled
 	// here, not in call_expr().
 	// `pos := s.index('x') or { return }`
@@ -1388,13 +1395,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// return
 		}
 	}
-	// Autofree tmp arg vars
-	first_right := assign_stmt.right[0]
-	af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
-	if af {
-		g.autofree_call_pregen(first_right as ast.CallExpr)
-	}
-	//
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
