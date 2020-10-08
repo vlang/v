@@ -51,12 +51,10 @@ fn test_unsafe_if_stmt() int {
 }
 
 fn test_map_address_index() {
-	m := {
+	mut m := {
 		'one': 1
 	}
-	unsafe {
-		mut one := &m['one']
-		one++
-		println(*one)
-	}
+	mut one := unsafe {&m['one']}
+	(*one)++
+	println(*one)
 }
