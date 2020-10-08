@@ -1544,12 +1544,12 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 			idx := p.table.add_placeholder_type(name)
 			typ := table.new_type(idx)
 			prepend_mod_name := p.prepend_mod(alias)
-			p.table.register_type_symbol({
+			p.table.register_type_symbol(table.TypeSymbol{
 				kind: .alias
 				name: prepend_mod_name
 				source_name: prepend_mod_name
-				parent_idx: idx
 				mod: p.mod
+				parent_idx: idx
 				info: table.Alias{
 					parent_type: typ
 					language: table.Language.v
@@ -1878,12 +1878,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		table.Language.v
 	}
 	prepend_mod_name := p.prepend_mod(name)
-	p.table.register_type_symbol({
+	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name
 		source_name: prepend_mod_name
-		parent_idx: pid
 		mod: p.mod
+		parent_idx: pid
 		info: table.Alias{
 			parent_type: parent_type
 			language: language

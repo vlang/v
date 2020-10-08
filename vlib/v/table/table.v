@@ -618,10 +618,15 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_dec
 }
 
 pub fn (mut t Table) add_placeholder_type(name string) int {
+	mut modname := ''
+	if name.contains('.') {
+		modname = name.all_before_last('.')
+	}
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
 		source_name: name
+		mod: modname
 	}
 	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)
