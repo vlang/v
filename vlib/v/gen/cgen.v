@@ -1388,6 +1388,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// return
 		}
 	}
+	// Autofree tmp arg vars
+	first_right := assign_stmt.right[0]
+	af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
+	if af {
+		g.autofree_call_pregen(first_right as ast.CallExpr)
+	}
 	//
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
