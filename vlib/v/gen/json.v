@@ -91,20 +91,14 @@ $enc_fn_dec {
 		if psym.info !is table.Struct {
 			verror('json: $sym.name is not struct')
 		}
-		info := psym.info as table.Struct
-		struct_enc, struct_dec := g.struct_enc_dec(info, styp)
-		enc.writeln(struct_enc)
-		dec.writeln(struct_dec)
+		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
 		if sym.info !is table.Struct {
 			verror('json: $sym.name is not struct')
 		}
-		info := sym.info as table.Struct
-		struct_enc, struct_dec := g.struct_enc_dec(info, styp)
-		enc.writeln(struct_enc)
-		dec.writeln(struct_dec)
+		g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
@@ -116,9 +110,8 @@ $enc_fn_dec {
 	g.gowrappers.writeln(enc.str())
 }
 
-fn (mut g Gen) struct_enc_dec(type_info table.TypeInfo, styp string) (string, string) {
-	mut dec := strings.new_builder(100)
-	mut enc := strings.new_builder(100)
+[inline]
+fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc, dec strings.Builder) {
 	info := type_info as table.Struct
 	for field in info.fields {
 		if field.attrs.contains('skip') {
@@ -182,7 +175,6 @@ fn (mut g Gen) struct_enc_dec(type_info table.TypeInfo, styp string) (string, st
 			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
 		}
 	}
-	return enc.str(), dec.str()
 }
 
 fn js_enc_name(typ string) string {
