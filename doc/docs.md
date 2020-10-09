@@ -25,14 +25,15 @@ Anything you can do in other languages, you can do in V.
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
     * [Variable number of arguments](#variable-number-of-arguments)
-* [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Module imports](#module-imports)
+* [Modules](#modules)
+    * [Symbol visibility](#symbol-visibility)
+    * [Module imports](#module-imports)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
     * [In operator](#in-operator)
@@ -54,7 +55,7 @@ Anything you can do in other languages, you can do in V.
     * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
-* [Modules](#modules)
+* [Modules 2](#modules-2)
 * [Constants](#constants)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
@@ -200,20 +201,6 @@ println(sum())    // Output: 0
 println(sum(1))   //         1
 println(sum(2,3)) //         5
 ```
-
-## Symbol visibility
-
-```v
-pub fn public_function() {
-}
-
-fn private_function() {
-}
-```
-
-Functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types.
 
 ## Variables
 
@@ -604,33 +591,73 @@ numbers := {
 }
 ```
 
-## Module imports
+## Modules
 
-For information about creating a module, see [Modules](#modules)
+Simple programs don't need to have a module name - it defaults to 'main'.
+Every file in the root of a folder is part of the same module.
+For information about creating a named module, see [Modules 2](#modules-2).
 
-### Importing a module
+### Symbol visibility
 
-Modules can be imported using the `import` keyword.
+```v
+pub fn public_function() {
+}
+
+fn private_function() {
+}
+```
+
+Functions are private (not exported) by default.
+To allow other modules to use them, prepend `pub`. The same applies
+to constants and types. 
+
+Note: `pub` can only be used from a named module.
+
+### Module imports
+
+Modules can be imported using the `import` keyword:
 
 ```v
 import os
 
 fn main() {
-    name := os.input('Enter your name:')
+    // read text from stdin
+    name := os.input('Enter your name: ')
     println('Hello, $name!')
 }
 ```
+This program can use any public definitions from the `os` module, such 
+as the `input` function. See the [standard library](https://modules.vlang.io/)
+documentation for a list of common modules and their public symbols.
 
-When using constants from other modules, the module name must be prefixed. However,
-you can import functions and types from other modules directly:
+By default, you have to specify the module prefix every time you call an external function.
+This may seem verbose at first, but it makes code much more readable
+and easier to understand - it's always clear which function from
+which module is being called. This is especially useful in large code bases.
+
+#### Specific imports
+
+You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
 ```
+Note: This is not allowed for constants - they must always be prefixed.
 
-### Module import aliasing
+You can import several specific symbols at once:
+
+```v
+import os { input, user_os }
+
+name := input('Enter your name: ')
+println('Name: $name')
+os := user_os()
+println('Your OS is ${os}.')
+```
+
+#### Module import aliasing
 
 Any imported module name can be aliased using the `as` keyword:
 
@@ -1378,7 +1405,7 @@ fn panic(message string)
 fn print_backtrace()
 ```
 
-## Modules
+## Modules 2
 
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
@@ -1410,18 +1437,11 @@ fn main() {
 }
 ```
 
-Note that you have to specify the module prefix every time you call an external function.
-This may seem verbose at first, but it makes code much more readable
-and easier to understand - it's always clear which function from
-which module is being called. This is especially useful in large code bases.
-
 * Module names should be short, under 10 characters.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
-
-See also: [Module imports](#module-imports).
 
 ### `init` functions
 
