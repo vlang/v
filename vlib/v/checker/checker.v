@@ -2577,7 +2577,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			} else {
 				mut s := 'cannot cast non-sum type `$expr_type_sym.source_name` using `as`'
 				if type_sym.kind == .sum_type {
-					s += ' - use e.g. `$type_sym.source_name\(some_expr)` instead.'
+					s += ' - use e.g. `${type_sym.source_name}(some_expr)` instead.'
 				}
 				c.error(s, node.pos)
 			}
