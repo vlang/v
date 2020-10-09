@@ -162,7 +162,7 @@ pub fn (d Doc) get_name(stmt ast.Stmt) string {
 		ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl { return d.get_type_name(stmt) }
 		ast.ConstDecl { return 'Constants' }
-		else { return '' }
+		else { return typeof(stmt) }
 	}
 }
 
