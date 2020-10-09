@@ -27,6 +27,7 @@ mut:
 	show_help bool
 	show_output bool
 	fail_on_regress_percent int
+	fail_on_maxtime int // in ms
 	verbose bool
 	commands []string
 	results []CmdResult
@@ -73,6 +74,8 @@ fn (a Aints) str() string { return util.bold('${a.average:9.3f}') + 'ms ± σ: $
 
 const (
 	max_fail_percent = 100000
+	max_time = 60*1000 // ms
+	performance_regression_label = 'Performance regression detected, failing since '
 )
 fn main(){
 	mut context := Context{}
@@ -95,7 +98,8 @@ fn (mut context Context) parse_options() {
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. NB: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
-	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with 1 exit code, when first cmd is X% slower than the rest (regression).')
+	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
+	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression).')
 	if context.show_help {
 		println(fp.usage())
 		exit(0)
@@ -141,8 +145,7 @@ fn (mut context Context) run() {
 					print(' | result: ${oldres:-s}')
 				}
 				mut sw := time.new_stopwatch({})
-				res := os.exec(cmd) or {
-					eprintln('${i:10} failed runnning cmd: $cmd')
+				res := scripting.exec(cmd) or {
 					continue
 				}
 				duration = int(sw.elapsed().milliseconds())
@@ -170,7 +173,7 @@ fn (mut context Context) run() {
 					v := x[1].trim_left(' ').int()
 					m[k] << v
 				}
-			}            
+			}
 			mut summary := map[string]Aints{}
 			for k,v in m {
 				// show a temporary summary for the current series/cmd cycle
@@ -223,16 +226,22 @@ fn (mut context Context) show_diff_summary() {
 		}
 		println(' ${first_marker}${(i+1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | ${r.atiming}')
 	}
+	$if debugcontext ? {
+		println('context: $context')
+	}
+	eprintln('base: $base | context.fail_on_maxtime: $context.fail_on_maxtime')
+	if int(base) > context.fail_on_maxtime {
+		print(performance_regression_label)
+		println('average time: ${base:6.1f} ms > ${context.fail_on_maxtime} ms threshold.')
+		exit(2)
+	}
 	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {
 		return
 	}
-	$if debugcontext ? {
-		println('context: $context')    
-	}
 	fail_threshold_max := f64(context.fail_on_regress_percent)
 	if first_cmd_percentage > fail_threshold_max {
-		print('Performance regression detected, failing since ')
+		print(performance_regression_label)
 		println('${first_cmd_percentage:5.1f}% > ${fail_threshold_max:5.1f}% threshold.')
-		exit(1)
+		exit(3)
 	}
 }
