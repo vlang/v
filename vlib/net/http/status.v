@@ -13,7 +13,6 @@ pub enum Status {
 	switching_protocols = 101
 	processing = 102
 	checkpoint_draft = 103
-	request_uri_too_long = 122
 	ok = 200
 	created = 201
 	accepted = 202
@@ -52,6 +51,7 @@ pub enum Status {
 	requested_range_not_satisfiable = 416
 	expectation_failed = 417
 	im_a_teapot = 418
+	misdirected_request = 421
 	unprocessable_entity = 422
 	locked = 423
 	failed_dependency = 424
@@ -228,26 +228,26 @@ pub fn (code Status) str() string {
 // int converts an assigned and known Status to its integral equivalent.
 // if a Status is unknown or unassigned, this method will return zero
 pub fn (code Status) int() int {
-	if (code in [.unknown, .unassigned]) { return 0 }
+	if code in [.unknown, .unassigned] { return 0 }
 	return int(code)
 }
 
 // is_valid returns true if the status code is assigned and known
 pub fn (code Status) is_valid() bool {
 	number := code.int()
-	return number >= 100 || number < 600
+	return number >= 100 && number < 600
 }
 
 // is_error will return true if the status code represents either a client or 
 // a server error; otherwise will return false
 pub fn (code Status) is_error() bool {
 	number := code.int()
-	return number >= 400 || number < 600
+	return number >= 400 && number < 600
 }
 
 // is_success will return true if the status code represents either an 
 // informational, success, or redirection response; otherwise will return false
 pub fn (code Status) is_success() bool {
 	number := code.int()
-	return number >= 100 || number < 400
+	return number >= 100 && number < 400
 }
