@@ -2575,9 +2575,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
-				//
-				c.error('cannot cast non sum type `$type_sym.source_name` using `as`',
-					node.pos)
+				mut s := 'cannot cast non-sum type `$expr_type_sym.source_name` using `as`'
+				if type_sym.kind == .sum_type {
+					s += ' - use e.g. `$type_sym.source_name\(some_expr)` instead.'
+				}
+				c.error(s, node.pos)
 			}
 			return node.typ.to_ptr()
 			// return node.typ

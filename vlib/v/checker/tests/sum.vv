@@ -1,0 +1,13 @@
+type Var = int | string
+
+fn non_sum() {
+	v := 4
+	_ = v as rune
+	_ = v as Var
+}
+
+fn sum() {
+	_ := Var(`J`)
+	mut s2 := Var('')
+	s2 = true
+}
