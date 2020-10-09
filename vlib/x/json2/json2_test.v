@@ -17,7 +17,7 @@ fn (e Employee) to_json() string {
 	mut mp := map[string]json2.Any
 	mp['name'] = e.name
 	mp['age'] = e.age
-	mp['salary'] = f64(e.salary)
+	mp['salary'] = e.salary
 	mp['title'] = int(e.title)
 
 	/*
@@ -56,6 +56,17 @@ fn test_simple() {
 	assert ym['salary'].f64() == 95000.5
 	// assert y['title'] == .worker
 	assert ym['title'].int() == 2
+}
+
+fn test_fast_raw_decode() {
+	s := '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
+	o := json2.fast_raw_decode(s) or {
+		assert false
+		json2.Any{}
+	}
+	str := o.str()
+
+	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'
 }
 
 /*
