@@ -181,11 +181,11 @@ fn (mut p Parser) decode_value() ?Any {
 		}
 		.key_true {
 			p.next()
-			return Any(true)
+			return if p.convert_type { Any(true) } else { Any('true') }
 		}
 		.key_false {
 			p.next()
-			return Any(false)
+			return if p.convert_type { Any(false) } else { Any('false') }
 		}
 		.name {
 			if p.tok.lit != 'null' {
@@ -193,7 +193,7 @@ fn (mut p Parser) decode_value() ?Any {
 			}
 
 			p.next()
-			return Any(Null{})
+			return if p.convert_type { Any(Null{}) } else { Any('null') }
 		}
 		.string {
 			if p.is_singlequote() {
