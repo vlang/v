@@ -263,6 +263,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					if var_info.is_mut {
 						f.write(var_info.share.str() + ' ')
 					}
+					if var_info.is_static {
+						f.write('static ')
+					}
 					f.expr(left)
 				} else {
 					f.expr(left)
