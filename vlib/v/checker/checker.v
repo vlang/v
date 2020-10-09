@@ -1944,6 +1944,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if assign_stmt.op !in [.assign, .decl_assign] {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
+				} else if left.info !is ast.IdentVar {
+					c.error('cannot assign to $left.kind `$left.name`', left.pos)
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
@@ -2573,9 +2575,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
-				//
-				c.error('cannot cast non sum type `$type_sym.source_name` using `as`',
-					node.pos)
+				mut s := 'cannot cast non-sum type `$expr_type_sym.source_name` using `as`'
+				if type_sym.kind == .sum_type {
+					s += ' - use e.g. `${type_sym.source_name}(some_expr)` instead.'
+				}
+				c.error(s, node.pos)
 			}
 			return node.typ.to_ptr()
 			// return node.typ
@@ -3171,7 +3175,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
-				c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+				c.error('cannot match `$expr_str` with `$expect_str` condition', branch.pos)
 			}
 			branch_exprs[key] = val + 1
 		}
