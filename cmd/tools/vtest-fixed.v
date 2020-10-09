@@ -13,6 +13,7 @@ const (
 		// 'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
+		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/orm/orm_test.v',
