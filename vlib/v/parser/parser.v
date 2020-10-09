@@ -17,6 +17,7 @@ import time
 pub struct Parser {
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
+	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
@@ -34,7 +35,6 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	pref              &pref.Preferences
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt
@@ -55,7 +55,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
-	vet_errors        &[]string
+	vet_errors        []string
 	cur_fn_name       string
 }
 
@@ -72,7 +72,6 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 			start_pos: 0
 			parent: 0
 		}
-		vet_errors: 0
 	}
 	p.init_parse_fns()
 	p.read_first_token()
@@ -89,7 +88,6 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
@@ -117,17 +115,16 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: 0
 	}
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, vet_errors &[]string) ast.File {
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []string) {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
 	mut p := Parser{
-		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref, vet_errors)
+		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
 		file_name: path
@@ -140,7 +137,6 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 		errors: []errors.Error{}
 		warnings: []errors.Warning{}
 		global_scope: global_scope
-		vet_errors: vet_errors
 	}
 	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or {
@@ -152,7 +148,9 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences, 
 			}
 		}
 	}
-	return p.parse()
+	file := p.parse()
+	p.vet_errors << p.scanner.vet_errors
+	return file, p.vet_errors
 }
 
 fn (mut p Parser) parse() ast.File {
@@ -1043,7 +1041,8 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in table.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs ||
 			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
-			is_mod_cast {
+			is_mod_cast || (!(name.len > 1 && name[0] == `C` && name[1] == `.`) && name[0].is_capital()) {
+			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
@@ -1545,12 +1544,12 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 			idx := p.table.add_placeholder_type(name)
 			typ := table.new_type(idx)
 			prepend_mod_name := p.prepend_mod(alias)
-			p.table.register_type_symbol({
+			p.table.register_type_symbol(table.TypeSymbol{
 				kind: .alias
 				name: prepend_mod_name
 				source_name: prepend_mod_name
-				parent_idx: idx
 				mod: p.mod
+				parent_idx: idx
 				info: table.Alias{
 					parent_type: typ
 					language: table.Language.v
@@ -1879,12 +1878,12 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		table.Language.v
 	}
 	prepend_mod_name := p.prepend_mod(name)
-	p.table.register_type_symbol({
+	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name
 		source_name: prepend_mod_name
-		parent_idx: pid
 		mod: p.mod
+		parent_idx: pid
 		info: table.Alias{
 			parent_type: parent_type
 			language: language

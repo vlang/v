@@ -12,6 +12,7 @@ import os.cmdline
 
 struct VetOptions {
 	is_verbose bool
+mut:
 	errors     []string
 }
 
@@ -25,7 +26,7 @@ fn (vet_options &VetOptions) vprintln(s string) {
 fn main() {
 	args := util.join_env_vflags_and_os_args()
 	paths := cmdline.only_non_options(cmdline.options_after(args, ['vet']))
-	vet_options := VetOptions{
+	mut vet_options := VetOptions{
 		is_verbose: '-verbose' in args || '-v' in args
 	}
 	for path in paths {
@@ -63,11 +64,12 @@ fn main() {
 	}
 }
 
-fn (vet_options &VetOptions) vet_file(path string) {
+fn (mut vet_options VetOptions) vet_file(path string) {
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	table := table.new_table()
 	vet_options.vprintln("vetting file '$path'...")
-	file_ast := parser.parse_vet_file(path, table, prefs, vet_options.errors)
+	file_ast, errors := parser.parse_vet_file(path, table, prefs)
+	vet_options.errors << errors
 	vet.vet(file_ast, table, true)
 }

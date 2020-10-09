@@ -1,8 +1,8 @@
+module strconv
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // TODO: use optionals, or some way to return default with error.
-module strconv
 
 const (
 // int_size is the size in bits of an int or uint value.
@@ -84,7 +84,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	// Use compile-time constants for common cases.
 	cutoff := max_u64 / u64(base) + u64(1)
 	max_val := if bit_size == 64 { max_u64 } else { (u64(1)<<u64(bit_size)) - u64(1) }
-	mut underscores := false
 	mut n := u64(0)
 	for i in start_index .. s.len {
 		c := s[i]
@@ -92,7 +91,6 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		mut d := byte(0)
 		if c == `_` && base0 {
 			// underscore_ok already called
-			underscores = true
 			continue
 		}
 		else if `0` <= c && c <= `9` {

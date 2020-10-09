@@ -1014,6 +1014,16 @@ pub fn compare_strings(a, b &string) int {
 	return 0
 }
 
+fn compare_strings_reverse(a, b &string) int {
+	if a.lt(b) {
+		return 1
+	}
+	if a.gt(b) {
+		return -1
+	}
+	return 0
+}
+
 fn compare_strings_by_len(a, b &string) int {
 	if a.len < b.len {
 		return -1

@@ -158,7 +158,7 @@ fn (mut context Context) run() {
 			}
 			context.results[icmd].cmd = cmd
 			context.results[icmd].icmd = icmd
-			context.results[icmd].runs = runs
+			context.results[icmd].runs += runs
 			context.results[icmd].atiming = new_aints(context.results[icmd].timings)
 			context.clear_line()
 			print('\r')
@@ -170,18 +170,36 @@ fn (mut context Context) run() {
 					v := x[1].trim_left(' ').int()
 					m[k] << v
 				}
-			}
-			context.results[icmd].oms = m
-			oms := context.results[icmd].oms
+			}            
 			mut summary := map[string]Aints{}
-			for k,v in oms {
+			for k,v in m {
+				// show a temporary summary for the current series/cmd cycle
 				s := new_aints(v)
 				println('  $k: $s')
 				summary[k] = s
 			}
-			context.results[icmd].summary = summary
+			// merge current raw results to the previous ones
+			old_oms := context.results[icmd].oms
+			mut new_oms := map[string][]int
+			for k,v in m {
+				if old_oms[k].len == 0 {
+					new_oms[k] = v
+				} else {
+					new_oms[k] << old_oms[k]
+					new_oms[k] << v
+				}
+			}
+			context.results[icmd].oms = new_oms
 			//println('')
 		}
+	}
+	// create full summaries, taking account of all runs
+	for icmd in 0..context.results.len {
+		mut new_full_summary := map[string]Aints{}
+		for k,v in context.results[icmd].oms {
+			new_full_summary[k] = new_aints(v)
+		}
+		context.results[icmd].summary = new_full_summary
 	}
 }
 fn (mut context Context) show_diff_summary() {
@@ -207,6 +225,9 @@ fn (mut context Context) show_diff_summary() {
 	}
 	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {
 		return
+	}
+	$if debugcontext ? {
+		println('context: $context')    
 	}
 	fail_threshold_max := f64(context.fail_on_regress_percent)
 	if first_cmd_percentage > fail_threshold_max {

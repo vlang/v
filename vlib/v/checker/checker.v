@@ -25,6 +25,7 @@ const (
 )
 
 pub struct Checker {
+	pref             &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table            &table.Table
 	file             ast.File
@@ -41,7 +42,6 @@ pub mut:
 	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
-	pref             &pref.Preferences // Preferences shared from V struct
 	in_for_count     int // if checker is currently in an for loop
 	// checked_ident  string // to avoid infinit checker loops
 	returns          bool
@@ -56,6 +56,7 @@ mut:
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
 	error_details    []string
+	generic_funcs    []&ast.FnDecl
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -80,6 +81,7 @@ pub fn (mut c Checker) check(ast_file ast.File) {
 		c.stmt(stmt)
 	}
 	c.check_scope_vars(c.file.scope)
+	c.post_process_generic_fns()
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
@@ -123,7 +125,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		file := &ast_files[i]
+		file := unsafe {&ast_files[i]}
 		c.check(file)
 		if file.mod.name == 'main' {
 			files_from_main_module << file
@@ -1505,6 +1507,10 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 	}
+	if f.is_generic && call_expr.generic_type == table.void_type {
+		// no type arguments given in call, attempt implicit instantiation
+		c.infer_fn_types(f, mut call_expr)
+	}
 	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
 		// Handle `foo<T>() T` => `foo<int>() int` => return int
 		return_sym := c.table.get_type_symbol(f.return_type)
@@ -1938,6 +1944,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if assign_stmt.op !in [.assign, .decl_assign] {
 						c.error('cannot modify blank `_` identifier', left.pos)
 					}
+				} else if left.info !is ast.IdentVar {
+					c.error('cannot assign to $left.kind `$left.name`', left.pos)
 				} else {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
@@ -2745,6 +2753,26 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
+				}
+				if node.right is ast.IndexExpr as index {
+					typ_sym := c.table.get_type_symbol(index.left_type)
+					mut is_mut := false
+					if index.left is ast.Ident as ident {
+						if ident.obj is ast.Var {
+							v := ident.obj as ast.Var
+							is_mut = v.is_mut
+						}
+					}
+					if !c.inside_unsafe && is_mut {
+						if typ_sym.kind == .map {
+							c.error('cannot take the address of mutable map values outside unsafe blocks',
+								index.pos)
+						}
+						if typ_sym.kind == .array {
+							c.error('cannot take the address of mutable array elements outside unsafe blocks',
+								index.pos)
+						}
+					}
 				}
 				return right_type.to_ptr()
 			}
@@ -3949,10 +3977,16 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 	return fields
 }
 
-fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
-	c.returns = false
-	if node.is_generic && c.cur_generic_type == 0 { // need the cur_generic_type check to avoid inf. recursion
-		// loop thru each generic type and generate a function
+fn (mut c Checker) post_process_generic_fns() {
+	// Loop thru each generic function concrete type.
+	// Check each specific fn instantiation.
+	for i in 0 .. c.generic_funcs.len {
+		mut node := c.generic_funcs[i]
+		if c.table.fn_gen_types.len == 0 {
+			// no concrete types, so just skip:
+			continue
+		}
+		// eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
 			// sym:=c.table.get_type_symbol(gen_type)
@@ -3960,6 +3994,24 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.fn_decl(mut node)
 		}
 		c.cur_generic_type = 0
+		c.generic_funcs[i] = 0
+	}
+	// The generic funtions for each file/mod should be
+	// postprocessed just once in the checker, while the file/mod
+	// context is still the same.
+	c.generic_funcs = []
+}
+
+fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
+	c.returns = false
+	if node.is_generic && c.cur_generic_type == 0 {
+		// Just remember the generic function for now.
+		// It will be processed later in c.post_process_generic_fns,
+		// after all other normal functions are processed.
+		// This is done so that all generic function calls can
+		// have a chance to populate c.table.fn_gen_types with
+		// the correct concrete types.
+		c.generic_funcs << node
 		return
 	}
 	if node.language == .v && !c.is_builtin_mod {

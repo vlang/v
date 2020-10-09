@@ -1,3 +1,4 @@
+module strconv
 /*
 
 atof util
@@ -16,17 +17,6 @@ The code is inspired by:
 Grzegorz Kraszewski krashan@teleinfo.pb.edu.pl
 URL: http://krashan.ppa.pl/articles/stringtofloat/
 Original license: MIT
-
-*/
-module strconv
-
-union Float64u {
-mut:
-	f f64
-	u u64
-}
-
-/*
 
 96 bit operation utilities
 Note: when u128 will be available these function can be refactored
@@ -162,13 +152,6 @@ Support struct
 
 */
 
-// The structure is filled by parser, then given to converter.
-pub struct PrepNumber {
-pub mut:
-	negative bool // 0 if positive number, 1 if negative
-	exponent int // power of 10 exponent
-	mantissa u64 // integer mantissa
-}
 /*
 
 String parser

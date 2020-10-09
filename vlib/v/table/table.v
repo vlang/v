@@ -211,7 +211,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		ts = unsafe {&t.types[ts.parent_idx]}
 	}
 	return none
 }
@@ -270,7 +270,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		ts = unsafe {&t.types[ts.parent_idx]}
 	}
 	return none
 }
@@ -294,7 +294,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return &t.types[idx]
+		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
 	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
@@ -310,7 +310,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return &t.types[idx]
+		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
@@ -618,10 +618,15 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_dec
 }
 
 pub fn (mut t Table) add_placeholder_type(name string) int {
+	mut modname := ''
+	if name.contains('.') {
+		modname = name.all_before_last('.')
+	}
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
 		source_name: name
+		mod: modname
 	}
 	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)

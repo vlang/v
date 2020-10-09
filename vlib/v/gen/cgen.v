@@ -204,6 +204,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	//
 	mut b := strings.new_builder(250000)
 	b.write(g.hashes())
+	b.writeln('\n// V comptime_defines:')
 	b.write(g.comptime_defines.str())
 	b.writeln('\n// V typedefs:')
 	b.write(g.typedefs.str())
@@ -534,7 +535,7 @@ typedef struct {
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
-				parent := &g.table.types[typ.parent_idx]
+				parent := unsafe {&g.table.types[typ.parent_idx]}
 				styp := util.no_dots(typ.name)
 				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 				parent_styp := if is_c_parent { 'struct ' + util.no_dots(parent.name[2..]) } else { util.no_dots(parent.name) }
@@ -1360,6 +1361,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			g.writeln('); // free str on re-assignment')
 		}
 	}
+	// Autofree tmp arg vars
+	first_right := assign_stmt.right[0]
+	af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
+	if af {
+		g.autofree_call_pregen(first_right as ast.CallExpr)
+	}
+	//
 	// Handle optionals. We need to declare a temp variable for them, that's why they are handled
 	// here, not in call_expr().
 	// `pos := s.index('x') or { return }`
@@ -1387,7 +1395,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// return
 		}
 	}
-	//
 	// json_test failed w/o this check
 	if return_type != table.void_type && return_type != 0 {
 		sym := g.table.get_type_symbol(return_type)
