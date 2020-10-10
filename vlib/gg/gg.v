@@ -8,6 +8,7 @@ import sokol
 import sokol.sapp
 import sokol.sgl
 import sokol.gfx
+import math
 
 // import time
 pub type FNCb = fn (x voidptr)
@@ -44,8 +45,8 @@ pub:
 	event_fn          FNEvent = voidptr(0)
 	keydown_fn        FNKeyDown = voidptr(0) // special case of event_fn
 	char_fn           FNChar = voidptr(0) // special case of event_fn
-	move_fn           FNMove= voidptr(0) // special case of event_fn
-	click_fn           FNMove= voidptr(0) // special case of event_fn
+	move_fn           FNMove = voidptr(0) // special case of event_fn
+	click_fn          FNMove = voidptr(0) // special case of event_fn
 	wait_events       bool // set this to true for UIs, to save power
 	fullscreen        bool
 	scale             f32 = 1.0 // vid needs this
@@ -105,7 +106,6 @@ fn gg_init_sokol_window(user_data voidptr) {
 	// fb_h := sapp.height()
 	// println('g.scale=$g.scale is_high_dpi=$is_high_dpi fb_w=$fb_w fb_h=$fb_h')
 	// if g.config.init_text {
-
 	// `os.is_file()` won't work on Android if the font file is embedded into the APK
 	exists := $if !android { os.is_file(g.config.font_path) } $else { true }
 	if g.config.font_path != '' && exists {
@@ -121,7 +121,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 	//
 	mut pipdesc := C.sg_pipeline_desc{}
-	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
+	unsafe {C.memset(&pipdesc, 0, sizeof(pipdesc))}
 	pipdesc.blend.enabled = true
 	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
 	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
@@ -131,7 +131,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		g.config.init_fn(g.config.user_data)
 	}
 	// Create images now that we can do that after sg is inited
-	for i in 0..g.image_cache.len {
+	for i in 0 .. g.image_cache.len {
 		g.image_cache[i].init_sokol_image()
 	}
 }
@@ -162,13 +162,13 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 				cfn(e.char_code, g.config.user_data)
 			}
 		}
-		.mouse_move{
+		.mouse_move {
 			if g.config.move_fn != voidptr(0) {
 				cfn := g.config.move_fn
 				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
 			}
 		}
-		.mouse_down{
+		.mouse_down {
 			if g.config.click_fn != voidptr(0) {
 				cfn := g.config.click_fn
 				cfn(e.mouse_x / g.scale, e.mouse_y / g.scale, g.config.user_data)
@@ -232,8 +232,8 @@ pub fn (gg &Context) run() {
 }
 
 pub fn (mut ctx Context) set_bg_color(c gx.Color) {
-	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0,
-			f32(c.b) / 255.0, f32(c.a) / 255.0)
+	ctx.clear_pass = gfx.create_clear_pass(f32(c.r) / 255.0, f32(c.g) / 255.0, f32(c.b) / 255.0,
+		f32(c.a) / 255.0)
 }
 
 // TODO: Fix alpha
@@ -284,19 +284,16 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle_line(x, y, r int, segments int, c gx.Color) {
-	
+pub fn (ctx &Context) draw_circle_line(x, y, r, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	
 	sgl.begin_line_strip()
-	for i := 0; i < segments+1; i++ {
+	for i := 0; i < segments + 1; i++ {
 		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
@@ -305,18 +302,16 @@ pub fn (ctx &Context) draw_circle_line(x, y, r int, segments int, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle(x, y, r int, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle(x, y, r, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	
 	mut theta := f32(0)
 	mut xx := f32(0)
 	mut yy := f32(0)
-	
 	sgl.begin_triangle_strip()
-	for i := 0; i < segments+1; i++ {
+	for i := 0; i < segments + 1; i++ {
 		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
 		xx = r * math.cosf(theta)
 		yy = r * math.sinf(theta)
@@ -326,70 +321,50 @@ pub fn (ctx &Context) draw_circle(x, y, r int, segments int, c gx.Color) {
 	sgl.end()
 }
 
-
-pub fn (ctx &Context) draw_arc_line(x, y, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-
+pub fn (ctx &Context) draw_arc_line(x, y, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	mut theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
-	
 	mut xx := f32(r * math.cosf(start_angle))
 	mut yy := f32(r * math.sinf(start_angle))
-	
 	sgl.begin_line_strip()
-	for i := 0; i < segments+1; i++ {
-	
+	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + x, yy + y)
-		
 		tx := -yy
 		ty := xx
-		
 		xx += tx * tan_factor
 		yy += ty * tan_factor
-		
 		xx *= rad_factor
 		yy *= rad_factor
-		
 	}
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc(x, y, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
-
+pub fn (ctx &Context) draw_arc(x, y, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-
 	mut theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
-	
 	mut xx := f32(r * math.cosf(start_angle))
 	mut yy := f32(r * math.sinf(start_angle))
-	
 	sgl.begin_triangle_strip()
-	for i := 0; i < segments+1; i++ {
-	
+	for i := 0; i < segments + 1; i++ {
 		sgl.v2f(xx + x, yy + y)
 		sgl.v2f(x, y)
-		
 		tx := -yy
 		ty := xx
-		
 		xx += tx * tan_factor
 		yy += ty * tan_factor
-		
 		xx *= rad_factor
 		yy *= rad_factor
-		
 	}
-	
 	sgl.end()
 }
 
@@ -420,7 +395,6 @@ fn abs(a f32) f32 {
 	return -a
 }
 
-
 pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
@@ -429,13 +403,11 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 		// Make the line more clear on hi dpi screens: draw a rectangle
 		mut width := abs(x2 - x)
 		mut height := abs(y2 - y)
-		if width == 0   {
+		if width == 0 {
 			width = 1
-		}
-		else if height == 0 {
+		} else if height == 0 {
 			height = 1
 		}
-
 		ctx.draw_rect(x, y, width, height, c)
 		return
 	}
