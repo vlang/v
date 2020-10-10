@@ -302,6 +302,7 @@ pub fn (ctx &Context) draw_circle_line(x, y f32, r, segments int, c gx.Color) {
 	sgl.end()
 }
 
+
 pub fn (ctx &Context) draw_circle(x, y f32, r, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
