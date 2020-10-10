@@ -122,7 +122,7 @@ fn main() {
 	str_inter()
 	match_expr()
 	reassign_str()
-	// optional_str()
+	optional_str()
 	// str_replace()
 	println('end')
 }

@@ -101,7 +101,7 @@ mut:
 	inside_return         bool
 	inside_or_block       bool
 	strs_to_free          []string // strings.Builder
-	strs_to_free0         []string // strings.Builder
+	// strs_to_free0         []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -827,13 +827,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			g.expr(node.expr)
 			if af {
-				if g.strs_to_free.len > 0 {
-					g.writeln(';\n// strs_to_free2:')
-					for s in g.strs_to_free {
-						g.writeln('string_free(&$s);')
-					}
-					g.strs_to_free = []
-				}
+				g.autofree_call_postgen()
 			}
 			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
 				g.writeln(';')
@@ -1381,8 +1375,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	mut gen_or := false
 	mut tmp_opt := ''
-	if g.pref.autofree && assign_stmt.op == .decl_assign && assign_stmt.left_types.len == 1 &&
-		assign_stmt.right[0] is ast.CallExpr {
+	is_optional := g.pref.autofree && assign_stmt.op == .decl_assign && assign_stmt.left_types.len ==
+		1 && assign_stmt.right[0] is ast.CallExpr
+	if is_optional {
+		// g.write('/* optional assignment */')
 		call_expr := assign_stmt.right[0] as ast.CallExpr
 		if call_expr.or_block.kind != .absent {
 			styp := g.typ(call_expr.return_type.set_flag(.optional))
@@ -1392,6 +1388,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			gen_or = true
 			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
 			g.writeln('/*=============ret*/')
+			if af && is_optional {
+				g.autofree_call_postgen()
+			}
 			// return
 		}
 	}
@@ -1401,7 +1400,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		if sym.kind == .multi_return {
 			// multi return
 			// TODO Handle in if_expr
-			is_optional := return_type.has_flag(.optional)
+			is_opt := return_type.has_flag(.optional)
 			mr_var_name := 'mr_$assign_stmt.pos.pos'
 			mr_styp := g.typ(return_type)
 			g.write('$mr_styp $mr_var_name = ')
@@ -1423,7 +1422,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('$styp ')
 				}
 				g.expr(lx)
-				if is_optional {
+				if is_opt {
 					mr_base_styp := g.base_type(return_type)
 					g.writeln(' = (*($mr_base_styp*)${mr_var_name}.data).arg$i;')
 				} else {
