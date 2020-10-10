@@ -2228,7 +2228,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SelectorExpr {
 			if node.expr is ast.TypeOf as left {
-				// typeof(expr).name
 				g.typeof_name(left)
 				return
 			}
