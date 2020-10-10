@@ -3666,18 +3666,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	if node.index !is ast.RangeExpr { // [1]
-		index_type := c.expr(node.index)
-		c.check_index_type(typ_sym, index_type, node.pos)
-		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
-			c.error('non-string map index (map type `$typ_sym.source_name`)', node.pos)
-		}
-		value_type := c.table.value_type(typ)
-		if value_type != table.void_type {
-			return value_type
-		}
-	} else { // [1..2]
-		range := node.index as ast.RangeExpr
+	if node.index is ast.RangeExpr as range { // [1..2]
 		if range.has_low {
 			index_type := c.expr(range.low)
 			c.check_index_type(typ_sym, index_type, node.pos)
@@ -3692,6 +3681,17 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			elem_type := c.table.value_type(typ)
 			idx := c.table.find_or_register_array(elem_type, 1, c.mod)
 			return table.new_type(idx)
+		}
+		return typ.set_nr_muls(0)
+	} else { // [1]
+		index_type := c.expr(node.index)
+		c.check_index_type(typ_sym, index_type, node.pos)
+		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
+			c.error('non-string map index (map type `$typ_sym.source_name`)', node.pos)
+		}
+		value_type := c.table.value_type(typ)
+		if value_type != table.void_type {
+			return value_type
 		}
 	}
 	return typ
