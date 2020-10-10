@@ -25,15 +25,14 @@ Anything you can do in other languages, you can do in V.
 * [Functions](#functions)
     * [Returning multiple values](#returning-multiple-values)
     * [Variable number of arguments](#variable-number-of-arguments)
+* [Symbol visibility](#symbol-visibility)
 * [Variables](#variables)
 * [Types](#types)
     * [Strings](#strings)
     * [Numbers](#numbers)
     * [Arrays](#arrays)
     * [Maps](#maps)
-* [Modules](#modules)
-    * [Symbol visibility](#symbol-visibility)
-    * [Module imports](#module-imports)
+* [Module imports](#module-imports)
 * [Statements & expressions](#statements--expressions)
     * [If](#if)
     * [In operator](#in-operator)
@@ -55,7 +54,7 @@ Anything you can do in other languages, you can do in V.
     * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
 * [References](#references)
-* [Modules 2](#modules-2)
+* [Modules](#modules)
 * [Constants](#constants)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
@@ -201,6 +200,23 @@ println(sum())    // Output: 0
 println(sum(1))   //         1
 println(sum(2,3)) //         5
 ```
+
+## Symbol visibility
+
+```v
+pub fn public_function() {
+}
+
+fn private_function() {
+}
+```
+
+Functions are private (not exported) by default.
+To allow other modules to use them, prepend `pub`. The same applies
+to constants and types.
+
+Note: `pub` can only be used from a named module.
+For information about creating a module, see [Modules](#modules).
 
 ## Variables
 
@@ -591,29 +607,9 @@ numbers := {
 }
 ```
 
-## Modules
+## Module imports
 
-Simple programs don't need to have a module name - it defaults to 'main'.
-Every file in the root of a folder is part of the same module.
-For information about creating a named module, see [Modules 2](#modules-2).
-
-### Symbol visibility
-
-```v
-pub fn public_function() {
-}
-
-fn private_function() {
-}
-```
-
-Functions are private (not exported) by default.
-To allow other modules to use them, prepend `pub`. The same applies
-to constants and types. 
-
-Note: `pub` can only be used from a named module.
-
-### Module imports
+For information about creating a module, see [Modules](#modules).
 
 Modules can be imported using the `import` keyword:
 
@@ -635,7 +631,7 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
-#### Specific imports
+### Selective imports
 
 You can also import specific functions and types from modules directly:
 
@@ -657,7 +653,7 @@ os := user_os()
 println('Your OS is ${os}.')
 ```
 
-#### Module import aliasing
+### Module import aliasing
 
 Any imported module name can be aliased using the `as` keyword:
 
@@ -1405,7 +1401,10 @@ fn panic(message string)
 fn print_backtrace()
 ```
 
-## Modules 2
+## Modules
+
+Every file in the root of a folder is part of the same module.
+Simple programs don't need to have a module name - it defaults to 'main'.
 
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
