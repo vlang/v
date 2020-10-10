@@ -284,7 +284,113 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle(x, y, r f32, c gx.Color) {
+pub fn (ctx &Context) draw_circle_line(x, y, r int, segments int, c gx.Color) {
+	
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	
+	sgl.begin_line_strip()
+	for i := 0; i < segments+1; i++ {
+		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + x, yy + y)
+	}
+	sgl.end()
+}
+
+pub fn (ctx &Context) draw_circle(x, y, r int, segments int, c gx.Color) {
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+	
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	
+	sgl.begin_triangle_strip()
+	for i := 0; i < segments+1; i++ {
+		theta = 2.0 * f32(math.pi) * f32(i) / f32(segments)
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + x, yy + y)
+		sgl.v2f(x, y)
+	}
+	sgl.end()
+}
+
+
+pub fn (ctx &Context) draw_arc_line(x, y, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	mut theta := f32(arc_angle / f32(segments))
+	tan_factor := math.tanf(theta)
+	rad_factor := math.cosf(theta)
+	
+	mut xx := f32(r * math.cosf(start_angle))
+	mut yy := f32(r * math.sinf(start_angle))
+	
+	sgl.begin_line_strip()
+	for i := 0; i < segments+1; i++ {
+	
+		sgl.v2f(xx + x, yy + y)
+		
+		tx := -yy
+		ty := xx
+		
+		xx += tx * tan_factor
+		yy += ty * tan_factor
+		
+		xx *= rad_factor
+		yy *= rad_factor
+		
+	}
+	sgl.end()
+}
+
+pub fn (ctx &Context) draw_arc(x, y, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
+
+	if c.a != 255 {
+		sgl.load_pipeline(ctx.timage_pip)
+	}
+	sgl.c4b(c.r, c.g, c.b, c.a)
+
+	mut theta := f32(arc_angle / f32(segments))
+	tan_factor := math.tanf(theta)
+	rad_factor := math.cosf(theta)
+	
+	mut xx := f32(r * math.cosf(start_angle))
+	mut yy := f32(r * math.sinf(start_angle))
+	
+	sgl.begin_triangle_strip()
+	for i := 0; i < segments+1; i++ {
+	
+		sgl.v2f(xx + x, yy + y)
+		sgl.v2f(x, y)
+		
+		tx := -yy
+		ty := xx
+		
+		xx += tx * tan_factor
+		yy += ty * tan_factor
+		
+		xx *= rad_factor
+		yy *= rad_factor
+		
+	}
+	
+	sgl.end()
 }
 
 pub fn (gg &Context) begin() {
