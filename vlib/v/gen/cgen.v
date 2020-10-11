@@ -629,7 +629,7 @@ pub fn (mut g Gen) write_multi_return_type_declaration(mut sym table.TypeSymbol)
 
 pub fn (mut g Gen) write_multi_return_types() {
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
-	for idx in 0..g.table.types.len {
+	for idx in 0 .. g.table.types.len {
 		if g.table.types[idx].kind != .multi_return {
 			continue
 		}

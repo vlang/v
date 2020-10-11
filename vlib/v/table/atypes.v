@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | Aggregate
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -737,7 +737,7 @@ pub struct Aggregate {
 mut:
 	fields []Field // used for faster lookup inside the module
 pub:
-	types []Type
+	types  []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -762,10 +762,7 @@ pub mut:
 fn (f &Field) equals(o &Field) bool {
 	// TODO: should all of those be checked ?
 	return f.name == o.name &&
-		f.typ == o.typ &&
-		f.is_pub == o.is_pub &&
-		f.is_mut == o.is_mut &&
-		f.is_global == o.is_global
+		f.typ == o.typ && f.is_pub == o.is_pub && f.is_mut == o.is_mut && f.is_global == o.is_global
 }
 
 pub struct Array {
