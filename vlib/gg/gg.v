@@ -284,7 +284,7 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle_line(x, y, r, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_line(x, y f32, r, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -302,7 +302,8 @@ pub fn (ctx &Context) draw_circle_line(x, y, r, segments int, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle(x, y, r, segments int, c gx.Color) {
+
+pub fn (ctx &Context) draw_circle(x, y f32, r, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -321,12 +322,12 @@ pub fn (ctx &Context) draw_circle(x, y, r, segments int, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc_line(x, y, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_line(x, y f32, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	mut theta := f32(arc_angle / f32(segments))
+	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
 	mut xx := f32(r * math.cosf(start_angle))
@@ -344,12 +345,12 @@ pub fn (ctx &Context) draw_arc_line(x, y, r int, start_angle, arc_angle f32, seg
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc(x, y, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc(x, y f32, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
 	sgl.c4b(c.r, c.g, c.b, c.a)
-	mut theta := f32(arc_angle / f32(segments))
+	theta := f32(arc_angle / f32(segments))
 	tan_factor := math.tanf(theta)
 	rad_factor := math.cosf(theta)
 	mut xx := f32(r * math.cosf(start_angle))
