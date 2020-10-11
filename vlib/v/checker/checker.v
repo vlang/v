@@ -373,11 +373,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 		if field.has_default_expr {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
-			if !c.check_types(field_expr_type, field.typ) {
-				field_expr_type_sym := c.table.get_type_symbol(field_expr_type)
-				field_type_sym := c.table.get_type_symbol(field.typ)
-				c.error('default expression for field `$field.name` ' +
-					'has type `$field_expr_type_sym.source_name`, but should be `$field_type_sym.source_name`',
+			c.check_expected(field_expr_type, field.typ) or {
+				c.error('incompatible initializer for field `$field.name`: $err',
 					field.default_expr.position())
 			}
 			// Check for unnecessary inits like ` = 0` and ` = ''`
@@ -507,11 +504,11 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				c.expected_type = info_field.typ
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
-				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				if !c.check_types(expr_type, info_field.typ) && expr_type != table.void_type &&
-					expr_type_sym.kind != .placeholder {
-					c.error('cannot assign $expr_type_sym.kind `$expr_type_sym.source_name` as `$field_type_sym.source_name` for field `$info_field.name`',
-						field.pos)
+				if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
+					c.check_expected(expr_type, info_field.typ) or {
+						c.error('cannot assign to field `$info_field.name`: $err',
+							field.pos)
+					}
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
 					!expr_type.is_number() {
@@ -566,7 +563,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	infix_expr.right_type = right_type
 	mut right := c.table.get_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
-	left_default := c.table.get_type_symbol(c.table.mktyp(left_type))
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
 	if (left_type.is_ptr() || left.is_pointer()) &&
@@ -584,23 +580,22 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			match right.kind {
 				.array {
 					elem_type := right.array_info().elem_type
-					right_sym := c.table.get_type_symbol(c.table.mktyp(right.array_info().elem_type))
 					// if left_default.kind != right_sym.kind {
-					if !c.check_types(left_type, elem_type) {
-						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the array item type (`$right_sym.source_name`)',
+					c.check_expected(left_type, elem_type) or {
+						c.error('left operand to `$infix_expr.op` does not match the array element type: $err',
 							infix_expr.pos)
 					}
 				}
 				.map {
-					key_sym := c.table.get_type_symbol(c.table.mktyp(right.map_info().key_type))
-					if left_default.kind != key_sym.kind {
-						c.error('the data type on the left of `$infix_expr.op.str()` (`$left.name`) does not match the map key type `$key_sym.source_name`',
+					elem_type := right.map_info().key_type
+					c.check_expected(left_type, elem_type) or {
+						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
 							infix_expr.pos)
 					}
 				}
 				.string {
-					if left.kind != .string {
-						c.error('the data type on the left of `$infix_expr.op.str()` must be a string (is `$left.name`)',
+					c.check_expected(left_type, right_type) or {
+						c.error('left operand to `$infix_expr.op` does not match: $err',
 							infix_expr.pos)
 					}
 				}
@@ -1950,7 +1945,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					if is_decl {
 						c.check_valid_snake_case(left.name, 'variable name', left.pos)
 					}
-					mut ident_var_info := left.var_info()
+					mut ident_var_info := left.info as ast.IdentVar
 					if ident_var_info.share == .shared_t {
 						left_type = left_type.set_flag(.shared_f)
 					}
@@ -1995,6 +1990,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		if (left_type.is_ptr() || left_sym.is_pointer()) &&
 			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
+			// ptr op=
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
 		if c.pref.translated {
@@ -2054,10 +2050,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		// Dual sides check (compatibility check)
-		if !is_blank_ident && !c.check_types(right_type_unwrapped, left_type_unwrapped) &&
-			right_sym.kind != .placeholder {
-			c.error('cannot assign `$right_sym.source_name` to `$left.str()` of type `$left_sym.source_name`',
-				right.position())
+		if !is_blank_ident && right_sym.kind != .placeholder {
+			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+				c.error('cannot assign to `$left`: $err', right.position())
+			}
 		}
 	}
 }

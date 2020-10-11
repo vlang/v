@@ -278,6 +278,13 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 	return true
 }
 
+pub fn (mut c Checker) check_expected(got table.Type, expected table.Type)? {
+	if c.check_types(got, expected) {return}
+	exps := c.table.type_to_str(expected)
+	gots := c.table.type_to_str(got)
+	return error('expected `$exps`, not `$gots`')
+}
+
 pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
