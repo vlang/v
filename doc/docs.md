@@ -215,6 +215,9 @@ Functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
 
+Note: `pub` can only be used from a named module.
+For information about creating a module, see [Modules](#modules).
+
 ## Variables
 
 ```v
@@ -628,28 +631,48 @@ numbers := {
 
 ## Module imports
 
-For information about creating a module, see [Modules](#modules)
+For information about creating a module, see [Modules](#modules).
 
-### Importing a module
-
-Modules can be imported using the `import` keyword.
+Modules can be imported using the `import` keyword:
 
 ```v
 import os
 
 fn main() {
-    name := os.input('Enter your name:')
+    // read text from stdin
+    name := os.input('Enter your name: ')
     println('Hello, $name!')
 }
 ```
+This program can use any public definitions from the `os` module, such 
+as the `input` function. See the [standard library](https://modules.vlang.io/)
+documentation for a list of common modules and their public symbols.
 
-When using constants from other modules, the module name must be prefixed. However,
-you can import functions and types from other modules directly:
+By default, you have to specify the module prefix every time you call an external function.
+This may seem verbose at first, but it makes code much more readable
+and easier to understand - it's always clear which function from
+which module is being called. This is especially useful in large code bases.
+
+### Selective imports
+
+You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
+```
+Note: This is not allowed for constants - they must always be prefixed.
+
+You can import several specific symbols at once:
+
+```v
+import os { input, user_os }
+
+name := input('Enter your name: ')
+println('Name: $name')
+os := user_os()
+println('Your OS is ${os}.')
 ```
 
 ### Module import aliasing
@@ -1402,6 +1425,9 @@ fn print_backtrace()
 
 ## Modules
 
+Every file in the root of a folder is part of the same module.
+Simple programs don't need to have a module name - it defaults to 'main'.
+
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
 To create a new module, create a directory with your module's name containing
@@ -1432,18 +1458,11 @@ fn main() {
 }
 ```
 
-Note that you have to specify the module prefix every time you call an external function.
-This may seem verbose at first, but it makes code much more readable
-and easier to understand - it's always clear which function from
-which module is being called. This is especially useful in large code bases.
-
 * Module names should be short, under 10 characters.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
-
-See also: [Module imports](#module-imports).
 
 ### `init` functions
 
