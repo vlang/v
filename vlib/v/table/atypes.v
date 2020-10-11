@@ -801,7 +801,9 @@ pub:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
-	if sym.kind == .multi_return {
+	if sym.kind == .function {
+		res = sym.source_name
+	} else if sym.kind == .multi_return {
 		res = '('
 		if t.has_flag(.optional) {
 			res = '?' + res
