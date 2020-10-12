@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | Aggregate
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -40,6 +40,7 @@ pub mut:
 	methods     []Fn
 	mod         string
 	is_public   bool
+	is_written  bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
 }
 
 // max of 8
@@ -736,7 +737,7 @@ pub struct Aggregate {
 mut:
 	fields []Field // used for faster lookup inside the module
 pub:
-	types []Type
+	types  []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -761,10 +762,7 @@ pub mut:
 fn (f &Field) equals(o &Field) bool {
 	// TODO: should all of those be checked ?
 	return f.name == o.name &&
-		f.typ == o.typ &&
-		f.is_pub == o.is_pub &&
-		f.is_mut == o.is_mut &&
-		f.is_global == o.is_global
+		f.typ == o.typ && f.is_pub == o.is_pub && f.is_mut == o.is_mut && f.is_global == o.is_global
 }
 
 pub struct Array {
@@ -799,70 +797,82 @@ pub:
 	variants []Type
 }
 
-// TODO simplify this method
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
-	mut res := sym.name
-	if sym.kind == .multi_return {
-		res = '('
-		if t.has_flag(.optional) {
-			res = '?' + res
+	mut res := sym.source_name
+	match sym.kind {
+		.any_int, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_float, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+			// primitive types
+			res = sym.kind.str()
 		}
-		mr_info := sym.info as MultiReturn
-		for i, typ in mr_info.types {
-			res += table.type_to_str(typ)
-			if i < mr_info.types.len - 1 {
-				res += ', '
+		.array {
+			info := sym.info as Array
+			elem_str := table.type_to_str(info.elem_type)
+			res = '[]$elem_str'
+		}
+		.array_fixed {
+			info := sym.info as ArrayFixed
+			elem_str := table.type_to_str(info.elem_type)
+			res = '[$info.size]$elem_str'
+		}
+		.chan {
+			// TODO currently the `chan` struct in builtin is not considered a struct but a chan
+			if sym.mod != 'builtin' && sym.name != 'chan' {
+				info := sym.info as Chan
+				mut elem_type := info.elem_type
+				mut mut_str := ''
+				if info.is_mut {
+					mut_str = 'mut '
+					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
+				}
+				elem_str := table.type_to_str(elem_type)
+				res = 'chan $mut_str$elem_str'
 			}
 		}
-		res += ')'
-		return res
-	}
-	if sym.kind == .array || 'array_' in res {
-		res = res.replace('array_', '[]')
-	}
-	mut map_start := ''
-	if sym.kind == .map || 'map_string_' in res {
-		res = res.replace('map_string_', 'map[string]')
-		map_start = 'map[string]'
-	}
-	if sym.kind == .chan || 'chan_' in res {
-		res = res.replace('chan_', 'chan ')
-	}
-	// mod.submod.submod2.Type => submod2.Type
-	mut parts := res.split(' ')
-	for i, _ in parts {
-		if parts[i].contains('.') {
-			vals := parts[i].split('.')
-			if vals.len > 2 {
-				parts[i] = vals[vals.len - 2] + '.' + vals[vals.len - 1]
+		.function {
+			// do nothing, source_name is sufficient
+		}
+		.map {
+			info := sym.info as Map
+			key_str := table.type_to_str(info.key_type)
+			val_str := table.type_to_str(info.value_type)
+			res = 'map[$key_str]$val_str'
+		}
+		.multi_return {
+			res = '('
+			info := sym.info as MultiReturn
+			for i, typ in info.types {
+				if i > 0 {
+					res += ', '
+				}
+				res += table.type_to_str(typ)
 			}
-			if parts[i].starts_with(table.cmod_prefix) ||
-				(sym.kind == .array && parts[i].starts_with('[]' + table.cmod_prefix)) {
-				parts[i] = parts[i].replace_once(table.cmod_prefix, '')
+			res += ')'
+			res = res
+		}
+		.void {
+			if t.has_flag(.optional) {
+				return '?'
 			}
-			if sym.kind == .array && !parts[i].starts_with('[]') {
-				parts[i] = '[]' + parts[i]
-			}
-			if sym.kind == .map && !parts[i].starts_with('map') {
-				parts[i] = map_start + parts[i]
+			return 'void'
+		}
+		else {
+			// types defined by the user
+			// mod.submod.submod2.Type => submod2.Type
+			parts := res.split('.')
+			res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
+			// cur_mod.Type => Type
+			if res.starts_with(table.cmod_prefix) {
+				res = res.replace_once(table.cmod_prefix, '')
 			}
 		}
-		if parts[i].contains('_mut') {
-			parts[i] = 'mut ' + parts[i].replace('_mut', '')
-		}
-		nr_muls := t.nr_muls()
-		if nr_muls > 0 {
-			parts[i] = strings.repeat(`&`, nr_muls) + parts[i]
-		}
 	}
-	res = parts.join(' ')
+	nr_muls := t.nr_muls()
+	if nr_muls > 0 {
+		res = strings.repeat(`&`, nr_muls) + res
+	}
 	if t.has_flag(.optional) {
-		if sym.kind == .void {
-			res = '?'
-		} else {
-			res = '?' + res
-		}
+		res = '?' + res
 	}
 	return res
 }

@@ -571,29 +571,7 @@ static inline void __${styp}_pushval($styp ch, $el_stype val) {
 				g.type_definitions.writeln('typedef map $styp;')
 			}
 			.function {
-				info := typ.info as table.FnType
-				func := info.func
-				sym := g.table.get_type_symbol(func.return_type)
-				is_multi := sym.kind == .multi_return
-				is_fn_sig := func.name == ''
-				not_anon := !info.is_anon
-				if !info.has_decl && !is_multi && (not_anon || is_fn_sig) {
-					fn_name := if func.language == .c {
-						util.no_dots(func.name)
-					} else if info.is_anon {
-						typ.name
-					} else {
-						c_name(func.name)
-					}
-					g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
-					for i, param in func.params {
-						g.type_definitions.write(g.typ(param.typ))
-						if i < func.params.len - 1 {
-							g.type_definitions.write(',')
-						}
-					}
-					g.type_definitions.writeln(');')
-				}
+				g.write_fn_typesymbol_declaration(typ)
 			}
 			else {
 				continue
@@ -602,31 +580,66 @@ static inline void __${styp}_pushval($styp ch, $el_stype val) {
 	}
 }
 
-pub fn (mut g Gen) write_multi_return_types() {
-	g.type_definitions.writeln('// multi return structs')
-	for typ in g.table.types {
-		// sym := g.table.get_type_symbol(typ)
-		if typ.kind != .multi_return {
-			continue
+pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
+	info := sym.info as table.FnType
+	func := info.func
+	mut retsym := g.table.get_type_symbol(func.return_type)
+	is_multi := retsym.kind == .multi_return
+	is_fn_sig := func.name == ''
+	not_anon := !info.is_anon
+	if is_multi {
+		g.write_multi_return_type_declaration(mut retsym)
+	}
+	if !info.has_decl && (not_anon || is_fn_sig) {
+		fn_name := if func.language == .c {
+			util.no_dots(func.name)
+		} else if info.is_anon {
+			sym.name
+		} else {
+			c_name(func.name)
 		}
-		name := util.no_dots(typ.name)
-		info := typ.info as table.MultiReturn
-		g.type_definitions.writeln('typedef struct {')
-		// TODO copy pasta StructDecl
-		// for field in struct_info.fields {
-		for i, mr_typ in info.types {
-			type_name := g.typ(mr_typ)
-			g.type_definitions.writeln('\t$type_name arg$i;')
+		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+		for i, param in func.params {
+			g.type_definitions.write(g.typ(param.typ))
+			if i < func.params.len - 1 {
+				g.type_definitions.write(',')
+			}
 		}
-		g.type_definitions.writeln('} $name;\n')
-		// g.typedefs.writeln('typedef struct $name $name;')
+		g.type_definitions.writeln(');')
 	}
 }
 
-pub fn (mut g Gen) write_variadic_types() {
-	if g.variadic_args.len > 0 {
-		g.type_definitions.writeln('// variadic structs')
+pub fn (mut g Gen) write_multi_return_type_declaration(mut sym table.TypeSymbol) {
+	if sym.is_written {
+		return
 	}
+	name := util.no_dots(sym.name)
+	info := sym.info as table.MultiReturn
+	g.type_definitions.writeln('typedef struct {')
+	// TODO copy pasta StructDecl
+	// for field in struct_info.fields {
+	for i, mr_typ in info.types {
+		type_name := g.typ(mr_typ)
+		g.type_definitions.writeln('\t$type_name arg$i;')
+	}
+	g.type_definitions.writeln('} $name;\n')
+	// g.typedefs.writeln('typedef struct $name $name;')
+	sym.is_written = true
+}
+
+pub fn (mut g Gen) write_multi_return_types() {
+	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
+	for idx in 0 .. g.table.types.len {
+		if g.table.types[idx].kind != .multi_return {
+			continue
+		}
+		g.write_multi_return_type_declaration(mut g.table.types[idx])
+	}
+	g.type_definitions.writeln('// END_multi_return_structs\n')
+}
+
+pub fn (mut g Gen) write_variadic_types() {
+	g.type_definitions.writeln('\n//BEGIN_variadic_structs')
 	for type_str, arg_len in g.variadic_args {
 		typ := table.Type(type_str.int())
 		type_name := g.typ(typ)
@@ -637,6 +650,7 @@ pub fn (mut g Gen) write_variadic_types() {
 		g.type_definitions.writeln('};\n')
 		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
 	}
+	g.type_definitions.writeln('// END_variadic_structs\n')
 }
 
 pub fn (mut g Gen) write(s string) {
