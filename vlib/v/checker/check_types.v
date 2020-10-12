@@ -376,15 +376,26 @@ pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
 pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
-	for i, arg in f.params {
-		if arg.type_source_name == gt_name {
-			typ = call_expr.args[i].typ
+	for i, param in f.params {
+		arg := call_expr.args[i]
+		if param.type_source_name == gt_name {
+			typ = arg.typ
+			break
+		}
+		arg_sym := c.table.get_type_symbol(arg.typ)
+		if arg_sym.kind == .array && param.type_source_name == '[]$gt_name' {
+			info := arg_sym.info as table.Array
+			typ = info.elem_type
 			break
 		}
 	}
 	if typ == table.void_type {
 		c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
 	} else {
+		if c.pref.is_verbose {
+			s := c.table.type_to_str(typ)
+			println('inferred `$f.name<$s>`')
+		}
 		c.table.register_fn_gen_type(f.name, typ)
 		call_expr.generic_type = typ
 	}
