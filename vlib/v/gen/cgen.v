@@ -2262,10 +2262,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// struct embedding
 			if sym.kind == .struct_ {
 				sym_info := sym.info as table.Struct
-				field := sym_info.fields.filter(it.name == node.field_name)[0]
-				if field.embed_alias_for != '' {
-					g.write('.$field.embed_alias_for')
-				}
+				x := sym_info.fields.filter(it.name == node.field_name)
+				if x.len > 0 {
+					field := x[0]
+					if field.embed_alias_for != '' {
+						g.write('.$field.embed_alias_for')
+					}
+                }
 			}
 			if node.expr_type.is_ptr() || sym.kind == .chan {
 				g.write('->')
