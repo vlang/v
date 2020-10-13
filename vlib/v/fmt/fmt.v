@@ -1486,13 +1486,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		if branch.stmts.len == 0 {
 			continue
 		}
-		stmt := branch.stmts[0]
-		if stmt is ast.ExprStmt {
-			// If expressions inside match branches can't be one a single line
-			if !expr_is_single_line(stmt.expr) {
-				single_line = false
-				break
-			}
+		if !stmt_is_single_line(branch.stmts[0]) {
+			single_line = false
+			break
 		}
 	}
 	for branch in it.branches {
@@ -1579,6 +1575,15 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
 		else {}
+	}
+}
+
+fn stmt_is_single_line(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
+		ast.Return { return true }
+		ast.AssignStmt { return true }
+		else { return false }
 	}
 }
 
