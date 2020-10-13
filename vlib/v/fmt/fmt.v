@@ -38,7 +38,6 @@ pub mut:
 	file              ast.File
 	did_imports       bool
 	is_assign         bool
-	is_inside_interp  bool
 	auto_imports      []string // automatically inserted imports that the user forgot to specify
 	import_pos        int // position of the imports in the resulting string for later autoimports insertion
 	used_imports      []string // to remove unused imports
@@ -1011,7 +1010,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			} else {
 				f.write("'")
 			}
-			f.is_inside_interp = true
 			for i, val in node.vals {
 				f.write(val)
 				if i >= node.exprs.len {
@@ -1028,7 +1026,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr(node.exprs[i])
 				}
 			}
-			f.is_inside_interp = false
 			if contains_single_quote {
 				f.write('"')
 			} else {
@@ -1093,11 +1090,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
-			if f.is_inside_interp {
-				f.write(',')
-			} else {
-				f.write(', ')
-			}
+			f.write(', ')
 		}
 	}
 }
@@ -1258,73 +1251,67 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 }
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
-	if f.is_inside_interp {
-		f.expr(node.left)
-		f.write('$node.op.str()')
-		f.expr(node.right)
-	} else {
-		buffering_save := f.buffering
-		if !f.buffering {
-			f.out_save = f.out
-			f.out = strings.new_builder(60)
-			f.buffering = true
-		}
-		f.expr(node.left)
-		is_one_val_array_init := node.op in [.key_in, .not_in] &&
-			node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
-		if is_one_val_array_init {
-			// `var in [val]` => `var == val`
-			f.write(if node.op == .key_in {
-				' == '
-			} else {
-				' != '
-			})
-		} else {
-			f.write(' $node.op.str() ')
-		}
-		f.expr_bufs << f.out.str()
-		mut penalty := 3
-		match node.left as left {
-			ast.InfixExpr {
-				if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
-					penalty--
-				}
-			}
-			ast.ParExpr {
-				penalty = 1
-			}
-			else {}
-		}
-		match node.right as right {
-			ast.InfixExpr { penalty-- }
-			ast.ParExpr { penalty = 1 }
-			else {}
-		}
-		f.penalties << penalty
-		// combine parentheses level with operator precedence to form effective precedence
-		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+	buffering_save := f.buffering
+	if !f.buffering {
+		f.out_save = f.out
 		f.out = strings.new_builder(60)
 		f.buffering = true
-		if is_one_val_array_init {
-			// `var in [val]` => `var == val`
-			f.expr((node.right as ast.ArrayInit).exprs[0])
+	}
+	f.expr(node.left)
+	is_one_val_array_init := node.op in [.key_in, .not_in] &&
+		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		f.write(if node.op == .key_in {
+			' == '
 		} else {
-			f.expr(node.right)
-		}
-		if !buffering_save && f.buffering { // now decide if and where to break
-			f.expr_bufs << f.out.str()
-			f.out = f.out_save
-			f.buffering = false
-			f.adjust_complete_line()
-			for i, p in f.penalties {
-				f.write(f.expr_bufs[i])
-				f.wrap_long_line(p, true)
+			' != '
+		})
+	} else {
+		f.write(' $node.op.str() ')
+	}
+	f.expr_bufs << f.out.str()
+	mut penalty := 3
+	match node.left as left {
+		ast.InfixExpr {
+			if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
+				penalty--
 			}
-			f.write(f.expr_bufs[f.expr_bufs.len - 1])
-			f.expr_bufs = []string{}
-			f.penalties = []int{}
-			f.precedences = []int{}
 		}
+		ast.ParExpr {
+			penalty = 1
+		}
+		else {}
+	}
+	match node.right as right {
+		ast.InfixExpr { penalty-- }
+		ast.ParExpr { penalty = 1 }
+		else {}
+	}
+	f.penalties << penalty
+	// combine parentheses level with operator precedence to form effective precedence
+	f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+	f.out = strings.new_builder(60)
+	f.buffering = true
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else {
+		f.expr(node.right)
+	}
+	if !buffering_save && f.buffering { // now decide if and where to break
+		f.expr_bufs << f.out.str()
+		f.out = f.out_save
+		f.buffering = false
+		f.adjust_complete_line()
+		for i, p in f.penalties {
+			f.write(f.expr_bufs[i])
+			f.wrap_long_line(p, true)
+		}
+		f.write(f.expr_bufs[f.expr_bufs.len - 1])
+		f.expr_bufs = []string{}
+		f.penalties = []int{}
+		f.precedences = []int{}
 	}
 }
 
