@@ -1,5 +1,13 @@
 type IoS = int | string
 
+fn sum() {
+	match IoS(1) {
+		byte {
+			println('not cool')
+		}
+	}
+}
+
 interface Animal {
 	speak()
 }
@@ -10,12 +18,7 @@ fn (d Dog) speak() {}
 
 struct Cat {}
 
-fn main() {
-	match IoS(1) {
-		byte {
-			println('not cool')
-		}
-	}
+fn iface() {
 	a := Animal(Dog{})
 	match a {
 		Cat {

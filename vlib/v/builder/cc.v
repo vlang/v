@@ -155,7 +155,7 @@ fn (mut v Builder) cc() {
 	// '-Werror',
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
-	mut args := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
+	mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
 		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
 	if v.pref.os == .ios {
 		args << '-framework Foundation'
@@ -448,7 +448,9 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	str_args := args.join(' ') + ' ' + linker_flags.join(' ')
+	env_cflags := os.getenv('CFLAGS')
+	env_ldflags := os.getenv('LDFLAGS')
+	str_args := env_cflags + ' ' + args.join(' ') + ' ' + linker_flags.join(' ') + ' ' + env_ldflags
 	if v.pref.is_verbose {
 		println('cc args=$str_args')
 		println(args)

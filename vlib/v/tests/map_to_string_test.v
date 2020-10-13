@@ -31,9 +31,9 @@ fn test_interpolation_map_to_string() {
 	e['2'] = Test{true, 1, 'def'}
 	e['3'] = Test{false, 2, 'ghi'}
 	s := '$e'
-	assert s.contains("{'1': Test {")
+	assert s.contains("{'1': Test{")
 	assert s.contains('a: true')
 	assert s.contains("y: 'abc'")
-	assert s.contains("}, '2': Test {")
+	assert s.contains("}, '2': Test{")
 	assert s.contains("y: 'def'")
 }

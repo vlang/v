@@ -152,13 +152,16 @@ pub fn (mut p Parser) parse_type() table.Type {
 	if p.tok.kind == .mul {
 		p.error('use `&Type` instead of `*Type` when declaring references')
 	}
+	mut nr_amps := 0
 	// &Type
 	for p.tok.kind == .amp {
+		nr_amps++
 		nr_muls++
 		p.next()
 	}
 	language := p.parse_language()
 	mut typ := table.void_type
+	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0, true)
@@ -177,6 +180,11 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
+		if is_array && nr_amps > 0 {
+			p.error('V arrays are already references behind the scenes,
+there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
+If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
+		}
 	}
 	return typ
 }
@@ -205,7 +213,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		}
 	} else if p.expr_mod != '' {
 		name = p.expr_mod + '.' + name
-	} else if p.mod != 'builtin' && name !in p.table.type_idxs && name.len > 1 {
+	} else if p.mod != 'builtin' && name.len > 1 && name !in p.table.type_idxs {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
@@ -325,6 +333,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
 		source_name: name
+		mod: p.mod
 		kind: .any
 		is_public: true
 	})
@@ -363,6 +372,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
+			mod: p.mod
 			info: table.GenericStructInst{
 				parent_idx: p.table.type_idxs[name]
 				generic_types: generic_types

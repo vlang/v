@@ -12,8 +12,8 @@ and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
 
-Despite being simple, V gives the developer a lot of power. Anything you can do in other languages,
-you can do in V.
+Despite being simple, V gives the developer a lot of power.
+Anything you can do in other languages, you can do in V.
 
 ## Table of Contents
 
@@ -105,32 +105,32 @@ fn main() {
     println('hello world')
 }
 ```
-Save that snippet into a file `hello.v` . Now do: `v run hello.v` .
+
+Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
 > That is assuming you have symlinked your V with `v symlink`, as described
 [here](https://github.com/vlang/v/blob/master/README.md#symlinking).
-If you have not yet, you have to type the path to V manually.
+If you haven't yet, you have to type the path to V manually.
 
-Congratulations - you just wrote your first V program, and executed it!
+Congratulations - you just wrote and executed your first V program!
 
-> You can compile a program without execution with `v hello.v`.
+You can compile a program without execution with `v hello.v`.
 See `v help` for all supported commands.
 
-In the above example, you can see that functions are declared with `fn`.
-The return type goes after the function name. In this case `main` doesn't
-return anything, so the return type can be omitted.
+From the example above, you can see that functions are declared with the `fn` keyword.
+The return type is specified after the function name.
+In this case `main` doesn't return anything, so the return type can be omitted.
 
-As in many other languages (such as C, Go and Rust), `main` is an entry point.
+As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
 
-`println` is one of the few built-in functions. It prints the value passed to it
-to standard output.
+`println` is one of the few built-in functions.
+It prints the value passed to it to standard output.
 
 `fn main()` declaration can be skipped in one file programs.
-This is useful when writing small programs, "scripts", or just learning
-the language. For brevity, `fn main()` will be skipped in this
-tutorial.
+This is useful when writing small programs, "scripts", or just learning the language.
+For brevity, `fn main()` will be skipped in this tutorial.
 
-This means that a "hello world" program can be as simple as
+This means that a "hello world" program in V is as simple as
 
 ```v
 println('hello world')
@@ -214,6 +214,9 @@ fn private_function() {
 Functions are private (not exported) by default.
 To allow other modules to use them, prepend `pub`. The same applies
 to constants and types.
+
+Note: `pub` can only be used from a named module.
+For information about creating a module, see [Modules](#modules).
 
 ## Variables
 
@@ -342,46 +345,82 @@ negative values).
 
 ```v
 name := 'Bob'
-println('Hello, $name!')  // `$` is used for string interpolation
 println(name.len)
+println(name[0]) // indexing gives a byte B
+println(name[1..3]) // slicing gives a string 'ob'
 
-bobby := name + 'by' // + is used to concatenate strings
-println(bobby) // "Bobby"
-
-println(bobby[1..3]) // "ob"
-mut s := 'hello '
-s += 'world' // `+=` is used to append to a string
-println(s) // "hello world"
+windows_newline := '\r\n' // escape special characters like in C
+assert windows_newline.len == 2
 ```
 
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
-
-String values are immutable. The following code will raise an error:
+String values are immutable. You cannot mutate elements:
 
 ```v
-mut s := 'hello'
-s[0] = `H`
+mut s := 'hello 🌎'
+s[0] = `H` // not allowed
+```
+> error: cannot assign to `s[i]` since V strings are immutable
+
+Note that indexing a string will produce a `byte`, not a `rune`. Indexes correspond
+to bytes in the string, not Unicode code points.
+
+Character literals have type `rune`. To denote them, use `
+
+```v
+rocket := `🚀`
+assert 'aloha!'[0] == `a`
 ```
 
 Both single and double quotes can be used to denote strings. For consistency,
 `vfmt` converts double quotes to single quotes unless the string contains a single quote character.
 
-Interpolation syntax is pretty simple. It also works with fields:
-`'age = $user.age'`. If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
+For raw strings, prepend `r`. Raw strings are not escaped:
+
+```v
+s := r'hello\nworld'
+println(s) // "hello\nworld"
+```
+
+### String interpolation
+
+Basic interpolation syntax is pretty simple - use `$` before a variable name.
+The variable will be converted to a string and embedded into the literal:
+```v
+name := 'Bob'
+println('Hello, $name!') // Hello, Bob!
+```
+It also works with fields: `'age = $user.age'`.
+If you need more complex expressions, use `${}`: `'can register = ${user.age > 13}'`.
 
 Format specifiers similar to those in C's `printf()` are also supported. `f`, `g`, `x`, etc. are optional
 and specify the output format. The compiler takes care of the storage size, so there is no `hd` or `llu`.
 
 ```v
-println('x = ${x:12.3f}')
-println('${item:-20} ${n:20d}')
+x := 123.4567
+println('x = ${x:4.2f}')
+println('[${x:10}]')       // pad with spaces on the left
+println('[${int(x):-10}]') // pad with spaces on the right
 ```
 
-All operators in V must have values of the same type on both sides. This code will not compile if `age` is not a string (for example if `age` were an `int`):
+### String operators
 
 ```v
-println('age = ' + age)
+bobby := name + 'by' // + is used to concatenate strings
+println(bobby) // "Bobby"
+
+mut s := 'hello '
+s += 'world' // `+=` is used to append to a string
+println(s) // "hello world"
 ```
+All operators in V must have values of the same type on both sides.
+You cannot concatenate an integer to a string:
+
+```v
+age := 10
+println('age = ' + age) // not allowed
+```
+> error: infix expr: cannot use `int` (right expression) as `string`
 
 We have to either convert `age` to a `string`:
 
@@ -393,20 +432,6 @@ or use string interpolation (preferred):
 
 ```v
 println('age = $age')
-```
-
-To denote character literals, use `
-
-```v
-a := `a`
-assert 'aloha!'[0] == `a`
-```
-
-For raw strings, prepend `r`. Raw strings are not escaped:
-
-```v
-s := r'hello\nworld'
-println(s) // "hello\nworld"
 ```
 
 ### Numbers
@@ -606,28 +631,48 @@ numbers := {
 
 ## Module imports
 
-For information about creating a module, see [Modules](#modules)
+For information about creating a module, see [Modules](#modules).
 
-### Importing a module
-
-Modules can be imported using the `import` keyword.
+Modules can be imported using the `import` keyword:
 
 ```v
 import os
 
 fn main() {
-    name := os.input('Enter your name:')
+    // read text from stdin
+    name := os.input('Enter your name: ')
     println('Hello, $name!')
 }
 ```
+This program can use any public definitions from the `os` module, such 
+as the `input` function. See the [standard library](https://modules.vlang.io/)
+documentation for a list of common modules and their public symbols.
 
-When using constants from other modules, the module name must be prefixed. However,
-you can import functions and types from other modules directly:
+By default, you have to specify the module prefix every time you call an external function.
+This may seem verbose at first, but it makes code much more readable
+and easier to understand - it's always clear which function from
+which module is being called. This is especially useful in large code bases.
+
+### Selective imports
+
+You can also import specific functions and types from modules directly:
 
 ```v
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
+```
+Note: This is not allowed for constants - they must always be prefixed.
+
+You can import several specific symbols at once:
+
+```v
+import os { input, user_os }
+
+name := input('Enter your name: ')
+println('Name: $name')
+os := user_os()
+println('Your OS is ${os}.')
 ```
 
 ### Module import aliasing
@@ -932,6 +977,8 @@ of a branch, that branch will be executed.
 Note that the ranges use `...` (three dots) rather than `..` (two dots). This is
 because the range is *inclusive* of the last element, rather than exclusive
 (as `..` ranges are). Using `..` in a match branch will throw an error.
+
+Note: `match` as an expression is not usable in `for` loop and `if` statements.
 
 ### Defer
 
@@ -1378,6 +1425,9 @@ fn print_backtrace()
 
 ## Modules
 
+Every file in the root of a folder is part of the same module.
+Simple programs don't need to have a module name - it defaults to 'main'.
+
 V is a very modular language. Creating reusable modules is encouraged and is
 very simple.
 To create a new module, create a directory with your module's name containing
@@ -1408,18 +1458,11 @@ fn main() {
 }
 ```
 
-Note that you have to specify the module prefix every time you call an external function.
-This may seem verbose at first, but it makes code much more readable
-and easier to understand - it's always clear which function from
-which module is being called. This is especially useful in large code bases.
-
 * Module names should be short, under 10 characters.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
 * All modules are compiled statically into a single executable.
-
-See also: [Module imports](#module-imports).
 
 ### `init` functions
 
@@ -2863,9 +2906,15 @@ This lists operators for [primitive types](#primitive-types) only.
 /    quotient               integers, floats
 %    remainder              integers
 
+~    bitwise NOT            integers
 &    bitwise AND            integers
 |    bitwise OR             integers
 ^    bitwise XOR            integers
+
+!    logical NOT            bools
+&&   logical AND            bools
+||   logical OR             bools
+!=   logical XOR            bools
 
 <<   left shift             integer << unsigned integer
 >>   right shift            integer >> unsigned integer

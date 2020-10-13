@@ -46,6 +46,11 @@ fn str_tmp_expr_advanced() {
 	handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
 }
 
+fn str_tmp_expr_advanced_var_decl() {
+	a := handle_strings('c' + 'd', add_strings('e' + 'f', 'g')) // both lvl 1 and lvl2 exprs must be freed
+	println(a)
+}
+
 struct Foo {
 	a int
 	b string
@@ -86,7 +91,6 @@ fn opt(s string) ?int {
 	return 1
 }
 
-/*
 fn optional_str() {
 	q := 'select'
 	s := 'query: select'
@@ -104,7 +108,7 @@ fn optional_str() {
 	}
 	println(pos + 1)
 }
-*/
+
 fn tt() {
 	// time.parse_rfc2822('1234')
 }
@@ -114,10 +118,11 @@ fn main() {
 	foo()
 	str_tmp_expr()
 	str_tmp_expr_advanced()
+	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
 	reassign_str()
-	// optional_str()
+	optional_str()
 	// str_replace()
 	println('end')
 }

@@ -4,6 +4,98 @@ module gen
 
 import v.ast
 import v.table
+import strings
+
+fn smart_quote(str string, raw bool) string {
+	len := str.len
+	if len == 0 {
+		return str
+	}
+	mut result := strings.new_builder(0)
+	mut pos := -1
+	mut last := ''
+	mut next := ''
+	mut skip_next := false
+	for {
+		pos = pos + 1
+		if skip_next {
+			skip_next = false
+			pos = pos + 1
+		}
+		if pos >= len {
+			break
+		}
+		if pos + 1 < len {
+			unsafe {
+				next = str.str[pos + 1].str()
+			}
+		}
+		mut current := str
+		mut toadd := str
+		if len > 1 {
+			unsafe {
+				current = str.str[pos].str()
+			}
+			toadd = current
+		}
+		// double quote
+		if current == '"' {
+			toadd = '\\"'
+			current = ''
+		}
+		if raw && current == '\\' {
+			toadd = '\\\\'
+		}
+		// keep newlines in string
+		if current == '\n' {
+			toadd = '\\n'
+			current = ''
+		}
+		if current == '\r' && next == '\n' {
+			toadd = '\r\n'
+			current = ''
+			skip_next = true
+		}
+		// backslash
+		if !raw && current == '\\' {
+			// escaped backslash - keep as is
+			if next == '\\' {
+				toadd = '\\\\'
+				skip_next = true
+			}
+			// keep raw escape squence
+			else {
+				if next != '' {
+					if raw {
+						toadd = '\\\\' + next
+						skip_next = true
+					}
+					// escape it
+					else {
+						toadd = '\\' + next
+						skip_next = true
+					}
+				}
+			}
+		}
+		// Dolar sign
+		if !raw && current == '$' {
+			if last == '\\' {
+				toadd = '\\$'
+			}
+		}
+		// Windows style new line \r\n
+		if !raw && current == '\r' {
+			if next == '\n' {
+				skip_next = true
+				toadd = '\\n'
+			}
+		}
+		result.write(toadd)
+		last = current
+	}
+	return result.str()
+}
 
 fn (mut g Gen) write_str_fn_definitions() {
 	// _STR function can't be defined in vlib
@@ -118,11 +210,11 @@ string _STR_TMP(const char *fmt, ...) {
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
-		escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
+		escaped_val := smart_quote(node.val, true)
 		g.write('tos_lit("$escaped_val")')
 		return
 	}
-	escaped_val := node.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+	escaped_val := smart_quote(node.val, false)
 	if g.is_c_call || node.language == .c {
 		// In C calls we have to generate C strings
 		// `C.printf("hi")` => `printf("hi");`
@@ -149,7 +241,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	is_nl := call_expr.name == 'writeln'
 	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		escaped_val := smart_quote(val, false)
 		// if val == '' {
 		// break
 		// continue
@@ -220,7 +312,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build the string with %
 	mut end_string := false
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		mut escaped_val := val.replace_each(['%', '%%'])
+		escaped_val = smart_quote(escaped_val, false)
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true

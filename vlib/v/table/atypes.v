@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub type TypeInfo = Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | Aggregate
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -40,6 +40,7 @@ pub mut:
 	methods     []Fn
 	mod         string
 	is_public   bool
+	is_written  bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
 }
 
 // max of 8
@@ -736,7 +737,7 @@ pub struct Aggregate {
 mut:
 	fields []Field // used for faster lookup inside the module
 pub:
-	types []Type
+	types  []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -761,12 +762,9 @@ pub mut:
 }
 
 fn (f &Field) equals(o &Field) bool {
+	// TODO: should all of those be checked ?
 	return f.name == o.name &&
-		f.typ == o.typ &&
-		// TODO Should those be checked ?
-		f.is_pub == o.is_pub &&
-		f.is_mut == o.is_mut &&
-		f.is_global == o.is_global
+		f.typ == o.typ && f.is_pub == o.is_pub && f.is_mut == o.is_mut && f.is_global == o.is_global
 }
 
 pub struct Array {
@@ -805,7 +803,9 @@ pub:
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
-	if sym.kind == .multi_return {
+	if sym.kind in [.array_fixed, .function] {
+		res = sym.source_name
+	} else if sym.kind == .multi_return {
 		res = '('
 		if t.has_flag(.optional) {
 			res = '?' + res
