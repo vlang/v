@@ -83,6 +83,11 @@ fn main() {
 	}
 	mut files := []string{}
 	for file in possible_files {
+		if os.is_dir(file) {
+			files << os.walk_ext(file, '.v')
+			files << os.walk_ext(file, '.vsh')
+			continue
+		}
 		if !file.ends_with('.v') && !file.ends_with('.vv') && !file.ends_with('.vsh') {
 			verror('v fmt can only be used on .v files.\nOffending file: "$file"')
 			continue
