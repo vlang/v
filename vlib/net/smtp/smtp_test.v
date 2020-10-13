@@ -22,7 +22,10 @@ fn test_smtp() {
 		username: os.getenv('VSMTP_TEST_USER')
 		password: os.getenv('VSMTP_TEST_PASS')
 	}
-
+	if client_cfg.username == '' && client_cfg.password == '' {
+		eprintln('Please set VSMTP_TEST_USER and VSMTP_TEST_PASS before running this test')
+		exit(0)
+	}
 	send_cfg := smtp.Mail{
 		to: 'dev@vlang.io'
 		subject: 'Hello from V2'

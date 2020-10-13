@@ -996,45 +996,11 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit {
-			return expr.pos
-		}
-		AsCast {
-			return expr.pos
-		}
-		Assoc {
-			return expr.pos
-		}
-		BoolLiteral {
-			return expr.pos
-		}
-		// ast.Ident { }
-		CallExpr {
-			return expr.pos
-		}
-		CastExpr {
-			return expr.pos
-		}
-		CharLiteral {
-			return expr.pos
-		}
-		Comment {
-			return expr.pos
-		}
-		EnumVal {
-			return expr.pos
-		}
-		FloatLiteral {
-			return expr.pos
-		}
-		Ident {
-			return expr.pos
-		}
-		IfExpr {
-			return expr.pos
-		}
-		// ast.IfGuardExpr { }
-		IndexExpr {
+		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral,
+		Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr,
+		IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr,
+		SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral,
+		StructInit, Likely {
 			return expr.pos
 		}
 		InfixExpr {
@@ -1049,49 +1015,14 @@ pub fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		IntegerLiteral {
-			return expr.pos
-		}
-		MapInit {
-			return expr.pos
-		}
-		MatchExpr {
-			return expr.pos
-		}
-		None {
-			return expr.pos
-		}
-		PostfixExpr {
-			return expr.pos
-		}
-		// ast.None { }
-		PrefixExpr {
-			return expr.pos
-		}
-		// ast.ParExpr { }
-		SelectExpr {
-			return expr.pos
-		}
-		SelectorExpr {
-			return expr.pos
-		}
-		SizeOf {
-			return expr.pos
-		}
-		StringLiteral {
-			return expr.pos
-		}
-		StringInterLiteral {
-			return expr.pos
-		}
-		// ast.Type { }
-		StructInit {
-			return expr.pos
-		}
-		Likely {
-			return expr.pos
-		}
-		// ast.TypeOf { }
+		/*
+		ast.Ident {}
+		ast.IfGuardExpr {}
+		ast.None {}
+		ast.ParExpr {}
+		ast.Type {}
+		ast.TypeOf {}
+		*/
 		else {
 			return token.Position{}
 		}
@@ -1132,54 +1063,23 @@ pub fn (stmt Stmt) check_c_expr()? {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt { return stmt.pos }
-		AssignStmt { return stmt.pos }
+		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl,
+		ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl {
+			return stmt.pos
+		}
 		/*
-		// Attr {
-		// }
+		Attr {}
+		BranchStmt {}
+		DeferStmt {}
+		GlobalDecl {}
+		GoStmt {}
+		GotoLabel {}
+		GotoStmt {}
+		HashStmt {}
+		InterfaceDecl {}
+		Module {}
+		TypeDecl {}
 		*/
-		Block { return stmt.pos }
-		/*
-		// BranchStmt {
-		// }
-		*/
-		ConstDecl { return stmt.pos }
-		/*
-		// DeferStmt {
-		// }
-		*/
-		EnumDecl { return stmt.pos }
-		ExprStmt { return stmt.pos }
-		FnDecl { return stmt.pos }
-		ForCStmt { return stmt.pos }
-		ForInStmt { return stmt.pos }
-		ForStmt { return stmt.pos }
-		/*
-		// GlobalDecl {
-		// }
-		// GoStmt {
-		// }
-		// GotoLabel {
-		// }
-		// GotoStmt {
-		// }
-		// HashStmt {
-		// }
-		*/
-		Import { return stmt.pos }
-		/*
-		// InterfaceDecl {
-		// }
-		// Module {
-		// }
-		*/
-		Return { return stmt.pos }
-		StructDecl { return stmt.pos }
-		/*
-		// TypeDecl {
-		// }
-		*/
-		//
 		else { return token.Position{} }
 	}
 }
