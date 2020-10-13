@@ -330,7 +330,9 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
+	struct_sym := c.table.find_type(decl.name) or {
+		table.TypeSymbol{}
+	}
 	mut struct_info := struct_sym.info as table.Struct
 	for i, field in decl.fields {
 		if decl.language == .v && !field.is_embed {
@@ -342,7 +344,10 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				for embed_field in sym_info.fields {
 					already_exists := struct_info.fields.filter(it.name == embed_field.name).len > 0
 					if !already_exists {
-						struct_info.fields << { embed_field | embed_alias_for: field.name }
+						struct_info.fields << {
+							embed_field |
+							embed_alias_for: field.name
+						}
 					}
 				}
 			} else {
@@ -517,14 +522,16 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 										}
 									}
 									if !has_embed_init {
-										n := { f | embed_alias_for: '' }
+										n := {
+											f |
+											embed_alias_for: ''
+										}
 										println(field)
 										// struct_init.fields << { f | embed_alias_for: '' }
 									}
 								}
 								break
 							}
-
 						}
 					}
 					if !exists {
@@ -557,7 +564,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			}
 			// Check uninitialized refs
 			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields || field.embed_alias_for != '' {
+				if field.has_default_expr || field.name in inited_fields || field.embed_alias_for !=
+					'' {
 					continue
 				}
 				if field.typ.is_ptr() && !c.pref.translated {
