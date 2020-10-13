@@ -1168,8 +1168,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 					}
 				}
 				if got_arg_typ != table.void_type {
-					c.error('cannot use type `$got_arg_sym.source_name` as type `$exp_arg_sym.source_name` in argument ${i+1} to `${left_type_sym.source_name}.$method_name`',
-						call_expr.pos)
+					c.error('cannot use type `$got_arg_sym.source_name` as type `$exp_arg_sym.source_name` in argument ${i +
+						1} to `${left_type_sym.source_name}.$method_name`', call_expr.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
@@ -1186,8 +1186,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			} else {
 				if param.is_mut && (!arg.is_mut || param.typ.share() != arg.share) {
 					tok := arg.share.str()
-					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
-						arg.expr.position())
+					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
+						1}`', arg.expr.position())
 				}
 			}
 		}
@@ -1460,8 +1460,8 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
 				tok := call_arg.share.str()
-				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i+1}`',
-					call_arg.expr.position())
+				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
+					1}`', call_arg.expr.position())
 			}
 		}
 		// Handle expected interface
@@ -1492,11 +1492,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
 				candidate_fn_name := if typ_sym.source_name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.source_name`' }
-				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i+1} to `$fn_name`',
-					call_expr.pos)
+				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i +
+					1} to `$fn_name`', call_expr.pos)
 			} else {
-				c.error('cannot use type `$typ_sym.source_name` as type `$arg_typ_sym.source_name` in argument ${i+1} to `$fn_name`',
-					call_expr.pos)
+				c.error('cannot use type `$typ_sym.source_name` as type `$arg_typ_sym.source_name` in argument ${i +
+					1} to `$fn_name`', call_expr.pos)
 			}
 		}
 	}
@@ -3197,21 +3197,27 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	mut is_exhaustive := true
 	mut unhandled := []string{}
 	match type_sym.info as info {
-		table.SumType { for v in info.variants {
+		table.SumType {
+			for v in info.variants {
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {
 					is_exhaustive = false
 					unhandled << '`$v_str`'
 				}
-			} }
+			}
+		}
 		//
-		table.Enum { for v in info.vals {
+		table.Enum {
+			for v in info.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
 					unhandled << '`.$v`'
 				}
-			} }
-		else { is_exhaustive = false }
+			}
+		}
+		else {
+			is_exhaustive = false
+		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
 	mut has_else := else_branch.is_else

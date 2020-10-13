@@ -3,7 +3,7 @@ module scanner
 import os
 
 struct TestStruct {
-	test	string
+	test string
 }
 
 fn (mut t TestStruct) test_struct() {
@@ -15,18 +15,19 @@ fn (mut t TestStruct) test_struct_w_return() string {
 	return t.test
 }
 
-fn (mut t TestStruct) test_struct_w_high_order(cb fn(int)string) string {
+fn (mut t TestStruct) test_struct_w_high_order(cb fn (int) string) string {
 	assert @STRUCT == 'TestStruct'
-	return 'test'+cb(2)
+	return 'test' + cb(2)
 }
 
-struct TestFn { }
+struct TestFn {
+}
 
 fn (mut t TestFn) tst_1() {
 	assert @FN == 'tst_1'
 }
 
-fn (mut t TestFn) tst_2(cb fn(int)) {
+fn (mut t TestFn) tst_2(cb fn (int)) {
 	assert @FN == 'tst_2'
 	cb(1)
 }
@@ -35,7 +36,7 @@ fn fn_name_mod_level() {
 	assert @FN == 'fn_name_mod_level'
 }
 
-fn fn_name_mod_level_high_order(cb fn(int)) {
+fn fn_name_mod_level_high_order(cb fn (int)) {
 	assert @FN == 'fn_name_mod_level_high_order'
 	cb(1)
 }
@@ -49,16 +50,14 @@ fn test_at_file() {
 fn test_at_fn() {
 	// Test @FN
 	assert @FN == 'test_at_fn'
-
 	fn_name_mod_level()
-	fn_name_mod_level_high_order(fn(i int){
+	fn_name_mod_level_high_order(fn (i int) {
 		t := i + 1
 		assert t == 2
 	})
-
 	mut tfn := TestFn{}
 	tfn.tst_1()
-	tfn.tst_2(fn(i int){
+	tfn.tst_2(fn (i int) {
 		t := i + 1
 		assert t == 2
 	})
@@ -72,10 +71,12 @@ fn test_at_mod() {
 fn test_at_struct() {
 	// Test @STRUCT
 	assert @STRUCT == ''
-	mut ts := TestStruct { test: "test" }
+	mut ts := TestStruct{
+		test: 'test'
+	}
 	ts.test_struct()
 	r1 := ts.test_struct_w_return()
-	r2 := ts.test_struct_w_high_order(fn(i int)string{
+	r2 := ts.test_struct_w_high_order(fn (i int) string {
 		assert @STRUCT == ''
 		return i.str()
 	})

@@ -170,7 +170,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(*a[i]));')
 		}
 	}
-	g.auto_str_funcs.writeln('\t\tif (i < ${info.size-1}) {')
+	g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')
 	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
@@ -337,7 +337,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 			}
 			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
 		}
-		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+1)}')
+		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
 		if info.fields.len > 0 {
 			g.auto_str_funcs.write(',\n\t\t')
 			for i, field in info.fields {

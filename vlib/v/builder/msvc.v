@@ -331,7 +331,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfiles := '${path[..path.len - 2]}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
