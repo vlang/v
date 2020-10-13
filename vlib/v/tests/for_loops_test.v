@@ -54,3 +54,14 @@ fn test_for_char_in_map() {
 	}
 	assert acc == 'a: b, c: d, '
 }
+
+fn test_mut_for() {
+	/*
+	mut vals := [1,2,3]
+	for mut val in vals {
+		(*val)++
+	}
+	assert vals == [2,3,4]
+	println(vals)
+	*/
+}

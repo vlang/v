@@ -25,10 +25,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			pos: pos
 			is_inf: true
 		}
-	} else if p.tok.kind == .key_mut {
-		p.error('`mut` is not needed in for loops')
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
+		if p.tok.kind == .key_mut {
+			p.error('`mut` is not needed in `for ;;` loops: use `for i := 0; i < n; i ++ {`')
+		}
 		mut init := ast.Stmt{}
 		mut cond := p.new_true_expr()
 		mut inc := ast.Stmt{}
@@ -68,8 +69,13 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			inc: inc
 			pos: pos
 		}
-	} else if p.peek_tok.kind in [.key_in, .comma] {
+	} else if p.peek_tok.kind in [.key_in, .comma] ||
+		(p.tok.kind == .key_mut && p.peek_tok2.kind in [.key_in, .comma]) {
 		// `for i in vals`, `for i in start .. end`
+		val_is_mut := p.tok.kind == .key_mut
+		if val_is_mut {
+			p.next()
+		}
 		key_var_pos := p.tok.position()
 		mut val_var_pos := p.tok.position()
 		mut key_var_name := ''
@@ -124,6 +130,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			p.scope.register(val_var_name, ast.Var{
 				name: val_var_name
 				pos: val_var_pos
+				is_mut: val_is_mut
 			})
 		}
 		p.inside_for = false
@@ -138,6 +145,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			high: high_expr
 			is_range: is_range
 			pos: pos
+			val_is_mut: val_is_mut
 		}
 	}
 	// `for cond {`
