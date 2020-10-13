@@ -2262,7 +2262,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// struct embedding
 			if sym.kind == .struct_ {
 				sym_info := sym.info as table.Struct
-				x := sym_info.fields.filter(node.name == node.field_name)
+				x := sym_info.fields.filter(it.name == node.field_name)
 				if x.len > 0 {
 					field := x[0]
 					if field.embed_alias_for != '' {
