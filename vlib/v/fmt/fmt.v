@@ -590,7 +590,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
 		}
-		ft := f.type_to_str(field.typ)
+		ft := f.table.type_to_str(field.typ)
 		field_types << ft
 		if ft.len > max_type {
 			max_type = ft.len
@@ -886,18 +886,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.MapInit {
 			if node.keys.len == 0 {
-				mut ktyp := node.key_type
-				mut vtyp := node.value_type
-				if vtyp == 0 {
-					typ_sym := f.table.get_type_symbol(node.typ)
-					minfo := typ_sym.info as table.Map
-					ktyp = minfo.key_type
-					vtyp = minfo.value_type
-				}
-				f.write('map[')
-				f.write(f.type_to_str(ktyp))
-				f.write(']')
-				f.write(f.type_to_str(vtyp))
+				f.write(f.table.type_to_str(node.typ))
 				f.write('{}')
 				return
 			}
