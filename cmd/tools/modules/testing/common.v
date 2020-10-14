@@ -69,10 +69,7 @@ pub fn (mut ts TestSession) test() {
 	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
 		ts.root_relative = true
 	}
-	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
-	os.mkdir_all(new_vtmp_dir)
-	os.setenv('VTMP', new_vtmp_dir, true)
+	new_vtmp_dir := setup_new_vtmp_folder()
 	//
 	ts.init()
 	mut remaining_files := []string{}
@@ -332,4 +329,12 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header(msg, '-'))
+}
+
+pub fn setup_new_vtmp_folder() string {
+	now := time.sys_mono_now()
+	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
+	os.mkdir_all(new_vtmp_dir)
+	os.setenv('VTMP', new_vtmp_dir, true)
+	return new_vtmp_dir
 }
