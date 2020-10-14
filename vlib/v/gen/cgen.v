@@ -4273,7 +4273,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		return true
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
-			ast.SelectorExpr,  ast.Ident { true }
+			ast.SelectorExpr, ast.Ident { true }
 			else { false }
 		}
 		if is_var {
