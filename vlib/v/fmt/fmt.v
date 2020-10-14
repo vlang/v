@@ -682,6 +682,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	name := node.name.after('.')
 	f.writeln('interface $name {')
+	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
 		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
@@ -1508,8 +1509,8 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		}
 	}
 	for branch in it.branches {
-		if branch.comment.text != '' {
-			f.comment(branch.comment, {
+		for cmnt in branch.comments {
+			f.comment(cmnt, {
 				inline: true
 			})
 			f.writeln('')
@@ -1780,6 +1781,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		for field in it.fields {
 			f.write('$field.name: ')
 			f.prefix_expr_cast_expr(field.expr)
+			f.comments(field.comments, {
+				inline: true
+				has_nl: false
+				level: .indent
+			})
 			f.writeln('')
 		}
 		f.indent--
