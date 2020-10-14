@@ -2471,6 +2471,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 		}
+		if !((flag.starts_with('"') && flag.ends_with('"')) ||
+			(flag.starts_with('<') && flag.ends_with('>'))) && '//' !in flag {
+			c.error('header file must be in either `"header_file.h"` or `<header_file.h>` format $flag',
+				node.pos)
+		}
 	} else if node.val.starts_with('flag') {
 		// #flag linux -lm
 		mut flag := node.val[5..]
@@ -2489,6 +2494,10 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		// println('adding flag "$flag"')
 		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
 			c.error(err, node.pos)
+		}
+	} else {
+		if !node.val.starts_with('define') {
+			c.error('expected `#include`, `#flag` or `#define` not $node.val', node.pos)
 		}
 	}
 }
