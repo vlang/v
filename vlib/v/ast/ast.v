@@ -625,6 +625,7 @@ pub:
 // #include etc
 pub struct HashStmt {
 pub:
+	comments []Comment
 	mod string
 	pos token.Position
 pub mut:
