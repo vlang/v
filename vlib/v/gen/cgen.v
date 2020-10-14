@@ -1070,7 +1070,12 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
 				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
 			} else {
-				g.writeln('\t$styp ${c_name(it.val_var)} = (($styp*)$atmp${op_field}data)[$i];')
+				// If val is mutable (pointer behind the scenes), we need to generate
+				// `int* val = ((int*)arr.data)[i];`
+				// instead of
+				// `int* val = ((int**)arr.data)[i];`
+				styp_right := if it.val_is_mut { styp } else { styp + '*' }
+				g.writeln('\t$styp ${c_name(it.val_var)} = (($styp_right)$atmp${op_field}data)[$i];')
 			}
 		}
 		g.stmts(it.stmts)

@@ -382,6 +382,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				if it.key_var != '' {
 					f.write(', ')
 				}
+				if it.val_is_mut {
+					f.write('mut ')
+				}
 				f.write(it.val_var)
 			}
 			f.write(' in ')

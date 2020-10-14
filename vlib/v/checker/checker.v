@@ -42,8 +42,8 @@ pub mut:
 	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
-	in_for_count     int // if checker is currently in an for loop
-	// checked_ident  string // to avoid infinit checker loops
+	in_for_count     int // if checker is currently in a for loop
+	// checked_ident  string // to avoid infinite checker loops
 	returns          bool
 	scope_returns    bool
 	mod              string // current module name
@@ -52,7 +52,7 @@ pub mut:
 	skip_flags       bool // should `#flag` and `#include` be skipped
 	cur_generic_type table.Type
 mut:
-	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
+	expr_level       int // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
 	error_details    []string
@@ -2364,17 +2364,13 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 							node.cond.position())
 					}
 				}
-				// if node.val_is_mut {
-				// value_type = value_type.to_ptr()
-				// }
+				if node.val_is_mut {
+					value_type = value_type.to_ptr()
+				}
 				node.cond_type = typ
 				node.kind = sym.kind
 				node.val_type = value_type
-				if node.val_is_mut {
-					scope.update_var_type(node.val_var, value_type.to_ptr())
-				} else {
-					scope.update_var_type(node.val_var, value_type)
-				}
+				scope.update_var_type(node.val_var, value_type)
 			}
 			c.stmts(node.stmts)
 			c.in_for_count--

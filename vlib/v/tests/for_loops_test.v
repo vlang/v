@@ -57,11 +57,11 @@ fn test_for_char_in_map() {
 
 fn test_mut_for() {
 	/*
-	mut vals := [1,2,3]
+	mut vals := [1, 2, 3]
 	for mut val in vals {
 		(*val)++
 	}
-	assert vals == [2,3,4]
+	assert vals == [2, 3, 4]
 	println(vals)
 	*/
 }
