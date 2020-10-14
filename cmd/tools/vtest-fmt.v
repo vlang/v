@@ -5,37 +5,19 @@ import testing
 
 const (
 	known_failing_exceptions = [
-		'examples/vweb/vweb_example.v',
-		'cmd/tools/gen_vc.v',
-		'cmd/tools/modules/vgit/vgit.v', // generics
-		'cmd/tools/preludes/live_main.v',
-		'cmd/tools/preludes/live_shared.v',
-		'cmd/tools/preludes/tests_assertions.v',
-		'cmd/tools/preludes/tests_with_stats.v',
-		'cmd/tools/performance_compare.v', // generics
-		'cmd/tools/oldv.v', // generics
-		'tutorials/code/blog/article.v',
-		'tutorials/code/blog/blog.v',
-		'vlib/arrays/arrays.v',
-		'vlib/arrays/arrays_test.v',
-		'vlib/builtin/js/hashmap.v',
-		'vlib/v/tests/fn_variadic_test.v',
-		'vlib/v/tests/generic_test.v',
-		'vlib/crypto/aes/aes.v',
-		'vlib/crypto/aes/aes_cbc.v',
-		'vlib/crypto/aes/block_generic.v',
-		'vlib/crypto/aes/const.v',
-		'vlib/crypto/aes/cypher_generic.v',
-		'vlib/crypto/rc4/rc4.v',
-		'vlib/eventbus/eventbus_test.v',
-		'vlib/os/bare/bare_example_linux.v',
-		'vlib/szip/szip.v',
-		'vlib/uiold/examples/users_gui/users.v',
-		'vlib/vweb/assets/assets.v',
-		'vlib/vweb/vweb.v',
-		'vlib/v/gen/js/tests/life.v',
-		'vlib/builtin/bare/linuxsys_bare.v',
-		'vlib/os/os.v',
+		'vlib/v/tests/generics_test.v', // struct Repo<T, U> { => struct Repo {
+		'vlib/crypto/aes/aes.v',  // pub fn (c &AesCipher) encrypt(mut dst, mut src []byte) {
+		'vlib/crypto/aes/block_generic.v', // fn expand_key_generic(key []byte, mut enc, mut dec []u32) {
+		'vlib/crypto/aes/const.v', // multiple narrow columns of []string turned to 1 long single column, otherwise works
+		'vlib/crypto/rc4/rc4.v', // pub fn (mut c Cipher) xor_key_stream(mut dst, mut src []byte) {
+		'vlib/vweb/vweb.v', // $for method in T.methods { => $for method in T(methods) { , `return // xx` => parse expr error
+		'vlib/v/gen/js/tests/life.v', // error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500)
+		'vlib/builtin/js/builtin.v', // JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c)
+        'vlib/builtin/js/jsfns_node.js.v',
+        'vlib/builtin/js/jsfns.js.v',
+        'vlib/builtin/js/jsfns_browser.js.v',
+		'vlib/builtin/bare/linuxsys_bare.v', // error: expr(): bad token `asm`, on `asm {}`
+		'vlib/os/os.v', // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
 	]
 )
 

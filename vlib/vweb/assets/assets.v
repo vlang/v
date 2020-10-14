@@ -2,7 +2,6 @@ module assets
 
 // this module provides an AssetManager for combining
 // and caching javascript & css.
-
 import os
 import time
 import crypto.md5
@@ -101,7 +100,9 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		return out
 	}
 	if !os.is_dir(am.cache_dir) {
-		os.mkdir(am.cache_dir) or { panic(err) }
+		os.mkdir(am.cache_dir) or {
+			panic(err)
+		}
 	}
 	mut file := os.create(out_file) or {
 		panic(err)
@@ -157,7 +158,9 @@ fn (mut am AssetManager) add(asset_type, file string) bool {
 	}
 	asset := Asset{
 		file_path: file
-		last_modified: time.Time{unix: u64(os.file_last_mod_unix(file))}
+		last_modified: time.Time{
+			unix: u64(os.file_last_mod_unix(file))
+		}
 	}
 	if asset_type == 'css' {
 		am.css << asset
@@ -183,11 +186,7 @@ fn (am AssetManager) get_assets(asset_type string) []Asset {
 	if asset_type != 'css' && asset_type != 'js' {
 		panic('$unknown_asset_type_error ($asset_type).')
 	}
-	assets := if asset_type == 'css' {
-		am.css
-	} else {
-		am.js
-	}
+	assets := if asset_type == 'css' { am.css } else { am.js }
 	return assets
 }
 
