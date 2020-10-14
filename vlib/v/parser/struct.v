@@ -154,22 +154,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			typ := p.parse_type()
 			type_pos := p.prev_tok.position()
 			field_pos := field_start_pos.extend(type_pos)
-			// if name == '_net_module_s' {
-			// if name.contains('App') {
-			// s := p.table.get_type_symbol(typ)
-			// println('struct decl field type ' + s.str())
-			// }
 			// Comments after type (same line)
-			line_pos := field_pos.line_nr
-			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
-				if p.tok.lit.contains('\n') {
-					break
-				}
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()

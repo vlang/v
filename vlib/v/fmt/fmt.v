@@ -608,55 +608,48 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		end_pos := field.pos.pos + field.pos.len
 		comments := field.comments
-		if comments.len == 0 {
-			f.write('\t$field.name ')
-			f.write(strings.repeat(` `, max - field.name.len))
-			f.write(field_types[i])
-			if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only]			attr being added to fields, fix it
-				f.write(strings.repeat(` `, max_type - field_types[i].len))
-				f.inline_attrs(field.attrs)
-			}
-			if field.has_default_expr {
-				f.write(' = ')
-				f.prefix_expr_cast_expr(field.default_expr)
-			}
-			f.write('\n')
-			continue
-		}
 		// Handle comments before field
-		mut j := 0
-		for j < comments.len && comments[j].pos.pos < field.pos.pos {
+		mut comm_idx := 0
+		for comm_idx < comments.len && comments[comm_idx].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
-			f.comment(comments[j], {
-				inline: true
-			})
+			f.comment(comments[comm_idx], {})
 			f.writeln('')
 			f.indent--
-			j++
+			comm_idx++
 		}
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
 		mut comments_len := 0
-		for j < comments.len && comments[j].pos.pos < end_pos {
-			comment := '/* ${comments[j].text} */ ' // TODO: handle in a function
-			comments_len += comment.len
-			f.write(comment)
-			j++
+		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
+			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comments_len += comment_text.len
+			f.write(comment_text)
+			comm_idx++
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(field_types[i])
-		f.inline_attrs(field.attrs)
+		if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only] attr being added to fields, fix it
+			f.write(strings.repeat(` `, max_type - field_types[i].len))
+			f.inline_attrs(field.attrs)
+		}
 		if field.has_default_expr {
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
 		}
 		// Handle comments after field type (same line)
-		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr {
-			f.write(' // ${comments[j].text}') // TODO: handle in a function
-			j++
+		if comm_idx < comments.len {
+			if comments[comm_idx].pos.line_nr > field.pos.line_nr {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+			f.comments(comments[comm_idx..], {
+				level: .indent
+			})
+		} else {
+			f.writeln('')
 		}
-		f.write('\n')
 	}
 	f.comments_after_last_field(node.end_comments)
 	f.writeln('}\n')
@@ -1138,10 +1131,14 @@ enum CommentsLevel {
 	indent
 }
 
+// CommentsOptions defines the way comments are going to be written
+// - has_nl: adds an newline at the end of the list of comments
+// - inline: single-line comments will be on the same line as the last statement
+// - level:  either .keep (don't indent), or .indent (increment indentation)
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool
-	level  CommentsLevel = .keep
+	level  CommentsLevel
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
