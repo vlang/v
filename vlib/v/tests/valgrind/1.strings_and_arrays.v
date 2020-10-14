@@ -1,6 +1,3 @@
-import os
-
-// import time
 fn return_array(array_arg []string) []int { // array argument must not be freed
 	s := [1, 2, 3] // escaping array must not be freed
 	return s
