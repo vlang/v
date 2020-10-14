@@ -808,7 +808,8 @@ fn test_double_quote_inter() {
 
 fn test_string_map() {
 	$if windows {
-		return // TODO
+		// TODO
+		return
 	}
 	original := 'Hello'
 	println('original.len = $original.len')
