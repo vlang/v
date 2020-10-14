@@ -1,6 +1,12 @@
-name: Build master - Linux
+name: Build binary artifacts
 
-on: [push]
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+      - '**.vv'
 
 jobs:
   build-linux:
@@ -19,4 +25,13 @@ jobs:
       uses: actions/upload-artifact@v1.0.0
       with:
         name: linux
-        path: .
+        path: |
+          .
+          !./.git
+          !./.ctags.d
+          !./.github
+          !./vc
+          !./examples
+          !./doc
+          !./tutorials
+          !./v_old
