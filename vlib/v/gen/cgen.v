@@ -1060,26 +1060,27 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		styp := g.typ(it.val_type)
 		val_sym := g.table.get_type_symbol(it.val_type)
 		cond_type_is_ptr := it.cond_type.is_ptr()
-		atmp := g.new_tmp_var()
-		atmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
-		g.write('$atmp_type $atmp = ')
+		tmp := g.new_tmp_var()
+		tmp_type := if cond_type_is_ptr { 'array *' } else { 'array' }
+		g.write('$tmp_type $tmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		op_field := if cond_type_is_ptr { '->' } else { '.' }
-		g.writeln('for (int $i = 0; $i < $atmp${op_field}len; ++$i) {')
+		g.writeln('for (int $i = 0; $i < $tmp${op_field}len; ++$i) {')
 		if it.val_var != '_' {
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
-				g.writeln(' = ((voidptr*)$atmp${op_field}data)[$i];')
+				g.writeln(' = ((voidptr*)$tmp${op_field}data)[$i];')
 			} else {
 				// If val is mutable (pointer behind the scenes), we need to generate
-				// `int* val = ((int*)arr.data)[i];`
+				// `int* val = ((int*)arr.data) + i;`
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
-				styp_right := if it.val_is_mut { styp } else { styp + '*' }
-				g.writeln('\t$styp ${c_name(it.val_var)} = (($styp_right)$atmp${op_field}data)[$i];')
+				// right := if it.val_is_mut { styp } else { styp + '*' }
+				right := if it.val_is_mut { '(($styp)$tmp${op_field}data) + $i' } else { '(($styp*)$tmp${op_field}data)[$i]' }
+				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
 		g.stmts(it.stmts)
@@ -3503,6 +3504,7 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 			if af {
 				// free the tmp arg expr if we have one before the return
 				g.autofree_call_postgen()
+				g.strs_to_free = []
 			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
