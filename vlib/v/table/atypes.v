@@ -806,6 +806,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 			res = sym.kind.str()
 		}
 		.array {
+			if t == array_type {
+				return 'array'
+			}
 			info := sym.info as Array
 			elem_str := table.type_to_str(info.elem_type)
 			res = '[]$elem_str'
@@ -833,6 +836,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 			// do nothing, source_name is sufficient
 		}
 		.map {
+			if int(t) == map_type_idx {
+				return 'map'
+			}
 			info := sym.info as Map
 			key_str := table.type_to_str(info.key_type)
 			val_str := table.type_to_str(info.value_type)

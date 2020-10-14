@@ -2357,17 +2357,24 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.key_type = key_type
 					scope.update_var_type(node.key_var, key_type)
 				}
-				value_type := c.table.value_type(typ)
+				mut value_type := c.table.value_type(typ)
 				if value_type == table.void_type || typ.has_flag(.optional) {
 					if typ != table.void_type {
 						c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
 							node.cond.position())
 					}
 				}
+				// if node.val_is_mut {
+				// value_type = value_type.to_ptr()
+				// }
 				node.cond_type = typ
 				node.kind = sym.kind
 				node.val_type = value_type
-				scope.update_var_type(node.val_var, value_type)
+				if node.val_is_mut {
+					scope.update_var_type(node.val_var, value_type.to_ptr())
+				} else {
+					scope.update_var_type(node.val_var, value_type)
+				}
 			}
 			c.stmts(node.stmts)
 			c.in_for_count--

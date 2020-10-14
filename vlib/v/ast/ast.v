@@ -600,6 +600,8 @@ pub:
 	high      Expr // `10` in `for i in 0..10 {`
 	stmts     []Stmt
 	pos       token.Position
+	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
+	// and the array cannot be indexed inside the loop
 pub mut:
 	key_type  table.Type
 	val_type  table.Type
