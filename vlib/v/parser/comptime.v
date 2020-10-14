@@ -24,7 +24,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	return ast.HashStmt{
 		val: val
 		mod: p.mod
-		pos: p.prev_tok.position()
+		pos: pos
 	}
 }
 
