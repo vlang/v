@@ -2,15 +2,13 @@ name: Build master - Linux
 
 on: [push]
 
-strategy:
-  matrix:
-    compiler: [gcc, clang]
-
 jobs:
-  build:
-  
+  build-linux:
     runs-on: ubuntu-latest
-    
+    strategy:
+      matrix:
+        compiler: [gcc]
+
     steps:
     - uses: actions/checkout@v1
     - name: make
