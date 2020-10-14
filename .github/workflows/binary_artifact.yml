@@ -31,7 +31,36 @@ jobs:
       with:
         name: linux-binary
         path: ./v
-        
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        compiler: [clang]
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: make
+      env:
+        CC: ${{ matrix.compiler }}
+      run: make
+    - name: Create artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: macos
+        path: |
+          .
+          !./.git
+          !./.ctags.d
+          !./.github
+          !./vc
+          !./v_old
+    - name: Create binary only artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: macos-binary
+        path: ./v
+
   build-windows:
     runs-on: windows-latest
 
