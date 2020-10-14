@@ -109,6 +109,20 @@ fn optional_str() {
 	println(pos + 1)
 }
 
+fn return_error_with_freed_expr() ?string {
+	if true {
+		msg := 'oops'
+		return error('hm $msg')
+	}
+	return 'ok'
+}
+
+fn optional_return() {
+	return_error_with_freed_expr() or {
+		return
+	}
+}
+
 fn tt() {
 	// time.parse_rfc2822('1234')
 }
@@ -123,6 +137,7 @@ fn main() {
 	match_expr()
 	reassign_str()
 	optional_str()
+	optional_return()
 	// str_replace()
 	println('end')
 }

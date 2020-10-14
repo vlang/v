@@ -985,12 +985,16 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
+			af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
 			if g.pref.autofree {
 				g.writeln('// ast.Return free')
+				if af {
+					g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
+				}
 				// g.autofree_scope_vars(node.pos.pos)
 				g.write_autofree_stmts_when_needed(node)
 			}
-			g.return_statement(node)
+			g.return_statement(node, af)
 		}
 		ast.SqlStmt {
 			g.sql_stmt(node)
@@ -3458,7 +3462,7 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	}
 }
 
-fn (mut g Gen) return_statement(node ast.Return) {
+fn (mut g Gen) return_statement(node ast.Return, af bool) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
@@ -3496,6 +3500,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
+			if af {
+				// free the tmp arg expr if we have one before the return
+				g.autofree_call_postgen()
+			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
 			return

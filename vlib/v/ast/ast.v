@@ -287,7 +287,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
-	autofree_pregen    string
+	// autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar
 	// autofree_vars_ids  []int
 }
@@ -593,20 +593,20 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var   string
-	val_var   string
-	cond      Expr
-	is_range  bool
-	high      Expr // `10` in `for i in 0..10 {`
-	stmts     []Stmt
-	pos       token.Position
+	key_var    string
+	val_var    string
+	cond       Expr
+	is_range   bool
+	high       Expr // `10` in `for i in 0..10 {`
+	stmts      []Stmt
+	pos        token.Position
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
-	// and the array cannot be indexed inside the loop
 pub mut:
-	key_type  table.Type
-	val_type  table.Type
-	cond_type table.Type
-	kind      table.Kind // array/map/string
+	// and the array cannot be indexed inside the loop
+	key_type   table.Type
+	val_type   table.Type
+	cond_type  table.Type
+	kind       table.Kind // array/map/string
 }
 
 pub struct ForCStmt {
@@ -989,11 +989,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral,
-		Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr,
-		IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr,
-		SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral,
-		StructInit, Likely {
+		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr, SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral, StructInit, Likely {
 			return expr.pos
 		}
 		InfixExpr {
@@ -1042,11 +1038,15 @@ pub fn (expr Expr) is_expr() bool {
 }
 
 // check if stmt can be an expression in C
-pub fn (stmt Stmt) check_c_expr()? {
+pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {
-		AssignStmt {return}
+		AssignStmt {
+			return
+		}
 		ExprStmt {
-			if stmt.expr.is_expr() {return}
+			if stmt.expr.is_expr() {
+				return
+			}
 			return error('unsupported statement (`${typeof(stmt.expr)}`)')
 		}
 		else {}
@@ -1056,10 +1056,7 @@ pub fn (stmt Stmt) check_c_expr()? {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl,
-		ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl {
-			return stmt.pos
-		}
+		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl { return stmt.pos }
 		/*
 		Attr {}
 		BranchStmt {}
