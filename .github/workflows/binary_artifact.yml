@@ -97,7 +97,7 @@ jobs:
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
-        tag_name: latest-master
+        tag: latest-master
         release_name: Latest ${{ github.ref }}
         draft: false
         prerelease: true
