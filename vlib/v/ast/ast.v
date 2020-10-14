@@ -184,13 +184,14 @@ pub:
 	is_pub      bool
 	methods     []FnDecl
 	pos         token.Position
+	pre_comments []Comment
 }
 
 pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
-	comment       Comment
+	comments      []Comment
 pub mut:
 	name          string
 	typ           table.Type
@@ -542,7 +543,7 @@ pub:
 	exprs         []Expr // left side
 	stmts         []Stmt // right side
 	pos           token.Position
-	comment       Comment // comment above `xxx {`
+	comments      []Comment // comment above `xxx {`
 	is_else       bool
 	post_comments []Comment
 }

@@ -283,21 +283,22 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
-		comment := p.check_comment()
 		mut field_name := ''
 		if no_keys {
 			expr := p.expr(0)
+			comments := p.eat_comments()
 			// name will be set later in checker
 			fields << ast.StructInitField{
 				expr: expr
 				pos: expr.position()
-				comment: comment
+				comments: comments
 			}
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
 			expr := p.expr(0)
+			comments := p.eat_comments()
 			last_field_pos := expr.position()
 			field_pos := token.Position{
 				line_nr: first_field_pos.line_nr
@@ -308,13 +309,13 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 				name: field_name
 				expr: expr
 				pos: field_pos
+				comments: comments
 			}
 		}
 		i++
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		p.check_comment()
 	}
 	last_pos := p.tok.position()
 	if !short_syntax {
@@ -346,6 +347,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	interface_name := p.prepend_mod(p.check_name())
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
+	pre_comments := p.eat_comments()
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .interface_
@@ -416,5 +418,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		methods: methods
 		is_pub: is_pub
 		pos: start_pos
+		pre_comments: pre_comments
 	}
 }
