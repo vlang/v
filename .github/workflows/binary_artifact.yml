@@ -11,7 +11,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: make
+    - name: Compile
       env:
         CC: ${{ matrix.compiler }}
       run: make
@@ -40,7 +40,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
-    - name: make
+    - name: Compile
       env:
         CC: ${{ matrix.compiler }}
       run: make
@@ -67,7 +67,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - uses: msys2/setup-msys2@v2
-    - name: make
+    - name: Compile
       run: ./make.bat
     - name: Create artifact
       uses: actions/upload-artifact@v2
@@ -91,14 +91,21 @@ jobs:
     needs: [build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
+    - name: Remove old tag
+    - uses: dev-drprasad/delete-tag-and-release@v0.1.2
+      with:
+        delete_release: false
+        tag_name: latest-commit
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     - name: Create Release
       id: create_release
       uses: ncipollo/release-action@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
-        tag: latest-master
-        name: Latest commit on master
+        tag: latest-commit
+        name: Prebuilt binaries of the latest commit
         commit: ${{ github.commit }}
         draft: false
         prerelease: true
@@ -117,14 +124,14 @@ jobs:
         name: ${{ matrix.version }}
         path: ./${{ matrix.version }}
     - name: Build
-      run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}
+      run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}/*
     - name: Get release
       id: get_release_info
       uses: leahlundqvist/get-release@v1.3.1
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        tag_name: latest-master
+        tag_name: latest-commit
     - name: Upload Release Asset
       id: upload-release-asset 
       uses: actions/upload-release-asset@v1.0.1
