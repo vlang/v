@@ -25,7 +25,34 @@ jobs:
           !./.ctags.d
           !./.github
           !./vc
-          !./examples
-          !./doc
-          !./tutorials
           !./v_old
+    - name: Create binary only artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: linux-binary
+        path: ./v
+        
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: make
+      run: make
+    - name: Create artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: windows
+        path: |
+          .
+          !./.git
+          !./.ctags.d
+          !./.github
+          !./vc
+          !./v_old
+    - name: Create binary only artifact
+      uses: actions/upload-artifact@v2
+      with:
+        name: windows-binary
+        path: ./v.exe
+        
