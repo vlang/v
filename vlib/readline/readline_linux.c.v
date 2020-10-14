@@ -169,15 +169,10 @@ fn get_prompt_offset(prompt string) int {
 
 fn (r Readline) analyse(c int) Action {
 	match byte(c) {
-		`\0` { return .eof }
-		0x3 { return .eof } // End of Text
-		0x4 { return .eof } // End of Transmission
-		255 { return .eof }
-		`\n` { return .commit_line }
-		`\r` { return .commit_line }
+		`\0`, 0x3, 0x4, 255 { return .eof } // NUL, End of Text, End of Transmission
+		`\n`, `\r` { return .commit_line }
 		`\f` { return .clear_screen } // CTRL + L
-		`\b` { return .delete_left } // Backspace
-		127 { return .delete_left } // DEL
+		`\b`, 127 { return .delete_left } // BS, DEL
 		27 { return r.analyse_control() } // ESC
 		1 { return .move_cursor_begining } // ^A
 		5 { return .move_cursor_end } // ^E
@@ -186,7 +181,8 @@ fn (r Readline) analyse(c int) Action {
 				Action.insert_character
 			} else {
 				Action.nothing
-			} }
+			}
+		}
 	}
 }
 
@@ -201,8 +197,7 @@ fn (r Readline) analyse_control() Action {
 				`B` { return .history_next }
 				`A` { return .history_previous }
 				`1` { return r.analyse_extended_control() }
-				`2` { return r.analyse_extended_control_no_eat(byte(sequence)) }
-				`3` { return r.analyse_extended_control_no_eat(byte(sequence)) }
+				`2`, `3` { return r.analyse_extended_control_no_eat(byte(sequence)) }
 				else {}
 			}
 		}
