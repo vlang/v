@@ -103,7 +103,6 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        allowUpdates: true
         tag: latest-commit
         name: Prebuilt binaries of the latest commit
         commit: ${{ github.commit }}
