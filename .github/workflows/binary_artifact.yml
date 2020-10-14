@@ -120,7 +120,7 @@ jobs:
       run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}
     - name: Get release
       id: get_release_info
-      uses: leahlundqvist/get-release@v1.3
+      uses: leahlundqvist/get-release@1.3
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
