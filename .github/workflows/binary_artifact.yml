@@ -94,7 +94,7 @@ jobs:
     - name: Remove old tag
       uses: dev-drprasad/delete-tag-and-release@v0.1.2
       with:
-        delete_release: false
+        delete_release: true
         tag_name: latest-commit
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
