@@ -1,6 +1,10 @@
 name: Build binary artifacts
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
   build-linux:
