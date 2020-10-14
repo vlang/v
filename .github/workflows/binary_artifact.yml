@@ -86,3 +86,25 @@ jobs:
         name: windows-binary
         path: ./v.exe
         
+  release:
+    name: Create Github Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: ncipollo/release-action@v1
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        allowUpdates: true
+        tag_name: latest-master
+        release_name: Latest ${{ github.ref }}
+        draft: false
+        prerelease: true
+    - name: Output Release URL File
+      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
+    - name: Save Release URL File for publish
+      uses: actions/upload-artifact@v1
+      with:
+        name: release_url
+        path: release_url.txt
