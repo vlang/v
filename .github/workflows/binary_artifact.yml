@@ -98,7 +98,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
         tag: latest-master
-        release_name: Latest ${{ github.ref }}
+        name: Latest commit on master - ${{ github.ref }}
         draft: false
         prerelease: true
     - name: Output Release URL File
