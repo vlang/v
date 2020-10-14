@@ -1,0 +1,24 @@
+name: Build master - Linux
+
+on: [push]
+
+strategy:
+  matrix:
+    compiler: [gcc, clang]
+
+jobs:
+  build:
+  
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v1
+    - name: make
+      env:
+        CC: ${{ matrix.compiler }}
+      run: make
+    - name: Create artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        name: linux
+        path: .
