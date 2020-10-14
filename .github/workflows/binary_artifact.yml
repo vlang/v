@@ -16,7 +16,7 @@ jobs:
         CC: ${{ matrix.compiler }}
       run: make
     - name: Create artifact
-      uses: actions/upload-artifact@v1.0.0
+      uses: actions/upload-artifact@v2
       with:
         name: linux
         path: |
