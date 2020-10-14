@@ -92,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Remove old tag
-    - uses: dev-drprasad/delete-tag-and-release@v0.1.2
+      uses: dev-drprasad/delete-tag-and-release@v0.1.2
       with:
         delete_release: false
         tag_name: latest-commit
