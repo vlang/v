@@ -4,9 +4,6 @@ on:
   push:
     branches:
       - master
-    paths-ignore:
-      - '**.md'
-      - '**.vv'
 
 jobs:
   build-linux:
