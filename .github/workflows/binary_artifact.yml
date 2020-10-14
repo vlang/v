@@ -98,13 +98,38 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         allowUpdates: true
         tag: latest-master
-        name: Latest commit on master - ${{ github.ref }}
+        name: Latest commit on master
+        commit: ${{ github.commit }}
         draft: false
         prerelease: true
-    - name: Output Release URL File
-      run: echo "${{ steps.create_release.outputs.upload_url }}" > release_url.txt
-    - name: Save Release URL File for publish
-      uses: actions/upload-artifact@v1
+  
+  publish:
+    needs: [release]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [linux, macos, windows]
+    steps:
+    - uses: actions/checkout@v1
+    - name: Fetch artifacts
+      uses: actions/download-artifact@v1
       with:
-        name: release_url
-        path: release_url.txt
+        name: ${{ matrix.version }}
+        path: ./${{ matrix.version }}
+    - name: Build
+      run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}
+    - name: Get release
+      id: get_release_info
+      uses: bruceadams/get-release@v1.2.2
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1.0.1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.get_release_info.outputs.upload_url }}
+        asset_path: ./${{ matrix.version }}.zip
+        asset_name: ${{ matrix.version }}.zip
+        asset_content_type: application/zip
