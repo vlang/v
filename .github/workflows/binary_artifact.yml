@@ -120,11 +120,11 @@ jobs:
       run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}
     - name: Get release
       id: get_release_info
-      uses: bruceadams/get-release@v1.2.2
+      uses: leahlundqvist/get-release@v1.3
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        ref: latest-master
+        tag_name: latest-master
     - name: Upload Release Asset
       id: upload-release-asset 
       uses: actions/upload-release-asset@v1.0.1
