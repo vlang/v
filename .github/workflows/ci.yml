@@ -66,15 +66,6 @@ jobs:
         tcc -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
 #        ./v -silent test-compiler
-    - name: Fixed tests
-      run: ./v test-fixed
-    - name: v self compilation
-      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: Test building v tools
-      run: ./v build-tools
-    - name: v doctor
-      run: |
-        ./v doctor
     - name: v vet
       run: |
         ./v vet vlib/sqlite
@@ -90,6 +81,15 @@ jobs:
         ./v fmt -verify vlib/v/gen/cgen.v
         ./v fmt -verify vlib/v/gen/fn.v
         ./v fmt -verify vlib/v/gen/x64/gen.v
+    - name: Fixed tests
+      run: ./v test-fixed
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: Test building v tools
+      run: ./v build-tools
+    - name: v doctor
+      run: |
+        ./v doctor
 #    - name: Test v binaries
 #      run: ./v -silent build-vbinaries
 
