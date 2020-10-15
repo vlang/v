@@ -9,7 +9,7 @@ fn getint() int {
 	return 8
 }
 
-fn f1(ch1 chan int, ch2 chan St, ch3, ch4, ch5 chan int, sem sync.Semaphore) {
+fn f1(ch1 chan int, ch2 chan St, ch3 chan int, ch4 chan int, ch5 chan int, sem sync.Semaphore) {
 	mut a := 5
 	select {
 		// pre comment
