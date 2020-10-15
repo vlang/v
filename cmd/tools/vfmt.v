@@ -187,7 +187,7 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: $compiler_params.is_script ')
 }
 
-fn (foptions &FormatOptions) post_process_file(file, formatted_file_path string) {
+fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
 	if formatted_file_path.len == 0 {
 		return
 	}

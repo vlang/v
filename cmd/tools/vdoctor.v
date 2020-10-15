@@ -1,5 +1,4 @@
 import os
-import term
 import time
 import v.util
 import runtime
@@ -130,7 +129,7 @@ fn (mut a App) line(label string, value string) {
 	a.println('$label: ${util.bold(value)}')
 }
 
-fn (app &App) parse(config, sep string) map[string]string {
+fn (app &App) parse(config string, sep string) map[string]string {
 	mut m := map[string]string
 	for line in config.split_into_lines() {
 		sline := line.trim_space()
