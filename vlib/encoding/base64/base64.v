@@ -63,9 +63,8 @@ pub fn decode_url(data string) string {
 // encode encodes given string to base64url string
 pub fn encode_url(data string) string {
 	mut result := base64.encode(data)
-	result = result.replace('+', '-') // 62nd char of encoding
-	result = result.replace('/', '_') // 63rd char of encoding
-	result = result.replace('=', '')  // Remove any trailing '='s
+	// 62nd char of encoding, 63rd char of encoding, remove any trailing '='s
+	result = result.replace_each('+', '-', '/', '_', '=', '')
 	return result
 }
 
