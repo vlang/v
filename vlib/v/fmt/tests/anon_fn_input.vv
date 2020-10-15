@@ -6,7 +6,7 @@ fn has_anon_fn() {
   {
 		println('I received $s')
 	}
-	  an_fn_w_multi_params := fn (s1, s2, s3 string) {
+	  an_fn_w_multi_params := fn (s1 string, s2 string, s3 string) {
 			println('I received $s1, $s2, $s3')
 	}
 	an_fn_w_multi_params2 :=fn	(s string, i int)    {
