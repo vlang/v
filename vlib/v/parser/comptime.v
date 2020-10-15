@@ -11,19 +11,23 @@ import vweb.tmpl
 
 // #flag darwin -I.
 const (
-	supported_platforms  = ['windows', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd',
-		'netbsd', 'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
+	supported_platforms  = ['windows', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd',
+		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
 	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
 )
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	mut val := p.tok.lit
+	mut pos := p.prev_tok.position()
+	val := p.tok.lit
+	kind := val.all_before(' ')
 	p.next()
+	//p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
 	return ast.HashStmt{
-		val: val
 		mod: p.mod
-		pos: p.prev_tok.position()
+		val: val
+		kind: kind
+		pos: pos
 	}
 }
 
