@@ -189,7 +189,7 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot bool) table.Type {
+pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check_dot bool) table.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.$name'

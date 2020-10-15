@@ -22,7 +22,7 @@ pub fn (c &CFlag) str() string {
 pub fn (cf &CFlag) format() string {
 	mut value := cf.value
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
-		return '${cf.name}${value}'.trim_space()
+		return '$cf.name$value'.trim_space()
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {
