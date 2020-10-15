@@ -2054,7 +2054,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) trace(fbase string, message string) {
+fn (mut p Parser) trace(fbase, message string) {
 	if p.file_base == fbase {
 		println('> p.trace | ${fbase:-10s} | $message')
 	}
