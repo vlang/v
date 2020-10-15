@@ -15,6 +15,7 @@ import runtime
 import time
 
 pub struct Parser {
+	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 	pref              &pref.Preferences
@@ -106,6 +107,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		comments_mode: comments_mode
 		table: b_table
 		file_name: path
+		file_base: os.base(path)
 		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
@@ -128,6 +130,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		comments_mode: .parse_comments
 		table: table_
 		file_name: path
+		file_base: os.base(path)
 		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
@@ -2048,5 +2051,11 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts: stmts
 		is_unsafe: true
 		pos: pos
+	}
+}
+
+fn (mut p Parser) trace(fbase string, message string) {
+	if p.file_base == fbase {
+		println('> p.trace | ${fbase:-10s} | $message')
 	}
 }
