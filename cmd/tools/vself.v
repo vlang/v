@@ -1,6 +1,7 @@
 module main
 
 import os
+import os.cmdline
 import v.pref
 
 fn main() {
@@ -10,24 +11,35 @@ fn main() {
 	os.setenv('VCOLORS', 'always', true)
 	self_idx := os.args.index('self')
 	args := os.args[1..self_idx]
-	args_str := args.join(' ')
-	options := if args.len > 0 { '($args_str)' } else { '' }
+	jargs := args.join(' ')
+	obinary := cmdline.option(args, '-o', 'v')
+	sargs := if obinary != '' { jargs } else { '$jargs -o v2 ' }
+	cmd := '$vexe $sargs cmd/v'
+	options := if args.len > 0 { '($sargs)' } else { '' }
 	println('V self compiling ${options}...')
-	cmd := '$vexe -o v2 $args_str cmd/v'
+	compile(vroot, cmd)
+	if obinary != '' {
+		// When -o was given, there is no need to backup/rename the original.
+		// The user just wants an independent copy of v, and so we are done.
+		return
+	}
+	backup_old_version_and_rename_newer()
+}
+
+fn compile(vroot string, cmd string) {
 	result := os.exec(cmd) or {
 		panic(err)
 	}
 	if result.exit_code != 0 {
-		mut err := 'Permission denied'
-		if !result.output.contains('Permission denied') {
-			err = '\n$result.output'
-		}
-		eprintln('cannot compile to `$vroot`: $err')
+		eprintln('cannot compile to `$vroot`: \n$result.output')
 		exit(1)
 	}
 	if result.output.len > 0 {
 		println(result.output.trim_space())
 	}
+}
+
+fn backup_old_version_and_rename_newer() {
 	v_file := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	v2_file := if os.user_os() == 'windows' { 'v2.exe' } else { 'v2' }
 	bak_file := if os.user_os() == 'windows' { 'v_old.exe' } else { 'v_old' }
