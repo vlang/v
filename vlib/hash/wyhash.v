@@ -29,7 +29,7 @@ const (
 )
 
 [inline]
-pub fn wyhash_c(key byteptr, len, seed u64) u64 {
+pub fn wyhash_c(key byteptr, len u64, seed u64) u64 {
 	return C.wyhash(key, len, seed)
 }
 
@@ -44,7 +44,7 @@ pub fn sum64(key []byte, seed u64) u64 {
 }
 
 [inline]
-fn wyhash64(key byteptr, len, seed_ u64) u64 {
+fn wyhash64(key byteptr, len u64, seed_ u64) u64 {
 	if len == 0 {
 		return 0
 	}
@@ -96,7 +96,7 @@ fn wyrotr(v u64, k u32) u64 {
 }
 
 [inline]
-pub fn wymum(a, b u64) u64 {
+pub fn wymum(a u64, b u64) u64 {
 	/*
 	mut r := u128(a)
 	r = r*b

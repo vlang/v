@@ -36,7 +36,7 @@ pub fn print_backtrace() {
 }
 
 // replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file, mod, fn_name, s string) {
+fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
@@ -239,7 +239,7 @@ pub fn is_atty(fd int) int {
 	}
 }
 
-fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
+fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
 		panic('as cast: cannot cast $obj_type to $expected_type')
 	}

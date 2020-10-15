@@ -69,7 +69,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	return str_fn_name
 }
 
-fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
 	is_elem_ptr := info.elem_type.is_ptr()
@@ -133,7 +133,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
 	is_elem_ptr := info.elem_type.is_ptr()
@@ -179,7 +179,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp, str_fn_name 
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) {
 	key_sym := g.table.get_type_symbol(info.key_type)
 	key_styp := g.typ(info.key_type)
 	if !key_sym.has_method('str') {
@@ -224,7 +224,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
+fn (mut g Gen) gen_str_for_varg(styp string, str_fn_name string, has_str_method bool) {
 	g.definitions.writeln('string varg_${str_fn_name}(varg_$styp it); // auto')
 	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
@@ -240,7 +240,7 @@ fn (mut g Gen) gen_str_for_varg(styp, str_fn_name string, has_str_method bool) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str_fn_name string) {
 	for typ in info.types {
 		sym := g.table.get_type_symbol(typ)
 		if !sym.has_method('str') {
@@ -288,7 +288,7 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp, str_fn_nam
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name string) {
 	// TODO: short it if possible
 	// generates all definitions of substructs
 	mut fnames2strfunc := {
@@ -337,7 +337,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 			}
 			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
 		}
-		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
+		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2*(info.fields.len+1)}')
 		if info.fields.len > 0 {
 			g.auto_str_funcs.write(',\n\t\t')
 			for i, field in info.fields {
@@ -348,7 +348,6 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 					field_styp = field_styp.replace('*', '')
 				}
 				field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
-
 				g.auto_str_funcs.write('indents, ')
 				func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
 				if field.typ.is_ptr() {
@@ -360,7 +359,6 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 					}
 				}
 				g.auto_str_funcs.write(func)
-
 				if i < info.fields.len - 1 {
 					g.auto_str_funcs.write(',\n\t\t')
 				}
@@ -372,7 +370,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, field_name string) string {
+fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
 	has_custom_str := sym.has_method('str')
 	if sym.kind == .enum_ {
 		return '${fn_name}(it->${c_name(field_name)})'
@@ -409,7 +407,7 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name, fi
 	}
 }
 
-fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string) {
 	s := util.no_dots(styp)
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
@@ -429,8 +427,8 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp, str_fn_name string) {
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_sum_type(info table.SumType, styp, str_fn_name string) {
-	mut gen_fn_names := map[string]string
+fn (mut g Gen) gen_str_for_sum_type(info table.SumType, styp string, str_fn_name string) {
+	mut gen_fn_names := map[string]string{}
 	for typ in info.variants {
 		sym := g.table.get_type_symbol(typ)
 		if !sym.has_method('str') {
@@ -453,14 +451,11 @@ fn (mut g Gen) gen_str_for_sum_type(info table.SumType, styp, str_fn_name string
 	for typ in info.variants {
 		mut value_fmt := '%.*s\\000'
 		if typ == table.string_type {
-			value_fmt = '\'$value_fmt\''
+			value_fmt = "\'$value_fmt\'"
 		}
 		typ_str := g.typ(typ)
-		mut func_name := if typ_str in gen_fn_names {
-			gen_fn_names[typ_str]
-		} else {
-			g.gen_str_for_type_with_styp(typ, typ_str)
-		}
+		mut func_name := if typ_str in gen_fn_names { gen_fn_names[typ_str] } else { g.gen_str_for_type_with_styp(typ,
+				typ_str) }
 		sym := g.table.get_type_symbol(typ)
 		if sym.kind == .struct_ {
 			func_name = 'indent_$func_name'

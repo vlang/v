@@ -70,7 +70,7 @@ pub fn (mut f File) write_bytes(data voidptr, size int) int {
 	return C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
+pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
@@ -84,7 +84,7 @@ pub fn (f &File) read_bytes(size int) []byte {
 }
 
 // read_bytes_at reads bytes at the given position in the file
-pub fn (f &File) read_bytes_at(size, pos int) []byte {
+pub fn (f &File) read_bytes_at(size int, pos int) []byte {
 	mut arr := []byte{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
