@@ -959,18 +959,18 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.HashStmt {
 			// #include etc
-			typ := node.val.all_before(' ')
-			if typ == 'include' {
+			if node.kind == 'include' {
 				if node.val.contains('.m') {
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
+					g.definitions.writeln('// added by module `$node.mod`:')
 					g.definitions.writeln('#$node.val')
 				} else {
 					g.includes.writeln('// added by module `$node.mod`:')
 					g.includes.writeln('#$node.val')
 				}
-			}
-			if typ == 'define' {
+			} else if node.kind == 'define' {
+				g.includes.writeln('// defined by module `$node.mod`:')
 				g.includes.writeln('#$node.val')
 			}
 		}
