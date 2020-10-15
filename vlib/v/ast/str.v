@@ -196,7 +196,7 @@ pub fn (x Expr) str() string {
 		EnumVal {
 			return '.$x.val'
 		}
-		FloatLiteral {
+		FloatLiteral, IntegerLiteral {
 			return x.val
 		}
 		Ident {
@@ -204,9 +204,6 @@ pub fn (x Expr) str() string {
 		}
 		IndexExpr {
 			return '$x.left.str()[$x.index.str()]'
-		}
-		IntegerLiteral {
-			return x.val
 		}
 		InfixExpr {
 			return '$x.left.str() $x.op.str() $x.right.str()'

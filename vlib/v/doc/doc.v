@@ -137,29 +137,20 @@ pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
 
 pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	match stmt {
-		ast.FnDecl { return stmt.pos }
-		ast.StructDecl { return stmt.pos }
-		ast.EnumDecl { return stmt.pos }
-		ast.InterfaceDecl { return stmt.pos }
-		ast.ConstDecl { return stmt.pos }
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl { return stmt.pos }
 		else { return token.Position{} }
 	}
 }
 
 pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 	match decl {
-		ast.SumTypeDecl { return decl.name }
-		ast.FnTypeDecl { return decl.name }
-		ast.AliasTypeDecl { return decl.name }
+		ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return decl.name }
 	}
 }
 
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	match stmt {
-		ast.FnDecl { return stmt.name }
-		ast.StructDecl { return stmt.name }
-		ast.EnumDecl { return stmt.name }
-		ast.InterfaceDecl { return stmt.name }
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl { return d.get_type_name(stmt) }
 		ast.ConstDecl { return 'Constants' }
 		else { return typeof(stmt) }
