@@ -133,7 +133,7 @@ pub fn (mut ctx Context) set_cookie(cookie Cookie) {
 	ctx.add_header('Set-Cookie', '$cookie.name=$cookie.value; $data')
 }
 
-pub fn (mut ctx Context) set_cookie_old(key, val string) {
+pub fn (mut ctx Context) set_cookie_old(key string, val string) {
 	// TODO support directives, escape cookie value (https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie)
 	//ctx.add_header('Set-Cookie', '${key}=${val};  Secure; HttpOnly')
 	ctx.add_header('Set-Cookie', '${key}=${val}; HttpOnly')
@@ -143,7 +143,7 @@ pub fn (mut ctx Context) set_content_type(typ string) {
 	ctx.content_type = typ
 }
 
-pub fn (mut ctx Context) set_cookie_with_expire_date(key, val string, expire_date time.Time) {
+pub fn (mut ctx Context) set_cookie_with_expire_date(key string, val string, expire_date time.Time) {
 	ctx.add_header('Set-Cookie', '$key=$val;  Secure; HttpOnly; expires=${expire_date.utc_string()}')
 }
 
@@ -174,7 +174,7 @@ pub fn (mut ctx Context) set_status(code int, desc string) {
 	}
 }
 
-pub fn (mut ctx Context) add_header(key, val string) {
+pub fn (mut ctx Context) add_header(key string, val string) {
 	//println('add_header($key, $val)')
 	ctx.headers = ctx.headers + '\r\n$key: $val'
 	//println(ctx.headers)
@@ -514,7 +514,7 @@ fn (mut ctx Context) parse_form(s string) {
 	// ...
 }
 
-fn (mut ctx Context) scan_static_directory(directory_path, mount_path string) {
+fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
 	files := os.ls(directory_path) or { panic(err) }
 
 	if files.len > 0 {
@@ -554,7 +554,7 @@ pub fn (mut ctx Context) handle_static(directory_path string) bool {
 }
 
 
-pub fn (mut ctx Context) serve_static(url, file_path, mime_type string) {
+pub fn (mut ctx Context) serve_static(url string, file_path string, mime_type string) {
 	ctx.static_files[url] = file_path
 	ctx.static_mime_types[url] = mime_type
 }
