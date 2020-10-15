@@ -374,8 +374,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			c.expected_type = field.typ
 			field_expr_type := c.expr(field.default_expr)
 			c.check_expected(field_expr_type, field.typ) or {
-				c.error('incompatible initializer for field `$field.name`: $err',
-					field.default_expr.position())
+				c.error('incompatible initializer for field `$field.name`: $err', field.default_expr.position())
 			}
 			// Check for unnecessary inits like ` = 0` and ` = ''`
 			if field.typ.is_ptr() {
@@ -506,8 +505,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 					c.check_expected(expr_type, info_field.typ) or {
-						c.error('cannot assign to field `$info_field.name`: $err',
-							field.pos)
+						c.error('cannot assign to field `$info_field.name`: $err', field.pos)
 					}
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
