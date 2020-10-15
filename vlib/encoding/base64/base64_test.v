@@ -69,11 +69,11 @@ fn test_encode() {
 }
 
 fn test_encode_url() {
-	test := base64url.encode('Hello Base64Url encoding!')
+	test := base64.encode_url('Hello Base64Url encoding!')
 	assert test == 'SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ'
 }
 
 fn test_decode_url() {
-	test := base64url.decode("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
+	test := base64.decode_url("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
 	assert test == 'Hello Base64Url encoding!'
 }
