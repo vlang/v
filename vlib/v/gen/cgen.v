@@ -1314,19 +1314,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
 	match e {
-		ast.CallExpr {
-			g.write(ctoslit(unknown_value))
-		}
-		ast.CastExpr {
-			g.write(ctoslit(unknown_value))
-		}
-		ast.IndexExpr {
-			g.write(ctoslit(unknown_value))
-		}
-		ast.PrefixExpr {
-			g.write(ctoslit(unknown_value))
-		}
-		ast.MatchExpr {
+		ast.CallExpr, ast.CastExpr, ast.IndexExpr, ast.PrefixExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
 		ast.Type {
@@ -1364,9 +1352,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	op := if assign_stmt.op == .decl_assign { token.Kind.assign } else { assign_stmt.op }
 	is_decl := assign_stmt.op == .decl_assign
 	match assign_stmt.right[0] {
-		ast.CallExpr { return_type = it.return_type }
+		ast.CallExpr, ast.MatchExpr { return_type = it.return_type }
 		ast.IfExpr { return_type = it.typ }
-		ast.MatchExpr { return_type = it.return_type }
 		else {}
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`)
@@ -3677,13 +3664,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 		} else {
 		*/
 		match field.expr {
-			ast.CharLiteral {
-				g.const_decl_simple_define(name, val)
-			}
-			ast.FloatLiteral {
-				g.const_decl_simple_define(name, val)
-			}
-			ast.IntegerLiteral {
+			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
 			ast.ArrayInit {
@@ -4292,8 +4273,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		return true
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
-			ast.SelectorExpr { true }
-			ast.Ident { true }
+			ast.SelectorExpr, ast.Ident { true }
 			else { false }
 		}
 		if is_var {
@@ -4953,9 +4933,7 @@ fn (mut g Gen) type_default(typ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_ { '{0}' }
-		.sum_type { '{0}' }
-		.array_fixed { '{0}' }
+		.interface_, .sum_type, .array_fixed { '{0}' }
 		else { '0' }
 	}
 	// TODO this results in
@@ -4963,21 +4941,10 @@ fn (mut g Gen) type_default(typ table.Type) string {
 	// - Empty ee= (Empty) { . =  {0}  } ;
 	/*
 	return match typ {
-	'bool'{ '0'}
+	'bool', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte', 'int', 'rune', 'byteptr', 'voidptr' {'0'}
 	'string'{ 'tos_lit("")'}
-	'i8'{ '0'}
-	'i16'{ '0'}
-	'i64'{ '0'}
-	'u16'{ '0'}
-	'u32'{ '0'}
-	'u64'{ '0'}
-	'byte'{ '0'}
-	'int'{ '0'}
-	'rune'{ '0'}
 	'f32'{ '0.0'}
 	'f64'{ '0.0'}
-	'byteptr'{ '0'}
-	'voidptr'{ '0'}
 	else { '{0} '}
 }
 	*/
