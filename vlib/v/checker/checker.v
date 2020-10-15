@@ -2462,7 +2462,9 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error('Hash statements are not allowed in the main module. Please place them in a separate module.',
 				node.pos)
 		}
-	} else if node.val.starts_with('include') {
+		return
+	}
+	if node.kind == 'include' {
 		mut flag := node.val[8..]
 		if flag.contains('@VROOT') {
 			vroot := util.resolve_vroot(flag, c.file.path) or {
@@ -2471,12 +2473,13 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 			node.val = 'include $vroot'
 		}
-		if !((flag.starts_with('"') && flag.ends_with('"')) ||
-			(flag.starts_with('<') && flag.ends_with('>'))) && '//' !in flag {
-			c.error('header file must be in either `"header_file.h"` or `<header_file.h>` format $flag',
+		flag_no_comment := flag.all_before('//').trim_space()
+		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"')) ||
+			(flag_no_comment.starts_with('<') && flag_no_comment.ends_with('>'))) {
+			c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
 				node.pos)
 		}
-	} else if node.val.starts_with('flag') {
+	} else if node.kind == 'flag' {
 		// #flag linux -lm
 		mut flag := node.val[5..]
 		// expand `@VROOT` to its absolute path
@@ -2496,7 +2499,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error(err, node.pos)
 		}
 	} else {
-		if !node.val.starts_with('define') {
+		if node.kind != 'define' {
 			c.error('expected `#include`, `#flag` or `#define` not $node.val', node.pos)
 		}
 	}

@@ -629,6 +629,7 @@ pub:
 	pos token.Position
 pub mut:
 	val string
+	kind string
 }
 
 /*

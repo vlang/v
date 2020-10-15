@@ -18,12 +18,14 @@ const (
 
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
-	mut val := p.tok.lit
+	mut pos := p.prev_tok.position()
+	val := p.tok.lit
+	kind := val.all_before(' ')
 	p.next()
-	pos := p.tok.position()
 	return ast.HashStmt{
-		val: val
 		mod: p.mod
+		val: val
+		kind: kind
 		pos: pos
 	}
 }
