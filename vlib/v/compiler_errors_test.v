@@ -9,8 +9,8 @@ import benchmark
 
 const (
 	skip_files = [
-		'vlib/v/checker/tests/return_missing_comp_if.vv'
-		'vlib/v/checker/tests/return_missing_comp_if_nested.vv'
+		'vlib/v/checker/tests/return_missing_comp_if.vv',
+		'vlib/v/checker/tests/return_missing_comp_if_nested.vv',
 	]
 )
 
@@ -23,7 +23,7 @@ struct TaskDescription {
 mut:
 	is_error         bool
 	is_skipped       bool
-	is_module bool
+	is_module        bool
 	expected         string
 	found___         string
 	took             time.Duration
@@ -38,7 +38,7 @@ fn test_all() {
 	global_dir := '$classic_dir/globals'
 	global_tests := get_tests_in_dir(global_dir, false)
 	module_dir := '$classic_dir/modules'
-	module_tests := get_tests_in_dir(module_dir, true)	
+	module_tests := get_tests_in_dir(module_dir, true)
 	run_dir := '$classic_dir/run'
 	run_tests := get_tests_in_dir(run_dir, false)
 	parser_dir := 'vlib/v/parser/tests'
@@ -46,7 +46,8 @@ fn test_all() {
 	// -prod so that warns are errors
 	mut tasks := []TaskDescription{}
 	tasks << new_tasks(vexe, classic_dir, '-prod', '.out', classic_tests, false)
-	tasks << new_tasks(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
+	tasks <<
+		new_tasks(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
 	tasks <<
 		new_tasks(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'], false)
 	tasks << new_tasks(vexe, module_dir, '-prod run', '.out', module_tests, true)
@@ -55,7 +56,7 @@ fn test_all() {
 	tasks.run()
 }
 
-fn new_tasks(vexe, dir, voptions, result_extension string, tests []string, is_module bool) []TaskDescription {
+fn new_tasks(vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) []TaskDescription {
 	paths := vtest.filter_vtest_only(tests, {
 		basepath: dir
 	})
@@ -88,9 +89,7 @@ fn (mut tasks []TaskDescription) run() {
 		if tasks[i].path in m_skip_files {
 			tasks[i].is_skipped = true
 		}
-		unsafe {
-			work.push(&tasks[i])
-		}
+		unsafe {work.push(&tasks[i])}
 	}
 	work.close()
 	for _ in 0 .. vjobs {
@@ -106,7 +105,7 @@ fn (mut tasks []TaskDescription) run() {
 			eprintln(bench.step_message_with_label_and_duration(benchmark.b_skip, task.path,
 				task.took))
 			continue
-		}                                                                                        
+		}
 		if task.is_error {
 			total_errors++
 			bench.fail()
@@ -150,10 +149,10 @@ fn work_processor(mut work sync.Channel, mut results sync.Channel) {
 // actual processing; NB: no output is done here at all
 fn (mut task TaskDescription) execute() {
 	if task.is_skipped {
-		return    
-	}    
+		return
+	}
 	program := task.path
-    cli_cmd := '$task.vexe $task.voptions $program'
+	cli_cmd := '$task.vexe $task.voptions $program'
 	res := os.exec(cli_cmd) or {
 		panic(err)
 	}
@@ -181,7 +180,7 @@ fn clean_line_endings(s string) string {
 	return res
 }
 
-fn diff_content(s1, s2 string) {
+fn diff_content(s1 string, s2 string) {
 	diff_cmd := util.find_working_diff_command() or {
 		return
 	}
