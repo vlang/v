@@ -2,6 +2,31 @@ name: CI
 on: [push, pull_request]
 jobs:
 
+  code-formatting:
+    runs-on: ubuntu-18.04
+    env:
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Environment info
+      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+    - name: Build local v
+      run: make -j4
+    - name: v vet
+      run: |
+        ./v vet vlib/sqlite
+        ./v vet vlib/v
+    - name: v fmt
+      run: |
+        ./v fmt -verify vlib/v/scanner/scanner.v
+        ./v fmt -verify vlib/v/parser/parser.v
+        ./v fmt -verify vlib/v/parser/fn.v
+        ./v fmt -verify vlib/v/checker/checker.v
+        ./v fmt -verify vlib/v/gen/cgen.v
+        ./v fmt -verify vlib/v/gen/fn.v
+        ./v fmt -verify vlib/v/gen/x64/gen.v
+        ./v fmt -verify vlib/v/table/table.v
+        ./v fmt -verify vlib/v/fmt/fmt.v
 
 #  v-fmt:
 #    runs-on: ubuntu-18.04
@@ -66,21 +91,6 @@ jobs:
         tcc -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
 #        ./v -silent test-compiler
-    - name: v vet
-      run: |
-        ./v vet vlib/sqlite
-        ./v vet vlib/v
-    - name: v fmt
-      run: |
-        ./v fmt -verify vlib/v/checker/checker.v
-        ./v fmt -verify vlib/v/fmt/fmt.v
-        ./v fmt -verify vlib/v/parser/parser.v
-        ./v fmt -verify vlib/v/parser/fn.v
-        ./v fmt -verify vlib/v/scanner/scanner.v
-        ./v fmt -verify vlib/v/table/table.v
-        ./v fmt -verify vlib/v/gen/cgen.v
-        ./v fmt -verify vlib/v/gen/fn.v
-        ./v fmt -verify vlib/v/gen/x64/gen.v
     - name: Fixed tests
       run: ./v test-fixed
     - name: v self compilation
@@ -160,10 +170,6 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
-    - name: v vet
-      run: |
-        ./v vet vlib/sqlite
-        ./v vet vlib/v
     - name: Cross-compilation to Linux
       run: ./v -os linux cmd/v
 #    - name: Test vsh
