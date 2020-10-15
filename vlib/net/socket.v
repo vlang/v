@@ -191,7 +191,8 @@ pub fn (s Socket) peer_ip() ?string {
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
 	}
-	return cstring_to_vstring(cstr)
+	res := cstring_to_vstring(cstr)
+	return res    
 }
 
 // connect to given addrress and port
@@ -265,13 +266,15 @@ pub fn (s Socket) recv(bufsize int) (byteptr, int) {
 
 // TODO: remove cread/2 and crecv/2 when the Go net interface is done
 pub fn (s Socket) cread(buffer byteptr, buffersize int) int {
-	return C.read(s.sockfd, buffer, buffersize)
+	res := C.read(s.sockfd, buffer, buffersize)
+	return res
 }
 
 // Receive a message from the socket, and place it in a preallocated buffer buf,
 // with maximum message size bufsize. Returns the length of the received message.
 pub fn (s Socket) crecv(buffer voidptr, buffersize int) int {
-	return C.recv(s.sockfd, byteptr(buffer), buffersize, 0)
+	res := C.recv(s.sockfd, byteptr(buffer), buffersize, 0)
+	return res    
 }
 
 // shutdown and close socket
