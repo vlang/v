@@ -4,6 +4,7 @@
 module vweb
 
 import os
+import io
 import net
 import net.http
 import net.urllib
@@ -44,8 +45,8 @@ mut:
 	content_type      string = 'text/plain'
 	status            string = '200 OK'
 pub:
-	req               http.Request
-	conn              net.Socket
+	req http.Request
+	conn net.TcpConn
 	// TODO Response
 pub mut:
 	form              map[string]string
@@ -87,9 +88,7 @@ fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	defer {
 		s.free()
 	}
-	ctx.conn.send_string(s) or {
-		return false
-	}
+	send_string(ctx.conn, s) or { return false }
 	return true
 }
 
@@ -117,9 +116,7 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	ctx.conn.send_string('HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
-		return Result{}
-	}
+	send_string(ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return Result{} }
 	return Result{}
 }
 
@@ -128,8 +125,8 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	ctx.conn.send_string(http_404) or { }
-	return Result{}
+	send_string(ctx.conn, http_404) or {}
+	return vweb.Result{}
 }
 
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
@@ -202,9 +199,7 @@ pub fn run<T>(port int) {
 
 pub fn run_app<T>(mut app T, port int) {
 	println('Running a Vweb app on http://localhost:$port')
-	l := net.listen(port) or {
-		panic('failed to listen')
-	}
+	l := net.listen_tcp(port) or { panic('failed to listen') }
 	app.vweb = Context{}
 	app.init_once()
 	$for method in T.methods {
@@ -243,15 +238,19 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 }
 
-fn handle_conn<T>(conn net.Socket, mut app T) {
-	defer {
-		conn.close() or { }
-	}
-	// fn handle_conn<T>(conn net.Socket, app_ T) T {
-	// mut app := app_
-	// first_line := strip(lines[0])
+fn handle_conn<T>(conn net.TcpConn, mut app T) {
+	defer { conn.close() or {} }
+	//fn handle_conn<T>(conn net.Socket, app_ T) T {
+	//mut app := app_
+	//first_line := strip(lines[0])
+	
+	mut reader := io.new_buffered_reader(reader: io.make_rstream(conn))
+	
 	page_gen_start := time.ticks()
-	first_line := conn.read_line()
+	first_line := reader.read_line() or {
+		println('Failed first_line')
+		return
+	}
 	$if debug {
 		println('firstline="$first_line"')
 	}
@@ -261,17 +260,20 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		conn.send_string(http_500) or { }
+		send_string(conn, http_500) or {}
 		return
 	}
 	mut headers := []string{}
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	// for line in lines[1..] {
-	for _ in 0 .. 100 {
-		// println(j)
-		line := conn.read_line()
+	//for line in lines[1..] {
+	for _ in 0..100 {
+		//println(j)
+		line := reader.read_line() or { 
+			println('Failed read_line')
+			break
+		}
 		sline := strip(line)
 		if sline == '' {
 			// if in_headers {
@@ -343,7 +345,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mime_type := app.vweb.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			conn.send_string(http_404) or { }
+			send_string(conn, http_404) or {}
 			return
 		}
 		app.vweb.send_response_to_client(mime_type, data)
@@ -480,7 +482,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	}
 	if action == '' {
 		// site not found
-		conn.send_string(http_404) or { }
+		send_string(conn, http_404) or {}
 		return
 	}
 	$for method in T.methods {
@@ -580,9 +582,8 @@ pub fn (ctx &Context) ip() string {
 		ip = ip.all_before(',')
 	}
 	if ip == '' {
-		ip = ctx.conn.peer_ip() or {
-			''
-		}
+		println('TODO peer_ip')
+		// ip = ctx.conn.peer_ip() or { '' }
 	}
 	return ip
 }
@@ -628,3 +629,8 @@ fn filter(s string) string {
 }
 
 pub type RawHtml = string
+
+
+fn send_string(conn net.TcpConn, s string) ? {
+	conn.write(s.bytes())?
+}

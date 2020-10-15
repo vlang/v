@@ -17,12 +17,13 @@ struct FileInfo {
 
 [deprecated]
 pub fn (f File) is_opened() bool {
-	eprintln('warning: `file.is_opened()` has been deprecated, use `file.is_opened` instead')
+	eprintln('warning: `File.is_opened()` has been deprecated, use `File.is_opened` instead')
 	return f.is_opened
 }
 
 // **************************** Write ops  ***************************
-pub fn (mut f File) write(s string) ?int {
+// write implements the Writer interface
+pub fn (mut f File) write(buf []byte) ?int {
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -41,7 +42,9 @@ pub fn (mut f File) write(s string) ?int {
 	return written
 }
 
+[deprecated]
 pub fn (mut f File) writeln(s string) ?int {
+	eprintln('warning `File.writeln()` has been deprecated, use `BinaryWriter.writeln()` instead')
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -66,11 +69,15 @@ pub fn (mut f File) writeln(s string) ?int {
 	return (written + 1)
 }
 
+[deprecated]
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
+	eprintln('warning `File.write_bytes()` has been deprecated, use `File.write` instead')
 	return C.fwrite(data, 1, size, f.cfile)
 }
 
-pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+[deprecated]
+pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
+	eprintln('warning `File.write_bytes()` has been deprecated, use `File.write_to` instead')
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
@@ -79,12 +86,16 @@ pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
 
 // **************************** Read ops  ***************************
 // read_bytes reads bytes from the beginning of the file
+[deprecated]
 pub fn (f &File) read_bytes(size int) []byte {
+	eprintln('warning `File.write_bytes()` has been deprecated, use `File.read` instead')
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads bytes at the given position in the file
-pub fn (f &File) read_bytes_at(size int, pos int) []byte {
+[deprecated]
+pub fn (f &File) read_bytes_at(size, pos int) []byte {
+	eprintln('warning `File.write_bytes()` has been deprecated, use `File.read_at` instead')
 	mut arr := []byte{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
@@ -96,7 +107,9 @@ pub fn (f &File) read_bytes_at(size int, pos int) []byte {
 // read_bytes_from fills `buf` with bytes at the given position in the file.
 // `buf` must have length greater than zero.
 // Returns number of bytes read or an error.
+[deprecated]
 pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
+	eprintln('warning `File.read_bytes_into()` has been deprecated, use `File.read_from_into` instead')
 	if buf.len == 0 {
 		panic(@FN + ': `buf.len` == 0')
 	}

@@ -276,7 +276,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 		return res
 	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do(nport, method, host_name, path) ?
+		res := req.http_do('$host_name:$nport', method, path)?
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
@@ -392,23 +392,22 @@ pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 
-fn (req &Request) http_do(port int, method Method, host_name string, path string) ?Response {
+fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	rbuffer := [bufsize]byte{}
 	mut sb := strings.new_builder(100)
+	host_name, _ := net.split_address(host)?
 	s := req.build_request_headers(method, host_name, path)
-	client := net.dial(host_name, port) ?
-	client.send(s.str, s.len) or { }
+	client := net.dial_tcp(host)?
+	client.write(s.bytes())?
+	mut buf := []byte{len:1000}
 	for {
-		readbytes := client.crecv(rbuffer, bufsize)
-		if readbytes < 0 {
-			return error('http.request.http_do: error reading response. readbytes=$readbytes')
-		}
-		if readbytes == 0 {
+		read := client.read_into(mut buf)?
+		if read == 0 {
 			break
 		}
-		sb.write(tos(rbuffer, readbytes))
+		sb.write(buf.bytestr())
 	}
-	client.close() or { }
+	client.close()
 	return parse_response(sb.str())
 }
 

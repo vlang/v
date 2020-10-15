@@ -1,4 +1,4 @@
-import x.net
+import net
 import time
 
 const (

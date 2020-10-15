@@ -1,4 +1,4 @@
-import x.net
+import net
 import time
 
 fn echo_server(_c net.UdpConn) {

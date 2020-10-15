@@ -3,15 +3,17 @@ import net.ftp
 // NB: this function makes network calls to external servers,
 // that is why it is not a very good idea to run it in CI.
 // If you want to run it manually, use `v -d network vlib/net/ftp/ftp_test.v`
-fn test_ftp_client() {
+fn ftp_client_test_inside() ? {
 	$if !network ? { return }
 	mut ftp := ftp.new()
 	defer {
 		ftp.close()
 	}
-	assert ftp.connect('ftp.redhat.com')
-	assert ftp.login('ftp', 'ftp')
-	pwd := ftp.pwd()
+	connect_result := ftp.connect('ftp.redhat.com')?
+	assert connect_result
+	login_result := ftp.login('ftp', 'ftp')?
+	assert login_result
+	pwd := ftp.pwd()?
 	assert pwd.len > 0
 	ftp.cd('/')
 	dir_list1 := ftp.dir() or {
@@ -30,4 +32,11 @@ fn test_ftp_client() {
 		return
 	}
 	assert blob.len > 0
+}
+
+
+fn test_ftp_cleint() {
+	ftp_client_test_inside() or {
+		panic(err)
+	}
 }
