@@ -1,11 +1,11 @@
 module point
 
 pub struct Point {
-    mut:
-        x int
-        y int
+mut:
+	x int
+	y int
 }
 
 pub fn (a Point) +(b Point) int {
-    return a.x + b.x
+	return a.x + b.x
 }

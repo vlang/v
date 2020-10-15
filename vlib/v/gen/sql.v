@@ -48,7 +48,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			if field.name == 'id' {
 				continue
 			}
-			g.write('?${i+0}')
+			g.write('?${i + 0}')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -78,9 +78,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			}
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
-				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i+0}, ${x}.str, ${x}.len, 0);')
+				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
 			} else {
-				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i+0}, $x); // stmt')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0}, $x); // stmt')
 			}
 		}
 	}

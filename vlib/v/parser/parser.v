@@ -21,7 +21,8 @@ pub struct Parser {
 	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
-	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
+	comments_mode     scanner.CommentsMode = .skip_comments
+	// see comment in parse_file
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
@@ -832,7 +833,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) vet_error(s string, line int) {
-	p.vet_errors << '$p.scanner.file_path:${line+1}: $s'
+	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
