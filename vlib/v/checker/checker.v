@@ -2500,7 +2500,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 	} else {
 		if node.kind != 'define' {
-			c.error('expected `#include`, `#flag` or `#define` not $node.val', node.pos)
+			c.warn('expected `#include`, `#flag` or `#define` not $node.val', node.pos)
 		}
 	}
 }
