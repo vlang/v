@@ -247,7 +247,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	return has_main_fn
 }
 
-fn (mut c Checker) check_valid_snake_case(name, identifier string, pos token.Position) {
+fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos token.Position) {
 	if !c.pref.is_vweb && (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
@@ -264,7 +264,7 @@ fn stripped_name(name string) string {
 	return name[(idx + 1)..]
 }
 
-fn (mut c Checker) check_valid_pascal_case(name, identifier string, pos token.Position) {
+fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Position) {
 	sname := stripped_name(name)
 	if !sname[0].is_capital() && !c.pref.translated {
 		c.error('$identifier `$name` must begin with capital letter', pos)
@@ -1531,7 +1531,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	return f.return_type
 }
 
-fn (mut c Checker) type_implements(typ, inter_typ table.Type, pos token.Position) bool {
+fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos token.Position) bool {
 	typ_sym := c.table.get_type_symbol(typ)
 	inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
@@ -3854,7 +3854,7 @@ pub fn (mut c Checker) error(message string, pos token.Position) {
 }
 
 // check_struct_signature checks if both structs has the same signature / fields for casting
-fn (c Checker) check_struct_signature(from, to table.Struct) bool {
+fn (c Checker) check_struct_signature(from table.Struct, to table.Struct) bool {
 	if from.fields.len != to.fields.len {
 		return false
 	}

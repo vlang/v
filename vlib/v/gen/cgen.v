@@ -419,7 +419,7 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	return styp, base
 }
 
-fn (g &Gen) optional_type_text(styp, base string) string {
+fn (g &Gen) optional_type_text(styp string, base string) string {
 	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
 	size := if base == 'void' { 'int' } else { base }
@@ -469,7 +469,7 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	return sh_typ
 }
 
-fn (mut g Gen) register_chan_pop_optional_call(opt_el_type, styp string) {
+fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) {
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
@@ -1180,7 +1180,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -3688,7 +3688,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (mut g Gen) const_decl_simple_define(name, val string) {
+fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	// Simple expressions should use a #define
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
@@ -3697,7 +3697,7 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(mod, name, val string, typ table.Type) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type) {
 	// Initialize more complex consts in `void _vinit(){}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
@@ -5144,7 +5144,7 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 	return g.gen_str_for_type_with_styp(typ, styp)
 }
 
-fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
 	mut convertor := ''
 	mut typename_ := ''
 	if sym.parent_idx in table.integer_type_idxs {
@@ -5441,7 +5441,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
-fn (mut g Gen) interface_call(typ, interface_type table.Type) {
+fn (mut g Gen) interface_call(typ table.Type, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
 	mut cast_fn_name := 'I_${styp}_to_Interface_$interface_styp'
