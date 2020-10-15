@@ -34,14 +34,14 @@ pub fn (mut e Eval) eval(file ast.File, table &table.Table) string {
 
 fn print_object(o Object) {
 	match o {
-		int { println(it) }
+		int { println(o) }
 		else { println('unknown object') }
 	}
 }
 
 pub fn (o Object) str() string {
 	match o {
-		int { return it.str() }
+		int { return o.str() }
 		else { println('unknown object') }
 	}
 	return ''
@@ -53,18 +53,18 @@ fn (mut e Eval) stmt(node ast.Stmt) string {
 			// TODO; replaced VarDecl
 		}
 		ast.ExprStmt {
-			o := e.expr(it.expr)
+			o := e.expr(node.expr)
 			print('out: ')
 			print_object(o)
 			return o.str()
 		}
 		// ast.StructDecl {
-		//	println('s decl')
+		// println('s decl')
 		// }
 		// ast.VarDecl {
-		//	e.vars[it.name] = Var{
-		//		value: e.expr(it.expr)
-		//	}
+		// e.vars[it.name] = Var{
+		// value: e.expr(it.expr)
+		// }
 		// }
 		else {}
 	}
@@ -74,20 +74,20 @@ fn (mut e Eval) stmt(node ast.Stmt) string {
 fn (mut e Eval) expr(node ast.Expr) Object {
 	match node {
 		ast.IntegerLiteral {
-			return it.val
+			return node.val
 		}
 		ast.Ident {
-			print_object(it.value)
+			print_object(node.value)
 			// Find the variable
-			v := e.vars[it.name]
+			v := e.vars[node.name]
 			return v.value
 		}
 		ast.InfixExpr {
-			e.checker.infix_expr(mut it)
+			e.checker.infix_expr(mut node)
 			// println('bin $it.op')
-			left := e.expr(it.left) as int
-			right := e.expr(it.right) as int
-			match it.op {
+			left := e.expr(node.left) as int
+			right := e.expr(node.right) as int
+			match node.op {
 				.plus { return left + right }
 				.mul { return left * right }
 				else {}

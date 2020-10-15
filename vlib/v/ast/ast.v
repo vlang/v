@@ -179,11 +179,11 @@ pub:
 
 pub struct InterfaceDecl {
 pub:
-	name        string
-	field_names []string
-	is_pub      bool
-	methods     []FnDecl
-	pos         token.Position
+	name         string
+	field_names  []string
+	is_pub       bool
+	methods      []FnDecl
+	pos          token.Position
 	pre_comments []Comment
 }
 
@@ -602,8 +602,8 @@ pub:
 	stmts      []Stmt
 	pos        token.Position
 	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
-pub mut:
 	// and the array cannot be indexed inside the loop
+pub mut:
 	key_type   table.Type
 	val_type   table.Type
 	cond_type  table.Type
@@ -625,10 +625,10 @@ pub:
 // #include etc
 pub struct HashStmt {
 pub:
-	mod string
-	pos token.Position
+	mod  string
+	pos  token.Position
 pub mut:
-	val string
+	val  string
 	kind string
 }
 

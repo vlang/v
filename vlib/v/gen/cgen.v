@@ -2601,7 +2601,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
 			unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
-		g.write('_us${bitsize}_${cmp_str[int(node.op)-int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_str[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
 		g.expr(node.right)
@@ -2610,7 +2610,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_right.idx() == table.u32_type_idx &&
 			unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
-		g.write('_us${bitsize}_${cmp_rev[int(node.op)-int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
 		g.expr(node.left)
@@ -4016,7 +4016,7 @@ fn verror(s string) {
 }
 
 fn (g &Gen) error(s string, pos token.Position) {
-	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr+1}' }
+	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr + 1}' }
 	util.verror('$g.file.path:$p: cgen error', s)
 }
 
@@ -4151,7 +4151,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 							styp, base := g.optional_type_name(field.typ)
 							g.optionals << styp
 							g.typedefs2.writeln('typedef struct $styp $styp;')
-							g.type_definitions.writeln('${g.optional_type_text(styp,base)};')
+							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
 							g.type_definitions.write(last_text)
 						}
 						type_name := g.typ(field.typ)
@@ -5031,7 +5031,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('$arg_tmp_var->arg${i+1} = ')
+		g.write('$arg_tmp_var->arg${i + 1} = ')
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
@@ -5056,7 +5056,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	} else {
 		for i, arg in expr.args {
 			styp := g.typ(arg.typ)
-			g.type_definitions.writeln('\t$styp arg${i+1};')
+			g.type_definitions.writeln('\t$styp arg${i + 1};')
 		}
 	}
 	g.type_definitions.writeln('} $wrapper_struct_name;')
@@ -5070,7 +5070,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		}
 	}
 	for i in 0 .. expr.args.len {
-		g.gowrappers.write('arg->arg${i+1}')
+		g.gowrappers.write('arg->arg${i + 1}')
 		if i < expr.args.len - 1 {
 			g.gowrappers.write(', ')
 		}

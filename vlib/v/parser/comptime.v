@@ -22,7 +22,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	p.next()
-	//p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
+	// p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
 	return ast.HashStmt{
 		mod: p.mod
 		val: val

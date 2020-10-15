@@ -38,7 +38,6 @@ pub mut:
 	file              ast.File
 	did_imports       bool
 	is_assign         bool
-	is_inside_interp  bool
 	auto_imports      []string // automatically inserted imports that the user forgot to specify
 	import_pos        int // position of the imports in the resulting string for later autoimports insertion
 	used_imports      []string // to remove unused imports
@@ -609,55 +608,48 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		end_pos := field.pos.pos + field.pos.len
 		comments := field.comments
-		if comments.len == 0 {
-			f.write('\t$field.name ')
-			f.write(strings.repeat(` `, max - field.name.len))
-			f.write(field_types[i])
-			if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only]			attr being added to fields, fix it
-				f.write(strings.repeat(` `, max_type - field_types[i].len))
-				f.inline_attrs(field.attrs)
-			}
-			if field.has_default_expr {
-				f.write(' = ')
-				f.prefix_expr_cast_expr(field.default_expr)
-			}
-			f.write('\n')
-			continue
-		}
 		// Handle comments before field
-		mut j := 0
-		for j < comments.len && comments[j].pos.pos < field.pos.pos {
+		mut comm_idx := 0
+		for comm_idx < comments.len && comments[comm_idx].pos.pos < field.pos.pos {
 			f.indent++
 			f.empty_line = true
-			f.comment(comments[j], {
-				inline: true
-			})
+			f.comment(comments[comm_idx], {})
 			f.writeln('')
 			f.indent--
-			j++
+			comm_idx++
 		}
 		f.write('\t$field.name ')
 		// Handle comments between field name and type
 		mut comments_len := 0
-		for j < comments.len && comments[j].pos.pos < end_pos {
-			comment := '/* ${comments[j].text} */ ' // TODO: handle in a function
-			comments_len += comment.len
-			f.write(comment)
-			j++
+		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
+			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comments_len += comment_text.len
+			f.write(comment_text)
+			comm_idx++
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(field_types[i])
-		f.inline_attrs(field.attrs)
+		if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only] attr being added to fields, fix it
+			f.write(strings.repeat(` `, max_type - field_types[i].len))
+			f.inline_attrs(field.attrs)
+		}
 		if field.has_default_expr {
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
 		}
 		// Handle comments after field type (same line)
-		for j < comments.len && field.pos.line_nr == comments[j].pos.line_nr {
-			f.write(' // ${comments[j].text}') // TODO: handle in a function
-			j++
+		if comm_idx < comments.len {
+			if comments[comm_idx].pos.line_nr > field.pos.line_nr {
+				f.writeln('')
+			} else {
+				f.write(' ')
+			}
+			f.comments(comments[comm_idx..], {
+				level: .indent
+			})
+		} else {
+			f.writeln('')
 		}
-		f.write('\n')
 	}
 	f.comments_after_last_field(node.end_comments)
 	f.writeln('}\n')
@@ -1011,7 +1003,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			} else {
 				f.write("'")
 			}
-			f.is_inside_interp = true
 			for i, val in node.vals {
 				f.write(val)
 				if i >= node.exprs.len {
@@ -1028,7 +1019,6 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr(node.exprs[i])
 				}
 			}
-			f.is_inside_interp = false
 			if contains_single_quote {
 				f.write('"')
 			} else {
@@ -1093,11 +1083,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
-			if f.is_inside_interp {
-				f.write(',')
-			} else {
-				f.write(', ')
-			}
+			f.write(', ')
 		}
 	}
 }
@@ -1145,16 +1131,20 @@ enum CommentsLevel {
 	indent
 }
 
+// CommentsOptions defines the way comments are going to be written
+// - has_nl: adds an newline at the end of the list of comments
+// - inline: single-line comments will be on the same line as the last statement
+// - level:  either .keep (don't indent), or .indent (increment indentation)
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool
-	level  CommentsLevel = .keep
+	level  CommentsLevel
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if !node.text.contains('\n') {
-		is_separate_line := !options.inline || node.text.starts_with('|')
-		mut s := if node.text.starts_with('|') { node.text[1..] } else { node.text }
+		is_separate_line := !options.inline || node.text.starts_with('\x01')
+		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
 		if s == '' {
 			s = '//'
 		} else {
@@ -1258,73 +1248,67 @@ pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
 }
 
 pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
-	if f.is_inside_interp {
-		f.expr(node.left)
-		f.write('$node.op.str()')
-		f.expr(node.right)
-	} else {
-		buffering_save := f.buffering
-		if !f.buffering {
-			f.out_save = f.out
-			f.out = strings.new_builder(60)
-			f.buffering = true
-		}
-		f.expr(node.left)
-		is_one_val_array_init := node.op in [.key_in, .not_in] &&
-			node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
-		if is_one_val_array_init {
-			// `var in [val]` => `var == val`
-			f.write(if node.op == .key_in {
-				' == '
-			} else {
-				' != '
-			})
-		} else {
-			f.write(' $node.op.str() ')
-		}
-		f.expr_bufs << f.out.str()
-		mut penalty := 3
-		match node.left as left {
-			ast.InfixExpr {
-				if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
-					penalty--
-				}
-			}
-			ast.ParExpr {
-				penalty = 1
-			}
-			else {}
-		}
-		match node.right as right {
-			ast.InfixExpr { penalty-- }
-			ast.ParExpr { penalty = 1 }
-			else {}
-		}
-		f.penalties << penalty
-		// combine parentheses level with operator precedence to form effective precedence
-		f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+	buffering_save := f.buffering
+	if !f.buffering {
+		f.out_save = f.out
 		f.out = strings.new_builder(60)
 		f.buffering = true
-		if is_one_val_array_init {
-			// `var in [val]` => `var == val`
-			f.expr((node.right as ast.ArrayInit).exprs[0])
+	}
+	f.expr(node.left)
+	is_one_val_array_init := node.op in [.key_in, .not_in] &&
+		node.right is ast.ArrayInit && (node.right as ast.ArrayInit).exprs.len == 1
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		f.write(if node.op == .key_in {
+			' == '
 		} else {
-			f.expr(node.right)
-		}
-		if !buffering_save && f.buffering { // now decide if and where to break
-			f.expr_bufs << f.out.str()
-			f.out = f.out_save
-			f.buffering = false
-			f.adjust_complete_line()
-			for i, p in f.penalties {
-				f.write(f.expr_bufs[i])
-				f.wrap_long_line(p, true)
+			' != '
+		})
+	} else {
+		f.write(' $node.op.str() ')
+	}
+	f.expr_bufs << f.out.str()
+	mut penalty := 3
+	match node.left as left {
+		ast.InfixExpr {
+			if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
+				penalty--
 			}
-			f.write(f.expr_bufs[f.expr_bufs.len - 1])
-			f.expr_bufs = []string{}
-			f.penalties = []int{}
-			f.precedences = []int{}
 		}
+		ast.ParExpr {
+			penalty = 1
+		}
+		else {}
+	}
+	match node.right as right {
+		ast.InfixExpr { penalty-- }
+		ast.ParExpr { penalty = 1 }
+		else {}
+	}
+	f.penalties << penalty
+	// combine parentheses level with operator precedence to form effective precedence
+	f.precedences << int(token.precedences[node.op]) | (f.par_level << 16)
+	f.out = strings.new_builder(60)
+	f.buffering = true
+	if is_one_val_array_init {
+		// `var in [val]` => `var == val`
+		f.expr((node.right as ast.ArrayInit).exprs[0])
+	} else {
+		f.expr(node.right)
+	}
+	if !buffering_save && f.buffering { // now decide if and where to break
+		f.expr_bufs << f.out.str()
+		f.out = f.out_save
+		f.buffering = false
+		f.adjust_complete_line()
+		for i, p in f.penalties {
+			f.write(f.expr_bufs[i])
+			f.wrap_long_line(p, true)
+		}
+		f.write(f.expr_bufs[f.expr_bufs.len - 1])
+		f.expr_bufs = []string{}
+		f.penalties = []int{}
+		f.precedences = []int{}
 	}
 }
 
@@ -1499,13 +1483,9 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		if branch.stmts.len == 0 {
 			continue
 		}
-		stmt := branch.stmts[0]
-		if stmt is ast.ExprStmt {
-			// If expressions inside match branches can't be one a single line
-			if !expr_is_single_line(stmt.expr) {
-				single_line = false
-				break
-			}
+		if !stmt_is_single_line(branch.stmts[0]) {
+			single_line = false
+			break
 		}
 	}
 	for branch in it.branches {
@@ -1592,6 +1572,15 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 		.c { f.write('C.') }
 		.js { f.write('JS.') }
 		else {}
+	}
+}
+
+fn stmt_is_single_line(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
+		ast.Return { return true }
+		ast.AssignStmt { return true }
+		else { return false }
 	}
 }
 

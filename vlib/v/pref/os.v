@@ -22,95 +22,39 @@ pub enum OS {
 // Helper function to convert string names to OS enum
 pub fn os_from_string(os_str string) ?OS {
 	match os_str {
-		'linux' {
-			return .linux
-		}
-		'windows' {
-			return .windows
-		}
-		'ios' {
-			return .ios
-		}
-		'macos' {
-			return .macos
-		}
-		'freebsd' {
-			return .freebsd
-		}
-		'openbsd' {
-			return .openbsd
-		}
-		'netbsd' {
-			return .netbsd
-		}
-		'dragonfly' {
-			return .dragonfly
-		}
-		'js' {
-			return .js
-		}
-		'solaris' {
-			return .solaris
-		}
-		'android' {
-			return .android
-		}
-		'haiku' {
-			return .haiku
-		}
-		'linux_or_macos' {
-			return .linux
-		}
-		'' {
-			return ._auto
-		}
-		else {
-			return error('bad OS $os_str')
-		}
+		'linux' { return .linux }
+		'windows' { return .windows }
+		'ios' { return .ios }
+		'macos' { return .macos }
+		'freebsd' { return .freebsd }
+		'openbsd' { return .openbsd }
+		'netbsd' { return .netbsd }
+		'dragonfly' { return .dragonfly }
+		'js' { return .js }
+		'solaris' { return .solaris }
+		'android' { return .android }
+		'haiku' { return .haiku }
+		'linux_or_macos' { return .linux }
+		'' { return ._auto }
+		else { return error('bad OS $os_str') }
 	}
 }
 
 pub fn (o OS) str() string {
 	match o {
-		._auto {
-			return 'RESERVED: AUTO'
-		}
-		.ios {
-			return 'iOS'
-		}
-		.macos {
-			return 'MacOS'
-		}
-		.linux {
-			return 'Linux'
-		}
-		.windows {
-			return 'Windows'
-		}
-		.freebsd {
-			return 'FreeBSD'
-		}
-		.openbsd {
-			return 'OpenBSD'
-		}
-		.netbsd {
-			return 'NetBSD'
-		}
-		.dragonfly {
-			return 'Dragonfly'
-		}
-		.js {
-			return 'JavaScript'
-		}
-		.android {
-			return 'Android'
-		}
-		.solaris {
-			return 'Solaris'
-		}
-		.haiku {
-			return 'Haiku'
-		}
+		._auto { return 'RESERVED: AUTO' }
+		.ios { return 'iOS' }
+		.macos { return 'MacOS' }
+		.linux { return 'Linux' }
+		.windows { return 'Windows' }
+		.freebsd { return 'FreeBSD' }
+		.openbsd { return 'OpenBSD' }
+		.netbsd { return 'NetBSD' }
+		.dragonfly { return 'Dragonfly' }
+		.js { return 'JavaScript' }
+		.android { return 'Android' }
+		.solaris { return 'Solaris' }
+		.haiku { return 'Haiku' }
 	}
 }
 

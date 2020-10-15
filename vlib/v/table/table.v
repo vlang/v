@@ -117,7 +117,10 @@ pub fn (f &Fn) source_signature() string {
 			sig += ', '
 		}
 	}
-	sig += ') $f.return_type_source_name'
+	sig += ')'
+	if f.return_type != void_type {
+		sig += ' $f.return_type_source_name'
+	}
 	return sig
 }
 
