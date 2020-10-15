@@ -16,7 +16,7 @@ jobs:
       run: |
         ./v vet vlib/sqlite
         ./v vet vlib/v
-    - name: v fmt
+    - name: v fmt -verify
       run: |
         ./v fmt -verify vlib/v/scanner/scanner.v
         ./v fmt -verify vlib/v/parser/parser.v
@@ -27,6 +27,8 @@ jobs:
         ./v fmt -verify vlib/v/gen/x64/gen.v
         ./v fmt -verify vlib/v/table/table.v
         ./v fmt -verify vlib/v/fmt/fmt.v
+    - name: v test-fmt
+      run: ./v -silent test-fmt
 
 #  v-fmt:
 #    runs-on: ubuntu-18.04
