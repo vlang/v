@@ -22,7 +22,7 @@ fn setup_symlink(vexe string){
 	if !os.exists(link_dir) {
 		os.mkdir_all(link_dir)
 	}
-	mut link_path := link_dir + 'v'
+	mut link_path := link_dir + '/v'
 	mut ret := os.exec('ln -sf $vexe $link_path') or {
 		panic(err)
 	}
