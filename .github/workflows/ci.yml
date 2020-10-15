@@ -27,6 +27,29 @@ jobs:
         ./v fmt -verify vlib/v/gen/x64/gen.v
         ./v fmt -verify vlib/v/table/table.v
         ./v fmt -verify vlib/v/fmt/fmt.v
+        ./v fmt -verify vlib/builtin/array.v
+        ./v fmt -verify vlib/os/file.v
+        ./v fmt -verify vlib/v/util/errors.v
+        ./v fmt -verify vlib/v/util/suggestions.v
+        ./v fmt -verify vlib/v/util/util.v
+        ./v fmt -verify vlib/v/builder/builder.v
+        ./v fmt -verify vlib/v/builder/cc.v
+        ./v fmt -verify vlib/v/builder/compile.v
+        ./v fmt -verify vlib/v/builder/msvc.v
+        ./v fmt -verify vlib/math/bits/bits.v
+        ./v fmt -verify vlib/time/time.v
+        ./v fmt -verify vlib/term/colors.v
+        ./v fmt -verify vlib/term/term.v
+        ./v fmt -verify vlib/v/ast/scope.v
+        ./v fmt -verify vlib/v/checker/check_types.v
+        ./v fmt -verify vlib/v/table/atypes.v
+        ./v fmt -verify vlib/v/cflag/cflags.v
+        ./v fmt -verify vlib/v/table/cflags.v
+        ./v fmt -verify vlib/v/gen/auto_str_methods.v
+        ./v fmt -verify vlib/v/parser/parse_type.v
+        ./v fmt -verify vlib/v/gen/json.v
+
+
     - name: v test-fmt
       run: ./v -silent test-fmt
 

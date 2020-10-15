@@ -82,7 +82,7 @@ pub fn (t Type) atomic_typename() string {
 	}
 }
 
-pub fn sharetype_from_flags(is_shared, is_atomic bool) ShareType {
+pub fn sharetype_from_flags(is_shared bool, is_atomic bool) ShareType {
 	return ShareType((int(is_atomic) << 1) | int(is_shared))
 }
 
@@ -187,7 +187,7 @@ pub fn new_type(idx int) Type {
 
 // return new type with TypeSymbol idx set to `idx` & nr_muls set to `nr_muls`
 [inline]
-pub fn new_type_ptr(idx, nr_muls int) Type {
+pub fn new_type_ptr(idx int, nr_muls int) Type {
 	if idx < 1 || idx > 65535 {
 		panic('new_type_ptr: idx must be between 1 & 65535')
 	}

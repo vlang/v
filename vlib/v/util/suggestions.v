@@ -9,7 +9,7 @@ mut:
 	similarity f32
 }
 
-fn compare_by_similarity(a, b &Possibility) int {
+fn compare_by_similarity(a &Possibility, b &Possibility) int {
 	if a.similarity < b.similarity {
 		return -1
 	}

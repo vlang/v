@@ -792,7 +792,7 @@ fn missing_compiler_info() string {
 	return ''
 }
 
-fn error_context_lines(text, keyword string, before, after int) []string {
+fn error_context_lines(text string, keyword string, before int, after int) []string {
 	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
 	mut eline_idx := 0
 	mut lines := text.split_into_lines()
