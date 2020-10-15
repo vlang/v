@@ -309,7 +309,7 @@ fn (s &Scanner) ident_struct_name() string {
 	return struct_name
 }
 
-fn filter_num_sep(txt byteptr, start, end int) string {
+fn filter_num_sep(txt byteptr, start int, end int) string {
 	unsafe {
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
 		mut i1 := 0

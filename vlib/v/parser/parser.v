@@ -79,7 +79,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
@@ -2054,7 +2054,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) trace(fbase, message string) {
+fn (mut p Parser) trace(fbase string, message string) {
 	if p.file_base == fbase {
 		println('> p.trace | ${fbase:-10s} | $message')
 	}

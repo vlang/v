@@ -65,8 +65,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		}
 		is_last_arg := i == node.params.len - 1
 		is_type_only := arg.name == ''
-		should_add_type := is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
-			(node.is_variadic && i == node.params.len - 2)
+		should_add_type := true // is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
+		// (node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
 		}

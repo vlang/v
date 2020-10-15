@@ -419,7 +419,7 @@ pub fn (t &Table) array_source_name(elem_type Type) string {
 }
 
 [inline]
-pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
+pub fn (t &Table) array_fixed_name(elem_type Type, size int, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
 	mut res := ''
 	if elem_type.is_ptr() {
@@ -465,7 +465,7 @@ pub fn (t &Table) chan_source_name(elem_type Type, is_mut bool) string {
 }
 
 [inline]
-pub fn (t &Table) map_name(key_type, value_type Type) string {
+pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
@@ -476,7 +476,7 @@ pub fn (t &Table) map_name(key_type, value_type Type) string {
 // map_source_name generates the original name for the v source.
 // e. g. map[string]int
 [inline]
-pub fn (t &Table) map_source_name(key_type, value_type Type) string {
+pub fn (t &Table) map_source_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	ptr := if value_type.is_ptr() { '&' } else { '' }
@@ -505,7 +505,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 	return t.register_type_symbol(chan_typ)
 }
 
-pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
+pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	name := t.map_name(key_type, value_type)
 	source_name := t.map_source_name(key_type, value_type)
 	// existing
@@ -550,7 +550,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod str
 	return t.register_type_symbol(array_type)
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims int) int {
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
 	name := t.array_fixed_name(elem_type, size, nr_dims)
 	source_name := t.array_fixed_source_name(elem_type, size)
 	// existing
@@ -601,7 +601,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_decl bool) int {
+pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name.clone() }
 	source_name := if f.name.len == 0 { 'fn $f.source_signature()' } else { f.name.clone() }
 	anon := f.name.len == 0 || is_anon
@@ -683,7 +683,7 @@ pub fn (t &Table) mktyp(typ Type) Type {
 
 // Once we have a module format we can read from module file instead
 // this is not optimal
-pub fn (table &Table) qualify_module(mod, file_path string) string {
+pub fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		// if m.contains('gen') { println('qm=$m') }
 		if m.contains('.') && m.contains(mod) {
@@ -710,7 +710,7 @@ pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-pub fn (table &Table) sumtype_has_variant(parent, variant Type) bool {
+pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := table.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
