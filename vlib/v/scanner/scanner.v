@@ -1104,7 +1104,7 @@ fn (mut s Scanner) text_scan() token.Token {
 							}
 						}
 						if is_separate_line_comment {
-							comment = '|' + comment
+							comment = '\x01' + comment
 						}
 						return s.new_token(.comment, comment, comment.len + 2)
 					}

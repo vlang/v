@@ -1143,8 +1143,8 @@ struct CommentsOptions {
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if !node.text.contains('\n') {
-		is_separate_line := !options.inline || node.text.starts_with('|')
-		mut s := if node.text.starts_with('|') { node.text[1..] } else { node.text }
+		is_separate_line := !options.inline || node.text.starts_with('\x01')
+		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
 		if s == '' {
 			s = '//'
 		} else {

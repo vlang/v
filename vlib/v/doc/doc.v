@@ -56,7 +56,7 @@ pub mut:
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
 	for comment in comments {
-		res << comment.text.trim_left('|')
+		res << comment.text.trim_left('\x01')
 	}
 	return res.join('\n')
 }
@@ -74,7 +74,7 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 			// located right above the top level statement.
 			// break
 		}
-		mut cmt_content := cmt.text.trim_left('|')
+		mut cmt_content := cmt.text.trim_left('\x01')
 		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
