@@ -21,7 +21,7 @@ mut:
 pub fn (mut s System) init(sc SystemConfig) {
 	for i := 0; i < sc.pool; i++ {
 		p := new(vec2.Vec2{f32(s.width) * 0.5, f32(s.height) * 0.5})
-		s.pool << p
+		s.bin << p
 	}
 }
 

@@ -60,7 +60,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 					})
 				}
 				branches << ast.IfBranch{
-					stmts: if prev_guard { p.parse_block_no_scope(false) } else { p.parse_block() }
+					stmts: if prev_guard {
+						p.parse_block_no_scope(false)
+					} else {
+						p.parse_block()
+					}
 					pos: start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
@@ -71,7 +75,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				comments = []
 				break
 			}
-			if is_comptime { p.check(.dollar) }
+			if is_comptime {
+				p.check(.dollar)
+			}
 		}
 		// `if` or `else if`
 		p.check(.key_if)
@@ -192,7 +198,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	mut branches := []ast.MatchBranch{}
 	for {
 		branch_first_pos := p.tok.position()
-		comment := p.check_comment() // comment before {}
+		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
 		p.open_scope()
 		// final else
@@ -318,7 +324,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			exprs: exprs
 			stmts: stmts
 			pos: pos
-			comment: comment
+			comments: comments
 			is_else: is_else
 			post_comments: post_comments
 		}
@@ -366,20 +372,24 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 		mut stmt := ast.Stmt{}
 		if p.tok.kind == .key_else {
 			if has_timeout {
-				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys', p.tok.position())
+				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',
+					p.tok.position())
 			}
 			if has_else {
-				p.error_with_pos('at most one `else` branch allowed in `select` block', p.tok.position())
+				p.error_with_pos('at most one `else` branch allowed in `select` block',
+					p.tok.position())
 			}
 			is_else = true
 			has_else = true
 			p.next()
 		} else if p.tok.kind == .gt {
 			if has_else {
-				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys', p.tok.position())
+				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys',
+					p.tok.position())
 			}
 			if has_timeout {
-				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block', p.tok.position())
+				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block',
+					p.tok.position())
 			}
 			is_timeout = true
 			has_timeout = true
@@ -420,11 +430,13 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 						match stmt.expr as expr {
 							ast.InfixExpr {
 								if expr.op != .arrow {
-									p.error_with_pos('select key: `<-` operator expected', expr.pos)
+									p.error_with_pos('select key: `<-` operator expected',
+										expr.pos)
 								}
 							}
 							else {
-								p.error_with_pos('select key: send expression (`ch <- x`) expected', stmt.pos)
+								p.error_with_pos('select key: send expression (`ch <- x`) expected',
+									stmt.pos)
 							}
 						}
 					}
@@ -433,10 +445,13 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 					match stmt.right[0] as expr {
 						ast.PrefixExpr {
 							if expr.op != .arrow {
-								p.error_with_pos('select key: `<-` operator expected', expr.pos)
+								p.error_with_pos('select key: `<-` operator expected',
+									expr.pos)
 							}
-						} else {
-							p.error_with_pos('select key: receive expression expected', stmt.right[0].position())
+						}
+						else {
+							p.error_with_pos('select key: receive expression expected',
+								stmt.right[0].position())
 						}
 					}
 				}

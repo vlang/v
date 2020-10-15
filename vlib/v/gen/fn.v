@@ -660,6 +660,21 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	}
 }
 
+fn (mut g Gen) autofree_call_postgen() {
+	if g.strs_to_free.len == 0 {
+		return
+	}
+	g.writeln(';\n// strs_to_free2:')
+	for s in g.strs_to_free {
+		g.writeln('string_free(&$s);')
+	}
+	if !g.inside_or_block {
+		// we need to free the vars both inside the or block (in case of an error) and after it
+		// if we reset the array here, then the vars will not be freed after the block.
+		g.strs_to_free = []
+	}
+}
+
 // fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type, tmp_arg_vars_to_free []string) {
 // fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 fn (mut g Gen) call_args(node ast.CallExpr) {

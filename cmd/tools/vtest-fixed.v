@@ -13,6 +13,7 @@ const (
 		// 'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
+		'vlib/net/http/status_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/orm/orm_test.v',
@@ -78,6 +79,7 @@ fn main() {
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {
-		panic('\nWARNING: failed $tsession.benchmark.nfail times.\n')
+		eprintln('\nWARNING: failed $tsession.benchmark.nfail times.\n')
+		exit(1)
 	}
 }

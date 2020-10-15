@@ -41,8 +41,11 @@ fn main_content() string {
 
 fn gen_gitignore(name string) string {
 	return [
+		'# Binaries for programs and plugins',
 		'main',
 		'$name',
+		'*.exe',
+		'*.exe~',
 		'*.so',
 		'*.dylib',
 		'*.dll',

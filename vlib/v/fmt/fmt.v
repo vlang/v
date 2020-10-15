@@ -263,6 +263,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					if var_info.is_mut {
 						f.write(var_info.share.str() + ' ')
 					}
+					if var_info.is_static {
+						f.write('static ')
+					}
 					f.expr(left)
 				} else {
 					f.expr(left)
@@ -379,6 +382,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				if it.key_var != '' {
 					f.write(', ')
 				}
+				if it.val_is_mut {
+					f.write('mut ')
+				}
 				f.write(it.val_var)
 			}
 			f.write(' in ')
@@ -493,7 +499,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			if node.is_pub {
 				f.write('pub ')
 			}
-			ptype := f.type_to_str(node.parent_type)
+			ptype := f.table.type_to_str(node.parent_type)
 			f.write('type $node.name = $ptype')
 		}
 		ast.FnTypeDecl {
@@ -545,7 +551,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			f.write('type $node.name = ')
 			mut sum_type_names := []string{}
 			for t in node.sub_types {
-				sum_type_names << f.type_to_str(t)
+				sum_type_names << f.table.type_to_str(t)
 			}
 			sum_type_names.sort()
 			for i, name in sum_type_names {
@@ -587,7 +593,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
 		}
-		ft := f.type_to_str(field.typ)
+		ft := f.table.type_to_str(field.typ)
 		field_types << ft
 		if ft.len > max_type {
 			max_type = ft.len
@@ -676,6 +682,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	}
 	name := node.name.after('.')
 	f.writeln('interface $name {')
+	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
 		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
@@ -707,64 +714,6 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	}
 }
 
-pub fn (f &Fmt) type_to_str(t table.Type) string {
-	mut res := f.table.type_to_str(t)
-	cur_mod := f.cur_mod + '.'
-	//
-	map_prefix := 'map[string]'
-	has_map_prefix := res.starts_with(map_prefix)
-	if has_map_prefix {
-		res = res.replace(map_prefix, '')
-	}
-	//
-	chan_prefix := 'chan '
-	has_chan_prefix := res.starts_with(chan_prefix)
-	if has_chan_prefix {
-		res = res.replace(chan_prefix, '')
-	}
-	//
-	no_symbols := res.trim_left('&[]')
-	should_shorten := no_symbols.starts_with(cur_mod)
-	//
-	for res.ends_with('_ptr') {
-		// type_ptr => &type
-		res = res[0..res.len - 4]
-		start_pos := 2 * res.count('[]')
-		res = res[0..start_pos] + '&' + res[start_pos..res.len]
-	}
-	arr_fixed_prefix := '[]fixed_'
-	if res.starts_with(arr_fixed_prefix) {
-		// res: `[]fixed_[]fixed_int_5_10`
-		// transforms to: `[10][5]int`
-		mut last_underscore_idx := 0
-		mut dimensions := []string{}
-		for {
-			res = res[arr_fixed_prefix.len..]
-			last_underscore_idx = res.last_index('_') or {
-				return dimensions.join('') + '[]' +
-					if should_shorten { res.replace_once(cur_mod, '') } else { res }
-			}
-			limit := res[last_underscore_idx + 1..]
-			dimensions << '[$limit]'
-			res = res[..last_underscore_idx]
-			if !res.starts_with(arr_fixed_prefix) {
-				break
-			}
-		}
-		res = dimensions.join('') + res[..last_underscore_idx]
-	}
-	if should_shorten {
-		res = res.replace_once(cur_mod, '')
-	}
-	if has_chan_prefix {
-		res = chan_prefix + res
-	}
-	if has_map_prefix {
-		res = map_prefix + res
-	}
-	return res
-}
-
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
@@ -777,7 +726,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.array_init(node)
 		}
 		ast.AsCast {
-			type_str := f.type_to_str(node.typ)
+			type_str := f.table.type_to_str(node.typ)
 			f.expr(node.expr)
 			f.write(' as $type_str')
 		}
@@ -799,7 +748,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.CastExpr {
 			node.typname = f.table.get_type_symbol(node.typ).name
-			f.write(f.type_to_str(node.typ) + '(')
+			f.write(f.table.type_to_str(node.typ) + '(')
 			f.expr(node.expr)
 			if node.has_arg {
 				f.write(', ')
@@ -883,18 +832,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.MapInit {
 			if node.keys.len == 0 {
-				mut ktyp := node.key_type
-				mut vtyp := node.value_type
-				if vtyp == 0 {
-					typ_sym := f.table.get_type_symbol(node.typ)
-					minfo := typ_sym.info as table.Map
-					ktyp = minfo.key_type
-					vtyp = minfo.value_type
-				}
-				f.write('map[')
-				f.write(f.type_to_str(ktyp))
-				f.write(']')
-				f.write(f.type_to_str(vtyp))
+				f.write(f.table.type_to_str(node.typ))
 				f.write('{}')
 				return
 			}
@@ -999,7 +937,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						f.write(f.short_module(node.type_name))
 					}
 				} else {
-					f.write(f.type_to_str(node.typ))
+					f.write(f.table.type_to_str(node.typ))
 				}
 				f.write(')')
 			} else {
@@ -1101,7 +1039,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.struct_init(node)
 		}
 		ast.Type {
-			f.write(f.type_to_str(node.typ))
+			f.write(f.table.type_to_str(node.typ))
 		}
 		ast.TypeOf {
 			f.write('typeof(')
@@ -1523,7 +1461,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		}
 		if node.generic_type != 0 && node.generic_type != table.void_type {
 			f.write('<')
-			f.write(f.type_to_str(node.generic_type))
+			f.write(f.table.type_to_str(node.generic_type))
 			f.write('>')
 		}
 		f.write('(')
@@ -1571,8 +1509,8 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		}
 	}
 	for branch in it.branches {
-		if branch.comment.text != '' {
-			f.comment(branch.comment, {
+		for cmnt in branch.comments {
+			f.comment(cmnt, {
 				inline: true
 			})
 			f.writeln('')
@@ -1677,7 +1615,7 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 	if is_mut {
 		f.write('mut ')
 	}
-	f.write(f.type_to_str(el_typ))
+	f.write(f.table.type_to_str(el_typ))
 	f.write('{')
 	if it.has_cap {
 		f.write('cap: ')
@@ -1716,7 +1654,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('}')
 			return
 		}
-		f.write(f.type_to_str(it.typ))
+		f.write(f.table.type_to_str(it.typ))
 		f.write('{')
 		// TODO copypasta
 		if it.has_len {
@@ -1799,7 +1737,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('!!')
 			return
 		}
-		f.write(f.type_to_str(it.elem_type))
+		f.write(f.table.type_to_str(it.elem_type))
 		if it.has_default {
 			f.write('{init: $it.default_expr}')
 		} else {
@@ -1843,6 +1781,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		for field in it.fields {
 			f.write('$field.name: ')
 			f.prefix_expr_cast_expr(field.expr)
+			f.comments(field.comments, {
+				inline: true
+				has_nl: false
+				level: .indent
+			})
 			f.writeln('')
 		}
 		f.indent--
@@ -1917,7 +1860,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 		f.write(strings.repeat(` `, max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
-			f.write(f.type_to_str(field.typ))
+			f.write(f.table.type_to_str(field.typ))
 			f.write('(')
 			f.expr(field.expr)
 			f.write(')')
@@ -1925,7 +1868,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 			if !single && has_assign {
 				f.write('  ')
 			}
-			f.write('${f.type_to_str(field.typ)} ')
+			f.write('${f.table.type_to_str(field.typ)} ')
 		}
 		if !single {
 			f.writeln('')

@@ -184,13 +184,14 @@ pub:
 	is_pub      bool
 	methods     []FnDecl
 	pos         token.Position
+	pre_comments []Comment
 }
 
 pub struct StructInitField {
 pub:
 	expr          Expr
 	pos           token.Position
-	comment       Comment
+	comments      []Comment
 pub mut:
 	name          string
 	typ           table.Type
@@ -287,7 +288,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
-	autofree_pregen    string
+	// autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar
 	// autofree_vars_ids  []int
 }
@@ -542,7 +543,7 @@ pub:
 	exprs         []Expr // left side
 	stmts         []Stmt // right side
 	pos           token.Position
-	comment       Comment // comment above `xxx {`
+	comments      []Comment // comment above `xxx {`
 	is_else       bool
 	post_comments []Comment
 }
@@ -593,18 +594,20 @@ pub:
 
 pub struct ForInStmt {
 pub:
-	key_var   string
-	val_var   string
-	cond      Expr
-	is_range  bool
-	high      Expr // `10` in `for i in 0..10 {`
-	stmts     []Stmt
-	pos       token.Position
+	key_var    string
+	val_var    string
+	cond       Expr
+	is_range   bool
+	high       Expr // `10` in `for i in 0..10 {`
+	stmts      []Stmt
+	pos        token.Position
+	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
 pub mut:
-	key_type  table.Type
-	val_type  table.Type
-	cond_type table.Type
-	kind      table.Kind // array/map/string
+	// and the array cannot be indexed inside the loop
+	key_type   table.Type
+	val_type   table.Type
+	cond_type  table.Type
+	kind       table.Kind // array/map/string
 }
 
 pub struct ForCStmt {
@@ -987,45 +990,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit {
-			return expr.pos
-		}
-		AsCast {
-			return expr.pos
-		}
-		Assoc {
-			return expr.pos
-		}
-		BoolLiteral {
-			return expr.pos
-		}
-		// ast.Ident { }
-		CallExpr {
-			return expr.pos
-		}
-		CastExpr {
-			return expr.pos
-		}
-		CharLiteral {
-			return expr.pos
-		}
-		Comment {
-			return expr.pos
-		}
-		EnumVal {
-			return expr.pos
-		}
-		FloatLiteral {
-			return expr.pos
-		}
-		Ident {
-			return expr.pos
-		}
-		IfExpr {
-			return expr.pos
-		}
-		// ast.IfGuardExpr { }
-		IndexExpr {
+		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr, SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral, StructInit, Likely {
 			return expr.pos
 		}
 		InfixExpr {
@@ -1040,49 +1005,14 @@ pub fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		IntegerLiteral {
-			return expr.pos
-		}
-		MapInit {
-			return expr.pos
-		}
-		MatchExpr {
-			return expr.pos
-		}
-		None {
-			return expr.pos
-		}
-		PostfixExpr {
-			return expr.pos
-		}
-		// ast.None { }
-		PrefixExpr {
-			return expr.pos
-		}
-		// ast.ParExpr { }
-		SelectExpr {
-			return expr.pos
-		}
-		SelectorExpr {
-			return expr.pos
-		}
-		SizeOf {
-			return expr.pos
-		}
-		StringLiteral {
-			return expr.pos
-		}
-		StringInterLiteral {
-			return expr.pos
-		}
-		// ast.Type { }
-		StructInit {
-			return expr.pos
-		}
-		Likely {
-			return expr.pos
-		}
-		// ast.TypeOf { }
+		/*
+		ast.Ident {}
+		ast.IfGuardExpr {}
+		ast.None {}
+		ast.ParExpr {}
+		ast.Type {}
+		ast.TypeOf {}
+		*/
 		else {
 			return token.Position{}
 		}
@@ -1109,11 +1039,15 @@ pub fn (expr Expr) is_expr() bool {
 }
 
 // check if stmt can be an expression in C
-pub fn (stmt Stmt) check_c_expr()? {
+pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {
-		AssignStmt {return}
+		AssignStmt {
+			return
+		}
 		ExprStmt {
-			if stmt.expr.is_expr() {return}
+			if stmt.expr.is_expr() {
+				return
+			}
 			return error('unsupported statement (`${typeof(stmt.expr)}`)')
 		}
 		else {}
@@ -1123,54 +1057,20 @@ pub fn (stmt Stmt) check_c_expr()? {
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt { return stmt.pos }
-		AssignStmt { return stmt.pos }
+		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl { return stmt.pos }
 		/*
-		// Attr {
-		// }
+		Attr {}
+		BranchStmt {}
+		DeferStmt {}
+		GlobalDecl {}
+		GoStmt {}
+		GotoLabel {}
+		GotoStmt {}
+		HashStmt {}
+		InterfaceDecl {}
+		Module {}
+		TypeDecl {}
 		*/
-		Block { return stmt.pos }
-		/*
-		// BranchStmt {
-		// }
-		*/
-		ConstDecl { return stmt.pos }
-		/*
-		// DeferStmt {
-		// }
-		*/
-		EnumDecl { return stmt.pos }
-		ExprStmt { return stmt.pos }
-		FnDecl { return stmt.pos }
-		ForCStmt { return stmt.pos }
-		ForInStmt { return stmt.pos }
-		ForStmt { return stmt.pos }
-		/*
-		// GlobalDecl {
-		// }
-		// GoStmt {
-		// }
-		// GotoLabel {
-		// }
-		// GotoStmt {
-		// }
-		// HashStmt {
-		// }
-		*/
-		Import { return stmt.pos }
-		/*
-		// InterfaceDecl {
-		// }
-		// Module {
-		// }
-		*/
-		Return { return stmt.pos }
-		StructDecl { return stmt.pos }
-		/*
-		// TypeDecl {
-		// }
-		*/
-		//
 		else { return token.Position{} }
 	}
 }

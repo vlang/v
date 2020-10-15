@@ -42,8 +42,8 @@ pub mut:
 	global_names     []string
 	locked_names     []string // vars that are currently locked
 	rlocked_names    []string // vars that are currently read-locked
-	in_for_count     int // if checker is currently in an for loop
-	// checked_ident  string // to avoid infinit checker loops
+	in_for_count     int // if checker is currently in a for loop
+	// checked_ident  string // to avoid infinite checker loops
 	returns          bool
 	scope_returns    bool
 	mod              string // current module name
@@ -52,7 +52,7 @@ pub mut:
 	skip_flags       bool // should `#flag` and `#include` be skipped
 	cur_generic_type table.Type
 mut:
-	expr_level       int // to avoid infinit recursion segfaults due to compiler bugs
+	expr_level       int // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql       bool // to handle sql table fields pseudo variables
 	cur_orm_ts       table.TypeSymbol
 	error_details    []string
@@ -2357,12 +2357,15 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					node.key_type = key_type
 					scope.update_var_type(node.key_var, key_type)
 				}
-				value_type := c.table.value_type(typ)
+				mut value_type := c.table.value_type(typ)
 				if value_type == table.void_type || typ.has_flag(.optional) {
 					if typ != table.void_type {
 						c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
 							node.cond.position())
 					}
+				}
+				if node.val_is_mut {
+					value_type = value_type.to_ptr()
 				}
 				node.cond_type = typ
 				node.kind = sym.kind
@@ -2575,9 +2578,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
-				//
-				c.error('cannot cast non sum type `$type_sym.source_name` using `as`',
-					node.pos)
+				mut s := 'cannot cast non-sum type `$expr_type_sym.source_name` using `as`'
+				if type_sym.kind == .sum_type {
+					s += ' - use e.g. `${type_sym.source_name}(some_expr)` instead.'
+				}
+				c.error(s, node.pos)
 			}
 			return node.typ.to_ptr()
 			// return node.typ
@@ -3060,12 +3065,13 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	mut branch_without_return := false
 	for branch in node.branches {
 		c.stmts(branch.stmts)
-		if node.is_expr {
+		if node.is_expr && branch.stmts.len > 0 {
 			// ignore last statement - workaround
 			// currently the last statement in a match branch does not have an
 			// expected value set, so e.g. IfExpr.is_expr is not set.
 			// probably any mismatch will be caught by not producing a value instead
 			for st in branch.stmts[0..branch.stmts.len - 1] {
+				// must not contain C statements
 				st.check_c_expr() or {
 					c.error('`match` expression branch has $err', st.position())
 				}
@@ -3173,7 +3179,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
-				c.error('cannot use type `$expect_str` as type `$expr_str`', node.pos)
+				c.error('cannot match `$expr_str` with `$expect_str` condition', branch.pos)
 			}
 			branch_exprs[key] = val + 1
 		}
@@ -3474,6 +3480,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					branch.pos)
 			}
 			for st in branch.stmts {
+				// must not contain C statements
 				st.check_c_expr() or {
 					c.error('`if` expression branch has $err', st.position())
 				}
@@ -3664,18 +3671,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	if node.index !is ast.RangeExpr { // [1]
-		index_type := c.expr(node.index)
-		c.check_index_type(typ_sym, index_type, node.pos)
-		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
-			c.error('non-string map index (map type `$typ_sym.source_name`)', node.pos)
-		}
-		value_type := c.table.value_type(typ)
-		if value_type != table.void_type {
-			return value_type
-		}
-	} else { // [1..2]
-		range := node.index as ast.RangeExpr
+	if node.index is ast.RangeExpr as range { // [1..2]
 		if range.has_low {
 			index_type := c.expr(range.low)
 			c.check_index_type(typ_sym, index_type, node.pos)
@@ -3690,6 +3686,17 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			elem_type := c.table.value_type(typ)
 			idx := c.table.find_or_register_array(elem_type, 1, c.mod)
 			return table.new_type(idx)
+		}
+		return typ.set_nr_muls(0)
+	} else { // [1]
+		index_type := c.expr(node.index)
+		c.check_index_type(typ_sym, index_type, node.pos)
+		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
+			c.error('non-string map index (map type `$typ_sym.source_name`)', node.pos)
+		}
+		value_type := c.table.value_type(typ)
+		if value_type != table.void_type {
+			return value_type
 		}
 	}
 	return typ

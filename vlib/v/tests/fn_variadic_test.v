@@ -64,7 +64,8 @@ fn test_variadic_only_with_no_vargs() {
 	fn_variadic_only_with_no_vargs()
 }
 
-struct VaTestStruct {}
+struct VaTestStruct {
+}
 
 fn (a VaTestStruct) variadic_method(name string, groups ...VaTestGroup) {
 	assert groups.len == 2

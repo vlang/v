@@ -1438,7 +1438,7 @@ fn (mut p Parser) module_decl() ast.Module {
 			p.error_with_pos('`module` and `$name` must be at same line', pos)
 		}
 		pos = p.tok.position()
-		if module_pos.line_nr == pos.line_nr {
+		if module_pos.line_nr == pos.line_nr && p.tok.kind != .comment {
 			if p.tok.kind != .name {
 				p.error_with_pos('`module x` syntax error', pos)
 			} else {

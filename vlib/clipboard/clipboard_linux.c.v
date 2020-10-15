@@ -260,7 +260,8 @@ fn (mut cb Clipboard) start_listener(){
 		match event.@type {
 			C.DestroyNotify {
 				if event.xdestroywindow.window == cb.window {
-					return // we are done
+					// we are done
+					return 
 				}
 			}
 			C.SelectionClear {

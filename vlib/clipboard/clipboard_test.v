@@ -14,8 +14,8 @@ fn run_test(is_primary bool){
 
 fn test_primary(){
 	$if linux {
-		return
 		//run_test(true)
+		return
 	}
 }
 

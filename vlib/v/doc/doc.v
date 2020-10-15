@@ -426,7 +426,7 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 				node.deprecated = stmt.is_deprecated
 				node.kind = .function
 				if stmt.receiver.typ != 0 {
-					method_parent := d.fmt.type_to_str(stmt.receiver.typ).trim_left('&')
+					method_parent := d.fmt.table.type_to_str(stmt.receiver.typ).trim_left('&')
 					if method_parent != 'void' && method_parent !in contents {
 						contents[method_parent] = DocNode{
 							name: method_parent
@@ -483,7 +483,7 @@ pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) map[st
 
 fn (mut d Doc) expr_typ_to_string(ex ast.Expr) string {
 	expr_typ := d.checker.expr(ex)
-	return d.fmt.type_to_str(expr_typ)
+	return d.fmt.table.type_to_str(expr_typ)
 }
 
 fn (mut d Doc) generate() ?Doc {

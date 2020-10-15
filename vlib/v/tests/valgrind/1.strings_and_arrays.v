@@ -1,6 +1,3 @@
-import os
-
-// import time
 fn return_array(array_arg []string) []int { // array argument must not be freed
 	s := [1, 2, 3] // escaping array must not be freed
 	return s
@@ -109,6 +106,20 @@ fn optional_str() {
 	println(pos + 1)
 }
 
+fn return_error_with_freed_expr() ?string {
+	if true {
+		msg := 'oops'
+		return error('hm $msg')
+	}
+	return 'ok'
+}
+
+fn optional_return() {
+	return_error_with_freed_expr() or {
+		return
+	}
+}
+
 fn tt() {
 	// time.parse_rfc2822('1234')
 }
@@ -122,7 +133,8 @@ fn main() {
 	str_inter()
 	match_expr()
 	reassign_str()
-	// optional_str()
+	optional_str()
+	optional_return()
 	// str_replace()
 	println('end')
 }

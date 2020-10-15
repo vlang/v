@@ -297,7 +297,8 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
+	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
+')
 }
 
 // get_final_type_symbol follows aliases until it gets to a "real" Type
@@ -313,7 +314,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
-	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
+	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
 }
 
 [inline]
