@@ -18,7 +18,11 @@ fn main(){
 }
 
 fn setup_symlink(vexe string){
-	mut link_path := '/usr/local/bin/v'
+	link_dir := '/usr/local/bin'
+	if !os.exists(link_dir) {
+		os.mkdir_all(link_dir)
+	}
+	mut link_path := link_dir + 'v'
 	mut ret := os.exec('ln -sf $vexe $link_path') or {
 		panic(err)
 	}
