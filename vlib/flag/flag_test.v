@@ -355,7 +355,7 @@ fn test_single_dash() {
 
 fn test_optional_flags() {
 	mut fp := flag.new_flag_parser(['-a', '10', '-b'])
-	a := fp.int_opt('some-flag', `a`, '') or {
+	fp.int_opt('some-flag', `a`, '') or {
 		assert false
 		return
 	}
