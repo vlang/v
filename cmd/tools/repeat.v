@@ -10,45 +10,49 @@ import v.util
 
 struct CmdResult {
 mut:
-	runs int
-	cmd string
-	icmd int
+	runs    int
+	cmd     string
+	icmd    int
 	outputs []string
-	oms map[string][]int
+	oms     map[string][]int
 	summary map[string]Aints
 	timings []int
 	atiming Aints
 }
+
 struct Context {
 mut:
-	count int
-	series int
-	warmup int
-	show_help bool
-	show_output bool
+	count                   int
+	series                  int
+	warmup                  int
+	show_help               bool
+	show_output             bool
 	fail_on_regress_percent int
-	fail_on_maxtime int // in ms
-	verbose bool
-	commands []string
-	results []CmdResult
-	cline string // a terminal clearing line
+	fail_on_maxtime         int // in ms
+	verbose                 bool
+	commands                []string
+	results                 []CmdResult
+	cline                   string // a terminal clearing line
 }
 
 struct Aints {
-	values []int
+	values  []int
 mut:
-	imin int
-	imax int
+	imin    int
+	imax    int
 	average f64
-	stddev f64
+	stddev  f64
 }
+
 fn new_aints(vals []int) Aints {
-	mut res := Aints{ values: vals }
+	mut res := Aints{
+		values: vals
+	}
 	mut sum := i64(0)
-	mut imin :=  math.max_i32
+	mut imin := math.max_i32
 	mut imax := -math.max_i32
 	for i in vals {
-		sum+=i
+		sum += i
 		if i < imin {
 			imin = i
 		}
@@ -67,17 +71,22 @@ fn new_aints(vals []int) Aints {
 		x := f64(i) - res.average
 		devsum += (x * x)
 	}
-	res.stddev = math.sqrt( devsum / f64(vals.len) )
+	res.stddev = math.sqrt(devsum / f64(vals.len))
 	return res
 }
-fn (a Aints) str() string { return util.bold('${a.average:9.3f}') + 'ms ± σ: ${a.stddev:-5.1f}ms, min … max: ${a.imin}ms … ${a.imax}ms' }
+
+fn (a Aints) str() string {
+	return util.bold('${a.average:9.3f}') +
+		'ms ± σ: ${a.stddev:-5.1f}ms, min … max: ${a.imin}ms … ${a.imax}ms'
+}
 
 const (
-	max_fail_percent = 100000
-	max_time = 60*1000 // ms
+	max_fail_percent             = 100000
+	max_time                     = 60 * 1000 // ms
 	performance_regression_label = 'Performance regression detected, failing since '
 )
-fn main(){
+
+fn main() {
 	mut context := Context{}
 	context.parse_options()
 	context.run()
@@ -111,7 +120,7 @@ fn (mut context Context) parse_options() {
 		eprintln('Error: ' + err)
 		exit(1)
 	}
-	context.results = []CmdResult{ len: context.commands.len, init: CmdResult{} }
+	context.results = []CmdResult{len: context.commands.len, init: CmdResult{}}
 	context.cline = '\r' + term.h_divider('')
 }
 
@@ -121,7 +130,7 @@ fn (mut context Context) clear_line() {
 
 fn (mut context Context) run() {
 	mut run_warmups := 0
-	for si in 1..context.series+1 {
+	for si in 1 .. context.series + 1 {
 		for icmd, cmd in context.commands {
 			mut runs := 0
 			mut duration := 0
@@ -129,20 +138,22 @@ fn (mut context Context) run() {
 			mut oldres := ''
 			println('Series: ${si:4}/${context.series:-4}, command: $cmd')
 			if context.warmup > 0 && run_warmups < context.commands.len {
-				for i in 1..context.warmup+1 {
+				for i in 1 .. context.warmup + 1 {
 					print('\r warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
 					mut sw := time.new_stopwatch({})
-					os.exec(cmd) or { continue }
+					os.exec(cmd) or {
+						continue
+					}
 					duration = int(sw.elapsed().milliseconds())
 				}
 				run_warmups++
 			}
 			context.clear_line()
-			for i in 1..(context.count+1) {
-				avg := f64(sum)/f64(i)
+			for i in 1 .. (context.count + 1) {
+				avg := f64(sum) / f64(i)
 				print('\rAverage: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
 				if context.show_output {
-					print(' | result: ${oldres:-s}')
+					print(' | result: ${oldres:s}')
 				}
 				mut sw := time.new_stopwatch({})
 				res := scripting.exec(cmd) or {
@@ -153,7 +164,8 @@ fn (mut context Context) run() {
 					eprintln('${i:10} non 0 exit code for cmd: $cmd')
 					continue
 				}
-				context.results[icmd].outputs << res.output.trim_right('\r\n').replace('\r\n', '\n').split("\n")
+				context.results[icmd].outputs <<
+					res.output.trim_right('\r\n').replace('\r\n', '\n').split('\n')
 				context.results[icmd].timings << duration
 				sum += duration
 				runs++
@@ -165,7 +177,7 @@ fn (mut context Context) run() {
 			context.results[icmd].atiming = new_aints(context.results[icmd].timings)
 			context.clear_line()
 			print('\r')
-			mut m := map[string][]int
+			mut m := map[string][]int{}
 			for o in context.results[icmd].outputs {
 				x := o.split(':')
 				if x.len > 1 {
@@ -175,7 +187,7 @@ fn (mut context Context) run() {
 				}
 			}
 			mut summary := map[string]Aints{}
-			for k,v in m {
+			for k, v in m {
 				// show a temporary summary for the current series/cmd cycle
 				s := new_aints(v)
 				println('  $k: $s')
@@ -183,8 +195,8 @@ fn (mut context Context) run() {
 			}
 			// merge current raw results to the previous ones
 			old_oms := context.results[icmd].oms
-			mut new_oms := map[string][]int
-			for k,v in m {
+			mut new_oms := map[string][]int{}
+			for k, v in m {
 				if old_oms[k].len == 0 {
 					new_oms[k] = v
 				} else {
@@ -193,20 +205,21 @@ fn (mut context Context) run() {
 				}
 			}
 			context.results[icmd].oms = new_oms
-			//println('')
+			// println('')
 		}
 	}
 	// create full summaries, taking account of all runs
-	for icmd in 0..context.results.len {
+	for icmd in 0 .. context.results.len {
 		mut new_full_summary := map[string]Aints{}
-		for k,v in context.results[icmd].oms {
+		for k, v in context.results[icmd].oms {
 			new_full_summary[k] = new_aints(v)
 		}
 		context.results[icmd].summary = new_full_summary
 	}
 }
+
 fn (mut context Context) show_diff_summary() {
-	context.results.sort_with_compare(fn (a, b &CmdResult) int {
+	context.results.sort_with_compare(fn (a &CmdResult, b &CmdResult) int {
 		if a.atiming.average < b.atiming.average {
 			return -1
 		}
@@ -224,7 +237,7 @@ fn (mut context Context) show_diff_summary() {
 		if r.icmd == 0 {
 			first_cmd_percentage = cpercent
 		}
-		println(' ${first_marker}${(i+1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | ${r.atiming}')
+		println(' $first_marker${(i+1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | $r.atiming')
 	}
 	$if debugcontext ? {
 		println('context: $context')
@@ -232,7 +245,7 @@ fn (mut context Context) show_diff_summary() {
 	eprintln('base: $base | context.fail_on_maxtime: $context.fail_on_maxtime')
 	if int(base) > context.fail_on_maxtime {
 		print(performance_regression_label)
-		println('average time: ${base:6.1f} ms > ${context.fail_on_maxtime} ms threshold.')
+		println('average time: ${base:6.1f} ms > $context.fail_on_maxtime ms threshold.')
 		exit(2)
 	}
 	if context.fail_on_regress_percent == max_fail_percent || context.results.len < 2 {

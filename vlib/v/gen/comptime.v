@@ -53,9 +53,9 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 			if m.params[i].typ.is_int() || m.params[i].typ.idx() == table.bool_type_idx {
 				// Gets the type name and cast the string to the type with the string_<type> function
 				type_name := g.table.types[int(m.params[i].typ)].str()
-				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i-1}])')
+				g.write('string_${type_name}(((string*)${node.args_var}.data) [${i - 1}])')
 			} else {
-				g.write('((string*)${node.args_var}.data) [${i-1}] ')
+				g.write('((string*)${node.args_var}.data) [${i - 1}] ')
 			}
 			if i < m.params.len - 1 {
 				g.write(', ')
@@ -106,7 +106,9 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		stmt_str := g.go_before_stmt(0)
 		g.write(tabs[g.indent])
 		stmt_str.trim_space()
-	} else { '' }
+	} else {
+		''
+	}
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
@@ -132,7 +134,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 					g.indent++
 					g.writeln('$styp $tmp;')
 					g.writeln('{')
-					g.stmts(branch.stmts[0 .. len - 1])
+					g.stmts(branch.stmts[0..len - 1])
 					g.write('\t$tmp = ')
 					g.stmt(last)
 					g.writeln('}')
@@ -146,13 +148,21 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 		} else {
 			// Only wrap the contents in {} if we're inside a function, not on the top level scope
 			should_create_scope := g.fn_decl != 0
-			if should_create_scope { g.writeln('{') }
+			if should_create_scope {
+				g.writeln('{')
+			}
 			g.stmts(branch.stmts)
-			if should_create_scope { g.writeln('}') }
+			if should_create_scope {
+				g.writeln('}')
+			}
 		}
 		g.defer_ifdef = ''
 	}
-	if node.is_expr { g.write('#endif') } else { g.writeln('#endif') }
+	if node.is_expr {
+		g.write('#endif')
+	} else {
+		g.writeln('#endif')
+	}
 }
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
@@ -161,13 +171,16 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 			g.write('(')
 			g.comp_if_expr(cond.expr)
 			g.write(')')
-		} ast.PrefixExpr {
+		}
+		ast.PrefixExpr {
 			g.write(cond.op.str())
 			g.comp_if_expr(cond.right)
-		} ast.PostfixExpr {
+		}
+		ast.PostfixExpr {
 			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true)
 			g.write('defined($ifdef)')
-		} ast.InfixExpr {
+		}
+		ast.InfixExpr {
 			match cond.op {
 				.and, .logical_or {
 					g.comp_if_expr(cond.left)
@@ -180,14 +193,18 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 					exp_type := g.comptime_var_type_map[name]
 					got_type := (cond.right as ast.Type).typ
 					g.write('$exp_type == $got_type')
-				} .eq, .ne {
+				}
+				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
-				} else {}
+				}
+				else {}
 			}
-		} ast.Ident {
+		}
+		ast.Ident {
 			ifdef := g.comp_if_to_ifdef(cond.name, false)
 			g.write('defined($ifdef)')
-		} else {}
+		}
+		else {}
 	}
 }
 

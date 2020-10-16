@@ -21,7 +21,8 @@ pub struct Parser {
 	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
-	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
+	comments_mode     scanner.CommentsMode = .skip_comments
+	// see comment in parse_file
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
@@ -79,7 +80,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
@@ -832,7 +833,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) vet_error(s string, line int) {
-	p.vet_errors << '$p.scanner.file_path:${line+1}: $s'
+	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
@@ -2054,7 +2055,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 }
 
-fn (mut p Parser) trace(fbase, message string) {
+fn (mut p Parser) trace(fbase string, message string) {
 	if p.file_base == fbase {
 		println('> p.trace | ${fbase:-10s} | $message')
 	}

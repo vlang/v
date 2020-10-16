@@ -147,7 +147,7 @@ fn (mut g Gen) write64(n i64) {
 	g.buf << byte(n >> 56)
 }
 
-fn (mut g Gen) write64_at(n, at i64) {
+fn (mut g Gen) write64_at(n i64, at i64) {
 	// write 8 bytes
 	g.buf[at] = byte(n)
 	g.buf[at + 1] = byte(n >> 8)
@@ -469,7 +469,7 @@ pub fn (mut g Gen) gen_loop_start(from int) int {
 	return label
 }
 
-pub fn (mut g Gen) gen_loop_end(to, label int) {
+pub fn (mut g Gen) gen_loop_end(to int, label int) {
 	g.cmp(.r12, ._8, to)
 	g.jl(label)
 }
@@ -540,7 +540,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.println('mov $reg, $val')
 }
 
-fn (mut g Gen) mov_reg(a, b Register) {
+fn (mut g Gen) mov_reg(a Register, b Register) {
 	match a {
 		.rbp {
 			g.write8(0x48)
@@ -677,7 +677,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (mut g Gen) allocate_var(name string, size, initial_val int) {
+fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
 	// `a := 3`  =>
 	// `move DWORD [rbp-0x4],0x3`
 	match size {

@@ -159,7 +159,7 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
-pub fn symlink(origin, target string) ?bool {
+pub fn symlink(origin string, target string) ?bool {
 	res := C.symlink(charptr(origin.str), charptr(target.str))
 	if res == 0 {
 		return true

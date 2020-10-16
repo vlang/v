@@ -4,52 +4,82 @@
 module math
 
 #include <math.h>
-
 $if windows {
 	$if tinyc {
 		#flag @VROOT/thirdparty/tcc/lib/openlibm.o
 	}
 }
-
 fn C.acos(x f64) f64
+
 fn C.asin(x f64) f64
+
 fn C.atan(x f64) f64
+
 fn C.atan2(y f64, x f64) f64
+
 fn C.cbrt(x f64) f64
+
 fn C.ceil(x f64) f64
+
 fn C.cos(x f64) f64
+
 fn C.cosf(x f32) f32
+
 fn C.cosh(x f64) f64
+
 fn C.erf(x f64) f64
+
 fn C.erfc(x f64) f64
+
 fn C.exp(x f64) f64
+
 fn C.exp2(x f64) f64
+
 fn C.fabs(x f64) f64
+
 fn C.floor(x f64) f64
+
 fn C.fmod(x f64, y f64) f64
+
 fn C.hypot(x f64, y f64) f64
+
 fn C.log(x f64) f64
+
 fn C.log2(x f64) f64
+
 fn C.log10(x f64) f64
+
 fn C.lgamma(x f64) f64
+
 fn C.pow(x f64, y f64) f64
+
 fn C.powf(x f32, y f32) f32
+
 fn C.round(x f64) f64
+
 fn C.sin(x f64) f64
+
 fn C.sinf(x f32) f32
+
 fn C.sinh(x f64) f64
+
 fn C.sqrt(x f64) f64
+
 fn C.sqrtf(x f32) f32
+
 fn C.tgamma(x f64) f64
+
 fn C.tan(x f64) f64
+
 fn C.tanf(x f32) f32
+
 fn C.tanh(x f64) f64
+
 fn C.trunc(x f64) f64
 
 // NOTE
 // When adding a new function, please make sure it's in the right place.
 // All functions are sorted alphabetically.
-
 // Returns the absolute value.
 [inline]
 pub fn abs(a f64) f64 {
@@ -76,7 +106,7 @@ pub fn atan(a f64) f64 {
 
 // atan2 calculates inverse tangent with two arguments, returns the angle between the X axis and the point.
 [inline]
-pub fn atan2(a, b f64) f64 {
+pub fn atan2(a f64, b f64) f64 {
 	return C.atan2(a, b)
 }
 
@@ -142,7 +172,7 @@ pub fn floor(a f64) f64 {
 
 // fmod returns the floating-point remainder of number / denom (rounded towards zero):
 [inline]
-pub fn fmod(a, b f64) f64 {
+pub fn fmod(a f64, b f64) f64 {
 	return C.fmod(a, b)
 }
 
@@ -154,7 +184,7 @@ pub fn gamma(a f64) f64 {
 
 // Returns hypotenuse of a right triangle.
 [inline]
-pub fn hypot(a, b f64) f64 {
+pub fn hypot(a f64, b f64) f64 {
 	return C.hypot(a, b)
 }
 
@@ -184,19 +214,19 @@ pub fn log_gamma(a f64) f64 {
 
 // log_n calculates base-N logarithm of the provided value.
 [inline]
-pub fn log_n(a, b f64) f64 {
+pub fn log_n(a f64, b f64) f64 {
 	return C.log(a) / C.log(b)
 }
 
 // pow returns base raised to the provided power.
 [inline]
-pub fn pow(a, b f64) f64 {
+pub fn pow(a f64, b f64) f64 {
 	return C.pow(a, b)
 }
 
 // powf returns base raised to the provided power. (float32)
 [inline]
-pub fn powf(a, b f32) f32 {
+pub fn powf(a f32, b f32) f32 {
 	return C.powf(a, b)
 }
 

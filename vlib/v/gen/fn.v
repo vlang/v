@@ -17,7 +17,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	if g.pref.autofree {
 		defer {
-			g.autofree_tmp_vars = []
+			// g.autofree_tmp_vars = []
 		}
 	}
 	// if g.fileis('vweb.v') {
@@ -630,6 +630,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	}
 	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
 	g.tmp_count2++
+	mut scope := g.file.scope.innermost(node.pos.pos)
 	for i, arg in node.args {
 		if !arg.is_tmp_autofree {
 			continue
@@ -645,12 +646,18 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 		t := '_arg_expr_${fn_name}_$i'
 		// g.called_fn_name = name
-		used := t in g.autofree_tmp_vars
+		// used := t in g.autofree_tmp_vars
+		used := scope.known_var(t)
 		if used {
 			g.write('$t = ')
 		} else {
 			g.write('string $t = ')
-			g.autofree_tmp_vars << t
+			scope.register(t, ast.Var{
+				name: t
+				typ: table.string_type
+				is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
+			})
+			// g.autofree_tmp_vars << t
 		}
 		g.expr(arg.expr)
 		g.writeln(';// new af pre')

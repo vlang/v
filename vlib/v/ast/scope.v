@@ -149,7 +149,7 @@ fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
-pub fn (sc &Scope) show(depth, max_depth int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {

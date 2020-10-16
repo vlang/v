@@ -39,12 +39,12 @@ pub fn line_to_timestamp_and_commit(line string) (int, string) {
 	return parts[0].int(), parts[1]
 }
 
-pub fn normalized_workpath_for_commit(workdir, commit string) string {
+pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
 	return os.real_path(workdir + os.path_separator + nc)
 }
 
-pub fn prepare_vc_source(vcdir, cdir, commit string) (string, string) {
+pub fn prepare_vc_source(vcdir string, cdir string, commit string) (string, string) {
 	scripting.chdir(cdir)
 	// Building a historic v with the latest vc is not always possible ...
 	// It is more likely, that the vc *at the time of the v commit*,
@@ -62,7 +62,7 @@ pub fn prepare_vc_source(vcdir, cdir, commit string) (string, string) {
 	return v_commithash, vccommit_before
 }
 
-pub fn clone_or_pull(remote_git_url, local_worktree_path string) {
+pub fn clone_or_pull(remote_git_url string, local_worktree_path string) {
 	// NB: after clone_or_pull, the current repo branch is === HEAD === master
 	if os.is_dir(local_worktree_path) && os.is_dir(os.join_path(local_worktree_path, '.git')) {
 		// Already existing ... Just pulling in this case is faster usually.

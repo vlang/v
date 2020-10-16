@@ -56,7 +56,7 @@ pub mut:
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
 	for comment in comments {
-		res << comment.text.trim_left('|')
+		res << comment.text.trim_left('\x01')
 	}
 	return res.join('\n')
 }
@@ -74,7 +74,7 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 			// located right above the top level statement.
 			// break
 		}
-		mut cmt_content := cmt.text.trim_left('|')
+		mut cmt_content := cmt.text.trim_left('\x01')
 		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
@@ -191,13 +191,13 @@ pub fn (mut nodes []DocNode) sort_by_category() {
 	nodes.sort_with_compare(compare_nodes_by_category)
 }
 
-fn compare_nodes_by_name(a, b &DocNode) int {
+fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 	al := a.name.to_lower()
 	bl := b.name.to_lower()
 	return compare_strings(al, bl)
 }
 
-fn compare_nodes_by_category(a, b &DocNode) int {
+fn compare_nodes_by_category(a &DocNode, b &DocNode) int {
 	al := a.attrs['category']
 	bl := b.attrs['category']
 	return compare_strings(al, bl)
@@ -217,7 +217,7 @@ pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
 	return nodes.find_nodes_with_attr('parent', parent)
 }
 
-pub fn (nodes []DocNode) find_nodes_with_attr(attr_name, value string) []DocNode {
+pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []DocNode {
 	mut subgroup := []DocNode{}
 	if attr_name.len == 0 {
 		return subgroup
@@ -509,7 +509,7 @@ fn (mut d Doc) generate() ?Doc {
 	return *d
 }
 
-pub fn generate_from_pos(input_path, filename string, pos int) ?Doc {
+pub fn generate_from_pos(input_path string, filename string, pos int) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = false
 	doc.with_comments = true
@@ -519,7 +519,7 @@ pub fn generate_from_pos(input_path, filename string, pos int) ?Doc {
 	return doc.generate()
 }
 
-pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments

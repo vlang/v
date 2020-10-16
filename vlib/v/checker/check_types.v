@@ -7,7 +7,7 @@ import v.table
 import v.token
 import v.ast
 
-pub fn (mut c Checker) check_basic(got, expected table.Type) bool {
+pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -111,7 +111,7 @@ pub fn (mut c Checker) check_basic(got, expected table.Type) bool {
 	return false
 }
 
-pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sym &table.TypeSymbol) bool {
+pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &table.TypeSymbol, exp_type_sym &table.TypeSymbol) bool {
 	got_info := got_type_sym.info as table.FnType
 	exp_info := exp_type_sym.info as table.FnType
 	got_fn := got_info.func
@@ -142,7 +142,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym, exp_type_sy
 }
 
 [inline]
-fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right_pos token.Position) table.Type {
+fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left_pos token.Position, right_pos token.Position) table.Type {
 	if !left_type.is_int() {
 		// maybe it's an int alias? TODO move this to is_int() ?
 		sym := c.table.get_type_symbol(left_type)
@@ -163,7 +163,7 @@ fn (mut c Checker) check_shift(left_type, right_type table.Type, left_pos, right
 	return left_type
 }
 
-pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
+pub fn (c &Checker) promote(left_type table.Type, right_type table.Type) table.Type {
 	if left_type.is_ptr() || left_type.is_pointer() {
 		if right_type.is_int() {
 			return left_type
@@ -190,7 +190,7 @@ pub fn (c &Checker) promote(left_type, right_type table.Type) table.Type {
 	}
 }
 
-fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
+fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.Type {
 	// sort the operands to save time
 	mut type_hi := left_type
 	mut type_lo := right_type
@@ -235,7 +235,7 @@ fn (c &Checker) promote_num(left_type, right_type table.Type) table.Type {
 }
 
 // TODO: promote(), check_types(), symmetric_check() and check() overlap - should be rearranged
-pub fn (mut c Checker) check_types(got, expected table.Type) bool {
+pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
 	}
@@ -278,7 +278,16 @@ pub fn (mut c Checker) check_types(got, expected table.Type) bool {
 	return true
 }
 
-pub fn (mut c Checker) symmetric_check(left, right table.Type) bool {
+pub fn (mut c Checker) check_expected(got table.Type, expected table.Type) ? {
+	if c.check_types(got, expected) {
+		return
+	}
+	exps := c.table.type_to_str(expected)
+	gots := c.table.type_to_str(got)
+	return error('expected `$exps`, not `$gots`')
+}
+
+pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
@@ -295,7 +304,7 @@ pub fn (mut c Checker) symmetric_check(left, right table.Type) bool {
 	return c.check_basic(left, right)
 }
 
-pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
+pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_any_int() {
@@ -315,7 +324,8 @@ pub fn (c &Checker) get_default_fmt(ftyp, typ table.Type) byte {
 			}
 		}
 		if ftyp in [table.string_type, table.bool_type] ||
-			sym.kind in [.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type] || ftyp.has_flag(.optional) ||
+			sym.kind in
+			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type] || ftyp.has_flag(.optional) ||
 			sym.has_method('str') {
 			return `s`
 		} else {
@@ -369,7 +379,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 	return table.string_type
 }
 
-pub fn (c &Checker) check_sumtype_compatibility(a, b table.Type) bool {
+pub fn (c &Checker) check_sumtype_compatibility(a table.Type, b table.Type) bool {
 	return c.table.sumtype_has_variant(a, b) || c.table.sumtype_has_variant(b, a)
 }
 

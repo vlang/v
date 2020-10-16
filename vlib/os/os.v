@@ -57,7 +57,7 @@ pub fn read_file(path string) ?string {
 	}
 }
 
-/***************************** OS ops ************************/
+//***************************** OS ops ************************
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
@@ -76,7 +76,7 @@ pub fn file_size(path string) int {
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(src, dst string) {
+pub fn mv(src string, dst string) {
 	mut rdst := dst
 	if is_dir(rdst) {
 		rdst = join_path(rdst.trim_right(path_separator),file_name(src.trim_right(path_separator)))
@@ -91,7 +91,7 @@ pub fn mv(src, dst string) {
 }
 
 // cp copies files or folders from `src` to `dst`.
-pub fn cp(src, dst string) ? {
+pub fn cp(src string, dst string) ? {
 	$if windows {
 		w_src := src.replace('/', '\\')
 		w_dst := dst.replace('/', '\\')
@@ -135,14 +135,14 @@ pub fn cp(src, dst string) ? {
 }
 
 [deprecated]
-pub fn cp_r(osource_path, odest_path string, overwrite bool) ? {
+pub fn cp_r(osource_path string, odest_path string, overwrite bool) ? {
 	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
 	return cp_all(osource_path, odest_path, overwrite)
 }
 
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
-pub fn cp_all(src, dst string, overwrite bool) ? {
+pub fn cp_all(src string, dst string, overwrite bool) ? {
 	source_path := os.real_path(src)
 	dest_path := os.real_path(dst)
 	if !os.exists(source_path) {
@@ -190,7 +190,7 @@ pub fn mv_by_cp(source string, target string) ? {
 // vfopen returns an opened C file, given its path and open mode.
 // NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
-pub fn vfopen(path, mode string) ?&C.FILE {
+pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
@@ -858,7 +858,7 @@ pub fn home_dir() string {
 }
 
 // write_file writes `text` data to a file in `path`.
-pub fn write_file(path, text string) ? {
+pub fn write_file(path string, text string) ? {
 	mut f := os.create(path)?
 	f.write(text)
 	f.close()
@@ -1164,7 +1164,7 @@ pub fn join_path(base string, dirs ...string) string {
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
-pub fn walk_ext(path, ext string) []string {
+pub fn walk_ext(path string, ext string) []string {
 	if !os.is_dir(path) {
 		return []
 	}

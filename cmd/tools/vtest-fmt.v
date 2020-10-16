@@ -6,16 +6,16 @@ import testing
 const (
 	known_failing_exceptions = [
 		'vlib/v/tests/generics_test.v', // struct Repo<T, U> { => struct Repo {
-		'vlib/crypto/aes/aes.v',  // pub fn (c &AesCipher) encrypt(mut dst, mut src []byte) {
+		'vlib/crypto/aes/aes.v', // pub fn (c &AesCipher) encrypt(mut dst, mut src []byte) {
 		'vlib/crypto/aes/block_generic.v', // fn expand_key_generic(key []byte, mut enc, mut dec []u32) {
 		'vlib/crypto/aes/const.v', // multiple narrow columns of []string turned to 1 long single column, otherwise works
 		'vlib/crypto/rc4/rc4.v', // pub fn (mut c Cipher) xor_key_stream(mut dst, mut src []byte) {
 		'vlib/vweb/vweb.v', // $for method in T.methods { => $for method in T(methods) { , `return // xx` => parse expr error
 		'vlib/v/gen/js/tests/life.v', // error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500)
 		'vlib/builtin/js/builtin.v', // JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c)
-        'vlib/builtin/js/jsfns_node.js.v',
-        'vlib/builtin/js/jsfns.js.v',
-        'vlib/builtin/js/jsfns_browser.js.v',
+		'vlib/builtin/js/jsfns_node.js.v',
+		'vlib/builtin/js/jsfns.js.v',
+		'vlib/builtin/js/jsfns_browser.js.v',
 		'vlib/builtin/bare/linuxsys_bare.v', // error: expr(): bad token `asm`, on `asm {}`
 		'vlib/os/os.v', // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
 	]

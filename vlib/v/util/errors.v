@@ -53,7 +53,7 @@ pub fn bold(msg string) string {
 	return term.bold(msg)
 }
 
-fn color(kind, msg string) string {
+fn color(kind string, msg string) string {
 	if !emanager.support_color {
 		return msg
 	}
@@ -65,7 +65,7 @@ fn color(kind, msg string) string {
 }
 
 // formatted_error - `kind` may be 'error' or 'warn'
-pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
+pub fn formatted_error(kind string, omsg string, filepath string, pos token.Position) string {
 	emsg := omsg.replace('main.', '')
 	mut path := filepath
 	verror_paths_override := os.getenv('VERROR_PATHS')
@@ -91,7 +91,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 		}
 	}
 	column := imax(0, pos.pos - p - 1)
-	position := '$path:${pos.line_nr+1}:${imax(1,column+1)}:'
+	position := '$path:${pos.line_nr + 1}:${imax(1, column + 1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
@@ -101,7 +101,7 @@ pub fn formatted_error(kind, omsg, filepath string, pos token.Position) string {
 	return '$final_position $final_kind $final_msg$final_context'.trim_space()
 }
 
-pub fn source_context(kind, source string, column int, pos token.Position) []string {
+pub fn source_context(kind string, source string, column int, pos token.Position) []string {
 	mut clines := []string{}
 	if source.len == 0 {
 		return clines
@@ -116,7 +116,7 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 		end_column := imax(0, imin(column + imax(0, pos.len), sline.len))
 		cline := if iline == pos.line_nr { sline[..start_column] + color(kind, sline[start_column..end_column]) +
 				sline[end_column..] } else { sline }
-		clines << '${iline+1:5d} | ' + cline.replace('\t', tab_spaces)
+		clines << '${iline + 1:5d} | ' + cline.replace('\t', tab_spaces)
 		//
 		if iline == pos.line_nr {
 			// The pointerline should have the same spaces/tabs as the offending
@@ -136,7 +136,7 @@ pub fn source_context(kind, source string, column int, pos token.Position) []str
 	return clines
 }
 
-pub fn verror(kind, s string) {
+pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
 	eprintln('$final_kind: $s')
 	exit(1)

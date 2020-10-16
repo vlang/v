@@ -11,7 +11,7 @@ pub mut:
 struct Values {
 pub mut:
 	data map[string]Value
-	len int
+	len  int
 }
 
 // new_values returns a new Values struct for creating
@@ -20,7 +20,7 @@ pub mut:
 // values.encode() will return the encoded data
 pub fn new_values() Values {
 	return Values{
-		data: map[string]Value
+		data: map[string]Value{}
 	}
 }
 
@@ -61,7 +61,7 @@ pub fn (v &Values) get_all(key string) []string {
 
 // set sets the key to value. It replaces any existing
 // values.
-pub fn (mut v Values) set(key, value string) {
+pub fn (mut v Values) set(key string, value string) {
 	mut a := v.data[key]
 	a.data = [value]
 	v.data[key] = a
@@ -70,7 +70,7 @@ pub fn (mut v Values) set(key, value string) {
 
 // add adds the value to key. It appends to any existing
 // values associated with key.
-pub fn (mut v Values) add(key, value string) {
+pub fn (mut v Values) add(key string, value string) {
 	mut a := v.data[key]
 	if a.data.len == 0 {
 		a.data = []

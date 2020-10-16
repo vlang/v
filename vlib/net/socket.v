@@ -4,10 +4,10 @@ import os
 
 pub struct Socket {
 pub:
-	sockfd int
-	family int
-	typ    int
-	proto  int
+	sockfd               int
+	family               int
+	typ                  int
+	proto                int
 pub mut:
 	max_single_send_size int = 64000
 }
@@ -75,12 +75,12 @@ fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
 fn C.getpeername(sockfd int, addr &C.sockaddr_in, addrsize &int) int
 
 // create socket
-pub fn new_socket(family, typ, proto int) ?Socket {
+pub fn new_socket(family int, typ int, proto int) ?Socket {
 	sockfd := C.socket(family, typ, proto)
 	one := 1
 	// This is needed so that there are no problems with reusing the
 	// same port after the application exits.
-	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(int))
+	C.setsockopt(sockfd, C.SOL_SOCKET, C.SO_REUSEADDR, &one, sizeof(voidptr))
 	if sockfd == -1 {
 		return error('net.socket: failed')
 	}
@@ -98,8 +98,8 @@ pub fn socket_udp() ?Socket {
 }
 
 // set socket options
-pub fn (s Socket) setsockopt(level, optname int, optvalue &int) ?int {
-	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(&int))
+pub fn (s Socket) setsockopt(level int, optname int, optvalue &int) ?int {
+	res := C.setsockopt(s.sockfd, level, optname, optvalue, sizeof(int))
 	if res < 0 {
 		return error('net.setsocketopt: failed with $res')
 	}
@@ -153,9 +153,9 @@ pub fn listen(port int) ?Socket {
 	$if debug {
 		println('net.listen($port)')
 	}
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
-	s.bind(port)?
-	s.listen()?
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) ?
+	s.bind(port) ?
+	s.listen() ?
 	return s
 }
 
@@ -190,8 +190,9 @@ pub fn (s Socket) peer_ip() ?string {
 	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
-	}    
-	return cstring_to_vstring(cstr)
+	}
+	res := cstring_to_vstring(cstr)
+	return res    
 }
 
 // connect to given addrress and port
@@ -222,8 +223,8 @@ pub fn (s Socket) connect(address string, port int) ?int {
 
 // helper method to create socket and connect
 pub fn dial(address string, port int) ?Socket {
-	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0)?
-	s.connect(address, port)?
+	s := new_socket(C.AF_INET, C.SOCK_STREAM, 0) ?
+	s.connect(address, port) ?
 	return s
 }
 
@@ -265,13 +266,15 @@ pub fn (s Socket) recv(bufsize int) (byteptr, int) {
 
 // TODO: remove cread/2 and crecv/2 when the Go net interface is done
 pub fn (s Socket) cread(buffer byteptr, buffersize int) int {
-	return C.read(s.sockfd, buffer, buffersize)
+	res := C.read(s.sockfd, buffer, buffersize)
+	return res
 }
 
 // Receive a message from the socket, and place it in a preallocated buffer buf,
 // with maximum message size bufsize. Returns the length of the received message.
 pub fn (s Socket) crecv(buffer voidptr, buffersize int) int {
-	return C.recv(s.sockfd, byteptr(buffer), buffersize, 0)
+	res := C.recv(s.sockfd, byteptr(buffer), buffersize, 0)
+	return res    
 }
 
 // shutdown and close socket

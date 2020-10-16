@@ -35,7 +35,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "${g.vlines_path}"')
+		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
 		g.writeln('')
 	}
 }
@@ -111,7 +111,6 @@ void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 }
 ')
 	}
-
 	g.writeln('// The sokol_main entry point on Android
 sapp_desc sokol_main(int argc, char* argv[]) {
 	(void)argc; (void)argv;

@@ -97,7 +97,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 			return error('Unable to find a windows kit')
 		}
 		kit_lib := kit_root + 'Lib'
-		files := os.ls(kit_lib)?
+		files := os.ls(kit_lib) ?
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
@@ -128,7 +128,7 @@ struct VsInstallation {
 	exe_path     string
 }
 
-fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
+fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	$if !windows {
 		return error('Host OS does not support finding a Visual Studio installation')
 	}
@@ -136,7 +136,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')?
+	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -331,7 +331,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfiles := '${path[..path.len - 2]}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')

@@ -83,7 +83,7 @@ const (
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
-fn fast_string_eq(a, b string) bool {
+fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false
 	}
@@ -219,7 +219,7 @@ fn new_map_1(value_bytes int) map {
 	}
 }
 
-fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
+fn new_map_init(n int, value_bytes int, keys &string, values voidptr) map {
 	mut out := new_map_1(value_bytes)
 	for i in 0 .. n {
 		unsafe {

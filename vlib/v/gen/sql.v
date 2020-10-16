@@ -38,7 +38,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			if field.name == 'id' {
 				continue
 			}
-			g.write('`${field.name}`')
+			g.write('`$field.name`')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -48,7 +48,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			if field.name == 'id' {
 				continue
 			}
-			g.write('?${i+0}')
+			g.write('?${i + 0}')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -78,9 +78,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			}
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
-				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i+0}, ${x}.str, ${x}.len, 0);')
+				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
 			} else {
-				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i+0}, $x); // stmt')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0}, $x); // stmt')
 			}
 		}
 	}
@@ -114,7 +114,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			sql_query += '`${field.name}`'
+			sql_query += '`$field.name`'
 			if i < node.fields.len - 1 {
 				sql_query += ', '
 			}
@@ -188,7 +188,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			info := sym.info as table.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
-				if i != info.fields.len-1 {
+				if i != info.fields.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -203,7 +203,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			info := sym.info as table.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
-				if i != info.fields.len-1 {
+				if i != info.fields.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -246,7 +246,7 @@ fn (mut g Gen) sql_bind_int(val string) {
 	g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $val);')
 }
 
-fn (mut g Gen) sql_bind_string(val, len string) {
+fn (mut g Gen) sql_bind_string(val string, len string) {
 	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
 }
 

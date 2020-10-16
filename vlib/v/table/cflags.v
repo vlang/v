@@ -17,7 +17,7 @@ fn (table &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?bool {
+pub fn (mut table Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig

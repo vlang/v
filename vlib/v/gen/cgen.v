@@ -111,7 +111,7 @@ mut:
 	match_sumtype_syms    []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
-	autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
+	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
@@ -419,7 +419,7 @@ fn (mut g Gen) optional_type_name(t table.Type) (string, string) {
 	return styp, base
 }
 
-fn (g &Gen) optional_type_text(styp, base string) string {
+fn (g &Gen) optional_type_text(styp string, base string) string {
 	x := styp // .replace('*', '_ptr')			// handle option ptrs
 	// replace void with something else
 	size := if base == 'void' { 'int' } else { base }
@@ -469,7 +469,7 @@ fn (mut g Gen) find_or_register_shared(t table.Type, base string) string {
 	return sh_typ
 }
 
-fn (mut g Gen) register_chan_pop_optional_call(opt_el_type, styp string) {
+fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) {
 	if opt_el_type !in g.chan_pop_optionals {
 		g.chan_pop_optionals << opt_el_type
 		g.channel_definitions.writeln('
@@ -1180,7 +1180,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type, expected_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -2601,7 +2601,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
 			unaliased_right.idx() != table.i64_type_idx { 32 } else { 64 }
-		g.write('_us${bitsize}_${cmp_str[int(node.op)-int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_str[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.left)
 		g.write(',')
 		g.expr(node.right)
@@ -2610,7 +2610,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_right.idx() == table.u32_type_idx &&
 			unaliased_left.idx() != table.i64_type_idx { 32 } else { 64 }
-		g.write('_us${bitsize}_${cmp_rev[int(node.op)-int(token.Kind.eq)]}(')
+		g.write('_us${bitsize}_${cmp_rev[int(node.op) - int(token.Kind.eq)]}(')
 		g.expr(node.right)
 		g.write(',')
 		g.expr(node.left)
@@ -3688,7 +3688,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 	}
 }
 
-fn (mut g Gen) const_decl_simple_define(name, val string) {
+fn (mut g Gen) const_decl_simple_define(name string, val string) {
 	// Simple expressions should use a #define
 	// so that we don't pollute the binary with unnecessary global vars
 	// Do not do this when building a module, otherwise the consts
@@ -3697,7 +3697,7 @@ fn (mut g Gen) const_decl_simple_define(name, val string) {
 	g.definitions.writeln(val)
 }
 
-fn (mut g Gen) const_decl_init_later(mod, name, val string, typ table.Type) {
+fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type) {
 	// Initialize more complex consts in `void _vinit(){}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
@@ -4016,7 +4016,7 @@ fn verror(s string) {
 }
 
 fn (g &Gen) error(s string, pos token.Position) {
-	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr+1}' }
+	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr + 1}' }
 	util.verror('$g.file.path:$p: cgen error', s)
 }
 
@@ -4151,7 +4151,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 							styp, base := g.optional_type_name(field.typ)
 							g.optionals << styp
 							g.typedefs2.writeln('typedef struct $styp $styp;')
-							g.type_definitions.writeln('${g.optional_type_text(styp,base)};')
+							g.type_definitions.writeln('${g.optional_type_text(styp, base)};')
 							g.type_definitions.write(last_text)
 						}
 						type_name := g.typ(field.typ)
@@ -5031,7 +5031,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		g.writeln(';')
 	}
 	for i, arg in expr.args {
-		g.write('$arg_tmp_var->arg${i+1} = ')
+		g.write('$arg_tmp_var->arg${i + 1} = ')
 		g.expr(arg.expr)
 		g.writeln(';')
 	}
@@ -5056,7 +5056,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	} else {
 		for i, arg in expr.args {
 			styp := g.typ(arg.typ)
-			g.type_definitions.writeln('\t$styp arg${i+1};')
+			g.type_definitions.writeln('\t$styp arg${i + 1};')
 		}
 	}
 	g.type_definitions.writeln('} $wrapper_struct_name;')
@@ -5070,7 +5070,7 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 		}
 	}
 	for i in 0 .. expr.args.len {
-		g.gowrappers.write('arg->arg${i+1}')
+		g.gowrappers.write('arg->arg${i + 1}')
 		if i < expr.args.len - 1 {
 			g.gowrappers.write(', ')
 		}
@@ -5144,7 +5144,7 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 	return g.gen_str_for_type_with_styp(typ, styp)
 }
 
-fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp, str_fn_name string) {
+fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
 	mut convertor := ''
 	mut typename_ := ''
 	if sym.parent_idx in table.integer_type_idxs {
@@ -5441,7 +5441,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 
 // `ui.foo(button)` =>
 // `ui__foo(I_ui__Button_to_ui__Widget(` ...
-fn (mut g Gen) interface_call(typ, interface_type table.Type) {
+fn (mut g Gen) interface_call(typ table.Type, interface_type table.Type) {
 	interface_styp := g.cc_type(interface_type)
 	styp := g.cc_type(typ)
 	mut cast_fn_name := 'I_${styp}_to_Interface_$interface_styp'
