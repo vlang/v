@@ -5208,7 +5208,6 @@ fn (mut g Gen) interface_table() string {
 		if inter_info.types.len == 0 {
 			continue
 		}
-		sb.writeln('// NR interfaced types= $inter_info.types.len')
 		// interface_name is for example Speaker
 		interface_name := c_name(ityp.name)
 		// generate a struct that references interface methods
@@ -5242,17 +5241,21 @@ fn (mut g Gen) interface_table() string {
 		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
 		methods_wrapper.writeln('// Methods wrapper for interface "$interface_name"')
-		mut already_generated_mwrappers := map[string]bool{}
-		for i, st in inter_info.types {
+		mut already_generated_mwrappers := map[string]int{}
+		iinidx_minimum_base := 1000 // NB: NOT 0, to avoid map entries set to 0 later, so `if already_generated_mwrappers[name] > 0 {` works.
+		mut current_iinidx := iinidx_minimum_base
+		for st in inter_info.types {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
-			if already_generated_mwrappers[interface_index_name] {
+			if already_generated_mwrappers[interface_index_name] > 0 {
 				continue
 			}
-			already_generated_mwrappers[interface_index_name] = true
+			already_generated_mwrappers[interface_index_name] = current_iinidx
+			current_iinidx++
+			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return (_Interface) {
@@ -5311,8 +5314,10 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
 			}
 			methods_struct.writeln('\t},')
-			sb.writeln('int $interface_index_name = $i;')
+			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
+			sb.writeln('int $interface_index_name = $iin_idx;')
 		}
+		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		methods_struct.writeln('};')
 		// add line return after interface index declarations
 		sb.writeln('')
