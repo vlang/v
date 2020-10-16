@@ -1347,7 +1347,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut fwidth := 0
 		mut fwidthneg := false
 		// 987698 is a magic default value, unlikely to be present in user input. NB: 0 is valid precision
-		mut precision := 987698 
+		mut precision := 987698
 		mut visible_plus := false
 		mut fill := false
 		mut fmt := `_` // placeholder
