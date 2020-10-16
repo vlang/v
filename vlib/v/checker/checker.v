@@ -2671,7 +2671,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			} else if node.typ == table.bool_type {
 				c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
 			} else if node.expr_type == table.none_type {
-				c.error('cannot cast to `none`', node.pos)
+				c.error('cannot cast `none` to `$to_type_sym.kind`', node.pos)
 			}
 			if node.has_arg {
 				c.expr(node.arg)
