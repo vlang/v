@@ -357,7 +357,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 				node.need_fmts[i] = false
 			}
 		} else { // check if given format specifier is valid for type
-			if node.precisions[i] != 0 && !typ.is_float() {
+			if node.precisions[i] != 987698 && !typ.is_float() {
 				c.error('precision specification only valid for float types', node.fmt_poss[i])
 			}
 			if node.pluss[i] && !typ.is_number() {
