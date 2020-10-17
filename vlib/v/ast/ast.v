@@ -628,8 +628,10 @@ pub:
 	mod  string
 	pos  token.Position
 pub mut:
-	val  string
-	kind string
+	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
+	kind string // : 'include'
+	main string // : '<openssl/rand.h>'
+	msg  string // : 'please install openssl'
 }
 
 /*
