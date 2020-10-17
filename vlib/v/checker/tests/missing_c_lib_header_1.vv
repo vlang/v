@@ -1,0 +1,6 @@
+module main
+
+// The following header file is intentionally missing.
+// The #include does not have the optional explanation part
+// after a `#` sign:
+#include <missing/folder/header1.h>

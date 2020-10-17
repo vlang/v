@@ -85,6 +85,13 @@ fn (mut tasks []TaskDescription) run() {
 	$if noskip ? {
 		m_skip_files = []
 	}
+	$if tinyc {
+		// NB: tcc does not support __has_include, so the detection mechanism
+		// used for the other compilers does not work. It still provides a
+		// cleaner error message, than a generic C error, but without the explanation.
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
+		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
+	}
 	for i in 0 .. tasks.len {
 		if tasks[i].path in m_skip_files {
 			tasks[i].is_skipped = true

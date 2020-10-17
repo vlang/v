@@ -2459,7 +2459,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		return
 	}
 	if node.kind == 'include' {
-		mut flag := node.val[8..]
+		mut flag := node.main
 		if flag.contains('@VROOT') {
 			vroot := util.resolve_vroot(flag, c.file.path) or {
 				c.error(err, node.pos)
@@ -2475,7 +2475,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 	} else if node.kind == 'flag' {
 		// #flag linux -lm
-		mut flag := node.val[5..]
+		mut flag := node.main
 		// expand `@VROOT` to its absolute path
 		if flag.contains('@VROOT') {
 			flag = util.resolve_vroot(flag, c.file.path) or {

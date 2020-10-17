@@ -960,18 +960,41 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// #include etc
 			if node.kind == 'include' {
-				if node.val.contains('.m') {
+				mut missing_message := 'Header file $node.main, needed for module `$node.mod` was not found.'
+				if node.msg != '' {
+					missing_message += ' ${node.msg}.'
+				} else {
+					missing_message += ' Please install the corresponding development headers.'
+				}
+				mut guarded_include := '
+				|#if defined(__has_include)
+				|
+				|#if __has_include($node.main)
+				|#include $node.main
+				|#else
+				|#error VERROR_MESSAGE $missing_message
+				|#endif
+				|
+				|#else
+				|#include $node.main
+				|#endif
+				'.strip_margin()
+				if node.main == '<errno.h>' {
+					// fails with musl-gcc and msvc; but an unguarded include works:
+					guarded_include = '#include $node.main'
+				}
+				if node.main.contains('.m') {
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
 					g.definitions.writeln('// added by module `$node.mod`:')
-					g.definitions.writeln('#$node.val')
+					g.definitions.writeln(guarded_include)
 				} else {
 					g.includes.writeln('// added by module `$node.mod`:')
-					g.includes.writeln('#$node.val')
+					g.includes.writeln(guarded_include)
 				}
 			} else if node.kind == 'define' {
 				g.includes.writeln('// defined by module `$node.mod`:')
-				g.includes.writeln('#$node.val')
+				g.includes.writeln('#define $node.main')
 			}
 		}
 		ast.Import {}
