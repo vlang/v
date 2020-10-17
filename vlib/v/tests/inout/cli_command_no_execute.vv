@@ -1,7 +1,11 @@
-import os
 import cli {Command}
 
 fn main() {
-	mut cmd := Command {}                                                       
-	cmd.parse(os.args)
+	mut cmd := Command {
+		name: 'cmd'
+	}
+	cmd.add_command({
+		name: 'foo'
+	})
+	cmd.parse(['', 'cmd', 'foo'])
 }
