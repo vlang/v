@@ -31,20 +31,16 @@ fn (mut ws Client) handshake() ? {
 	}
 	handshake_bytes := handshake.bytes()
 	ws.debug_log('sending handshake: $handshake')
-	ws.socket_write(handshake_bytes)?
-	ws.read_handshake(seckey)?
-	unsafe {
-		handshake_bytes.free()
-	}
+	ws.socket_write(handshake_bytes) ?
+	ws.read_handshake(seckey) ?
+	unsafe {handshake_bytes.free()}
 }
 
 // handshake manage the handshake part of connecting
 fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient) {
-	msg := c.read_handshake_str()?
-	handshake_response, client := s.parse_client_handshake(msg, mut c)?
-	unsafe {
-		msg.free()
-	}
+	msg := c.read_handshake_str() ?
+	handshake_response, client := s.parse_client_handshake(msg, mut c) ?
+	unsafe {msg.free()}
 	return handshake_response, client
 }
 
@@ -80,7 +76,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 			'Sec-WebSocket-Key', 'sec-websocket-key' {
 				key = keys[1].trim_space()
 				s.logger.debug('server-> got key: $key')
-				seckey = create_key_challenge_response(key)?
+				seckey = create_key_challenge_response(key) ?
 				s.logger.debug('server-> challenge: $seckey, response: ${keys[1]}')
 				flags << .has_accept
 			}
@@ -88,9 +84,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 				// We ignore other headers like protocol for now
 			}
 		}
-		unsafe {
-			keys.free()
-		}
+		unsafe {keys.free()}
 	}
 	if flags.len < 3 {
 		return error('invalid client handshake, $client_handshake')
@@ -117,7 +111,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 	mut msg := [1024]byte{}
 	mut buffer := [1]byte{}
 	for total_bytes_read < 1024 {
-		bytes_read := ws.socket_read_into_ptr(byteptr(&buffer), 1)?
+		bytes_read := ws.socket_read_into_ptr(byteptr(&buffer), 1) ?
 		if bytes_read == 0 {
 			return error('unexpected no response from handshake')
 		}
@@ -134,14 +128,12 @@ fn (mut ws Client) read_handshake_str() ?string {
 
 // read_handshake reads the handshake and check if valid
 fn (mut ws Client) read_handshake(seckey string) ? {
-	mut msg := ws.read_handshake_str()?
-	ws.check_handshake_response(msg, seckey)?
-	unsafe {
-		msg.free()
-	}
+	mut msg := ws.read_handshake_str() ?
+	ws.check_handshake_response(msg, seckey) ?
+	unsafe {msg.free()}
 }
 
-fn (mut ws Client) check_handshake_response(handshake_response, seckey string) ? {
+fn (mut ws Client) check_handshake_response(handshake_response string, seckey string) ? {
 	ws.debug_log('handshake response:\n$handshake_response')
 	lines := handshake_response.split_into_lines()
 	header := lines[0]
@@ -162,27 +154,21 @@ fn (mut ws Client) check_handshake_response(handshake_response, seckey string) ?
 			}
 			'Sec-WebSocket-Accept', 'sec-websocket-accept' {
 				ws.debug_log('seckey: $seckey')
-				challenge := create_key_challenge_response(seckey)?
+				challenge := create_key_challenge_response(seckey) ?
 				ws.debug_log('challenge: $challenge, response: ${keys[1]}')
 				if keys[1].trim_space() != challenge {
 					return error('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.')
 				}
 				ws.flags << .has_accept
-				unsafe {
-					challenge.free()
-				}
+				unsafe {challenge.free()}
 			}
 			else {}
 		}
-		unsafe {
-			keys.free()
-		}
+		unsafe {keys.free()}
 	}
-	unsafe {
-		lines.free()
-	}
+	unsafe {lines.free()}
 	if ws.flags.len < 3 {
-		ws.close(1002, 'invalid websocket HTTP headers')?
+		ws.close(1002, 'invalid websocket HTTP headers') ?
 		return error('invalid websocket HTTP headers')
 	}
 }
