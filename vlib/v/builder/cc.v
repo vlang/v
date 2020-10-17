@@ -10,7 +10,8 @@ import v.pref
 import term
 
 const (
-	c_error_info      = '
+	c_verror_message_marker = 'VERROR_MESSAGE '
+	c_error_info            = '
 ==================
 C error. This should never happen.
 
@@ -20,7 +21,7 @@ https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
 '
-	no_compiler_error = '
+	no_compiler_error       = '
 ==================
 Error: no C compiler detected.
 
@@ -73,6 +74,37 @@ fn (mut v Builder) find_win_cc() ? {
 		return
 	}
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+}
+
+fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
+	if res.exit_code == 0 {
+		return
+	}
+	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
+		if res.output.contains(emsg_marker) {
+			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
+			verror(emessage)
+		}
+	}
+	if v.pref.is_debug {
+		eword := 'error:'
+		khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+		println(res.output.trim_right('\r\n').replace(eword, khighlight))
+	} else {
+		if res.output.len < 30 {
+			println(res.output)
+		} else {
+			elines := error_context_lines(res.output, 'error:', 1, 12)
+			println('==================')
+			for eline in elines {
+				println(eline)
+			}
+			println('...')
+			println('==================')
+			println('(Use `v -cg` to print the entire error message)\n')
+		}
+	}
+	verror(c_error_info)
 }
 
 fn (mut v Builder) cc() {
@@ -491,49 +523,28 @@ fn (mut v Builder) cc() {
 		verror(err)
 		return
 	}
-	if res.exit_code != 0 {
-		// the command could not be found by the system
-		if res.exit_code == 127 {
-			$if linux {
-				// TCC problems on linux? Try GCC.
-				if ccompiler.contains('tcc') {
-					v.pref.ccompiler = 'cc'
-					goto start
-				}
-			}
-			verror('C compiler error, while attempting to run: \n' +
-				'-----------------------------------------------------------\n' + '$cmd\n' +
-				'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
-				'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
-		}
-		if v.pref.is_debug {
-			eword := 'error:'
-			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
-			println(res.output.trim_right('\r\n').replace(eword, khighlight))
-			verror(c_error_info)
-		} else {
-			if res.output.len < 30 {
-				println(res.output)
-			} else {
-				elines := error_context_lines(res.output, 'error:', 1, 12)
-				println('==================')
-				for eline in elines {
-					println(eline)
-				}
-				println('...')
-				println('==================')
-				println('(Use `v -cg` to print the entire error message)\n')
-			}
-			verror(c_error_info)
-		}
-	}
 	diff := time.ticks() - ticks
+	v.timing_message('C ${ccompiler:3}', diff)
+	if res.exit_code == 127 {
+		// the command could not be found by the system
+		$if linux {
+			// TCC problems on linux? Try GCC.
+			if ccompiler.contains('tcc') {
+				v.pref.ccompiler = 'cc'
+				goto start
+			}
+		}
+		verror('C compiler error, while attempting to run: \n' +
+			'-----------------------------------------------------------\n' + '$cmd\n' +
+			'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
+			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+	}
+	v.post_process_c_compiler_output(res)
 	// Print the C command
 	if v.pref.is_verbose {
 		println('$ccompiler took $diff ms')
 		println('=========\n')
 	}
-	v.timing_message('C ${ccompiler:3}', diff)
 	// Link it if we are cross compiling and need an executable
 	/*
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {

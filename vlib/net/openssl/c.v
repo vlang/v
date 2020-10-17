@@ -15,7 +15,7 @@ module openssl
 // Brew
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
-#include <openssl/rand.h>
+#include <openssl/rand.h> # Please install OpenSSL
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
