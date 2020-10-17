@@ -26,7 +26,7 @@ pub fn validate(data byteptr, len int) bool {
 	return !state.failed && state.subindex <= 0
 }
 
-fn (mut s Utf8State) seq(r0, r1, is_tail bool) bool {
+fn (mut s Utf8State) seq(r0 bool, r1 bool, is_tail bool) bool {
 	if s.subindex == 0 || (s.index > 1 && s.subindex == 1) || (s.index >= 6 && s.subindex == 2) {
 		if (s.subindex == 0 && r0) || (s.subindex == 1 && r1) || (s.subindex == 2 && is_tail) {
 			s.subindex++
