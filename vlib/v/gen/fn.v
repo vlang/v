@@ -620,7 +620,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 }
 
 fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
-	g.writeln('// autofree_call()')
+	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
@@ -648,19 +648,22 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// g.called_fn_name = name
 		// used := t in g.autofree_tmp_vars
 		used := scope.known_var(t)
-		if used {
-			g.write('$t = ')
+		mut s := if used {
+			'$t = '
 		} else {
-			g.write('string $t = ')
 			scope.register(t, ast.Var{
 				name: t
 				typ: table.string_type
 				is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
 			})
+			'string $t = '
 			// g.autofree_tmp_vars << t
 		}
-		g.expr(arg.expr)
-		g.writeln(';// new af pre')
+		// g.expr(arg.expr)
+		s += g.write_expr_to_string(arg.expr)
+		// g.writeln(';// new af pre')
+		s += ';// new af2 pre'
+		g.strs_to_free0 << s
 		// Now free the tmp arg vars right after the function call
 		g.strs_to_free << t
 		// g.strs_to_free << 'string_free(&$t);'
