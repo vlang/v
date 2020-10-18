@@ -5,6 +5,7 @@ module main
 
 import os
 import os.cmdline
+import rand
 import v.ast
 import v.pref
 import v.fmt
@@ -166,7 +167,8 @@ fn (foptions &FormatOptions) format_file(file string) {
 	// checker.check(file_ast)
 	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
 	file_name := os.file_name(file)
-	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_' + file_name)
+	ulid := rand.ulid()
+	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_${ulid}_$file_name')
 	os.write_file(vfmt_output_path, formatted_content)
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')
