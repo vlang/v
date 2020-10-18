@@ -2466,6 +2466,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				return
 			}
 			node.val = 'include $vroot'
+			node.main = vroot
 		}
 		flag_no_comment := flag.all_before('//').trim_space()
 		if !((flag_no_comment.starts_with('"') && flag_no_comment.ends_with('"')) ||
