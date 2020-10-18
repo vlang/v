@@ -592,7 +592,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
 		}
-		ft := f.table.type_to_str(field.typ)
+		ft := f.no_cur_mod(f.table.type_to_str(field.typ))
 		field_types << ft
 		if ft.len > max_type {
 			max_type = ft.len
