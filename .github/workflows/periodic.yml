@@ -7,6 +7,8 @@ on:
 jobs:
   network-tests-ubuntu:
     runs-on: ubuntu-latest
+    env:
+        V_CI_PERIODIC: 1
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -16,7 +18,7 @@ jobs:
     - name: Symlink V
       run:  sudo ./v symlink
     - name: Run network tests
-      run: ./v -d network test-fixed
+      run: ./v -d network -silent test-fixed
 
 
   network-tests-macos:
@@ -24,6 +26,8 @@ jobs:
     strategy:
       matrix:
         os: [macOS-latest]
+    env:
+        V_CI_PERIODIC: 1
     steps:
     - uses: actions/checkout@v2
     - name: Setup openssl library path
@@ -35,12 +39,13 @@ jobs:
     - name: Ensure thirdparty/cJSON/cJSON.o is compiled, before running tests.
       run:  ./v examples/json.v
     - name: Run network tests
-      run: ./v -d network test-fixed
+      run: ./v -d network -silent test-fixed
 
 
   network-windows-msvc:
     runs-on: windows-2019
     env:
+        V_CI_PERIODIC: 1
         VFLAGS: -cc msvc
     steps:
     - uses: actions/checkout@v2
@@ -50,4 +55,4 @@ jobs:
         echo $VFLAGS
         .\make.bat -msvc
     - name: Run network tests
-      run: .\v.exe -d network test-fixed
+      run: .\v.exe -d network -silent test-fixed
