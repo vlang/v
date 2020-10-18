@@ -242,7 +242,6 @@ fn (mut context Context) show_diff_summary() {
 	$if debugcontext ? {
 		println('context: $context')
 	}
-	eprintln('base: $base | context.fail_on_maxtime: $context.fail_on_maxtime')
 	if int(base) > context.fail_on_maxtime {
 		print(performance_regression_label)
 		println('average time: ${base:6.1f} ms > $context.fail_on_maxtime ms threshold.')
