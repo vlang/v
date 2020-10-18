@@ -724,6 +724,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	}
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
+			// Handle if expressions, set the value of the last expression to the temp var.
 			g.write('$tmp_var = ')
 		}
 		g.stmt(stmt)
@@ -4938,7 +4939,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
-			verror('bad os ifdef name "$name"')
+			verror('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
 	// verror('bad os ifdef name "$name"')

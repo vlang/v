@@ -3352,8 +3352,7 @@ pub fn (mut c Checker) unsafe_expr(mut node ast.UnsafeExpr) table.Type {
 }
 
 pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
-	is_ct := node.is_comptime
-	if_kind := if is_ct { '\$if' } else { 'if' }
+	if_kind := if node.is_comptime { '\$if' } else { 'if' }
 	expr_required := c.expected_type != table.void_type
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
@@ -3368,7 +3367,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				branch.pos)
 		}
 		if !node.has_else || i < node.branches.len - 1 {
-			if is_ct {
+			if node.is_comptime {
 				should_skip = c.comp_if_branch(branch.cond, branch.pos)
 			} else {
 				// check condition type is boolean
@@ -3384,7 +3383,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		// smartcast sumtypes and interfaces when using `is`
-		if !is_ct && branch.cond is ast.InfixExpr {
+		if !node.is_comptime && branch.cond is ast.InfixExpr {
 			infix := branch.cond as ast.InfixExpr
 			if infix.op == .key_is {
 				right_expr := infix.right as ast.Type
@@ -3431,7 +3430,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				}
 			}
 		}
-		if is_ct { // Skip checking if needed
+		if node.is_comptime { // Skip checking if needed
 			cur_skip_flags := c.skip_flags
 			if found_branch {
 				c.skip_flags = true
@@ -3524,7 +3523,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	}
 	if expr_required {
 		if !node.has_else {
-			d := if is_ct { '$' } else { '' }
+			d := if node.is_comptime { '$' } else { '' }
 			c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
 		}
 		return node.typ
@@ -3604,6 +3603,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
 					else { return false }
 				}
+			} else {
+				c.error('unknown \$if value', pos)
 			}
 		}
 		else {
