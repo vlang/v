@@ -522,7 +522,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 					}
 				}
 				is_last_arg := i == fn_info.params.len - 1
-				should_add_type := is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
+				should_add_type := true || is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
 					(fn_info.is_variadic && i == fn_info.params.len - 2)
 				if should_add_type {
 					if fn_info.is_variadic && is_last_arg {
