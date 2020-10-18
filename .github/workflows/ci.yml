@@ -124,14 +124,14 @@ jobs:
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
-      run: ./v test-fixed
+      run: ./v -silent test-fixed
     - name: Test building v tools
-      run: ./v build-tools
+      run: ./v -silent build-tools
     - name: v doctor
       run: |
         ./v doctor
-#    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+    - name: Test v binaries
+      run: ./v -silent build-vbinaries
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
@@ -153,7 +153,7 @@ jobs:
           make CC=clang
       - name: Test V fixed tests
         run: |
-          v test-fixed
+          v -silent test-fixed
 
   macos:
     runs-on: ${{ matrix.os }}
@@ -194,9 +194,9 @@ jobs:
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
-      run: VJOBS=1 ./v test-fixed
+      run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
-      run: ./v build-examples
+      run: ./v -silent build-examples
     - name: v doctor
       run: |
         ./v doctor
@@ -252,11 +252,11 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: |
-        ./v test-fixed
+        ./v -silent test-fixed
     - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod test-fixed
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
     - name: Build examples
-      run: ./v build-examples
+      run: ./v -silent build-examples
     - name: Build modules
       run: |
         ./v build-module vlib/os
@@ -318,7 +318,7 @@ jobs:
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Test V fixed tests
         run: |
-          ./v test-fixed
+          ./v -silent test-fixed
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
@@ -345,7 +345,7 @@ jobs:
 #     - name: quick debug
 #       run: ./v -stats vlib/strconv/format_test.v
 #     - name: Fixed tests
-#       run: ./v test-fixed
+#       run: ./v -silent test-fixed
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
@@ -376,7 +376,7 @@ jobs:
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
-        .\v.exe test-fixed
+        .\v.exe -silent test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -410,7 +410,7 @@ jobs:
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
-        ./v test-fixed
+        ./v -silent test-fixed
     - name: v doctor
       run: |
         ./v doctor
@@ -450,7 +450,7 @@ jobs:
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
-        .\v.exe test-fixed
+        .\v.exe -silent test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -517,7 +517,7 @@ jobs:
     - name: V self compilation with g++
       run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
 ##    - name: Running tests with g++
-##      run: ./v -cc g++-9 test-fixed
+##      run: ./v -cc g++-9 -silent test-fixed
 
   install-modules:
     runs-on: ubuntu-latest
