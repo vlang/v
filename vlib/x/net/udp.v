@@ -13,7 +13,7 @@ mut:
 	write_timeout time.Duration
 }
 
-pub fn dial_udp(laddr, raddr string) ?UdpConn {
+pub fn dial_udp(laddr string, raddr string) ?UdpConn {
 	// Dont have to do this when its fixed
 	// this just allows us to store this `none` optional in a struct
 	resolve_wrapper := fn(raddr string) ?Addr {

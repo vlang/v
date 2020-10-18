@@ -58,7 +58,7 @@ pub fn (mut s System) reset() {
 	}
 }
 
-pub fn (mut s System) explode(x, y f32) {
+pub fn (mut s System) explode(x f32, y f32) {
 	mut reserve := 500
 	center := vec2.Vec2{x, y}
 	mut p := &Particle(0)
