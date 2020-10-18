@@ -46,10 +46,9 @@ fn extract_words(contents string) []string {
 	mut results := []string{}
 	for s in splitted {
 		result := filter_word(s)
-		if result == '' {
-			continue
+		if result.len > 0 {
+    		results << result
 		}
-		results << result
 	}
 
 	return results
