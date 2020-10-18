@@ -19,7 +19,7 @@ type OneArgFn = fn (i int)
 
 type TwoDiffArgs = fn (i int, s string) bool
 
-type TwoSameArgs = fn (i, j int) string
+type TwoSameArgs = fn (i int, j int) string
 
 type VarArgs = fn (s ...string) int
 
