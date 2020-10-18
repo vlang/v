@@ -17,8 +17,8 @@ pub mut:
 	vargs         string
 	failed        bool
 	benchmark     benchmark.Benchmark
-	show_ok_tests bool
-	expand_result bool
+	silent_mode   bool
+	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages chan string // many publishers, single consumer/printer
 	nmessage_idx int // currently printed message index
@@ -31,29 +31,47 @@ pub fn (mut ts TestSession) append_message(msg string) {
 
 pub fn (mut ts TestSession) print_messages() {
 	empty := term.header(' ', ' ')
+	mut print_msg_time := time.new_stopwatch({})
 	for {
-		mut nm := <-ts.nmessages
-		if nm == '' {
+		// get a message from the channel of messages to be printed:
+		mut rmessage := <-ts.nmessages
+		if rmessage == '' {
 			// a sentinel for stopping the printing thread
-			if ts.show_ok_tests && !ts.expand_result {
+			if !ts.silent_mode && ts.progress_mode {
 				eprintln('')
 			}
 			ts.nprint_ended <- 0
 			return
 		}
 		ts.nmessage_idx++
-		msg := nm.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2', '${ts.nmessage_idx:2d}').replace('TMP3',
+		msg := rmessage.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2', '${ts.nmessage_idx:2d}').replace('TMP3',
 			'${ts.nmessage_idx:3d}')
-		if ts.expand_result {
+		is_ok := msg.contains('OK')
+		//
+		time_passed := print_msg_time.elapsed().seconds()
+		if time_passed > 10 && ts.silent_mode && is_ok {
+			// Even if OK tests are suppressed,
+			// show *at least* 1 result every 10 seconds,
+			// otherwise the CI can seem stuck ...
 			eprintln(msg)
-		} else {
-			if msg.contains('OK') {
+			print_msg_time.restart()
+			continue
+		}
+		if ts.progress_mode {
+			// progress mode, the last line is rewritten many times:
+			if is_ok && !ts.silent_mode {
 				print('\r$empty\r$msg')
 			} else {
 				// the last \n is needed, so SKIP/FAIL messages
 				// will not get overwritten by the OK ones
 				eprint('\r$empty\r$msg\n')
 			}
+			continue
+		}
+		if !ts.silent_mode || !is_ok {
+			// normal expanded mode, or failures in -silent mode
+			eprintln(msg)
+			continue
 		}
 	}
 }
@@ -67,15 +85,15 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << "examples/sokol/fonts.v"
 		skip_files << "examples/sokol/drawing.v"
 	}
-	vargs := _vargs.replace('-silent', '').replace('-expand', '')
+	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
 	return TestSession{
 		vexe: vexe
 		vroot: os.dir(vexe)
 		skip_files: skip_files
 		vargs: vargs
-		show_ok_tests: !_vargs.contains('-silent')
-		expand_result: _vargs.contains('-expand')
+		silent_mode: _vargs.contains('-silent')
+		progress_mode: _vargs.contains('-progress')
 	}
 }
 
@@ -214,9 +232,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
-			if ts.show_ok_tests {
-				ts.append_message(tls_bench.step_message_ok(relative_file))
-			}
+			ts.append_message(tls_bench.step_message_ok(relative_file))
 		}
 	}
 	if os.exists(generated_binary_fpath) {
