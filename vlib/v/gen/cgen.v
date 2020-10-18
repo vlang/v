@@ -724,7 +724,6 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	}
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
-			// Handle if expressions, set the value of the last expression to the temp var.
 			g.write('$tmp_var = ')
 		}
 		g.stmt(stmt)
@@ -3146,13 +3145,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.comp_if(node)
 		return
 	}
-	// For simple if expressions we can use C's `?:`
+	// For simpe if expressions we can use C's `?:`
 	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
-	needs_tmp_var := node.is_expr &&
-		((node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr) || g.pref.autofree)
+	needs_tmp_var := node.is_expr && g.pref.experimental &&
+		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
