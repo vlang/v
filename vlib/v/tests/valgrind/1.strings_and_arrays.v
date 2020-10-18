@@ -13,14 +13,14 @@ fn foo() {
 	// nums.free() // this should result in a double free and a CI error
 }
 
-fn handle_strings(s, p string) int {
+fn handle_strings(s string, p string) int {
 	return 0
 }
 
 fn handle_int(n int) {
 }
 
-fn add_strings(a, b string) string {
+fn add_strings(a string, b string) string {
 	return a + b
 }
 
@@ -120,6 +120,25 @@ fn optional_return() {
 	}
 }
 
+fn handle_string(s string) bool {
+	return true
+}
+
+fn if_cond() {
+	// handle_string('1' + '2')
+	if handle_string('1' + '2') {
+		// if '1' + '2' == '12' {
+		println('yes')
+	} else {
+		println('no')
+	}
+}
+
+fn addition_with_tmp_expr() {
+	x := 1 + handle_strings('a' + 'b', 'c')
+	println(x)
+}
+
 fn tt() {
 	// time.parse_rfc2822('1234')
 }
@@ -136,6 +155,8 @@ fn main() {
 	optional_str()
 	optional_return()
 	// str_replace()
+	if_cond()
+	addition_with_tmp_expr()
 	println('end')
 }
 

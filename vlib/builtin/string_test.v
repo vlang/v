@@ -241,6 +241,8 @@ two ',
 four!']
 	s = strings.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
+	empty :=  []string{len:0}
+	assert empty.join('A') == ''
 }
 
 fn test_clone() {
@@ -906,7 +908,7 @@ fn test_sorter() {
 			i: 102
 		}
 	]
-	cmp := fn (a, b &Ka) int {
+	cmp := fn (a &Ka, b &Ka) int {
 		return compare_strings(a.s, b.s)
 	}
 	arr.sort_with_compare(cmp)

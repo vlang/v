@@ -100,8 +100,8 @@ mut:
 	inside_vweb_tmpl      bool
 	inside_return         bool
 	inside_or_block       bool
+	strs_to_free0         []string // strings.Builder
 	strs_to_free          []string // strings.Builder
-	// strs_to_free0         []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -111,6 +111,7 @@ mut:
 	match_sumtype_syms    []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
+	// autofree_pregen_buf   strings.Builder
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	called_fn_name        string
 	cur_mod               string
@@ -755,6 +756,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
+		if g.pref.autofree {
+			g.autofree_call_postgen()
+		}
 		/*
 		if g.pref.autofree { // && !g.inside_or_block {
 			// TODO remove the inside_or_block hack. strings are not freed in or{} atm
@@ -835,14 +839,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.ExprStmt {
 			g.write_v_source_line_info(node.pos)
-			af := g.pref.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
-			if af {
-				g.autofree_call_pregen(node.expr as ast.CallExpr)
-			}
+			// af := g.pref.autofree && node.expr is ast.CallExpr && !g.is_builtin_mod
+			// if af {
+			// g.autofree_call_pregen(node.expr as ast.CallExpr)
+			// }
 			g.expr(node.expr)
-			if af {
-				g.autofree_call_postgen()
-			}
+			// if af {
+			// g.autofree_call_postgen()
+			// }
 			if g.inside_ternary == 0 && !node.is_expr && !(node.expr is ast.IfExpr) {
 				g.writeln(';')
 			}
@@ -960,18 +964,41 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.HashStmt {
 			// #include etc
 			if node.kind == 'include' {
-				if node.val.contains('.m') {
+				mut missing_message := 'Header file $node.main, needed for module `$node.mod` was not found.'
+				if node.msg != '' {
+					missing_message += ' ${node.msg}.'
+				} else {
+					missing_message += ' Please install the corresponding development headers.'
+				}
+				mut guarded_include := '
+				|#if defined(__has_include)
+				|
+				|#if __has_include($node.main)
+				|#include $node.main
+				|#else
+				|#error VERROR_MESSAGE $missing_message
+				|#endif
+				|
+				|#else
+				|#include $node.main
+				|#endif
+				'.strip_margin()
+				if node.main == '<errno.h>' {
+					// fails with musl-gcc and msvc; but an unguarded include works:
+					guarded_include = '#include $node.main'
+				}
+				if node.main.contains('.m') {
 					// Objective C code import, include it after V types, so that e.g. `string` is
 					// available there
 					g.definitions.writeln('// added by module `$node.mod`:')
-					g.definitions.writeln('#$node.val')
+					g.definitions.writeln(guarded_include)
 				} else {
 					g.includes.writeln('// added by module `$node.mod`:')
-					g.includes.writeln('#$node.val')
+					g.includes.writeln(guarded_include)
 				}
 			} else if node.kind == 'define' {
 				g.includes.writeln('// defined by module `$node.mod`:')
-				g.includes.writeln('#$node.val')
+				g.includes.writeln('#define $node.main')
 			}
 		}
 		ast.Import {}
@@ -988,9 +1015,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
 			if g.pref.autofree {
 				g.writeln('// ast.Return free')
-				if af {
-					g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
-				}
+				// if af {
+				// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
+				// }
 				// g.autofree_scope_vars(node.pos.pos)
 				g.write_autofree_stmts_when_needed(node)
 			}
@@ -1367,11 +1394,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 	}
 	// Autofree tmp arg vars
-	first_right := assign_stmt.right[0]
-	af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
-	if af {
-		g.autofree_call_pregen(first_right as ast.CallExpr)
-	}
+	// first_right := assign_stmt.right[0]
+	// af := g.pref.autofree && first_right is ast.CallExpr && !g.is_builtin_mod
+	// if af {
+	// g.autofree_call_pregen(first_right as ast.CallExpr)
+	// }
+	//
 	//
 	// Handle optionals. We need to declare a temp variable for them, that's why they are handled
 	// here, not in call_expr().
@@ -1399,9 +1427,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			gen_or = true
 			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
 			g.writeln('/*=============ret*/')
-			if af && is_optional {
-				g.autofree_call_postgen()
-			}
+			// if af && is_optional {
+			// g.autofree_call_postgen()
+			// }
 			// return
 		}
 	}
@@ -1964,7 +1992,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
 			// }
-			if g.pref.autofree {
+			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 {
+				// if len != 0, that means we are handling call expr inside call expr (arg)
+				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
+				// so just skip it
+				g.autofree_call_pregen(node)
+				if g.strs_to_free0.len > 0 {
+					g.insert_before_stmt(g.strs_to_free0.join('\n'))
+				}
+				g.strs_to_free0 = []
 				// println('pos=$node.pos.pos')
 			}
 			// if g.pref.autofree && node.autofree_pregen != '' { // g.strs_to_free0.len != 0 {

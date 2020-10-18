@@ -185,6 +185,12 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
+	if cmd.is_root() && int(cmd.execute) == 0 {
+		if !cmd.disable_help {
+			cmd.execute_help()
+			return
+		}
+	}
 	// if no further command was found, execute current command
 	if cmd.required_args > 0 {
 		if cmd.required_args > cmd.args.len {
