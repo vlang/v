@@ -155,6 +155,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 				}
 			}
+			'-expand' {
+				// processed by testing tools
+			}
 			'-silent' {
 				res.output_mode = .silent
 			}
