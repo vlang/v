@@ -18,9 +18,11 @@ pub mut:
 	failed        bool
 	benchmark     benchmark.Benchmark
 	show_ok_tests bool
+	expand_result bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages chan string // many publishers, single consumer/printer
 	nmessage_idx int // currently printed message index
+	nprint_ended chan int // read to block till printing ends, 1:1
 }
 
 pub fn (mut ts TestSession) append_message(msg string) {
@@ -28,13 +30,31 @@ pub fn (mut ts TestSession) append_message(msg string) {
 }
 
 pub fn (mut ts TestSession) print_messages() {
+	empty := term.header(' ', ' ')
 	for {
-		mut nm := <- ts.nmessages
+		mut nm := <-ts.nmessages
+		if nm == '' {
+			// a sentinel for stopping the printing thread
+			if ts.show_ok_tests && !ts.expand_result {
+				eprintln('')
+			}
+			ts.nprint_ended <- 0
+			return
+		}
 		ts.nmessage_idx++
-		msg := nm.replace("TMP1", "${ts.nmessage_idx:1d}").
-			replace("TMP2", "${ts.nmessage_idx:2d}").
-			replace("TMP3", "${ts.nmessage_idx:3d}")
-		eprintln(msg)
+		msg := nm.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2', '${ts.nmessage_idx:2d}').replace('TMP3',
+			'${ts.nmessage_idx:3d}')
+		if ts.expand_result {
+			eprintln(msg)
+		} else {
+			if msg.contains('OK') {
+				print('\r$empty\r$msg')
+			} else {
+				// the last \n is needed, so SKIP/FAIL messages
+				// will not get overwritten by the OK ones
+				eprint('\r$empty\r$msg\n')
+			}
+		}
 	}
 }
 
@@ -47,7 +67,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << "examples/sokol/fonts.v"
 		skip_files << "examples/sokol/drawing.v"
 	}
-	vargs := _vargs.replace('-silent', '')
+	vargs := _vargs.replace('-silent', '').replace('-expand', '')
 	vexe := pref.vexe_path()
 	return TestSession{
 		vexe: vexe
@@ -55,6 +75,7 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files: skip_files
 		vargs: vargs
 		show_ok_tests: !_vargs.contains('-silent')
+		expand_result: _vargs.contains('-expand')
 	}
 }
 
@@ -107,11 +128,14 @@ pub fn (mut ts TestSession) test() {
 	})
 	// for handling messages across threads
 	ts.nmessages = chan string{cap: 10000}
+	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
 	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
+	ts.append_message('') // send the sentinel
+	_ := <- ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
@@ -221,7 +245,9 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
-	eprintln('v compiler args: "$vargs"')
+	if vargs.len > 0 {
+		eprintln('v compiler args: "$vargs"')
+	}
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
