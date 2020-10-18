@@ -71,6 +71,7 @@ mut:
 	inside_ternary        int // ?: comma separated statements on a single line
 	inside_map_postfix    bool // inside map++/-- postfix expr
 	inside_map_infix      bool // inside map<</+=/-= infix expr
+	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
 	stmt_path_pos         []int
@@ -713,11 +714,19 @@ fn (mut g Gen) decrement_inside_ternary() {
 }
 
 fn (mut g Gen) stmts(stmts []ast.Stmt) {
+	g.stmts_with_tmp_var(stmts, '')
+}
+
+fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	g.indent++
 	if g.inside_ternary > 0 {
 		g.write('(')
 	}
 	for i, stmt in stmts {
+		if i == stmts.len - 1 && tmp_var != '' {
+			// Handle if expressions, set the value of the last expression to the temp var.
+			g.write('$tmp_var = ')
+		}
 		g.stmt(stmt)
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(',')
@@ -1992,7 +2001,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
 			// }
-			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 {
+			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 { // && g.inside_ternary ==
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
@@ -3137,7 +3146,22 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.comp_if(node)
 		return
 	}
-	if node.is_expr || g.inside_ternary != 0 {
+	// For simpe if expressions we can use C's `?:`
+	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
+	// For if expressions with multiple statements or another if expression inside, it's much
+	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
+	// (as it used to be done).
+	needs_tmp_var := node.is_expr && g.pref.experimental &&
+		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
+	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	mut cur_line := ''
+	if needs_tmp_var {
+		g.write('/*experimental if expr*/')
+		styp := g.typ(node.typ)
+		// g.insert_before_stmt('$styp $tmp;')
+		cur_line = g.go_before_stmt(0)
+		g.writeln('$styp $tmp;')
+	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
 		g.write('(')
 		for i, branch in node.branches {
@@ -3220,12 +3244,19 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 			g.writeln('_object;')
 			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
-		g.stmts(branch.stmts)
+		if needs_tmp_var {
+			g.stmts_with_tmp_var(branch.stmts, tmp)
+		} else {
+			g.stmts(branch.stmts)
+		}
 	}
 	if is_guard {
 		g.write('}')
 	}
 	g.writeln('}')
+	if needs_tmp_var {
+		g.writeln('$cur_line $tmp;')
+	}
 }
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
@@ -4908,7 +4939,7 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
-			verror('bad os ifdef name "$name"')
+			verror('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
 	// verror('bad os ifdef name "$name"')

@@ -155,6 +155,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 				}
 			}
+			'-progress' {
+				// processed by testing tools in cmd/tools/modules/testing/common.v
+			}
 			'-silent' {
 				res.output_mode = .silent
 			}

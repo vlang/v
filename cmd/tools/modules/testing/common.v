@@ -8,14 +8,6 @@ import sync
 import v.pref
 import v.util.vtest
 
-pub struct TestMessageHandler {
-mut:
-	messages []string
-pub mut:
-	message_idx int
-	mtx &sync.Mutex
-}
-
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -25,15 +17,63 @@ pub mut:
 	vargs         string
 	failed        bool
 	benchmark     benchmark.Benchmark
-	show_ok_tests bool
-	message_handler &TestMessageHandler
+	silent_mode   bool
+	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
+	nmessages chan string // many publishers, single consumer/printer
+	nmessage_idx int // currently printed message index
+	nprint_ended chan int // read to block till printing ends, 1:1
 }
 
-pub fn (mut mh TestMessageHandler) append_message(msg string) {
-	mh.mtx.m_lock()
-	mh.messages << msg
-	mh.mtx.unlock()
+pub fn (mut ts TestSession) append_message(msg string) {
+	ts.nmessages <- msg
+}
+
+pub fn (mut ts TestSession) print_messages() {
+	empty := term.header(' ', ' ')
+	mut print_msg_time := time.new_stopwatch({})
+	for {
+		// get a message from the channel of messages to be printed:
+		mut rmessage := <-ts.nmessages
+		if rmessage == '' {
+			// a sentinel for stopping the printing thread
+			if !ts.silent_mode && ts.progress_mode {
+				eprintln('')
+			}
+			ts.nprint_ended <- 0
+			return
+		}
+		ts.nmessage_idx++
+		msg := rmessage.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2', '${ts.nmessage_idx:2d}').replace('TMP3',
+			'${ts.nmessage_idx:3d}')
+		is_ok := msg.contains('OK')
+		//
+		time_passed := print_msg_time.elapsed().seconds()
+		if time_passed > 10 && ts.silent_mode && is_ok {
+			// Even if OK tests are suppressed,
+			// show *at least* 1 result every 10 seconds,
+			// otherwise the CI can seem stuck ...
+			eprintln(msg)
+			print_msg_time.restart()
+			continue
+		}
+		if ts.progress_mode {
+			// progress mode, the last line is rewritten many times:
+			if is_ok && !ts.silent_mode {
+				print('\r$empty\r$msg')
+			} else {
+				// the last \n is needed, so SKIP/FAIL messages
+				// will not get overwritten by the OK ones
+				eprint('\r$empty\r$msg\n')
+			}
+			continue
+		}
+		if !ts.silent_mode || !is_ok {
+			// normal expanded mode, or failures in -silent mode
+			eprintln(msg)
+			continue
+		}
+	}
 }
 
 pub fn new_test_session(_vargs string) TestSession {
@@ -45,15 +85,15 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << "examples/sokol/fonts.v"
 		skip_files << "examples/sokol/drawing.v"
 	}
-	vargs := _vargs.replace('-silent', '')
+	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
 	return TestSession{
 		vexe: vexe
 		vroot: os.dir(vexe)
 		skip_files: skip_files
 		vargs: vargs
-		show_ok_tests: !_vargs.contains('-silent')
-		message_handler: &TestMessageHandler(0)
+		silent_mode: _vargs.contains('-silent')
+		progress_mode: _vargs.contains('-progress')
 	}
 }
 
@@ -105,12 +145,15 @@ pub fn (mut ts TestSession) test() {
 		callback: worker_trunner
 	})
 	// for handling messages across threads
-	ts.message_handler = &TestMessageHandler{
-		mtx: sync.new_mutex()
-	}
+	ts.nmessages = chan string{cap: 10000}
+	ts.nprint_ended = chan int{cap: 0}
+	ts.nmessage_idx = 0
+	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
+	ts.append_message('') // send the sentinel
+	_ := <- ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
@@ -118,25 +161,8 @@ pub fn (mut ts TestSession) test() {
 	}
 }
 
-pub fn (mut m TestMessageHandler) display_message() {
-	m.mtx.m_lock()
-	defer {
-		m.messages.clear()
-		m.mtx.unlock()
-	}
-	for msg in m.messages {
-		m.message_idx++
-		eprintln(msg.
-			replace("TMP1", "${m.message_idx:1d}").
-			replace("TMP2", "${m.message_idx:2d}").
-			replace("TMP3", "${m.message_idx:3d}")
-		)
-	}
-}
-
 fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
-	defer { ts.message_handler.display_message() }
 	tmpd := os.temp_dir()
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
@@ -172,11 +198,11 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	if relative_file.replace('\\', '/') in ts.skip_files {
 	   ts.benchmark.skip()
 	   tls_bench.skip()
-	   ts.message_handler.append_message(tls_bench.step_message_skip(relative_file))
+	   ts.append_message(tls_bench.step_message_skip(relative_file))
 	   return sync.no_result
 	}
 	if show_stats {
-		ts.message_handler.append_message(term.h_divider('-'))
+		ts.append_message(term.h_divider('-'))
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
@@ -194,21 +220,19 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.append_message(tls_bench.step_message_fail(relative_file))
+			ts.append_message(tls_bench.step_message_fail(relative_file))
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
+			ts.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
 		}
 		else {
 			ts.benchmark.ok()
 			tls_bench.ok()
-			if ts.show_ok_tests {
-				ts.message_handler.append_message(tls_bench.step_message_ok(relative_file))
-			}
+			ts.append_message(tls_bench.step_message_ok(relative_file))
 		}
 	}
 	if os.exists(generated_binary_fpath) {
@@ -237,7 +261,9 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
-	eprintln('v compiler args: "$vargs"')
+	if vargs.len > 0 {
+		eprintln('v compiler args: "$vargs"')
+	}
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}

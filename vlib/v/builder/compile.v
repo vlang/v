@@ -104,10 +104,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			println('command to run executable: $cmd')
 		}
 		if b.pref.is_test {
-			ret := os.system(cmd)
-			if ret != 0 {
-				exit(1)
-			}
+			exit(os.system(cmd))
 		}
 		if b.pref.is_run {
 			ret := os.system(cmd)
@@ -227,10 +224,6 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
 	is_test := dir.ends_with('_test.v')
-	if v.pref.is_run && is_test {
-		println('use `v x_test.v` instead of `v run x_test.v`')
-		exit(1)
-	}
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {

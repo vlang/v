@@ -13,13 +13,13 @@ import math
 // import time
 pub type FNCb = fn (x voidptr)
 
-pub type FNEvent = fn (e, x voidptr)
+pub type FNEvent = fn (e voidptr, x voidptr)
 
 pub type FNFail = fn (msg string, x voidptr)
 
 pub type FNKeyDown = fn (c sapp.KeyCode, m sapp.Modifier, x voidptr)
 
-pub type FNMove = fn (x, y f32, z voidptr)
+pub type FNMove = fn (x f32, y f32, z voidptr)
 
 pub type FNChar = fn (c u32, x voidptr)
 
@@ -43,13 +43,18 @@ pub:
 	cleanup_fn        FNCb = voidptr(0)
 	fail_fn           FNFail = voidptr(0)
 	event_fn          FNEvent = voidptr(0)
-	keydown_fn        FNKeyDown = voidptr(0) // special case of event_fn
-	char_fn           FNChar = voidptr(0) // special case of event_fn
-	move_fn           FNMove = voidptr(0) // special case of event_fn
-	click_fn          FNMove = voidptr(0) // special case of event_fn
+	keydown_fn        FNKeyDown = voidptr(0)
+	// special case of event_fn
+	char_fn           FNChar = voidptr(0)
+	// special case of event_fn
+	move_fn           FNMove = voidptr(0)
+	// special case of event_fn
+	click_fn          FNMove = voidptr(0)
+	// special case of event_fn
 	wait_events       bool // set this to true for UIs, to save power
 	fullscreen        bool
-	scale             f32 = 1.0 // vid needs this
+	scale             f32 = 1.0
+	// vid needs this
 	// init_text bool
 	font_path         string
 }
@@ -61,7 +66,8 @@ mut:
 	// (so that the user can store image ids, not entire Image objects)
 	image_cache []Image
 pub mut:
-	scale       f32 = 1.0 // will get set to 2.0 for retina, will remain 1.0 for normal
+	scale       f32 = 1.0
+	// will get set to 2.0 for retina, will remain 1.0 for normal
 	width       int
 	height      int
 	clear_pass  C.sg_pass_action
@@ -237,7 +243,7 @@ pub fn (mut ctx Context) set_bg_color(c gx.Color) {
 }
 
 // TODO: Fix alpha
-pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -250,7 +256,7 @@ pub fn (ctx &Context) draw_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_triangle(x, y, x2, y2, x3, y3 f32, c gx.Color) {
+pub fn (ctx &Context) draw_triangle(x f32, y f32, x2 f32, y2 f32, x3 f32, y3 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -262,7 +268,7 @@ pub fn (ctx &Context) draw_triangle(x, y, x2, y2, x3, y3 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
+pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -284,7 +290,7 @@ pub fn (ctx &Context) draw_empty_rect(x, y, w, h f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle_line(x, y f32, r, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -302,8 +308,10 @@ pub fn (ctx &Context) draw_circle_line(x, y f32, r, segments int, c gx.Color) {
 	sgl.end()
 }
 
-
-pub fn (ctx &Context) draw_circle(x, y f32, r, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle(x f32, y f32, r int, c gx.Color) {
+	ctx.draw_circle_with_segments(x,y,r,10, c)
+}
+pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r int, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -322,7 +330,7 @@ pub fn (ctx &Context) draw_circle(x, y f32, r, segments int, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc_line(x, y f32, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc_line(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -345,7 +353,7 @@ pub fn (ctx &Context) draw_arc_line(x, y f32, r int, start_angle, arc_angle f32,
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_arc(x, y f32, r int, start_angle, arc_angle f32, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_arc(x f32, y f32, r int, start_angle f32, arc_angle f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -396,7 +404,7 @@ fn abs(a f32) f32 {
 	return -a
 }
 
-pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
+pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
@@ -419,10 +427,10 @@ pub fn (ctx &Context) draw_line(x, y, x2, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_rounded_rect(x, y, width, height, radius f32, color gx.Color) {
+pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, width f32, height f32, radius f32, color gx.Color) {
 }
 
-pub fn (ctx &Context) draw_empty_rounded_rect(x, y, width, height, radius f32, border_color gx.Color) {
+pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, width f32, height f32, radius f32, border_color gx.Color) {
 }
 
 fn C.WaitMessage()
