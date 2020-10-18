@@ -47,13 +47,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name {
-					return p.vweb()
-				} .key_if {
-					return p.if_expr(true)
-				} else {
-					p.error('unexpected $')
-				}
+				.name { return p.vweb() }
+				.key_if { return p.if_expr(true) }
+				else { p.error('unexpected $') }
 			}
 		}
 		.chartoken {
@@ -275,7 +271,8 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 					return node
 				}
 				// added 10/2020: LATER this will be parsed as PrefixExpr instead
-				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression', p.tok.position())
+				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression',
+					p.tok.position())
 			}
 			// continue on infix expr
 			node = p.infix_expr(node)
@@ -286,9 +283,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 		} else if p.tok.kind in [.inc, .dec] || (p.tok.kind == .question && p.inside_ct_if_expr) {
 			// Postfix
 			// detect `f(x++)`, `a[x++]`
-			if p.peek_tok.kind in [.rpar, .rsbr] &&
-				p.mod !in ['builtin', 'regex', 'strconv'] { // temp
-				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement', p.peek_tok.position())
+			if p.peek_tok.kind in [.rpar, .rsbr] && p.mod !in ['builtin', 'regex', 'strconv'] { // temp
+				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
+					p.peek_tok.position())
 			}
 			node = ast.PostfixExpr{
 				op: p.tok.kind
@@ -321,8 +318,8 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	}
 	right = p.expr(precedence)
 	p.expecting_type = prev_expecting_type
-	if p.pref.is_vet && op in [.key_in, .not_in] &&
-		right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len == 1 {
+	if p.pref.is_vet && op in [.key_in, .not_in] && right is ast.ArrayInit && (right as ast.ArrayInit).exprs.len ==
+		1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr)
 	}
 	return ast.InfixExpr{

@@ -19,7 +19,7 @@ fn cerror(e string) {
 	eprintln('\nerror: $e')
 }
 
-fn vmod_content(name, desc string) string {
+fn vmod_content(name string, desc string) string {
 	return [
 		'Module {',
 		"	name: '$name'",

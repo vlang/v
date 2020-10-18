@@ -15,12 +15,14 @@ import runtime
 import time
 
 pub struct Parser {
+	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 	pref              &pref.Preferences
 mut:
 	scanner           &scanner.Scanner
-	comments_mode     scanner.CommentsMode = .skip_comments // see comment in parse_file
+	comments_mode     scanner.CommentsMode = .skip_comments
+	// see comment in parse_file
 	tok               token.Token
 	prev_tok          token.Token
 	peek_tok          token.Token
@@ -78,7 +80,7 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
@@ -106,6 +108,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 		comments_mode: comments_mode
 		table: b_table
 		file_name: path
+		file_base: os.base(path)
 		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
@@ -128,6 +131,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		comments_mode: .parse_comments
 		table: table_
 		file_name: path
+		file_base: os.base(path)
 		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
@@ -829,7 +833,7 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) vet_error(s string, line int) {
-	p.vet_errors << '$p.scanner.file_path:${line+1}: $s'
+	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
@@ -1342,7 +1346,8 @@ fn (mut p Parser) string_expr() ast.Expr {
 		mut has_fmt := false
 		mut fwidth := 0
 		mut fwidthneg := false
-		mut precision := 0
+		// 987698 is a magic default value, unlikely to be present in user input. NB: 0 is valid precision
+		mut precision := 987698
 		mut visible_plus := false
 		mut fill := false
 		mut fmt := `_` // placeholder
@@ -2048,5 +2053,11 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		stmts: stmts
 		is_unsafe: true
 		pos: pos
+	}
+}
+
+fn (mut p Parser) trace(fbase string, message string) {
+	if p.file_base == fbase {
+		println('> p.trace | ${fbase:-10s} | $message')
 	}
 }

@@ -74,7 +74,7 @@ $enc_fn_dec {
 		// enc += g.encode_array(t)
 	} else if sym.kind == .map {
 		// Handle maps
-		m := sym.info as table.Map		
+		m := sym.info as table.Map
 		g.gen_json_for_type(m.key_type)
 		g.gen_json_for_type(m.value_type)
 		dec.writeln(g.decode_map(m.key_type, m.value_type))
@@ -156,7 +156,6 @@ fn is_js_prim(typ string) bool {
 fn (mut g Gen) decode_array(value_type table.Type) string {
 	styp := g.typ(value_type)
 	fn_name := js_dec_name(styp)
-	
 	mut s := ''
 	if is_js_prim(styp) {
 		s = '$styp val = ${fn_name}(jsval); '
@@ -165,7 +164,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 		Option_$styp val2 = $fn_name (jsval);
 		if(!val2.ok) {
 			array_free(&res);
-			return *(Option_array_${styp}*)&val2;
+			return *(Option_array_$styp*)&val2;
 		}
 		$styp val = *($styp*)val2.data;
 '
@@ -173,7 +172,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 	return '
 	if(!cJSON_IsArray(root)) {
 		Option err = v_error( string_add(tos_lit("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option_array_${styp} *)&err;
+		return *(Option_array_$styp *)&err;
 	}
 	res = __new_array(0, 0, sizeof($styp));
 	const cJSON *jsval = NULL;
@@ -196,13 +195,10 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 '
 }
 
-fn (mut g Gen) decode_map(key_type, value_type table.Type) string {
-	
+fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	styp := g.typ(key_type)
-
 	styp_v := g.typ(value_type)
 	fn_name_v := js_dec_name(styp_v)
-
 	mut s := ''
 	if is_js_prim(styp_v) {
 		s = '$styp_v val = $fn_name_v (js_get(root, jsval->string));'
@@ -211,16 +207,15 @@ fn (mut g Gen) decode_map(key_type, value_type table.Type) string {
 		Option_$styp_v val2 = $fn_name_v (js_get(root, jsval->string));
 		if(!val2.ok) {
 			map_free(&res);
-			return *(Option_map_${styp}_${styp_v}*)&val2;
+			return *(Option_map_${styp}_$styp_v*)&val2;
 		}
 		$styp_v val = *($styp_v*)val2.data;
 '
 	}
-
 	return '
 	if(!cJSON_IsObject(root)) {
 		Option err = v_error( string_add(tos_lit("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
-		return *(Option_map_${styp}_${styp_v} *)&err;
+		return *(Option_map_${styp}_$styp_v *)&err;
 	}
 	res = new_map_1(sizeof($styp_v));
 	cJSON *jsval = NULL;
@@ -232,16 +227,12 @@ fn (mut g Gen) decode_map(key_type, value_type table.Type) string {
 '
 }
 
-fn (mut g Gen) encode_map(key_type, value_type table.Type) string {
+fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
 	styp := g.typ(key_type)
-
 	styp_v := g.typ(value_type)
 	fn_name_v := js_enc_name(styp_v)
-
 	zero := g.type_default(value_type)
-
 	keys_tmp := g.new_tmp_var()
-
 	mut key := 'string key = '
 	if key_type.is_string() {
 		key += '(($styp*)${keys_tmp}.data)[i];'
@@ -250,7 +241,6 @@ fn (mut g Gen) encode_map(key_type, value_type table.Type) string {
 		// key += '${styp}_str((($styp*)${keys_tmp}.data)[i]);'
 		verror('json: encode only maps with string keys')
 	}
-
 	return '
 	o = cJSON_CreateObject();
 	array_$styp $keys_tmp = map_keys(&val);

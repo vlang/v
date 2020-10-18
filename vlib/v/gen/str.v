@@ -333,7 +333,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if node.fwidths[i] != 0 {
 			fmt = '$fmt${node.fwidths[i]}'
 		}
-		if node.precisions[i] != 0 {
+		if node.precisions[i] != 987698 {
 			fmt = '${fmt}.${node.precisions[i]}'
 		}
 		if fspec == `s` {

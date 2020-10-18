@@ -154,22 +154,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			typ := p.parse_type()
 			type_pos := p.prev_tok.position()
 			field_pos := field_start_pos.extend(type_pos)
-			// if name == '_net_module_s' {
-			// if name.contains('App') {
-			// s := p.table.get_type_symbol(typ)
-			// println('struct decl field type ' + s.str())
-			// }
 			// Comments after type (same line)
-			line_pos := field_pos.line_nr
-			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
-				if p.tok.lit.contains('\n') {
-					break
-				}
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
@@ -284,37 +270,37 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	p.is_amp = false
 	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
 		mut field_name := ''
+		mut expr := ast.Expr{}
+		mut field_pos := token.Position{}
+		mut comments := []ast.Comment{}
 		if no_keys {
-			expr := p.expr(0)
-			comments := p.eat_comments()
 			// name will be set later in checker
-			fields << ast.StructInitField{
-				expr: expr
-				pos: expr.position()
-				comments: comments
-			}
+			expr = p.expr(0)
+			field_pos = expr.position()
+			comments = p.eat_comments()
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
-			expr := p.expr(0)
-			comments := p.eat_comments()
+			expr = p.expr(0)
+			comments = p.eat_comments()
 			last_field_pos := expr.position()
-			field_pos := token.Position{
+			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
 				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
-			}
-			fields << ast.StructInitField{
-				name: field_name
-				expr: expr
-				pos: field_pos
-				comments: comments
 			}
 		}
 		i++
 		if p.tok.kind == .comma {
 			p.next()
+		}
+		comments << p.eat_comments()
+		fields << ast.StructInitField{
+			name: field_name
+			expr: expr
+			pos: field_pos
+			comments: comments
 		}
 	}
 	last_pos := p.tok.position()

@@ -5,7 +5,7 @@ module http
 
 import os
 
-pub fn download_file(url, out string) bool {
+pub fn download_file(url string, out string) bool {
 	$if debug_http? {
 		println('download file url=$url out=$out')
 	}

@@ -63,9 +63,15 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 				}
 			}
 		}
-		ast.InfixExpr { return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right) }
-		ast.PrefixExpr { return p.check_cross_variables(exprs, val_.right) }
-		ast.PostfixExpr { return p.check_cross_variables(exprs, val_.expr) }
+		ast.InfixExpr {
+			return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right)
+		}
+		ast.PrefixExpr {
+			return p.check_cross_variables(exprs, val_.right)
+		}
+		ast.PostfixExpr {
+			return p.check_cross_variables(exprs, val_.expr)
+		}
 		ast.SelectorExpr {
 			for expr in exprs {
 				if expr.str() == val.str() {
@@ -119,7 +125,8 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 						share = iv.share
 						if iv.is_static {
 							if !p.pref.translated {
-								p.error_with_pos('static variables are supported only in -translated mode', lx.pos)
+								p.error_with_pos('static variables are supported only in -translated mode',
+									lx.pos)
 							}
 							is_static = true
 						}

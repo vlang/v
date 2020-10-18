@@ -20,7 +20,7 @@ fn fn_with_1_arg(arg int) int {
 return 0
 }
 
-fn fn_with_2a_args(arg1, arg2 int) int {
+fn fn_with_2a_args(arg1 int, arg2 int) int {
 return 0
 }
 

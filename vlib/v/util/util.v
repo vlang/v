@@ -26,9 +26,7 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {
-		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-	}
+	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)}
 	return tos_clone(buf)
 }
 
@@ -98,9 +96,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {
-		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
-	}
+	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)}
 	return tos_clone(buf)
 }
 
@@ -114,7 +110,7 @@ pub fn set_vroot_folder(vroot_path string) {
 	os.setenv('VCHILD', 'true', true)
 }
 
-pub fn resolve_vroot(str, dir string) ?string {
+pub fn resolve_vroot(str string, dir string) ?string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
@@ -236,7 +232,7 @@ pub fn read_file(file_path string) ?string {
 }
 
 [inline]
-pub fn imin(a, b int) int {
+pub fn imin(a int, b int) int {
 	return if a < b {
 		a
 	} else {
@@ -245,7 +241,7 @@ pub fn imin(a, b int) int {
 }
 
 [inline]
-pub fn imax(a, b int) int {
+pub fn imax(a int, b int) int {
 	return if a > b {
 		a
 	} else {
@@ -369,7 +365,7 @@ const (
 // but *only* when it is at the start, i.e.:
 // no_cur_mod('vproto.Abdcdef', 'proto') == 'vproto.Abdcdef'
 // even though proto. is a substring
-pub fn no_cur_mod(typename, cur_mod string) string {
+pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
 	mod_prefix := cur_mod + '.'
 	has_map_prefix := res.starts_with(map_prefix)

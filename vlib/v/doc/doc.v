@@ -76,7 +76,7 @@ pub mut:
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
 	for comment in comments {
-		res << comment.text.trim_left('|')
+		res << comment.text.trim_left('\x01')
 	}
 	return res.join('\n')
 }
@@ -94,7 +94,7 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 			// located right above the top level statement.
 			// break
 		}
-		mut cmt_content := cmt.text.trim_left('|')
+		mut cmt_content := cmt.text.trim_left('\x01')
 		if cmt_content.len == cmt.text.len || cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
@@ -165,18 +165,13 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 
 pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 	match decl {
-		ast.SumTypeDecl { return decl.name }
-		ast.FnTypeDecl { return decl.name }
-		ast.AliasTypeDecl { return decl.name }
+		ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return decl.name }
 	}
 }
 
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	match stmt {
-		ast.FnDecl { return stmt.name }
-		ast.StructDecl { return stmt.name }
-		ast.EnumDecl { return stmt.name }
-		ast.InterfaceDecl { return stmt.name }
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl { return d.get_type_name(stmt) }
 		ast.ConstDecl { return '' } // leave it blank
 		else { return '' }
@@ -216,7 +211,7 @@ pub fn (mut nodes []DocNode) sort_by_kind() {
 	nodes.sort_with_compare(compare_nodes_by_kind)
 }
 
-fn compare_nodes_by_kind(a, b &DocNode) int {
+fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
 	ak := (*a).kind
 	bk := (*b).kind
 	if ak < bk {
@@ -228,7 +223,7 @@ fn compare_nodes_by_kind(a, b &DocNode) int {
 	return 0
 }
 
-fn compare_nodes_by_name(a, b &DocNode) int {
+fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 	al := a.name.to_lower()
 	bl := b.name.to_lower()
 	return compare_strings(al, bl)
@@ -238,35 +233,6 @@ pub fn sort_map_by_kind_arr(cnts map[string]DocNode) []DocNode {
 	mut contents := cnts.keys().map(cnts[it])
 	contents.sort_by_kind()
 	return contents
-}
-
-pub fn (nodes []DocNode) index_by_name(node_name string) int {
-	for i, node in nodes {
-		if node.name != node_name {
-			continue
-		}
-		return i
-	}
-	return -1
-}
-
-pub fn (nodes []DocNode) find_children_of(parent string) []DocNode {
-	return nodes.find_nodes_with_attr('parent', parent)
-}
-
-pub fn (nodes []DocNode) find_nodes_with_attr(attr_name, value string) []DocNode {
-	mut subgroup := []DocNode{}
-	if attr_name.len == 0 {
-		return subgroup
-	}
-	for node in nodes {
-		if !node.attrs.exists(attr_name) || node.attrs[attr_name] != value {
-			continue
-		}
-		subgroup << node
-	}
-	subgroup.sort_by_name()
-	return subgroup
 }
 
 // get_parent_mod - return the parent mod name, in dot format.
@@ -551,7 +517,7 @@ fn (mut d Doc) generate() ?Doc {
 	return *d
 }
 
-pub fn generate_from_pos(input_path, filename string, pos int) ?Doc {
+pub fn generate_from_pos(input_path string, filename string, pos int) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = false
 	doc.with_comments = true
@@ -561,7 +527,7 @@ pub fn generate_from_pos(input_path, filename string, pos int) ?Doc {
 	return doc.generate()
 }
 
-pub fn generate(input_path string, pub_only, with_comments bool) ?Doc {
+pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments

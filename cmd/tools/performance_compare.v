@@ -64,7 +64,7 @@ fn (c Context) compare_versions() {
 	}
 }
 
-fn (c &Context) prepare_v(cdir, commit string) {
+fn (c &Context) prepare_v(cdir string, commit string) {
 	mut cc := os.getenv('CC')
 	if cc == '' {
 		cc = 'cc'

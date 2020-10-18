@@ -65,8 +65,8 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		}
 		is_last_arg := i == node.params.len - 1
 		is_type_only := arg.name == ''
-		should_add_type := is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
-			(node.is_variadic && i == node.params.len - 2)
+		should_add_type := true // is_last_arg || is_type_only || node.params[i + 1].typ != arg.typ ||
+		// (node.is_variadic && i == node.params.len - 2)
 		if arg.is_mut {
 			f.write(arg.typ.share().str() + ' ')
 		}
@@ -116,7 +116,7 @@ pub fn (x &InfixExpr) str() string {
 pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	mut res := []string{}
 	needs_fspec := lit.need_fmts[i] || lit.pluss[i] ||
-		(lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 0
+		(lit.fills[i] && lit.fwidths[i] >= 0) || lit.fwidths[i] != 0 || lit.precisions[i] != 987698
 	mut needs_braces := needs_fspec
 	if !needs_braces {
 		if i + 1 < lit.vals.len && lit.vals[i + 1].len > 0 {
@@ -164,7 +164,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 		if lit.fwidths[i] != 0 {
 			res << '${lit.fwidths[i]}'
 		}
-		if lit.precisions[i] != 0 {
+		if lit.precisions[i] != 987698 {
 			res << '.${lit.precisions[i]}'
 		}
 		if lit.need_fmts[i] {
@@ -196,7 +196,7 @@ pub fn (x Expr) str() string {
 		EnumVal {
 			return '.$x.val'
 		}
-		FloatLiteral {
+		FloatLiteral, IntegerLiteral {
 			return x.val
 		}
 		Ident {
@@ -204,9 +204,6 @@ pub fn (x Expr) str() string {
 		}
 		IndexExpr {
 			return '$x.left.str()[$x.index.str()]'
-		}
-		IntegerLiteral {
-			return x.val
 		}
 		InfixExpr {
 			return '$x.left.str() $x.op.str() $x.right.str()'

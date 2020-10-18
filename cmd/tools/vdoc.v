@@ -209,7 +209,7 @@ fn handle_http_connection(mut con net.Socket, ctx &VdocHttpServerContext) {
 	send_http_response(mut con, 200, ctx.content_type, ctx.docs[filename])
 }
 
-fn send_http_response(mut con net.Socket, http_code int, content_type, html string) {
+fn send_http_response(mut con net.Socket, http_code int, content_type string, html string) {
 	content_length := html.len.str()
 	shttp_code := http_code.str()
 	mut http_response := strings.new_builder(20000)
@@ -232,7 +232,7 @@ fn send_http_response(mut con net.Socket, http_code int, content_type, html stri
 	}
 }
 
-fn get_src_link(repo_url, file_name string, line_nr int) string {
+fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or {
 		return ''
 	}
@@ -494,10 +494,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	symbols_toc.free()
 	return html_content.replace('{{ title }}', dcs.head.name).replace('{{ head_name }}',
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
-		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}', if cfg.inline_assets {
-		'\n	<style>'+ cfg.assets['doc_css'] + '</style>\n    <style>'+ cfg.assets['normalize_css'] +'</style>'
+		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
+		if cfg.inline_assets {
+		'\n	<style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
+			'</style>'
 	} else {
-		'\n	<link rel="stylesheet" href="'+cfg.assets['doc_css']+'" />\n	<link rel="stylesheet" href="'+cfg.assets['normalize_css']+'" />'
+		'\n	<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {
@@ -509,9 +512,9 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		''
 	}).replace('{{ footer_content }}', 'Powered by vdoc. Generated on: $time_gen').replace('{{ footer_assets }}',
 		if cfg.inline_assets {
-		'<script>'+cfg.assets['doc_js']+'</script>'
+		'<script>' + cfg.assets['doc_js'] + '</script>'
 	} else {
-		'<script src="'+cfg.assets['doc_js']+'"></script>'
+		'<script src="' + cfg.assets['doc_js'] + '"></script>'
 	})
 }
 
@@ -599,7 +602,6 @@ fn (cfg DocConfig) render_parallel() {
 	vjobs := runtime.nr_jobs()
 	mut work := sync.new_channel<ParallelDoc>(cfg.docs.len)
 	mut wg := sync.new_waitgroup()
-
 	for i in 0 .. cfg.docs.len {
 		p_doc := ParallelDoc{cfg.docs[i], i}
 		work.push(&p_doc)
@@ -614,7 +616,6 @@ fn (cfg DocConfig) render_parallel() {
 
 fn (cfg DocConfig) render() map[string]string {
 	mut docs := map[string]string{}
-
 	for i, doc in cfg.docs {
 		name, output := cfg.render_doc(doc, i)
 		docs[name] = output.trim_space()

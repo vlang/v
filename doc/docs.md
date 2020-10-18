@@ -158,7 +158,7 @@ fn add(x int, y int) int {
     return x + y
 }
 
-fn sub(x, y int) int {
+fn sub(x int, y int) int {
     return x - y
 }
 ```
@@ -644,7 +644,7 @@ fn main() {
     println('Hello, $name!')
 }
 ```
-This program can use any public definitions from the `os` module, such 
+This program can use any public definitions from the `os` module, such
 as the `input` function. See the [standard library](https://modules.vlang.io/)
 documentation for a list of common modules and their public symbols.
 
@@ -1466,7 +1466,7 @@ fn main() {
 
 ### `init` functions
 
-If you want a module to automatically call some setup/initialization code when it is imported, 
+If you want a module to automatically call some setup/initialization code when it is imported,
 you can use a module `init` function:
 
 ```v
@@ -1475,7 +1475,7 @@ fn init() {
 }
 ```
 
-The `init` function cannot be public - it will be called automatically. This feature is 
+The `init` function cannot be public - it will be called automatically. This feature is
 particularly useful for initializing a C library.
 
 ## Types 2
@@ -2044,15 +2044,15 @@ performance.
 
 ### Asserts
 
-```v 
-mut v := 2 
+```v
+mut v := 2
 foo(mut v)
-assert v < 4 
-``` 
-An `assert` statement checks that its expression evaluates to `true`. If an assert fails, 
+assert v < 4
+```
+An `assert` statement checks that its expression evaluates to `true`. If an assert fails,
 the program will abort. Asserts should only be used to detect programming errors. When an
-assert fails it is reported to *stderr*, and the values on each side of a comparison operator 
-(such as `<`, `==`) will be printed when possible. This is useful to easily find an 
+assert fails it is reported to *stderr*, and the values on each side of a comparison operator
+(such as `<`, `==`) will be printed when possible. This is useful to easily find an
 unexpected value. Assert statements can be used in any function.
 
 ### Test files
@@ -2074,8 +2074,8 @@ fn test_hello() {
     assert hello() == 'Hello world'
 }
 ```
-To run the test above, use `v hello_test.v`. This will check that the function `hello` is 
-producing the correct output. V executes all test functions in the file. 
+To run the test above, use `v hello_test.v`. This will check that the function `hello` is
+producing the correct output. V executes all test functions in the file.
 
 * All test functions have to be inside a test file whose name ends in `_test.v`.
 * Test function names must begin with `test_` to mark them for execution.
@@ -2084,15 +2084,15 @@ producing the correct output. V executes all test functions in the file.
 * There are 2 kinds of tests: external and internal.
 * The internal tests, have to *declare* their module, just like all other .v
 files from the same module. Internal tests can call even private functions in
-the same module. 
-* The external tests, have to *import* the modules which they test. They do not 
-have access to the private functions/types of the modules. They can test only 
+the same module.
+* The external tests, have to *import* the modules which they test. They do not
+have access to the private functions/types of the modules. They can test only
 the external/public API that a module provides.
 
 In the example above, `test_hello` is an internal test, that can call
 the private function `hello()` because `hello_test.v` has `module main`,
-just like `hello.v`, i.e. both are part of the same module. Note also that 
-since `module main` is a regular module like the others, internal tests can 
+just like `hello.v`, i.e. both are part of the same module. Note also that
+since `module main` is a regular module like the others, internal tests can
 be used to test private functions in your main program .v files too.
 
 You can also define special test functions in a test file:
@@ -2103,8 +2103,8 @@ You can also define special test functions in a test file:
 
 To run test functions in an individual test file, use `v foo_test.v`.
 
-To test an entire module, use `v test mymodule`. You can also use `v test .` to test 
-everything inside your current folder (and subfolders). You can pass the `-stats` 
+To test an entire module, use `v test mymodule`. You can also use `v test .` to test
+everything inside your current folder (and subfolders). You can pass the `-stats`
 option to see more details about the individual tests run.
 
 ## Memory management

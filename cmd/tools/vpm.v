@@ -12,7 +12,8 @@ import v.vmod
 
 const (
 	default_vpm_server_urls      = ['https://vpm.vlang.io']
-	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated', 'list', 'remove']
+	valid_vpm_commands           = ['help', 'search', 'install', 'update', 'upgrade', 'outdated',
+		'list', 'remove']
 	excluded_dirs                = ['cache', 'vlib']
 	supported_vcs_systems        = ['git', 'hg']
 	supported_vcs_folders        = ['.git', '.hg']
@@ -281,7 +282,9 @@ fn get_outdated() ?[]string {
 }
 
 fn vpm_upgrade() {
-	outdated := get_outdated() or { exit(1) }
+	outdated := get_outdated() or {
+		exit(1)
+	}
 	if outdated.len > 0 {
 		vpm_update(outdated)
 	} else {
@@ -290,7 +293,9 @@ fn vpm_upgrade() {
 }
 
 fn vpm_outdated() {
-	outdated := get_outdated() or { exit(1) }
+	outdated := get_outdated() or {
+		exit(1)
+	}
 	if outdated.len > 0 {
 		println('Outdated modules:')
 		for m in outdated {
@@ -452,7 +457,7 @@ fn get_all_modules() []string {
 	return modules
 }
 
-fn resolve_dependencies(name, module_path string, module_names []string) {
+fn resolve_dependencies(name string, module_path string, module_names []string) {
 	vmod_path := os.join_path(module_path, 'v.mod')
 	if !os.exists(vmod_path) {
 		return
