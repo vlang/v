@@ -18,10 +18,10 @@ fn main() {
 		for i, line in lines {
 			if line.len > too_long_line_length {
 				if line.starts_with('|') || line.contains('](') {
-					println('$file_path:${i+1}:${line.len+1}: warning')
+					println('$file_path:${i + 1}:${line.len + 1}: warning')
 					warnings++
 				} else {
-					eprintln('$file_path:${i+1}:${line.len+1}: line too long')
+					eprintln('$file_path:${i + 1}:${line.len + 1}: line too long')
 					errors++
 				}
 			}
