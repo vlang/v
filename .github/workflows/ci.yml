@@ -2,6 +2,9 @@ name: CI
 
 on:
   push:
+    paths-ignore:
+      - "doc/**"
+      - "CHANGELOG.md"
   pull_request:
     paths-ignore:
       - "doc/**"

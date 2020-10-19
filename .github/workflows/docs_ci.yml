@@ -2,6 +2,10 @@ name: Docs CI
 
 on:
   push:
+    paths:
+      - "cmd/tools/check-md.v"
+      - "doc/**"
+      - "CHANGELOG.md"
   pull_request:
     paths:
       - "cmd/tools/check-md.v"
