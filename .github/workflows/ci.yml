@@ -3,8 +3,6 @@ name: CI
 on:
   push:
   pull_request:
-    branches:
-      - '**'
     paths-ignore:
       - "doc/**"
       - "CHANGELOG.md"

@@ -3,8 +3,6 @@ name: Docs CI
 on:
   push:
   pull_request:
-    branches:
-      - '**'
     paths:
       - "cmd/tools/check-md.v"
       - "doc/**"
