@@ -18,4 +18,4 @@ jobs:
     - name: Build
       run: make
     - name: Check docs line length
-      run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
+      run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md
