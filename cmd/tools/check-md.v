@@ -8,6 +8,7 @@ const (
 
 fn main() {
 	files_paths := os.args[1..]
+	mut warnings := 0
 	mut errors := 0
 	for file_path in files_paths {
 		real_path := os.real_path(file_path)
@@ -16,10 +17,19 @@ fn main() {
 		}
 		for i, line in lines {
 			if line.len > too_long_line_length {
-				eprintln('$real_path:${i+1}:${line.len+1}: line too long')
-				errors++
+				if line.starts_with('|') || line.contains('](') {
+					println('$file_path:${i+1}:${line.len+1}: warning')
+					warnings++
+				} else {
+					eprintln('$file_path:${i+1}:${line.len+1}: line too long')
+					errors++
+				}
 			}
 		}
+	}
+	if warnings > 0 || errors > 0 {
+		println('\nWarnings | Errors')
+		println('$warnings\t | $errors')
 	}
 	if errors > 0 {
 		exit(1)

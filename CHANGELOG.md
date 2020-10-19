@@ -57,7 +57,7 @@ files with compilation errors.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb][1st-tut].
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
@@ -133,7 +133,7 @@ files with compilation errors.
 - Optimized `array.filter()` and `array.map()`.
 - `sqlite` module.
 - Cached modules for faster compilation.
-- Dramatic compilation optimizations: [V now compiles itself in 0.10 - 0.30 seconds][fast-comp]
+- Dramatic compilation optimizations: [V now compiles itself in 0.10 - 0.30 seconds](https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds)
 - V scripts (simpler and cross-platform alternative to Bash).
 - Infinite multi-dimensional arrays (`[][][]int`).
 - `unsafe`.
@@ -379,8 +379,3 @@ this backend.
 - Cleaner bytes to string conversion: `tos2(bytes)` => `string(bytes)`.
 - The home page has 3 more examples next to 'hello world' that show the features of the language.
 - Lots of bugs and issues fixed.
-
-
-<!-- Links that otherwise make lines too long -->
-[fast-comp]: https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds
-[1st-tut]: https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md

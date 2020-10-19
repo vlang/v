@@ -2513,7 +2513,8 @@ Full list of builtin options:
 
 ## Compile time pseudo variables
 
-V also gives your code access to a set of pseudo string variables, that are substituted at compile time:
+V also gives your code access to a set of pseudo string variables, 
+that are substituted at compile time:
 
 - `@FN` => replaced with the name of the current V function
 - `@MOD` => replaced with the name of the current V module
@@ -2641,9 +2642,9 @@ fn main() {
 }
 ```
 
-Operator overloading goes against V's philosophy of simplicity and predictability. But since
-scientific and graphical applications are among V's domains, operator overloading is an important feature to have
-in order to improve readability:
+Operator overloading goes against V's philosophy of simplicity and predictability. 
+But since scientific and graphical applications are among V's domains, 
+operator overloading is an important feature to have in order to improve readability:
 
 `a.add(b).add(c.mul(d))` is a lot less readable than `a + b + c * d`.
 
@@ -2705,11 +2706,13 @@ An online C/C++ to V translator is coming soon.
 
 When should you translate C code and when should you simply call C code from V?
 
-If you have well-written, well-tested C code, then of course you can always simply call this C code from V.
+If you have well-written, well-tested C code, 
+then of course you can always simply call this C code from V.
 
 Translating it to V gives you several advantages:
 
-- If you plan to develop that code base, you now have everything in one language, which is much safer and easier to develop in than C.
+- If you plan to develop that code base, you now have everything in one language, 
+    which is much safer and easier to develop in than C.
 - Cross-compilation becomes a lot easier. You don't have to worry about it at all.
 - No more build flags and include files either.
 
@@ -2812,7 +2815,8 @@ On Unix-like platforms, the file can be run directly after making it executable 
 
 V has several attributes that modify the behavior of functions and structs.
 
-An attribute is specified inside `[]` right before a function/struct declaration and applies only to the following declaration.
+An attribute is specified inside `[]` right before a function/struct declaration 
+and applies only to the following declaration.
 
 ```v
 // Calling this function will result in a deprecation warning
