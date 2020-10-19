@@ -2403,11 +2403,13 @@ Module {
 #include "header.h"
 ```
 NB: @VROOT will be replaced by V with the *nearest parent folder, where there is a v.mod file*.
-Any .v file beside or below the folder where the v.mod file is, can use `#flag @VROOT/abc` to refer to this folder.
-The @VROOT folder is also *prepended* to the module lookup path, so you can *import* other
-modules under your @VROOT, by just naming them.
+Any .v file beside or below the folder where the v.mod file is, 
+can use `#flag @VROOT/abc` to refer to this folder.
+The @VROOT folder is also *prepended* to the module lookup path, 
+so you can *import* other modules under your @VROOT, by just naming them.
 
-The instructions above will make V look for an compiled .o file in your module `folder/c/implementation.o`.
+The instructions above will make V look for an compiled .o file in 
+your module `folder/c/implementation.o`.
 If V finds it, the .o file will get linked to the main executable, that used the module.
 If it does not find it, V assumes that there is a `@VROOT/c/implementation.c` file,
 and tries to compile it to a .o file, then will use that.
@@ -2416,15 +2418,19 @@ This allows you to have C code, that is contained in a V module, so that its dis
 You can see a complete minimal example for using C code in a V wrapper module here:
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
 
-You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
+You can use `-cflags` to pass custom flags to the backend C compiler. 
+You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
-Ordinary zero terminated C strings can be converted to V strings with `string(cstring)` or `string(cstring, len)`.
+Ordinary zero terminated C strings can be converted to V strings with `string(cstring)`
+or `string(cstring, len)`.
 
-NB: Each `string(...)` function does NOT create a copy of the `cstring`, so you should NOT free it after calling `string()`. If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that, since they
-return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
+NB: Each `string(...)` function does NOT create a copy of the `cstring`, 
+so you should NOT free it after calling `string()`.
+If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
+since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 
 On Windows, C APIs often return so called `wide` strings (utf16 encoding).
 These can be converted to V strings with `string_from_wide(&u16(cwidestring))` .
@@ -2449,13 +2455,19 @@ To debug issues in the generated C code, you can pass these flags:
 - `-cg` - produces a less optimized executable with more debug information in it.
 - `-showcc` - prints the C command that is used to build the program.
 
-For the best debugging experience, you can pass all of them at the same time: `v -cg -showcc yourprogram.v` , then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For the best debugging experience, you can pass all of them at the same time: 
+`v -cg -showcc yourprogram.v`, 
+then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
 
-If you just want to inspect the generated C code, without further compilation, you can also use the `-o` flag (e.g. `-o file.c`). This will make V produce the `file.c` then stop.
+If you just want to inspect the generated C code, 
+without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
+This will make V produce the `file.c` then stop.
 
-If you want to see the generated C source code for *just* a single C function, for example `main`, you can use: `-printfn main -o file.c` .
+If you want to see the generated C source code for *just* a single C function,
+for example `main`, you can use: `-printfn main -o file.c`.
 
-To see a detailed list of all flags that V supports, use `v help`, `v help build`, `v help build-c` .
+To see a detailed list of all flags that V supports, 
+use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
