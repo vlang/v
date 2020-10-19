@@ -295,7 +295,8 @@ fn main() {
 }
 ```
 
-Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name that is already used in a parent scope will cause a compilation error.
+Unlike most languages, variable shadowing is not allowed. Declaring a variable with a name 
+that is already used in a parent scope will cause a compilation error.
 
 ## Types
 
