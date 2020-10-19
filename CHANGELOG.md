@@ -57,7 +57,7 @@ files with compilation errors.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb][first-tut].
+- The first tutorial: [building a simple web application with vweb][1st-tut].
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
@@ -383,4 +383,4 @@ this backend.
 
 <!-- Links that otherwise make lines too long -->
 [fast-comp]: https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds
-[first-tut]: https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md
+[1st-tut]: https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md

@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@v2
-    - name: Build
+    - name: Build V
       run: make
     - name: Check docs line length
       run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md
