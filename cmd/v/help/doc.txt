@@ -23,6 +23,7 @@ Options:
   -v              Enables verbose logging. For debugging purposes.
   -filename       Specifies the specific file to document.
   -pos            Specifies the position. Used with `-filename`.
+  -no-timestamp   Omit timestamp in the output file.
 
 For HTML mode:
   -inline-assets  Embeds the contents of the CSS and JS assets into the webpage directly.
