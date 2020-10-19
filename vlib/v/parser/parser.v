@@ -1626,6 +1626,9 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		// name := p.check_name()
 		// println('!!const: $name')
 		p.check(.assign)
+		if p.tok.kind == .key_fn {
+			p.error('const initializer fn literal is not a constant')
+		}
 		expr := p.expr(0)
 		field := ast.ConstField{
 			name: full_name
