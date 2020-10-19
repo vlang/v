@@ -17,7 +17,7 @@ fn main() {
 		}
 		for i, line in lines {
 			if line.len > too_long_line_length {
-				if line.starts_with('|') || line.contains('](') {
+				if line.starts_with('|') || line.contains('https') {
 					println('$file_path:${i + 1}:${line.len + 1}: warning')
 					warnings++
 				} else {

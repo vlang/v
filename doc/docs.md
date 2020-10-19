@@ -1913,8 +1913,9 @@ y := <-ch2 ?
 
 #### Channel Select
 
-The `select` command allows monitoring several channels at the same time without noticeable CPU load. It consists
-of a list of possible transfers and associated branches of statements - similar to the [match](#match) command:
+The `select` command allows monitoring several channels at the same time 
+without noticeable CPU load.  It consists of a list of possible transfers and associated branches 
+of statements - similar to the [match](#match) command:
 ```v
 select {
     a := <-ch {
@@ -1936,7 +1937,8 @@ The timeout branch is optional. If it is absent `select` waits for an unlimited 
 It is also possible to proceed immediately if no channel is ready in the moment `select` is called
 by adding an `else { ... }` branch. `else` and `> timeout` are mutually exclusive.
 
-The `select` command can be used as an *expression* of type `bool` that becomes `false` if all channels are closed:
+The `select` command can be used as an *expression* of type `bool` 
+that becomes `false` if all channels are closed:
 ```v
 if select {
     ch <- a {
@@ -1958,14 +1960,15 @@ res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
 l := ch.len                // number of elements in queue
 c := ch.cap                // maximum queue length
 ```
-The `try_push/pop()` methods will return immediately with one of the results `.success`, `.not_ready`
-or `.closed` - dependent on whether the object has been transferred or the reason why not. Usage
-of these methods and properties in production is not recommended - algorithms based on them are often subject
-to race conditions. Use `select` instead.
+The `try_push/pop()` methods will return immediately with one of the results 
+`.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or 
+the reason why not.
+Usage of these methods and properties in production is not recommended - 
+algorithms based on them are often subject to race conditions. Use `select` instead.
 
-Data can be exchanged between a coroutine
-and the calling thread via a shared variable. This variable should be created as reference and passed to
-the coroutine as `mut`. The underlying `struct` should also contain a `mutex` to lock concurrent access:
+Data can be exchanged between a coroutine and the calling thread via a shared variable. 
+This variable should be created as reference and passed to the coroutine as `mut`. 
+The underlying `struct` should also contain a `mutex` to lock concurrent access:
 
 ```v
 import sync
@@ -2037,10 +2040,12 @@ println(foos[1].x)
 
 Because of the ubiquitous nature of JSON, support for it is built directly into V.
 
-The `json.decode` function takes two arguments: the first argument of the `json.decode` function is the type into which the JSON value should be decoded and the second is a string containing the JSON data.
+The `json.decode` function takes two arguments: 
+the first is the type into which the JSON value should be decoded and 
+the second is a string containing the JSON data.
 
-V generates code for JSON encoding and decoding. No runtime reflection is used. This results in much better
-performance.
+V generates code for JSON encoding and decoding. 
+No runtime reflection is used. This results in much better performance.
 
 ## Testing
 
@@ -2155,7 +2160,8 @@ fn test() []int {
 
 (This is still in an alpha state)
 
-V has a built-in ORM (object-relational mapping) which supports SQLite, and will soon support MySQL, Postgres, MS SQL, and Oracle.
+V has a built-in ORM (object-relational mapping) which supports SQLite,
+and will soon support MySQL, Postgres, MS SQL, and Oracle.
 
 V's ORM provides a number of benefits:
 
@@ -2163,7 +2169,8 @@ V's ORM provides a number of benefits:
 - Queries are constructed using V's syntax. (There's no need to learn another syntax.)
 - Safety. (All queries are automatically sanitised to prevent SQL injection.)
 - Compile time checks. (This prevents typos which can only be caught during runtime.)
-- Readability and simplicity. (You don't need to manually parse the results of a query and then manually construct objects from the parsed results.)
+- Readability and simplicity. (You don't need to manually parse the results of a query and 
+    then manually construct objects from the parsed results.)
 
 ```v
 struct Customer { // struct name has to be the same as the table name (for now)
@@ -2201,7 +2208,8 @@ For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
-write documentation separately for your code, vdoc will generate it from docstrings in the source code.
+write documentation separately for your code, 
+vdoc will generate it from docstrings in the source code.
 
 Documentation for each function/type/const must be placed right before the declaration:
 
@@ -2337,8 +2345,10 @@ fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int 
 
 fn main() {
     db := &C.sqlite3(0) // this means `sqlite3* db = 0`
-    C.sqlite3_open('users.db', &db) // passing a string literal to a C function call results in a C string, not a V string
-    // C.sqlite3_open(db_path.str, &db) // you can also use `.str byteptr` field to convert a V string to a C char pointer
+    // passing a string literal to a C function call results in a C string, not a V string
+    C.sqlite3_open('users.db', &db)
+    // C.sqlite3_open(db_path.str, &db) 
+    // you can also use `.str byteptr` field to convert a V string to a C char pointer
     query := 'select count(*) from users'
     stmt := &C.sqlite3_stmt(0)
     C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
@@ -2367,7 +2377,8 @@ Add `#flag` directives to the top of your V files to provide C compilation flags
 - `-L` for adding C library files search paths
 - `-D` for setting compile time variables
 
-You can use different flags for different targets. Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
+You can use different flags for different targets. 
+Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 NB: Each flag must go on its own line (for now)
 
@@ -2381,7 +2392,9 @@ NB: Each flag must go on its own line (for now)
 
 ### Including C code
 
-You can also include C code directly in your V module. For example, let's say that your C code is located in a folder named 'c' inside your module folder. Then:
+You can also include C code directly in your V module. 
+For example, let's say that your C code is located in a folder named 'c' inside your module folder.
+Then:
 
 * Put a v.mod file inside the toplevel folder of your module (if you
 created your module with `v new` you already have v.mod file). For
