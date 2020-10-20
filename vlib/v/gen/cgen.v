@@ -3850,7 +3850,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				}
 			}
 			if !cloned {
-				if field.expected_type.is_ptr() && !field.typ.is_ptr() && !field.typ.is_number() {
+				if field.expected_type.is_ptr() && !(field.typ.is_ptr() || field.typ.is_pointer()) &&
+					!field.typ.is_number() {
 					g.write('/* autoref */&')
 				}
 				g.expr_with_cast(field.expr, field.typ, field.expected_type)
@@ -3889,7 +3890,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
-					if sfield.expected_type.is_ptr() && !sfield.typ.is_ptr() && !sfield.typ.is_number() {
+					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) &&
+						!sfield.typ.is_number() {
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
