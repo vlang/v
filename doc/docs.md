@@ -2413,6 +2413,8 @@ and tries to compile it to a .o file, then will use that.
 This allows you to have C code, that is contained in a V module, so that its distribution is easier.
 You can see a complete minimal example for using C code in a V wrapper module here:
 [project_with_c_code](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code).
+Another example, demonstrating passing structs from C to V and back again:
+[interoperate between C to V to C](https://github.com/vlang/v/tree/master/vlib/v/tests/project_with_c_code_2).
 
 You can use `-cflags` to pass custom flags to the backend C compiler. You can also use `-cc` to change the default C backend compiler.
 For example: `-cc gcc-9 -cflags -fsanitize=thread`.
