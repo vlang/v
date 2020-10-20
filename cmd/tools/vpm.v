@@ -131,9 +131,11 @@ fn vpm_search(keywords []string) {
 			// in case the author isn't present
 			if parts.len == 1 {
 				parts << parts[0]
-				parts[0] = ''
+				parts[0] = ' '
+			} else {
+				parts[0] = ' by ${parts[0]} '
 			}
-			println('${index}. ${parts[1]} by ${parts[0]} [$mod]')
+			println('${index}. ${parts[1]}${parts[0]}[$mod]')
 			break
 		}
 	}
