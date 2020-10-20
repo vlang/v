@@ -238,21 +238,21 @@ pub fn (nodes []DocNode) find_nodes_with_attr(attr_name string, value string) []
 // For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
 // it returns `x.websocket.tests`, because /languages/v/ has v.mod file in it.
 // NB: calling this is expensive, so keep the result, instead of recomputing it.
-fn get_parent_mod(dir string) ?string {
+fn get_parent_mod(input_dir string) ?string {
 	$if windows {
 		// windows root path is C: or D:
-		if dir.len <= 2 {
+		if input_dir.len <= 2 {
 			return error('root folder reached')
 		}
 	} $else {
-		if dir.len == 0 {
+		if input_dir.len == 0 {
 			return error('root folder reached')
 		}
 	}
-	base_dir := os.dir(dir)
-	fname_base_dir := os.file_name(base_dir)
+	base_dir := os.dir(input_dir)
+	input_dir_name := os.file_name(input_dir)
 	prefs := new_vdoc_preferences()
-	fentries := os.ls(base_dir) or {
+	fentries := os.ls(input_dir) or {
 		[]string{}
 	}
 	files := fentries.filter(!os.is_dir(it))
@@ -260,13 +260,13 @@ fn get_parent_mod(dir string) ?string {
 		// the top level is reached, no point in climbing up further
 		return ''
 	}
-	v_files := prefs.should_compile_filtered_files(base_dir, files)
+	v_files := prefs.should_compile_filtered_files(input_dir, files)
 	if v_files.len == 0 {
 		parent_mod := get_parent_mod(base_dir) or {
-			return fname_base_dir
+			return input_dir_name
 		}
 		if parent_mod.len > 0 {
-			return parent_mod + '.' + fname_base_dir
+			return parent_mod + '.' + input_dir_name
 		}
 		return error('No V files found.')
 	}
@@ -279,10 +279,10 @@ fn get_parent_mod(dir string) ?string {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or {
-		return fname_base_dir
+		return error(err)
 	}
 	if parent_mod.len > 0 {
-		return parent_mod + '.' + file_ast.mod.name
+		return parent_mod
 	}
 	return file_ast.mod.name
 }
