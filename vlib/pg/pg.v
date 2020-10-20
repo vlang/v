@@ -179,7 +179,7 @@ pub fn (db DB) exec_param_many(query string, params []string) []Row {
 	}
 }
 
-pub fn (db DB) exec_param2(query, param, param2 string) []Row {
+pub fn (db DB) exec_param2(query string, param string, param2 string) []Row {
 	mut param_vals := [2]byteptr{}
 	param_vals[0] = param.str
 	param_vals[1] = param2.str
@@ -187,7 +187,7 @@ pub fn (db DB) exec_param2(query, param, param2 string) []Row {
 	return db.handle_error_or_result(res, 'exec_param2')
 }
 
-pub fn (db DB) exec_param(query, param string) []Row {
+pub fn (db DB) exec_param(query string, param string) []Row {
 	mut param_vals := [1]byteptr{}
 	param_vals[0] = param.str
 	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
