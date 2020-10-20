@@ -1,0 +1,23 @@
+name: Docs CI
+
+on:
+  push:
+    paths:
+      - "cmd/tools/check-md.v"
+      - "doc/**"
+      - "CHANGELOG.md"
+  pull_request:
+    paths:
+      - "cmd/tools/check-md.v"
+      - "doc/**"
+      - "CHANGELOG.md"
+
+jobs:
+  docs-line-len-check:
+    runs-on: ubuntu-18.04
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make
+    - name: Check docs line length
+      run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md
