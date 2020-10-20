@@ -115,6 +115,7 @@ fn vpm_search(keywords []string) {
 		exit(2)
 	}
 	modules := get_all_modules()
+	installed_modules := get_installed_modules()
 	joined := search_keys.join(', ')
 	mut index := 0
 	for mod in modules {
@@ -131,16 +132,19 @@ fn vpm_search(keywords []string) {
 			// in case the author isn't present
 			if parts.len == 1 {
 				parts << parts[0]
-				parts[0] = ''
+				parts[0] = ' '
+			} else {
+				parts[0] = ' by ${parts[0]} '
 			}
-			println('${index}. ${parts[1]} by ${parts[0]} [$mod]')
+			installed := if mod in installed_modules { ' (installed)' } else { '' }
+			println('${index}. ${parts[1]}${parts[0]}[$mod]$installed')
 			break
 		}
 	}
 	if index == 0 {
 		println('No module(s) found for "$joined"')
 	} else {
-		println('\nUse "v install author_name.module_name" to install the module')
+		println('\nUse "v install author_name.module_name" to install the module.')
 	}
 }
 
