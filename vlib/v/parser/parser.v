@@ -1523,10 +1523,10 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	p.imports[mod_alias] = mod_name
-	// if mod_name !in p.table.imports {
-	p.table.imports << mod_name
-	p.ast_imports << node
-	// }
+	if mod_name !in p.table.imports {
+		p.table.imports << mod_name
+		p.ast_imports << node
+	}
 	return node
 }
 
