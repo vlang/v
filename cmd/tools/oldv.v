@@ -30,13 +30,16 @@ const (
 struct Context {
 mut:
 	vgo           vgit.VGitOptions
-	commit_v      string = 'master' // the commit from which you want to produce a working v compiler (this may be a commit-ish too)
-	commit_vc     string = 'master' // this will be derived from commit_v
+	commit_v      string = 'master'
+	// the commit from which you want to produce a working v compiler (this may be a commit-ish too)
+	commit_vc     string = 'master'
+	// this will be derived from commit_v
 	commit_v_hash string // this will be filled from the commit-ish commit_v using rev-list. It IS a commit hash.
 	path_v        string // the full path to the v folder inside workdir.
 	path_vc       string // the full path to the vc folder inside workdir.
 	cmd_to_run    string // the command that you want to run *in* the oldv repo
-	cc            string = 'cc' // the C compiler to use for bootstrapping.
+	cc            string = 'cc'
+	// the C compiler to use for bootstrapping.
 	cleanup       bool // should the tool run a cleanup first
 }
 
