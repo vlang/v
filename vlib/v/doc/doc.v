@@ -254,9 +254,9 @@ fn get_parent_mod(input_dir string) ?string {
 		}
 	}
 	base_dir := os.dir(input_dir)
-	input_dir_name := os.file_name(input_dir)
+	input_dir_name := os.file_name(base_dir)
 	prefs := new_vdoc_preferences()
-	fentries := os.ls(input_dir) or {
+	fentries := os.ls(base_dir) or {
 		[]string{}
 	}
 	files := fentries.filter(!os.is_dir(it))
@@ -264,7 +264,7 @@ fn get_parent_mod(input_dir string) ?string {
 		// the top level is reached, no point in climbing up further
 		return ''
 	}
-	v_files := prefs.should_compile_filtered_files(input_dir, files)
+	v_files := prefs.should_compile_filtered_files(base_dir, files)
 	if v_files.len == 0 {
 		parent_mod := get_parent_mod(base_dir) or {
 			return input_dir_name
@@ -283,10 +283,10 @@ fn get_parent_mod(input_dir string) ?string {
 		return ''
 	}
 	parent_mod := get_parent_mod(base_dir) or {
-		return error(err)
+		return input_dir_name
 	}
 	if parent_mod.len > 0 {
-		return parent_mod
+		return '${parent_mod}.${file_ast.mod.name}'
 	}
 	return file_ast.mod.name
 }
