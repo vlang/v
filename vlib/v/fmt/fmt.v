@@ -711,6 +711,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
 	match mut node {
+		ast.CTempVar {
+			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
+		}
 		ast.AnonFn {
 			f.fn_decl(node.decl)
 		}

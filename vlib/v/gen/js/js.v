@@ -520,6 +520,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 
 fn (mut g JsGen) expr(node ast.Expr) {
 	match node {
+		ast.CTempVar {
+			g.write('/* ast.CTempVar: node.name */')
+		}
 		ast.AnonFn {
 			g.gen_fn_decl(node.decl)
 		}
@@ -673,17 +676,17 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr+1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
 		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr+1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
 		g.writeln('	exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
 	g.writeln('builtin.exit(1);')
 	g.dec_indent()
 	g.writeln('}')

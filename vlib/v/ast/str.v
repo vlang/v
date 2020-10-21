@@ -177,6 +177,9 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 // string representation of expr
 pub fn (x Expr) str() string {
 	match x {
+		CTempVar {
+			return x.orig.str()
+		}
 		BoolLiteral {
 			return x.val.str()
 		}
@@ -187,6 +190,9 @@ pub fn (x Expr) str() string {
 			sargs := args2str(x.args)
 			if x.is_method {
 				return '${x.left.str()}.${x.name}($sargs)'
+			}
+			if x.name.starts_with('${x.mod}.') {
+				return util.strip_main_name('${x.name}($sargs)')
 			}
 			return '${x.mod}.${x.name}($sargs)'
 		}
