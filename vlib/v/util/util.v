@@ -166,6 +166,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	exit(os.system(tool_command))
 }
 
+// NB: should_recompile_tool/2 compares unix timestamps that have 1 second resolution
+// That means that a tool can get recompiled twice, if called in short succession.
+// TODO: use a nanosecond mtime timestamp, if available.
 pub fn should_recompile_tool(vexe string, tool_source string) bool {
 	sfolder := os.dir(tool_source)
 	tool_name := os.base(tool_source).replace('.v', '')

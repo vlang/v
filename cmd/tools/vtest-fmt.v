@@ -1,6 +1,7 @@
 module main
 
 import os
+import time
 import testing
 import v.util
 
@@ -62,6 +63,7 @@ fn prepare_vfmt_when_needed() {
 	vroot := os.dir(vexe)
 	vfmtv := os.join_path(vroot, 'cmd', 'tools', 'vfmt.v')
 	if util.should_recompile_tool(vexe, vfmtv) {
+		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, vfmtv)
 	}
 }
