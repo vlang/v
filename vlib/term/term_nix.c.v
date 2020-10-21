@@ -50,7 +50,9 @@ pub fn get_cursor_position() Coord {
 		ch = C.getchar()
 		b := byte(ch)
 		i++
-		assert i < 15
+		if i >= 15 {
+			panic('C.getchar() called too many times')
+		}        
 		// state management:
 		if b == `R` {
 			break
