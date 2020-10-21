@@ -535,3 +535,24 @@ pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	doc.with_comments = with_comments
 	return doc.generate()
 }
+
+pub fn lookup_module(mod string) ?string {
+	mod_path := mod.replace('.', os.path_separator)
+	compile_dir := os.real_path(os.dir('.'))
+	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
+	vlib_path := os.join_path(os.dir(@VEXE), 'vlib', mod_path)
+	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
+	paths := [modules_dir, vlib_path, vmodules_path]
+	for path in paths {
+		if !os.exists(path) || os.is_dir_empty(path) {
+			continue
+		}
+		return path
+	}
+	return error('module "$mod" not found.')
+}
+
+pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
+	mod_path := lookup_module(module_name)?
+	return generate(mod_path, pub_only, with_comments)
+}

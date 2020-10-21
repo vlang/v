@@ -868,22 +868,6 @@ fn get_ignore_paths(path string) ?[]string {
 	return res.map(it.replace('/', os.path_separator))
 }
 
-fn lookup_module(mod string) ?string {
-	mod_path := mod.replace('.', os.path_separator)
-	compile_dir := os.real_path(os.dir('.'))
-	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
-	vlib_path := os.join_path(vexe_path, 'vlib', mod_path)
-	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
-	paths := [modules_dir, vlib_path, vmodules_path]
-	for path in paths {
-		if os.is_dir_empty(path) {
-			continue
-		}
-		return path
-	}
-	return error('vdoc: Module "$mod" not found.')
-}
-
 fn is_included(path string, ignore_paths []string) bool {
 	if path.len == 0 {
 		return true
