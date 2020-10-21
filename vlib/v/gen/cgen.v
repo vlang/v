@@ -1272,8 +1272,40 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 	}
 }
 
-fn (mut g Gen) gen_assert_stmt(a ast.AssertStmt) {
+fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
+	mut a := original_assert_statement
 	g.writeln('// assert')
+	mut tl_name := ''
+	mut tr_name := ''
+	if a.expr is ast.InfixExpr {
+		mut aie := a.expr as ast.InfixExpr
+		if aie.left is ast.CallExpr {
+			tl_styp := g.typ(aie.left_type)
+			tl_name = g.new_tmp_var()
+			g.write('$tl_styp $tl_name = ')
+			g.expr(aie.left)
+			g.writeln(';')
+			aie.left = ast.Expr(ast.CTempVar{
+				name: tl_name
+				typ: aie.left_type
+				is_ptr: aie.left_type.is_ptr()
+				orig: aie.left
+			})
+		}
+		if aie.right is ast.CallExpr {
+			tr_styp := g.typ(aie.right_type)
+			tr_name = g.new_tmp_var()
+			g.write('$tr_styp $tr_name = ')
+			g.expr(aie.right)
+			g.writeln(';')
+			aie.right = ast.Expr(ast.CTempVar{
+				name: tr_name
+				typ: aie.right_type
+				is_ptr: aie.right_type.is_ptr()
+				orig: aie.right
+			})
+		}
+	}
 	g.inside_ternary++
 	g.write('if (')
 	g.expr(a.expr)
@@ -1338,7 +1370,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
 	match e {
-		ast.CallExpr, ast.CastExpr, ast.IndexExpr, ast.PrefixExpr, ast.MatchExpr {
+		ast.CastExpr, ast.IndexExpr, ast.PrefixExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
 		ast.Type {
@@ -1962,6 +1994,7 @@ fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
+	// NB: please keep the type names in the match here in alphabetical order:
 	match node {
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
@@ -2083,6 +2116,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.Comment {}
 		ast.ConcatExpr {
 			g.concat_expr(node)
+		}
+		ast.CTempVar {
+			// g.write('/*ctmp .orig: $node.orig.str() , .typ: $node.typ, .is_ptr: $node.is_ptr */ ')
+			g.write(node.name)
 		}
 		ast.EnumVal {
 			// g.write('${it.mod}${it.enum_name}_$it.val')
@@ -4364,6 +4401,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
 				g.write('($s)')
+			}
+		}
+		if expr is ast.CTempVar {
+			if expr.is_ptr {
+				g.write('*')
 			}
 		}
 		g.expr(expr)
