@@ -271,7 +271,7 @@ jobs:
         ./v build-module vlib/builtin
         ./v build-module vlib/strconv
         ./v build-module vlib/time
-#        ./v build-module vlib/term
+        ./v build-module vlib/term
         ./v build-module vlib/math
         ./v build-module vlib/strings
         ./v build-module vlib/v/token
