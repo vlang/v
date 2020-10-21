@@ -67,6 +67,7 @@ fn prepare_vfmt_when_needed() {
 }
 
 fn recompile_file(vexe string, file string) {
+	recompile_result := os.system('$vexe $file')
 	if recompile_result != 0 {
 		eprintln('could not recompile $file')
 		exit(2)
