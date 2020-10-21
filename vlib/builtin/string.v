@@ -183,6 +183,11 @@ pub fn (s string) replace(rep string, with string) string {
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{}
+	defer  {
+		unsafe {
+			idxs.free()
+		}
+	}
 	mut idx := 0
 	for {
 		idx = s.index_after(rep, idx)
