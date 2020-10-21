@@ -212,8 +212,8 @@ pub fn (mut nodes []DocNode) sort_by_kind() {
 }
 
 fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
-	ak := (*a).kind
-	bk := (*b).kind
+	ak := int((*a).kind)
+	bk := int((*b).kind)
 	if ak < bk {
 		return -1
 	}
@@ -229,8 +229,9 @@ fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 	return compare_strings(al, bl)
 }
 
-pub fn sort_map_by_kind_arr(cnts map[string]DocNode) []DocNode {
+pub fn (cnts map[string]DocNode) arr() []DocNode {
 	mut contents := cnts.keys().map(cnts[it])
+	contents.sort_by_name()
 	contents.sort_by_kind()
 	return contents
 }
