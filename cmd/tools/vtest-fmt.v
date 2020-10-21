@@ -2,6 +2,7 @@ module main
 
 import os
 import testing
+import v.util
 
 // os.v - // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
 const (
@@ -31,7 +32,7 @@ fn main() {
 
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
-    prepare_vfmt_when_needed()
+	prepare_vfmt_when_needed()
 	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker')
 	vfmt_test_session.files << all_v_files
@@ -60,11 +61,14 @@ fn prepare_vfmt_when_needed() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	vfmtv := os.join_path(vroot, 'cmd', 'tools', 'vfmt.v')
-	if os.file_last_mod_unix(vexe) <= os.file_last_mod_unix(vfmtv) {
-		recompile_result := os.system('$vexe ' + os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'))
-		if recompile_result != 0 {
-			eprintln('could not recompile cmd/tools/vfmt.v')
-			exit(2)
-		}
+	if util.should_recompile_tool(vexe, vfmtv) {
+		recompile_file(vexe, vfmtv)
+	}
+}
+
+fn recompile_file(vexe string, file string) {
+	if recompile_result != 0 {
+		eprintln('could not recompile $file')
+		exit(2)
 	}
 }
