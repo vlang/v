@@ -61,12 +61,16 @@ fn str_inter() {
 }
 
 fn str_replace() {
-	s := 'hello world'
+	mut s := 'hello world'
+	s = s.replace('hello', 'hi')
+	println(s)
+	/*
 	r := s.replace('hello', 'hi')
 	cloned := s.replace('hello', 'hi').clone()
 	cloned2 := r.clone()
 	println(s)
 	println(r)
+	*/
 }
 
 fn reassign_str() {
@@ -154,7 +158,7 @@ fn main() {
 	reassign_str()
 	optional_str()
 	optional_return()
-	// str_replace()
+	str_replace()
 	if_cond()
 	addition_with_tmp_expr()
 	println('end')
