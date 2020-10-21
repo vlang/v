@@ -151,7 +151,7 @@ fn (am AssetManager) include(asset_type string, combine bool) string {
 
 // dont return option until size limit is removed
 // fn (mut am AssetManager) add(asset_type, file string) ?bool {
-fn (mut am AssetManager) add(asset_type, file string) bool {
+fn (mut am AssetManager) add(asset_type string, file string) bool {
 	if !os.exists(file) {
 		// return error('vweb.assets: cannot add asset $file, it does not exist')
 		return false
@@ -172,7 +172,7 @@ fn (mut am AssetManager) add(asset_type, file string) bool {
 	return true
 }
 
-fn (am AssetManager) exists(asset_type, file string) bool {
+fn (am AssetManager) exists(asset_type string, file string) bool {
 	assets := am.get_assets(asset_type)
 	for asset in assets {
 		if asset.file_path == file {

@@ -5,9 +5,9 @@
 //
 // The receive threads add all received numbers and send them to the
 // main thread where the total sum is compare to the expected value.
-
 import time
 import os
+import sync
 
 fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
@@ -18,7 +18,7 @@ fn do_rec(ch chan int, resch chan i64, n int) {
 	resch <- sum
 }
 
-fn do_send(ch chan int, start, end int) {
+fn do_send(ch chan int, start int, end int) {
 	for i in start .. end {
 		ch <- i
 	}
@@ -56,10 +56,10 @@ fn main() {
 		sum += <-resch
 	}
 	elapsed := stopwatch.elapsed()
-	rate := f64(nobj)/elapsed*time.microsecond
-	println('$nobj objects in ${f64(elapsed)/time.second} s (${rate:.2f} objs/µs)')
+	rate := f64(nobj) / elapsed * time.microsecond
+	println('$nobj objects in ${f64(elapsed) / time.second} s (${rate:.2f} objs/µs)')
 	// use sum formula by Gauß to calculate the expected result
-	expected_sum := i64(nobj)*(nobj-1)/2
+	expected_sum := i64(nobj) * (nobj - 1) / 2
 	println('got: $sum, expected: $expected_sum')
 	assert sum == expected_sum
 }
