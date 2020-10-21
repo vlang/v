@@ -167,8 +167,8 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 }
 
 pub fn should_recompile_tool(vexe string, tool_source string) bool {
-	sfolder := os.base(tool_source)
-	tool_name := os.file_name(tool_source).replace('.v', '')
+	sfolder := os.dir(tool_source)
+	tool_name := os.base(tool_source).replace('.v', '')
 	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
 	// TODO Caching should be done on the `vlib/v` level.
 	mut should_compile := false
