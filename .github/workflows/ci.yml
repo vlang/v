@@ -1,7 +1,16 @@
 name: CI
-on: [push, pull_request]
-jobs:
 
+on:
+  push:
+    paths-ignore:
+      - "doc/**"
+      - "CHANGELOG.md"
+  pull_request:
+    paths-ignore:
+      - "doc/**"
+      - "CHANGELOG.md"
+
+jobs:
   code-formatting:
     runs-on: ubuntu-18.04
     env:
@@ -261,6 +270,16 @@ jobs:
         ./v build-module vlib/os
         ./v build-module vlib/builtin
         ./v build-module vlib/strconv
+        ./v build-module vlib/time
+#        ./v build-module vlib/term
+        ./v build-module vlib/math
+        ./v build-module vlib/strings
+        ./v build-module vlib/v/token
+        ./v build-module vlib/v/ast
+        ./v build-module vlib/v/parser
+        ./v build-module vlib/v/cgen
+        ./v build-module vlib/v/depgraph
+        ./v build-module vlib/os/cmdline
     - name: x64 machine code generation
       run: |
         exit
@@ -460,15 +479,6 @@ jobs:
 #      run: ./v -silent build-vbinaries
 #    - name: v2 self compilation
 #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
-
-  docs-line-len-check:
-    runs-on: ubuntu-18.04
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: make
-    - name: Check docs line length
-      run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
 
 
   compilable-v-c-and-v-win-c:

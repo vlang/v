@@ -2012,7 +2012,9 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
 	}
 	p.next()
-	assert !p.inside_unsafe
+	if p.inside_unsafe {
+		p.error_with_pos('already inside `unsafe` block', pos)
+	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
 		p.next()
