@@ -506,8 +506,9 @@ fn (mut d Doc) generate() ?Doc {
 		}
 		contents := d.generate_from_ast(file_ast)
 		for name, node in contents {
-			if name in d.contents && (d.contents[name].kind != .@none || node.kind == .@none) {
+			if name in d.contents && (d.contents[name].kind != .none_ || node.kind == .none_) {
 				d.contents[name].children << node.children
+				d.contents[name].children.sort_by_name()
 				continue
 			}
 
