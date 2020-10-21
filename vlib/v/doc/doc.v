@@ -481,7 +481,6 @@ fn (mut d Doc) generate() ?Doc {
 			fname_has_set = true
 		}
 
-		d.checker.check(file_ast)
 		if i == 0 {
 			parent_mod_name = get_parent_mod(base_path) or {
 				''
@@ -502,6 +501,7 @@ fn (mut d Doc) generate() ?Doc {
 			continue
 		}
 		if file_ast.path == d.filename {
+			d.checker.check(file_ast)
 			d.scoped_contents = d.generate_from_ast_with_pos(file_ast, d.pos)
 		}
 		contents := d.generate_from_ast(file_ast)
