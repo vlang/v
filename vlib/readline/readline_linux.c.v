@@ -11,7 +11,6 @@ import os
 
 #include <termios.h>
 #include <sys/ioctl.h>
-
 // Defines actions to execute
 enum Action {
 	eof
@@ -134,7 +133,7 @@ pub fn (mut r Readline) read_line_utf8(prompt string) ?ustring {
 
 // Returns the string from the utf8 ustring
 pub fn (mut r Readline) read_line(prompt string) ?string {
-	s := r.read_line_utf8(prompt)?
+	s := r.read_line_utf8(prompt) ?
 	return s.s
 }
 
@@ -142,7 +141,7 @@ pub fn (mut r Readline) read_line(prompt string) ?string {
 // Returns utf8 based ustring
 pub fn read_line_utf8(prompt string) ?ustring {
 	mut r := Readline{}
-	s := r.read_line_utf8(prompt)?
+	s := r.read_line_utf8(prompt) ?
 	return s
 }
 
@@ -150,7 +149,7 @@ pub fn read_line_utf8(prompt string) ?ustring {
 // Return string from utf8 ustring
 pub fn read_line(prompt string) ?string {
 	mut r := Readline{}
-	s := r.read_line(prompt)?
+	s := r.read_line(prompt) ?
 	return s
 }
 
@@ -181,8 +180,7 @@ fn (r Readline) analyse(c int) Action {
 				Action.insert_character
 			} else {
 				Action.nothing
-			}
-		}
+			} }
 	}
 }
 
@@ -286,7 +284,7 @@ fn get_screen_columns() int {
 	return cols
 }
 
-fn shift_cursor(xpos, yoffset int) {
+fn shift_cursor(xpos int, yoffset int) {
 	if yoffset != 0 {
 		if yoffset > 0 {
 			term.cursor_down(yoffset)
@@ -295,10 +293,10 @@ fn shift_cursor(xpos, yoffset int) {
 		}
 	}
 	// Absolute X position
-	print('\x1b[${xpos+1}G')
+	print('\x1b[${xpos + 1}G')
 }
 
-fn calculate_screen_position(x_in, y_in, screen_columns, char_count int, inp []int) []int {
+fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count int, inp []int) []int {
 	mut out := inp
 	mut x := x_in
 	mut y := y_in
@@ -451,7 +449,10 @@ fn (mut r Readline) switch_overwrite() {
 }
 
 fn (mut r Readline) clear_screen() {
-	term.set_cursor_position(x:1, y:1)
+	term.set_cursor_position({
+		x: 1
+		y: 1
+	})
 	term.erase_clear()
 	r.refresh_line()
 }
@@ -481,7 +482,6 @@ fn (mut r Readline) history_next() {
 
 fn (mut r Readline) suspend() {
 	is_standalone := os.getenv('VCHILD') != 'true'
-
 	r.disable_raw_mode()
 	if !is_standalone {
 		// We have to SIGSTOP the parent v process

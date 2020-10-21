@@ -6,9 +6,9 @@ import vgit
 const (
 	tool_version     = '0.0.5'
 	tool_description = "  Compares V executable size and performance,
-  between 2 commits from V\'s local git history.
-  When only one commit is given, it is compared to master.
-  "
+|  between 2 commits from V\'s local git history.
+|  When only one commit is given, it is compared to master.
+|  ".strip_margin()
 )
 
 struct Context {

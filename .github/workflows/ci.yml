@@ -25,6 +25,8 @@ jobs:
       run: |
         ./v vet vlib/sqlite
         ./v vet vlib/v
+        ./v vet cmd/v
+        ./v vet cmd/tools
     - name: v fmt -verify
       run: |
         ./v fmt -verify vlib/builtin/array.v
