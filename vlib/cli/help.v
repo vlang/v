@@ -165,7 +165,7 @@ fn pretty_description(s string, indent_len int) string {
 	return acc.str()
 }
 
-fn max(a, b int) int {
+fn max(a int, b int) int {
 	res := if a > b { a } else { b }
 	return res
 }

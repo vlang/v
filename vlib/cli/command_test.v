@@ -160,7 +160,7 @@ fn has_command(cmd cli.Command, name string) bool {
 	return false
 }
 
-fn compare_arrays(array0, array1 []string) bool {
+fn compare_arrays(array0 []string, array1 []string) bool {
 	if array0.len != array1.len {
 		return false
 	}

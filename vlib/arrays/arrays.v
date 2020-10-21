@@ -89,7 +89,7 @@ pub fn shuffle<T>(mut a []T, n int) {
 
 // merge two sorted arrays (ascending) and maintain sorted order
 [direct_array_access]
-pub fn merge<T>(a, b []T) []T {
+pub fn merge<T>(a []T, b []T) []T {
 	mut m := []T{len: a.len + b.len}
 	mut ia := 0
 	mut ib := 0

@@ -48,18 +48,15 @@ fn (dtp DTP) read() []byte {
 			break
 		}
 		for i in 0 .. len {
-			data << unsafe { buf[i] }
+			data << unsafe {buf[i]}
 		}
-		unsafe {
-			free(buf)
-		}
+		unsafe {free(buf)}
 	}
 	return data
 }
 
 fn (dtp DTP) close() {
-	dtp.sock.close() or {
-	}
+	dtp.sock.close() or { }
 }
 
 struct FTP {
@@ -116,7 +113,7 @@ pub fn (mut ftp FTP) connect(ip string) bool {
 	return false
 }
 
-pub fn (ftp FTP) login(user, passwd string) bool {
+pub fn (ftp FTP) login(user string, passwd string) bool {
 	ftp.write('USER $user') or {
 		$if debug {
 			println('ERROR sending user')
@@ -145,10 +142,8 @@ pub fn (ftp FTP) login(user, passwd string) bool {
 
 pub fn (ftp FTP) close() {
 	send_quit := 'QUIT\r\n'
-	ftp.sock.send_string(send_quit) or {
-	}
-	ftp.sock.close() or {
-	}
+	ftp.sock.send_string(send_quit) or { }
+	ftp.sock.close() or { }
 }
 
 pub fn (ftp FTP) pwd() string {
@@ -201,8 +196,7 @@ fn new_dtp(msg string) ?DTP {
 }
 
 fn (ftp FTP) pasv() ?DTP {
-	ftp.write('PASV') or {
-	}
+	ftp.write('PASV') or { }
 	code, data := ftp.read()
 	$if debug {
 		println('pass: $data')
@@ -210,7 +204,7 @@ fn (ftp FTP) pasv() ?DTP {
 	if code != passive_mode {
 		return error('pasive mode not allowed')
 	}
-	dtp := new_dtp(data)?
+	dtp := new_dtp(data) ?
 	return dtp
 }
 
@@ -218,8 +212,7 @@ pub fn (ftp FTP) dir() ?[]string {
 	dtp := ftp.pasv() or {
 		return error('cannot establish data connection')
 	}
-	ftp.write('LIST') or {
-	}
+	ftp.write('LIST') or { }
 	code, _ := ftp.read()
 	if code == denied {
 		return error('LIST denied')
@@ -248,8 +241,7 @@ pub fn (ftp FTP) get(file string) ?[]byte {
 	dtp := ftp.pasv() or {
 		return error('Cannot stablish data connection')
 	}
-	ftp.write('RETR $file') or {
-	}
+	ftp.write('RETR $file') or { }
 	code, _ := ftp.read()
 	if code == denied {
 		return error('Permission denied')

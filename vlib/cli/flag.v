@@ -93,7 +93,7 @@ pub fn (flags []Flag) get_string(name string) ?string {
 	return flag.get_string()
 }
 
-pub fn (flags []Flag) get_string_or(name, or_value string) string {
+pub fn (flags []Flag) get_string_or(name string, or_value string) string {
 	value := flags.get_string(name) or {
 		return or_value
 	}

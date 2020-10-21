@@ -39,7 +39,7 @@ fn is_close_tag(tag &Tag) bool {
 	return false
 }
 
-fn (mut dom DocumentObjectModel) where_is(item_name, attribute_name string) int {
+fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name string) int {
 	if !(attribute_name in dom.attributes) {
 		temp_array := []string{}
 		dom.attributes[attribute_name] = temp_array
@@ -101,7 +101,7 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 	}
 }
 
-fn compare_string(a, b string) bool { // for some reason == doesn't work
+fn compare_string(a string, b string) bool { // for some reason == doesn't work
 	if a.len != b.len {
 		return false
 	}
@@ -113,7 +113,7 @@ fn compare_string(a, b string) bool { // for some reason == doesn't work
 	return true
 }
 
-fn (mut dom DocumentObjectModel) construct(tag_list []Tag_ptr) {
+fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.constructed = true
 	mut temp_map := map[string]int{}
 	mut temp_int := C.INT_MIN
@@ -179,7 +179,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []Tag_ptr) {
 	dom.root = tag_list[0]
 }
 
-pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name, value string) []Tag_ptr {
+pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
 	if dom.tag_attributes[name].len > location {
 		return dom.tag_attributes[name][location]
@@ -187,14 +187,14 @@ pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name, value string) 
 	return []&Tag{}
 }
 
-pub fn (dom DocumentObjectModel) get_by_tag(name string) []Tag_ptr {
+pub fn (dom DocumentObjectModel) get_by_tag(name string) []&Tag {
 	if name in dom.tag_type {
 		return dom.tag_type[name]
 	}
 	return []&Tag{}
 }
 
-pub fn (dom DocumentObjectModel) get_by_attribute(name string) []Tag_ptr {
+pub fn (dom DocumentObjectModel) get_by_attribute(name string) []&Tag {
 	if name in dom.all_attributes {
 		return dom.all_attributes[name]
 	}
@@ -205,12 +205,14 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 	return dom.root
 }
 
-pub fn (dom DocumentObjectModel) get_all_tags() []Tag_ptr {
+pub fn (dom DocumentObjectModel) get_all_tags() []&Tag {
 	return dom.all_tags
 }
 
-/*pub fn (dom DocumentObjectModel) get_xpath() XPath {
+/*
+pub fn (dom DocumentObjectModel) get_xpath() XPath {
 	return XPath{
 		dom: dom
 	}
-}*/
+}
+*/

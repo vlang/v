@@ -77,7 +77,7 @@ pub fn approximate(val f64) Fraction {
 }
 
 // approximate_with_eps returns a Fraction
-pub fn approximate_with_eps(val, eps f64) Fraction {
+pub fn approximate_with_eps(val f64, eps f64) Fraction {
 	if val == 0.0 {
 		return zero
 	}

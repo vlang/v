@@ -18,6 +18,7 @@ const (
 		'vlib/builtin/js/jsfns.js.v',
 		'vlib/builtin/js/jsfns_browser.js.v',
 		'vlib/builtin/bare/linuxsys_bare.v', // error: expr(): bad token `asm`, on `asm {}`
+		'vlib/picoev/picoev.v', // the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed
 		'vlib/os/os.v',
 	]
 )
