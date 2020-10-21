@@ -1996,7 +1996,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	match node {
 		ast.CTempVar {
-			//g.write('/*ctmp .orig: $node.orig.str() , .typ: $node.typ, .is_ptr: $node.is_ptr */ ')
+			// g.write('/*ctmp .orig: $node.orig.str() , .typ: $node.typ, .is_ptr: $node.is_ptr */ ')
 			g.write(node.name)
 		}
 		ast.AnonFn {
