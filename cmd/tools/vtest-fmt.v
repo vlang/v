@@ -3,6 +3,7 @@ module main
 import os
 import testing
 
+// os.v - // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
 const (
 	known_failing_exceptions = [
 		'vlib/v/tests/generics_test.v', // struct Repo<T, U> { => struct Repo {
@@ -17,7 +18,7 @@ const (
 		'vlib/builtin/js/jsfns.js.v',
 		'vlib/builtin/js/jsfns_browser.js.v',
 		'vlib/builtin/bare/linuxsys_bare.v', // error: expr(): bad token `asm`, on `asm {}`
-		'vlib/os/os.v', // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
+		'vlib/os/os.v',
 	]
 )
 
@@ -29,6 +30,13 @@ fn main() {
 
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
+	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	recompile_result := os.system('$vexe ' + os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'))
+	if recompile_result != 0 {
+		eprintln('could not recompile cmd/tools/vfmt.v')
+		exit(2)
+	}
 	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker')
 	vfmt_test_session.files << all_v_files
