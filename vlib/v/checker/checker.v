@@ -2560,6 +2560,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		return table.void_type
 	}
 	match mut node {
+		ast.CTempVar {
+			return node.typ
+		}
 		ast.AnonFn {
 			keep_fn := c.cur_fn
 			c.cur_fn = &node.decl

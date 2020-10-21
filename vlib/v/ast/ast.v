@@ -9,8 +9,8 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CallExpr | CastExpr |
-	ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CTempVar | CallExpr |
+	CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
 	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
 	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
@@ -439,9 +439,9 @@ pub struct InfixExpr {
 pub:
 	op          token.Kind
 	pos         token.Position
+pub mut:
 	left        Expr
 	right       Expr
-pub mut:
 	left_type   table.Type
 	right_type  table.Type
 	auto_locked string
@@ -826,8 +826,9 @@ pub mut:
 
 pub struct AssertStmt {
 pub:
-	expr Expr
 	pos  token.Position
+pub mut:
+	expr Expr
 }
 
 // `if [x := opt()] {`
@@ -1025,6 +1026,7 @@ pub fn (expr Expr) position() token.Position {
 pub fn (expr Expr) is_lvalue() bool {
 	match expr {
 		Ident { return true }
+		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
 		SelectorExpr { return expr.expr.is_lvalue() }
 		else {}
@@ -1056,6 +1058,15 @@ pub fn (stmt Stmt) check_c_expr() ? {
 		else {}
 	}
 	return error('unsupported statement (`${typeof(stmt)}`)')
+}
+
+// CTempVar is used in cgen only, to hold nodes for temporary variables
+pub struct CTempVar {
+pub:
+	name   string // the name of the C temporary variable; used by g.expr(x)
+	orig   Expr // the original expression, which produced the C temp variable; used by x.str()
+	typ    table.Type // the type of the original expression
+	is_ptr bool // whether the type is a pointer
 }
 
 pub fn (stmt Stmt) position() token.Position {
