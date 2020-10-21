@@ -377,7 +377,8 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { dd.parent_name + '.' + dd.name } else { dd.name }
+	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { dd.parent_name + '.' +
+			dd.name } else { dd.name }
 	node_id := slug(sym_name)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
@@ -461,8 +462,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			href_name := if (dcs.is_vlib &&
-				doc.head.name == 'builtin' && !cfg.include_readme) ||
+			href_name := if (dcs.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
 				doc.head.name == 'README' {
 				'./index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
@@ -572,8 +572,7 @@ fn (cfg DocConfig) gen_footer_text(idx int) string {
 
 fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
 	// since builtin is generated first, ignore it
-	mut name := if (doc.is_vlib &&
-		doc.head.name == 'builtin' && !cfg.include_readme) ||
+	mut name := if (doc.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
 		doc.head.name == 'README' {
 		'index'
 	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
@@ -604,7 +603,7 @@ fn (cfg DocConfig) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) 
 		}
 		file_name, content := cfg.render_doc(pdoc.d, pdoc.i)
 		output_path := os.join_path(cfg.output_path, file_name)
-		println('Generating ${output_path}')
+		println('Generating $output_path')
 		os.write_file(output_path, content)
 	}
 	wg.done()
@@ -637,14 +636,16 @@ fn (cfg DocConfig) render() map[string]string {
 }
 
 fn (mut cfg DocConfig) render_static() {
-	if cfg.output_type != .html { return }
+	if cfg.output_type != .html {
+		return
+	}
 	cfg.assets = {
-		'doc_css': cfg.get_resource(css_js_assets[0], true),
-		'normalize_css': cfg.get_resource(css_js_assets[1], true),
-		'doc_js': cfg.get_resource(css_js_assets[2], !cfg.serve_http),
-		'light_icon': cfg.get_resource('light.svg', true),
-		'dark_icon': cfg.get_resource('dark.svg', true),
-		'menu_icon': cfg.get_resource('menu.svg', true),
+		'doc_css': cfg.get_resource(css_js_assets[0], true)
+		'normalize_css': cfg.get_resource(css_js_assets[1], true)
+		'doc_js': cfg.get_resource(css_js_assets[2], !cfg.serve_http)
+		'light_icon': cfg.get_resource('light.svg', true)
+		'dark_icon': cfg.get_resource('dark.svg', true)
+		'menu_icon': cfg.get_resource('menu.svg', true)
 		'arrow_icon': cfg.get_resource('arrow.svg', true)
 	}
 }
@@ -674,8 +675,7 @@ fn (cfg DocConfig) emit_generate_err(err string, errcode int) {
 		mod_list := get_modules_list(cfg.input_path, []string{})
 		println('Available modules:\n==================')
 		for mod in mod_list {
-			println(mod.all_after('vlib/').all_after('modules/').replace('/',
-				'.'))
+			println(mod.all_after('vlib/').all_after('modules/').replace('/', '.'))
 		}
 		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
 	}
@@ -732,7 +732,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	is_local_and_single := cfg.is_local && !cfg.is_multi
 	for dirpath in dirs {
 		mut dcs := doc.Doc{}
-		cfg.vprintln('Generating docs for ${dirpath}')
+		cfg.vprintln('Generating docs for $dirpath')
 		if is_local_and_single {
 			dcs = doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
 				cfg.emit_generate_err(err, errcode)
@@ -752,7 +752,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				readme_contents := cfg.get_readme(dirpath)
 				dcs.head.comment = readme_contents
 			}
-			mut new_contents := map[string]doc.DocNode
+			mut new_contents := map[string]doc.DocNode{}
 			if cfg.pub_only {
 				for name, oc in dcs.contents {
 					mut c := oc
@@ -919,7 +919,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	} else {
 		output_path := os.join_path(cfg.output_path, name)
 		if !os.exists(output_path) {
-			println('Generating ${output_path}')
+			println('Generating $output_path')
 			os.write_file(output_path, res)
 		}
 		return name

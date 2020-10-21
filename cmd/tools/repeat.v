@@ -237,7 +237,7 @@ fn (mut context Context) show_diff_summary() {
 		if r.icmd == 0 {
 			first_cmd_percentage = cpercent
 		}
-		println(' $first_marker${(i+1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | $r.atiming')
+		println(' $first_marker${(i + 1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | $r.atiming')
 	}
 	$if debugcontext ? {
 		println('context: $context')
