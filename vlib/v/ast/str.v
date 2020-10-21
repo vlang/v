@@ -192,7 +192,7 @@ pub fn (x Expr) str() string {
 				return '${x.left.str()}.${x.name}($sargs)'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return '${x.name}($sargs)'
+				return util.strip_main_name('${x.name}($sargs)')
 			}
 			return '${x.mod}.${x.name}($sargs)'
 		}
