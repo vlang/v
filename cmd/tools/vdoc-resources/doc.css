@@ -274,6 +274,9 @@ body {
 	word-break: break-all; /* IE11 */
 	word-break: break-word;
 }
+.doc-content > .doc-node.const:nth-child(2) {
+  padding-bottom: 0 !important;
+}
 .doc-content > .doc-node.const:not(:first-child) {
 	padding-top: 4rem;
 }
@@ -417,7 +420,7 @@ pre, code, pre code {
   background-color: #edf2f7;
   background-color: var(--code-background-color);
   border-radius: 0.25rem;
-}	
+}
 pre code {
   direction: ltr;
   text-align: left;
@@ -555,6 +558,9 @@ pre {
 	.doc-nav .content.show,
 	.doc-nav .content.hidden {
 		display: flex;
+	}
+	.doc-content > .doc-node.const:nth-child(2) {
+		padding-bottom: 0 !important;
 	}
 	.doc-content > .doc-node.const:not(:first-child) {
 		padding-top: 0;
