@@ -193,6 +193,7 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 			should_compile = true
 		}
 	}
+	return should_compile
 }
 
 pub fn quote_path_with_spaces(s string) string {
