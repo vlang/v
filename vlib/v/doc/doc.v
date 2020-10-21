@@ -28,26 +28,26 @@ pub enum SymbolKind {
 }
 
 pub struct Doc {
-	prefs          &pref.Preferences = new_vdoc_preferences()
+	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	input_path     string
-	table          &table.Table = &table.Table{}
-	checker        checker.Checker = checker.Checker{
+	input_path      string
+	table           &table.Table = &table.Table{}
+	checker         checker.Checker = checker.Checker{
 	table: 0
 	cur_fn: 0
 	pref: 0
 }
-	fmt            fmt.Fmt
-	filename       string
-	pos            int
-	pub_only       bool = true
-	with_comments  bool = true
-	with_pos       bool
-	with_head      bool = true
-	is_vlib        bool
-	time_generated time.Time
-	head           DocNode
-	contents       map[string]DocNode
+	fmt             fmt.Fmt
+	filename        string
+	pos             int
+	pub_only        bool = true
+	with_comments   bool = true
+	with_pos        bool
+	with_head       bool = true
+	is_vlib         bool
+	time_generated  time.Time
+	head            DocNode
+	contents        map[string]DocNode
 	scoped_contents map[string]DocNode
 }
 
@@ -60,17 +60,17 @@ pub:
 
 pub struct DocNode {
 pub mut:
-	name      string
-	content   string
-	comment   string
-	pos       DocPos = DocPos{-1, -1, 0}
-	file_path string
-	kind      SymbolKind
-	deprecated bool
+	name        string
+	content     string
+	comment     string
+	pos         DocPos = DocPos{-1, -1, 0}
+	file_path   string
+	kind        SymbolKind
+	deprecated  bool
 	parent_name string
-	children  []DocNode
-	attrs     map[string]string
-	from_scope bool
+	children    []DocNode
+	attrs       map[string]string
+	from_scope  bool
 }
 
 pub fn merge_comments(comments []ast.Comment) string {
@@ -159,7 +159,6 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	if stmt is ast.InterfaceDecl {
 		return stmt.pos
 	}
-
 	return stmt.position()
 }
 
@@ -191,7 +190,7 @@ pub fn new(input_path string) Doc {
 		input_path: os.real_path(input_path)
 		table: table.new_table()
 		head: DocNode{}
-		contents: map[string]DocNode
+		contents: map[string]DocNode{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
@@ -286,13 +285,13 @@ fn get_parent_mod(input_dir string) ?string {
 		return input_dir_name
 	}
 	if parent_mod.len > 0 {
-		return '${parent_mod}.${file_ast.mod.name}'
+		return '${parent_mod}.$file_ast.mod.name'
 	}
 	return file_ast.mod.name
 }
 
 pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
-	mut contents := map[string]DocNode
+	mut contents := map[string]DocNode{}
 	orig_mod_name := file_ast.mod.name
 	stmts := file_ast.stmts
 	d.fmt.file = file_ast
@@ -392,7 +391,7 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 			ast.FnDecl {
 				node.deprecated = stmt.is_deprecated
 				node.kind = .function
-				if stmt.receiver.typ !in [0,1] {
+				if stmt.receiver.typ !in [0, 1] {
 					method_parent := d.fmt.table.type_to_str(stmt.receiver.typ).trim_left('&')
 					if method_parent != 'void' && method_parent !in contents {
 						contents[method_parent] = DocNode{
@@ -429,7 +428,7 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 
 pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
-	mut contents := map[string]DocNode
+	mut contents := map[string]DocNode{}
 	for name, val in lscope.objects {
 		if val !is ast.Var {
 			continue
@@ -469,8 +468,9 @@ fn (mut d Doc) generate() ?Doc {
 	if d.with_comments {
 		comments_mode = .toplevel_comments
 	}
-
-	global_scope := &ast.Scope{parent: 0}
+	global_scope := &ast.Scope{
+		parent: 0
+	}
 	mut parent_mod_name := ''
 	mut fname_has_set := false
 	mut orig_mod_name := ''
@@ -480,7 +480,6 @@ fn (mut d Doc) generate() ?Doc {
 			d.filename = file
 			fname_has_set = true
 		}
-
 		if i == 0 {
 			parent_mod_name = get_parent_mod(base_path) or {
 				''
@@ -511,7 +510,6 @@ fn (mut d Doc) generate() ?Doc {
 				d.contents[name].children.sort_by_name()
 				continue
 			}
-
 			d.contents[name] = node
 		}
 	}
@@ -553,6 +551,6 @@ pub fn lookup_module(mod string) ?string {
 }
 
 pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
-	mod_path := lookup_module(module_name)?
+	mod_path := lookup_module(module_name) ?
 	return generate(mod_path, pub_only, with_comments)
 }
