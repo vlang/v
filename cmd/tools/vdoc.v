@@ -376,19 +376,19 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	head_tag := if head { 'h1' } else { 'h2' }
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
-	node_class := if dd.name == 'Constants' { ' const' } else { '' }
+	node_class := if dd.kind == .const_group { ' const' } else { '' }
 	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { dd.parent_name + '.' + dd.name } else { dd.name }
 	node_id := slug(sym_name)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
-	if dd.name !in ['README', 'Constants'] {
+	if dd.name.len > 0 {
 		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
 		dnw.write('</div>')
 	}
-	if !head {
+	if !head && dd.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
 	dnw.writeln('$md_content\n</section>')
@@ -410,7 +410,7 @@ fn (cfg DocConfig) readme_idx() int {
 }
 
 fn write_toc(cn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
-	toc_slug := if cn.content.len == 0 { '' } else { slug(cn.name) }
+	toc_slug := if cn.name.len == 0 { '' } else { slug(cn.name) }
 	toc.write('<li class="open"><a href="#$toc_slug">$cn.name</a>')
 	if cn.name != 'Constants' {
 		toc.writeln('        <ul>')
@@ -427,7 +427,7 @@ fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.B
 	base_dir := os.dir(os.real_path(cfg.input_path))
 	file_path_name := if cfg.is_multi { cn.file_path.replace('$base_dir/', '') } else { os.file_name(cn.file_path) }
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
-	if cn.content.len != 0 {
+	if cn.content.len != 0 || (cn.name == 'Constants') {
 		hw.write(doc_node_html(cn, src_link, false, dcs.table))
 	}
 	for child in cn.children {
@@ -442,6 +442,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
 	dcs := cfg.docs[idx]
+	dcs_contents := dcs.contents.arr()
 	// generate toc first
 	contents.writeln(doc_node_html(dcs.head, '', true, dcs.table))
 	for cn in dcs_contents {
@@ -603,7 +604,7 @@ fn (cfg DocConfig) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) 
 		}
 		file_name, content := cfg.render_doc(pdoc.d, pdoc.i)
 		output_path := os.join_path(cfg.output_path, file_name)
-		println('Generating ${output_path}...')
+		println('Generating ${output_path}')
 		os.write_file(output_path, content)
 	}
 	wg.done()
@@ -667,6 +668,20 @@ fn (cfg DocConfig) get_readme(path string) string {
 	return readme_contents
 }
 
+fn (cfg DocConfig) emit_generate_err(err string, errcode int) {
+	mut err_msg := err
+	if errcode == 1 {
+		mod_list := get_modules_list(cfg.input_path, []string{})
+		println('Available modules:\n==================')
+		for mod in mod_list {
+			println(mod.all_after('vlib/').all_after('modules/').replace('/',
+				'.'))
+		}
+		err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
+	}
+	eprintln(err_msg)
+}
+
 fn (mut cfg DocConfig) generate_docs_from_file() {
 	if cfg.output_path.len == 0 {
 		if cfg.output_type == .unset {
@@ -714,60 +729,41 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 	}
 	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] }
+	is_local_and_single := cfg.is_local && !cfg.is_multi
 	for dirpath in dirs {
-		cfg.vprintln('Generating docs for ${dirpath}...')
-		if cfg.is_local && !cfg.is_multi {
-			dcs := doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
-				mut err_msg := err
-				if errcode == 1 {
-					mod_list := get_modules_list(cfg.input_path, []string{})
-					println('Available modules:\n==================')
-					for mod in mod_list {
-						println(mod.all_after('vlib/').all_after('modules/').replace('/',
-							'.'))
-					}
-					err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
-				}
-				eprintln(err_msg)
+		mut dcs := doc.Doc{}
+		cfg.vprintln('Generating docs for ${dirpath}')
+		if is_local_and_single {
+			dcs = doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
+				cfg.emit_generate_err(err, errcode)
 				exit(1)
 			}
-			if dcs.contents.len == 0 {
-				continue
-			}
-			cfg.docs << dcs
 		} else {
-			mut dcs := doc.generate(dirpath, cfg.pub_only, true) or {
-				mut err_msg := err
-				if errcode == 1 {
-					mod_list := get_modules_list(cfg.input_path, []string{})
-					println('Available modules:\n==================')
-					for mod in mod_list {
-						println(mod.all_after('vlib/').all_after('modules/').replace('/',
-							'.'))
-					}
-					err_msg += ' Use the `-m` flag when generating docs from a directory that has multiple modules.'
-				}
-				eprintln(err_msg)
+			dcs = doc.generate(dirpath, cfg.pub_only, true) or {
+				cfg.emit_generate_err(err, errcode)
 				exit(1)
 			}
-			if dcs.contents.len == 0 {
-				continue
-			}
+		}
+		if dcs.contents.len == 0 {
+			continue
+		}
+		if !is_local_and_single {
 			if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 				readme_contents := cfg.get_readme(dirpath)
 				dcs.head.comment = readme_contents
 			}
+			mut new_contents := map[string]doc.DocNode
 			if cfg.pub_only {
-				for name, c in dcs.contents {
-					c_content := c.content.all_after('pub ')
-					dcs.contents[name].content = c_content
+				for name, oc in dcs.contents {
+					mut c := oc
+					c.content = c.content.all_after('pub ')
 					for i, cc in c.children {
-						dcs.contents[name].children[i].content = cc.content.all_after('pub ')
+						c.children[i].content = cc.content.all_after('pub ')
 					}
+					new_contents[name] = c
 				}
 			}
 			if !cfg.is_multi && cfg.symbol_name.len > 0 {
-				mut new_contents := map[string]doc.DocNode
 				if cfg.symbol_name in dcs.contents {
 					new_contents[cfg.symbol_name] = dcs.contents[cfg.symbol_name]
 					children := dcs.contents[cfg.symbol_name].children
@@ -775,10 +771,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 						new_contents[c.name] = c
 					}
 				}
-				dcs.contents = new_contents
 			}
-			cfg.docs << dcs
+			dcs.contents = new_contents
 		}
+		cfg.docs << dcs
 	}
 	if 'vlib' in cfg.input_path {
 		mut docs := cfg.docs.filter(it.head.name == 'builtin')
@@ -908,7 +904,7 @@ fn get_modules_list(path string, ignore_paths2 []string) []string {
 fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or {
-		panic('could not read $path')
+		panic('vdoc: could not read $path')
 	}
 	if minify {
 		if name.ends_with('.js') {
@@ -923,7 +919,7 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	} else {
 		output_path := os.join_path(cfg.output_path, name)
 		if !os.exists(output_path) {
-			println('Generating ${output_path}...')
+			println('Generating ${output_path}')
 			os.write_file(output_path, res)
 		}
 		return name
