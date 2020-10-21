@@ -126,8 +126,9 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths_with_spaces(args)
-	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
-	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
+	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
+	tool_exe := path_of_executable(tool_basename)
+	tool_source := tool_basename + '.v'
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
@@ -135,6 +136,40 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool tool_args   : $tool_args')
 		println('launch_tool tool_command: $tool_command')
 	}
+	should_compile := should_recompile_tool(vexe, tool_source)
+	if is_verbose {
+		println('launch_tool should_compile: $should_compile')
+	}
+	if should_compile {
+		emodules := external_module_dependencies_for_tool[tool_name]
+		for emodule in emodules {
+			check_module_is_installed(emodule, is_verbose) or {
+				panic(err)
+			}
+		}
+		mut compilation_command := '"$vexe" '
+		compilation_command += '"$tool_source"'
+		if is_verbose {
+			println('Compiling $tool_name with: "$compilation_command"')
+		}
+		tool_compilation := os.exec(compilation_command) or {
+			panic(err)
+		}
+		if tool_compilation.exit_code != 0 {
+			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
+			exit(1)
+		}
+	}
+	if is_verbose {
+		println('launch_tool running tool command: $tool_command ...')
+	}
+	exit(os.system(tool_command))
+}
+
+pub fn should_recompile_tool(vexe string, tool_source string) bool {
+	sfolder := os.base(tool_source)
+	tool_name := os.file_name(tool_source).replace('.v', '')
+	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
 	// TODO Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
@@ -158,37 +193,6 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			should_compile = true
 		}
 	}
-	if is_verbose {
-		println('launch_tool should_compile: $should_compile')
-	}
-	if should_compile {
-		emodules := external_module_dependencies_for_tool[tool_name]
-		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or {
-				panic(err)
-			}
-		}
-		mut compilation_command := '"$vexe" '
-		compilation_command += '"$tool_source"'
-		if is_verbose {
-			println('Compiling $tool_name with: "$compilation_command"')
-		}
-		tool_compilation := os.exec(compilation_command) or {
-			panic(err)
-		}
-		if tool_compilation.exit_code != 0 {
-			mut err := 'Permission denied'
-			if !tool_compilation.output.contains(err) {
-				err = '\n$tool_compilation.output'
-			}
-			eprintln('cannot compile `$tool_source`: $err')
-			exit(1)
-		}
-	}
-	if is_verbose {
-		println('launch_tool running tool command: $tool_command ...')
-	}
-	exit(os.system(tool_command))
 }
 
 pub fn quote_path_with_spaces(s string) string {
