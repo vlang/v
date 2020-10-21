@@ -1975,6 +1975,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					c.error('modifying variables via dereferencing can only be done in `unsafe` blocks',
 						assign_stmt.pos)
 				}
+				if is_decl {
+					c.error('non-name on the left side of `:=`', left.pos)
+				}
 			}
 			else {
 				if is_decl {
