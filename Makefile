@@ -49,9 +49,9 @@ all: latest_vc latest_tcc
 ifdef WIN32
 	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
 ifdef prod
-	$(V) -o v -prod cmd/v
+	$(V) -prod self
 else
-	$(V) -o v cmd/v
+	$(V) self
 endif
 else
 	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) 
@@ -60,9 +60,9 @@ ifdef ANDROID
 endif
 
 ifdef prod
-	$(V) -o v -prod cmd/v
+	$(V) -prod self
 else
-	$(V) -o v cmd/v
+	$(V) self
 endif
 
 ifndef ANDROID
