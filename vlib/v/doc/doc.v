@@ -15,16 +15,16 @@ import v.util
 
 // intentionally in order as a guide when arranging the docnodes
 pub enum SymbolKind {
-	@none
+	none_
 	typedef
-	@interface
+	interface_
 	const_group
 	const_field
-	@struct
-	@enum
+	enum_
+	variable
 	function
 	method
-	variable
+	struct_
 }
 
 pub struct Doc {
@@ -163,7 +163,7 @@ pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
 	return stmt.position()
 }
 
-pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
+pub fn get_type_decl_name(decl ast.TypeDecl) string {
 	match decl {
 		ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return decl.name }
 	}
@@ -172,7 +172,7 @@ pub fn (d Doc) get_type_name(decl ast.TypeDecl) string {
 pub fn (d Doc) get_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
-		ast.TypeDecl { return d.get_type_name(stmt) }
+		ast.TypeDecl { return get_type_decl_name(stmt) }
 		ast.ConstDecl { return '' } // leave it blank
 		else { return '' }
 	}
@@ -377,13 +377,13 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 				}
 			}
 			ast.EnumDecl {
-				node.kind = .@enum
+				node.kind = .enum_
 			}
 			ast.InterfaceDecl {
-				node.kind = .@interface
+				node.kind = .interface_
 			}
 			ast.StructDecl {
-				node.kind = .@struct
+				node.kind = .struct_
 			}
 			ast.TypeDecl {
 				node.kind = .typedef
@@ -391,12 +391,12 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 			ast.FnDecl {
 				node.deprecated = stmt.is_deprecated
 				node.kind = .function
-				if stmt.receiver.typ != 0 {
+				if stmt.receiver.typ !in [0,1] {
 					method_parent := d.fmt.table.type_to_str(stmt.receiver.typ).trim_left('&')
 					if method_parent != 'void' && method_parent !in contents {
 						contents[method_parent] = DocNode{
 							name: method_parent
-							kind: .@none
+							kind: .none_
 						}
 					}
 					node.kind = .method
@@ -494,7 +494,7 @@ fn (mut d Doc) generate() ?Doc {
 				d.head = DocNode{
 					name: module_name
 					content: 'module $module_name'
-					kind: .@none
+					kind: .none_
 				}
 			}
 		} else if file_ast.mod.name != orig_mod_name {
