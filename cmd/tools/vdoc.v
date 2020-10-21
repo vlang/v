@@ -1033,6 +1033,9 @@ fn main() {
 		eprintln('vdoc: No input path found.')
 		exit(1)
 	}
+	if cfg.output_path == 'stdout' && cfg.output_type == .html {
+		cfg.inline_assets = true
+	}
 	$if windows {
 		cfg.input_path = cfg.input_path.replace('/', os.path_separator)
 	} $else {
