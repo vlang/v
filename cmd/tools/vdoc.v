@@ -1048,8 +1048,8 @@ fn main() {
 		cfg.input_path = os.join_path(vexe_path, 'vlib')
 	} else if !is_path {
 		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
-		mod_path := lookup_module(cfg.input_path) or {
-			eprintln(err)
+		mod_path := doc.lookup_module(cfg.input_path) or {
+			eprintln('vdoc: $err')
 			exit(1)
 		}
 		cfg.input_path = mod_path
