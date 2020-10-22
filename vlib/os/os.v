@@ -1141,8 +1141,26 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	}
-	return unsafe { fullpath.vstring() }
+	res := unsafe { fullpath.vstring() }
+	return normalize_drive_letter(res)
 }
+
+fn normalize_drive_letter(path string) string {
+	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`) 
+	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
+	// Capital drive letters do work fine.
+	$if !windows {
+		return path
+	}
+	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == os.path_separator[0] {
+		unsafe {
+			x := &path.str[0]
+			(*x) = *x - 32
+		}
+	}
+	return path
+}
+
 
 // is_abs_path returns `true` if `path` is absolute.
 pub fn is_abs_path(path string) bool {

@@ -8,7 +8,7 @@ $if windows {
 	}
 }
 fn main() {
-	vexe := pref.vexe_path()
+	vexe := os.real_path(pref.vexe_path())
 	$if windows {
 		setup_symlink_windows(vexe)
 	} $else {
@@ -36,10 +36,10 @@ fn setup_symlink(vexe string) {
 		if ret.exit_code == 0 {
 			println('Symlink "$link_path" has been created')
 		} else {
-			println('Failed to create symlink "$link_path". Try again with sudo.')
+			eprintln('Failed to create symlink "$link_path". Try again with sudo.')
 		}
 	} else {
-		println('Failed to create symlink "$link_path". Try again with sudo.')
+		eprintln('Failed to create symlink "$link_path". Try again with sudo.')
 	}
 }
 
@@ -56,22 +56,24 @@ fn setup_symlink_windows(vexe string) {
 		} else {
 			os.rm(vsymlink)
 		}
-		// try to create a native symlink at .\.bin\v.exe
+		// First, try to create a native symlink at .\.bin\v.exe
 		os.symlink(vsymlink, vexe) or {
 			// typically only fails if you're on a network drive (VirtualBox)
 			// do batch file creation instead
-			eprint('NOTE: Could not create a native symlink: $err')
+			eprintln('Could not create a native symlink: $err')
 			eprintln('Creating a batch file instead...')
 			vsymlink = os.join_path(vsymlinkdir, 'v.bat')
 			if os.exists(vsymlink) {
 				os.rm(vsymlink)
 			}
 			os.write_file(vsymlink, '@echo off\n$vexe %*')
+			eprintln('$vsymlink file written.')
 		}
 		if !os.exists(vsymlink) {
 			warn_and_exit('Could not create $vsymlink')
 		}
-		print('Symlink $vsymlink to $vexe created.\n\nChecking system %PATH%...')
+		println('Symlink $vsymlink to $vexe created.')
+		println('Checking system %PATH%...')
 		reg_sys_env_handle := get_reg_sys_env_handle() or {
 			warn_and_exit(err)
 			return
@@ -87,15 +89,19 @@ fn setup_symlink_windows(vexe string) {
 		current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/$os.path_separator'))
 		mut new_paths := [vsymlinkdir]
 		for p in current_sys_paths {
+			if p == '' {
+				continue
+			}
 			if p !in new_paths {
 				new_paths << p
 			}
 		}
 		new_sys_env_path := new_paths.join(';')
 		if new_sys_env_path == sys_env_path {
-			println('configured.')
+			println('System %PATH% was already configured.')
 		} else {
-			print('not configured.\nAdding symlink directory to system %PATH%...')
+			println('System %PATH% was not configured.')
+			println('Adding symlink directory to system %PATH%...')
 			set_reg_value(reg_sys_env_handle, 'Path', new_sys_env_path) or {
 				warn_and_exit(err)
 				C.RegCloseKey(reg_sys_env_handle)
@@ -103,15 +109,16 @@ fn setup_symlink_windows(vexe string) {
 			}
 			println('done.')
 		}
-		print('Letting running process know to update their Environment...')
+		println('Notifying running processes to update their Environment...')
 		send_setting_change_msg('Environment') or {
-			eprintln('\n' + err)
+			eprintln(err)
 			warn_and_exit('You might need to run this again to have the `v` command in your %PATH%')
 			C.RegCloseKey(reg_sys_env_handle)
 			return
 		}
 		C.RegCloseKey(reg_sys_env_handle)
-		println('finished.\n\nNote: restart your shell/IDE to load the new %PATH%.')
+		println('')
+		println('Note: restart your shell/IDE to load the new %PATH%.')
 		println('After restarting your shell/IDE, give `v version` a try in another dir!')
 	}
 }
