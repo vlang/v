@@ -294,14 +294,23 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
-pub fn symlink(origin string, target string) ?bool {
-	flags := if is_dir(origin) { 1 } else { 0 }
-	if C.CreateSymbolicLinkW(origin.to_wide(), target.to_wide(), u32(flags)) != 0 {
-		return true
+pub fn symlink(symlink_path string, target_path string) ?bool {
+	mut flags := 0
+	if is_dir(symlink_path) {
+		flags |= 1
 	}
-	return error(get_error_msg(int(C.GetLastError())))
+	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+	res := C.CreateSymbolicLinkW(symlink_path.to_wide(), target_path.to_wide(), flags)
+	if res == 0 {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	if !exists(symlink_path) {
+		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+	}
+	return true
 }
 
 pub fn (mut f File) close() {
