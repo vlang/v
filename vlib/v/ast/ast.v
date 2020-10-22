@@ -288,6 +288,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
+	free_receiver      bool // true if the receiver expression needs to be freed
 	// autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar
 	// autofree_vars_ids  []int

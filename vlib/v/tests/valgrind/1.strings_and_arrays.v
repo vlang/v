@@ -3,7 +3,7 @@ fn return_array(array_arg []string) []int { // array argument must not be freed
 	return s
 }
 
-fn foo() {
+fn simple() {
 	nums := [1, 2, 3] // local array must be freed
 	println(nums)
 	nums_copy := nums // array assignments call .clone()
@@ -71,6 +71,15 @@ fn str_replace() {
 	println(s)
 	println(r)
 	*/
+}
+
+fn fooo(s string) {
+}
+
+fn str_replace2() {
+	mut s := 'hello world'
+	s = s.replace('hello', 'hi').replace('world', 'planet')
+	println(s)
 }
 
 fn reassign_str() {
@@ -149,7 +158,7 @@ fn tt() {
 
 fn main() {
 	println('start')
-	foo()
+	simple()
 	str_tmp_expr()
 	str_tmp_expr_advanced()
 	str_tmp_expr_advanced_var_decl()
@@ -159,6 +168,7 @@ fn main() {
 	optional_str()
 	optional_return()
 	str_replace()
+	str_replace2()
 	if_cond()
 	addition_with_tmp_expr()
 	println('end')
