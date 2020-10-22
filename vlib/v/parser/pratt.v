@@ -59,8 +59,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.next()
 		}
-		.minus, .amp, .mul, .not, .bit_not, .arrow {
-			// -1, -a, !x, &x, ~x, <-a
+		.minus, .amp, .mul, .not, .bit_not, .arrow, .plus {
+			// -1, -a, !x, &x, ~x, <-a, +a
 			node = p.prefix_expr()
 		}
 		.key_true, .key_false {
@@ -345,7 +345,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
+	mut right := if op in [.minus, .plus]  { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
 	p.is_amp = false
 	if right is ast.CastExpr {
 		right.in_prexpr = true

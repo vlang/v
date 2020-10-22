@@ -228,3 +228,23 @@ fn test_int_to_hex() {
 	assert i64(-1).hex() == 'ffffffffffffffff'
 	assert u64(18446744073709551615).hex() == 'ffffffffffffffff'
 }
+
+fn test_pos_and_neg_sign() {
+	a := +1
+	assert a == 1
+	assert -a == -1
+	assert a.str() == '1'
+	assert -a.str() == '-1'
+
+	b := -1
+	assert b == -1
+	assert -b == 1
+	assert b.str() == '-1'
+	assert -b.str() == '1'
+
+	c := -+a
+	assert c == -1
+	assert c.str() == '-1'
+	assert -c == 1
+	assert -c.str() == '1'
+}
