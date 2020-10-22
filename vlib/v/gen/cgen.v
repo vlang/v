@@ -1370,8 +1370,20 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
 	match e {
-		ast.CastExpr, ast.IndexExpr, ast.PrefixExpr, ast.MatchExpr {
+		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
+		}
+		ast.PrefixExpr {
+			if e.right is ast.CastExpr {
+				// TODO: remove this check;
+				// vlib/builtin/map_test.v (a map of &int, set to &int(0)) fails
+				// without special casing ast.CastExpr here
+				g.write(ctoslit(unknown_value))
+			} else {
+				g.gen_expr_to_string(e, t) or {
+					g.write(ctoslit('[$err]'))
+				}
+			}
 		}
 		ast.Type {
 			sym := g.table.get_type_symbol(t)
