@@ -1275,35 +1275,13 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut a := original_assert_statement
 	g.writeln('// assert')
-	mut tl_name := ''
-	mut tr_name := ''
 	if a.expr is ast.InfixExpr {
 		mut aie := a.expr as ast.InfixExpr
 		if aie.left is ast.CallExpr {
-			tl_styp := g.typ(aie.left_type)
-			tl_name = g.new_tmp_var()
-			g.write('$tl_styp $tl_name = ')
-			g.expr(aie.left)
-			g.writeln(';')
-			aie.left = ast.Expr(ast.CTempVar{
-				name: tl_name
-				typ: aie.left_type
-				is_ptr: aie.left_type.is_ptr()
-				orig: aie.left
-			})
+			aie.left = g.new_ctemp_var_then_gen(aie.left, aie.left_type)
 		}
 		if aie.right is ast.CallExpr {
-			tr_styp := g.typ(aie.right_type)
-			tr_name = g.new_tmp_var()
-			g.write('$tr_styp $tr_name = ')
-			g.expr(aie.right)
-			g.writeln(';')
-			aie.right = ast.Expr(ast.CTempVar{
-				name: tr_name
-				typ: aie.right_type
-				is_ptr: aie.right_type.is_ptr()
-				orig: aie.right
-			})
+			aie.right = g.new_ctemp_var_then_gen(aie.right, aie.right_type)
 		}
 	}
 	g.inside_ternary++
