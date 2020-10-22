@@ -443,7 +443,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
-	g.expr(node.left)
+	if node.free_receiver {
+		// The receiver expression needs to be freed, use the temp var.
+		fn_name := node.name.replace('.', '_')
+		arg_name := '_arg_expr_${fn_name}_0'
+		g.write('/*af receiver arg*/' + arg_name)
+	} else {
+		g.expr(node.left)
+	}
 	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
 		1].has_flag(.variadic)
 	if node.args.len > 0 || is_variadic {
@@ -631,7 +638,15 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
 	g.tmp_count2++
 	mut scope := g.file.scope.innermost(node.pos.pos)
-	for i, arg in node.args {
+	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
+	mut args := [ast.CallArg{
+		typ: node.receiver_type
+		expr: node.left
+		is_tmp_autofree: node.free_receiver
+	}]
+	args << node.args
+	// for i, arg in node.args {
+	for i, arg in args {
 		if !arg.is_tmp_autofree {
 			continue
 		}
@@ -725,7 +740,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					// Use these variables here.
 					fn_name := node.name.replace('.', '_')
 					// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-					name := '_arg_expr_${fn_name}_$i'
+					name := '_arg_expr_${fn_name}_${i + 1}'
 					g.write('/*af arg*/' + name)
 				}
 			} else {
@@ -736,7 +751,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				// TODO copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-				name := '_arg_expr_${fn_name}_$i'
+				name := '_arg_expr_${fn_name}_${i + 1}'
 				g.write('/*af arg2*/' + name)
 			} else {
 				g.expr(arg.expr)
