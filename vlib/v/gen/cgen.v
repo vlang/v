@@ -1047,7 +1047,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// TypeDecl')
 		}
 	}
-	g.stmt_path_pos.pop()
+	g.stmt_path_pos.delete_last()
 }
 
 fn (mut g Gen) write_defer_stmts() {
@@ -2773,8 +2773,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 	g.match_sumtype_exprs << node.cond
 	g.match_sumtype_syms << type_sym
 	defer {
-		g.match_sumtype_exprs.pop()
-		g.match_sumtype_syms.pop()
+		g.match_sumtype_exprs.delete_last()
+		g.match_sumtype_syms.delete_last()
 	}
 	for j, branch in node.branches {
 		mut sumtype_index := 0
@@ -4762,7 +4762,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
-					g.stmt_path_pos.pop()
+					g.stmt_path_pos.delete_last()
 				} else {
 					g.stmt(stmt)
 				}
