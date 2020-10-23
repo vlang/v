@@ -261,6 +261,17 @@ pub fn (mut a array) pop() voidptr {
 	return memdup(last_elem, a.element_size)
 }
 
+// array.delete_last efficiently deletes the last element of the array
+pub fn (mut a array) delete_last() {
+	// copy pasting code for performance
+	$if !no_bounds_checking ? {
+		if a.len == 0 {
+			panic('array.pop: array is empty')
+		}
+	}
+	a.len--
+}
+
 // array.slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
