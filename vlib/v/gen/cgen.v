@@ -725,7 +725,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
-			g.write('$tmp_var = ')
+			g.writeln('$tmp_var = /* if expr set */')
 		}
 		g.stmt(stmt)
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
@@ -3166,8 +3166,9 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
-	needs_tmp_var := node.is_expr && g.pref.experimental &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
+	needs_tmp_var := node.is_expr &&
+		(g.pref.autofree || (g.pref.experimental &&
+		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)))
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
@@ -3175,7 +3176,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		styp := g.typ(node.typ)
 		// g.insert_before_stmt('$styp $tmp;')
 		cur_line = g.go_before_stmt(0)
-		g.writeln('$styp $tmp;')
+		g.writeln('$styp $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
 		g.write('(')
@@ -3270,7 +3271,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	g.writeln('}')
 	if needs_tmp_var {
-		g.writeln('$cur_line $tmp;')
+		// g.writeln('$cur_line $tmp; /*Z*/')
+		g.write('$cur_line $tmp /*Z*/')
 	}
 }
 
