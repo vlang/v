@@ -1047,7 +1047,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// TypeDecl')
 		}
 	}
-	g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
+	g.stmt_path_pos.pop()
 }
 
 fn (mut g Gen) write_defer_stmts() {
@@ -4762,7 +4762,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 					if g.inside_ternary == 0 && !(expr_stmt.expr is ast.IfExpr) {
 						g.writeln(';')
 					}
-					g.stmt_path_pos.delete(g.stmt_path_pos.len - 1)
+					g.stmt_path_pos.pop()
 				} else {
 					g.stmt(stmt)
 				}
