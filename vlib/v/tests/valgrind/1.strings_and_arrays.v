@@ -1,8 +1,3 @@
-fn return_array(array_arg []string) []int { // array argument must not be freed
-	s := [1, 2, 3] // escaping array must not be freed
-	return s
-}
-
 fn simple() {
 	nums := [1, 2, 3] // local array must be freed
 	println(nums)
@@ -11,6 +6,13 @@ fn simple() {
 	name := 'Peter' // string literals mustn't be freed
 	str_inter := 'hello, $name' // concatenated strings must be freed
 	// nums.free() // this should result in a double free and a CI error
+	arr := return_array([])
+	println(arr)
+}
+
+fn return_array(array_arg []string) []int { // array argument must not be freed
+	s := [1, 2, 3] // escaping array must not be freed
+	return s
 }
 
 fn handle_strings(s string, p string) int {
@@ -156,6 +158,19 @@ fn tt() {
 	// time.parse_rfc2822('1234')
 }
 
+fn get_string(s string) string {
+	return s
+}
+
+/*
+fn return_if_expr() string {
+	return if true {
+		get_string('a' + 'b')
+	} else {
+		get_string('c' + 'd')
+	}
+}
+*/
 fn main() {
 	println('start')
 	simple()
@@ -171,6 +186,7 @@ fn main() {
 	str_replace2()
 	if_cond()
 	addition_with_tmp_expr()
+	// return_if_expr()
 	println('end')
 }
 
