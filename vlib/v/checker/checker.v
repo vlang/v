@@ -90,11 +90,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 			ast.Var {
 				if !c.pref.is_repl {
 					if !obj.is_used && obj.name[0] != `_` {
-						if c.pref.is_prod {
-							c.error('unused variable: `$obj.name`', obj.pos)
-						} else {
-							c.warn('unused variable: `$obj.name`', obj.pos)
-						}
+						c.warn('unused variable: `$obj.name`', obj.pos)
 					}
 				}
 				if obj.is_mut && !obj.is_changed && !c.is_builtin_mod && obj.name != 'it' {
@@ -3854,7 +3850,7 @@ pub fn (mut c Checker) add_error_detail(s string) {
 }
 
 pub fn (mut c Checker) warn(s string, pos token.Position) {
-	allow_warnings := !c.pref.is_prod // allow warnings only in dev builds
+	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors)// allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
 }
 
