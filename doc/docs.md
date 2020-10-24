@@ -1800,15 +1800,21 @@ fn (r Repo<T>) find_by_id(id int) ?T {
 }
 
 db := new_db()
-users_repo := new_repo<User>(db)
-posts_repo := new_repo<Post>(db)
-user := users_repo.find_by_id(1)?
-post := posts_repo.find_by_id(1)?
+users_repo := new_repo<User>(db) // returns Repo<User>
+posts_repo := new_repo<Post>(db) // returns Repo<Post>
+user := users_repo.find_by_id(1)? // find_by_id<User>
+post := posts_repo.find_by_id(1)? // find_by_id<Post>
 ```
+At the moment only one type parameter named `T` is supported.
+
+Currently generic function definitions must declare their type parameters, but in
+future V will infer generic type parameters from single-letter type names in
+runtime parameter types. This is why `find_by_id` can omit `<T>`, because the 
+receiver argument `r` uses a generic type `T`.
 
 Another example:
 ```v
-fn compare<T>(a, b T) int {
+fn compare<T>(a T, b T) int {
     if a < b {
         return -1
     }
@@ -1818,17 +1824,20 @@ fn compare<T>(a, b T) int {
     return 0
 }
 
-println(compare<int>(1,0)) // Outputs: 1
-println(compare<int>(1,1)) //          0
-println(compare<int>(1,2)) //         -1
+// compare<int>
+println(compare(1, 0)) // Outputs: 1
+println(compare(1, 1)) //          0
+println(compare(1, 2)) //         -1
 
-println(compare<string>('1','0')) // Outputs: 1
-println(compare<string>('1','1')) //          0
-println(compare<string>('1','2')) //         -1
+// compare<string>
+println(compare('1', '0')) // Outputs: 1
+println(compare('1', '1')) //          0
+println(compare('1', '2')) //         -1
 
-println(compare<float>(1.1, 1.0)) // Outputs: 1
-println(compare<float>(1.1, 1.1)) //          0
-println(compare<float>(1.1, 1.2)) //         -1
+// compare<f64>
+println(compare(1.1, 1.0)) // Outputs: 1
+println(compare(1.1, 1.1)) //          0
+println(compare(1.1, 1.2)) //         -1
 ```
 
 
