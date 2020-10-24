@@ -75,9 +75,9 @@ pub fn (mut b Builder) compile_c() {
 		println('all .v files:')
 		println(files)
 	}
-	mut out_name_c := get_vtmp_filename(b.pref.out_name, '.tmp.c')
+	mut out_name_c := b.get_vtmp_filename(b.pref.out_name, '.tmp.c')
 	if b.pref.is_shared {
-		out_name_c = get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
+		out_name_c = b.get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
 	}
 	b.build_c(files, out_name_c)
 	if b.pref.os == .ios {

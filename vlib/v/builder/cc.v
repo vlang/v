@@ -78,6 +78,9 @@ fn (mut v Builder) find_win_cc() ? {
 
 fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	if res.exit_code == 0 {
+		if v.pref.reuse_tmpc {
+			return
+		}
 		for tmpfile in v.pref.cleanup_files {
 			if os.is_file(tmpfile) {
 				if v.pref.is_verbose {

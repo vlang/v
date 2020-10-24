@@ -117,6 +117,8 @@ pub mut:
 	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
 	skip_running        bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool // like C's "-w"
+	warns_are_errors    bool // -W, like C's "-Werror", treat *every* warning is an error
+	reuse_tmpc          bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
 	error_limit         int
@@ -247,6 +249,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-x64' {
 				res.backend = .x64
+			}
+			'-W' {
+				res.warns_are_errors = true
+			}
+			'-reuse-tmpc' {
+				res.reuse_tmpc = true
 			}
 			'-w' {
 				res.skip_warnings = true

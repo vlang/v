@@ -816,6 +816,10 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 }
 
 pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
+	if p.pref.warns_are_errors {
+		p.error_with_pos(s, pos)
+		return
+	}
 	if p.pref.skip_warnings {
 		return
 	}

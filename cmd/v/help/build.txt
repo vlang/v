@@ -118,6 +118,9 @@ The build flags are shared by the build and run commands:
          C GEN: 103ms
          C tcc: 95ms
 
+   -W
+      Treat all warnings as errors, even in development builds.
+
 For C-specific build flags, use `v help build-c`.
 
 See also:
