@@ -74,7 +74,8 @@ mut:
 	// inside_if_expr        bool
 	ternary_names         map[string]string
 	ternary_level_names   map[string][]string
-	stmt_path_pos         []int
+	stmt_path_pos         []int // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos         bool // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt          bool
 	autofree              bool
 	indent                int
@@ -725,9 +726,12 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	for i, stmt in stmts {
 		if i == stmts.len - 1 && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
+			g.stmt_path_pos << g.out.len
+			g.skip_stmt_pos = true
 			g.writeln('$tmp_var = /* if expr set */')
 		}
 		g.stmt(stmt)
+		g.skip_stmt_pos = false
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(',')
 		}
@@ -761,7 +765,9 @@ fn (mut g Gen) write_v_source_line_info(pos token.Position) {
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
-	g.stmt_path_pos << g.out.len
+	if !g.skip_stmt_pos {
+		g.stmt_path_pos << g.out.len
+	}
 	defer {
 		// If we have temporary string exprs to free after this statement, do it. e.g.:
 		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
@@ -1047,7 +1053,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('// TypeDecl')
 		}
 	}
-	g.stmt_path_pos.delete_last()
+	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
+		g.stmt_path_pos.delete_last()
+	}
 }
 
 fn (mut g Gen) write_defer_stmts() {

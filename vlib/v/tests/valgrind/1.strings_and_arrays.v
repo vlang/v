@@ -159,10 +159,14 @@ fn tt() {
 }
 
 fn get_string(s string) string {
-	return s
+	return s.clone() // TODO handle returning the argument without clone()
 }
 
-/*
+fn if_expr() string {
+	a := if true { get_string('a' + 'b') } else { get_string('c' + 'd') }
+	return a
+}
+
 fn return_if_expr() string {
 	return if true {
 		get_string('a' + 'b')
@@ -170,7 +174,7 @@ fn return_if_expr() string {
 		get_string('c' + 'd')
 	}
 }
-*/
+
 fn main() {
 	println('start')
 	simple()
@@ -186,7 +190,8 @@ fn main() {
 	str_replace2()
 	if_cond()
 	addition_with_tmp_expr()
-	// return_if_expr()
+	if_expr()
+	return_if_expr()
 	println('end')
 }
 
