@@ -25,7 +25,7 @@ fn get_vtmp_folder() string {
 fn get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := get_vtmp_folder()
 	uniq := rand.u64()
-	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '.${uniq}${postfix}'))
+	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '.$uniq$postfix'))
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
