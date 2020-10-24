@@ -38,7 +38,7 @@ mut:
 // push rax => 50
 // push rcx => 51 etc
 enum Register {
-	rax
+	rax = 0
 	rcx
 	rdx
 	rbx
@@ -46,9 +46,6 @@ enum Register {
 	rbp
 	rsi
 	rdi
-	eax
-	edi
-	edx
 	r8
 	r9
 	r10
@@ -59,8 +56,27 @@ enum Register {
 	r15
 }
 
+enum Scale {
+  scale1 = 0
+  scale2
+  scale4
+  scale8
+}
+
+enum Mod {
+  direct = 0
+  disp8
+  disp16
+  disp32
+}
+
 const (
 	fn_arg_registers = [Register.rdi, .rsi, .rdx, .rcx, .r8, .r9]
+)
+
+const (
+  rex = 0x40
+  rex_w = 0x48
 )
 
 /*
@@ -316,34 +332,45 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 	g.println('mov64 $reg, $val')
 }
 
-fn (mut g Gen) mov_reg_to_rbp(var_offset int, reg Register) {
-	// 89 7d fc     mov DWORD PTR [rbp-0x4],edi
-	g.write8(0x89)
-	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rcx { g.write8(0x4d) }
-		else { verror('mov_from_reg $reg') }
-	}
-	g.write8(0xff - var_offset + 1)
-	g.println('mov DWORD PTR[rbp-$var_offset.hex2()],$reg')
+fn modrm(mod byte, reg byte, rm byte) byte {
+  return ((mod & 0x3) << 6) | ((reg & 0x7) << 3) | (rm & 0x7)
 }
 
-fn (mut g Gen) mov_var_to_reg(reg Register, var_offset int) {
-	// 8b 7d f8          mov edi,DWORD PTR [rbp-0x8]
+// use Register for index and special-case rsp?
+fn sib(scale Scale, index Register, base Register) byte {
+  return ((byte(scale) & 0x3) << 6) | ((byte(index) & 0x7) << 3) | (byte(base) & 0x7)
+}
+
+fn disp8(disp i8) byte {
+  if disp >= 0 { return byte(disp) }
+  return byte(0x100 + disp)
+}
+
+struct Indirect {
+  reg Register
+  var_offset int
+}
+
+fn (mut g Gen) address_disp8(ind Indirect, dir Register) {
+  g.write8(modrm(byte(Mod.disp8), dir, ind.reg))
+  if ind.reg == .rsp {
+    g.write8(sib(.scale1, .rsp, .rsp))
+  }
+  g.write8(disp8(i8(ind.var_offset)))
+}
+
+fn (mut g Gen) store_reg_indirect(dst Indirect, src Register) {
+  g.write8(rex_w)
+  g.write8(0x89)
+  g.address_disp8(dst, src)
+	g.println('mov DWORD PTR[$dst.reg-$dst.var_offset.hex2()],$src')
+}
+
+fn (mut g Gen) load_reg_indirect(dst Register, src Indirect) {
+  g.write8(rex_w)
 	g.write8(0x8b)
-	match reg {
-		.eax, .rax { g.write8(0x45) }
-		.edi, .rdi { g.write8(0x7d) }
-		.rsi { g.write8(0x75) }
-		.rdx { g.write8(0x55) }
-		.rcx { g.write8(0x4d) }
-		else { verror('mov_var_to_reg $reg') }
-	}
-	g.write8(0xff - var_offset + 1)
-	g.println('mov $reg,DWORD PTR[rbp-$var_offset.hex2()]')
+  g.address_disp8(src, dst)
+	g.println('mov $dst,DWORD PTR[$dst-$src.var_offset.hex2()]')
 }
 
 fn (mut g Gen) call(addr int) {
@@ -428,7 +455,7 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 fn (mut g Gen) add8_var(reg Register, var_offset int) {
 	g.write8(0x03)
 	match reg {
-		.eax, .rax { g.write8(0x45) }
+		.rax { g.write8(0x45) }
 		else { verror('add8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
@@ -438,7 +465,7 @@ fn (mut g Gen) add8_var(reg Register, var_offset int) {
 fn (mut g Gen) sub8_var(reg Register, var_offset int) {
 	g.write8(0x2b)
 	match reg {
-		.eax, .rax { g.write8(0x45) }
+		.rax { g.write8(0x45) }
 		else { verror('sub8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
@@ -449,7 +476,7 @@ fn (mut g Gen) mul8_var(reg Register, var_offset int) {
 	g.write8(0x0f)
 	g.write8(0xaf)
 	match reg {
-		.eax, .rax { g.write8(0x45) }
+		.rax { g.write8(0x45) }
 		else { verror('mul8_var') }
 	}
 	g.write8(0xff - var_offset + 1)
@@ -497,31 +524,31 @@ pub fn (mut g Gen) gen_print(s string) {
 	//
 	g.strings << s
 	// g.string_addr[s] = str_pos
-	g.mov(.eax, 1)
-	g.mov(.edi, 1)
+	g.mov(.rax, 1)
+	g.mov(.rdi, 1)
 	str_pos := g.buf.len + 2
 	g.str_pos << str_pos
 	g.mov64(.rsi, 0) // segment_start +  0x9f) // str pos // placeholder
-	g.mov(.edx, s.len) // len
+	g.mov(.rdx, s.len) // len
 	g.syscall()
 }
 
 pub fn (mut g Gen) gen_exit() {
 	// Return 0
-	g.mov(.edi, 0) // ret value
-	g.mov(.eax, 60)
+	g.mov(.rdi, 0) // ret value
+	g.mov(.rax, 60)
 	g.syscall()
 }
 
 fn (mut g Gen) mov(reg Register, val int) {
 	match reg {
-		.eax, .rax {
+		.rax {
 			g.write8(0xb8)
 		}
-		.edi, .rdi {
+		.rdi {
 			g.write8(0xbf)
 		}
-		.edx {
+		.rdx {
 			g.write8(0xba)
 		}
 		.rsi {
@@ -540,22 +567,11 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.println('mov $reg, $val')
 }
 
-fn (mut g Gen) mov_reg(a Register, b Register) {
-	match a {
-		.rbp {
-			g.write8(0x48)
-			g.write8(0x89)
-		}
-		else {}
-	}
-}
-
-// generates `mov rbp, rsp`
-fn (mut g Gen) mov_rbp_rsp() {
-	g.write8(0x48)
-	g.write8(0x89)
-	g.write8(0xe5)
-	g.println('mov rbp,rsp')
+fn (mut g Gen) mov_reg(dst Register, src Register) {
+  g.write8(rex_w)
+  g.write8(0x89)
+  g.write8(modrm(byte(Mod.direct), src, dst))
+	g.println('mov $dst, $src')
 }
 
 pub fn (mut g Gen) register_function_address(name string) {
@@ -572,7 +588,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 		verror('fn addr of `$name` = 0')
 	}
 	// Copy values to registers (calling convention)
-	// g.mov(.eax, 0)
+	// g.mov(.rax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
 		match expr {
@@ -587,7 +603,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 					println('i=$i fn name= $name offset=$var_offset')
 					println(int(fn_arg_registers[i]))
 				}
-				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
+				g.load_reg_indirect(fn_arg_registers[i], Indirect{.rbp, var_offset})
 			}
 			else {
 				verror('unhandled call_fn (name=$name) node: ' + typeof(expr))
@@ -726,10 +742,10 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 			ast.InfixExpr {
 				g.infix_expr(right)
 				g.allocate_var(name, 4, 0)
-				// `mov DWORD PTR [rbp-0x8],eax`
+				// `mov DWORD PTR [rbp-0x8],rax`
 				offset := g.get_var_offset(name)
 				println('infix assignment $name offset=$offset.hex2()')
-				g.mov_reg_to_rbp(offset, .eax)
+				g.store_reg_indirect(Indirect{.rbp, offset}, .rax)
 			}
 			ast.StructInit {
 				sym := g.table.get_type_symbol(right.typ)
@@ -756,16 +772,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		verror('only simple expressions are supported right now (not more than 2 operands)')
 	}
 	match node.left {
-		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(it.name)) }
+		ast.Ident { g.load_reg_indirect(.rax, Indirect{.rbp, g.get_var_offset(it.name)}) }
 		else {}
 	}
 	if node.right is ast.Ident {
 		ident := node.right as ast.Ident
 		var_offset := g.get_var_offset(ident.name)
 		match node.op {
-			.plus { g.add8_var(.eax, var_offset) }
-			.mul { g.mul8_var(.eax, var_offset) }
-			.minus { g.sub8_var(.eax, var_offset) }
+			.plus { g.add8_var(.rax, var_offset) }
+			.mul { g.mul8_var(.rax, var_offset) }
+			.minus { g.sub8_var(.rax, var_offset) }
 			else {}
 		}
 	}
@@ -795,7 +811,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 
 fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	infix_expr := node.cond as ast.InfixExpr
-	// g.mov(.eax, 0x77777777)
+	// g.mov(.rax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
 	match infix_expr.left {
@@ -830,7 +846,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.register_function_address(node.name)
 	}
 	g.push(.rbp)
-	g.mov_rbp_rsp()
+  g.mov_reg(.rbp, .rsp)
 	// if !is_main {
 	g.sub8(.rsp, 0x10)
 	// }
@@ -845,7 +861,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`
 		offset += 4
-		g.mov_reg_to_rbp(offset, fn_arg_registers[i])
+		g.store_reg_indirect(Indirect{.rbp, offset}, fn_arg_registers[i])
 	}
 	//
 	g.stmts(node.stmts)

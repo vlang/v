@@ -77,8 +77,8 @@ pub fn (mut g Gen) generate_elf_header() {
 pub fn (mut g Gen) generate_elf_footer() {
 	// Return 0
 	/*
-	g.mov(.edi, 0) // ret value
-	g.mov(.eax, 60)
+	g.mov(.rdi, 0) // ret value
+	g.mov(.rax, 60)
 	g.syscall()
 	*/
 	// Strings table
