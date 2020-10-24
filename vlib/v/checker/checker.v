@@ -3850,7 +3850,7 @@ pub fn (mut c Checker) add_error_detail(s string) {
 }
 
 pub fn (mut c Checker) warn(s string, pos token.Position) {
-	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors)// allow warnings only in dev builds
+	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
 	c.warn_or_error(s, pos, allow_warnings) // allow warnings only in dev builds
 }
 
