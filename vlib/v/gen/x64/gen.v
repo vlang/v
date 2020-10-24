@@ -64,10 +64,10 @@ enum Scale {
 }
 
 enum Mod {
-	direct = 0
+	disp0 = 0
 	disp8
-	disp16
 	disp32
+	direct
 }
 
 const (
@@ -353,8 +353,8 @@ struct Indirect {
 	var_offset int
 }
 
-fn (mut g Gen) address_disp8(ind Indirect, dir Register) {
-	g.write8(modrm(byte(Mod.disp8), dir, ind.reg))
+fn (mut g Gen) address_disp8(dir Register, ind Indirect) {
+	g.write8(modrm(Mod.disp8, dir, ind.reg))
 	if ind.reg == .rsp {
 		g.write8(sib(.scale1, .rsp, .rsp))
 	}
@@ -364,14 +364,14 @@ fn (mut g Gen) address_disp8(ind Indirect, dir Register) {
 fn (mut g Gen) store_reg_indirect(dst Indirect, src Register) {
 	g.write8(rex_w)
 	g.write8(0x89)
-	g.address_disp8(dst, src)
+	g.address_disp8(src, dst)
 	g.println('mov DWORD PTR[$dst.reg-$dst.var_offset.hex2()],$src')
 }
 
 fn (mut g Gen) load_reg_indirect(dst Register, src Indirect) {
 	g.write8(rex_w)
 	g.write8(0x8b)
-	g.address_disp8(src, dst)
+	g.address_disp8(dst, src)
 	g.println('mov $dst,DWORD PTR[$src.reg-$src.var_offset.hex2()]')
 }
 
