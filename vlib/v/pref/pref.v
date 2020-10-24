@@ -126,6 +126,7 @@ pub mut:
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
 	is_apk              bool // build as Android .apk format
+	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
