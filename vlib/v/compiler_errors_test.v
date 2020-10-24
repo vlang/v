@@ -11,6 +11,7 @@ const (
 	skip_files = [
 		'vlib/v/checker/tests/return_missing_comp_if.vv',
 		'vlib/v/checker/tests/return_missing_comp_if_nested.vv',
+		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
 	]
 )
 
@@ -33,36 +34,37 @@ fn test_all() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	classic_dir := 'vlib/v/checker/tests'
-	classic_tests := get_tests_in_dir(classic_dir, false)
-	global_dir := '$classic_dir/globals'
-	global_tests := get_tests_in_dir(global_dir, false)
-	module_dir := '$classic_dir/modules'
-	module_tests := get_tests_in_dir(module_dir, true)
-	run_dir := '$classic_dir/run'
-	run_tests := get_tests_in_dir(run_dir, false)
+	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
+	module_dir := '$checker_dir/modules'
+	global_dir := '$checker_dir/globals'
+	run_dir := '$checker_dir/run'
+	//
+	checker_tests := get_tests_in_dir(checker_dir, false)
 	parser_tests := get_tests_in_dir(parser_dir, false)
-	// -prod so that warns are errors
+	global_tests := get_tests_in_dir(global_dir, false)
+	module_tests := get_tests_in_dir(module_dir, true)
+	run_tests := get_tests_in_dir(run_dir, false)
+	// -prod is used for the parser and checker tests, so that warns are errors
 	mut tasks := []TaskDescription{}
-	tasks << new_tasks(vexe, classic_dir, '-prod', '.out', classic_tests, false)
-	tasks <<
-		new_tasks(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
-	tasks <<
-		new_tasks(vexe, classic_dir, '--enable-globals run', '.run.out', ['globals_error.vv'], false)
-	tasks << new_tasks(vexe, module_dir, '-prod run', '.out', module_tests, true)
-	tasks << new_tasks(vexe, run_dir, 'run', '.run.out', run_tests, false)
-	tasks << new_tasks(vexe, parser_dir, '-prod', '.out', parser_tests, false)
+	tasks.add(vexe, parser_dir, '-prod', '.out', parser_tests, false)
+	tasks.add(vexe, checker_dir, '-prod', '.out', checker_tests, false)
+	tasks.add(vexe, checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'], false)
+	tasks.add(vexe, checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'], false)
+	tasks.add(vexe, checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'], false)
+	tasks.add(vexe, checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'], false)
+	tasks.add(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
+	tasks.add(vexe, module_dir, '-prod run', '.out', module_tests, true)
+	tasks.add(vexe, run_dir, 'run', '.run.out', run_tests, false)
 	tasks.run()
 }
 
-fn new_tasks(vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) []TaskDescription {
+fn (mut tasks []TaskDescription) add(vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
 	paths := vtest.filter_vtest_only(tests, {
 		basepath: dir
 	})
-	mut res := []TaskDescription{}
 	for path in paths {
-		res << TaskDescription{
+		tasks << TaskDescription{
 			vexe: vexe
 			dir: dir
 			voptions: voptions
@@ -71,7 +73,11 @@ fn new_tasks(vexe string, dir string, voptions string, result_extension string, 
 			is_module: is_module
 		}
 	}
-	return res
+}
+
+
+fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sduration time.Duration) string {
+	return bench.step_message_with_label_and_duration(label, msg, sduration)
 }
 
 // process an array of tasks in parallel, using no more than vjobs worker threads
@@ -109,15 +115,13 @@ fn (mut tasks []TaskDescription) run() {
 		bench.step()
 		if task.is_skipped {
 			bench.skip()
-			eprintln(bench.step_message_with_label_and_duration(benchmark.b_skip, task.path,
-				task.took))
+			eprintln(bstep_message(mut bench, benchmark.b_skip, task.path, task.took))
 			continue
 		}
 		if task.is_error {
 			total_errors++
 			bench.fail()
-			eprintln(bench.step_message_with_label_and_duration(benchmark.b_fail, task.path,
-				task.took))
+			eprintln(bstep_message(mut bench, benchmark.b_fail, task.path, task.took))
 			println('============')
 			println('expected:')
 			println(task.expected)
@@ -128,8 +132,7 @@ fn (mut tasks []TaskDescription) run() {
 			diff_content(task.expected, task.found___)
 		} else {
 			bench.ok()
-			eprintln(bench.step_message_with_label_and_duration(benchmark.b_ok, task.path,
-				task.took))
+			eprintln(bstep_message(mut bench, benchmark.b_ok, task.path, task.took))
 		}
 	}
 	bench.stop()
