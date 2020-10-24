@@ -13,7 +13,7 @@ const (
 	simple_cmd = [
 		'fmt', 'up', 'vet',
 		'self', 'tracev', 'symlink', 'bin2v',
-		'test', 'test-fmt', 'test-compiler', 'test-fixed',
+		'test', 'test-fmt', 'test-compiler', 'test-fixed', 'test-vet',
 		'repl',
 		'build-tools', 'build-examples',
 		'build-vbinaries',

@@ -4,6 +4,7 @@
 module util
 
 import os
+import time
 import v.pref
 import v.vmod
 
@@ -389,4 +390,24 @@ pub fn no_cur_mod(typename string, cur_mod string) string {
 		res = map_prefix + res
 	}
 	return res
+}
+
+pub fn prepare_tool_when_needed(source_name string) {
+	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
+	if should_recompile_tool(vexe, stool) {
+		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		recompile_file(vexe, stool)
+	}
+}
+
+pub fn recompile_file(vexe string, file string) {
+	cmd := '$vexe $file'
+	println('recompilation command: $cmd')
+	recompile_result := os.system(cmd)
+	if recompile_result != 0 {
+		eprintln('could not recompile $file')
+		exit(2)
+	}
 }
