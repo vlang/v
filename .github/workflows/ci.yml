@@ -21,51 +21,8 @@ jobs:
       run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
     - name: Build local v
       run: make -j4
-    - name: v vet
-      run: |
-        ./v vet vlib/sqlite
-        ./v vet vlib/v
-        ./v vet cmd/v
-        ./v vet cmd/tools
-    - name: v fmt -verify
-      run: |
-        ./v fmt -verify vlib/builtin/array.v
-        ./v fmt -verify vlib/os/file.v
-        ./v fmt -verify vlib/math/bits/bits.v
-        ./v fmt -verify vlib/time/time.v
-        ./v fmt -verify vlib/term/colors.v
-        ./v fmt -verify vlib/term/term.v
-        ./v fmt -verify vlib/v/ast/
-        ./v fmt -verify vlib/v/builder/
-        ./v fmt -verify vlib/v/cflag/
-        ./v fmt -verify vlib/v/checker/
-        ./v fmt -verify vlib/v/depgraph/
-        ./v fmt -verify vlib/v/doc/
-        ./v fmt -verify vlib/v/errors/
-        ./v fmt -verify vlib/v/eval/
-        ./v fmt -verify vlib/v/fmt/
-        ./v fmt -verify vlib/v/gen/auto_str_methods.v
-        ./v fmt -verify vlib/v/gen/cgen.v
-        ./v fmt -verify vlib/v/gen/cgen_test.v
-        ./v fmt -verify vlib/v/gen/cmain.v
-        ./v fmt -verify vlib/v/gen/comptime.v
-        ./v fmt -verify vlib/v/gen/fn.v
-        ./v fmt -verify vlib/v/gen/json.v
-        ./v fmt -verify vlib/v/gen/live.v
-        ./v fmt -verify vlib/v/gen/profile.v
-        ./v fmt -verify vlib/v/gen/sql.v
-        ./v fmt -verify vlib/v/gen/str.v
-        ./v fmt -verify vlib/v/gen/x64/elf.v
-        ./v fmt -verify vlib/v/gen/x64/elf_obj.v
-        ./v fmt -verify vlib/v/gen/x64/gen.v
-        ./v fmt -verify vlib/v/parser/
-        ./v fmt -verify vlib/v/pref/
-        ./v fmt -verify vlib/v/scanner/
-        ./v fmt -verify vlib/v/table/
-        ./v fmt -verify vlib/v/util/
-        ./v fmt -verify vlib/v/vet/
-        ./v fmt -verify vlib/v/vmod/
-
+    - name: v test-vet
+      run: ./v -silent test-vet
     - name: v test-fmt
       run: ./v -silent test-fmt
 

@@ -1,7 +1,6 @@
 module main
 
 import os
-import time
 import testing
 import v.util
 
@@ -33,7 +32,7 @@ fn main() {
 
 fn v_test_formatting(vargs string) {
 	all_v_files := v_files()
-	prepare_vfmt_when_needed()
+	util.prepare_tool_when_needed('vfmt.v')
 	testing.eheader('Run "v fmt" over all .v files')
 	mut vfmt_test_session := testing.new_test_session('$vargs fmt -worker')
 	vfmt_test_session.files << all_v_files
@@ -56,24 +55,4 @@ fn v_files() []string {
 		files_that_can_be_formatted << tfile
 	}
 	return files_that_can_be_formatted
-}
-
-fn prepare_vfmt_when_needed() {
-	vexe := os.getenv('VEXE')
-	vroot := os.dir(vexe)
-	vfmtv := os.join_path(vroot, 'cmd', 'tools', 'vfmt.v')
-	if util.should_recompile_tool(vexe, vfmtv) {
-		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
-		recompile_file(vexe, vfmtv)
-	}
-}
-
-fn recompile_file(vexe string, file string) {
-	cmd := '$vexe $file'
-	println('recompilation command: $cmd')
-	recompile_result := os.system(cmd)
-	if recompile_result != 0 {
-		eprintln('could not recompile $file')
-		exit(2)
-	}
 }
