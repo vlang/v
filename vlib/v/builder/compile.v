@@ -26,7 +26,7 @@ fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) stri
 	vtmp := get_vtmp_folder()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.${rand.u64()}'
+		uniq = '.$rand.u64()'
 	}
 	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'))
 }
