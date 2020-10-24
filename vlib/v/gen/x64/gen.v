@@ -372,7 +372,7 @@ fn (mut g Gen) load_reg_indirect(dst Register, src Indirect) {
 	g.write8(rex_w)
 	g.write8(0x8b)
 	g.address_disp8(src, dst)
-	g.println('mov $dst,DWORD PTR[$dst-$src.var_offset.hex2()]')
+	g.println('mov $dst,DWORD PTR[$src.reg-$src.var_offset.hex2()]')
 }
 
 fn (mut g Gen) call(addr int) {
