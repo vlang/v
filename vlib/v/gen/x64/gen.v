@@ -422,7 +422,7 @@ pub fn (mut g Gen) pop(reg Register) {
 }
 
 pub fn (mut g Gen) sub32(reg Register, val int) {
-	g.write8(0x48)
+	g.write8(rex_w)
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
@@ -430,7 +430,7 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 }
 
 pub fn (mut g Gen) sub8(reg Register, val int) {
-	g.write8(0x48)
+	g.write8(rex_w)
 	g.write8(0x83)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(val)
@@ -438,7 +438,7 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 }
 
 pub fn (mut g Gen) add(reg Register, val int) {
-	g.write8(0x48)
+	g.write8(rex_w)
 	g.write8(0x81)
 	g.write8(0xe8 + reg) // TODO rax is different?
 	g.write32(val)
@@ -446,7 +446,7 @@ pub fn (mut g Gen) add(reg Register, val int) {
 }
 
 pub fn (mut g Gen) add8(reg Register, val int) {
-	g.write8(0x48)
+	g.write8(rex_w)
 	g.write8(0x83)
 	// g.write8(0xe8 + reg) // TODO rax is different?
 	g.write8(0xc4)
@@ -455,6 +455,7 @@ pub fn (mut g Gen) add8(reg Register, val int) {
 }
 
 fn (mut g Gen) add8_var(reg Register, var_offset int) {
+	g.write8(rex_w)
 	g.write8(0x03)
 	match reg {
 		.rax { g.write8(0x45) }
