@@ -65,6 +65,7 @@ fn main() {
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
+	testing.setup_new_vtmp_folder()
 	util.prepare_tool_when_needed(tool_source)
 	testing.eheader('Run `$tool_cmd` over most .v files')
 	mut test_session := testing.new_test_session('$vargs $tool_args')
