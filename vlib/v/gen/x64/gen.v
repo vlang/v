@@ -57,17 +57,17 @@ enum Register {
 }
 
 enum Scale {
-  scale1 = 0
-  scale2
-  scale4
-  scale8
+	scale1 = 0
+	scale2
+	scale4
+	scale8
 }
 
 enum Mod {
-  direct = 0
-  disp8
-  disp16
-  disp32
+	direct = 0
+	disp8
+	disp16
+	disp32
 }
 
 const (
@@ -75,8 +75,8 @@ const (
 )
 
 const (
-  rex = 0x40
-  rex_w = 0x48
+	rex   = 0x40
+	rex_w = 0x48
 )
 
 /*
@@ -333,43 +333,45 @@ fn (mut g Gen) mov64(reg Register, val i64) {
 }
 
 fn modrm(mod byte, reg byte, rm byte) byte {
-  return ((mod & 0x3) << 6) | ((reg & 0x7) << 3) | (rm & 0x7)
+	return ((mod & 0x3) << 6) | ((reg & 0x7) << 3) | (rm & 0x7)
 }
 
 // use Register for index and special-case rsp?
 fn sib(scale Scale, index Register, base Register) byte {
-  return ((byte(scale) & 0x3) << 6) | ((byte(index) & 0x7) << 3) | (byte(base) & 0x7)
+	return ((byte(scale) & 0x3) << 6) | ((byte(index) & 0x7) << 3) | (byte(base) & 0x7)
 }
 
 fn disp8(disp i8) byte {
-  if disp >= 0 { return byte(disp) }
-  return byte(0x100 + disp)
+	if disp >= 0 {
+		return byte(disp)
+	}
+	return byte(0x100 + disp)
 }
 
 struct Indirect {
-  reg Register
-  var_offset int
+	reg        Register
+	var_offset int
 }
 
 fn (mut g Gen) address_disp8(ind Indirect, dir Register) {
-  g.write8(modrm(byte(Mod.disp8), dir, ind.reg))
-  if ind.reg == .rsp {
-    g.write8(sib(.scale1, .rsp, .rsp))
-  }
-  g.write8(disp8(i8(ind.var_offset)))
+	g.write8(modrm(byte(Mod.disp8), dir, ind.reg))
+	if ind.reg == .rsp {
+		g.write8(sib(.scale1, .rsp, .rsp))
+	}
+	g.write8(disp8(i8(ind.var_offset)))
 }
 
 fn (mut g Gen) store_reg_indirect(dst Indirect, src Register) {
-  g.write8(rex_w)
-  g.write8(0x89)
-  g.address_disp8(dst, src)
+	g.write8(rex_w)
+	g.write8(0x89)
+	g.address_disp8(dst, src)
 	g.println('mov DWORD PTR[$dst.reg-$dst.var_offset.hex2()],$src')
 }
 
 fn (mut g Gen) load_reg_indirect(dst Register, src Indirect) {
-  g.write8(rex_w)
+	g.write8(rex_w)
 	g.write8(0x8b)
-  g.address_disp8(src, dst)
+	g.address_disp8(src, dst)
 	g.println('mov $dst,DWORD PTR[$dst-$src.var_offset.hex2()]')
 }
 
@@ -568,9 +570,9 @@ fn (mut g Gen) mov(reg Register, val int) {
 }
 
 fn (mut g Gen) mov_reg(dst Register, src Register) {
-  g.write8(rex_w)
-  g.write8(0x89)
-  g.write8(modrm(byte(Mod.direct), src, dst))
+	g.write8(rex_w)
+	g.write8(0x89)
+	g.write8(modrm(byte(Mod.direct), src, dst))
 	g.println('mov $dst, $src')
 }
 
@@ -846,7 +848,7 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		g.register_function_address(node.name)
 	}
 	g.push(.rbp)
-  g.mov_reg(.rbp, .rsp)
+	g.mov_reg(.rbp, .rsp)
 	// if !is_main {
 	g.sub8(.rsp, 0x10)
 	// }
