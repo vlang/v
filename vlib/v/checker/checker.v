@@ -3615,7 +3615,9 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					else { return false }
 				}
 			} else {
-				c.error('unknown \$if value', pos)
+				if cond.name !in c.pref.compile_defines_all {
+					c.error('unknown \$if value', pos)
+				}
 			}
 		}
 		else {
