@@ -773,7 +773,7 @@ if x is Abc {
 }
 ```
 
-If you have a struct field which should be checked, there is also a way to name a alias.
+If you have a struct field which should be checked, there is also a way to name an alias.
 ```v
 if x.bar is MyStruct as bar {
     // x.bar cannot be cast automatically
@@ -794,7 +794,7 @@ m := {'one': 1, 'two': 2}
 println('one' in m) // true
 ```
 
-It's also useful for writing more clear and compact boolean expressions:
+It's also useful for writing boolean expressions that are clearer and more compact:
 
 ```v
 if parser.token == .plus || parser.token == .minus ||
@@ -1314,7 +1314,7 @@ fn bar_function(foo Foo) {
 ```
 
 If a function argument is immutable (like `foo` in the examples above)
-V can pass it either value or reference. The compiler will determine this by itself,
+V can pass it either by value or by reference. The compiler will decide,
 and the developer doesn't need to think about it.
 
 You no longer need to remember whether you should pass the struct by value
@@ -1330,7 +1330,7 @@ fn (foo &Foo) bar() {
 ```
 
 `foo` is still immutable and can't be changed. For that,
-`(mut foo Foo)` has to be used.
+`(mut foo Foo)` must be used.
 
 In general, V's references are similar to Go pointers and C++ references.
 For example, a tree structure definition would look like this:
@@ -1442,10 +1442,10 @@ fn print_backtrace()
 ## Modules
 
 Every file in the root of a folder is part of the same module.
-Simple programs don't need to have a module name - it defaults to 'main'.
+Simple programs don't need to specify module name, in which case it defaults to 'main'.
 
 V is a very modular language. Creating reusable modules is encouraged and is
-very simple.
+quite easy to do.
 To create a new module, create a directory with your module's name containing
 .v files with code:
 
@@ -1619,7 +1619,7 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are 2 ways to access the cast variant inside a match branch:
+There are two ways to access the cast variant inside a match branch:
 - the shadowed match variable
 - using `as` to specify a variable name
 
@@ -1883,7 +1883,7 @@ those in Go. You can push objects into a channel on one end and pop objects from
 Channels can be buffered or unbuffered and it is possible to `select` from multiple channels.
 
 #### Syntax and Usage
-Channels have the type `chan objtype`. An optional buffer length can specified as `cap` property
+Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
 in the declaration:
 
 ```v
@@ -1994,7 +1994,7 @@ Usage of these methods and properties in production is not recommended -
 algorithms based on them are often subject to race conditions. Use `select` instead.
 
 Data can be exchanged between a coroutine and the calling thread via a shared variable.
-This variable should be created as reference and passed to the coroutine as `mut`.
+Such variables should be created as references and passed to the coroutine as `mut`.
 The underlying `struct` should also contain a `mutex` to lock concurrent access:
 
 ```v
@@ -2115,11 +2115,11 @@ producing the correct output. V executes all test functions in the file.
 * Test function names must begin with `test_` to mark them for execution.
 * Normal functions can also be defined in test files, and should be called manually. Other
   symbols can also be defined in test files e.g. types.
-* There are 2 kinds of tests: external and internal.
-* The internal tests, have to *declare* their module, just like all other .v
-files from the same module. Internal tests can call even private functions in
+* There are two kinds of tests: external and internal.
+* Internal tests must *declare* their module, just like all other .v
+files from the same module. Internal tests can even call private functions in
 the same module.
-* The external tests, have to *import* the modules which they test. They do not
+* External tests must *import* the modules which they test. They do not
 have access to the private functions/types of the modules. They can test only
 the external/public API that a module provides.
 
