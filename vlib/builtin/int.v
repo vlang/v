@@ -368,6 +368,20 @@ pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
 
+// pub fn (nn byte) hex_full() string { return u64_to_hex(nn, 2) }
+// pub fn (nn i8)  hex_full() string { return u64_to_hex(byte(nn), 2) }
+// pub fn (nn u16) hex_full() string { return u64_to_hex(nn, 4) }
+// pub fn (nn i16) hex_full() string { return u64_to_hex(u16(nn), 4) }
+// pub fn (nn u32) hex_full() string { return u64_to_hex(nn, 8) }
+// pub fn (nn int) hex_full() string { return u64_to_hex(u32(nn), 8) }
+pub fn (nn u64) hex_full() string {
+	return u64_to_hex(nn, 16)
+}
+
+// pub fn (nn i64) hex_full() string { return u64_to_hex(u64(nn), 16) }
+// pub fn (nn any_int) hex_full() string { return u64_to_hex(nn, 16) }
+// pub fn (nn voidptr) hex_full() string { return u64_to_hex(nn, 16) }
+// pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (b byte) str() string {
 	// TODO
 	//return int(b).str_l(7)
