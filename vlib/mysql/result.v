@@ -31,10 +31,10 @@ pub fn (r Result) rows() []Row {
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			if unsafe { rr[i] == 0 } {
+			if unsafe {rr[i] == 0} {
 				row.vals << ''
 			} else {
-				row.vals << mystring(unsafe { byteptr(rr[i]) })
+				row.vals << mystring(unsafe {byteptr(rr[i])})
 			}
 		}
 		rows << row
@@ -63,30 +63,28 @@ pub fn (r Result) fields() []Field {
 	nr_cols := r.n_fields()
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0 .. nr_cols {
-        unsafe {
-    		fields << Field{
-    			name: mystring(orig_fields[i].name)
-    			org_name: mystring(orig_fields[i].org_name)
-    			table: mystring(orig_fields[i].table)
-    			org_table: mystring(orig_fields[i].org_table)
-    			db: mystring(orig_fields[i].db)
-    			catalog: mystring(orig_fields[i].catalog)
-    			def: resolve_nil_str(orig_fields[i].def)
-    			length: orig_fields.length
-    			max_length: orig_fields.max_length
-    			name_length: orig_fields.name_length
-    			org_name_length: orig_fields.org_name_length
-    			table_length: orig_fields.table_length
-    			org_table_length: orig_fields.org_table_length
-    			db_length: orig_fields.db_length
-    			catalog_length: orig_fields.catalog_length
-    			def_length: orig_fields.def_length
-    			flags: orig_fields.flags
-    			decimals: orig_fields.decimals
-    			charsetnr: orig_fields.charsetnr
-    			type_: FieldType(orig_fields.@type)
-    		}
-        }
+		unsafe {fields << Field{
+			name: mystring(orig_fields[i].name)
+			org_name: mystring(orig_fields[i].org_name)
+			table: mystring(orig_fields[i].table)
+			org_table: mystring(orig_fields[i].org_table)
+			db: mystring(orig_fields[i].db)
+			catalog: mystring(orig_fields[i].catalog)
+			def: resolve_nil_str(orig_fields[i].def)
+			length: orig_fields.length
+			max_length: orig_fields.max_length
+			name_length: orig_fields.name_length
+			org_name_length: orig_fields.org_name_length
+			table_length: orig_fields.table_length
+			org_table_length: orig_fields.org_table_length
+			db_length: orig_fields.db_length
+			catalog_length: orig_fields.catalog_length
+			def_length: orig_fields.def_length
+			flags: orig_fields.flags
+			decimals: orig_fields.decimals
+			charsetnr: orig_fields.charsetnr
+			type_: FieldType(orig_fields.@type)
+		}}
 	}
 	return fields
 }
