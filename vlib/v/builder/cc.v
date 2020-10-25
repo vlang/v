@@ -118,6 +118,21 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	verror(c_error_info)
 }
 
+fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	res := v.pref.cache_manager.exists('.o', imp_path) or {
+		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		boptions := v.pref.build_options.join(' ')
+		rebuild_cmd := '$vexe $boptions build-module $imp_path'
+		// eprintln('>> rebuild_cmd: $rebuild_cmd')
+		os.system(rebuild_cmd)
+		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
+			panic('could not rebuild cache module for $imp_path, error: $err')
+		}
+		return rebuilded_o
+	}
+	return res
+}
+
 fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -260,14 +275,9 @@ fn (mut v Builder) cc() {
 		linker_flags << '-nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
-		// Create the modules & out directory if it's not there.
-		out_dir := os.join_path(pref.default_module_path, 'cache', v.pref.path)
-		pdir := out_dir.all_before_last(os.path_separator)
-		if !os.is_dir(pdir) {
-			os.mkdir_all(pdir)
-		}
-		v.pref.out_name = '${out_dir}.o' // v.out_name
-		println('Building ${v.pref.out_name}...')
+		v.pref.out_name = v.pref.cache_manager.postfix_with_key2cpath('.o', v.pref.path) // v.out_name
+		println('Building $v.pref.path to $v.pref.out_name ...')
+		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n')
 		// println('v.table.imports:')
 		// println(v.table.imports)
 	}
@@ -349,10 +359,7 @@ fn (mut v Builder) cc() {
 		args << '-c'
 	} else if v.pref.use_cache {
 		mut built_modules := []string{}
-		builtin_obj_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
-		if !os.exists(builtin_obj_path) {
-			os.system('$vexe build-module vlib/builtin')
-		}
+		builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 		libs += ' ' + builtin_obj_path
 		for ast_file in v.parsed_files {
 			for imp_stmt in ast_file.imports {
@@ -382,14 +389,8 @@ fn (mut v Builder) cc() {
 				// continue
 				// }
 				imp_path := os.join_path('vlib', mod_path)
-				cache_path := os.join_path(pref.default_module_path, 'cache')
-				obj_path := os.join_path(cache_path, '${imp_path}.o')
-				if os.exists(obj_path) {
-					libs += ' ' + obj_path
-				} else {
-					println('$obj_path not found... building module $imp')
-					os.system('$vexe build-module $imp_path')
-				}
+				obj_path := v.rebuild_cached_module(vexe, imp_path)
+				libs += ' ' + obj_path
 				if obj_path.ends_with('vlib/ui.o') {
 					args << '-framework Cocoa -framework Carbon'
 				}
@@ -777,21 +778,19 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	if v.pref.os == .windows {
 		// Cross compiling for Windows
 		$if !windows {
-			if os.exists(obj_path) {
-				os.rm(obj_path)
-			}
 			v.pref.ccompiler = mingw_cc
 		}
 	}
-	if os.exists(obj_path) {
+	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
+	if os.exists(opath) {
 		return
 	}
-	println('$obj_path not found, building it...')
+	println('$obj_path not found, building it in $opath ...')
 	cfile := '${path[..path.len - 2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$opath" "$cfile" $atarget'
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
@@ -802,6 +801,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		verror(res.output)
 		return
 	}
+	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n')
 	println(res.output)
 }
 

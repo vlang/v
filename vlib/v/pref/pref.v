@@ -129,6 +129,8 @@ pub mut:
 	is_ios_simulator    bool
 	is_apk              bool // build as Android .apk format
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
+	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
+	cache_manager       CacheManager
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {
@@ -142,6 +144,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		match arg {
 			'-apk' {
 				res.is_apk = true
+				res.build_options << arg
 			}
 			'-show-timings' {
 				res.show_timings = true
@@ -167,10 +170,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-g' {
 				res.is_debug = true
 				res.is_vlines = true
+				res.build_options << arg
 			}
 			'-cg' {
 				res.is_debug = true
 				res.is_vlines = false
+				res.build_options << arg
 			}
 			'-repl' {
 				res.is_repl = true
@@ -190,19 +195,23 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-autofree' {
 				res.autofree = true
+				res.build_options << arg
 			}
 			'-compress' {
 				res.compress = true
 			}
 			'-freestanding' {
 				res.is_bare = true
+				res.build_options << arg
 			}
 			'-no-preludes' {
 				res.no_preludes = true
+				res.build_options << arg
 			}
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(current_args, '-profile', '-')
 				res.is_prof = true
+				res.build_options << '$arg $res.profile_file'
 				i++
 			}
 			'-profile-no-inline' {
@@ -210,6 +219,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-prod' {
 				res.is_prod = true
+				res.build_options << arg
 			}
 			'-simulator' {
 				res.is_ios_simulator = true
@@ -240,6 +250,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-prealloc' {
 				res.prealloc = true
+				res.build_options << arg
 			}
 			'-keepc' {
 				eprintln('-keepc is deprecated. V always keeps the generated .tmp.c files now.')
@@ -249,6 +260,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-x64' {
 				res.backend = .x64
+				res.build_options << arg
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -277,6 +289,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					exit(1)
 				}
 				res.os = target_os_kind
+				res.build_options << '$arg $target_os'
 			}
 			'-printfn' {
 				res.printfn_list << cmdline.option(current_args, '-printfn', '')
@@ -284,6 +297,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
+				res.build_options << '$arg "$res.cflags.trim_space()"'
 				i++
 			}
 			'-define', '-d' {
@@ -295,6 +309,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
+				res.build_options << '$arg "$res.ccompiler"'
 				i++
 			}
 			'-o' {
@@ -302,7 +317,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			'-b' {
-				b := backend_from_string(cmdline.option(current_args, '-b', 'c')) or {
+				sbackend := cmdline.option(current_args, '-b', 'c')
+				res.build_options << '$arg $sbackend'
+				b := backend_from_string(sbackend) or {
 					continue
 				}
 				res.backend = b
@@ -310,11 +327,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
+				res.build_options << '$arg "$path"'
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-custom-prelude' {
 				path := cmdline.option(current_args, '-custom-prelude', '')
+				res.build_options << '$arg $path'
 				prelude := os.read_file(path) or {
 					eprintln('cannot open custom prelude file: $err')
 					exit(1)
@@ -390,6 +409,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		res.build_mode = .build_module
 		res.path = args[command_pos + 1]
 	}
+	// keep only the unique res.build_options:
+	mut m := map[string]string{}
+	for x in res.build_options {
+		m[x] = ''
+	}
+	res.build_options = m.keys()
+	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
 	return res, command
 }
