@@ -2479,7 +2479,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.pos)
 		}
 	} else if node.kind == 'pkgconfig' {
-		args := node.main.split(' ')
+		args := if node.main.contains('--') {
+			node.main.split(' ')
+		} else {
+			'--cflags --libs ${node.main}'.split(' ')
+		}
 		mut m := pkgconfig.main(args) or {
 			c.error(err, node.pos)
 			return
