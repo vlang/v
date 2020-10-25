@@ -785,6 +785,14 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	if os.exists(opath) {
 		return
 	}
+	if os.exists(obj_path) {
+		// Some .o files are distributed with no source
+		// for example thirdparty\tcc\lib\openlibm.o
+		// the best we can do for them is just copy them,
+		// and hope that they work with any compiler...
+		os.cp(obj_path, opath)
+		return
+	}
 	println('$obj_path not found, building it in $opath ...')
 	cfile := '${path[..path.len - 2]}.c'
 	btarget := moduleflags.c_options_before_target()
