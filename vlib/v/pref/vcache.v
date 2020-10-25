@@ -1,7 +1,7 @@
 module pref
 
 import os
-import crypto.md5
+import hash
 
 // Using a 2 level cache, ensures a more even distribution of cache entries,
 // so there will not be cramped folders that contain many thousands of them.
@@ -47,10 +47,12 @@ pub fn (mut cm CacheManager) key2cpath(key string) string {
 	mut cpath := cm.k2cpath[key]
 	if cpath == '' {
 		hk := cm.vopts + key
-		hash := md5.sum(hk.bytes()).hex()
-		prefix := hash[0..2]
+		a := hash.sum64_string(hk, 5).hex_full()
+		b := hash.sum64_string(hk, 7).hex_full()
+		khash := a + b
+		prefix := khash[0..2]
 		cprefix_folder := os.join_path(cm.basepath, prefix)
-		cpath = os.join_path(cprefix_folder, hash)
+		cpath = os.join_path(cprefix_folder, khash)
 		if !os.is_dir(cprefix_folder) {
 			os.mkdir_all(cprefix_folder)
 			os.chmod(cprefix_folder, 0o777)
