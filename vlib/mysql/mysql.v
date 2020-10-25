@@ -102,7 +102,7 @@ pub fn (conn Connection) tables(wildcard string) ?[]string {
 
 // escape_string creates a legal SQL string for use in an SQL statement.
 pub fn (conn Connection) escape_string(s string) string {
-	len := C.strlen(s.str)
+	len := unsafe { C.strlen(s.str) }
 	to := malloc(2 * len + 1)
 	quote := byte(39) // single quote
 	C.mysql_real_escape_string_quote(conn.conn, to, s.str, len, quote)

@@ -31,10 +31,10 @@ pub fn (r Result) rows() []Row {
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			if rr[i] == 0 {
+			if unsafe { rr[i] == 0 } {
 				row.vals << ''
 			} else {
-				row.vals << mystring(byteptr(rr[i]))
+				row.vals << mystring(unsafe { byteptr(rr[i]) })
 			}
 		}
 		rows << row
@@ -64,13 +64,13 @@ pub fn (r Result) fields() []Field {
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0 .. nr_cols {
 		fields << Field{
-			name: mystring(orig_fields[i].name)
-			org_name: mystring(orig_fields[i].org_name)
-			table: mystring(orig_fields[i].table)
-			org_table: mystring(orig_fields[i].org_table)
-			db: mystring(orig_fields[i].db)
-			catalog: mystring(orig_fields[i].catalog)
-			def: resolve_nil_str(orig_fields[i].def)
+			name: mystring(unsafe { orig_fields[i].name })
+			org_name: mystring(unsafe { orig_fields[i].org_name })
+			table: mystring(unsafe { orig_fields[i].table })
+			org_table: mystring(unsafe { orig_fields[i].org_table })
+			db: mystring(unsafe { orig_fields[i].db })
+			catalog: mystring(unsafe { orig_fields[i].catalog })
+			def: resolve_nil_str(unsafe { orig_fields[i].def })
 			length: orig_fields.length
 			max_length: orig_fields.max_length
 			name_length: orig_fields.name_length
