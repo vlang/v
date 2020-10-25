@@ -71,6 +71,17 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+	// Prepare the cache manager. All options that can affect the generated cached .c files
+	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
+	p.cache_manager = new_cache_manager([
+		'$p.backend | $p.os | $p.ccompiler',
+		p.cflags.trim_space(),
+		p.third_party_option.trim_space(),
+		'$p.compile_defines_all',
+		'$p.compile_defines',
+		'$p.lookup_path',
+	])
+	// eprintln('prefs.cache_manager: $p')
 }
 
 fn default_c_compiler() string {
