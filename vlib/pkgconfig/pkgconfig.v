@@ -5,8 +5,12 @@ import os
 
 const (
 	default_paths = [
-		'/usr/local/lib/pkgconfig/',
-		'/usr/lib/pkgconfig/',
+		'/usr/local/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/local/lib/pkgconfig',
+		'/usr/local/share/pkgconfig',
+		'/usr/lib/x86_64-linux-gnu/pkgconfig',
+		'/usr/lib/pkgconfig',
+		'/usr/share/pkgconfig',        
 	]
 	version       = '0.2.0'
 )
