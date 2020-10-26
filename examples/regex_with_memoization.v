@@ -1,13 +1,13 @@
 import os
 
-fn regex_match(src, pat string) bool {
+fn regex_match(src string, pat string) bool {
 	src_size := src.len + 1
 	pat_size := pat.len + 1
 	mut memo := [][]int{len: src_size, init: []int{len: pat_size, init: -1}}
 	return regex_match_core(src, pat, 0, 0, mut memo)
 }
 
-fn regex_match_core(src, pat string, src_pos, pat_pos int, mut memo [][]int) bool {
+fn regex_match_core(src string, pat string, src_pos int, pat_pos int, mut memo [][]int) bool {
 	if memo[src_pos][pat_pos] != -1 {
 		return memo[src_pos][pat_pos] == 1
 	}
@@ -121,6 +121,6 @@ fn main() {
 		if pat == 'exit' {
 			break
 		}
-		println('[$cnt] whether `$src` matches `$pat`: ${regex_match(src,pat)}')
+		println('[$cnt] whether `$src` matches `$pat`: ${regex_match(src, pat)}')
 	}
 }

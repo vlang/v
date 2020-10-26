@@ -10,7 +10,7 @@ mut:
 	gg      &gg.Context // used for drawing
 }
 
-fn my_audio_stream_callback(buffer &f32, num_frames, num_channels int, mut acontext AppState) {
+fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int, mut acontext AppState) {
 	mut soundbuffer := buffer
 	for frame := 0; frame < num_frames; frame++ {
 		t := int(f32(acontext.frame_0 + frame) * 0.245)
@@ -68,7 +68,7 @@ fn (mut state AppState) bsample(idx int) byte {
 fn (mut state AppState) draw() {
 	// first, reset and setup ortho projection
 	for x in 0 .. 1024 {
-		mut y := 100 * (state.frames[2*x] + state.frames[2*x+1])
+		mut y := 100 * (state.frames[2 * x] + state.frames[2 * x + 1])
 		state.gg.draw_line(x, 200, x, 200 + y, gx.rgba(state.bsample(x), state.bsample(x + 300),
 			state.bsample(x + 700), 255))
 	}
