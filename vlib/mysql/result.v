@@ -31,10 +31,10 @@ pub fn (r Result) rows() []Row {
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
 		for i in 0 .. nr_cols {
-			if rr[i] == 0 {
+			if unsafe {rr[i] == 0} {
 				row.vals << ''
 			} else {
-				row.vals << mystring(byteptr(rr[i]))
+				row.vals << mystring(unsafe {byteptr(rr[i])})
 			}
 		}
 		rows << row
@@ -63,7 +63,7 @@ pub fn (r Result) fields() []Field {
 	nr_cols := r.n_fields()
 	orig_fields := C.mysql_fetch_fields(r.result)
 	for i in 0 .. nr_cols {
-		fields << Field{
+		unsafe {fields << Field{
 			name: mystring(orig_fields[i].name)
 			org_name: mystring(orig_fields[i].org_name)
 			table: mystring(orig_fields[i].table)
@@ -84,7 +84,7 @@ pub fn (r Result) fields() []Field {
 			decimals: orig_fields.decimals
 			charsetnr: orig_fields.charsetnr
 			type_: FieldType(orig_fields.@type)
-		}
+		}}
 	}
 	return fields
 }
