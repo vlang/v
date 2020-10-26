@@ -202,7 +202,7 @@ enum Direction {
 
 // Utility functions
 [inline]
-fn min(a, b int) int {
+fn min(a int, b int) int {
 	if a < b {
 		return a
 	} else {
@@ -211,7 +211,7 @@ fn min(a, b int) int {
 }
 
 [inline]
-fn max(a, b int) int {
+fn max(a int, b int) int {
 	if a > b {
 		return a
 	} else {
@@ -229,7 +229,7 @@ fn abs(a int) int {
 }
 
 [inline]
-fn avg(a, b int) int {
+fn avg(a int, b int) int {
 	return (a + b) / 2
 }
 
@@ -676,7 +676,7 @@ fn (app &App) draw_tiles() {
 				}
 				match app.tile_format {
 					.normal {
-						app.gg.draw_text(xpos, ypos, '${1<<tidx}', fmt)
+						app.gg.draw_text(xpos, ypos, '${1 << tidx}', fmt)
 					}
 					.log {
 						app.gg.draw_text(xpos, ypos, '$tidx', fmt)
@@ -693,7 +693,7 @@ fn (app &App) draw_tiles() {
 					}
 					.shifts {
 						fs2 := int(f32(fmt.size) * 0.6)
-						app.gg.draw_text(xpos, ypos, '2<<${tidx-1}', {
+						app.gg.draw_text(xpos, ypos, '2<<${tidx - 1}', {
 							fmt |
 							size: fs2
 						})

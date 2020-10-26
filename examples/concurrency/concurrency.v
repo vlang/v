@@ -2,10 +2,10 @@ import sync
 import time
 
 // Simulate expensive computing using sleep function
-fn expensive_computing(id, duration int, mut wg sync.WaitGroup) {
-	println('Executing expensive computing task (${id})...')
+fn expensive_computing(id int, duration int, mut wg sync.WaitGroup) {
+	println('Executing expensive computing task ($id)...')
 	time.sleep_ms(duration)
-	println('Finish task ${id} on ${duration} ms')
+	println('Finish task $id on $duration ms')
 	wg.done()
 }
 
