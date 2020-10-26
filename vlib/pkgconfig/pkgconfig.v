@@ -10,7 +10,7 @@ const (
 		'/usr/local/share/pkgconfig',
 		'/usr/lib/x86_64-linux-gnu/pkgconfig',
 		'/usr/lib/pkgconfig',
-		'/usr/share/pkgconfig',        
+		'/usr/share/pkgconfig',
 	]
 	version       = '0.2.0'
 )
