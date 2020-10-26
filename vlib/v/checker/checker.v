@@ -8,6 +8,7 @@ import v.token
 import v.pref
 import v.util
 import v.errors
+import pkgconfig
 
 const (
 	max_nr_errors                 = 300
@@ -2477,6 +2478,20 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			c.error('including C files should use either `"header_file.h"` or `<header_file.h>` quoting',
 				node.pos)
 		}
+	} else if node.kind == 'pkgconfig' {
+		args := if node.main.contains('--') { node.main.split(' ') } else { '--cflags --libs $node.main'.split(' ') }
+		mut m := pkgconfig.main(args) or {
+			c.error(err, node.pos)
+			return
+		}
+		cflags := m.run() or {
+			c.error(err, node.pos)
+			return
+		}
+		c.table.parse_cflag(cflags, c.mod, c.pref.compile_defines_all) or {
+			c.error(err, node.pos)
+			return
+		}
 	} else if node.kind == 'flag' {
 		// #flag linux -lm
 		mut flag := node.main
@@ -2498,7 +2513,8 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 	} else {
 		if node.kind != 'define' {
-			c.warn('expected `#include`, `#flag` or `#define` not $node.val', node.pos)
+			c.warn('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
+				node.pos)
 		}
 	}
 }
