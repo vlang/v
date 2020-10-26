@@ -5,7 +5,7 @@ fn simple<T>(p T) T {
 	return p
 }
 
-fn plus<T>(xxx, b T) T {
+fn plus<T>(xxx T, b T) T {
 	// x := a
 	// y := b
 	// ww := ww

@@ -1,3 +1,4 @@
+
 // Channel Benchmark
 //
 // `nobj` integers are sent thru a channel with queue length`buflen`
@@ -5,12 +6,11 @@
 //
 // The receive threads add all received numbers and send them to the
 // main thread where the total sum is compare to the expected value.
-
 const (
-	nsend = 2
-	nrec = 2
-	buflen = 100
-	nobj = 10000
+	nsend           = 2
+	nrec            = 2
+	buflen          = 100
+	nobj            = 10000
 	objs_per_thread = 5000
 )
 
@@ -18,16 +18,18 @@ fn do_rec(ch chan int, resch chan i64, n int) {
 	mut sum := i64(0)
 	for _ in 0 .. n {
 		mut r := 0
-		for ch.try_pop(r) != .success {}
+		for ch.try_pop(r) != .success {
+		}
 		sum += r
 	}
 	println(sum)
 	resch <- sum
 }
 
-fn do_send(ch chan int, start, end int) {
+fn do_send(ch chan int, start int, end int) {
 	for i in start .. end {
-		for ch.try_push(i) != .success {}
+		for ch.try_push(i) != .success {
+		}
 	}
 }
 
@@ -46,8 +48,10 @@ fn test_channel_polling() {
 	mut sum := i64(0)
 	for _ in 0 .. nrec {
 		sum += <-resch
+		println('> running sum: $sum')
 	}
 	// use sum formula by Gauß to calculate the expected result
-	expected_sum := i64(nobj)*(nobj-1)/2
+	expected_sum := i64(nobj) * (nobj - 1) / 2
+	println('expected sum: $expected_sum | sum: $sum')
 	assert sum == expected_sum
 }

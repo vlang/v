@@ -1,6 +1,5 @@
 // import v.table
 import v.doc
-import v.parser
 
 // fn test_generate_with_pos() {}
 // fn test_generate() {}

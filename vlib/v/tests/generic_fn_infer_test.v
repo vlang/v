@@ -20,7 +20,7 @@ fn test_explicit_calls_should_also_work() {
 }
 
 //
-fn choose4<T>(a, b, c, d T) T {
+fn choose4<T>(a T, b T, c T, d T) T {
 	// NB: a similar construct is used in prime31's via engine
 	return a
 }

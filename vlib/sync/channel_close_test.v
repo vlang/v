@@ -1,9 +1,8 @@
 import sync
-import time
 
 fn do_rec(mut ch sync.Channel, mut resch sync.Channel) {
 	mut sum := i64(0)
-	for  {
+	for {
 		mut a := 0
 		if !ch.pop(&a) {
 			break
