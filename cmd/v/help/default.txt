@@ -6,7 +6,7 @@ Usage:
 Examples:
    v hello.v                 Compile the file `hello.v` and output it as `hello` or `hello.exe`.
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
-   v -cg run hello.v  Same as above, but make debugging easier (in case your program crashes).
+   v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
 
 V supports the following commands:
