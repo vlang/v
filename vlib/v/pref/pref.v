@@ -5,6 +5,7 @@ module pref
 
 import os.cmdline
 import os
+import v.vcache
 
 pub enum BuildMode {
 	// `v program.v'
@@ -130,7 +131,7 @@ pub mut:
 	is_apk              bool // build as Android .apk format
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
-	cache_manager       CacheManager
+	cache_manager       vcache.CacheManager
 }
 
 pub fn parse_args(args []string) (&Preferences, string) {

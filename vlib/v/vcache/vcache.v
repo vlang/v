@@ -1,4 +1,4 @@
-module pref
+module vcache
 
 import os
 import hash
@@ -13,6 +13,7 @@ import hash
 // Cleanup of the cache is simple: just delete the $VCACHE folder.
 // The cache tree will look like this:
 // │ $VCACHE
+// │ ├── README.md <-- a short description of the folder's purpose.
 // │ ├── 0f
 // │ │   ├── 0f004f983ab9c487b0d7c1a0a73840a5.txt
 // │ │   ├── 0f599edf5e16c2756fbcdd4c865087ac.description.txt <-- build details
@@ -32,10 +33,19 @@ pub mut:
 	k2cpath  map[string]string // key -> filesystem cache path for the object
 }
 
-fn new_cache_manager(opts []string) CacheManager {
+pub fn new_cache_manager(opts []string) CacheManager {
 	mut vcache_basepath := os.getenv('VCACHE')
 	if vcache_basepath == '' {
 		vcache_basepath = os.join_path(os.home_dir(), '.vmodules', 'cache')
+	}
+	if !os.is_dir(vcache_basepath) {
+		os.mkdir_all(vcache_basepath)
+		readme_content := 'This folder contains cached build artifacts from the V build system.
+		|You can safely delete it, if it is getting too large.
+		|It will be recreated the next time you compile something with V.
+		|You can change its location with the VCACHE environment variable.
+		'.strip_margin()
+		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content)
 	}
 	return CacheManager{
 		basepath: vcache_basepath
