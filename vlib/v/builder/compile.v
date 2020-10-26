@@ -78,6 +78,9 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.skip_running {
 		return
 	}
+	if b.pref.only_check_syntax {
+		return
+	}
 	if b.pref.os == .ios && b.pref.is_ios_simulator == false {
 		panic('Running iOS apps on physical devices is not yet supported. Please run in the simulator using the -simulator flag.')
 	}
