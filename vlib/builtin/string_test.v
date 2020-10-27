@@ -760,9 +760,9 @@ fn test_raw_with_quotes() {
 }
 
 fn test_escape() {
-	// TODO
-	//a := 10
-	//println("\"$a")
+	a := 10
+	println("\"$a")
+	assert "\"$a" == "\"10"
 }
 
 fn test_atoi() {
