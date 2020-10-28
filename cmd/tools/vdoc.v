@@ -105,6 +105,7 @@ mut:
 	show_loc       bool // for plaintext
 	serve_http     bool // for html
 	is_multi       bool
+	is_vlib        bool
 	is_verbose     bool
 	include_readme bool
 	open_docs      bool
@@ -411,7 +412,7 @@ fn (cfg DocConfig) readme_idx() int {
 }
 
 fn write_toc(cn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
-	toc_slug := if cn.name.len == 0 { '' } else { slug(cn.name) }
+	toc_slug := if cn.name.len == 0 || cn.content.len == 0 { '' } else { slug(cn.name) }
 	toc.write('<li class="open"><a href="#$toc_slug">$cn.name</a>')
 	if cn.name != 'Constants' {
 		toc.writeln('        <ul>')
@@ -462,13 +463,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			href_name := if (dcs.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
-				doc.head.name == 'README' {
-				'./index.html'
+			mut href_name := './${doc.head.name}.html'
+			if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
+				href_name = './index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
-				'#'
-			} else {
-				'./${doc.head.name}.html'
+				href_name = '#'
 			}
 			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { cfg.assets['arrow_icon'] } else { '' }
@@ -572,13 +571,11 @@ fn (cfg DocConfig) gen_footer_text(idx int) string {
 
 fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
 	// since builtin is generated first, ignore it
-	mut name := if (doc.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
-		doc.head.name == 'README' {
-		'index'
+	mut name := doc.head.name
+	if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
+		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
-		os.file_name(cfg.output_path)
-	} else {
-		doc.head.name
+		name = os.file_name(cfg.output_path)
 	}
 	name = name + match cfg.output_type {
 		.html { '.html' }
@@ -699,8 +696,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
 	}
-	is_vlib := 'vlib' in cfg.input_path
-	dir_path := if is_vlib {
+	dir_path := if cfg.is_vlib {
 		vexe_path
 	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
@@ -776,7 +772,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 		cfg.docs << dcs
 	}
-	if 'vlib' in cfg.input_path {
+	if cfg.is_vlib {
 		mut docs := cfg.docs.filter(it.head.name == 'builtin')
 		docs << cfg.docs.filter(it.head.name != 'builtin')
 		cfg.docs = docs
@@ -1040,6 +1036,7 @@ fn main() {
 	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len >
 		1 || cfg.input_path == '.'
 	if cfg.input_path == 'vlib' {
+		cfg.is_vlib = true
 		cfg.is_multi = true
 		cfg.input_path = os.join_path(vexe_path, 'vlib')
 	} else if !is_path {
