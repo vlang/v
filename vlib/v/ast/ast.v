@@ -1072,20 +1072,37 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl { return stmt.pos }
-		/*
-		Attr {}
-		BranchStmt {}
-		DeferStmt {}
-		GlobalDecl {}
-		GoStmt {}
-		GotoLabel {}
-		GotoStmt {}
-		HashStmt {}
-		InterfaceDecl {}
-		Module {}
-		TypeDecl {}
-		*/
+		AssertStmt,
+		AssignStmt,
+		Block,
+		ConstDecl,
+		EnumDecl,
+		ExprStmt,
+		FnDecl,
+		ForCStmt,
+		ForInStmt,
+		ForStmt,
+		Import,
+		Return,
+		StructDecl,
+		// DeferStmt,
+		GlobalDecl,
+		// GotoLabel,
+		// GotoStmt,
+		HashStmt,
+		InterfaceDecl,
+		Module { return stmt.pos }
+		GoStmt { return stmt.call_expr.position() }
+		BranchStmt { return token.Position{stmt.tok.len, stmt.tok.line_nr, stmt.tok.pos} }
+		TypeDecl {
+			match stmt {
+				AliasTypeDecl,
+				FnTypeDecl,
+				SumTypeDecl {
+					return stmt.pos
+				}
+			}
+		}
 		else { return token.Position{} }
 	}
 }
