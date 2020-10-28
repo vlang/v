@@ -116,10 +116,11 @@ fn (mut context Context) parse_options() {
 	if context.verbose {
 		scripting.set_verbose(true)
 	}
-	context.commands = fp.finalize() or {
+	x := fp.finalize() or {
 		eprintln('Error: ' + err)
 		exit(1)
 	}
+	context.commands = x
 	context.results = []CmdResult{len: context.commands.len, init: CmdResult{}}
 	context.cline = '\r' + term.h_divider('')
 }
