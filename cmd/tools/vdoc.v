@@ -464,7 +464,8 @@ fn (cfg DocConfig) gen_html(idx int) string {
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
 			mut href_name := './${doc.head.name}.html'
-			if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
+			if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
+				doc.head.name == 'README' {
 				href_name = './index.html'
 			} else if submod_prefix !in cfg.docs.map(it.head.name) {
 				href_name = '#'
@@ -572,7 +573,8 @@ fn (cfg DocConfig) gen_footer_text(idx int) string {
 fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
 	// since builtin is generated first, ignore it
 	mut name := doc.head.name
-	if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) || doc.head.name == 'README' {
+	if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
+		doc.head.name == 'README' {
 		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
 		name = os.file_name(cfg.output_path)

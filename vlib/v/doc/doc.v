@@ -30,7 +30,7 @@ pub enum SymbolKind {
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	base_path      string
+	base_path       string
 	table           &table.Table = &table.Table{}
 	checker         checker.Checker = checker.Checker{
 	table: 0
@@ -50,7 +50,7 @@ pub mut:
 	contents        map[string]DocNode
 	scoped_contents map[string]DocNode
 	// for storing the contents of the file.
-	sources    map[string]string
+	sources         map[string]string
 	parent_mod_name string
 	orig_mod_name   string
 	extract_vars    bool
@@ -160,12 +160,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.kind = .struct_
 			if d.extract_vars {
 				for field in stmt.fields {
-					ret_type := if field.typ == 0 && field.has_default_expr {
-						d.expr_typ_to_string(field.default_expr)
-					} else {
-						d.type_to_str(field.typ)
-					}
-
+					ret_type := if field.typ == 0 && field.has_default_expr { d.expr_typ_to_string(field.default_expr) } else { d.type_to_str(field.typ) }
 					node.children << DocNode{
 						name: field.name
 						kind: .struct_field
@@ -195,7 +190,9 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 						kind: .variable
 						parent_name: node.name
 						pos: d.convert_pos(filename, param.pos)
-						attrs: { 'mut': param.is_mut.str() }
+						attrs: {
+							'mut': param.is_mut.str()
+						}
 						return_type: d.type_to_str(param.typ)
 					}
 				}
@@ -270,11 +267,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			continue
 		}
 		if node.parent_name !in contents {
-			parent_node_kind := if node.parent_name == 'Constants' {
-				SymbolKind.const_group
-			} else {
-				SymbolKind.typedef
-			}
+			parent_node_kind := if node.parent_name == 'Constants' { SymbolKind.const_group } else { SymbolKind.typedef }
 			contents[node.parent_name] = DocNode{
 				name: node.parent_name
 				kind: parent_node_kind
@@ -352,7 +345,8 @@ pub fn (mut d Doc) generate() ? {
 		d.sources[filename] = util.read_file(file_path) or {
 			''
 		}
-		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+		file_asts <<
+			parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
 	return d.file_asts(file_asts)
 }
@@ -399,7 +393,7 @@ pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
-	doc.generate()?
+	doc.generate() ?
 	return doc
 }
 
@@ -410,6 +404,6 @@ pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
 	doc.with_pos = true
 	doc.filename = filename
 	doc.pos = pos
-	doc.generate()?
+	doc.generate() ?
 	return doc
 }

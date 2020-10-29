@@ -84,4 +84,3 @@ pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) 
 	mod_path := lookup_module(module_name) ?
 	return generate(mod_path, pub_only, with_comments)
 }
-

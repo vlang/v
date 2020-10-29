@@ -2,7 +2,9 @@ module doc
 
 pub fn (nodes []DocNode) find(symname string) ?DocNode {
 	for node in nodes {
-		if node.name != symname { continue }
+		if node.name != symname {
+			continue
+		}
 		return node
 	}
 	return error('symbol not found')
