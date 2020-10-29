@@ -1,7 +1,6 @@
 module doc
 
 import os
-import strings
 import time
 import v.ast
 import v.checker
@@ -10,7 +9,6 @@ import v.parser
 import v.pref
 import v.scanner
 import v.table
-import v.token
 import v.util
 
 // intentionally in order as a guide when arranging the docnodes
@@ -32,7 +30,7 @@ pub enum SymbolKind {
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	input_path      string
+	base_path      string
 	table           &table.Table = &table.Table{}
 	checker         checker.Checker = checker.Checker{
 	table: 0
@@ -91,7 +89,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 
 pub fn new(input_path string) Doc {
 	mut d := Doc{
-		input_path: os.real_path(input_path)
+		base_path: os.real_path(input_path)
 		table: table.new_table()
 		head: DocNode{}
 		contents: map[string]DocNode{}
@@ -107,13 +105,13 @@ pub fn new(input_path string) Doc {
 	return d
 }
 
-pub fn (mut d Doc) stmt(stmt ast.Stmt, file_ast &ast.File) ?DocNode {
+pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	mut node := DocNode{
-		name: d.get_name(stmt)
-		content: d.get_signature(stmt)
+		name: d.stmt_name(stmt)
+		content: d.stmt_signature(stmt)
 		comment: ''
-		pos: convert_pos(file_ast.path, stmt.position())
-		file_path: file_ast.path
+		pos: d.convert_pos(filename, stmt.position())
+		file_path: os.join_path(d.base_path, filename)
 	}
 	if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
 		return error('symbol not public')
@@ -134,7 +132,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, file_ast &ast.File) ?DocNode {
 					node.children << DocNode{
 						name: field.name.all_after(d.orig_mod_name + '.')
 						kind: .constant
-						pos: convert_pos(file_ast.path, field.pos)
+						pos: d.convert_pos(filename, field.pos)
 						return_type: ret_type
 					}
 				}
@@ -149,7 +147,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, file_ast &ast.File) ?DocNode {
 						name: field.name
 						kind: .enum_field
 						parent_name: node.name
-						pos: convert_pos(file_ast.path, field.pos)
+						pos: d.convert_pos(filename, field.pos)
 						return_type: ret_type
 					}
 				}
@@ -172,7 +170,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, file_ast &ast.File) ?DocNode {
 						name: field.name
 						kind: .struct_field
 						parent_name: node.name
-						pos: convert_pos(file_ast.path, field.pos)
+						pos: d.convert_pos(filename, field.pos)
 						return_type: ret_type
 					}
 				}
@@ -196,7 +194,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, file_ast &ast.File) ?DocNode {
 						name: param.name
 						kind: .variable
 						parent_name: node.name
-						pos: convert_pos(file_ast.path, param.pos)
+						pos: d.convert_pos(filename, param.pos)
 						attrs: { 'mut': param.is_mut.str() }
 						return_type: d.type_to_str(param.typ)
 					}
@@ -267,7 +265,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		if stmt is ast.Import {
 			continue
 		}
-		mut node := d.stmt(stmt, &file_ast) or {
+		mut node := d.stmt(stmt, os.base(file_ast.path)) or {
 			prev_comments = []
 			continue
 		}
@@ -313,7 +311,7 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 		vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
-			pos: convert_pos(file_ast.path, vr_data.pos)
+			pos: d.convert_pos(os.base(file_ast.path), vr_data.pos)
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
@@ -326,12 +324,12 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 
 pub fn (mut d Doc) generate() ? {
 	// get all files
-	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.dir(d.input_path)) }
-	d.is_vlib = 'vlib' !in base_path
-	project_files := os.ls(base_path) or {
+	d.base_path = if os.is_dir(d.base_path) { d.base_path } else { os.real_path(os.dir(d.base_path)) }
+	d.is_vlib = 'vlib' !in d.base_path
+	project_files := os.ls(d.base_path) or {
 		return error_with_code(err, 0)
 	}
-	v_files := d.prefs.should_compile_filtered_files(base_path, project_files)
+	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
 		return error_with_code('vdoc: No valid V files were found.', 1)
 	}
@@ -346,16 +344,20 @@ pub fn (mut d Doc) generate() ? {
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {
 		if i == 0 {
-			d.parent_mod_name = get_parent_mod(base_path) or {
+			d.parent_mod_name = get_parent_mod(d.base_path) or {
 				''
 			}
 		}
+		filename := os.base(file_path)
+		d.sources[filename] = util.read_file(file_path) or {
+			''
+		}
 		file_asts << parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}
-	return d.generate_from_files(file_asts)
+	return d.file_asts(file_asts)
 }
 
-pub fn (mut d Doc) generate_from_files(file_asts []ast.File) ? {
+pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
 	for i, file_ast in file_asts {
@@ -378,7 +380,7 @@ pub fn (mut d Doc) generate_from_files(file_asts []ast.File) ? {
 		}
 		if file_ast.path == d.filename {
 			d.checker.check(file_ast)
-			d.scoped_contents = d.generate_from_ast_with_pos(file_ast, d.pos)
+			d.scoped_contents = d.file_ast_with_pos(file_ast, d.pos)
 		}
 		contents := d.file_ast(file_ast)
 		for name, node in contents {

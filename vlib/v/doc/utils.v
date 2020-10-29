@@ -3,6 +3,9 @@ module doc
 import strings
 import v.ast
 import v.util
+import v.token
+import v.table
+import os
 
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
@@ -57,11 +60,14 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 	return comment
 }
 
-fn (d Doc) convert_pos(file_path string, pos token.Position) DocPos {
-	// source := util.read_file(file_path) or {
-	// 	''
-	// }
-	source := doc.sources[file_path]
+fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
+	if filename !in d.sources {
+		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or {
+			''
+		}
+	}
+
+	source := d.sources[filename]
 	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
 	column := util.imax(0, pos.pos - p - 1)
 	return DocPos{
@@ -91,8 +97,8 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl {
-			match decl {
-				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return decl.name }
+			match stmt {
+				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return stmt.name }
 			}
 		}
 		ast.ConstDecl { return '' } // leave it blank
