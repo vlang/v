@@ -157,7 +157,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 	return file, p.vet_errors
 }
 
-fn (mut p Parser) parse() ast.File {
+pub fn (mut p Parser) parse() ast.File {
 	// comments_mode: comments_mode
 	p.init_parse_fns()
 	p.read_first_token()
