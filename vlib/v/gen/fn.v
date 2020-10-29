@@ -441,7 +441,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.free_receiver {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
-		arg_name := '_arg_expr_${fn_name}_0'
+		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		g.expr(node.left)
@@ -654,10 +654,10 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
 		fn_name := node.name.replace('.', '_') // can't use name...
 		// t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-		t := '_arg_expr_${fn_name}_$i'
+		t := '_arg_expr_${fn_name}_${i}_$node.pos.pos'
 		// g.called_fn_name = name
-		used := scope.known_var(t)
-		mut s := ''
+		used := false // scope.known_var(t)
+		mut s := '$t = '
 		if used {
 			// This means this tmp var name was already used (the same function was called and
 			// `_arg_fnname_1` was already generated).
@@ -779,7 +779,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 					// Use these variables here.
 					fn_name := node.name.replace('.', '_')
 					// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-					name := '_arg_expr_${fn_name}_${i + 1}'
+					name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 					g.write('/*af arg*/' + name)
 				}
 			} else {
@@ -790,7 +790,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				// TODO copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
 				// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-				name := '_arg_expr_${fn_name}_${i + 1}'
+				name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 				g.write('/*af arg2*/' + name)
 			} else {
 				g.expr(arg.expr)

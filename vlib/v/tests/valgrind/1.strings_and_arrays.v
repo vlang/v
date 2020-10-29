@@ -119,10 +119,10 @@ fn optional_str() {
 		return
 	}
 	println(pos + 1)
-	//
+	// test assigning an optional to an existing var
 	mut p := 0
 	for {
-		p = opt('foo') or {
+		p = opt('query:$q') or {
 			break
 		}
 		break
