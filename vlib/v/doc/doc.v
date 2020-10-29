@@ -1,7 +1,6 @@
 module doc
 
 import os
-import strings
 import time
 import v.ast
 import v.checker
@@ -10,27 +9,28 @@ import v.parser
 import v.pref
 import v.scanner
 import v.table
-import v.token
 import v.util
 
 // intentionally in order as a guide when arranging the docnodes
 pub enum SymbolKind {
 	none_
-	typedef
-	interface_
 	const_group
-	const_field
-	enum_
+	constant
 	variable
 	function
 	method
+	interface_
+	typedef
+	enum_
+	enum_field
 	struct_
+	struct_field
 }
 
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	input_path      string
+	base_path       string
 	table           &table.Table = &table.Table{}
 	checker         checker.Checker = checker.Checker{
 	table: 0
@@ -49,6 +49,11 @@ pub mut:
 	head            DocNode
 	contents        map[string]DocNode
 	scoped_contents map[string]DocNode
+	// for storing the contents of the file.
+	sources         map[string]string
+	parent_mod_name string
+	orig_mod_name   string
+	extract_vars    bool
 }
 
 pub struct DocPos {
@@ -68,113 +73,10 @@ pub mut:
 	kind        SymbolKind
 	deprecated  bool
 	parent_name string
+	return_type string
 	children    []DocNode
 	attrs       map[string]string
 	from_scope  bool
-}
-
-pub fn merge_comments(comments []ast.Comment) string {
-	mut res := []string{}
-	for comment in comments {
-		res << comment.text.trim_left('\x01')
-	}
-	return res.join('\n')
-}
-
-pub fn get_comment_block_right_before(comments []ast.Comment) string {
-	if comments.len == 0 {
-		return ''
-	}
-	mut comment := ''
-	mut last_comment_line_nr := 0
-	for i := comments.len - 1; i >= 0; i-- {
-		cmt := comments[i]
-		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
-			// skip comments that are not part of a continuous block,
-			// located right above the top level statement.
-			// break
-		}
-		mut cmt_content := cmt.text.trim_left('\x01')
-		if cmt_content.len == cmt.text.len || cmt.is_multi {
-			// ignore /* */ style comments for now
-			continue
-			// if cmt_content.len == 0 {
-			// continue
-			// }
-			// mut new_cmt_content := ''
-			// mut is_codeblock := false
-			// // println(cmt_content)
-			// lines := cmt_content.split_into_lines()
-			// for j, line in lines {
-			// trimmed := line.trim_space().trim_left(cmt_prefix)
-			// if trimmed.starts_with('- ') || (trimmed.len >= 2 && trimmed[0].is_digit() && trimmed[1] == `.`) || is_codeblock {
-			// new_cmt_content += line + '\n'
-			// } else if line.starts_with('```') {
-			// is_codeblock = !is_codeblock
-			// new_cmt_content += line + '\n'
-			// } else {
-			// new_cmt_content += trimmed + '\n'
-			// }
-			// }
-			// return new_cmt_content
-		}
-		// eprintln('cmt: $cmt')
-		cseparator := if cmt_content.starts_with('```') { '\n' } else { ' ' }
-		comment = cmt_content + cseparator + comment
-		last_comment_line_nr = cmt.pos.line_nr
-	}
-	return comment
-}
-
-fn convert_pos(file_path string, pos token.Position) DocPos {
-	source := util.read_file(file_path) or {
-		''
-	}
-	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
-	column := util.imax(0, pos.pos - p - 1)
-	return DocPos{
-		line: pos.line_nr + 1
-		col: util.imax(1, column + 1)
-		len: pos.len
-	}
-}
-
-pub fn (mut d Doc) get_signature(stmt ast.Stmt, file &ast.File) string {
-	match stmt {
-		ast.Module {
-			return 'module $stmt.name'
-		}
-		ast.FnDecl {
-			return stmt.stringify(d.table, d.fmt.cur_mod)
-		}
-		else {
-			d.fmt.out = strings.new_builder(1000)
-			d.fmt.stmt(stmt)
-			return d.fmt.out.str().trim_space()
-		}
-	}
-}
-
-pub fn (d Doc) get_pos(stmt ast.Stmt) token.Position {
-	if stmt is ast.InterfaceDecl {
-		return stmt.pos
-	}
-	return stmt.position()
-}
-
-pub fn get_type_decl_name(decl ast.TypeDecl) string {
-	match decl {
-		ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return decl.name }
-	}
-}
-
-pub fn (d Doc) get_name(stmt ast.Stmt) string {
-	match stmt {
-		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
-		ast.TypeDecl { return get_type_decl_name(stmt) }
-		ast.ConstDecl { return '' } // leave it blank
-		else { return '' }
-	}
 }
 
 pub fn new_vdoc_preferences() &pref.Preferences {
@@ -187,10 +89,11 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 
 pub fn new(input_path string) Doc {
 	mut d := Doc{
-		input_path: os.real_path(input_path)
+		base_path: os.real_path(input_path)
 		table: table.new_table()
 		head: DocNode{}
 		contents: map[string]DocNode{}
+		sources: map[string]string{}
 		time_generated: time.now()
 	}
 	d.fmt = fmt.Fmt{
@@ -202,100 +105,111 @@ pub fn new(input_path string) Doc {
 	return d
 }
 
-pub fn (mut nodes []DocNode) sort_by_name() {
-	nodes.sort_with_compare(compare_nodes_by_name)
-}
-
-pub fn (mut nodes []DocNode) sort_by_kind() {
-	nodes.sort_with_compare(compare_nodes_by_kind)
-}
-
-fn compare_nodes_by_kind(a &DocNode, b &DocNode) int {
-	ak := int((*a).kind)
-	bk := int((*b).kind)
-	if ak < bk {
-		return -1
+pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
+	mut node := DocNode{
+		name: d.stmt_name(stmt)
+		content: d.stmt_signature(stmt)
+		comment: ''
+		pos: d.convert_pos(filename, stmt.position())
+		file_path: os.join_path(d.base_path, filename)
 	}
-	if ak > bk {
-		return 1
+	if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
+		return error('symbol not public')
 	}
-	return 0
-}
-
-fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
-	al := a.name.to_lower()
-	bl := b.name.to_lower()
-	return compare_strings(al, bl)
-}
-
-pub fn (cnts map[string]DocNode) arr() []DocNode {
-	mut contents := cnts.keys().map(cnts[it])
-	contents.sort_by_name()
-	contents.sort_by_kind()
-	return contents
-}
-
-// get_parent_mod - return the parent mod name, in dot format.
-// It works by climbing up the folder hierarchy, until a folder,
-// that either contains main .v files, or a v.mod file is reached.
-// For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
-// it returns `x.websocket.tests`, because /languages/v/ has v.mod file in it.
-// NB: calling this is expensive, so keep the result, instead of recomputing it.
-fn get_parent_mod(input_dir string) ?string {
-	$if windows {
-		// windows root path is C: or D:
-		if input_dir.len <= 2 {
-			return error('root folder reached')
+	if node.name.starts_with(d.orig_mod_name + '.') {
+		node.name = node.name.all_after(d.orig_mod_name + '.')
+	}
+	if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
+		return error('empty stmt')
+	}
+	match stmt {
+		ast.ConstDecl {
+			node.kind = .const_group
+			node.parent_name = 'Constants'
+			if d.extract_vars {
+				for field in stmt.fields {
+					ret_type := if field.typ == 0 { d.expr_typ_to_string(field.expr) } else { d.type_to_str(field.typ) }
+					node.children << DocNode{
+						name: field.name.all_after(d.orig_mod_name + '.')
+						kind: .constant
+						pos: d.convert_pos(filename, field.pos)
+						return_type: ret_type
+					}
+				}
+			}
 		}
-	} $else {
-		if input_dir.len == 0 {
-			return error('root folder reached')
+		ast.EnumDecl {
+			node.kind = .enum_
+			if d.extract_vars {
+				for field in stmt.fields {
+					ret_type := if field.has_expr { d.expr_typ_to_string(field.expr) } else { 'int' }
+					node.children << DocNode{
+						name: field.name
+						kind: .enum_field
+						parent_name: node.name
+						pos: d.convert_pos(filename, field.pos)
+						return_type: ret_type
+					}
+				}
+			}
+		}
+		ast.InterfaceDecl {
+			node.kind = .interface_
+		}
+		ast.StructDecl {
+			node.kind = .struct_
+			if d.extract_vars {
+				for field in stmt.fields {
+					ret_type := if field.typ == 0 && field.has_default_expr { d.expr_typ_to_string(field.default_expr) } else { d.type_to_str(field.typ) }
+					node.children << DocNode{
+						name: field.name
+						kind: .struct_field
+						parent_name: node.name
+						pos: d.convert_pos(filename, field.pos)
+						return_type: ret_type
+					}
+				}
+			}
+		}
+		ast.TypeDecl {
+			node.kind = .typedef
+		}
+		ast.FnDecl {
+			node.deprecated = stmt.is_deprecated
+			node.kind = .function
+			node.return_type = d.type_to_str(stmt.return_type)
+			if stmt.receiver.typ !in [0, 1] {
+				method_parent := d.type_to_str(stmt.receiver.typ)
+				node.kind = .method
+				node.parent_name = method_parent
+			}
+			if d.extract_vars {
+				for param in stmt.params {
+					node.children << DocNode{
+						name: param.name
+						kind: .variable
+						parent_name: node.name
+						pos: d.convert_pos(filename, param.pos)
+						attrs: {
+							'mut': param.is_mut.str()
+						}
+						return_type: d.type_to_str(param.typ)
+					}
+				}
+			}
+		}
+		else {
+			return error('invalid stmt type to document')
 		}
 	}
-	base_dir := os.dir(input_dir)
-	input_dir_name := os.file_name(base_dir)
-	prefs := new_vdoc_preferences()
-	fentries := os.ls(base_dir) or {
-		[]string{}
-	}
-	files := fentries.filter(!os.is_dir(it))
-	if 'v.mod' in files {
-		// the top level is reached, no point in climbing up further
-		return ''
-	}
-	v_files := prefs.should_compile_filtered_files(base_dir, files)
-	if v_files.len == 0 {
-		parent_mod := get_parent_mod(base_dir) or {
-			return input_dir_name
-		}
-		if parent_mod.len > 0 {
-			return parent_mod + '.' + input_dir_name
-		}
-		return error('No V files found.')
-	}
-	tbl := table.new_table()
-	scope := &ast.Scope{
-		parent: 0
-	}
-	file_ast := parser.parse_file(v_files[0], tbl, .skip_comments, prefs, scope)
-	if file_ast.mod.name == 'main' {
-		return ''
-	}
-	parent_mod := get_parent_mod(base_dir) or {
-		return input_dir_name
-	}
-	if parent_mod.len > 0 {
-		return '${parent_mod}.$file_ast.mod.name'
-	}
-	return file_ast.mod.name
+	return node
 }
 
-pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
+pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	mut contents := map[string]DocNode{}
-	orig_mod_name := file_ast.mod.name
 	stmts := file_ast.stmts
 	d.fmt.file = file_ast
-	d.fmt.set_current_module_name(orig_mod_name)
+	d.fmt.set_current_module_name(d.orig_mod_name)
 	d.fmt.process_file_imports(file_ast)
 	mut last_import_stmt_idx := 0
 	for sidx, stmt in stmts {
@@ -348,62 +262,16 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 		if stmt is ast.Import {
 			continue
 		}
-		mut node := DocNode{
-			name: d.get_name(stmt)
-			content: d.get_signature(stmt, file_ast)
-			comment: ''
-			pos: convert_pos(file_ast.path, d.get_pos(stmt))
-			file_path: file_ast.path
-		}
-		if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
+		mut node := d.stmt(stmt, os.base(file_ast.path)) or {
 			prev_comments = []
 			continue
 		}
-		if node.name.starts_with(orig_mod_name + '.') {
-			node.name = node.name.all_after(orig_mod_name + '.')
-		}
-		if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
-			continue
-		}
-		match stmt {
-			ast.ConstDecl {
-				node.kind = .const_group
-				node.parent_name = 'Constants'
-				if node.parent_name !in contents {
-					contents[node.parent_name] = DocNode{
-						name: 'Constants'
-						kind: .const_group
-					}
-				}
+		if node.parent_name !in contents {
+			parent_node_kind := if node.parent_name == 'Constants' { SymbolKind.const_group } else { SymbolKind.typedef }
+			contents[node.parent_name] = DocNode{
+				name: node.parent_name
+				kind: parent_node_kind
 			}
-			ast.EnumDecl {
-				node.kind = .enum_
-			}
-			ast.InterfaceDecl {
-				node.kind = .interface_
-			}
-			ast.StructDecl {
-				node.kind = .struct_
-			}
-			ast.TypeDecl {
-				node.kind = .typedef
-			}
-			ast.FnDecl {
-				node.deprecated = stmt.is_deprecated
-				node.kind = .function
-				if stmt.receiver.typ !in [0, 1] {
-					method_parent := d.fmt.table.type_to_str(stmt.receiver.typ).trim_left('&')
-					if method_parent != 'void' && method_parent !in contents {
-						contents[method_parent] = DocNode{
-							name: method_parent
-							kind: .none_
-						}
-					}
-					node.kind = .method
-					node.parent_name = method_parent
-				}
-			}
-			else {}
 		}
 		if d.with_comments && (prev_comments.len > 0) {
 			// last_comment := contents[contents.len - 1].comment
@@ -426,7 +294,7 @@ pub fn (mut d Doc) generate_from_ast(file_ast ast.File) map[string]DocNode {
 	return contents
 }
 
-pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
+pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
 	for name, val in lscope.objects {
@@ -436,30 +304,25 @@ pub fn (mut d Doc) generate_from_ast_with_pos(file_ast ast.File, pos int) map[st
 		vr_data := val as ast.Var
 		l_node := DocNode{
 			name: name
-			pos: convert_pos(file_ast.path, vr_data.pos)
+			pos: d.convert_pos(os.base(file_ast.path), vr_data.pos)
 			file_path: file_ast.path
 			from_scope: true
 			kind: .variable
-			parent_name: d.expr_typ_to_string(vr_data.expr)
+			return_type: d.expr_typ_to_string(vr_data.expr)
 		}
 		contents[l_node.name] = l_node
 	}
 	return contents
 }
 
-fn (mut d Doc) expr_typ_to_string(ex ast.Expr) string {
-	expr_typ := d.checker.expr(ex)
-	return d.fmt.table.type_to_str(expr_typ)
-}
-
-fn (mut d Doc) generate() ?Doc {
+pub fn (mut d Doc) generate() ? {
 	// get all files
-	base_path := if os.is_dir(d.input_path) { d.input_path } else { os.real_path(os.dir(d.input_path)) }
-	d.is_vlib = 'vlib' !in base_path
-	project_files := os.ls(base_path) or {
+	d.base_path = if os.is_dir(d.base_path) { d.base_path } else { os.real_path(os.dir(d.base_path)) }
+	d.is_vlib = 'vlib' !in d.base_path
+	project_files := os.ls(d.base_path) or {
 		return error_with_code(err, 0)
 	}
-	v_files := d.prefs.should_compile_filtered_files(base_path, project_files)
+	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
 		return error_with_code('vdoc: No valid V files were found.', 1)
 	}
@@ -471,39 +334,49 @@ fn (mut d Doc) generate() ?Doc {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
-	mut parent_mod_name := ''
-	mut fname_has_set := false
-	mut orig_mod_name := ''
-	for i, file in v_files {
-		file_ast := parser.parse_file(file, d.table, comments_mode, d.prefs, global_scope)
-		if d.filename.len > 0 && d.filename in file && !fname_has_set {
-			d.filename = file
-			fname_has_set = true
-		}
+	mut file_asts := []ast.File{}
+	for i, file_path in v_files {
 		if i == 0 {
-			parent_mod_name = get_parent_mod(base_path) or {
+			d.parent_mod_name = get_parent_mod(d.base_path) or {
 				''
 			}
+		}
+		filename := os.base(file_path)
+		d.sources[filename] = util.read_file(file_path) or {
+			''
+		}
+		file_asts <<
+			parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
+	}
+	return d.file_asts(file_asts)
+}
+
+pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
+	mut fname_has_set := false
+	d.orig_mod_name = file_asts[0].mod.name
+	for i, file_ast in file_asts {
+		if d.filename.len > 0 && d.filename in file_ast.path && !fname_has_set {
+			d.filename = file_ast.path
+			fname_has_set = true
+		}
+		if d.with_head && i == 0 {
 			mut module_name := file_ast.mod.name
-			orig_mod_name = module_name
-			if module_name != 'main' && parent_mod_name.len > 0 {
-				module_name = parent_mod_name + '.' + module_name
+			if module_name != 'main' && d.parent_mod_name.len > 0 {
+				module_name = d.parent_mod_name + '.' + module_name
 			}
-			if d.with_head {
-				d.head = DocNode{
-					name: module_name
-					content: 'module $module_name'
-					kind: .none_
-				}
+			d.head = DocNode{
+				name: module_name
+				content: 'module $module_name'
+				kind: .none_
 			}
-		} else if file_ast.mod.name != orig_mod_name {
+		} else if file_ast.mod.name != d.orig_mod_name {
 			continue
 		}
 		if file_ast.path == d.filename {
 			d.checker.check(file_ast)
-			d.scoped_contents = d.generate_from_ast_with_pos(file_ast, d.pos)
+			d.scoped_contents = d.file_ast_with_pos(file_ast, d.pos)
 		}
-		contents := d.generate_from_ast(file_ast)
+		contents := d.file_ast(file_ast)
 		for name, node in contents {
 			if name in d.contents && (d.contents[name].kind != .none_ || node.kind == .none_) {
 				d.contents[name].children << node.children
@@ -514,43 +387,23 @@ fn (mut d Doc) generate() ?Doc {
 		}
 	}
 	d.time_generated = time.now()
-	return *d
-}
-
-pub fn generate_from_pos(input_path string, filename string, pos int) ?Doc {
-	mut doc := new(input_path)
-	doc.pub_only = false
-	doc.with_comments = true
-	doc.with_pos = true
-	doc.filename = filename
-	doc.pos = pos
-	return doc.generate()
 }
 
 pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
 	doc.with_comments = with_comments
-	return doc.generate()
+	doc.generate() ?
+	return doc
 }
 
-pub fn lookup_module(mod string) ?string {
-	mod_path := mod.replace('.', os.path_separator)
-	compile_dir := os.real_path(os.dir('.'))
-	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
-	vlib_path := os.join_path(os.dir(@VEXE), 'vlib', mod_path)
-	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
-	paths := [modules_dir, vlib_path, vmodules_path]
-	for path in paths {
-		if !os.exists(path) || os.is_dir_empty(path) {
-			continue
-		}
-		return path
-	}
-	return error('module "$mod" not found.')
-}
-
-pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
-	mod_path := lookup_module(module_name) ?
-	return generate(mod_path, pub_only, with_comments)
+pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
+	mut doc := new(input_path)
+	doc.pub_only = false
+	doc.with_comments = true
+	doc.with_pos = true
+	doc.filename = filename
+	doc.pos = pos
+	doc.generate() ?
+	return doc
 }
