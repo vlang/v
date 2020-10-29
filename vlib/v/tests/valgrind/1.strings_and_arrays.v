@@ -194,6 +194,14 @@ fn loop_map() {
 	}
 }
 
+fn free_map() {
+	nums := [1, 2, 3]
+	/*
+	nums2 := nums.map(it + handle_strings('a' + 'b', 'c'))
+	println(nums2)
+	*/
+}
+
 fn free_inside_opt_block() {
 	x := opt('a' + 'b') or {
 		get_string('c' + 'd') // c+d must be freed before a+b
@@ -219,6 +227,7 @@ fn main() {
 	if_expr()
 	return_if_expr()
 	free_inside_opt_block()
+	// free_map()
 	// loop_map()
 	println('end')
 }

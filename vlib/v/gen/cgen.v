@@ -119,6 +119,7 @@ mut:
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
 	nr_vars_to_free       int
+	inside_lambda         bool
 }
 
 const (
@@ -2017,7 +2018,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
 			// }
-			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 { // && g.inside_ternary ==
+			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 && !g.inside_lambda { // && g.inside_ternary ==
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
@@ -4432,6 +4433,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 
 // `nums.map(it % 2 == 0)`
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
+	g.inside_lambda = true
 	tmp := g.new_tmp_var()
 	s := g.go_before_stmt(0)
 	// println('filter s="$s"')
@@ -4486,6 +4488,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('}')
 	g.write(s)
 	g.write(tmp)
+	g.inside_lambda = false
 }
 
 // `users.sort(a.age < b.age)`
