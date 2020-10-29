@@ -223,9 +223,14 @@ pub fn path_of_executable(path string) string {
 }
 
 pub fn read_file(file_path string) ?string {
-	mut raw_text := os.read_file(file_path) or {
+	raw_text := os.read_file(file_path) or {
 		return error('failed to open $file_path')
 	}
+	return skip_bom(raw_text)
+}
+
+pub fn skip_bom(file_content string) string {
+	mut raw_text := file_content
 	// BOM check
 	if raw_text.len >= 3 {
 		unsafe {
