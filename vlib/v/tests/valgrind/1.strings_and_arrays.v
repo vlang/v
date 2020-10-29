@@ -119,6 +119,14 @@ fn optional_str() {
 		return
 	}
 	println(pos + 1)
+	//
+	mut p := 0
+	for {
+		p = opt('foo') or {
+			break
+		}
+		break
+	}
 }
 
 fn return_error_with_freed_expr() ?string {

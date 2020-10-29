@@ -1433,8 +1433,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// int pos = *(int*)_t190.data;
 	mut gen_or := false
 	mut tmp_opt := ''
-	is_optional := g.pref.autofree && assign_stmt.op == .decl_assign && assign_stmt.left_types.len ==
-		1 && assign_stmt.right[0] is ast.CallExpr
+	is_optional := g.pref.autofree &&
+		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 && assign_stmt.right[0] is
+		ast.CallExpr
 	if is_optional {
 		// g.write('/* optional assignment */')
 		call_expr := assign_stmt.right[0] as ast.CallExpr
@@ -1726,7 +1727,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				// `int pos = *(int)_t10.data;`
 				g.write('*($styp*)')
 				if g.pref.autofree {
-					g.write(tmp_opt + '.data/*FF*/')
+					g.write(tmp_opt + '.data/*FFz*/')
 					g.right_is_opt = false
 					g.is_assign_rhs = false
 					if g.inside_ternary == 0 && !assign_stmt.is_simple {

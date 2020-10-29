@@ -15,11 +15,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// || it.no_body {
 		return
 	}
-	if g.pref.autofree {
-		defer {
-			// g.autofree_tmp_vars = []
-		}
-	}
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
@@ -661,12 +656,11 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
 		t := '_arg_expr_${fn_name}_$i'
 		// g.called_fn_name = name
-		// used := t in g.autofree_tmp_vars
 		used := scope.known_var(t)
 		mut s := ''
 		if used {
 			// This means this tmp var name was already used (the same function was called and
-			// `_arg_fnname_1` was already generated.
+			// `_arg_fnname_1` was already generated).
 			// We do not need to declare this variable again, so just generate `t = ...`
 			// instead of `string t = ...`, and we need to mark this variable as unused,
 			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
@@ -684,7 +678,6 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 				is_autofree_tmp: true
 			})
 			s = 'string $t = '
-			// g.autofree_tmp_vars << t
 		}
 		// g.expr(arg.expr)
 		s += g.write_expr_to_string(arg.expr)
@@ -707,7 +700,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	if g.nr_vars_to_free <= 0 {
 		return
 	}
-	g.writeln('\n// strs_to_free3:')
+	// g.writeln('\n/* strs_to_free3: */')
 	/*
 	for s in g.strs_to_free {
 		g.writeln('string_free(&$s);')
