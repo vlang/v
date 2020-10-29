@@ -8,7 +8,7 @@ import v.token
 import v.pref
 import v.util
 import v.errors
-import pkgconfig
+import v.pkgconfig
 
 const (
 	max_nr_errors                 = 300

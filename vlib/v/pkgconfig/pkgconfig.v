@@ -37,18 +37,25 @@ pub mut:
 	modname      string
 }
 
-fn (mut pc PkgConfig) filters(s string) []string {
-	r := pc.filter(s).split(' ')
+fn (mut pc PkgConfig) parse_list(s string) []string {
+	operators := [ '=', '<', '>', '>=', '<=' ]
+	r := pc.parse_line(s.replace(',', '')).split(' ')
 	mut res := []string{}
+	mut skip := false
 	for a in r {
-		if a != '' {
-			res << a
+		b := a.trim_space()
+		if skip {
+			skip = false
+		} else if b in operators {
+			skip = true
+		} else if b != '' {
+			res << b
 		}
 	}
 	return res
 }
 
-fn (mut pc PkgConfig) filter(s string) string {
+fn (mut pc PkgConfig) parse_line(s string) string {
 	mut r := s.trim_space()
 	for r.contains('\${') {
 		tok0 := r.index('\${') or {
@@ -68,8 +75,8 @@ fn (mut pc PkgConfig) setvar(line string) {
 	kv := line.trim_space().split('=')
 	if kv.len == 2 {
 		k := kv[0]
-		v := pc.filter(kv[1])
-		pc.vars[k] = pc.filter(v)
+		v := pc.parse_line(kv[1])
+		pc.vars[k] = pc.parse_line(v)
 	}
 }
 
@@ -86,7 +93,7 @@ fn (mut pc PkgConfig) parse(file string) bool {
 		// TODO: use different variable. norecurse have nothing to do with this
 		for line in lines {
 			if line.starts_with('Description: ') {
-				pc.description = pc.filter(line[13..])
+				pc.description = pc.parse_line(line[13..])
 			}
 		}
 	} else {
@@ -98,20 +105,20 @@ fn (mut pc PkgConfig) parse(file string) bool {
 				pc.setvar(line)
 				continue
 			}
-			if line.starts_with('Description: ') {
-				pc.description = pc.filter(line[13..])
-			} else if line.starts_with('Name: ') {
-				pc.name = pc.filter(line[6..])
-			} else if line.starts_with('Version: ') {
-				pc.version = pc.filter(line[9..])
-			} else if line.starts_with('Requires: ') {
-				pc.requires = pc.filters(line[10..])
-			} else if line.starts_with('Cflags: ') {
-				pc.cflags = pc.filters(line[8..])
-			} else if line.starts_with('Libs: ') {
-				pc.libs = pc.filters(line[6..])
-			} else if line.starts_with('Libs.private: ') {
-				pc.libs_private = pc.filters(line[14..])
+			if line.starts_with('Description:') {
+				pc.description = pc.parse_line(line[12..])
+			} else if line.starts_with('Name:') {
+				pc.name = pc.parse_line(line[5..])
+			} else if line.starts_with('Version:') {
+				pc.version = pc.parse_line(line[8..])
+			} else if line.starts_with('Requires:') {
+				pc.requires = pc.parse_list(line[9..])
+			} else if line.starts_with('Cflags:') {
+				pc.cflags = pc.parse_list(line[7..])
+			} else if line.starts_with('Libs:') {
+				pc.libs = pc.parse_list(line[5..])
+			} else if line.starts_with('Libs.private:') {
+				pc.libs_private = pc.parse_list(line[13..])
 			}
 		}
 	}

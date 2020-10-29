@@ -1,6 +1,6 @@
 module main
 
-import pkgconfig
+import v.pkgconfig
 import os
 
 fn main() {
