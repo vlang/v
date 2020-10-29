@@ -109,17 +109,21 @@ pub fn new_channel<T>(n u32) &Channel {
 }
 
 fn new_channel_st(n u32, st u32) &Channel {
+	wsem := if n > 0 { n } else { 1 }
+	rsem := if n > 0 { u32(0) } else { 1 }
+	rbuf := if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
+	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
 	return &Channel{
-		writesem: new_semaphore_init(if n > 0 { n } else { 1 })
-		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
+		writesem: new_semaphore_init(wsem)
+		readsem:  new_semaphore_init(rsem)
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
 		objsize: st
 		cap: n
 		write_free: n
 		read_avail: 0
-		ringbuf: if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
-		statusbuf: if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
+		ringbuf: rbuf
+		statusbuf: sbuf
 		write_subscriber: 0
 		read_subscriber: 0
 	}
