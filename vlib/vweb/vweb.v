@@ -359,7 +359,8 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	} else {
 		// Parse URL query
 		if url_words.last().contains('?') {
-			tmp_query := url_words.last().all_after('?').split('&').map(it.split('='))
+			words := url_words.last().after('?').split('&')
+			tmp_query := words.map(it.split('='))
 			url_words[url_words.len - 1] = url_words.last().all_before('?')
 			for data in tmp_query {
 				if data.len == 2 {

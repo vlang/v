@@ -2018,13 +2018,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// if g.fileis('1.strings') {
 			// println('before:' + node.autofree_pregen)
 			// }
-			if g.pref.autofree && !g.is_builtin_mod && g.strs_to_free0.len == 0 && !g.inside_lambda { // && g.inside_ternary ==
+			if g.pref.autofree && !g.is_builtin_mod && !g.is_js_call && g.strs_to_free0.len ==
+				0 && !g.inside_lambda { // && g.inside_ternary ==
 				// if len != 0, that means we are handling call expr inside call expr (arg)
 				// and it'll get messed up here, since it's handled recursively in autofree_call_pregen()
 				// so just skip it
 				g.autofree_call_pregen(node)
 				if g.strs_to_free0.len > 0 {
-					g.insert_before_stmt(g.strs_to_free0.join('\n'))
+					g.insert_before_stmt(g.strs_to_free0.join('\n') + '/* inserted before */')
 				}
 				g.strs_to_free0 = []
 				// println('pos=$node.pos.pos')
