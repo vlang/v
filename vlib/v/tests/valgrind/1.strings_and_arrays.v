@@ -175,6 +175,24 @@ fn return_if_expr() string {
 	}
 }
 
+fn loop_map() {
+	m := {
+		'UK': 'London'
+		'France': 'Paris'
+	}
+	// keys must be freed
+	for country, capital in m {
+		println(country + capital)
+	}
+}
+
+fn free_inside_opt_block() {
+	x := opt('a' + 'b') or {
+		get_string('c' + 'd') // c+d must be freed before a+b
+		return
+	}
+}
+
 fn main() {
 	println('start')
 	simple()
@@ -192,6 +210,8 @@ fn main() {
 	addition_with_tmp_expr()
 	if_expr()
 	return_if_expr()
+	free_inside_opt_block()
+	// loop_map()
 	println('end')
 }
 

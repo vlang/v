@@ -103,7 +103,7 @@ mut:
 	inside_return         bool
 	inside_or_block       bool
 	strs_to_free0         []string // strings.Builder
-	strs_to_free          []string // strings.Builder
+	// strs_to_free          []string // strings.Builder
 	inside_call           bool
 	has_main              bool
 	inside_const          bool
@@ -118,6 +118,7 @@ mut:
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
+	nr_vars_to_free       int
 }
 
 const (
@@ -718,6 +719,7 @@ fn (mut g Gen) stmts(stmts []ast.Stmt) {
 	g.stmts_with_tmp_var(stmts, '')
 }
 
+// tmp_var is used in `if` expressions only
 fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 	g.indent++
 	if g.inside_ternary > 0 {
@@ -769,25 +771,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		g.stmt_path_pos << g.out.len
 	}
 	defer {
-		// If we have temporary string exprs to free after this statement, do it. e.g.:
-		// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
-		if g.pref.autofree {
-			g.autofree_call_postgen()
-		}
-		/*
-		if g.pref.autofree { // && !g.inside_or_block {
-			// TODO remove the inside_or_block hack. strings are not freed in or{} atm
-			if g.strs_to_free.len != 0 {
-				g.writeln('// strs_to_free:')
-				for s in g.strs_to_free {
-					g.writeln(s)
-				}
-				g.strs_to_free = []
-				// s := g.strs_to_free.str()
-				// g.strs_to_free.free()
-			}
-		}
-		*/
 	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
@@ -1056,6 +1039,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
 	}
+	// If we have temporary string exprs to free after this statement, do it. e.g.:
+	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
+	if g.pref.autofree {
+		p := node.position()
+		g.autofree_call_postgen(p.pos)
+	}
 }
 
 fn (mut g Gen) write_defer_stmts() {
@@ -1177,6 +1166,9 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			}
 		}
 		g.stmts(it.stmts)
+		if it.key_type == table.string_type && !g.is_builtin_mod {
+			// g.writeln('string_free(&$key);')
+		}
 		g.writeln('}')
 		g.writeln('/*for in map cleanup*/')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
@@ -1971,6 +1963,10 @@ fn (mut g Gen) autofree_variable(v ast.Var) {
 fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.is_arg {
 		// fn args should not be autofreed
+		return
+	}
+	if v.is_used && v.is_autofree_tmp {
+		// tmp expr vars do not need to be freed again here
 		return
 	}
 	if v.typ.is_ptr() {
@@ -3582,8 +3578,8 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 			g.writeln(';')
 			if af {
 				// free the tmp arg expr if we have one before the return
-				g.autofree_call_postgen()
-				g.strs_to_free = []
+				g.autofree_call_postgen(node.pos.pos)
+				// g.strs_to_free = []
 			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')

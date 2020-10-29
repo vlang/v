@@ -663,15 +663,27 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// g.called_fn_name = name
 		// used := t in g.autofree_tmp_vars
 		used := scope.known_var(t)
-		mut s := if used {
-			'$t = '
+		mut s := ''
+		if used {
+			// This means this tmp var name was already used (the same function was called and
+			// `_arg_fnname_1` was already generated.
+			// We do not need to declare this variable again, so just generate `t = ...`
+			// instead of `string t = ...`, and we need to mark this variable as unused,
+			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
+			if x := scope.find(t) {
+				match mut x {
+					ast.Var { x.is_used = false }
+					else {}
+				}
+			}
+			s = '$t = '
 		} else {
 			scope.register(t, ast.Var{
 				name: t
-				typ: table.string_type
-				is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
+				typ: table.string_type // is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
+				is_autofree_tmp: true
 			})
-			'string $t = '
+			s = 'string $t = '
 			// g.autofree_tmp_vars << t
 		}
 		// g.expr(arg.expr)
@@ -680,16 +692,23 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		s += ';// new af2 pre'
 		g.strs_to_free0 << s
 		// Now free the tmp arg vars right after the function call
-		g.strs_to_free << t
+		// g.strs_to_free << t
+		g.nr_vars_to_free++
 		// g.strs_to_free << 'string_free(&$t);'
 	}
 }
 
-fn (mut g Gen) autofree_call_postgen() {
+fn (mut g Gen) autofree_call_postgen(node_pos int) {
+	/*
 	if g.strs_to_free.len == 0 {
 		return
 	}
-	g.writeln(';\n// strs_to_free2:')
+	*/
+	if g.nr_vars_to_free <= 0 {
+		return
+	}
+	g.writeln('\n// strs_to_free3:')
+	/*
 	for s in g.strs_to_free {
 		g.writeln('string_free(&$s);')
 	}
@@ -698,10 +717,37 @@ fn (mut g Gen) autofree_call_postgen() {
 		// if we reset the array here, then the vars will not be freed after the block.
 		g.strs_to_free = []
 	}
+	*/
+	scope := g.file.scope.innermost(node_pos)
+	for _, obj in scope.objects {
+		match mut obj {
+			ast.Var {
+				// if var.typ == 0 {
+				// // TODO why 0?
+				// continue
+				// }
+				v := *obj
+				is_optional := v.typ.has_flag(.optional)
+				if is_optional {
+					// TODO: free optionals
+					continue
+				}
+				if !v.is_autofree_tmp {
+					continue
+				}
+				if v.is_used {
+					// this means this tmp expr var has already been freed
+					continue
+				}
+				obj.is_used = true
+				g.autofree_variable(v)
+				g.nr_vars_to_free--
+			}
+			else {}
+		}
+	}
 }
 
-// fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type, tmp_arg_vars_to_free []string) {
-// fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
 fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
