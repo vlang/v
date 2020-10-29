@@ -2426,7 +2426,7 @@ As long as backticks can't be used in `#flag` and spawning processes is not desi
 and portability reasons, V uses its own pkgconfig library that is compatible with the standard
 freedesktop one.
 
-By default, if no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
+If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
 
 ```v
 #pkgconfig r_core
