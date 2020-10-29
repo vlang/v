@@ -730,7 +730,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		mut dcs := doc.Doc{}
 		cfg.vprintln('Generating docs for $dirpath')
 		if is_local_and_single {
-			dcs = doc.generate_from_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
+			dcs = doc.generate_with_pos(dirpath, cfg.local_filename, cfg.local_pos) or {
 				cfg.emit_generate_err(err, errcode)
 				exit(1)
 			}
