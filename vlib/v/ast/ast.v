@@ -121,7 +121,6 @@ pub:
 
 pub struct StructField {
 pub:
-	name             string
 	pos              token.Position
 	type_pos         token.Position
 	comments         []Comment
@@ -129,7 +128,9 @@ pub:
 	has_default_expr bool
 	attrs            []table.Attr
 	is_public        bool
+	is_embed         bool
 pub mut:
+	name             string
 	typ              table.Type
 }
 
@@ -166,7 +167,6 @@ pub struct StructDecl {
 pub:
 	pos          token.Position
 	name         string
-	fields       []StructField
 	is_pub       bool
 	mut_pos      int // mut:
 	pub_pos      int // pub:
@@ -175,6 +175,15 @@ pub:
 	is_union     bool
 	attrs        []table.Attr
 	end_comments []Comment
+pub mut:
+	fields       []StructField
+}
+
+pub struct StructEmbedding {
+pub:
+	name string
+	typ  table.Type
+	pos  token.Position
 }
 
 pub struct InterfaceDecl {

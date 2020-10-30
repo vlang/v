@@ -71,6 +71,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
+	mut embedded_structs := []table.Type{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -142,18 +143,50 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			field_start_pos := p.tok.position()
-			field_name := p.check_name()
-			// p.warn('field $field_name')
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
+				p.peek_tok.kind == .dot) &&
+				language == .v
+			mut field_name := ''
+			mut typ := table.Type(0)
+			mut type_pos := token.Position{}
+			mut field_pos := token.Position{}
+			if is_embed {
+				// struct embedding
+				typ = p.parse_type()
+				sym := p.table.get_type_symbol(typ)
+				// main.Abc<int> => Abc
+				mut symbol_name := sym.name.split('.')[1]
+				// remove generic part from name
+				if '<' in symbol_name {
+					symbol_name = symbol_name.split('<')[0]
 				}
+				for p.tok.kind == .comment {
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
+				}
+				type_pos = p.prev_tok.position()
+				field_pos = p.prev_tok.position()
+				field_name = symbol_name
+				if typ in embedded_structs {
+					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
+				}
+				embedded_structs << typ
+			} else {
+				// struct field
+				field_name = p.check_name()
+				for p.tok.kind == .comment {
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
+				}
+				typ = p.parse_type()
+				type_pos = p.prev_tok.position()
+				field_pos = field_start_pos.extend(type_pos)
 			}
 			// println(p.tok.position())
-			typ := p.parse_type()
-			type_pos := p.prev_tok.position()
-			field_pos := field_start_pos.extend(type_pos)
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
@@ -162,18 +195,20 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
-			if p.tok.kind == .assign {
-				// Default value
-				p.next()
-				// default_expr = p.tok.lit
-				// p.expr(0)
-				default_expr = p.expr(0)
-				match mut default_expr {
-					ast.EnumVal { default_expr.typ = typ }
-					// TODO: implement all types??
-					else {}
+			if !is_embed {
+				if p.tok.kind == .assign {
+					// Default value
+					p.next()
+					// default_expr = p.tok.lit
+					// p.expr(0)
+					default_expr = p.expr(0)
+					match mut default_expr {
+						ast.EnumVal { default_expr.typ = typ }
+						// TODO: implement all types??
+						else {}
+					}
+					has_default_expr = true
 				}
-				has_default_expr = true
 			}
 			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
@@ -186,6 +221,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				has_default_expr: has_default_expr
 				attrs: p.attrs
 				is_public: is_field_pub
+				is_embed: is_embed
 			}
 			fields << table.Field{
 				name: field_name
@@ -196,9 +232,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_mut: is_field_mut
 				is_global: is_field_global
 				attrs: p.attrs
+				is_embed: is_embed
 			}
 			p.attrs = []
-			// println('struct field $ti.name $field_name')
 		}
 		p.top_level_statement_end()
 		p.check(.rcbr)

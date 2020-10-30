@@ -14,7 +14,8 @@
 - parallel parser (and maybe checker/gen?)
 - `recover()` from panics
 - IO streams
-- struct and interface embedding
++ struct embedding
+- interface embedding
 - interfaces: allow struct fields (not just methods)
 - vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
 - method expressions with an explicit receiver as the first argument
