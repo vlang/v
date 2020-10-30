@@ -1057,6 +1057,10 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	left_type := c.expr(call_expr.left)
 	is_generic := left_type.has_flag(.generic)
 	call_expr.left_type = left_type
+	// Set default values for .return_type & .receiver_type too,
+	// or there will be hard to diagnose 0 type panics in cgen.
+	call_expr.return_type = left_type
+	call_expr.receiver_type = left_type
 	left_type_sym := c.table.get_type_symbol(c.unwrap_generic(left_type))
 	method_name := call_expr.name
 	mut unknown_method_msg := 'unknown method: `${left_type_sym.source_name}.$method_name`'
@@ -1095,8 +1099,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		for arg in call_expr.args {
 			arg_type = c.expr(arg.expr)
 		}
-		call_expr.return_type = left_type
-		call_expr.receiver_type = left_type
 		if method_name == 'map' {
 			// check fn
 			c.check_map_and_filter(true, elem_typ, call_expr)

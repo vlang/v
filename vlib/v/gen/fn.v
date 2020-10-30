@@ -326,7 +326,10 @@ pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
-		verror('method receiver type is 0, this means there are some uchecked exprs')
+		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+	}
+	if node.receiver_type == 0 {
+		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
 	// mut receiver_type_name := g.typ(node.receiver_type)
@@ -545,6 +548,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
 		typ := node.args[0].typ
+		if typ == 0 {
+			g.checker_bug('print arg.typ is 0', node.pos)
+		}
 		mut styp := g.typ(typ)
 		sym := g.table.get_type_symbol(typ)
 		if typ.is_ptr() {
@@ -831,6 +837,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
+	if expected_type == 0 {
+		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
+	}
 	exp_sym := g.table.get_type_symbol(expected_type)
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
@@ -851,6 +860,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
+			if arg.typ == 0 {
+				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
+			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
 			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
