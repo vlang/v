@@ -116,10 +116,11 @@ pub fn (a array) repeat(count int) array {
 		len: count * a.len
 		cap: count * a.len
 	}
+	size_of_array := int(sizeof(array))
 	for i in 0 .. count {
-		if a.len > 0 && a.element_size == sizeof(array) {
+		if a.len > 0 && a.element_size == size_of_array {
 			ary := array{}
-			unsafe {C.memcpy(&ary, a.data, sizeof(array))}
+			unsafe {C.memcpy(&ary, a.data, size_of_array)}
 			ary_clone := ary.clone()
 			unsafe {C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size)}
 		} else {
@@ -328,10 +329,11 @@ pub fn (a &array) clone() array {
 		cap: a.cap
 	}
 	// Recursively clone-generated elements if array element is array type
-	if a.element_size == sizeof(array) {
+	size_of_array := int(sizeof(array))
+	if a.element_size == size_of_array {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe {C.memcpy(&ar, a.get_unsafe(i), sizeof(array))}
+			unsafe {C.memcpy(&ar, a.get_unsafe(i), size_of_array)}
 			ar_clone := ar.clone()
 			unsafe {arr.set_unsafe(i, &ar_clone)}
 		}
