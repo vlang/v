@@ -199,7 +199,6 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
-			println(p.table.imports)
 			p.error('unknown module `$p.tok.lit`')
 		}
 		if p.tok.lit in p.imports {

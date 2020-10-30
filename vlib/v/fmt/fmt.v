@@ -598,7 +598,13 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			max_type = ft.len
 		}
 	}
+	for field in node.fields.filter(it.is_embed) {
+		f.writeln('\t$field.name')
+	}
 	for i, field in node.fields {
+		if field.is_embed {
+			continue
+		}
 		if i == node.mut_pos {
 			f.writeln('mut:')
 		} else if i == node.pub_pos {
