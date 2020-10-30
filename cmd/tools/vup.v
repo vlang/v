@@ -87,8 +87,19 @@ fn (app App) make(vself string) {
 }
 
 fn (app App) show_current_v_version() {
-	println('Current V version:')
-	os.system('"$app.vexe" version')
+	if vout := os.exec('"$app.vexe" version') {
+		mut vversion := vout.output.trim_space()
+		if vout.exit_code == 0 {
+			latest_v_commit := vversion.split(' ').last().all_after('.')
+			if latest_v_commit_time := os.exec('git show -s --format=%ci $latest_v_commit') {
+				if latest_v_commit_time.exit_code == 0 {
+					vversion += ', commited at ' + latest_v_commit_time.output.trim_space()
+				}
+			}
+		}
+		println('Current V version:')
+		println(vversion)
+	}
 }
 
 fn (app App) backup(file string) {
