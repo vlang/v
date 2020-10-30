@@ -140,6 +140,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			share: table.sharetype_from_flags(is_shared, is_atomic)
 			expr: e
 			comments: comments
+			pos: p.tok.position()
 		}
 		if p.tok.kind != .rpar {
 			p.check(.comma)

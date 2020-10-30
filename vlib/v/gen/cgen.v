@@ -2309,6 +2309,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.typeof_name(left)
 				return
 			}
+			if node.expr_type == 0 {
+				g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
+			}
 			sym := g.table.get_type_symbol(node.expr_type)
 			if sym.kind == .array_fixed {
 				assert node.field_name == 'len'
@@ -3886,7 +3889,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
 		if sym.info is table.Struct as struct_info {
-			tfield := struct_info.fields.filter(it.name == field.name)[0]
+			equal_fields := struct_info.fields.filter(it.name == field.name)
+			if equal_fields.len == 0 {
+				continue
+			}
+			tfield := equal_fields[0]
 			if tfield.embed_alias_for.len != 0 {
 				continue
 			}
@@ -3894,6 +3901,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
 			g.write('.$field_name = ')
+			if field.typ == 0 {
+				g.checker_bug('struct init, field.typ is 0', field.pos)
+			}
 			field_type_sym := g.table.get_type_symbol(field.typ)
 			mut cloned := false
 			if g.autofree && !field.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
@@ -3931,7 +3941,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		// nr_fields = info.fields.len
 		for field in info.fields {
 			if sym.info is table.Struct as struct_info {
-				tfield := struct_info.fields.filter(it.name == field.name)[0]
+				equal_fields := struct_info.fields.filter(it.name == field.name)
+				if equal_fields.len == 0 {
+					continue
+				}
+				tfield := equal_fields[0]
 				if tfield.embed_alias_for.len != 0 {
 					continue
 				}
@@ -4132,8 +4146,13 @@ fn verror(s string) {
 }
 
 fn (g &Gen) error(s string, pos token.Position) {
-	p := if pos.line_nr == 0 { '?' } else { '${pos.line_nr + 1}' }
-	util.verror('$g.file.path:$p: cgen error', s)
+	ferror := util.formatted_error('cgen error:', s, g.file.path, pos)
+	eprintln(ferror)
+	exit(1)
+}
+
+fn (g &Gen) checker_bug(s string, pos token.Position) {
+	g.error('checker bug; $s', pos)
 }
 
 fn (mut g Gen) write_init_function() {

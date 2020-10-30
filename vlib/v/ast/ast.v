@@ -318,6 +318,7 @@ pub:
 pub mut:
 	typ             table.Type
 	is_tmp_autofree bool
+	pos             token.Position
 	// tmp_name        string // for autofree
 }
 
