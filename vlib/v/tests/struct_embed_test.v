@@ -5,6 +5,9 @@ struct Foo {
 	y int = 5
 }
 
+fn (f Foo) foo() {}
+
+
 struct Bar {
 	Foo
 }
@@ -12,6 +15,7 @@ struct Bar {
 fn test_embed() {
 	b := Bar{}
 	assert b.x == 0
+	//b.foo() // TODO methods
 }
 
 fn test_embed_direct_access() {
@@ -54,4 +58,6 @@ struct BarGenericContainer {
 fn test_generic_embed() {
 	b := BarGenericContainer{}
 	assert b.BarGeneric.foo == 0
+	assert b.foo == 0
+	println('ok')
 }

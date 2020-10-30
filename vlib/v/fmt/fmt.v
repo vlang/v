@@ -45,6 +45,7 @@ pub mut:
 	mod2alias         map[string]string // for `import time as t`, will contain: 'time'=>'t'
 	use_short_fn_args bool
 	it_name           string // the name to replace `it` with
+	inside_lambda     bool
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -799,7 +800,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			if true {
 			} else {
 			}
-			if node.name == 'it' && f.it_name != '' {
+			if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
 				f.write(f.it_name)
 			} else if node.kind == .blank_ident {
 				f.write('_')
@@ -1414,6 +1415,12 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		*/
+		if node.name in ['map', 'filter'] {
+			f.inside_lambda = true
+			defer {
+				f.inside_lambda = false
+			}
+		}
 		if node.left is ast.Ident {
 			left := node.left as ast.Ident
 			// `time.now()` without `time imported` is processed as a method call with `time` being
