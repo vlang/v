@@ -391,8 +391,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if typ == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if typ.is_number() || typ.is_pointer() ||
-			node.fmts[i] == `d` {
+		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
 				if typ == table.i8_type {
