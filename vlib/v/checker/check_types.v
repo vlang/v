@@ -314,7 +314,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 	} else if typ.is_pointer() {
 		return `p`
 	} else {
-		mut sym := c.table.get_type_symbol(ftyp)
+		mut sym := c.table.get_type_symbol(c.unwrap_generic(ftyp))
 		if sym.kind == .alias {
 			// string aliases should be printable
 			info := sym.info as table.Alias

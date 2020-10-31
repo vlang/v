@@ -218,3 +218,16 @@ fn test_map_with_struct() {
 	assert a.str() == 'MapWithStruct{\n    foo: {\'test\': TestStruct{\n        x: 0\n    }}\n}'
 	assert '$a' == 'MapWithStruct{\n    foo: {\'test\': TestStruct{\n        x: 0\n    }}\n}'
 }
+
+struct ForGeneric {}
+fn generic_fn_interpolation<T>(p T) string {
+	return '$p'
+}
+fn generic_fn_str<T>(p T) string {
+	return p.str()
+}
+fn test_generic_auto_str() {
+	s := ForGeneric{}
+	assert generic_fn_interpolation(s) == 'ForGeneric{}'
+	assert generic_fn_str(s) == 'ForGeneric{}'
+}
