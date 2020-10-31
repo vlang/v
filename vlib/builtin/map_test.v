@@ -1,6 +1,7 @@
 // import time
 
 struct User {
+mut:
 	name string
 }
 
@@ -54,6 +55,10 @@ fn test_map() {
 	a.users['Bob'] = User{'Bob'}
 	q := a.users['Bob']
 	assert q.name == 'Bob'
+	// test struct field change
+	a.users['Bob'].name = 'bob'
+	q2 := a.users['Bob']
+	assert q2.name == 'bob'
 	a.m['one'] = 1
 	a.set('two', 2)
 	assert a.m['one'] == 1
@@ -308,19 +313,19 @@ fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 		m['three'] = 3
 	}
 	if m['two'] != 1 {
-		m['four'] = 4	
+		m['four'] = 4
 	}
 	if m['one'] > 0 {
-		m['five'] = 5	
+		m['five'] = 5
 	}
 	if m['one'] < 2 {
-		m['six'] = 6	
+		m['six'] = 6
 	}
 	if m['two'] >= 2 {
-		m['seven'] = 7	
+		m['seven'] = 7
 	}
 	if m['two'] <= 2 {
-		m['eight'] = 8	
+		m['eight'] = 8
 	}
 }
 
