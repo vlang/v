@@ -3505,7 +3505,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write(', &($elem_type_str[]) { ')
 					}
-				} else if (g.inside_map_postfix || g.inside_map_infix) || (g.is_assign_lhs && !g.is_array_set && elem_typ.kind == .struct_) {
+				} else if (g.inside_map_postfix || g.inside_map_infix) ||
+					(g.is_assign_lhs && !g.is_array_set && elem_typ.kind == .struct_) {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set(')
 					if !left_is_ptr {
