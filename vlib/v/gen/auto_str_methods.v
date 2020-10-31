@@ -8,7 +8,7 @@ import v.util
 
 // already generated styp, reuse it
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
-	mut sym := g.table.get_type_symbol(typ)
+	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if sym.info is table.Alias {
 		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
