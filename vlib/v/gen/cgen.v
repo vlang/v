@@ -3488,7 +3488,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
 				elem_typ := g.table.get_type_symbol(info.value_type)
-				if g.is_assign_lhs && !g.is_array_set {
+				if g.is_assign_lhs && !g.is_array_set && elem_typ.kind != .struct_ {
 					g.is_array_set = true
 					g.write('map_set(')
 					if !left_is_ptr {
