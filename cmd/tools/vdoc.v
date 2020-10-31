@@ -750,27 +750,21 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 				readme_contents := cfg.get_readme(dirpath)
 				dcs.head.comment = readme_contents
 			}
-			mut new_contents := map[string]doc.DocNode{}
 			if cfg.pub_only {
-				for name, oc in dcs.contents {
-					mut c := oc
-					c.content = c.content.all_after('pub ')
-					for i, cc in c.children {
-						c.children[i].content = cc.content.all_after('pub ')
+				for name, dc in dcs.contents {
+					dcs.contents[name].content = dc.content.all_after('pub ')
+					for i, cc in dc.children {
+						dcs.contents[name].children[i].content = cc.content.all_after('pub ')
 					}
-					new_contents[name] = c
 				}
 			}
 			if !cfg.is_multi && cfg.symbol_name.len > 0 {
 				if cfg.symbol_name in dcs.contents {
-					new_contents[cfg.symbol_name] = dcs.contents[cfg.symbol_name]
-					children := dcs.contents[cfg.symbol_name].children
-					for _, c in children {
-						new_contents[c.name] = c
+					for _, c in dcs.contents[cfg.symbol_name].children {
+						dcs.contents[c.name] = c
 					}
 				}
 			}
-			dcs.contents = new_contents
 		}
 		cfg.docs << dcs
 	}
