@@ -10,10 +10,6 @@ import v.util
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut str_fn_name := styp_to_str_fn_name(styp)
-	if sym.info is table.Alias {
-		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
-		str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
-	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
 	// generate for type
 	if sym_has_str_method && str_method_expects_ptr && str_nr_args == 1 {
@@ -46,7 +42,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		}
 		g.str_types << already_generated_key
 		match sym.info {
-			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
+			table.Alias { g.gen_str_for_alias(it, styp, str_fn_name) }
 			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
 			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
@@ -69,6 +65,27 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	return str_fn_name
 }
 
+fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name string) {
+	sym := g.table.get_type_symbol(info.parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	mut parent_str_fn_name := styp_to_str_fn_name(sym.name.replace('.', '__'))
+	if !sym_has_str_method {
+		parent_styp := g.typ(info.parent_type)
+		parent_str_fn_name = g.gen_str_for_type_with_styp(info.parent_type, parent_styp)
+	}
+	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
+	g.auto_str_funcs.writeln('}')
+}
+
 fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name string) {
 	sym := g.table.get_type_symbol(info.elem_type)
 	field_styp := g.typ(info.elem_type)
@@ -85,7 +102,6 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		elem_str_fn_name = styp_to_str_fn_name(field_styp)
 	}
 	if !sym_has_str_method {
-		// eprintln('> sym.name: does not have method `str`')
 		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
@@ -104,6 +120,10 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		}
 	} else if sym.kind in [.f32, .f64] {
 		g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
+	} else if sym.kind == .alias {
+		alias_sym := g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+		alias_str_fn_name := styp_to_str_fn_name(alias_sym.name.replace('.', '__'))
+		g.auto_str_funcs.writeln('\t\tstring x = ${alias_str_fn_name}(it);')
 	} else {
 		// There is a custom .str() method, so use it.
 		// NB: we need to take account of whether the user has defined
@@ -161,6 +181,10 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, a[i]));')
 	} else if sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a[i]));')
+	} else if sym.kind == .alias {
+		alias_sym := g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+		alias_str_fn_name := styp_to_str_fn_name(alias_sym.name.replace('.', '__'))
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${alias_str_fn_name}(a[i]));')
 	} else {
 		if (str_method_expects_ptr && is_elem_ptr) || (!str_method_expects_ptr && !is_elem_ptr) {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i]));')
