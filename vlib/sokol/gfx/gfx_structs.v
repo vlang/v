@@ -407,8 +407,8 @@ pub mut:
 }
 
 pub struct C.sg_depth_stencil_state {
-	stencil_front       sg_stencil_state
-	stencil_back        sg_stencil_state
+	stencil_front       C.sg_stencil_state
+	stencil_back        C.sg_stencil_state
 	depth_compare_func  CompareFunc
 	depth_write_enabled bool
 	stencil_enabled     bool
