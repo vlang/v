@@ -2809,6 +2809,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.IfGuardExpr {
 			node.expr_type = c.expr(node.expr)
+			if !node.expr_type.has_flag(.optional) {
+				c.error('expression should return an option', node.expr.position())
+			}
 			return table.bool_type
 		}
 		ast.IndexExpr {
