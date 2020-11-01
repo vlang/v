@@ -1313,6 +1313,10 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	g.writeln('}')
 }
 
+fn cnewlines(s string) string {
+	return s.replace('\n', r'\n')
+}
+
 fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	mod_path := cestring(g.file.path)
 	fn_name := g.fn_decl.name
@@ -1324,12 +1328,12 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
-	g.writeln('\t${metaname}.src = ${ctoslit(src)};')
+	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
 	match a.expr {
 		ast.InfixExpr {
 			g.writeln('\t${metaname}.op = ${ctoslit(it.op.str())};')
-			g.writeln('\t${metaname}.llabel = ${ctoslit(it.left.str())};')
-			g.writeln('\t${metaname}.rlabel = ${ctoslit(it.right.str())};')
+			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(it.left.str()))};')
+			g.writeln('\t${metaname}.rlabel = ${cnewlines(ctoslit(it.right.str()))};')
 			g.write('\t${metaname}.lvalue = ')
 			g.gen_assert_single_expr(it.left, it.left_type)
 			g.writeln(';')
