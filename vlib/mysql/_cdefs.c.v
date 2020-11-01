@@ -1,11 +1,14 @@
 module mysql
 
+[typedef]
 struct C.MYSQL {
 }
 
+[typedef]
 struct C.MYSQL_RES {
 }
 
+[typedef]
 struct C.MYSQL_FIELD {
 	name             byteptr // Name of column
 	org_name         byteptr // Original column name, if an alias
