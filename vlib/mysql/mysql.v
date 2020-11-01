@@ -1,8 +1,5 @@
 module mysql
 
-#flag -lmysqlclient
-#flag linux -I/usr/include/mysql
-#include <mysql.h>
 // TODO: Documentation
 pub struct Connection {
 mut:
