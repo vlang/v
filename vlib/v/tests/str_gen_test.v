@@ -182,7 +182,7 @@ fn test_struct_with_struct_pointer() {
 }
 
 fn test_struct_with_nil() {
-	w := Wrapper4{}
+	w := Wrapper4{0}
 	assert '$w' == 'Wrapper4{\n    foo: &nil\n}'
 	assert w.str() == 'Wrapper4{\n    foo: &nil\n}'
 }
