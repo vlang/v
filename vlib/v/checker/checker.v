@@ -1002,7 +1002,12 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 			if arg.typ != table.string_type {
 				continue
 			}
-			if arg.expr is ast.Ident || arg.expr is ast.StringLiteral {
+			if arg.expr is ast.Ident ||
+				arg.expr is ast.StringLiteral || arg.expr is ast.SelectorExpr {
+				// Simple expressions like variables, string literals, selector expressions
+				// (`x.field`) can't result in allocations and don't need to be assigned to
+				// temporary vars.
+				// Only expressions like `str + 'b'` need to be freed.
 				continue
 			}
 			call_expr.args[i].is_tmp_autofree = true

@@ -526,7 +526,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			tmp2 = g.new_tmp_var()
 			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
-		g.write('cJSON_Delete($json_obj);')
+		if !g.pref.autofree {
+			g.write('cJSON_Delete($json_obj); //del')
+		}
 		g.write('\n$cur_line')
 		name = ''
 		json_obj = tmp2
@@ -634,6 +636,9 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
 		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
+		return
+	}
+	if g.is_js_call {
 		return
 	}
 	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
@@ -778,7 +783,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if is_interface {
 				g.expr(arg.expr)
 			} else if use_tmp_var_autofree {
-				if arg.is_tmp_autofree {
+				if arg.is_tmp_autofree { // && !g.is_js_call {
 					// We saved expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
 					// g.write('_arg_expr_${g.called_fn_name}_$i')
