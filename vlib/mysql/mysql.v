@@ -1,7 +1,14 @@
 module mysql
 
-#flag -lmysqlclient
+#flag darwin  -lmysqlclient
+#flag solaris -lmysqlclient
+#flag linux -lmysqlclient
+#flag freebsd -lmysqlclient
 #flag linux -I/usr/include/mysql
+#flag freebsd -I/usr/local/include/mysql
+#flag freebsd -L/usr/local/lib/mysql
+#flag windows -I@VROOT/thirdparty/mysql/include
+#flag windows @VROOT/thirdparty/mysql/lib/libmysql.dll
 #include <mysql.h>
 // TODO: Documentation
 pub struct Connection {
