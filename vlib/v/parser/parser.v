@@ -813,6 +813,13 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 			message: s
 		}
 	}
+	if p.pref.output_mode == .silent {
+		// Normally, parser errors mean that the parser exits immediately, so there can be only 1 parser error.
+		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
+		// of the parser logic does not expect that, and may loop forever.
+		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
+		p.next()
+	}
 }
 
 pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {

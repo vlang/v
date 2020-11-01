@@ -258,6 +258,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		for param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+				break
 			}
 			p.scope.register(param.name, ast.Var{
 				name: param.name
@@ -456,6 +457,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					}
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
+					break
 				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
@@ -476,6 +478,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
 						pos)
+					break
 				}
 				p.next()
 			}
@@ -488,6 +491,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				type_source_name: sym.source_name
 			}
 			arg_no++
+			if arg_no > 1024 {
+				p.error_with_pos('too many args', pos)
+				break
+			}
 		}
 	} else {
 		for p.tok.kind != .rpar {
@@ -532,6 +539,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic` or `shared`',
 						pos)
+					break
 				}
 				typ = typ.set_nr_muls(1)
 				if is_shared {
@@ -557,6 +565,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				if is_variadic && p.tok.kind == .comma {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
 						arg_pos[i])
+					break
 				}
 			}
 			if p.tok.kind != .rpar {
