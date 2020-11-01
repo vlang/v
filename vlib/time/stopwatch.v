@@ -57,11 +57,11 @@ pub fn (mut t StopWatch) pause() {
 pub fn (t StopWatch) elapsed() Duration {
 	if t.start > 0 {
 		if t.end == 0 {
-			return Duration(time.sys_mono_now() - t.start + t.elapsed)
+			return Duration(i64(time.sys_mono_now() - t.start + t.elapsed))
 		} else {
-			return Duration(t.end - t.start + t.elapsed)
+			return Duration(i64(t.end - t.start + t.elapsed))
 		}
 	}
 
-	return Duration(t.elapsed)
+	return Duration(i64(t.elapsed))
 }

@@ -1059,6 +1059,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			is_mod_cast || (!(name.len > 1 && name[0] == `C` && name[1] == `.`) && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
+			start_pos := p.tok.position()
 			mut to_typ := p.parse_type()
 			if p.is_amp {
 				// Handle `&Foo(0)`
@@ -1079,13 +1080,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				arg = p.expr(0) // len
 				has_arg = true
 			}
+			end_pos := p.tok.position()
 			p.check(.rpar)
 			node = ast.CastExpr{
 				typ: to_typ
 				expr: expr
 				arg: arg
 				has_arg: has_arg
-				pos: expr.position()
+				pos: start_pos.extend(end_pos)
 			}
 			p.expr_mod = ''
 			return node

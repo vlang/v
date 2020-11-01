@@ -2678,77 +2678,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.bool_type
 		}
 		ast.CastExpr {
-			node.expr_type = c.expr(node.expr)
-			from_type_sym := c.table.get_type_symbol(node.expr_type)
-			to_type_sym := c.table.get_type_symbol(node.typ)
-			expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
-			if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
-				if node.has_arg {
-					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
-						node.pos)
-				} else {
-					c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
-						node.pos)
-				}
-			}
-			if node.expr_type == table.byte_type && to_type_sym.kind == .string {
-				c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
-					node.pos)
-			}
-			if to_type_sym.kind == .sum_type {
-				if node.expr_type in [table.any_int_type, table.any_flt_type] {
-					node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
-				}
-				if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
-					c.error('cannot cast `$from_type_sym.source_name` to `$to_type_sym.source_name`',
-						node.pos)
-				}
-			} else if node.typ == table.string_type &&
-				(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
-				(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
-				type_name := c.table.type_to_str(node.expr_type)
-				c.error('cannot cast type `$type_name` to string, use `x.str()` instead',
-					node.pos)
-			} else if node.expr_type == table.string_type {
-				if to_type_sym.kind != .alias {
-					mut error_msg := 'cannot cast a string'
-					if node.expr is ast.StringLiteral {
-						str_lit := node.expr as ast.StringLiteral
-						if str_lit.val.len == 1 {
-							error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
-						}
-					}
-					c.error(error_msg, node.pos)
-				}
-			} else if to_type_sym.kind == .byte &&
-				node.expr_type != table.voidptr_type && from_type_sym.kind != .enum_ && !node.expr_type.is_int() &&
-				!node.expr_type.is_float() && !node.expr_type.is_ptr() {
-				type_name := c.table.type_to_str(node.expr_type)
-				c.error('cannot cast type `$type_name` to `byte`', node.pos)
-			} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
-				// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
-				if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
-					from_type_info := from_type_sym.info as table.Struct
-					to_type_info := to_type_sym.info as table.Struct
-					if !c.check_struct_signature(from_type_info, to_type_info) {
-						c.error('cannot convert struct `$from_type_sym.source_name` to struct `$to_type_sym.source_name`',
-							node.pos)
-					}
-				} else {
-					type_name := c.table.type_to_str(node.expr_type)
-					c.error('cannot cast `$type_name` to struct', node.pos)
-				}
-			} else if node.typ == table.bool_type {
-				c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
-			} else if node.expr_type == table.none_type {
-				type_name := c.table.type_to_str(node.typ)
-				c.error('cannot cast `none` to `$type_name`', node.pos)
-			}
-			if node.has_arg {
-				c.expr(node.arg)
-			}
-			node.typname = c.table.get_type_symbol(node.typ).name
-			return node.typ
+			return c.cast_expr(mut node)
 		}
 		ast.CallExpr {
 			return c.call_expr(mut node)
@@ -2949,6 +2879,85 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 	}
 	return table.void_type
+}
+
+pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
+	node.expr_type = c.expr(node.expr)
+	from_type_sym := c.table.get_type_symbol(node.expr_type)
+	to_type_sym := c.table.get_type_symbol(node.typ)
+	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
+	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
+		if node.has_arg {
+			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring_with_len(len) instead of string(x,len)',
+				node.pos)
+		} else {
+			c.warn('to convert a C string buffer pointer to a V string, please use x.vstring() instead of string(x)',
+				node.pos)
+		}
+	}
+	if node.expr_type == table.byte_type && to_type_sym.kind == .string {
+		c.error('can not cast type `byte` to string, use `${node.expr.str()}.str()` instead.',
+			node.pos)
+	}
+	if to_type_sym.kind == .sum_type {
+		if node.expr_type in [table.any_int_type, table.any_flt_type] {
+			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
+		}
+		if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
+			c.error('cannot cast `$from_type_sym.source_name` to `$to_type_sym.source_name`',
+				node.pos)
+		}
+	} else if to_type_sym.info is table.Alias as alias_info {
+		if !c.check_types(node.expr_type, alias_info.parent_type) {
+			parent_type_sym := c.table.get_type_symbol(alias_info.parent_type)
+			c.error('cannot cast type `$from_type_sym.source_name` to `$to_type_sym.source_name`, require `$parent_type_sym.source_name`',
+				node.pos)
+		}
+	} else if node.typ == table.string_type &&
+		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
+		(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
+		type_name := c.table.type_to_str(node.expr_type)
+		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
+	} else if node.expr_type == table.string_type {
+		if to_type_sym.kind != .alias {
+			mut error_msg := 'cannot cast a string'
+			if node.expr is ast.StringLiteral {
+				str_lit := node.expr as ast.StringLiteral
+				if str_lit.val.len == 1 {
+					error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+				}
+			}
+			c.error(error_msg, node.pos)
+		}
+	} else if to_type_sym.kind == .byte &&
+		node.expr_type != table.voidptr_type && from_type_sym.kind != .enum_ && !node.expr_type.is_int() &&
+		!node.expr_type.is_float() && !node.expr_type.is_ptr() {
+		type_name := c.table.type_to_str(node.expr_type)
+		c.error('cannot cast type `$type_name` to `byte`', node.pos)
+	} else if to_type_sym.kind == .struct_ && !node.typ.is_ptr() && !(to_type_sym.info as table.Struct).is_typedef {
+		// For now we ignore C typedef because of `C.Window(C.None)` in vlib/clipboard
+		if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+			from_type_info := from_type_sym.info as table.Struct
+			to_type_info := to_type_sym.info as table.Struct
+			if !c.check_struct_signature(from_type_info, to_type_info) {
+				c.error('cannot convert struct `$from_type_sym.source_name` to struct `$to_type_sym.source_name`',
+					node.pos)
+			}
+		} else {
+			type_name := c.table.type_to_str(node.expr_type)
+			c.error('cannot cast `$type_name` to struct', node.pos)
+		}
+	} else if node.typ == table.bool_type {
+		c.error('cannot cast to bool - use e.g. `some_int != 0` instead', node.pos)
+	} else if node.expr_type == table.none_type {
+		type_name := c.table.type_to_str(node.typ)
+		c.error('cannot cast `none` to `$type_name`', node.pos)
+	}
+	if node.has_arg {
+		c.expr(node.arg)
+	}
+	node.typname = c.table.get_type_symbol(node.typ).name
+	return node.typ
 }
 
 pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
