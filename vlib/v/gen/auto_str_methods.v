@@ -12,8 +12,8 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	mut str_fn_name := styp_to_str_fn_name(styp)
 	if sym.info is table.Alias as sym_info {
 		if sym_info.is_import {
-			sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)	
-			str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))	
+			sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+			str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
@@ -55,14 +55,30 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 					g.gen_str_for_alias(sym_info, styp, str_fn_name)
 				}
 			}
-			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
-			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
-			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
-			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
-			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
-			table.MultiReturn { g.gen_str_for_multi_return(it, styp, str_fn_name) }
-			table.SumType { g.gen_str_for_sum_type(it, styp, str_fn_name) }
-			else { verror("could not generate string method $str_fn_name for type \'$styp\'") }
+			table.Array {
+				g.gen_str_for_array(it, styp, str_fn_name)
+			}
+			table.ArrayFixed {
+				g.gen_str_for_array_fixed(it, styp, str_fn_name)
+			}
+			table.Enum {
+				g.gen_str_for_enum(it, styp, str_fn_name)
+			}
+			table.Struct {
+				g.gen_str_for_struct(it, styp, str_fn_name)
+			}
+			table.Map {
+				g.gen_str_for_map(it, styp, str_fn_name)
+			}
+			table.MultiReturn {
+				g.gen_str_for_multi_return(it, styp, str_fn_name)
+			}
+			table.SumType {
+				g.gen_str_for_sum_type(it, styp, str_fn_name)
+			}
+			else {
+				verror("could not generate string method $str_fn_name for type \'$styp\'")
+			}
 		}
 	}
 	// if varg, generate str for varg

@@ -4437,16 +4437,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		val_type := if is_p { etype.deref() } else { etype }
 		str_fn_name := g.gen_str_for_type(val_type)
 		if is_p && str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}((')
 		}
 		if is_p && !str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
 		}
 		if !is_p && !str_method_expects_ptr {
-			g.write('${str_fn_name}(  ')
+			g.write('${str_fn_name}(')
 		}
 		if !is_p && str_method_expects_ptr {
-			g.write('${str_fn_name}( &')
+			g.write('${str_fn_name}(&')
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {

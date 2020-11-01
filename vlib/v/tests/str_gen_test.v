@@ -223,9 +223,11 @@ struct ForGeneric {}
 fn generic_fn_interpolation<T>(p T) string {
 	return '$p'
 }
+
 fn generic_fn_str<T>(p T) string {
 	return p.str()
 }
+
 fn test_generic_auto_str() {
 	s := ForGeneric{}
 	assert generic_fn_interpolation(s) == 'ForGeneric{}'
@@ -235,22 +237,28 @@ fn test_generic_auto_str() {
 type Alias1 = int
 fn test_alias_in_array() {
 	t := [Alias1(1)]
-	assert t.str() == '[1]'
-	assert '$t' == '[1]'
+	assert t.str() == '[Alias1(1)]'
+	assert '$t' == '[Alias1(1)]'
 }
 
 type Alias2 = int
 fn test_alias_in_fixed_array() {
 	t := [Alias1(1)]!!
-	assert t.str() == '[1]'  // should be [Alias1(1)]
-	assert '$t' == '[1]'
+	assert t.str() == '[Alias1(1)]'
+	assert '$t' == '[Alias1(1)]'
 }
 
-// TODO fix
 fn test_alias_int() {
 	a := Alias1(1)
-	assert a.str() == '1' // should be Alias1(1)
-	assert '$a' == '1'
+	assert a.str() == 'Alias1(1)'
+	assert '$a' == 'Alias1(1)'
+}
+
+type Alias3 = string
+fn test_alias_string() {
+	a := Alias3('test')
+	assert a.str() == 'Alias3(test)'
+	assert '$a' == 'Alias3(test)'
 }
 
 type TestAlias = TestStruct
