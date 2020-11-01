@@ -2910,7 +2910,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if to_type_sym.info is table.Alias as alias_info {
 		if !c.check_types(node.expr_type, alias_info.parent_type) {
 			parent_type_sym := c.table.get_type_symbol(alias_info.parent_type)
-			c.error('cannot cast type `$from_type_sym.source_name` to `$to_type_sym.source_name`, require `$parent_type_sym.source_name`',
+			c.error('cannot convert type `$from_type_sym.source_name` to `$to_type_sym.source_name` (alias to `$parent_type_sym.source_name`)',
 				node.pos)
 		}
 	} else if node.typ == table.string_type &&
