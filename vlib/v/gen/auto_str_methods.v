@@ -10,6 +10,12 @@ import v.util
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut str_fn_name := styp_to_str_fn_name(styp)
+	if sym.info is table.Alias as sym_info {
+		if sym_info.is_import {
+			sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)	
+			str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))	
+		}
+	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
 	// generate for type
 	if sym_has_str_method && str_method_expects_ptr && str_nr_args == 1 {
@@ -41,8 +47,14 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
 		g.str_types << already_generated_key
-		match sym.info {
-			table.Alias { g.gen_str_for_alias(it, styp, str_fn_name) }
+		match sym.info as sym_info {
+			table.Alias {
+				if sym_info.is_import {
+					g.gen_str_default(sym, styp, str_fn_name)
+				} else {
+					g.gen_str_for_alias(sym_info, styp, str_fn_name)
+				}
+			}
 			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
 			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
 			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }

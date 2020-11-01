@@ -1571,6 +1571,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 				info: table.Alias{
 					parent_type: typ
 					language: table.Language.v
+					is_import: true
 				}
 				is_public: false
 			})

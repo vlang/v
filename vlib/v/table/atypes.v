@@ -732,6 +732,7 @@ pub struct Alias {
 pub:
 	parent_type Type
 	language    Language
+	is_import   bool
 }
 
 pub struct Aggregate {
