@@ -838,7 +838,20 @@ pub fn (table &Table) type_to_str(t Type) string {
 			}
 		}
 		.function {
-			// do nothing, source_name is sufficient
+			info := sym.info as FnType
+			func := info.func
+			res = 'fn ('
+			for i, arg in func.params {
+				if i > 0 {
+					res += ', '
+				}
+				res += table.type_to_str(arg.typ)
+			}
+			res += ')'
+			if func.return_type != void_type {
+				res += ' '
+				res += table.type_to_str(func.return_type)
+			}
 		}
 		.map {
 			if int(t) == map_type_idx {
