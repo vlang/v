@@ -108,3 +108,24 @@ fn test_typeof_on_fn() {
 	assert typeof(myfn3).name == typeof(myfn3)
 	assert typeof(myfn4).name == typeof(myfn4)
 }
+
+fn type_name<T>(v T) string {
+	return typeof(v).name
+}
+
+fn array_item_type<T>(v []T) string {
+	return typeof(v[0]).name
+}
+
+fn test_generic_type() {
+	v := 5
+	assert type_name(v) == 'int'
+	//assert type_name(&v) == '&int'
+	//assert type_name([v]!!) == '[1]int'
+	assert type_name([v]) == '[]int'
+	assert type_name([[v]]) == '[][]int'
+	
+	assert array_item_type([v]) == 'int'
+	assert array_item_type([[v]]) == '[]int'
+	//assert array_item_type([&v]) == '&int'
+}

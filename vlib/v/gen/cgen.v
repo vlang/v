@@ -2358,7 +2358,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 // typeof(expr).name
 fn (mut g Gen) typeof_name(node ast.TypeOf) {
-	sym := g.table.get_type_symbol(node.expr_type)
+	typ := node.expr_type
+	if typ.has_flag(.generic) {
+		s := g.table.type_to_str(g.cur_generic_type)
+		g.write('tos_lit("$s")')
+		return
+	}
+	// TODO: update & use table.type_to_str instead
+	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
 		info := sym.info as table.Array
 		mut s := g.table.get_type_name(info.elem_type)
