@@ -2367,6 +2367,8 @@ fn (mut g Gen) typeof_name(node ast.TypeOf) {
 	if sym.kind in [.array_fixed, .function] {
 		g.typeof_expr(node)
 	} else {
+		// Note: typeof() must be known at compile-time
+		// sum types should not be handled dynamically
 		s := g.table.type_to_str(typ)
 		g.write('tos_lit("${util.strip_main_name(s)}")')
 	}

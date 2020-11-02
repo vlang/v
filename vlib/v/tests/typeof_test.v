@@ -55,6 +55,7 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
+	// typeof should be known at compile-time for all types
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
 	assert typeof(c).name == 'MySumType'
