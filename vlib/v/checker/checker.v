@@ -1654,10 +1654,15 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 				if type_fits || is_panic_or_exit {
 					return
 				}
-				type_name := c.table.type_to_str(last_stmt.typ)
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
-				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
-					last_stmt.pos)
+				if last_stmt.typ == table.void_type {
+					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/exit/continue/break/panic',
+						last_stmt.pos)
+				} else {
+					type_name := c.table.type_to_str(last_stmt.typ)
+					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
+						last_stmt.pos)
+				}
 				return
 			}
 			ast.BranchStmt {
