@@ -10,7 +10,7 @@ fn (mut v Builder) get_os_cflags() []cflag.CFlag {
 	if v.pref.compile_defines.len > 0 {
 		ctimedefines << v.pref.compile_defines
 	}
-	for mut flag in v.table.cflags {
+	for flag in v.table.cflags {
 		if flag.value.ends_with('.o') {
 			flag.cached = v.pref.cache_manager.postfix_with_key2cpath('.o', os.real_path(flag.value))
 		}
