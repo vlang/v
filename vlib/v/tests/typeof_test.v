@@ -15,12 +15,22 @@ fn test_typeof_on_simple_expressions() {
 	// assert typeof(1.0 * 12.2) == 'any_float'
 }
 
-fn test_typeof_on_atypes() {
+fn test_arrays() {
 	aint := []int{}
 	astring := []string{}
 	assert typeof(aint) == 'array_int'
 	assert typeof(astring) == 'array_string'
+	assert typeof(aint).name == '[]int'
 	assert typeof(astring).name == '[]string'
+}
+
+fn test_type_constructors() {
+	v := `c`
+	assert typeof(&v).name == '&rune'
+	assert typeof(&[v]).name == '&[]rune'
+	assert typeof([v]!!).name == '[1]rune'
+	assert typeof(&[v]!!).name == '&[1]rune'
+	assert typeof(&FooBar{}).name == '&FooBar'
 }
 
 struct FooBar {
@@ -55,6 +65,7 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
+	// typeof should be known at compile-time for all types
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
 	assert typeof(c).name == 'MySumType'
@@ -107,4 +118,26 @@ fn test_typeof_on_fn() {
 	assert typeof(myfn2).name == typeof(myfn2)
 	assert typeof(myfn3).name == typeof(myfn3)
 	assert typeof(myfn4).name == typeof(myfn4)
+}
+
+fn type_name<T>(v T) string {
+	return typeof(v).name
+}
+
+fn array_item_type<T>(v []T) string {
+	return typeof(v[0]).name
+}
+
+fn test_generic_type() {
+	v := 5
+	assert type_name(v) == 'int'
+	//assert type_name(&v) == '&int'
+	//assert type_name([v]!!) == '[1]int'
+	assert type_name([v]) == '[]int'
+	assert type_name([[v]]) == '[][]int'
+	assert type_name(FooBar{}) == 'FooBar'
+	
+	assert array_item_type([v]) == 'int'
+	assert array_item_type([[v]]) == '[]int'
+	//assert array_item_type([&v]) == '&int'
 }
