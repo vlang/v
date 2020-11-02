@@ -4417,8 +4417,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	} else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
-		// handle string aliases
+	} else if typ == table.string_type {
 		g.expr(expr)
 		return true
 	} else if sym.kind == .enum_ {
