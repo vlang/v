@@ -121,6 +121,43 @@ fn main() {
 }
 ```
 
+v nocompile
+```v nocompile
+fn main() {
+    println('hello world')
+}
+```
+
+v-nocompile
+```v-nocompile
+fn main() {
+    println('hello world')
+}
+```
+
+v<nocompile>
+```v<nocompile>
+fn main() {
+    println('hello world')
+}
+```
+
+<nocompile>
+```v
+fn main() {
+    println('hello world')
+}
+```
+</nocompile>
+
+
+Fencing with tilda:
+~~~v
+fn main() {
+    println('hello world')
+}
+~~~
+
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
