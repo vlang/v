@@ -96,17 +96,25 @@ Anything you can do in other languages, you can do in V.
 </td></tr>
 </table>
 
-
+<!--
+There are several special keywords, which you can put after the code fences for v. 
+These are:
+   compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
+   ignore       - ignore the example, useful for examples that just use the syntax highlighting
+   failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
+   oksyntax     - it should parse, it may not compile. Useful for partial examples.
+   badsyntax    - known bad syntax, it should not even parse
+   wip          - like ignore; a planned feature; easy to search.
+-->
 
 ## Hello World
 
-v
+
 ```v
 fn main() {
     println('hello world')
 }
 ```
-
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
@@ -1011,15 +1019,18 @@ A defer statement defers the execution of a block of statements
 until the surrounding function returns.
 
 ```v
+import os
+
 fn read_log() {
-    f := os.open('log.txt') or { panic(err) }
+    mut ok := false
+    mut f := os.open('log.txt') or { panic(err) }
     defer { f.close() }
-    ...
+    // ...
     if !ok {
         // defer statement will be called here, the file will be closed
         return
     }
-    ...
+    // ...
     // defer statement will be called here, the file will be closed
 }
 ```
@@ -1050,7 +1061,10 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
-struct Point{ x int y int }
+struct Point {
+    x int
+    y int
+}
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -1063,7 +1077,7 @@ References are similar to Go pointers and C++ references.
 
 V doesn't allow subclassing, but it supports embedded structs:
 
-```v
+```v wip
 // TODO: this will be implemented later
 struct Button {
     Widget
@@ -1099,6 +1113,10 @@ It's also possible to define custom default values.
 ### Short struct literal syntax
 
 ```v
+struct Point{
+    x int
+    y int
+}
 mut p := Point{x: 10, y: 20}
 
 // you can omit the struct name when it's already known
@@ -1122,11 +1140,17 @@ struct ButtonConfig {
     height      int = 20
 }
 
+struct Button { 
+    text   string
+    width  int
+    height int
+}
+
 fn new_button(c ButtonConfig) &Button {
     return &Button{
         width: c.width
-	height: c.height
-	text: c.text
+        height: c.height
+        text: c.text
     }
 }
 
@@ -1137,7 +1161,7 @@ assert button.height == 20
 
 As you can see, both the struct name and braces can be omitted, instead of:
 
-```v
+```v ignore
 new_button(ButtonConfig{text:'Click me', width:100})
 ```
 
@@ -1167,7 +1191,7 @@ __global:
 
 For example, here's the `string` type defined in the `builtin` module:
 
-```v
+```v ignore
 struct string {
     str byteptr
 pub:
@@ -1178,7 +1202,7 @@ pub:
 It's easy to see from this definition that `string` is an immutable type.
 The byte pointer with the string data is not accessible outside `builtin` at all.
 The `len` field is public, but immutable:
-```v
+```v failcompile
 fn main() {
     str := 'hello'
     len := str.len // OK
@@ -1236,6 +1260,7 @@ It is possible to modify function arguments by using the keyword `mut`:
 
 ```v
 struct User {
+	name string
 mut:
     is_registered bool
 }
@@ -1281,11 +1306,14 @@ instead of `register(mut user)`.
 V makes it easy to return a modified version of an object:
 
 ```v
+struct User{ name string  age int  is_registered bool }
 fn register(u User) User {
     return { u | is_registered: true }
 }
 
+mut user := User{name: 'abc' age: 23}
 user = register(user)
+println(user)
 ```
 
 ### Anonymous & high order functions
@@ -1318,12 +1346,13 @@ fn main()  {
 ## References
 
 ```v
+struct Foo{}
 fn (foo Foo) bar_method() {
-    ...
+    // ...
 }
 
 fn bar_function(foo Foo) {
-    ...
+    // ...
 }
 ```
 
@@ -1338,6 +1367,8 @@ You can ensure that the struct is always passed by reference by
 adding `&`:
 
 ```v
+struct Foo{ abc int }
+
 fn (foo &Foo) bar() {
     println(foo.abc)
 }
@@ -1347,9 +1378,9 @@ fn (foo &Foo) bar() {
 `(mut foo Foo)` must be used.
 
 In general, V's references are similar to Go pointers and C++ references.
-For example, a tree structure definition would look like this:
+For example, a generic tree structure definition would look like this:
 
-```v
+```v wip
 struct Node<T> {
     val   T
     left  &Node
@@ -1408,9 +1439,7 @@ They can represent complex structures, and this is used quite often since there
 are no globals:
 -->
 
-```v
-println('Top cities: $TOP_CITIES.filter(.usa)')
-vs
+```v ignore
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
@@ -1420,6 +1449,7 @@ println('Top cities: $top_cities.filter(.usa)')
 strings, numbers, arrays, maps, structs.
 
 ```v
+struct User{ name string age int }
 println(1) // "1"
 println('hi') // "hi"
 println([1,2,3]) // "[1, 2, 3]"
@@ -1447,7 +1477,7 @@ If you don't want to print a newline, use `print()` instead.
 The number of builtin functions is low. Other builtin functions are:
 
 
-```
+```v ignore
 fn exit(exit_code int)
 fn panic(message string)
 fn print_backtrace()
@@ -1463,12 +1493,12 @@ quite easy to do.
 To create a new module, create a directory with your module's name containing
 .v files with code:
 
-```
+```shell
 cd ~/code/modules
 mkdir mymodule
 vim mymodule/myfile.v
 ```
-```v
+```v failcompile
 // myfile.v
 module mymodule
 
@@ -1480,7 +1510,7 @@ pub fn say_hi() {
 
 You can now use `mymodule` in your code:
 
-```v
+```v failcompile
 import mymodule
 
 fn main() {
@@ -1588,14 +1618,19 @@ struct Venus {}
 type World = Moon | Mars | Venus
 
 sum := World(Moon{})
+println(sum)
 ```
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
 ```v
-fn (m Mars) dust_storm() bool
+struct Moon {}
+struct Mars {}
+struct Venus {}
+type World = Moon | Mars | Venus
 
+fn (m Mars) dust_storm() bool { return true }
 fn main() {
     mut w := World(Moon{})
     assert w is Moon
@@ -1614,8 +1649,11 @@ fn main() {
 You can also use `match` to determine the variant:
 
 ```v
-fn open_parachutes(n int)
-
+struct Moon {}
+struct Mars {}
+struct Venus {}
+type World = Moon | Mars | Venus
+fn open_parachutes(n int) { println(n) }
 fn land(w World) {
     match w {
         Moon {} // no atmosphere
@@ -1638,9 +1676,15 @@ There are two ways to access the cast variant inside a match branch:
 - using `as` to specify a variable name
 
 ```v
-fn (m Moon) moon_walk()
-fn (m Mars) shiver()
-fn (v Venus) sweat()
+struct Moon {}
+struct Mars {}
+struct Venus {}
+
+type World = Moon | Mars | Venus
+
+fn (m Moon) moon_walk() {}
+fn (m Mars) shiver() {}
+fn (v Venus) sweat() {}
 
 fn pass_time(w World) {
     match w {
@@ -1801,7 +1845,8 @@ Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the fi
 
 ## Generics
 
-```v
+```v wip
+
 struct Repo<T> {
     db DB
 }
@@ -1946,7 +1991,7 @@ to do so will then result in a runtime panic (with the exception of `select` and
 associated channel has been closed and the buffer is empty. This situation can be
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
-```v
+```v wip
 mut ch := chan int{}
 mut ch2 := chan f64{}
 // ...
@@ -1965,9 +2010,16 @@ y := <-ch2 ?
 The `select` command allows monitoring several channels at the same time
 without noticeable CPU load.  It consists of a list of possible transfers and associated branches
 of statements - similar to the [match](#match) command:
-```v
+```v wip
 import time
-select {
+fn main () {
+  mut c := chan f64{}
+  mut ch := chan f64{}
+  mut ch2 := chan f64{}
+  mut ch3 := chan f64{}
+  mut b := 0.0
+  // ...
+  select {
     a := <-ch {
         // do something with `a`
     }
@@ -1980,7 +2032,8 @@ select {
     > 500 * time.millisecond {
         // do something if no channel has become ready within 0.5s
     }
-}
+  }
+}  
 ```
 
 The timeout branch is optional. If it is absent `select` waits for an unlimited amount of time.
@@ -1989,7 +2042,7 @@ by adding an `else { ... }` branch. `else` and `> timeout` are mutually exclusiv
 
 The `select` command can be used as an *expression* of type `bool`
 that becomes `false` if all channels are closed:
-```v
+```v wip
 if select {
     ch <- a {
         // ...
@@ -2005,10 +2058,21 @@ if select {
 
 For special purposes there are some builtin properties and methods:
 ```v
+struct Abc{x int}
+
+a := 2.13
+mut ch := chan f64{}
+
 res := ch.try_push(a)      // try to perform `ch <- a`
-res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
+println(res)
 l := ch.len                // number of elements in queue
 c := ch.cap                // maximum queue length
+println(l)
+println(c)
+
+// mut b := Abc{}
+// mut ch2 := chan f64{}
+// res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
 ```
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
@@ -2102,9 +2166,10 @@ No runtime reflection is used. This results in much better performance.
 ### Asserts
 
 ```v
-mut v := 2
+fn foo(mut v []int) { v[0] = 1 }
+mut v := [20]
 foo(mut v)
-assert v < 4
+assert v[0] < 4
 ```
 An `assert` statement checks that its expression evaluates to `true`. If an assert fails,
 the program will abort. Asserts should only be used to detect programming errors. When an
@@ -2173,15 +2238,18 @@ during compilation. If your V program compiles, it's guaranteed that it's going
 to be leak free. For example:
 
 ```v
+import strings
 fn draw_text(s string, x int, y int) {
     // ...
 }
 
 fn draw_scene() {
     // ...
+    name1 := 'abc'
+    name2 := 'def ghi'
     draw_text('hello $name1', 10, 10)
     draw_text('hello $name2', 100, 10)
-    draw_text(strings.repeat('X', 10000), 10, 50)
+    draw_text(strings.repeat(`X`, 10000), 10, 50)
     // ...
 }
 ```
@@ -2194,6 +2262,7 @@ These two strings are small,
 V will use a preallocated buffer for them.
 
 ```v
+struct User{ name string }
 fn test() []int {
     number := 7 // stack variable
     user := User{} // struct allocated on stack
@@ -2223,6 +2292,7 @@ V's ORM provides a number of benefits:
     then manually construct objects from the parsed results.)
 
 ```v
+import sqlite
 struct Customer { // struct name has to be the same as the table name (for now)
     id int // a field named `id` of integer type must be the first field
     name string
@@ -2230,7 +2300,7 @@ struct Customer { // struct name has to be the same as the table name (for now)
     country string
 }
 
-db := sqlite.connect('customers.db')
+db := sqlite.connect('customers.db')?
 
 // select count(*) from Customer
 nr_customers := sql db { select count from Customer }
@@ -2337,9 +2407,9 @@ Examples of potentially memory-unsafe operations are:
 
 To mark potentially memory-unsafe operations, enclose them in an `unsafe` block:
 
-```v
+```v failcompile
 // allocate 2 uninitialized bytes & return a reference to them
-mut p := unsafe { &byte(malloc(2)) }
+mut p := unsafe { malloc(2) }
 p[0] = `h` // Error: pointer indexing is only allowed in `unsafe` blocks
 unsafe {
     p[0] = `h` // OK
@@ -2628,7 +2698,7 @@ eprintln( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 ```
 
 Another example, is if you want to embed the version/name from v.mod *inside* your executable:
-```v
+```v ignore
 import v.vmod
 vm := vmod.decode( @VMOD_FILE ) or { panic(err) }
 eprintln('$vm.name $vm.version\n $vm.description')
@@ -2671,7 +2741,7 @@ the boolean expression is highly improbable. In the JS backend, that does nothin
 Having built-in JSON support is nice, but V also allows you to create efficient
 serializers for any data format. V has compile-time `if` and `for` constructs:
 
-```v
+```v wip
 // TODO: not fully implemented
 
 struct User {
@@ -2876,7 +2946,7 @@ cross-platform support. "V scripts" run on Unix-like systems as well as on Windo
 Use the `.vsh` file extension. It will make all functions in the `os`
 module global (so that you can use `ls()` instead of `os.ls()`, for example).
 
-```v
+```v wip
 #!/usr/local/bin/v run
 // The shebang above associates the file to V on Unix-like systems,
 // so it can be run just by specifying the path to the file
