@@ -100,63 +100,12 @@ Anything you can do in other languages, you can do in V.
 
 ## Hello World
 
-vsh:
-```vsh
-fn main() {
-    println('hello world')
-}
-```
-
-vv:
-```vv
-fn main() {
-    println('hello world')
-}
-```
-
 v
 ```v
 fn main() {
     println('hello world')
 }
 ```
-
-v nocompile
-```v nocompile
-fn main() {
-    println('hello world')
-}
-```
-
-v-nocompile
-```v-nocompile
-fn main() {
-    println('hello world')
-}
-```
-
-v<nocompile>
-```v<nocompile>
-fn main() {
-    println('hello world')
-}
-```
-
-<nocompile>
-```v
-fn main() {
-    println('hello world')
-}
-```
-</nocompile>
-
-
-Fencing with tilda:
-~~~v
-fn main() {
-    println('hello world')
-}
-~~~
 
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
@@ -318,7 +267,7 @@ Try compiling the program above after removing `mut` from the first line.
 Note the (important) difference between `:=` and `=`.
 `:=` is used for declaring and initializing, `=` is used for assigning.
 
-```v
+```v failcompile
 fn main() {
     age = 21
 }
@@ -357,7 +306,7 @@ that is already used in a parent scope will cause a compilation error.
 
 ### Primitive types
 
-```v
+```v ignore
 bool
 
 string
@@ -384,7 +333,7 @@ on one side can be automatically promoted if it fits
 completely into the data range of the type on the other side.
 These are the allowed possibilities:
 
-```
+```v ignore
    i8 → i16 → int → i64
                   ↘     ↘
                     f32 → f64
@@ -413,7 +362,7 @@ assert windows_newline.len == 2
 In V, a string is a read-only array of bytes. String data is encoded using UTF-8.
 String values are immutable. You cannot mutate elements:
 
-```v
+```v failcompile
 mut s := 'hello 🌎'
 s[0] = `H` // not allowed
 ```
@@ -464,6 +413,7 @@ println('[${int(x):-10}]') // pad with spaces on the right
 ### String operators
 
 ```v
+name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
 
@@ -474,7 +424,7 @@ println(s) // "hello world"
 All operators in V must have values of the same type on both sides.
 You cannot concatenate an integer to a string:
 
-```v
+```v failcompile
 age := 10
 println('age = ' + age) // not allowed
 ```
@@ -483,12 +433,14 @@ println('age = ' + age) // not allowed
 We have to either convert `age` to a `string`:
 
 ```v
+age := 11
 println('age = ' + age.str())
 ```
 
 or use string interpolation (preferred):
 
 ```v
+age := 12
 println('age = $age')
 ```
 
@@ -741,7 +693,7 @@ println('Your OS is ${os}.')
 Any imported module name can be aliased using the `as` keyword:
 
 NOTE: this example will not compile unless you have created `mymod/sha256.v`
-```v
+```v failcompile
 import crypto.sha256
 import mymod.sha256 as mysha256
 
@@ -765,7 +717,7 @@ fn (mut t MyTime) century() int {
 }
 
 fn main() {
-    my_time := MyTime{
+    mut my_time := MyTime{
         year: 2020,
         month: 12,
         day: 25
@@ -828,6 +780,11 @@ if x is Abc {
 
 If you have a struct field which should be checked, there is also a way to name an alias.
 ```v
+struct MyStruct {x int}
+struct MyStruct2 {y string}
+type MySumType = MyStruct | MyStruct2
+struct Abc { bar MySumType }
+x := Abc{ bar: MyStruct{123} }
 if x.bar is MyStruct as bar {
     // x.bar cannot be cast automatically
     // you must explicitly state "as bar" to create a variable with the MyStruct type
@@ -850,13 +807,16 @@ println('one' in m) // true
 It's also useful for writing boolean expressions that are clearer and more compact:
 
 ```v
+enum Token { plus minus div mult }
+struct Parser { token Token }
+parser := Parser{}
 if parser.token == .plus || parser.token == .minus ||
     parser.token == .div || parser.token == .mult {
-    ...
+    // ...
 }
 
 if parser.token in [.plus, .minus, .div, .mult] {
-    ...
+    // ...
 }
 ```
 
@@ -1090,6 +1050,7 @@ Structs are allocated on the stack. To allocate a struct on the heap
 and get a reference to it, use the `&` prefix:
 
 ```v
+struct Point{ x int y int }
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -1753,7 +1714,7 @@ Unlike other languages, V does not handle exceptions with `throw/try/catch` bloc
 `err` is defined inside an `or` block and is set to the string message passed
 to the `error()` function. `err` is empty if `none` was returned.
 
-```v
+```v oksyntax
 user := repo.find_user_by_id(7) or {
     println(err) // "User 7 not found"
     return
@@ -1783,7 +1744,7 @@ any further.
 
 The body of `f` is essentially a condensed version of:
 
-```v
+```v ignore
     resp := http.get(url) or {
         return error(err)
     }
@@ -1793,7 +1754,7 @@ The body of `f` is essentially a condensed version of:
 ---
 The second method is to break from execution early:
 
-```v
+```v oksyntax
 user := repo.find_user_by_id(7) or {
     return
 }
@@ -1820,13 +1781,16 @@ fn do_something(s string) ?string {
 
 a := do_something('foo') or { 'default' } // a will be 'foo'
 b := do_something('bar') or { 'default' } // b will be 'default'
+println(a)
+println(b)
 ```
 
 ---
 The fourth method is to use `if` unwrapping:
 
 ```v
-if resp := http.get(url) {
+import net.http
+if resp := http.get('https://google.com') {
     println(resp.text) // resp is a http.Response, not an optional
 } else {
     println(err)
@@ -1950,13 +1914,13 @@ variables:
 
 ```v
 fn f(ch chan int) {
-    ...
+    // ...
 }
 
 fn main() {
-    ...
+    ch := chan int{}
     go f(ch)
-    ...
+    // ...
 }
 ```
 
@@ -1964,6 +1928,8 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
+mut ch := chan int{}
+mut ch2 := chan f64{}
 n := 5
 x := 7.3
 ch <- n    // push
@@ -1981,8 +1947,11 @@ associated channel has been closed and the buffer is empty. This situation can b
 handled using an or branch (see [Handling Optionals](#handling-optionals)).
 
 ```v
+mut ch := chan int{}
+mut ch2 := chan f64{}
+// ...
 ch.close()
-...
+// ...
 m := <-ch or {
     println('channel has been closed')
 }
@@ -1997,6 +1966,7 @@ The `select` command allows monitoring several channels at the same time
 without noticeable CPU load.  It consists of a list of possible transfers and associated branches
 of statements - similar to the [match](#match) command:
 ```v
+import time
 select {
     a := <-ch {
         // do something with `a`
@@ -2022,7 +1992,7 @@ that becomes `false` if all channels are closed:
 ```v
 if select {
     ch <- a {
-        ...
+        // ...
     }
 } {
     // channel was open
@@ -2060,12 +2030,12 @@ mut:
 }
 
 fn (mut b St) g() {
-	...
+
 	b.mtx.m_lock()
 	// read/modify/write b.x
-	...
+
 	b.mtx.unlock()
-	...
+
 }
 
 fn caller() {
@@ -2074,12 +2044,12 @@ fn caller() {
 		mtx: sync.new_mutex()
 	}
 	go a.g()
-	...
+
 	a.mtx.m_lock()
 	// read/modify/write a.x
-	...
+
 	a.mtx.unlock()
-	...
+
 }
 ```
 
@@ -2154,7 +2124,7 @@ fn main() {
     println(hello())
 }
 ```
-```v
+```v failcompile
 module main
 // hello_test.v
 fn test_hello() {
@@ -2203,16 +2173,16 @@ during compilation. If your V program compiles, it's guaranteed that it's going
 to be leak free. For example:
 
 ```v
-fn draw_text(s string, x, y int) {
-    ...
+fn draw_text(s string, x int, y int) {
+    // ...
 }
 
 fn draw_scene() {
-    ...
+    // ...
     draw_text('hello $name1', 10, 10)
     draw_text('hello $name2', 100, 10)
     draw_text(strings.repeat('X', 10000), 10, 50)
-    ...
+    // ...
 }
 ```
 
@@ -2313,7 +2283,7 @@ To generate documentation use vdoc, for example `v doc net.http`.
 You don't need to worry about formatting your code or setting style guidelines.
 `v fmt` takes care of that:
 
-```v
+```shell
 v fmt file.v
 ```
 
@@ -2462,7 +2432,7 @@ Currently the `linux`, `darwin` , `freebsd`, and `windows` flags are supported.
 
 NB: Each flag must go on its own line (for now)
 
-```v
+```v oksyntax
 #flag linux -lsdl2
 #flag linux -Ivig
 #flag linux -DCIMGUI_DEFINE_ENUMS_AND_STRUCTS=1
@@ -2481,7 +2451,7 @@ freedesktop one.
 
 If no flags are passed it will add `--cflags` and `--libs`, both lines below do the same:
 
-```v
+```v oksyntax
 #pkgconfig r_core
 #pkgconfig --cflags --libs r_core
 ```
@@ -2498,7 +2468,7 @@ Then:
 * Put a v.mod file inside the toplevel folder of your module (if you
 created your module with `v new` you already have v.mod file). For
 example:
-```v
+```v ignore
 Module {
 	name: 'mymodule',
 	description: 'My nice module wraps a simple C library.',
@@ -2509,7 +2479,7 @@ Module {
 
 
 * Add these lines to the top of your module:
-```v
+```v oksyntax
 #flag -I @VROOT/c
 #flag @VROOT/c/implementation.o
 #include "header.h"
@@ -2785,7 +2755,7 @@ To improve safety and maintainability, operator overloading is limited:
 
 TODO: not implemented yet
 
-```v
+```v failcompile
 fn main() {
     a := 10
     asm x64 {
@@ -2820,7 +2790,7 @@ int main() {
 Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
-fn main {
+fn main() {
     mut s := []string{}
     s << 'V is '
     s << 'awesome'
@@ -2878,13 +2848,13 @@ More examples, including a graphical application:
 
 To cross compile your project simply run
 
-```v
+```shell
 v -os windows .
 ```
 
 or
 
-```v
+```shell
 v -os linux .
 ```
 
@@ -2983,7 +2953,7 @@ fn C.DefWindowProc(hwnd int, msg int, lparam int, wparam int)
 
 V has 41 reserved keywords (3 are literals):
 
-```v
+```v ignore
 as
 asm
 assert
@@ -3031,7 +3001,7 @@ See also [Types](#types).
 
 This lists operators for [primitive types](#primitive-types) only.
 
-```v
+```v ignore
 +    sum                    integers, floats, strings
 -    difference             integers, floats
 *    product                integers, floats
