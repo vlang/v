@@ -1609,7 +1609,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 						expr.pos)
 				}
 			} else {
-				c.check_or_expr(expr.or_block, ret_type)
+				c.check_or_expr(expr.or_block, ret_type, expr.return_type.clear_flag(.optional))
 			}
 			// remove optional flag
 			// return ret_type.clear_flag(.optional)
@@ -1626,7 +1626,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 	return ret_type
 }
 
-pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
+pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, expr_return_type table.Type) {
 	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
 			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
@@ -1646,10 +1646,10 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 	}
 	last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
-		match mut last_stmt {
+		match last_stmt {
 			ast.ExprStmt {
-				last_stmt.typ = c.expr(last_stmt.expr)
-				type_fits := c.check_types(last_stmt.typ, ret_type)
+				last_stmt_typ := c.expr(last_stmt.expr)
+				type_fits := c.check_types(last_stmt_typ, ret_type)
 				is_panic_or_exit := is_expr_panic_or_exit(last_stmt.expr)
 				if type_fits || is_panic_or_exit {
 					return
@@ -1659,7 +1659,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/exit/continue/break/panic',
 						last_stmt.pos)
 				} else {
-					type_name := c.table.type_to_str(last_stmt.typ)
+					type_name := c.table.type_to_str(last_stmt_typ)
 					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
 						last_stmt.pos)
 				}
@@ -1679,6 +1679,26 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 					or_expr.pos)
 				return
 			}
+		}
+	} else {
+		match last_stmt {
+			ast.ExprStmt {
+				if last_stmt.typ == table.void_type {
+					return
+				}
+				if is_expr_panic_or_exit(last_stmt.expr) {
+					return
+				}
+				if c.check_types(last_stmt.typ, expr_return_type) {
+					return
+				}
+				// opt_returning_string() or { ... 123 }
+				type_name := c.table.type_to_str(last_stmt.typ)
+				expr_return_type_name := c.table.type_to_str(expr_return_type)
+				c.error('the default expression type in the `or` block should be `$expr_return_type_name`, instead you gave a value of type `$type_name`',
+					last_stmt.expr.position())
+			}
+			else {}
 		}
 	}
 }
