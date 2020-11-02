@@ -237,28 +237,28 @@ fn test_generic_auto_str() {
 type Alias1 = int
 fn test_alias_in_array() {
 	t := [Alias1(1)]
-	assert t.str() == '[Alias1(1)]'
-	assert '$t' == '[Alias1(1)]'
+	assert t.str() == '[1]'
+	assert '$t' == '[1]'
 }
 
 type Alias2 = int
 fn test_alias_in_fixed_array() {
 	t := [Alias1(1)]!!
-	assert t.str() == '[Alias1(1)]'
-	assert '$t' == '[Alias1(1)]'
+	assert t.str() == '[1]'
+	assert '$t' == '[1]'
 }
 
 fn test_alias_int() {
 	a := Alias1(1)
-	assert a.str() == 'Alias1(1)'
-	assert '$a' == 'Alias1(1)'
+	assert a.str() == '1'
+	assert '$a' == '1'
 }
 
 type Alias3 = string
 fn test_alias_string() {
 	a := Alias3('test')
-	assert a.str() == 'Alias3(test)'
-	assert '$a' == 'Alias3(test)'
+	assert a.str() == 'test'
+	assert '$a' == 'test'
 }
 
 type TestAlias = TestStruct

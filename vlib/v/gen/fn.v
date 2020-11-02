@@ -549,12 +549,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
-		typ := node.args[0].typ
+		mut typ := node.args[0].typ
 		if typ == 0 {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
+		mut sym := g.table.get_type_symbol(typ)
+		if sym.info is table.Alias as alias_info {
+			typ = alias_info.parent_type
+			sym = g.table.get_type_symbol(alias_info.parent_type)
+		}
 		mut styp := g.typ(typ)
-		sym := g.table.get_type_symbol(typ)
 		if typ.is_ptr() {
 			styp = styp.replace('*', '')
 		}
