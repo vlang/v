@@ -4484,7 +4484,10 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.expr(expr)
 		g.write(')')
 	} else {
-		return error('cannot convert to string')
+		str_fn_name := g.gen_str_for_type(typ)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
 	}
 	return true
 }
