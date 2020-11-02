@@ -29,7 +29,8 @@ fn test_type_constructors() {
 	assert typeof(&v).name == '&rune'
 	assert typeof(&[v]).name == '&[]rune'
 	assert typeof([v]!!).name == '[1]rune'
-	//assert typeof(&[v]!!).name == '&[1]rune' //FIXME
+	assert typeof(&[v]!!).name == '&[1]rune'
+	assert typeof(&FooBar{}).name == '&FooBar'
 }
 
 struct FooBar {

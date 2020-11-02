@@ -2364,7 +2364,7 @@ fn (mut g Gen) typeof_name(node ast.TypeOf) {
 	}
 	sym := g.table.get_type_symbol(typ)
 	// TODO: fix table.type_to_str and use instead
-	if sym.kind in [.array_fixed, .function] {
+	if sym.kind == .function {
 		g.typeof_expr(node)
 	} else {
 		// Note: typeof() must be known at compile-time
