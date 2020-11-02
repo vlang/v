@@ -1,12 +1,12 @@
-vlib/v/checker/tests/float_modulo_err.vv:2:13: error: float modulo not allowed, use math.fmod() instead 
+vlib/v/checker/tests/float_modulo_err.vv:2:13: error: float modulo not allowed, use math.fmod() instead
     1 | fn main() {
     2 |     println(3.0 % 2.0)
       |             ~~~
     3 |     println(f32(3.0) % f32(2.0))
     4 | }
-vlib/v/checker/tests/float_modulo_err.vv:3:17: error: float modulo not allowed, use math.fmod() instead
+vlib/v/checker/tests/float_modulo_err.vv:3:13: error: float modulo not allowed, use math.fmod() instead
     1 | fn main() {
     2 |     println(3.0 % 2.0)
     3 |     println(f32(3.0) % f32(2.0))
-      |                 ~~~
+      |             ~~~~~~~~
     4 | }

@@ -1,6 +1,6 @@
-vlib/v/checker/tests/cast_string_err.vv:2:14: error: cannot cast type `any_int` to string, use `x.str()` instead 
+vlib/v/checker/tests/cast_string_err.vv:2:7: error: cannot cast type `any_int` to string, use `x.str()` instead
     1 | fn main() {
     2 |     a := string(1)
-      |                 ^
+      |          ~~~~~~~~~
     3 |     println(a)
     4 | }
