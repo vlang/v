@@ -708,10 +708,10 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		return
 	}
 	*/
+	// g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
 	if g.nr_vars_to_free <= 0 {
 		return
 	}
-	// g.writeln('\n/* strs_to_free3: */')
 	/*
 	for s in g.strs_to_free {
 		g.writeln('string_free(&$s);')
