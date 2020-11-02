@@ -256,14 +256,16 @@ fn test_alias_int() {
 
 type Alias3 = string
 fn test_alias_string() {
-	a := Alias3('test')
-	assert a.str() == 'test'
-	assert '$a' == 'test'
+	s := 'test'
+	a := Alias3(s)
+	assert a.str() == s
+	assert '$a' == s
 }
 
 type TestAlias = TestStruct
 fn test_alias_struct() {
-	t := TestAlias(TestStruct{})
-	assert t.str() == 'TestAlias(TestStruct{\n    x: 0\n})'
+	ts := TestStruct{}
+	t := TestAlias(ts)
+	assert t.str() == 'TestAlias($ts)'
 	assert '$t' == 'TestAlias(TestStruct{\n    x: 0\n})'
 }
