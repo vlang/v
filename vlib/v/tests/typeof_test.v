@@ -15,12 +15,21 @@ fn test_typeof_on_simple_expressions() {
 	// assert typeof(1.0 * 12.2) == 'any_float'
 }
 
-fn test_typeof_on_atypes() {
+fn test_arrays() {
 	aint := []int{}
 	astring := []string{}
 	assert typeof(aint) == 'array_int'
 	assert typeof(astring) == 'array_string'
+	assert typeof(aint).name == '[]int'
 	assert typeof(astring).name == '[]string'
+}
+
+fn test_type_constructors() {
+	v := `c`
+	assert typeof(&v).name == '&rune'
+	assert typeof(&[v]).name == '&[]rune'
+	assert typeof([v]!!).name == '[1]rune'
+	//assert typeof(&[v]!!).name == '&[1]rune' //FIXME
 }
 
 struct FooBar {
