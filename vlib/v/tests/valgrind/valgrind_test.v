@@ -42,10 +42,6 @@ fn test_all() {
 		eprintln('This test is disabled for musl.')
 		exit(0)
 	}
-	if true {
-		println('skipping valgrind test for now')
-		return
-	}
 	bench_message := 'memory leak checking with valgrind'
 	mut bench := benchmark.new_benchmark()
 	eprintln(term.header(bench_message, '-'))
