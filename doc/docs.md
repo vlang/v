@@ -100,6 +100,13 @@ Anything you can do in other languages, you can do in V.
 
 ## Hello World
 
+vsh:
+```vsh
+fn main() {
+    println('hello world')
+}
+```
+
 vv:
 ```vv
 fn main() {
