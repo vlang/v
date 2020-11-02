@@ -2358,24 +2358,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 
 // typeof(expr).name
 fn (mut g Gen) typeof_name(node ast.TypeOf) {
-	typ := node.expr_type
+	mut typ := node.expr_type
 	if typ.has_flag(.generic) {
-		s := g.table.type_to_str(g.cur_generic_type)
-		g.write('tos_lit("$s")')
-		return
+		typ = g.cur_generic_type
 	}
-	// TODO: update & use table.type_to_str instead
 	sym := g.table.get_type_symbol(typ)
-	if sym.kind == .array {
-		info := sym.info as table.Array
-		mut s := g.table.get_type_name(info.elem_type)
-		s = util.strip_main_name(s)
-		g.write('tos_lit("[]$s")')
-	} else if sym.kind == .sum_type {
-		// new typeof() must be known at compile-time
-		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
-	} else {
+	// TODO: fix table.type_to_str and use instead
+	if sym.kind in [.array_fixed, .function] {
 		g.typeof_expr(node)
+	} else {
+		s := g.table.type_to_str(typ)
+		g.write('tos_lit("${util.strip_main_name(s)}")')
 	}
 }
 

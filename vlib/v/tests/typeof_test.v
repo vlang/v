@@ -124,6 +124,7 @@ fn test_generic_type() {
 	//assert type_name([v]!!) == '[1]int'
 	assert type_name([v]) == '[]int'
 	assert type_name([[v]]) == '[][]int'
+	assert type_name(FooBar{}) == 'FooBar'
 	
 	assert array_item_type([v]) == 'int'
 	assert array_item_type([[v]]) == '[]int'
