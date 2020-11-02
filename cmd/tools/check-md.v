@@ -151,11 +151,14 @@ fn (mut f MDFile) check_examples() (int, int) {
 		if e.command == 'ignore' {
 			continue
 		}
+		if e.command == 'wip' {
+			continue
+		}
 		fname := os.base(f.path).replace('.md', '_md')
 		uid := rand.ulid()
 		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
 		mut should_cleanup_vfile := true
-		eprintln('>>> checking example $vfile ...')
+		// eprintln('>>> checking example $vfile ...')
 		vcontent := e.text.join('\n')
 		os.write_file(vfile, vcontent) or {
 			panic(err)
@@ -210,7 +213,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				else {
-					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: ignore/compile/failcompile/oksyntax/badsyntax'))
+					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
 					should_cleanup_vfile = false
 					errors++
 				}
