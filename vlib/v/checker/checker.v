@@ -1656,8 +1656,12 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 				}
 				type_name := c.table.type_to_str(last_stmt.typ)
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
-				c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
-					last_stmt.pos)
+				if type_name == 'void' {
+					c.error('use return/panic statements', last_stmt.pos)
+				} else {
+					c.error('wrong return type `$type_name` in the `or {}` block, expected `$expected_type_name`',
+						last_stmt.pos)
+				}
 				return
 			}
 			ast.BranchStmt {
