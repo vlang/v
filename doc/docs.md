@@ -100,11 +100,20 @@ Anything you can do in other languages, you can do in V.
 
 ## Hello World
 
+vv:
+```vv
+fn main() {
+    println('hello world')
+}
+```
+
+v
 ```v
 fn main() {
     println('hello world')
 }
 ```
+
 
 Save this snippet into a file named `hello.v`. Now do: `v run hello.v`.
 
