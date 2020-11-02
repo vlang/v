@@ -572,7 +572,11 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	if node.is_pub {
 		f.write('pub ')
 	}
-	f.write('struct ')
+	if node.is_union {
+		f.write('union ')
+	} else {
+		f.write('struct ')
+	}
 	f.write_language_prefix(node.language)
 	name := node.name.after('.')
 	f.writeln('$name {')
