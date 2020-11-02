@@ -1656,7 +1656,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type) {
 				}
 				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
 				if last_stmt.typ == table.void_type {
-					c.error('`or` block must provide a default value of type $expected_type_name, or return/exit/continue/break/panic',
+					c.error('`or` block must provide a default value of type `$expected_type_name`, or return/exit/continue/break/panic',
 						last_stmt.pos)
 				} else {
 					type_name := c.table.type_to_str(last_stmt.typ)
