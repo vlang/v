@@ -1,4 +1,4 @@
-const delta = 40;
+const delta = 20;
 
 (function () {
     var table = document.querySelector("table");
