@@ -19,10 +19,11 @@ import strings
 // }
 // Codegen json_decode/encode funcs
 fn (mut g Gen) gen_json_for_type(typ table.Type) {
+	utyp := g.unwrap_generic(typ)
 	mut dec := strings.new_builder(100)
 	mut enc := strings.new_builder(100)
-	sym := g.table.get_type_symbol(typ)
-	styp := g.typ(typ)
+	sym := g.table.get_type_symbol(utyp)
+	styp := g.typ(utyp)
 	if is_js_prim(sym.name) || sym.kind == .enum_ {
 		return
 	}
@@ -39,7 +40,7 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	// Code gen decoder
 	dec_fn_name := js_dec_name(styp)
 	// Make sure that this optional type actually exists
-	g.register_optional(typ)
+	g.register_optional(utyp)
 	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
 //Option_$styp ${dec_fn_name}(cJSON* root, $styp* res) {
@@ -66,7 +67,7 @@ $enc_fn_dec {
 \tcJSON *o;')
 	if sym.kind == .array {
 		// Handle arrays
-		value_type := g.table.value_type(typ)
+		value_type := g.table.value_type(utyp)
 		// If we have `[]Profile`, have to register a Profile en(de)coder first
 		g.gen_json_for_type(value_type)
 		dec.writeln(g.decode_array(value_type))
