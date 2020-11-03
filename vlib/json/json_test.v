@@ -29,6 +29,18 @@ fn test_simple() {
 	assert y.title == .worker
 }
 
+fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
+	result := json.decode(T, payload)?
+	return result
+}
+struct Bar {
+	x string
+}
+fn test_generic() {
+	result := bar<Bar>('{"x":"test"}') or { Bar{} }
+	assert result.x == 'test'
+}
+
 struct User2 {
 	age  int
 	nums []int
