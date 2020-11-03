@@ -10,9 +10,11 @@ import v.util
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut str_fn_name := styp_to_str_fn_name(styp)
-	if sym.info is table.Alias {
-		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
-		str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
+	if sym.info is table.Alias as sym_info {
+		if sym_info.is_import {
+			sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+			str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
+		}
 	}
 	sym_has_str_method, str_method_expects_ptr, str_nr_args := sym.str_method_info()
 	// generate for type
@@ -45,16 +47,38 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
 		g.str_types << already_generated_key
-		match sym.info {
-			table.Alias { g.gen_str_default(sym, styp, str_fn_name) }
-			table.Array { g.gen_str_for_array(it, styp, str_fn_name) }
-			table.ArrayFixed { g.gen_str_for_array_fixed(it, styp, str_fn_name) }
-			table.Enum { g.gen_str_for_enum(it, styp, str_fn_name) }
-			table.Struct { g.gen_str_for_struct(it, styp, str_fn_name) }
-			table.Map { g.gen_str_for_map(it, styp, str_fn_name) }
-			table.MultiReturn { g.gen_str_for_multi_return(it, styp, str_fn_name) }
-			table.SumType { g.gen_str_for_sum_type(it, styp, str_fn_name) }
-			else { verror("could not generate string method $str_fn_name for type \'$styp\'") }
+		match sym.info as sym_info {
+			table.Alias {
+				if sym_info.is_import {
+					g.gen_str_default(sym, styp, str_fn_name)
+				} else {
+					g.gen_str_for_alias(sym_info, styp, str_fn_name)
+				}
+			}
+			table.Array {
+				g.gen_str_for_array(it, styp, str_fn_name)
+			}
+			table.ArrayFixed {
+				g.gen_str_for_array_fixed(it, styp, str_fn_name)
+			}
+			table.Enum {
+				g.gen_str_for_enum(it, styp, str_fn_name)
+			}
+			table.Struct {
+				g.gen_str_for_struct(it, styp, str_fn_name)
+			}
+			table.Map {
+				g.gen_str_for_map(it, styp, str_fn_name)
+			}
+			table.MultiReturn {
+				g.gen_str_for_multi_return(it, styp, str_fn_name)
+			}
+			table.SumType {
+				g.gen_str_for_sum_type(it, styp, str_fn_name)
+			}
+			else {
+				verror("could not generate string method $str_fn_name for type \'$styp\'")
+			}
 		}
 	}
 	// if varg, generate str for varg
@@ -69,10 +93,36 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	return str_fn_name
 }
 
+fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name string) {
+	sym := g.table.get_type_symbol(info.parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	mut parent_str_fn_name := styp_to_str_fn_name(sym.name.replace('.', '__'))
+	if !sym_has_str_method {
+		parent_styp := g.typ(info.parent_type)
+		parent_str_fn_name = g.gen_str_for_type_with_styp(info.parent_type, parent_styp)
+	}
+	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
+	g.auto_str_funcs.writeln('}')
+}
+
 fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name string) {
-	sym := g.table.get_type_symbol(info.elem_type)
-	field_styp := g.typ(info.elem_type)
-	is_elem_ptr := info.elem_type.is_ptr()
+	mut typ := info.elem_type
+	mut sym := g.table.get_type_symbol(info.elem_type)
+	if sym.info is table.Alias as alias_info {
+		typ = alias_info.parent_type
+		sym = g.table.get_type_symbol(alias_info.parent_type)
+	}
+	field_styp := g.typ(typ)
+	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := ''
 	if sym_has_str_method {
@@ -85,8 +135,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		elem_str_fn_name = styp_to_str_fn_name(field_styp)
 	}
 	if !sym_has_str_method {
-		// eprintln('> sym.name: does not have method `str`')
-		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
+		g.gen_str_for_type_with_styp(typ, field_styp)
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
@@ -117,7 +166,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
-	if g.pref.autofree && info.elem_type != table.bool_type {
+	if g.pref.autofree && typ != table.bool_type {
 		// no need to free "true"/"false" literals
 		g.auto_str_funcs.writeln('\t\tstring_free(&x);')
 	}
@@ -134,9 +183,14 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 }
 
 fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_fn_name string) {
-	sym := g.table.get_type_symbol(info.elem_type)
-	field_styp := g.typ(info.elem_type)
-	is_elem_ptr := info.elem_type.is_ptr()
+	mut typ := info.elem_type
+	mut sym := g.table.get_type_symbol(info.elem_type)
+	if sym.info is table.Alias as alias_info {
+		typ = alias_info.parent_type
+		sym = g.table.get_type_symbol(alias_info.parent_type)
+	}
+	field_styp := g.typ(typ)
+	is_elem_ptr := typ.is_ptr()
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
 	mut elem_str_fn_name := ''
 	if sym_has_str_method {
@@ -146,7 +200,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 		elem_str_fn_name = styp_to_str_fn_name(field_styp)
 	}
 	if !sym.has_method('str') {
-		g.gen_str_for_type_with_styp(info.elem_type, field_styp)
+		elem_str_fn_name = g.gen_str_for_type_with_styp(typ, field_styp)
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')

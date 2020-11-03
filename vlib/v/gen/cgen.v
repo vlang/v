@@ -2090,7 +2090,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('))')
 			} else {
 				styp := g.typ(node.typ)
-				g.write('(($styp)(')
+				mut cast_label := ''
+				if sym.kind != .alias || (sym.info as table.Alias).parent_type != node.expr_type {
+					cast_label = '($styp)'
+				}
+				g.write('(${cast_label}(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
 					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
@@ -4402,18 +4406,22 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
-	mut sym := g.table.get_type_symbol(etype)
-	if sym.info is table.Alias {
-		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+	mut typ := etype
+	mut sym := g.table.get_type_symbol(typ)
+	if sym.info is table.Alias as alias_info {
+		parent_sym := g.table.get_type_symbol(alias_info.parent_type)
+		if parent_sym.has_method('str') {
+			sym = parent_sym
+			typ = alias_info.parent_type
+		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	if etype.has_flag(.variadic) {
-		str_fn_name := g.gen_str_for_type(etype)
+	if typ.has_flag(.variadic) {
+		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	} else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
-		// handle string aliases
+	} else if typ == table.string_type {
 		g.expr(expr)
 		return true
 	} else if sym.kind == .enum_ {
@@ -4422,7 +4430,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			else { false }
 		}
 		if is_var {
-			str_fn_name := g.gen_str_for_type(etype)
+			str_fn_name := g.gen_str_for_type(typ)
 			g.write('${str_fn_name}(')
 			g.enum_expr(expr)
 			g.write(')')
@@ -4433,20 +4441,20 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		}
 	} else if sym_has_str_method || sym.kind in
 		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
-		is_p := etype.is_ptr()
-		val_type := if is_p { etype.deref() } else { etype }
+		is_p := typ.is_ptr()
+		val_type := if is_p { typ.deref() } else { typ }
 		str_fn_name := g.gen_str_for_type(val_type)
 		if is_p && str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}((')
 		}
 		if is_p && !str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
 		}
 		if !is_p && !str_method_expects_ptr {
-			g.write('${str_fn_name}(  ')
+			g.write('${str_fn_name}(')
 		}
 		if !is_p && str_method_expects_ptr {
-			g.write('${str_fn_name}( &')
+			g.write('${str_fn_name}(&')
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -4473,13 +4481,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 				g.write(')')
 			}
 		}
-	} else if g.typ(etype).starts_with('Option') {
+	} else if g.typ(typ).starts_with('Option') {
 		str_fn_name := 'OptionBase_str'
 		g.write('${str_fn_name}(*(OptionBase*)&')
 		g.expr(expr)
 		g.write(')')
 	} else {
-		return error('cannot convert to string')
+		str_fn_name := g.gen_str_for_type(typ)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
 	}
 	return true
 }
