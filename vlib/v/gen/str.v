@@ -266,15 +266,8 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
-		sym := g.table.get_type_symbol(typ)
-		// if typ.is_number() {
-		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_number() {
-			// Handle number aliases TODO this must be more generic, handled by g.typ()?
-			g.write('int_str(')
-		} else {
-			g.write(g.typ(typ))
-			g.write('_str(')
-		}
+		g.write(g.typ(typ))
+		g.write('_str(')
 		g.expr(node.exprs[i])
 		g.writeln('));')
 	}
