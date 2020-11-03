@@ -35,11 +35,11 @@ const delta = 20;
             };
             if (Math.abs(result.vc) > delta)
                 tr.children[vc].appendChild(createElement(result.vc));
-            if (Math.abs(result.vv) > delta)
+            if (Math.abs(result.vv) > delta * 2)
                 tr.children[vv].appendChild(createElement(result.vv));
-            if (Math.abs(result.vf) > delta)
+            if (Math.abs(result.vf) > delta * 2)
                 tr.children[vf].appendChild(createElement(result.vf));
-            if (Math.abs(result.vh) > delta)
+            if (Math.abs(result.vh) > delta * 2)
                 tr.children[vh].appendChild(createElement(result.vh));
         }
     });
