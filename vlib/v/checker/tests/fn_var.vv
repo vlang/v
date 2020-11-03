@@ -1,4 +1,5 @@
-mut f := fn(i int) byte{}
+mut f := fn(i int) byte {}
 f = 4
 mut p := &f
 p = &[f]
+f = fn(mut a []int) {}
