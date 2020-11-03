@@ -448,7 +448,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			return table.void_type
 		}
 	}
-	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod {
+	if !type_sym.is_public && type_sym.kind != .placeholder && type_sym.mod != c.mod &&
+		type_sym.language != .c {
 		c.error('type `$type_sym.source_name` is private', struct_init.pos)
 	}
 	match type_sym.kind {
@@ -1736,7 +1737,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	mut unknown_field_msg := 'type `$sym.source_name` has no field or method `$field_name`'
 	if field := c.table.struct_find_field(sym, field_name) {
-		if sym.mod != c.mod && !field.is_pub {
+		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
 		}
 		selector_expr.typ = field.typ
