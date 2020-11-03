@@ -2090,7 +2090,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('))')
 			} else {
 				styp := g.typ(node.typ)
-				g.write('(($styp)(')
+				mut cast_label := ''
+				if sym.kind != .alias || (sym.info as table.Alias).parent_type != node.expr_type {
+					cast_label = '($styp)'
+				}
+				g.write('(${cast_label}(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
 					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
