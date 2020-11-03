@@ -75,7 +75,7 @@ fn C.shutdown() int
 
 fn C.ntohs() int
 
-fn C.inet_ntop() int
+fn C.inet_ntop(af int, src voidptr, dst charptr, dst_size int) charptr
 
 fn C.WSAStringToAddress() int
 
