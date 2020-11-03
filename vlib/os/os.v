@@ -314,7 +314,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 }
 
 // vpopen system starts the specified command, waits for it to complete, and returns its code.
-fn vpopen(path string) voidptr {
+pub fn vpopen(path string) voidptr {
 	// *C.FILE {
 	$if windows {
 		mode := 'rb'
