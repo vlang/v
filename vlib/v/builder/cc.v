@@ -133,6 +133,19 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	return res
 }
 
+fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
+	if v.pref.is_verbose || v.pref.show_cc {
+		println('')
+		println('=====================')
+		println('> C compiler cmd: $cmd')
+		if v.pref.show_cc {
+			println('> C compiler response file $response_file:')
+			println(response_file_content)
+		}
+		println('=====================')
+	}
+}
+
 fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -513,17 +526,8 @@ fn (mut v Builder) cc() {
 	todo()
 	// TODO remove
 	cmd := '$ccompiler @$response_file'
+	v.show_cc(cmd, response_file, response_file_content)
 	// Run
-	if v.pref.is_verbose || v.pref.show_cc {
-		println('')
-		println('=====================')
-		println('> C compiler cmd: $cmd')
-		if v.pref.show_cc {
-			println('> C compiler response file $response_file:')
-			println(response_file_content)
-		}
-		println('=====================')
-	}
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		// C compilation failed.
