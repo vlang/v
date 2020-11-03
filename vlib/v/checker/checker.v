@@ -3774,7 +3774,7 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 			c.error('non-integer index `$index_type_sym.source_name` $arr_type', pos)
 		}
 		if index_type.has_flag(.optional) {
-			c.error('cannot index an optional', pos)
+			c.error('cannot use optional as index', pos)
 		}
 	}
 }
