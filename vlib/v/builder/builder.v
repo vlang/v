@@ -309,24 +309,48 @@ fn (b &Builder) print_warnings_and_errors() {
 		exit(1)
 	}
 	if b.table.redefined_fns.len > 0 {
+		mut total_conflicts := 0
 		for fn_name in b.table.redefined_fns {
-			eprintln('redefinition of function `$fn_name`')
-			// eprintln('previous declaration at')
 			// Find where this function was already declared
+			mut redefines := []FunctionRedefinition{}
+			mut redefine_conflicts := map[string]int{}
 			for file in b.parsed_files {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fline := stmt.pos.line_nr
-							println('$file.path:$fline:')
+							fheader := stmt.stringify(b.table, 'main')
+							redefines << FunctionRedefinition{
+								fpath: file.path
+								fline: stmt.pos.line_nr
+								f: stmt
+								fheader: fheader
+							}
+							redefine_conflicts[fheader]++
 						}
 					}
 				}
 			}
+			if redefine_conflicts.len > 1 {
+				eprintln('redefinition of function `$fn_name`')
+				for redefine in redefines {
+					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
+						redefine.fpath, redefine.f.pos))
+				}
+				total_conflicts++
+			}
+		}
+		if total_conflicts > 0 {
 			b.show_total_warns_and_errors_stats()
 			exit(1)
 		}
 	}
+}
+
+struct FunctionRedefinition {
+	fpath   string
+	fline   int
+	fheader string
+	f       ast.FnDecl
 }
 
 fn verror(s string) {
