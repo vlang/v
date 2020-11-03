@@ -54,7 +54,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
 	mut or_stmts := []ast.Stmt{}
+	mut or_pos := token.Position{}
 	if p.tok.kind == .key_orelse {
+		start_or_pos := p.tok.position()
 		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
 		p.inside_or_expr = true
@@ -74,6 +76,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		})
 		or_kind = .block
 		or_stmts = p.parse_block_no_scope(false)
+		or_pos = start_or_pos.extend(p.prev_tok.position())
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -117,7 +120,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind
-			pos: pos
+			pos: or_pos
 		}
 		generic_type: generic_type
 	}
