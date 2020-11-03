@@ -1559,7 +1559,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 		alias := p.check_name()
 		name := '$parent.mod\.$alias'
 		if alias[0].is_capital() {
-			idx := p.table.add_placeholder_type(name)
+			idx := p.table.add_placeholder_type(name, .v)
 			typ := table.new_type(idx)
 			prepend_mod_name := p.prepend_mod(alias)
 			p.table.register_type_symbol(table.TypeSymbol{

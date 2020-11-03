@@ -249,6 +249,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	t := table.TypeSymbol{
 		kind: .struct_
 		name: name
+		language: language
 		source_name: name
 		mod: p.mod
 		info: table.Struct{

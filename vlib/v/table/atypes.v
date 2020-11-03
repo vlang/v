@@ -41,6 +41,7 @@ pub mut:
 	mod         string
 	is_public   bool
 	is_written  bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
+	language    Language
 }
 
 // max of 8

@@ -621,7 +621,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	})
 }
 
-pub fn (mut t Table) add_placeholder_type(name string) int {
+pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
 		modname = name.all_before_last('.')
@@ -629,6 +629,7 @@ pub fn (mut t Table) add_placeholder_type(name string) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
+		language: language
 		source_name: name
 		mod: modname
 	}

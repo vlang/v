@@ -305,14 +305,14 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 					if p.peek_tok.kind == .lt {
 						return p.parse_generic_struct_inst_type(name)
 					}
-					return p.parse_enum_or_struct_type(name)
+					return p.parse_enum_or_struct_type(name, language)
 				}
 			}
 		}
 	}
 }
 
-pub fn (mut p Parser) parse_enum_or_struct_type(name string) table.Type {
+pub fn (mut p Parser) parse_enum_or_struct_type(name string, language table.Language) table.Type {
 	// struct / enum / placeholder
 	// struct / enum
 	mut idx := p.table.find_type_idx(name)
@@ -320,7 +320,7 @@ pub fn (mut p Parser) parse_enum_or_struct_type(name string) table.Type {
 		return table.new_type(idx)
 	}
 	// not found - add placeholder
-	idx = p.table.add_placeholder_type(name)
+	idx = p.table.add_placeholder_type(name, language)
 	// println('NOT FOUND: $name - adding placeholder - $idx')
 	return table.new_type(idx)
 }
@@ -367,7 +367,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		if gt_idx > 0 {
 			return table.new_type(gt_idx)
 		}
-		gt_idx = p.table.add_placeholder_type(bs_name)
+		gt_idx = p.table.add_placeholder_type(bs_name, .v)
 		idx := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
@@ -380,5 +380,5 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		})
 		return table.new_type(idx)
 	}
-	return p.parse_enum_or_struct_type(name)
+	return p.parse_enum_or_struct_type(name, .v)
 }
