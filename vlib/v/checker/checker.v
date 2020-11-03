@@ -3769,12 +3769,12 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 	// if typ_sym.kind == .array && (!(table.type_idx(index_type) in table.number_type_idxs) &&
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
+		type_str := if typ_sym.kind in [.string, .ustring] { '(type `$typ_sym.source_name`)' } else { '(array type `$typ_sym.source_name`)' }
 		if !(index_type.is_number() || index_type_sym.kind == .enum_) {
-			arr_type := if typ_sym.kind in [.string, .ustring] { '(type `$typ_sym.source_name`)' } else { '(array type `$typ_sym.source_name`)' }
-			c.error('non-integer index `$index_type_sym.source_name` $arr_type', pos)
+			c.error('non-integer index `$index_type_sym.source_name` $type_str', pos)
 		}
 		if index_type.has_flag(.optional) {
-			c.error('cannot use optional as index', pos)
+			c.error('cannot use optional as index $type_str', pos)
 		}
 	}
 }
