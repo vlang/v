@@ -5369,6 +5369,17 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 		g.write(dot)
 		g.write('typ, /*expected:*/$node.typ)')
+	} else if expr_type_sym.kind == .union_sum_type {
+		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		g.write('/* as */ ($styp*)__as_cast((')
+		g.expr(node.expr)
+		g.write(')')
+		g.write(dot)
+		g.write('_${node.typ.idx()}, (')
+		g.expr(node.expr)
+		g.write(')')
+		g.write(dot)
+		g.write('typ, /*expected:*/$node.typ)')
 	}
 }
 

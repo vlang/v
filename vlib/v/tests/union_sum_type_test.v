@@ -264,7 +264,6 @@ struct Foo {
 }
 
 fn test_nested_selector_smartcast() {
-
 	f := Foo{
 		y: Bar(Test{
 			x: 'Hi'
@@ -280,6 +279,14 @@ fn test_nested_selector_smartcast() {
 			assert f.y.xyz == 5
 		}
 	}
+}
+
+fn test_as_cast() {
+	f := Foo{
+		y: Bar('test')
+	}
+	y := f.y as string
+	assert y == 'test'
 }
 
 fn test_sum_type_match() {
