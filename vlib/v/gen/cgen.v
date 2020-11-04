@@ -3210,7 +3210,9 @@ fn (mut g Gen) ident(node ast.Ident) {
 			return
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
-		v := scope.find(name) or { ast.ScopeObject{} }
+		v := scope.find(name) or {
+			ast.ScopeObject{}
+		}
 		if v is ast.Var {
 			if v.union_sum_type_typ != 0 {
 				g.write('(*${name}._$v.union_sum_type_typ)')
@@ -5375,7 +5377,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
-		g.write('_${node.typ.idx()}, (')
+		g.write('_$node.typ.idx(), (')
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)

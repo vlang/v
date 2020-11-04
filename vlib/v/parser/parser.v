@@ -1830,7 +1830,6 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 	}
 }
 
-
 fn (mut p Parser) union_sum_type_decl() ast.TypeDecl {
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
@@ -1879,8 +1878,7 @@ fn (mut p Parser) union_sum_type_decl() ast.TypeDecl {
 		}
 	}
 	// just for this implementation
-	p.error_with_pos('wrong union sum type declaration',
-		decl_pos)
+	p.error_with_pos('wrong union sum type declaration', decl_pos)
 	return ast.TypeDecl{}
 }
 

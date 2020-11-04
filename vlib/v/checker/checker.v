@@ -3316,30 +3316,30 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					if cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
 						match node.cond as node_cond {
-							ast.SelectorExpr {
-								scope.register_struct_field({
+							ast.SelectorExpr { scope.register_struct_field({
 									struct_type: node_cond.expr_type
 									name: node_cond.field_name
 									typ: expr.typ
 									pos: node_cond.pos
-								})
-							}
-							ast.Ident {
-								scope.register(node.var_name, ast.Var{
+								}) }
+							ast.Ident { scope.register(node.var_name, ast.Var{
 									name: node.var_name
 									typ: node.cond_type
 									pos: node_cond.pos
 									is_used: true
 									is_mut: node.is_mut
 									union_sum_type_typ: expr.typ
-								})
-							}
-							 else {}
+								}) }
+							else {}
 						}
 					}
 				}
-				ast.EnumVal { key = expr.val }
-				else { key = expr.str() }
+				ast.EnumVal {
+					key = expr.val
+				}
+				else {
+					key = expr.str()
+				}
 			}
 			val := if key in branch_exprs { branch_exprs[key] } else { 0 }
 			if val == 1 {
