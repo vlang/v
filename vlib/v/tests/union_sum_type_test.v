@@ -26,7 +26,7 @@ fn handle(e Expr) string {
 	if e is IntegerLiteral {
 		println('int')
 	}
-	match e {
+	match union e {
 		IntegerLiteral {
 			assert e.val == '12'
 			// assert e.val == '12' // TODO
@@ -54,7 +54,7 @@ fn test_assignment_and_push() {
 		val: '111'
 	}
 	arr1 << expr
-	match arr1[0] {
+	match union arr1[0] {
 		IntegerLiteral {
 			arr1 << arr1[0]
 			// should ref/dereference on assignent be made automatic?
@@ -95,7 +95,7 @@ fn test_converting_down() {
 	}
 	mut res := []Sub2{cap: out.len}
 	for d in out {
-		match d {
+		match union d {
 			Sub2 { res << d }
 			else {}
 		}
@@ -111,7 +111,7 @@ fn test_nested_sumtype() {
 	mut b := Node{}
 	a = StructDecl{pos: 1}
 	b = IfExpr{pos: 1}
-	match a {
+	match union a {
 		StructDecl {
 			assert true
 		}
@@ -145,7 +145,7 @@ __type Abc = int | string
 
 fn test_string_cast_to_sumtype() {
 	a := Abc('test')
-	match a {
+	match union a {
 		int {
 			assert false
 		}
@@ -158,7 +158,7 @@ fn test_string_cast_to_sumtype() {
 fn test_int_cast_to_sumtype() {
 	// literal
 	a := Abc(111)
-	match a {
+	match union a {
 		int {
 			assert true
 		}
@@ -169,7 +169,7 @@ fn test_int_cast_to_sumtype() {
 	// var
 	i := 111
 	b := Abc(i)
-	match b {
+	match union b {
 		int {
 			assert true
 		}
@@ -183,7 +183,7 @@ fn test_int_cast_to_sumtype() {
 __type Number = any_int | any_float
 
 fn is_gt_simple(val string, dst Number) bool {
-	match dst {
+	match union dst {
 		any_int {
 			return val.int() > dst
 		}
@@ -195,9 +195,9 @@ fn is_gt_simple(val string, dst Number) bool {
 
 fn is_gt_nested(val string, dst Number) bool {
 	dst2 := dst
-	match dst {
+	match union dst {
 		any_int {
-			match dst2 {
+			match union dst2 {
 				any_int {
 					return val.int() > dst
 				}
@@ -208,7 +208,7 @@ fn is_gt_nested(val string, dst Number) bool {
 			}
 		}
 		any_float {
-			match dst2 {
+			match union dst2 {
 				any_float {
 					return dst < val.f64()
 				}
@@ -222,7 +222,7 @@ fn is_gt_nested(val string, dst Number) bool {
 }
 
 fn concat(val string, dst Number) string {
-	match dst {
+	match union dst {
 		any_int {
 			mut res := val + '(int)'
 			res += dst.str()
@@ -237,7 +237,7 @@ fn concat(val string, dst Number) string {
 }
 
 fn get_sum(val string, dst Number) f64 {
-	match dst {
+	match union dst {
 		any_int {
 			mut res := val.int()
 			res += dst
