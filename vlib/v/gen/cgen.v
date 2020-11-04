@@ -2395,11 +2395,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 				return
 			}
 			mut sum_type_deref_field := ''
-			scope := g.file.scope.innermost(node.pos.pos)
-			if field := scope.find_struct_field(node.expr_type, node.field_name) {
-				// union sum type deref
-				g.write('(*')
-				sum_type_deref_field = '_$field.typ'
+			if field := g.table.struct_find_field(sym, node.field_name) {
+				field_sym := g.table.get_type_symbol(field.typ)
+				if field_sym.kind == .union_sum_type {
+					// check first if field is sum type because scope searching is expensive
+					scope := g.file.scope.innermost(node.pos.pos)
+					if field := scope.find_struct_field(node.expr_type, node.field_name) {
+						// union sum type deref
+						g.write('(*')
+						sum_type_deref_field = '_$field.typ'
+					}
+				}
 			}
 			g.expr(node.expr)
 			// struct embedding
