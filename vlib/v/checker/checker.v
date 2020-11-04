@@ -2709,8 +2709,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				}
 				c.error(s, node.pos)
 			}
+			if expr_type_sym.kind == .union_sum_type {
+				return node.typ.deref()
+			}
 			return node.typ.to_ptr()
-			// return node.typ
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(node.pos.pos)
