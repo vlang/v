@@ -7,7 +7,7 @@ import v.token
 import v.table
 import v.errors
 
-pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
+pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
 
 pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CTempVar | CallExpr |
 	CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
@@ -346,17 +346,18 @@ pub struct Stmt {
 */
 pub struct Var {
 pub:
-	name            string
-	expr            Expr
-	share           table.ShareType
-	is_mut          bool
-	is_autofree_tmp bool
-	is_arg          bool // fn args should not be autofreed
+	name               string
+	expr               Expr
+	share              table.ShareType
+	is_mut             bool
+	is_autofree_tmp    bool
+	is_arg             bool // fn args should not be autofreed
 pub mut:
-	typ             table.Type
-	pos             token.Position
-	is_used         bool
-	is_changed      bool // to detect mutable vars that are never changed
+	typ                table.Type
+	union_sum_type_typ table.Type
+	pos                token.Position
+	is_used            bool
+	is_changed         bool // to detect mutable vars that are never changed
 }
 
 pub struct GlobalField {
@@ -506,15 +507,16 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond         Expr
-	pos          token.Position
-	body_pos     token.Position
-	comments     []Comment
-	left_as_name string // `name` in `if cond is SumType as name`
-	mut_name     bool // `if mut name is`
+	cond            Expr
+	pos             token.Position
+	body_pos        token.Position
+	comments        []Comment
+	left_as_name    string // `name` in `if cond is SumType as name`
+	mut_name        bool // `if mut name is`
 pub mut:
-	stmts        []Stmt
-	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr
+	stmts           []Stmt
+	smartcast       bool // true when cond is `x is SumType`, set in checker.if_expr
+	union_smartcast bool // same for union sum types
 }
 
 pub struct UnsafeExpr {
@@ -717,6 +719,15 @@ pub:
 }
 
 pub struct SumTypeDecl {
+pub:
+	name      string
+	is_pub    bool
+	sub_types []table.Type
+	pos       token.Position
+}
+
+// New implementation of sum types
+pub struct UnionSumTypeDecl {
 pub:
 	name      string
 	is_pub    bool
@@ -1087,7 +1098,7 @@ pub fn (stmt Stmt) position() token.Position {
 		GoStmt { return stmt.call_expr.position() }
 		BranchStmt { return token.Position{stmt.tok.len, stmt.tok.line_nr, stmt.tok.pos} }
 		TypeDecl { match stmt {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
+				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
 			} }
 		else { return token.Position{} }
 	}

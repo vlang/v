@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | UnionSumType
 
 pub enum Language {
 	v
@@ -362,6 +362,7 @@ pub enum Kind {
 	generic_struct_inst
 	multi_return
 	sum_type
+	union_sum_type
 	alias
 	enum_
 	function
@@ -676,6 +677,7 @@ pub fn (k Kind) str() string {
 		.chan { 'chan' }
 		.multi_return { 'multi_return' }
 		.sum_type { 'sum_type' }
+		.union_sum_type { 'union_sum_type' }
 		.alias { 'alias' }
 		.enum_ { 'enum' }
 		.any { 'any' }
@@ -799,6 +801,11 @@ pub mut:
 }
 
 pub struct SumType {
+pub:
+	variants []Type
+}
+
+pub struct UnionSumType {
 pub:
 	variants []Type
 }

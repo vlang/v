@@ -1204,6 +1204,59 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 	}
 }
 
+// use instead of expr() when you need to cast to union sum type (can add other casts also)
+fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+	// cast to sum type
+	if expected_type != table.void_type {
+		expected_is_ptr := expected_type.is_ptr()
+		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
+		got_is_ptr := got_type.is_ptr()
+		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
+		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
+			exp_styp := g.typ(expected_type)
+			got_styp := g.typ(got_type)
+			got_idx := got_type.idx()
+			got_sym := g.table.get_type_symbol(got_type)
+			if expected_is_ptr && got_is_ptr {
+				exp_der_styp := g.typ(expected_deref_type)
+				g.write('/* union sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._$got_idx = ')
+				g.expr(expr)
+				g.write(', .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
+			} else if expected_is_ptr {
+				exp_der_styp := g.typ(expected_deref_type)
+				g.write('/* union sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._$got_idx = memdup(&($got_styp[]){')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
+			} else if got_is_ptr {
+				g.write('/* union sum type cast */ ($exp_styp){._$got_idx = ')
+				g.expr(expr)
+				g.write(', .typ = $got_idx /* $got_sym.name */}')
+			} else {
+				g.write('/* union sum type cast */ ($exp_styp){._$got_idx = memdup(&($got_styp[]){')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+			}
+			return
+		}
+	}
+	// Generic dereferencing logic
+	expected_sym := g.table.get_type_symbol(expected_type)
+	got_is_ptr := got_type.is_ptr()
+	expected_is_ptr := expected_type.is_ptr()
+	neither_void := table.voidptr_type !in [got_type, expected_type]
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+		got_deref_type := got_type.deref()
+		deref_sym := g.table.get_type_symbol(got_deref_type)
+		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+		got_is_opt := got_type.has_flag(.optional)
+		if deref_will_match || got_is_opt {
+			g.write('*')
+		}
+	}
+	// no cast
+	g.expr(expr)
+}
+
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
 	// cast to sum type
@@ -2083,6 +2136,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(')')
 			} else if sym.kind == .sum_type {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
+			} else if sym.kind == .union_sum_type {
+				g.union_expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
 				styp := g.typ(node.typ)
 				g.write('*(($styp *)(&')
@@ -3140,6 +3195,17 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if !g.is_assign_lhs && ident_var.share == .shared_t {
 			g.write('${name}.val')
 			return
+		}
+		sym := g.table.get_type_symbol(ident_var.typ)
+		if sym.info is table.UnionSumType {
+			scope := g.file.scope.innermost(node.pos.pos)
+			v := scope.find(name) or { ast.ScopeObject{} }
+			if v is ast.Var {
+				if v.union_sum_type_typ != 0 {
+					g.write('*${name}._$v.union_sum_type_typ')
+					return
+				}
+			}
 		}
 	}
 	g.write(g.get_ternary_name(name))
@@ -4329,6 +4395,22 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('} $name;')
 				g.type_definitions.writeln('')
 			}
+			table.UnionSumType {
+				g.type_definitions.writeln('')
+				g.type_definitions.writeln('// Union sum type $name = ')
+				for variant in it.variants {
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant):-20s}')
+				}
+				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('    union {')
+				for variant in it.variants {
+					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant;')
+				}
+				g.type_definitions.writeln('    };')
+				g.type_definitions.writeln('    int typ;')
+				g.type_definitions.writeln('} $name;')
+				g.type_definitions.writeln('')
+			}
 			table.ArrayFixed {
 				// .array_fixed {
 				styp := util.no_dots(typ.name)
@@ -5287,7 +5369,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
-	} else if sym.kind == .sum_type {
+	} else if sym.kind in [.sum_type, .union_sum_type] {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)

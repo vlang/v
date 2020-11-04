@@ -726,6 +726,16 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 				return true
 			}
 		}
+	} else if parent_sym.kind == .union_sum_type {
+		parent_info := parent_sym.info as UnionSumType
+		for v in parent_info.variants {
+			if v.idx() == variant.idx() {
+				return true
+			}
+			if table.sumtype_has_variant(v, variant) {
+				return true
+			}
+		}
 	}
 	return false
 }
