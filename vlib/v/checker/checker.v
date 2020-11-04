@@ -1737,9 +1737,9 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 	}
 	selector_expr.expr_type = typ
-	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
 	field_name := selector_expr.field_name
-	// variadic
+	utyp := c.unwrap_generic(typ)
+	sym := c.table.get_type_symbol(utyp)
 	if typ.has_flag(.variadic) || sym.kind == .array_fixed || sym.kind == .chan {
 		if field_name == 'len' || (sym.kind == .chan && field_name == 'cap') {
 			selector_expr.typ = table.int_type
@@ -1750,6 +1750,13 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	if field := c.table.struct_find_field(sym, field_name) {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
+		}
+		field_sym := c.table.get_type_symbol(field.typ)
+		if field_sym.kind == .union_sum_type {
+			scope := c.file.scope.innermost(selector_expr.pos.pos)
+			if scope_field := scope.find_struct_field(utyp, field_name) {
+				return scope_field.typ
+			}
 		}
 		selector_expr.typ = field.typ
 		return field.typ
@@ -1984,21 +1991,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		right := if i < assign_stmt.right.len { assign_stmt.right[i] } else { assign_stmt.right[0] }
 		mut right_type := assign_stmt.right_types[i]
-		// change right type if right expr is union sum type with smartcast
-		sym := c.table.get_type_symbol(right_type)
-		if sym.kind == .union_sum_type {
-			mut scope := c.file.scope.innermost(assign_stmt.pos.pos)
-			match right {
-				ast.Ident {
-					v := scope.find(right.name) or { ast.ScopeObject{} }
-					if v is ast.Var {
-						right_type = v.union_sum_type_typ
-					}
-				}
-				// TODO: ast.SelectorExpr {}
-				else {}
-			}
-		}
 		if is_decl {
 			left_type = c.table.mktyp(right_type)
 			if left_type == table.int_type {
@@ -3090,6 +3082,11 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
+					// if is union sum type with smartcast
+					sym := c.table.get_type_symbol(typ)
+					if sym.kind == .union_sum_type && obj.union_sum_type_typ != 0 {
+						typ = obj.union_sum_type_typ
+					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)
 					// println('IDENT T unresolved $ident.name typ=$sym.source_name')
@@ -3542,32 +3539,38 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							.variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
-						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] && branch.left_as_name.len > 0 {
+						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
 							if infix.left is ast.Ident as infix_left {
-								if var := scope.find_var(infix_left.name) {
-									is_mut = var.is_mut
+								if v := scope.find_var(infix_left.name) {
+									is_mut = v.is_mut
 								}
-							} else if infix.left is ast.SelectorExpr {
-								selector := infix.left as ast.SelectorExpr
+								if left_sym.kind == .union_sum_type {
+									scope.register(branch.left_as_name, ast.Var{
+										name: branch.left_as_name
+										typ: infix.left_type
+										pos: infix.left.position()
+										is_used: true
+										is_mut: is_mut
+										union_sum_type_typ: right_expr.typ
+									})
+								}
+							} else if infix.left is ast.SelectorExpr as selector {
 								field := c.table.struct_find_field(left_sym, selector.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
+								if left_sym.kind == .union_sum_type {
+									scope.register_struct_field(ast.ScopeStructField{
+										struct_type: selector.expr_type
+										name: selector.field_name
+										typ: right_expr.typ
+										pos: infix.left.position()
+									})
+								}
 							}
-							
-							if left_sym.kind == .union_sum_type {
-								scope.register(branch.left_as_name, ast.Var{
-									name: branch.left_as_name
-									typ: infix.left_type
-									pos: infix.left.position()
-									is_used: true
-									is_mut: is_mut
-									union_sum_type_typ: right_expr.typ
-								})
-								node.branches[i].union_smartcast = true
-							} else {
+							if left_sym.kind != .union_sum_type && branch.left_as_name.len > 0 {
 								scope.register(branch.left_as_name, ast.Var{
 									name: branch.left_as_name
 									typ: right_expr.typ.to_ptr()

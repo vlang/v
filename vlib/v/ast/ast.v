@@ -360,6 +360,16 @@ pub mut:
 	is_changed         bool // to detect mutable vars that are never changed
 }
 
+// used for smartcasting only
+// struct fields change type in scopes
+pub struct ScopeStructField {
+pub:
+	struct_type table.Type // type of struct
+	name        string
+	pos         token.Position
+	typ         table.Type
+}
+
 pub struct GlobalField {
 pub:
 	name     string
@@ -515,8 +525,7 @@ pub:
 	mut_name        bool // `if mut name is`
 pub mut:
 	stmts           []Stmt
-	smartcast       bool // true when cond is `x is SumType`, set in checker.if_expr
-	union_smartcast bool // same for union sum types
+	smartcast       bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
 }
 
 pub struct UnsafeExpr {

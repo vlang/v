@@ -2391,6 +2391,13 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write(')')
 				return
 			}
+			mut sum_type_deref_field := ''
+			scope := g.file.scope.innermost(node.pos.pos)
+			if field := scope.find_struct_field(node.expr_type, node.field_name) {
+				// union sum type deref
+				g.write('(*')
+				sum_type_deref_field = '_$field.typ'
+			}
 			g.expr(node.expr)
 			// struct embedding
 			if sym.kind == .struct_ {
@@ -2416,6 +2423,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
 			}
 			g.write(c_name(node.field_name))
+			if sum_type_deref_field != '' {
+				g.write('.$sum_type_deref_field)')
+			}
 		}
 		ast.Type {
 			// match sum Type
@@ -3202,7 +3212,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 			v := scope.find(name) or { ast.ScopeObject{} }
 			if v is ast.Var {
 				if v.union_sum_type_typ != 0 {
-					g.write('*${name}._$v.union_sum_type_typ')
+					g.write('(*${name}._$v.union_sum_type_typ)')
 					return
 				}
 			}
