@@ -795,6 +795,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			if left.kind !in [.interface_, .sum_type, .union_sum_type] {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
 					infix_expr.pos)
+			} else if left.kind == .union_sum_type {
+				info := left.info as table.UnionSumType
+				if type_expr.typ !in info.variants {
+					c.error('`$left.source_name` has no variant `$right.source_name`',
+						infix_expr.pos)
+				}
 			}
 			return table.bool_type
 		}
