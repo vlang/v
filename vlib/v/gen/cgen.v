@@ -1259,6 +1259,11 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+	sym := g.table.get_type_symbol(expected_type)
+	if sym.kind == .union_sum_type {
+		g.union_expr_with_cast(expr, got_type, expected_type)
+		return
+	}
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -2134,10 +2139,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(node.arg)
 				}
 				g.write(')')
-			} else if sym.kind == .sum_type {
+			} else if sym.kind in [.sum_type, .union_sum_type] {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
-			} else if sym.kind == .union_sum_type {
-				g.union_expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
 				styp := g.typ(node.typ)
 				g.write('*(($styp *)(&')
@@ -3206,15 +3209,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
-		sym := g.table.get_type_symbol(ident_var.typ)
-		if sym.info is table.UnionSumType {
-			scope := g.file.scope.innermost(node.pos.pos)
-			v := scope.find(name) or { ast.ScopeObject{} }
-			if v is ast.Var {
-				if v.union_sum_type_typ != 0 {
-					g.write('(*${name}._$v.union_sum_type_typ)')
-					return
-				}
+		scope := g.file.scope.innermost(node.pos.pos)
+		v := scope.find(name) or { ast.ScopeObject{} }
+		if v is ast.Var {
+			if v.union_sum_type_typ != 0 {
+				g.write('(*${name}._$v.union_sum_type_typ)')
+				return
 			}
 		}
 	}
@@ -3235,11 +3235,22 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			sumtype := g.match_sumtype_syms[i].info as table.SumType
-			for typ in sumtype.variants {
-				if g.table.get_type_symbol(typ).kind == .struct_ {
-					return false
+			match g.match_sumtype_syms[i].info as sumtype {
+				table.SumType {
+					for typ in sumtype.variants {
+						if g.table.get_type_symbol(typ).kind == .struct_ {
+							return false
+						}
+					}
 				}
+				table.UnionSumType {
+					for typ in sumtype.variants {
+						if g.table.get_type_symbol(typ).kind == .struct_ {
+							return false
+						}
+					}
+				}
+				else {}
 			}
 			return true
 		}
