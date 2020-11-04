@@ -1238,6 +1238,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut or_kind := ast.OrKind.absent
+		mut or_pos := p.tok.position()
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
@@ -1255,6 +1256,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			})
 			or_kind = .block
 			or_stmts = p.parse_block_no_scope(false)
+			or_pos = or_pos.extend(p.prev_tok.position())
 			p.close_scope()
 		}
 		// `foo()?`
@@ -1278,7 +1280,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
-				pos: pos
+				pos: or_pos
 			}
 		}
 		if is_filter || field_name == 'sort' {
