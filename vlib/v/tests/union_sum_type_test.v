@@ -119,14 +119,6 @@ fn test_nested_sumtype() {
 			assert false
 		}
 	}
-	// TODO: not working
-	// assert b is IfExpr
-	if b is IfExpr {
-		assert true
-	}
-	else {
-		assert false
-	}
 	c := Node(Expr(IfExpr{pos:1}))
 	if c is Expr {
 		if c is IfExpr {
