@@ -585,10 +585,12 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				if p.peek_tok.kind == .colon {
 					// `label:`
+					spos := p.tok.position()
 					name := p.check_name()
 					p.next()
 					return ast.GotoLabel{
 						name: name
+						pos: spos.extend(p.tok.position())
 					}
 				} else if p.peek_tok.kind == .name {
 					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
@@ -624,7 +626,8 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			tok := p.tok
 			p.next()
 			return ast.BranchStmt{
-				tok: tok
+				kind: tok.kind
+				pos: tok.position()
 			}
 		}
 		.key_unsafe {
@@ -635,25 +638,31 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_defer {
 			p.next()
+			spos := p.tok.position()
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
+				pos: spos.extend(p.tok.position())
 			}
 		}
 		.key_go {
 			p.next()
+			spos := p.tok.position()
 			expr := p.expr(0)
 			// mut call_expr := &ast.CallExpr(0) // TODO
 			// { call_expr = it }
 			return ast.GoStmt{
 				call_expr: expr
+				pos: spos.extend(p.tok.position())
 			}
 		}
 		.key_goto {
 			p.next()
+			spos := p.tok.position()
 			name := p.check_name()
 			return ast.GotoStmt{
 				name: name
+				pos: spos
 			}
 		}
 		.key_const {
@@ -766,27 +775,6 @@ fn (mut p Parser) parse_attr() table.Attr {
 	}
 }
 
-/*
-fn (mut p Parser) range_expr(low ast.Expr) ast.Expr {
-	// ,table.Type) {
-	if p.tok.kind != .dotdot {
-		p.next()
-	}
-	p.check(.dotdot)
-	mut high := ast.Expr{}
-	if p.tok.kind != .rsbr {
-		high = p.expr(0)
-		// if typ.typ.kind != .int {
-		// p.error('non-integer index `$typ.typ.name`')
-		// }
-	}
-	node := ast.RangeExpr{
-		low: low
-		high: high
-	}
-	return node
-}
-*/
 pub fn (mut p Parser) error(s string) {
 	p.error_with_pos(s, p.tok.position())
 }
@@ -877,6 +865,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	return ast.ExprStmt{
 		expr: ast.ConcatExpr{
 			vals: left
+			pos: tok.position()
 		}
 		pos: tok.position()
 		comments: left_comments
@@ -967,6 +956,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 		return ast.MapInit{
 			typ: map_type
+			pos: p.tok.position()
 		}
 	}
 	// `chan typ{...}`
@@ -1153,6 +1143,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				low: ast.Expr{}
 				high: high
 				has_high: true
+				pos: pos
 			}
 		}
 	}
@@ -1176,6 +1167,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 				high: high
 				has_high: has_high
 				has_low: has_low
+				pos: pos
 			}
 		}
 	}

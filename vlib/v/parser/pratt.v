@@ -85,6 +85,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.rpar)
 			node = ast.ParExpr{
 				expr: node
+				pos: p.tok.position()
 			}
 		}
 		.key_if {
@@ -151,12 +152,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.rpar)
 		}
 		.key_typeof {
+			spos := p.tok.position()
 			p.next()
 			p.check(.lpar)
 			expr := p.expr(0)
 			p.check(.rpar)
 			node = ast.TypeOf{
 				expr: expr
+				pos: spos.extend(p.tok.position())
 			}
 		}
 		.key_likely, .key_unlikely {

@@ -301,7 +301,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.BranchStmt {
-			match node.tok.kind {
+			match node.kind {
 				.key_break { f.writeln('break') }
 				.key_continue { f.writeln('continue') }
 				else {}
