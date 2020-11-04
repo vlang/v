@@ -740,8 +740,9 @@ pub struct UnionSumTypeDecl {
 pub:
 	name      string
 	is_pub    bool
-	sub_types []table.Type
 	pos       token.Position
+pub mut:
+	sub_types []table.Type
 }
 
 pub struct FnTypeDecl {

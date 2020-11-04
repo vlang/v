@@ -316,10 +316,10 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 		ast.UnionSumTypeDecl {
 			c.check_valid_pascal_case(node.name, 'sum type', node.pos)
 			for typ in node.sub_types {
-				typ_sym := c.table.get_type_symbol(typ)
-				if typ_sym.kind == .placeholder {
-					c.error("type `$typ_sym.source_name` doesn't exist", node.pos)
-				} else if typ_sym.kind == .interface_ {
+				mut sym := c.table.get_type_symbol(typ)
+				if sym.kind == .placeholder {
+					c.error("type `$sym.source_name` doesn't exist", node.pos)
+				} else if sym.kind == .interface_ {
 					c.error('sum type cannot hold an interface', node.pos)
 				}
 			}

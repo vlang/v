@@ -1219,22 +1219,22 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 			got_sym := g.table.get_type_symbol(got_type)
 			if expected_is_ptr && got_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* union sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._$got_idx = ')
+				g.write('/* union sum type cast 1 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = ')
 				g.expr(expr)
-				g.write(', .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
+				g.write(', .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if expected_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* union sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._$got_idx = memdup(&($got_styp[]){')
+				g.write('/* union sum type cast 2 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = memdup(&($got_styp[]){')
 				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
+				g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if got_is_ptr {
-				g.write('/* union sum type cast */ ($exp_styp){._$got_idx = ')
+				g.write('/* union sum type cast 3 */ ($exp_styp){._$got_idx = ')
 				g.expr(expr)
-				g.write(', .typ = $got_idx /* $got_sym.name */}')
+				g.write(', .typ = $got_type /* $got_sym.name */}')
 			} else {
-				g.write('/* union sum type cast */ ($exp_styp){._$got_idx = memdup(&($got_styp[]){')
+				g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
 				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
+				g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
 			}
 			return
 		}
@@ -4420,12 +4420,12 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
 				for variant in it.variants {
-					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant):-20s}')
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('typedef struct {')
 				g.type_definitions.writeln('    union {')
-				for variant in it.variants {
-					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant;')
+				for variant in g.table.get_union_sum_type_variants(it) {
+					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
 				g.type_definitions.writeln('    int typ;')

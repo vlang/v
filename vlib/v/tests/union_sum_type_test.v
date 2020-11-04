@@ -199,22 +199,22 @@ fn is_gt_nested(val string, dst Number) bool {
 		any_int {
 			match dst2 {
 				any_int {
-					return true // val.int() > dst
+					return val.int() > dst
 				}
 				// this branch should never been hit
 				else {
-					return true // val.int() < dst
+					return val.int() < dst
 				}
 			}
 		}
 		any_float {
 			match dst2 {
 				any_float {
-					return true // dst < val.f64()
+					return dst < val.f64()
 				}
 				// this branch should never been hit
 				else {
-					return true //dst > val.f64()
+					return dst > val.f64()
 				}
 			}
 		}
