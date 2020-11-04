@@ -355,11 +355,10 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	}
 	mut or_stmts := []ast.Stmt{}
 	mut or_kind := ast.OrKind.absent
-	mut or_pos := token.Position{}
+	mut or_pos := p.tok.position()
 	// allow `x := <-ch or {...}` to handle closed channel
 	if op == .arrow {
 		if p.tok.kind == .key_orelse {
-			start_or_pos := p.tok.position()
 			p.next()
 			p.open_scope()
 			p.scope.register('errcode', ast.Var{
@@ -376,7 +375,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			})
 			or_kind = .block
 			or_stmts = p.parse_block_no_scope(false)
-			or_pos = start_or_pos.extend(p.prev_tok.position())
+			or_pos = or_pos.extend(p.prev_tok.position())
 			p.close_scope()
 		}
 		if p.tok.kind == .question {
