@@ -251,6 +251,37 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
+__type Bar = string | Test
+__type Xyz = int | string
+
+struct Test {
+	x string
+	xyz Xyz
+}
+
+struct Foo {
+	y Bar
+}
+
+fn test_nested_selector_smartcast() {
+
+	f := Foo{
+		y: Bar(Test{
+			x: 'Hi'
+			xyz: Xyz(5)
+		})
+	}
+
+	if f.y is Test {
+		z := f.y.x
+		assert f.y.x == 'Hi'
+		assert z == 'Hi'
+		if f.y.xyz is int {
+			assert f.y.xyz == 5
+		}
+	}
+}
+
 fn test_sum_type_match() {
 	assert is_gt_simple('3', 2)
 	assert !is_gt_simple('3', 5)
