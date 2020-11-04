@@ -50,9 +50,13 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 }
 
 pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?ScopeStructField {
-	for field in s.struct_fields {
-		if field.struct_type == struct_type && field.name == field_name {
-			return field
+	for sc := s; true; sc = sc.parent {
+		fields := s.struct_fields.filter(it.struct_type == struct_type && it.name == field_name)
+		if fields.len > 0 {
+			return fields[0]
+		}
+		if isnil(sc.parent) {
+			break
 		}
 	}
 	return none
