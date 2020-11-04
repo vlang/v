@@ -2118,6 +2118,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.CharLiteral {
 			g.write("'$node.val'")
 		}
+		ast.AtExpr {
+			g.comp_at(node)
+		}
 		ast.ComptimeCall {
 			g.comptime_call(node)
 		}

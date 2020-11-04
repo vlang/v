@@ -2,7 +2,9 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module checker
 
+import os
 import v.ast
+import v.vmod
 import v.table
 import v.token
 import v.pref
@@ -26,38 +28,40 @@ const (
 )
 
 pub struct Checker {
-	pref             &pref.Preferences // Preferences shared from V struct
+	pref              &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table            &table.Table
-	file             ast.File
-	nr_errors        int
-	nr_warnings      int
-	errors           []errors.Error
-	warnings         []errors.Warning
-	error_lines      []int // to avoid printing multiple errors for the same line
-	expected_type    table.Type
-	cur_fn           &ast.FnDecl // current function
-	const_decl       string
-	const_deps       []string
-	const_names      []string
-	global_names     []string
-	locked_names     []string // vars that are currently locked
-	rlocked_names    []string // vars that are currently read-locked
-	in_for_count     int // if checker is currently in a for loop
+	table             &table.Table
+	file              ast.File
+	nr_errors         int
+	nr_warnings       int
+	errors            []errors.Error
+	warnings          []errors.Warning
+	error_lines       []int // to avoid printing multiple errors for the same line
+	expected_type     table.Type
+	cur_fn            &ast.FnDecl // current function
+	cur_struct        &ast.StructDecl // current struct
+	const_decl        string
+	const_deps        []string
+	const_names       []string
+	global_names      []string
+	locked_names      []string // vars that are currently locked
+	rlocked_names     []string // vars that are currently read-locked
+	in_for_count      int // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	returns          bool
-	scope_returns    bool
-	mod              string // current module name
-	is_builtin_mod   bool // are we in `builtin`?
-	inside_unsafe    bool
-	skip_flags       bool // should `#flag` and `#include` be skipped
-	cur_generic_type table.Type
+	returns           bool
+	scope_returns     bool
+	mod               string // current module name
+	is_builtin_mod    bool // are we in `builtin`?
+	inside_unsafe     bool
+	skip_flags        bool // should `#flag` and `#include` be skipped
+	cur_generic_type  table.Type
 mut:
-	expr_level       int // to avoid infinite recursion segfaults due to compiler bugs
-	inside_sql       bool // to handle sql table fields pseudo variables
-	cur_orm_ts       table.TypeSymbol
-	error_details    []string
-	generic_funcs    []&ast.FnDecl
+	expr_level        int // to avoid infinite recursion segfaults due to compiler bugs
+	inside_sql        bool // to handle sql table fields pseudo variables
+	cur_orm_ts        table.TypeSymbol
+	error_details     []string
+	generic_funcs     []&ast.FnDecl
+	vmod_file_content string // needed for @VMOD_FILE, contents of the file, *NOT its path*
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -65,6 +69,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 		table: table
 		pref: pref
 		cur_fn: 0
+		cur_struct: 0
 	}
 }
 
@@ -414,6 +419,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			}
 		}
 	}
+	c.cur_struct = &decl
 }
 
 pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
@@ -2726,6 +2732,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		ast.Comment {
 			return table.void_type
 		}
+		ast.AtExpr {
+			return c.at_expr(mut node)
+		}
 		ast.ComptimeCall {
 			node.sym = c.table.get_type_symbol(c.unwrap_generic(c.expr(node.left)))
 			if node.is_vweb {
@@ -2992,6 +3001,68 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	}
 	node.typname = c.table.get_type_symbol(node.typ).name
 	return node.typ
+}
+
+fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
+	match node.kind {
+		.fn_name {
+			node.val = c.cur_fn.name.all_after_last('.')
+		}
+		.mod_name {
+			node.val = c.cur_fn.mod
+		}
+		.struct_name {
+			if c.cur_fn.is_method {
+				if !isnil(c.cur_struct) {
+					node.val = c.cur_struct.name.all_after_last('.')
+				}
+			} else {
+				node.val = ''
+			}
+		}
+		.vexe_path {
+			node.val = pref.vexe_path()
+		}
+		.file_path {
+			node.val = os.real_path(c.file.path)
+		}
+		.line_nr {
+			node.val = node.pos.pos.str()
+		}
+		.column_nr {
+			node.val = node.pos.line_nr.str()
+		}
+		.vhash {
+			node.val = util.vhash()
+		}
+		.vmod_file {
+			if c.vmod_file_content.len == 0 {
+				mut mcache := vmod.get_cache()
+				vmod_file_location := mcache.get_by_file(c.file.path)
+				if vmod_file_location.vmod_file.len == 0 {
+					c.error('@VMOD_FILE can be used only in projects, that have v.mod file',
+						node.pos)
+				}
+				vmod_content := os.read_file(vmod_file_location.vmod_file) or {
+					''
+				}
+				$if windows {
+					c.vmod_file_content = vmod_content.replace('\r\n', '\n')
+				} $else {
+					c.vmod_file_content = vmod_content
+				}
+			}
+			node.val = c.vmod_file_content
+		}
+		else {
+			if !(node.name in token.valid_at_tokens) {
+				c.error('unknown @ identifier: $node.name', node.pos)
+			} else {
+				c.error('super unknown @ identifier: $node.name', node.pos)
+			}
+		}
+	}
+	return table.string_type
 }
 
 pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
