@@ -183,6 +183,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	if is_mut {
 		p.next()
 	}
+	cond_pos := p.tok.position()
 	cond := p.expr(0)
 	p.inside_match = false
 	mut var_name := ''
@@ -259,6 +260,24 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					info: table.Aggregate{
 						types: types
 					}
+				})
+			}
+			p.scope.register('it', ast.Var{
+				name: 'it'
+				typ: it_typ.to_ptr()
+				pos: cond_pos
+				is_used: true
+				is_mut: is_mut
+			})
+			if var_name.len > 0 {
+				// Register shadow variable or `as` variable with actual type
+				p.scope.register(var_name, ast.Var{
+					name: var_name
+					typ: it_typ.to_ptr()
+					pos: cond_pos
+					is_used: true
+					is_changed: true // TODO mut unchanged warning hack, remove
+					is_mut: is_mut
 				})
 			}
 			is_sum_type = true

@@ -3334,27 +3334,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							}
 							 else {}
 						}
-					} else if cond_type_sym.kind == .sum_type {
-						if node.cond is ast.Ident as node_cond {
-							c.file.scope.register('it', ast.Var{
-								name: 'it'
-								typ: node.cond_type.to_ptr()
-								pos: node_cond.pos
-								is_used: true
-								is_mut: node.is_mut
-							})
-							if node.var_name.len > 0 {
-								// Register shadow variable or `as` variable with actual type
-								c.file.scope.register(node.var_name, ast.Var{
-									name: node.var_name
-									typ: node.cond_type.to_ptr()
-									pos: node_cond.pos
-									is_used: true
-									is_changed: true // TODO mut unchanged warning hack, remove
-									is_mut: node.is_mut
-								})
-							}
-						}
 					}
 				}
 				ast.EnumVal { key = expr.val }
