@@ -3200,7 +3200,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		c.error('compiler bug: match 0 cond type', node.pos)
 	}
 	cond_type_sym := c.table.get_type_symbol(cond_type)
-	if cond_type_sym.kind !in [.sum_type, .interface_] {
+	if cond_type_sym.kind !in [.sum_type, .interface_, .union_sum_type] {
 		node.is_sum_type = false
 	}
 	c.match_exprs(mut node, cond_type_sym)
@@ -3309,7 +3309,34 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				continue
 			}
 			match expr {
-				ast.Type { key = c.table.type_to_str(expr.typ) }
+				ast.Type {
+					key = c.table.type_to_str(expr.typ)
+					if cond_type_sym.kind == .union_sum_type {
+						mut scope := c.file.scope.innermost(branch.pos.pos)
+						match node.cond as node_cond {
+							ast.SelectorExpr {
+								scope.register_struct_field({
+									struct_type: node_cond.expr_type
+									name: node_cond.field_name
+									typ: expr.typ
+									pos: node_cond.pos
+								})
+							}
+							ast.Ident {
+								scope.register(node.var_name, ast.Var{
+									name: node.var_name
+									typ: node.cond_type
+									pos: node_cond.pos
+									is_used: true
+									is_mut: node.is_mut
+									union_sum_type_typ: expr.typ
+								})
+							}
+							 else {}
+						}
+						println(key)
+					}
+				}
 				ast.EnumVal { key = expr.val }
 				else { key = expr.str() }
 			}
@@ -3337,6 +3364,15 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	mut unhandled := []string{}
 	match type_sym.info as info {
 		table.SumType {
+			for v in info.variants {
+				v_str := c.table.type_to_str(v)
+				if v_str !in branch_exprs {
+					is_exhaustive = false
+					unhandled << '`$v_str`'
+				}
+			}
+		}
+		table.UnionSumType {
 			for v in info.variants {
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {

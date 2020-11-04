@@ -2880,6 +2880,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		// iterates through all types in sumtype branches
 		for {
 			is_last := j == node.branches.len - 1
+			sym := g.table.get_type_symbol(node.cond_type)
 			if branch.is_else || (node.is_expr && is_last) {
 				if is_expr {
 					// TODO too many branches. maybe separate ?: matches
@@ -2901,9 +2902,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('if (')
 				}
 				g.write(cond_var)
-				sym := g.table.get_type_symbol(node.cond_type)
 				// branch_sym := g.table.get_type_symbol(branch.typ)
-				if sym.kind == .sum_type {
+				if sym.kind in [.sum_type, .union_sum_type] {
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.write('typ == ')
@@ -2919,7 +2919,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 			}
 			// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
-			if !branch.is_else && !node.is_expr {
+			if sym.kind != .union_sum_type && !branch.is_else && !node.is_expr {
 				// Use the nodes in the expr to generate `it` variable.
 				type_expr := branch.exprs[sumtype_index]
 				if type_expr !is ast.Type {
