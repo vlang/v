@@ -139,12 +139,14 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	} else {
 		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
 	}
+	spos := p.tok.position()
 	stmts := p.parse_block()
 	return ast.CompFor{
 		val_var: val_var
 		stmts: stmts
 		kind: kind
 		typ: typ
+		pos: spos.extend(p.tok.position())
 	}
 }
 
