@@ -794,9 +794,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
-			g.write_v_source_line_info(node.tok.position())
+			g.write_v_source_line_info(node.pos)
 			// continue or break
-			g.write(node.tok.kind.str())
+			g.write(node.kind.str())
 			g.writeln(';')
 		}
 		ast.ConstDecl {

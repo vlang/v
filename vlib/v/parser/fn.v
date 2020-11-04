@@ -54,6 +54,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		len: last_pos.pos - first_pos.pos + last_pos.len
 	}
 	mut or_stmts := []ast.Stmt{}
+	mut or_pos := p.tok.position()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
 		was_inside_or_expr := p.inside_or_expr
@@ -74,6 +75,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		})
 		or_kind = .block
 		or_stmts = p.parse_block_no_scope(false)
+		or_pos = or_pos.extend(p.prev_tok.position())
 		p.close_scope()
 		p.inside_or_expr = was_inside_or_expr
 	}
@@ -89,37 +91,18 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			fn_name = registered.name
 		}
 	}
-	/*
-	call_expr := ast.CallExpr{
-		name: fn_name
-		args: args
-		mod: fn_mod
-		pos: pos
-		language: language
-		generic_type: generic_type
-	}
-	if or_kind != .absent {
-		return ast.OrExpr2{
-			call_expr: call_expr
-			stmts: or_stmts
-			kind: or_kind
-			pos: pos
-		}
-	}
-	return call_expr
-	*/
 	return ast.CallExpr{
 		name: fn_name
 		args: args
 		mod: fn_mod
 		pos: pos
 		language: language
+		generic_type: generic_type
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind
-			pos: pos
+			pos: or_pos
 		}
-		generic_type: generic_type
 	}
 }
 

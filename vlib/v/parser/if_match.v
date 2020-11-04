@@ -235,6 +235,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				types << parsed_type
 				exprs << ast.Type{
 					typ: parsed_type
+					pos: p.tok.position()
 				}
 				if p.tok.kind != .comma {
 					break
@@ -305,6 +306,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 						high: expr2
 						has_low: true
 						has_high: true
+						pos: p.tok.position()
 					}
 				} else {
 					exprs << expr

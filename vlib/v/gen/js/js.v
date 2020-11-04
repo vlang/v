@@ -775,7 +775,7 @@ fn (mut g JsGen) gen_block(it ast.Block) {
 
 fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 	// continue or break
-	g.write(it.tok.kind.str())
+	g.write(it.kind.str())
 	g.writeln(';')
 }
 

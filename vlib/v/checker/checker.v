@@ -1629,10 +1629,10 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			return ret_type
 		} else if expr.or_block.kind == .block {
 			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
-				expr.pos)
+				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate {
 			c.error('unexpected `?`, the function `$expr.name`, does not return an optional',
-				expr.pos)
+				expr.or_block.pos)
 		}
 	}
 	return ret_type
@@ -1678,9 +1678,9 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 				return
 			}
 			ast.BranchStmt {
-				if last_stmt.tok.kind !in [.key_continue, .key_break] {
+				if last_stmt.kind !in [.key_continue, .key_break] {
 					c.error('only break/continue is allowed as a branch statement in the end of an `or {}` block',
-						last_stmt.tok.position())
+						last_stmt.pos)
 					return
 				}
 			}
@@ -2342,7 +2342,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			if c.in_for_count == 0 {
-				c.error('$node.tok.lit statement not within a loop', node.tok.position())
+				c.error('$node.kind.str() statement not within a loop', node.pos)
 			}
 		}
 		ast.CompFor {

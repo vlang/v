@@ -21,6 +21,8 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
 	StructDecl | TypeDecl
 
+// NB: when you add a new Expr or Stmt type with a .pos field, remember to update
+// the .position() token.Position methods too.
 pub type ScopeObject = ConstField | GlobalField | Var
 
 pub struct Type {
@@ -276,7 +278,8 @@ pub mut:
 // break, continue
 pub struct BranchStmt {
 pub:
-	tok token.Token
+	kind token.Kind
+	pos  token.Position
 }
 
 pub struct CallExpr {
@@ -602,6 +605,7 @@ pub:
 	val_var string
 	stmts   []Stmt
 	kind    CompForKind
+	pos     token.Position
 pub mut:
 	// expr    Expr
 	typ     table.Type
@@ -759,6 +763,7 @@ pub:
 pub struct DeferStmt {
 pub:
 	stmts []Stmt
+	pos   token.Position
 pub mut:
 	ifdef string
 }
@@ -767,21 +772,25 @@ pub mut:
 pub struct ParExpr {
 pub:
 	expr Expr
+	pos  token.Position
 }
 
 pub struct GoStmt {
 pub:
 	call_expr Expr
+	pos       token.Position
 }
 
 pub struct GotoLabel {
 pub:
 	name string
+	pos  token.Position
 }
 
 pub struct GotoStmt {
 pub:
 	name string
+	pos  token.Position
 }
 
 pub struct ArrayInit {
@@ -834,6 +843,7 @@ pub:
 	high     Expr
 	has_high bool
 	has_low  bool
+	pos      token.Position
 }
 
 // NB: &string(x) gets parsed as ast.PrefixExpr{ right: ast.CastExpr{...} }
@@ -869,6 +879,7 @@ pub struct IfGuardExpr {
 pub:
 	var_name  string
 	expr      Expr
+	pos       token.Position
 pub mut:
 	expr_type table.Type
 }
@@ -926,6 +937,7 @@ pub:
 pub struct TypeOf {
 pub:
 	expr      Expr
+	pos       token.Position
 pub mut:
 	expr_type table.Type
 }
@@ -941,6 +953,7 @@ pub:
 pub struct ConcatExpr {
 pub:
 	vals        []Expr
+	pos         token.Position
 pub mut:
 	return_type table.Type
 }
@@ -1027,8 +1040,14 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, CharLiteral, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, MapInit, MatchExpr, None, PostfixExpr, PrefixExpr, SelectExpr, SelectorExpr, SizeOf, StringLiteral, StringInterLiteral, StructInit, Likely {
+		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
+		}
+		IfGuardExpr {
+			return expr.expr.position()
+		}
+		ComptimeCall {
+			return expr.left.position()
 		}
 		InfixExpr {
 			left_pos := expr.left.position()
@@ -1042,17 +1061,12 @@ pub fn (expr Expr) position() token.Position {
 				len: right_pos.pos - left_pos.pos + right_pos.len
 			}
 		}
-		/*
-		ast.Ident {}
-		ast.IfGuardExpr {}
-		ast.None {}
-		ast.ParExpr {}
-		ast.Type {}
-		ast.TypeOf {}
-		*/
-		else {
+		CTempVar {
 			return token.Position{}
 		}
+		// Please, do NOT use else{} here.
+		// This match is exhaustive *on purpose*, to help force
+		// maintaining/implementing proper .pos fields.
 	}
 }
 
@@ -1104,13 +1118,14 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, ConstDecl, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module { return stmt.pos }
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
-		BranchStmt { return token.Position{stmt.tok.len, stmt.tok.line_nr, stmt.tok.pos} }
 		TypeDecl { match stmt {
 				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
 			} }
-		else { return token.Position{} }
+		// Please, do NOT use else{} here.
+		// This match is exhaustive *on purpose*, to help force
+		// maintaining/implementing proper .pos fields.
 	}
 }
 
