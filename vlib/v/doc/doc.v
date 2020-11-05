@@ -35,7 +35,6 @@ pub mut:
 	checker         checker.Checker = checker.Checker{
 	table: 0
 	cur_fn: 0
-	cur_struct: 0
 	pref: 0
 }
 	fmt             fmt.Fmt

@@ -20,6 +20,29 @@ fn (mut t TestStruct) test_struct_w_high_order(cb fn (int) string) string {
 	return 'test' + cb(2)
 }
 
+struct Abc {
+}
+
+fn (a Another) method() string {
+	println(@STRUCT)
+	return @STRUCT
+}
+
+struct Another {
+}
+
+fn (a Abc) method() string {
+	println(@STRUCT)
+	return @STRUCT
+}
+
+fn test_at_struct_ordering() {
+	a := Abc{}
+	assert a.method() == 'Abc'
+	b := Another{}
+	assert b.method() == 'Another'
+}
+
 struct TestFn {
 }
 

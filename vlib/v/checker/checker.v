@@ -39,7 +39,6 @@ pub mut:
 	error_lines       []int // to avoid printing multiple errors for the same line
 	expected_type     table.Type
 	cur_fn            &ast.FnDecl // current function
-	cur_struct        &ast.StructDecl // current struct
 	const_decl        string
 	const_deps        []string
 	const_names       []string
@@ -69,7 +68,6 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 		table: table
 		pref: pref
 		cur_fn: 0
-		cur_struct: 0
 	}
 }
 
@@ -419,7 +417,6 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			}
 		}
 	}
-	c.cur_struct = &decl
 }
 
 pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
@@ -3013,9 +3010,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 		}
 		.struct_name {
 			if c.cur_fn.is_method {
-				if !isnil(c.cur_struct) {
-					node.val = c.cur_struct.name.all_after_last('.')
-				}
+				node.val = c.table.type_to_str(c.cur_fn.receiver.typ).all_after_last('.')
 			} else {
 				node.val = ''
 			}
