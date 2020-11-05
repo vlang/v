@@ -239,7 +239,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 	mut tries := 0
 	for tries < config.retries {
 		tries++
-		client = net.dial_tcp('127.0.0.1$sport') or {
+		client = net.dial_tcp('127.0.0.1:$sport') or {
 			if tries > config.retries {
 				return error(err)
 			}
