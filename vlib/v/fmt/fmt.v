@@ -1219,9 +1219,11 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
-		f.writeln(' {')
-		f.stmts(node.stmts)
-		f.write('}')
+		if !node.no_body {
+			f.writeln(' {')
+			f.stmts(node.stmts)
+			f.write('}')
+		}
 		if !node.is_anon {
 			f.writeln('\n')
 		}
