@@ -3022,7 +3022,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			node.val = os.real_path(c.file.path)
 		}
 		.line_nr {
-			node.val = node.pos.pos.str()
+			node.val = (node.pos.line_nr+1).str()
 		}
 		.column_nr {
 			node.val = node.pos.line_nr.str()
