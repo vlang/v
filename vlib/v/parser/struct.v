@@ -390,9 +390,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	typ := table.new_type(reg_idx)
 	mut ts := p.table.get_type_symbol(typ)
 	// if methods were declared before, it's an error, ignore them
-	ts.methods = []table.Fn{cap:20}
+	ts.methods = []table.Fn{cap: 20}
 	// Parse methods
-	mut methods := []ast.FnDecl{cap:20}
+	mut methods := []ast.FnDecl{cap: 20}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
