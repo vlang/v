@@ -393,7 +393,6 @@ pub fn escape(s string) string {
 }
 
 fn (req &Request) http_do(host string, method Method, path string) ?Response {
-	rbuffer := [bufsize]byte{}
 	mut sb := strings.new_builder(100)
 	host_name, _ := net.split_address(host)?
 	s := req.build_request_headers(method, host_name, path)
@@ -401,7 +400,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	client.write(s.bytes())?
 	mut buf := []byte{len:1000}
 	for {
-		read := client.read_into(mut buf)?
+		read := client.read(mut buf)?
 		if read == 0 {
 			break
 		}

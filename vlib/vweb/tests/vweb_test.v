@@ -21,7 +21,7 @@ fn testsuite_begin() {
 	// prevent failing tests when vweb_test.v is rerun quickly
 	// and the previous webserver has not yet timed out.
 	for i := 0; i < 10; i++ {
-		if client := net.dial('127.0.0.1', sport) {
+		if client := net.dial_tcp('127.0.0.1:$sport') {
 			client.close() or { }
 			eprintln('previous webserver has not yet stopped ($i); waiting...')
 			time.sleep_ms(exit_after_time / 10)
@@ -235,11 +235,11 @@ struct SimpleTcpClientConfig {
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
-	mut client := net.Socket{}
+	mut client := net.TcpConn{}
 	mut tries := 0
 	for tries < config.retries {
 		tries++
-		client = net.dial('127.0.0.1', sport) or {
+		client = net.dial_tcp('127.0.0.1$sport') or {
 			if tries > config.retries {
 				return error(err)
 			}
@@ -248,9 +248,7 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		}
 		break
 	}
-	defer {
-		client.close() or { }
-	}
+	defer { client.close() }
 	//
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host
@@ -261,11 +259,11 @@ $config.content'
 	$if debug_net_socket_client ? {
 		eprintln('sending:\n$message')
 	}
-	client.send(message.str, message.len)?
-	bytes, blen := client.recv(4096)
-	received := unsafe {bytes.vstring_with_len(blen)}
+	client.write(message.bytes())?
+	mut read := []byte{len: 4096}
+	received := client.read(mut read)?
 	$if debug_net_socket_client ? {
 		eprintln('received:\n$received')
 	}
-	return received
+	return read.bytestr()
 }

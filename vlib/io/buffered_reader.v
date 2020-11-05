@@ -16,7 +16,7 @@ pub struct BufferedReaderConfig {
 	buf_cap  int = 128 * 1024 // large for fast reading of big(ish) files
 }
 
-// new_buffered_reader creates new BufferedRStream
+// new_buffered_reader creates new BufferedReader
 pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 	assert o.buf_cap >= 2
 
@@ -30,7 +30,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 // read_info fufills the Reader interface
-pub fn (mut r BufferedReader) read_into(mut buf []byte) ?int {
+pub fn (mut r BufferedReader) read(mut buf []byte) ?int {
 	// read data out of the buffer if we dont have any
 	if r.offset >= r.len-1 {
 		r.fill_buffer()?
@@ -44,7 +44,7 @@ pub fn (mut r BufferedReader) read_into(mut buf []byte) ?int {
 
 fn (mut r BufferedReader) fill_buffer() ? {
 	r.offset = 0
-	r.len = r.reader.read_into(mut r.buf)?
+	r.len = r.reader.read(mut r.buf)?
 }
 
 // read_line reads a line from the buffered reader

@@ -45,7 +45,7 @@ mut:
 
 fn (mut dtp DTP) read() ?[]byte {
 	mut data := []byte{len: 1024}
-	dtp.reader.read_into(mut data)?
+	dtp.reader.read(mut data)?
 	return data
 }
 
@@ -100,11 +100,11 @@ pub fn (mut ftp FTP) connect(ip string) ?bool {
 	if code == connected {
 		return true
 	}
-	ftp.reader = io.new_buffered_reader(reader: io.make_rstream(ftp.conn))
+	ftp.reader = io.new_buffered_reader(reader: io.make_reader(ftp.conn))
 	return false
 }
 
-pub fn (mut ftp FTP) login(user, passwd string) ?bool {
+pub fn (mut ftp FTP) login(user string, passwd string) ?bool {
 	ftp.write('USER $user') or {
 		$if debug {
 			println('ERROR sending user')

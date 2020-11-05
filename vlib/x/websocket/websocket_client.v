@@ -7,7 +7,7 @@
 // check with valgrind if you do any changes in the free calls
 module websocket
 
-import x.net
+import net
 import x.openssl
 import net.urllib
 import time

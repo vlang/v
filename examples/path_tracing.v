@@ -110,7 +110,7 @@ fn (image Image) save_as_ppm(file_name string) {
 		c_r := to_int(unsafe{image.data[i]}.x)
 		c_g := to_int(unsafe{image.data[i]}.y)
 		c_b := to_int(unsafe{image.data[i]}.z)
-		f_out.write('$c_r $c_g $c_b ')
+		f_out.write_str('$c_r $c_g $c_b ')
 	}
 	f_out.close()
 }

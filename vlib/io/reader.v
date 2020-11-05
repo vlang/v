@@ -2,9 +2,11 @@ module io
 
 // Reader represents a stream of data that can be read 
 pub interface Reader {
-	read_into(mut buf []byte) ?int
+	read(mut buf []byte) ?int
 }
 
+// make_reader is a temp that converts a struct to a reader
+// (e.g. for use in struct initialisation)
 pub fn make_reader(r Reader) Reader {
 	return r
 }
@@ -19,7 +21,7 @@ pub fn read_all(r Reader) ?[]byte {
 	mut b := []byte{len:read_all_len}
 	mut read := 0
 	for {
-		read += r.read_into(mut b[read..]) or {
+		read += r.read(mut b[read..]) or {
 			break
 		}
 		if read == 0 || b.len != b.cap {
@@ -32,5 +34,5 @@ pub fn read_all(r Reader) ?[]byte {
 
 // RandomReader represents a stream of data that can be read from at a random location
 interface RandomReader {
-	read_from_into(pos int, mut buf []byte) ?int
+	read_from(pos int, mut buf []byte) ?int
 }

@@ -134,11 +134,11 @@ fn main() {
 		mut out_file := os.create(context.write_file) or {
 			panic(err)
 		}
-		out_file.write(context.header())
-		for bname, fbytes in file_byte_map {
-			out_file.write(context.file2v(bname, fbytes, max_bname))
+		out_file.write_str(context.header())
+		for file in real_files {
+			out_file.write_str(context.file2v(file))
 		}
-		out_file.write(context.footer())
+		out_file.write_str(context.footer())
 	} else {
 		println(context.header())
 		for bname, fbytes in file_byte_map {

@@ -48,7 +48,7 @@ pub fn (c UdpConn) write(buf []byte) ? {
 	return c.write_ptr(buf.data, buf.len)
 }
 
-pub fn (c UdpConn) write_string(s string) ? {
+pub fn (c UdpConn) write_str(s string) ? {
 	return c.write_ptr(s.str, s.len)
 }
 
@@ -83,8 +83,8 @@ pub fn (c UdpConn) write_to_string(addr Addr, s string) ? {
 	return c.write_to_ptr(addr, s.str, s.len)
 }
 
-// read_into reads from the socket into buf up to buf.len returning the number of bytes read
-pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
+// read reads from the socket into buf up to buf.len returning the number of bytes read
+pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	mut addr_from := C.sockaddr{}
 	len := sizeof(C.sockaddr)
 
@@ -112,12 +112,6 @@ pub fn (c UdpConn) read_into(mut buf []byte) ?(int, Addr) {
 	}
 
 	return none
-}
-
-pub fn (c UdpConn) read() ?([]byte, Addr) {
-	mut buf := []byte { len: 1024 }
-	read, addr := c.read_into(mut buf)?
-	return buf[..read], addr
 }
 
 pub fn (c UdpConn) read_deadline() ?time.Time {

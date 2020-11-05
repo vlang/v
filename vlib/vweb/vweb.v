@@ -244,7 +244,7 @@ fn handle_conn<T>(conn net.TcpConn, mut app T) {
 	//mut app := app_
 	//first_line := strip(lines[0])
 	
-	mut reader := io.new_buffered_reader(reader: io.make_rstream(conn))
+	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
 	
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {

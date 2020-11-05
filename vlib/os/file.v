@@ -1,6 +1,6 @@
 module os
 
-import strings
+import io
 
 pub struct File {
 	cfile     voidptr // Using void* instead of FILE*
@@ -35,16 +35,14 @@ pub fn (mut f File) write(buf []byte) ?int {
 		}
 	}
 	*/
-	written := C.fwrite(s.str, s.len, 1, f.cfile)
-	if written == 0 && s.len != 0 {
+	written := C.fwrite(buf.data, buf.len, 1, f.cfile)
+	if written == 0 && buf.len != 0 {
 		return error('0 bytes written')
 	}
 	return written
 }
 
-[deprecated]
 pub fn (mut f File) writeln(s string) ?int {
-	eprintln('warning `File.writeln()` has been deprecated, use `BinaryWriter.writeln()` instead')
 	if !f.is_opened {
 		return error('file is not opened')
 	}
@@ -69,6 +67,14 @@ pub fn (mut f File) writeln(s string) ?int {
 	return (written + 1)
 }
 
+// write_to implements the RandomWriter interface
+pub fn (mut f File) write_to(pos int, buf []byte) ?int {
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+	res := C.fwrite(buf.data, 1, buf.len, f.cfile)
+	C.fseek(f.cfile, 0, C.SEEK_END)
+	return res
+}
+
 [deprecated]
 pub fn (mut f File) write_bytes(data voidptr, size int) int {
 	eprintln('warning `File.write_bytes()` has been deprecated, use `File.write` instead')
@@ -76,8 +82,8 @@ pub fn (mut f File) write_bytes(data voidptr, size int) int {
 }
 
 [deprecated]
-pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
-	eprintln('warning `File.write_bytes()` has been deprecated, use `File.write_to` instead')
+pub fn (mut f File) write_bytes_at(data voidptr, size int, pos int) int {
+	eprintln('warning `File.write_bytes_at()` has been deprecated, use `File.write_at` instead')
 	C.fseek(f.cfile, pos, C.SEEK_SET)
 	res := C.fwrite(data, 1, size, f.cfile)
 	C.fseek(f.cfile, 0, C.SEEK_END)
@@ -88,14 +94,14 @@ pub fn (mut f File) write_bytes_at(data voidptr, size, pos int) int {
 // read_bytes reads bytes from the beginning of the file
 [deprecated]
 pub fn (f &File) read_bytes(size int) []byte {
-	eprintln('warning `File.write_bytes()` has been deprecated, use `File.read` instead')
+	eprintln('warning `File.read_bytes()` has been deprecated, use `File.read` instead')
 	return f.read_bytes_at(size, 0)
 }
 
 // read_bytes_at reads bytes at the given position in the file
 [deprecated]
-pub fn (f &File) read_bytes_at(size, pos int) []byte {
-	eprintln('warning `File.write_bytes()` has been deprecated, use `File.read_at` instead')
+pub fn (f &File) read_bytes_at(size int, pos int) []byte {
+	eprintln('warning `File.read_bytes_at()` has been deprecated, use `File.read_at` instead')
 	mut arr := []byte{len: size}
 	nreadbytes := f.read_bytes_into(pos, mut arr) or {
 		// return err
@@ -127,8 +133,42 @@ pub fn (f &File) read_bytes_into(pos int, mut buf []byte) ?int {
 	return nbytes
 }
 
+// read implements the Reader interface
+pub fn (f &File) read(mut buf []byte) ?int {
+	if buf.len == 0 {
+		return 0
+	}
+
+	C.errno = 0
+	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
+
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+
+	return nbytes
+}
+
+// read_at reads buf.len bytes from pos in the file
+pub fn (f &File) read_at(pos int, mut buf[]byte) ?int {
+	if buf.len == 0 {
+		return 0
+	}
+
+	C.fseek(f.cfile, pos, C.SEEK_SET)
+
+	C.errno = 0
+	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
+
+	if C.errno != 0 {
+		return error(posix_get_error_msg(C.errno))
+	}
+
+	return nbytes
+}
+
 // **************************** Utility  ops ***********************
-// write any unwritten data in stream's buffer
+// flush writes any unwritten data in stream's buffer
 pub fn (mut f File) flush() {
 	if !f.is_opened {
 		return
@@ -146,52 +186,20 @@ pub fn open_stdin() File {
 }
 
 // File.get_line - get a single line from the file. NB: the ending newline is *included*.
+[deprecated]
 pub fn (mut f File) get_line() ?string {
+	eprintln('File.get_line() is deprecated... Use a BufferedReader instead')
 	if !f.is_opened {
 		return error('file is closed')
 	}
-	$if !windows {
-		mut zbuf := byteptr(0)
-		mut zblen := size_t(0)
-		mut zx := 0
-		unsafe {
-			zx = C.getline(&charptr(&zbuf), &zblen, f.cfile)
-			if zx == -1 {
-				C.free(zbuf)
-				if C.errno == 0 {
-					return error('end of file')
-				}
-				return error(posix_get_error_msg(C.errno))
-			}
-			return zbuf.vstring_with_len(zx)
-		}
+	mut reader := io.new_buffered_reader(reader: io.make_reader(f))
+	return reader.read_line()
+}
+
+pub fn (mut f File) write_str(s string) ? {
+	if !f.is_opened {
+		return error('file is closed')
 	}
-	//
-	// using C.fgets is less efficient than f.get_line_getline,
-	// but is available everywhere, while C.getline does not work
-	// on windows
-	//
-	buf := [4096]byte{}
-	mut res := strings.new_builder(1024)
-	mut x := charptr(0)
-	for {
-		unsafe {
-			x = C.fgets(charptr(buf), 4096, f.cfile)
-		}
-		if x == 0 {
-			if res.len > 0 {
-				break
-			}
-			return error('end of file')
-		}
-		bufbp := byteptr(buf)
-		mut blen := vstrlen(bufbp)
-		res.write_bytes(bufbp, blen)
-		unsafe {
-			if blen == 0 || bufbp[blen - 1] == `\n` || bufbp[blen - 1] == `\r` {
-				break
-			}
-		}
-	}
-	return res.str()
+
+	f.write(s.bytes())?
 }

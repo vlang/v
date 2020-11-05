@@ -65,12 +65,12 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
-// write_string blocks and attempts to write all data
-pub fn (c TcpConn) write_string(s string) ? {
+// write_str blocks and attempts to write all data
+pub fn (c TcpConn) write_str(s string) ? {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
+pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	res := C.recv(c.sock.handle, buf_ptr, len, 0)
 
 	if res >= 0 {
@@ -89,7 +89,7 @@ pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
 	}
 }
 
-pub fn (c TcpConn) read_into(mut buf []byte) ?int {
+pub fn (c TcpConn) read(mut buf []byte) ?int {
 	res := C.recv(c.sock.handle, buf.data, buf.len, 0)
 
 	if res >= 0 {
@@ -106,12 +106,6 @@ pub fn (c TcpConn) read_into(mut buf []byte) ?int {
 			wrap_error(code)?
 		}
 	}
-}
-
-pub fn (c TcpConn) read() ?[]byte {
-	mut buf := []byte { len: 1024 }
-	read := c.read_into(mut buf)?
-	return buf[..read]
 }
 
 pub fn (c TcpConn) read_deadline() ?time.Time {

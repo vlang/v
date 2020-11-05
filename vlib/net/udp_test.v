@@ -9,7 +9,7 @@ fn echo_server(_c net.UdpConn) {
 	c.set_write_timeout(10 * time.second)
 	for {
 		mut buf := []byte{ len: 100, init: 0 }
-		read, addr := c.read_into(mut buf) or {
+		read, addr := c.read(mut buf) or {
 			continue
 		}
 
@@ -31,10 +31,10 @@ fn echo() ? {
 
 	data := 'Hello from vlib/net!'
 
-	c.write_string(data)?
+	c.write_str(data)?
 
 	mut buf := []byte{ len: 100, init: 0 }
-	read, addr := c.read_into(mut buf)?
+	read, addr := c.read(mut buf)?
 
 	assert read == data.len
 	println('Got address $addr')
