@@ -46,6 +46,7 @@ pub mut:
 	use_short_fn_args bool
 	it_name           string // the name to replace `it` with
 	inside_lambda     bool
+	is_mbranch_expr   bool // math a { x...y { } }
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -896,7 +897,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.RangeExpr {
 			f.expr(node.low)
-			f.write('..')
+			if f.is_mbranch_expr {
+				f.write('...')
+			} else {
+				f.write('..')
+			}
 			f.expr(node.high)
 		}
 		ast.SelectExpr {
@@ -1530,12 +1535,14 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		}
 		if !branch.is_else {
 			// normal branch
+			f.is_mbranch_expr = true
 			for j, expr in branch.exprs {
 				f.expr(expr)
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
 			}
+			f.is_mbranch_expr = false
 		} else {
 			// else branch
 			f.write('else')
