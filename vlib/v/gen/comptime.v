@@ -103,7 +103,7 @@ fn cgen_attrs(attrs []table.Attr) []string {
 
 fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := node.val.replace('\n', '').replace('\r', '') // TODO write a multiline string in C...
+		val := cnewlines(node.val.replace('\r', ''))
 		g.write('tos_lit("$val")')
 	} else {
 		g.write('tos_lit("$node.val")')
