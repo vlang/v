@@ -839,10 +839,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 			}
 		}
 		.function {
-			info := sym.info as FnType
-			res = table.fn_signature(info.func, {
-				type_only: true
-			})
+			if !table.is_fmt {
+				info := sym.info as FnType
+				res = table.fn_signature(info.func, {
+					type_only: true
+				})
+			}
 		}
 		.map {
 			if int(t) == map_type_idx {
