@@ -285,6 +285,7 @@ fn test_assignment() {
 
 __type Inner = int | string
 struct InnerStruct {
+mut:
 	x Inner
 }
 __type Outer = string | InnerStruct
@@ -296,6 +297,16 @@ fn test_nested_if_is() {
 			println(b.x)
 		}
 	}
+}
+
+fn test_casted_sum_type_reassign() {
+	mut b := InnerStruct{Inner(0)}
+	if b.x is int {
+		assert typeof(b.x) == 'int'
+		b.x = 'test'
+		assert typeof(b.x) == 'string'
+	}
+	assert typeof(b.x) == 'main.Inner'
 }
 
 fn test_sum_type_match() {
