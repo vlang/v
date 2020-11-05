@@ -118,7 +118,8 @@ mut:
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
-	nr_vars_to_free       int
+	// nr_vars_to_free       int
+	doing_autofree_tmp    bool
 	inside_lambda         bool
 }
 
@@ -794,9 +795,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
-			g.write_v_source_line_info(node.tok.position())
+			g.write_v_source_line_info(node.pos)
 			// continue or break
-			g.write(node.tok.kind.str())
+			g.write(node.kind.str())
 			g.writeln(';')
 		}
 		ast.ConstDecl {
@@ -1043,8 +1044,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// If we have temporary string exprs to free after this statement, do it. e.g.:
 	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
 	if g.pref.autofree {
-		p := node.position()
-		g.autofree_call_postgen(p.pos)
+		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
+		if node !is ast.FnDecl {
+			p := node.position()
+			g.autofree_call_postgen(p.pos)
+		}
 	}
 }
 
@@ -1975,13 +1979,13 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// tmp expr vars do not need to be freed again here
 		return
 	}
-	// if v.is_autofree_tmp {
-	// return
-	// }
+	if v.is_autofree_tmp && !g.doing_autofree_tmp {
+		return
+	}
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.doing_autofree_tmp')
 	}
 }
 
@@ -2117,6 +2121,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			g.write("'$node.val'")
+		}
+		ast.AtExpr {
+			g.comp_at(node)
 		}
 		ast.ComptimeCall {
 			g.comptime_call(node)
@@ -2389,21 +2396,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 // typeof(expr).name
+// Note: typeof() should be a type known at compile-time, not a string
+// sum types should not be handled dynamically
 fn (mut g Gen) typeof_name(node ast.TypeOf) {
 	mut typ := node.expr_type
 	if typ.has_flag(.generic) {
 		typ = g.cur_generic_type
 	}
-	sym := g.table.get_type_symbol(typ)
-	// TODO: fix table.type_to_str and use instead
-	if sym.kind == .function {
-		g.typeof_expr(node)
-	} else {
-		// Note: typeof() must be known at compile-time
-		// sum types should not be handled dynamically
-		s := g.table.type_to_str(typ)
-		g.write('tos_lit("${util.strip_main_name(s)}")')
-	}
+	s := g.table.type_to_str(typ)
+	g.write('tos_lit("${util.strip_main_name(s)}")')
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {

@@ -1,0 +1,17 @@
+vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) byte`, not `any_int`
+    1 | mut f := fn(i int) byte {}
+    2 | f = 4
+      |     ^
+    3 | mut p := &f
+    4 | p = &[f]
+vlib/v/checker/tests/fn_var.vv:4:5: error: cannot assign to `p`: expected `&fn (int) byte`, not `&[]fn (int) byte`
+    2 | f = 4
+    3 | mut p := &f
+    4 | p = &[f]
+      |     ^
+    5 | f = fn(mut a []int) {}
+vlib/v/checker/tests/fn_var.vv:5:5: error: cannot assign to `f`: expected `fn (int) byte`, not `fn (mut []int)`
+    3 | mut p := &f
+    4 | p = &[f]
+    5 | f = fn(mut a []int) {}
+      |     ~~

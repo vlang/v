@@ -657,6 +657,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_typeof_expr(node)
 			// TODO: Should this print the V type or the JS type?
 		}
+		ast.AtExpr {
+			g.write('"$node.val"')
+		}
 		ast.ComptimeCall {
 			// TODO
 		}
@@ -771,7 +774,7 @@ fn (mut g JsGen) gen_block(it ast.Block) {
 
 fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 	// continue or break
-	g.write(it.tok.kind.str())
+	g.write(it.kind.str())
 	g.writeln(';')
 }
 

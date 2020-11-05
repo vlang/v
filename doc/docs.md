@@ -1077,8 +1077,7 @@ References are similar to Go pointers and C++ references.
 
 V doesn't allow subclassing, but it supports embedded structs:
 
-```v wip
-// TODO: this will be implemented later
+```v
 struct Button {
     Widget
     title string

@@ -301,7 +301,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.BranchStmt {
-			match node.tok.kind {
+			match node.kind {
 				.key_break { f.writeln('break') }
 				.key_continue { f.writeln('continue') }
 				else {}
@@ -761,6 +761,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.expr(node.arg)
 			}
 			f.write(')')
+		}
+		ast.AtExpr {
+			f.at_expr(node)
 		}
 		ast.CallExpr {
 			f.call_expr(node)
@@ -1385,6 +1388,10 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			has_nl: false
 		})
 	}
+}
+
+pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
+	f.write(node.name)
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
