@@ -688,7 +688,13 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
-		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
+		f.write(method.stringify(f.table, f.cur_mod).after('fn '))
+		f.comments(method.comments, {
+			inline: true
+			has_nl: false
+			level: .indent
+		})
+		f.writeln('')
 	}
 	f.writeln('}\n')
 }

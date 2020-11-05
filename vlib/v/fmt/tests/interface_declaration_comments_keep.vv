@@ -1,0 +1,4 @@
+pub interface ReaderWriter {
+	read(mut buf []byte) ?int // from Reader
+	write(buf []byte) ?int // from Writer
+}

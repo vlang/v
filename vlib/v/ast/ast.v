@@ -273,6 +273,7 @@ pub:
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 }
 
 // break, continue

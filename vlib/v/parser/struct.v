@@ -423,6 +423,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
+		method.comments = p.eat_comments()
 		methods << method
 		// println('register method $name')
 		return_type_sym := p.table.get_type_symbol(method.return_type)
