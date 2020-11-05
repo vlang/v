@@ -73,6 +73,7 @@ pub mut:
 	is_debug            bool // false by default, turned on by -g or -cg, it tells v to pass -g to the C backend compiler.
 	is_vlines           bool // turned on by -g, false by default (it slows down .tmp.c generation slightly).
 	show_cc             bool // -showcc, print cc command
+	show_c_output       bool // -show-c-output, print all cc output even if the code was compiled correctly
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	use_cache           bool // turns on v usage of the module cache to speed up compilation.
@@ -243,6 +244,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-showcc' {
 				res.show_cc = true
 			}
+			'-show-c-output' {
+				res.show_c_output = true
+			}
 			'-experimental' {
 				res.experimental = true
 			}
@@ -252,9 +256,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-prealloc' {
 				res.prealloc = true
 				res.build_options << arg
-			}
-			'-keepc' {
-				eprintln('-keepc is deprecated. V always keeps the generated .tmp.c files now.')
 			}
 			'-parallel' {
 				res.is_parallel = true

@@ -560,6 +560,11 @@ fn (mut v Builder) cc() {
 			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 	}
 	v.post_process_c_compiler_output(res)
+	if v.pref.show_c_output {
+		println('\n\n======== Compiler output ========')
+		println(res.output)
+		println('=================================')
+	}
 	// Print the C command
 	if v.pref.is_verbose {
 		println('$ccompiler took $diff ms')
