@@ -3073,7 +3073,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					mut typ := obj.typ
+					mut typ := if obj.union_sum_type_typ != 0 { obj.union_sum_type_typ } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {
 							inner_ident := obj.expr as ast.Ident
