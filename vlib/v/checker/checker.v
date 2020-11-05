@@ -3355,6 +3355,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			expr_type := c.expr(expr)
 			if cond_type_sym.kind == .interface_ {
 				c.type_implements(expr_type, c.expected_type, branch.pos)
+			} else if cond_type_sym.info is table.UnionSumType as info {
+				if expr_type !in info.variants {
+					expr_str := c.table.type_to_str(expr_type)
+					expect_str := c.table.type_to_str(c.expected_type)
+					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
+				}
 			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
