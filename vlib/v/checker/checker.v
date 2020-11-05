@@ -3025,7 +3025,8 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			node.val = (node.pos.line_nr+1).str()
 		}
 		.column_nr {
-			node.val = node.pos.line_nr.str()
+			_, column := util.filepath_pos_to_source_and_column(c.file.path, node.pos)
+			node.val = (column+1).str()
 		}
 		.vhash {
 			node.val = util.vhash()
