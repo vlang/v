@@ -3610,13 +3610,18 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			}
 		}
 	}
-	if is_exhaustive {
-		if has_else {
+	if has_else {
+		if is_exhaustive {
 			c.error('match expression is exhaustive, `else` is unnecessary', else_branch.pos)
 		}
 		return
 	}
-	if has_else {
+	if is_exhaustive {
+		// avoid checking last condition
+		mut a := node.branches
+		if a.len > 1 {
+			a[a.len - 1].is_else = true
+		}
 		return
 	}
 	mut err_details := 'match must be exhaustive'

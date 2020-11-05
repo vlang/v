@@ -581,8 +581,9 @@ pub:
 	stmts         []Stmt // right side
 	pos           token.Position
 	comments      []Comment // comment above `xxx {`
-	is_else       bool
 	post_comments []Comment
+pub mut:
+	is_else       bool
 }
 
 pub struct SelectExpr {

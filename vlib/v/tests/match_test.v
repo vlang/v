@@ -118,6 +118,18 @@ fn test_match_enums() {
 	assert b == .blue
 }
 
+// optimization to avoid testing last branch condition
+fn test_exhaustive_else() {
+	inv := Color(5) // invalid value
+	mut ok := false
+	match inv {
+		.red {}
+		.green {}
+		.blue {ok = true}
+	}
+	assert ok
+}
+
 struct Counter {
 mut:
 	val int
