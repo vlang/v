@@ -199,6 +199,11 @@ pub fn run_app<T>(mut app T, port int) {
 	l := net.listen(port) or { panic('failed to listen') }
 	app.vweb = Context{}
 	app.init_once()
+	$for method in T.methods {
+		$if method.return_type is Result {
+			// check routes for validity
+		}
+	}        
 	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
@@ -375,7 +380,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
 	$for method in T.methods {
-		$if method.return_type is Result {
+		$if method.return_type is Result {       
 			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
