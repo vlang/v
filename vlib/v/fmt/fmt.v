@@ -1806,6 +1806,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		} else {
 			f.writeln('$name{')
 		}
+		f.comments(it.pre_comments, {
+			inline: true
+			has_nl: true
+			level: .indent
+		})
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')
