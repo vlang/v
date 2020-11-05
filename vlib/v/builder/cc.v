@@ -81,14 +81,6 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 		if v.pref.reuse_tmpc {
 			return
 		}
-		for tmpfile in v.pref.cleanup_files {
-			if os.is_file(tmpfile) {
-				if v.pref.is_verbose {
-					eprintln('>> remove tmp file: $tmpfile')
-				}
-				os.rm(tmpfile)
-			}
-		}
 		return
 	}
 	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
