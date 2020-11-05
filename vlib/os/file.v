@@ -138,32 +138,25 @@ pub fn (f &File) read(mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-
 	C.errno = 0
 	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
-
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
-
 	return nbytes
 }
 
 // read_at reads buf.len bytes from pos in the file
-pub fn (f &File) read_at(pos int, mut buf[]byte) ?int {
+pub fn (f &File) read_at(pos int, mut buf []byte) ?int {
 	if buf.len == 0 {
 		return 0
 	}
-
 	C.fseek(f.cfile, pos, C.SEEK_SET)
-
 	C.errno = 0
 	nbytes := C.fread(buf.data, 1, buf.len, f.cfile)
-
 	if C.errno != 0 {
 		return error(posix_get_error_msg(C.errno))
 	}
-
 	return nbytes
 }
 
@@ -192,7 +185,9 @@ pub fn (mut f File) get_line() ?string {
 	if !f.is_opened {
 		return error('file is closed')
 	}
-	mut reader := io.new_buffered_reader(reader: io.make_reader(f))
+	mut reader := io.new_buffered_reader({
+		reader: io.make_reader(f)
+	})
 	return reader.read_line()
 }
 
@@ -200,6 +195,5 @@ pub fn (mut f File) write_str(s string) ? {
 	if !f.is_opened {
 		return error('file is closed')
 	}
-
-	f.write(s.bytes())?
+	f.write(s.bytes()) ?
 }
