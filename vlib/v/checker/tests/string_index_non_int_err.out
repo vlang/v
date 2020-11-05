@@ -11,11 +11,10 @@ vlib/v/checker/tests/string_index_non_int_err.vv:4:14: error: non-integer index 
     4 |     println(v[true])
       |              ~~~~~~
     5 |     println(v[[23]])
-    6 |
+    6 | }
 vlib/v/checker/tests/string_index_non_int_err.vv:5:14: error: non-integer index `[]int` (type `string`)
     3 |     println(v['f'])
     4 |     println(v[true])
     5 |     println(v[[23]])
       |              ~~~~~~
-    6 |
-    7 | }
+    6 | }
