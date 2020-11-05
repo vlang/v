@@ -164,11 +164,9 @@ pub enum AtKind {
 	column_nr
 	vhash
 	vmod_file
-	_end_
 }
 const (
 	valid_at_tokens = ['@FN','@MOD','@STRUCT','@VEXE','@FILE','@LINE','@COLUMN','@VHASH','@VMOD_FILE']
-	//valid_at_tokens_len = int(AtKind._end_)
 )
 
 // build_keys genereates a map with keywords' string values:
