@@ -7,6 +7,7 @@ import os
 import v.ast
 import v.pref
 import v.table
+import v.token
 import vweb.tmpl
 
 // #flag darwin -I.
@@ -147,6 +148,29 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		kind: kind
 		typ: typ
 		pos: spos.extend(p.tok.position())
+	}
+}
+
+// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
+fn (mut p Parser) at() ast.AtExpr {
+	name := p.tok.lit
+	kind := match name {
+		'@FN' { token.AtKind.fn_name }
+		'@MOD' { token.AtKind.mod_name }
+		'@STRUCT' { token.AtKind.struct_name }
+		'@VEXE' { token.AtKind.vexe_path }
+		'@FILE' { token.AtKind.file_path }
+		'@LINE' { token.AtKind.line_nr }
+		'@COLUMN' { token.AtKind.column_nr }
+		'@VHASH' { token.AtKind.vhash }
+		'@VMOD_FILE' { token.AtKind.vmod_file }
+		else { token.AtKind.unknown }
+	}
+	p.next()
+	return ast.AtExpr{
+		name: name
+		pos: p.tok.position()
+		kind: kind
 	}
 }
 
