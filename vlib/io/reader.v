@@ -1,6 +1,6 @@
 module io
 
-// Reader represents a stream of data that can be read 
+// Reader represents a stream of data that can be read
 pub interface Reader {
 	read(mut buf []byte) ?int
 }
@@ -12,18 +12,19 @@ pub fn make_reader(r Reader) Reader {
 }
 
 const (
-	read_all_len = 10 * 1024
+	read_all_len      = 10 * 1024
 	read_all_grow_len = 1024
 )
 
 // read_all reads all available bytes from a reader
 pub fn read_all(r Reader) ?[]byte {
-	mut b := []byte{len:read_all_len}
+	mut b := []byte{len: read_all_len}
 	mut read := 0
 	for {
-		read += r.read(mut b[read..]) or {
+		new_read := r.read(mut b[read..]) or {
 			break
 		}
+		read += new_read
 		if read == 0 || b.len != b.cap {
 			break
 		}
