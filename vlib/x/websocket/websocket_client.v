@@ -444,15 +444,21 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 }
 
 // parse_uri, parses the url string to it's components
-// todo: support not using port to default ones
 fn parse_uri(url string) ?&Uri {
 	u := urllib.parse(url)?
 	v := u.request_uri().split('?')
+	port := if u.str().starts_with('ws://') {
+		'80'
+	} else if u.str().starts_with('wss://') {
+		'443'
+	} else {
+		u.port()
+	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
 		url: url
 		hostname: u.hostname()
-		port: u.port()
+		port: port
 		resource: v[0]
 		querystring: querystring
 	}
