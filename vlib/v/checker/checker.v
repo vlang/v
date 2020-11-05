@@ -3354,11 +3354,17 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
 			if cond_type_sym.kind == .interface_ {
-				c.type_implements(expr_type, c.expected_type, branch.pos)
+				c.type_implements(expr_type, c.expected_type, expr.position())
+			} else if cond_type_sym.info is table.UnionSumType as info {
+				if expr_type !in info.variants {
+					expr_str := c.table.type_to_str(expr_type)
+					expect_str := c.table.type_to_str(c.expected_type)
+					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
+				}
 			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
-				c.error('cannot match `$expr_str` with `$expect_str` condition', branch.pos)
+				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
 			}
 			branch_exprs[key] = val + 1
 		}

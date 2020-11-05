@@ -111,14 +111,6 @@ fn test_nested_sumtype() {
 	mut b := Node{}
 	a = StructDecl{pos: 1}
 	b = IfExpr{pos: 1}
-	match union a {
-		StructDecl {
-			assert true
-		}
-		else {
-			assert false
-		}
-	}
 	c := Node(Expr(IfExpr{pos:1}))
 	if c is Expr {
 		if c is IfExpr {
