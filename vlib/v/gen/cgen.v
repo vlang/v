@@ -2389,21 +2389,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 // typeof(expr).name
+// Note: typeof() should be a type known at compile-time, not a string
+// sum types should not be handled dynamically
 fn (mut g Gen) typeof_name(node ast.TypeOf) {
 	mut typ := node.expr_type
 	if typ.has_flag(.generic) {
 		typ = g.cur_generic_type
 	}
-	sym := g.table.get_type_symbol(typ)
-	// TODO: fix table.type_to_str and use instead
-	if sym.kind == .function {
-		g.typeof_expr(node)
-	} else {
-		// Note: typeof() must be known at compile-time
-		// sum types should not be handled dynamically
-		s := g.table.type_to_str(typ)
-		g.write('tos_lit("${util.strip_main_name(s)}")')
-	}
+	s := g.table.type_to_str(typ)
+	g.write('tos_lit("${util.strip_main_name(s)}")')
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
