@@ -299,6 +299,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
+	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
@@ -354,6 +355,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			len: last_pos.pos - first_pos.pos + last_pos.len
 		}
 		is_short: no_keys
+		pre_comments: pre_comments
 	}
 	return node
 }
