@@ -291,6 +291,21 @@ fn test_assignment() {
 	}
 }
 
+__type Inner = int | string
+struct InnerStruct {
+	x Inner
+}
+__type Outer = string | InnerStruct
+
+fn test_nested_if_is() {
+	mut b := Outer(InnerStruct{Inner(0)})
+	if b is InnerStruct {
+		if b.x is int {
+			println(b.x)
+		}
+	}
+}
+
 fn test_sum_type_match() {
 	// TODO: Remove these casts
 	assert is_gt_simple('3', int(2))
