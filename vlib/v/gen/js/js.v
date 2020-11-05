@@ -1298,17 +1298,16 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		range := expr.index as ast.RangeExpr
 		g.expr(expr.left)
 		g.write('.slice(')
-		if range.has_low {
-			g.expr(range.low)
+		if expr.index.has_low {
+			g.expr(expr.index.low)
 		} else {
 			g.write('0')
 		}
 		g.write(', ')
-		if range.has_high {
-			g.expr(range.high)
+		if expr.index.has_high {
+			g.expr(expr.index.high)
 		} else {
 			g.expr(expr.left)
 			g.write('.length')

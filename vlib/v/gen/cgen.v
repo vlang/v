@@ -1335,12 +1335,11 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut a := original_assert_statement
 	g.writeln('// assert')
 	if a.expr is ast.InfixExpr {
-		mut aie := a.expr as ast.InfixExpr
-		if aie.left is ast.CallExpr {
-			aie.left = g.new_ctemp_var_then_gen(aie.left, aie.left_type)
+		if a.expr.left is ast.CallExpr {
+			a.expr.left = g.new_ctemp_var_then_gen(a.expr.left, a.expr.left_type)
 		}
-		if aie.right is ast.CallExpr {
-			aie.right = g.new_ctemp_var_then_gen(aie.right, aie.right_type)
+		if a.expr.right is ast.CallExpr {
+			a.expr.right = g.new_ctemp_var_then_gen(a.expr.right, a.expr.right_type)
 		}
 	}
 	g.inside_ternary++
@@ -1639,7 +1638,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{}
 		if left is ast.Ident {
-			ident = *left
+			ident = left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
@@ -2374,8 +2373,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
-			if node.expr is ast.TypeOf as left {
-				g.typeof_name(left)
+			if node.expr is ast.TypeOf {
+				g.typeof_name(node.expr)
 				return
 			}
 			if node.expr_type == 0 {
@@ -3001,9 +3000,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				} else if expr is ast.RangeExpr {
 					// if type is unsigned and low is 0, check is unneeded
 					mut skip_low := false
-					if expr.low is ast.IntegerLiteral as expr_low {
+					if expr.low is ast.IntegerLiteral {
 						if node.cond_type in [table.u16_type, table.u32_type, table.u64_type] &&
-							expr_low.val == '0' {
+							expr.low.val == '0' {
 							skip_low = true
 						}
 					}
@@ -5282,9 +5281,9 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
 		name = receiver_sym.name + '_' + name
-	} else if expr.left is ast.AnonFn as anon_fn {
-		g.gen_anon_fn_decl(anon_fn)
-		fsym := g.table.get_type_symbol(anon_fn.typ)
+	} else if expr.left is ast.AnonFn {
+		g.gen_anon_fn_decl(expr.left)
+		fsym := g.table.get_type_symbol(expr.left.typ)
 		name = fsym.name
 	}
 	name = util.no_dots(name)

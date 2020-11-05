@@ -407,20 +407,20 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if field.typ.is_ptr() {
 				continue
 			}
-			if field.default_expr is ast.IntegerLiteral as lit {
-				if lit.val == '0' {
+			if field.default_expr is ast.IntegerLiteral {
+				if field.default_expr.val == '0' {
 					c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
-						lit.pos)
+						field.default_expr.pos)
 				}
-			} else if field.default_expr is ast.StringLiteral as lit {
-				if lit.val == '' {
+			} else if field.default_expr is ast.StringLiteral {
+				if field.default_expr.val == '' {
 					c.warn("unnecessary default value of '': struct fields are zeroed by default",
-						lit.pos)
+						field.default_expr.pos)
 				}
-			} else if field.default_expr is ast.BoolLiteral as lit {
-				if lit.val == false {
+			} else if field.default_expr is ast.BoolLiteral {
+				if field.default_expr.val == false {
 					c.warn('unnecessary default value `false`: struct fields are zeroed by default',
-						lit.pos)
+						field.default_expr.pos)
 				}
 			}
 		}
@@ -837,8 +837,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			// for example: `(a && b) || c` instead of `a && b || c`
 			if infix_expr.op in [.logical_or, .and] {
 				if infix_expr.left is ast.InfixExpr {
-					e := infix_expr.left as ast.InfixExpr
-					if e.op in [.logical_or, .and] && e.op != infix_expr.op {
+					if infix_expr.left.op in [.logical_or, .and] && infix_expr.left.op != infix_expr.op {
 						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
 					}
 				}
@@ -1373,8 +1372,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// it was set to anon for checker errors, clear for gen
 		call_expr.name = ''
 		c.expr(call_expr.left)
-		anon_fn := call_expr.left as ast.AnonFn
-		anon_fn_sym := c.table.get_type_symbol(anon_fn.typ)
+		anon_fn_sym := c.table.get_type_symbol(call_expr.left.typ)
 		f = (anon_fn_sym.info as table.FnType).func
 		found = true
 	}
@@ -1754,6 +1752,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	mut unknown_field_msg := 'type `$sym.source_name` has no field or method `$field_name`'
 	if field := c.table.struct_find_field(sym, field_name) {
+		println(field)
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
 		}
@@ -1886,8 +1885,7 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 				ast.PrefixExpr {}
 				else {
 					if field.expr is ast.Ident {
-						expr := field.expr as ast.Ident
-						if expr.language == .c {
+						if field.expr.language == .c {
 							continue
 						}
 					}
@@ -1950,13 +1948,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_first is ast.Ident {
 			assigned_var := left_first
 			if node.right is ast.Ident {
-				ident := node.right as ast.Ident
 				scope := c.file.scope.innermost(node.pos.pos)
-				if v := scope.find_var(ident.name) {
+				if v := scope.find_var(node.right.name) {
 					right_type0 = v.typ
 					if node.op == .amp {
 						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
+							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
 								node.pos)
 						}
 					}
@@ -2502,17 +2499,16 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			c.expr(node.call_expr)
 			if node.call_expr is ast.CallExpr {
-				call_expr := node.call_expr as ast.CallExpr
 				// Make sure there are no mutable arguments
-				for arg in call_expr.args {
+				for arg in node.call_expr.args {
 					if arg.is_mut && !arg.typ.is_ptr() {
 						c.error('function in `go` statement cannot contain mutable non-reference arguments',
 							arg.expr.position())
 					}
 				}
-				if call_expr.is_method && call_expr.receiver_type.is_ptr() && !call_expr.left_type.is_ptr() {
+				if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr() && !node.call_expr.left_type.is_ptr() {
 					c.error('method in `go` statement cannot have non-reference mutable receiver',
-						call_expr.left.position())
+						node.call_expr.left.position())
 				}
 			}
 		}
@@ -2828,10 +2824,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
 				}
-				if node.right is ast.IndexExpr as index {
-					typ_sym := c.table.get_type_symbol(index.left_type)
+				if node.right is ast.IndexExpr {
+					typ_sym := c.table.get_type_symbol(node.right.left_type)
 					mut is_mut := false
-					if index.left is ast.Ident as ident {
+					if node.right.left is ast.Ident {
+						ident := node.right.left
 						if ident.obj is ast.Var {
 							v := ident.obj as ast.Var
 							is_mut = v.is_mut
@@ -2840,11 +2837,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					if !c.inside_unsafe && is_mut {
 						if typ_sym.kind == .map {
 							c.error('cannot take the address of mutable map values outside unsafe blocks',
-								index.pos)
+								node.right.pos)
 						}
 						if typ_sym.kind == .array {
 							c.error('cannot take the address of mutable array elements outside unsafe blocks',
-								index.pos)
+								node.right.pos)
 						}
 					}
 				}
@@ -2982,9 +2979,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		if to_type_sym.kind != .alias {
 			mut error_msg := 'cannot cast a string'
 			if node.expr is ast.StringLiteral {
-				str_lit := node.expr as ast.StringLiteral
-				if str_lit.val.len == 1 {
-					error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+				if node.expr.val.len == 1 {
+					error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
 				}
 			}
 			c.error(error_msg, node.pos)
@@ -3076,8 +3072,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					mut typ := if obj.union_sum_type_typ != 0 { obj.union_sum_type_typ } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {
-							inner_ident := obj.expr as ast.Ident
-							if inner_ident.kind == .unresolved {
+							if obj.expr.kind == .unresolved {
 								c.error('unresolved variable: `$ident.name`', ident.pos)
 								return table.void_type
 							}
@@ -3458,10 +3453,10 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 							stmt.pos)
 					}
 				} else {
-					if stmt.expr is ast.InfixExpr as expr {
-						if expr.left !is ast.Ident &&
-							expr.left !is ast.SelectorExpr && expr.left !is ast.IndexExpr {
-							c.error('channel in `select` key must be predefined', expr.left.position())
+					if stmt.expr is ast.InfixExpr {
+						if stmt.expr.left !is ast.Ident &&
+							stmt.expr.left !is ast.SelectorExpr && stmt.expr.left !is ast.IndexExpr {
+							c.error('channel in `select` key must be predefined', stmt.expr.left.position())
 						}
 					} else {
 						c.error('invalid expression for `select` key', stmt.expr.position())
@@ -3584,38 +3579,38 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if (infix.left is ast.Ident ||
 					infix.left is ast.SelectorExpr) &&
 					infix.right is ast.Type {
-					is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
+					is_variable := if infix.left is ast.Ident { infix.left.kind ==
 							.variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
 						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
-							if infix.left is ast.Ident as infix_left {
-								if v := scope.find_var(infix_left.name) {
+							if infix.left is ast.Ident {
+								if v := scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
 								}
 								if left_sym.kind == .union_sum_type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
-										pos: infix.left.position()
+										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
 										union_sum_type_typ: right_expr.typ
 									})
 								}
-							} else if infix.left is ast.SelectorExpr as selector {
-								field := c.table.struct_find_field(left_sym, selector.field_name) or {
+							} else if infix.left is ast.SelectorExpr {
+								field := c.table.struct_find_field(left_sym, infix.left.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
 								if left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
-										struct_type: selector.expr_type
-										name: selector.field_name
+										struct_type: infix.left.expr_type
+										name: infix.left.field_name
 										typ: right_expr.typ
-										pos: infix.left.position()
+										pos: infix.left.pos
 									})
 								}
 							}
@@ -3752,8 +3747,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		ast.PostfixExpr {
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
-			} else if cond.expr is ast.Ident as ident {
-				return ident.name !in c.pref.compile_defines_all
+			} else if cond.expr is ast.Ident {
+				return cond.expr.name !in c.pref.compile_defines_all
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
@@ -3882,9 +3877,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
 		if node.left is ast.Ident {
-			ident := node.left as ast.Ident
-			scope := c.file.scope.innermost(ident.pos.pos)
-			if v := scope.find_var(ident.name) {
+			scope := c.file.scope.innermost(node.left.pos.pos)
+			if v := scope.find_var(node.left.name) {
 				// `mut param []T` function parameter
 				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
 			}
@@ -3893,13 +3887,13 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	if node.index is ast.RangeExpr as range { // [1..2]
-		if range.has_low {
-			index_type := c.expr(range.low)
+	if node.index is ast.RangeExpr { // [1..2]
+		if node.index.has_low {
+			index_type := c.expr(node.index.low)
 			c.check_index_type(typ_sym, index_type, node.pos)
 		}
-		if range.has_high {
-			index_type := c.expr(range.high)
+		if node.index.has_high {
+			index_type := c.expr(node.index.high)
 			c.check_index_type(typ_sym, index_type, node.pos)
 		}
 		// array[1..2] => array
@@ -4336,8 +4330,8 @@ fn has_top_return(stmts []ast.Stmt) bool {
 				return true
 			}
 		} else if stmt is ast.ExprStmt {
-			if stmt.expr is ast.CallExpr as ce {
-				if ce.name in ['panic', 'exit'] {
+			if stmt.expr is ast.CallExpr {
+				if stmt.expr.name in ['panic', 'exit'] {
 					return true
 				}
 			}

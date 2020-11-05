@@ -760,8 +760,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		else {}
 	}
 	if node.right is ast.Ident {
-		ident := node.right as ast.Ident
-		var_offset := g.get_var_offset(ident.name)
+		var_offset := g.get_var_offset(node.right.name)
 		match node.op {
 			.plus { g.add8_var(.eax, var_offset) }
 			.mul { g.mul8_var(.eax, var_offset) }

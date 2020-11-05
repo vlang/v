@@ -9,7 +9,7 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CTempVar | CallExpr |
+pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CTempVar | CallExpr |
 	CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
 	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
 	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
