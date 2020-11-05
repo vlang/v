@@ -235,7 +235,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				types << parsed_type
 				exprs << ast.Type{
 					typ: parsed_type
-					pos: p.tok.position()
+					pos: p.prev_tok.position()
 				}
 				if p.tok.kind != .comma {
 					break

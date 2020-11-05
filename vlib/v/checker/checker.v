@@ -3358,7 +3358,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			} else if !c.check_types(expr_type, c.expected_type) {
 				expr_str := c.table.type_to_str(expr_type)
 				expect_str := c.table.type_to_str(c.expected_type)
-				c.error('cannot match `$expr_str` with `$expect_str` condition', branch.pos)
+				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
 			}
 			branch_exprs[key] = val + 1
 		}
