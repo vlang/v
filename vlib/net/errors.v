@@ -39,6 +39,9 @@ pub fn wrap_error(error_code int) ? {
 		return error_with_code('socket error: $enum_error', error_code)
 	}
 	$else {
+		if error_code == 0 {
+			return
+		}
 		return error_with_code('net: socket error: $error_code', error_code)
 	}
 }

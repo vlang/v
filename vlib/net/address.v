@@ -67,7 +67,8 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 	$if windows {
 		socket_error(0-C.getaddrinfo(address.str, sport.str, &hints, &info))?
 	} $else {
-		wrap_error(C.getaddrinfo(address.str, sport.str, &hints, &info))
+		x := C.getaddrinfo(address.str, sport.str, &hints, &info)    
+		wrap_error(x)?
 	}
 
 	return new_addr(*info.ai_addr, address, port)
