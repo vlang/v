@@ -240,15 +240,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + caname
-			if arg.is_mut {
-				// mut arg needs one *
-				nr_muls = 1
-			}
-			// if nr_muls > 0 && !is_varg {
-			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + caname
-			// }
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -615,12 +607,16 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
-		if g.pref.is_debug && node.name == 'panic' {
-			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
-			g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
+		if node.name == 'panic' {
+			if g.pref.is_debug {
+				paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+				g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
+			} else {
+				g.write('\tv_panic(')
+			}
 			// g.call_args(node.args, node.expected_arg_types) // , [])
 			g.call_args(node)
-			g.write(')')
+			g.write('); assert(0)')
 		} else {
 			// Simple function call
 			// if free_tmp_arg_vars {

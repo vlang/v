@@ -1440,7 +1440,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// return;
 	// }
 	// int pos = *(int*)_t190.data;
-	mut gen_or := false
 	mut tmp_opt := ''
 	is_optional := g.pref.autofree &&
 		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 && assign_stmt.right[0] is
@@ -1453,7 +1452,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			tmp_opt = g.new_tmp_var()
 			g.write('/*AF opt*/$styp $tmp_opt = ')
 			g.expr(assign_stmt.right[0])
-			gen_or = true
 			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
 			g.writeln('/*=============ret*/')
 			// if af && is_optional {
@@ -2120,7 +2118,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('))')
 		}
 		ast.CharLiteral {
-			g.write("'$node.val'")
+			if node.val == r'\`' {
+				g.write("'`'")
+			} else {
+				g.write("'$node.val'")
+			}
 		}
 		ast.AtExpr {
 			g.comp_at(node)
@@ -4654,7 +4656,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.expr(node.left)
 	g.write('${deref}len, ')
 	g.expr(node.left)
-	g.writeln('${deref}element_size, $compare_fn);')
+	g.writeln('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn);')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -4853,6 +4855,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			} else {
 				g.writeln('\tv_panic(${cvar_name}.v_error);')
 			}
+			g.writeln('assert(0);')
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return error(err) }`

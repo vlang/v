@@ -67,6 +67,10 @@ const (
 	#undef TCCSKIP
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
+	#ifndef _WIN32
+		#include <execinfo.h>
+		int tcc_backtrace(const char *fmt, ...);
+	#endif
 #endif
 
 // for __offset_of
@@ -119,6 +123,7 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <string.h> // memcpy
+#include <assert.h>
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1
@@ -431,20 +436,7 @@ typedef double any_float;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
-typedef struct array array;
-typedef struct map map;
-typedef array array_int;
-typedef array array_f32;
-typedef array array_f64;
-typedef array array_u16;
-typedef array array_u32;
-typedef array array_u64;
-//typedef map map_int;
-//typedef map map_string;
-//typedef array array_string;
-//typedef array array_byte;
 typedef byte array_fixed_byte_300 [300];
-typedef byte array_fixed_byte_400 [400];
 
 typedef struct sync__Channel* chan;
 
