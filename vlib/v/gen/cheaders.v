@@ -123,7 +123,6 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <signal.h>
 #include <stdarg.h> // for va_list
 #include <string.h> // memcpy
-#include <assert.h>
 
 #if INTPTR_MAX == INT32_MAX
 	#define TARGET_IS_32BIT 1

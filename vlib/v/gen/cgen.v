@@ -4855,7 +4855,6 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			} else {
 				g.writeln('\tv_panic(${cvar_name}.v_error);')
 			}
-			g.writeln('assert(0);')
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:
 			// `opt() or { return error(err) }`
@@ -5056,6 +5055,13 @@ fn c_name(name_ string) string {
 }
 
 fn (mut g Gen) type_default(typ table.Type) string {
+	if typ.has_flag(.optional) {
+		return '{0}'
+	}
+	// Always set pointers to 0
+	if typ.is_ptr() {
+		return '0'
+	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
 		elem_sym := g.typ(sym.array_info().elem_type)
@@ -5068,10 +5074,6 @@ fn (mut g Gen) type_default(typ table.Type) string {
 	if sym.kind == .map {
 		value_type_str := g.typ(sym.map_info().value_type)
 		return 'new_map_1(sizeof($value_type_str))'
-	}
-	// Always set pointers to 0
-	if typ.is_ptr() {
-		return '0'
 	}
 	// User struct defined in another module.
 	// if typ.contains('__') {
@@ -5100,7 +5102,7 @@ fn (mut g Gen) type_default(typ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .sum_type, .array_fixed { '{0}' }
+		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
 		else { '0' }
 	}
 	// TODO this results in

@@ -158,6 +158,16 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.autofree_scope_vars(it.body_pos.pos)
 	}
+	if it.return_type != table.void_type {
+		return_sym := g.table.get_type_symbol(it.return_type)
+		mut default_expr := g.type_default(it.return_type)
+		g.write('\treturn /* $return_sym.kind */')
+
+		if default_expr == '{0}' { // return_sym.kind in [.struct_, .multi_return] || {
+			g.write('($type_name)')
+		}
+		g.writeln('$default_expr;')
+	}
 	g.writeln('}')
 	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
@@ -607,16 +617,12 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	if !print_auto_str {
-		if node.name == 'panic' {
-			if g.pref.is_debug {
-				paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
-				g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
-			} else {
-				g.write('\tv_panic(')
-			}
+		if g.pref.is_debug && node.name == 'panic' {
+			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+			g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
 			// g.call_args(node.args, node.expected_arg_types) // , [])
 			g.call_args(node)
-			g.write('); assert(0)')
+			g.write(')')
 		} else {
 			// Simple function call
 			// if free_tmp_arg_vars {
