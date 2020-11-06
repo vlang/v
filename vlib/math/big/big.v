@@ -7,9 +7,11 @@ module big
 #include "bn.h"
 
 [typedef]
-struct Number {
+struct C.bn {
 	array [32]u32
 }
+
+type Number = C.bn
 
 fn C.bignum_init( n &Number )
 fn C.bignum_from_int( n &Number, i u64 )
