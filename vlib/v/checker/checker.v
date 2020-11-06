@@ -4182,21 +4182,40 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 	return fields
 }
 
+fn (mut c Checker) verify_vweb_parameters(m table.Fn) bool {
+	args := m.params.len - 1 // first arg is the 'this'
+	mut atts := 0
+	for a in m.attrs {
+		if a.name.starts_with('/') {
+			atts = a.name.count(':')
+		}
+	}
+	return atts == args
+}
+
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.generic_funcs.len {
-		mut node := c.generic_funcs[i]
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
-		// eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
+		mut node := c.generic_funcs[i]
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
-			// sym:=c.table.get_type_symbol(gen_type)
-			// println('\ncalling check for $node.name for type $sym.source_name')
 			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				sym_app := c.table.get_type_symbol(gen_type)
+				for m in sym_app.methods {
+					if m.return_type_source_name == 'vweb.Result' {
+						if !c.verify_vweb_parameters(m) {
+							// XXX the generic function doesnt know the file:pos of the implementation function
+							c.warn('mismatched parameters count between vweb method and route attribute', node.pos)
+						}
+					}
+				}
+			}
 		}
 		c.cur_generic_type = 0
 		c.generic_funcs[i] = 0
