@@ -60,6 +60,8 @@ mut:
 	cur_orm_ts        table.TypeSymbol
 	error_details     []string
 	generic_funcs     []&ast.FnDecl
+	all_v_methods     []&ast.FnDecl // vweb related
+	vweb_gen_types    []table.Type // vweb related
 	vmod_file_content string // needed for @VMOD_FILE, contents of the file, *NOT its path*
 }
 
@@ -4182,15 +4184,19 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 	return fields
 }
 
-fn (mut c Checker) verify_vweb_parameters(m table.Fn) bool {
-	args := m.params.len - 1 // first arg is the 'this'
-	mut atts := 0
+fn (mut c Checker) verify_vweb_parameters(m table.Fn) (bool, int, int) {
+	margs := m.params.len - 1 // first arg is the receiver/this
+	if m.attrs.len == 0 {
+		// allow non custom routed methods, with 1:1 mapping
+		return true, -1, margs
+	}
+	mut route_attributes := 0
 	for a in m.attrs {
 		if a.name.starts_with('/') {
-			atts = a.name.count(':')
+			route_attributes += a.name.count(':')
 		}
 	}
-	return atts == args
+	return route_attributes == margs, route_attributes, margs
 }
 
 fn (mut c Checker) post_process_generic_fns() {
@@ -4206,16 +4212,7 @@ fn (mut c Checker) post_process_generic_fns() {
 			c.cur_generic_type = gen_type
 			c.fn_decl(mut node)
 			if node.name in ['vweb.run_app', 'vweb.run'] {
-				sym_app := c.table.get_type_symbol(gen_type)
-				for m in sym_app.methods {
-					if m.return_type_source_name == 'vweb.Result' {
-						if !c.verify_vweb_parameters(m) {
-							// XXX the generic function doesnt know the file:pos of the implementation function
-							c.warn('mismatched parameters count between vweb method and route attribute',
-								node.pos)
-						}
-					}
-				}
+				c.vweb_gen_types << gen_type
 			}
 		}
 		c.cur_generic_type = 0
@@ -4225,6 +4222,30 @@ fn (mut c Checker) post_process_generic_fns() {
 	// postprocessed just once in the checker, while the file/mod
 	// context is still the same.
 	c.generic_funcs = []
+	if c.mod == 'main' {
+		c.verify_all_vweb_routes()
+	}
+}
+
+
+fn (mut c Checker) verify_all_vweb_routes() {
+	typ_vweb_result := c.table.find_type_idx('vweb.Result')
+	for vgt in c.vweb_gen_types {
+		sym_app := c.table.get_type_symbol(vgt)
+		for m in sym_app.methods {
+			if m.return_type_source_name == 'vweb.Result' {
+				is_ok, nroute_attributes, nargs := c.verify_vweb_parameters(m)
+				if !is_ok {
+					for f in c.all_v_methods {
+						if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ && f.name == m.name {
+							c.warn('mismatched parameters count between vweb method `${sym_app.name}.${m.name}` (${nargs}) and route attribute $m.attrs ($nroute_attributes)',
+								f.pos)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
@@ -4321,6 +4342,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.error('missing return at end of function `$node.name`', node.pos)
 	}
 	c.returns = false
+	if node.is_method {
+		c.all_v_methods << node
+	}
 }
 
 fn has_top_return(stmts []ast.Stmt) bool {
