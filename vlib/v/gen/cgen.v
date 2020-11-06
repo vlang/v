@@ -3510,7 +3510,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
 				elem_typ := g.table.get_type_symbol(info.value_type)
-				get_and_set_types := elem_typ.kind == .struct_ && elem_type_str.starts_with('map_string')
+				get_and_set_types := elem_typ.kind in [.struct_, .map]
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
 					g.is_array_set = true
 					g.write('map_set(')
