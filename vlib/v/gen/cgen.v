@@ -2402,8 +2402,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 					scope := g.file.scope.innermost(node.pos.pos)
 					if field := scope.find_struct_field(node.expr_type, node.field_name) {
 						// union sum type deref
-						g.write('(*')
-						sum_type_deref_field = '_$field.typ'
+						if field.typ != field.original_type {
+							g.write('(*')
+							sum_type_deref_field = '_$field.typ'
+						}
 					}
 				}
 			}
