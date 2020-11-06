@@ -4239,7 +4239,7 @@ fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
 					for f in c.all_v_methods {
 						if f.return_type == typ_vweb_result &&
 							f.receiver.typ == m.params[0].typ && f.name == m.name {
-							for afidx in 0..ast_files.len {
+							for afidx in 0 .. ast_files.len {
 								if ast_files[afidx].path == f.file {
 									c.file = unsafe {&ast_files[afidx]}
 									c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
