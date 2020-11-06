@@ -12,6 +12,7 @@ import v.util
 import v.errors
 import v.pkgconfig
 
+// import time
 const (
 	max_nr_errors                 = 300
 	match_exhaustive_cutoff_limit = 10
@@ -4229,6 +4230,7 @@ fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
+	// mut sw := time.new_stopwatch({})
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	for vgt in c.vweb_gen_types {
 		sym_app := c.table.get_type_symbol(vgt)
@@ -4252,6 +4254,7 @@ fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
 			}
 		}
 	}
+	// println('> sw: $sw.elapsed().microseconds() us') // ~150 microseconds
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
