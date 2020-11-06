@@ -112,8 +112,10 @@ pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 }
 
 pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
-	if _ := s.find_struct_field(field.struct_type, field.name) {
-		return
+	for f in s.struct_fields {
+		if f.struct_type == field.struct_type && f.name == field.name {
+			return
+		}
 	}
 	s.struct_fields << field
 }
