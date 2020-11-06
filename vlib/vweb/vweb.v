@@ -485,10 +485,10 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// search again for method
 			if action == method.name && method.attrs.len > 0 {
 				// call action method
-				if method.args.len - 1 == vars.len {
+				if method.args.len == vars.len {
 					app.$method(vars)
 				} else {
-					eprintln('warning: uneven parameters count in `$method.name` compared to the vweb route `$method.attrs`')
+					eprintln('warning: uneven parameters count (${method.args.len}) in `$method.name`, compared to the vweb route `$method.attrs` (${vars.len})')
 				}
 			}
 		}
