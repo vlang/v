@@ -203,7 +203,7 @@ pub fn run_app<T>(mut app T, port int) {
 		$if method.return_type is Result {
 			// check routes for validity
 		}
-	}        
+	}
 	//app.reset()
 	for {
 		conn := l.accept() or { panic('accept() failed') }
@@ -380,7 +380,7 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 	mut vars := []string{cap: route_words_a.len}
 	mut action := ''
 	$for method in T.methods {
-		$if method.return_type is Result {       
+		$if method.return_type is Result {
 			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
@@ -485,7 +485,11 @@ fn handle_conn<T>(conn net.Socket, mut app T) {
 			// search again for method
 			if action == method.name && method.attrs.len > 0 {
 				// call action method
-				app.$method(vars)
+				if method.args.len - 1 == vars.len {
+					app.$method(vars)
+				} else {
+					eprintln('warning: uneven parameters count in `$method.name` compared to the vweb route `$method.attrs`')
+				}
 			}
 		}
 	}
