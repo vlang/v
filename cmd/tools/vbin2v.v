@@ -86,7 +86,7 @@ fn (context Context) max_bname_len(bnames []string) int {
 	mut max := 0
 	for n in bnames {
 		if n.len > max {
-			max  = n.len
+			max = n.len
 		}
 	}
 	// Add 4 to max due to "_len" suffix
@@ -121,7 +121,7 @@ fn main() {
 	if !context.write_file.ends_with('.v') {
 		context.write_file += '.v'
 	}
-	mut file_byte_map := map[string][]byte {}
+	mut file_byte_map := map[string][]byte{}
 	for file in real_files {
 		bname, fbytes := context.bname_and_bytes(file) or {
 			eprintln(err)
