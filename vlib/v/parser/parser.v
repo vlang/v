@@ -1036,14 +1036,17 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		is_generic_call = match p.peek_tok2.kind {
 			.name {
 				// maybe `f<int>`, `f<map[`
-				(p.peek_tok2.kind == .name && p.peek_tok3.kind == .gt) ||
+				(p.peek_tok2.kind == .name &&
+					p.peek_tok3.kind == .gt) ||
 					(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
 			}
 			.lsbr {
 				// maybe `f<[]T>`, assume `var < []` is invalid
 				p.peek_tok3.kind == .rsbr
 			}
-			else {false}
+			else {
+				false
+			}
 		}
 	}
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
