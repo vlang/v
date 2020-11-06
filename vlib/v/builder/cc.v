@@ -76,6 +76,12 @@ fn (mut v Builder) find_win_cc() ? {
 	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
 }
 
+fn (mut v Builder) show_c_compiler_output(res os.Result) {
+	println('======== C Compiler output ========')
+	println(res.output)
+	println('=================================')
+}
+
 fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 	if res.exit_code == 0 {
 		if v.pref.reuse_tmpc {
@@ -546,9 +552,7 @@ fn (mut v Builder) cc() {
 	diff := time.ticks() - ticks
 	v.timing_message('C ${ccompiler:3}', diff)
 	if v.pref.show_c_output {
-		println('\n======== Compiler output ========')
-		println(res.output)
-		println('=================================')
+		v.show_c_compiler_output(res)    
 	}
 	if res.exit_code == 127 {
 		// the command could not be found by the system
