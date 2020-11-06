@@ -118,7 +118,8 @@ mut:
 	called_fn_name        string
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
-	nr_vars_to_free       int
+	// nr_vars_to_free       int
+	doing_autofree_tmp    bool
 	inside_lambda         bool
 }
 
@@ -794,9 +795,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln('}')
 		}
 		ast.BranchStmt {
-			g.write_v_source_line_info(node.tok.position())
+			g.write_v_source_line_info(node.pos)
 			// continue or break
-			g.write(node.tok.kind.str())
+			g.write(node.kind.str())
 			g.writeln(';')
 		}
 		ast.ConstDecl {
@@ -1043,8 +1044,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	// If we have temporary string exprs to free after this statement, do it. e.g.:
 	// `foo('a' + 'b')` => `tmp := 'a' + 'b'; foo(tmp); string_free(&tmp);`
 	if g.pref.autofree {
-		p := node.position()
-		g.autofree_call_postgen(p.pos)
+		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
+		if node !is ast.FnDecl {
+			p := node.position()
+			g.autofree_call_postgen(p.pos)
+		}
 	}
 }
 
@@ -1905,6 +1909,10 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int) {
+	if g.is_builtin_mod {
+		// In `builtin` everything is freed manually.
+		return
+	}
 	g.writeln('// autofree_scope_vars($pos)')
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
@@ -1975,13 +1983,17 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// tmp expr vars do not need to be freed again here
 		return
 	}
-	// if v.is_autofree_tmp {
-	// return
-	// }
+	if v.is_autofree_tmp && !g.doing_autofree_tmp {
+		return
+	}
+	if v.name.contains('expr_write_1_') {
+		// TODO remove this temporary hack
+		return
+	}
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.doing_autofree_tmp')
 	}
 }
 
@@ -2090,7 +2102,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('))')
 			} else {
 				styp := g.typ(node.typ)
-				g.write('(($styp)(')
+				mut cast_label := ''
+				if sym.kind != .alias || (sym.info as table.Alias).parent_type != node.expr_type {
+					cast_label = '($styp)'
+				}
+				g.write('(${cast_label}(')
 				g.expr(node.expr)
 				if node.expr is ast.IntegerLiteral &&
 					node.typ in [table.u64_type, table.u32_type, table.u16_type] {
@@ -2113,6 +2129,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.CharLiteral {
 			g.write("'$node.val'")
+		}
+		ast.AtExpr {
+			g.comp_at(node)
 		}
 		ast.ComptimeCall {
 			g.comptime_call(node)
@@ -2385,19 +2404,15 @@ fn (mut g Gen) expr(node ast.Expr) {
 }
 
 // typeof(expr).name
+// Note: typeof() should be a type known at compile-time, not a string
+// sum types should not be handled dynamically
 fn (mut g Gen) typeof_name(node ast.TypeOf) {
-	sym := g.table.get_type_symbol(node.expr_type)
-	if sym.kind == .array {
-		info := sym.info as table.Array
-		mut s := g.table.get_type_name(info.elem_type)
-		s = util.strip_main_name(s)
-		g.write('tos_lit("[]$s")')
-	} else if sym.kind == .sum_type {
-		// new typeof() must be known at compile-time
-		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
-	} else {
-		g.typeof_expr(node)
+	mut typ := node.expr_type
+	if typ.has_flag(.generic) {
+		typ = g.cur_generic_type
 	}
+	s := g.table.type_to_str(typ)
+	g.write('tos_lit("${util.strip_main_name(s)}")')
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
@@ -4401,18 +4416,22 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 }
 
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
-	mut sym := g.table.get_type_symbol(etype)
-	if sym.info is table.Alias {
-		sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+	mut typ := etype
+	mut sym := g.table.get_type_symbol(typ)
+	if sym.info is table.Alias as alias_info {
+		parent_sym := g.table.get_type_symbol(alias_info.parent_type)
+		if parent_sym.has_method('str') {
+			sym = parent_sym
+			typ = alias_info.parent_type
+		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	if etype.has_flag(.variadic) {
-		str_fn_name := g.gen_str_for_type(etype)
+	if typ.has_flag(.variadic) {
+		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
 		g.expr(expr)
 		g.write(')')
-	} else if sym.kind == .alias && (sym.info as table.Alias).parent_type == table.string_type {
-		// handle string aliases
+	} else if typ == table.string_type {
 		g.expr(expr)
 		return true
 	} else if sym.kind == .enum_ {
@@ -4421,7 +4440,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			else { false }
 		}
 		if is_var {
-			str_fn_name := g.gen_str_for_type(etype)
+			str_fn_name := g.gen_str_for_type(typ)
 			g.write('${str_fn_name}(')
 			g.enum_expr(expr)
 			g.write(')')
@@ -4432,20 +4451,20 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		}
 	} else if sym_has_str_method || sym.kind in
 		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
-		is_p := etype.is_ptr()
-		val_type := if is_p { etype.deref() } else { etype }
+		is_p := typ.is_ptr()
+		val_type := if is_p { typ.deref() } else { typ }
 		str_fn_name := g.gen_str_for_type(val_type)
 		if is_p && str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}(  (')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}((')
 		}
 		if is_p && !str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}( *(')
+			g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
 		}
 		if !is_p && !str_method_expects_ptr {
-			g.write('${str_fn_name}(  ')
+			g.write('${str_fn_name}(')
 		}
 		if !is_p && str_method_expects_ptr {
-			g.write('${str_fn_name}( &')
+			g.write('${str_fn_name}(&')
 		}
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
@@ -4472,13 +4491,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 				g.write(')')
 			}
 		}
-	} else if g.typ(etype).starts_with('Option') {
+	} else if g.typ(typ).starts_with('Option') {
 		str_fn_name := 'OptionBase_str'
 		g.write('${str_fn_name}(*(OptionBase*)&')
 		g.expr(expr)
 		g.write(')')
 	} else {
-		return error('cannot convert to string')
+		str_fn_name := g.gen_str_for_type(typ)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
 	}
 	return true
 }

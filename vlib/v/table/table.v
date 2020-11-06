@@ -18,6 +18,7 @@ pub mut:
 	redefined_fns []string
 	fn_gen_types  map[string][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt        bool
 }
 
 pub struct Fn {
@@ -83,6 +84,7 @@ mut:
 pub fn new_table() &Table {
 	mut t := &Table{}
 	t.register_builtin_type_symbols()
+	t.is_fmt = true
 	return t
 }
 
@@ -621,7 +623,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	})
 }
 
-pub fn (mut t Table) add_placeholder_type(name string) int {
+pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	mut modname := ''
 	if name.contains('.') {
 		modname = name.all_before_last('.')
@@ -629,6 +631,7 @@ pub fn (mut t Table) add_placeholder_type(name string) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
+		language: language
 		source_name: name
 		mod: modname
 	}

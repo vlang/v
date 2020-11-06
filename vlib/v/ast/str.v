@@ -186,6 +186,9 @@ pub fn (x Expr) str() string {
 		CastExpr {
 			return '${x.typname}($x.expr.str())'
 		}
+		AtExpr {
+			return '$x.val'
+		}
 		CallExpr {
 			sargs := args2str(x.args)
 			if x.is_method {

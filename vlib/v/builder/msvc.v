@@ -294,12 +294,7 @@ pub fn (mut v Builder) cc_msvc() {
 	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	if v.pref.is_verbose {
-		println('\n========== cl cmd line:')
-		println(cmd)
-		println('==========\n')
-	}
-	// println('$cmd')
+	v.show_cc(cmd, out_name_cmd_line, args)
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		println(err)

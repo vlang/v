@@ -20,13 +20,28 @@ pub mut:
 	silent_mode   bool
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
-	nmessages chan string // many publishers, single consumer/printer
-	nmessage_idx int // currently printed message index
-	nprint_ended chan int // read to block till printing ends, 1:1
+	nmessages     chan LogMessage // many publishers, single consumer/printer
+	nmessage_idx  int // currently printed message index
+	nprint_ended  chan int // read to block till printing ends, 1:1
 }
 
-pub fn (mut ts TestSession) append_message(msg string) {
-	ts.nmessages <- msg
+enum MessageKind {
+	ok
+	fail
+	skip
+	sentinel
+}
+
+struct LogMessage {
+	message string
+	kind    MessageKind
+}
+
+pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
+	ts.nmessages <- LogMessage{
+		message: msg
+		kind: kind
+	}
 }
 
 pub fn (mut ts TestSession) print_messages() {
@@ -35,7 +50,7 @@ pub fn (mut ts TestSession) print_messages() {
 	for {
 		// get a message from the channel of messages to be printed:
 		mut rmessage := <-ts.nmessages
-		if rmessage == '' {
+		if rmessage.kind == .sentinel {
 			// a sentinel for stopping the printing thread
 			if !ts.silent_mode && ts.progress_mode {
 				eprintln('')
@@ -44,9 +59,9 @@ pub fn (mut ts TestSession) print_messages() {
 			return
 		}
 		ts.nmessage_idx++
-		msg := rmessage.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2', '${ts.nmessage_idx:2d}').replace('TMP3',
-			'${ts.nmessage_idx:3d}')
-		is_ok := msg.contains('OK')
+		msg := rmessage.message.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2',
+			'${ts.nmessage_idx:2d}').replace('TMP3', '${ts.nmessage_idx:3d}')
+		is_ok := rmessage.kind == .ok
 		//
 		time_passed := print_msg_time.elapsed().seconds()
 		if time_passed > 10 && ts.silent_mode && is_ok {
@@ -80,10 +95,10 @@ pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
 	skip_files << '_non_existing_'
 	$if solaris {
-		skip_files << "examples/gg/gg2.v"
-		skip_files << "examples/pico/pico.v"
-		skip_files << "examples/sokol/fonts.v"
-		skip_files << "examples/sokol/drawing.v"
+		skip_files << 'examples/gg/gg2.v'
+		skip_files << 'examples/pico/pico.v'
+		skip_files << 'examples/sokol/fonts.v'
+		skip_files << 'examples/sokol/drawing.v'
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
@@ -138,22 +153,24 @@ pub fn (mut ts TestSession) test() {
 		}
 		remaining_files << dot_relative_file
 	}
-	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
+	remaining_files = vtest.filter_vtest_only(remaining_files, {
+		fix_slashes: false
+	})
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
 	mut pool_of_test_runners := sync.new_pool_processor({
 		callback: worker_trunner
 	})
 	// for handling messages across threads
-	ts.nmessages = chan string{cap: 10000}
+	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
 	ts.nmessage_idx = 0
 	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
-	ts.append_message('') // send the sentinel
-	_ := <- ts.nprint_ended // wait for the stop of the printing thread
+	ts.append_message(.sentinel, '') // send the sentinel
+	_ := <-ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
@@ -182,7 +199,8 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
+	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v',
+			'') }
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
 		os.rm(generated_binary_fpath)
@@ -191,48 +209,45 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}
-	cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
+	cmd := '"$ts.vexe" ' + cmd_options.join(' ') + ' "$file"'
 	// eprintln('>>> v cmd: $cmd')
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
-	   ts.benchmark.skip()
-	   tls_bench.skip()
-	   ts.append_message(tls_bench.step_message_skip(relative_file))
-	   return sync.no_result
+		ts.benchmark.skip()
+		tls_bench.skip()
+		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
+		return sync.no_result
 	}
 	if show_stats {
-		ts.append_message(term.h_divider('-'))
+		ts.append_message(.ok, term.h_divider('-'))
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
 			tls_bench.ok()
-		}
-		else {
+		} else {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			return sync.no_result
 		}
-	}
-	else {
+	} else {
 		r := os.exec(cmd) or {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(tls_bench.step_message_fail(relative_file))
+			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
-		}
-		else {
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
-			ts.append_message(tls_bench.step_message_ok(relative_file))
+			ts.append_message(.ok, tls_bench.step_message_ok(relative_file))
 		}
 	}
 	if os.exists(generated_binary_fpath) {
@@ -242,7 +257,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
-	vlib_dir := os.join_path(parent_dir,'vlib')
+	vlib_dir := os.join_path(parent_dir, 'vlib')
 	if !os.is_dir(vlib_dir) {
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
@@ -270,16 +285,14 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 	mut skipped := oskipped
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
-			//$if !linux {
-				// run pg example only on linux
-				if f.contains('/pg/') {
-					continue
-				}
-			//}
-
+			// $if !linux {
+			// run pg example only on linux
+			if f.contains('/pg/') {
+				continue
+			}
+			// }
 			if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
 				continue
-
 			}
 			$if windows {
 				// skip pico example on windows
@@ -287,11 +300,13 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 					continue
 				}
 			}
-			c := os.read_file(f) or { panic(err) }
+			c := os.read_file(f) or {
+				panic(err)
+			}
 			maxc := if c.len > 300 { 300 } else { c.len }
 			start := c[0..maxc]
 			if start.contains('module ') && !start.contains('module main') {
-				skipped_f := f.replace(os.join_path(parent_dir,''), '')
+				skipped_f := f.replace(os.join_path(parent_dir, ''), '')
 				skipped << skipped_f
 			}
 			mains << f
@@ -321,27 +336,23 @@ pub fn building_any_v_binaries_failed() bool {
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
-	testing.vlib_should_be_present(parent_dir)
+	vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false
-	v_build_commands := ['$vexe -o v_g             -g  cmd/v',
-	'$vexe -o v_prod_g  -prod -g  cmd/v',
-	'$vexe -o v_cg            -cg cmd/v',
-	'$vexe -o v_prod_cg -prod -cg cmd/v',
-	'$vexe -o v_prod    -prod     cmd/v',
-	]
+	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
+		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v', '$vexe -o v_prod    -prod     cmd/v']
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
+			eprintln(bmark.step_message_fail('command: $cmd . See details above ^^^^^^^'))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message_ok('command: ${cmd}'))
+		eprintln(bmark.step_message_ok('command: $cmd'))
 	}
 	bmark.stop()
 	eprintln(term.h_divider('-'))

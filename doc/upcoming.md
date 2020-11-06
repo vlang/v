@@ -22,7 +22,7 @@ Objects that are supposed to be used to exchange data between
 coroutines have to be declared with special care. Exactly one of the following
 4 kinds of declaration has to be chosen:
 
-```v
+```v ignore
 a := ...
 mut b := ...
 shared c := ...
@@ -41,14 +41,14 @@ atomic d := ...
   *concurrently*.<sup>2</sup> In order to avoid data races it has to
   be locked before access can occur and unlocked to allow access to
   other coroutines. This is done by one the following block structures:
-  ```v
+  ```v ignore
   lock c {
       // read, modify, write c
       ...
   }
   ```
   
-  ```v
+  ```v ignore
   rlock c {
       // read c
       ...
@@ -122,7 +122,7 @@ Outside of `lock`/`rlock` blocks function arguments must in general
 match - with the familiar exception that objects declared `mut` can be
 used to call functions expecting immutable arguments:
 
-```v
+```v ignore
 fn f(x St) {...}
 fn g(mut x St) {...}
 fn h(shared x St) {...}
@@ -145,7 +145,7 @@ i(atomic d)
 
 Inside a `lock c {...}` block `c` behaves like a `mut`,
 inside an `rlock c {...}` block like an immutable:
-```v
+```v ignore
 shared c := &St{...}
 lock c {
     g(mut c)
@@ -165,7 +165,7 @@ object is accessed outside of any corresponding `lock`/`rlock`
 block. However in simple and obvious cases the necessary lock/unlock
 can be generated automatically for `array`/`map` operations:
 
-```v
+```v ignore
 shared a []int{...}
 go h2(shared a)
 a << 3

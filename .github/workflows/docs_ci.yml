@@ -19,5 +19,5 @@ jobs:
     - uses: actions/checkout@v2
     - name: Build V
       run: make
-    - name: Check docs line length
+    - name: Check docs line length & code examples
       run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md

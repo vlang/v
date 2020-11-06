@@ -41,6 +41,7 @@ pub mut:
 	mod         string
 	is_public   bool
 	is_written  bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
+	language    Language
 }
 
 // max of 8
@@ -731,6 +732,7 @@ pub struct Alias {
 pub:
 	parent_type Type
 	language    Language
+	is_import   bool
 }
 
 pub struct Aggregate {
@@ -837,7 +839,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 			}
 		}
 		.function {
-			// do nothing, source_name is sufficient
+			if !table.is_fmt {
+				info := sym.info as FnType
+				res = table.fn_signature(info.func, {
+					type_only: true
+				})
+			}
 		}
 		.map {
 			if int(t) == map_type_idx {
@@ -887,18 +894,37 @@ pub fn (table &Table) type_to_str(t Type) string {
 	return res
 }
 
-pub fn (t &Table) fn_to_str(func &Fn) string {
+pub struct FnSignatureOpts {
+	skip_receiver bool
+	type_only     bool
+}
+
+pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 	mut sb := strings.new_builder(20)
-	sb.write('${func.name}(')
-	for i in 1 .. func.params.len {
-		param := func.params[i]
-		sb.write('$param.name')
-		if i == func.params.len - 1 || func.params[i + 1].typ != param.typ {
-			sb.write(' ${t.type_to_str(param.typ)}')
-		}
-		if i != func.params.len - 1 {
+	if !opts.skip_receiver {
+		sb.write('fn ')
+		// TODO write receiver
+	}
+	if !opts.type_only {
+		sb.write('$func.name')
+	}
+	sb.write('(')
+	start := int(opts.skip_receiver)
+	for i in start .. func.params.len {
+		if i != start {
 			sb.write(', ')
 		}
+		param := func.params[i]
+		mut typ := param.typ
+		if param.is_mut {
+			typ = typ.deref()
+			sb.write('mut ')
+		}
+		if !opts.type_only {
+			sb.write('$param.name ')
+		}
+		styp := t.type_to_str(typ)
+		sb.write('$styp')
 	}
 	sb.write(')')
 	if func.return_type != void_type {
