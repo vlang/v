@@ -56,7 +56,10 @@ fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
 		sb_diff_len := sb.len - last_len
-		if sb_diff_len > 88 && 92 - sb_diff_len < b.len {
+		if i < 30 && sb_diff_len > 86 {
+			sb.write('$b,\n\t\t')
+			last_len = sb.len
+		} else if sb_diff_len > 88 && 92 - sb_diff_len < b.len {
 			sb.write('$b,\n\t\t')
 			last_len = sb.len
 		} else if i == fbytes.len - 1 {
