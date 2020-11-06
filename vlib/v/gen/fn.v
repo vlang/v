@@ -161,12 +161,12 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if it.return_type != table.void_type {
 		return_sym := g.table.get_type_symbol(it.return_type)
 		mut default_expr := g.type_default(it.return_type)
-		g.write('\treturn /* $return_sym.kind */')
-
-		if default_expr == '{0}' { // return_sym.kind in [.struct_, .multi_return] || {
-			g.write('($type_name)')
+		// TODO: perf?
+		if default_expr == '{0}' {
+			g.writeln('\treturn ($type_name)$default_expr;')
+		} else {
+			g.writeln('\treturn $default_expr;')
 		}
-		g.writeln('$default_expr;')
 	}
 	g.writeln('}')
 	g.defer_stmts = []
