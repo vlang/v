@@ -9,7 +9,7 @@ pub struct Scope {
 pub mut:
 	// mut:
 	objects       map[string]ScopeObject
-	struct_fields map[int]ScopeStructField
+	struct_fields []ScopeStructField
 	parent        &Scope
 	children      []&Scope
 	start_pos     int
@@ -53,7 +53,7 @@ pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?
 	for sc := s; true; sc = sc.parent {
 		for field in sc.struct_fields {
 			if field.struct_type == struct_type && field.name == field_name {
-				return fields
+				return field
 			}
 		}
 		if isnil(sc.parent) {
