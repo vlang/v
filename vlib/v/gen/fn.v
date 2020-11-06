@@ -159,7 +159,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.autofree_scope_vars(it.body_pos.pos)
 	}
 	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
-		mut default_expr := g.type_default(it.return_type)
+		default_expr := g.type_default(it.return_type)
 		// TODO: perf?
 		if default_expr == '{0}' {
 			g.writeln('\treturn ($type_name)$default_expr;')
