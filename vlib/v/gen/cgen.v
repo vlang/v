@@ -2803,12 +2803,17 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	g.expr(node.cond)
 	g.writeln(';')
 	g.write(cur_line)
+	if is_expr {
+		// brackets needed otherwise '?' will apply to everything on the left
+		g.write('(')
+	}
 	if node.is_sum_type {
 		g.match_expr_sumtype(node, is_expr, cond_var)
 	} else {
 		g.match_expr_classic(node, is_expr, cond_var)
 	}
 	if is_expr {
+		g.write(')')
 		g.decrement_inside_ternary()
 	}
 }
