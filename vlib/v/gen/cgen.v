@@ -1909,6 +1909,10 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 }
 
 fn (mut g Gen) autofree_scope_vars(pos int) {
+	if g.is_builtin_mod {
+		// In `builtin` everything is freed manually.
+		return
+	}
 	g.writeln('// autofree_scope_vars($pos)')
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
@@ -1980,6 +1984,10 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		return
 	}
 	if v.is_autofree_tmp && !g.doing_autofree_tmp {
+		return
+	}
+	if v.name.contains('expr_write_1_') {
+		// TODO remove this temporary hack
 		return
 	}
 	if v.typ.is_ptr() {
