@@ -303,7 +303,11 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	diff := time.ticks() - ticks
 	v.timing_message('C msvc', diff)
-	v.post_process_c_compiler_output(res)
+	if v.pref.show_c_output {
+		v.show_c_compiler_output(res)
+	} else {
+		v.post_process_c_compiler_output(res)
+	}
 	// println(res)
 	// println('C OUTPUT:')
 	// Always remove the object file - it is completely unnecessary

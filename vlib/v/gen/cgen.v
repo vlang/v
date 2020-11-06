@@ -1440,7 +1440,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// return;
 	// }
 	// int pos = *(int*)_t190.data;
-	mut gen_or := false
 	mut tmp_opt := ''
 	is_optional := g.pref.autofree &&
 		(assign_stmt.op in [.decl_assign, .assign]) && assign_stmt.left_types.len == 1 && assign_stmt.right[0] is
@@ -1453,7 +1452,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			tmp_opt = g.new_tmp_var()
 			g.write('/*AF opt*/$styp $tmp_opt = ')
 			g.expr(assign_stmt.right[0])
-			gen_or = true
 			g.or_block(tmp_opt, call_expr.or_block, call_expr.return_type)
 			g.writeln('/*=============ret*/')
 			// if af && is_optional {
@@ -2128,7 +2126,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write('))')
 		}
 		ast.CharLiteral {
-			g.write("'$node.val'")
+			if node.val == r'\`' {
+				g.write("'`'")
+			} else {
+				g.write("'$node.val'")
+			}
 		}
 		ast.AtExpr {
 			g.comp_at(node)
@@ -4662,7 +4664,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	g.expr(node.left)
 	g.write('${deref}len, ')
 	g.expr(node.left)
-	g.writeln('${deref}element_size, $compare_fn);')
+	g.writeln('${deref}element_size, (int (*)(const void *, const void *))&$compare_fn);')
 }
 
 // `nums.filter(it % 2 == 0)`
@@ -5060,7 +5062,15 @@ fn c_name(name_ string) string {
 	return name
 }
 
-fn (mut g Gen) type_default(typ table.Type) string {
+fn (mut g Gen) type_default(typ_ table.Type) string {
+	typ := g.unwrap_generic(typ_)
+	if typ.has_flag(.optional) {
+		return '{0}'
+	}
+	// Always set pointers to 0
+	if typ.is_ptr() {
+		return '0'
+	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
 		elem_sym := g.typ(sym.array_info().elem_type)
@@ -5073,10 +5083,6 @@ fn (mut g Gen) type_default(typ table.Type) string {
 	if sym.kind == .map {
 		value_type_str := g.typ(sym.map_info().value_type)
 		return 'new_map_1(sizeof($value_type_str))'
-	}
-	// Always set pointers to 0
-	if typ.is_ptr() {
-		return '0'
 	}
 	// User struct defined in another module.
 	// if typ.contains('__') {
@@ -5105,7 +5111,8 @@ fn (mut g Gen) type_default(typ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .sum_type, .array_fixed { '{0}' }
+		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
 	// TODO this results in

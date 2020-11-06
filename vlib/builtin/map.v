@@ -153,7 +153,7 @@ fn (d DenseArray) get(i int) voidptr {
 fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
-	for i in 0 .. d.len {
+	for i in 0 .. int(d.len) {
 		if unsafe {d.keys[i]}.str != 0 {
 			// swap keys
 			unsafe {
