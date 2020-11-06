@@ -545,6 +545,11 @@ fn (mut v Builder) cc() {
 	}
 	diff := time.ticks() - ticks
 	v.timing_message('C ${ccompiler:3}', diff)
+	if v.pref.show_c_output {
+		println('\n======== Compiler output ========')
+		println(res.output)
+		println('=================================')
+	}
 	if res.exit_code == 127 {
 		// the command could not be found by the system
 		$if linux {
@@ -559,12 +564,9 @@ fn (mut v Builder) cc() {
 			'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
 			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
 	}
-	v.post_process_c_compiler_output(res)
-	if v.pref.show_c_output {
-		println('\n\n======== Compiler output ========')
-		println(res.output)
-		println('=================================')
-	}
+	if !v.pref.show_c_output {
+		v.post_process_c_compiler_output(res)
+	}        
 	// Print the C command
 	if v.pref.is_verbose {
 		println('$ccompiler took $diff ms')
