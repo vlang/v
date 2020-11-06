@@ -367,10 +367,11 @@ pub mut:
 // struct fields change type in scopes
 pub struct ScopeStructField {
 pub:
-	struct_type table.Type // type of struct
-	name        string
-	pos         token.Position
-	typ         table.Type
+	struct_type   table.Type // type of struct
+	name          string
+	pos           token.Position
+	typ           table.Type
+	original_type table.Type
 }
 
 pub struct GlobalField {

@@ -306,7 +306,7 @@ fn test_casted_sum_type_reassign() {
 		b.x = 'test'
 		assert typeof(b.x) == 'string'
 	}
-	assert typeof(b.x) == 'main.Inner'
+	assert typeof(b.x) == 'Inner'
 }
 
 fn test_sum_type_match() {

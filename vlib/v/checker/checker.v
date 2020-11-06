@@ -2155,8 +2155,58 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		// Dual sides check (compatibility check)
 		if !is_blank_ident && right_sym.kind != .placeholder {
-			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
+			mut final_left_type := left_type_unwrapped
+			mut scope := c.file.scope.innermost(left.position().pos)
+			match left {
+				ast.SelectorExpr {
+					if struct_field := scope.find_struct_field(left.expr_type, left.field_name) {
+						if struct_field.original_type != 0 {
+							final_left_type = struct_field.original_type
+						}
+					}
+				}
+				ast.Ident {
+					if left.obj is ast.Var as v {
+						if v.union_sum_type_typ != 0 {
+							final_left_type = v.union_sum_type_typ
+						}
+					}
+				}
+				else {}
+			}
+			c.check_expected(right_type_unwrapped, final_left_type) or {
 				c.error('cannot assign to `$left`: $err', right.position())
+			}
+			if final_left_type != left_type_unwrapped {
+				// it's a sum type
+				match left {
+					ast.SelectorExpr {
+						mut inner_scope := ast.new_scope(scope, left.pos.pos)
+						inner_scope.end_pos = scope.end_pos
+						scope.children << inner_scope
+						inner_scope.register_struct_field({
+							struct_type: left.expr_type
+							name: left.field_name
+							typ: right_type_unwrapped
+							pos: left.pos
+							original_type: final_left_type
+						})
+					}
+					ast.Ident {
+						mut inner_scope := ast.new_scope(scope, left.pos.pos)
+						inner_scope.end_pos = scope.end_pos
+						scope.children << inner_scope
+						inner_scope.register(left.name, ast.Var{
+							name: left.name
+							typ: final_left_type
+							pos: left.pos
+							is_used: true
+							is_mut: left.is_mut
+							union_sum_type_typ: right_type_unwrapped
+						})
+					}
+					else {}
+				}
 			}
 		}
 	}
@@ -3327,6 +3377,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 									name: node_cond.field_name
 									typ: expr.typ
 									pos: node_cond.pos
+									original_type: node.cond_type
 								}) }
 							ast.Ident { scope.register(node.var_name, ast.Var{
 									name: node.var_name
@@ -3616,6 +3667,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										name: selector.field_name
 										typ: right_expr.typ
 										pos: infix.left.position()
+										original_type: infix.left_type
 									})
 								}
 							}
