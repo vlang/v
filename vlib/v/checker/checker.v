@@ -2166,7 +2166,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					}
 				}
 				ast.Ident {
-					if left.obj is ast.Var as v {
+					if v := scope.find_var(left.name) {
 						if v.union_sum_type_typ != 0 {
 							final_left_type = v.union_sum_type_typ
 						}
@@ -2193,7 +2193,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						})
 					}
 					ast.Ident {
-						mut inner_scope := ast.new_scope(scope, left.pos.pos)
+						/*mut inner_scope := ast.new_scope(scope, left.pos.pos)
 						inner_scope.end_pos = scope.end_pos
 						scope.children << inner_scope
 						inner_scope.register(left.name, ast.Var{
@@ -2203,7 +2203,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 							is_used: true
 							is_mut: left.is_mut
 							union_sum_type_typ: right_type_unwrapped
-						})
+						})*/
 					}
 					else {}
 				}
