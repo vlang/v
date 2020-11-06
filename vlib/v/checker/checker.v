@@ -4211,7 +4211,8 @@ fn (mut c Checker) post_process_generic_fns() {
 					if m.return_type_source_name == 'vweb.Result' {
 						if !c.verify_vweb_parameters(m) {
 							// XXX the generic function doesnt know the file:pos of the implementation function
-							c.warn('mismatched parameters count between vweb method and route attribute', node.pos)
+							c.warn('mismatched parameters count between vweb method and route attribute',
+								node.pos)
 						}
 					}
 				}
