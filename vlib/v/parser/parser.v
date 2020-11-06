@@ -1031,24 +1031,21 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	}
 	lit0_is_capital := p.tok.lit[0].is_capital()
 	// use heuristics to detect `func<T>()` from `var < expr`
-	mut is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt
-	if is_generic_call {
-		is_generic_call = match p.peek_tok2.kind {
-			.name {
-				// maybe `f<int>`, `f<map[`
-				(p.peek_tok2.kind == .name &&
-					p.peek_tok3.kind == .gt) ||
-					(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
-			}
-			.lsbr {
-				// maybe `f<[]T>`, assume `var < []` is invalid
-				p.peek_tok3.kind == .rsbr
-			}
-			else {
-				false
-			}
+	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
+		.name {
+			// maybe `f<int>`, `f<map[`
+			(p.peek_tok2.kind == .name &&
+				p.peek_tok3.kind == .gt) ||
+				(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
 		}
-	}
+		.lsbr {
+			// maybe `f<[]T>`, assume `var < []` is invalid
+			p.peek_tok3.kind == .rsbr
+		}
+		else {
+			false
+		}
+	})
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
