@@ -46,11 +46,12 @@ fn (context Context) footer() string {
 	return ')\n'
 }
 
-fn (context Context) file2v(bname string, fbytes []byte) string {
+fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	mut sb := strings.new_builder(1000)
+	len_diff := bn_max - bname.len
+	sb.write('  ${bname}_len' + ' '.repeat(len_diff - 4) + ' = $fbytes.len\n')
 	fbyte := fbytes[0]
-	sb.write('  ${bname}_len = $fbytes.len\n')
-	sb.write('  $bname = [ byte($fbyte), ')
+	sb.write('  $bname' + ' '.repeat(len_diff) + ' = [ byte($fbyte), ')
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
 		sb.write('$b, ')
@@ -70,6 +71,17 @@ fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
 		return error('Error: $err')
 	}
 	return byte_name, fbytes
+}
+
+fn (context Context) max_bname_len(bnames []string) int {
+	mut max := 0
+	for n in bnames {
+		if n.len > max {
+			max  = n.len
+		}
+	}
+	// Add 4 to max due to "_len" suffix
+	return max + 4
 }
 
 fn main() {
@@ -108,19 +120,20 @@ fn main() {
 		}
 		file_byte_map[bname] = fbytes
 	}
+	max_bname := context.max_bname_len(file_byte_map.keys())
 	if context.write_file.len > 0 {
 		mut out_file := os.create(context.write_file) or {
 			panic(err)
 		}
 		out_file.write(context.header())
 		for bname, fbytes in file_byte_map {
-			out_file.write(context.file2v(bname, fbytes))
+			out_file.write(context.file2v(bname, fbytes, max_bname))
 		}
 		out_file.write(context.footer())
 	} else {
 		println(context.header())
 		for bname, fbytes in file_byte_map {
-			println(context.file2v(bname, fbytes))
+			println(context.file2v(bname, fbytes, max_bname))
 		}
 		println(context.footer())
 	}
