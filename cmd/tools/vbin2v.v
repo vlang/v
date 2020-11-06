@@ -49,14 +49,14 @@ fn (context Context) footer() string {
 fn (context Context) file2v(bname string, fbytes []byte, bn_max int) string {
 	mut sb := strings.new_builder(1000)
 	len_diff := bn_max - bname.len
-	sb.write('  ${bname}_len' + ' '.repeat(len_diff - 4) + ' = $fbytes.len\n')
+	sb.write('\t${bname}_len' + ' '.repeat(len_diff - 4) + ' = $fbytes.len\n')
 	fbyte := fbytes[0]
-	sb.write('  $bname' + ' '.repeat(len_diff) + ' = [ byte($fbyte), ')
+	sb.write('\t$bname' + ' '.repeat(len_diff) + ' = [byte($fbyte), ')
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
 		sb.write('$b, ')
 		if 0 == i % 16 {
-			sb.write('\n  ')
+			sb.write('\n\t\t')
 		}
 	}
 	sb.write(']!!\n')
