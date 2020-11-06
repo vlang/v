@@ -4227,7 +4227,6 @@ fn (mut c Checker) post_process_generic_fns() {
 	}
 }
 
-
 fn (mut c Checker) verify_all_vweb_routes() {
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	for vgt in c.vweb_gen_types {
@@ -4237,8 +4236,9 @@ fn (mut c Checker) verify_all_vweb_routes() {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_parameters(m)
 				if !is_ok {
 					for f in c.all_v_methods {
-						if f.return_type == typ_vweb_result && f.receiver.typ == m.params[0].typ && f.name == m.name {
-							c.warn('mismatched parameters count between vweb method `${sym_app.name}.${m.name}` (${nargs}) and route attribute $m.attrs ($nroute_attributes)',
+						if f.return_type == typ_vweb_result &&
+							f.receiver.typ == m.params[0].typ && f.name == m.name {
+							c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
 								f.pos)
 						}
 					}
