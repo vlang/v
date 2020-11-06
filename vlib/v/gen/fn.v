@@ -158,6 +158,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.autofree_scope_vars(it.body_pos.pos)
 	}
+	if it.return_type != table.void_type {
+		mut default_expr := g.type_default(it.return_type)
+		// TODO: perf?
+		if default_expr == '{0}' {
+			g.writeln('\treturn ($type_name)$default_expr;')
+		} else {
+			g.writeln('\treturn $default_expr;')
+		}
+	}
 	g.writeln('}')
 	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
@@ -240,15 +249,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + caname
-			if arg.is_mut {
-				// mut arg needs one *
-				nr_muls = 1
-			}
-			// if nr_muls > 0 && !is_varg {
-			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + caname
-			// }
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname

@@ -922,6 +922,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
 	}
+	return ast.Ident{}
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {

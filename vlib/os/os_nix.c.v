@@ -252,7 +252,7 @@ pub fn is_writable_folder(folder string) ?bool {
 	}
 	tmp_perm_check := os.join_path(folder, 'XXXXXX')
 	unsafe {
-		x := C.mkstemp(tmp_perm_check.str)
+		x := C.mkstemp(charptr(tmp_perm_check.str))
 		if -1 == x {
 			return error('folder `$folder` is not writable')
 		}

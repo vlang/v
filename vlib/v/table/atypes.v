@@ -865,7 +865,6 @@ pub fn (table &Table) type_to_str(t Type) string {
 				res += table.type_to_str(typ)
 			}
 			res += ')'
-			res = res
 		}
 		.void {
 			if t.has_flag(.optional) {
