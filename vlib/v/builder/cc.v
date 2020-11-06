@@ -552,7 +552,7 @@ fn (mut v Builder) cc() {
 	diff := time.ticks() - ticks
 	v.timing_message('C ${ccompiler:3}', diff)
 	if v.pref.show_c_output {
-		v.show_c_compiler_output(res)    
+		v.show_c_compiler_output(res)
 	}
 	if res.exit_code == 127 {
 		// the command could not be found by the system
@@ -570,7 +570,7 @@ fn (mut v Builder) cc() {
 	}
 	if !v.pref.show_c_output {
 		v.post_process_c_compiler_output(res)
-	}        
+	}
 	// Print the C command
 	if v.pref.is_verbose {
 		println('$ccompiler took $diff ms')

@@ -5104,10 +5104,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	return match sym.kind {
 		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
-		.alias {
-			alias_info := sym.info as table.Alias
-			g.type_default(alias_info.parent_type)
-		}
+		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
 	// TODO this results in
