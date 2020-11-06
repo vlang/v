@@ -3512,7 +3512,8 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				info := sym.info as table.Map
 				elem_type_str := g.typ(info.value_type)
 				elem_typ := g.table.get_type_symbol(info.value_type)
-				if g.is_assign_lhs && !g.is_array_set && elem_typ.kind != .struct_ {
+				get_and_set_types := elem_typ.kind in [.struct_, .map]
+				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
 					g.is_array_set = true
 					g.write('map_set(')
 					if !left_is_ptr {
@@ -3527,7 +3528,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(', &($elem_type_str[]) { ')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
-					(g.is_assign_lhs && !g.is_array_set && elem_typ.kind == .struct_) {
+					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
 					zero := g.type_default(info.value_type)
 					g.write('(*($elem_type_str*)map_get_and_set(')
 					if !left_is_ptr {
