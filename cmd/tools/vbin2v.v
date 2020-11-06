@@ -100,28 +100,28 @@ fn main() {
 	if !context.write_file.ends_with('.v') {
 		context.write_file += '.v'
 	}
+	mut file_byte_map := map[string][]byte {}
+	for file in real_files {
+		bname, fbytes := context.bname_and_bytes(file) or {
+			eprintln(err)
+			continue
+		}
+		file_byte_map[bname] = fbytes
+	}
 	if context.write_file.len > 0 {
 		mut out_file := os.create(context.write_file) or {
 			panic(err)
 		}
 		out_file.write(context.header())
-		mut file_byte_map := map[string][]byte {}
-		for file in real_files {
-			bname, fbytes := context.bname_and_bytes(file) or {
-				eprintln(err)
-				continue
-			}
-			file_byte_map[bname] = fbytes
-		}
 		for bname, fbytes in file_byte_map {
 			out_file.write(context.file2v(bname, fbytes))
 		}
 		out_file.write(context.footer())
-	} /* else {
+	} else {
 		println(context.header())
-		for file in real_files {
-			println(context.file2v(file))
+		for bname, fbytes in file_byte_map {
+			println(context.file2v(bname, fbytes))
 		}
 		println(context.footer())
-	} */
+	}
 }
