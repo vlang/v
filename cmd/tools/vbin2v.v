@@ -46,18 +46,11 @@ fn (context Context) footer() string {
 	return ')\n'
 }
 
-fn (context Context) file2v(file string) string {
+fn (context Context) file2v(bname string, fbytes []byte) string {
 	mut sb := strings.new_builder(1000)
-	fname := os.file_name(file)
-	fname_no_dots := fname.replace('.', '_')
-	byte_name := '$context.prefix$fname_no_dots'.to_lower()
-	fbytes := os.read_bytes(file) or {
-		eprintln('Error: $err')
-		return ''
-	}
 	fbyte := fbytes[0]
-	sb.write('  ${byte_name}_len = $fbytes.len\n')
-	sb.write('  $byte_name = [ byte($fbyte), ')
+	sb.write('  ${bname}_len = $fbytes.len\n')
+	sb.write('  $bname = [ byte($fbyte), ')
 	for i := 1; i < fbytes.len; i++ {
 		b := int(fbytes[i]).str()
 		sb.write('$b, ')
@@ -67,6 +60,16 @@ fn (context Context) file2v(file string) string {
 	}
 	sb.write(']!!\n')
 	return sb.str()
+}
+
+fn (context Context) bname_and_bytes(file string) ?(string, []byte) {
+	fname := os.file_name(file)
+	fname_no_dots := fname.replace('.', '_')
+	byte_name := '$context.prefix$fname_no_dots'.to_lower()
+	fbytes := os.read_bytes(file) or {
+		return error('Error: $err')
+	}
+	return byte_name, fbytes
 }
 
 fn main() {
@@ -102,15 +105,23 @@ fn main() {
 			panic(err)
 		}
 		out_file.write(context.header())
+		mut file_byte_map := map[string][]byte {}
 		for file in real_files {
-			out_file.write(context.file2v(file))
+			bname, fbytes := context.bname_and_bytes(file) or {
+				eprintln(err)
+				continue
+			}
+			file_byte_map[bname] = fbytes
+		}
+		for bname, fbytes in file_byte_map {
+			out_file.write(context.file2v(bname, fbytes))
 		}
 		out_file.write(context.footer())
-	} else {
+	} /* else {
 		println(context.header())
 		for file in real_files {
 			println(context.file2v(file))
 		}
 		println(context.footer())
-	}
+	} */
 }
