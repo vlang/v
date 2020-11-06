@@ -5054,7 +5054,8 @@ fn c_name(name_ string) string {
 	return name
 }
 
-fn (mut g Gen) type_default(typ table.Type) string {
+fn (mut g Gen) type_default(typ_ table.Type) string {
+	typ := g.unwrap_generic(typ_)
 	if typ.has_flag(.optional) {
 		return '{0}'
 	}
@@ -5103,6 +5104,10 @@ fn (mut g Gen) type_default(typ table.Type) string {
 	}
 	return match sym.kind {
 		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.alias {
+			alias_info := sym.info as table.Alias
+			g.type_default(alias_info.parent_type)
+		}
 		else { '0' }
 	}
 	// TODO this results in
