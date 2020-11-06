@@ -149,6 +149,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			has_main_fn = true
 		}
 	}
+	c.verify_all_vweb_routes(ast_files)
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -4222,12 +4223,12 @@ fn (mut c Checker) post_process_generic_fns() {
 	// postprocessed just once in the checker, while the file/mod
 	// context is still the same.
 	c.generic_funcs = []
-	if c.mod == 'main' {
-		c.verify_all_vweb_routes()
-	}
 }
 
-fn (mut c Checker) verify_all_vweb_routes() {
+fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
+	if c.vweb_gen_types.len == 0 {
+		return
+	}
 	typ_vweb_result := c.table.find_type_idx('vweb.Result')
 	for vgt in c.vweb_gen_types {
 		sym_app := c.table.get_type_symbol(vgt)
@@ -4238,8 +4239,13 @@ fn (mut c Checker) verify_all_vweb_routes() {
 					for f in c.all_v_methods {
 						if f.return_type == typ_vweb_result &&
 							f.receiver.typ == m.params[0].typ && f.name == m.name {
-							c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
-								f.pos)
+							for afidx in 0..ast_files.len {
+								if ast_files[afidx].path == f.file {
+									c.file = unsafe {&ast_files[afidx]}
+									c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+										f.pos)
+								}
+							}
 						}
 					}
 				}
