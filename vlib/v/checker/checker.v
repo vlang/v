@@ -58,6 +58,7 @@ mut:
 	cur_orm_ts       table.TypeSymbol
 	error_details    []string
 	generic_funcs    []&ast.FnDecl
+	is_assign_lhs   bool
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1986,7 +1987,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
+			c.is_assign_lhs = true
 			left_type = c.expr(left)
+			c.is_assign_lhs = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
@@ -3117,7 +3120,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					mut typ := if obj.sum_type_cast != 0 { obj.sum_type_cast } else { obj.typ }
+					is_sum_type_cast := obj.sum_type_cast != 0 && !c.is_assign_lhs
+					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {
 							inner_ident := obj.expr as ast.Ident
@@ -3141,7 +3145,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					// typ = c.cur_generic_type
 					// }
 					// } else {
-					if obj.sum_type_cast != 0 {
+					if !is_sum_type_cast {
 						obj.typ = typ
 					}
 					ident.obj = obj1

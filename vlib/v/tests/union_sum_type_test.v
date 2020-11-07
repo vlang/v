@@ -319,9 +319,9 @@ fn test_casted_sum_type_ident_reassign() {
 	assert typeof(x) == 'Inner'
 }
 
-/*
 __type Expr2 = int | string
 
+/*
 fn test_match_with_reassign_casted_type() {
 	mut e := Expr2(0)
 	match union mut e {
@@ -340,15 +340,15 @@ fn test_if_is_with_reassign_casted_type() {
 		assert e == 5
 	}
 }
+*/
 
 fn test_change_type() {
-	mut e := Expr(0)
+	mut e := Expr2(0)
 	if e is int {
 		e = 'str'
 	}
 	assert e is string
 }
-*/
 
 fn test_sum_type_match() {
 	// TODO: Remove these casts

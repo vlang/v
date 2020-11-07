@@ -3217,7 +3217,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_cast != 0 {
+			if v.sum_type_cast != 0 && v.sum_type_cast != v.typ {
 				g.write('(*${name}._$v.sum_type_cast)')
 				return
 			}
