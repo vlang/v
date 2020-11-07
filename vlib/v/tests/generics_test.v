@@ -102,6 +102,30 @@ fn test_return_array() {
 	assert a4 == [true, false, true]
 }
 
+fn opt<T>(v T) ?T {
+	if sizeof(T) > 1 {return v}
+	return none
+}
+
+fn test_optional() {
+	s := opt('hi') or { '' }
+	assert s == 'hi'
+	i := opt(5) or {0}
+	assert i == 5
+	b := opt(s[0]) or {99}
+	assert b == 99
+}
+
+fn ptr<T>(v T) &T {
+	a := [v]
+	return a.data
+}
+
+fn test_ptr() {
+	assert *ptr(4) == 4
+	assert *ptr('aa') == 'aa'
+}
+
 /*
 fn map_f<T,U>(l []T, f fn(T)U) []U {
 	mut r := []U{}
