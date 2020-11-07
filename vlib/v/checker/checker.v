@@ -3836,8 +3836,8 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
 		if !(index_type.is_number() || index_type_sym.kind == .enum_) {
-			type_str := if typ_sym.kind in [.string, .ustring] { '(type `$typ_sym.source_name`)' } else { '(array type `$typ_sym.source_name`)' }
-			c.error('non-integer index `$index_type_sym.source_name` $type_str', pos)
+			type_str := if typ_sym.kind in [.string, .ustring] { 'non-integer string index `$index_type_sym.source_name`' } else { 'non-integer index `$index_type_sym.source_name` (array type `$typ_sym.source_name`)' }
+			c.error('$type_str', pos)
 		}
 		if index_type.has_flag(.optional) {
 			type_str := if typ_sym.kind in [.string, .ustring] { '(type `$typ_sym.source_name`)' } else { '(array type `$typ_sym.source_name`)' }
