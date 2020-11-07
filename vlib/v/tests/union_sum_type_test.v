@@ -322,7 +322,7 @@ fn test_casted_sum_type_ident_reassign() {
 /*
 __type Expr2 = int | string
 
-fn test_match_with_reassign() {
+fn test_match_with_reassign_casted_type() {
 	mut e := Expr2(0)
 	match union mut e {
 		int {
@@ -332,7 +332,7 @@ fn test_match_with_reassign() {
 	}
 }
 
-fn test_if_is_with_reassign() {
+fn test_if_is_with_reassign_casted_type() {
 	mut e := Expr2(0)
 	if e is int {
 		e = 5
