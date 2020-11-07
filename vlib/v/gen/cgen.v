@@ -1412,13 +1412,30 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		else {}
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`)
-	if g.pref.autofree && assign_stmt.op == .assign && assign_stmt.left_types.len == 1 &&
-		assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident {
+	mut af := g.pref.autofree && assign_stmt.op == .assign && assign_stmt.left_types.len == 1 &&
+		assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident
+	mut sref_name := ''
+	if af {
 		ident := assign_stmt.left[0] as ast.Ident
 		if ident.name != '_' {
+			/*
 			g.write('string_free(&')
 			g.expr(assign_stmt.left[0])
 			g.writeln('); // free str on re-assignment')
+			*/
+			sref_name = '_sref$assign_stmt.pos.pos'
+			g.write('string $sref_name = (') // TODO we are copying the entire string here, optimize
+			// we can't just do `.str` since we need the extra data from the string struct
+			// doing `&string` is also not an option since the stack memory with the data will be overwritten
+			g.expr(assign_stmt.left[0])
+			g.writeln('); // free str on re-assignment2')
+			defer {
+				if af {
+					g.writeln('string_free(&$sref_name);')
+				}
+			}
+		} else {
+			af = false
 		}
 	}
 	// Autofree tmp arg vars
