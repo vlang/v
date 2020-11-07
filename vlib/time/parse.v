@@ -66,7 +66,7 @@ pub fn parse_iso8601(s string) ?Time {
 	offset_hour := 0
 	offset_min := 0
 	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d',
-		&year, &month, &day, &time_char, &hour, &minute, &second, &mic_second, &plus_min, &offset_hour,
+		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min), &offset_hour,
 		&offset_min)}
 	if count != 11 {
 		return error('Invalid 8601 format')

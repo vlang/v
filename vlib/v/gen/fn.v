@@ -158,6 +158,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
 		g.autofree_scope_vars(it.body_pos.pos)
 	}
+	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
+		default_expr := g.type_default(it.return_type)
+		// TODO: perf?
+		if default_expr == '{0}' {
+			g.writeln('\treturn ($type_name)$default_expr;')
+		} else {
+			g.writeln('\treturn $default_expr;')
+		}
+	}
 	g.writeln('}')
 	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
@@ -240,15 +249,7 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + caname
-			if arg.is_mut {
-				// mut arg needs one *
-				nr_muls = 1
-			}
-			// if nr_muls > 0 && !is_varg {
-			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + caname
-			// }
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -709,7 +710,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		g.strs_to_free0 << s
 		// Now free the tmp arg vars right after the function call
 		// g.strs_to_free << t
-		g.nr_vars_to_free++
+		// g.nr_vars_to_free++
 		// g.strs_to_free << 'string_free(&$t);'
 	}
 }
@@ -720,10 +721,12 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		return
 	}
 	*/
-	// g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
+	/*
+	g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
 	if g.nr_vars_to_free <= 0 {
 		return
 	}
+	*/
 	/*
 	for s in g.strs_to_free {
 		g.writeln('string_free(&$s);')
@@ -734,6 +737,11 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		g.strs_to_free = []
 	}
 	*/
+	if g.inside_vweb_tmpl {
+		return
+	}
+	g.doing_autofree_tmp = true
+	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
 		match mut obj {
@@ -757,11 +765,13 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 				}
 				obj.is_used = true
 				g.autofree_variable(v)
-				g.nr_vars_to_free--
+				// g.nr_vars_to_free--
 			}
 			else {}
 		}
 	}
+	// g.write('/* postgen end */')
+	g.doing_autofree_tmp = false
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {

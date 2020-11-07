@@ -16,6 +16,7 @@ fn start_server() ? {
 		// Here you can look att the client info and accept or not accept
 		// just returning a true/false
 		if s.resource_name != '/' {
+			panic('unexpected resource name in test')
 			return false
 		}
 		return true
@@ -61,11 +62,15 @@ fn ws_test(uri string) ? {
 			println('Binary message: $msg')
 		}
 	})
-	ws.connect()
+	ws.connect() or {
+		panic('fail to connect')
+	}
 	go ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame)?
+		ws.write(msg.bytes(), .text_frame) or {
+			panic('fail to write to websocket')
+		}
 		// sleep to give time to recieve response before send a new one
 		time.sleep_ms(100)
 	}

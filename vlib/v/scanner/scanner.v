@@ -7,7 +7,6 @@ import os
 import v.token
 import v.pref
 import v.util
-import v.vmod
 
 const (
 	single_quote = `\'`
@@ -30,10 +29,6 @@ pub mut:
 	line_comment                string
 	// prev_tok                 TokenKind
 	is_started                  bool
-	fn_name                     string // needed for @FN
-	mod_name                    string // needed for @MOD
-	struct_name                 string // needed for @STRUCT
-	vmod_file_content           string // needed for @VMOD_FILE, contents of the file, *NOT its path*
 	is_print_line_on_error      bool
 	is_print_colored_error      bool
 	is_print_rel_paths_on_error bool
@@ -175,138 +170,6 @@ fn (mut s Scanner) ident_name() string {
 	name := s.text[start..s.pos]
 	s.pos--
 	return name
-}
-
-// ident_fn_name looks ahead and returns name of the function if possible, otherwise an empty string
-fn (s &Scanner) ident_fn_name() string {
-	start := s.pos
-	mut pos := s.pos
-	pos++
-	if s.current_column() - 2 != 0 {
-		return s.fn_name
-	}
-	has_struct_name := s.struct_name != ''
-	if has_struct_name {
-		for pos < s.text.len && s.text[pos] != `(` {
-			pos++
-		}
-		if pos >= s.text.len {
-			return ''
-		}
-		pos++
-	}
-	for pos < s.text.len && s.text[pos] != `(` {
-		pos++
-	}
-	if pos >= s.text.len {
-		return ''
-	}
-	pos--
-	// Eat whitespaces
-	for pos > start && s.text[pos].is_space() {
-		pos--
-	}
-	if pos < start {
-		return ''
-	}
-	end_pos := pos + 1
-	pos--
-	// Search for the start position
-	for pos > start && util.is_func_char(s.text[pos]) {
-		pos--
-	}
-	pos++
-	start_pos := pos
-	if pos <= start || pos >= s.text.len {
-		return ''
-	}
-	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos ||
-		end_pos <= start || start_pos < start {
-		return ''
-	}
-	fn_name := s.text[start_pos..end_pos]
-	return fn_name
-}
-
-// ident_mod_name look ahead and return name of module this file belongs to if possible, otherwise empty string
-fn (s &Scanner) ident_mod_name() string {
-	start := s.pos
-	mut pos := s.pos
-	pos++
-	// Eat whitespaces
-	for pos < s.text.len && s.text[pos].is_space() {
-		pos++
-	}
-	if pos >= s.text.len {
-		return ''
-	}
-	start_pos := pos
-	// Search for next occurrence of a whitespace or newline
-	for pos < s.text.len && !s.text[pos].is_space() && !util.is_nl(s.text[pos]) {
-		pos++
-	}
-	if pos >= s.text.len {
-		return ''
-	}
-	end_pos := pos
-	if end_pos > s.text.len || end_pos <= start_pos || end_pos <= start || start_pos <= start {
-		return ''
-	}
-	mod_name := s.text[start_pos..end_pos]
-	return mod_name
-}
-
-// ident_struct_name look ahead and return name of last encountered struct if possible, otherwise empty string
-fn (s &Scanner) ident_struct_name() string {
-	start := s.pos
-	mut pos := s.pos
-	// Return last known stuct_name encountered to avoid using high order/anonymous function definitions
-	if s.current_column() - 2 != 0 {
-		return s.struct_name
-	}
-	pos++
-	// Eat whitespaces
-	for pos < s.text.len && s.text[pos].is_space() {
-		pos++
-	}
-	if pos >= s.text.len {
-		return ''
-	}
-	// Return if `(` is not the first character after "fn ..."
-	if s.text[pos] != `(` {
-		return ''
-	}
-	// Search for closing parenthesis
-	for pos < s.text.len && s.text[pos] != `)` {
-		pos++
-	}
-	if pos >= s.text.len {
-		return ''
-	}
-	pos--
-	// Search backwards for end position of struct name
-	// Eat whitespaces
-	for pos > start && s.text[pos].is_space() {
-		pos--
-	}
-	if pos < start {
-		return ''
-	}
-	end_pos := pos + 1
-	// Go back while we have a name character or digit
-	for pos > start && (util.is_name_char(s.text[pos]) || s.text[pos].is_digit()) {
-		pos--
-	}
-	if pos < start {
-		return ''
-	}
-	start_pos := pos + 1
-	if s.text[start_pos].is_digit() || end_pos > s.text.len || end_pos <= start_pos ||
-		end_pos <= start || start_pos <= start {
-		return ''
-	}
-	struct_name := s.text[start_pos..end_pos]
-	return struct_name
 }
 
 fn filter_num_sep(txt byteptr, start int, end int) string {
@@ -699,12 +562,6 @@ fn (mut s Scanner) text_scan() token.Token {
 			next_char := s.look_ahead(1)
 			kind := token.keywords[name]
 			if kind != .unknown {
-				if kind == .key_fn {
-					s.struct_name = s.ident_struct_name()
-					s.fn_name = s.ident_fn_name()
-				} else if kind == .key_module {
-					s.mod_name = s.ident_mod_name()
-				}
 				return s.new_token(kind, name, name.len)
 			}
 			// 'asdf $b' => "b" is the last name in the string, dont start parsing string
@@ -898,64 +755,17 @@ fn (mut s Scanner) text_scan() token.Token {
 				if s.is_fmt {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
-				// @FN => will be substituted with the name of the current V function
-				// @MOD => will be substituted with the name of the current V module
-				// @STRUCT => will be substituted with the name of the current V struct
-				// @VEXE => will be substituted with the path to the V compiler
-				// @FILE => will be substituted with the path of the V source file
-				// @LINE => will be substituted with the V line number where it appears (as a string).
-				// @COLUMN => will be substituted with the column where it appears (as a string).
-				// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
-				// @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
-				// This allows things like this:
-				// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
-				// ... which is useful while debugging/tracing
-				if name == 'FN' {
-					return s.new_token(.string, s.fn_name, 3)
-				}
-				if name == 'MOD' {
-					return s.new_token(.string, s.mod_name, 4)
-				}
-				if name == 'STRUCT' {
-					return s.new_token(.string, s.struct_name, 7)
-				}
-				if name == 'VEXE' {
-					vexe := pref.vexe_path()
-					return s.new_token(.string, util.cescaped_path(vexe), 5)
-				}
-				if name == 'FILE' {
-					fpath := os.real_path(s.file_path)
-					return s.new_token(.string, util.cescaped_path(fpath), 5)
-				}
-				if name == 'LINE' {
-					return s.new_token(.string, (s.line_nr + 1).str(), 5)
-				}
-				if name == 'COLUMN' {
-					return s.new_token(.string, s.current_column().str(), 7)
-				}
-				if name == 'VHASH' {
-					return s.new_token(.string, util.vhash(), 6)
-				}
-				if name == 'VMOD_FILE' {
-					if s.vmod_file_content.len == 0 {
-						mut mcache := vmod.get_cache()
-						vmod_file_location := mcache.get_by_file(s.file_path)
-						if vmod_file_location.vmod_file.len == 0 {
-							s.error('@VMOD_FILE can be used only in projects, that have v.mod file')
-						}
-						vmod_content := os.read_file(vmod_file_location.vmod_file) or {
-							''
-						}
-						$if windows {
-							s.vmod_file_content = vmod_content.replace('\r\n', '\n')
-						} $else {
-							s.vmod_file_content = vmod_content
-						}
-					}
-					return s.new_token(.string, s.vmod_file_content, 10)
+				// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
+				if '@' + name in token.valid_at_tokens {
+					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
-					s.error('@ must be used before keywords (e.g. `@type string`)')
+					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
+					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
+					if name.is_upper() {
+						at_error_msg += '\nAvailable compile time variables:\n$token.valid_at_tokens'
+					}
+					s.error(at_error_msg)
 				}
 				return s.new_token(.name, name, name.len)
 			}

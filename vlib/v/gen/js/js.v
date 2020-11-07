@@ -661,6 +661,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_typeof_expr(node)
 			// TODO: Should this print the V type or the JS type?
 		}
+		ast.AtExpr {
+			g.write('"$node.val"')
+		}
 		ast.ComptimeCall {
 			// TODO
 		}

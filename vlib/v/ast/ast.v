@@ -9,12 +9,12 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | BoolLiteral | CTempVar | CallExpr |
-	CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal | FloatLiteral |
-	Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral | Likely | LockExpr |
-	MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr | RangeExpr |
-	SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral | StructInit |
-	Type | TypeOf | UnsafeExpr
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
+	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
+	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
+	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
+	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
+	StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -211,11 +211,12 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos      token.Position
-	is_short bool
+	pos          token.Position
+	is_short     bool
+	pre_comments []Comment
 pub mut:
-	typ      table.Type
-	fields   []StructInitField
+	typ          table.Type
+	fields       []StructInitField
 }
 
 // import statement
@@ -273,6 +274,7 @@ pub:
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 }
 
 // break, continue
@@ -959,6 +961,16 @@ pub mut:
 	return_type table.Type
 }
 
+// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
+pub struct AtExpr {
+pub:
+	name string
+	pos  token.Position
+	kind token.AtKind
+pub mut:
+	val  string
+}
+
 pub struct ComptimeCall {
 pub:
 	method_name string
@@ -1041,7 +1053,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		IfGuardExpr {

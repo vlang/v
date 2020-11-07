@@ -115,6 +115,7 @@ fn test_typeof_on_fn() {
 	assert typeof(myfn3) == 'fn (int, string) byte'
 	assert typeof(myfn4) == 'fn () i8'
 	assert typeof(myfn).name == typeof(myfn)
+	assert typeof(&myfn).name == '&fn (int) int'
 	assert typeof(myfn2).name == typeof(myfn2)
 	assert typeof(myfn3).name == typeof(myfn3)
 	assert typeof(myfn4).name == typeof(myfn4)

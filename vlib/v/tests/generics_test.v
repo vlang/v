@@ -13,11 +13,17 @@ fn plus<T>(xxx T, b T) T {
 	return xxx + b
 }
 
-fn test_generic_fn() {
+fn test_identity() {
 	assert simple<int>(1) == 1
 	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
+	
+	assert simple<[]int>([1])[0] == 1
+	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
+}
+
+fn test_plus() {
 	a := plus<int>(2, 3)
 	println(a)
 	assert a == 5
@@ -94,6 +100,30 @@ fn test_return_array() {
 	assert a3 == ['a', 'b', 'c']
 	a4 := return_array<bool>([true, false, true])
 	assert a4 == [true, false, true]
+}
+
+fn opt<T>(v T) ?T {
+	if sizeof(T) > 1 {return v}
+	return none
+}
+
+fn test_optional() {
+	s := opt('hi') or { '' }
+	assert s == 'hi'
+	i := opt(5) or {0}
+	assert i == 5
+	b := opt(s[0]) or {99}
+	assert b == 99
+}
+
+fn ptr<T>(v T) &T {
+	a := [v]
+	return a.data
+}
+
+fn test_ptr() {
+	assert *ptr(4) == 4
+	assert *ptr('aa') == 'aa'
 }
 
 /*

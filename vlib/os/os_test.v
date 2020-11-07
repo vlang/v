@@ -503,3 +503,18 @@ fn test_write_file_array_structs() {
 	assert rarr.len == maxn
 	// eprintln( rarr.str().replace('\n', ' ').replace('},', '},\n'))
 }
+
+fn test_stdout_capture() {
+	/*
+mut cmd := os.Command{
+	path:'cat'
+	redirect_stdout: true
+}
+cmd.start()
+for !cmd.eof {
+	line := cmd.read_line()
+	println('line="$line"')
+}
+cmd.close()
+*/
+}

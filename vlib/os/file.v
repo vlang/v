@@ -142,7 +142,7 @@ pub fn (mut f File) get_line() ?string {
 		mut zblen := size_t(0)
 		mut zx := 0
 		unsafe {
-			zx = C.getline(&zbuf, &zblen, f.cfile)
+			zx = C.getline(&charptr(&zbuf), &zblen, f.cfile)
 			if zx == -1 {
 				C.free(zbuf)
 				if C.errno == 0 {
@@ -160,7 +160,7 @@ pub fn (mut f File) get_line() ?string {
 	//
 	buf := [4096]byte{}
 	mut res := strings.new_builder(1024)
-	mut x := 0
+	mut x := charptr(0)
 	for {
 		unsafe {
 			x = C.fgets(charptr(buf), 4096, f.cfile)

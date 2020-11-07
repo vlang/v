@@ -49,13 +49,13 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 	lines := client_handshake.split_into_lines()
 	get_tokens := lines[0].split(' ')
 	if get_tokens.len < 3 {
-		return error('unexpected get operation, $get_tokens')
+		return error_with_code('unexpected get operation, $get_tokens', 1)
 	}
 	if get_tokens[0].trim_space() != 'GET' {
-		return error("unexpected request '${get_tokens[0]}', expected 'GET'")
+		return error_with_code("unexpected request '${get_tokens[0]}', expected 'GET'", 2)
 	}
 	if get_tokens[2].trim_space() != 'HTTP/1.1' {
-		return error("unexpected request $get_tokens, expected 'HTTP/1.1'")
+		return error_with_code("unexpected request $get_tokens, expected 'HTTP/1.1'", 3)
 	}
 	// path := get_tokens[1].trim_space()
 	mut seckey := ''
@@ -87,7 +87,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		unsafe {keys.free()}
 	}
 	if flags.len < 3 {
-		return error('invalid client handshake, $client_handshake')
+		return error_with_code('invalid client handshake, $client_handshake', 4)
 	}
 	server_handshake := 'HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: $seckey\r\n\r\n'
 	server_client := &ServerClient{
@@ -113,7 +113,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 	for total_bytes_read < 1024 {
 		bytes_read := ws.socket_read_into_ptr(byteptr(&buffer), 1) ?
 		if bytes_read == 0 {
-			return error('unexpected no response from handshake')
+			return error_with_code('unexpected no response from handshake', 5)
 		}
 		msg[total_bytes_read] = buffer[0]
 		total_bytes_read++
@@ -138,7 +138,7 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 	lines := handshake_response.split_into_lines()
 	header := lines[0]
 	if !header.starts_with('HTTP/1.1 101') && !header.starts_with('HTTP/1.0 101') {
-		return error('handshake_handler: invalid HTTP status response code')
+		return error_with_code('handshake_handler: invalid HTTP status response code, $header', 6)
 	}
 	for i in 1 .. lines.len {
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
@@ -157,7 +157,7 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 				challenge := create_key_challenge_response(seckey) ?
 				ws.debug_log('challenge: $challenge, response: ${keys[1]}')
 				if keys[1].trim_space() != challenge {
-					return error('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.')
+					return error_with_code('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.', 7)
 				}
 				ws.flags << .has_accept
 				unsafe {challenge.free()}
@@ -169,6 +169,6 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 	unsafe {lines.free()}
 	if ws.flags.len < 3 {
 		ws.close(1002, 'invalid websocket HTTP headers') ?
-		return error('invalid websocket HTTP headers')
+		return error_with_code('invalid websocket HTTP headers', 8)
 	}
 }

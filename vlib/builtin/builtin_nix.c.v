@@ -88,7 +88,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		return false
 	}
 	buffer := [100]byteptr{}
-	nr_ptrs := C.backtrace(buffer, 100)
+	nr_ptrs := C.backtrace(voidptr(buffer), 100)
 	if nr_ptrs < 2 {
 		eprintln('C.backtrace returned less than 2 frames')
 		return false
@@ -96,7 +96,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 	nr_actual_frames := nr_ptrs - skipframes
 	mut sframes := []string{}
 	//////csymbols := backtrace_symbols(*voidptr(&buffer[skipframes]), nr_actual_frames)
-	csymbols := C.backtrace_symbols(&buffer[skipframes], nr_actual_frames)
+	csymbols := C.backtrace_symbols(voidptr(&buffer[skipframes]), nr_actual_frames)
 	for i in 0 .. nr_actual_frames {
 		sframes << unsafe {tos2( byteptr(csymbols[i]) )}
 	}
