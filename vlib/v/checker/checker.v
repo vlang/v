@@ -3725,7 +3725,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										name: branch.left_as_name
 										typ: infix.left_type
 										sum_type_cast: right_expr.typ
-										pos: infix.left.position()
+										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
 									})
@@ -3737,11 +3737,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								is_mut = field.is_mut
 								if left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
-										struct_type: selector.expr_type
-										name: selector.field_name
+										struct_type: infix.left.expr_type
+										name: infix.left.field_name
 										typ: infix.left_type
 										sum_type_cast: right_expr.typ
-										pos: infix.left.position()
+										pos: infix.left.pos
 									})
 								}
 							}
