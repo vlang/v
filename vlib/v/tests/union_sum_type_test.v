@@ -299,7 +299,6 @@ fn test_nested_if_is() {
 	}
 }
 
-/*
 fn test_casted_sum_type_selector_reassign() {
 	mut b := InnerStruct{Inner(0)}
 	if b.x is int {
@@ -309,7 +308,6 @@ fn test_casted_sum_type_selector_reassign() {
 	}
 	assert typeof(b.x) == 'Inner'
 }
-*/
 
 fn test_casted_sum_type_ident_reassign() {
 	mut x := Inner(0)

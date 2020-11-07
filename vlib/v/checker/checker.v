@@ -2185,8 +2185,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			match left {
 				ast.SelectorExpr {
 					if struct_field := scope.find_struct_field(left.expr_type, left.field_name) {
-						if struct_field.sum_type_cast != 0 &&
-							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
+						if struct_field.sum_type_cast != 0 {
 							final_left_type = right_type_unwrapped
 							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
 							inner_scope.register_struct_field(ast.ScopeStructField{
