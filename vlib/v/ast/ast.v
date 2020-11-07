@@ -357,7 +357,7 @@ pub:
 	is_arg             bool // fn args should not be autofreed
 pub mut:
 	typ                table.Type
-	union_sum_type_typ table.Type
+	sum_type_cast      table.Type
 	pos                token.Position
 	is_used            bool
 	is_changed         bool // to detect mutable vars that are never changed
@@ -371,7 +371,7 @@ pub:
 	name          string
 	pos           token.Position
 	typ           table.Type
-	original_type table.Type
+	sum_type_cast table.Type
 }
 
 pub struct GlobalField {

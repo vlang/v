@@ -2402,10 +2402,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 					scope := g.file.scope.innermost(node.pos.pos)
 					if field := scope.find_struct_field(node.expr_type, node.field_name) {
 						// union sum type deref
-						if field.typ != field.original_type {
-							g.write('(*')
-							sum_type_deref_field = '_$field.typ'
-						}
+						g.write('(*')
+						sum_type_deref_field = '_$field.sum_type_cast'
 					}
 				}
 			}
@@ -3219,8 +3217,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.union_sum_type_typ != 0 && v.typ != v.union_sum_type_typ {
-				g.write('(*${name}._$v.union_sum_type_typ)')
+			if v.sum_type_cast != 0 {
+				g.write('(*${name}._$v.sum_type_cast)')
 				return
 			}
 		}

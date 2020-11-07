@@ -1761,7 +1761,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		if field_sym.kind == .union_sum_type {
 			scope := c.file.scope.innermost(selector_expr.pos.pos)
 			if scope_field := scope.find_struct_field(utyp, field_name) {
-				return scope_field.typ
+				return scope_field.sum_type_cast
 			}
 		}
 		selector_expr.typ = field.typ
@@ -2153,60 +2153,51 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		// Dual sides check (compatibility check)
 		if !is_blank_ident && right_sym.kind != .placeholder {
+			// Assign to sum type if ordinary value
 			mut final_left_type := left_type_unwrapped
 			mut scope := c.file.scope.innermost(left.position().pos)
 			match left {
 				ast.SelectorExpr {
 					if struct_field := scope.find_struct_field(left.expr_type, left.field_name) {
-						if struct_field.original_type != 0 {
-							final_left_type = struct_field.original_type
+						if struct_field.sum_type_cast != 0 {
+							final_left_type = struct_field.sum_type_cast
+							mut inner_scope := ast.new_scope(scope, left.pos.pos)
+							inner_scope.end_pos = scope.end_pos
+							scope.children << inner_scope
+							inner_scope.register_struct_field(ast.ScopeStructField{
+								struct_type: left.expr_type
+								name: left.field_name
+								typ: final_left_type 
+								sum_type_cast: right_type_unwrapped
+								pos: left.pos
+							})
 						}
 					}
 				}
 				ast.Ident {
 					if v := scope.find_var(left.name) {
-						if v.union_sum_type_typ != 0 {
-							final_left_type = v.union_sum_type_typ
+						if v.sum_type_cast != 0 {
+							final_left_type = v.sum_type_cast
+							mut inner_scope := ast.new_scope(scope, left.pos.pos)
+							inner_scope.end_pos = scope.end_pos
+							scope.children << inner_scope
+							inner_scope.register(left.name, ast.Var{
+								name: left.name
+								typ: final_left_type
+								pos: left.pos
+								is_used: true
+								is_mut: left.is_mut
+								sum_type_cast: right_type_unwrapped
+							})
 						}
 					}
 				}
 				else {}
 			}
+			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, final_left_type) or {
-				c.error('cannot assign to `$left`: $err', right.position())
-			}
-			if final_left_type != left_type_unwrapped {
-				// it's a sum type
-				match left {
-					ast.SelectorExpr {
-						mut inner_scope := ast.new_scope(scope, left.pos.pos)
-						inner_scope.end_pos = scope.end_pos
-						scope.children << inner_scope
-						inner_scope.register_struct_field({
-							struct_type: left.expr_type
-							name: left.field_name
-							typ: right_type_unwrapped
-							pos: left.pos
-							original_type: final_left_type
-						})
-					}
-					ast.Ident {
-						/*mut inner_scope := ast.new_scope(scope, left.pos.pos)
-						inner_scope.end_pos = scope.end_pos
-						scope.children << inner_scope
-						inner_scope.register(left.name, ast.Var{
-							name: left.name
-							typ: final_left_type
-							pos: left.pos
-							is_used: true
-							is_mut: left.is_mut
-							union_sum_type_typ: right_type_unwrapped
-						})*/
-					}
-					else {}
-				}
+				// c.error('cannot assign to `$left`: $err', right.position())
 			}
 		}
 	}
@@ -3123,7 +3114,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					mut typ := if obj.union_sum_type_typ != 0 { obj.union_sum_type_typ } else { obj.typ }
+					mut typ := if obj.sum_type_cast != 0 { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {
 							inner_ident := obj.expr as ast.Ident
@@ -3140,11 +3131,6 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 						is_optional: is_optional
 					}
-					// if is union sum type with smartcast
-					sym := c.table.get_type_symbol(typ)
-					if sym.kind == .union_sum_type && obj.union_sum_type_typ != 0 {
-						typ = obj.union_sum_type_typ
-					}
 					// if typ == table.t_type {
 					// sym := c.table.get_type_symbol(c.cur_generic_type)
 					// println('IDENT T unresolved $ident.name typ=$sym.source_name')
@@ -3152,7 +3138,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					// typ = c.cur_generic_type
 					// }
 					// } else {
-					obj.typ = typ
+					if obj.sum_type_cast != 0 {
+						obj.typ = typ
+					}
 					ident.obj = obj1
 					// unwrap optional (`println(x)`)
 					if is_optional {
@@ -3372,12 +3360,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					if cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
 						match node.cond as node_cond {
-							ast.SelectorExpr { scope.register_struct_field({
+							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
 									struct_type: node_cond.expr_type
 									name: node_cond.field_name
-									typ: expr.typ
+									typ: node.cond_type
+									sum_type_cast: expr.typ
 									pos: node_cond.pos
-									original_type: node.cond_type
 								}) }
 							ast.Ident { scope.register(node.var_name, ast.Var{
 									name: node.var_name
@@ -3385,7 +3373,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 									pos: node_cond.pos
 									is_used: true
 									is_mut: node.is_mut
-									union_sum_type_typ: expr.typ
+									sum_type_cast: expr.typ
 								}) }
 							else {}
 						}
@@ -3650,10 +3638,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
+										sum_type_cast: right_expr.typ
 										pos: infix.left.position()
 										is_used: true
 										is_mut: is_mut
-										union_sum_type_typ: right_expr.typ
 									})
 								}
 							} else if infix.left is ast.SelectorExpr as selector {
@@ -3665,9 +3653,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: selector.expr_type
 										name: selector.field_name
-										typ: right_expr.typ
+										typ: infix.left_type
+										sum_type_cast: right_expr.typ
 										pos: infix.left.position()
-										original_type: infix.left_type
 									})
 								}
 							}
