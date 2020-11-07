@@ -1,3 +1,4 @@
+// This program is built and run via Valgrind to ensure there are no leaks with -autofree
 fn simple() {
 	nums := [1, 2, 3] // local array must be freed
 	println(nums)
@@ -64,8 +65,12 @@ fn str_inter() {
 
 fn str_replace() {
 	mut s := 'hello world'
-	s = s.replace('hello', 'hi')
+	s = s.replace('hello', 'hi') // s can't be freed as usual before the assignment, since it's used in the right expr
 	println(s)
+	//
+	mut s2 := 'aa' + 'bb'
+	s2 = s2.replace('a', 'c')
+	println(s2)
 	/*
 	r := s.replace('hello', 'hi')
 	cloned := s.replace('hello', 'hi').clone()
@@ -85,8 +90,12 @@ fn str_replace2() {
 }
 
 fn reassign_str() {
+	mut x := 'a'
+	x = 'b' // nothing has to be freed here
+	//
 	mut s := 'a' + 'b'
 	s = 'x' + 'y' // 'a' + 'b' must be freed before the re-assignment
+	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr
 }
 
 fn match_expr() string {
@@ -212,12 +221,12 @@ fn free_inside_opt_block() {
 fn main() {
 	println('start')
 	simple()
+	reassign_str()
 	str_tmp_expr()
 	str_tmp_expr_advanced()
 	str_tmp_expr_advanced_var_decl()
 	str_inter()
 	match_expr()
-	reassign_str()
 	optional_str()
 	// optional_return()
 	str_replace()

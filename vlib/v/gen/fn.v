@@ -741,7 +741,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		return
 	}
 	g.doing_autofree_tmp = true
-	g.write('/* postgen */')
+	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
 		match mut obj {
@@ -770,7 +770,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 			else {}
 		}
 	}
-	g.write('/* postgen end */')
+	// g.write('/* postgen end */')
 	g.doing_autofree_tmp = false
 }
 
