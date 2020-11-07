@@ -2080,8 +2080,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		right_type_unwrapped := c.unwrap_generic(right_type)
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
-		if (left_type.is_ptr() || left_sym.is_pointer()) &&
-			assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
+		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
+		right_is_ptr := right_type.is_ptr() || right_sym.is_pointer()
+		if left_is_ptr && assign_stmt.op !in [.assign, .decl_assign] && !c.inside_unsafe {
 			// ptr op=
 			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', assign_stmt.pos)
 		}
@@ -2089,6 +2090,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
+		}
+		if left_is_ptr && (right is ast.StructInit || !right_is_ptr) && !right_sym.is_number() {
+			left_name := c.table.type_to_str(left_type_unwrapped)
+			mut rtype := right_type_unwrapped
+			if rtype.is_ptr() {
+				rtype = rtype.deref()
+			}
+			right_name := c.table.type_to_str(rtype)
+			c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
 		}
 		// Single side check
 		match assign_stmt.op {
