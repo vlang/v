@@ -344,9 +344,7 @@ fn test_change_type() {
 	if e is int {
 		e = 'str'
 	}
-	if e is string {
-		println(e)
-	}
+	assert e is string
 }
 */
 
