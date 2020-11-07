@@ -258,7 +258,6 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut return_type := table.void_type
 	if p.tok.kind.is_start_of_type() ||
 		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
-		end_pos = p.tok.position()
 		return_type = p.parse_type()
 	}
 	// Register
@@ -307,6 +306,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			language: language
 		})
 	}
+	end_pos = p.prev_tok.position()
 	// Body
 	p.cur_fn_name = name
 	mut stmts := []ast.Stmt{}
