@@ -291,7 +291,7 @@ fn (mut p Parser) decode_number() ?Any {
 	}
 
 	if tl.starts_with('.') {
-		return error('lecimals must start with a digit followed by a dot.')
+		return error('decimals must start with a digit followed by a dot.')
 	}
 
 	if tl.ends_with('+') || tl.ends_with('-') {
@@ -318,7 +318,7 @@ fn (mut p Parser) decode_number() ?Any {
 		return if is_fl {
 			Any(tl.f64())
 		} else {
-			Any(tl.int())
+			Any(tl.i64())
 		}
 	}
 
