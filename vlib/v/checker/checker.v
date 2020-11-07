@@ -1565,7 +1565,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// Handle `foo<T>() T` => `foo<int>() int` => return int
 		return_sym := c.table.get_type_symbol(f.return_type)
 		if return_sym.source_name == 'T' {
-			return call_expr.generic_type
+			mut typ := call_expr.generic_type
+			typ = typ.set_nr_muls(f.return_type.nr_muls())
+			if f.return_type.has_flag(.optional) {
+				typ = typ.set_flag(.optional)
+			}
+			call_expr.return_type = typ
+			return typ
 		} else if return_sym.kind == .array {
 			elem_info := return_sym.info as table.Array
 			elem_sym := c.table.get_type_symbol(elem_info.elem_type)
