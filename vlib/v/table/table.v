@@ -168,7 +168,7 @@ pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
 	// for faster lookup in the checker's fn_decl method
 	// println('reg me $new_fn.name nr_args=$new_fn.args.len')
 	t.methods << new_fn
-	return t.methods.len-1
+	return t.methods.len - 1
 }
 
 pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
