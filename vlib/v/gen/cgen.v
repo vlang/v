@@ -121,6 +121,7 @@ mut:
 	// nr_vars_to_free       int
 	doing_autofree_tmp    bool
 	inside_lambda         bool
+	prevent_sum_type_unwrapping bool // needed for assign new values to sum type
 }
 
 const (
@@ -1782,7 +1783,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					g.write('$styp ')
 				}
+				if left is ast.Ident {
+					g.prevent_sum_type_unwrapping = true
+				}
 				g.expr(left)
+				g.prevent_sum_type_unwrapping = false
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
@@ -3250,7 +3255,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_cast != 0 && !g.is_assign_lhs {
+			if v.sum_type_cast != 0 && !g.prevent_sum_type_unwrapping {
 				g.write('(*${name}._$v.sum_type_cast)')
 				return
 			}

@@ -60,8 +60,8 @@ mut:
 	cur_orm_ts        table.TypeSymbol
 	error_details     []string
 	generic_funcs     []&ast.FnDecl
-	is_assign_lhs     bool
 	vmod_file_content string // needed for @VMOD_FILE, contents of the file, *NOT its path*
+	prevent_sum_type_unwrapping bool // needed for assign new values to sum type
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1999,9 +1999,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
-			c.is_assign_lhs = true
+			if left is ast.Ident {
+				c.prevent_sum_type_unwrapping = true
+			}
 			left_type = c.expr(left)
-			c.is_assign_lhs = false
+			c.prevent_sum_type_unwrapping = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
@@ -2184,18 +2186,16 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			mut scope := c.file.scope.innermost(left.position().pos)
 			match left {
 				ast.SelectorExpr {
-					if struct_field := scope.find_struct_field(left.expr_type, left.field_name) {
-						if struct_field.sum_type_cast != 0 {
-							final_left_type = right_type_unwrapped
-							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-							inner_scope.register_struct_field(ast.ScopeStructField{
-								struct_type: left.expr_type
-								name: left.field_name
-								typ: final_left_type
-								sum_type_cast: right_type_unwrapped
-								pos: left.pos
-							})
-						}
+					if _ := scope.find_struct_field(left.expr_type, left.field_name) {
+						final_left_type = right_type_unwrapped
+						mut inner_scope := c.open_scope(mut scope, left.pos.pos)
+						inner_scope.register_struct_field(ast.ScopeStructField{
+							struct_type: left.expr_type
+							name: left.field_name
+							typ: final_left_type
+							sum_type_cast: right_type_unwrapped
+							pos: left.pos
+						})
 					}
 				}
 				ast.Ident {
@@ -3204,7 +3204,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					is_sum_type_cast := obj.sum_type_cast != 0 && !c.is_assign_lhs
+					is_sum_type_cast := obj.sum_type_cast != 0 && !c.prevent_sum_type_unwrapping
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {

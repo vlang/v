@@ -361,6 +361,21 @@ fn test_change_type_match() {
 	assert e is string
 }
 
+__type Expr3 = CallExpr | string
+
+struct CallExpr {
+mut:
+	is_expr bool
+}
+
+fn test_assign_sum_type_casted_field() {
+	mut e := Expr3(CallExpr{})
+	if e is CallExpr {
+		e.is_expr = true
+		assert e.is_expr
+	}
+}
+
 fn test_sum_type_match() {
 	// TODO: Remove these casts
 	assert is_gt_simple('3', int(2))
