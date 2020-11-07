@@ -337,7 +337,18 @@ fn test_if_is_with_reassign_casted_type() {
 	if e is int {
 		e = 5
 	}
-}*/
+}
+
+fn test_change_type() {
+	mut e := Expr(0)
+	if e is int {
+		e = 'str'
+	}
+	if e is string {
+		println(e)
+	}
+}
+*/
 
 fn test_sum_type_match() {
 	// TODO: Remove these casts
