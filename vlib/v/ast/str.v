@@ -129,21 +129,21 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	if !needs_braces {
 		mut sub_expr := lit.exprs[i]
 		for {
-			match sub_expr as sx {
+			match union mut sub_expr {
 				Ident {
-					if sx.name[0] == `@` {
+					if sub_expr.name[0] == `@` {
 						needs_braces = true
 					}
 					break
 				}
 				CallExpr {
-					if sx.args.len != 0 {
+					if sub_expr.args.len != 0 {
 						needs_braces = true
 					}
 					break
 				}
 				SelectorExpr {
-					sub_expr = sx.expr
+					sub_expr = sub_expr.expr
 					continue
 				}
 				else {

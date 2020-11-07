@@ -1027,7 +1027,7 @@ pub mut:
 
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
-	match expr {
+	match union expr {
 		Ident { return expr.kind == .blank_ident }
 		else { return false }
 	}
@@ -1035,7 +1035,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match expr {
+	match union expr {
 		// KEKW2
 		AnonFn {
 			return expr.decl.pos
@@ -1071,7 +1071,7 @@ pub fn (expr Expr) position() token.Position {
 }
 
 pub fn (expr Expr) is_lvalue() bool {
-	match expr {
+	match union expr {
 		Ident { return true }
 		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
@@ -1082,7 +1082,7 @@ pub fn (expr Expr) is_lvalue() bool {
 }
 
 pub fn (expr Expr) is_expr() bool {
-	match expr {
+	match union expr {
 		IfExpr { return expr.is_expr }
 		MatchExpr { return expr.is_expr }
 		else {}

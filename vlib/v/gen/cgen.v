@@ -1620,6 +1620,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('$styp _var_$left.pos.pos = ')
 					g.expr(left.expr)
 					if left.expr_type.is_ptr() {
+						g.write('/* left.expr_type */')
 						g.writeln('->$left.field_name;')
 					} else {
 						g.writeln('.$left.field_name;')
