@@ -55,12 +55,12 @@ pub mut:
 	skip_flags        bool // should `#flag` and `#include` be skipped
 	cur_generic_type  table.Type
 mut:
-	expr_level       int // to avoid infinite recursion segfaults due to compiler bugs
-	inside_sql       bool // to handle sql table fields pseudo variables
-	cur_orm_ts       table.TypeSymbol
-	error_details    []string
-	generic_funcs    []&ast.FnDecl
-	is_assign_lhs   bool
+	expr_level        int // to avoid infinite recursion segfaults due to compiler bugs
+	inside_sql        bool // to handle sql table fields pseudo variables
+	cur_orm_ts        table.TypeSymbol
+	error_details     []string
+	generic_funcs     []&ast.FnDecl
+	is_assign_lhs     bool
 	vmod_file_content string // needed for @VMOD_FILE, contents of the file, *NOT its path*
 }
 
@@ -2185,7 +2185,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			match left {
 				ast.SelectorExpr {
 					if struct_field := scope.find_struct_field(left.expr_type, left.field_name) {
-						if struct_field.sum_type_cast != 0 {
+						if struct_field.sum_type_cast != 0 &&
+							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
 							final_left_type = right_type_unwrapped
 							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
 							inner_scope.register_struct_field(ast.ScopeStructField{
@@ -2200,7 +2201,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 				ast.Ident {
 					if v := scope.find_var(left.name) {
-						if v.sum_type_cast != 0 {
+						if v.sum_type_cast != 0 &&
+							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
 							final_left_type = right_type_unwrapped
 							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
 							inner_scope.register(left.name, ast.Var{
