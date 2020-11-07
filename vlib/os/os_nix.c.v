@@ -68,7 +68,7 @@ pub fn ls(path string) ?[]string {
 	mut ent := &C.dirent(0)
 	// mut ent := &C.dirent{!}
 	for {
-		ent = C.readdir(dir)
+		ent = &C.readdir(dir)
 		if isnil(ent) {
 			break
 		}
