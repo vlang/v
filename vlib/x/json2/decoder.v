@@ -62,7 +62,7 @@ fn (p Parser) emit_error(msg string) string {
 	}
 	column := util.imax(0, cur.pos - pp + cur.len - 1)
 	line := cur.line_nr
-	return '[jisoni] $msg ($line:$column)'
+	return '[json] $msg ($line:$column)'
 }
 
 fn new_parser(srce string, convert_type bool) Parser {
