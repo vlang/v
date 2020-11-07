@@ -342,10 +342,23 @@ fn test_if_is_with_reassign_casted_type() {
 }
 */
 
-fn test_change_type() {
+fn test_change_type_if_is() {
 	mut e := Expr2(0)
 	if e is int {
 		e = 'str'
+		assert e.len == 3
+	}
+	assert e is string
+}
+
+fn test_change_type_match() {
+	mut e := Expr2(0)
+	match union mut e {
+		int {
+			e = 'str'
+			assert e.len == 3
+		}
+		else {}
 	}
 	assert e is string
 }
