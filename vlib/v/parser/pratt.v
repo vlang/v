@@ -45,6 +45,9 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			// .enum_val
 			node = p.enum_val()
 		}
+		.at {
+			node = p.at()
+		}
 		.dollar {
 			match p.peek_tok.kind {
 				.name { return p.vweb() }

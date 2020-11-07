@@ -439,7 +439,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut len1         := -1               // decimal part for floats
 	def_len1         := 6                // default value for len1
 	mut pad_ch       := byte(` `)              // pad char
-	mut th_separator := false            // thousands separator flag
 
 	// prefix chars for Length field
 	mut ch1 := `0`  // +1 char if present else `0`
@@ -453,7 +452,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			len0         = -1
 			len1         = -1
 			pad_ch       = ` `
-			th_separator = false
 			status = .norm_char
 			ch1 = `0`
 			ch2 = `0`
@@ -518,7 +516,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				i++
 				continue
 			} else if ch == `'` {
-				th_separator = true
 				i++
 				continue
 			} else if ch == `.` && fc_ch1 >= `1` && fc_ch1 <= `9` {

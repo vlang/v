@@ -79,18 +79,7 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 		}
 	}
 	//
-	source := read_file(filepath) or {
-		''
-	}
-	mut p := imax(0, imin(source.len - 1, pos.pos))
-	if source.len > 0 {
-		for ; p >= 0; p-- {
-			if source[p] == `\r` || source[p] == `\n` {
-				break
-			}
-		}
-	}
-	column := imax(0, pos.pos - p - 1)
+	source, column := filepath_pos_to_source_and_column(filepath, pos)
 	position := '$path:${pos.line_nr + 1}:${imax(1, column + 1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
@@ -99,6 +88,24 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
 	//
 	return '$final_position $final_kind $final_msg$final_context'.trim_space()
+}
+
+pub fn filepath_pos_to_source_and_column(filepath string, pos token.Position) (string, int) {
+	// TODO: optimize this; may be use a cache.
+	// The column should not be so computationally hard to get.
+	source := read_file(filepath) or {
+		''
+	}
+	mut p := imax(0, imin(source.len - 1, pos.pos))
+	if source.len > 0 {
+		for ; p >= 0; p-- {
+			if source[p] == `\n` || source[p] == `\r` {
+				break
+			}
+		}
+	}
+	column := imax(0, pos.pos - p - 1)
+	return source, column
 }
 
 pub fn source_context(kind string, source string, column int, pos token.Position) []string {

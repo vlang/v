@@ -51,9 +51,10 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 
 pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?ScopeStructField {
 	for sc := s; true; sc = sc.parent {
-		fields := sc.struct_fields.filter(it.struct_type == struct_type && it.name == field_name)
-		if fields.len > 0 {
-			return fields[0]
+		for field in sc.struct_fields {
+			if field.struct_type == struct_type && field.name == field_name {
+				return field
+			}
 		}
 		if isnil(sc.parent) {
 			break
@@ -111,8 +112,10 @@ pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 }
 
 pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
-	if _ := s.find_struct_field(field.struct_type, field.name) {
-		return
+	for f in s.struct_fields {
+		if f.struct_type == field.struct_type && f.name == field.name {
+			return
+		}
 	}
 	s.struct_fields << field
 }

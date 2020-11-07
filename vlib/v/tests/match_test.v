@@ -222,3 +222,10 @@ fn test_match_sumtype_multiple_types() {
 		}
 	}
 }
+
+fn test_sub_expression() {
+	b := false && match 1 {0 {true} else {true}}
+	assert !b
+	c := true || match 1 {0 {false} else {false}}
+	assert c
+}

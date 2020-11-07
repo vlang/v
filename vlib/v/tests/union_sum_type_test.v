@@ -285,6 +285,7 @@ fn test_assignment() {
 
 __type Inner = int | string
 struct InnerStruct {
+mut:
 	x Inner
 }
 __type Outer = string | InnerStruct
@@ -295,6 +296,83 @@ fn test_nested_if_is() {
 		if b.x is int {
 			println(b.x)
 		}
+	}
+}
+
+fn test_casted_sum_type_selector_reassign() {
+	mut b := InnerStruct{Inner(0)}
+	if b.x is int {
+		assert typeof(b.x) == 'int'
+		b.x = 'test'
+		assert typeof(b.x) == 'string'
+	}
+	assert typeof(b.x) == 'Inner'
+}
+
+fn test_casted_sum_type_ident_reassign() {
+	mut x := Inner(0)
+	if x is int {
+		assert typeof(x) == 'int'
+		x = 'test'
+		assert typeof(x) == 'string'
+	}
+	assert typeof(x) == 'Inner'
+}
+
+__type Expr2 = int | string
+
+fn test_match_with_reassign_casted_type() {
+	mut e := Expr2(0)
+	match union mut e {
+		int {
+			e = int(5)
+			assert e == 5
+		}
+		else {}
+	}
+}
+
+fn test_if_is_with_reassign_casted_type() {
+	mut e := Expr2(0)
+	if e is int {
+		e = int(5)
+		assert e == 5
+	}
+}
+
+fn test_change_type_if_is() {
+	mut e := Expr2(0)
+	if e is int {
+		e = 'str'
+		assert e.len == 3
+	}
+	assert e is string
+}
+
+fn test_change_type_match() {
+	mut e := Expr2(0)
+	match union mut e {
+		int {
+			e = 'str'
+			assert e.len == 3
+		}
+		else {}
+	}
+	assert e is string
+}
+
+__type Expr3 = CallExpr | string
+
+struct CallExpr {
+mut:
+	is_expr bool
+}
+
+fn test_assign_sum_type_casted_field() {
+	mut e := Expr3(CallExpr{})
+	if e is CallExpr {
+		e.is_expr = true
+		assert e.is_expr
 	}
 }
 
