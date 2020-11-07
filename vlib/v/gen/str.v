@@ -6,6 +6,10 @@ import v.ast
 import v.table
 import strings
 
+const (
+	invalid_escapes = ['(', '{', '$', '`', '.']
+)
+
 fn smart_quote(str string, raw bool) string {
 	len := str.len
 	if len == 0 {
@@ -14,6 +18,7 @@ fn smart_quote(str string, raw bool) string {
 	mut result := strings.new_builder(0)
 	mut pos := -1
 	mut last := ''
+	// TODO: This should be a single char?
 	mut next := ''
 	mut skip_next := false
 	for {
@@ -43,45 +48,43 @@ fn smart_quote(str string, raw bool) string {
 			toadd = '\\"'
 			current = ''
 		}
-		if raw && current == '\\' {
-			toadd = '\\\\'
-		}
-		// keep newlines in string
-		if current == '\n' {
-			toadd = '\\n'
-			current = ''
-		}
-		if current == '\r' && next == '\n' {
-			toadd = '\r\n'
-			current = ''
-			skip_next = true
-		}
-		// backslash
-		if !raw && current == '\\' {
-			// escaped backslash - keep as is
-			if next == '\\' {
+		if current == '\\' {
+			if raw {
 				toadd = '\\\\'
-				skip_next = true
-			}
-			// keep raw escape squence
-			else {
-				if next != '' {
+			} else {
+				// escaped backslash - keep as is
+				if next == '\\' {
+					toadd = '\\\\'
+					skip_next = true
+				} else if next != '' {
 					if raw {
 						toadd = '\\\\' + next
 						skip_next = true
 					}
-					// escape it
-					else {
+					// keep all valid escape sequences
+					else if next !in invalid_escapes {
 						toadd = '\\' + next
+						skip_next = true
+					} else {
+						toadd = next
 						skip_next = true
 					}
 				}
 			}
 		}
+		// keep newlines in string
+		if current == '\n' {
+			toadd = '\\n'
+			current = ''
+		} else if current == '\r' && next == '\n' {
+			toadd = '\r\n'
+			current = ''
+			skip_next = true
+		}
 		// Dolar sign
 		if !raw && current == '$' {
 			if last == '\\' {
-				toadd = '\\$'
+				toadd = r'\$'
 			}
 		}
 		// Windows style new line \r\n

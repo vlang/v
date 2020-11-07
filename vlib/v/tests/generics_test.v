@@ -13,11 +13,17 @@ fn plus<T>(xxx T, b T) T {
 	return xxx + b
 }
 
-fn test_generic_fn() {
+fn test_identity() {
 	assert simple<int>(1) == 1
 	assert simple<int>(1 + 0) == 1
 	assert simple<string>('g') == 'g'
 	assert simple<string>('g') + 'h' == 'gh'
+	
+	assert simple<[]int>([1])[0] == 1
+	assert simple<map[string]string>({'a':'b'})['a'] == 'b'
+}
+
+fn test_plus() {
 	a := plus<int>(2, 3)
 	println(a)
 	assert a == 5

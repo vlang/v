@@ -211,11 +211,12 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos      token.Position
-	is_short bool
+	pos          token.Position
+	is_short     bool
+	pre_comments []Comment
 pub mut:
-	typ      table.Type
-	fields   []StructInitField
+	typ          table.Type
+	fields       []StructInitField
 }
 
 // import statement
@@ -273,6 +274,7 @@ pub:
 pub mut:
 	stmts         []Stmt
 	return_type   table.Type
+	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 }
 
 // break, continue

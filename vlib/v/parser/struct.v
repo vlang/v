@@ -299,6 +299,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
+	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
@@ -354,6 +355,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			len: last_pos.pos - first_pos.pos + last_pos.len
 		}
 		is_short: no_keys
+		pre_comments: pre_comments
 	}
 	return node
 }
@@ -388,9 +390,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	typ := table.new_type(reg_idx)
 	mut ts := p.table.get_type_symbol(typ)
 	// if methods were declared before, it's an error, ignore them
-	ts.methods.clear()
+	ts.methods = []table.Fn{cap: 20}
 	// Parse methods
-	mut methods := []ast.FnDecl{}
+	mut methods := []ast.FnDecl{cap: 20}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
@@ -423,6 +425,8 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
+		mcomments := p.eat_comments()
+		method.comments = mcomments
 		methods << method
 		// println('register method $name')
 		return_type_sym := p.table.get_type_symbol(method.return_type)

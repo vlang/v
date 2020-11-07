@@ -46,6 +46,7 @@ pub mut:
 	use_short_fn_args bool
 	it_name           string // the name to replace `it` with
 	inside_lambda     bool
+	is_mbranch_expr   bool // math a { x...y { } }
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -688,7 +689,13 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
-		f.writeln(method.stringify(f.table, f.cur_mod).after('fn '))
+		f.write(method.stringify(f.table, f.cur_mod).after('fn '))
+		f.comments(method.comments, {
+			inline: true
+			has_nl: false
+			level: .indent
+		})
+		f.writeln('')
 	}
 	f.writeln('}\n')
 }
@@ -890,7 +897,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.RangeExpr {
 			f.expr(node.low)
-			f.write('..')
+			if f.is_mbranch_expr {
+				f.write('...')
+			} else {
+				f.write('..')
+			}
 			f.expr(node.high)
 		}
 		ast.SelectExpr {
@@ -1208,9 +1219,11 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.attrs(node.attrs)
 	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
-		f.writeln(' {')
-		f.stmts(node.stmts)
-		f.write('}')
+		if !node.no_body {
+			f.writeln(' {')
+			f.stmts(node.stmts)
+			f.write('}')
+		}
 		if !node.is_anon {
 			f.writeln('\n')
 		}
@@ -1524,12 +1537,14 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 		}
 		if !branch.is_else {
 			// normal branch
+			f.is_mbranch_expr = true
 			for j, expr in branch.exprs {
 				f.expr(expr)
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
 			}
+			f.is_mbranch_expr = false
 		} else {
 			// else branch
 			f.write('else')
@@ -1793,6 +1808,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		} else {
 			f.writeln('$name{')
 		}
+		f.comments(it.pre_comments, {
+			inline: true
+			has_nl: true
+			level: .indent
+		})
 		f.indent++
 		for field in it.fields {
 			f.write('$field.name: ')

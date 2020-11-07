@@ -3053,8 +3053,9 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			}
 			node.val = c.vmod_file_content
 		}
-		.unknown, ._end_ {
-			c.error('unknown @ identifier: $node.name', node.pos)
+		.unknown {
+			c.error('unknown @ identifier: ${node.name}. Available identifiers: $token.valid_at_tokens',
+				node.pos)
 		}
 	}
 	return table.string_type
