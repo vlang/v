@@ -2166,7 +2166,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 							inner_scope.register_struct_field(ast.ScopeStructField{
 								struct_type: left.expr_type
 								name: left.field_name
-								typ: final_left_type 
+								typ: final_left_type
 								sum_type_cast: right_type_unwrapped
 								pos: left.pos
 							})
