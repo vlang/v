@@ -38,6 +38,7 @@ pub:
 	attrs                   []Attr
 pub mut:
 	name                    string
+	source_fn               voidptr // set in the checker, while processing fn declarations
 }
 
 fn (f &Fn) method_equals(o &Fn) bool {
@@ -162,9 +163,12 @@ pub fn (mut t Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
+pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
+	// returns a method index, stored in the ast.FnDecl
+	// for faster lookup in the checker's fn_decl method
 	// println('reg me $new_fn.name nr_args=$new_fn.args.len')
 	t.methods << new_fn
+	return t.methods.len-1
 }
 
 pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {

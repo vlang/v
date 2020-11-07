@@ -32,7 +32,7 @@ pub struct Checker {
 	pref              &pref.Preferences // Preferences shared from V struct
 pub mut:
 	table             &table.Table
-	file              ast.File
+	file              &ast.File = 0
 	nr_errors         int
 	nr_warnings       int
 	errors            []errors.Error
@@ -61,9 +61,8 @@ mut:
 	cur_orm_ts        table.TypeSymbol
 	error_details     []string
 	generic_funcs     []&ast.FnDecl
-	all_v_methods     []&ast.FnDecl // vweb related
-	vweb_gen_types    []table.Type // vweb related
 	vmod_file_content string // needed for @VMOD_FILE, contents of the file, *NOT its path*
+	vweb_gen_types    []table.Type // vweb route checks
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -74,7 +73,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	}
 }
 
-pub fn (mut c Checker) check(ast_file ast.File) {
+pub fn (mut c Checker) check(ast_file &ast.File) {
 	c.file = ast_file
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
@@ -115,7 +114,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 }
 
 // not used right now
-pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
+pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -150,7 +149,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			has_main_fn = true
 		}
 	}
-	c.verify_all_vweb_routes(ast_files)
+	c.verify_all_vweb_routes()
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -4249,6 +4248,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('cannot define new methods on non-local `$sym.source_name` (' +
 				'current module is `$c.mod`, `$sym.source_name` is from `$sym.mod`)', node.pos)
 		}
+		// needed for proper error reporting during vweb route checking
+		sym.methods[node.method_idx].source_fn = voidptr(node)
 	}
 	if node.language == .v {
 		// Make sure all types are valid
@@ -4305,9 +4306,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.error('missing return at end of function `$node.name`', node.pos)
 	}
 	c.returns = false
-	if node.is_method {
-		c.all_v_methods << node
-	}
+	node.source_file = c.file
 }
 
 fn has_top_return(stmts []ast.Stmt) bool {
@@ -4344,7 +4343,7 @@ fn (mut c Checker) verify_vweb_params_for_method(m table.Fn) (bool, int, int) {
 	return route_attributes == margs, route_attributes, margs
 }
 
-fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
+fn (mut c Checker) verify_all_vweb_routes() {
 	if c.vweb_gen_types.len == 0 {
 		return
 	}
@@ -4356,17 +4355,15 @@ fn (mut c Checker) verify_all_vweb_routes(ast_files []ast.File) {
 			if m.return_type_source_name == 'vweb.Result' {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
-					for f in c.all_v_methods {
-						if f.return_type == typ_vweb_result &&
-							f.receiver.typ == m.params[0].typ && f.name == m.name {
-							for afidx in 0 .. ast_files.len {
-								if ast_files[afidx].path == f.file {
-									c.file = unsafe {&ast_files[afidx]}
-									c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
-										f.pos)
-								}
-							}
-						}
+					f := &ast.FnDecl(m.source_fn)
+					if isnil(f) {
+						continue
+					}
+					if f.return_type == typ_vweb_result &&
+						f.receiver.typ == m.params[0].typ && f.name == m.name {
+						c.file = f.source_file // setup of file path for the warning
+						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+							f.pos)
 					}
 				}
 			}

@@ -260,12 +260,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		(p.tok.kind == .key_fn && p.tok.line_nr == p.prev_tok.line_nr) {
 		return_type = p.parse_type()
 	}
+	mut type_sym_method_idx := 0
 	// Register
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
 		ret_type_sym := p.table.get_type_symbol(return_type)
 		// p.warn('reg method $type_sym.name . $name ()')
-		type_sym.register_method(table.Fn{
+		type_sym_method_idx = type_sym.register_method(table.Fn{
 			name: name
 			params: params
 			return_type: return_type
@@ -336,6 +337,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		receiver_pos: receiver_pos
 		is_method: is_method
+		method_idx: type_sym_method_idx
 		rec_mut: rec_mut
 		language: language
 		no_body: no_body
