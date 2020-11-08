@@ -260,6 +260,7 @@ pub:
 	receiver      Field
 	receiver_pos  token.Position
 	is_method     bool
+	method_idx    int
 	rec_mut       bool // is receiver mutable
 	rec_share     table.ShareType
 	language      table.Language
@@ -275,6 +276,7 @@ pub mut:
 	stmts         []Stmt
 	return_type   table.Type
 	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	source_file   &File = 0
 }
 
 // break, continue

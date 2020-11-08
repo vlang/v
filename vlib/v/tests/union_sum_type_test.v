@@ -340,6 +340,20 @@ fn test_if_is_with_reassign_casted_type() {
 	}
 }
 
+struct Expr2Wrapper {
+mut:
+	expr Expr2
+}
+
+fn test_change_type_if_is_selector() {
+	mut e := Expr2Wrapper{Expr2(0)}
+	if e.expr is int {
+		e.expr = 'str'
+		assert e.expr.len == 3
+	}
+	assert e.expr is string
+}
+
 fn test_change_type_if_is() {
 	mut e := Expr2(0)
 	if e is int {
@@ -373,6 +387,33 @@ fn test_assign_sum_type_casted_field() {
 	if e is CallExpr {
 		e.is_expr = true
 		assert e.is_expr
+	}
+}
+
+__type Expr4 = CallExpr2 | CTempVarExpr
+struct Expr4Wrapper {
+mut:
+	expr Expr4
+}
+struct CallExpr2 {}
+
+struct CTempVarExpr {}
+
+fn gen(_ Expr4) CTempVarExpr {
+	return CTempVarExpr{}
+}
+
+fn test_reassign_from_function_with_parameter() {
+	mut f := Expr4(CallExpr2{})
+	if f is CallExpr2 {
+		f = gen(f)
+	}
+}
+
+fn test_reassign_from_function_with_parameter_selector() {
+	mut f := Expr4Wrapper{Expr4(CallExpr2{})}
+	if f.expr is CallExpr2 {
+		f.expr = gen(f.expr)
 	}
 }
 

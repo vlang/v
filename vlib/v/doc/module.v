@@ -65,7 +65,7 @@ pub fn lookup_module_with_path(mod string, base_path string) ?string {
 	compile_dir := os.real_path(base_path)
 	modules_dir := os.join_path(compile_dir, 'modules', mod_path)
 	vlib_path := os.join_path(os.dir(@VEXE), 'vlib', mod_path)
-	vmodules_path := os.join_path(os.home_dir(), '.vmodules', mod_path)
+	vmodules_path := os.join_path(os.vmodules_dir(), mod_path)
 	paths := [modules_dir, vlib_path, vmodules_path]
 	for path in paths {
 		if !os.exists(path) || os.is_dir_empty(path) {
