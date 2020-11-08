@@ -390,14 +390,16 @@ fn test_assign_sum_type_casted_field() {
 	}
 }
 
-/*
 __type Expr4 = CallExpr2 | CTempVarExpr
-
+struct Expr4Wrapper {
+mut:
+	expr Expr4
+}
 struct CallExpr2 {}
 
 struct CTempVarExpr {}
 
-fn gen(_ Expr) CTempVarExpr {
+fn gen(_ Expr4) CTempVarExpr {
 	return CTempVarExpr{}
 }
 
@@ -406,7 +408,14 @@ fn test_reassign_from_function_with_parameter() {
 	if f is CallExpr2 {
 		f = gen(f)
 	}
-}*/
+}
+
+fn test_reassign_from_function_with_parameter_selector() {
+	mut f := Expr4Wrapper{Expr4(CallExpr2{})}
+	if f.expr is CallExpr2 {
+		f.expr = gen(f.expr)
+	}
+}
 
 fn test_sum_type_match() {
 	// TODO: Remove these casts

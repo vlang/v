@@ -1237,9 +1237,29 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 				g.expr(expr)
 				g.write(', .typ = $got_type /* $got_sym.name */}')
 			} else {
-				g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
+				println(typeof(expr))
+				mut is_already_sum_type := false
+				scope := g.file.scope.innermost(expr.position().pos)
+				if expr is ast.Ident {
+					if v := scope.find_var(expr.name) {
+						if v.sum_type_cast != 0 {
+							is_already_sum_type = true
+						}
+					}
+				} else if expr is ast.SelectorExpr {
+					if _ := scope.find_struct_field(expr.expr_type, expr.field_name) {
+						is_already_sum_type = true
+					}
+				}
+				if is_already_sum_type {
+					// Don't create a new sum type wrapper if there is already one
+					g.prevent_sum_type_unwrapping_once = true
+					g.expr(expr)
+				} else {		
+					g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
+					g.expr(expr)
+					g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
+				}
 			}
 			return
 		}
