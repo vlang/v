@@ -1770,7 +1770,6 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	}
 	mut unknown_field_msg := 'type `$sym.source_name` has no field or method `$field_name`'
 	if field := c.table.struct_find_field(sym, field_name) {
-		println(field)
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			c.error('field `${sym.source_name}.$field_name` is not public', selector_expr.pos)
 		}
