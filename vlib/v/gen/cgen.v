@@ -1237,7 +1237,6 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 				g.expr(expr)
 				g.write(', .typ = $got_type /* $got_sym.name */}')
 			} else {
-				println(typeof(expr))
 				mut is_already_sum_type := false
 				scope := g.file.scope.innermost(expr.position().pos)
 				if expr is ast.Ident {
