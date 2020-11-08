@@ -30,6 +30,7 @@ fn class(extends string, instanceof int) {
 fn main() {
 	println('Hello from V.js!')
 	println(JS.Math.atan2(1, 0))
+	println(JS.eval("console.log('Hello!')"))
 	mut a := 1
 	a *= 2
 	a += 3
