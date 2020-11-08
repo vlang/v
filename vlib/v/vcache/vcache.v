@@ -36,7 +36,7 @@ pub mut:
 pub fn new_cache_manager(opts []string) CacheManager {
 	mut vcache_basepath := os.getenv('VCACHE')
 	if vcache_basepath == '' {
-		vcache_basepath = os.join_path(os.home_dir(), '.vmodules', 'cache')
+		vcache_basepath = os.join_path(os.vmodules_dir(), 'cache')
 	}
 	if !os.is_dir(vcache_basepath) {
 		os.mkdir_all(vcache_basepath)

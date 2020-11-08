@@ -7,12 +7,8 @@ import os
 import v.vcache
 
 pub const (
-	default_module_path = mpath()
+	default_module_path = os.vmodules_dir()
 )
-
-fn mpath() string {
-	return os.join_path(os.home_dir(), '.vmodules')
-}
 
 pub fn new_preferences() Preferences {
 	mut p := Preferences{}
