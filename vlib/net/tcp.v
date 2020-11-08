@@ -21,8 +21,8 @@ pub fn dial_tcp(address string) ?TcpConn {
 	return TcpConn {
 		sock: s
 
-		read_timeout: -1
-		write_timeout: -1
+		read_timeout: 0
+		write_timeout: 0
 	}
 }
 
@@ -71,9 +71,9 @@ pub fn (c TcpConn) write_str(s string) ? {
 }
 
 pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
-	res := C.recv(c.sock.handle, buf_ptr, len, 0)
+	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
 
-	if res >= 0 {
+	if res > 0 {
 		return res
 	}
 
@@ -81,7 +81,8 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	match code {
 		error_ewouldblock {
 			c.wait_for_read()?
-			return socket_error(C.recv(c.sock.handle, buf_ptr, len, 0))
+			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
+			return socket_error(res)
 		}
 		else {
 			wrap_error(code)?
@@ -90,22 +91,7 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 }
 
 pub fn (c TcpConn) read(mut buf []byte) ?int {
-	res := C.recv(c.sock.handle, buf.data, buf.len, 0)
-
-	if res >= 0 {
-		return res
-	}
-
-	code := error_code()
-	match code {
-		error_ewouldblock {
-			c.wait_for_read()?
-			return socket_error(C.recv(c.sock.handle, buf.data, buf.len, 0))
-		}
-		else {
-			wrap_error(code)?
-		}
-	}
+	return c.read_ptr(buf.data, buf.len)
 }
 
 pub fn (c TcpConn) read_deadline() ?time.Time {
@@ -188,8 +174,8 @@ pub fn listen_tcp(port int) ?TcpListener {
 
 	return TcpListener {
 		sock: s
-		accept_timeout: -1
 		accept_deadline: no_deadline
+		accept_timeout: infinite_timeout
 	}
 }
 
@@ -220,8 +206,6 @@ pub fn (l TcpListener) accept() ?TcpConn {
 
 	return TcpConn{
 		sock: new_sock
-		read_timeout: -1
-		write_timeout: -1
 	}
 }
 

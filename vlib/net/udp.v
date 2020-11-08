@@ -88,9 +88,9 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	mut addr_from := C.sockaddr{}
 	len := sizeof(C.sockaddr)
 
-	res := C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len)
+	mut res := wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
 
-	if res >= 0 {
+	if res > 0 {
 		port_from := (&C.sockaddr_in(&addr_from)).sin_port
 		addr := new_addr(addr_from, '', port_from)?
 		return res, addr
@@ -100,7 +100,9 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	match code {
 		error_ewouldblock {
 			c.wait_for_read()?
-			res2 := socket_error(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
+			// same setup as in tcp
+			res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
+			res2 := socket_error(res)?
 
 			port_from := (&C.sockaddr_in(&addr_from)).sin_port
 			addr := new_addr(addr_from, '', port_from)?

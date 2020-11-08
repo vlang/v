@@ -71,3 +71,7 @@ thumbs.db
 /.bin
 
 _docs
+
+# ignore vs databases
+*.suo
+*.VC.db
