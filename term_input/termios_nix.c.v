@@ -9,6 +9,7 @@ fn C.tcgetattr()
 fn C.tcsetattr()
 struct C.termios {
 mut:
+	c_iflag u32
 	c_lflag u32
 	c_cc    [32]byte
 }
@@ -24,18 +25,25 @@ fn get_termios() &C.termios {
 	return t
 }
 
-fn termios_setup() &C.termios {
+fn (mut ctx Context) termios_setup() {
 	mut termios := get_termios()
-	// Set raw input mode by unsetting ICANON and ECHO
-	termios.c_lflag &= u32(~C.ICANON)
-	termios.c_lflag &= u32(~C.ECHO)
+
+	if ctx.cfg.capture_events {
+		// Set raw input mode by unsetting ICANON and ECHO,
+		// as well as disable e.g. ctrl+c and ctrl.z
+		termios.c_iflag &= ~u32(C.IGNBRK | C.BRKINT | C.PARMRK)
+		termios.c_lflag &= ~u32(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
+	} else {
+		// Set raw input mode by unsetting ICANON and ECHO
+		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)	
+	}
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, termios)
 	println('\x1b[?1003h\x1b[?1015h\x1b[?1006h')
 
-	return termios
+	ctx.termios = termios
 }
 
 fn termios_reset() {
@@ -58,10 +66,12 @@ fn (mut ctx Context) termios_loop() {
 			init_called = true
 		}
 		// println('SLEEPING: $sleep_len')
-		time.usleep(sleep_len)
+		if sleep_len > 0 {
+			time.usleep(sleep_len)
+		}
 		sw.restart()
 		if ctx.cfg.event_fn != voidptr(0) {
-			len := C.read(C.STDIN_FILENO, ctx.buf.data, ctx.cfg.buffer_size - ctx.buf.len)
+			len := C.read(C.STDIN_FILENO, ctx.buf.data, ctx.buf.cap - ctx.buf.len)
 			if len > 0 {
 				ctx.resize_arr(len)
 				ctx.parse_events()
@@ -74,6 +84,8 @@ fn (mut ctx Context) termios_loop() {
 		sw.pause()
 		e := sw.elapsed().microseconds()
 		sleep_len = frame_time - int(e)
+
+		ctx.frame_count++
 	}
 }
 

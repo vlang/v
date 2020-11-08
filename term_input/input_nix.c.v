@@ -57,17 +57,18 @@ pub mut:
 }
 
 pub struct Config {
-	user_data   voidptr
-	init_fn     fn(voidptr)
-	frame_fn    fn(voidptr)
-	event_fn    fn(&Event, voidptr)
+	user_data      voidptr
+	init_fn        fn(voidptr)
+	frame_fn       fn(voidptr)
+	event_fn       fn(&Event, voidptr)
 
-	buffer_size int = 256
-	frame_rate  int = 30
-	use_x11     bool
+	buffer_size    int = 256
+	frame_rate     int = 30
+	use_x11        bool
 
+	capture_events bool
 	// All kill signals
-	reset       []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
+	reset          []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
 
 }
 
@@ -93,21 +94,22 @@ pub fn (mut ctx Context) run() {
 		eprintln('error: x11 backend not implemented yet')
 		exit(1)
 	} else {
-		ctx.termios = termios_setup()
+		ctx.termios_setup()
 		ctx.termios_loop()
 	}
 }
 
 [inline]
 // shifts the array left, to remove any data that was just read, and updates its len
+// TODO: remove
 fn (mut ctx Context) shift(len int) {
 	unsafe {
-		C.memmove(ctx.buf.data, ctx.buf.data + len, ctx.cfg.buffer_size - len)
+		C.memmove(ctx.buf.data, ctx.buf.data + len, ctx.buf.cap - len)
 		ctx.resize_arr(ctx.buf.len - len)
 	}
 }
 
-// TODO: Find a safer/better way of doing this
+// TODO: don't actually do this, lmao
 [inline]
 fn (mut ctx Context) resize_arr(size int) {
 	mut l := &ctx.buf.len
