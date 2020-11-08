@@ -2333,8 +2333,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
-			if node.expr is ast.TypeOf as left {
-				g.typeof_name(left)
+			if node.name_type > 0 {
+				g.type_name(node.name_type)
 				return
 			}
 			if node.expr_type == 0 {
@@ -2405,11 +2405,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-// typeof(expr).name
-// Note: typeof() should be a type known at compile-time, not a string
-// sum types should not be handled dynamically
-fn (mut g Gen) typeof_name(node ast.TypeOf) {
-	mut typ := node.expr_type
+// T.name, typeof(expr).name
+fn (mut g Gen) type_name(type_ table.Type) {
+	mut typ := type_
 	if typ.has_flag(.generic) {
 		typ = g.cur_generic_type
 	}

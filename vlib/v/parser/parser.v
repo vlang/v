@@ -1094,6 +1094,19 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		(!p.inside_for || p.inside_select) { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
+		// T.name
+		if p.tok.lit == 'T' {
+			pos := p.tok.position()
+			name := p.check_name()
+			p.check(.dot)
+			field := p.check_name()
+			pos.extend(p.tok.position())
+			return ast.SelectorExpr{
+				expr: ast.Ident{name: name}
+				field_name: field
+				pos: pos
+			}
+		}
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {
