@@ -1254,7 +1254,7 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 					// Don't create a new sum type wrapper if there is already one
 					g.prevent_sum_type_unwrapping_once = true
 					g.expr(expr)
-				} else {		
+				} else {
 					g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
 					g.expr(expr)
 					g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
