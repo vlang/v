@@ -299,7 +299,7 @@ fn non_empty(arg []string) []string {
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
-	mpath := os.join_path(os.home_dir(), '.vmodules', modulename)
+	mpath := os.join_path(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/$modulename'
 	if is_verbose {

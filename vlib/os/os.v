@@ -1146,7 +1146,7 @@ pub fn real_path(fpath string) string {
 }
 
 fn normalize_drive_letter(path string) string {
-	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`) 
+	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
 	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
 	// Capital drive letters do work fine.
 	$if !windows {
@@ -1351,6 +1351,15 @@ pub fn temp_dir() string {
 	}
 	if path == '' {
 		path = '/tmp'
+	}
+	return path
+}
+
+// vmodules_dir returns the path to a folder, where v stores its global modules.
+pub fn vmodules_dir() string {
+	mut path := os.getenv('VMODULES')
+	if path == '' {
+		path = os.join_path(os.home_dir(), '.vmodules')
 	}
 	return path
 }

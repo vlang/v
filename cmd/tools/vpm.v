@@ -552,7 +552,7 @@ fn init_settings() {
 	s.is_help = '-h' in os.args || '--help' in os.args || 'help' in os.args
 	s.is_verbose = '-v' in os.args
 	s.server_urls = cmdline.options(os.args, '-server-url')
-	s.vmodules_path = os.join_path(os.home_dir(), '.vmodules')
+	s.vmodules_path = os.vmodules_dir()
 }
 
 fn verbose_println(s string) {
