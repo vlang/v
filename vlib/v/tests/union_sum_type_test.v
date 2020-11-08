@@ -340,6 +340,20 @@ fn test_if_is_with_reassign_casted_type() {
 	}
 }
 
+struct Expr2Wrapper {
+mut:
+	expr Expr2
+}
+
+fn test_change_type_if_is_selector() {
+	mut e := Expr2Wrapper{Expr2(0)}
+	if e.expr is int {
+		e.expr = 'str'
+		assert e.expr.len == 3
+	}
+	assert e.expr is string
+}
+
 fn test_change_type_if_is() {
 	mut e := Expr2(0)
 	if e is int {

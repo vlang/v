@@ -61,7 +61,7 @@ mut:
 	error_details               []string
 	generic_funcs               []&ast.FnDecl
 	vmod_file_content           string // needed for @VMOD_FILE, contents of the file, *NOT its path*
-	prevent_sum_type_unwrapping bool // needed for assign new values to sum type
+	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1742,6 +1742,8 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 }
 
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
+	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
+	c.prevent_sum_type_unwrapping_once = false
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
@@ -1772,9 +1774,11 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind == .union_sum_type {
-			scope := c.file.scope.innermost(selector_expr.pos.pos)
-			if scope_field := scope.find_struct_field(utyp, field_name) {
-				return scope_field.sum_type_cast
+			if !prevent_sum_type_unwrapping_once {
+				scope := c.file.scope.innermost(selector_expr.pos.pos)
+				if scope_field := scope.find_struct_field(utyp, field_name) {
+					return scope_field.sum_type_cast
+				}
 			}
 		}
 		selector_expr.typ = field.typ
@@ -1999,11 +2003,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		is_blank_ident := left.is_blank_ident()
 		mut left_type := table.void_type
 		if !is_decl && !is_blank_ident {
-			if left is ast.Ident {
-				c.prevent_sum_type_unwrapping = true
+			if left is ast.Ident || left is ast.SelectorExpr {
+				c.prevent_sum_type_unwrapping_once = true
 			}
 			left_type = c.expr(left)
-			c.prevent_sum_type_unwrapping = false
 			c.expected_type = c.unwrap_generic(left_type)
 		}
 		if assign_stmt.right_types.len < assign_stmt.left.len { // first type or multi return types added above
@@ -3204,7 +3207,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					is_sum_type_cast := obj.sum_type_cast != 0 && !c.prevent_sum_type_unwrapping
+					is_sum_type_cast := obj.sum_type_cast != 0 && !c.prevent_sum_type_unwrapping_once
+					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
 						if obj.expr is ast.Ident {

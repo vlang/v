@@ -121,7 +121,7 @@ mut:
 	// nr_vars_to_free       int
 	doing_autofree_tmp          bool
 	inside_lambda               bool
-	prevent_sum_type_unwrapping bool // needed for assign new values to sum type
+	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 }
 
 const (
@@ -1783,11 +1783,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					g.write('$styp ')
 				}
-				if left is ast.Ident {
-					g.prevent_sum_type_unwrapping = true
+				if left is ast.Ident || left is ast.SelectorExpr {
+					g.prevent_sum_type_unwrapping_once = true
 				}
 				g.expr(left)
-				g.prevent_sum_type_unwrapping = false
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
@@ -2413,6 +2412,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
+			prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+			g.prevent_sum_type_unwrapping_once = false
 			if node.expr is ast.TypeOf as left {
 				g.typeof_name(left)
 				return
@@ -2437,12 +2438,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if field := g.table.struct_find_field(sym, node.field_name) {
 				field_sym := g.table.get_type_symbol(field.typ)
 				if field_sym.kind == .union_sum_type {
-					// check first if field is sum type because scope searching is expensive
-					scope := g.file.scope.innermost(node.pos.pos)
-					if field := scope.find_struct_field(node.expr_type, node.field_name) {
-						// union sum type deref
-						g.write('(*')
-						sum_type_deref_field = '_$field.sum_type_cast'
+					if !prevent_sum_type_unwrapping_once {
+						// check first if field is sum type because scope searching is expensive
+						scope := g.file.scope.innermost(node.pos.pos)
+						if field := scope.find_struct_field(node.expr_type, node.field_name) {
+							// union sum type deref
+							g.write('(*')
+							sum_type_deref_field = '_$field.sum_type_cast'
+						}
 					}
 				}
 			}
@@ -3225,6 +3228,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
+	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+	g.prevent_sum_type_unwrapping_once = false
 	if node.name == 'lld' {
 		return
 	}
@@ -3255,9 +3260,11 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_cast != 0 && !g.prevent_sum_type_unwrapping {
-				g.write('(*${name}._$v.sum_type_cast)')
-				return
+			if v.sum_type_cast != 0 {
+				if !prevent_sum_type_unwrapping_once {
+					g.write('(*${name}._$v.sum_type_cast)')
+					return
+				}
 			}
 		}
 	}
