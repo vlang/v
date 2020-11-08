@@ -54,7 +54,8 @@ The build flags are shared by the build and run commands:
       separated by pipes (`|`). In addition to absolute paths, you can
       also use these special strings too:
            @vmodules - replaced with the location of the global ~/.vmodules/ folder
-           (modules installed with `v install` are there).
+                       (modules installed with `v install` are there). You can change 
+                       its location by setting the environment variable VMODULES.
            @vlib - replaced with the location of the v's vlib folder.
       Using these, you can arrange for very flexible search orders for you project, for example:
            -path "/v/my_project_private_modules|@vlib|@vmodules"

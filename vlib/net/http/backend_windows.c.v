@@ -8,7 +8,7 @@ module http
 #include "vschannel.c"
 fn C.new_tls_context() C.TlsContext
 
-fn (req &Request) ssl_do(port int, method Method, host_name, path string) ?Response {
+fn (req &Request) ssl_do(port int, method Method, host_name string, path string) ?Response {
 	mut ctx := C.new_tls_context()
 	C.vschannel_init(&ctx)
 	mut buff := malloc(C.vsc_init_resp_buff_size)

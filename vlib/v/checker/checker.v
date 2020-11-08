@@ -30,22 +30,22 @@ const (
 pub struct Checker {
 	pref                        &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table                       &table.Table
-	file                        ast.File
-	nr_errors                   int
-	nr_warnings                 int
-	errors                      []errors.Error
-	warnings                    []errors.Warning
-	error_lines                 []int // to avoid printing multiple errors for the same line
-	expected_type               table.Type
-	cur_fn                      &ast.FnDecl // current function
-	const_decl                  string
-	const_deps                  []string
-	const_names                 []string
-	global_names                []string
-	locked_names                []string // vars that are currently locked
-	rlocked_names               []string // vars that are currently read-locked
-	in_for_count                int // if checker is currently in a for loop
+	table             &table.Table
+	file              &ast.File = 0
+	nr_errors         int
+	nr_warnings       int
+	errors            []errors.Error
+	warnings          []errors.Warning
+	error_lines       []int // to avoid printing multiple errors for the same line
+	expected_type     table.Type
+	cur_fn            &ast.FnDecl // current function
+	const_decl        string
+	const_deps        []string
+	const_names       []string
+	global_names      []string
+	locked_names      []string // vars that are currently locked
+	rlocked_names     []string // vars that are currently read-locked
+	in_for_count      int // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
 	returns                     bool
 	scope_returns               bool
@@ -60,7 +60,8 @@ mut:
 	cur_orm_ts                  table.TypeSymbol
 	error_details               []string
 	generic_funcs               []&ast.FnDecl
-	vmod_file_content           string // needed for @VMOD_FILE, contents of the file, *NOT its path*
+	vmod_file_content           string // needed for @VMOD_FILE, contents of the file, *NOT its path**
+	vweb_gen_types    []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 }
 
@@ -72,7 +73,7 @@ pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
 	}
 }
 
-pub fn (mut c Checker) check(ast_file ast.File) {
+pub fn (mut c Checker) check(ast_file &ast.File) {
 	c.file = ast_file
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
@@ -113,7 +114,7 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 }
 
 // not used right now
-pub fn (mut c Checker) check2(ast_file ast.File) []errors.Error {
+pub fn (mut c Checker) check2(ast_file &ast.File) []errors.Error {
 	c.file = ast_file
 	for stmt in ast_file.stmts {
 		c.stmt(stmt)
@@ -148,6 +149,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			has_main_fn = true
 		}
 	}
+	c.verify_all_vweb_routes()
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
@@ -4350,17 +4352,17 @@ fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
 	for i in 0 .. c.generic_funcs.len {
-		mut node := c.generic_funcs[i]
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
-		// eprintln('>> post_process_generic_fns $c.file.path | $node.name , c.table.fn_gen_types.len: $c.table.fn_gen_types.len')
+		mut node := c.generic_funcs[i]
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
-			// sym:=c.table.get_type_symbol(gen_type)
-			// println('\ncalling check for $node.name for type $sym.source_name')
 			c.fn_decl(mut node)
+			if node.name in ['vweb.run_app', 'vweb.run'] {
+				c.vweb_gen_types << gen_type
+			}
 		}
 		c.cur_generic_type = 0
 		c.generic_funcs[i] = 0
@@ -4409,6 +4411,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('cannot define new methods on non-local `$sym.source_name` (' +
 				'current module is `$c.mod`, `$sym.source_name` is from `$sym.mod`)', node.pos)
 		}
+		// needed for proper error reporting during vweb route checking
+		sym.methods[node.method_idx].source_fn = voidptr(node)
 	}
 	if node.language == .v {
 		// Make sure all types are valid
@@ -4465,6 +4469,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		c.error('missing return at end of function `$node.name`', node.pos)
 	}
 	c.returns = false
+	node.source_file = c.file
 }
 
 fn has_top_return(stmts []ast.Stmt) bool {
@@ -4484,4 +4489,46 @@ fn has_top_return(stmts []ast.Stmt) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) verify_vweb_params_for_method(m table.Fn) (bool, int, int) {
+	margs := m.params.len - 1 // first arg is the receiver/this
+	if m.attrs.len == 0 {
+		// allow non custom routed methods, with 1:1 mapping
+		return true, -1, margs
+	}
+	mut route_attributes := 0
+	for a in m.attrs {
+		if a.name.starts_with('/') {
+			route_attributes += a.name.count(':')
+		}
+	}
+	return route_attributes == margs, route_attributes, margs
+}
+
+fn (mut c Checker) verify_all_vweb_routes() {
+	if c.vweb_gen_types.len == 0 {
+		return
+	}
+	typ_vweb_result := c.table.find_type_idx('vweb.Result')
+	for vgt in c.vweb_gen_types {
+		sym_app := c.table.get_type_symbol(vgt)
+		for m in sym_app.methods {
+			if m.return_type_source_name == 'vweb.Result' {
+				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
+				if !is_ok {
+					f := &ast.FnDecl(m.source_fn)
+					if isnil(f) {
+						continue
+					}
+					if f.return_type == typ_vweb_result &&
+						f.receiver.typ == m.params[0].typ && f.name == m.name {
+						c.file = f.source_file // setup of file path for the warning
+						c.warn('mismatched parameters count between vweb method `${sym_app.name}.$m.name` ($nargs) and route attribute $m.attrs ($nroute_attributes)',
+							f.pos)
+					}
+				}
+			}
+		}
+	}
 }

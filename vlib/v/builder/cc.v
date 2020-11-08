@@ -127,6 +127,10 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
 		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		// do run `v build-module x` always in main vfolder; x can be a relative path
+		pwd := os.getwd()
+		vroot := os.dir(vexe)
+		os.chdir(vroot)
 		boptions := v.pref.build_options.join(' ')
 		rebuild_cmd := '$vexe $boptions build-module $imp_path'
 		// eprintln('>> rebuild_cmd: $rebuild_cmd')
@@ -134,6 +138,7 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
 			panic('could not rebuild cache module for $imp_path, error: $err')
 		}
+		os.chdir(pwd)
 		return rebuilded_o
 	}
 	return res
@@ -637,11 +642,11 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut b Builder) cc_linux_cross() {
-	parent_dir := os.join_path(os.home_dir(), '.vmodules')
+	parent_dir := os.vmodules_dir()
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
 	}
-	sysroot := os.join_path(os.home_dir(), '.vmodules', 'linuxroot')
+	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
