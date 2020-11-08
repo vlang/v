@@ -3,6 +3,7 @@ import time
 import json
 import net
 import net.http
+import io
 
 const (
 	sport           = 12380
@@ -18,18 +19,6 @@ fn testsuite_begin() {
 	if os.exists(serverexe) {
 		os.rm(serverexe)
 	}
-	// prevent failing tests when vweb_test.v is rerun quickly
-	// and the previous webserver has not yet timed out.
-	for i := 0; i < 10; i++ {
-		if client := net.dial_tcp('127.0.0.1:$sport') {
-			client.close() or { }
-			eprintln('previous webserver has not yet stopped ($i); waiting...')
-			time.sleep_ms(exit_after_time / 10)
-			continue
-		} else {
-			return
-		}
-	}
 }
 
 fn test_a_simple_vweb_app_can_be_compiled() {
@@ -39,12 +28,17 @@ fn test_a_simple_vweb_app_can_be_compiled() {
 }
 
 fn test_a_simple_vweb_app_runs_in_the_background() {
-	server_exec_cmd := '$serverexe $sport $exit_after_time > /dev/null &'
+	suffix := $if windows { '' } $else { ' > /dev/null &' }
+	server_exec_cmd := '$serverexe $sport $exit_after_time $suffix'
 	$if debug_net_socket_client ? {
 		eprintln('running:\n$server_exec_cmd')
 	}
-	res := os.system(server_exec_cmd)
-	assert res == 0
+	$if windows {
+		go os.system(server_exec_cmd)
+	} $else {
+		res := os.system(server_exec_cmd)
+		assert res == 0
+	}
 	time.sleep_ms(100)
 }
 
@@ -248,8 +242,8 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		}
 		break
 	}
+	client.set_read_timeout(1 * time.second)
 	defer { client.close() }
-	//
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host
 User-Agent: $config.agent
@@ -260,10 +254,9 @@ $config.content'
 		eprintln('sending:\n$message')
 	}
 	client.write(message.bytes())?
-	mut read := []byte{len: 4096}
-	received := client.read(mut read)?
+	read := io.read_all(client)?
 	$if debug_net_socket_client ? {
-		eprintln('received:\n$received')
+		eprintln('received:\n$read')
 	}
 	return read.bytestr()
 }

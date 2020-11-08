@@ -209,16 +209,13 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 	// app.reset()
 	for {
-		conn := l.accept() or {
-			panic('accept() failed')
-		}
-		// handle_conn<T>(conn, mut app)
-		handle_conn<T>(conn, mut app)
-		// app.vweb.page_gen_time = time.ticks() - t
-		// eprintln('handle conn() took ${time.ticks()-t}ms')
-		// message := readall(conn)
-		// println(message)
-		/*
+		mut conn := l.accept() or { panic('accept() failed') }
+		handle_conn<T>(mut conn, mut app)
+		//app.vweb.page_gen_time = time.ticks() - t
+		//eprintln('handle conn() took ${time.ticks()-t}ms')
+		//message := readall(conn)
+		//println(message)
+/*
 		if message.len > max_http_post_size {
 			println('message.len = $message.len > max_http_post_size')
 			conn.send_string(http_500) or {}
@@ -238,7 +235,7 @@ pub fn run_app<T>(mut app T, port int) {
 	}
 }
 
-fn handle_conn<T>(conn net.TcpConn, mut app T) {
+fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	defer { conn.close() or {} }
 	//fn handle_conn<T>(conn net.Socket, app_ T) T {
 	//mut app := app_
@@ -276,16 +273,21 @@ fn handle_conn<T>(conn net.TcpConn, mut app T) {
 		}
 		sline := strip(line)
 		if sline == '' {
-			// if in_headers {
-			// End of headers, no body => exit
-			if len == 0 {
-				break
-			}
-			// } //else {
-			// End of body
-			// break
-			// }
-			in_headers = false
+			//if in_headers {
+				// End of headers, no body => exit
+				if len == 0 {
+					break
+				}
+			//} //else {
+				// End of body
+				//break
+			//}
+
+			// read body
+			read_body := io.read_all(reader) or { []byte{} }
+			body += read_body.bytestr()
+
+			break
 		}
 		if in_headers {
 			// println(sline)
@@ -294,12 +296,6 @@ fn handle_conn<T>(conn net.TcpConn, mut app T) {
 				len = sline.all_after(': ').int()
 				// println('GOT CL=$len')
 			}
-		} else {
-			body += line.trim_left('\r\n')
-			if body.len >= len {
-				break
-			}
-			// println('body:$body')
 		}
 	}
 	req := http.Request{

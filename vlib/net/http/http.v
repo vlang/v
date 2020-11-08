@@ -7,11 +7,12 @@ import net.urllib
 import net.http.chunked
 import strings
 import net
+import time
+import io
 
 const (
 	max_redirects        = 4
 	content_type_default = 'text/plain'
-	bufsize              = 1536
 )
 
 pub struct Request {
@@ -393,21 +394,15 @@ pub fn escape(s string) string {
 }
 
 fn (req &Request) http_do(host string, method Method, path string) ?Response {
-	mut sb := strings.new_builder(100)
 	host_name, _ := net.split_address(host)?
 	s := req.build_request_headers(method, host_name, path)
-	client := net.dial_tcp(host)?
+	mut client := net.dial_tcp(host)?
+	// TODO this really needs to be exposed somehow
+	client.set_read_timeout(time.second * 10)
 	client.write(s.bytes())?
-	mut buf := []byte{len:1000}
-	for {
-		read := client.read(mut buf)?
-		if read == 0 {
-			break
-		}
-		sb.write(buf.bytestr())
-	}
+	mut bytes := io.read_all(client)?
 	client.close()
-	return parse_response(sb.str())
+	return parse_response(bytes.bytestr())
 }
 
 pub fn (req &Request) referer() string {
