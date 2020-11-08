@@ -91,8 +91,7 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	mut res := wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
 
 	if res > 0 {
-		port_from := (&C.sockaddr_in(&addr_from)).sin_port
-		addr := new_addr(addr_from, '', port_from)?
+		addr := new_addr(addr_from)?
 		return res, addr
 	}
 
@@ -104,8 +103,7 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 			res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?
 			res2 := socket_error(res)?
 
-			port_from := (&C.sockaddr_in(&addr_from)).sin_port
-			addr := new_addr(addr_from, '', port_from)?
+			addr := new_addr(addr_from)?
 			return res2, addr
 		}
 		else {

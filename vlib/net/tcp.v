@@ -142,6 +142,15 @@ pub fn (c TcpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+pub fn (c TcpConn) peer_addr() ?Addr {
+	mut addr := C.sockaddr{}
+	len := sizeof(C.sockaddr)
+
+	socket_error(C.getpeername(c.sock.handle, &addr, &len))?
+
+	return new_addr(addr)
+}
+
 pub fn (c TcpConn) str() string {
 	// TODO
 	return 'TcpConn'
@@ -330,5 +339,5 @@ pub fn (s TcpSocket) address() ?Addr {
 	// cast to the correct type
 	sockaddr := &C.sockaddr(&addr)
 	C.getsockname(s.handle, sockaddr, &size)
-	return new_addr(sockaddr, '', 0)
+	return new_addr(sockaddr)
 }

@@ -14,36 +14,42 @@ pub fn (a Addr) str() string {
 }
 
 const (
-	max_ipv4_addr_len = 16
+	max_ipv4_addr_len = 24
+	ipv4_addr_size = sizeof(C.sockaddr_in)
 )
 
-fn new_addr(addr C.sockaddr, _saddr string, _port int) ?Addr {
-	mut saddr := _saddr
-	if saddr == '' {
-		// Convert to string representation
-		buf := []byte{ len: max_ipv4_addr_len, init: 0 }
-		$if windows {
-			res := C.WSAStringToAddress(&addr, SocketFamily.inet, C.NULL, &buf.data, &buf.len)
-			if res == 0 {
-				socket_error(-1)?
-			}
-		} $else {
-			res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
-			if res == 0 {
-				socket_error(-1)?
-			}
-		}
-		saddr = buf.bytestr()
+fn new_addr(addr C.sockaddr) ?Addr {
+	addr_len := if addr.sa_family == SocketFamily.inet {
+		sizeof(C.sockaddr)
+	} else {
+		// TODO NOOOOOOOOOOOO
+		0
 	}
+	// Convert to string representation
+	buf := []byte{ len: max_ipv4_addr_len, init: 0 }
+	$if windows {
+		res := C.WSAAddressToStringA(&addr, addr_len, C.NULL, buf.data, &buf.len)
+		if res != 0 {
+			socket_error(-1)?
+		}
+	} $else {
+		res := C.inet_ntop(SocketFamily.inet, &addr, buf.data, buf.len)
+		if res == 0 {
+			socket_error(-1)?	
+		}
+	}
+	mut saddr := buf.bytestr()
 
-	mut port := _port
-	if port == 0 {
-		hport := (&C.sockaddr_in(&addr)).sin_port
-		port = C.ntohs(hport)
+	hport := (&C.sockaddr_in(&addr)).sin_port
+	port := C.ntohs(hport)
+
+	$if windows {
+		// strip the port from the address string
+		saddr = saddr.split(':')[0]
 	}
 
 	return Addr {
-		addr int(sizeof(C.sockaddr)) saddr port
+		addr int(addr_len) saddr port
 	}
 }
 
@@ -71,5 +77,5 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 		wrap_error(x)?
 	}
 
-	return new_addr(*info.ai_addr, address, port)
+	return new_addr(*info.ai_addr)
 }
