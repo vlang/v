@@ -5,7 +5,6 @@ module http
 
 import net.urllib
 import net.http.chunked
-import strings
 import net
 import time
 import io
