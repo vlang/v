@@ -2,7 +2,7 @@ module io
 
 // Reader represents a stream of data that can be read
 pub interface Reader {
-	// Aead reads up to buf.len bytes and places
+	// read reads up to buf.len bytes and places
 	// them into buf.
 	// A struct that implements this should return 
 	// `none` on end of stream (EOF) instead of just returning 0

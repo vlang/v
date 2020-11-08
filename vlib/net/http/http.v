@@ -398,7 +398,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	s := req.build_request_headers(method, host_name, path)
 	mut client := net.dial_tcp(host)?
 	// TODO this really needs to be exposed somehow
-	client.set_read_timeout(time.second * 10)
+	client.set_read_timeout(time.second * 30)
 	client.write(s.bytes())?
 	mut bytes := io.read_all(client)?
 	client.close()
