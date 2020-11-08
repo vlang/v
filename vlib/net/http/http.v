@@ -13,6 +13,7 @@ import io
 const (
 	max_redirects        = 4
 	content_type_default = 'text/plain'
+	bufsize              = 1536
 )
 
 pub struct Request {
