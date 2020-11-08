@@ -390,6 +390,7 @@ fn test_assign_sum_type_casted_field() {
 	}
 }
 
+/*
 __type Expr4 = CallExpr2 | CTempVarExpr
 
 struct CallExpr2 {}
@@ -405,7 +406,7 @@ fn test_reassign_from_function_with_parameter() {
 	if f is CallExpr2 {
 		f = gen(f)
 	}
-}
+}*/
 
 fn test_sum_type_match() {
 	// TODO: Remove these casts
