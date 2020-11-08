@@ -16,4 +16,6 @@ for {
 		break
 	}
 	println('$l')
+	// Make it nice and obvious that we are doing this line by line
+	time.sleep_ms(10)
 }
