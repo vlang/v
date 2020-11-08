@@ -202,7 +202,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					// default_expr = p.tok.lit
 					// p.expr(0)
 					default_expr = p.expr(0)
-					match mut default_expr {
+					match union mut default_expr {
 						ast.EnumVal { default_expr.typ = typ }
 						// TODO: implement all types??
 						else {}

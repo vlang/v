@@ -479,7 +479,7 @@ pub fn (mut g Gen) save_main_fn_addr() {
 }
 
 pub fn (mut g Gen) gen_print_from_expr(expr ast.Expr, newline bool) {
-	match expr {
+	match union expr {
 		ast.StringLiteral {
 			if newline {
 				g.gen_print(expr.val + '\n')
@@ -575,7 +575,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 	// g.mov(.eax, 0)
 	for i in 0 .. node.args.len {
 		expr := node.args[i].expr
-		match expr {
+		match union expr {
 			ast.IntegerLiteral {
 				// `foo(2)` => `mov edi,0x2`
 				g.mov(fn_arg_registers[i], expr.val.int())
@@ -648,7 +648,7 @@ fn C.strtol() int
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr()')
-	match node {
+	match union node {
 		ast.ArrayInit {}
 		ast.BoolLiteral {}
 		ast.CallExpr {
@@ -719,7 +719,7 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 		name := left.str()
 		// if left is ast.Ident {
 		// ident := left as ast.Ident
-		match right {
+		match union right {
 			ast.IntegerLiteral {
 				g.allocate_var(name, 4, right.val.int())
 			}
@@ -755,8 +755,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	if node.left is ast.InfixExpr {
 		verror('only simple expressions are supported right now (not more than 2 operands)')
 	}
-	match node.left {
-		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(it.name)) }
+	match union node.left {
+		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name)) }
 		else {}
 	}
 	if node.right is ast.Ident {
@@ -774,10 +774,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	mut jne_addr := 0 // location of `jne *00 00 00 00*`
-	match infix_expr.left {
+	match union infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(it.name, lit.val.int())
+			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jne_addr = g.jne()
 		}
 		else {
@@ -797,10 +797,10 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
-	match infix_expr.left {
+	match union infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(it.name, lit.val.int())
+			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jump_addr = g.jge()
 		}
 		else {

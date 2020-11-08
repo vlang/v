@@ -729,17 +729,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					match infix_expr.right as infix_right {
+					match union infix_expr.right {
 						ast.FloatLiteral {
-							if infix_right.val.f64() == 0.0 {
+							if infix_expr.right.val.f64() == 0.0 {
 								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_right.pos)
+								c.error('$oper by zero', infix_expr.right.pos)
 							}
 						}
 						ast.IntegerLiteral {
-							if infix_right.val.int() == 0 {
+							if infix_expr.right.val.int() == 0 {
 								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_right.pos)
+								c.error('$oper by zero', infix_expr.right.pos)
 							}
 						}
 						else {}
@@ -887,7 +887,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
 	mut explicit_lock_needed := false
-	match mut expr {
+	match union mut expr {
 		ast.CastExpr {
 			// TODO
 			return '', pos
@@ -1043,7 +1043,8 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
 	elem_sym := c.table.get_type_symbol(elem_typ)
-	match call_expr.args[0].expr as arg_expr {
+	arg_expr := call_expr.args[0].expr
+	match union arg_expr {
 		ast.AnonFn {
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', call_expr.pos)
@@ -1733,7 +1734,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 }
 
 fn is_expr_panic_or_exit(expr ast.Expr) bool {
-	match expr {
+	match union expr {
 		ast.CallExpr { return expr.name in ['panic', 'exit'] }
 		else { return false }
 	}
@@ -1885,13 +1886,13 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr as field_expr {
+			match union field.expr {
 				ast.IntegerLiteral {
-					val := field_expr.val.i64()
+					val := field.expr.val.i64()
 					if val < int_min || val > int_max {
-						c.error('enum value `$val` overflows int', field_expr.pos)
+						c.error('enum value `$val` overflows int', field.expr.pos)
 					} else if !decl.is_multi_allowed && int(val) in seen {
-						c.error('enum value `$val` already exists', field_expr.pos)
+						c.error('enum value `$val` already exists', field.expr.pos)
 					}
 					seen << int(val)
 				}
@@ -2046,7 +2047,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// left_type = c.expr(left)
 		}
 		assign_stmt.left_types << left_type
-		match mut left {
+		match union mut left {
 			ast.Ident {
 				if left.kind == .blank_ident {
 					left_type = right_type
@@ -2181,7 +2182,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// Assign to sum type if ordinary value
 			mut final_left_type := left_type_unwrapped
 			mut scope := c.file.scope.innermost(left.position().pos)
-			match left {
+			match union left {
 				ast.SelectorExpr {
 					if _ := scope.find_struct_field(left.expr_type, left.field_name) {
 						final_left_type = right_type_unwrapped
@@ -2334,7 +2335,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
 		mut fixed_size := 1
-		match array_init.exprs[0] as init_expr {
+		init_expr := array_init.exprs[0]
+		match union init_expr {
 			ast.IntegerLiteral {
 				fixed_size = init_expr.val.int()
 			}
@@ -2376,8 +2378,8 @@ fn const_int_value(cfield ast.ConstField) ?int {
 }
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
-	match cfield.expr {
-		ast.IntegerLiteral { return *it }
+	match union cfield.expr {
+		ast.IntegerLiteral { return cfield.expr }
 		else {}
 	}
 	return none
@@ -2746,7 +2748,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
 	}
-	match mut node {
+	match union mut node {
 		ast.CTempVar {
 			return node.typ
 		}
@@ -3440,23 +3442,23 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				}
 				continue
 			}
-			match expr {
+			match union expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
 					if cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
-						match node.cond as node_cond {
+						match union node.cond {
 							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
-									struct_type: node_cond.expr_type
-									name: node_cond.field_name
+									struct_type: node.cond.expr_type
+									name: node.cond.field_name
 									typ: node.cond_type
 									sum_type_cast: expr.typ
-									pos: node_cond.pos
+									pos: node.cond.pos
 								}) }
 							ast.Ident { scope.register(node.var_name, ast.Var{
 									name: node.var_name
 									typ: node.cond_type
-									pos: node_cond.pos
+									pos: node.cond.pos
 									is_used: true
 									is_mut: node.is_mut
 									sum_type_cast: expr.typ
@@ -3594,7 +3596,8 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 				}
 			}
 			ast.AssignStmt {
-				match stmt.right[0] as expr {
+				expr := stmt.right[0]
+				match union expr {
 					ast.PrefixExpr {
 						if expr.right !is ast.Ident &&
 							expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
@@ -3865,7 +3868,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 // saying whether that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
-	match cond {
+	match union cond {
 		ast.ParExpr {
 			return c.comp_if_branch(cond.expr, pos)
 		}

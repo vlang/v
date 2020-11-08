@@ -176,7 +176,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 
 // string representation of expr
 pub fn (x Expr) str() string {
-	match x {
+	match union x {
 		CTempVar {
 			return x.orig.str()
 		}
