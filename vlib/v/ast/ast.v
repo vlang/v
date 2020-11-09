@@ -109,6 +109,7 @@ pub:
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
 	typ        table.Type // type of the entire thing (`Foo.bar`)
+	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
 }
 
 // module declaration
@@ -324,7 +325,7 @@ pub:
 	comments        []Comment
 pub mut:
 	typ             table.Type
-	is_tmp_autofree bool
+	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
 	pos             token.Position
 	// tmp_name        string // for autofree
 }

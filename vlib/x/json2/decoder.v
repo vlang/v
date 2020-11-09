@@ -62,7 +62,7 @@ fn (p Parser) emit_error(msg string) string {
 	}
 	column := util.imax(0, cur.pos - pp + cur.len - 1)
 	line := cur.line_nr
-	return '[jisoni] $msg ($line:$column)'
+	return '[json] $msg ($line:$column)'
 }
 
 fn new_parser(srce string, convert_type bool) Parser {
@@ -291,7 +291,7 @@ fn (mut p Parser) decode_number() ?Any {
 	}
 
 	if tl.starts_with('.') {
-		return error('lecimals must start with a digit followed by a dot.')
+		return error('decimals must start with a digit followed by a dot.')
 	}
 
 	if tl.ends_with('+') || tl.ends_with('-') {
@@ -318,7 +318,7 @@ fn (mut p Parser) decode_number() ?Any {
 		return if is_fl {
 			Any(tl.f64())
 		} else {
-			Any(tl.int())
+			Any(tl.i64())
 		}
 	}
 

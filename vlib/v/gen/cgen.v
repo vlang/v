@@ -119,8 +119,8 @@ mut:
 	cur_mod                          string
 	is_js_call                       bool // for handling a special type arg #1 `json.decode(User, ...)`
 	// nr_vars_to_free       int
-	doing_autofree_tmp               bool
-	inside_lambda                    bool
+	// doing_autofree_tmp    bool
+	inside_lambda         bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 }
 
@@ -1004,11 +1004,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
 			if g.pref.autofree {
 				g.writeln('// ast.Return free')
-				// if af {
-				// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
-				// }
-				// g.autofree_scope_vars(node.pos.pos)
-				g.write_autofree_stmts_when_needed(node)
+				if af {
+					g.writeln('//af tmp')
+					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
+				}
+				// g.autofree_scope_vars(node.pos.pos - 1)
+				// g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node, af)
 		}
@@ -1047,8 +1048,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if g.pref.autofree {
 		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
 		if node !is ast.FnDecl {
-			p := node.position()
-			g.autofree_call_postgen(p.pos)
+			// p := node.position()
+			// g.autofree_call_postgen(p.pos)
 		}
 	}
 }
@@ -2009,17 +2010,29 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 		// In `builtin` everything is freed manually.
 		return
 	}
-	g.writeln('// autofree_scope_vars($pos)')
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
+	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
+	g.autofree_scope_vars2(scope, scope.end_pos)
+}
+
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+	if isnil(scope) {
+		return
+	}
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
+				g.writeln('// var $obj.name pos=$obj.pos.pos')
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
 				v := *obj
+				if v.pos.pos > end_pos {
+					// Do not free vars that were declared after this scope
+					continue
+				}
 				is_optional := v.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
@@ -2029,6 +2042,17 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 			}
 			else {}
 		}
+	}
+	// Free all vars in parent scopes as well:
+	// ```
+	// s := ...
+	// if ... {
+	// s.free()
+	// return
+	// }
+	// ```
+	if !isnil(scope.parent) {
+		// g.autofree_scope_vars2(scope.parent, end_pos)
 	}
 }
 
@@ -2079,9 +2103,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// tmp expr vars do not need to be freed again here
 		return
 	}
-	if v.is_autofree_tmp && !g.doing_autofree_tmp {
-		return
-	}
+	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
+	// return
+	// }
 	if v.name.contains('expr_write_1_') {
 		// TODO remove this temporary hack
 		return
@@ -2089,7 +2113,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.doing_autofree_tmp')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
 	}
 }
 
@@ -2433,8 +2457,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.SelectorExpr {
 			prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
 			g.prevent_sum_type_unwrapping_once = false
-			if node.expr is ast.TypeOf as left {
-				g.typeof_name(left)
+			if node.name_type > 0 {
+				g.type_name(node.name_type)
 				return
 			}
 			if node.expr_type == 0 {
@@ -2523,11 +2547,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-// typeof(expr).name
-// Note: typeof() should be a type known at compile-time, not a string
-// sum types should not be handled dynamically
-fn (mut g Gen) typeof_name(node ast.TypeOf) {
-	mut typ := node.expr_type
+// T.name, typeof(expr).name
+fn (mut g Gen) type_name(type_ table.Type) {
+	mut typ := type_
 	if typ.has_flag(.generic) {
 		typ = g.cur_generic_type
 	}

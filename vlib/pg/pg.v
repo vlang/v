@@ -16,8 +16,7 @@ pub mut:
 	vals []string
 }
 
-struct C.PGResult {
-}
+struct C.PGResult
 
 pub struct Config {
 pub:
@@ -32,19 +31,21 @@ fn C.PQconnectdb(a byteptr) &C.PGconn
 
 fn C.PQerrorMessage(voidptr) byteptr
 
-fn C.PQgetvalue(voidptr, int, int) byteptr
+fn C.PQgetvalue(&C.PGResult, int, int) byteptr
 
 fn C.PQstatus(voidptr) int
 
-fn C.PQntuples(voidptr) int
+fn C.PQresultStatus(voidptr) int
 
-fn C.PQnfields(voidptr) int
+fn C.PQntuples(&C.PGResult) int
 
-fn C.PQexec(voidptr) voidptr
+fn C.PQnfields(&C.PGResult) int
 
-fn C.PQexecParams(voidptr) voidptr
+fn C.PQexec(voidptr) &C.PGResult
 
-fn C.PQclear(voidptr) voidptr
+fn C.PQexecParams(voidptr) &C.PGResult
+
+fn C.PQclear(&C.PGResult) voidptr
 
 fn C.PQfinish(voidptr)
 
@@ -75,6 +76,7 @@ pub fn connect(config Config) ?DB {
 fn res_to_rows(res voidptr) []Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
+
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
 		mut row := Row{}
@@ -85,6 +87,7 @@ fn res_to_rows(res voidptr) []Row {
 		}
 		rows << row
 	}
+
 	C.PQclear(res)
 	return rows
 }
@@ -139,13 +142,7 @@ pub fn (db DB) q_strings(query string) ?[]Row {
 // row set on success
 pub fn (db DB) exec(query string) ?[]Row {
 	res := C.PQexec(db.conn, query.str)
-	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
-	if e != '' {
-		error_msg := '$e'
-		C.PQclear(res)
-		return error(error_msg)
-	}
-	return res_to_rows(res)
+	return db.handle_error_or_result(res, 'exec')
 }
 
 fn rows_first_or_empty(rows []Row) ?Row {
@@ -165,41 +162,30 @@ pub fn (db DB) exec_one(query string) ?Row {
 	return row
 }
 
-// The entire function can be considered unsafe because of the malloc and the
-// free. This prevents warnings and doesn't seem to affect behavior.
-pub fn (db DB) exec_param_many(query string, params []string) []Row {
-	unsafe {
-		mut param_vals := &byteptr(malloc(params.len * 8))
-		for i in 0 .. params.len {
-			param_vals[i] = params[i].str
-		}
-		res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals, 0, 0, 0)
-		free(param_vals)
-		return db.handle_error_or_result(res, 'exec_param_many')
+// exec_param_many executes a query with the provided parameters
+pub fn (db DB) exec_param_many(query string, params []string) ?[]Row {
+	mut param_vals := []charptr{ len: params.len }
+	for i in 0 .. params.len {
+		param_vals[i] = params[i].str
 	}
+
+	res := C.PQexecParams(db.conn, query.str, params.len, 0, param_vals.data, 0, 0, 0)
+	return db.handle_error_or_result(res, 'exec_param_many')
 }
 
-pub fn (db DB) exec_param2(query string, param string, param2 string) []Row {
-	mut param_vals := [2]byteptr{}
-	param_vals[0] = param.str
-	param_vals[1] = param2.str
-	res := C.PQexecParams(db.conn, query.str, 2, 0, param_vals, 0, 0, 0)
-	return db.handle_error_or_result(res, 'exec_param2')
+pub fn (db DB) exec_param2(query string, param string, param2 string) ?[]Row {
+	return db.exec_param_many(query, [param, param2])
 }
 
-pub fn (db DB) exec_param(query string, param string) []Row {
-	mut param_vals := [1]byteptr{}
-	param_vals[0] = param.str
-	res := C.PQexecParams(db.conn, query.str, 1, 0, param_vals, 0, 0, 0)
-	return db.handle_error_or_result(res, 'exec_param')
+pub fn (db DB) exec_param(query string, param string) ?[]Row {
+	return db.exec_param_many(query, [param])
 }
 
-fn (db DB) handle_error_or_result(res voidptr, elabel string) []Row {
+fn (db DB) handle_error_or_result(res voidptr, elabel string) ?[]Row {
 	e := unsafe {C.PQerrorMessage(db.conn).vstring()}
 	if e != '' {
-		println('pg $elabel error:')
-		println(e)
-		return res_to_rows(res)
+		C.PQclear(res)
+		return error('pg $elabel error:\n$e')
 	}
 	return res_to_rows(res)
 }

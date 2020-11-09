@@ -186,6 +186,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 }
 
+/*
 fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
 	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
 	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
@@ -195,7 +196,7 @@ fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
 	// g.writeln(g.autofree_scope_vars(g.fn_decl.body_pos.pos))
 	// g.writeln('//--------------------------------------------------- ') // //g.write( g.autofree_scope_vars(r.pos.pos) )
 }
-
+*/
 fn (mut g Gen) write_defer_stmts_when_needed() {
 	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts()
@@ -740,7 +741,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	if g.inside_vweb_tmpl {
 		return
 	}
-	g.doing_autofree_tmp = true
+	// g.doing_autofree_tmp = true
 	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
@@ -771,7 +772,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		}
 	}
 	// g.write('/* postgen end */')
-	g.doing_autofree_tmp = false
+	// g.doing_autofree_tmp = false
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {

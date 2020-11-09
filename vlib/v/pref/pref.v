@@ -316,6 +316,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-o' {
 				res.out_name = cmdline.option(current_args, '-o', '')
+				if res.out_name.ends_with('.js') {
+					res.backend = .js
+				}
 				i++
 			}
 			'-b' {

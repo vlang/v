@@ -110,6 +110,9 @@ pub fn mkdir(path string) ?bool {
 	}
 	*/
 	apath := real_path(path)
+	//defer {
+		//apath.free()
+	//}
 	/*
 	$if linux {
 		$if !android {
