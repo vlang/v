@@ -1102,7 +1102,9 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			field := p.check_name()
 			pos.extend(p.tok.position())
 			return ast.SelectorExpr{
-				expr: ast.Ident{name: name}
+				expr: ast.Ident{
+					name: name
+				}
 				field_name: field
 				pos: pos
 			}

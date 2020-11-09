@@ -1728,7 +1728,9 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 		// Note: in future typeof() should be a type known at compile-time
 		// sum types should not be handled dynamically
-		ast.TypeOf {name_type = c.expr(left.expr)}
+		ast.TypeOf {
+			name_type = c.expr(left.expr)
+		}
 		else {}
 	}
 	if name_type > 0 {
