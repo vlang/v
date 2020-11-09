@@ -60,9 +60,7 @@ fn (mut ctx Context) termios_loop() {
 	mut sleep_len := 0
 	for {
 		if !init_called {
-			if ctx.cfg.init_fn != voidptr(0) {
-				ctx.cfg.init_fn(ctx.cfg.user_data)
-			}
+			ctx.init()
 			init_called = true
 		}
 		// println('SLEEPING: $sleep_len')
@@ -77,10 +75,7 @@ fn (mut ctx Context) termios_loop() {
 				ctx.parse_events()
 			}
 		}
-		if ctx.cfg.frame_fn != voidptr(0) {
-			ctx.cfg.frame_fn(ctx.cfg.user_data)
-		}
-
+		ctx.frame()
 		sw.pause()
 		e := sw.elapsed().microseconds()
 		sleep_len = frame_time - int(e)
@@ -90,14 +85,12 @@ fn (mut ctx Context) termios_loop() {
 }
 
 fn (mut ctx Context) parse_events() {
-
 	// Stop this from getting stuck
 	mut nr_iters := 0
 	for ctx.buf.len > 0 {
 		nr_iters++
 		if nr_iters > 100 { ctx.shift(1) }
 		mut event := &Event(0)
-
 		if ctx.buf[0] == 0x1b {
 			e, len := escape_sequence(ctx.buf.bytestr())
 			event = e
@@ -106,9 +99,8 @@ fn (mut ctx Context) parse_events() {
 			event = single_char(ctx.buf.bytestr())
 			ctx.shift(1)
 		}
-
 		if event != 0 {
-			ctx.cfg.event_fn(event, ctx.cfg.user_data)
+			ctx.event(event)
 			nr_iters = 0
 		}
 	}

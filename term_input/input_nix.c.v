@@ -60,7 +60,9 @@ pub struct Config {
 	user_data      voidptr
 	init_fn        fn(voidptr)
 	frame_fn       fn(voidptr)
+	cleanup_fn     fn(voidptr)
 	event_fn       fn(&Event, voidptr)
+	fail_fn        fn(string)
 
 	buffer_size    int = 256
 	frame_rate     int = 30
@@ -73,25 +75,24 @@ pub struct Config {
 }
 
 pub fn init(cfg Config) &Context {
-	mut res := &Context{
+	mut ctx := &Context{
 		cfg: cfg,
 		buf: []byte{ cap: cfg.buffer_size }
 	}
-
 	// Reset console on exit
 	C.atexit(termios_reset)
 	for code in cfg.reset {
 		os.signal(code, fn() {
+			// ctx.cleanup() // TODO add a way to provide user data with os.signal?
 			exit(0)
 		})
 	}
-
-	return res
+	return ctx
 }
 
 pub fn (mut ctx Context) run() {
 	if ctx.cfg.use_x11 {
-		eprintln('error: x11 backend not implemented yet')
+		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)
 	} else {
 		ctx.termios_setup()
@@ -114,4 +115,39 @@ fn (mut ctx Context) shift(len int) {
 fn (mut ctx Context) resize_arr(size int) {
 	mut l := &ctx.buf.len
 	unsafe { *l = size }
+}
+
+[inline]
+fn (ctx &Context) init() {
+	if ctx.cfg.init_fn != voidptr(0) {
+		ctx.cfg.init_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) frame() {
+	if ctx.cfg.frame_fn != voidptr(0) {
+		ctx.cfg.frame_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) cleanup() {
+	if ctx.cfg.cleanup_fn != voidptr(0) {
+		ctx.cfg.cleanup_fn(ctx.cfg.user_data)
+	}
+}
+
+[inline]
+fn (ctx &Context) fail(error string) {
+	if ctx.cfg.fail_fn != voidptr(0) {
+		ctx.cfg.fail_fn(error)
+	}
+}
+
+[inline]
+fn (ctx &Context) event(event &Event) {
+	if ctx.cfg.event_fn != voidptr(0) {
+		ctx.cfg.event_fn(event, ctx.cfg.user_data)
+	}
 }
