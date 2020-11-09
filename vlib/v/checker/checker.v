@@ -3469,7 +3469,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			match expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
-					if cond_type_sym.kind == .union_sum_type {
+					// smart cast only if one type is given (currently) // TODO make this work if types have same fields
+					if branch.exprs.len == 1 && cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
 						match node.cond as node_cond {
 							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
