@@ -1726,18 +1726,33 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 }
 
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
+	// T.name, typeof(expr).name
+	mut name_type := 0
+	match selector_expr.expr as left {
+		ast.Ident {
+			if left.name == 'T' {
+				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
+			}
+		}
+		// Note: in future typeof() should be a type known at compile-time
+		// sum types should not be handled dynamically
+		ast.TypeOf {
+			name_type = c.expr(left.expr)
+		}
+		else {}
+	}
+	if name_type > 0 {
+		if selector_expr.field_name != 'name' {
+			c.error('invalid field `.$selector_expr.field_name` for type `$selector_expr.expr`',
+				selector_expr.pos)
+		}
+		selector_expr.name_type = name_type
+		return table.string_type
+	}
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
 		return table.void_type
-	}
-	if selector_expr.expr is ast.TypeOf as left {
-		if selector_expr.field_name == 'name' {
-			return table.string_type
-		} else {
-			c.error('expected `.name`, not `.$selector_expr.field_name` after `typeof` expression',
-				selector_expr.pos)
-		}
 	}
 	selector_expr.expr_type = typ
 	sym := c.table.get_type_symbol(c.unwrap_generic(typ))
