@@ -109,6 +109,7 @@ pub:
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
 	typ        table.Type // type of the entire thing (`Foo.bar`)
+	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
 }
 
 // module declaration
