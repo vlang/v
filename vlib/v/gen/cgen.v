@@ -1929,17 +1929,29 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 		// In `builtin` everything is freed manually.
 		return
 	}
-	g.writeln('// autofree_scope_vars($pos)')
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
+	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
+	g.autofree_scope_vars2(scope, scope.end_pos)
+}
+
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+	if isnil(scope) {
+		return
+	}
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
+				g.writeln('// var $obj.name pos=$obj.pos.pos')
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
 				v := *obj
+				if v.pos.pos > end_pos {
+					// Do not free vars that were declared after this scope
+					continue
+				}
 				is_optional := v.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
@@ -1949,6 +1961,17 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 			}
 			else {}
 		}
+	}
+	// Free all vars in parent scopes as well:
+	// ```
+	// s := ...
+	// if ... {
+	// s.free()
+	// return
+	// }
+	// ```
+	if !isnil(scope.parent) {
+		// g.autofree_scope_vars2(scope.parent, end_pos)
 	}
 }
 
