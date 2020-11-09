@@ -1,3 +1,5 @@
+import os
+
 // This program is built and run via Valgrind to ensure there are no leaks with -autofree
 fn simple() {
 	nums := [1, 2, 3] // local array must be freed
@@ -218,6 +220,20 @@ fn free_inside_opt_block() {
 	}
 }
 
+fn free_before_return() {
+	s := 'a' + 'b'
+	println(s)
+	if true {
+		return
+	}
+}
+
+fn free_before_return_bool() bool {
+	s := 'a' + 'b'
+	println(s)
+	return true
+}
+
 fn main() {
 	println('start')
 	simple()
@@ -236,6 +252,8 @@ fn main() {
 	q := if_expr()
 	s := return_if_expr()
 	free_inside_opt_block()
+	// free_before_return()
+	// free_before_return_bool()
 	// free_map()
 	// loop_map()
 	println('end')
