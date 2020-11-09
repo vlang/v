@@ -120,7 +120,7 @@ mut:
 	is_js_call                       bool // for handling a special type arg #1 `json.decode(User, ...)`
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	inside_lambda         bool
+	inside_lambda                    bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
 }
 
