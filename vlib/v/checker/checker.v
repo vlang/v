@@ -2865,6 +2865,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 				}
 				return right_type.to_ptr()
+			} else if node.op == .amp && node.right !is ast.CastExpr {
+				return right_type.to_ptr()
 			}
 			if node.op == .mul {
 				if right_type.is_ptr() {
