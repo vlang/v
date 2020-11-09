@@ -1485,7 +1485,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	is_decl := assign_stmt.op == .decl_assign
 	right_expr := assign_stmt.right[0]
 	match union right_expr {
-		ast.CallExpr, ast.MatchExpr { return_type = right_expr.return_type }
+		ast.CallExpr { return_type = right_expr.return_type }
+		ast.MatchExpr { return_type = right_expr.return_type }
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
 	}

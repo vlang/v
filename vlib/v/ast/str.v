@@ -205,7 +205,10 @@ pub fn (x Expr) str() string {
 		EnumVal {
 			return '.$x.val'
 		}
-		FloatLiteral, IntegerLiteral {
+		FloatLiteral {
+			return x.val
+		}
+		IntegerLiteral {
 			return x.val
 		}
 		Ident {
