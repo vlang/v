@@ -4594,7 +4594,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.expr(expr)
 		return true
 	} else if sym.kind == .enum_ {
-		is_var := match expr {
+		is_var := match union expr {
 			ast.SelectorExpr, ast.Ident { true }
 			else { false }
 		}

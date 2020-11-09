@@ -747,7 +747,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
-	match mut node {
+	match union mut node {
 		ast.CTempVar {
 			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
 		}
@@ -1318,9 +1318,9 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	f.expr_bufs << f.out.str()
 	mut penalty := 3
-	match node.left as left {
+	match union node.left {
 		ast.InfixExpr {
-			if int(token.precedences[left.op]) > int(token.precedences[node.op]) {
+			if int(token.precedences[node.left.op]) > int(token.precedences[node.op]) {
 				penalty--
 			}
 		}
@@ -1329,7 +1329,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		}
 		else {}
 	}
-	match node.right as right {
+	match union node.right {
 		ast.InfixExpr { penalty-- }
 		ast.ParExpr { penalty = 1 }
 		else {}
@@ -1370,11 +1370,11 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	for i, branch in it.branches {
 		// Check `sum is T` smartcast
 		mut smartcast_as := false
-		if branch.cond is ast.InfixExpr as infix {
-			if infix.op == .key_is {
-				// left_as_name is either empty, infix.left.str() or the `as` name
+		if branch.cond is ast.InfixExpr {
+			if branch.cond.op == .key_is {
+				// left_as_name is either empty, branch.cond.left.str() or the `as` name
 				smartcast_as = branch.left_as_name.len > 0 &&
-					infix.left.str() != branch.left_as_name
+					branch.cond.left.str() != branch.left_as_name
 			}
 		}
 		if i == 0 {
@@ -1465,16 +1465,15 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		if node.left is ast.Ident {
-			left := node.left as ast.Ident
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-				if left.name !in f.auto_imports {
-					f.auto_imports << left.name
+			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
+				if node.left.name !in f.auto_imports {
+					f.auto_imports << node.left.name
 					f.file.imports << ast.Import{
-						mod: left.name
-						alias: left.name
+						mod: node.left.name
+						alias: node.left.name
 					}
 				}
 				// for imp in f.file.imports {
@@ -1492,8 +1491,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.or_expr(node.or_block)
 	} else {
 		f.write_language_prefix(node.language)
-		if node.left is ast.AnonFn as anon_fn {
-			f.fn_decl(anon_fn.decl)
+		if node.left is ast.AnonFn {
+			f.fn_decl(node.left.decl)
 		} else {
 			mut name := f.short_module(node.name)
 			f.mark_module_as_used(name)
@@ -1522,8 +1521,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
-		ident := it.cond as ast.Ident
-		f.it_name = ident.name
+		f.it_name = it.cond.name
 	} else if it.cond is ast.SelectorExpr {
 		// `x.y as z`
 		// if ident.name != it.var_name && it.var_name != '' {
@@ -1646,7 +1644,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
-	match expr {
+	match union expr {
 		ast.IfExpr { return false }
 		ast.Comment { return false }
 		else {}

@@ -576,7 +576,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 			} else {
 				expr := node.args[0].expr
-				is_var := match expr {
+				is_var := match union expr {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
 					else { false }
