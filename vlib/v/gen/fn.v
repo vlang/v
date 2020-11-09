@@ -741,7 +741,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	if g.inside_vweb_tmpl {
 		return
 	}
-	g.doing_autofree_tmp = true
+	// g.doing_autofree_tmp = true
 	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
@@ -772,7 +772,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 		}
 	}
 	// g.write('/* postgen end */')
-	g.doing_autofree_tmp = false
+	// g.doing_autofree_tmp = false
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {

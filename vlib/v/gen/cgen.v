@@ -119,7 +119,7 @@ mut:
 	cur_mod               string
 	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
 	// nr_vars_to_free       int
-	doing_autofree_tmp    bool
+	// doing_autofree_tmp    bool
 	inside_lambda         bool
 }
 
@@ -1047,8 +1047,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	if g.pref.autofree {
 		// if node is ast.ExprStmt {&& node.expr is ast.CallExpr {
 		if node !is ast.FnDecl {
-			p := node.position()
-			g.autofree_call_postgen(p.pos)
+			// p := node.position()
+			// g.autofree_call_postgen(p.pos)
 		}
 	}
 }
@@ -1999,9 +1999,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// tmp expr vars do not need to be freed again here
 		return
 	}
-	if v.is_autofree_tmp && !g.doing_autofree_tmp {
-		return
-	}
+	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
+	// return
+	// }
 	if v.name.contains('expr_write_1_') {
 		// TODO remove this temporary hack
 		return
@@ -2009,7 +2009,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.doing_autofree_tmp')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
 	}
 }
 
