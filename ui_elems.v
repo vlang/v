@@ -17,6 +17,7 @@ mut:
 	rects    []Rect
 	cur_rect Rect
 	is_drag  bool
+	redraw   bool
 }
 
 fn random_color() input.Color {
@@ -51,11 +52,12 @@ fn event(e &input.Event, x voidptr) {
 			else if e.code == .c { app.rects.clear() }
 		} else {}
 	}
-	if e.typ == .key_down && e.code == .escape { exit(0) }
+	app.redraw = true	
 }
 
 fn frame(x voidptr) {
 	mut app := &App(x)
+	if !app.redraw { return }
 
 	app.ti.clear()
 
@@ -72,6 +74,7 @@ fn frame(x voidptr) {
 
 	app.ti.reset_bg_color()
 	app.ti.flush()
+	app.redraw = false
 }
 
 
@@ -82,7 +85,7 @@ app.ti = input.init(
 	frame_fn: frame
 
 	hide_cursor: true
-	frame_rate: 30
+	frame_rate: 60
 )
 
 print('\x1b[?25l') // Hide the mouse cursor
