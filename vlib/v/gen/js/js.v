@@ -638,7 +638,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			g.write('"$node.val"')
+			text := node.val.replace('\n', '\\n')
+			g.write('"$text"')
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
