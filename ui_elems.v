@@ -48,8 +48,8 @@ fn event(e &input.Event, x voidptr) {
 			app.rects << app.cur_rect
 			app.is_drag = false
 		} .key_down {
-			if e.code == .escape { exit(0) }
-			else if e.code == .c { app.rects.clear() }
+			if e.code == .c { app.rects.clear() }
+			else if e.code == .escape { exit(0) }
 		} else {}
 	}
 	app.redraw = true	
@@ -88,6 +88,4 @@ app.ti = input.init(
 	frame_rate: 60
 )
 
-print('\x1b[?25l') // Hide the mouse cursor
-// println('V term.input event viewer (press `esc` to exit)\n\n')
 app.ti.run()

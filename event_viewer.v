@@ -20,10 +20,10 @@ app.ti = input.init(
 	user_data: app,
 	event_fn: event
 
+	hide_cursor: true
 	capture_events: true
 	frame_rate: 60
 )
 
-print('\x1b[?25l') // Hide the mouse cursor
 println('V term.input event viewer (press `esc` to exit)\n\n')
 app.ti.run()

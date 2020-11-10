@@ -203,7 +203,8 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if cfg.hide_cursor {
-		println('\x1b[?25l')
+		s := '\x1b[?25l'
+		C.write(C.STDOUT_FILENO, s.str, s.len)
 	}
 
 	unsafe {

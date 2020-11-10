@@ -3,9 +3,14 @@ module term_input
 import strings
 
 pub struct Color {
+pub:
 	r byte
 	g byte
 	b byte
+}
+
+pub fn (c Color) hex() string {
+	return '#${c.r.hex()}${c.g.hex()}${c.b.hex()}'
 }
 
 // Synchronized Updates spec, designed to avoid tearing during renders
@@ -23,13 +28,20 @@ pub fn (mut ctx Context) write(s string) {
 
 [inline]
 pub fn (mut ctx Context) flush() {
+	// TODO: Diff the previous frame against this one, and only render things that changed?
+
 	// ctx.set_cursor_position(0, 0)
 	// ctx.write('$ctx.print_buf.len')
-	// TODO: Diff the previous frame against this one, only render things that changed?
+	// ctx.write('${ctx.print_buf[ctx.print_buf.len-50..].hex()}')
 	C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
 	C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
 	C.write(C.STDOUT_FILENO, esu.str, esu.len)
 	ctx.print_buf.clear()
+}
+
+[inline]
+pub fn (mut ctx Context) bold() {
+	ctx.write('\x1b[1m')
 }
 
 [inline]
@@ -38,7 +50,7 @@ pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 }
 
 [inline]
-pub fn (mut ctx Context) set_fg_color(c Color) {
+pub fn (mut ctx Context) set_color(c Color) {
 	ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
 }
 
@@ -48,7 +60,7 @@ pub fn (mut ctx Context) set_bg_color(c Color) {
 }
 
 [inline]
-pub fn (mut ctx Context) reset_fg_color() {
+pub fn (mut ctx Context) reset_color() {
 	ctx.write('\x1b[39m')
 }
 
@@ -128,25 +140,32 @@ pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 }
 
 pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
-	min_x, min_y := if x < x2 { x } else { x2 }, if y < y2 { y } else { y2 }
-	max_x, max_y := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
+	if y == y2 || x == x2 {
+		ctx.draw_line(x, y, x2, y2)
+		return
+	}
+
+	min_y, max_y := if y < y2 { y } else { y2 }, if y > y2 { y } else { y2 }
 
 	for y_pos in min_y .. max_y + 1 {
-		ctx.set_cursor_position(min_x, y_pos)
-		ctx.write(strings.repeat(` `, max_x + 1 - min_x))
+		ctx.draw_line(x, y_pos, x2, y_pos)
 	}
 }
 
 pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
-	min_x, min_y := if x < x2 { x } else { x2 }, if y < y2 { y } else { y2 }
-	max_x, max_y := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
-
-	ctx.set_cursor_position(min_x, min_y)
-	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
-	ctx.set_cursor_position(min_x, max_y)
-	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
-	for y_pos in min_y + 1 .. max_y {
-		ctx.draw_point(min_x, y_pos)
-		ctx.draw_point(max_x, y_pos)
+	if y == y2 || x == x2 {
+		ctx.draw_line(x, y, x2, y2)
+		return
 	}
+
+	ctx.draw_line(x,  y,  x2, y)
+	ctx.draw_line(x,  y2, x2, y2)
+	ctx.draw_line(x,  y,  x,  y2)
+	ctx.draw_line(x2, y,  x2, y2)
+}
+
+[inline]
+pub fn (mut ctx Context) horizontal_separator(y int) {
+	ctx.set_cursor_position(0, y)
+	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
 }
