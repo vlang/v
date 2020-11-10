@@ -48,7 +48,7 @@ fn event(e &input.Event, x voidptr) {
 			app.is_drag = false
 		} .key_down {
 			if e.code == .escape { exit(0) }
-			else if e.code == .c { app.rects }
+			else if e.code == .c { app.rects.clear() }
 		} else {}
 	}
 	if e.typ == .key_down && e.code == .escape { exit(0) }

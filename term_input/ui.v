@@ -8,6 +8,13 @@ pub struct Color {
 	b byte
 }
 
+// Synchronized Updates spec, designed to avoid tearing during renders
+// https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
+const (
+	bsu = '\x1bP=1s\x1b\\'
+	esu = '\x1bP=2s\x1b\\'
+)
+
 [inline]
 pub fn (mut ctx Context) write(s string) {
 	if s == '' { return }
@@ -16,7 +23,12 @@ pub fn (mut ctx Context) write(s string) {
 
 [inline]
 pub fn (mut ctx Context) flush() {
+	// ctx.set_cursor_position(0, 0)
+	// ctx.write('$ctx.print_buf.len')
+	// TODO: Diff the previous frame against this one, only render things that changed?
+	C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
 	C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
+	C.write(C.STDOUT_FILENO, esu.str, esu.len)
 	ctx.print_buf.clear()
 }
 
