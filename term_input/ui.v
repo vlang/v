@@ -59,7 +59,7 @@ pub fn (mut ctx Context) reset_bg_color() {
 
 [inline]
 pub fn (mut ctx Context) reset() {
-	ctx.write('')
+	ctx.write('\x1b[0m')
 }
 
 [inline]
@@ -145,4 +145,8 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
 	ctx.set_cursor_position(min_x, max_y)
 	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
+	for y_pos in min_y + 1 .. max_y {
+		ctx.draw_point(min_x, y_pos)
+		ctx.draw_point(max_x, y_pos)
+	}
 }

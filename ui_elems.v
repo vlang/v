@@ -67,7 +67,7 @@ fn frame(x voidptr) {
 	if app.is_drag {
 		r := app.cur_rect
 		app.ti.set_bg_color(r.c)
-		app.ti.draw_rect(r.x, r.y, r.x2, r.y2)
+		app.ti.draw_empty_rect(r.x, r.y, r.x2, r.y2)
 	}
 
 	app.ti.reset_bg_color()
