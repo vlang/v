@@ -186,6 +186,7 @@ pub struct Config {
 	frame_rate     int = 30
 	use_x11        bool
 
+	hide_cursor    bool
 	capture_events bool
 	// All kill signals
 	reset          []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
@@ -199,6 +200,10 @@ pub fn init(cfg Config) &Context {
 	mut ctx := &Context{
 		cfg: cfg,
 		read_buf: []byte{ cap: cfg.buffer_size }
+	}
+
+	if cfg.hide_cursor {
+		println('\x1b[?25l')
 	}
 
 	unsafe {

@@ -79,12 +79,12 @@ pub fn (mut ctx Context) draw_text(x int, y int, s string) {
 
 pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 	min_x, min_y := if x < x2 { x } else { x2 }, if y < y2 { y } else { y2 }
-	max_x, max_y := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
+	max_x, _ := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
 
 	if y == y2 {
 		// Horizontal line, performance improvement
 		ctx.set_cursor_position(min_x, min_y)
-		ctx.write(strings.repeat(` `, max_x - min_x))
+		ctx.write(strings.repeat(` `, max_x + 1 - min_x))
 		return
 	}
 
@@ -123,4 +123,14 @@ pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 		ctx.set_cursor_position(min_x, y_pos)
 		ctx.write(strings.repeat(` `, max_x + 1 - min_x))
 	}
+}
+
+pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
+	min_x, min_y := if x < x2 { x } else { x2 }, if y < y2 { y } else { y2 }
+	max_x, max_y := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
+
+	ctx.set_cursor_position(min_x, min_y)
+	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
+	ctx.set_cursor_position(min_x, max_y)
+	ctx.write(strings.repeat(` `, max_x + 1 - min_x))
 }
