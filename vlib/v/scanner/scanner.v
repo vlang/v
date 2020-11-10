@@ -1048,7 +1048,9 @@ fn (mut s Scanner) ident_string() string {
 			break
 		}
 		// Don't allow unknown escape
-		if prevc == `\\` && c !in [`\\`, `r`, `\"`, `\'`, `\``, `\$`, `n`, `(`, `)`, `.`, `t`, `f`, `v`, `b`, `a`, `e`, `?`, `x`, `u`, `U`] && !c.is_digit() && s.pos < 2 {
+		if prevc == `\\` && c !in
+			[`\\`, `r`, `\"`, `\'`, `\``, `\$`, `n`, `(`, `)`, `.`, `t`, `f`, `v`, `b`, `a`, `e`, `?`, `x`, `u`, `U`] &&
+			!c.is_digit() && s.pos < 2 {
 			s.error('unknown escape')
 		}
 	}
