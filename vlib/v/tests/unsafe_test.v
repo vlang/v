@@ -15,12 +15,23 @@ fn test_ptr_assign() {
 }
 
 fn test_double_ptr() {
+	i := 5
+	j := 7
+	unsafe {
+		mut x := &i
+		mut p := &x
+		(*p) = &j
+		assert x == &j
+	}
+
+	/////////
+
 	mut x := &int(0)
 	unsafe {
 		mut p := &x
 		(*p) = &int(1)
 	}
-	assert x == &int(1)
+	assert ptr_str(x) == ptr_str(&int(1))
 }
 
 fn test_ptr_infix() {
