@@ -1534,7 +1534,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			return true
 		}
 		*/
-		if !c.check_types(typ, arg.typ) {
+		c.check_expected(typ, arg.typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -1547,16 +1547,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.is_generic {
 				continue
 			}
-			if typ_sym.kind == .array_fixed {
-			}
-			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
-				candidate_fn_name := if typ_sym.source_name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.source_name`' }
-				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i +
-					1} to `$fn_name`', call_expr.pos)
-			} else {
-				c.error('cannot use type `$typ_sym.source_name` as type `$arg_typ_sym.source_name` in argument ${i +
-					1} to `$fn_name`', call_expr.pos)
-			}
+			c.error('invalid argument ${i + 1} to `$fn_name`: $err', call_arg.pos)
 		}
 	}
 	if f.is_generic && call_expr.generic_type == table.void_type {
