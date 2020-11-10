@@ -14,6 +14,15 @@ fn test_ptr_assign() {
 	assert v[3] == 31
 }
 
+fn test_double_ptr() {
+	mut x := &int(0)
+	unsafe {
+		mut p := &x
+		(*p) = &int(1)
+	}
+	assert x == &int(1)
+}
+
 fn test_ptr_infix() {
 	v := 4
 	mut q := unsafe {&v - 1}
