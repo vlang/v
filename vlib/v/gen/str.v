@@ -10,7 +10,7 @@ const (
 	invalid_escapes = ['(', '{', '$', '`', '.']
 )
 
-fn smart_quote(str string, raw bool) string {
+pub fn smart_quote(str string, raw bool) string {
 	len := str.len
 	if len == 0 {
 		return str
@@ -46,6 +46,10 @@ fn smart_quote(str string, raw bool) string {
 		// double quote
 		if current == '"' {
 			toadd = '\\"'
+			current = ''
+		}
+		if current == '`' {
+			toadd = '\\`'
 			current = ''
 		}
 		if current == '\\' {
