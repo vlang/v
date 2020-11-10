@@ -1,0 +1,8 @@
+fn ptr(a byte) {}
+fn arr(a []int) {}
+fn fun(a fn(int)) {}
+
+v := 4
+ptr(&v)
+arr([5]!!)
+fun(fn(i &int){})
