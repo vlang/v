@@ -3506,7 +3506,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
 			if cond_type_sym.kind == .interface_ {
-				c.type_implements(expr_type, c.expected_type, expr.position())
+				// TODO
+				// This generates a memory issue with TCC
+				// Needs to be checked later when TCC errors are fixed
+				// Current solution is to move expr.position() to its own statement
+				// c.type_implements(expr_type, c.expected_type, expr.position())
+				expr_pos := expr.position()
+				c.type_implements(expr_type, c.expected_type, expr_pos)
 			} else if cond_type_sym.info is table.UnionSumType as info {
 				if expr_type !in info.variants {
 					expr_str := c.table.type_to_str(expr_type)
