@@ -1047,6 +1047,10 @@ fn (mut s Scanner) ident_string() string {
 			s.pos -= 2
 			break
 		}
+		// Don't allow unknown escape
+		if prevc == `\\` && c !in [`\\`, `r`, `\"`, `\'`, `\``, `\$`, `n`, `(`, `)`, `.`, `t`, `f`, `v`, `b`, `a`, `e`, `?`, `x`, `u`, `U`] && !c.is_digit() && s.pos < 2 {
+			s.error('unknown escape')
+		}
 	}
 	mut lit := ''
 	if s.text[start] == s.quote {
