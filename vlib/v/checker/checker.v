@@ -1653,7 +1653,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, expr_return_type table.Type) {
 	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
-			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
 				or_expr.pos)
 		}
 		return
