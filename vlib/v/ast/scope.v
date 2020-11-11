@@ -8,11 +8,12 @@ import v.table
 pub struct Scope {
 pub mut:
 	// mut:
-	objects   map[string]ScopeObject
-	parent    &Scope
-	children  []&Scope
-	start_pos int
-	end_pos   int
+	objects       map[string]ScopeObject
+	struct_fields []ScopeStructField
+	parent        &Scope
+	children      []&Scope
+	start_pos     int
+	end_pos       int
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -40,6 +41,20 @@ pub fn (s &Scope) find(name string) ?ScopeObject {
 	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
 			return sc.objects[name]
+		}
+		if isnil(sc.parent) {
+			break
+		}
+	}
+	return none
+}
+
+pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?ScopeStructField {
+	for sc := s; true; sc = sc.parent {
+		for field in sc.struct_fields {
+			if field.struct_type == struct_type && field.name == field_name {
+				return field
+			}
 		}
 		if isnil(sc.parent) {
 			break
@@ -94,6 +109,15 @@ pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 		}
 		else {}
 	}
+}
+
+pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
+	for f in s.struct_fields {
+		if f.struct_type == field.struct_type && f.name == field.name {
+			return
+		}
+	}
+	s.struct_fields << field
 }
 
 pub fn (mut s Scope) register(name string, obj ScopeObject) {
@@ -162,6 +186,9 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
 			else {}
 		}
+	}
+	for field in sc.struct_fields {
+		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {

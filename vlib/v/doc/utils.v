@@ -96,7 +96,7 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl { match stmt {
-				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl { return stmt.name }
+				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl, ast.UnionSumTypeDecl { return stmt.name }
 			} }
 		ast.ConstDecl { return '' } // leave it blank
 		else { return '' }

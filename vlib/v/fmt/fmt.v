@@ -564,6 +564,25 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			// f.write(sum_type_names.join(' | '))
 		}
+		ast.UnionSumTypeDecl {
+			if node.is_pub {
+				f.write('pub ')
+			}
+			f.write('__type $node.name = ')
+			mut sum_type_names := []string{}
+			for t in node.sub_types {
+				sum_type_names << f.table.type_to_str(t)
+			}
+			sum_type_names.sort()
+			for i, name in sum_type_names {
+				f.write(name)
+				if i < sum_type_names.len - 1 {
+					f.write(' | ')
+				}
+				f.wrap_long_line(2, true)
+			}
+			// f.write(sum_type_names.join(' | '))
+		}
 	}
 	f.writeln('\n')
 }
