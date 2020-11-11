@@ -1,5 +1,4 @@
-import term_input as input
-
+import term.input
 import rand
 
 struct Rect {

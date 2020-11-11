@@ -1,70 +1,70 @@
 module main
 
-import term_input as input
+import term.input as ti
 
 // The color palette, taken from Google's Material design
 const (
 	colors = [
 		[
-			input.Color{239, 154, 154}
-			input.Color{244, 143, 177}
-			input.Color{206, 147, 216}
-			input.Color{179, 157, 219}
-			input.Color{159, 168, 218}
-			input.Color{144, 202, 249}
-			input.Color{129, 212, 250}
-			input.Color{128, 222, 234}
-			input.Color{128, 203, 196}
-			input.Color{165, 214, 167}
-			input.Color{197, 225, 165}
-			input.Color{230, 238, 156}
-			input.Color{255, 245, 157}
-			input.Color{255, 224, 130}
-			input.Color{255, 204, 128}
-			input.Color{255, 171, 145}
-			input.Color{188, 170, 164}
-			input.Color{238, 238, 238}
-			input.Color{176, 190, 197}
+			ti.Color{239, 154, 154}
+			ti.Color{244, 143, 177}
+			ti.Color{206, 147, 216}
+			ti.Color{179, 157, 219}
+			ti.Color{159, 168, 218}
+			ti.Color{144, 202, 249}
+			ti.Color{129, 212, 250}
+			ti.Color{128, 222, 234}
+			ti.Color{128, 203, 196}
+			ti.Color{165, 214, 167}
+			ti.Color{197, 225, 165}
+			ti.Color{230, 238, 156}
+			ti.Color{255, 245, 157}
+			ti.Color{255, 224, 130}
+			ti.Color{255, 204, 128}
+			ti.Color{255, 171, 145}
+			ti.Color{188, 170, 164}
+			ti.Color{238, 238, 238}
+			ti.Color{176, 190, 197}
 		], [
-			input.Color{244, 67, 54}
-			input.Color{233, 30, 99}
-			input.Color{156, 39, 176}
-			input.Color{103, 58, 183}
-			input.Color{63, 81, 181}
-			input.Color{33, 150, 243}
-			input.Color{3, 169, 244}
-			input.Color{0, 188, 212}
-			input.Color{0, 150, 136}
-			input.Color{76, 175, 80}
-			input.Color{139, 195, 74}
-			input.Color{205, 220, 57}
-			input.Color{255, 235, 59}
-			input.Color{255, 193, 7}
-			input.Color{255, 152, 0}
-			input.Color{255, 87, 34}
-			input.Color{121, 85, 72}
-			input.Color{158, 158, 158}
-			input.Color{96, 125, 139}
+			ti.Color{244, 67, 54}
+			ti.Color{233, 30, 99}
+			ti.Color{156, 39, 176}
+			ti.Color{103, 58, 183}
+			ti.Color{63, 81, 181}
+			ti.Color{33, 150, 243}
+			ti.Color{3, 169, 244}
+			ti.Color{0, 188, 212}
+			ti.Color{0, 150, 136}
+			ti.Color{76, 175, 80}
+			ti.Color{139, 195, 74}
+			ti.Color{205, 220, 57}
+			ti.Color{255, 235, 59}
+			ti.Color{255, 193, 7}
+			ti.Color{255, 152, 0}
+			ti.Color{255, 87, 34}
+			ti.Color{121, 85, 72}
+			ti.Color{158, 158, 158}
+			ti.Color{96, 125, 139}
 		], [
-			input.Color{198, 40, 40}
-			input.Color{173, 20, 87}
-			input.Color{106, 27, 154}
-			input.Color{69, 39, 160}
-			input.Color{40, 53, 147}
-			input.Color{21, 101, 192}
-			input.Color{2, 119, 189}
-			input.Color{0, 131, 143}
-			input.Color{0, 105, 92}
-			input.Color{46, 125, 50}
-			input.Color{85, 139, 47}
-			input.Color{158, 157, 36}
-			input.Color{249, 168, 37}
-			input.Color{255, 143, 0}
-			input.Color{239, 108, 0}
-			input.Color{216, 67, 21}
-			input.Color{78, 52, 46}
-			input.Color{66, 66, 66}
-			input.Color{55, 71, 79}
+			ti.Color{198, 40, 40}
+			ti.Color{173, 20, 87}
+			ti.Color{106, 27, 154}
+			ti.Color{69, 39, 160}
+			ti.Color{40, 53, 147}
+			ti.Color{21, 101, 192}
+			ti.Color{2, 119, 189}
+			ti.Color{0, 131, 143}
+			ti.Color{0, 105, 92}
+			ti.Color{46, 125, 50}
+			ti.Color{85, 139, 47}
+			ti.Color{158, 157, 36}
+			ti.Color{249, 168, 37}
+			ti.Color{255, 143, 0}
+			ti.Color{239, 108, 0}
+			ti.Color{216, 67, 21}
+			ti.Color{78, 52, 46}
+			ti.Color{66, 66, 66}
+			ti.Color{55, 71, 79}
 		]
 	]
 )
@@ -75,18 +75,28 @@ const (
 
 	w = 200
 	h = 100
+
+	space  = ' '
+	spaces = '  '
+
+	select_color = 'Select color:'
+	select_size  = 'Size: ＋  －'
+
+	help_1 = '╭────────╮'
+	help_2 = '│  HELP  │'
+	help_3 = '╰────────╯'
 )
 
 struct App {
 mut:
-	ti              &input.Context = 0
+	ti              &ti.Context = 0
 	header_text     []string
 	mouse_pos       Point
 	msg             string
 	msg_hide_tick   int
-	primary_color   input.Color = colors[1][6]
-	secondary_color input.Color = colors[1][9]
-	drawing         [][]input.Color = [][]input.Color{ len: h, init: []input.Color{ len: w } }
+	primary_color   ti.Color = colors[1][6]
+	secondary_color ti.Color = colors[1][9]
+	drawing         [][]ti.Color = [][]ti.Color{ len: h, init: []ti.Color{ len: w } }
 	size            int = 1
 	should_redraw   bool = true
 	is_dragging     bool
@@ -99,7 +109,7 @@ struct Point {
 
 fn main() {
 	mut app := &App{}
-	app.ti = input.init(
+	app.ti = ti.init(
 		user_data: app
 		frame_fn: frame
 		event_fn: event
@@ -109,10 +119,6 @@ fn main() {
 	)
 
 	app.ti.run()
-}
-
-fn init(x voidptr) {
-	// mut app := &App(x)
 }
 
 fn frame(x voidptr) {
@@ -126,12 +132,12 @@ fn frame(x voidptr) {
 	}
 
 	if redraw {
-		app.render()
+		app.render(false)
 		app.should_redraw = false
 	}
 }
 
-fn event(event &input.Event, x voidptr) {
+fn event(event &ti.Event, x voidptr) {
 	mut app := &App(x)
 
 	match event.typ {
@@ -154,8 +160,9 @@ fn event(event &input.Event, x voidptr) {
 		} .key_down {
 			match event.code {
 				.c {
-					app.drawing = [][]input.Color{ len: h, init: []input.Color{ len: w } }
+					app.drawing = [][]ti.Color{ len: h, init: []ti.Color{ len: w } }
 				} .escape {
+					app.render(true)
 					exit(0)
 				} else {}
 			}
@@ -165,26 +172,29 @@ fn event(event &input.Event, x voidptr) {
 	app.should_redraw = true
 }
 
-fn (mut app App) render() {
+fn (mut app App) render(paint_only bool) {
 	app.ti.clear()
 
 	app.draw_header()
-	app.draw_footer()
 	app.draw_content()
-	app.draw_cursor()
+
+	if !paint_only {
+		app.draw_footer()
+		app.draw_cursor()
+	}
 
 	app.ti.flush()
 }
 
-fn (mut app App) set_pixel(x_ int, y_ int, c input.Color) {
+fn (mut app App) set_pixel(x_ int, y_ int, c ti.Color) {
 	// Term coords start at 1, and adjust for the header
 	x, y := x_ - 1, y_ - 4
 	if y < 0 || app.ti.window_height - y < 3 { return }
-	if x < 0 || x >= app.drawing.len || y < 0 || y >= app.drawing[0].len { return }
+	if y >= app.drawing.len || x < 0 || x >= app.drawing[0].len { return }
 	app.drawing[y][x] = c
 }
 
-fn (mut app App) paint(event &input.Event) {
+fn (mut app App) paint(event &ti.Event) {
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
 	color := if event.button == .primary { app.primary_color } else { app.secondary_color }
 
@@ -196,11 +206,14 @@ fn (mut app App) paint(event &input.Event) {
 }
 
 fn (mut app App) draw_content() {
-	w, h := app.ti.window_width / 2, app.ti.window_height - 8
+	w, mut h := app.ti.window_width / 2, app.ti.window_height - 8
+	if h > app.drawing.len {
+		h = app.drawing.len
+	}
 
 	for row_idx, row in app.drawing[..h] {
 		app.ti.set_cursor_position(0, row_idx + 4)
-		mut last := input.Color{ 0, 0, 0 }
+		mut last := ti.Color{ 0, 0, 0 }
 		for cell in row[..w] {
 			if cell.r == 0 && cell.g == 0 && cell.b == 0 {
 				if !(cell.r == last.r && cell.g == last.g && cell.b == last.b) {
@@ -211,7 +224,7 @@ fn (mut app App) draw_content() {
 					app.ti.set_bg_color(cell)
 				}
 			}
-			app.ti.write('  ')
+			app.ti.write(spaces)
 			last = cell
 		}
 		app.ti.reset()
@@ -219,17 +232,29 @@ fn (mut app App) draw_content() {
 }
 
 fn (mut app App) draw_cursor() {
-	cursor_color := if app.is_dragging { input.Color{ 220, 220, 220 } } else { input.Color{ 160, 160, 160 } }
+	if app.mouse_pos.y in [3, app.ti.window_height - 5] {
+		// inside the horizontal separators
+		return
+	}
+
+	cursor_color := if app.is_dragging { ti.Color{ 220, 220, 220 } } else { ti.Color{ 160, 160, 160 } }
 	app.ti.set_bg_color(cursor_color)
-
-	if app.mouse_pos.y >= 4 && app.mouse_pos.y <= app.ti.window_height - 4 {
+	
+	if app.mouse_pos.y >= 3 && app.mouse_pos.y <= app.ti.window_height - 4 {
 		// inside the main content
-		x_pos := if app.mouse_pos.x & 1 == 1 { app.mouse_pos.x } else { app.mouse_pos.x - 1 }
-		app.ti.draw_text(x_pos, app.mouse_pos.y, '  ')
+		mut x_start := int(f32((app.mouse_pos.x - 1) / 2) - app.size / 2 + 1) * 2 - 1
+		mut y_start := app.mouse_pos.y - app.size / 2
+		mut x_end := x_start + app.size * 2 - 1
+		mut y_end := y_start + app.size - 1
 
-		// TODO: make cursor size = the pixel size
+		if x_start < 1 { x_start = 1 }
+		if y_start < 4 { y_start = 4 }
+		if x_end > app.ti.window_width { x_end = app.ti.window_width }
+		if y_end > app.ti.window_height - 5 { y_end = app.ti.window_height - 5 }
+
+		app.ti.draw_rect(x_start, y_start, x_end, y_end)
 	} else {
-		app.ti.draw_text(app.mouse_pos.x, app.mouse_pos.y, '  ')
+		app.ti.draw_text(app.mouse_pos.x, app.mouse_pos.y, space)
 	}
 	app.ti.reset()
 }
@@ -262,15 +287,15 @@ fn (mut app App) draw_footer() {
 	}
 	app.ti.reset_bg_color()
 
-	app.ti.draw_text(3, wh - 3, 'Select color:')
+	app.ti.draw_text(3, wh - 3, select_color)
 	app.ti.bold()
-	app.ti.draw_text(3, wh - 1,     'Size: ＋  －')
+	app.ti.draw_text(3, wh - 1, select_size)
 	app.ti.reset()
 
 	if ww >= 90 {
-		app.ti.draw_text(80, wh - 3, '╭────────╮')
-		app.ti.draw_text(80, wh - 2, '│  HELP  │')
-		app.ti.draw_text(80, wh - 1, '╰────────╯')
+		app.ti.draw_text(80, wh - 3, help_1)
+		app.ti.draw_text(80, wh - 2, help_2)
+		app.ti.draw_text(80, wh - 1, help_3)
 	}
 }
 
@@ -286,7 +311,7 @@ fn (mut app App) dec_size() {
 	app.show_msg('dec. size: $app.size', 1)
 }
 
-fn (mut app App) footer_click(event &input.Event) {
+fn (mut app App) footer_click(event &ti.Event) {
 	footer_y := 3 - (app.ti.window_height - event.y)
 	match event.x {
 		8...11 {

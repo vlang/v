@@ -1,4 +1,4 @@
-module term_input
+module input
 
 pub enum KeyCode {
 	null                 = 0
@@ -163,7 +163,7 @@ pub struct Context {
 pub:
 	cfg 		  Config
 mut:
-	termios       &C.termios = 0
+	termios       C.termios
 	read_buf      []byte
 	print_buf     []byte
 	// init_called  bool

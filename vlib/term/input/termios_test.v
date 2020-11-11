@@ -1,4 +1,4 @@
-module term_input
+module input
 
 fn test_escape_end() {
 	assert escape_end('\x1b[0m') == 4

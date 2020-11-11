@@ -1,4 +1,4 @@
-module term_input
+module input
 
 import strings
 
@@ -76,7 +76,7 @@ pub fn (mut ctx Context) reset() {
 
 [inline]
 pub fn (mut ctx Context) clear() {
-	ctx.write('\x1b[1;1H\x1b[2J\x1b[3J')
+	ctx.write('\x1b[2J\x1b[3J')
 }
 
 // pub const (

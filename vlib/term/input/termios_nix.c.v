@@ -1,4 +1,4 @@
-module term_input
+module input
 
 import os
 import time
@@ -28,9 +28,9 @@ const (
 )
 
 [inline]
-fn get_termios() &C.termios {
-	mut t := &C.termios{}
-	C.tcgetattr(C.STDIN_FILENO, t)
+fn get_termios() C.termios {
+	mut t := C.termios{}
+	C.tcgetattr(C.STDIN_FILENO, &t)
 	return t
 }
 
@@ -56,7 +56,7 @@ fn (mut ctx Context) termios_setup() {
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
-	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, termios)
+	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 	print('\x1b[?1003h\x1b[?1015h\x1b[?1006h')
 
 	ctx.termios = termios
@@ -91,7 +91,7 @@ fn (mut ctx Context) termios_setup() {
 }
 
 fn termios_reset() {
-	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH /* C.TCSANOW ?? */, termios_at_startup)
+	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH /* C.TCSANOW ?? */, &termios_at_startup)
 	print('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J\x1b[?25h')
 }
 
