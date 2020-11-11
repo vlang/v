@@ -2,7 +2,6 @@ module js
 
 import strings
 import v.ast
-import v.gen
 import v.table
 import v.pref
 import v.util
@@ -639,7 +638,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			text := gen.smart_quote(node.val, false)
+			text := node.val.replace('`', '\\`')
 			g.write('`$text`')
 		}
 		ast.StructInit {
