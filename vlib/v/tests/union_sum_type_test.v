@@ -395,9 +395,14 @@ struct Expr4Wrapper {
 mut:
 	expr Expr4
 }
-struct CallExpr2 {}
+struct CallExpr2 {
+	y int
+	x string
+}
 
-struct CTempVarExpr {}
+struct CTempVarExpr {
+	x string
+}
 
 fn gen(_ Expr4) CTempVarExpr {
 	return CTempVarExpr{}
@@ -414,6 +419,16 @@ fn test_reassign_from_function_with_parameter_selector() {
 	mut f := Expr4Wrapper{Expr4(CallExpr2{})}
 	if f.expr is CallExpr2 {
 		f.expr = gen(f.expr)
+	}
+}
+
+fn test_match_multi_branch() {
+	f := Expr4(CTempVarExpr{'ctemp'})
+	mut y := ''
+	match union f {
+		CallExpr2, CTempVarExpr {
+			assert typeof(f) == 'Expr4'
+		}
 	}
 }
 

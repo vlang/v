@@ -1068,7 +1068,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		// if name in table.builtin_type_names {
 		if (!known_var && (name in p.table.type_idxs ||
 			name_w_mod in p.table.type_idxs) && name !in ['C.stat', 'C.sigaction']) ||
-			is_mod_cast || (!(name.len > 1 && name[0] == `C` && name[1] == `.`) && name[0].is_capital()) {
+			is_mod_cast || (language == .v && name[0].is_capital()) {
 			// MainLetter(x) is *always* a cast, as long as it is not `C.`
 			// TODO handle C.stat()
 			start_pos := p.tok.position()
@@ -1115,6 +1115,21 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		(!p.inside_for || p.inside_select) { // && (p.tok.lit[0].is_capital() || p.builtin_mod) {
 		return p.struct_init(false) // short_syntax: false
 	} else if p.peek_tok.kind == .dot && (lit0_is_capital && !known_var && language == .v) {
+		// T.name
+		if p.tok.lit == 'T' {
+			pos := p.tok.position()
+			name := p.check_name()
+			p.check(.dot)
+			field := p.check_name()
+			pos.extend(p.tok.position())
+			return ast.SelectorExpr{
+				expr: ast.Ident{
+					name: name
+				}
+				field_name: field
+				pos: pos
+			}
+		}
 		// `Color.green`
 		mut enum_name := p.check_name()
 		if mod != '' {

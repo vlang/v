@@ -109,6 +109,7 @@ pub fn (mut ws Client) listen() ? {
 	ws.logger.info('Starting client listener, server($ws.is_server)...')
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
+		ws.close(1000, 'closed by client')
 	}
 	for ws.state == .open {
 		msg := ws.read_next_message() or {

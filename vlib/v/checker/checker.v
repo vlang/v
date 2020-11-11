@@ -1551,7 +1551,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			return true
 		}
 		*/
-		if !c.check_types(typ, arg.typ) {
+		c.check_expected(typ, arg.typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -1564,16 +1564,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.is_generic {
 				continue
 			}
-			if typ_sym.kind == .array_fixed {
-			}
-			if typ_sym.kind == .function && arg_typ_sym.kind == .function {
-				candidate_fn_name := if typ_sym.source_name.starts_with('anon_') { 'anonymous function' } else { 'fn `$typ_sym.source_name`' }
-				c.error('cannot use $candidate_fn_name as function type `$arg_typ_sym.str()` in argument ${i +
-					1} to `$fn_name`', call_expr.pos)
-			} else {
-				c.error('cannot use type `$typ_sym.source_name` as type `$arg_typ_sym.source_name` in argument ${i +
-					1} to `$fn_name`', call_expr.pos)
-			}
+			c.error('invalid argument ${i + 1} to `$fn_name`: $err', call_arg.pos)
 		}
 	}
 	if f.is_generic && call_expr.generic_type == table.void_type {
@@ -1745,18 +1736,33 @@ fn is_expr_panic_or_exit(expr ast.Expr) bool {
 pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.Type {
 	prevent_sum_type_unwrapping_once := c.prevent_sum_type_unwrapping_once
 	c.prevent_sum_type_unwrapping_once = false
+	// T.name, typeof(expr).name
+	mut name_type := 0
+	match union selector_expr.exp {
+		ast.Ident {
+			if selector_expr.expr.name == 'T' {
+				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
+			}
+		}
+		// Note: in future typeof() should be a type known at compile-time
+		// sum types should not be handled dynamically
+		ast.TypeOf {
+			name_type = c.expr(selector_expr.expr.expr)
+		}
+		else {}
+	}
+	if name_type > 0 {
+		if selector_expr.field_name != 'name' {
+			c.error('invalid field `.$selector_expr.field_name` for type `$selector_expr.expr`',
+				selector_expr.pos)
+		}
+		selector_expr.name_type = name_type
+		return table.string_type
+	}
 	typ := c.expr(selector_expr.expr)
 	if typ == table.void_type_idx {
 		c.error('unknown selector expression', selector_expr.pos)
 		return table.void_type
-	}
-	if selector_expr.expr is ast.TypeOf as left {
-		if selector_expr.field_name == 'name' {
-			return table.string_type
-		} else {
-			c.error('expected `.name`, not `.$selector_expr.field_name` after `typeof` expression',
-				selector_expr.pos)
-		}
 	}
 	selector_expr.expr_type = typ
 	field_name := selector_expr.field_name
@@ -2925,6 +2931,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					}
 				}
 				return right_type.to_ptr()
+			} else if node.op == .amp && node.right !is ast.CastExpr {
+				return right_type.to_ptr()
 			}
 			if node.op == .mul {
 				if right_type.is_ptr() {
@@ -3450,7 +3458,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			match union expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
-					if cond_type_sym.kind == .union_sum_type {
+					if branch.exprs.len == 1 && cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
 						match union node.cond {
 							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
@@ -3486,7 +3494,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
 			if cond_type_sym.kind == .interface_ {
-				c.type_implements(expr_type, c.expected_type, expr.position())
+				// TODO
+				// This generates a memory issue with TCC
+				// Needs to be checked later when TCC errors are fixed
+				// Current solution is to move expr.position() to its own statement
+				// c.type_implements(expr_type, c.expected_type, expr.position())
+				expr_pos := expr.position()
+				c.type_implements(expr_type, c.expected_type, expr_pos)
 			} else if cond_type_sym.info is table.UnionSumType as info {
 				if expr_type !in info.variants {
 					expr_str := c.table.type_to_str(expr_type)
