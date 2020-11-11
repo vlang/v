@@ -7,8 +7,6 @@ import v.util
 // os.v - // embeded comments, mib := [1/* CTL_KERN */, 14/* KERN_PROC */, 12/* KERN_PROC_PATHNAME */, -1] => comment the rest of the line
 const (
 	known_failing_exceptions = [
-		'vlib/crypto/aes/aes.v', // pub fn (c &AesCipher) encrypt(mut dst, mut src []byte) {
-		'vlib/crypto/aes/block_generic.v', // fn expand_key_generic(key []byte, mut enc, mut dec []u32) {
 		'vlib/crypto/aes/const.v', // multiple narrow columns of []string turned to 1 long single column, otherwise works
 		'vlib/crypto/rc4/rc4.v', // pub fn (mut c Cipher) xor_key_stream(mut dst, mut src []byte) {
 		'vlib/vweb/vweb.v', // $for method in T.methods { => $for method in T(methods) { , `return // xx` => parse expr error
