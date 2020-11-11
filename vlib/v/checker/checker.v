@@ -1738,7 +1738,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	c.prevent_sum_type_unwrapping_once = false
 	// T.name, typeof(expr).name
 	mut name_type := 0
-	match union selector_expr.exp {
+	match union selector_expr.expr {
 		ast.Ident {
 			if selector_expr.expr.name == 'T' {
 				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
