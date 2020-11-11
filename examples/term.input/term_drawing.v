@@ -43,7 +43,7 @@ const (
 			ti.Color{255, 152, 0}
 			ti.Color{255, 87, 34}
 			ti.Color{121, 85, 72}
-			ti.Color{158, 158, 158}
+			ti.Color{120, 120, 120}
 			ti.Color{96, 125, 139}
 		], [
 			ti.Color{198, 40, 40}
@@ -63,7 +63,7 @@ const (
 			ti.Color{239, 108, 0}
 			ti.Color{216, 67, 21}
 			ti.Color{78, 52, 46}
-			ti.Color{66, 66, 66}
+			ti.Color{33, 33, 33}
 			ti.Color{55, 71, 79}
 		]
 	]
@@ -239,7 +239,7 @@ fn (mut app App) draw_cursor() {
 
 	cursor_color := if app.is_dragging { ti.Color{ 220, 220, 220 } } else { ti.Color{ 160, 160, 160 } }
 	app.ti.set_bg_color(cursor_color)
-	
+
 	if app.mouse_pos.y >= 3 && app.mouse_pos.y <= app.ti.window_height - 4 {
 		// inside the main content
 		mut x_start := int(f32((app.mouse_pos.x - 1) / 2) - app.size / 2 + 1) * 2 - 1
