@@ -51,7 +51,7 @@ fn (mut ctx Context) termios_setup() {
 		termios.c_lflag &= ~u32(C.ICANON | C.ISIG | C.ECHO | C.IEXTEN | C.TOSTOP)
 	} else {
 		// Set raw input mode by unsetting ICANON and ECHO
-		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)	
+		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
 	}
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
@@ -132,7 +132,7 @@ fn (mut ctx Context) termios_loop() {
 		sw.pause()
 		last_frame_time = int(sw.elapsed().microseconds())
 
-		if 
+		if
 		println('Sleeping for $frame_time - $last_frame_time = ${frame_time - last_frame_time}')
 		// time.usleep(frame_time - last_frame_time - sleep_len * 7)
 		last_frame_time = 0
@@ -219,7 +219,7 @@ fn single_char(buf string) &Event {
 		// 65 ... 90 { event = { event | code: KeyCode(32 | ch), modifiers: shift } }
 
 
-		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement 
+		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
 		// 10 == `\n` == enter, don't treat it as ctrl + j
 		1  ... 9, 11 ... 26 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(96 | ch), modifiers: ctrl } }
 		65 ... 90 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(32 | ch), modifiers: shift } }
@@ -249,6 +249,9 @@ fn escape_end(buf string) int {
 		}
 		i++
 	}
+	// this point should be unreachable
+	assert false
+	return 0
 }
 
 fn escape_sequence(buf_ string) (&Event, int) {
@@ -367,7 +370,7 @@ fn escape_sequence(buf_ string) (&Event, int) {
 			`S` { KeyCode.f4 }
 			else { code }
 		}
-		//  && buf[3] >= `2` && buf[3] <= `8` && buf[4] >= `A` && buf[4] <= `D` 
+		//  && buf[3] >= `2` && buf[3] <= `8` && buf[4] >= `A` && buf[4] <= `D`
 	}
 
 	return &Event{ typ: .key_down, code: code, utf8: single, modifiers: modifiers }, end
