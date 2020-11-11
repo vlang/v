@@ -205,6 +205,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_first_pos := p.tok.position()
 		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
+		mut ecmnts := [][]ast.Comment{}
 		p.open_scope()
 		// final else
 		mut is_else := false
@@ -232,6 +233,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
+				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.Type{
 					typ: parsed_type
@@ -294,6 +296,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
+				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -331,6 +334,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
+			ecmnts: ecmnts
 			stmts: stmts
 			pos: pos
 			comments: comments

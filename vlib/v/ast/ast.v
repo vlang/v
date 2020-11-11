@@ -574,6 +574,7 @@ pub mut:
 pub struct MatchBranch {
 pub:
 	exprs         []Expr // left side
+	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt // right side
 	pos           token.Position
 	comments      []Comment // comment above `xxx {`
@@ -805,6 +806,7 @@ pub:
 	pos             token.Position
 	elem_type_pos   token.Position
 	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	ecmnts          [][]Comment // optional iembed comments after each expr
 	is_fixed        bool
 	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
