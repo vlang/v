@@ -8,7 +8,6 @@ import v.util
 const (
 	known_failing_exceptions = [
 		'vlib/crypto/aes/const.v', // multiple narrow columns of []string turned to 1 long single column, otherwise works
-		'vlib/crypto/rc4/rc4.v', // pub fn (mut c Cipher) xor_key_stream(mut dst, mut src []byte) {
 		'vlib/vweb/vweb.v', // $for method in T.methods { => $for method in T(methods) { , `return // xx` => parse expr error
 		'vlib/v/gen/js/tests/life.v', // error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500)
 		'vlib/builtin/js/builtin.v', // JS.console.error(s) => JS.error(s), JS.process.exit(c) => JS.exit(c)
