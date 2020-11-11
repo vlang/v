@@ -2192,55 +2192,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder {
-			// Assign to sum type if ordinary value
-			mut final_left_type := left_type_unwrapped
-			mut scope := c.file.scope.innermost(left.position().pos)
-			match left {
-				ast.SelectorExpr {
-					if _ := scope.find_struct_field(left.expr_type, left.field_name) {
-						final_left_type = right_type_unwrapped
-						mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-						inner_scope.register_struct_field(ast.ScopeStructField{
-							struct_type: left.expr_type
-							name: left.field_name
-							typ: final_left_type
-							sum_type_cast: right_type_unwrapped
-							pos: left.pos
-						})
-					}
-				}
-				ast.Ident {
-					if v := scope.find_var(left.name) {
-						if v.sum_type_cast != 0 &&
-							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
-							final_left_type = right_type_unwrapped
-							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-							inner_scope.register(left.name, ast.Var{
-								name: left.name
-								typ: final_left_type
-								pos: left.pos
-								is_used: true
-								is_mut: left.is_mut
-								sum_type_cast: right_type_unwrapped
-							})
-						}
-					}
-				}
-				else {}
-			}
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, final_left_type) or {
+			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
 			}
 		}
 	}
-}
-
-fn (mut c Checker) open_scope(mut parent ast.Scope, start_pos int) &ast.Scope {
-	mut s := ast.new_scope(parent, start_pos)
-	s.end_pos = parent.end_pos
-	parent.children << s
-	return s
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
@@ -3466,21 +3423,44 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					if branch.exprs.len == 1 && cond_type_sym.kind == .union_sum_type {
 						mut scope := c.file.scope.innermost(branch.pos.pos)
 						match node.cond as node_cond {
-							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
-									struct_type: node_cond.expr_type
-									name: node_cond.field_name
-									typ: node.cond_type
-									sum_type_cast: expr.typ
-									pos: node_cond.pos
-								}) }
-							ast.Ident { scope.register(node.var_name, ast.Var{
-									name: node.var_name
-									typ: node.cond_type
-									pos: node_cond.pos
-									is_used: true
-									is_mut: node.is_mut
-									sum_type_cast: expr.typ
-								}) }
+							ast.SelectorExpr {
+								mut is_mut := false
+								if node_cond.expr is ast.Ident as selector_ident {
+									if v := scope.find_var(selector_ident.name) {
+										if v.is_mut {
+											is_mut = true
+										}
+									}
+								}
+								if field := c.table.struct_find_field(node_cond.expr_type, node_cond.field_name) {
+									if field.is_mut {
+										is_mut = true
+									}
+								}
+								if !is_mut {
+									scope.register_struct_field(ast.ScopeStructField{
+										struct_type: node_cond.expr_type
+										name: node_cond.field_name
+										typ: node.cond_type
+										sum_type_cast: expr.typ
+										pos: node_cond.pos
+									})
+								}
+							}
+							ast.Ident {
+								if v := scope.find_var(node.var_name) {
+									if !v.is_mut {
+										scope.register(node.var_name, ast.Var{
+											name: node.var_name
+											typ: node.cond_type
+											pos: node_cond.pos
+											is_used: true
+											is_mut: false
+											sum_type_cast: expr.typ
+										})
+									}
+								}
+							}
 							else {}
 						}
 					}
