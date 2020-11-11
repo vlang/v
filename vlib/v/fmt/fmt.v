@@ -1272,6 +1272,15 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') {
 		return name
 	}
+	if name.ends_with('>') {
+		x := name.trim_suffix('>').split('<')
+		if x.len == 2 {
+			main := f.short_module(x[0])
+			genlist := x[1].split(',').map(f.short_module(it)).join(',')
+			res := '$main<${genlist}>'
+			return res
+		}
+	}
 	vals := name.split('.')
 	if vals.len < 2 {
 		return name
