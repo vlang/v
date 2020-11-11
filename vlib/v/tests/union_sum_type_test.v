@@ -433,7 +433,7 @@ fn test_match_multi_branch() {
 }
 
 struct Outer2 {
-    e Expr4
+	e Expr4
 }
 
 fn test_zero_value_init() {
