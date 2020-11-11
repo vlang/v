@@ -302,11 +302,13 @@ fn test_nested_if_is() {
 fn test_casted_sum_type_selector_reassign() {
 	mut b := InnerStruct{Inner(0)}
 	if b.x is int {
+		assert typeof(b.x) == 'int'
 		// this check works only if x is castet
 		assert b.x == 0
 		b.x = 'test'
 		// this check works only if x is castet
 		assert b.x[0] == `t`
+		assert typeof(b.x) == 'string'
 	}
 	// this check works only if x is not castet
 	assert b.x is string
@@ -317,9 +319,11 @@ fn test_casted_sum_type_ident_reassign() {
 	if x is int {
 		// this check works only if x is castet
 		assert x == 0
+		assert typeof(x) == 'int'
 		x = 'test'
 		// this check works only if x is castet
 		assert x[0] == `t`
+		assert typeof(x) == 'string'
 	}
 	// this check works only if x is not castet
 	assert x is string
