@@ -325,6 +325,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
+	// this should not happen
+	assert false
+	return .success
 }
 
 [inline]
@@ -494,8 +497,9 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 				dest2 = dest
 			}
 		}
-		return .success
+		break        
 	}
+	return .success
 }
 
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)

@@ -3357,8 +3357,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
-	mut require_return := false
-	mut branch_without_return := false
+	mut nbranches_with_return := 0
+	mut nbranches_without_return := 0
 	for branch in node.branches {
 		c.stmts(branch.stmts)
 		if node.is_expr && branch.stmts.len > 0 {
@@ -3392,17 +3392,21 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		}
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
-				require_return = true
+				nbranches_with_return++
 			} else {
-				branch_without_return = true
+				nbranches_without_return++
 			}
 		}
 	}
-	if require_return && branch_without_return {
-		c.returns = false
-	} else {
-		// if inner if branch has not covered all branches but this one
-		c.returns = true
+	if nbranches_with_return > 0 {
+		if nbranches_with_return == node.branches.len {
+			// an exhaustive match, and all branches returned
+			c.returns = true
+		}
+		if nbranches_without_return > 0 {
+			// some of the branches did not return
+			c.returns = false
+		}
 	}
 	// if ret_type != table.void_type {
 	// node.is_expr = c.expected_type != table.void_type
@@ -3692,8 +3696,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	expr_required := c.expected_type != table.void_type
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
-	mut require_return := false
-	mut branch_without_return := false
+	mut nbranches_with_return := 0
+	mut nbranches_without_return := 0
 	mut should_skip := false // Whether the current branch should be skipped
 	mut found_branch := false // Whether a matching branch was found- skip the rest
 	for i in 0 .. node.branches.len {
@@ -3859,17 +3863,25 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
-				require_return = true
+				nbranches_with_return++
 			} else {
-				branch_without_return = true
+				nbranches_without_return++
 			}
 		}
 	}
-	if require_return && (!node.has_else || branch_without_return) {
-		c.returns = false
-	} else {
-		// if inner if branch has not covered all branches but this one
-		c.returns = true
+	if nbranches_with_return > 0 {
+		if nbranches_with_return == node.branches.len {
+			// if/else... where all branches returned
+			c.returns = true
+		}
+		if !node.has_else {
+			// `if cond { return ... }` means that when cond is false, execution continues
+			c.returns = false
+		}
+		if nbranches_without_return > 0 {
+			// some of the branches did not return
+			c.returns = false
+		}
 	}
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.any_int_type {
