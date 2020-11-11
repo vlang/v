@@ -16,6 +16,16 @@ pub mut:
 	permission U
 }
 
+struct User {
+mut:
+	name string
+}
+
+struct Permission {
+pub mut:
+	name string
+}
+
 fn main() {
 	foo_int := Foo<int>{2}
 	assert foo_int.value() == '2'
@@ -25,4 +35,11 @@ fn main() {
 	println(x.db)
 	println(x.model)
 	println(x.permission)
+	//
+	mut a := Repo<User,Permission>{
+		model: User{
+			name: 'joe'
+		}
+	}
+	println(a.model.name)
 }
