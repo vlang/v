@@ -170,6 +170,7 @@ pub struct StructDecl {
 pub:
 	pos          token.Position
 	name         string
+	gen_types    []table.Type
 	is_pub       bool
 	mut_pos      int // mut:
 	pub_pos      int // pub:

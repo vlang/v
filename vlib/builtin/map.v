@@ -407,6 +407,8 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 		// Key not found, insert key with zero-value
 		m.set(key, zero)
 	}
+	assert false    
+	return voidptr(0)    
 }
 
 // If `key` matches the key of an element in the container,

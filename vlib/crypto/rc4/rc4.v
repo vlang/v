@@ -1,3 +1,5 @@
+module rc4
+
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
@@ -8,8 +10,6 @@
 // applications.
 // Based off:   https://github.com/golang/go/blob/master/src/crypto/rc4
 // Last commit: https://github.com/golang/go/commit/b35dacaac57b039205d9b07ea24098e2c3fcb12e
-module rc4
-
 import crypto.internal.subtle
 
 // A Cipher is an instance of RC4 using a particular key.
