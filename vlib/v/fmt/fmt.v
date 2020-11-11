@@ -599,7 +599,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.writeln('$name {')
+	f.write(name)
+	if node.gen_types.len > 0 {
+		f.write(' <')
+		gtypes := node.gen_types.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes)
+		f.write('>')
+	}
+	f.writeln(' {')
 	mut max := 0
 	mut max_type := 0
 	mut field_types := []string{cap: node.fields.len}

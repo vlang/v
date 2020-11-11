@@ -287,6 +287,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_union: is_union
 		attrs: attrs
 		end_comments: end_comments
+		gen_types: generic_types
 	}
 }
 
