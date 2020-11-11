@@ -5,19 +5,19 @@ import testing
 import v.util
 
 const (
-	vet_known_failing_exceptions = [
+	vet_known_failing_exceptions    = [
 		'nonexistent',
 	]
-	vet_folders = [
+	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
 		'cmd/v',
 		'cmd/tools',
 	]
 	verify_known_failing_exceptions = [
-		'nonexistant'
+		'nonexistant',
 	]
-	verify_list = [
+	verify_list                     = [
 		'vlib/builtin/array.v',
 		'vlib/os/file.v',
 		'vlib/math/bits/bits.v',
@@ -78,7 +78,8 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 
 fn v_test_vetting(vargs string) {
 	vet_session := tsession(vargs, 'vvet.v', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
-	verify_session := tsession(vargs, 'vfmt.v', 'v fmt -verify', 'fmt -verify', verify_list, verify_known_failing_exceptions)
+	verify_session := tsession(vargs, 'vfmt.v', 'v fmt -verify', 'fmt -verify', verify_list,
+		verify_known_failing_exceptions)
 	//
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
 		eprintln('\n')

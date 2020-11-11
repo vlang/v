@@ -808,9 +808,15 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			f.comment(node, {
-				inline: true
-			})
+			if f.array_init_depth > 0 {
+				f.comment(node, {
+					iembed: true
+				})
+			} else {
+				f.comment(node, {
+					inline: true
+				})
+			}
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -1188,14 +1194,21 @@ enum CommentsLevel {
 // CommentsOptions defines the way comments are going to be written
 // - has_nl: adds an newline at the end of the list of comments
 // - inline: single-line comments will be on the same line as the last statement
-// - level:  either .keep (don't indent), or .indent (increment indentation)
+// - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
+// - level: either .keep (don't indent), or .indent (increment indentation)
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool
 	level  CommentsLevel
+	iembed bool
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if options.iembed {
+		x := node.text.replace('\n', ' ')
+		f.write('/* $x */')
+		return
+	}
 	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
 		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
@@ -1575,6 +1588,14 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			f.is_mbranch_expr = true
 			for j, expr in branch.exprs {
 				f.expr(expr)
+				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
+					f.write(' ')
+					for cmnt in branch.ecmnts[j] {
+						f.comment(cmnt, {
+							iembed: true
+						})
+					}
+				}
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
@@ -1777,6 +1798,14 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write(' ')
 		}
 		f.expr(expr)
+		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
+			f.write(' ')
+			for cmt in it.ecmnts[i] {
+				f.comment(cmt, {
+					iembed: true
+				})
+			}
+		}
 		if i == it.exprs.len - 1 {
 			if is_new_line {
 				if expr !is ast.Comment {
