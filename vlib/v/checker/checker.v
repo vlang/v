@@ -1629,7 +1629,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 		if expr.return_type.has_flag(.optional) {
 			if expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${expr.name}() returns an option, but you missed to add an `or {}` block to it',
+					c.error('${expr.name}() returns an option but is missing an `or {}` block',
 						expr.pos)
 				}
 			} else {
@@ -1643,7 +1643,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$expr.name`, does not return an optional',
+			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		}
 	}
@@ -1653,7 +1653,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, expr_return_type table.Type) {
 	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
-			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
 				or_expr.pos)
 		}
 		return
