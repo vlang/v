@@ -432,6 +432,15 @@ fn test_match_multi_branch() {
 	}
 }
 
+struct Outer2 {
+    e Expr4
+}
+
+fn test_zero_value_init() {
+	// no c compiler error then it's successful
+    o := Outer2{}
+}
+
 fn test_sum_type_match() {
 	// TODO: Remove these casts
 	assert is_gt_simple('3', int(2))
