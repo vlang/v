@@ -438,7 +438,7 @@ struct Outer2 {
 
 fn test_zero_value_init() {
 	// no c compiler error then it's successful
-    o := Outer2{}
+	o := Outer2{}
 }
 
 fn test_sum_type_match() {
