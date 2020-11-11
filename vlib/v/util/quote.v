@@ -95,4 +95,3 @@ pub fn smart_quote(str string, raw bool) string {
 	}
 	return result.str()
 }
-
