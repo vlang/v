@@ -5295,7 +5295,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.interface_, .union_sum_type, .sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
