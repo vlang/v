@@ -28,15 +28,15 @@ pub fn (mut ctx Context) write(s string) {
 
 [inline]
 pub fn (mut ctx Context) flush() {
-	// TODO: Diff the previous frame against this one, and only render things that changed?
-
-	// ctx.set_cursor_position(0, 0)
-	// ctx.write('$ctx.print_buf.len')
-	// ctx.write('${ctx.print_buf[ctx.print_buf.len-50..].hex()}')
-	C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
-	C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
-	C.write(C.STDOUT_FILENO, esu.str, esu.len)
-	ctx.print_buf.clear()
+	$if windows {
+		// TODO
+	} $else {
+		// TODO: Diff the previous frame against this one, and only render things that changed?
+		C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
+		C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
+		C.write(C.STDOUT_FILENO, esu.str, esu.len)
+		ctx.print_buf.clear()
+	}
 }
 
 [inline]
