@@ -1629,7 +1629,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 		if expr.return_type.has_flag(.optional) {
 			if expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${expr.name}() returns an option, but you missed to add an `or {}` block to it',
+					c.error('${expr.name}() returns an option but is missing an `or {}` block',
 						expr.pos)
 				}
 			} else {
