@@ -1643,7 +1643,34 @@ fn main() {
 }
 ```
 
-### Matching sum types
+`as` will panic if `w` doesn't hold a `Mars` instance.
+A safer way is to use a smart cast.
+
+#### Smart casting
+
+```v
+if w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` has type `Mars` inside the body of the `if` statement. This is 
+known as *flow-sensitive typing*. You can also specify a variable name:
+
+```v
+if w is Mars as mars {
+    assert typeof(w).name == 'World'
+    if mars.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` keeps its original type. This form is necessary if `w` is a more
+complex expression than just a variable name.
+
+#### Matching sum types
 
 You can also use `match` to determine the variant:
 
