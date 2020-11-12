@@ -1570,25 +1570,33 @@ interface Speaker {
     speak() string
 }
 
-fn perform(s Speaker) string {
-    if s is Dog { // use `is` to check the underlying type of an interface
-        println('perform(dog)')
-        println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
-    } else if s is Cat {
-        println('perform(cat)')
-    }
-    return s.speak()
-}
-
 dog := Dog{'Leonberger'}
 cat := Cat{}
 
-println(perform(dog)) // "woof"
-println(perform(cat)) // "meow"
+mut arr := []Speaker{}
+arr << dog
+arr << cat
+for item in arr {
+    item.speak()
+}
 ```
 
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
+
+We can test the underlying type of an interface using dynamic cast operators:
+```v oksyntax
+fn announce(s Speaker) {
+    if s is Dog {
+        println('a $s.breed') // `s` is automatically cast to `Dog` (smart cast)
+    } else if s is Cat {
+        println('a cat')
+    } else {
+        println('something else')
+    }
+}
+```
+For more information, see [Dynamic casts](#dynamic-casts).
 
 ### Enums
 
@@ -1628,6 +1636,8 @@ type World = Moon | Mars | Venus
 sum := World(Moon{})
 println(sum)
 ```
+
+#### Dynamic casts
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
