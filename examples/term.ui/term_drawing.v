@@ -89,7 +89,7 @@ const (
 
 struct App {
 mut:
-	ti              &tui.Context = 0
+	tui             &tui.Context = 0
 	header_text     []string
 	mouse_pos       Point
 	msg             string
