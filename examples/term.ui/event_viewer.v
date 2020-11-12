@@ -6,21 +6,21 @@ mut:
 }
 
 fn event(e &tui.Event, x voidptr) {
-	// print('\x1b[0;0H\x1b[2J\x1b[3J') // Clear everything
-	// println('V term.input event viewer (press `esc` to exit)\n\n')
+	print('\x1b[0;0H\x1b[2J\x1b[3J') // Clear everything
+	println('V term.input event viewer (press `esc` to exit)\n\n')
 
-	// println(e)
-	// println('Raw event bytes: "${e.utf8.bytes().hex()}" = ${e.utf8.bytes()}')
+	println(e)
+	println('Raw event bytes: "${e.utf8.bytes().hex()}" = ${e.utf8.bytes()}')
 
-	// if e.modifiers == tui.ctrl | tui.alt {
-	// 	println('CTRL + ALT')
-	// }
+	if e.modifiers == tui.ctrl | tui.alt {
+		println('CTRL + ALT')
+	}
 
 	if e.typ == .key_down && e.code == .escape { exit(0) }
 }
 
 mut app := &App{}
-app.ti = tui.init(
+app.tui = tui.init(
 	user_data: app,
 	event_fn: event
 

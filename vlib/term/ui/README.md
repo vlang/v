@@ -1,6 +1,6 @@
 ## `term.ui`
 
-A module 
+A V module for designing terminal UI apps
 
 #### Quickstart
 

@@ -78,7 +78,7 @@ fn frame(x voidptr) {
 
 
 mut app := &App{}
-app.ti = tui.init(
+app.tui = tui.init(
 	user_data: app,
 	event_fn: event,
 	frame_fn: frame

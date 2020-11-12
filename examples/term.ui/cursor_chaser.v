@@ -83,7 +83,7 @@ fn event(e &tui.Event, x voidptr) {
 }
 
 mut app := &App{}
-app.ti = tui.init(
+app.tui = tui.init(
 	user_data: app,
 	frame_fn: frame,
 	event_fn: event,

@@ -180,7 +180,6 @@ fn (mut ctx Context) termios_loop() {
 }
 
 fn (mut ctx Context) parse_events() {
-	println(ctx.read_buf.hex())
 	// Stop this from getting stuck in rare cases where something isn't parsed correctly
 	mut nr_iters := 0
 	for ctx.read_buf.len > 0 {
