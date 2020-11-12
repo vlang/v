@@ -129,13 +129,13 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 			// The pointerline should have the same spaces/tabs as the offending
 			// line, so that it prints the ^ character exactly on the *same spot*
 			// where it is needed. That is the reason we can not just
-			// use strings.repeat(` `, col) to form it.
+			// use byte(` `).repeat(col) to form it.
 			mut pointerline := ''
 			for bchar in sline[..start_column] {
 				x := if bchar.is_space() { bchar } else { ` ` }
 				pointerline += x.str()
 			}
-			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
+			underline := if pos.len > 1 { byte(`~`).repeat(end_column - start_column) } else { '^' }
 			pointerline += bold(color(kind, underline))
 			clines << '      | ' + pointerline.replace('\t', tab_spaces)
 		}

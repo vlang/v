@@ -2257,7 +2257,7 @@ fn draw_scene() {
     name2 := 'def ghi'
     draw_text('hello $name1', 10, 10)
     draw_text('hello $name2', 100, 10)
-    draw_text(strings.repeat(`X`, 10000), 10, 50)
+    draw_text(byte(`X`).repeat(10000), 10, 50)
     // ...
 }
 ```

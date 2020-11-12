@@ -1,7 +1,5 @@
 module ui
 
-import strings
-
 pub struct Color {
 pub:
 	r byte
@@ -108,7 +106,7 @@ pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 	if y == y2 {
 		// Horizontal line, performance improvement
 		ctx.set_cursor_position(min_x, min_y)
-		ctx.write(strings.repeat(` `, max_x + 1 - min_x))
+		ctx.write(byte(` `).repeat(max_x + 1 - min_x))
 		return
 	}
 
@@ -167,5 +165,5 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 [inline]
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
-	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
+	ctx.write(byte(`-` /* `⎽` */).repeat(ctx.window_width))
 }
