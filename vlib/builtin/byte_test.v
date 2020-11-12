@@ -17,3 +17,9 @@ fn test_clone() {
 	// assert b[1].str() == '1' TODO
 
 }
+
+fn test_repeat() {
+	assert byte(`x`).repeat(10) == 'xxxxxxxxxx'
+	assert byte(`a`).repeat(1) == 'a'
+	assert byte(`a`).repeat(0) == ''
+}
