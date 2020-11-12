@@ -24,7 +24,7 @@ fn handle(e Expr) string {
 	assert is_literal
 	assert !(e !is IntegerLiteral)
 	if e is IntegerLiteral {
-		println('int')
+		assert typeof(e.val) == 'string'
 	}
 	match union e {
 		IntegerLiteral {
@@ -294,7 +294,7 @@ fn test_nested_if_is() {
 	mut b := Outer(InnerStruct{Inner(0)})
 	if b is InnerStruct {
 		if b.x is int {
-			println(b.x)
+			assert b.x == 0
 		}
 	}
 }
@@ -303,20 +303,30 @@ fn test_casted_sum_type_selector_reassign() {
 	mut b := InnerStruct{Inner(0)}
 	if b.x is int {
 		assert typeof(b.x) == 'int'
+		// this check works only if x is castet
+		assert b.x == 0
 		b.x = 'test'
+		// this check works only if x is castet
+		assert b.x[0] == `t`
 		assert typeof(b.x) == 'string'
 	}
-	assert typeof(b.x) == 'Inner'
+	// this check works only if x is not castet
+	assert b.x is string
 }
 
 fn test_casted_sum_type_ident_reassign() {
 	mut x := Inner(0)
 	if x is int {
+		// this check works only if x is castet
+		assert x == 0
 		assert typeof(x) == 'int'
 		x = 'test'
+		// this check works only if x is castet
+		assert x[0] == `t`
 		assert typeof(x) == 'string'
 	}
-	assert typeof(x) == 'Inner'
+	// this check works only if x is not castet
+	assert x is string
 }
 
 __type Expr2 = int | string
@@ -427,9 +437,15 @@ fn test_match_multi_branch() {
 	mut y := ''
 	match union f {
 		CallExpr2, CTempVarExpr {
-			assert typeof(f) == 'Expr4'
+			// this check works only if f is not castet
+			assert f is CTempVarExpr
 		}
 	}
+}
+
+fn test_typeof() {
+    x := Expr4(CTempVarExpr{})
+	assert typeof(x) == 'CTempVarExpr'
 }
 
 struct Outer2 {
