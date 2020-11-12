@@ -1465,13 +1465,13 @@ pub fn (s string) repeat(count int) string {
 		return s
 	}
 	slen := s.len
-	blen := slen*count
+	blen := slen * count
 	mut bytes := unsafe {malloc(blen + 1)}
 	for bi in 0..count {
-		bislen := bi*slen
+		bislen := bi * slen
 		for si in 0..slen {
 			unsafe {
-				bytes[bislen+si] = s[si]
+				bytes[bislen + si] = s[si]
 			}
 		}
 	}
