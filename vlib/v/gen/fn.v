@@ -380,6 +380,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+	if left_sym.kind == .sum_type && node.name == 'type_name' {
+		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${node.receiver_type}( (')
+		g.expr(node.left)
+		g.write(').typ ))')
+		return
+	}
 	if node.name == 'str' {
 		mut styp := g.typ(node.receiver_type)
 		if node.receiver_type.is_ptr() {

@@ -292,7 +292,7 @@ pub:
 	left               Expr // `user` in `user.register()`
 	mod                string
 pub mut:
-	name               string
+	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
 	args               []CallArg

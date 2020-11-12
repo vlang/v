@@ -1079,6 +1079,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
 	}
+	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
+		return table.string_type
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
