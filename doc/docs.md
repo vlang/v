@@ -1623,8 +1623,6 @@ println(sum)
 The built-in method `type_name` returns the name of the currently held 
 type.
 
-#### Sum type operators
-
 To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
