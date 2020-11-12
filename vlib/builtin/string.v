@@ -1279,6 +1279,18 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
+pub fn (c byte) repeat(n int) string {
+	if n <= 0 {
+		return ''
+	}
+	mut bytes := unsafe {malloc(n + 1)}
+	unsafe {
+		C.memset(bytes, c, n)
+		bytes[n] = `0`
+	}
+	return unsafe { bytes.vstring_with_len(n) }
+}
+
 pub fn (s &string) free() {
 	$if prealloc {
 		return
@@ -1452,19 +1464,21 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s
 	}
-	mut ret := malloc(s.len * count + 1)
-	for i in 0 .. count {
-		for j in 0 .. s.len {
+	slen := s.len
+	blen := slen*count
+	mut bytes := unsafe {malloc(blen + 1)}
+	for bi in 0..count {
+		bislen := bi*slen
+		for si in 0..slen {
 			unsafe {
-				ret[i * s.len + j] = s[j]
+				bytes[bislen+si] = s[si]
 			}
 		}
 	}
 	unsafe {
-		new_len := s.len * count
-		ret[new_len] = 0
-		return ret.vstring_with_len(new_len)
-	}
+		bytes[blen] = `0`
+	    return bytes.vstring_with_len(blen) 
+		}
 }
 
 pub fn (s string) fields() []string {
