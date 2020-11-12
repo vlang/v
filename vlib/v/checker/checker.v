@@ -4253,6 +4253,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		if sym.kind == .interface_ {
 			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
 		}
+		if sym.kind == .sum_type && node.name == 'type_name' {
+			c.error('method overrides built-in sum type method', node.pos)
+		}
 		// if sym.has_method(node.name) {
 		// c.warn('duplicate method `$node.name`', node.pos)
 		// }
