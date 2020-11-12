@@ -1,4 +1,4 @@
-module input
+module ui
 
 const (
 	ctx_ptr = &Context(0)

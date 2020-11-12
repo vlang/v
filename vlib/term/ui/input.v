@@ -1,4 +1,4 @@
-module input
+module ui
 
 pub enum KeyCode {
 	null                 = 0

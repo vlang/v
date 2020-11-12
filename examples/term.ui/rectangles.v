@@ -1,9 +1,9 @@
-import term.input
+import term.ui as tui
 import rand
 
 struct Rect {
 mut:
-	c  input.Color
+	c  tui.Color
 	x  int
 	y  int
 	x2 int
@@ -12,14 +12,14 @@ mut:
 
 struct App {
 mut:
-	ti       &input.Context = 0
+	tui      &tui.Context = 0
 	rects    []Rect
 	cur_rect Rect
 	is_drag  bool
 	redraw   bool
 }
 
-fn random_color() input.Color {
+fn random_color() tui.Color {
 	return {
 		r: byte(rand.intn(256))
 		g: byte(rand.intn(256))
@@ -27,7 +27,7 @@ fn random_color() input.Color {
 	}
 }
 
-fn event(e &input.Event, x voidptr) {
+fn event(e &tui.Event, x voidptr) {
 	mut app := &App(x)
 	match e.typ {
 		.mouse_down {
@@ -51,34 +51,34 @@ fn event(e &input.Event, x voidptr) {
 			else if e.code == .escape { exit(0) }
 		} else {}
 	}
-	app.redraw = true	
+	app.redraw = true
 }
 
 fn frame(x voidptr) {
 	mut app := &App(x)
 	if !app.redraw { return }
 
-	app.ti.clear()
+	app.tui.clear()
 
 	for rect in app.rects {
-		app.ti.set_bg_color(rect.c)
-		app.ti.draw_rect(rect.x, rect.y, rect.x2, rect.y2)
+		app.tui.set_bg_color(rect.c)
+		app.tui.draw_rect(rect.x, rect.y, rect.x2, rect.y2)
 	}
 
 	if app.is_drag {
 		r := app.cur_rect
-		app.ti.set_bg_color(r.c)
-		app.ti.draw_empty_rect(r.x, r.y, r.x2, r.y2)
+		app.tui.set_bg_color(r.c)
+		app.tui.draw_empty_rect(r.x, r.y, r.x2, r.y2)
 	}
 
-	app.ti.reset_bg_color()
-	app.ti.flush()
+	app.tui.reset_bg_color()
+	app.tui.flush()
 	app.redraw = false
 }
 
 
 mut app := &App{}
-app.ti = input.init(
+app.ti = tui.init(
 	user_data: app,
 	event_fn: event,
 	frame_fn: frame
@@ -87,4 +87,4 @@ app.ti = input.init(
 	frame_rate: 60
 )
 
-app.ti.run()
+app.tui.run()

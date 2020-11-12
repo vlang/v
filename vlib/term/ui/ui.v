@@ -1,4 +1,4 @@
-module input
+module ui
 
 import strings
 

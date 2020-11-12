@@ -1,4 +1,4 @@
-module input
+module ui
 
 pub fn init(cfg Config) &Context {
 	panic("term.input: error: Windows support isn't implemented yet")

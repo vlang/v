@@ -1,4 +1,4 @@
-import term.input as ti
+import term.ui as tui
 
 struct Point {
 	x int
@@ -7,20 +7,20 @@ struct Point {
 
 const (
 	colors = [
-		ti.Color{33, 150, 243}
-		ti.Color{0, 150, 136}
-		ti.Color{205, 220, 57}
-		ti.Color{255, 152, 0}
-		ti.Color{244, 67, 54}
-		ti.Color{156, 39, 176}
+		tui.Color{33, 150, 243}
+		tui.Color{0, 150, 136}
+		tui.Color{205, 220, 57}
+		tui.Color{255, 152, 0}
+		tui.Color{244, 67, 54}
+		tui.Color{156, 39, 176}
 	]
 )
 
 struct App {
 mut:
-	ti        &ti.Context = 0
+	tui       &tui.Context = 0
 	points    []Point
-	color     ti.Color = colors[0]
+	color     tui.Color = colors[0]
 	color_idx int
 	cut_rate  f64 = 5
 }
@@ -28,42 +28,42 @@ mut:
 fn frame(x voidptr) {
 	mut app := &App(x)
 
-	app.ti.clear()
+	app.tui.clear()
 
 	if app.points.len > 0 {
-		app.ti.set_bg_color(app.color)
+		app.tui.set_bg_color(app.color)
 		mut last := app.points[0]
 		for segment in app.points {
 			// if the cursor moveds quickly enough, different events are not
 			// necessarily touching, so we need to draw a line between them
-			app.ti.draw_line(last.x, last.y, segment.x, segment.y)
+			app.tui.draw_line(last.x, last.y, segment.x, segment.y)
 			last = segment
 		}
-		app.ti.reset()
+		app.tui.reset()
 
 		l := int(app.points.len / app.cut_rate) + 1
 		app.points = app.points[l..].clone()
 	}
 
-	ww := app.ti.window_width
+	ww := app.tui.window_width
 
-	app.ti.bold()
-	app.ti.draw_text(ww / 6, 2, 'V term.input: cursor chaser demo')
-	app.ti.draw_text((ww - ww / 6) - 14, 2, 'cut rate: ${(100 / app.cut_rate):3.0f}%')
-	app.ti.horizontal_separator(3)
-	app.ti.reset()
-	app.ti.flush()
+	app.tui.bold()
+	app.tui.draw_text(ww / 6, 2, 'V term.input: cursor chaser demo')
+	app.tui.draw_text((ww - ww / 6) - 14, 2, 'cut rate: ${(100 / app.cut_rate):3.0f}%')
+	app.tui.horizontal_separator(3)
+	app.tui.reset()
+	app.tui.flush()
 }
 
-fn event(e &ti.Event, x voidptr) {
+fn event(e &tui.Event, x voidptr) {
 	mut app := &App(x)
 
 	match e.typ {
 		.key_down {
 			match e.code {
 				.escape {
-					app.ti.set_cursor_position(0, 0)
-					app.ti.flush()
+					app.tui.set_cursor_position(0, 0)
+					app.tui.flush()
 					exit(0)
 				}
 				.space, .enter {
@@ -83,7 +83,7 @@ fn event(e &ti.Event, x voidptr) {
 }
 
 mut app := &App{}
-app.ti = ti.init(
+app.ti = tui.init(
 	user_data: app,
 	frame_fn: frame,
 	event_fn: event,
@@ -91,4 +91,4 @@ app.ti = ti.init(
 	hide_cursor: true
 )
 
-app.ti.run()
+app.tui.run()
