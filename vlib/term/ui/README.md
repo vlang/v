@@ -29,14 +29,14 @@ All of these fields may be omitted, in which case, the default value will be use
 
 #### FAQ
 
-Q: Why does this module not work on Windows?
+Q: Why does this module not work on Windows?  
 A: As with many other things, Windows has a completely different and incompatible way of handling input parsing and drawing primitives, and support has not been implemented yet. Contributions are definitely welcome though.
 
-Q: My terminal (doesn't receive events / doesn't print anything / prints gibberish characters), what's up with that?
+Q: My terminal (doesn't receive events / doesn't print anything / prints gibberish characters), what's up with that?  
 A: Please check if your terminal. The module has been tested with `xterm`-based terminals on Linux (like `gnome-terminal` and `konsole`), and `Terminal.app` and `iterm2` on macOS. If your terminal does not work, open an issue with the output of `echo $TERM`.
 
-Q: There are screen tearing issues when doing large prints
+Q: There are screen tearing issues when doing large prints  
 A: This is an issue with how terminals render frames, as they may decide to do so in the middle of receiving a frame, and cannot be fully fixed unless your console implements the [synchronized updates spec](https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec). It can be reduced *drastically*, though, by using the rendering methods built in to the module, and by only painting frames when your app's content has actually changed.
 
-Q: Why does the module only emit `keydown` events, and not `keyup` like `sokol`/`gg`?
+Q: Why does the module only emit `keydown` events, and not `keyup` like `sokol`/`gg`?  
 A: It's because of the way terminals emit events. Every key event is received as a keypress, and there isn't a way of telling terminals to send keyboard events differently, nor a reliable way of converting these into `keydown` / `keyup` events.
