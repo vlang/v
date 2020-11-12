@@ -1,6 +1,8 @@
 # Quickstart
 
-The V `term` module is a module which is made to provide an interactive api that helps building TUI apps.
+The V `term` module is a module designed to provide the building blocks for building very simple TUI apps.
+For more complex apps, you should really look at the `term.input` module, as it includes terminal events, is easier to use,
+and is much more performant for large draws.
 
 # Use
 
