@@ -1078,16 +1078,25 @@ References are similar to Go pointers and C++ references.
 V doesn't allow subclassing, but it supports embedded structs:
 
 ```v
+struct Widget {
+mut:
+	x int
+	y int
+}
+
 struct Button {
+mut:
     Widget
     title string
 }
 
-button := new_button('Click me')
-button.set_pos(x, y)
+mut button := Button{title: 'Click me'}
+button.x = 3
+```
+Without embedding we'd have to name the `Widget` field and do:
 
-// Without embedding we'd have to do
-button.widget.set_pos(x,y)
+```v oksyntax
+button.widget.x = 3
 ```
 
 ### Default field values
