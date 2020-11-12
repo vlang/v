@@ -2326,10 +2326,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			if !c.check_types(typ, elem_type) {
-				elem_type_sym := c.table.get_type_symbol(elem_type)
-				c.error('expected array element with type `$elem_type_sym.source_name`',
-					array_init.pos)
+			c.check_expected(typ, elem_type) or {
+				c.error('invalid array element: $err', expr.position())
 			}
 		}
 		if expecting_interface_array {
