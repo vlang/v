@@ -1646,9 +1646,11 @@ To cast a sum type to one of its variants you can use `sum as Type`:
 struct Moon {}
 struct Mars {}
 struct Venus {}
+
 type World = Moon | Mars | Venus
 
 fn (m Mars) dust_storm() bool { return true }
+
 fn main() {
     mut w := World(Moon{})
     assert w is Moon
@@ -1662,7 +1664,34 @@ fn main() {
 }
 ```
 
-### Matching sum types
+`as` will panic if `w` doesn't hold a `Mars` instance.
+A safer way is to use a smart cast.
+
+#### Smart casting
+
+```v oksyntax
+if w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` has type `Mars` inside the body of the `if` statement. This is 
+known as *flow-sensitive typing*. You can also specify a variable name:
+
+```v oksyntax
+if w is Mars as mars {
+    assert typeof(w).name == 'World'
+    if mars.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` keeps its original type. This form is necessary if `w` is a more
+complex expression than just a variable name.
+
+#### Matching sum types
 
 You can also use `match` to determine the variant:
 
@@ -1670,8 +1699,11 @@ You can also use `match` to determine the variant:
 struct Moon {}
 struct Mars {}
 struct Venus {}
+
 type World = Moon | Mars | Venus
+
 fn open_parachutes(n int) { println(n) }
+
 fn land(w World) {
     match w {
         Moon {} // no atmosphere
