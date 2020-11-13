@@ -4,32 +4,7 @@
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
 import os
-import term
 import term.ui
-
-type InputType = byte | rune | string
-
-fn (ipt InputType) len() int {
-	match ipt {
-		byte, rune {
-			return 1
-		}
-		string {
-			return it.len
-		}
-	}
-}
-
-fn (ipt InputType) str() string {
-	match ipt {
-		byte, rune {
-			return ipt.str()
-		}
-		string {
-			return ipt.str()
-		}
-	}
-}
 
 enum Movement {
 	up
@@ -48,11 +23,12 @@ pub:
 
 struct App {
 mut:
-	ti     &ui.Context = 0
+	tui     &ui.Context = 0
 	ed     &Buffer = 0
 	file   string
 	status string
 	t      int
+	footer_height int = 2
 }
 
 fn (mut a App) set_status(msg string, duration_ms int) {
@@ -64,18 +40,14 @@ fn (mut a App) save() {
 	if a.file.len > 0 {
 		b := a.ed
 		os.write_file(a.file, b.raw())
-		a.set_status('saved', 2000)
+		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
 	}
 }
 
 fn (mut a App) footer() {
-	w, h := term.get_terminal_size()
-	term.set_cursor_position({
-		x: 0
-		y: h - 1
-	})
+	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
 	flat := b.flat()
 	snip := if flat.len > 19 { flat[..20] } else { flat }
@@ -88,10 +60,8 @@ fn (mut a App) footer() {
 		status = ''
 	}
 	line := '─'.repeat(w) + '\n'
-	footer := line + '$finfo Line ${b.cursor.pos.y + 1}/$b.lines.len, Column ${b.cursor.pos.x +
-		1}/$b.cur_line().len index: $b.cursor_index() (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
-	print(footer)
-	flush()
+	footer := line + '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
+	a.tui.draw_text(0, h - 1, footer)
 	a.t -= 33
 	if a.t < 0 {
 		a.t = 0
@@ -99,7 +69,6 @@ fn (mut a App) footer() {
 }
 
 struct Buffer {
-	line_break string = '\n'
 	tab_width  int = 4
 pub mut:
 	lines      []string
@@ -107,31 +76,35 @@ pub mut:
 }
 
 fn (b Buffer) flat() string {
-	return b.raw().replace(b.line_break, r'\n').replace('\t', r'\t')
+	return b.raw().replace_each(['\n', r'\n', '\t', r'\t'])
 }
 
 fn (b Buffer) raw() string {
-	return b.lines.join(b.line_break)
+	return b.lines.join('\n')
 }
 
-fn (b Buffer) view() View {
+fn (b Buffer) view(from int, to int) View {
 	l := b.cur_line()
 	mut x := 0
-	for i := 0; i < b.cursor.pos.x && i < l.len; i++ {
+	for i := 0; i < b.cursor.pos_x && i < l.len; i++ {
 		if l[i] == `\t` {
 			x += b.tab_width
 			continue
 		}
 		x++
 	}
-	p := CursorPosition{
-		y: b.cursor.pos.y
-		x: x
+	mut lines := []string{}
+	for i, line in b.lines {
+		if i >= from && i <= to {
+			lines << line
+		}
 	}
-	return View{
-		raw: b.raw().replace('\t', strings.repeat(` `, b.tab_width))
-		cursor: Cursor{
-			pos: p
+	raw := lines.join('\n')
+	return {
+		raw: raw.replace('\t', strings.repeat(` `, b.tab_width))
+		cursor: {
+			pos_x: x
+			pos_y: b.cursor.pos_y
 		}
 	}
 }
@@ -147,8 +120,8 @@ fn (b Buffer) cur_line() string {
 fn (b Buffer) cursor_index() int {
 	mut i := 0
 	for y, line in b.lines {
-		if b.cursor.pos.y == y {
-			i += b.cursor.pos.x
+		if b.cursor.pos_y == y {
+			i += b.cursor.pos_x
 			break
 		}
 		i += line.len + 1
@@ -156,33 +129,31 @@ fn (b Buffer) cursor_index() int {
 	return i
 }
 
-fn (mut b Buffer) put(ipt InputType) {
-	s := ipt.str()
-	has_line_ending := s.contains(b.line_break)
+fn (mut b Buffer) put(s string) {
+	has_line_ending := s.contains('\n')
 	x, y := b.cursor.xy()
 	if b.lines.len == 0 {
 		b.lines.prepend('')
 	}
 	line := b.lines[y]
-	l := line[..x]
-	r := line[x..]
+	l, r := line[..x], line[x..]
 	if has_line_ending {
-		mut lines := s.split(b.line_break)
+		mut lines := s.split('\n')
 		lines[0] = l + lines[0]
 		lines[lines.len - 1] += r
 		b.lines.delete(y)
 		b.lines.insert(y, lines)
 		last := lines[lines.len - 1]
 		b.cursor.set(last.len, y + lines.len - 1)
-		if s == b.line_break {
-			b.cursor.set(0, b.cursor.pos.y)
+		if s == '\n' {
+			b.cursor.set(0, b.cursor.pos_y)
 		}
 	} else {
 		b.lines[y] = l + s + r
 		b.cursor.set(x + s.len, y)
 	}
 	$if debug {
-		flat := s.replace(b.line_break, r'\n')
+		flat := s.replace('\n', r'\n')
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
 	}
 }
@@ -196,10 +167,8 @@ fn (mut b Buffer) del(amount int) string {
 		if x == 0 && y == 0 {
 			return ''
 		}
-	} else {
-		if x >= b.cur_line().len && y >= b.lines.len - 1 {
-			return ''
-		}
+	} else if x >= b.cur_line().len && y >= b.lines.len - 1 {
+		return ''
 	}
 	mut removed := ''
 	if amount < 0 { // backspace (backward)
@@ -216,11 +185,11 @@ fn (mut b Buffer) del(amount int) string {
 						return ''
 					}
 					line_above := b.lines[li - 1]
-					b.cursor.pos.x = line_above.len
+					b.cursor.pos_x = line_above.len
 				} else {
 					left -= ln.len
 				}
-				b.cursor.pos.y--
+				b.cursor.pos_y--
 			} else {
 				if x == 0 {
 					if y == 0 {
@@ -229,20 +198,20 @@ fn (mut b Buffer) del(amount int) string {
 					line_above := b.lines[li - 1]
 					if ln.len == 0 { // at line break
 						b.lines.delete(li)
-						b.cursor.pos.y--
-						b.cursor.pos.x = line_above.len
+						b.cursor.pos_y--
+						b.cursor.pos_x = line_above.len
 					} else {
 						b.lines[li - 1] = line_above + ln
 						b.lines.delete(li)
-						b.cursor.pos.y--
-						b.cursor.pos.x = line_above.len
+						b.cursor.pos_y--
+						b.cursor.pos_x = line_above.len
 					}
 				} else if x == 1 {
 					b.lines[li] = b.lines[li][left..]
-					b.cursor.pos.x = 0
+					b.cursor.pos_x = 0
 				} else {
 					b.lines[li] = ln[..x - left] + ln[x..]
-					b.cursor.pos.x -= left
+					b.cursor.pos_x -= left
 				}
 				left = 0
 				break
@@ -271,7 +240,7 @@ fn (mut b Buffer) del(amount int) string {
 		}
 	}
 	$if debug {
-		flat := removed.replace(b.line_break, r'\n')
+		flat := removed.replace('\n', r'\n')
 		eprintln(@MOD + '.' + @STRUCT + '::' + @FN + ' "$flat"')
 	}
 	return removed
@@ -289,85 +258,95 @@ fn (mut b Buffer) free() {
 
 // move_cursor will navigate the cursor within the buffer bounds
 fn (mut b Buffer) move_cursor(amount int, movement Movement) {
-	pos := b.cursor.pos
 	cur_line := b.cur_line()
 	match movement {
 		.up {
-			if pos.y - amount >= 0 {
+			if b.cursor.pos_y - amount >= 0 {
 				b.cursor.move(0, -amount)
 				// Check the move
 				line := b.cur_line()
-				if b.cursor.pos.x > line.len {
-					b.cursor.set(line.len, b.cursor.pos.y)
+				if b.cursor.pos_x > line.len {
+					b.cursor.set(line.len, b.cursor.pos_y)
 				}
 			}
 		}
 		.down {
-			if pos.y + amount < b.lines.len {
+			if b.cursor.pos_y + amount < b.lines.len {
 				b.cursor.move(0, amount)
 				// Check the move
 				line := b.cur_line()
-				if b.cursor.pos.x > line.len {
-					b.cursor.set(line.len, b.cursor.pos.y)
+				if b.cursor.pos_x > line.len {
+					b.cursor.set(line.len, b.cursor.pos_y)
 				}
 			}
 		}
 		.left {
-			if pos.x - amount >= 0 {
+			if b.cursor.pos_x - amount >= 0 {
 				b.cursor.move(-amount, 0)
 			}
 		}
 		.right {
-			if pos.x + amount <= cur_line.len {
+			if b.cursor.pos_x + amount <= cur_line.len {
 				b.cursor.move(amount, 0)
 			}
 		}
 		.home {
-			b.cursor.set(0, b.cursor.pos.y)
+			b.cursor.set(0, b.cursor.pos_y)
 		}
 		.end {
-			b.cursor.set(cur_line.len, b.cursor.pos.y)
+			b.cursor.set(cur_line.len, b.cursor.pos_y)
 		}
 	}
 }
 
-// Cursor related
-struct CursorPosition {
-pub mut:
-	x int
-	y int
-}
-
 struct Cursor {
 pub mut:
-	pos CursorPosition
+	pos_x int
+	pos_y int
 }
 
 fn (mut c Cursor) set(x int, y int) {
-	c.pos.x = x
-	c.pos.y = y
+	c.pos_x = x
+	c.pos_y = y
 }
 
 fn (mut c Cursor) move(x int, y int) {
-	c.pos.x += x
-	c.pos.y += y
+	c.pos_x += x
+	c.pos_y += y
 }
 
 fn (c Cursor) xy() (int, int) {
-	return c.pos.x, c.pos.y
+	return c.pos_x, c.pos_y
 }
 
 // App callbacks
 fn init(x voidptr) {
 	mut app := &App(x)
 	app.ed = &Buffer{}
+	mut init_y := 0
+	mut init_x := 0
 	if app.file.len > 0 {
+		if !os.is_file(app.file) && app.file.contains(':') {
+			// support the file:line:col: format
+			fparts := app.file.split(':')
+			if fparts.len > 0 {
+				app.file = fparts[0]
+			}
+			if fparts.len > 1 {
+				init_y = fparts[1].int() - 1
+			}
+			if fparts.len > 2 {
+				init_x = fparts[2].int() - 1
+			}
+		}
 		if os.is_file(app.file) {
 			mut b := app.ed
 			content := os.read_file(app.file) or {
 				panic(err)
 			}
 			b.put(content)
+			app.ed.cursor.pos_x = init_x
+			app.ed.cursor.pos_y = init_y
 		}
 	}
 }
@@ -375,29 +354,22 @@ fn init(x voidptr) {
 fn frame(x voidptr) {
 	mut app := &App(x)
 	mut ed := app.ed
-	term.erase_clear()
-	term.erase_del_clear()
-	term.set_cursor_position({
-		x: 0
-		y: 0
-	})
-	view := ed.view()
-	print('$view.raw')
-	flush()
+	app.tui.clear()
+	scroll_limit := app.tui.window_height-app.footer_height-1
+	mut view := View{}
+	if ed.cursor.pos_y > scroll_limit { // Scroll
+		view = ed.view(ed.cursor.pos_y-scroll_limit, ed.cursor.pos_y)
+	} else {
+		view = ed.view(0, scroll_limit)
+	}
+	app.tui.draw_text(0, 0, view.raw)
 	app.footer()
-	term.set_cursor_position({
-		x: view.cursor.pos.x + 1
-		y: view.cursor.pos.y + 1
-	})
-}
-
-fn cleanup(x voidptr) {
-	mut app := &App(x)
-	app.ed.free()
-}
-
-fn fail(error string) {
-	eprintln(error)
+	if ed.cursor.pos_y > scroll_limit {
+		app.tui.set_cursor_position(view.cursor.pos_x + 1, scroll_limit+1)
+	} else {
+		app.tui.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
+	}
+	app.tui.flush()
 }
 
 fn event(e &ui.Event, x voidptr) {
@@ -406,10 +378,8 @@ fn event(e &ui.Event, x voidptr) {
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				term.set_cursor_position({
-					x: 0
-					y: 0
-				})
+				app.tui.set_cursor_position(0, 0)
+				app.tui.flush()
 				exit(0)
 			}
 			.backspace {
@@ -436,20 +406,22 @@ fn event(e &ui.Event, x voidptr) {
 			.end {
 				buffer.move_cursor(1, .end)
 			}
-			48...57 { // 0 - 9
-				buffer.put(e.ascii)
-			}
-			97...122 { // a-zA-Z
-				if e.modifiers == ui.ctrl && e.code == .s {
-					app.save()
-				} else {
-					buffer.put(e.ascii)
+			48...57, 97...122 { // 0-9a-zA-Z
+				if e.modifiers == ui.ctrl {
+					if e.code == .s {
+						app.save()
+					}
+				} else if e.modifiers in [ui.shift, 0] {
+					buffer.put(e.ascii.str())
 				}
 			}
 			else {
 				buffer.put(e.utf8.bytes().bytestr())
 			}
 		}
+	} else if e.typ == .mouse_scroll {
+		direction := if e.direction == .up { Movement.down } else { Movement.up }
+		buffer.move_cursor(1, direction)
 	}
 }
 
@@ -461,14 +433,12 @@ if os.args.len > 1 {
 mut app := &App{
 	file: file
 }
-app.ti = ui.init({
+app.tui = ui.init({
 	user_data: app
 	init_fn: init
 	frame_fn: frame
-	cleanup_fn: cleanup
 	event_fn: event
-	fail_fn: fail
 	capture_events: true
 	frame_rate: 30
 })
-app.ti.run()
+app.tui.run()
