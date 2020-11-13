@@ -60,8 +60,7 @@ fn (mut a App) footer() {
 		status = ''
 	}
 	line := '─'.repeat(w) + '\n'
-	footer := line + '$finfo Line ${b.cursor.pos_y + 1}/$b.lines.len, Column ${b.cursor.pos_x +
-		1}/$b.cur_line().len index: $b.cursor_index() (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
+	footer := line + '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
 	a.tui.draw_text(0, h - 1, footer)
 	a.t -= 33
 	if a.t < 0 {
