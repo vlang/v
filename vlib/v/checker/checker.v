@@ -3730,7 +3730,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									table.Field{}
 								}
 								is_mut = field.is_mut
-								is_root_mut := scope.is_selector_root_mutable(c.table, selector)
+								is_root_mut := scope.is_selector_root_mutable(c.table,
+									selector)
 								if !is_root_mut && !is_mut && left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: selector.expr_type
