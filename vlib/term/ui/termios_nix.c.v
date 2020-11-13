@@ -41,6 +41,15 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state() {
+	termios_reset()
+	mut c := ctx_ptr
+	if c != 0 {
+		c.load_title()
+	}
+	println('')
+}    
+
 fn (mut ctx Context) termios_setup() {
 	mut termios := get_termios()
 
@@ -64,11 +73,12 @@ fn (mut ctx Context) termios_setup() {
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
-	C.atexit(termios_reset)
-	os.signal(C.SIGTSTP, termios_reset)
+	C.atexit(restore_terminal_state)	
+	os.signal(C.SIGTSTP, restore_terminal_state)
 	os.signal(C.SIGCONT, fn () {
 		mut c := ctx_ptr
 		if c != 0 {
+			c.save_title()
 			c.termios_setup()
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
