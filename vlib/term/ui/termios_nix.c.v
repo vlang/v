@@ -41,6 +41,15 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state() {
+	termios_reset()
+	mut c := ctx_ptr
+	if c != 0 {
+		c.load_title()
+	}
+	println('')
+}    
+
 fn (mut ctx Context) termios_setup() {
 	mut termios := get_termios()
 
@@ -64,11 +73,12 @@ fn (mut ctx Context) termios_setup() {
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
-	C.atexit(termios_reset)
-	os.signal(C.SIGTSTP, termios_reset)
+	C.atexit(restore_terminal_state)	
+	os.signal(C.SIGTSTP, restore_terminal_state)
 	os.signal(C.SIGCONT, fn () {
 		mut c := ctx_ptr
 		if c != 0 {
+			c.save_title()
 			c.termios_setup()
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
@@ -110,56 +120,6 @@ fn termios_reset() {
 }
 
 ///////////////////////////////////////////
-
-/*
-fn (mut ctx Context) termios_loop() {
-	frame_time := 1_000_000 / ctx.cfg.frame_rate
-	mut init_called := false
-
-	mut sw := time.new_stopwatch(auto_start: false)
-
-	mut last_frame_time := 0
-	mut sleep_len := 0
-
-	for {
-		sw.restart()
-		if !init_called {
-			ctx.init()
-			init_called = true
-		}
-		for _ in 0 .. 7 {
-			// println('SLEEPING: $sleep_len')
-			if sleep_len > 0 {
-				time.usleep(sleep_len)
-			}
-			if ctx.cfg.event_fn != voidptr(0) {
-				len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
-				if len > 0 {
-					ctx.resize_arr(len)
-					ctx.parse_events()
-				}
-			}
-		}
-
-		ctx.frame()
-
-		sw.pause()
-		last_frame_time = int(sw.elapsed().microseconds())
-
-		if
-		println('Sleeping for $frame_time - $last_frame_time = ${frame_time - last_frame_time}')
-		// time.usleep(frame_time - last_frame_time - sleep_len * 7)
-		last_frame_time = 0
-
-		sw.start()
-		sw.pause()
-		last_frame_time += int(sw.elapsed().microseconds())
-		sleep_len = (frame_time - last_frame_time) / 8
-
-		ctx.frame_count++
-	}
-}
-*/
 
 // TODO: do multiple sleep/read cycles, rather than one big one
 fn (mut ctx Context) termios_loop() {
@@ -252,7 +212,7 @@ fn escape_end(buf string) int {
 	for {
 		if i + 1 == buf.len { return buf.len }
 
-		if buf[i].is_letter() {
+		if buf[i].is_letter() || buf[i] == `~` {
 			if buf[i] == `O` && i + 2 <= buf.len {
 				n := buf[i+1]
 				if (n >= `A` && n <= `D`) || (n >= `P` && n <= `S`) || n == `F` || n == `H` {
@@ -260,7 +220,8 @@ fn escape_end(buf string) int {
 				}
 			}
 			return i + 1
-		}
+		// escape hatch to avoid potential issues/crashes, although ideally this should never eval to true
+		} else if buf[i + 1] == 0x1b { return i + 1 }
 		i++
 	}
 	// this point should be unreachable
@@ -299,7 +260,8 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	//   Mouse events
 	// ----------------
 
-	if buf.len > 2 && buf[1] == `<` { // Mouse control
+	// TODO: rxvt uses different escape sequences for mouse events :/
+	if buf.len > 2 && buf[1] == `<` {
 		split := buf[2..].split(';')
 		if split.len < 3 { return &Event(0), 0 }
 

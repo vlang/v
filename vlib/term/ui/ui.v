@@ -79,15 +79,10 @@ pub fn (mut ctx Context) clear() {
 	ctx.write('\x1b[2J\x1b[3J')
 }
 
-// pub const (
-// 	default_color = gx.rgb(183, 101, 94) // hopefully nobody actually tries to use this color...
-// )
-
-// pub struct DrawConfig {
-// pub mut:
-// 	fg_color gx.Color = default_color
-// 	bg_color gx.Color = default_color
-// }
+[inline]
+pub fn (mut ctx Context) set_window_title(s string) {
+	print('\x1b]0;$s\x07')
+}
 
 [inline]
 pub fn (mut ctx Context) draw_point(x int, y int) {
