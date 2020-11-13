@@ -348,9 +348,8 @@ fn (mut app App) draw_header() {
 		})
 		app.tui.draw_text(0, 0, ' $app.msg ')
 		app.tui.reset()
-	}
-	// 'tick: $app.tui.frame_count | ' +
-	app.tui.draw_text(3, 2, 'terminal size: ($app.tui.window_width, $app.tui.window_height) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
+	}	
+	app.tui.draw_text(3, 2, /* 'tick: $app.tui.frame_count | ' + */ 'terminal size: ($app.tui.window_width, $app.tui.window_height) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
 	app.tui.horizontal_separator(3)
 }
 
