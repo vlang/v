@@ -381,6 +381,22 @@ pub fn (mut g Gen) write_typeof_functions() {
 			g.writeln('}')
 		}
 	}
+	for typ in g.table.types {
+		if typ.kind == .union_sum_type {
+			sum_info := typ.info as table.UnionSumType
+			tidx := g.table.find_type_idx(typ.name)
+			g.writeln('char * v_typeof_unionsumtype_${tidx}(int sidx) { /* $typ.name */ ')
+			g.writeln('	switch(sidx) {')
+			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
+			for v in sum_info.variants {
+				subtype := g.table.get_type_symbol(v)
+				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('	}')
+			g.writeln('}')
+		}
+	}
 	g.writeln('// << typeof() support for sum types')
 	g.writeln('')
 }
@@ -2564,6 +2580,13 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
 		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
+		g.expr(node.expr)
+		g.write(').typ ))')
+	} else if sym.kind == .union_sum_type {
+		// When encountering a .sum_type, typeof() should be done at runtime,
+		// because the subtype of the expression may change:
+		sum_type_idx := node.expr_type.idx()
+		g.write('tos3( /* $sym.name */ v_typeof_unionsumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {
