@@ -818,7 +818,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$opath" "$cfile" $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
