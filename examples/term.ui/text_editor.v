@@ -23,7 +23,7 @@ pub:
 
 struct App {
 mut:
-	ti     &ui.Context = 0
+	tui     &ui.Context = 0
 	ed     &Buffer = 0
 	file   string
 	status string
@@ -47,7 +47,7 @@ fn (mut a App) save() {
 }
 
 fn (mut a App) footer() {
-	w, h := a.ti.window_width, a.ti.window_height
+	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
 	flat := b.flat()
 	snip := if flat.len > 19 { flat[..20] } else { flat }
@@ -62,7 +62,7 @@ fn (mut a App) footer() {
 	line := '─'.repeat(w) + '\n'
 	footer := line + '$finfo Line ${b.cursor.pos_y + 1}/$b.lines.len, Column ${b.cursor.pos_x +
 		1}/$b.cur_line().len index: $b.cursor_index() (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
-	a.ti.draw_text(0, h - 1, footer)
+	a.tui.draw_text(0, h - 1, footer)
 	a.t -= 33
 	if a.t < 0 {
 		a.t = 0
@@ -340,22 +340,22 @@ fn init(x voidptr) {
 fn frame(x voidptr) {
 	mut app := &App(x)
 	mut ed := app.ed
-	app.ti.clear()
-	scroll_limit := app.ti.window_height-app.footer_height-1
+	app.tui.clear()
+	scroll_limit := app.tui.window_height-app.footer_height-1
 	mut view := View{}
 	if ed.cursor.pos_y > scroll_limit { // Scroll
 		view = ed.view(ed.cursor.pos_y-scroll_limit, ed.cursor.pos_y)
 	} else {
 		view = ed.view(0, scroll_limit)
 	}
-	app.ti.draw_text(0, 0, view.raw)
+	app.tui.draw_text(0, 0, view.raw)
 	app.footer()
 	if ed.cursor.pos_y > scroll_limit {
-		app.ti.set_cursor_position(view.cursor.pos_x + 1, scroll_limit+1)
+		app.tui.set_cursor_position(view.cursor.pos_x + 1, scroll_limit+1)
 	} else {
-		app.ti.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
+		app.tui.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
 	}
-	app.ti.flush()
+	app.tui.flush()
 }
 
 fn event(e &ui.Event, x voidptr) {
@@ -364,8 +364,8 @@ fn event(e &ui.Event, x voidptr) {
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				app.ti.set_cursor_position(0, 0)
-				app.ti.flush()
+				app.tui.set_cursor_position(0, 0)
+				app.tui.flush()
 				exit(0)
 			}
 			.backspace {
@@ -419,7 +419,7 @@ if os.args.len > 1 {
 mut app := &App{
 	file: file
 }
-app.ti = ui.init({
+app.tui = ui.init({
 	user_data: app
 	init_fn: init
 	frame_fn: frame
@@ -427,4 +427,4 @@ app.ti = ui.init({
 	capture_events: true
 	frame_rate: 30
 })
-app.ti.run()
+app.tui.run()
