@@ -416,9 +416,9 @@ fn (mut app App) footer_click(event &tui.Event) {
 		}
 		18...75 {
 			if (event.x % 3) == 0 {
+				// Inside the gap between tiles
 				return
 			}
-			// Inside the gap between tiles
 			idx := footer_y * 19 - 6 + event.x / 3
 			color := colors[idx / 19][idx % 19]
 			if event.button == .primary {
