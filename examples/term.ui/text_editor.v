@@ -323,15 +323,30 @@ fn (c Cursor) xy() (int, int) {
 fn init(x voidptr) {
 	mut app := &App(x)
 	app.ed = &Buffer{}
+	mut init_y := 0
+	mut init_x := 0
 	if app.file.len > 0 {
+		if !os.is_file(app.file) && app.file.contains(':') {
+			// support the file:line:col: format
+			fparts := app.file.split(':')
+			if fparts.len > 0 {
+				app.file = fparts[0]
+			}
+			if fparts.len > 1 {
+				init_y = fparts[1].int() - 1
+			}
+			if fparts.len > 2 {
+				init_x = fparts[2].int() - 1
+			}
+		}
 		if os.is_file(app.file) {
 			mut b := app.ed
 			content := os.read_file(app.file) or {
 				panic(err)
 			}
 			b.put(content)
-			app.ed.cursor.pos_x = 0
-			app.ed.cursor.pos_y = 0
+			app.ed.cursor.pos_x = init_x
+			app.ed.cursor.pos_y = init_y
 		}
 	}
 }
