@@ -9,18 +9,32 @@ pub fn init(cfg Config) &Context {
 		cfg: cfg,
 		read_buf: []byte{ cap: cfg.buffer_size }
 	}
+	ctx.save_title()
 
 	if cfg.hide_cursor {
-		s := '\x1b[?25l'
-		C.write(C.STDOUT_FILENO, s.str, s.len)
+		print('\x1b[?25l')
 	}
 
+	if cfg.window_title != '' {
+		print('\x1b]0;$cfg.window_title\x07')
+	}
+
+	// lmao
 	unsafe {
 		x := &ctx_ptr
 		*x = ctx
 	}
 
 	return ctx
+}
+
+pub fn (mut ctx Context) save_title() {
+    // restore the previously saved terminal title
+    print('\x1b[22;0t')
+}
+pub fn (mut ctx Context) load_title() {
+    // restore the previously saved terminal title
+    print('\x1b[23;0t')
 }
 
 pub fn (mut ctx Context) run() {
