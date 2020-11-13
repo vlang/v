@@ -94,6 +94,7 @@ mut:
 	msg_hide_tick   int
 	primary_color   tui.Color = colors[1][6]
 	secondary_color tui.Color = colors[1][9]
+	bg_color        tui.Color = tui.Color{0, 0, 0}
 	color_index     int
 	drawing         [][]tui.Color = [][]tui.Color{len: h, init: []tui.Color{len: w}}
 	size            int = 1
@@ -171,25 +172,40 @@ fn event(event &tui.Event, x voidptr) {
 		}
 		.key_down {
 			match event.code {
-				.j {
+				.f1, ._1 {
+					oevent := *event
+					nevent := { oevent | button: tui.MouseButton.primary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					app.paint(nevent)
+				}
+				.f2, ._2 {
+					oevent := *event                
+					nevent := { oevent | button: tui.MouseButton.secondary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					app.paint(nevent)
+				}
+				.space {
+					oevent := *event
+					nevent := { oevent | button: tui.MouseButton.tertiary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					app.paint(nevent)
+				}
+				.j, .down {
 					if event.modifiers & tui.shift != 0 {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.y++
 				}
-				.k {
+				.k, .up {
 					if event.modifiers & tui.shift != 0 {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.y--
 				}
-				.h {
+				.h, .left {
 					if event.modifiers & tui.shift != 0 {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
 					app.mouse_pos.x -= 2
 				}
-				.l {
+				.l, .right {
 					if event.modifiers & tui.shift != 0 {
 						app.set_pixel((1 + app.mouse_pos.x) / 2, app.mouse_pos.y, app.primary_color)
 					}
@@ -228,11 +244,7 @@ fn event(event &tui.Event, x voidptr) {
 				.c {
 					app.drawing = [][]tui.Color{len: h, init: []tui.Color{len: w}}
 				}
-				.q {
-					app.render(true)
-					exit(0)
-				}
-				.escape {
+				.q, .escape {
 					app.render(true)
 					exit(0)
 				}
@@ -269,7 +281,11 @@ fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 
 fn (mut app App) paint(event &tui.Event) {
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
-	color := if event.button == .primary { app.primary_color } else { app.secondary_color }
+	color := match event.button {
+		.primary { app.primary_color }
+		.secondary { app.secondary_color }
+		else { app.bg_color }
+	}
 	for x in x_start .. x_start + app.size {
 		for y in y_start .. y_start + app.size {
 			app.set_pixel(x, y, color)

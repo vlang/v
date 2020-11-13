@@ -125,6 +125,7 @@ pub enum MouseButton {
 	unknown
 	primary
 	secondary
+	tertiary
 }
 
 pub enum EventType {
