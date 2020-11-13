@@ -123,9 +123,9 @@ pub enum Direction {
 
 pub enum MouseButton {
 	unknown
-	primary
-	secondary
-	tertiary
+	left
+	middle
+	right
 }
 
 pub enum EventType {

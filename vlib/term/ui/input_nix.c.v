@@ -9,15 +9,6 @@ pub fn init(cfg Config) &Context {
 		cfg: cfg,
 		read_buf: []byte{ cap: cfg.buffer_size }
 	}
-	ctx.save_title()
-
-	if cfg.hide_cursor {
-		print('\x1b[?25l')
-	}
-
-	if cfg.window_title != '' {
-		print('\x1b]0;$cfg.window_title\x07')
-	}
 
 	// lmao
 	unsafe {

@@ -165,6 +165,10 @@ fn event(event &tui.Event, x voidptr) {
 			}
 		}
 		.mouse_scroll {
+			app.mouse_pos = {
+				x: event.x
+				y: event.y
+			}
 			if event.direction == .down {
 				app.inc_size()
 			} else {
@@ -175,17 +179,17 @@ fn event(event &tui.Event, x voidptr) {
 			match event.code {
 				.f1, ._1 {
 					oevent := *event
-					nevent := { oevent | button: tui.MouseButton.primary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					nevent := { oevent | button: tui.MouseButton.left, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.f2, ._2 {
-					oevent := *event                
-					nevent := { oevent | button: tui.MouseButton.secondary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					oevent := *event
+					nevent := { oevent | button: tui.MouseButton.right, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.space {
 					oevent := *event
-					nevent := { oevent | button: tui.MouseButton.tertiary, x: app.mouse_pos.x , y: app.mouse_pos.y }
+					nevent := { oevent | button: tui.MouseButton.middle, x: app.mouse_pos.x , y: app.mouse_pos.y }
 					app.paint(nevent)
 				}
 				.j, .down {
@@ -283,8 +287,8 @@ fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 fn (mut app App) paint(event &tui.Event) {
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
 	color := match event.button {
-		.primary { app.primary_color }
-		.secondary { app.secondary_color }
+		.left { app.primary_color }
+		.right { app.secondary_color }
 		else { app.bg_color }
 	}
 	for x in x_start .. x_start + app.size {
@@ -365,7 +369,7 @@ fn (mut app App) draw_header() {
 		})
 		app.tui.draw_text(0, 0, ' $app.msg ')
 		app.tui.reset()
-	}	
+	}
 	app.tui.draw_text(3, 2, /* 'tick: $app.tui.frame_count | ' + */ 'terminal size: ($app.tui.window_width, $app.tui.window_height) | primary color: $app.primary_color.hex() | secondary color: $app.secondary_color.hex()')
 	app.tui.horizontal_separator(3)
 }
@@ -399,7 +403,7 @@ fn (mut app App) draw_footer() {
 	app.tui.bold()
 	app.tui.draw_text(3, wh - 1, '$select_size $app.size')
 	app.tui.reset()
-    
+
 	// TODO: help button
 	// if ww >= 90 {
 	// 	app.tui.draw_text(80, wh - 3, help_1)
@@ -441,9 +445,9 @@ fn (mut app App) footer_click(event &tui.Event) {
 			idx := footer_y * 19 - 6 + event.x / 3
 			if idx < 0 || idx > 56 { return }
 			color := colors[idx / 19][idx % 19]
-			if event.button == .primary {
+			if event.button == .left {
 				app.primary_color = color
-			} else {
+			} else if event.button == .right {
 				app.secondary_color = color
 			}
 			app.show_msg('set $event.button.str().to_lower() color idx: $idx', 1)
