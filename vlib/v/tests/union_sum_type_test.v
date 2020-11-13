@@ -279,13 +279,13 @@ fn test_assignment() {
 	x = 'test'
 
 	if x is string {
-		assert x == 'test'
+		x2 := x as string
+		assert x2 == 'test'
 	}
 }
 
 __type Inner = int | string
 struct InnerStruct {
-mut:
 	x Inner
 }
 __type Outer = string | InnerStruct
@@ -296,41 +296,6 @@ fn test_nested_if_is() {
 		if b.x is int {
 			assert b.x == 0
 		}
-	}
-}
-
-fn test_casted_sum_type_selector_reassign() {
-	mut b := InnerStruct{Inner(0)}
-	if b.x is int {
-		assert typeof(b.x) == 'int'
-		b.x = 'test'
-		assert typeof(b.x) == 'string'
-	}
-	// this check works only if x is not castet
-	assert b.x is string
-}
-
-fn test_casted_sum_type_ident_reassign() {
-	mut x := Inner(0)
-	if x is int {
-		assert typeof(x) == 'int'
-		x = 'test'
-		assert typeof(x) == 'string'
-	}
-	// this check works only if x is not castet
-	assert x is string
-}
-
-__type Expr2 = int | string
-
-fn test_match_with_reassign_casted_type() {
-	mut e := Expr2(0)
-	match union mut e {
-		int {
-			e = int(5)
-			assert e == 5
-		}
-		else {}
 	}
 }
 

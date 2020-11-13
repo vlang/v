@@ -9,6 +9,14 @@ struct Foo {
 	b Bar
 }
 
+struct Bar2 {
+	a Abc
+}
+
+struct Foo2 {
+	b Bar2
+}
+
 fn main() {
 	mut x := Abc(0)
 	if x is int {
@@ -16,6 +24,10 @@ fn main() {
 	}
 	f := Foo{Bar{Abc(0)}}
 	if f.b.a is int {
+		_ := f.b.a + 5
+	}
+	mut f2 := Foo2{Bar2{Abc(0)}}
+	if f2.b.a is int {
 		_ := f.b.a + 5
 	}
 }
