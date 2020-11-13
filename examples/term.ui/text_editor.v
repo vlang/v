@@ -40,7 +40,7 @@ fn (mut a App) save() {
 	if a.file.len > 0 {
 		b := a.ed
 		os.write_file(a.file, b.raw())
-		a.set_status('saved', 2000)
+		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
 	}
