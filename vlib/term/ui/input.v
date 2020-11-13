@@ -187,6 +187,7 @@ pub struct Config {
 	frame_rate     int = 30
 	use_x11        bool
 
+	window_title   string
 	hide_cursor    bool
 	capture_events bool
 	// All kill signals

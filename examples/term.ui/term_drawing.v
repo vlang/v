@@ -116,6 +116,7 @@ fn main() {
 		event_fn: event
 		frame_rate: frame_rate
 		hide_cursor: true
+		window_title: 'V terminal pixelart drawing app'
 	})
 	app.mouse_pos.x = 40
 	app.mouse_pos.y = 15
@@ -398,11 +399,13 @@ fn (mut app App) draw_footer() {
 	app.tui.bold()
 	app.tui.draw_text(3, wh - 1, '$select_size $app.size')
 	app.tui.reset()
-	if ww >= 90 {
-		app.tui.draw_text(80, wh - 3, help_1)
-		app.tui.draw_text(80, wh - 2, help_2)
-		app.tui.draw_text(80, wh - 1, help_3)
-	}
+    
+	// TODO: help button
+	// if ww >= 90 {
+	// 	app.tui.draw_text(80, wh - 3, help_1)
+	// 	app.tui.draw_text(80, wh - 2, help_2)
+	// 	app.tui.draw_text(80, wh - 1, help_3)
+	// }
 }
 
 [inline]
@@ -436,6 +439,7 @@ fn (mut app App) footer_click(event &tui.Event) {
 				return
 			}
 			idx := footer_y * 19 - 6 + event.x / 3
+			if idx < 0 || idx > 56 { return }
 			color := colors[idx / 19][idx % 19]
 			if event.button == .primary {
 				app.primary_color = color

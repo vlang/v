@@ -5,7 +5,40 @@ A V module for designing terminal UI apps
 #### Quickstart
 
 ```v
-// todo
+import term.ui as tui
+
+struct App {
+mut:
+	tui  &tui.Context = 0
+}
+
+fn event(e &tui.Event, x voidptr) {
+	mut app := &App(x)
+    println(e)
+}
+
+fn frame(x voidptr) {
+	mut app := &App(x)
+
+	app.tui.clear()
+	app.tui.set_bg_color(r: 63, g: 81, b: 181)
+    app.tui.draw_rect(20, 6, 41, 10)
+    app.tui.draw_text(24, 8, 'Hello from V!')
+    app.tui.set_cursor_position(0, 0)
+
+    app.tui.reset()
+	app.tui.flush()
+}
+
+mut app := &App{}
+app.tui = tui.init(
+	user_data: app,
+	event_fn: event,
+	frame_fn: frame
+    hide_cursor: true
+)
+app.tui.run()
+
 ```
 
 See the `/examples/term.ui/` folder for more usage examples.
@@ -22,6 +55,7 @@ See the `/examples/term.ui/` folder for more usage examples.
  - `frame_rate int = 30` - the number of times per second that the `frame` callback will be fired. 30fps is a nice balance between smoothness and performance, but you can increase or lower it as you wish.
  - `hide_cursor bool` - whether to hide the mouse cursor. Useful if you want to use your own.
  - `capture_events bool` - sets the terminal into raw mode, which makes it intercept some escape codes such as `ctrl + c` and `ctrl + z`. Useful if you want to use those key combinations in your app.
+ - `window_title string` - sets the title of the terminal window. This may be changed later, by calling the `set_window_title()` method.
  - `reset []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]` - a list of reset signals, to setup handlers to cleanup the terminal state when they're received. You should not need to change this, unless you know what you're doing.
 
 All of these fields may be omitted, in which case, the default value will be used. In the case of the various callbacks, they will not be fired if a handler has not been specified.

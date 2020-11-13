@@ -11,10 +11,14 @@ pub fn init(cfg Config) &Context {
 	}
 
 	if cfg.hide_cursor {
-		s := '\x1b[?25l'
-		C.write(C.STDOUT_FILENO, s.str, s.len)
+		print('\x1b[?25l')
 	}
 
+	if cfg.window_title != '' {
+		print('\x1b]0;$cfg.window_title\x07')
+	}
+
+	// lmao
 	unsafe {
 		x := &ctx_ptr
 		*x = ctx
