@@ -28,6 +28,7 @@ mut:
 	file   string
 	status string
 	t      int
+	footer_height int = 2
 }
 
 fn (mut a App) set_status(msg string, duration_ms int) {
@@ -83,7 +84,7 @@ fn (b Buffer) raw() string {
 	return b.lines.join('\n')
 }
 
-fn (b Buffer) view() View {
+fn (b Buffer) view(from int, to int) View {
 	l := b.cur_line()
 	mut x := 0
 	for i := 0; i < b.cursor.pos_x && i < l.len; i++ {
@@ -93,8 +94,15 @@ fn (b Buffer) view() View {
 		}
 		x++
 	}
+	mut lines := []string{}
+	for i, line in b.lines {
+		if i >= from && i <= to {
+			lines << line
+		}
+	}
+	raw := lines.join('\n')
 	return {
-		raw: b.raw().replace('\t', strings.repeat(` `, b.tab_width))
+		raw: raw.replace('\t', strings.repeat(` `, b.tab_width))
 		cursor: {
 			pos_x: x
 			pos_y: b.cursor.pos_y
@@ -323,6 +331,8 @@ fn init(x voidptr) {
 				panic(err)
 			}
 			b.put(content)
+			app.ed.cursor.pos_x = 0
+			app.ed.cursor.pos_y = 0
 		}
 	}
 }
@@ -330,11 +340,21 @@ fn init(x voidptr) {
 fn frame(x voidptr) {
 	mut app := &App(x)
 	mut ed := app.ed
-	view := ed.view()
 	app.ti.clear()
+	scroll_limit := app.ti.window_height-app.footer_height-1
+	mut view := View{}
+	if ed.cursor.pos_y > scroll_limit { // Scroll
+		view = ed.view(ed.cursor.pos_y-scroll_limit, ed.cursor.pos_y)
+	} else {
+		view = ed.view(0, scroll_limit)
+	}
 	app.ti.draw_text(0, 0, view.raw)
 	app.footer()
-	app.ti.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
+	if ed.cursor.pos_y > scroll_limit {
+		app.ti.set_cursor_position(view.cursor.pos_x + 1, scroll_limit+1)
+	} else {
+		app.ti.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
+	}
 	app.ti.flush()
 }
 
