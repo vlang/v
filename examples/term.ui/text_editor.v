@@ -4,7 +4,7 @@
 // A lot of funtionality is missing compared to your favourite editor :)
 import strings
 import os
-import term.ui
+import term.ui as tui
 
 enum Movement {
 	up
@@ -23,12 +23,13 @@ pub:
 
 struct App {
 mut:
-	tui     &ui.Context = 0
+	tui    &tui.Context = 0
 	ed     &Buffer = 0
 	file   string
 	status string
 	t      int
 	footer_height int = 2
+	viewport int
 }
 
 fn (mut a App) set_status(msg string, duration_ms int) {
@@ -56,15 +57,23 @@ fn (mut a App) footer() {
 		finfo = ' (' + os.file_name(a.file) + ')'
 	}
 	mut status := a.status
+	a.tui.draw_text(0, h - 1, '─'.repeat(w))
+	footer := '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
+	if footer.len < w {
+		a.tui.draw_text((w - footer.len) / 2, h, footer)
+	} else if footer.len == w {
+		a.tui.draw_text(0, h, footer)
+	} else {
+		a.tui.draw_text(0, h, footer[..w])
+	}
 	if a.t <= 0 {
 		status = ''
-	}
-	line := '─'.repeat(w) + '\n'
-	footer := line + '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save) Raw: "$snip" $status'
-	a.tui.draw_text(0, h - 1, footer)
-	a.t -= 33
-	if a.t < 0 {
-		a.t = 0
+	} else {
+		a.tui.set_bg_color(r: 200, g: 200, b: 200)
+		a.tui.set_color(r: 0, g: 0, b: 0)
+		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
+		a.tui.reset()
+		a.t -= 33
 	}
 }
 
@@ -340,6 +349,7 @@ fn init(x voidptr) {
 			}
 		}
 		if os.is_file(app.file) {
+			app.tui.set_window_title(/* 'vico: ' +  */app.file)
 			mut b := app.ed
 			content := os.read_file(app.file) or {
 				panic(err)
@@ -355,24 +365,22 @@ fn frame(x voidptr) {
 	mut app := &App(x)
 	mut ed := app.ed
 	app.tui.clear()
+
 	scroll_limit := app.tui.window_height-app.footer_height-1
-	mut view := View{}
-	if ed.cursor.pos_y > scroll_limit { // Scroll
-		view = ed.view(ed.cursor.pos_y-scroll_limit, ed.cursor.pos_y)
-	} else {
-		view = ed.view(0, scroll_limit)
+	// scroll down
+	if ed.cursor.pos_y > app.viewport+scroll_limit { // scroll down
+		app.viewport = ed.cursor.pos_y-scroll_limit
+	} else if ed.cursor.pos_y < app.viewport { // scroll up
+		app.viewport = ed.cursor.pos_y
 	}
+	view := ed.view(app.viewport, scroll_limit+app.viewport)
 	app.tui.draw_text(0, 0, view.raw)
 	app.footer()
-	if ed.cursor.pos_y > scroll_limit {
-		app.tui.set_cursor_position(view.cursor.pos_x + 1, scroll_limit+1)
-	} else {
-		app.tui.set_cursor_position(view.cursor.pos_x + 1, view.cursor.pos_y + 1)
-	}
+	app.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - app.viewport)
 	app.tui.flush()
 }
 
-fn event(e &ui.Event, x voidptr) {
+fn event(e &tui.Event, x voidptr) {
 	mut app := &App(x)
 	mut buffer := app.ed
 	if e.typ == .key_down {
@@ -407,11 +415,11 @@ fn event(e &ui.Event, x voidptr) {
 				buffer.move_cursor(1, .end)
 			}
 			48...57, 97...122 { // 0-9a-zA-Z
-				if e.modifiers == ui.ctrl {
+				if e.modifiers == tui.ctrl {
 					if e.code == .s {
 						app.save()
 					}
-				} else if e.modifiers in [ui.shift, 0] {
+				} else if e.modifiers in [tui.shift, 0] {
 					buffer.put(e.ascii.str())
 				}
 			}
@@ -433,12 +441,11 @@ if os.args.len > 1 {
 mut app := &App{
 	file: file
 }
-app.tui = ui.init({
+app.tui = tui.init({
 	user_data: app
 	init_fn: init
 	frame_fn: frame
 	event_fn: event
 	capture_events: true
-	frame_rate: 30
 })
 app.tui.run()
