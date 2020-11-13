@@ -87,15 +87,15 @@ const (
 
 struct App {
 mut:
-	tui             &ui.Context = 0
+	tui             &tui.Context = 0
 	header_text     []string
 	mouse_pos       Point
 	msg             string
 	msg_hide_tick   int
-	primary_color   ui.Color = colors[1][6]
-	secondary_color ui.Color = colors[1][9]
+	primary_color   tui.Color = colors[1][6]
+	secondary_color tui.Color = colors[1][9]
 	color_index     int
-	drawing         [][]ui.Color = [][]ui.Color{len: h, init: []ui.Color{len: w}}
+	drawing         [][]tui.Color = [][]tui.Color{len: h, init: []tui.Color{len: w}}
 	size            int = 1
 	should_redraw   bool = true
 	is_dragging     bool
@@ -116,6 +116,8 @@ fn main() {
 		frame_rate: frame_rate
 		hide_cursor: true
 	})
+	app.mouse_pos.x = 40
+	app.mouse_pos.y = 15
 	app.tui.clear()
 	app.tui.run()
 }
@@ -133,7 +135,7 @@ fn frame(x voidptr) {
 	}
 }
 
-fn event(event &ui.Event, x voidptr) {
+fn event(event &tui.Event, x voidptr) {
 	mut app := &App(x)
 	match event.typ {
 		.mouse_down {
@@ -224,7 +226,7 @@ fn event(event &ui.Event, x voidptr) {
 					app.dec_size()
 				}
 				.c {
-					app.drawing = [][]ui.Color{len: h, init: []ui.Color{len: w}}
+					app.drawing = [][]tui.Color{len: h, init: []tui.Color{len: w}}
 				}
 				.q {
 					app.render(true)
@@ -253,7 +255,7 @@ fn (mut app App) render(paint_only bool) {
 	app.tui.flush()
 }
 
-fn (mut app App) set_pixel(x_ int, y_ int, c ui.Color) {
+fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 	// Term coords start at 1, and adjust for the header
 	x, y := x_ - 1, y_ - 4
 	if y < 0 || app.tui.window_height - y < 3 {
@@ -265,7 +267,7 @@ fn (mut app App) set_pixel(x_ int, y_ int, c ui.Color) {
 	app.drawing[y][x] = c
 }
 
-fn (mut app App) paint(event &ui.Event) {
+fn (mut app App) paint(event &tui.Event) {
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
 	color := if event.button == .primary { app.primary_color } else { app.secondary_color }
 	for x in x_start .. x_start + app.size {
@@ -379,7 +381,7 @@ fn (mut app App) draw_footer() {
 	app.tui.draw_text(3 + select_color.len, wh - 3, ' ')
 	app.tui.reset_bg_color()
 	app.tui.bold()
-	app.tui.draw_text(3, wh - 1, select_size)
+	app.tui.draw_text(3, wh - 1, '$select_size $app.size')
 	app.tui.reset()
 	if ww >= 90 {
 		app.tui.draw_text(80, wh - 3, help_1)
@@ -404,7 +406,7 @@ fn (mut app App) dec_size() {
 	app.show_msg('dec. size: $app.size', 1)
 }
 
-fn (mut app App) footer_click(event &ui.Event) {
+fn (mut app App) footer_click(event &tui.Event) {
 	footer_y := 3 - (app.tui.window_height - event.y)
 	match event.x {
 		8...11 {
