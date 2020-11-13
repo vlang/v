@@ -285,13 +285,12 @@ fn test_assignment() {
 
 __type Inner = int | string
 struct InnerStruct {
-mut:
 	x Inner
 }
 __type Outer = string | InnerStruct
 
 fn test_nested_if_is() {
-	mut b := Outer(InnerStruct{Inner(0)})
+	b := Outer(InnerStruct{Inner(0)})
 	if b is InnerStruct {
 		if b.x is int {
 			assert b.x == 0
@@ -303,11 +302,7 @@ fn test_casted_sum_type_selector_reassign() {
 	mut b := InnerStruct{Inner(0)}
 	if b.x is int {
 		assert typeof(b.x) == 'int'
-		// this check works only if x is castet
-		assert b.x == 0
-		b.x = 'test'
-		// this check works only if x is castet
-		assert b.x[0] == `t`
+		assert b.x == 'test'
 		assert typeof(b.x) == 'string'
 	}
 	// this check works only if x is not castet
@@ -317,12 +312,8 @@ fn test_casted_sum_type_selector_reassign() {
 fn test_casted_sum_type_ident_reassign() {
 	mut x := Inner(0)
 	if x is int {
-		// this check works only if x is castet
-		assert x == 0
 		assert typeof(x) == 'int'
 		x = 'test'
-		// this check works only if x is castet
-		assert x[0] == `t`
 		assert typeof(x) == 'string'
 	}
 	// this check works only if x is not castet
@@ -342,47 +333,9 @@ fn test_match_with_reassign_casted_type() {
 	}
 }
 
-fn test_if_is_with_reassign_casted_type() {
-	mut e := Expr2(0)
-	if e is int {
-		e = int(5)
-		assert e == 5
-	}
-}
-
 struct Expr2Wrapper {
 mut:
 	expr Expr2
-}
-
-fn test_change_type_if_is_selector() {
-	mut e := Expr2Wrapper{Expr2(0)}
-	if e.expr is int {
-		e.expr = 'str'
-		assert e.expr.len == 3
-	}
-	assert e.expr is string
-}
-
-fn test_change_type_if_is() {
-	mut e := Expr2(0)
-	if e is int {
-		e = 'str'
-		assert e.len == 3
-	}
-	assert e is string
-}
-
-fn test_change_type_match() {
-	mut e := Expr2(0)
-	match union mut e {
-		int {
-			e = 'str'
-			assert e.len == 3
-		}
-		else {}
-	}
-	assert e is string
 }
 
 __type Expr3 = CallExpr | string
@@ -390,14 +343,6 @@ __type Expr3 = CallExpr | string
 struct CallExpr {
 mut:
 	is_expr bool
-}
-
-fn test_assign_sum_type_casted_field() {
-	mut e := Expr3(CallExpr{})
-	if e is CallExpr {
-		e.is_expr = true
-		assert e.is_expr
-	}
 }
 
 __type Expr4 = CallExpr2 | CTempVarExpr
@@ -434,7 +379,6 @@ fn test_reassign_from_function_with_parameter_selector() {
 
 fn test_match_multi_branch() {
 	f := Expr4(CTempVarExpr{'ctemp'})
-	mut y := ''
 	match union f {
 		CallExpr2, CTempVarExpr {
 			// this check works only if f is not castet
@@ -454,7 +398,7 @@ struct Outer2 {
 
 fn test_zero_value_init() {
 	// no c compiler error then it's successful
-	o := Outer2{}
+	_ := Outer2{}
 }
 
 fn test_sum_type_match() {
