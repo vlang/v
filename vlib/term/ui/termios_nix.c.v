@@ -65,6 +65,20 @@ fn (mut ctx Context) termios_setup() {
 
 	// Reset console on exit
 	C.atexit(termios_reset)
+	os.signal(C.SIGTSTP, termios_reset)
+	os.signal(C.SIGCONT, fn () {
+		mut c := ctx_ptr
+		if c != 0 {
+			c.termios_setup()
+			c.window_height, c.window_width = get_terminal_size()
+			mut event := &Event{
+				typ: .resized
+				width: c.window_width
+				height: c.window_height
+			}
+			c.event(event)
+		}
+	})
 	for code in ctx.cfg.reset {
 		os.signal(code, fn() {
 			mut c := ctx_ptr
