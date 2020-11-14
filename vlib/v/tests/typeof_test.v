@@ -62,6 +62,9 @@ fn test_typeof_on_sumtypes() {
 	a := MySumType(int(32))
 	b := MySumType(f32(123.0))
 	c := MySumType(FooBar{x:43})
+	assert typeof(a) == 'int'
+	assert typeof(b) == 'f32'
+	assert typeof(c) == 'FooBar'
 	assert a.type_name() == 'int'
 	assert b.type_name() == 'f32'
 	assert c.type_name() == 'FooBar'
@@ -92,6 +95,10 @@ fn test_typeof_on_sumtypes_of_structs() {
 	b := fexpr(2)
 	c := fexpr(3)
 	d := ExprType(UnaryExpr{})
+	assert typeof(a) == 'UnaryExpr'
+	assert typeof(b) == 'BinExpr'
+	assert typeof(c) == 'BoolExpr'
+	assert typeof(d) == 'UnaryExpr'
 	assert a.type_name() == 'UnaryExpr'
 	assert b.type_name() == 'BinExpr'
 	assert c.type_name() == 'BoolExpr'
