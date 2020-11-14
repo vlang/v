@@ -695,8 +695,8 @@ fn test_repeat() {
 	assert s2.repeat(1) == s2
 	assert s2.repeat(0) == s2
 
-	/////////// //////
-	
+	/////////// //////// ///
+
 	assert 'abc'.repeat(3) == 'abcabcabc'
 	assert 'abc'.repeat(1) == 'abc'
 	assert 'abc'.repeat(0) == ''
