@@ -1,0 +1,45 @@
+struct Foo <T> {
+pub:
+	data T
+}
+
+fn (f Foo<int>) value() string {
+	return f.data.str()
+}
+
+type DB = string
+
+struct Repo <T, U> {
+	db         DB
+pub mut:
+	model      T
+	permission U
+}
+
+struct User {
+mut:
+	name string
+}
+
+struct Permission {
+pub mut:
+	name string
+}
+
+fn main() {
+	foo_int := Foo<int>{2}
+	assert foo_int.value() == '2'
+	println(foo_int)
+	//
+	x := Repo<int,f64>{'abc', 3, 1.5}
+	println(x.db)
+	println(x.model)
+	println(x.permission)
+	//
+	mut a := Repo<User,Permission>{
+		model: User{
+			name: 'joe'
+		}
+	}
+	println(a.model.name)
+}

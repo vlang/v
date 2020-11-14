@@ -564,6 +564,25 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			// f.write(sum_type_names.join(' | '))
 		}
+		ast.UnionSumTypeDecl {
+			if node.is_pub {
+				f.write('pub ')
+			}
+			f.write('__type $node.name = ')
+			mut sum_type_names := []string{}
+			for t in node.sub_types {
+				sum_type_names << f.table.type_to_str(t)
+			}
+			sum_type_names.sort()
+			for i, name in sum_type_names {
+				f.write(name)
+				if i < sum_type_names.len - 1 {
+					f.write(' | ')
+				}
+				f.wrap_long_line(2, true)
+			}
+			// f.write(sum_type_names.join(' | '))
+		}
 	}
 	f.writeln('\n')
 }
@@ -580,7 +599,14 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.write_language_prefix(node.language)
 	name := node.name.after('.')
-	f.writeln('$name {')
+	f.write(name)
+	if node.gen_types.len > 0 {
+		f.write(' <')
+		gtypes := node.gen_types.map(f.table.type_to_str(it)).join(', ')
+		f.write(gtypes)
+		f.write('>')
+	}
+	f.writeln(' {')
 	mut max := 0
 	mut max_type := 0
 	mut field_types := []string{cap: node.fields.len}
@@ -782,9 +808,15 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('`$node.val`')
 		}
 		ast.Comment {
-			f.comment(node, {
-				inline: true
-			})
+			if f.array_init_depth > 0 {
+				f.comment(node, {
+					iembed: true
+				})
+			} else {
+				f.comment(node, {
+					inline: true
+				})
+			}
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
@@ -1162,14 +1194,21 @@ enum CommentsLevel {
 // CommentsOptions defines the way comments are going to be written
 // - has_nl: adds an newline at the end of the list of comments
 // - inline: single-line comments will be on the same line as the last statement
-// - level:  either .keep (don't indent), or .indent (increment indentation)
+// - iembed: a /* ... */ embedded comment; used in expressions; // comments the whole line
+// - level: either .keep (don't indent), or .indent (increment indentation)
 struct CommentsOptions {
 	has_nl bool = true
 	inline bool
 	level  CommentsLevel
+	iembed bool
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if options.iembed {
+		x := node.text.replace('\n', ' ')
+		f.write('/* $x */')
+		return
+	}
 	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
 		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
@@ -1245,6 +1284,15 @@ pub fn (mut f Fmt) no_cur_mod(typename string) string {
 pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') {
 		return name
+	}
+	if name.ends_with('>') {
+		x := name.trim_suffix('>').split('<')
+		if x.len == 2 {
+			main := f.short_module(x[0])
+			genlist := x[1].split(',')
+			genshorts := genlist.map(f.short_module(it)).join(',')
+			return '$main<$genshorts>'
+		}
 	}
 	vals := name.split('.')
 	if vals.len < 2 {
@@ -1540,6 +1588,14 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			f.is_mbranch_expr = true
 			for j, expr in branch.exprs {
 				f.expr(expr)
+				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
+					f.write(' ')
+					for cmnt in branch.ecmnts[j] {
+						f.comment(cmnt, {
+							iembed: true
+						})
+					}
+				}
 				if j < branch.exprs.len - 1 {
 					f.write(', ')
 				}
@@ -1742,6 +1798,14 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write(' ')
 		}
 		f.expr(expr)
+		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
+			f.write(' ')
+			for cmt in it.ecmnts[i] {
+				f.comment(cmt, {
+					iembed: true
+				})
+			}
+		}
 		if i == it.exprs.len - 1 {
 			if is_new_line {
 				if expr !is ast.Comment {

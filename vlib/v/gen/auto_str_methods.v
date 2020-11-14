@@ -76,6 +76,9 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.SumType {
 				g.gen_str_for_sum_type(it, styp, str_fn_name)
 			}
+			table.UnionSumType {
+				g.gen_str_for_union_sum_type(it, styp, str_fn_name)
+			}
 			else {
 				verror("could not generate string method $str_fn_name for type \'$styp\'")
 			}
@@ -253,6 +256,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; ++i) {')
+	g.auto_str_funcs.writeln('\t\tif (m.key_values.keys[i].str == 0) { continue; }')
 	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos_lit(": "));')
@@ -515,6 +519,50 @@ fn (mut g Gen) gen_str_for_sum_type(info table.SumType, styp string, str_fn_name
 			func_name = 'indent_$func_name'
 		}
 		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._object')
+		if sym.kind == .struct_ {
+			g.auto_str_funcs.write(', indent_count')
+		}
+		g.auto_str_funcs.writeln('));')
+	}
+	g.auto_str_funcs.writeln('\t\tdefault: return tos_lit("unknown sum type value");')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_union_sum_type(info table.UnionSumType, styp string, str_fn_name string) {
+	mut gen_fn_names := map[string]string{}
+	for typ in info.variants {
+		sym := g.table.get_type_symbol(typ)
+		if !sym.has_method('str') {
+			field_styp := g.typ(typ)
+			field_fn_name := g.gen_str_for_type_with_styp(typ, field_styp)
+			gen_fn_names[field_styp] = field_fn_name
+		}
+	}
+	// _str() functions should have a single argument, the indenting ones take 2:
+	g.type_definitions.writeln('string ${str_fn_name}($styp x); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp x, int indent_count) {')
+	mut clean_sum_type_v_type_name := styp.replace('__', '.')
+	if styp.ends_with('*') {
+		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
+	}
+	clean_sum_type_v_type_name = util.strip_main_name(clean_sum_type_v_type_name)
+	g.auto_str_funcs.writeln('\tswitch(x.typ) {')
+	for typ in info.variants {
+		mut value_fmt := '%.*s\\000'
+		if typ == table.string_type {
+			value_fmt = "\'$value_fmt\'"
+		}
+		typ_str := g.typ(typ)
+		mut func_name := if typ_str in gen_fn_names { gen_fn_names[typ_str] } else { g.gen_str_for_type_with_styp(typ,
+				typ_str) }
+		sym := g.table.get_type_symbol(typ)
+		if sym.kind == .struct_ {
+			func_name = 'indent_$func_name'
+		}
+		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$typ.idx()')
 		if sym.kind == .struct_ {
 			g.auto_str_funcs.write(', indent_count')
 		}

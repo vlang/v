@@ -178,6 +178,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
+	mut is_union_match := false
+	if p.tok.kind == .key_union {
+		p.check(.key_union)
+		is_union_match = true
+	}
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
@@ -200,6 +205,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_first_pos := p.tok.position()
 		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
+		mut ecmnts := [][]ast.Comment{}
 		p.open_scope()
 		// final else
 		mut is_else := false
@@ -227,10 +233,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
+				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.Type{
 					typ: parsed_type
-					pos: p.tok.position()
+					pos: p.prev_tok.position()
 				}
 				if p.tok.kind != .comma {
 					break
@@ -263,23 +270,25 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 					}
 				})
 			}
-			p.scope.register('it', ast.Var{
-				name: 'it'
-				typ: it_typ.to_ptr()
-				pos: cond_pos
-				is_used: true
-				is_mut: is_mut
-			})
-			if var_name.len > 0 {
-				// Register shadow variable or `as` variable with actual type
-				p.scope.register(var_name, ast.Var{
-					name: var_name
+			if !is_union_match {
+				p.scope.register('it', ast.Var{
+					name: 'it'
 					typ: it_typ.to_ptr()
 					pos: cond_pos
 					is_used: true
-					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
+				if var_name.len > 0 {
+					// Register shadow variable or `as` variable with actual type
+					p.scope.register(var_name, ast.Var{
+						name: var_name
+						typ: it_typ.to_ptr()
+						pos: cond_pos
+						is_used: true
+						is_changed: true // TODO mut unchanged warning hack, remove
+						is_mut: is_mut
+					})
+				}
 			}
 			is_sum_type = true
 		} else {
@@ -287,6 +296,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
+				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -324,6 +334,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
+			ecmnts: ecmnts
 			stmts: stmts
 			pos: pos
 			comments: comments
