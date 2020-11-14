@@ -821,6 +821,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.ComptimeCall {
 			if node.is_vweb {
 				f.write('$' + 'vweb.html()')
+			} else {
+				f.write('${node.left}.\$${node.method_name}($node.args_var)')
 			}
 		}
 		ast.ConcatExpr {
