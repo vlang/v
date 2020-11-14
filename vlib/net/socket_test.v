@@ -8,7 +8,7 @@ fn setup() (net.Socket, net.Socket, net.Socket) {
 	$if debug_peer_ip ? {
 		ip := socket.peer_ip() or { '$err' }
 		eprintln('socket peer_ip: $ip')
-	}        
+	}
 	return server, client, socket
 }
 
@@ -33,6 +33,20 @@ fn test_socket() {
 	$if debug {	println('client: $client.sockfd')	}
 
 	assert message == received
+}
+
+fn test_socket_read_line() {
+	server, client, socket := setup()
+	defer { cleanup(server, client, socket) }
+
+	message1, message2 := 'message1', 'message2'
+	message := '$message1\n$message2'
+	socket.write(message) or { assert false }
+	line1, line2 := client.read_line(), client.read_line()
+	assert line1 != message1
+	assert line1.trim_space() == message1
+	assert line2 != message2
+	assert line2.trim_space() == message2
 }
 
 fn test_socket_write() {
