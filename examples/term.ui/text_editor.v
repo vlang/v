@@ -26,7 +26,7 @@ mut:
 	tui           &tui.Context = 0
 	ed            &Buffer = 0
 	current_file  int
-	files          []string
+	files         []string
 	status        string
 	t             int
 	footer_height int = 2
@@ -39,25 +39,50 @@ fn (mut a App) set_status(msg string, duration_ms int) {
 }
 
 fn (mut a App) save() {
-	if a.files[a.current_file].len > 0 {
+	if a.cfile().len > 0 {
 		b := a.ed
-		os.write_file(a.files[a.current_file], b.raw())
+		os.write_file(a.cfile(), b.raw())
 		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
 	}
 }
 
+fn (mut a App) cfile() string {
+	if a.files.len == 0 {
+		return ''
+	}
+	if a.current_file >= a.files.len {
+		return ''
+	}
+	return a.files[a.current_file]
+}
+
+fn (mut a App) visit_prev_file() {
+	if a.files.len == 0 {
+		a.current_file = 0
+	} else {
+		a.current_file = (a.current_file + a.files.len - 1) % a.files.len
+	}
+	a.init_file()
+}
+
+fn (mut a App) visit_next_file() {
+	if a.files.len == 0 {
+		a.current_file = 0
+	} else {
+		a.current_file = (a.current_file + a.files.len + 1) % a.files.len
+	}
+	a.init_file()
+}
+
+
 fn (mut a App) footer() {
 	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
 	// flat := b.flat()
 	// snip := if flat.len > 19 { flat[..20] } else { flat }
-	finfo := if a.files[a.current_file].len > 0 {
-		' (' + os.file_name(a.files[a.current_file]) + ')'
-	} else {
-		''
-	}
+	finfo := if a.cfile().len > 0 { ' (' + os.file_name(a.cfile()) + ')' } else { '' }
 	mut status := a.status
 	a.tui.draw_text(0, h - 1, '─'.repeat(w))
 	footer := '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
@@ -340,20 +365,21 @@ fn (c Cursor) xy() (int, int) {
 
 // App callbacks
 fn init(x voidptr) {
-	mut app := &App(x)
-	app.init_file()
+	mut a := &App(x)
+	a.init_file()
 }
 
-fn (mut app App) init_file() {
-	app.ed = &Buffer{}
+fn (mut a App) init_file() {
+	a.ed = &Buffer{}
 	mut init_y := 0
 	mut init_x := 0
-	if app.files[app.current_file].len > 0 {
-		if !os.is_file(app.files[app.current_file]) && app.files[app.current_file].contains(':') {
+	eprintln('> a.files: $a.files | a.current_file: $a.current_file')
+	if a.files.len > 0 && a.current_file < a.files.len && a.files[a.current_file].len > 0 {
+		if !os.is_file(a.files[a.current_file]) && a.files[a.current_file].contains(':') {
 			// support the file:line:col: format
-			fparts := app.files[app.current_file].split(':')
+			fparts := a.files[a.current_file].split(':')
 			if fparts.len > 0 {
-				app.files[app.current_file] = fparts[0]
+				a.files[a.current_file] = fparts[0]
 			}
 			if fparts.len > 1 {
 				init_y = fparts[1].int() - 1
@@ -362,52 +388,47 @@ fn (mut app App) init_file() {
 				init_x = fparts[2].int() - 1
 			}
 		}
-		if os.is_file(app.files[app.current_file]) {
+		if os.is_file(a.files[a.current_file]) {
 			// 'vico: ' +
-			app.tui.set_window_title(app.files[app.current_file])
-			mut b := app.ed
-			content := os.read_file(app.files[app.current_file]) or {
+			a.tui.set_window_title(a.files[a.current_file])
+			mut b := a.ed
+			content := os.read_file(a.files[a.current_file]) or {
 				panic(err)
 			}
 			b.put(content)
-			app.ed.cursor.pos_x = init_x
-			app.ed.cursor.pos_y = init_y
+			a.ed.cursor.pos_x = init_x
+			a.ed.cursor.pos_y = init_y
 		}
 	}
 }
 
 fn frame(x voidptr) {
-	mut app := &App(x)
-	mut ed := app.ed
-	app.tui.clear()
-	scroll_limit := app.tui.window_height - app.footer_height - 1
+	mut a := &App(x)
+	mut ed := a.ed
+	a.tui.clear()
+	scroll_limit := a.tui.window_height - a.footer_height - 1
 	// scroll down
-	if ed.cursor.pos_y > app.viewport + scroll_limit { // scroll down
-		app.viewport = ed.cursor.pos_y - scroll_limit
-	} else if ed.cursor.pos_y < app.viewport { // scroll up
-		app.viewport = ed.cursor.pos_y
+	if ed.cursor.pos_y > a.viewport + scroll_limit { // scroll down
+		a.viewport = ed.cursor.pos_y - scroll_limit
+	} else if ed.cursor.pos_y < a.viewport { // scroll up
+		a.viewport = ed.cursor.pos_y
 	}
-	view := ed.view(app.viewport, scroll_limit + app.viewport)
-	app.tui.draw_text(0, 0, view.raw)
-	app.footer()
-	app.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - app.viewport)
-	app.tui.flush()
+	view := ed.view(a.viewport, scroll_limit + a.viewport)
+	a.tui.draw_text(0, 0, view.raw)
+	a.footer()
+	a.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - a.viewport)
+	a.tui.flush()
 }
 
 fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
-	mut buffer := app.ed
+	mut a := &App(x)
+	mut buffer := a.ed
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				if app.files.len-1 == app.current_file {
-					app.tui.set_cursor_position(0, 0)
-					app.tui.flush()
-					exit(0)
-				} else {
-					app.current_file++
-					app.init_file()
-				}
+				a.tui.set_cursor_position(0, 0)
+				a.tui.flush()
+				exit(0)
 			}
 			.backspace {
 				buffer.del(-1)
@@ -436,13 +457,23 @@ fn event(e &tui.Event, x voidptr) {
 			48...57, 97...122 { // 0-9a-zA-Z
 				if e.modifiers == tui.ctrl {
 					if e.code == .s {
-						app.save()
+						a.save()
 					}
 				} else if e.modifiers in [tui.shift, 0] {
 					buffer.put(e.ascii.str())
 				}
 			}
 			else {
+				if e.modifiers == tui.alt {
+					if e.code == .comma {
+						a.visit_prev_file()
+						return
+					}
+					if e.code == .period {
+						a.visit_next_file()
+						return
+					}
+				}
 				buffer.put(e.utf8.bytes().bytestr())
 			}
 		}
@@ -452,19 +483,20 @@ fn event(e &tui.Event, x voidptr) {
 	}
 }
 
-// main
-mut files := []string{}
-if os.args.len > 1 {
-	files << os.args[1..]
+fn main() {
+	mut files := []string{}
+	if os.args.len > 1 {
+		files << os.args[1..]
+	}
+	mut a := &App{
+		files: files
+	}
+	a.tui = tui.init({
+		user_data: a
+		init_fn: init
+		frame_fn: frame
+		event_fn: event
+		capture_events: true
+	})
+	a.tui.run()
 }
-mut app := &App{
-	files: files
-}
-app.tui = tui.init({
-	user_data: app
-	init_fn: init
-	frame_fn: frame
-	event_fn: event
-	capture_events: true
-})
-app.tui.run()
