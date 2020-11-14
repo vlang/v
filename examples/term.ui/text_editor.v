@@ -155,12 +155,15 @@ fn (b Buffer) view(from int, to int) View {
 	}
 }
 
-fn (b Buffer) cur_line() string {
-	_, y := b.cursor.xy()
-	if b.lines.len == 0 {
+fn (b Buffer) line(i int) string {
+	if i < 0 || i >= b.lines.len {
 		return ''
 	}
-	return b.lines[y]
+	return b.lines[i]
+}
+
+fn (b Buffer) cur_line() string {
+	return b.line(b.cursor.pos_y)
 }
 
 fn (b Buffer) cursor_index() int {
@@ -336,11 +339,15 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 		.left {
 			if b.cursor.pos_x - amount >= 0 {
 				b.cursor.move(-amount, 0)
+			} else if b.cursor.pos_y > 0 {
+				b.cursor.set(b.line(b.cursor.pos_y - 1).len, b.cursor.pos_y - 1)
 			}
 		}
 		.right {
 			if b.cursor.pos_x + amount <= cur_line.len {
 				b.cursor.move(amount, 0)
+			} else if b.cursor.pos_y + 1 < b.lines.len {
+				b.cursor.set(0, b.cursor.pos_y + 1)
 			}
 		}
 		.home {
