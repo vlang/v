@@ -126,11 +126,17 @@ fn (mut ctx Context) termios_setup() {
 			c.event(event)
 		}
 	})
+	os.flush()
 }
 
 fn termios_reset() {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH /* C.TCSANOW ?? */, &termios_at_startup)
-	print('\x1b[?1003l\x1b[?1006l\x1b[?1049l\x1b[?25h')
+	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
+	c := ctx_ptr
+	if c != 0 && c.cfg.use_alternate_buffer {
+		print('\x1b[?1049h')
+	}
+	os.flush()
 }
 
 ///////////////////////////////////////////
