@@ -379,7 +379,7 @@ fn (mut app App) current_color(x int, y int) bool {
 }
 
 fn (mut app App) draw_footer() {
-	ww, wh := app.tui.window_width, app.tui.window_height
+	_, wh := app.tui.window_width, app.tui.window_height
 	app.tui.horizontal_separator(wh - 4)
 	for i, color_row in colors {
 		for j, color in color_row {
