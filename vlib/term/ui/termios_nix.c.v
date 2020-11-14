@@ -51,6 +51,9 @@ fn restore_terminal_state() {
 }
 
 fn (mut ctx Context) termios_setup() {
+	// store the current title, so restore_terminal_state can get it back
+	ctx.save_title()
+    
 	mut termios := get_termios()
 
 	if ctx.cfg.capture_events {
@@ -63,13 +66,11 @@ fn (mut ctx Context) termios_setup() {
 		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
 	}
 
-
 	if ctx.cfg.hide_cursor {
 		print('\x1b[?25l')
 	}
 
 	if ctx.cfg.window_title != '' {
-		ctx.save_title()
 		print('\x1b]0;$ctx.cfg.window_title\x07')
 	}
 
@@ -89,7 +90,6 @@ fn (mut ctx Context) termios_setup() {
 	os.signal(C.SIGCONT, fn () {
 		mut c := ctx_ptr
 		if c != 0 {
-			c.save_title()
 			c.termios_setup()
 			c.window_height, c.window_width = get_terminal_size()
 			mut event := &Event{
