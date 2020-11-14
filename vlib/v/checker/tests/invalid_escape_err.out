@@ -1,0 +1,5 @@
+vlib/v/checker/tests/invalid_escape_err.vv:2:17: error: unknown escape
+    1 | fn main() {
+    2 |     println('\n\g')
+      |                 ^
+    3 | }
