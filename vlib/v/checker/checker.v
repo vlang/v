@@ -2118,6 +2118,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		left_type_unwrapped := c.unwrap_generic(left_type)
 		right_type_unwrapped := c.unwrap_generic(right_type)
+		if right_type_unwrapped == 0 {
+			// right type was a generic `T`
+			continue
+		}
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
