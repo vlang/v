@@ -135,7 +135,7 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 				x := if bchar.is_space() { bchar } else { ` ` }
 				pointerline += x.str()
 			}
-			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
+			underline := if pos.len > 1 { strings.repeat(`~`, (end_column - start_column) } else { '^' }
 			pointerline += bold(color(kind, underline))
 			clines << '      | ' + pointerline.replace('\t', tab_spaces)
 		}

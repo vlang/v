@@ -167,5 +167,5 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 [inline]
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
-	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
+	ctx.write(byte(`-`).repeat(ctx.window_width))
 }

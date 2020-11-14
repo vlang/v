@@ -1,10 +1,16 @@
 module strings
 
 // strings.repeat - fill a string with `n` repetitions of the character `c`
-[deprecated]
 pub fn repeat(c byte, n int) string {
-	eprintln('strings.repeat(c, n) is now deprecated use c.repeat(n) instead')
-	return c.repeat(n)
+	if n <= 0 {
+		return ''
+	}
+	mut bytes := unsafe {malloc(n + 1)}
+	unsafe {
+		C.memset(bytes, c, n)
+		bytes[n] = `0`
+	}
+	return unsafe { bytes.vstring_with_len(n) }
 }
 
 // strings.repeat_string - gives you `n` repetitions of the substring `s`

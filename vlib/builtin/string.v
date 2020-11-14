@@ -1279,18 +1279,6 @@ pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
 
-pub fn (c byte) repeat(n int) string {
-	if n <= 0 {
-		return ''
-	}
-	mut bytes := unsafe {malloc(n + 1)}
-	unsafe {
-		C.memset(bytes, c, n)
-		bytes[n] = `0`
-	}
-	return unsafe { bytes.vstring_with_len(n) }
-}
-
 pub fn (s &string) free() {
 	$if prealloc {
 		return

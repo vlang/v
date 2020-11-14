@@ -10,6 +10,7 @@ import v.errors
 import v.pref
 import term
 import v.table
+import strings
 
 pub struct Gen {
 	out_name             string
@@ -270,7 +271,7 @@ fn (mut g Gen) println(comment string) {
 	}
 	addr := g.debug_pos.hex()
 	// println('$g.debug_pos "$addr"')
-	print(term.red(byte(`0`).repeat(6 - addr.len)) + addr + '  ')
+	print(term.red(strings.repeat(`0`, (6 - addr.len)) + addr + '  ')
 	for i := g.debug_pos; i < g.buf.len; i++ {
 		s := g.buf[i].hex()
 		if s.len == 1 {

@@ -424,7 +424,7 @@ fn (mut g Gen) base_type(t table.Type) string {
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
-		styp += byte(`*`).repeat(nr_muls)
+		styp += strings.repeat(`*`, nr_muls)
 	}
 	return styp
 }

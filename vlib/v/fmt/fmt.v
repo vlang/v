@@ -8,6 +8,7 @@ import v.table
 import v.token
 import strings
 import v.util
+import strings
 
 const (
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
@@ -668,7 +669,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(field_types[i])
 		if field.attrs.len > 0 && field.attrs[0].name != 'ref_only' { // TODO a bug with [ref_only] attr being added to fields, fix it
-			f.write(strings.repeat(` `, max_type - field_types[i].len))
+			f.write(byte(` `).repeat(max_type - field_types[i].len))
 			f.inline_attrs(field.attrs)
 		}
 		if field.has_default_expr {
@@ -888,7 +889,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.indent++
 			for i, key in node.keys {
 				f.expr(key)
-				// f.write(strings.repeat(` `, max - field.name.len))
+				// f.write(strings.repeat(` `, (max - field.name.len))
 				f.write(': ')
 				f.expr(node.vals[i])
 				f.writeln('')
@@ -1919,7 +1920,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		}
 		name := field.name.after('.')
 		f.write('$name ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		f.write(strings.repeat(` `, (max - field.name.len))
 		f.write('= ')
 		f.expr(field.expr)
 		f.writeln('')
@@ -1957,7 +1958,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 			f.writeln('')
 		}
 		f.write('$field.name ')
-		f.write(strings.repeat(` `, max - field.name.len))
+		f.write(strings.repeat(` `, (max - field.name.len))
 		if field.has_expr {
 			f.write('= ')
 			f.write(f.table.type_to_str(field.typ))

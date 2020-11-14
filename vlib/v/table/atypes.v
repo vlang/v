@@ -904,7 +904,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 	}
 	nr_muls := t.nr_muls()
 	if nr_muls > 0 {
-		res = byte(`&`).repeat(nr_muls) + res
+		res = strings.repeat(`&`, (nr_muls) + res)
 	}
 	if t.has_flag(.optional) {
 		res = '?' + res

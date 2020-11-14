@@ -1,6 +1,7 @@
 module pkgconfig
 
 import flag
+import strings
 
 pub struct Main {
 pub mut:
@@ -63,7 +64,7 @@ pub fn main(args []string) ?&Main {
 				d := desc(mod) or {
 					continue
 				}
-				pad := byte(` `).repeat(20 - mod.len)
+				pad := strings.repeat(` `, 20 - mod.len)
 				m.res += '$mod $pad $d\n'
 			}
 		} else {
