@@ -171,6 +171,29 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
+pub fn (t Type) debug() []string {
+	mut res := []string{}
+	res << 'idx: ${t.idx():5}'
+	res << 'type: ${t:10}'
+	res << 'nr_muls: $t.nr_muls()'
+	if t.has_flag(.optional) {
+		res << 'optional'
+	}
+	if t.has_flag(.variadic) {
+		res << 'variadic'
+	}
+	if t.has_flag(.generic) {
+		res << 'generic'
+	}
+	if t.has_flag(.shared_f) {
+		res << 'shared_f'
+	}
+	if t.has_flag(.atomic_f) {
+		res << 'atomic_f'
+	}
+	return res
+}
+
 // copy flags & nr_muls from `t_from` to `t` and return `t`
 [inline]
 pub fn (t Type) derive(t_from Type) Type {
