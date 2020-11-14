@@ -4,4 +4,5 @@ fn main() {
 	x := Abc(0)
 	_ := x + Abc(5)
 	_ := 'test' + x
+	_ = unsafe{&x + 5}
 }

@@ -862,9 +862,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			infix_expr.pos)
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
-	if left.kind in [.sum_type, .union_sum_type] {
+	if left.kind in [.sum_type, .union_sum_type] && !left_type.is_ptr() {
 		c.error('cannot use operator `$infix_expr.op` with `$left.name`', infix_expr.pos)
-	} else if right.kind in [.sum_type, .union_sum_type] {
+	} else if right.kind in [.sum_type, .union_sum_type] && !right_type.is_ptr() {
 		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
 	}
 	// Dual sides check (compatibility check)
