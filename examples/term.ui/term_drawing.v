@@ -303,7 +303,7 @@ fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 }
 
 fn (mut app App) paint(event &tui.Event) {
-	if event.y < 0 || app.tui.window_height - event.y < 3 {
+	if event.y < 4 || app.tui.window_height - event.y < 4 {
 		return
 	}
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
