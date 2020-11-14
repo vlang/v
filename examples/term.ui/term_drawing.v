@@ -87,19 +87,20 @@ const (
 
 struct App {
 mut:
-	tui             &tui.Context = 0
-	header_text     []string
-	mouse_pos       Point
-	msg             string
-	msg_hide_tick   int
-	primary_color   tui.Color = colors[1][6]
-	secondary_color tui.Color = colors[1][9]
-	bg_color        tui.Color = tui.Color{0, 0, 0}
-	color_index     int
-	drawing         [][]tui.Color = [][]tui.Color{len: h, init: []tui.Color{len: w}}
-	size            int = 1
-	should_redraw   bool = true
-	is_dragging     bool
+	tui                 &tui.Context = 0
+	header_text         []string
+	mouse_pos           Point
+	msg                 string
+	msg_hide_tick       int
+	primary_color       tui.Color = colors[1][6]
+	secondary_color     tui.Color = colors[1][9]
+	primary_color_idx   int = 25
+	secondary_color_idx int = 28
+	bg_color            tui.Color = tui.Color{0, 0, 0}
+	drawing             [][]tui.Color = [][]tui.Color{len: h, init: []tui.Color{len: w}}
+	size                int = 1
+	should_redraw       bool = true
+	is_dragging         bool
 }
 
 struct Point {
@@ -169,10 +170,17 @@ fn event(event &tui.Event, x voidptr) {
 				x: event.x
 				y: event.y
 			}
-			if event.direction == .down {
-				app.inc_size()
+			d := event.direction == .down
+			if event.modifiers & tui.ctrl != 0 {
+				p := event.modifiers & tui.shift == 0
+				c := if d {
+					if p { app.primary_color_idx - 1 } else { app.secondary_color_idx - 1 }
+				} else {
+					if p { app.primary_color_idx + 1 } else { app.secondary_color_idx + 1 }
+				}
+				app.select_color(p, c)
 			} else {
-				app.dec_size()
+				if d { app.inc_size() } else { app.dec_size() }
 			}
 		}
 		.key_down {
@@ -217,28 +225,22 @@ fn event(event &tui.Event, x voidptr) {
 					app.mouse_pos.x += 2
 				}
 				.t {
-					mut c := if event.modifiers & tui.shift != 0 { app.color_index - 19 } else { app.color_index +
-							19 }
-					if c < 0 {
-						c = 0
+					p := event.modifiers & tui.alt == 0
+					c := if event.modifiers & tui.shift != 0 {
+						if p { app.primary_color_idx - 19 } else { app.secondary_color_idx - 19 }
+					} else {
+						if p { app.primary_color_idx + 19 } else { app.secondary_color_idx + 19 }
 					}
-					cx := c % 19
-					cy := (c / 19) % 3
-					color := colors[cy][cx]
-					app.primary_color = color
-					app.color_index = c % (19 * 3)
+					app.select_color(p, c)
 				}
 				.r {
-					mut c := if event.modifiers & tui.shift != 0 { app.color_index - 1 } else { app.color_index +
-							1 }
-					if c < 0 {
-						c = 0
+					p := event.modifiers & tui.alt == 0
+					c := if event.modifiers & tui.shift != 0 {
+						if p { app.primary_color_idx - 1 } else { app.secondary_color_idx - 1 }
+					} else {
+						if p { app.primary_color_idx + 1 } else { app.secondary_color_idx + 1 }
 					}
-					cx := c % 19
-					cy := (c / 19) % 3
-					color := colors[cy][cx]
-					app.primary_color = color
-					app.color_index = c % (19 * 3)
+					app.select_color(p, c)
 				}
 				.plus {
 					app.inc_size()
@@ -272,6 +274,22 @@ fn (mut app App) render(paint_only bool) {
 	app.tui.flush()
 }
 
+fn (mut app App) select_color(primary bool, idx int) {
+	c := (idx + 57) % 57
+	cx := c % 19
+	cy := (c / 19) % 3
+	color := colors[cy][cx]
+	if primary {
+		app.primary_color_idx = c % (19 * 3)
+		app.primary_color = color
+	} else {
+		app.secondary_color_idx = c % (19 * 3)
+		app.secondary_color = color
+	}
+	c_str := if primary { 'primary' } else { 'secondary' }
+	app.show_msg('set $c_str color idx: $idx', 1)
+}
+
 fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 	// Term coords start at 1, and adjust for the header
 	x, y := x_ - 1, y_ - 4
@@ -285,6 +303,9 @@ fn (mut app App) set_pixel(x_ int, y_ int, c tui.Color) {
 }
 
 fn (mut app App) paint(event &tui.Event) {
+	if event.y < 4 || app.tui.window_height - event.y < 4 {
+		return
+	}
 	x_start, y_start := int(f32((event.x - 1) / 2) - app.size / 2 + 1), event.y - app.size / 2
 	color := match event.button {
 		.left { app.primary_color }
@@ -374,10 +395,6 @@ fn (mut app App) draw_header() {
 	app.tui.horizontal_separator(3)
 }
 
-fn (mut app App) current_color(x int, y int) bool {
-	return app.color_index == x + (y * 19)
-}
-
 fn (mut app App) draw_footer() {
 	_, wh := app.tui.window_width, app.tui.window_height
 	app.tui.horizontal_separator(wh - 4)
@@ -386,8 +403,12 @@ fn (mut app App) draw_footer() {
 			x := j * 3 + 19
 			y := wh - 3 + i
 			app.tui.set_bg_color(color)
-			if app.current_color(j, i) {
-				app.tui.set_color(tui.Color{0, 0, 0})
+			if app.primary_color_idx == j + (i * 19) {
+				app.tui.set_color(r: 0, g: 0, b: 0)
+				app.tui.draw_text(x, y, '><')
+				app.tui.reset_color()
+			} else if app.secondary_color_idx == j + (i * 19) {
+				app.tui.set_color(r: 255, g: 255, b: 255)
 				app.tui.draw_text(x, y, '><')
 				app.tui.reset_color()
 			} else {
@@ -397,9 +418,6 @@ fn (mut app App) draw_footer() {
 	}
 	app.tui.reset_bg_color()
 	app.tui.draw_text(3, wh - 3, select_color)
-	app.tui.set_bg_color(app.primary_color)
-	app.tui.draw_text(3 + select_color.len, wh - 3, ' ')
-	app.tui.reset_bg_color()
 	app.tui.bold()
 	app.tui.draw_text(3, wh - 1, '$select_size $app.size')
 	app.tui.reset()
@@ -414,7 +432,7 @@ fn (mut app App) draw_footer() {
 
 [inline]
 fn (mut app App) inc_size() {
-	if app.size < 20 {
+	if app.size < 30 {
 		app.size++
 	}
 	app.show_msg('inc. size: $app.size', 1)
@@ -444,13 +462,7 @@ fn (mut app App) footer_click(event &tui.Event) {
 			}
 			idx := footer_y * 19 - 6 + event.x / 3
 			if idx < 0 || idx > 56 { return }
-			color := colors[idx / 19][idx % 19]
-			if event.button == .left {
-				app.primary_color = color
-			} else if event.button == .right {
-				app.secondary_color = color
-			}
-			app.show_msg('set $event.button.str().to_lower() color idx: $idx', 1)
+			app.select_color(event.button == .left, idx)
 		}
 		else {}
 	}

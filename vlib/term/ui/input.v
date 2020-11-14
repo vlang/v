@@ -167,8 +167,7 @@ mut:
 	termios       C.termios
 	read_buf      []byte
 	print_buf     []byte
-	// init_called  bool
-	// quit_ordered bool
+	paused        bool
 pub mut:
 	frame_count   u64
 	window_width  int
@@ -190,6 +189,7 @@ pub struct Config {
 	window_title   string
 	hide_cursor    bool
 	capture_events bool
+	use_alternate_buffer bool = true
 	// All kill signals
 	reset          []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
 }
