@@ -7,7 +7,11 @@ import strings
 
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	str := v.str()
-	wr.write(if v is string { '"$str"' } else { str })
+	if v is string { 
+		wr.write('"$str"') 
+	} else { 
+		wr.write(str)
+	}
 	if i >= len-1 { return }
 	wr.write_b(`,`)
 }
