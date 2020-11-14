@@ -50,8 +50,8 @@ fn (mut a App) save() {
 fn (mut a App) footer() {
 	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
-	flat := b.flat()
-	snip := if flat.len > 19 { flat[..20] } else { flat }
+	// flat := b.flat()
+	// snip := if flat.len > 19 { flat[..20] } else { flat }
 	mut finfo := ''
 	if a.file.len > 0 {
 		finfo = ' (' + os.file_name(a.file) + ')'
