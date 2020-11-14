@@ -1452,18 +1452,20 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s
 	}
-	mut ret := malloc(s.len * count + 1)
-	for i in 0 .. count {
-		for j in 0 .. s.len {
+	slen := s.len
+	blen := slen * count
+	mut bytes := unsafe {malloc(blen + 1)}
+	for bi in 0..count {
+		bislen := bi * slen
+		for si in 0..slen {
 			unsafe {
-				ret[i * s.len + j] = s[j]
+				bytes[bislen + si] = s[si]
 			}
 		}
 	}
 	unsafe {
-		new_len := s.len * count
-		ret[new_len] = 0
-		return ret.vstring_with_len(new_len)
+		bytes[blen] = `0`
+	    return bytes.vstring_with_len(blen)
 	}
 }
 
