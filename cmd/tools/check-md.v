@@ -178,6 +178,17 @@ fn (mut f MDFile) check_examples() (int, int) {
 					}
 					oks++
 				}
+				'live' {
+					res := os.system('"$vexe" -silent -live -o x.c $vfile')
+					if res != 0 {
+						eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
+						eprintln(vcontent)
+						should_cleanup_vfile = false
+						errors++
+						continue
+					}
+					oks++
+				}
 				'failcompile' {
 					res := os.system('"$vexe" -silent -o x.c $vfile')
 					os.rm('x.c') or { }

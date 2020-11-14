@@ -2937,7 +2937,7 @@ Translating it to V gives you several advantages:
 
 ## Hot code reloading
 
-```v
+```v live
 module main
 
 import time
