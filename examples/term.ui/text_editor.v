@@ -23,13 +23,14 @@ pub:
 
 struct App {
 mut:
-	tui    &tui.Context = 0
-	ed     &Buffer = 0
-	file   string
-	status string
-	t      int
+	tui           &tui.Context = 0
+	ed            &Buffer = 0
+	current_file  int
+	files          []string
+	status        string
+	t             int
 	footer_height int = 2
-	viewport int
+	viewport      int
 }
 
 fn (mut a App) set_status(msg string, duration_ms int) {
@@ -38,9 +39,9 @@ fn (mut a App) set_status(msg string, duration_ms int) {
 }
 
 fn (mut a App) save() {
-	if a.file.len > 0 {
+	if a.files[a.current_file].len > 0 {
 		b := a.ed
-		os.write_file(a.file, b.raw())
+		os.write_file(a.files[a.current_file], b.raw())
 		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
@@ -52,9 +53,10 @@ fn (mut a App) footer() {
 	mut b := a.ed
 	// flat := b.flat()
 	// snip := if flat.len > 19 { flat[..20] } else { flat }
-	mut finfo := ''
-	if a.file.len > 0 {
-		finfo = ' (' + os.file_name(a.file) + ')'
+	finfo := if a.files[a.current_file].len > 0 {
+		' (' + os.file_name(a.files[a.current_file]) + ')'
+	} else {
+		''
 	}
 	mut status := a.status
 	a.tui.draw_text(0, h - 1, '─'.repeat(w))
@@ -69,8 +71,16 @@ fn (mut a App) footer() {
 	if a.t <= 0 {
 		status = ''
 	} else {
-		a.tui.set_bg_color(r: 200, g: 200, b: 200)
-		a.tui.set_color(r: 0, g: 0, b: 0)
+		a.tui.set_bg_color({
+			r: 200
+			g: 200
+			b: 200
+		})
+		a.tui.set_color({
+			r: 0
+			g: 0
+			b: 0
+		})
 		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
 		a.tui.reset()
 		a.t -= 33
@@ -78,10 +88,10 @@ fn (mut a App) footer() {
 }
 
 struct Buffer {
-	tab_width  int = 4
+	tab_width int = 4
 pub mut:
-	lines      []string
-	cursor     Cursor
+	lines     []string
+	cursor    Cursor
 }
 
 fn (b Buffer) flat() string {
@@ -331,15 +341,19 @@ fn (c Cursor) xy() (int, int) {
 // App callbacks
 fn init(x voidptr) {
 	mut app := &App(x)
+	app.init_file()
+}
+
+fn (mut app App) init_file() {
 	app.ed = &Buffer{}
 	mut init_y := 0
 	mut init_x := 0
-	if app.file.len > 0 {
-		if !os.is_file(app.file) && app.file.contains(':') {
+	if app.files[app.current_file].len > 0 {
+		if !os.is_file(app.files[app.current_file]) && app.files[app.current_file].contains(':') {
 			// support the file:line:col: format
-			fparts := app.file.split(':')
+			fparts := app.files[app.current_file].split(':')
 			if fparts.len > 0 {
-				app.file = fparts[0]
+				app.files[app.current_file] = fparts[0]
 			}
 			if fparts.len > 1 {
 				init_y = fparts[1].int() - 1
@@ -348,10 +362,11 @@ fn init(x voidptr) {
 				init_x = fparts[2].int() - 1
 			}
 		}
-		if os.is_file(app.file) {
-			app.tui.set_window_title(/* 'vico: ' +  */app.file)
+		if os.is_file(app.files[app.current_file]) {
+			// 'vico: ' +
+			app.tui.set_window_title(app.files[app.current_file])
 			mut b := app.ed
-			content := os.read_file(app.file) or {
+			content := os.read_file(app.files[app.current_file]) or {
 				panic(err)
 			}
 			b.put(content)
@@ -365,15 +380,14 @@ fn frame(x voidptr) {
 	mut app := &App(x)
 	mut ed := app.ed
 	app.tui.clear()
-
-	scroll_limit := app.tui.window_height-app.footer_height-1
+	scroll_limit := app.tui.window_height - app.footer_height - 1
 	// scroll down
-	if ed.cursor.pos_y > app.viewport+scroll_limit { // scroll down
-		app.viewport = ed.cursor.pos_y-scroll_limit
+	if ed.cursor.pos_y > app.viewport + scroll_limit { // scroll down
+		app.viewport = ed.cursor.pos_y - scroll_limit
 	} else if ed.cursor.pos_y < app.viewport { // scroll up
 		app.viewport = ed.cursor.pos_y
 	}
-	view := ed.view(app.viewport, scroll_limit+app.viewport)
+	view := ed.view(app.viewport, scroll_limit + app.viewport)
 	app.tui.draw_text(0, 0, view.raw)
 	app.footer()
 	app.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - app.viewport)
@@ -386,9 +400,14 @@ fn event(e &tui.Event, x voidptr) {
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				app.tui.set_cursor_position(0, 0)
-				app.tui.flush()
-				exit(0)
+				if app.files.len-1 == app.current_file {
+					app.tui.set_cursor_position(0, 0)
+					app.tui.flush()
+					exit(0)
+				} else {
+					app.current_file++
+					app.init_file()
+				}
 			}
 			.backspace {
 				buffer.del(-1)
@@ -434,12 +453,12 @@ fn event(e &tui.Event, x voidptr) {
 }
 
 // main
-mut file := ''
+mut files := []string{}
 if os.args.len > 1 {
-	file = os.args[1]
+	files << os.args[1..]
 }
 mut app := &App{
-	file: file
+	files: files
 }
 app.tui = tui.init({
 	user_data: app
