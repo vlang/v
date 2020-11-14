@@ -310,7 +310,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.CompFor {
 			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
-			f.writeln('\$for $it.val_var in ${typ}($it.kind.str()) {')
+			f.writeln('\$for $it.val_var in ${typ}.$it.kind.str() {')
 			f.stmts(it.stmts)
 			f.writeln('}')
 		}

@@ -31,7 +31,9 @@ fn (mut app App) int_method2() int {
 fn (mut app App) string_arg(x string) {
 }
 
-fn no_lines(s string) string { return s.replace('\n', ' ') }
+fn no_lines(s string) string {
+	return s.replace('\n', ' ')
+}
 
 fn test_comptime_for() {
 	println(@FN)
@@ -46,7 +48,7 @@ fn test_comptime_for_with_if() {
 	println(@FN)
 	$for method in App.methods {
 		println('  method: ' + no_lines('$method'))
-		$if method.typ is fn() {
+		$if method.typ is fn () {
 			assert method.name in ['run', 'method2']
 		}
 		$if method.return_type is int {
