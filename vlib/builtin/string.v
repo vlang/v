@@ -138,6 +138,24 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 	}
 }
 
+// charptr.vstring() - converts C char* to V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring() string {
+	return string{
+		str: byteptr(cp)
+		len: unsafe {C.strlen(cp)}
+	}
+}
+
+// charptr.vstring_with_len() - converts C char* to V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_with_len(len int) string {
+	return string{
+		str: byteptr(cp)
+		len: len
+	}
+}
+
 // string.clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
 fn (a string) clone_static() string {
