@@ -13,6 +13,8 @@ enum Movement {
 	right
 	home
 	end
+	page_up
+	page_down
 }
 
 struct View {
@@ -340,7 +342,33 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 		.end {
 			b.cursor.set(cur_line.len, b.cursor.pos_y)
 		}
+		.page_up {
+			dlines := imin(b.cursor.pos_y, amount)
+			b.cursor.move(0, -dlines)
+			// Check the move
+			line := b.cur_line()
+			if b.cursor.pos_x > line.len {
+				b.cursor.set(line.len, b.cursor.pos_y)
+			}
+		}
+		.page_down {
+			dlines := imin(b.lines.len-1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			b.cursor.move(0, dlines)
+			// Check the move
+			line := b.cur_line()
+			if b.cursor.pos_x > line.len {
+				b.cursor.set(line.len, b.cursor.pos_y)
+			}
+		}
 	}
+}
+
+fn imax(x int, y int) int {
+	return if x < y { y } else { x }
+}
+
+fn imin(x int, y int) int {
+	return if x < y { x } else { y }
 }
 
 struct Cursor {
@@ -402,11 +430,15 @@ fn (mut a App) init_file() {
 	}
 }
 
+fn (a &App) view_height() int {
+	return a.tui.window_height - a.footer_height - 1
+}
+
 fn frame(x voidptr) {
 	mut a := &App(x)
 	mut ed := a.ed
 	a.tui.clear()
-	scroll_limit := a.tui.window_height - a.footer_height - 1
+	scroll_limit := a.view_height()
 	// scroll down
 	if ed.cursor.pos_y > a.viewport + scroll_limit { // scroll down
 		a.viewport = ed.cursor.pos_y - scroll_limit
@@ -447,6 +479,12 @@ fn event(e &tui.Event, x voidptr) {
 			}
 			.down {
 				buffer.move_cursor(1, .down)
+			}
+			.page_up {
+				buffer.move_cursor(a.view_height(), .page_up)
+			}
+			.page_down {
+				buffer.move_cursor(a.view_height(), .page_down)
 			}
 			.home {
 				buffer.move_cursor(1, .home)
