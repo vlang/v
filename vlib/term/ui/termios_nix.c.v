@@ -134,7 +134,7 @@ fn termios_reset() {
 	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
 	c := ctx_ptr
 	if c != 0 && c.cfg.use_alternate_buffer {
-		print('\x1b[?1049h')
+		print('\x1b[?1049l')
 	}
 	os.flush()
 }
