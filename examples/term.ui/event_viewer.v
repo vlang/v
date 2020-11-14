@@ -32,6 +32,7 @@ app.tui = tui.init(
 	hide_cursor: true
 	capture_events: true
 	frame_rate: 60
+	use_alternate_buffer: false
 )
 
 println('V term.ui event viewer (press `esc` to exit)\n\n')

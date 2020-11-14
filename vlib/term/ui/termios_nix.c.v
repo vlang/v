@@ -45,9 +45,10 @@ fn restore_terminal_state() {
 	termios_reset()
 	mut c := ctx_ptr
 	if c != 0 {
+		c.paused = true
 		c.load_title()
 	}
-	println('')
+	os.flush()
 }
 
 fn (mut ctx Context) termios_setup() {
@@ -79,9 +80,10 @@ fn (mut ctx Context) termios_setup() {
 	termios.c_cc[C.VMIN] = 0
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 	print('\x1b[?1003h\x1b[?1006h')
-
+	if ctx.cfg.use_alternate_buffer {
+		print('\x1b[?1049h')
+	}
 	ctx.termios = termios
-
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
@@ -97,6 +99,7 @@ fn (mut ctx Context) termios_setup() {
 				width: c.window_width
 				height: c.window_height
 			}
+			c.paused = false
 			c.event(event)
 		}
 	})
@@ -127,7 +130,7 @@ fn (mut ctx Context) termios_setup() {
 
 fn termios_reset() {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH /* C.TCSANOW ?? */, &termios_at_startup)
-	print('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J\x1b[?25h')
+	print('\x1b[?1003l\x1b[?1006l\x1b[?1049l\x1b[?25h')
 }
 
 ///////////////////////////////////////////
@@ -147,20 +150,22 @@ fn (mut ctx Context) termios_loop() {
 		if sleep_len > 0 {
 			time.usleep(sleep_len)
 		}
-		sw.restart()
-		if ctx.cfg.event_fn != voidptr(0) {
-			len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
-			if len > 0 {
-				ctx.resize_arr(len)
-				ctx.parse_events()
+		if !ctx.paused {
+			sw.restart()
+			if ctx.cfg.event_fn != voidptr(0) {
+				len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
+				if len > 0 {
+					ctx.resize_arr(len)
+					ctx.parse_events()
+				}
 			}
-		}
-		ctx.frame()
-		sw.pause()
-		e := sw.elapsed().microseconds()
-		sleep_len = frame_time - int(e)
+			ctx.frame()
+			sw.pause()
+			e := sw.elapsed().microseconds()
+			sleep_len = frame_time - int(e)
 
-		ctx.frame_count++
+			ctx.frame_count++
+		}
 	}
 }
 

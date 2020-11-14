@@ -397,7 +397,6 @@ fn (mut a App) init_file() {
 	a.ed = &Buffer{}
 	mut init_y := 0
 	mut init_x := 0
-	eprintln('> a.files: $a.files | a.current_file: $a.current_file')
 	if a.files.len > 0 && a.current_file < a.files.len && a.files[a.current_file].len > 0 {
 		if !os.is_file(a.files[a.current_file]) && a.files[a.current_file].contains(':') {
 			// support the file:line:col: format
@@ -454,8 +453,6 @@ fn event(e &tui.Event, x voidptr) {
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				a.tui.set_cursor_position(0, 0)
-				a.tui.flush()
 				exit(0)
 			}
 			.backspace {
