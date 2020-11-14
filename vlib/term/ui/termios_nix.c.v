@@ -53,7 +53,7 @@ fn restore_terminal_state() {
 fn (mut ctx Context) termios_setup() {
 	// store the current title, so restore_terminal_state can get it back
 	ctx.save_title()
-    
+
 	mut termios := get_termios()
 
 	if ctx.cfg.capture_events {
@@ -205,8 +205,8 @@ fn single_char(buf string) &Event {
 
 
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
-		// 10 == `\n` == enter, don't treat it as ctrl + j
-		1  ... 9, 11 ... 26 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(96 | ch), modifiers: ctrl } }
+		// don't treat tab, enter as ctrl+i, ctrl+j
+		1  ... 8, 11 ... 26 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(96 | ch), modifiers: ctrl } }
 		65 ... 90 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(32 | ch), modifiers: shift } }
 
 		else {}
@@ -341,6 +341,11 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		'[23~'                    { code = .f11 }
 		'[24~'                    { code = .f12 }
 		else                      {}
+	}
+
+	if buf == '[Z' {
+		code = .tab
+		modifiers |= shift
 	}
 
 	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {

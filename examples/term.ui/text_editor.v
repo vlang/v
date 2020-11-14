@@ -13,6 +13,8 @@ enum Movement {
 	right
 	home
 	end
+	page_up
+	page_down
 }
 
 struct View {
@@ -23,13 +25,14 @@ pub:
 
 struct App {
 mut:
-	tui    &tui.Context = 0
-	ed     &Buffer = 0
-	file   string
-	status string
-	t      int
+	tui           &tui.Context = 0
+	ed            &Buffer = 0
+	current_file  int
+	files         []string
+	status        string
+	t             int
 	footer_height int = 2
-	viewport int
+	viewport      int
 }
 
 fn (mut a App) set_status(msg string, duration_ms int) {
@@ -38,24 +41,50 @@ fn (mut a App) set_status(msg string, duration_ms int) {
 }
 
 fn (mut a App) save() {
-	if a.file.len > 0 {
+	if a.cfile().len > 0 {
 		b := a.ed
-		os.write_file(a.file, b.raw())
+		os.write_file(a.cfile(), b.raw())
 		a.set_status('Saved', 2000)
 	} else {
 		a.set_status('No file loaded', 4000)
 	}
 }
 
+fn (mut a App) cfile() string {
+	if a.files.len == 0 {
+		return ''
+	}
+	if a.current_file >= a.files.len {
+		return ''
+	}
+	return a.files[a.current_file]
+}
+
+fn (mut a App) visit_prev_file() {
+	if a.files.len == 0 {
+		a.current_file = 0
+	} else {
+		a.current_file = (a.current_file + a.files.len - 1) % a.files.len
+	}
+	a.init_file()
+}
+
+fn (mut a App) visit_next_file() {
+	if a.files.len == 0 {
+		a.current_file = 0
+	} else {
+		a.current_file = (a.current_file + a.files.len + 1) % a.files.len
+	}
+	a.init_file()
+}
+
+
 fn (mut a App) footer() {
 	w, h := a.tui.window_width, a.tui.window_height
 	mut b := a.ed
 	// flat := b.flat()
 	// snip := if flat.len > 19 { flat[..20] } else { flat }
-	mut finfo := ''
-	if a.file.len > 0 {
-		finfo = ' (' + os.file_name(a.file) + ')'
-	}
+	finfo := if a.cfile().len > 0 { ' (' + os.file_name(a.cfile()) + ')' } else { '' }
 	mut status := a.status
 	a.tui.draw_text(0, h - 1, '─'.repeat(w))
 	footer := '$finfo Line ${b.cursor.pos_y + 1:4}/${b.lines.len:-4}, Column ${b.cursor.pos_x + 1:3}/${b.cur_line().len:-3} index: ${b.cursor_index():5} (ESC = quit, Ctrl+s = save)'
@@ -69,8 +98,16 @@ fn (mut a App) footer() {
 	if a.t <= 0 {
 		status = ''
 	} else {
-		a.tui.set_bg_color(r: 200, g: 200, b: 200)
-		a.tui.set_color(r: 0, g: 0, b: 0)
+		a.tui.set_bg_color({
+			r: 200
+			g: 200
+			b: 200
+		})
+		a.tui.set_color({
+			r: 0
+			g: 0
+			b: 0
+		})
 		a.tui.draw_text((w + 4 - status.len) / 2, h - 1, ' $status ')
 		a.tui.reset()
 		a.t -= 33
@@ -78,10 +115,10 @@ fn (mut a App) footer() {
 }
 
 struct Buffer {
-	tab_width  int = 4
+	tab_width int = 4
 pub mut:
-	lines      []string
-	cursor     Cursor
+	lines     []string
+	cursor    Cursor
 }
 
 fn (b Buffer) flat() string {
@@ -118,12 +155,15 @@ fn (b Buffer) view(from int, to int) View {
 	}
 }
 
-fn (b Buffer) cur_line() string {
-	_, y := b.cursor.xy()
-	if b.lines.len == 0 {
+fn (b Buffer) line(i int) string {
+	if i < 0 || i >= b.lines.len {
 		return ''
 	}
-	return b.lines[y]
+	return b.lines[i]
+}
+
+fn (b Buffer) cur_line() string {
+	return b.line(b.cursor.pos_y)
 }
 
 fn (b Buffer) cursor_index() int {
@@ -265,38 +305,49 @@ fn (mut b Buffer) free() {
 	unsafe {b.lines.free()}
 }
 
+fn (mut b Buffer) move_updown(amount int) {
+	b.cursor.move(0, amount)
+	// Check the move
+	line := b.cur_line()
+	if b.cursor.pos_x > line.len {
+		b.cursor.set(line.len, b.cursor.pos_y)
+	}
+}
+
 // move_cursor will navigate the cursor within the buffer bounds
 fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 	cur_line := b.cur_line()
 	match movement {
 		.up {
 			if b.cursor.pos_y - amount >= 0 {
-				b.cursor.move(0, -amount)
-				// Check the move
-				line := b.cur_line()
-				if b.cursor.pos_x > line.len {
-					b.cursor.set(line.len, b.cursor.pos_y)
-				}
+				b.move_updown(-amount)
 			}
 		}
 		.down {
 			if b.cursor.pos_y + amount < b.lines.len {
-				b.cursor.move(0, amount)
-				// Check the move
-				line := b.cur_line()
-				if b.cursor.pos_x > line.len {
-					b.cursor.set(line.len, b.cursor.pos_y)
-				}
+				b.move_updown(amount)
 			}
+		}
+		.page_up {
+			dlines := imin(b.cursor.pos_y, amount)
+			b.move_updown(-dlines)
+		}
+		.page_down {
+			dlines := imin(b.lines.len-1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			b.move_updown(dlines)
 		}
 		.left {
 			if b.cursor.pos_x - amount >= 0 {
 				b.cursor.move(-amount, 0)
+			} else if b.cursor.pos_y > 0 {
+				b.cursor.set(b.line(b.cursor.pos_y - 1).len, b.cursor.pos_y - 1)
 			}
 		}
 		.right {
 			if b.cursor.pos_x + amount <= cur_line.len {
 				b.cursor.move(amount, 0)
+			} else if b.cursor.pos_y + 1 < b.lines.len {
+				b.cursor.set(0, b.cursor.pos_y + 1)
 			}
 		}
 		.home {
@@ -306,6 +357,14 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 			b.cursor.set(cur_line.len, b.cursor.pos_y)
 		}
 	}
+}
+
+fn imax(x int, y int) int {
+	return if x < y { y } else { x }
+}
+
+fn imin(x int, y int) int {
+	return if x < y { x } else { y }
 }
 
 struct Cursor {
@@ -330,16 +389,21 @@ fn (c Cursor) xy() (int, int) {
 
 // App callbacks
 fn init(x voidptr) {
-	mut app := &App(x)
-	app.ed = &Buffer{}
+	mut a := &App(x)
+	a.init_file()
+}
+
+fn (mut a App) init_file() {
+	a.ed = &Buffer{}
 	mut init_y := 0
 	mut init_x := 0
-	if app.file.len > 0 {
-		if !os.is_file(app.file) && app.file.contains(':') {
+	eprintln('> a.files: $a.files | a.current_file: $a.current_file')
+	if a.files.len > 0 && a.current_file < a.files.len && a.files[a.current_file].len > 0 {
+		if !os.is_file(a.files[a.current_file]) && a.files[a.current_file].contains(':') {
 			// support the file:line:col: format
-			fparts := app.file.split(':')
+			fparts := a.files[a.current_file].split(':')
 			if fparts.len > 0 {
-				app.file = fparts[0]
+				a.files[a.current_file] = fparts[0]
 			}
 			if fparts.len > 1 {
 				init_y = fparts[1].int() - 1
@@ -348,46 +412,50 @@ fn init(x voidptr) {
 				init_x = fparts[2].int() - 1
 			}
 		}
-		if os.is_file(app.file) {
-			app.tui.set_window_title(/* 'vico: ' +  */app.file)
-			mut b := app.ed
-			content := os.read_file(app.file) or {
+		if os.is_file(a.files[a.current_file]) {
+			// 'vico: ' +
+			a.tui.set_window_title(a.files[a.current_file])
+			mut b := a.ed
+			content := os.read_file(a.files[a.current_file]) or {
 				panic(err)
 			}
 			b.put(content)
-			app.ed.cursor.pos_x = init_x
-			app.ed.cursor.pos_y = init_y
+			a.ed.cursor.pos_x = init_x
+			a.ed.cursor.pos_y = init_y
 		}
 	}
 }
 
-fn frame(x voidptr) {
-	mut app := &App(x)
-	mut ed := app.ed
-	app.tui.clear()
+fn (a &App) view_height() int {
+	return a.tui.window_height - a.footer_height - 1
+}
 
-	scroll_limit := app.tui.window_height-app.footer_height-1
+fn frame(x voidptr) {
+	mut a := &App(x)
+	mut ed := a.ed
+	a.tui.clear()
+	scroll_limit := a.view_height()
 	// scroll down
-	if ed.cursor.pos_y > app.viewport+scroll_limit { // scroll down
-		app.viewport = ed.cursor.pos_y-scroll_limit
-	} else if ed.cursor.pos_y < app.viewport { // scroll up
-		app.viewport = ed.cursor.pos_y
+	if ed.cursor.pos_y > a.viewport + scroll_limit { // scroll down
+		a.viewport = ed.cursor.pos_y - scroll_limit
+	} else if ed.cursor.pos_y < a.viewport { // scroll up
+		a.viewport = ed.cursor.pos_y
 	}
-	view := ed.view(app.viewport, scroll_limit+app.viewport)
-	app.tui.draw_text(0, 0, view.raw)
-	app.footer()
-	app.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - app.viewport)
-	app.tui.flush()
+	view := ed.view(a.viewport, scroll_limit + a.viewport)
+	a.tui.draw_text(0, 0, view.raw)
+	a.footer()
+	a.tui.set_cursor_position(view.cursor.pos_x + 1, ed.cursor.pos_y + 1 - a.viewport)
+	a.tui.flush()
 }
 
 fn event(e &tui.Event, x voidptr) {
-	mut app := &App(x)
-	mut buffer := app.ed
+	mut a := &App(x)
+	mut buffer := a.ed
 	if e.typ == .key_down {
 		match e.code {
 			.escape {
-				app.tui.set_cursor_position(0, 0)
-				app.tui.flush()
+				a.tui.set_cursor_position(0, 0)
+				a.tui.flush()
 				exit(0)
 			}
 			.backspace {
@@ -408,6 +476,12 @@ fn event(e &tui.Event, x voidptr) {
 			.down {
 				buffer.move_cursor(1, .down)
 			}
+			.page_up {
+				buffer.move_cursor(a.view_height(), .page_up)
+			}
+			.page_down {
+				buffer.move_cursor(a.view_height(), .page_down)
+			}
 			.home {
 				buffer.move_cursor(1, .home)
 			}
@@ -417,13 +491,23 @@ fn event(e &tui.Event, x voidptr) {
 			48...57, 97...122 { // 0-9a-zA-Z
 				if e.modifiers == tui.ctrl {
 					if e.code == .s {
-						app.save()
+						a.save()
 					}
 				} else if e.modifiers in [tui.shift, 0] {
 					buffer.put(e.ascii.str())
 				}
 			}
 			else {
+				if e.modifiers == tui.alt {
+					if e.code == .comma {
+						a.visit_prev_file()
+						return
+					}
+					if e.code == .period {
+						a.visit_next_file()
+						return
+					}
+				}
 				buffer.put(e.utf8.bytes().bytestr())
 			}
 		}
@@ -433,19 +517,20 @@ fn event(e &tui.Event, x voidptr) {
 	}
 }
 
-// main
-mut file := ''
-if os.args.len > 1 {
-	file = os.args[1]
+fn main() {
+	mut files := []string{}
+	if os.args.len > 1 {
+		files << os.args[1..]
+	}
+	mut a := &App{
+		files: files
+	}
+	a.tui = tui.init({
+		user_data: a
+		init_fn: init
+		frame_fn: frame
+		event_fn: event
+		capture_events: true
+	})
+	a.tui.run()
 }
-mut app := &App{
-	file: file
-}
-app.tui = tui.init({
-	user_data: app
-	init_fn: init
-	frame_fn: frame
-	event_fn: event
-	capture_events: true
-})
-app.tui.run()
