@@ -1050,7 +1050,7 @@ fn (mut s Scanner) ident_string() string {
 		}
 		// Don't allow unknown escape
 		if prevc == `\\` && c !in
-			[`\\`, `r`, `\"`, `\'`, `\``, `\$`, `n`, `.`, `t`, `f`, `v`, `b`, `a`, `e`, `?`, `x`, `u`, `U`] &&
+			[`\\`, `r`, `\"`, `\'`, `\``, `\$`, `n`, `.`, `t`, `f`, `v`, `b`, `a`, `e`, `?`, `x`, `u`, `U`, `@`, `(`, `)`] &&
 			!c.is_digit() && s.text[s.pos - 2] != prevc {
 			s.error('unknown escape')
 		}
