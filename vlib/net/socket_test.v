@@ -20,6 +20,8 @@ fn cleanup(server &net.Socket, client &net.Socket, socket &net.Socket) {
 
 fn test_socket() {
 	server, client, socket := setup()
+	defer { cleanup(server, client, socket) }
+
 	message := 'Hello World'
 	socket.send(message.str, message.len) or { assert false }
 	$if debug {	println('message send: $message')	}
@@ -31,21 +33,23 @@ fn test_socket() {
 	$if debug {	println('client: $client.sockfd')	}
 
 	assert message == received
-	cleanup(server, client, socket)
 }
 
 fn test_socket_write() {
 	server, client, socket := setup()
+	defer { cleanup(server, client, socket) }
+
 	message1 := 'a message 1'
 	socket.write(message1) or { assert false }
 	line1 := client.read_line()
 	assert line1 != message1
 	assert line1.trim_space() == message1
-	cleanup(server, client, socket)
 }
 
 fn test_socket_write_fail_without_panic() {
 	server, client, socket := setup()
+	defer { cleanup(server, client, socket) }
+
 	message2 := 'a message 2'
 	// ensure that socket.write (i.e. done on the server side)
 	// continues to work, even when the client side has been disconnected
@@ -58,5 +62,5 @@ fn test_socket_write_fail_without_panic() {
 			assert true
 		}
 	}
-	cleanup(server, client, socket)
 }
+
