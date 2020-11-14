@@ -302,29 +302,36 @@ fn (mut b Buffer) free() {
 	unsafe {b.lines.free()}
 }
 
+fn (mut b Buffer) move_updown(amount int) {
+	b.cursor.move(0, amount)
+	// Check the move
+	line := b.cur_line()
+	if b.cursor.pos_x > line.len {
+		b.cursor.set(line.len, b.cursor.pos_y)
+	}
+}
+
 // move_cursor will navigate the cursor within the buffer bounds
 fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 	cur_line := b.cur_line()
 	match movement {
 		.up {
 			if b.cursor.pos_y - amount >= 0 {
-				b.cursor.move(0, -amount)
-				// Check the move
-				line := b.cur_line()
-				if b.cursor.pos_x > line.len {
-					b.cursor.set(line.len, b.cursor.pos_y)
-				}
+				b.move_updown(-amount)
 			}
 		}
 		.down {
 			if b.cursor.pos_y + amount < b.lines.len {
-				b.cursor.move(0, amount)
-				// Check the move
-				line := b.cur_line()
-				if b.cursor.pos_x > line.len {
-					b.cursor.set(line.len, b.cursor.pos_y)
-				}
+				b.move_updown(amount)
 			}
+		}
+		.page_up {
+			dlines := imin(b.cursor.pos_y, amount)
+			b.move_updown(-dlines)
+		}
+		.page_down {
+			dlines := imin(b.lines.len-1, b.cursor.pos_y + amount) - b.cursor.pos_y
+			b.move_updown(dlines)
 		}
 		.left {
 			if b.cursor.pos_x - amount >= 0 {
@@ -341,24 +348,6 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 		}
 		.end {
 			b.cursor.set(cur_line.len, b.cursor.pos_y)
-		}
-		.page_up {
-			dlines := imin(b.cursor.pos_y, amount)
-			b.cursor.move(0, -dlines)
-			// Check the move
-			line := b.cur_line()
-			if b.cursor.pos_x > line.len {
-				b.cursor.set(line.len, b.cursor.pos_y)
-			}
-		}
-		.page_down {
-			dlines := imin(b.lines.len-1, b.cursor.pos_y + amount) - b.cursor.pos_y
-			b.cursor.move(0, dlines)
-			// Check the move
-			line := b.cur_line()
-			if b.cursor.pos_x > line.len {
-				b.cursor.set(line.len, b.cursor.pos_y)
-			}
 		}
 	}
 }
