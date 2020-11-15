@@ -308,10 +308,16 @@ pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.C
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_circle(x f32, y f32, r int, c gx.Color) {
+pub fn (ctx &Context) draw_circle(x f32, y f32, r f32, c gx.Color) {
+	if ctx.scale == 1 {
 	ctx.draw_circle_with_segments(x,y,r,10, c)
+	}
+	else {
+	ctx.draw_circle_with_segments(x*f32(ctx.scale),y*f32(ctx.scale),r*ctx.scale,10, c)
+
+	}
 }
-pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r int, segments int, c gx.Color) {
+pub fn (ctx &Context) draw_circle_with_segments(x f32, y f32, r f32, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
 	}
