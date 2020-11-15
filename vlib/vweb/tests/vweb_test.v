@@ -11,6 +11,8 @@ const (
 	vexe            = os.getenv('VEXE')
 	vroot           = os.dir(vexe)
 	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
+	tcp_r_timeout   = 30 * time.second
+	tcp_w_timeout   = 30 * time.second
 )
 
 // setup of vweb webserver
@@ -108,7 +110,7 @@ fn test_http_client_404() {
 		'http://127.0.0.1:$sport/zxcnbnm',
 		'http://127.0.0.1:$sport/JHKAJA',
 		'http://127.0.0.1:$sport/unknown',
-		]
+	]
 	for url in url_404_list {
 		res := http.get(url) or {
 			panic(err)
@@ -220,7 +222,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int    = 20
+	retries int = 20
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
@@ -242,8 +244,11 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		}
 		break
 	}
-	client.set_read_timeout(1 * time.second)
-	defer { client.close() }
+	client.set_read_timeout(tcp_r_timeout)
+	client.set_write_timeout(tcp_w_timeout)
+	defer {
+		client.close()
+	}
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host
 User-Agent: $config.agent
@@ -253,8 +258,8 @@ $config.content'
 	$if debug_net_socket_client ? {
 		eprintln('sending:\n$message')
 	}
-	client.write(message.bytes())?
-	read := io.read_all(client)?
+	client.write(message.bytes()) ?
+	read := io.read_all(client) ?
 	$if debug_net_socket_client ? {
 		eprintln('received:\n$read')
 	}
