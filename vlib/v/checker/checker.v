@@ -2202,44 +2202,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder {
-			// Assign to sum type if ordinary value
-			mut final_left_type := left_type_unwrapped
-			mut scope := c.file.scope.innermost(left.position().pos)
-			match left {
-				ast.SelectorExpr {
-					if _ := scope.find_struct_field(left.expr_type, left.field_name) {
-						final_left_type = right_type_unwrapped
-						mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-						inner_scope.register_struct_field(ast.ScopeStructField{
-							struct_type: left.expr_type
-							name: left.field_name
-							typ: final_left_type
-							sum_type_cast: right_type_unwrapped
-							pos: left.pos
-						})
-					}
-				}
-				ast.Ident {
-					if v := scope.find_var(left.name) {
-						if v.sum_type_cast != 0 &&
-							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
-							final_left_type = right_type_unwrapped
-							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-							inner_scope.register(left.name, ast.Var{
-								name: left.name
-								typ: final_left_type
-								pos: left.pos
-								is_used: true
-								is_mut: left.is_mut
-								sum_type_cast: right_type_unwrapped
-							})
-						}
-					}
-				}
-				else {}
-			}
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, final_left_type) or {
+			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
 			}
 		}
@@ -3760,7 +3724,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								if v := scope.find_var(infix_left.name) {
 									is_mut = v.is_mut
 								}
-								if left_sym.kind == .union_sum_type {
+								if !is_mut && left_sym.kind == .union_sum_type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
@@ -3771,11 +3735,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									})
 								}
 							} else if infix.left is ast.SelectorExpr as selector {
-								field := c.table.struct_find_field(left_sym, selector.field_name) or {
+								expr_sym := c.table.get_type_symbol(selector.expr_type)
+								field := c.table.struct_find_field(expr_sym, selector.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
-								if left_sym.kind == .union_sum_type {
+								is_root_mut := scope.is_selector_root_mutable(c.table,
+									selector)
+								if !is_root_mut && !is_mut && left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: selector.expr_type
 										name: selector.field_name

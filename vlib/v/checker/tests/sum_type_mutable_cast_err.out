@@ -1,0 +1,21 @@
+vlib/v/checker/tests/sum_type_mutable_cast_err.vv:23:10: error: infix expr: cannot use `any_int` (right expression) as `Abc`
+   21 |     mut x := Abc(0)
+   22 |     if x is int {
+   23 |         _ := x + 5
+      |                ^
+   24 |     }
+   25 |     f := Foo{Bar{Abc(0)}}
+vlib/v/checker/tests/sum_type_mutable_cast_err.vv:27:14: error: infix expr: cannot use `any_int` (right expression) as `Abc`
+   25 |     f := Foo{Bar{Abc(0)}}
+   26 |     if f.b.a is int {
+   27 |         _ := f.b.a + 5
+      |                    ^
+   28 |     }
+   29 |     mut f2 := Foo2{Bar2{Abc(0)}}
+vlib/v/checker/tests/sum_type_mutable_cast_err.vv:31:14: error: infix expr: cannot use `any_int` (right expression) as `Abc`
+   29 |     mut f2 := Foo2{Bar2{Abc(0)}}
+   30 |     if f2.b.a is int {
+   31 |         _ := f.b.a + 5
+      |                    ^
+   32 |     }
+   33 | }

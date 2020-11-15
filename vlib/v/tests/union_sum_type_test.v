@@ -279,19 +279,19 @@ fn test_assignment() {
 	x = 'test'
 
 	if x is string {
-		assert x == 'test'
+		x2 := x as string
+		assert x2 == 'test'
 	}
 }
 
 __type Inner = int | string
 struct InnerStruct {
-mut:
 	x Inner
 }
 __type Outer = string | InnerStruct
 
 fn test_nested_if_is() {
-	mut b := Outer(InnerStruct{Inner(0)})
+	b := Outer(InnerStruct{Inner(0)})
 	if b is InnerStruct {
 		if b.x is int {
 			assert b.x == 0
@@ -299,113 +299,12 @@ fn test_nested_if_is() {
 	}
 }
 
-fn test_casted_sum_type_selector_reassign() {
-	mut b := InnerStruct{Inner(0)}
-	if b.x is int {
-		assert typeof(b.x) == 'int'
-		// this check works only if x is castet
-		assert b.x == 0
-		b.x = 'test'
-		// this check works only if x is castet
-		assert b.x[0] == `t`
-		assert typeof(b.x) == 'string'
-	}
-	// this check works only if x is not castet
-	assert b.x is string
-}
-
-fn test_casted_sum_type_ident_reassign() {
-	mut x := Inner(0)
-	if x is int {
-		// this check works only if x is castet
-		assert x == 0
-		assert typeof(x) == 'int'
-		x = 'test'
-		// this check works only if x is castet
-		assert x[0] == `t`
-		assert typeof(x) == 'string'
-	}
-	// this check works only if x is not castet
-	assert x is string
-}
-
-__type Expr2 = int | string
-
-fn test_match_with_reassign_casted_type() {
-	mut e := Expr2(0)
-	match union mut e {
-		int {
-			e = int(5)
-			assert e == 5
-		}
-		else {}
-	}
-}
-
-fn test_if_is_with_reassign_casted_type() {
-	mut e := Expr2(0)
-	if e is int {
-		e = int(5)
-		assert e == 5
-	}
-}
-
-struct Expr2Wrapper {
+__type Expr3 = CallExpr | CTempVarExpr
+struct Expr3Wrapper {
 mut:
-	expr Expr2
+	expr Expr3
 }
-
-fn test_change_type_if_is_selector() {
-	mut e := Expr2Wrapper{Expr2(0)}
-	if e.expr is int {
-		e.expr = 'str'
-		assert e.expr.len == 3
-	}
-	assert e.expr is string
-}
-
-fn test_change_type_if_is() {
-	mut e := Expr2(0)
-	if e is int {
-		e = 'str'
-		assert e.len == 3
-	}
-	assert e is string
-}
-
-fn test_change_type_match() {
-	mut e := Expr2(0)
-	match union mut e {
-		int {
-			e = 'str'
-			assert e.len == 3
-		}
-		else {}
-	}
-	assert e is string
-}
-
-__type Expr3 = CallExpr | string
-
 struct CallExpr {
-mut:
-	is_expr bool
-}
-
-fn test_assign_sum_type_casted_field() {
-	mut e := Expr3(CallExpr{})
-	if e is CallExpr {
-		e.is_expr = true
-		assert e.is_expr
-	}
-}
-
-__type Expr4 = CallExpr2 | CTempVarExpr
-struct Expr4Wrapper {
-mut:
-	expr Expr4
-}
-struct CallExpr2 {
 	y int
 	x string
 }
@@ -414,29 +313,28 @@ struct CTempVarExpr {
 	x string
 }
 
-fn gen(_ Expr4) CTempVarExpr {
+fn gen(_ Expr3) CTempVarExpr {
 	return CTempVarExpr{}
 }
 
 fn test_reassign_from_function_with_parameter() {
-	mut f := Expr4(CallExpr2{})
-	if f is CallExpr2 {
+	mut f := Expr3(CallExpr{})
+	if f is CallExpr {
 		f = gen(f)
 	}
 }
 
 fn test_reassign_from_function_with_parameter_selector() {
-	mut f := Expr4Wrapper{Expr4(CallExpr2{})}
-	if f.expr is CallExpr2 {
+	mut f := Expr3Wrapper{Expr3(CallExpr{})}
+	if f.expr is CallExpr {
 		f.expr = gen(f.expr)
 	}
 }
 
 fn test_match_multi_branch() {
-	f := Expr4(CTempVarExpr{'ctemp'})
-	mut y := ''
+	f := Expr3(CTempVarExpr{'ctemp'})
 	match union f {
-		CallExpr2, CTempVarExpr {
+		CallExpr, CTempVarExpr {
 			// this check works only if f is not castet
 			assert f is CTempVarExpr
 		}
@@ -444,17 +342,17 @@ fn test_match_multi_branch() {
 }
 
 fn test_typeof() {
-    x := Expr4(CTempVarExpr{})
+    x := Expr3(CTempVarExpr{})
 	assert typeof(x) == 'CTempVarExpr'
 }
 
 struct Outer2 {
-	e Expr4
+	e Expr3
 }
 
 fn test_zero_value_init() {
 	// no c compiler error then it's successful
-	o := Outer2{}
+	_ := Outer2{}
 }
 
 fn test_sum_type_match() {
