@@ -21,8 +21,8 @@ jobs:
       run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
     - name: Build local v
       run: make -j4
-    - name: v test-vet
-      run: ./v -silent test-vet
+    - name: v test-cleancode
+      run: ./v -silent test-cleancode
     - name: v test-fmt
       run: ./v -silent test-fmt
 
