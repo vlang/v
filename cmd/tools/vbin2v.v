@@ -118,7 +118,7 @@ fn main() {
 		exit(0)
 	}
 	context.files = real_files
-	if !context.write_file.ends_with('.v') {
+	if context.write_file != '' && !context.write_file.ends_with('.v') {
 		context.write_file += '.v'
 	}
 	mut file_byte_map := map[string][]byte{}
