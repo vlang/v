@@ -578,8 +578,7 @@ pub fn (ctx &Context) ip() string {
 		ip = ip.all_before(',')
 	}
 	if ip == '' {
-		println('TODO peer_ip')
-		// ip = ctx.conn.peer_ip() or { '' }
+		ip = ctx.conn.peer_ip() or { '' }
 	}
 	return ip
 }

@@ -151,6 +151,19 @@ pub fn (c TcpConn) peer_addr() ?Addr {
 	return new_addr(addr)
 }
 
+pub fn (c TcpConn) peer_ip() ?string {
+	buf := [44]byte{}
+	peeraddr := C.sockaddr_in{}
+	speeraddr := sizeof(peeraddr)
+	socket_error(C.getpeername(c.sock.handle, &C.sockaddr(&peeraddr), &speeraddr))?
+	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
+	if cstr == 0 {
+		return error('net.peer_ip: inet_ntop failed')
+	}
+	res := cstring_to_vstring(cstr)
+	return res
+}
+
 pub fn (c TcpConn) str() string {
 	// TODO
 	return 'TcpConn'
