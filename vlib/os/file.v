@@ -1,7 +1,5 @@
 module os
 
-import io
-
 pub struct File {
 	cfile     voidptr // Using void* instead of FILE*
 pub:
@@ -185,10 +183,13 @@ pub fn (mut f File) get_line() ?string {
 	if !f.is_opened {
 		return error('file is closed')
 	}
+	return error('use io.new_buffered_reader')
+	/*
 	mut reader := io.new_buffered_reader({
 		reader: io.make_reader(f)
 	})
 	return reader.read_line()
+	*/
 }
 
 pub fn (mut f File) write_str(s string) ? {
