@@ -364,9 +364,10 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 	line := b.cur_line()
 	mut x, mut y := b.cursor.pos_x, b.cursor.pos_y
 	// first, move past all non-`a-zA-Z0-9_` characters
-	for ; x+a >= 0 && x+a < line.len && !(line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`); x += a {}
+	for x+a >= 0 && x+a < line.len && !(line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
 	// then, move past all the letters and numbers
-	for ; x+a >= 0 && x+a < line.len && (line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`); x += a {}
+	for x+a >= 0 && x+a < line.len &&  (line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
+	// if the cursor is out of bounds, move it to the next/previous line
 	if x + a >= 0 && x + a < line.len {
 		x += a
 	} else {
