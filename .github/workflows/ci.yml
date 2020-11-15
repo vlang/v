@@ -211,8 +211,6 @@ jobs:
 #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
 #    - name: Build vpm
 #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-#    - name: Build V UI examples
-#      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
 #    - name: Freestanding
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
