@@ -135,6 +135,9 @@ fn (mut ctx Context) termios_setup() {
 	if sx == ex && sy == ey {
 		// the terminal either ignored or handled the sequence properly, enable SU
 		ctx.enable_su = true
+	} else {
+		ctx.draw_line(sx, ex, sy, ey)
+		ctx.flush()
 	}
 
 	os.flush()

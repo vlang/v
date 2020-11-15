@@ -1,6 +1,5 @@
 module ui
 
-import os
 import strings
 
 pub struct Color {
