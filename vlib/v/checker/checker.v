@@ -1595,6 +1595,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 	}
+	if call_expr.generic_type.is_full() && !f.is_generic {
+		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+	}
 	if f.is_generic {
 		return call_expr.return_type
 	}
