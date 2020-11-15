@@ -135,8 +135,8 @@ fn main() {
 			panic(err)
 		}
 		out_file.write_str(context.header())
-		for file in real_files {
-			out_file.write_str(context.file2v(file))
+		for bname, fbytes in file_byte_map {
+			out_file.write_str(context.file2v(bname, fbytes, max_bname))
 		}
 		out_file.write_str(context.footer())
 	} else {
