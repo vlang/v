@@ -129,7 +129,7 @@ fn (mut ctx Context) termios_setup() {
 
 	// feature-test the SU spec
 	sx, sy := get_cursor_position()
-	print('\x1bP=1s\x1b\\\x1bP=2s\x1b\\')
+	print('$bsu$esu')
 	ex, ey := get_cursor_position()
 
 	if sx == ex && sy == ey {
