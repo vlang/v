@@ -71,14 +71,24 @@ fn test_fast_raw_decode() {
 
 fn test_character_unescape() {
 	// Need to test `\r`, `\b`, `\f` ??
-	s := '{"message":"I can\'t find my new\\nline and \\ttab, it \\"fell\\" \/around\/ \\\\here\\\\"}'
-	mut obj := json2.raw_decode(s) or {
+	message := '{
+		"newline":"new\\nline", 
+		"tab":"\\ttab", 
+		"backslash": "back\\\\slash", 
+		"quotes": "\\"quotes\\"", 
+		"slash":"\/dev\/null"
+	}'
+	mut obj := json2.raw_decode(message) or {
 		assert false
 		json2.Any{}
 	}
-	message := obj.as_map()['message'].str()
-	eprintln('Message: $message')
-	assert message == 'I can\'t find my new\nline and \ttab, it \"fell\" /around/ \\here\\'
+	lines := obj.as_map()
+	eprintln("$lines")
+	assert lines['newline'].str() == 'new\nline'
+	assert lines['tab'].str() == '\ttab'
+	assert lines['backslash'].str() == 'back\\slash'
+	assert lines['quotes'].str() == '\"quotes\"'
+	assert lines['slash'].str() == '/dev/null'
 }
 
 /*
