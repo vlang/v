@@ -266,7 +266,7 @@ fn new_tcp_socket() ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fnctl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
 	}
 	return s
 }
