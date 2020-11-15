@@ -126,7 +126,49 @@ fn (mut ctx Context) termios_setup() {
 			c.event(event)
 		}
 	})
+
+	// feature-test the SU spec
+	sx, sy := get_cursor_position()
+	print('\x1bP=1s\x1b\\\x1bP=2s\x1b\\')
+	ex, ey := get_cursor_position()
+
+	if sx == ex && sy == ey {
+		// the terminal either ignored or handled the sequence properly, enable SU
+		ctx.enable_su = true
+	}
+
 	os.flush()
+}
+
+fn get_cursor_position() (int, int) {
+	print('\033[6n')
+	// ESC [ YYY `;` XXX `R`
+	mut reading_x, mut reading_y := false, false
+	mut x, mut y := 0, 0
+	for i := 0; i < 15 ; i++ {
+		ch := int(C.getchar())
+		b := byte(ch)
+		i++
+		// state management:
+		if b == `R` {
+			break
+		} else if b == `[` {
+			reading_y = true
+			reading_x = false
+			continue
+		} else if b == `;` {
+			reading_y = false
+			reading_x = true
+			continue
+		}
+		// converting string vals to ints:
+		if reading_x {
+			x = x * 10 + b - byte(`0`)
+		} else if reading_y {
+			y = y * 10 + b - byte(`0`)
+		}
+	}
+	return x, y
 }
 
 fn termios_reset() {
