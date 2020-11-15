@@ -3,6 +3,7 @@ import time
 import json
 import net
 import net.http
+import io
 
 const (
 	sport           = 12380
@@ -10,6 +11,8 @@ const (
 	vexe            = os.getenv('VEXE')
 	vroot           = os.dir(vexe)
 	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
+	tcp_r_timeout   = 30 * time.second
+	tcp_w_timeout   = 30 * time.second
 )
 
 // setup of vweb webserver
@@ -18,33 +21,26 @@ fn testsuite_begin() {
 	if os.exists(serverexe) {
 		os.rm(serverexe)
 	}
-	// prevent failing tests when vweb_test.v is rerun quickly
-	// and the previous webserver has not yet timed out.
-	for i := 0; i < 10; i++ {
-		if client := net.dial('127.0.0.1', sport) {
-			client.close() or { }
-			eprintln('previous webserver has not yet stopped ($i); waiting...')
-			time.sleep_ms(exit_after_time / 10)
-			continue
-		} else {
-			return
-		}
-	}
 }
 
 fn test_a_simple_vweb_app_can_be_compiled() {
-	did_server_compile := os.system('$vexe -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
 
 fn test_a_simple_vweb_app_runs_in_the_background() {
-	server_exec_cmd := '$serverexe $sport $exit_after_time > /dev/null &'
+	suffix := $if windows { '' } $else { ' > /dev/null &' }
+	server_exec_cmd := '$serverexe $sport $exit_after_time $suffix'
 	$if debug_net_socket_client ? {
 		eprintln('running:\n$server_exec_cmd')
 	}
-	res := os.system(server_exec_cmd)
-	assert res == 0
+	$if windows {
+		go os.system(server_exec_cmd)
+	} $else {
+		res := os.system(server_exec_cmd)
+		assert res == 0
+	}
 	time.sleep_ms(100)
 }
 
@@ -114,7 +110,7 @@ fn test_http_client_404() {
 		'http://127.0.0.1:$sport/zxcnbnm',
 		'http://127.0.0.1:$sport/JHKAJA',
 		'http://127.0.0.1:$sport/unknown',
-		]
+	]
 	for url in url_404_list {
 		res := http.get(url) or {
 			panic(err)
@@ -226,7 +222,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int    = 20
+	retries int = 20
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'
@@ -235,11 +231,11 @@ struct SimpleTcpClientConfig {
 }
 
 fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
-	mut client := net.Socket{}
+	mut client := net.TcpConn{}
 	mut tries := 0
 	for tries < config.retries {
 		tries++
-		client = net.dial('127.0.0.1', sport) or {
+		client = net.dial_tcp('127.0.0.1:$sport') or {
 			if tries > config.retries {
 				return error(err)
 			}
@@ -248,10 +244,11 @@ fn simple_tcp_client(config SimpleTcpClientConfig) ?string {
 		}
 		break
 	}
+	client.set_read_timeout(tcp_r_timeout)
+	client.set_write_timeout(tcp_w_timeout)
 	defer {
-		client.close() or { }
+		client.close()
 	}
-	//
 	message := 'GET $config.path HTTP/1.1
 Host: $config.host
 User-Agent: $config.agent
@@ -261,11 +258,10 @@ $config.content'
 	$if debug_net_socket_client ? {
 		eprintln('sending:\n$message')
 	}
-	client.send(message.str, message.len)?
-	bytes, blen := client.recv(4096)
-	received := unsafe {bytes.vstring_with_len(blen)}
+	client.write(message.bytes()) ?
+	read := io.read_all(client) ?
 	$if debug_net_socket_client ? {
-		eprintln('received:\n$received')
+		eprintln('received:\n$read')
 	}
-	return received
+	return read.bytestr()
 }

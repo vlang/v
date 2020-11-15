@@ -39,6 +39,21 @@ pub fn wrap_error(error_code int) ? {
 		return error_with_code('socket error: $enum_error', error_code)
 	}
 	$else {
+		if error_code == 0 {
+			return
+		}
 		return error_with_code('net: socket error: $error_code', error_code)
 	}
+}
+
+// wrap_read_result takes a read result and sees if it is 0 for graceful
+// connection termination and returns none
+// e.g. res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
+[inline]
+fn wrap_read_result(result int) ?int {
+	if result > 0 || result < 0 {
+		return result
+	}
+
+	return none
 }

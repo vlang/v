@@ -9,6 +9,7 @@ import net
 import encoding.base64
 import strings
 import time
+import io
 
 const (
 	recv_size  = 128
@@ -29,7 +30,8 @@ pub enum BodyType {
 
 pub struct Client {
 mut:
-	socket   net.Socket
+	conn   net.TcpConn
+	reader io.BufferedReader
 pub:
 	server   string
 	port     int = 25
@@ -62,8 +64,10 @@ pub fn new_client(config Client) ?Client {
 pub fn (mut c Client) reconnect() ? {
 	if c.is_open { return error('Already connected to server') }
 
-	socket := net.dial(c.server, c.port) or { return error('Connecting to server failed') }
-	c.socket = socket
+	conn := net.dial_tcp('$c.server:$c.port') or { return error('Connecting to server failed') }
+	c.conn = conn
+
+	c.reader = io.new_buffered_reader(reader: io.make_reader(c.conn))
 
 	c.expect_reply(.ready) or { return error('Received invalid response from server') }
 	c.send_ehlo() or { return error('Sending EHLO packet failed') }
@@ -85,35 +89,21 @@ pub fn (c Client) send(config Mail) ? {
 pub fn (mut c Client) quit() ? {
 	c.send_str('QUIT\r\n')
 	c.expect_reply(.close)
-	c.socket.close()?
+	c.conn.close()?
 	c.is_open = false
 }
 
 // expect_reply checks if the SMTP server replied with the expected reply code
 fn (c Client) expect_reply(expected ReplyCode) ? {
-	bytes, len := c.socket.recv(recv_size)
+	bytes := io.read_all(c.conn)?
 
-	str := tos(bytes, len).trim_space()
+	str := bytes.bytestr().trim_space()
 	$if smtp_debug? {
-		eprintln('\n\n[RECV START]')
+		eprintln('\n\n[RECV]')
 		eprint(str)
 	}
 
-	// Read remaining data in the socket
-	if len >= recv_size {
-		for {
-			tbytes, tlen := c.socket.recv(recv_size)
-			str2 := tos(tbytes, tlen)
-			$if smtp_debug? { eprint(str2) }
-			if tlen < recv_size { break }
-		}
-	}
-
-	$if smtp_debug? {
-		eprintln('\n[RECV END]')
-	}
-
-	if len >= 3 {
+	if str.len >= 3 {
 		status := str[..3].int()
 		if status != expected {
 			return error('Received unexpected status code $status, expecting $expected')
@@ -128,7 +118,7 @@ fn (c Client) send_str(s string) ? {
 		eprint(s.trim_space())
 		eprintln('\n[SEND END]')
 	}
-	c.socket.send_string(s)?
+	c.conn.write(s.bytes())?
 }
 
 [inline]

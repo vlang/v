@@ -1,7 +1,7 @@
 module openssl
 
 import net.openssl
-import x.net
+import net
 import time
 
 // const (
