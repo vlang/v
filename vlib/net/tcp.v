@@ -266,7 +266,7 @@ fn new_tcp_socket() ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fnctl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
 	}
 	return s
 }
@@ -315,21 +315,17 @@ fn (s TcpSocket) connect(a string) ? {
 
 	errcode := error_code()
 
-	if errcode == error_ewouldblock {
-		write_result := s.@select(.write, connect_timeout)?
-		if write_result {
-			// succeeded
-			return none
-		}
-		except_result := s.@select(.except, connect_timeout)?
-		if except_result {
-			return err_connect_failed
-		}
-		// otherwise we timed out
-		return err_connect_timed_out
+	write_result := s.@select(.write, connect_timeout)?
+	if write_result {
+		// succeeded
+		return none
 	}
-
-	return wrap_error(errcode)
+	except_result := s.@select(.except, connect_timeout)?
+	if except_result {
+		return err_connect_failed
+	}
+	// otherwise we timed out
+	return err_connect_timed_out
 }
 
 // address gets the address of a socket
