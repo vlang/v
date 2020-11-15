@@ -377,7 +377,7 @@ fn (mut b Buffer) move_to_word(movement Movement) {
 	// then, move past all the letters and numbers
 	for x+a >= 0 && x+a < line.len &&  (line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
 	// if the cursor is out of bounds, move it to the next/previous line
-	if x + a >= 0 && x + a < line.len {
+	if x + a >= 0 && x + a <= line.len {
 		x += a
 	} else if a < 0 && y+1 > b.lines.len && y-1 >= 0 {
 		y += a
