@@ -17,7 +17,7 @@ const (
 	verify_known_failing_exceptions = [
 		'nonexistant',
 	]
-	verify_list                     = [
+	vfmt_verify_list                = [
 		'vlib/builtin/array.v',
 		'vlib/os/file.v',
 		'vlib/math/bits/bits.v',
@@ -79,7 +79,7 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 
 fn v_test_vetting(vargs string) {
 	vet_session := tsession(vargs, 'vvet.v', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
-	verify_session := tsession(vargs, 'vfmt.v', 'v fmt -verify', 'fmt -verify', verify_list,
+	verify_session := tsession(vargs, 'vfmt.v', 'v fmt -verify', 'fmt -verify', vfmt_verify_list,
 		verify_known_failing_exceptions)
 	//
 	if vet_session.benchmark.nfail > 0 || verify_session.benchmark.nfail > 0 {
