@@ -326,7 +326,7 @@ fn (s TcpSocket) connect(a string) ? {
 		return none
 	}
 
-	errcode := error_code()
+	_ := error_code()
 
 	write_result := s.@select(.write, connect_timeout)?
 	if write_result {
