@@ -20,9 +20,9 @@ pub fn dial_tcp(address string) ?TcpConn {
 
 	return TcpConn {
 		sock: s
-
-		read_timeout: 0
-		write_timeout: 0
+        
+		read_timeout: 30 * time.second
+		write_timeout: 30 * time.second
 	}
 }
 
