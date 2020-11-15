@@ -359,6 +359,33 @@ fn (mut b Buffer) move_cursor(amount int, movement Movement) {
 	}
 }
 
+fn (mut b Buffer) move_to_word(movement Movement) {
+	a := if movement == .left { -1 } else { 1 }
+	mut line := b.cur_line()
+	mut x, mut y := b.cursor.pos_x, b.cursor.pos_y
+	if x + a < 0 && y > 0 {
+		y--
+		line = b.line(b.cursor.pos_y - 1)
+		x = line.len
+	} else if x + a >= line.len && y + 1 < b.lines.len {
+		y++
+		line = b.line(b.cursor.pos_y + 1)
+		x = 0
+	}
+	// first, move past all non-`a-zA-Z0-9_` characters
+	for x+a >= 0 && x+a < line.len && !(line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
+	// then, move past all the letters and numbers
+	for x+a >= 0 && x+a < line.len &&  (line[x+a].is_letter() || line[x+a].is_digit() || line[x+a] == `_`) { x += a }
+	// if the cursor is out of bounds, move it to the next/previous line
+	if x + a >= 0 && x + a < line.len {
+		x += a
+	} else if a < 0 && y+1 > b.lines.len && y-1 >= 0 {
+		y += a
+		x = 0
+	}
+	b.cursor.set(x, y)
+}
+
 fn imax(x int, y int) int {
 	return if x < y { y } else { x }
 }
@@ -462,10 +489,18 @@ fn event(e &tui.Event, x voidptr) {
 				buffer.del(1)
 			}
 			.left {
-				buffer.move_cursor(1, .left)
+				if e.modifiers == tui.ctrl {
+					buffer.move_to_word(.left)
+				} else if e.modifiers == 0 {
+					buffer.move_cursor(1, .left)
+				}
 			}
 			.right {
-				buffer.move_cursor(1, .right)
+				if e.modifiers == tui.ctrl {
+					buffer.move_to_word(.right)
+				} else if e.modifiers == 0 {
+					buffer.move_cursor(1, .right)
+				}
 			}
 			.up {
 				buffer.move_cursor(1, .up)
