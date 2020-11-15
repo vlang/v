@@ -27,12 +27,14 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		or_kind = .block
 	}
 	mut generic_type := table.void_type
+	mut generic_list_pos := p.tok.position()
 	if p.tok.kind == .lt {
 		// `foo<int>(10)`
 		p.next() // `<`
 		p.expr_mod = ''
 		generic_type = p.parse_type()
 		p.check(.gt) // `>`
+		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		if !generic_type.has_flag(.generic) {
@@ -98,6 +100,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		pos: pos
 		language: language
 		generic_type: generic_type
+		generic_list_pos: generic_list_pos
 		or_block: ast.OrExpr{
 			stmts: or_stmts
 			kind: or_kind

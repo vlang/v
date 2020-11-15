@@ -106,6 +106,16 @@ pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
+[inline]
+pub fn (t Type) is_void() bool {
+	return t == void_type
+}
+
+[inline]
+pub fn (t Type) is_full() bool {
+	return t != 0 && t != void_type
+}
+
 // return nr_muls for `t`
 [inline]
 pub fn (t Type) nr_muls() int {
