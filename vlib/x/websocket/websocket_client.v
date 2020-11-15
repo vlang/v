@@ -98,6 +98,8 @@ pub fn (mut ws Client) connect() ? {
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
+	ws.conn.set_read_timeout(net.infinite_timeout)
+	ws.conn.set_write_timeout(net.infinite_timeout)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
