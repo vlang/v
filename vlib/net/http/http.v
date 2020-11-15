@@ -5,8 +5,9 @@ module http
 
 import net.urllib
 import net.http.chunked
-import strings
 import net
+import time
+import io
 
 const (
 	max_redirects        = 4
@@ -276,7 +277,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 		return res
 	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do(nport, method, host_name, path) ?
+		res := req.http_do('$host_name:$nport', method, path)?
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
@@ -392,24 +393,16 @@ pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 
-fn (req &Request) http_do(port int, method Method, host_name string, path string) ?Response {
-	rbuffer := [bufsize]byte{}
-	mut sb := strings.new_builder(100)
+fn (req &Request) http_do(host string, method Method, path string) ?Response {
+	host_name, _ := net.split_address(host)?
 	s := req.build_request_headers(method, host_name, path)
-	client := net.dial(host_name, port) ?
-	client.send(s.str, s.len) or { }
-	for {
-		readbytes := client.crecv(rbuffer, bufsize)
-		if readbytes < 0 {
-			return error('http.request.http_do: error reading response. readbytes=$readbytes')
-		}
-		if readbytes == 0 {
-			break
-		}
-		sb.write(tos(rbuffer, readbytes))
-	}
-	client.close() or { }
-	return parse_response(sb.str())
+	mut client := net.dial_tcp(host)?
+	// TODO this really needs to be exposed somehow
+	client.set_read_timeout(time.second * 30)
+	client.write(s.bytes())?
+	mut bytes := io.read_all(client)?
+	client.close()
+	return parse_response(bytes.bytestr())
 }
 
 pub fn (req &Request) referer() string {

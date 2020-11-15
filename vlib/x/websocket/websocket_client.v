@@ -7,7 +7,7 @@
 // check with valgrind if you do any changes in the free calls
 module websocket
 
-import x.net
+import net
 import x.openssl
 import net.urllib
 import time
@@ -98,6 +98,8 @@ pub fn (mut ws Client) connect() ? {
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
+	ws.conn.set_read_timeout(net.infinite_timeout)
+	ws.conn.set_write_timeout(net.infinite_timeout)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
