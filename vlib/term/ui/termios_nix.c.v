@@ -75,13 +75,30 @@ fn (mut ctx Context) termios_setup() {
 		print('\x1b]0;$ctx.cfg.window_title\x07')
 	}
 
+	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
+	// feature-test the SU spec
+	sx, sy := get_cursor_position()
+	print('$bsu$esu')
+	ex, ey := get_cursor_position()
+
+	if sx == ex && sy == ey {
+		// the terminal either ignored or handled the sequence properly, enable SU
+		ctx.enable_su = true
+	} else {
+		ctx.draw_line(sx, ex, sy, ey)
+		ctx.flush()
+	}
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
+	// enable mouse input
 	print('\x1b[?1003h\x1b[?1006h')
 	if ctx.cfg.use_alternate_buffer {
+		// switch to the alternate buffer
 		print('\x1b[?1049h')
+		// clear the terminal and set the cursor to the origin
+		print('\x1b[2J\x1b[3J\x1b[1;1H')
 	}
 	ctx.termios = termios
 	ctx.window_height, ctx.window_width = get_terminal_size()
@@ -126,19 +143,6 @@ fn (mut ctx Context) termios_setup() {
 			c.event(event)
 		}
 	})
-
-	// feature-test the SU spec
-	sx, sy := get_cursor_position()
-	print('$bsu$esu')
-	ex, ey := get_cursor_position()
-
-	if sx == ex && sy == ey {
-		// the terminal either ignored or handled the sequence properly, enable SU
-		ctx.enable_su = true
-	} else {
-		ctx.draw_line(sx, ex, sy, ey)
-		ctx.flush()
-	}
 
 	os.flush()
 }
