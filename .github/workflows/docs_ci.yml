@@ -6,11 +6,13 @@ on:
       - "cmd/tools/check-md.v"
       - "doc/**"
       - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
   pull_request:
     paths:
       - "cmd/tools/check-md.v"
       - "doc/**"
       - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
 
 jobs:
   docs-line-len-check:
@@ -20,4 +22,4 @@ jobs:
     - name: Build V
       run: make
     - name: Check docs line length & code examples
-      run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md
+      run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md CONTRIBUTING.md
