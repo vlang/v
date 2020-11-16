@@ -85,7 +85,8 @@ fn (mut ctx Context) termios_setup() {
 		// the terminal either ignored or handled the sequence properly, enable SU
 		ctx.enable_su = true
 	} else {
-		ctx.draw_line(sx, ex, sy, ey)
+		ctx.draw_line(sx, sy, ex, ey)
+		ctx.set_cursor_position(sx, sy)
 		ctx.flush()
 	}
 	// Prevent stdin from blocking by making its read time 0
