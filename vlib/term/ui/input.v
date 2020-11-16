@@ -168,6 +168,7 @@ mut:
 	read_buf      []byte
 	print_buf     []byte
 	paused        bool
+	enable_su     bool
 pub mut:
 	frame_count   u64
 	window_width  int
