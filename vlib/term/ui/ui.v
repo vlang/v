@@ -138,6 +138,35 @@ pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 	}
 }
 
+pub fn (mut ctx Context) draw_dashed_line(x int, y int, x2 int, y2 int) {
+	// Draw the various points with Bresenham's line algorithm:
+	mut x0, x1 := x, x2
+	mut y0, y1 := y, y2
+
+	sx := if x0 < x1 { 1 } else { -1 }
+	sy := if y0 < y1 { 1 } else { -1 }
+	dx := if x0 < x1 { x1 - x0 } else { x0 - x1 }
+	dy := if y0 < y1 { y0 - y1 } else { y1 - y0 } // reversed
+
+	mut err := dx + dy
+
+	mut i := 0
+	for {
+		if i % 2 == 0 { ctx.draw_point(x0, y0) }
+		if x0 == x1 && y0 == y1 { break }
+		e2 := 2 * err
+		if e2 >= dy {
+			err += dy
+			x0 += sx
+		}
+		if e2 <= dx {
+			err += dx
+			y0 += sy
+		}
+		i++
+	}
+}
+
 pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
 		ctx.draw_line(x, y, x2, y2)
@@ -150,6 +179,19 @@ pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 		ctx.draw_line(x, y_pos, x2, y_pos)
 	}
 }
+
+pub fn (mut ctx Context) draw_empty_dashed_rect(x int, y int, x2 int, y2 int) {
+	if y == y2 || x == x2 {
+		ctx.draw_line(x, y, x2, y2)
+		return
+	}
+
+	ctx.draw_dashed_line(x,  y,  x2, y)
+	ctx.draw_dashed_line(x,  y2, x2, y2)
+	ctx.draw_dashed_line(x,  y,  x,  y2)
+	ctx.draw_dashed_line(x2, y,  x2, y2)
+}
+
 
 pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
