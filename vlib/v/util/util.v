@@ -126,7 +126,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := args_quote_paths_with_spaces(args)
+	tool_args := args_quote_paths(args)
 	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
 	tool_exe := path_of_executable(tool_basename)
 	tool_source := tool_basename + '.v'
@@ -200,17 +200,21 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 	return should_compile
 }
 
-pub fn quote_path_with_spaces(s string) string {
-	if s.contains(' ') {
-		return '"$s"'
+pub fn quote_path(s string) string {
+	mut qs := s
+	if qs.contains('&') {
+		qs = qs.replace('&', '\\&')
 	}
-	return s
+	if qs.contains(' ') {
+		return '"$qs"'
+	}
+	return qs
 }
 
-pub fn args_quote_paths_with_spaces(args []string) string {
+pub fn args_quote_paths(args []string) string {
 	mut res := []string{}
 	for a in args {
-		res << quote_path_with_spaces(a)
+		res << quote_path(a)
 	}
 	return res.join(' ')
 }
