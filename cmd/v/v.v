@@ -13,7 +13,7 @@ const (
 	simple_cmd = [
 		'fmt', 'up', 'vet',
 		'self', 'tracev', 'symlink', 'bin2v',
-		'test', 'test-fmt', 'test-compiler', 'test-fixed', 'test-vet',
+		'test', 'test-fmt', 'test-compiler', 'test-fixed', 'test-cleancode',
 		'repl',
 		'build-tools', 'build-examples',
 		'build-vbinaries',
@@ -41,6 +41,10 @@ fn main() {
 		// println('prefs= ')
 		// println(prefs) // QTODO
 	}
+	if command == 'test-vet' {
+		println('Please use `v test-cleancode` instead.')
+		return
+	}    
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in simple_cmd {

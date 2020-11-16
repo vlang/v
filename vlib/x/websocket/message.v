@@ -86,7 +86,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	mut read_buf := [1]byte{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
-		len := ws.socket_read_into_ptr(byteptr(&read_buf), 1)?
+		len := ws.socket_read_ptr(byteptr(&read_buf), 1)?
 		if len != 1 {
 			return error('expected read all message, got zero')
 		}
@@ -223,7 +223,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 	for ws.state == .open {
 		// Todo: different error scenarios to make sure we close correctly on error
 		// reader.read_into(mut rbuff) ?
-		read_bytes := ws.socket_read_into_ptr(byteptr(rbuff), 1)?
+		read_bytes := ws.socket_read_ptr(byteptr(rbuff), 1)?
 		if read_bytes == 0 {
 			// This is probably a timeout or close
 			continue

@@ -20,9 +20,9 @@ pub fn dial_tcp(address string) ?TcpConn {
 
 	return TcpConn {
 		sock: s
-
-		read_timeout: -1
-		write_timeout: -1
+        
+		read_timeout: 30 * time.second
+		write_timeout: 30 * time.second
 	}
 }
 
@@ -65,15 +65,15 @@ pub fn (c TcpConn) write(bytes []byte) ? {
 	return c.write_ptr(bytes.data, bytes.len)
 }
 
-// write_string blocks and attempts to write all data
-pub fn (c TcpConn) write_string(s string) ? {
+// write_str blocks and attempts to write all data
+pub fn (c TcpConn) write_str(s string) ? {
 	return c.write_ptr(s.str, s.len)
 }
 
-pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
-	res := C.recv(c.sock.handle, buf_ptr, len, 0)
+pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
+	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
 
-	if res >= 0 {
+	if res > 0 {
 		return res
 	}
 
@@ -81,7 +81,8 @@ pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
 	match code {
 		error_ewouldblock {
 			c.wait_for_read()?
-			return socket_error(C.recv(c.sock.handle, buf_ptr, len, 0))
+			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0))?
+			return socket_error(res)
 		}
 		else {
 			wrap_error(code)?
@@ -89,29 +90,8 @@ pub fn (c TcpConn) read_into_ptr(buf_ptr byteptr, len int) ?int {
 	}
 }
 
-pub fn (c TcpConn) read_into(mut buf []byte) ?int {
-	res := C.recv(c.sock.handle, buf.data, buf.len, 0)
-
-	if res >= 0 {
-		return res
-	}
-
-	code := error_code()
-	match code {
-		error_ewouldblock {
-			c.wait_for_read()?
-			return socket_error(C.recv(c.sock.handle, buf.data, buf.len, 0))
-		}
-		else {
-			wrap_error(code)?
-		}
-	}
-}
-
-pub fn (c TcpConn) read() ?[]byte {
-	mut buf := []byte { len: 1024 }
-	read := c.read_into(mut buf)?
-	return buf[..read]
+pub fn (c TcpConn) read(mut buf []byte) ?int {
+	return c.read_ptr(buf.data, buf.len)
 }
 
 pub fn (c TcpConn) read_deadline() ?time.Time {
@@ -162,6 +142,28 @@ pub fn (c TcpConn) wait_for_write() ? {
 	return wait_for_write(c.sock.handle, c.write_deadline, c.write_timeout)
 }
 
+pub fn (c TcpConn) peer_addr() ?Addr {
+	mut addr := C.sockaddr{}
+	len := sizeof(C.sockaddr)
+
+	socket_error(C.getpeername(c.sock.handle, &addr, &len))?
+
+	return new_addr(addr)
+}
+
+pub fn (c TcpConn) peer_ip() ?string {
+	buf := [44]byte{}
+	peeraddr := C.sockaddr_in{}
+	speeraddr := sizeof(peeraddr)
+	socket_error(C.getpeername(c.sock.handle, &C.sockaddr(&peeraddr), &speeraddr))?
+	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
+	if cstr == 0 {
+		return error('net.peer_ip: inet_ntop failed')
+	}
+	res := cstring_to_vstring(cstr)
+	return res
+}
+
 pub fn (c TcpConn) str() string {
 	// TODO
 	return 'TcpConn'
@@ -194,8 +196,8 @@ pub fn listen_tcp(port int) ?TcpListener {
 
 	return TcpListener {
 		sock: s
-		accept_timeout: -1
 		accept_deadline: no_deadline
+		accept_timeout: infinite_timeout
 	}
 }
 
@@ -220,14 +222,10 @@ pub fn (l TcpListener) accept() ?TcpConn {
 		}
 	}
 
-	new_sock := TcpSocket {
-		handle: new_handle
-	}
+	new_sock := tcp_socket_from_handle(new_handle)?
 
 	return TcpConn{
 		sock: new_sock
-		read_timeout: -1
-		write_timeout: -1
 	}
 }
 
@@ -279,7 +277,22 @@ fn new_tcp_socket() ?TcpSocket {
 		t := true
 		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
 	} $else {
-		socket_error(C.fcntl(sockfd, C.F_SETFD, C.O_NONBLOCK))
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
+	}
+	return s
+}
+
+fn tcp_socket_from_handle(sockfd int) ?TcpSocket {
+	s := TcpSocket {
+		handle: sockfd
+	}
+	//s.set_option_bool(.reuse_addr, true)?
+	s.set_option_int(.reuse_addr, 1)?
+	$if windows {
+		t := true
+		socket_error(C.ioctlsocket(sockfd, fionbio, &t))?
+	} $else {
+		socket_error(C.fcntl(sockfd, C.F_SETFL, C.fcntl(sockfd, C.F_GETFL) | C.O_NONBLOCK))
 	}
 	return s
 }
@@ -326,23 +339,19 @@ fn (s TcpSocket) connect(a string) ? {
 		return none
 	}
 
-	errcode := error_code()
+	_ := error_code()
 
-	if errcode == error_ewouldblock {
-		write_result := s.@select(.write, connect_timeout)?
-		if write_result {
-			// succeeded
-			return none
-		}
-		except_result := s.@select(.except, connect_timeout)?
-		if except_result {
-			return err_connect_failed
-		}
-		// otherwise we timed out
-		return err_connect_timed_out
+	write_result := s.@select(.write, connect_timeout)?
+	if write_result {
+		// succeeded
+		return none
 	}
-
-	return wrap_error(errcode)
+	except_result := s.@select(.except, connect_timeout)?
+	if except_result {
+		return err_connect_failed
+	}
+	// otherwise we timed out
+	return err_connect_timed_out
 }
 
 // address gets the address of a socket
@@ -352,5 +361,5 @@ pub fn (s TcpSocket) address() ?Addr {
 	// cast to the correct type
 	sockaddr := &C.sockaddr(&addr)
 	C.getsockname(s.handle, sockaddr, &size)
-	return new_addr(sockaddr, '', 0)
+	return new_addr(sockaddr)
 }

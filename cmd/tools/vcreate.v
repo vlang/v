@@ -58,7 +58,7 @@ fn (c &Create) write_vmod(new bool) {
 		cerror(err)
 		exit(1)
 	}
-	vmod.write(vmod_content(c.name, c.description))
+	vmod.write_str(vmod_content(c.name, c.description))
 	vmod.close()
 }
 
@@ -71,7 +71,7 @@ fn (c &Create) write_main(new bool) {
 		cerror(err)
 		exit(2)
 	}
-	main.write(main_content())
+	main.write_str(main_content())
 	main.close()
 }
 
@@ -87,7 +87,7 @@ fn (c &Create) create_git_repo(dir string) {
 				// We don't really need a .gitignore, it's just a nice-to-have
 				return
 			}
-			fl.write(gen_gitignore(c.name))
+			fl.write_str(gen_gitignore(c.name))
 			fl.close()
 		}
 	}
