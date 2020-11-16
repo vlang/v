@@ -8,8 +8,6 @@ struct C.dirent {
 
 fn C.readdir(voidptr) &C.dirent
 
-fn C.getpid() int
-
 fn C.readlink() int
 
 fn C.getline(voidptr, voidptr, voidptr) int
@@ -23,10 +21,6 @@ fn C.open(charptr, int, int) int
 fn C.fdopen(int, string) voidptr
 
 fn C.CopyFile(&u32, &u32, int) int
-
-fn C.fork() int
-
-fn C.wait() int
 
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
