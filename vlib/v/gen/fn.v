@@ -152,12 +152,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
-	//
-	if g.autofree && !g.pref.experimental {
-		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
-		g.writeln('// af scope_vars (fn decl)')
-		g.autofree_scope_vars(it.body_pos.pos, it.body_pos.line_nr)
-	}
 	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
 		default_expr := g.type_default(it.return_type)
 		// TODO: perf?
