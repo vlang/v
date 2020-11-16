@@ -31,6 +31,7 @@ mut:
 	files         []string
 	status        string
 	t             int
+	magnet_x      int
 	footer_height int = 2
 	viewport      int
 }
@@ -456,6 +457,17 @@ fn (a &App) view_height() int {
 	return a.tui.window_height - a.footer_height - 1
 }
 
+// magnet_cursor_x will place the cursor as close to it's last move left or right as possible
+fn (mut a App) magnet_cursor_x() {
+	mut buffer := a.ed
+	if buffer.cursor.pos_x < a.magnet_x {
+		if a.magnet_x < buffer.cur_line().len {
+			move_x := a.magnet_x - buffer.cursor.pos_x
+			buffer.move_cursor(move_x, .right)
+		}
+	}
+}
+
 fn frame(x voidptr) {
 	mut a := &App(x)
 	mut ed := a.ed
@@ -494,6 +506,7 @@ fn event(e &tui.Event, x voidptr) {
 				} else if e.modifiers == 0 {
 					buffer.move_cursor(1, .left)
 				}
+				a.magnet_x = buffer.cursor.pos_x
 			}
 			.right {
 				if e.modifiers == tui.ctrl {
@@ -501,12 +514,15 @@ fn event(e &tui.Event, x voidptr) {
 				} else if e.modifiers == 0 {
 					buffer.move_cursor(1, .right)
 				}
+				a.magnet_x = buffer.cursor.pos_x
 			}
 			.up {
 				buffer.move_cursor(1, .up)
+				a.magnet_cursor_x()
 			}
 			.down {
 				buffer.move_cursor(1, .down)
+				a.magnet_cursor_x()
 			}
 			.page_up {
 				buffer.move_cursor(a.view_height(), .page_up)
