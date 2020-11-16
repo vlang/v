@@ -52,14 +52,14 @@ fn main() {
 	mut ctx := Context{}
 	args := os.args[1..]
 	if '-h' in args || '--help' in args {
-		println('Usage:
-   test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 1000] [-period_ms 100]
-       Prints lines periodically (-period_ms), to stdout/stderr (-target).
-       After a while (-timeout_ms), exit with (-exitcode).
-       This program is useful for platform independent testing
-       of child process/standart input/output control.
-       It is used in V\'s `os` module tests.
-')
+		println("Usage:
+	test_os_process [-v] [-h] [-target stderr/stdout/both/alternate] [-exitcode 0] [-timeout_ms 1000] [-period_ms 100]
+		Prints lines periodically (-period_ms), to stdout/stderr (-target). 
+		After a while (-timeout_ms), exit with (-exitcode).
+		This program is useful for platform independent testing
+		of child process/standart input/output control.
+		It is used in V\'s `os` module tests.
+")
 	}
 	ctx.is_verbose = '-v' in args
 	ctx.target = s2target(cmdline.option(args, '-target', 'both'))
