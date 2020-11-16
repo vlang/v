@@ -5,10 +5,12 @@ on:
     paths-ignore:
       - "doc/**"
       - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
   pull_request:
     paths-ignore:
       - "doc/**"
       - "CHANGELOG.md"
+      - "CONTRIBUTING.md"
 
 jobs:
   code-formatting:
