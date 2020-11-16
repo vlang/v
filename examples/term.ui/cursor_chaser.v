@@ -1,10 +1,5 @@
 import term.ui as tui
 
-struct Point {
-	x int
-	y int
-}
-
 const (
 	colors = [
 		tui.Color{33, 150, 243}
@@ -15,6 +10,11 @@ const (
 		tui.Color{156, 39, 176}
 	]
 )
+
+struct Point {
+	x int
+	y int
+}
 
 struct App {
 mut:
@@ -33,11 +33,11 @@ fn frame(x voidptr) {
 	if app.points.len > 0 {
 		app.tui.set_bg_color(app.color)
 		mut last := app.points[0]
-		for segment in app.points {
-			// if the cursor moveds quickly enough, different events are not
+		for point in app.points {
+			// if the cursor moves quickly enough, different events are not
 			// necessarily touching, so we need to draw a line between them
-			app.tui.draw_line(last.x, last.y, segment.x, segment.y)
-			last = segment
+			app.tui.draw_line(last.x, last.y, point.x, point.y)
+			last = point
 		}
 		app.tui.reset()
 
@@ -62,8 +62,6 @@ fn event(e &tui.Event, x voidptr) {
 		.key_down {
 			match e.code {
 				.escape {
-					app.tui.set_cursor_position(0, 0)
-					app.tui.flush()
 					exit(0)
 				}
 				.space, .enter {

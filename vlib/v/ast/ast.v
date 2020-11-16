@@ -294,7 +294,7 @@ pub:
 	left               Expr // `user` in `user.register()`
 	mod                string
 pub mut:
-	name               string
+	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
 	args               []CallArg
@@ -306,6 +306,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
+	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	// autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar

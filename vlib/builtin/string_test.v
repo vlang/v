@@ -528,6 +528,14 @@ fn test_bytes_to_string() {
 	assert bytes.bytestr() == 'hello'
 }
 
+fn test_charptr() {
+	foo := charptr('VLANG'.str)
+	println(typeof(foo))
+	assert typeof(foo) == 'charptr'
+	assert unsafe { foo.vstring() } == 'VLANG'
+	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
+}
+
 fn test_count() {
 	assert ''.count('') == 0
 	assert ''.count('a') == 0

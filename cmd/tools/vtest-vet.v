@@ -54,6 +54,7 @@ const (
 		'vlib/v/util/',
 		'vlib/v/vet/',
 		'vlib/v/vmod/',
+		'vlib/gg/gg.v',
 	]
 )
 

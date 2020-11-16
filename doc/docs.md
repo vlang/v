@@ -1634,8 +1634,11 @@ struct Venus {}
 type World = Moon | Mars | Venus
 
 sum := World(Moon{})
+assert sum.type_name() == 'Moon'
 println(sum)
 ```
+The built-in method `type_name` returns the name of the currently held 
+type.
 
 #### Dynamic casts
 
@@ -2934,7 +2937,7 @@ Translating it to V gives you several advantages:
 
 ## Hot code reloading
 
-```v
+```v live
 module main
 
 import time

@@ -1025,6 +1025,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
 				}
 				// g.autofree_scope_vars(node.pos.pos - 1)
+				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node, af)
@@ -3784,6 +3785,10 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 	g.inside_return = true
 	defer {
 		g.inside_return = false
+	}
+	if af {
+		tmp := g.new_tmp_var()
+		g.writeln('// $tmp = ...')
 	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)

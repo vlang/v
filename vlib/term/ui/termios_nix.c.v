@@ -41,7 +41,20 @@ fn get_terminal_size() (u16, u16) {
 	return winsz.ws_row, winsz.ws_col
 }
 
+fn restore_terminal_state() {
+	termios_reset()
+	mut c := ctx_ptr
+	if c != 0 {
+		c.paused = true
+		c.load_title()
+	}
+	os.flush()
+}
+
 fn (mut ctx Context) termios_setup() {
+	// store the current title, so restore_terminal_state can get it back
+	ctx.save_title()
+
 	mut termios := get_termios()
 
 	if ctx.cfg.capture_events {
@@ -53,19 +66,29 @@ fn (mut ctx Context) termios_setup() {
 		// Set raw input mode by unsetting ICANON and ECHO
 		termios.c_lflag &= ~u32(C.ICANON | C.ECHO)
 	}
+
+	if ctx.cfg.hide_cursor {
+		print('\x1b[?25l')
+	}
+
+	if ctx.cfg.window_title != '' {
+		print('\x1b]0;$ctx.cfg.window_title\x07')
+	}
+
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
-	print('\x1b[?1003h\x1b[?1015h\x1b[?1006h')
-
+	print('\x1b[?1003h\x1b[?1006h')
+	if ctx.cfg.use_alternate_buffer {
+		print('\x1b[?1049h')
+	}
 	ctx.termios = termios
-
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
-	C.atexit(termios_reset)
-	os.signal(C.SIGTSTP, termios_reset)
+	C.atexit(restore_terminal_state)
+	os.signal(C.SIGTSTP, restore_terminal_state)
 	os.signal(C.SIGCONT, fn () {
 		mut c := ctx_ptr
 		if c != 0 {
@@ -76,6 +99,7 @@ fn (mut ctx Context) termios_setup() {
 				width: c.window_width
 				height: c.window_height
 			}
+			c.paused = false
 			c.event(event)
 		}
 	})
@@ -102,64 +126,20 @@ fn (mut ctx Context) termios_setup() {
 			c.event(event)
 		}
 	})
+	os.flush()
 }
 
 fn termios_reset() {
 	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH /* C.TCSANOW ?? */, &termios_at_startup)
-	print('\x1b[?1003l\x1b[?1015l\x1b[?1006l\x1b[0J\x1b[?25h')
+	print('\x1b[?1003l\x1b[?1006l\x1b[?25h')
+	c := ctx_ptr
+	if c != 0 && c.cfg.use_alternate_buffer {
+		print('\x1b[?1049l')
+	}
+	os.flush()
 }
 
 ///////////////////////////////////////////
-
-/*
-fn (mut ctx Context) termios_loop() {
-	frame_time := 1_000_000 / ctx.cfg.frame_rate
-	mut init_called := false
-
-	mut sw := time.new_stopwatch(auto_start: false)
-
-	mut last_frame_time := 0
-	mut sleep_len := 0
-
-	for {
-		sw.restart()
-		if !init_called {
-			ctx.init()
-			init_called = true
-		}
-		for _ in 0 .. 7 {
-			// println('SLEEPING: $sleep_len')
-			if sleep_len > 0 {
-				time.usleep(sleep_len)
-			}
-			if ctx.cfg.event_fn != voidptr(0) {
-				len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
-				if len > 0 {
-					ctx.resize_arr(len)
-					ctx.parse_events()
-				}
-			}
-		}
-
-		ctx.frame()
-
-		sw.pause()
-		last_frame_time = int(sw.elapsed().microseconds())
-
-		if
-		println('Sleeping for $frame_time - $last_frame_time = ${frame_time - last_frame_time}')
-		// time.usleep(frame_time - last_frame_time - sleep_len * 7)
-		last_frame_time = 0
-
-		sw.start()
-		sw.pause()
-		last_frame_time += int(sw.elapsed().microseconds())
-		sleep_len = (frame_time - last_frame_time) / 8
-
-		ctx.frame_count++
-	}
-}
-*/
 
 // TODO: do multiple sleep/read cycles, rather than one big one
 fn (mut ctx Context) termios_loop() {
@@ -176,20 +156,22 @@ fn (mut ctx Context) termios_loop() {
 		if sleep_len > 0 {
 			time.usleep(sleep_len)
 		}
-		sw.restart()
-		if ctx.cfg.event_fn != voidptr(0) {
-			len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
-			if len > 0 {
-				ctx.resize_arr(len)
-				ctx.parse_events()
+		if !ctx.paused {
+			sw.restart()
+			if ctx.cfg.event_fn != voidptr(0) {
+				len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
+				if len > 0 {
+					ctx.resize_arr(len)
+					ctx.parse_events()
+				}
 			}
-		}
-		ctx.frame()
-		sw.pause()
-		e := sw.elapsed().microseconds()
-		sleep_len = frame_time - int(e)
+			ctx.frame()
+			sw.pause()
+			e := sw.elapsed().microseconds()
+			sleep_len = frame_time - int(e)
 
-		ctx.frame_count++
+			ctx.frame_count++
+		}
 	}
 }
 
@@ -234,8 +216,8 @@ fn single_char(buf string) &Event {
 
 
 		// The bit `or`s here are really just `+`'s, just written in this way for a tiny performance improvement
-		// 10 == `\n` == enter, don't treat it as ctrl + j
-		1  ... 9, 11 ... 26 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(96 | ch), modifiers: ctrl } }
+		// don't treat tab, enter as ctrl+i, ctrl+j
+		1  ... 8, 11 ... 26 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(96 | ch), modifiers: ctrl } }
 		65 ... 90 { event = &Event{ typ: event.typ, ascii: event.ascii, utf8: event.utf8, code: KeyCode(32 | ch), modifiers: shift } }
 
 		else {}
@@ -252,7 +234,7 @@ fn escape_end(buf string) int {
 	for {
 		if i + 1 == buf.len { return buf.len }
 
-		if buf[i].is_letter() {
+		if buf[i].is_letter() || buf[i] == `~` {
 			if buf[i] == `O` && i + 2 <= buf.len {
 				n := buf[i+1]
 				if (n >= `A` && n <= `D`) || (n >= `P` && n <= `S`) || n == `F` || n == `H` {
@@ -260,7 +242,8 @@ fn escape_end(buf string) int {
 				}
 			}
 			return i + 1
-		}
+		// escape hatch to avoid potential issues/crashes, although ideally this should never eval to true
+		} else if buf[i + 1] == 0x1b { return i + 1 }
 		i++
 	}
 	// this point should be unreachable
@@ -299,30 +282,43 @@ fn escape_sequence(buf_ string) (&Event, int) {
 	//   Mouse events
 	// ----------------
 
-	if buf.len > 2 && buf[1] == `<` { // Mouse control
+	// Documentation: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Mouse-Tracking
+	if buf.len > 2 && buf[1] == `<` {
 		split := buf[2..].split(';')
 		if split.len < 3 { return &Event(0), 0 }
 
 		typ, x, y := split[0].int(), split[1].int(), split[2].int()
+		lo := typ & 0b00011
+		hi := typ & 0b11100
+
+		mut modifiers := u32(0)
+		if hi & 4  != 0 { modifiers |= shift }
+		if hi & 8  != 0 { modifiers |= alt }
+		if hi & 16 != 0 { modifiers |= ctrl }
 
 		match typ {
-			0, 2 {
+			0...31 {
 				last := buf[buf.len - 1]
-				button := if typ == 0 { MouseButton.primary } else { MouseButton.secondary }
-				event := if last == `M` { EventType.mouse_down } else { EventType.mouse_up }
-				return &Event{ typ: event, x: x, y: y, button: button, utf8: single }, end
+				button := if lo < 3 { MouseButton(lo + 1) } else { MouseButton.unknown }
+				event := if last == `m` || lo == 3 { EventType.mouse_up } else { EventType.mouse_down }
+
+				return &Event{ typ: event, x: x, y: y, button: button, modifiers: modifiers utf8: single }, end
 			}
-			32, 34 {
-				button := if typ == 32 { MouseButton.primary } else { MouseButton.secondary }
-				return &Event{ typ: .mouse_drag, x: x, y: y, button: button, utf8: single }, end
+			32...63 {
+				button, event := if lo < 3 {
+						MouseButton(lo + 1), EventType.mouse_drag
+					} else {
+						MouseButton.unknown, EventType.mouse_move
+					}
+
+				return &Event{ typ: event, x: x, y: y, button: button, modifiers: modifiers, utf8: single }, end
 			}
-			35 {
-				return &Event{ typ: .mouse_move, x: x, y: y, utf8: single }, end
+			64...95 {
+				direction := if typ & 1 == 0 { Direction.down } else { Direction.up }
+				return &Event{ typ: .mouse_scroll, x: x, y: y, direction: direction, modifiers: modifiers, utf8: single }, end
+			} else {
+				return &Event{ typ: .unknown, utf8: single }, end
 			}
-			64, 65 {
-				direction := if typ == 64 { Direction.down } else { Direction.up }
-				return &Event{ typ: .mouse_scroll, x: x, y: y, direction: direction, utf8: single }, end
-			} else {}
 		}
 	}
 
@@ -358,7 +354,12 @@ fn escape_sequence(buf_ string) (&Event, int) {
 		else                      {}
 	}
 
-	if buf.len == 5 && buf[0] == `[` && buf[1] == `1` && buf[2] == `;` {
+	if buf == '[Z' {
+		code = .tab
+		modifiers |= shift
+	}
+
+	if buf.len == 5 && buf[0] == `[` && buf[1].is_digit() && buf[2] == `;` {
 		// code = KeyCode(buf[4] + 197)
 		modifiers = match buf[3] {
 			`2` { shift }
@@ -371,20 +372,25 @@ fn escape_sequence(buf_ string) (&Event, int) {
 			else { modifiers } // probably unreachable? idk, terminal events are strange
 		}
 
-		code = match buf[4] {
-			`A` { KeyCode.up }
-			`B` { KeyCode.down }
-			`C` { KeyCode.right }
-			`D` { KeyCode.left }
-			`F` { KeyCode.end }
-			`H` { KeyCode.home }
-			`P` { KeyCode.f1 }
-			`Q` { KeyCode.f2 }
-			`R` { KeyCode.f3 }
-			`S` { KeyCode.f4 }
-			else { code }
+		if buf[1] == `1` {
+			code = match buf[4] {
+				`A` { KeyCode.up }
+				`B` { KeyCode.down }
+				`C` { KeyCode.right }
+				`D` { KeyCode.left }
+				`F` { KeyCode.end }
+				`H` { KeyCode.home }
+				`P` { KeyCode.f1 }
+				`Q` { KeyCode.f2 }
+				`R` { KeyCode.f3 }
+				`S` { KeyCode.f4 }
+				else { code }
+			}
+		} else if buf[1] == `5` {
+			code = KeyCode.page_up
+		} else if buf[1] == `6` {
+			code = KeyCode.page_down
 		}
-		//  && buf[3] >= `2` && buf[3] <= `8` && buf[4] >= `A` && buf[4] <= `D`
 	}
 
 	return &Event{ typ: .key_down, code: code, utf8: single, modifiers: modifiers }, end

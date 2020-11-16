@@ -63,7 +63,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// foo<T>() => foo_int(), foo_string() etc
 		gen_name := g.typ(g.cur_generic_type)
 		name += '_' + gen_name
-		type_name = type_name.replace('T', gen_name)
 	}
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
@@ -223,8 +222,6 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 		// }
 		if g.cur_generic_type != 0 {
 			// foo<T>() => foo_int(), foo_string() etc
-			gen_name := g.typ(g.cur_generic_type)
-			arg_type_name = arg_type_name.replace('T', gen_name)
 		}
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
@@ -379,6 +376,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			else {}
 		}
+	}
+	if left_sym.kind == .sum_type && node.name == 'type_name' {
+		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${node.receiver_type}( (')
+		g.expr(node.left)
+		g.write(').typ ))')
+		return
 	}
 	if node.name == 'str' {
 		mut styp := g.typ(node.receiver_type)

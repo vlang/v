@@ -12,42 +12,17 @@ pub mut:
 	h byte
 }
 
-['foo/bar/three']
-fn (mut app App) run() {
-}
-
-['attr2']
-fn (mut app App) method2() {
-}
-
-fn (mut app App) int_method1() int {
-	return 0
-}
-
-fn (mut app App) int_method2() int {
-	return 1
-}
-
-fn (mut app App) string_arg(x string) {
-}
-
-fn no_lines(s string) string {
-	return s.replace('\n', ' ')
-}
-
-fn test_comptime_for() {
+fn comptime_for() {
 	println(@FN)
-	methods := ['run', 'method2', 'int_method1', 'int_method2', 'string_arg']
 	$for method in App.methods {
-		println('  method: $method.name | ' + no_lines('$method'))
-		assert method.name in methods
+		println('  method: $method.name | $method')
 	}
 }
 
-fn test_comptime_for_with_if() {
+fn comptime_for_with_if() {
 	println(@FN)
 	$for method in App.methods {
-		println('  method: ' + no_lines('$method'))
+		println('  method: $method')
 		$if method.typ is fn () {
 			assert method.name in ['run', 'method2']
 		}
@@ -55,15 +30,15 @@ fn test_comptime_for_with_if() {
 			assert method.name in ['int_method1', 'int_method2']
 		}
 		$if method.args[0].typ is string {
-			assert method.name == 'string_arg'
+			assert method.name == 'my_method'
 		}
 	}
 }
 
-fn test_comptime_for_fields() {
+fn comptime_for_fields() {
 	println(@FN)
 	$for field in App.fields {
-		println('  field: $field.name | ' + no_lines('$field'))
+		println('  field: $field.name | $field')
 		$if field.typ is string {
 			assert field.name in ['a', 'b', 'g']
 		}
@@ -80,4 +55,35 @@ fn test_comptime_for_fields() {
 			assert field.name in ['g', 'h']
 		}
 	}
+}
+
+struct Result {
+}
+
+fn (mut a App) my_method(p string) Result {
+	println('>>>> ${@FN} | p: $p')
+	return Result{}
+}
+
+fn handle_conn<T>(mut app T) {
+	mut vars := []string{cap: 123}
+	vars << 'abc'
+	vars << 'def'
+	$for method in T.methods {
+		$if method.return_type is Result {
+			app.$method(vars)
+		}
+	}
+}
+
+fn comptime_call_dollar_method() {
+	mut app := App{}
+	handle_conn<App>(mut app)
+}
+
+fn main() {
+	comptime_for()
+	comptime_for_with_if()
+	comptime_for_fields()
+	comptime_call_dollar_method()
 }
