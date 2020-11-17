@@ -28,7 +28,10 @@ fn main() {
 		}
 		for i, line in lines {
 			if line.len > too_long_line_length {
-				if line.starts_with('|') {
+				if mdfile.state == .vexample {
+					println(wline(file_path, i, line.len, 'long code example line'))
+					warnings++
+				} else if line.starts_with('|') {
 					println(wline(file_path, i, line.len, 'long table'))
 					warnings++
 				} else if line.contains('https') {
