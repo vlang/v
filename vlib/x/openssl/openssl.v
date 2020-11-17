@@ -227,17 +227,38 @@ pub struct C.fd_set {
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) ?bool {
-	set := C.fd_set{}
-	C.FD_ZERO(&set)
-	C.FD_SET(handle, &set)
-	timeval_timeout := C.timeval{
-		tv_sec: u64(0)
-		tv_usec: u64(timeout.microseconds())
-	}
-	match test {
-		.read { net.socket_error(C.@select(handle, &set, C.NULL, C.NULL, &timeval_timeout))? }
-		.write { net.socket_error(C.@select(handle, C.NULL, &set, C.NULL, &timeval_timeout))? }
-		.except { net.socket_error(C.@select(handle, C.NULL, C.NULL, &set, &timeval_timeout))? }
-	}
-	return C.FD_ISSET(handle, &set)
+    set := C.fd_set{}
+
+    C.FD_ZERO(&set)
+    C.FD_SET(handle, &set)
+
+    seconds := timeout.milliseconds() / 1000
+    microseconds := timeout - (seconds * time.second)
+
+    mut tt := C.timeval{
+        tv_sec: u64(seconds)
+        tv_usec: u64(microseconds)
+    }
+
+    mut timeval_timeout := &tt
+
+    // infinite timeout is signaled by passing null as the timeout to
+    // select
+    if timeout == net.infinite_timeout {
+        timeval_timeout = &C.timeval(0)
+    }
+
+    match test {
+        .read {
+            net.socket_error(C.@select(handle+1, &set, C.NULL, C.NULL, timeval_timeout))?
+        }
+        .write {
+            net.socket_error(C.@select(handle+1, C.NULL, &set, C.NULL, timeval_timeout))?
+        }
+        .except {
+            net.socket_error(C.@select(handle+1, C.NULL, C.NULL, &set, timeval_timeout))?
+        }
+    }
+
+    return C.FD_ISSET(handle, &set)
 }
