@@ -14,7 +14,7 @@
 + iOS/Android support
 - parallel parser (and maybe checker/gen?)
 - `recover()` from panics
-- IO streams
++ IO streams
 + struct embedding
 - interface embedding
 - interfaces: allow struct fields (not just methods)
