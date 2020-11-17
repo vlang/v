@@ -1,3 +1,5 @@
+// Copyright (c) 2020 Lars Pontoppidan. All rights reserved.
+// Use of this source code is governed by the MIT license distributed with this software.
 import term
 import term.ui
 import time
