@@ -3032,7 +3032,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type &&
-		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
+		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr, .bool] ||
 		(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
