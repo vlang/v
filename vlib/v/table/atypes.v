@@ -26,7 +26,9 @@ pub enum Language {
 
 // Represents a type that only needs an identifier, e.g. int, array_int.
 // A pointer type `&T` would have a TypeSymbol `T`.
-// Note: For a Type, use Table.type_to_str(typ) not TypeSymbol.name.
+// Note: For a Type, use:
+// * Table.type_to_str(typ) not TypeSymbol.name.
+// * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.get_type_symbol.
 pub struct TypeSymbol {
@@ -361,6 +363,14 @@ pub:
 	is_anon  bool
 	has_decl bool
 	func     Fn
+}
+
+// returns TypeSymbol kind only if there are no type modifiers
+pub fn (table &Table) type_kind(typ Type) Kind {
+	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
+		return Kind.placeholder
+	}
+	return table.get_type_symbol(typ).kind
 }
 
 pub enum Kind {
