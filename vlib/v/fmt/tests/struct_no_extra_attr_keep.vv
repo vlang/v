@@ -1,0 +1,27 @@
+[typedef]
+struct Foo {
+}
+
+[typedef]
+struct Bar {
+	x string
+	y int
+}
+
+[ref_only]
+struct Baz {
+	x string
+	y int
+}
+
+[inline]
+struct Spam {
+	x string
+	y int
+}
+
+[deprecated]
+struct Eggs {
+	y_y int    [json: yY]
+	x   string [deprecated]
+}
