@@ -19,3 +19,9 @@ struct Spam {
 	x string
 	y int
 }
+
+[deprecated]
+struct Eggs {
+	y_y int [json: yY]
+	x string [deprecated]
+}
