@@ -1031,7 +1031,7 @@ fn main() {
 	}
 	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len >
 		1 || cfg.input_path == '.'
-	if cfg.input_path == 'vlib' {
+	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true
 		cfg.input_path = os.join_path(vexe_path, 'vlib')
