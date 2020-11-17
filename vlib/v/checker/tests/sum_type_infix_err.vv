@@ -1,4 +1,4 @@
-type Abc = int | string
+__type Abc = int | string
 
 fn main() {
 	x := Abc(0)
