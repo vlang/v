@@ -5,12 +5,12 @@ on:
     paths:
       - ".github/workflows/docs_ci.yml"
       - "cmd/tools/check-md.v"
-      - "*.md"
+      - "**.md"
   pull_request:
     paths:
       - ".github/workflows/docs_ci.yml"
       - "cmd/tools/check-md.v"
-      - "*.md"
+      - "**.md"
 
 jobs:
   docs-line-len-check:
