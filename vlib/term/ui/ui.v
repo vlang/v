@@ -172,7 +172,7 @@ pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 		ctx.draw_line(x, y, x2, y2)
 		return
 	}
-	min_y, max_y := if y < y2 { y } else { y2 }, if y > y2 { y } else { y2 }
+	min_y, max_y := if y < y2 { y, y2 } else { y2, y }
 	for y_pos in min_y .. max_y + 1 {
 		ctx.draw_line(x, y_pos, x2, y_pos)
 	}
@@ -180,13 +180,25 @@ pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 
 pub fn (mut ctx Context) draw_empty_dashed_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
-		ctx.draw_line(x, y, x2, y2)
+		ctx.draw_dashed_line(x, y, x2, y2)
 		return
 	}
-	ctx.draw_dashed_line(x, y, x2, y)
-	ctx.draw_dashed_line(x, y2, x2, y2)
-	ctx.draw_dashed_line(x, y, x, y2)
-	ctx.draw_dashed_line(x2, y, x2, y2)
+
+	min_x, max_x := if x < x2 { x, x2 } else { x2, x }
+	min_y, max_y := if y < y2 { y, y2 } else { y2, y }
+
+	ctx.draw_dashed_line(min_x, min_y, max_x, min_y)
+	ctx.draw_dashed_line(min_x, min_y, min_x, max_y)
+	if (max_y - min_y) & 1 == 0 {
+		ctx.draw_dashed_line(min_x, max_y, max_x, max_y)
+	} else {
+		ctx.draw_dashed_line(min_x + 1, max_y, max_x, max_y)
+	}
+	if (max_x - min_x) & 1 == 0 {
+		ctx.draw_dashed_line(max_x, min_y, max_x, max_y)
+	} else {
+		ctx.draw_dashed_line(max_x, min_y + 1, max_x, max_y)
+	}
 }
 
 pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
@@ -204,4 +216,10 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
 	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))
+}
+
+
+[inline]
+fn abs(a int) int {
+	return if a < 0 { -a } else { a }
 }
