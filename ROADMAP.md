@@ -7,6 +7,7 @@ _tbd_
 - [x] thread safe arrays
 - [x] iOS/Android support
 - [x] short generics syntax (`foo(5)` instead of `foo<int>(5)`)
+- [x] IO streams
 - [ ] make `-autofree` the default
 - [ ] coroutines
 - [ ] thread safe maps
@@ -16,7 +17,6 @@ _tbd_
 - [ ] maps with non-string keys
 - [ ] parallel parser (and maybe checker/gen?)
 - [ ] `recover()` from panics
-- [ ] IO streams
 - [ ] struct embedding (partially)
 - [ ] interface embedding
 - [ ] interfaces: allow struct fields (not just methods)
