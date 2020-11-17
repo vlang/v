@@ -667,8 +667,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(field_types[i])
-		if field.attrs.len > 0 /*&&
-			field.attrs[0].name != 'ref_only' && field.attrs[0].name != 'typedef'*/ { // TODO a bug with [ref_only], [typedef] attr being added to fields, fix it
+		if field.attrs.len > 0 {
 			f.write(strings.repeat(` `, max_type - field_types[i].len))
 			f.inline_attrs(field.attrs)
 		}
