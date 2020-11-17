@@ -3,14 +3,10 @@ name: CI
 on:
   push:
     paths-ignore:
-      - "doc/**"
-      - "CHANGELOG.md"
-      - "CONTRIBUTING.md"
+      - "*.md"
   pull_request:
     paths-ignore:
-      - "doc/**"
-      - "CHANGELOG.md"
-      - "CONTRIBUTING.md"
+      - "*.md"
 
 jobs:
   code-formatting:
