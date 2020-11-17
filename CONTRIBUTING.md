@@ -21,7 +21,8 @@ download the C version of the compiler and rebuild it from scratch.
 
 The architecture of the compiler is very simple and has three distinct steps:
 
-Parse/generate AST (`v.parser`) => Check types (`v.checker`) => Generate C/JavaScript/machine code (`v.gen`)
+Parse/generate AST (`v.parser`) => Check types (`v.checker`) 
+=> Generate C/JavaScript/machine code (`v.gen`)
 
 
 The main files are:

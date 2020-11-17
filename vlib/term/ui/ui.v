@@ -1,6 +1,5 @@
 module ui
 
-import os
 import strings
 
 pub struct Color {
@@ -19,7 +18,6 @@ pub fn (c Color) hex() string {
 const (
 	bsu = '\x1bP=1s\x1b\\'
 	esu = '\x1bP=2s\x1b\\'
-	vno_bsu_esu = os.getenv('VNO_BSU_ESU').len>0
 )
 
 [inline]
@@ -34,13 +32,13 @@ pub fn (mut ctx Context) flush() {
 		// TODO
 	} $else {
 		// TODO: Diff the previous frame against this one, and only render things that changed?
-		if vno_bsu_esu {
+		if !ctx.enable_su {
 			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
 		} else {
 			C.write(C.STDOUT_FILENO, bsu.str, bsu.len)
 			C.write(C.STDOUT_FILENO, ctx.print_buf.data, ctx.print_buf.len)
 			C.write(C.STDOUT_FILENO, esu.str, esu.len)
-		}            
+		}
 		ctx.print_buf.clear()
 	}
 }
