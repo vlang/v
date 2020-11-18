@@ -21,11 +21,4 @@ jobs:
       run: make
     - name: Check docs line length & code examples
       run: |
-        ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md
-        ./v run cmd/tools/check-md.v CHANGELOG.md  CODE_OF_CONDUCT.md CONTRIBUTING.md README.md TESTS.md
-        ./v run cmd/tools/check-md.v tutorials/building-a-simple-web-blog-with-vweb.md
-        ./v run cmd/tools/check-md.v vlib/vweb/README.md vlib/pg/README.md vlib/sqlite/README.md vlib/encoding/csv/README.md vlib/rand/README.md vlib/flag/README.md vlib/vweb/tmpl/README.md vlib/benchmark/README.md vlib/net/html/README.md vlib/term/README.md vlib/term/ui/README.md vlib/eventbus/README.md vlib/x/json2/README.md vlib/regex/README.md vlib/semver/README.md vlib/v/pkgconfig/README.md
-        ./v run cmd/tools/check-md.v vlib/strconv/format.md vlib/sync/bench/results.md
-        ./v run cmd/tools/check-md.v vlib/v/tests/project_with_modules_having_submodules/README.md vlib/v/tests/project_with_tests_for_main/README.md vlib/v/tests/repl/README.md
-        ./v run cmd/tools/check-md.v examples/2048/README.md examples/vcasino/README.md
-        ./v run cmd/tools/check-md.v cmd/tools/preludes/README.md
+        ./v run cmd/tools/check-md.v

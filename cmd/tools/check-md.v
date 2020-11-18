@@ -11,7 +11,7 @@ const (
 )
 
 fn main() {
-	files_paths := os.args[1..]
+	files_paths := md_file_paths()
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -61,6 +61,18 @@ fn main() {
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+fn md_file_paths() []string {
+	mut files_to_check := []string{}
+	md_files := os.walk_ext('.', '.md')
+	for file in md_files {
+		if file.starts_with('./thirdparty') {
+			continue
+		}
+		files_to_check << file
+	}
+	return files_to_check
 }
 
 fn ftext(s string, cb fn (string) string) string {
@@ -133,17 +145,22 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 		return
 	}
 	if line.starts_with('```') {
-		if f.state == .vexample {
-			f.state = .markdown
-			f.current.eline = lnumber
-			f.examples << f.current
-			f.current = VCodeExample{}
-			return
-		} else if f.state == .codeblock {
-			f.state = .markdown
-			return
-		} else {
-			f.state = .codeblock
+		match f.state {
+			.vexample {
+				f.state = .markdown
+				f.current.eline = lnumber
+				f.examples << f.current
+				f.current = VCodeExample{}
+				return
+			}
+			.codeblock {
+				f.state = .markdown
+				return
+			}
+			.markdown {
+				f.state = .codeblock
+				return
+			}
 		}
 	}
 	if f.state == .vexample {
