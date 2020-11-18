@@ -11,7 +11,7 @@ const (
 )
 
 fn main() {
-	files_paths := os.args[1..]
+	files_paths := if '-all' in os.args { md_file_paths() } else { os.args[1..] }
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -28,7 +28,13 @@ fn main() {
 		}
 		for i, line in lines {
 			if line.len > too_long_line_length {
-				if line.starts_with('|') {
+				if mdfile.state == .vexample {
+					println(wline(file_path, i, line.len, 'long V example line'))
+					warnings++
+				} else if mdfile.state == .codeblock {
+					println(wline(file_path, i, line.len, 'long code block line'))
+					warnings++
+				} else if line.starts_with('|') {
 					println(wline(file_path, i, line.len, 'long table'))
 					warnings++
 				} else if line.contains('https') {
@@ -55,6 +61,18 @@ fn main() {
 	if errors > 0 {
 		exit(1)
 	}
+}
+
+fn md_file_paths() []string {
+	mut files_to_check := []string{}
+	md_files := os.walk_ext('.', '.md')
+	for file in md_files {
+		if file.starts_with('./thirdparty') {
+			continue
+		}
+		files_to_check << file
+	}
+	return files_to_check
 }
 
 fn ftext(s string, cb fn (string) string) string {
@@ -100,6 +118,7 @@ mut:
 enum MDFileParserState {
 	markdown
 	vexample
+	codeblock
 }
 
 struct MDFile {
@@ -125,12 +144,24 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 		}
 		return
 	}
-	if line.starts_with('```') && f.state == .vexample {
-		f.state = .markdown
-		f.current.eline = lnumber
-		f.examples << f.current
-		f.current = VCodeExample{}
-		return
+	if line.starts_with('```') {
+		match f.state {
+			.vexample {
+				f.state = .markdown
+				f.current.eline = lnumber
+				f.examples << f.current
+				f.current = VCodeExample{}
+				return
+			}
+			.codeblock {
+				f.state = .markdown
+				return
+			}
+			.markdown {
+				f.state = .codeblock
+				return
+			}
+		}
 	}
 	if f.state == .vexample {
 		f.current.text << line

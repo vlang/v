@@ -331,16 +331,6 @@ fn test_reassign_from_function_with_parameter_selector() {
 	}
 }
 
-fn test_match_multi_branch() {
-	f := Expr3(CTempVarExpr{'ctemp'})
-	match union f {
-		CallExpr, CTempVarExpr {
-			// this check works only if f is not castet
-			assert f is CTempVarExpr
-		}
-	}
-}
-
 fn test_typeof() {
     x := Expr3(CTempVarExpr{})
 	assert typeof(x) == 'CTempVarExpr'
@@ -353,6 +343,25 @@ struct Outer2 {
 fn test_zero_value_init() {
 	// no c compiler error then it's successful
 	_ := Outer2{}
+}
+
+struct Milk {
+	name string
+}
+
+struct Eggs {
+	name string
+}
+
+__type Food = Milk | Eggs
+
+fn test_match_aggregate() {
+	f := Food(Milk{'test'})
+	match union f {
+		Milk, Eggs {
+			assert f.name == 'test'
+		}
+	}
 }
 
 fn test_sum_type_match() {

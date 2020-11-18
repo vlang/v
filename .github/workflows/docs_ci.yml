@@ -3,23 +3,21 @@ name: Docs CI
 on:
   push:
     paths:
+      - ".github/workflows/docs_ci.yml"
       - "cmd/tools/check-md.v"
-      - "doc/**"
-      - "CHANGELOG.md"
-      - "CONTRIBUTING.md"
+      - "**.md"
   pull_request:
     paths:
+      - ".github/workflows/docs_ci.yml"
       - "cmd/tools/check-md.v"
-      - "doc/**"
-      - "CHANGELOG.md"
-      - "CONTRIBUTING.md"
+      - "**.md"
 
 jobs:
-  docs-line-len-check:
+  check-markdown:
     runs-on: ubuntu-18.04
     steps:
     - uses: actions/checkout@v2
     - name: Build V
       run: make
-    - name: Check docs line length & code examples
-      run: ./v run cmd/tools/check-md.v doc/docs.md doc/upcoming.md CHANGELOG.md CONTRIBUTING.md
+    - name: Check markdown line length & code examples
+      run: ./v run cmd/tools/check-md.v -all
