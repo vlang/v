@@ -3482,6 +3482,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			}
 			branch_exprs[key] = val + 1
 		}
+		// when match is sum type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
 			if cond_type_sym.kind == .union_sum_type {
 				mut expr_type := table.Type(0)
