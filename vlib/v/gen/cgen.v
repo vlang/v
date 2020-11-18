@@ -122,6 +122,11 @@ mut:
 	// doing_autofree_tmp    bool
 	inside_lambda                    bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
+	// used in match multi branch
+	// TypeOne, TypeTwo {}
+	// where an aggregate (at least two types) is generated
+	// sum type deref needs to know which index to deref because unions take care of the correct field
+	aggregate_type_idx               int
 }
 
 const (
@@ -2513,7 +2518,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 						if field := scope.find_struct_field(node.expr_type, node.field_name) {
 							// union sum type deref
 							g.write('(*')
-							sum_type_deref_field = '_$field.sum_type_cast'
+							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
+							if cast_sym.info is table.Aggregate as sym_info {
+								sum_type_deref_field = '_${sym_info.types[g.aggregate_type_idx]}'
+							} else {
+								sum_type_deref_field = '_$field.sum_type_cast'
+							}
 						}
 					}
 				}
@@ -3003,6 +3013,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
+			g.aggregate_type_idx = sumtype_index
 			is_last := j == node.branches.len - 1
 			sym := g.table.get_type_symbol(node.cond_type)
 			if branch.is_else || (node.is_expr && is_last) {
@@ -3070,6 +3081,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				break
 			}
 		}
+		// reset global field for next use
+		g.aggregate_type_idx = 0
 	}
 }
 
@@ -3336,7 +3349,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if v := scope.find_var(node.name) {
 			if v.sum_type_cast != 0 {
 				if !prevent_sum_type_unwrapping_once {
-					g.write('(*${name}._$v.sum_type_cast)')
+					sym := g.table.get_type_symbol(v.sum_type_cast)
+					if sym.info is table.Aggregate as sym_info {
+						g.write('(*${name}._${sym_info.types[g.aggregate_type_idx]})')
+					} else {
+						g.write('(*${name}._$v.sum_type_cast)')
+					}
 					return
 				}
 			}

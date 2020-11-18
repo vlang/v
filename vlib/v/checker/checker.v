@@ -3,6 +3,7 @@
 module checker
 
 import os
+import strings
 import v.ast
 import v.vmod
 import v.table
@@ -3405,6 +3406,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	mut branch_exprs := map[string]int{}
 	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch in node.branches {
+		mut expr_types := []ast.Type{}
 		for expr in branch.exprs {
 			mut key := ''
 			if expr is ast.RangeExpr {
@@ -3444,28 +3446,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			match expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
-					// smart cast only if one type is given (currently) // TODO make this work if types have same fields
-					if branch.exprs.len == 1 && cond_type_sym.kind == .union_sum_type {
-						mut scope := c.file.scope.innermost(branch.pos.pos)
-						match node.cond as node_cond {
-							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
-									struct_type: node_cond.expr_type
-									name: node_cond.field_name
-									typ: node.cond_type
-									sum_type_cast: expr.typ
-									pos: node_cond.pos
-								}) }
-							ast.Ident { scope.register(node.var_name, ast.Var{
-									name: node.var_name
-									typ: node.cond_type
-									pos: node_cond.pos
-									is_used: true
-									is_mut: node.is_mut
-									sum_type_cast: expr.typ
-								}) }
-							else {}
-						}
-					}
+					expr_types << expr
 				}
 				ast.EnumVal {
 					key = expr.val
@@ -3500,6 +3481,58 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
 			}
 			branch_exprs[key] = val + 1
+		}
+		if expr_types.len > 0 {
+			if cond_type_sym.kind == .union_sum_type {
+				mut expr_type := table.Type(0)
+				if expr_types.len > 1 {
+					mut agg_name := strings.new_builder(20)
+					agg_name.write('(')
+					for i, expr in expr_types {
+						if i > 0 {
+							agg_name.write(' | ')
+						}
+						type_str := c.table.type_to_str(expr.typ)
+						agg_name.write(if c.is_builtin_mod {
+							type_str
+						} else {
+							'${c.mod}.$type_str'
+						})
+					}
+					agg_name.write(')')
+					name := agg_name.str()
+					expr_type = c.table.register_type_symbol(table.TypeSymbol{
+						name: name
+						source_name: name
+						kind: .aggregate
+						mod: c.mod
+						info: table.Aggregate{
+							types: expr_types.map(it.typ)
+						}
+					})
+				} else {
+					expr_type = expr_types[0].typ
+				}
+				mut scope := c.file.scope.innermost(branch.pos.pos)
+				match node.cond as node_cond {
+					ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
+							struct_type: node_cond.expr_type
+							name: node_cond.field_name
+							typ: node.cond_type
+							sum_type_cast: expr_type
+							pos: node_cond.pos
+						}) }
+					ast.Ident { scope.register(node.var_name, ast.Var{
+							name: node.var_name
+							typ: node.cond_type
+							pos: node_cond.pos
+							is_used: true
+							is_mut: node.is_mut
+							sum_type_cast: expr_type
+						}) }
+					else {}
+				}
+			}
 		}
 	}
 	// check that expressions are exhaustive
