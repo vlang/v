@@ -26,3 +26,4 @@ jobs:
         ./v run cmd/tools/check-md.v tutorials/building-a-simple-web-blog-with-vweb.md
         ./v run cmd/tools/check-md.v vlib/vweb/README.md vlib/pg/README.md vlib/sqlite/README.md vlib/encoding/csv/README.md vlib/rand/README.md vlib/flag/README.md vlib/vweb/tmpl/README.md vlib/benchmark/README.md vlib/net/html/README.md vlib/term/README.md vlib/term/ui/README.md vlib/eventbus/README.md vlib/x/json2/README.md
         ./v run cmd/tools/check-md.v vlib/strconv/format.md vlib/sync/bench/results.md
+        ./v run cmd/tools/check-md.v vlib/v/tests/project_with_modules_having_submodules/README.md vlib/v/tests/project_with_tests_for_main/README.md vlib/v/tests/repl/README.md
