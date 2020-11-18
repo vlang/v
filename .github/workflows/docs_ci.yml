@@ -28,3 +28,4 @@ jobs:
         ./v run cmd/tools/check-md.v vlib/strconv/format.md vlib/sync/bench/results.md
         ./v run cmd/tools/check-md.v vlib/v/tests/project_with_modules_having_submodules/README.md vlib/v/tests/project_with_tests_for_main/README.md vlib/v/tests/repl/README.md
         ./v run cmd/tools/check-md.v examples/2048/README.md examples/vcasino/README.md
+        ./v run cmd/tools/check-md.v cmd/tools/preludes/README.md
