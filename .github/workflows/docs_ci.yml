@@ -21,4 +21,4 @@ jobs:
       run: make
     - name: Check docs line length & code examples
       run: |
-        ./v run cmd/tools/check-md.v
+        ./v run cmd/tools/check-md.v -all

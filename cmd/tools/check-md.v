@@ -11,7 +11,7 @@ const (
 )
 
 fn main() {
-	files_paths := md_file_paths()
+	files_paths := if '-all' in os.args { md_file_paths() } else { os.args[1..] }
 	mut warnings := 0
 	mut errors := 0
 	mut oks := 0
@@ -34,7 +34,7 @@ fn main() {
 				} else if mdfile.state == .codeblock {
 					println(wline(file_path, i, line.len, 'long code block line'))
 					warnings++
-				}  else if line.starts_with('|') {
+				} else if line.starts_with('|') {
 					println(wline(file_path, i, line.len, 'long table'))
 					warnings++
 				} else if line.contains('https') {
