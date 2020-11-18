@@ -861,6 +861,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	}
+	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
+	if c.table.type_kind(left_type) == .union_sum_type {
+		c.error('cannot use operator `$infix_expr.op` with `$left.name`', infix_expr.pos)
+	} else if c.table.type_kind(right_type) == .union_sum_type {
+		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
+	}
 	// Dual sides check (compatibility check)
 	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
@@ -3032,7 +3038,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type &&
-		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
+		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr, .bool] ||
 		(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
