@@ -29,9 +29,12 @@ fn main() {
 		for i, line in lines {
 			if line.len > too_long_line_length {
 				if mdfile.state == .vexample {
-					println(wline(file_path, i, line.len, 'long code example line'))
+					println(wline(file_path, i, line.len, 'long V example line'))
 					warnings++
-				} else if line.starts_with('|') {
+				} else if mdfile.state == .codeblock {
+					println(wline(file_path, i, line.len, 'long code block line'))
+					warnings++
+				}  else if line.starts_with('|') {
 					println(wline(file_path, i, line.len, 'long table'))
 					warnings++
 				} else if line.contains('https') {
@@ -103,6 +106,7 @@ mut:
 enum MDFileParserState {
 	markdown
 	vexample
+	codeblock
 }
 
 struct MDFile {
@@ -128,12 +132,19 @@ fn (mut f MDFile) parse_line(lnumber int, line string) {
 		}
 		return
 	}
-	if line.starts_with('```') && f.state == .vexample {
-		f.state = .markdown
-		f.current.eline = lnumber
-		f.examples << f.current
-		f.current = VCodeExample{}
-		return
+	if line.starts_with('```') {
+		if f.state == .vexample {
+			f.state = .markdown
+			f.current.eline = lnumber
+			f.examples << f.current
+			f.current = VCodeExample{}
+			return
+		} else if f.state == .codeblock {
+			f.state = .markdown
+			return
+		} else {
+			f.state = .codeblock
+		}
 	}
 	if f.state == .vexample {
 		f.current.text << line
