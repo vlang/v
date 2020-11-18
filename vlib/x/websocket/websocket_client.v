@@ -26,7 +26,6 @@ mut:
 	ssl_conn          &openssl.SSLConn
 	flags             []Flag
 	fragments         []Fragment
-	logger            &log.Log
 	message_callbacks []MessageEventHandler
 	error_callbacks   []ErrorEventHandler
 	open_callbacks    []OpenEventHandler
@@ -40,6 +39,7 @@ pub mut:
 	nonce_size        int = 16 // you can try 18 too
 	panic_on_callback bool
 	state             State
+	logger            &log.Log
 	resource_name     string
 	last_pong_ut      u64
 }
