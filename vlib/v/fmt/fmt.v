@@ -1349,7 +1349,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	f.expr_bufs << f.out.str()
 	mut penalty := 3
-	match union node.left {
+	match union mut node.left {
 		ast.InfixExpr {
 			if int(token.precedences[node.left.op]) > int(token.precedences[node.op]) {
 				penalty--
