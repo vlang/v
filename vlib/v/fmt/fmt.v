@@ -495,6 +495,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 }
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
+	mut comments := []ast.Comment{}
 	match node {
 		ast.AliasTypeDecl {
 			if node.is_pub {
@@ -502,6 +503,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			ptype := f.table.type_to_str(node.parent_type)
 			f.write('type $node.name = $ptype')
+			comments << node.comments
 		}
 		ast.FnTypeDecl {
 			if node.is_pub {
@@ -544,7 +546,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			} else if fn_info.return_type.has_flag(.optional) {
 				f.write(' ?')
 			}
-			f.comments(node.comments, CommentsOptions{})
+			comments << node.comments
 		}
 		ast.SumTypeDecl {
 			if node.is_pub {
@@ -564,7 +566,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.wrap_long_line(2, true)
 			}
 			// f.write(sum_type_names.join(' | '))
-			f.comments(node.comments, CommentsOptions{})
+			comments << node.comments
 		}
 		ast.UnionSumTypeDecl {
 			if node.is_pub {
@@ -584,8 +586,12 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.wrap_long_line(2, true)
 			}
 			// f.write(sum_type_names.join(' | '))
-			f.comments(node.comments, CommentsOptions{})
+			comments << node.comments
 		}
+	}
+	if comments.len > 0 {
+		f.write(' ')
+		f.comments(comments, CommentsOptions{})
 	}
 	f.writeln('')
 }
