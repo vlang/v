@@ -284,8 +284,9 @@ pub mut:
 // break, continue
 pub struct BranchStmt {
 pub:
-	kind token.Kind
-	pos  token.Position
+	kind  token.Kind
+	label string
+	pos   token.Position
 }
 
 pub struct CallExpr {
@@ -626,6 +627,8 @@ pub:
 	stmts  []Stmt
 	is_inf bool // `for {}`
 	pos    token.Position
+pub mut:
+	label  string // `label: for {`
 }
 
 pub struct ForInStmt {
@@ -644,6 +647,7 @@ pub mut:
 	val_type   table.Type
 	cond_type  table.Type
 	kind       table.Kind // array/map/string
+	label      string // `label: for {`
 }
 
 pub struct ForCStmt {
@@ -656,6 +660,8 @@ pub:
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
+pub mut:
+	label    string // `label: for {`
 }
 
 // #include etc
