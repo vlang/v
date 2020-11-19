@@ -591,7 +591,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	}
 	if comments.len > 0 {
 		f.write(' ')
-		f.comments(comments, CommentsOptions{ has_nl: false })
+		f.comments(comments, CommentsOptions{
+			has_nl: false
+		})
 	}
 	f.writeln('\n')
 }
