@@ -3522,8 +3522,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							table.Field{}
 						}
 						is_mut := field.is_mut
-						is_root_mut := scope.is_selector_root_mutable(c.table,
-							node_cond)
+						is_root_mut := scope.is_selector_root_mutable(c.table, node_cond)
+						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_root_mut && !is_mut) || node.is_mut {
 							scope.register_struct_field(ast.ScopeStructField{
 								struct_type: node_cond.expr_type
@@ -3539,6 +3539,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						if v := scope.find_var(node_cond.name) {
 							is_mut = v.is_mut
 						}
+						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if !is_mut || node.is_mut {
 							scope.register(node.var_name, ast.Var{
 								name: node.var_name
@@ -3781,7 +3782,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								if v := scope.find_var(infix_left.name) {
 									is_mut = v.is_mut
 								}
-								if (!is_mut || branch.mut_name) && left_sym.kind == .union_sum_type {
+								// smartcast either if the value is immutable or if the mut argument is explicitly given
+								if (!is_mut || branch.is_mut_name) &&
+									left_sym.kind == .union_sum_type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
@@ -3799,7 +3802,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								is_mut = field.is_mut
 								is_root_mut := scope.is_selector_root_mutable(c.table,
 									selector)
-								if ((!is_root_mut && !is_mut) || branch.mut_name) && left_sym.kind == .union_sum_type {
+								// smartcast either if the value is immutable or if the mut argument is explicitly given
+								if ((!is_root_mut && !is_mut) ||
+									branch.is_mut_name) &&
+									left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: selector.expr_type
 										name: selector.field_name

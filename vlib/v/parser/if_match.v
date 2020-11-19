@@ -86,9 +86,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		comments << p.eat_comments()
 		// `if mut name is T`
-		mut mut_name := false
+		mut is_mut_name := false
 		if p.tok.kind == .key_mut && p.peek_tok2.kind == .key_is {
-			mut_name = true
+			is_mut_name = true
 			p.next()
 			comments << p.eat_comments()
 		}
@@ -150,7 +150,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
 			left_as_name: left_as_name
-			mut_name: mut_name
+			is_mut_name: is_mut_name
 		}
 		comments = p.eat_comments()
 		if is_comptime {
