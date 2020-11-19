@@ -591,9 +591,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	}
 	if comments.len > 0 {
 		f.write(' ')
-		f.comments(comments, CommentsOptions{})
+		f.comments(comments, CommentsOptions{ has_nl: false })
 	}
-	f.writeln('')
+	f.writeln('\n')
 }
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
