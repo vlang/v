@@ -3,16 +3,15 @@ name: CI
 on:
   push:
     paths-ignore:
-      - "doc/**"
-      - "CHANGELOG.md"
+      - "**.md"
   pull_request:
     paths-ignore:
-      - "doc/**"
-      - "CHANGELOG.md"
+      - "**.md"
 
 jobs:
   code-formatting:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -21,13 +20,14 @@ jobs:
       run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
     - name: Build local v
       run: make -j4
-    - name: v test-vet
-      run: ./v -silent test-vet
+    - name: v test-cleancode
+      run: ./v -silent test-cleancode
     - name: v test-fmt
       run: ./v -silent test-fmt
 
 #  v-fmt:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    steps:
 #    - uses: actions/checkout@v2
 #    - name: getting all branch metainfo from github
@@ -45,6 +45,7 @@ jobs:
 
   performance-regressions:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -68,6 +69,7 @@ jobs:
 
   ubuntu-tcc:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -105,6 +107,7 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:alpine-build
       env:
@@ -125,6 +128,7 @@ jobs:
 
   macos:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [macOS-latest]
@@ -172,10 +176,10 @@ jobs:
       run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
-    - name: Test vid
+    - name: Test ved
       run: |
-        git clone --depth 1 https://github.com/vlang/vid
-        cd vid && ../v -o vid .
+        git clone --depth 1 https://github.com/vlang/ved
+        cd ved && ../v -o ved .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui
@@ -187,6 +191,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
@@ -211,8 +216,6 @@ jobs:
 #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
 #    - name: Build vpm
 #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-#    - name: Build V UI examples
-#      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
 #    - name: Freestanding
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
@@ -264,6 +267,7 @@ jobs:
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    env:
 #      VFLAGS: -cc gcc
 #    steps:
@@ -278,6 +282,7 @@ jobs:
   ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -299,6 +304,7 @@ jobs:
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
+#     timeout-minutes: 30
 #     env:
 #       VFLAGS: -cc musl-gcc
 #       V_CI_MUSL: 1
@@ -326,6 +332,7 @@ jobs:
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
 #    - name: Cross-compile V
@@ -333,6 +340,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc gcc
     steps:
@@ -367,6 +375,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc msvc
     steps:
@@ -402,6 +411,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     # We are simulating a user with no cc installed.
     # This way, v's cc detection on Windows is also tested.
     # env:
@@ -442,6 +452,7 @@ jobs:
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -468,6 +479,7 @@ jobs:
 
   ubuntu-c-plus-plus:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -489,6 +501,7 @@ jobs:
 
   install-modules:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -502,6 +515,7 @@ jobs:
 
   gitly-compiles:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -521,6 +535,7 @@ jobs:
   websocket_autobahn:
     name: Autobahn integrations tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v2

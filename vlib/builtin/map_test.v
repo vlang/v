@@ -339,3 +339,17 @@ fn test_mut_map_with_relation_op_in_fn() {
 	assert 'seven' in m
 	assert 'eight' in m
 }
+
+fn test_map_str_after_delete() {
+	mut m := {
+		'first': 1,
+		'second': 2,
+		'third': 3,
+	}
+	osm := '$m'
+	m.delete('second')
+	nsm := '$m'
+    println('m: $m')
+	assert osm == "{'first': 1, 'second': 2, 'third': 3}"
+	assert nsm == "{'first': 1, 'third': 3}"
+}

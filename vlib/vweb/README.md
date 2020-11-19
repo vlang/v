@@ -18,7 +18,7 @@ There's also the V forum: https://github.com/vlang/vorum
 
 `vorum.v` contains all GET and POST actions.
 
-```Go
+```v ignore
 pub fn (app mut App) index() {
 	posts := app.find_all_posts()
 	$vweb.html()
@@ -52,7 +52,8 @@ pub fn (app App) post() {
 @end
 ```
 
-`$vweb.html()` compiles an HTML template into V during compilation, and embeds the resulting code in current action.
+`$vweb.html()` compiles an HTML template into V during compilation, 
+and embeds the resulting code in current action.
 
 That means that the template automatically has access to that action's entire environment.
 
@@ -60,4 +61,3 @@ That means that the template automatically has access to that action's entire en
 ### Deploying vweb apps
 
 Everything, including HTML templates, is in one binary file. That's all you need to deploy.
-

@@ -122,6 +122,11 @@ mut:
 	// doing_autofree_tmp    bool
 	inside_lambda                    bool
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
+	// used in match multi branch
+	// TypeOne, TypeTwo {}
+	// where an aggregate (at least two types) is generated
+	// sum type deref needs to know which index to deref because unions take care of the correct field
+	aggregate_type_idx               int
 }
 
 const (
@@ -370,6 +375,22 @@ pub fn (mut g Gen) write_typeof_functions() {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
+			g.writeln('	switch(sidx) {')
+			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
+			for v in sum_info.variants {
+				subtype := g.table.get_type_symbol(v)
+				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('	}')
+			g.writeln('}')
+		}
+	}
+	for typ in g.table.types {
+		if typ.kind == .union_sum_type {
+			sum_info := typ.info as table.UnionSumType
+			tidx := g.table.find_type_idx(typ.name)
+			g.writeln('char * v_typeof_unionsumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
 			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
@@ -750,12 +771,15 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		// use the first stmt to get the scope
 		stmt := stmts[0]
 		// stmt := stmts[stmts.len-1]
-		if stmt !is ast.FnDecl {
+		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
 			// g.writeln('// autofree scope')
 			// g.writeln('// autofree_scope_vars($stmt.position().pos) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
-			g.autofree_scope_vars(stmt.position().pos - 1)
+			// g.autofree_scope_vars(stmt.position().pos - 1)
+			stmt_pos := stmt.position()
+			g.writeln('// af scope_vars')
+			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr)
 		}
 	}
 }
@@ -1009,6 +1033,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
 				}
 				// g.autofree_scope_vars(node.pos.pos - 1)
+				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node, af)
@@ -2004,7 +2029,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-fn (mut g Gen) autofree_scope_vars(pos int) {
+fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
@@ -2012,10 +2037,12 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
-	g.autofree_scope_vars2(scope, scope.end_pos)
+	// g.autofree_scope_vars2(scope, scope.end_pos)
+	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr)
 }
 
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+// fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int) {
 	if isnil(scope) {
 		return
 	}
@@ -2028,7 +2055,8 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 				// continue
 				// }
 				v := *obj
-				if v.pos.pos > end_pos {
+				// if v.pos.pos > end_pos {
+				if v.pos.pos > end_pos || (v.pos.pos < start_pos && v.pos.line_nr == line_nr) {
 					// Do not free vars that were declared after this scope
 					continue
 				}
@@ -2050,8 +2078,11 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 	// return
 	// }
 	// ```
+	// if !isnil(scope.parent) && line_nr > 0 {
 	if !isnil(scope.parent) {
 		// g.autofree_scope_vars2(scope.parent, end_pos)
+		g.writeln('// af parent scope:')
+		// g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
 	}
 }
 
@@ -2486,7 +2517,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 						if field := scope.find_struct_field(node.expr_type, node.field_name) {
 							// union sum type deref
 							g.write('(*')
-							sum_type_deref_field = '_$field.sum_type_cast'
+							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
+							if cast_sym.info is table.Aggregate as sym_info {
+								sum_type_deref_field = '_${sym_info.types[g.aggregate_type_idx]}'
+							} else {
+								sum_type_deref_field = '_$field.sum_type_cast'
+							}
 						}
 					}
 				}
@@ -2563,6 +2599,13 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
 		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
+		g.expr(node.expr)
+		g.write(').typ ))')
+	} else if sym.kind == .union_sum_type {
+		// When encountering a .sum_type, typeof() should be done at runtime,
+		// because the subtype of the expression may change:
+		sum_type_idx := node.expr_type.idx()
+		g.write('tos3( /* $sym.name */ v_typeof_unionsumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {
@@ -2966,6 +3009,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
+			g.aggregate_type_idx = sumtype_index
 			is_last := j == node.branches.len - 1
 			sym := g.table.get_type_symbol(node.cond_type)
 			if branch.is_else || (node.is_expr && is_last) {
@@ -3033,6 +3077,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				break
 			}
 		}
+		// reset global field for next use
+		g.aggregate_type_idx = 0
 	}
 }
 
@@ -3299,7 +3345,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 		if v := scope.find_var(node.name) {
 			if v.sum_type_cast != 0 {
 				if !prevent_sum_type_unwrapping_once {
-					g.write('(*${name}._$v.sum_type_cast)')
+					sym := g.table.get_type_symbol(v.sum_type_cast)
+					if sym.info is table.Aggregate as sym_info {
+						g.write('(*${name}._${sym_info.types[g.aggregate_type_idx]})')
+					} else {
+						g.write('(*${name}._$v.sum_type_cast)')
+					}
 					return
 				}
 			}
@@ -3387,6 +3438,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.writeln('$styp $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
+		// g.inside_if_expr = true
 		g.write('(')
 		for i, branch in node.branches {
 			if i > 0 {
@@ -3758,6 +3810,10 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 	defer {
 		g.inside_return = false
 	}
+	if af {
+		tmp := g.new_tmp_var()
+		g.writeln('// $tmp = ...')
+	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
@@ -3920,7 +3976,7 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 		}
 		if free {
 			g.writeln('; // free tmp exprs')
-			g.autofree_scope_vars(node.pos.pos + 1)
+			g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr)
 			g.write('return $tmp')
 		}
 	} else {
@@ -5293,7 +5349,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.interface_, .union_sum_type, .sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}

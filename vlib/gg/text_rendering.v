@@ -217,6 +217,11 @@ fn get_font_path_variant(font_path string, variant FontVariant) string {
 			} else {
 				fpath += '-bold'
 			}
+			$if macos {
+				if os.exists('SFNS-bold') {
+					fpath = 'SFNS-bold'
+				}
+			}
 		}
 		.italic {
 			if fpath.ends_with('-Regular') {

@@ -620,6 +620,10 @@ pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
+pub fn (mut a array) grow(amount int) {
+	a.ensure_cap(a.len + amount)
+}
+
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
 // []int == []int (also for: i64, f32, f64, byte, string)
 /*

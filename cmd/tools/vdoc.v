@@ -16,6 +16,7 @@ import v.token
 import v.vmod
 import v.pref
 import json
+import io
 
 enum HighlightTokenTyp {
 	unone
@@ -154,7 +155,7 @@ fn (mut cfg DocConfig) serve_html() {
 	}
 	def_name := docs.keys()[0]
 	server_url := 'http://localhost:' + cfg.server_port.str()
-	server := net.listen(cfg.server_port) or {
+	server := net.listen_tcp(cfg.server_port) or {
 		panic(err)
 	}
 	println('Serving docs on: $server_url')
@@ -173,12 +174,12 @@ fn (mut cfg DocConfig) serve_html() {
 		default_filename: def_name
 	}
 	for {
-		mut con := server.accept() or {
+		mut conn := server.accept() or {
 			server.close() or { }
 			panic(err)
 		}
-		handle_http_connection(mut con, server_context)
-		con.close() or {
+		handle_http_connection(mut conn, server_context)
+		conn.close() or {
 			eprintln('error closing the connection: $err')
 		}
 	}
@@ -190,10 +191,9 @@ struct VdocHttpServerContext {
 	default_filename string
 }
 
-fn handle_http_connection(mut con net.Socket, ctx &VdocHttpServerContext) {
-	s := con.read_line()
-	first_line := s.all_before('\r\n')
-	if first_line.len == 0 {
+fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
+	mut reader := io.new_buffered_reader(reader: io.make_reader(con))
+	first_line := reader.read_line() or {
 		send_http_response(mut con, 501, ctx.content_type, 'bad request')
 		return
 	}
@@ -211,7 +211,7 @@ fn handle_http_connection(mut con net.Socket, ctx &VdocHttpServerContext) {
 	send_http_response(mut con, 200, ctx.content_type, ctx.docs[filename])
 }
 
-fn send_http_response(mut con net.Socket, http_code int, content_type string, html string) {
+fn send_http_response(mut con net.TcpConn, http_code int, content_type string, html string) {
 	content_length := html.len.str()
 	shttp_code := http_code.str()
 	mut http_response := strings.new_builder(20000)
@@ -229,7 +229,7 @@ fn send_http_response(mut con net.Socket, http_code int, content_type string, ht
 	http_response.write('\r\n')
 	http_response.write(html)
 	sresponse := http_response.str()
-	con.send_string(sresponse) or {
+	con.write_str(sresponse) or {
 		eprintln('error sending http response: $err')
 	}
 }
@@ -1031,7 +1031,7 @@ fn main() {
 	}
 	is_path := cfg.input_path.ends_with('.v') || cfg.input_path.split(os.path_separator).len >
 		1 || cfg.input_path == '.'
-	if cfg.input_path == 'vlib' {
+	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true
 		cfg.input_path = os.join_path(vexe_path, 'vlib')

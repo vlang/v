@@ -7,7 +7,7 @@
 // check with valgrind if you do any changes in the free calls
 module websocket
 
-import x.net
+import net
 import x.openssl
 import net.urllib
 import time
@@ -26,7 +26,6 @@ mut:
 	ssl_conn          &openssl.SSLConn
 	flags             []Flag
 	fragments         []Fragment
-	logger            &log.Log
 	message_callbacks []MessageEventHandler
 	error_callbacks   []ErrorEventHandler
 	open_callbacks    []OpenEventHandler
@@ -40,6 +39,7 @@ pub mut:
 	nonce_size        int = 16 // you can try 18 too
 	panic_on_callback bool
 	state             State
+	logger            &log.Log
 	resource_name     string
 	last_pong_ut      u64
 }
@@ -98,6 +98,8 @@ pub fn (mut ws Client) connect() ? {
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
+	ws.conn.set_read_timeout(net.infinite_timeout)
+	ws.conn.set_write_timeout(net.infinite_timeout)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')

@@ -111,7 +111,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 	mut msg := [1024]byte{}
 	mut buffer := [1]byte{}
 	for total_bytes_read < 1024 {
-		bytes_read := ws.socket_read_into_ptr(byteptr(&buffer), 1) ?
+		bytes_read := ws.socket_read_ptr(byteptr(&buffer), 1) ?
 		if bytes_read == 0 {
 			return error_with_code('unexpected no response from handshake', 5)
 		}

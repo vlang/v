@@ -9,15 +9,12 @@ on:
 jobs:
    build-linux:
      runs-on: ubuntu-latest
-     strategy:
-       matrix:
-         compiler: [gcc]
- 
+     timeout-minutes: 30      
+     env:
+       CC: gcc
      steps:
      - uses: actions/checkout@v1
      - name: Compile
-       env:
-         CC: ${{ matrix.compiler }}
        run: make
 ##     - name: Create artifact
 ##       uses: actions/upload-artifact@v2
@@ -38,15 +35,11 @@ jobs:
 ## 
 ##   build-macos:
 ##     runs-on: macos-latest
-##     strategy:
-##       matrix:
-##         compiler: [clang]
-## 
+##     env:
+##       CC: clang
 ##     steps:
 ##     - uses: actions/checkout@v1
 ##     - name: Compile
-##       env:
-##         CC: ${{ matrix.compiler }}
 ##       run: make
 ##     - name: Create artifact
 ##       uses: actions/upload-artifact@v2

@@ -1078,16 +1078,25 @@ References are similar to Go pointers and C++ references.
 V doesn't allow subclassing, but it supports embedded structs:
 
 ```v
+struct Widget {
+mut:
+	x int
+	y int
+}
+
 struct Button {
+mut:
     Widget
     title string
 }
 
-button := new_button('Click me')
-button.set_pos(x, y)
+mut button := Button{title: 'Click me'}
+button.x = 3
+```
+Without embedding we'd have to name the `Widget` field and do:
 
-// Without embedding we'd have to do
-button.widget.set_pos(x,y)
+```v oksyntax
+button.widget.x = 3
 ```
 
 ### Default field values
@@ -1561,25 +1570,33 @@ interface Speaker {
     speak() string
 }
 
-fn perform(s Speaker) string {
-    if s is Dog { // use `is` to check the underlying type of an interface
-        println('perform(dog)')
-        println(s.breed) // `s` is automatically cast to `Dog` (smart cast)
-    } else if s is Cat {
-        println('perform(cat)')
-    }
-    return s.speak()
-}
-
 dog := Dog{'Leonberger'}
 cat := Cat{}
 
-println(perform(dog)) // "woof"
-println(perform(cat)) // "meow"
+mut arr := []Speaker{}
+arr << dog
+arr << cat
+for item in arr {
+    item.speak()
+}
 ```
 
 A type implements an interface by implementing its methods.
 There is no explicit declaration of intent, no "implements" keyword.
+
+We can test the underlying type of an interface using dynamic cast operators:
+```v oksyntax
+fn announce(s Speaker) {
+    if s is Dog {
+        println('a $s.breed') // `s` is automatically cast to `Dog` (smart cast)
+    } else if s is Cat {
+        println('a cat')
+    } else {
+        println('something else')
+    }
+}
+```
+For more information, see [Dynamic casts](#dynamic-casts).
 
 ### Enums
 
@@ -1617,8 +1634,13 @@ struct Venus {}
 type World = Moon | Mars | Venus
 
 sum := World(Moon{})
+assert sum.type_name() == 'Moon'
 println(sum)
 ```
+The built-in method `type_name` returns the name of the currently held 
+type.
+
+#### Dynamic casts
 
 To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
@@ -1627,9 +1649,11 @@ To cast a sum type to one of its variants you can use `sum as Type`:
 struct Moon {}
 struct Mars {}
 struct Venus {}
+
 type World = Moon | Mars | Venus
 
 fn (m Mars) dust_storm() bool { return true }
+
 fn main() {
     mut w := World(Moon{})
     assert w is Moon
@@ -1643,7 +1667,34 @@ fn main() {
 }
 ```
 
-### Matching sum types
+`as` will panic if `w` doesn't hold a `Mars` instance.
+A safer way is to use a smart cast.
+
+#### Smart casting
+
+```v oksyntax
+if w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` has type `Mars` inside the body of the `if` statement. This is 
+known as *flow-sensitive typing*. You can also specify a variable name:
+
+```v oksyntax
+if w is Mars as mars {
+    assert typeof(w).name == 'World'
+    if mars.dust_storm() {
+        println('bad weather!')
+    }
+}
+```
+`w` keeps its original type. This form is necessary if `w` is a more
+complex expression than just a variable name.
+
+#### Matching sum types
 
 You can also use `match` to determine the variant:
 
@@ -1651,8 +1702,11 @@ You can also use `match` to determine the variant:
 struct Moon {}
 struct Mars {}
 struct Venus {}
+
 type World = Moon | Mars | Venus
+
 fn open_parachutes(n int) { println(n) }
+
 fn land(w World) {
     match w {
         Moon {} // no atmosphere
@@ -2883,7 +2937,7 @@ Translating it to V gives you several advantages:
 
 ## Hot code reloading
 
-```v
+```v live
 module main
 
 import time

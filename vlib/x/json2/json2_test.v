@@ -69,6 +69,28 @@ fn test_fast_raw_decode() {
 	assert str == '{"name":"Peter","age":"28","salary":"95000.5","title":"2"}'
 }
 
+fn test_character_unescape() {
+	// Need to test `\r`, `\b`, `\f` ??
+	message := '{
+		"newline":"new\\nline", 
+		"tab":"\\ttab", 
+		"backslash": "back\\\\slash", 
+		"quotes": "\\"quotes\\"", 
+		"slash":"\/dev\/null"
+	}'
+	mut obj := json2.raw_decode(message) or {
+		assert false
+		json2.Any{}
+	}
+	lines := obj.as_map()
+	eprintln("$lines")
+	assert lines['newline'].str() == 'new\nline'
+	assert lines['tab'].str() == '\ttab'
+	assert lines['backslash'].str() == 'back\\slash'
+	assert lines['quotes'].str() == '\"quotes\"'
+	assert lines['slash'].str() == '/dev/null'
+}
+
 /*
 struct User2 {
 	age  int

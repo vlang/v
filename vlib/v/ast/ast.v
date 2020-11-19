@@ -170,6 +170,7 @@ pub struct StructDecl {
 pub:
 	pos          token.Position
 	name         string
+	gen_types    []table.Type
 	is_pub       bool
 	mut_pos      int // mut:
 	pub_pos      int // pub:
@@ -293,7 +294,7 @@ pub:
 	left               Expr // `user` in `user.register()`
 	mod                string
 pub mut:
-	name               string
+	name               string // left.name()
 	is_method          bool
 	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
 	args               []CallArg
@@ -305,6 +306,7 @@ pub mut:
 	return_type        table.Type
 	should_be_skipped  bool
 	generic_type       table.Type // TODO array, to support multiple types
+	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	// autofree_pregen    string
 	// autofree_vars      []AutofreeArgVar
@@ -531,7 +533,7 @@ pub:
 	body_pos     token.Position
 	comments     []Comment
 	left_as_name string // `name` in `if cond is SumType as name`
-	mut_name     bool // `if mut name is`
+	is_mut_name  bool // `if mut name is`
 pub mut:
 	stmts        []Stmt
 	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
@@ -573,6 +575,7 @@ pub mut:
 pub struct MatchBranch {
 pub:
 	exprs         []Expr // left side
+	ecmnts        [][]Comment // inline comments for each left side expr
 	stmts         []Stmt // right side
 	pos           token.Position
 	comments      []Comment // comment above `xxx {`
@@ -804,6 +807,7 @@ pub:
 	pos             token.Position
 	elem_type_pos   token.Position
 	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	ecmnts          [][]Comment // optional iembed comments after each expr
 	is_fixed        bool
 	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string

@@ -276,7 +276,12 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		if d.with_comments && (prev_comments.len > 0) {
 			// last_comment := contents[contents.len - 1].comment
 			// cmt := last_comment + '\n' + get_comment_block_right_before(prev_comments)
-			cmt := get_comment_block_right_before(prev_comments)
+			mut cmt := get_comment_block_right_before(prev_comments)
+			len := node.name.len
+			// fixed-width symbol name at start of comment
+			if cmt.starts_with(node.name) && cmt.len > len && cmt[len] == ` ` {
+				cmt = '`${cmt[..len]}`' + cmt[len..]
+			}
 			node.comment = cmt
 		}
 		prev_comments = []

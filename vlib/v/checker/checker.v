@@ -3,6 +3,7 @@
 module checker
 
 import os
+import strings
 import v.ast
 import v.vmod
 import v.table
@@ -860,6 +861,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
 	}
+	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
+	if c.table.type_kind(left_type) == .union_sum_type {
+		c.error('cannot use operator `$infix_expr.op` with `$left.name`', infix_expr.pos)
+	} else if c.table.type_kind(right_type) == .union_sum_type {
+		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
+	}
 	// Dual sides check (compatibility check)
 	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
@@ -1096,6 +1103,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type.has_flag(.optional) {
 		c.error('optional type cannot be called directly', call_expr.left.position())
 		return table.void_type
+	}
+	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
+		return table.string_type
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
@@ -1591,6 +1601,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 		}
 	}
+	if call_expr.generic_type.is_full() && !f.is_generic {
+		c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+	}
 	if f.is_generic {
 		return call_expr.return_type
 	}
@@ -1628,7 +1641,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 		if expr.return_type.has_flag(.optional) {
 			if expr.or_block.kind == .absent {
 				if ret_type != table.void_type {
-					c.error('${expr.name}() returns an option, but you missed to add an `or {}` block to it',
+					c.error('${expr.name}() returns an option but is missing an `or {}` block',
 						expr.pos)
 				}
 			} else {
@@ -1642,7 +1655,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 			c.error('unexpected `or` block, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		} else if expr.or_block.kind == .propagate {
-			c.error('unexpected `?`, the function `$expr.name`, does not return an optional',
+			c.error('unexpected `?`, the function `$expr.name` does not return an optional',
 				expr.or_block.pos)
 		}
 	}
@@ -1652,7 +1665,7 @@ pub fn (mut c Checker) check_expr_opt_call(expr ast.Expr, ret_type table.Type) t
 pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, expr_return_type table.Type) {
 	if or_expr.kind == .propagate {
 		if !c.cur_fn.return_type.has_flag(.optional) && c.cur_fn.name != 'main.main' {
-			c.error('to propagate the optional call, `$c.cur_fn.name` must itself return an optional',
+			c.error('to propagate the optional call, `$c.cur_fn.name` must return an optional',
 				or_expr.pos)
 		}
 		return
@@ -2115,6 +2128,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		left_type_unwrapped := c.unwrap_generic(left_type)
 		right_type_unwrapped := c.unwrap_generic(right_type)
+		if right_type_unwrapped == 0 {
+			// right type was a generic `T`
+			continue
+		}
 		left_sym := c.table.get_type_symbol(left_type_unwrapped)
 		right_sym := c.table.get_type_symbol(right_type_unwrapped)
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
@@ -2189,44 +2206,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder {
-			// Assign to sum type if ordinary value
-			mut final_left_type := left_type_unwrapped
-			mut scope := c.file.scope.innermost(left.position().pos)
-			match union left {
-				ast.SelectorExpr {
-					if _ := scope.find_struct_field(left.expr_type, left.field_name) {
-						final_left_type = right_type_unwrapped
-						mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-						inner_scope.register_struct_field(ast.ScopeStructField{
-							struct_type: left.expr_type
-							name: left.field_name
-							typ: final_left_type
-							sum_type_cast: right_type_unwrapped
-							pos: left.pos
-						})
-					}
-				}
-				ast.Ident {
-					if v := scope.find_var(left.name) {
-						if v.sum_type_cast != 0 &&
-							c.table.sumtype_has_variant(final_left_type, right_type_unwrapped) {
-							final_left_type = right_type_unwrapped
-							mut inner_scope := c.open_scope(mut scope, left.pos.pos)
-							inner_scope.register(left.name, ast.Var{
-								name: left.name
-								typ: final_left_type
-								pos: left.pos
-								is_used: true
-								is_mut: left.is_mut
-								sum_type_cast: right_type_unwrapped
-							})
-						}
-					}
-				}
-				else {}
-			}
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, final_left_type) or {
+			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
 			}
 		}
@@ -2323,10 +2304,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			if !c.check_types(typ, elem_type) {
-				elem_type_sym := c.table.get_type_symbol(elem_type)
-				c.error('expected array element with type `$elem_type_sym.source_name`',
-					array_init.pos)
+			c.check_expected(typ, elem_type) or {
+				c.error('invalid array element: $err', expr.position())
 			}
 		}
 		if expecting_interface_array {
@@ -3058,7 +3037,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 				node.pos)
 		}
 	} else if node.typ == table.string_type &&
-		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr] ||
+		(from_type_sym.kind in [.any_int, .int, .byte, .byteptr, .bool] ||
 		(from_type_sym.kind == .array && from_type_sym.name == 'array_byte')) {
 		type_name := c.table.type_to_str(node.expr_type)
 		c.error('cannot cast type `$type_name` to string, use `x.str()` instead', node.pos)
@@ -3353,8 +3332,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	c.match_exprs(mut node, cond_type_sym)
 	c.expected_type = cond_type
 	mut ret_type := table.void_type
-	mut require_return := false
-	mut branch_without_return := false
+	mut nbranches_with_return := 0
+	mut nbranches_without_return := 0
 	for branch in node.branches {
 		c.stmts(branch.stmts)
 		if node.is_expr && branch.stmts.len > 0 {
@@ -3388,17 +3367,21 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		}
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
-				require_return = true
+				nbranches_with_return++
 			} else {
-				branch_without_return = true
+				nbranches_without_return++
 			}
 		}
 	}
-	if require_return && branch_without_return {
-		c.returns = false
-	} else {
-		// if inner if branch has not covered all branches but this one
-		c.returns = true
+	if nbranches_with_return > 0 {
+		if nbranches_with_return == node.branches.len {
+			// an exhaustive match, and all branches returned
+			c.returns = true
+		}
+		if nbranches_without_return > 0 {
+			// some of the branches did not return
+			c.returns = false
+		}
 	}
 	// if ret_type != table.void_type {
 	// node.is_expr = c.expected_type != table.void_type
@@ -3419,6 +3402,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	mut branch_exprs := map[string]int{}
 	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch in node.branches {
+		mut expr_types := []ast.Type{}
 		for expr in branch.exprs {
 			mut key := ''
 			if expr is ast.RangeExpr {
@@ -3458,27 +3442,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			match union expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
-					if branch.exprs.len == 1 && cond_type_sym.kind == .union_sum_type {
-						mut scope := c.file.scope.innermost(branch.pos.pos)
-						match union node.cond {
-							ast.SelectorExpr { scope.register_struct_field(ast.ScopeStructField{
-									struct_type: node.cond.expr_type
-									name: node.cond.field_name
-									typ: node.cond_type
-									sum_type_cast: expr.typ
-									pos: node.cond.pos
-								}) }
-							ast.Ident { scope.register(node.var_name, ast.Var{
-									name: node.var_name
-									typ: node.cond_type
-									pos: node.cond.pos
-									is_used: true
-									is_mut: node.is_mut
-									sum_type_cast: expr.typ
-								}) }
-							else {}
-						}
-					}
+					expr_types << expr
 				}
 				ast.EnumVal {
 					key = expr.val
@@ -3513,6 +3477,79 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
 			}
 			branch_exprs[key] = val + 1
+		}
+		// when match is sum type matching, then register smart cast for every branch
+		if expr_types.len > 0 {
+			if cond_type_sym.kind == .union_sum_type {
+				mut expr_type := table.Type(0)
+				if expr_types.len > 1 {
+					mut agg_name := strings.new_builder(20)
+					agg_name.write('(')
+					for i, expr in expr_types {
+						if i > 0 {
+							agg_name.write(' | ')
+						}
+						type_str := c.table.type_to_str(expr.typ)
+						agg_name.write(if c.is_builtin_mod {
+							type_str
+						} else {
+							'${c.mod}.$type_str'
+						})
+					}
+					agg_name.write(')')
+					name := agg_name.str()
+					expr_type = c.table.register_type_symbol(table.TypeSymbol{
+						name: name
+						source_name: name
+						kind: .aggregate
+						mod: c.mod
+						info: table.Aggregate{
+							types: expr_types.map(it.typ)
+						}
+					})
+				} else {
+					expr_type = expr_types[0].typ
+				}
+				mut scope := c.file.scope.innermost(branch.pos.pos)
+				match node.cond as node_cond {
+					ast.SelectorExpr {
+						expr_sym := c.table.get_type_symbol(node_cond.expr_type)
+						field := c.table.struct_find_field(expr_sym, node_cond.field_name) or {
+							table.Field{}
+						}
+						is_mut := field.is_mut
+						is_root_mut := scope.is_selector_root_mutable(c.table, node_cond)
+						// smartcast either if the value is immutable or if the mut argument is explicitly given
+						if (!is_root_mut && !is_mut) || node.is_mut {
+							scope.register_struct_field(ast.ScopeStructField{
+								struct_type: node_cond.expr_type
+								name: node_cond.field_name
+								typ: node.cond_type
+								sum_type_cast: expr_type
+								pos: node_cond.pos
+							})
+						}
+					}
+					ast.Ident {
+						mut is_mut := false
+						if v := scope.find_var(node_cond.name) {
+							is_mut = v.is_mut
+						}
+						// smartcast either if the value is immutable or if the mut argument is explicitly given
+						if !is_mut || node.is_mut {
+							scope.register(node.var_name, ast.Var{
+								name: node.var_name
+								typ: node.cond_type
+								pos: node_cond.pos
+								is_used: true
+								is_mut: node.is_mut
+								sum_type_cast: expr_type
+							})
+						}
+					}
+					else {}
+				}
+			}
 		}
 	}
 	// check that expressions are exhaustive
@@ -3688,8 +3725,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	expr_required := c.expected_type != table.void_type
 	former_expected_type := c.expected_type
 	node.typ = table.void_type
-	mut require_return := false
-	mut branch_without_return := false
+	mut nbranches_with_return := 0
+	mut nbranches_without_return := 0
 	mut should_skip := false // Whether the current branch should be skipped
 	mut found_branch := false // Whether a matching branch was found- skip the rest
 	for i in 0 .. node.branches.len {
@@ -3742,7 +3779,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								if v := scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
 								}
-								if left_sym.kind == .union_sum_type {
+								// smartcast either if the value is immutable or if the mut argument is explicitly given
+								if (!is_mut || branch.is_mut_name) &&
+									left_sym.kind == .union_sum_type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
@@ -3753,11 +3792,17 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									})
 								}
 							} else if infix.left is ast.SelectorExpr {
-								field := c.table.struct_find_field(left_sym, infix.left.field_name) or {
+								expr_sym := c.table.get_type_symbol(selector.expr_type)
+								field := c.table.struct_find_field(expr_sym, infix.left.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
-								if left_sym.kind == .union_sum_type {
+								is_root_mut := scope.is_selector_root_mutable(c.table,
+									selector)
+								// smartcast either if the value is immutable or if the mut argument is explicitly given
+								if ((!is_root_mut && !is_mut) ||
+									branch.is_mut_name) &&
+									left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: infix.left.expr_type
 										name: infix.left.field_name
@@ -3855,17 +3900,25 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
 		if has_return := c.has_return(branch.stmts) {
 			if has_return {
-				require_return = true
+				nbranches_with_return++
 			} else {
-				branch_without_return = true
+				nbranches_without_return++
 			}
 		}
 	}
-	if require_return && (!node.has_else || branch_without_return) {
-		c.returns = false
-	} else {
-		// if inner if branch has not covered all branches but this one
-		c.returns = true
+	if nbranches_with_return > 0 {
+		if nbranches_with_return == node.branches.len {
+			// if/else... where all branches returned
+			c.returns = true
+		}
+		if !node.has_else {
+			// `if cond { return ... }` means that when cond is false, execution continues
+			c.returns = false
+		}
+		if nbranches_without_return > 0 {
+			// some of the branches did not return
+			c.returns = false
+		}
 	}
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.any_int_type {
@@ -4402,6 +4455,9 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
 		if sym.kind == .interface_ {
 			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
+		}
+		if sym.kind == .sum_type && node.name == 'type_name' {
+			c.error('method overrides built-in sum type method', node.pos)
 		}
 		// if sym.has_method(node.name) {
 		// c.warn('duplicate method `$node.name`', node.pos)
