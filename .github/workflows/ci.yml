@@ -170,7 +170,7 @@ jobs:
       run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
-    - name: Test vid
+    - name: Test ved
       run: |
         git clone --depth 1 https://github.com/vlang/ved
         cd ved && ../v -o ved .
