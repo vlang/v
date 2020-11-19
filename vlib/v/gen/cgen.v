@@ -938,6 +938,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForCStmt {
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
+			if node.label.len > 0 {
+				g.writeln('$node.label:')
+			}
 			g.write('for (')
 			if !node.has_init {
 				g.write('; ')
@@ -960,7 +963,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln(') {')
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
+			if node.label.len > 0 {
+				g.writeln('$node.label\__continue: {}')
+			}
 			g.writeln('}')
+			if node.label.len > 0 {
+				g.writeln('$node.label\__break: {}')
+			}
 		}
 		ast.ForInStmt {
 			g.write_v_source_line_info(node.pos)
@@ -973,9 +982,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				g.writeln('$node.label:')
 			}
 			g.writeln('for (;;) {')
-			if node.label.len > 0 {
-				g.writeln('\t$node.label\__continue: {}')
-			}
 			if !node.is_inf {
 				g.indent++
 				g.stmt_path_pos << g.out.len
@@ -986,6 +992,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
+			if node.label.len > 0 {
+				g.writeln('\t$node.label\__continue: {}')
+			}
 			g.writeln('}')
 			if node.label.len > 0 {
 				g.writeln('$node.label\__break: {}')

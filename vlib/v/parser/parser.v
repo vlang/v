@@ -596,9 +596,20 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					p.next()
 					if p.tok.kind == .key_for {
 						mut stmt := p.stmt(is_top_level)
-						if stmt is ast.ForStmt {
-							stmt.label = name
-							return *stmt
+						match mut stmt {
+							ast.ForStmt {
+								stmt.label = name
+								return *stmt
+							}
+							ast.ForInStmt {
+								stmt.label = name
+								return *stmt
+							}
+							ast.ForCStmt {
+								stmt.label = name
+								return *stmt
+							}
+							else {assert false}
 						}
 					}
 					return ast.GotoLabel{

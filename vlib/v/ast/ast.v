@@ -647,6 +647,7 @@ pub mut:
 	val_type   table.Type
 	cond_type  table.Type
 	kind       table.Kind // array/map/string
+	label  string // `label: for {`
 }
 
 pub struct ForCStmt {
@@ -659,6 +660,8 @@ pub:
 	has_inc  bool
 	stmts    []Stmt
 	pos      token.Position
+pub mut:
+	label  string // `label: for {`
 }
 
 // #include etc

@@ -8,3 +8,12 @@ L1: for {
 	}
 }
 assert i == 7
+
+goto L2
+L2: for ;; i++ {
+	for {
+		if i < 17 {continue L2}
+		else {break L2}
+	}
+}
+assert i == 17
