@@ -11,6 +11,7 @@ on:
 jobs:
   code-formatting:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -26,6 +27,7 @@ jobs:
 
 #  v-fmt:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    steps:
 #    - uses: actions/checkout@v2
 #    - name: getting all branch metainfo from github
@@ -43,6 +45,7 @@ jobs:
 
   performance-regressions:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -66,6 +69,7 @@ jobs:
 
   ubuntu-tcc:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -103,6 +107,7 @@ jobs:
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:alpine-build
       env:
@@ -123,6 +128,7 @@ jobs:
 
   macos:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [macOS-latest]
@@ -185,6 +191,7 @@ jobs:
 
   ubuntu:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
@@ -260,6 +267,7 @@ jobs:
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    env:
 #      VFLAGS: -cc gcc
 #    steps:
@@ -274,6 +282,7 @@ jobs:
   ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -295,6 +304,7 @@ jobs:
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
+#     timeout-minutes: 30
 #     env:
 #       VFLAGS: -cc musl-gcc
 #       V_CI_MUSL: 1
@@ -322,6 +332,7 @@ jobs:
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
 #    - name: Cross-compile V
@@ -329,6 +340,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc gcc
     steps:
@@ -363,6 +375,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc msvc
     steps:
@@ -398,6 +411,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     # We are simulating a user with no cc installed.
     # This way, v's cc detection on Windows is also tested.
     # env:
@@ -438,6 +452,7 @@ jobs:
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -464,6 +479,7 @@ jobs:
 
   ubuntu-c-plus-plus:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -485,6 +501,7 @@ jobs:
 
   install-modules:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -498,6 +515,7 @@ jobs:
 
   gitly-compiles:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -517,6 +535,7 @@ jobs:
   websocket_autobahn:
     name: Autobahn integrations tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v2
