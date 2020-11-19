@@ -346,10 +346,12 @@ fn test_zero_value_init() {
 }
 
 struct Milk {
+mut:
 	name string
 }
 
 struct Eggs {
+mut:
 	name string
 }
 
@@ -360,6 +362,34 @@ fn test_match_aggregate() {
 	match union f {
 		Milk, Eggs {
 			assert f.name == 'test'
+		}
+	}
+}
+
+fn test_match_mut() {
+	mut f := Food(Milk{'test'})
+	match union mut f {
+		Eggs {
+			f.name = 'eggs'
+			assert f.name == 'eggs'
+		}
+		Milk {
+			f.name = 'milk'
+			assert f.name == 'milk'
+		}
+	}
+}
+
+fn test_match_not_mut() {
+	mut f := Food(Milk{'test'})
+	match union f {
+		Eggs {
+			// only works without smartcast
+			assert f is Eggs
+		}
+		Milk {
+			// only works without smartcast
+			assert f is Milk
 		}
 	}
 }
