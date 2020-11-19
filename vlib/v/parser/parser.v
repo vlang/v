@@ -609,7 +609,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 								stmt.label = name
 								return *stmt
 							}
-							else {assert false}
+							else {
+								assert false
+							}
 						}
 					}
 					return ast.GotoLabel{
