@@ -1123,6 +1123,9 @@ fn (mut g Gen) write_defer_stmts() {
 }
 
 fn (mut g Gen) for_in(it ast.ForInStmt) {
+	if it.label.len > 0 {
+		g.writeln('\t$it.label: {}')
+	}
 	if it.is_range {
 		// `for x in 1..10 {`
 		i := if it.val_var == '_' { g.new_tmp_var() } else { c_name(it.val_var) }
@@ -1131,8 +1134,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('; $i < ')
 		g.expr(it.high)
 		g.writeln('; ++$i) {')
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .array {
 		// `for num in nums {`
 		g.writeln('// FOR IN array')
@@ -1162,8 +1163,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .array_fixed {
 		atmp := g.new_tmp_var()
 		atmp_type := g.typ(it.cond_type)
@@ -1189,8 +1188,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			}
 			g.writeln(' = (*$atmp)[$i];')
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map {`
 		g.writeln('// FOR IN map')
@@ -1227,10 +1224,17 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
+		if it.label.len > 0 {
+			g.writeln('\t$it.label\__continue: {}')
+		}
 		g.writeln('}')
+		if it.label.len > 0 {
+			g.writeln('\t$it.label\__break: {}')
+		}
 		g.writeln('/*for in map cleanup*/')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
 		g.writeln('array_free(&$keys_tmp);')
+		return
 	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
@@ -1241,8 +1245,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('\t$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .string {
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
@@ -1253,11 +1255,17 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
+	}
+	g.stmts(it.stmts)
+	if it.label.len > 0 {
+		g.writeln('\t$it.label\__continue: {}')
+	}
+	g.writeln('}')
+	if it.label.len > 0 {
+		g.writeln('\t$it.label\__break: {}')
 	}
 }
 

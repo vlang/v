@@ -17,3 +17,13 @@ L2: for ;; i++ {
 	}
 }
 assert i == 17
+
+goto L3
+L3: for e in [1,2,3,4] {
+	i = e
+	for {
+		if i < 3 {continue L3}
+		else {break L3}
+	}
+}
+assert i == 3
