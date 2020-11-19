@@ -544,6 +544,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			} else if fn_info.return_type.has_flag(.optional) {
 				f.write(' ?')
 			}
+			f.comments(node.comments, CommentsOptions{})
 		}
 		ast.SumTypeDecl {
 			if node.is_pub {
@@ -563,6 +564,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.wrap_long_line(2, true)
 			}
 			// f.write(sum_type_names.join(' | '))
+			f.comments(node.comments, CommentsOptions{})
 		}
 		ast.UnionSumTypeDecl {
 			if node.is_pub {
@@ -582,9 +584,10 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				f.wrap_long_line(2, true)
 			}
 			// f.write(sum_type_names.join(' | '))
+			f.comments(node.comments, CommentsOptions{})
 		}
 	}
-	f.writeln('\n')
+	f.writeln('')
 }
 
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
