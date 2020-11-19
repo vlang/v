@@ -594,6 +594,13 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					spos := p.tok.position()
 					name := p.check_name()
 					p.next()
+					if p.tok.kind == .key_for {
+						mut stmt := p.stmt(is_top_level)
+						if stmt is ast.ForStmt {
+							stmt.label = name
+							return *stmt
+						}
+					}
 					return ast.GotoLabel{
 						name: name
 						pos: spos.extend(p.tok.position())

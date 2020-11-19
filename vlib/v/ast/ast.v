@@ -626,6 +626,8 @@ pub:
 	stmts  []Stmt
 	is_inf bool // `for {}`
 	pos    token.Position
+pub mut:
+	label  string // `label: for {`
 }
 
 pub struct ForInStmt {
