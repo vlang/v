@@ -732,7 +732,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					match union infix_expr.right {
+					match union mut infix_expr.right {
 						ast.FloatLiteral {
 							if infix_expr.right.val.f64() == 0.0 {
 								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
@@ -843,7 +843,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			// use `()` to make the boolean expression clear error
 			// for example: `(a && b) || c` instead of `a && b || c`
 			if infix_expr.op in [.logical_or, .and] {
-				if infix_expr.left is ast.InfixExpr {
+				if mut infix_expr.left is ast.InfixExpr {
 					if infix_expr.left.op in [.logical_or, .and] && infix_expr.left.op != infix_expr.op {
 						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
 					}
@@ -1385,7 +1385,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	mut found := false
 	mut found_in_args := false
 	// anon fn direct call
-	if call_expr.left is ast.AnonFn {
+	if mut call_expr.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
 		call_expr.name = ''
 		c.expr(call_expr.left)
@@ -1751,7 +1751,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	c.prevent_sum_type_unwrapping_once = false
 	// T.name, typeof(expr).name
 	mut name_type := 0
-	match union selector_expr.expr {
+	match union mut selector_expr.expr {
 		ast.Ident {
 			if selector_expr.expr.name == 'T' {
 				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
@@ -2046,7 +2046,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						negative = true
 					}
 				}
-				if expr is ast.IntegerLiteral {
+				if mut expr is ast.IntegerLiteral {
 					mut is_large := false
 					if expr.val.len > 8 {
 						val := expr.val.i64()
@@ -2559,7 +2559,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('expression in `go` must be a function call', node.call_expr.position())
 			}
 			c.expr(node.call_expr)
-			if node.call_expr is ast.CallExpr {
+			if mut node.call_expr is ast.CallExpr {
 				// Make sure there are no mutable arguments
 				for arg in node.call_expr.args {
 					if arg.is_mut && !arg.typ.is_ptr() {
@@ -2888,10 +2888,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
 				}
-				if node.right is ast.IndexExpr {
+				if mut node.right is ast.IndexExpr {
 					typ_sym := c.table.get_type_symbol(node.right.left_type)
 					mut is_mut := false
-					if node.right.left is ast.Ident {
+					if mut node.right.left is ast.Ident {
 						ident := node.right.left
 						if ident.obj is ast.Var {
 							v := ident.obj as ast.Var
@@ -3044,7 +3044,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.string_type {
 		if to_type_sym.kind != .alias {
 			mut error_msg := 'cannot cast a string'
-			if node.expr is ast.StringLiteral {
+			if mut node.expr is ast.StringLiteral {
 				if node.expr.val.len == 1 {
 					error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
 				}
@@ -3197,7 +3197,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
-						if obj.expr is ast.Ident {
+						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
 								c.error('unresolved variable: `$ident.name`', ident.pos)
 								return table.void_type
@@ -3768,14 +3768,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if (infix.left is ast.Ident ||
 					infix.left is ast.SelectorExpr) &&
 					infix.right is ast.Type {
-					is_variable := if infix.left is ast.Ident { infix.left.kind ==
+					is_variable := if mut infix.left is ast.Ident { infix.left.kind ==
 							.variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
 						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
-							if infix.left is ast.Ident {
+							if mut infix.left is ast.Ident {
 								if v := scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
 								}
@@ -3791,14 +3791,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										is_mut: is_mut
 									})
 								}
-							} else if infix.left is ast.SelectorExpr {
-								expr_sym := c.table.get_type_symbol(selector.expr_type)
+							} else if mut infix.left is ast.SelectorExpr {
+								expr_sym := c.table.get_type_symbol(infix.left.expr_type)
 								field := c.table.struct_find_field(expr_sym, infix.left.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
 								is_root_mut := scope.is_selector_root_mutable(c.table,
-									selector)
+									infix.left)
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if ((!is_root_mut && !is_mut) ||
 									branch.is_mut_name) &&
@@ -4087,7 +4087,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
-		if node.left is ast.Ident {
+		if mut node.left is ast.Ident {
 			scope := c.file.scope.innermost(node.left.pos.pos)
 			if v := scope.find_var(node.left.name) {
 				// `mut param []T` function parameter
@@ -4098,7 +4098,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	if node.index is ast.RangeExpr { // [1..2]
+	if mut node.index is ast.RangeExpr { // [1..2]
 		if node.index.has_low {
 			index_type := c.expr(node.index.low)
 			c.check_index_type(typ_sym, index_type, node.pos)

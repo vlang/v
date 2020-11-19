@@ -1384,11 +1384,11 @@ fn (mut g Gen) gen_attrs(attrs []table.Attr) {
 fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	mut a := original_assert_statement
 	g.writeln('// assert')
-	if a.expr is ast.InfixExpr {
-		if a.expr.left is ast.CallExpr {
+	if mut a.expr is ast.InfixExpr {
+		if mut a.expr.left is ast.CallExpr {
 			a.expr.left = g.new_ctemp_var_then_gen(a.expr.left, a.expr.left_type)
 		}
-		if a.expr.right is ast.CallExpr {
+		if mut a.expr.right is ast.CallExpr {
 			a.expr.right = g.new_ctemp_var_then_gen(a.expr.right, a.expr.right_type)
 		}
 	}
@@ -1436,7 +1436,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
 	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
-	match union a.expr {
+	match union mut a.expr {
 		ast.InfixExpr {
 			g.writeln('\t${metaname}.op = ${ctoslit(a.expr.op.str())};')
 			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(a.expr.left.str()))};')
@@ -2797,7 +2797,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('!')
 		}
 		if right_sym.kind == .array {
-			if node.right is ast.ArrayInit {
+			if mut node.right is ast.ArrayInit {
 				if node.right.exprs.len > 0 {
 					// `a in [1,2,3]` optimization => `a == 1 || a == 2 || a == 3`
 					// avoids an allocation

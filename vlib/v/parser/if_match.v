@@ -120,7 +120,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		comments << p.eat_comments()
 		mut left_as_name := ''
-		if cond is ast.InfixExpr {
+		if mut cond is ast.InfixExpr {
 			// if sum is T
 			is_is_cast := cond.op == .key_is
 			is_ident := cond.left is ast.Ident

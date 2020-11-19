@@ -755,11 +755,11 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	if node.left is ast.InfixExpr {
 		verror('only simple expressions are supported right now (not more than 2 operands)')
 	}
-	match union node.left {
+	match union mut node.left {
 		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name)) }
 		else {}
 	}
-	if node.right is ast.Ident {
+	if mut node.right is ast.Ident {
 		var_offset := g.get_var_offset(node.right.name)
 		match node.op {
 			.plus { g.add8_var(.eax, var_offset) }
@@ -774,7 +774,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	mut jne_addr := 0 // location of `jne *00 00 00 00*`
-	match union infix_expr.left {
+	match union mut infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
 			g.cmp_var(infix_expr.left.name, lit.val.int())
@@ -797,7 +797,7 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
-	match union infix_expr.left {
+	match union mut infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
 			g.cmp_var(infix_expr.left.name, lit.val.int())
