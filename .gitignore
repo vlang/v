@@ -25,7 +25,6 @@ a.out
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
-_js_tests/
 
 # ignore temp directories
 /temp
