@@ -637,9 +637,15 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_continue, .key_break {
 			tok := p.tok
+			line := p.tok.line_nr
 			p.next()
+			mut label := ''
+			if p.tok.line_nr == line && p.tok.kind == .name {
+				label = p.check_name()
+			}
 			return ast.BranchStmt{
 				kind: tok.kind
+				label: label
 				pos: tok.position()
 			}
 		}

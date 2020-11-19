@@ -821,9 +821,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-			// continue or break
-			g.write(node.kind.str())
-			g.writeln(';')
+			if node.label.len > 0 {
+				if node.kind == .key_break {
+					g.writeln('goto $node.label\__break;')
+				} else {
+					assert node.kind == .key_continue
+					g.writeln('goto $node.label\__continue;')
+				}
+			} else {
+				// continue or break
+				g.writeln('$node.kind;')
+			}
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)

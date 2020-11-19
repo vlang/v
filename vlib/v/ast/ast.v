@@ -284,8 +284,9 @@ pub mut:
 // break, continue
 pub struct BranchStmt {
 pub:
-	kind token.Kind
-	pos  token.Position
+	kind  token.Kind
+	label string
+	pos   token.Position
 }
 
 pub struct CallExpr {
