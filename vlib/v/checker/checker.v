@@ -3511,28 +3511,28 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					expr_type = expr_types[0].typ
 				}
 				mut scope := c.file.scope.innermost(branch.pos.pos)
-				match node.cond as node_cond {
+				match mut node.cond {
 					ast.SelectorExpr {
-						expr_sym := c.table.get_type_symbol(node_cond.expr_type)
-						field := c.table.struct_find_field(expr_sym, node_cond.field_name) or {
+						expr_sym := c.table.get_type_symbol(node.cond.expr_type)
+						field := c.table.struct_find_field(expr_sym, node.cond.field_name) or {
 							table.Field{}
 						}
 						is_mut := field.is_mut
-						is_root_mut := scope.is_selector_root_mutable(c.table, node_cond)
+						is_root_mut := scope.is_selector_root_mutable(c.table, node.cond)
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_root_mut && !is_mut) || node.is_mut {
 							scope.register_struct_field(ast.ScopeStructField{
-								struct_type: node_cond.expr_type
-								name: node_cond.field_name
+								struct_type: node.cond.expr_type
+								name: node.cond.field_name
 								typ: node.cond_type
 								sum_type_cast: expr_type
-								pos: node_cond.pos
+								pos: node.cond.pos
 							})
 						}
 					}
 					ast.Ident {
 						mut is_mut := false
-						if v := scope.find_var(node_cond.name) {
+						if v := scope.find_var(node.cond.name) {
 							is_mut = v.is_mut
 						}
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
@@ -3540,7 +3540,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							scope.register(node.var_name, ast.Var{
 								name: node.var_name
 								typ: node.cond_type
-								pos: node_cond.pos
+								pos: node.cond.pos
 								is_used: true
 								is_mut: node.is_mut
 								sum_type_cast: expr_type
