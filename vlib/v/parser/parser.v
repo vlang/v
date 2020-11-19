@@ -560,7 +560,7 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 pub fn (mut p Parser) eat_lineend_comments() []ast.Comment {
 	mut comments := []ast.Comment{}
 	for {
-		if p.tok.kind != .comment || p.tok.pos == 0 {
+		if p.tok.kind != .comment || p.tok.line_nr != p.prev_tok.line_nr {
 			break
 		}
 		comments << p.comment()
