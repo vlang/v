@@ -1207,7 +1207,7 @@ struct CommentsOptions {
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.iembed {
-		x := node.text.replace('\n', ' ')
+		x := node.text.replace('\n', ' ').trim_left('\x01')
 		f.write('/* $x */')
 		return
 	}
