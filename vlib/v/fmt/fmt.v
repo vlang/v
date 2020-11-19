@@ -1423,7 +1423,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		}
 		if i < it.branches.len - 1 || !it.has_else {
 			f.write('${dollar}if ')
-			if branch.mut_name {
+			if branch.is_mut_name {
 				f.write('mut ')
 			}
 			f.expr(branch.cond)
