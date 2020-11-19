@@ -394,6 +394,22 @@ fn test_match_not_mut() {
 	}
 }
 
+fn test_if_mut() {
+	mut f := Food(Milk{'test'})
+	if mut f is Milk {
+		f.name = 'milk'
+		assert f.name == 'milk'
+	}
+}
+
+fn test_if_not_mut() {
+	mut f := Food(Milk{'test'})
+	if f is Milk {
+		// only works without smartcast
+		assert f is Milk
+	}
+}
+
 fn test_sum_type_match() {
 	// TODO: Remove these casts
 	assert is_gt_simple('3', int(2))

@@ -3781,7 +3781,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								if v := scope.find_var(infix_left.name) {
 									is_mut = v.is_mut
 								}
-								if !is_mut && left_sym.kind == .union_sum_type {
+								if (!is_mut || branch.mut_name) && left_sym.kind == .union_sum_type {
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
@@ -3799,7 +3799,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								is_mut = field.is_mut
 								is_root_mut := scope.is_selector_root_mutable(c.table,
 									selector)
-								if !is_root_mut && !is_mut && left_sym.kind == .union_sum_type {
+								if ((!is_root_mut && !is_mut) || branch.mut_name) && left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: selector.expr_type
 										name: selector.field_name
