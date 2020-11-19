@@ -557,6 +557,17 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 	return comments
 }
 
+pub fn (mut p Parser) eat_lineend_comments() []ast.Comment {
+	mut comments := []ast.Comment{}
+	for {
+		if p.tok.kind != .comment || p.tok.pos == 0 {
+			break
+		}
+		comments << p.comment()
+	}
+	return comments
+}
+
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	$if trace_parser ? {
 		tok_pos := p.tok.position()
@@ -1934,9 +1945,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		if p.tok.kind == .comment {
-			comments = p.eat_comments()
-		}
+		comments = p.eat_lineend_comments()
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
@@ -1969,9 +1978,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
-		if p.tok.kind == .comment {
-			comments = p.eat_comments()
-		}
+		comments = p.eat_lineend_comments()
 		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
@@ -2004,9 +2011,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		is_public: is_pub
 	})
-	if p.tok.kind == .comment {
-		comments = p.eat_comments()
-	}
+	comments = p.eat_lineend_comments()
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
