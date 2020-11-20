@@ -525,38 +525,54 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	if dcs.head.comment.trim_space().len > 0 && !cfg.pub_only {
 		pw.writeln(dcs.head.comment.split_into_lines().map('    ' + it).join('\n'))
 	}
-	for _, cn in dcs.contents {
-		pw.writeln(cn.content)
-		if cn.comment.len > 0 && !cfg.pub_only {
-			pw.writeln(cn.comment.trim_space().split_into_lines().map('    ' + it).join('\n'))
-		}
-		if cfg.show_loc {
-			pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
-		}
-	}
+	cfg.write_plaintext_content(dcs.contents.arr(), mut pw)
 	return pw.str()
+}
+
+fn (cfg DocConfig) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
+	for cn in contents {
+		if cn.content.len > 0 {
+			pw.writeln(cn.content)
+			if cn.comment.len > 0 && !cfg.pub_only {
+				pw.writeln(cn.comment.trim_space().split_into_lines().map('    ' + it).join('\n'))
+			}
+			if cfg.show_loc {
+				pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
+			}
+		}
+		cfg.write_plaintext_content(cn.children, mut pw)
+	}
 }
 
 fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	dcs := cfg.docs[idx]
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
-	hw.writeln('# $dcs.head.content\n$dcs.head.comment\n')
+	hw.writeln('# $dcs.head.content\n')
+	if dcs.head.comment.len > 0 {
+		hw.writeln('$dcs.head.comment\n')
+	}
 	if with_toc {
 		hw.writeln('## Contents')
 	}
-	for _, cn in dcs.contents {
-		name := cn.name.all_after(dcs.head.name + '.')
-		if with_toc {
-			hw.writeln('- [#$name](${slug(name)})')
-		}
-		cw.writeln('## $name')
-		cw.writeln('```v\n$cn.content\n```$cn.comment\n')
-		cw.writeln('[\[Return to contents\]](#Contents)\n')
-	}
+	cfg.write_markdown_content(dcs.contents.arr(), mut cw, mut hw, 0, with_toc)
 	footer_text := cfg.gen_footer_text(idx)
 	cw.writeln('#### $footer_text')
 	return hw.str() + '\n' + cw.str()
+}
+
+fn (cfg DocConfig) write_markdown_content(contents []doc.DocNode, mut cw strings.Builder, mut hw strings.Builder, indent int, with_toc bool) {
+	for cn in contents {
+		if with_toc && cn.name.len > 0 {
+			hw.writeln(' '.repeat(2 * indent) + '- [#$cn.name](${slug(cn.name)})')
+			cw.writeln('## $cn.name')
+		}
+		if cn.content.len > 0 {
+			cw.writeln('```v\n$cn.content\n```$cn.comment\n')
+			cw.writeln('[\[Return to contents\]](#Contents)\n')
+		}
+		cfg.write_markdown_content(cn.children, mut cw, mut hw, indent + 1, with_toc)
+	}
 }
 
 fn (cfg DocConfig) gen_footer_text(idx int) string {

@@ -16,7 +16,7 @@ bool darwin_set_pasteboard_text(void* _pb, string text) {
 	NSString *ns_clip = [[ NSString alloc ] initWithBytesNoCopy:text.str length:text.len encoding:NSUTF8StringEncoding freeWhenDone: false];
 	[pb declareTypes:[NSArray arrayWithObject:NSStringPboardType] owner:nil];
 	bool ret = [pb setString:ns_clip forType:NSStringPboardType];
-	[ns_clip release];
+	//[ns_clip release];
 	int serial = [pb changeCount];
 	//OSAtomicCompareAndSwapLong(cb.last_cb_serial, serial, &cb.last_cb_serial);
 	return ret;

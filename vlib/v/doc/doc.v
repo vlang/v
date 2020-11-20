@@ -296,6 +296,9 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 		}
 	}
 	d.fmt.mod2alias = map[string]string{}
+	if contents[''].kind != .const_group {
+		contents.delete('')
+	}
 	return contents
 }
 
