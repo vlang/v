@@ -1,10 +1,10 @@
 @echo off
 setlocal EnableDelayedExpansion
 
+REM option flags
 set /a valid_cc=0
 set /a use_local=0
 set /a verbose_log=0
-set /a debug_info=0
 
 REM option variables
 set log_file="%TEMP%\v_make.log"
@@ -285,7 +285,7 @@ if !valid_cc! EQU 0 (
 )
 
 del v_old.exe>>!log_file! 2>>&1
-REM del "!log_file!
+del "!log_file!
 
 :version
 echo.
