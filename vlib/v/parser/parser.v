@@ -594,26 +594,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					spos := p.tok.position()
 					name := p.check_name()
 					p.next()
-					if p.tok.kind == .key_for {
-						mut stmt := p.stmt(is_top_level)
-						match mut stmt {
-							ast.ForStmt {
-								stmt.label = name
-								return *stmt
-							}
-							ast.ForInStmt {
-								stmt.label = name
-								return *stmt
-							}
-							ast.ForCStmt {
-								stmt.label = name
-								return *stmt
-							}
-							else {
-								assert false
-							}
-						}
-					}
 					return ast.GotoLabel{
 						name: name
 						pos: spos.extend(p.tok.position())
@@ -650,15 +630,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_continue, .key_break {
 			tok := p.tok
-			line := p.tok.line_nr
 			p.next()
-			mut label := ''
-			if p.tok.line_nr == line && p.tok.kind == .name {
-				label = p.check_name()
-			}
 			return ast.BranchStmt{
 				kind: tok.kind
-				label: label
 				pos: tok.position()
 			}
 		}
