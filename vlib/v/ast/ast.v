@@ -814,8 +814,8 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos             token.Position // `[]` position
-	elem_type_pos   token.Position // `Type` position
+	pos             token.Position // `[]` in []Type{} position
+	elem_type_pos   token.Position // `Type` in []Type{} position
 	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts          [][]Comment // optional iembed comments after each expr
 	is_fixed        bool
