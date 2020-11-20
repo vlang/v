@@ -244,7 +244,7 @@ if !valid_cc! EQU 0 (
 )
 
 del v_old.exe>>!log_file! 2>>&1
-REM del !log_file!
+del !log_file!
 
 :version
 echo.
