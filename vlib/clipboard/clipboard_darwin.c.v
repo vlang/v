@@ -3,6 +3,9 @@ module clipboard
 #include <libkern/OSAtomic.h>
 #include <Cocoa/Cocoa.h>
 #flag -framework Cocoa
+
+#include "@VROOT/vlib/clipboard/clipboard_darwin.m"
+
 pub struct Clipboard {
 	pb             voidptr
 	last_cb_serial i64
@@ -10,11 +13,12 @@ mut:
 	foo            int // TODO remove, for mut hack
 }
 
+fn C.darwin_new_pasteboard() voidptr
+fn C.darwin_get_pasteboard_text() byteptr
+
 fn new_clipboard() &Clipboard {
-	pb := voidptr(0)
-	#pb = [NSPasteboard generalPasteboard];
 	cb := &Clipboard{
-		pb: pb
+		pb: C.darwin_new_pasteboard()// pb
 	}
 	return cb
 }
@@ -59,13 +63,11 @@ fn (mut cb Clipboard) set_text(text string) bool {
 
 fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
-	#NSString *ns_clip;
-	utf8_clip := byteptr(0)
-	#ns_clip = [cb->pb stringForType:NSStringPboardType]; //NSPasteboardTypeString
-	#if (ns_clip == nil) {
-	#return tos3(""); //in case clipboard is empty
-	#}
-	#utf8_clip = [ns_clip UTF8String];
+	if isnil(cb.pb) {
+		return ''
+	}
+
+	utf8_clip := C.darwin_get_pasteboard_text(cb.pb)
 	return unsafe {utf8_clip.vstring()}
 }
 
