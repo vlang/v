@@ -19,17 +19,42 @@
 //
 // # zsh
 // TODO
-module util
+//
+// # powershell
+// TODO
+module main
 
 import os
 
-pub const (
-	auto_complete_shells = ['bash', 'fish', 'zsh']
+const (
+	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell']
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
-pub const (
+const (
 	auto_complete_commands  = [
+		/* simple_cmd */
+		'fmt',
+		'up',
+		'vet',
+		'self',
+		'tracev',
+		'symlink',
+		'bin2v',
+		'test',
+		'test-fmt',
+		'test-compiler',
+		'test-fixed',
+		'test-cleancode',
+		'repl',
+		'complete',
+		'build-tools',
+		'build-examples',
+		'build-vbinaries',
+		'setup-freetype',
+		'doc',
+		'doctor',
+		/* commands */
 		'help',
 		'new',
 		'init',
@@ -118,7 +143,7 @@ pub const (
 	]
 )
 
-pub fn auto_complete(args []string) {
+fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
 			eprintln('auto completion require arguments to work.')
@@ -144,10 +169,10 @@ _v_completions() {
 	local limit
 	# Send all words up to the word the cursor is currently on
 	let limit=1+$COMP_CWORD
-	src=$(v complete bash "$(printf "%s\n" "${COMP_WORDS[@]: 0:$limit}")")
+	src=$(v complete bash $(printf "%s\n" ${COMP_WORDS[@]: 0:$limit}))
 	if [[ $? == 0 ]]; then
 		eval ${src}
-		#echo "${src}"
+		#echo ${src}
 	fi
 }
 
@@ -155,6 +180,7 @@ complete -o nospace -F _v_completions v
 ' }
 				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
 				// 'zsh' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L87
+				// 'powershell' {} //TODO
 				else {}
 			}
 			println(setup)
@@ -164,7 +190,7 @@ complete -o nospace -F _v_completions v
 				exit(0)
 			}
 			mut lines := []string{}
-			list := auto_complete_request(sub_args[1])
+			list := auto_complete_request(sub_args[1..])
 			for entry in list {
 				lines << "COMPREPLY+=(\'$entry\')"
 			}
@@ -172,12 +198,14 @@ complete -o nospace -F _v_completions v
 		}
 		// 'fish' {} //TODO
 		// 'zsh' {} //TODO
+		// 'powershell' {} //TODO
 		else {}
 	}
 	exit(0)
 }
 
-fn auto_complete_request(request string) []string {
+fn auto_complete_request(args []string) []string {
+	request := args.join('\n')
 	mut list := []string{}
 	// new_part := request.ends_with('\n\n')
 	mut parts := request.trim_right(' ').split('\n')
@@ -262,4 +290,10 @@ fn auto_complete_request(request string) []string {
 		}
 	}
 	return list
+}
+
+fn main() {
+	args := os.args[1..]
+	// println('"$args"')
+	auto_complete(args)
 }

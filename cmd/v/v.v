@@ -15,6 +15,7 @@ const (
 		'self', 'tracev', 'symlink', 'bin2v',
 		'test', 'test-fmt', 'test-compiler', 'test-fixed', 'test-cleancode',
 		'repl',
+		'complete',
 		'build-tools', 'build-examples',
 		'build-vbinaries',
 		'setup-freetype', 'doc', 'doctor'
@@ -58,10 +59,6 @@ fn main() {
 		}
 		'new', 'init' {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
-			return
-		}
-		'complete' {
-			util.auto_complete(args)
 			return
 		}
 		'translate' {
