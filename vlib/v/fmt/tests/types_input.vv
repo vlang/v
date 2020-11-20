@@ -33,3 +33,5 @@ type VarArgs = fn
 (s ...string) int
 
 type NOVarArgs = fn(i int, s ...string) f64
+
+type NoNameArgs = fn( int,  string , ...string)
