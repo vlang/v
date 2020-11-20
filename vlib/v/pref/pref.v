@@ -432,7 +432,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
-			vexe := pref.vexe_path()
+			vexe := vexe_path()
 			tmp_cmd := '"$vexe" $output_option $run_options run "$tmp_v_file_path" $command_options'
 			//
 			res.vrun_elog('tmp_cmd: $tmp_cmd')
@@ -474,7 +474,6 @@ fn (pref &Preferences) vrun_elog(s string) {
 		eprintln('> v run -, $s')
 	}
 }
-
 
 fn must_exist(path string) {
 	if !os.exists(path) {
