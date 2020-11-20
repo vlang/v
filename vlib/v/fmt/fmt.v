@@ -1547,12 +1547,12 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
-	if it.is_mut {
-		f.write('mut ')
-	}
 	// TODO: temporary, remove again
 	if it.is_union_match {
 		f.write('union ')
+	}
+	if it.is_mut {
+		f.write('mut ')
 	}
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
