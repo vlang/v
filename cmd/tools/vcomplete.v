@@ -28,6 +28,7 @@ import os
 
 const (
 	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
+	vexe                 = os.getenv('VEXE')
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
@@ -202,16 +203,16 @@ fn auto_complete(args []string) {
 			shell := sub_args[1]
 			mut setup := ''
 			match shell {
-				'bash' { setup = r'
+				'bash' { setup = '
 _v_completions() {
 	local src
 	local limit
 	# Send all words up to the word the cursor is currently on
-	let limit=1+$COMP_CWORD
-	src=$(v complete bash $(printf "%s\n" ${COMP_WORDS[@]: 0:$limit}))
-	if [[ $? == 0 ]]; then
-		eval ${src}
-		#echo ${src}
+	let limit=1+\$COMP_CWORD
+	src=\$($vexe complete bash \$(printf "%s\\n" \${COMP_WORDS[@]: 0:\$limit}))
+	if [[ \$? == 0 ]]; then
+		eval \${src}
+		#echo \${src}
 	fi
 }
 
@@ -328,10 +329,12 @@ fn auto_complete_request(args []string) []string {
 			mut ls_path := '.'
 			mut collect_all := part in auto_complete_commands
 			mut path_complete := false
-			if part.ends_with(os.path_separator) || part == '.' || part == '..' { // 'v <command>(.*/$|.|..)<tab>' -> output full directory list
+			if part.ends_with(os.path_separator) || part == '.' || part == '..' {
+				// 'v <command>(.*/$|.|..)<tab>' -> output full directory list
 				ls_path = '.' + os.path_separator + part
 				collect_all = true
-			} else if !collect_all && part.contains(os.path_separator) && os.is_dir(os.dir(part)) { // 'v <command>(.*/.* && os.is_dir)<tab>'  -> output completion friendly directory list
+			} else if !collect_all && part.contains(os.path_separator) && os.is_dir(os.dir(part)) {
+				// 'v <command>(.*/.* && os.is_dir)<tab>'  -> output completion friendly directory list
 				ls_path = os.dir(part)
 				path_complete = true
 			}
@@ -343,13 +346,13 @@ fn auto_complete_request(args []string) []string {
 				path := part.all_before_last(os.path_separator)
 				for entry in entries {
 					if entry.starts_with(last) {
-						list << entry
+						list << os.join_path(path, entry)
 					}
 				}
 				// If only one possible file - send full path to completion system.
 				// Please note that this might be bash specific - needs more testing.
 				if list.len == 1 {
-					list = [os.join_path(path, list[0])]
+					list = [list[0]]
 				}
 			} else {
 				for entry in entries {
