@@ -96,9 +96,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
 		os.exec('xcrun simctl launch $device $bundle_id')
 	} else {
-		mut cmd := '"$b.pref.out_name"'
+		exefile := os.real_path(b.pref.out_name)
+		mut cmd := '"$exefile"'
 		if b.pref.backend == .js {
-			cmd = 'node "${b.pref.out_name}.js"'
+			jsfile := os.real_path('${b.pref.out_name}.js')
+			cmd = 'node "$jsfile"'
 		}
 		for arg in b.pref.run_args {
 			// Determine if there are spaces in the parameters
