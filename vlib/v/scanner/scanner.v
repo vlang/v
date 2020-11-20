@@ -46,8 +46,8 @@ pub mut:
 	eofs                        int
 	pref                        &pref.Preferences
 	vet_errors                  []string
-	errors						[]errors.Error
-	warnings					[]errors.Warning
+	errors                      []errors.Error
+	warnings                    []errors.Warning
 }
 
 /*
