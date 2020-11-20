@@ -529,11 +529,11 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				should_add_type := true || is_last_arg || fn_info.params[i + 1].typ != arg.typ ||
 					(fn_info.is_variadic && i == fn_info.params.len - 2)
 				if should_add_type {
-					ns := if arg.name == '' { '' } else {' '}
+					ns := if arg.name == '' { '' } else { ' ' }
 					if fn_info.is_variadic && is_last_arg {
 						f.write(ns + '...' + s)
 					} else {
-						f.write(ns +  s)
+						f.write(ns + s)
 					}
 				}
 				if !is_last_arg {
