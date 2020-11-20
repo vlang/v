@@ -6,6 +6,7 @@ module pref
 import os.cmdline
 import os
 import v.vcache
+import rand
 
 pub enum BuildMode {
 	// `v program.v'
@@ -408,6 +409,38 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		}
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
+		if res.path == '-' {
+			tmp_file_path := '$rand.ulid()'
+			mut tmp_exe_file_path := res.out_name
+			mut output_option := ''
+			if tmp_exe_file_path == '' {
+				tmp_exe_file_path = '${tmp_file_path}.exe'
+				output_option = '-o $tmp_exe_file_path'
+			}
+			tmp_v_file_path := '${tmp_file_path}.v'
+			mut fo := os.create(tmp_v_file_path) or {
+				panic('Failed to create temp file')
+			}
+			mut lines := []string{}
+			for {
+				iline := os.get_raw_line()
+				if iline.len == 0 {
+					break
+				}
+				lines << iline
+			}
+			contents := lines.join('')
+			fo.write_str(contents)
+			fo.close()
+			run_options := cmdline.options_before(args, ['run']).join(' ')
+			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
+			result := os.system('$os.executable() $output_option $run_options run $tmp_v_file_path $command_options')
+			if output_option.len != 0 {
+				os.rm(tmp_exe_file_path)
+			}
+			os.rm(tmp_v_file_path)
+			exit(result)
+		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
 			os.is_file(res.path + '.v') {
