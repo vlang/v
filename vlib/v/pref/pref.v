@@ -414,10 +414,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			mut tmp_exe_file_path := res.out_name
 			mut output_option := ''
 			if tmp_exe_file_path == '' {
-				tmp_exe_file_path = os.real_path('${tmp_file_path}.exe')
+				tmp_exe_file_path = '${tmp_file_path}.exe'
 				output_option = '-o "$tmp_exe_file_path"'
 			}
-			tmp_v_file_path := os.real_path('${tmp_file_path}.v')
+			tmp_v_file_path := '${tmp_file_path}.v'
 			mut lines := []string{}
 			for {
 				iline := os.get_raw_line()
