@@ -436,7 +436,60 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, width f32, height f32, radius f32, color gx.Color) {
 }
 
-pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, width f32, height f32, radius f32, border_color gx.Color) {
+pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, border_color gx.Color) {
+	mut theta := f32(0)
+	mut xx:= f32(0)
+	mut yy:= f32(0)
+	r := radius * f32(ctx.scale)
+	nx := x * f32(ctx.scale)
+	ny := y * f32(ctx.scale)
+	width := w * f32(ctx.scale)
+	height := h * f32(ctx.scale)
+	segments := f32(36)
+	
+	sgl.c4b(border_color.r,border_color.g,border_color.b,border_color.a)
+	sgl.begin_line_strip()
+
+    // left top
+	lx := nx + r
+	ly := y + r
+	for i in 18..27{
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + lx,yy + ly)
+	}
+	// right top
+	mut rx := nx + 2*width - r
+	mut ry := y + r
+	for i in 27..36{
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + rx,yy + ry)
+	}
+	// right bottom
+	mut rbx := rx
+	mut rby := y + 2*height - r
+	for i in 1..9{
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + rbx,yy + rby)
+	}
+	// left bottom
+	mut lbx := lx
+	mut lby := y + 2*height - r
+	for i in 10..18{
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + lbx,yy + lby)
+	}
+	sgl.v2f(lx + xx, ly)
+
+	sgl.end()
+
 }
 
 fn C.WaitMessage()
