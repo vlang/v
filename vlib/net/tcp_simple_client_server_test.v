@@ -134,3 +134,21 @@ fn test_socket_write_fail_without_panic() {
 		}
 	}
 }
+
+fn test_socket_read_line_long_line_without_eol() {
+	server, client, socket := setup()
+	mut reader := io.new_buffered_reader({
+		reader: io.make_reader(client)
+	})
+	defer {
+		cleanup(server, client, socket)
+	}
+	message := strings.repeat_string('123', 400)
+	socket.write_str(message)
+	socket.write_str('\n')
+	line := reader.read_line() or {
+		assert false
+		return
+	}
+	assert line == message
+}
