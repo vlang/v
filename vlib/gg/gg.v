@@ -51,7 +51,7 @@ pub:
 	// special case of event_fn
 	click_fn          FNMove = voidptr(0)
 	// special case of event_fn
-	//wait_events       bool // set this to true for UIs, to save power
+	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen        bool
 	scale             f32 = 1.0
 	// vid needs this
