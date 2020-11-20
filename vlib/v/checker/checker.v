@@ -2246,6 +2246,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		if array_init.has_default {
 			c.expr(array_init.default_expr)
 		}
+		if sym.kind in [.sum_type, .union_sum_type] {
+			if array_init.has_len && !array_init.has_default {
+				c.error('cannot initalize sum type array without default value', array_init.elem_type_pos)
+			}
+		}
 		if sym.kind == .placeholder {
 			c.error('unknown type `$sym.source_name`', array_init.elem_type_pos)
 		}
