@@ -366,6 +366,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branches: branches
 		cond: cond
 		is_sum_type: is_sum_type
+		is_union_match: is_union_match
 		pos: pos
 		is_mut: is_mut
 		var_name: var_name

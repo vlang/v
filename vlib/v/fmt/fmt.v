@@ -1550,6 +1550,10 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	if it.is_mut {
 		f.write('mut ')
 	}
+	// TODO: temporary, remove again
+	if it.is_union_match {
+		f.write('union ')
+	}
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
 		f.it_name = it.cond.name

@@ -558,18 +558,19 @@ pub mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind      token.Kind
-	cond          Expr
-	branches      []MatchBranch
-	pos           token.Position
-	is_mut        bool // `match mut ast_node {`
-	var_name      string // `match cond as var_name {`
+	tok_kind       token.Kind
+	cond           Expr
+	branches       []MatchBranch
+	pos            token.Position
+	is_mut         bool // `match mut ast_node {`
+	var_name       string // `match cond as var_name {`
+	is_union_match bool // temporary union key after match
 pub mut:
-	is_expr       bool // returns a value
-	return_type   table.Type
-	cond_type     table.Type // type of `x` in `match x {`
-	expected_type table.Type // for debugging only
-	is_sum_type   bool
+	is_expr        bool // returns a value
+	return_type    table.Type
+	cond_type      table.Type // type of `x` in `match x {`
+	expected_type  table.Type // for debugging only
+	is_sum_type    bool
 }
 
 pub struct MatchBranch {
