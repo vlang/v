@@ -45,8 +45,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		for i in 1 .. m.params.len {
 			if node.left is ast.Ident {
-				left_name := node.left as ast.Ident
-				if m.params[i].name == left_name.name {
+				if m.params[i].name == node.left.name {
 					continue
 				}
 			}
@@ -175,7 +174,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 }
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
-	match cond {
+	match union cond {
 		ast.ParExpr {
 			g.write('(')
 			g.comp_if_expr(cond.expr)

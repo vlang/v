@@ -210,10 +210,10 @@ pub fn (sc &Scope) str() string {
 // ```
 // Since x is mutable, it returns true.
 pub fn (s &Scope) is_selector_root_mutable(t &table.Table, selector_expr SelectorExpr) bool {
-	if selector_expr.expr is SelectorExpr as left_expr {
-		return s.is_selector_root_mutable(t, left_expr)
-	} else if selector_expr.expr is Ident as left_expr {
-		if v := s.find_var(left_expr.name) {
+	if mut selector_expr.expr is SelectorExpr {
+		return s.is_selector_root_mutable(t, selector_expr.expr)
+	} else if mut selector_expr.expr is Ident {
+		if v := s.find_var(selector_expr.expr.name) {
 			return v.is_mut
 		}
 	}

@@ -403,7 +403,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut is_range_slice := false
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
-			idx := (node.left as ast.IndexExpr).index
+			idx := node.left.index
 			if idx is ast.RangeExpr {
 				// expr is arr[range].clone()
 				// use array_clone_static instead of array_clone
@@ -569,7 +569,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 			} else {
 				expr := node.args[0].expr
-				is_var := match expr {
+				is_var := match union expr {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
 					else { false }
@@ -665,7 +665,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		if arg.expr is ast.CallExpr {
 			// Any argument can be an expression that has to be freed. Generate a tmp expression
 			// for each of those recursively.
-			g.autofree_call_pregen(arg.expr as ast.CallExpr)
+			g.autofree_call_pregen(arg.expr)
 		}
 		free_tmp_arg_vars = true
 		// t := g.new_tmp_var() + '_arg_expr_${name}_$i'

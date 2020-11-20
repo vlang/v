@@ -222,8 +222,8 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	for sidx, stmt in stmts {
 		// eprintln('stmt typeof: ' + typeof(stmt))
 		if stmt is ast.ExprStmt {
-			if stmt.expr is ast.Comment as cmt {
-				prev_comments << cmt
+			if stmt.expr is ast.Comment {
+				prev_comments << stmt.expr
 				continue
 			}
 		}

@@ -353,7 +353,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	p.next()
 	mut right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
 	p.is_amp = false
-	if right is ast.CastExpr {
+	if mut right is ast.CastExpr {
 		right.in_prexpr = true
 	}
 	mut or_stmts := []ast.Stmt{}

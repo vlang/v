@@ -12,7 +12,7 @@ fn (mut p Parser) assign_stmt() ast.Stmt {
 }
 
 fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
-	match val {
+	match union val {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
@@ -46,7 +46,7 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) {
 
 fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 	val_ := val
-	match val_ {
+	match union val_ {
 		ast.Ident {
 			for expr in exprs {
 				if expr is ast.Ident {
@@ -113,7 +113,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	}
 	mut is_static := false
 	for i, lx in left {
-		match mut lx {
+		match union mut lx {
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {

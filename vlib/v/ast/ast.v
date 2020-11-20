@@ -9,7 +9,7 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
+pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
 	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
 	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
 	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
@@ -559,18 +559,19 @@ pub mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind      token.Kind
-	cond          Expr
-	branches      []MatchBranch
-	pos           token.Position
-	is_mut        bool // `match mut ast_node {`
-	var_name      string // `match cond as var_name {`
+	tok_kind       token.Kind
+	cond           Expr
+	branches       []MatchBranch
+	pos            token.Position
+	is_mut         bool // `match mut ast_node {`
+	var_name       string // `match cond as var_name {`
+	is_union_match bool // temporary union key after match
 pub mut:
-	is_expr       bool // returns a value
-	return_type   table.Type
-	cond_type     table.Type // type of `x` in `match x {`
-	expected_type table.Type // for debugging only
-	is_sum_type   bool
+	is_expr        bool // returns a value
+	return_type    table.Type
+	cond_type      table.Type // type of `x` in `match x {`
+	expected_type  table.Type // for debugging only
+	is_sum_type    bool
 }
 
 pub struct MatchBranch {
@@ -1057,7 +1058,7 @@ pub mut:
 
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
-	match expr {
+	match union expr {
 		Ident { return expr.kind == .blank_ident }
 		else { return false }
 	}
@@ -1065,7 +1066,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match expr {
+	match union expr {
 		// KEKW2
 		AnonFn {
 			return expr.decl.pos
@@ -1101,7 +1102,7 @@ pub fn (expr Expr) position() token.Position {
 }
 
 pub fn (expr Expr) is_lvalue() bool {
-	match expr {
+	match union expr {
 		Ident { return true }
 		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
@@ -1112,7 +1113,7 @@ pub fn (expr Expr) is_lvalue() bool {
 }
 
 pub fn (expr Expr) is_expr() bool {
-	match expr {
+	match union expr {
 		IfExpr { return expr.is_expr }
 		MatchExpr { return expr.is_expr }
 		else {}

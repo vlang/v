@@ -256,7 +256,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 	//
 	// TODO `where id = some_column + 1` needs literal generation of `some_column` as a string,
 	// not a V variable. Need to distinguish column names from V variables.
-	match expr {
+	match union expr {
 		ast.InfixExpr {
 			g.sql_side = .left
 			g.expr_to_sql(expr.left)
@@ -275,22 +275,22 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				else {}
 			}
 			g.sql_side = .right
-			g.expr_to_sql(it.right)
+			g.expr_to_sql(expr.right)
 		}
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i()
-			g.sql_bind_string('"$it.val"', it.val.len.str())
+			g.sql_bind_string('"$expr.val"', expr.val.len.str())
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i()
-			g.sql_bind_int(it.val)
+			g.sql_bind_int(expr.val)
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if it.val {
+			g.sql_bind_int(if expr.val {
 				'1'
 			} else {
 				'0'
