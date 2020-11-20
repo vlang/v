@@ -16,6 +16,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut elem_type := table.void_type
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
+	mut ecmnts := [][]ast.Comment{}
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
@@ -40,6 +41,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		// [1,2,3] or [const]byte
 		for i := 0; p.tok.kind != .rsbr; i++ {
 			exprs << p.expr(0)
+			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {
 				p.next()
 			}
@@ -136,6 +138,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
+		ecmnts: ecmnts
 		pos: pos
 		elem_type_pos: elem_type_pos
 		has_len: has_len

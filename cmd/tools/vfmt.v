@@ -113,7 +113,7 @@ fn main() {
 	for file in files {
 		fpath := os.real_path(file)
 		mut worker_command_array := cli_args_no_files.clone()
-		worker_command_array << ['-worker', util.quote_path_with_spaces(fpath)]
+		worker_command_array << ['-worker', util.quote_path(fpath)]
 		worker_cmd := worker_command_array.join(' ')
 		if foptions.is_verbose {
 			eprintln('vfmt worker_cmd: $worker_cmd')

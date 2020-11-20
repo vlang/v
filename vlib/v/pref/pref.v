@@ -409,6 +409,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
 		must_exist(res.path)
+		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
+			os.is_file(res.path + '.v') {
+			eprintln('It looks like you wanted to run `v $res.path`, so we went ahead and did that since "$res.path" is an executable.')
+			res.path += '.v'
+		}
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module

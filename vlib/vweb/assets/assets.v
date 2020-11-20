@@ -107,7 +107,7 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 	mut file := os.create(out_file) or {
 		panic(err)
 	}
-	file.write(out)
+	file.write(out.bytes())
 	file.close()
 	return out_file
 }

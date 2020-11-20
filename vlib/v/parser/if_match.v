@@ -86,9 +86,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		}
 		comments << p.eat_comments()
 		// `if mut name is T`
-		mut mut_name := false
-		if p.tok.kind == .key_mut && p.peek_tok2.kind == .key_is {
-			mut_name = true
+		mut is_mut_name := false
+		mut mut_pos := token.Position{}
+		if p.tok.kind == .key_mut {
+			is_mut_name = true
+			mut_pos = p.tok.position()
 			p.next()
 			comments << p.eat_comments()
 		}
@@ -135,6 +137,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			} else {
 				''
 			}
+			if !is_is_cast && is_mut_name {
+				p.error_with_pos('remove unnecessary `mut`', mut_pos)
+			}
+		} else if is_mut_name {
+			p.error_with_pos('remove unnecessary `mut`', mut_pos)
 		}
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
@@ -150,7 +157,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
 			left_as_name: left_as_name
-			mut_name: mut_name
+			is_mut_name: is_mut_name
 		}
 		comments = p.eat_comments()
 		if is_comptime {
@@ -178,6 +185,11 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
+	mut is_union_match := false
+	if p.tok.kind == .key_union {
+		p.check(.key_union)
+		is_union_match = true
+	}
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
@@ -200,6 +212,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		branch_first_pos := p.tok.position()
 		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
+		mut ecmnts := [][]ast.Comment{}
 		p.open_scope()
 		// final else
 		mut is_else := false
@@ -227,59 +240,62 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				// Sum type match
 				parsed_type := p.parse_type()
+				ecmnts << p.eat_comments()
 				types << parsed_type
 				exprs << ast.Type{
 					typ: parsed_type
-					pos: p.tok.position()
+					pos: p.prev_tok.position()
 				}
 				if p.tok.kind != .comma {
 					break
 				}
 				p.check(.comma)
 			}
-			mut it_typ := table.void_type
-			if types.len == 1 {
-				it_typ = types[0]
-			} else {
-				// there is more than one types, so we must create a type aggregate
-				mut agg_name := strings.new_builder(20)
-				agg_name.write('(')
-				for i, typ in types {
-					if i > 0 {
-						agg_name.write(' | ')
+			if !is_union_match {
+				mut it_typ := table.void_type
+				if types.len == 1 {
+					it_typ = types[0]
+				} else {
+					// there is more than one types, so we must create a type aggregate
+					mut agg_name := strings.new_builder(20)
+					agg_name.write('(')
+					for i, typ in types {
+						if i > 0 {
+							agg_name.write(' | ')
+						}
+						type_str := p.table.type_to_str(typ)
+						agg_name.write(p.prepend_mod(type_str))
 					}
-					type_str := p.table.type_to_str(typ)
-					agg_name.write(p.prepend_mod(type_str))
+					agg_name.write(')')
+					name := agg_name.str()
+					it_typ = p.table.register_type_symbol(table.TypeSymbol{
+						name: name
+						source_name: name
+						kind: .aggregate
+						mod: p.mod
+						info: table.Aggregate{
+							types: types
+						}
+					})
 				}
-				agg_name.write(')')
-				name := agg_name.str()
-				it_typ = p.table.register_type_symbol(table.TypeSymbol{
-					name: name
-					source_name: name
-					kind: .aggregate
-					mod: p.mod
-					info: table.Aggregate{
-						types: types
-					}
-				})
-			}
-			p.scope.register('it', ast.Var{
-				name: 'it'
-				typ: it_typ.to_ptr()
-				pos: cond_pos
-				is_used: true
-				is_mut: is_mut
-			})
-			if var_name.len > 0 {
-				// Register shadow variable or `as` variable with actual type
-				p.scope.register(var_name, ast.Var{
-					name: var_name
+				p.scope.register('it', ast.Var{
+					name: 'it'
 					typ: it_typ.to_ptr()
 					pos: cond_pos
 					is_used: true
-					is_changed: true // TODO mut unchanged warning hack, remove
 					is_mut: is_mut
 				})
+				if var_name.len > 0 {
+					// Register shadow variable or `as` variable with actual type
+					p.scope.register(var_name, ast.Var{
+						name: var_name
+						typ: it_typ.to_ptr()
+						pos: cond_pos
+						is_used: true
+						is_changed: true // TODO mut unchanged warning hack, remove
+						is_mut: is_mut
+					})
+				}
 			}
 			is_sum_type = true
 		} else {
@@ -287,6 +303,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			for {
 				p.inside_match_case = true
 				expr := p.expr(0)
+				ecmnts << p.eat_comments()
 				p.inside_match_case = false
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
@@ -324,6 +341,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
+			ecmnts: ecmnts
 			stmts: stmts
 			pos: pos
 			comments: comments

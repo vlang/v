@@ -503,6 +503,7 @@ pub fn (mut s Scanner) buffer_scan() token.Token {
 		}
 		return s.all_tokens[cidx]
 	}
+	return s.new_token(.eof, '', 1)
 }
 
 [inline]

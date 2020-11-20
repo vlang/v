@@ -16,7 +16,7 @@ import strings
 pub type Type = int
 
 pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType
+	Interface | Map | MultiReturn | Struct | SumType | UnionSumType
 
 pub enum Language {
 	v
@@ -26,7 +26,9 @@ pub enum Language {
 
 // Represents a type that only needs an identifier, e.g. int, array_int.
 // A pointer type `&T` would have a TypeSymbol `T`.
-// Note: For a Type, use Table.type_to_str(typ) not TypeSymbol.name.
+// Note: For a Type, use:
+// * Table.type_to_str(typ) not TypeSymbol.name.
+// * Table.type_kind(typ) not TypeSymbol.kind.
 // Each TypeSymbol is entered into `Table.types`.
 // See also: Table.get_type_symbol.
 pub struct TypeSymbol {
@@ -106,6 +108,16 @@ pub fn (t Type) idx() int {
 	return u16(t) & 0xffff
 }
 
+[inline]
+pub fn (t Type) is_void() bool {
+	return t == void_type
+}
+
+[inline]
+pub fn (t Type) is_full() bool {
+	return t != 0 && t != void_type
+}
+
 // return nr_muls for `t`
 [inline]
 pub fn (t Type) nr_muls() int {
@@ -169,6 +181,29 @@ pub fn (t Type) clear_flags() Type {
 [inline]
 pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
+}
+
+pub fn (t Type) debug() []string {
+	mut res := []string{}
+	res << 'idx: ${t.idx():5}'
+	res << 'type: ${t:10}'
+	res << 'nr_muls: $t.nr_muls()'
+	if t.has_flag(.optional) {
+		res << 'optional'
+	}
+	if t.has_flag(.variadic) {
+		res << 'variadic'
+	}
+	if t.has_flag(.generic) {
+		res << 'generic'
+	}
+	if t.has_flag(.shared_f) {
+		res << 'shared_f'
+	}
+	if t.has_flag(.atomic_f) {
+		res << 'atomic_f'
+	}
+	return res
 }
 
 // copy flags & nr_muls from `t_from` to `t` and return `t`
@@ -330,6 +365,14 @@ pub:
 	func     Fn
 }
 
+// returns TypeSymbol kind only if there are no type modifiers
+pub fn (table &Table) type_kind(typ Type) Kind {
+	if typ.nr_muls() > 0 || typ.has_flag(.optional) {
+		return Kind.placeholder
+	}
+	return table.get_type_symbol(typ).kind
+}
+
 pub enum Kind {
 	placeholder
 	void
@@ -362,6 +405,7 @@ pub enum Kind {
 	generic_struct_inst
 	multi_return
 	sum_type
+	union_sum_type
 	alias
 	enum_
 	function
@@ -676,6 +720,7 @@ pub fn (k Kind) str() string {
 		.chan { 'chan' }
 		.multi_return { 'multi_return' }
 		.sum_type { 'sum_type' }
+		.union_sum_type { 'union_sum_type' }
 		.alias { 'alias' }
 		.enum_ { 'enum' }
 		.any { 'any' }
@@ -801,6 +846,23 @@ pub mut:
 pub struct SumType {
 pub:
 	variants []Type
+}
+
+pub struct UnionSumType {
+pub:
+	variants []Type
+}
+
+pub fn (table &Table) get_union_sum_type_variants(sum_type UnionSumType) []Type {
+	mut variants := []Type{}
+	for variant in sum_type.variants {
+		sym := table.get_type_symbol(variant)
+		if sym.info is UnionSumType as sym_info {
+			variants << table.get_union_sum_type_variants(sym_info)
+		}
+		variants << variant
+	}
+	return variants
 }
 
 pub fn (table &Table) type_to_str(t Type) string {

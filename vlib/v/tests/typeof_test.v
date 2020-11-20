@@ -65,6 +65,9 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
+	assert a.type_name() == 'int'
+	assert b.type_name() == 'f32'
+	assert c.type_name() == 'FooBar'
 	// typeof should be known at compile-time for all types
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
@@ -96,6 +99,10 @@ fn test_typeof_on_sumtypes_of_structs() {
 	assert typeof(b) == 'BinExpr'
 	assert typeof(c) == 'BoolExpr'
 	assert typeof(d) == 'UnaryExpr'
+	assert a.type_name() == 'UnaryExpr'
+	assert b.type_name() == 'BinExpr'
+	assert c.type_name() == 'BoolExpr'
+	assert d.type_name() == 'UnaryExpr'
 }
 
 fn myfn(i int) int {

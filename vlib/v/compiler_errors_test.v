@@ -9,8 +9,6 @@ import benchmark
 
 const (
 	skip_files = [
-		'vlib/v/checker/tests/return_missing_comp_if.vv',
-		'vlib/v/checker/tests/return_missing_comp_if_nested.vv',
 		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
 	]
 )

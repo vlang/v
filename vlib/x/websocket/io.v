@@ -1,22 +1,22 @@
 module websocket
 
-import x.net
+import net
 import time
 
 interface WebsocketIO {
-	socket_read_into(mut buffer []byte) ?int
+	socket_read(mut buffer []byte) ?int
 	socket_write(bytes []byte) ?
 }
 
-// socket_read_into reads into the provided buffer with its length
-fn (mut ws Client) socket_read_into(mut buffer []byte) ?int {
+// socket_read reads into the provided buffer with its length
+fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 	lock  {
 		if ws.is_ssl {
 			r := ws.ssl_conn.read_into(mut buffer)?
 			return r
 		} else {
 			for {
-				r := ws.conn.read_into(mut buffer) or {
+				r := ws.conn.read(mut buffer) or {
 					if errcode == net.err_timed_out_code {
 						continue
 					}
@@ -28,14 +28,14 @@ fn (mut ws Client) socket_read_into(mut buffer []byte) ?int {
 	}
 }
 
-fn (mut ws Client) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
+fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 	lock  {
 		if ws.is_ssl {
 			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)?
 			return r
 		} else {
 			for {
-				r := ws.conn.read_into_ptr(buf_ptr, len) or {
+				r := ws.conn.read_ptr(buf_ptr, len) or {
 					if errcode == net.err_timed_out_code {
 						continue
 					}

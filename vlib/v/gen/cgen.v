@@ -24,103 +24,109 @@ const (
 )
 
 struct Gen {
-	pref                  &pref.Preferences
-	module_built          string
+	pref                             &pref.Preferences
+	module_built                     string
 mut:
-	table                 &table.Table
-	out                   strings.Builder
-	cheaders              strings.Builder
-	includes              strings.Builder // all C #includes required by V modules
-	typedefs              strings.Builder
-	typedefs2             strings.Builder
-	type_definitions      strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	definitions           strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits                 map[string]strings.Builder // contents of `void _vinit(){}`
-	cleanups              map[string]strings.Builder // contents of `void _vcleanup(){}`
-	gowrappers            strings.Builder // all go callsite wrappers
-	stringliterals        strings.Builder // all string literals (they depend on tos3() beeing defined
-	auto_str_funcs        strings.Builder // function bodies of all auto generated _str funcs
-	comptime_defines      strings.Builder // custom defines, given by -d/-define flags on the CLI
-	pcs_declarations      strings.Builder // -prof profile counter declarations for each function
-	hotcode_definitions   strings.Builder // -live declarations & functions
-	shared_types          strings.Builder // shared/lock types
-	channel_definitions   strings.Builder // channel related code
-	options_typedefs      strings.Builder // Option typedefs
-	options               strings.Builder // `Option_xxxx` types
-	json_forward_decls    strings.Builder // json type forward decls
-	enum_typedefs         strings.Builder // enum types
-	sql_buf               strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
-	file                  ast.File
-	fn_decl               &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	last_fn_c_name        string
-	tmp_count             int // counter for unique tmp vars (_tmp1, tmp2 etc)
-	tmp_count2            int // a separate tmp var counter for autofree fn calls
-	variadic_args         map[string]int
-	is_c_call             bool // e.g. `C.printf("v")`
-	is_assign_lhs         bool // inside left part of assign expr (for array_set(), etc)
-	is_assign_rhs         bool // inside right part of assign after `=` (val expr)
-	is_array_set          bool
-	is_amp                bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared             bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled     bool // is it safe to generate #line directives when -g is passed
-	vlines_path           string // set to the proper path for generating #line directives
-	optionals             []string // to avoid duplicates TODO perf, use map
-	chan_pop_optionals    []string // types for `x := <-ch or {...}`
-	shareds               []int // types with hidden mutex for which decl has been emitted
-	inside_ternary        int // ?: comma separated statements on a single line
-	inside_map_postfix    bool // inside map++/-- postfix expr
-	inside_map_infix      bool // inside map<</+=/-= infix expr
+	table                            &table.Table
+	out                              strings.Builder
+	cheaders                         strings.Builder
+	includes                         strings.Builder // all C #includes required by V modules
+	typedefs                         strings.Builder
+	typedefs2                        strings.Builder
+	type_definitions                 strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	definitions                      strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
+	inits                            map[string]strings.Builder // contents of `void _vinit(){}`
+	cleanups                         map[string]strings.Builder // contents of `void _vcleanup(){}`
+	gowrappers                       strings.Builder // all go callsite wrappers
+	stringliterals                   strings.Builder // all string literals (they depend on tos3() beeing defined
+	auto_str_funcs                   strings.Builder // function bodies of all auto generated _str funcs
+	comptime_defines                 strings.Builder // custom defines, given by -d/-define flags on the CLI
+	pcs_declarations                 strings.Builder // -prof profile counter declarations for each function
+	hotcode_definitions              strings.Builder // -live declarations & functions
+	shared_types                     strings.Builder // shared/lock types
+	channel_definitions              strings.Builder // channel related code
+	options_typedefs                 strings.Builder // Option typedefs
+	options                          strings.Builder // `Option_xxxx` types
+	json_forward_decls               strings.Builder // json type forward decls
+	enum_typedefs                    strings.Builder // enum types
+	sql_buf                          strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
+	file                             ast.File
+	fn_decl                          &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	last_fn_c_name                   string
+	tmp_count                        int // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count2                       int // a separate tmp var counter for autofree fn calls
+	variadic_args                    map[string]int
+	is_c_call                        bool // e.g. `C.printf("v")`
+	is_assign_lhs                    bool // inside left part of assign expr (for array_set(), etc)
+	is_assign_rhs                    bool // inside right part of assign after `=` (val expr)
+	is_array_set                     bool
+	is_amp                           bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                           bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared                        bool // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled                bool // is it safe to generate #line directives when -g is passed
+	vlines_path                      string // set to the proper path for generating #line directives
+	optionals                        []string // to avoid duplicates TODO perf, use map
+	chan_pop_optionals               []string // types for `x := <-ch or {...}`
+	shareds                          []int // types with hidden mutex for which decl has been emitted
+	inside_ternary                   int // ?: comma separated statements on a single line
+	inside_map_postfix               bool // inside map++/-- postfix expr
+	inside_map_infix                 bool // inside map<</+=/-= infix expr
 	// inside_if_expr        bool
-	ternary_names         map[string]string
-	ternary_level_names   map[string][]string
-	stmt_path_pos         []int // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos         bool // for handling if expressions + autofree (since both prepend C statements)
-	right_is_opt          bool
-	autofree              bool
-	indent                int
-	empty_line            bool
-	is_test               bool
-	assign_op             token.Kind // *=, =, etc (for array_set)
-	defer_stmts           []ast.DeferStmt
-	defer_ifdef           string
-	defer_profile_code    string
-	str_types             []string // types that need automatic str() generation
-	threaded_fns          []string // for generating unique wrapper types and fns for `go xxx()`
-	array_fn_definitions  []string // array equality functions that have been defined
-	map_fn_definitions    []string // map equality functions that have been defined
-	is_json_fn            bool // inside json.encode()
-	json_types            []string // to avoid json gen duplicates
-	pcs                   []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
-	is_builtin_mod        bool
-	hotcode_fn_names      []string
+	ternary_names                    map[string]string
+	ternary_level_names              map[string][]string
+	stmt_path_pos                    []int // positions of each statement start, for inserting C statements before the current statement
+	skip_stmt_pos                    bool // for handling if expressions + autofree (since both prepend C statements)
+	right_is_opt                     bool
+	autofree                         bool
+	indent                           int
+	empty_line                       bool
+	is_test                          bool
+	assign_op                        token.Kind // *=, =, etc (for array_set)
+	defer_stmts                      []ast.DeferStmt
+	defer_ifdef                      string
+	defer_profile_code               string
+	str_types                        []string // types that need automatic str() generation
+	threaded_fns                     []string // for generating unique wrapper types and fns for `go xxx()`
+	array_fn_definitions             []string // array equality functions that have been defined
+	map_fn_definitions               []string // map equality functions that have been defined
+	is_json_fn                       bool // inside json.encode()
+	json_types                       []string // to avoid json gen duplicates
+	pcs                              []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
+	is_builtin_mod                   bool
+	hotcode_fn_names                 []string
 	// cur_fn               ast.FnDecl
-	cur_generic_type      table.Type // `int`, `string`, etc in `foo<T>()`
-	sql_i                 int
-	sql_stmt_name         string
-	sql_side              SqlExprSide // left or right, to distinguish idents in `name == name`
-	inside_vweb_tmpl      bool
-	inside_return         bool
-	inside_or_block       bool
-	strs_to_free0         []string // strings.Builder
+	cur_generic_type                 table.Type // `int`, `string`, etc in `foo<T>()`
+	sql_i                            int
+	sql_stmt_name                    string
+	sql_side                         SqlExprSide // left or right, to distinguish idents in `name == name`
+	inside_vweb_tmpl                 bool
+	inside_return                    bool
+	inside_or_block                  bool
+	strs_to_free0                    []string // strings.Builder
 	// strs_to_free          []string // strings.Builder
-	inside_call           bool
-	has_main              bool
-	inside_const          bool
-	comp_for_method       string // $for method in T {
-	comptime_var_type_map map[string]table.Type
-	match_sumtype_exprs   []ast.Expr
-	match_sumtype_syms    []table.TypeSymbol
+	inside_call                      bool
+	has_main                         bool
+	inside_const                     bool
+	comp_for_method                  string // $for method in T {
+	comptime_var_type_map            map[string]table.Type
+	match_sumtype_exprs              []ast.Expr
+	match_sumtype_syms               []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
 	// autofree_pregen_buf   strings.Builder
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
-	called_fn_name        string
-	cur_mod               string
-	is_js_call            bool // for handling a special type arg #1 `json.decode(User, ...)`
+	called_fn_name                   string
+	cur_mod                          string
+	is_js_call                       bool // for handling a special type arg #1 `json.decode(User, ...)`
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
-	inside_lambda         bool
+	inside_lambda                    bool
+	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type
+	// used in match multi branch
+	// TypeOne, TypeTwo {}
+	// where an aggregate (at least two types) is generated
+	// sum type deref needs to know which index to deref because unions take care of the correct field
+	aggregate_type_idx               int
 }
 
 const (
@@ -369,6 +375,22 @@ pub fn (mut g Gen) write_typeof_functions() {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
+			g.writeln('	switch(sidx) {')
+			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
+			for v in sum_info.variants {
+				subtype := g.table.get_type_symbol(v)
+				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+			}
+			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('	}')
+			g.writeln('}')
+		}
+	}
+	for typ in g.table.types {
+		if typ.kind == .union_sum_type {
+			sum_info := typ.info as table.UnionSumType
+			tidx := g.table.find_type_idx(typ.name)
+			g.writeln('char * v_typeof_unionsumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
 			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
@@ -749,12 +771,15 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		// use the first stmt to get the scope
 		stmt := stmts[0]
 		// stmt := stmts[stmts.len-1]
-		if stmt !is ast.FnDecl {
+		if stmt !is ast.FnDecl && g.inside_ternary == 0 {
 			// g.writeln('// autofree scope')
 			// g.writeln('// autofree_scope_vars($stmt.position().pos) | ${typeof(stmt)}')
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
-			g.autofree_scope_vars(stmt.position().pos - 1)
+			// g.autofree_scope_vars(stmt.position().pos - 1)
+			stmt_pos := stmt.position()
+			g.writeln('// af scope_vars')
+			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr)
 		}
 	}
 }
@@ -796,9 +821,17 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-			// continue or break
-			g.write(node.kind.str())
-			g.writeln(';')
+			if node.label.len > 0 {
+				if node.kind == .key_break {
+					g.writeln('goto $node.label\__break;')
+				} else {
+					assert node.kind == .key_continue
+					g.writeln('goto $node.label\__continue;')
+				}
+			} else {
+				// continue or break
+				g.writeln('$node.kind;')
+			}
 		}
 		ast.ConstDecl {
 			g.write_v_source_line_info(node.pos)
@@ -905,6 +938,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForCStmt {
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
+			if node.label.len > 0 {
+				g.writeln('$node.label:')
+			}
 			g.write('for (')
 			if !node.has_init {
 				g.write('; ')
@@ -927,7 +963,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.writeln(') {')
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
+			if node.label.len > 0 {
+				g.writeln('$node.label\__continue: {}')
+			}
 			g.writeln('}')
+			if node.label.len > 0 {
+				g.writeln('$node.label\__break: {}')
+			}
 		}
 		ast.ForInStmt {
 			g.write_v_source_line_info(node.pos)
@@ -936,6 +978,9 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.ForStmt {
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
+			if node.label.len > 0 {
+				g.writeln('$node.label:')
+			}
 			g.writeln('for (;;) {')
 			if !node.is_inf {
 				g.indent++
@@ -947,7 +992,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
+			if node.label.len > 0 {
+				g.writeln('\t$node.label\__continue: {}')
+			}
 			g.writeln('}')
+			if node.label.len > 0 {
+				g.writeln('$node.label\__break: {}')
+			}
 		}
 		ast.GlobalDecl {
 			g.global_decl(node)
@@ -1008,6 +1059,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
 				}
 				// g.autofree_scope_vars(node.pos.pos - 1)
+				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node, af)
@@ -1071,6 +1123,9 @@ fn (mut g Gen) write_defer_stmts() {
 }
 
 fn (mut g Gen) for_in(it ast.ForInStmt) {
+	if it.label.len > 0 {
+		g.writeln('\t$it.label: {}')
+	}
 	if it.is_range {
 		// `for x in 1..10 {`
 		i := if it.val_var == '_' { g.new_tmp_var() } else { c_name(it.val_var) }
@@ -1079,8 +1134,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('; $i < ')
 		g.expr(it.high)
 		g.writeln('; ++$i) {')
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .array {
 		// `for num in nums {`
 		g.writeln('// FOR IN array')
@@ -1110,8 +1163,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .array_fixed {
 		atmp := g.new_tmp_var()
 		atmp_type := g.typ(it.cond_type)
@@ -1137,8 +1188,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			}
 			g.writeln(' = (*$atmp)[$i];')
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .map {
 		// `for key, val in map {`
 		g.writeln('// FOR IN map')
@@ -1175,10 +1224,17 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		if it.key_type == table.string_type && !g.is_builtin_mod {
 			// g.writeln('string_free(&$key);')
 		}
+		if it.label.len > 0 {
+			g.writeln('\t$it.label\__continue: {}')
+		}
 		g.writeln('}')
+		if it.label.len > 0 {
+			g.writeln('\t$it.label\__break: {}')
+		}
 		g.writeln('/*for in map cleanup*/')
 		g.writeln('for (int $idx = 0; $idx < ${keys_tmp}.len; ++$idx) { string_free(&(($key_styp*)${keys_tmp}.data)[$idx]); }')
 		g.writeln('array_free(&$keys_tmp);')
+		return
 	} else if it.cond_type.has_flag(.variadic) {
 		g.writeln('// FOR IN cond_type/variadic')
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
@@ -1189,8 +1245,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('\t$styp ${c_name(it.val_var)} = ')
 		g.expr(it.cond)
 		g.writeln('.args[$i];')
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else if it.kind == .string {
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
@@ -1201,16 +1255,99 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
-		g.stmts(it.stmts)
-		g.writeln('}')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
 	}
+	g.stmts(it.stmts)
+	if it.label.len > 0 {
+		g.writeln('\t$it.label\__continue: {}')
+	}
+	g.writeln('}')
+	if it.label.len > 0 {
+		g.writeln('\t$it.label\__break: {}')
+	}
+}
+
+// use instead of expr() when you need to cast to union sum type (can add other casts also)
+fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+	// cast to sum type
+	if expected_type != table.void_type {
+		expected_is_ptr := expected_type.is_ptr()
+		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
+		got_is_ptr := got_type.is_ptr()
+		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
+		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
+			exp_styp := g.typ(expected_type)
+			got_styp := g.typ(got_type)
+			got_idx := got_type.idx()
+			got_sym := g.table.get_type_symbol(got_type)
+			if expected_is_ptr && got_is_ptr {
+				exp_der_styp := g.typ(expected_deref_type)
+				g.write('/* union sum type cast 1 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = ')
+				g.expr(expr)
+				g.write(', .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
+			} else if expected_is_ptr {
+				exp_der_styp := g.typ(expected_deref_type)
+				g.write('/* union sum type cast 2 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = memdup(&($got_styp[]){')
+				g.expr(expr)
+				g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
+			} else if got_is_ptr {
+				g.write('/* union sum type cast 3 */ ($exp_styp){._$got_idx = ')
+				g.expr(expr)
+				g.write(', .typ = $got_type /* $got_sym.name */}')
+			} else {
+				mut is_already_sum_type := false
+				scope := g.file.scope.innermost(expr.position().pos)
+				if expr is ast.Ident {
+					if v := scope.find_var(expr.name) {
+						if v.sum_type_cast != 0 {
+							is_already_sum_type = true
+						}
+					}
+				} else if expr is ast.SelectorExpr {
+					if _ := scope.find_struct_field(expr.expr_type, expr.field_name) {
+						is_already_sum_type = true
+					}
+				}
+				if is_already_sum_type {
+					// Don't create a new sum type wrapper if there is already one
+					g.prevent_sum_type_unwrapping_once = true
+					g.expr(expr)
+				} else {
+					g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
+					g.expr(expr)
+					g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
+				}
+			}
+			return
+		}
+	}
+	// Generic dereferencing logic
+	expected_sym := g.table.get_type_symbol(expected_type)
+	got_is_ptr := got_type.is_ptr()
+	expected_is_ptr := expected_type.is_ptr()
+	neither_void := table.voidptr_type !in [got_type, expected_type]
+	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
+		got_deref_type := got_type.deref()
+		deref_sym := g.table.get_type_symbol(got_deref_type)
+		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
+		got_is_opt := got_type.has_flag(.optional)
+		if deref_will_match || got_is_opt {
+			g.write('*')
+		}
+	}
+	// no cast
+	g.expr(expr)
 }
 
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+	sym := g.table.get_type_symbol(expected_type)
+	if sym.kind == .union_sum_type {
+		g.union_expr_with_cast(expr, got_type, expected_type)
+		return
+	}
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -1725,6 +1862,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					}
 					g.write('$styp ')
 				}
+				if left is ast.Ident || left is ast.SelectorExpr {
+					g.prevent_sum_type_unwrapping_once = true
+				}
 				g.expr(left)
 			}
 			if is_inside_ternary && is_decl {
@@ -1924,7 +2064,7 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-fn (mut g Gen) autofree_scope_vars(pos int) {
+fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
@@ -1932,10 +2072,12 @@ fn (mut g Gen) autofree_scope_vars(pos int) {
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
 	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
-	g.autofree_scope_vars2(scope, scope.end_pos)
+	// g.autofree_scope_vars2(scope, scope.end_pos)
+	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr)
 }
 
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+// fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int) {
 	if isnil(scope) {
 		return
 	}
@@ -1948,7 +2090,8 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 				// continue
 				// }
 				v := *obj
-				if v.pos.pos > end_pos {
+				// if v.pos.pos > end_pos {
+				if v.pos.pos > end_pos || (v.pos.pos < start_pos && v.pos.line_nr == line_nr) {
 					// Do not free vars that were declared after this scope
 					continue
 				}
@@ -1970,8 +2113,11 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
 	// return
 	// }
 	// ```
+	// if !isnil(scope.parent) && line_nr > 0 {
 	if !isnil(scope.parent) {
 		// g.autofree_scope_vars2(scope.parent, end_pos)
+		g.writeln('// af parent scope:')
+		// g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
 	}
 }
 
@@ -2132,7 +2278,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(node.arg)
 				}
 				g.write(')')
-			} else if sym.kind == .sum_type {
+			} else if sym.kind in [.sum_type, .union_sum_type] {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
 				styp := g.typ(node.typ)
@@ -2374,6 +2520,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
+			prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+			g.prevent_sum_type_unwrapping_once = false
 			if node.name_type > 0 {
 				g.type_name(node.name_type)
 				return
@@ -2393,6 +2541,26 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.expr(node.expr)
 				g.write(')')
 				return
+			}
+			mut sum_type_deref_field := ''
+			if field := g.table.struct_find_field(sym, node.field_name) {
+				field_sym := g.table.get_type_symbol(field.typ)
+				if field_sym.kind == .union_sum_type {
+					if !prevent_sum_type_unwrapping_once {
+						// check first if field is sum type because scope searching is expensive
+						scope := g.file.scope.innermost(node.pos.pos)
+						if field := scope.find_struct_field(node.expr_type, node.field_name) {
+							// union sum type deref
+							g.write('(*')
+							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
+							if cast_sym.info is table.Aggregate as sym_info {
+								sum_type_deref_field = '_${sym_info.types[g.aggregate_type_idx]}'
+							} else {
+								sum_type_deref_field = '_$field.sum_type_cast'
+							}
+						}
+					}
+				}
 			}
 			g.expr(node.expr)
 			// struct embedding
@@ -2419,6 +2587,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
 			}
 			g.write(c_name(node.field_name))
+			if sum_type_deref_field != '' {
+				g.write('.$sum_type_deref_field)')
+			}
 		}
 		ast.Type {
 			// match sum Type
@@ -2463,6 +2634,13 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
 		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
+		g.expr(node.expr)
+		g.write(').typ ))')
+	} else if sym.kind == .union_sum_type {
+		// When encountering a .sum_type, typeof() should be done at runtime,
+		// because the subtype of the expression may change:
+		sum_type_idx := node.expr_type.idx()
+		g.write('tos3( /* $sym.name */ v_typeof_unionsumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {
@@ -2869,7 +3047,9 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
 		for {
+			g.aggregate_type_idx = sumtype_index
 			is_last := j == node.branches.len - 1
+			sym := g.table.get_type_symbol(node.cond_type)
 			if branch.is_else || (node.is_expr && is_last) {
 				if is_expr {
 					// TODO too many branches. maybe separate ?: matches
@@ -2891,9 +3071,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('if (')
 				}
 				g.write(cond_var)
-				sym := g.table.get_type_symbol(node.cond_type)
 				// branch_sym := g.table.get_type_symbol(branch.typ)
-				if sym.kind == .sum_type {
+				if sym.kind in [.sum_type, .union_sum_type] {
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.write('typ == ')
@@ -2909,7 +3088,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 			}
 			// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
-			if !branch.is_else && !node.is_expr {
+			if sym.kind != .union_sum_type && !branch.is_else && !node.is_expr {
 				// Use the nodes in the expr to generate `it` variable.
 				type_expr := branch.exprs[sumtype_index]
 				if type_expr !is ast.Type {
@@ -2936,6 +3115,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				break
 			}
 		}
+		// reset global field for next use
+		g.aggregate_type_idx = 0
 	}
 }
 
@@ -3168,6 +3349,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 }
 
 fn (mut g Gen) ident(node ast.Ident) {
+	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+	g.prevent_sum_type_unwrapping_once = false
 	if node.name == 'lld' {
 		return
 	}
@@ -3196,6 +3379,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 			g.write('${name}.val')
 			return
 		}
+		scope := g.file.scope.innermost(node.pos.pos)
+		if v := scope.find_var(node.name) {
+			if v.sum_type_cast != 0 {
+				if !prevent_sum_type_unwrapping_once {
+					sym := g.table.get_type_symbol(v.sum_type_cast)
+					if sym.info is table.Aggregate as sym_info {
+						g.write('(*${name}._${sym_info.types[g.aggregate_type_idx]})')
+					} else {
+						g.write('(*${name}._$v.sum_type_cast)')
+					}
+					return
+				}
+			}
+		}
 	}
 	g.write(g.get_ternary_name(name))
 }
@@ -3214,11 +3411,22 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			sumtype := g.match_sumtype_syms[i].info as table.SumType
-			for typ in sumtype.variants {
-				if g.table.get_type_symbol(typ).kind == .struct_ {
-					return false
+			match g.match_sumtype_syms[i].info as sumtype {
+				table.SumType {
+					for typ in sumtype.variants {
+						if g.table.get_type_symbol(typ).kind == .struct_ {
+							return false
+						}
+					}
 				}
+				table.UnionSumType {
+					for typ in sumtype.variants {
+						if g.table.get_type_symbol(typ).kind == .struct_ {
+							return false
+						}
+					}
+				}
+				else {}
 			}
 			return true
 		}
@@ -3268,6 +3476,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.writeln('$styp $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
+		// g.inside_if_expr = true
 		g.write('(')
 		for i, branch in node.branches {
 			if i > 0 {
@@ -3639,6 +3848,10 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 	defer {
 		g.inside_return = false
 	}
+	if af {
+		tmp := g.new_tmp_var()
+		g.writeln('// $tmp = ...')
+	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
 	fn_return_is_multi := sym.kind == .multi_return
@@ -3801,7 +4014,7 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 		}
 		if free {
 			g.writeln('; // free tmp exprs')
-			g.autofree_scope_vars(node.pos.pos + 1)
+			g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr)
 			g.write('return $tmp')
 		}
 	} else {
@@ -4381,6 +4594,22 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				g.type_definitions.writeln('typedef struct {')
 				g.type_definitions.writeln('    void* _object;')
+				g.type_definitions.writeln('    int typ;')
+				g.type_definitions.writeln('} $name;')
+				g.type_definitions.writeln('')
+			}
+			table.UnionSumType {
+				g.type_definitions.writeln('')
+				g.type_definitions.writeln('// Union sum type $name = ')
+				for variant in it.variants {
+					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
+				}
+				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('    union {')
+				for variant in g.table.get_union_sum_type_variants(it) {
+					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
+				}
+				g.type_definitions.writeln('    };')
 				g.type_definitions.writeln('    int typ;')
 				g.type_definitions.writeln('} $name;')
 				g.type_definitions.writeln('')
@@ -5156,7 +5385,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.interface_, .union_sum_type, .sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
@@ -5327,6 +5556,17 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.write(')')
 		g.write(dot)
 		g.write('typ, /*expected:*/$node.typ)')
+	} else if expr_type_sym.kind == .union_sum_type {
+		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
+		g.write('/* as */ *($styp*)__as_cast((')
+		g.expr(node.expr)
+		g.write(')')
+		g.write(dot)
+		g.write('_$node.typ.idx(), (')
+		g.expr(node.expr)
+		g.write(')')
+		g.write(dot)
+		g.write('typ, /*expected:*/$node.typ)')
 	}
 }
 
@@ -5348,7 +5588,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
-	} else if sym.kind == .sum_type {
+	} else if sym.kind in [.sum_type, .union_sum_type] {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)

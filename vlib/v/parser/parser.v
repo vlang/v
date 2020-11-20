@@ -434,6 +434,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					.key_type {
 						return p.type_decl()
 					}
+					.key___type {
+						return p.union_sum_type_decl()
+					}
 					else {
 						p.error('wrong pub keyword usage')
 						return ast.Stmt{}
@@ -475,6 +478,9 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.key_type {
 				return p.type_decl()
+			}
+			.key___type {
+				return p.union_sum_type_decl()
 			}
 			.key_enum {
 				return p.enum_decl()
@@ -588,6 +594,26 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					spos := p.tok.position()
 					name := p.check_name()
 					p.next()
+					if p.tok.kind == .key_for {
+						mut stmt := p.stmt(is_top_level)
+						match mut stmt {
+							ast.ForStmt {
+								stmt.label = name
+								return *stmt
+							}
+							ast.ForInStmt {
+								stmt.label = name
+								return *stmt
+							}
+							ast.ForCStmt {
+								stmt.label = name
+								return *stmt
+							}
+							else {
+								assert false
+							}
+						}
+					}
 					return ast.GotoLabel{
 						name: name
 						pos: spos.extend(p.tok.position())
@@ -624,9 +650,15 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		}
 		.key_continue, .key_break {
 			tok := p.tok
+			line := p.tok.line_nr
 			p.next()
+			mut label := ''
+			if p.tok.line_nr == line && p.tok.kind == .name {
+				label = p.check_name()
+			}
 			return ast.BranchStmt{
 				kind: tok.kind
+				label: label
 				pos: tok.position()
 			}
 		}
@@ -1853,6 +1885,58 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
+}
+
+fn (mut p Parser) union_sum_type_decl() ast.TypeDecl {
+	start_pos := p.tok.position()
+	is_pub := p.tok.kind == .key_pub
+	if is_pub {
+		p.next()
+	}
+	p.check(.key___type)
+	end_pos := p.tok.position()
+	decl_pos := start_pos.extend(end_pos)
+	name := p.check_name()
+	if name.len == 1 && name[0].is_capital() {
+		p.error_with_pos('single letter capital names are reserved for generic template types.',
+			decl_pos)
+	}
+	p.check(.assign)
+	mut sum_variants := []table.Type{}
+	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
+	if p.tok.kind == .pipe {
+		p.next()
+		sum_variants << first_type
+		// type SumType = A | B | c
+		for {
+			variant_type := p.parse_type()
+			sum_variants << variant_type
+			if p.tok.kind != .pipe {
+				break
+			}
+			p.check(.pipe)
+		}
+		prepend_mod_name := p.prepend_mod(name)
+		p.table.register_type_symbol(table.TypeSymbol{
+			kind: .union_sum_type
+			name: prepend_mod_name
+			source_name: prepend_mod_name
+			mod: p.mod
+			info: table.UnionSumType{
+				variants: sum_variants
+			}
+			is_public: is_pub
+		})
+		return ast.UnionSumTypeDecl{
+			name: name
+			is_pub: is_pub
+			sub_types: sum_variants
+			pos: decl_pos
+		}
+	}
+	// just for this implementation
+	p.error_with_pos('wrong union sum type declaration', decl_pos)
+	return ast.TypeDecl{}
 }
 
 fn (mut p Parser) type_decl() ast.TypeDecl {

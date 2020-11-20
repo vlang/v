@@ -38,8 +38,6 @@ fn C.tcsetattr() int
 
 fn C.raise()
 
-fn C.kill(int, int) int
-
 fn C.getppid() int
 
 // Enable the raw mode of the terminal

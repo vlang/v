@@ -1,7 +1,7 @@
 // The module websocket implements the websocket server capabilities
 module websocket
 
-import x.net
+import net
 import x.openssl
 import log
 import sync

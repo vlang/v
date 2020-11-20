@@ -6,7 +6,10 @@ These are v implementations of the C language `printf` and `sprintf` functions.
 
 ### v_sprintf
 
-`v_sprintf` has a variable number of parameters. The first is a format string to control the appearance of the final string. Each format specifier (%s, %d, etc.) in the format string is replaced by the textual version of the following parameters.
+`v_sprintf` has a variable number of parameters.
+The first is a format string to control the appearance of the final string.
+Each format specifier (%s, %d, etc.) in the format string
+is replaced by the textual version of the following parameters.
 
 ```v
 import strconv
@@ -23,7 +26,8 @@ Hello World!
 
 ### v_printf
 
-`v_printf` creates the same modified string as `v_sprintf`, using the same format specifiers, but it will immediately print the modified string to stdout instead of returning a string.
+`v_printf` creates the same modified string as `v_sprintf`, using the same format specifiers,
+but it will immediately print the modified string to stdout instead of returning a string.
 
 ### Syntax
 
@@ -45,9 +49,14 @@ The Flags field may be zero or more (in any order) of:
 
 #### Width field
 
-The Width field specifies a *maximum* number of characters to output, and is typically used to pad fixed-width fields in tabulated output, it causes truncation of oversized fields.
+The Width field specifies a *maximum* number of characters to output, 
+and is typically used to pad fixed-width fields in tabulated output, 
+it causes truncation of oversized fields.
 
-The width field may be omitted, or it may be a numeric integer value, or may also be specified by a parameter when indicated by an asterisk `*`. For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed, with a total width of 5 characters.
+The width field may be omitted, or it may be a numeric integer value, 
+or may also be specified by a parameter when indicated by an asterisk `*`. 
+For example, `v_printf("%*.s", 5, my_string)` will result in `   mystring` being printed, 
+with a total width of 5 characters.
 
 #### Length field 
 
@@ -83,7 +92,7 @@ The Type field can be any of:
 
 various types
 
-```v
+```v oksyntax
 a0  := u32(10)
 b0  := 200
 c0  := byte(12)
@@ -102,7 +111,7 @@ ciao: [10      ] 200 12 [    ciAo] [000000C8] [0.3123              ] [200000.000
 
 integer
 
-```v
+```v oksyntax
 a := byte(12)
 b := i16(13)
 c := 14
@@ -118,7 +127,7 @@ println(temp_s)
 
 unsigned integer
 
-```v
+```v oksyntax
 a1 := byte(0xff)
 b1 := u16(0xffff)
 c1 := u32(0xffff_ffff)
@@ -134,7 +143,7 @@ println(temp_s)
 
 hexadecimal
 
-```v
+```v oksyntax
 a1 := byte(0xff)
 b1 := i16(0xffff)
 c1 := u32(0xffff_ffff)
@@ -150,7 +159,7 @@ ff ffff ffffffff ffffffffffffffff
 
 hexadecimal
 
-```v
+```v oksyntax
 a2 := 125
 sc7 := "[%9x] [%9X] [%-9x] [%-9X] [%09x] [%09X]"
 temp_s = strconv.v_sprintf(sc7, a2, a2, a2, a2, a2, a2)
@@ -163,7 +172,7 @@ println(temp_s)
 
 floating points
 
-```v
+```v oksyntax
 f0  := 0.312345
 f1  := 200000.0
 f2  := -1234.300e6
@@ -179,7 +188,7 @@ println(temp_s)
 
 float automatic notations
 
-```v
+```v oksyntax
 mut ft := -1e-7
 mut x  := 0
 sc8    := "[%20g][%20G]|"
@@ -211,7 +220,7 @@ for x < 12 {
 
 The format module also has some utility functions:
 
-```v
+```v oksyntax
 // calling struct
 struct BF_param {
   pad_ch       byte       = ` `     // padding char
@@ -234,6 +243,7 @@ fn remove_tail_zeros(s string) string
 
 `format_fl` format a float number in normal notation using the parameters in the `BF_param` struct.
 
-`format_es format a float number in scientific notation using the parameters in the `BF_param` struct.
+`format_es format a float number in scientific notation using the parameters in the BF_param` 
+struct.
 
 `remove_tail_zeros` removes the tailing zeros from a floating point number as string. 
