@@ -293,6 +293,14 @@ pub fn args2str(args []CallArg) string {
 	return res.join(', ')
 }
 
+pub fn (node &BranchStmt) str() string {
+	mut s := '$node.kind'
+	if node.label.len > 0 {
+		s += ' $node.label'
+	}
+	return s
+}
+
 pub fn (node Stmt) str() string {
 	match node {
 		AssignStmt {
@@ -317,6 +325,9 @@ pub fn (node Stmt) str() string {
 				}
 			}
 			return out
+		}
+		BranchStmt {
+			return node.str()
 		}
 		ExprStmt {
 			return node.expr.str()
