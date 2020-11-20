@@ -226,7 +226,7 @@ echo Attempting to build v.c with TCC...
 where /q tcc
 if %ERRORLEVEL% NEQ 0 (
 	if !compiler_opt! EQU "fresh-tcc" (
-        rd /s /q "%tcc_dir%"
+        rd /s /q "%tcc_dir%">NUL 2>&1
         set /a valid_cc=1
     ) else if !compiler_opt! EQU "tcc" ( set /a valid_cc=1 )
     if not exist "%tcc_dir%" (
