@@ -51,7 +51,7 @@ pub:
 	// special case of event_fn
 	click_fn          FNMove = voidptr(0)
 	// special case of event_fn
-	wait_events       bool // set this to true for UIs, to save power
+	//wait_events       bool // set this to true for UIs, to save power
 	fullscreen        bool
 	scale             f32 = 1.0
 	// vid needs this
@@ -416,10 +416,12 @@ pub fn (gg &Context) end() {
 	sgl.draw()
 	gfx.end_pass()
 	gfx.commit()
+	/*
 	if gg.config.wait_events {
 		// println('gg: waiting')
 		wait_events()
 	}
+	*/
 }
 
 fn abs(a f32) f32 {
@@ -460,6 +462,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, width f32, height f3
 
 fn C.WaitMessage()
 
+/*
 pub fn wait_events() {
 	unsafe {
 		$if macos {
@@ -474,3 +477,4 @@ pub fn wait_events() {
 		}
 	}
 }
+*/

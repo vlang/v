@@ -43,7 +43,7 @@ fn (cb &Clipboard) has_ownership() bool {
 	if cb.last_cb_serial == 0 {
 		return false
 	}
-	#return [cb->pb changeCount] == cb->last_cb_serial;
+	//#return [cb->pb changeCount] == cb->last_cb_serial;
 	return false
 }
 

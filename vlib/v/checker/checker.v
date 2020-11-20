@@ -2678,7 +2678,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 		}
 	} else {
 		if node.kind != 'define' {
-			c.warn('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
+			c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
 				node.pos)
 		}
 	}
