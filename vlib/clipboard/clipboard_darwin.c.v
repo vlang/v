@@ -14,7 +14,8 @@ mut:
 }
 
 fn C.darwin_new_pasteboard() voidptr
-fn C.darwin_get_pasteboard_text() byteptr
+fn C.darwin_get_pasteboard_text(voidptr) byteptr
+fn C.darwin_set_pasteboard_text(string) bool
 
 fn new_clipboard() &Clipboard {
 	cb := &Clipboard{
@@ -48,17 +49,7 @@ fn (cb &Clipboard) has_ownership() bool {
 fn C.OSAtomicCompareAndSwapLong()
 
 fn (mut cb Clipboard) set_text(text string) bool {
-	cb.foo = 0
-	#NSString *ns_clip;
-	ret := false
-	#ns_clip = [[ NSString alloc ] initWithBytesNoCopy:text.str length:text.len encoding:NSUTF8StringEncoding freeWhenDone: false];
-	#[cb->pb declareTypes:[NSArray arrayWithObject:NSStringPboardType] owner:nil];
-	#ret = [cb->pb setString:ns_clip forType:NSStringPboardType];
-	#[ns_clip release];
-	mut serial := 0
-	#serial = [cb->pb changeCount];
-	C.OSAtomicCompareAndSwapLong(cb.last_cb_serial, serial, &cb.last_cb_serial)
-	return ret
+	return C.darwin_set_pasteboard_text(cb.pb, text)
 }
 
 fn (mut cb Clipboard) get_text() string {
