@@ -60,6 +60,10 @@ fn main() {
 			util.launch_tool(prefs.is_verbose, 'vcreate', os.args[1..])
 			return
 		}
+		'complete' {
+			util.auto_complete(args)
+			return
+		}
 		'translate' {
 			println('Translating C to V will be available in V 0.3')
 			return

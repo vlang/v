@@ -1,0 +1,265 @@
+// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
+//
+// Utility functions helping integrate with various shell auto-completion systems.
+// The install process and communication is inspired from that of [kitty](https://sw.kovidgoyal.net/kitty/#completion-for-kitty)
+// This method avoids writing and maintaining external files on the user's file system.
+// The user will be responsible for adding a small line to their .*rc - that will ensure *live* (i.e. not-static)
+// auto-completion features.
+//
+// # bash
+// To install auto-completion for V in bash, simply add this code to your ~/.bashrc:
+// `source /dev/stdin <<<"$(v complete setup bash)"`
+// On more recent versions of bash (>3.2) this should suffice:
+// `source <(v complete setup bash)`
+//
+// # fish
+// TODO
+//
+// # zsh
+// TODO
+module util
+
+import os
+
+pub const (
+	auto_complete_shells = ['bash', 'fish', 'zsh']
+)
+
+// Snooped from cmd/v/v.v, vlib/v/pref/pref.v
+pub const (
+	auto_complete_commands  = [
+		'help',
+		'new',
+		'init',
+		'complete',
+		'translate',
+		'self',
+		'search',
+		'install',
+		'update',
+		'upgrade',
+		'outdated',
+		'list',
+		'remove',
+		'vlib-docs',
+		'get',
+		'version',
+		'run',
+		'build',
+		'build-module',
+	]
+	auto_complete_flags     = [
+		'-apk',
+		'-show-timings',
+		'-check-syntax',
+		'-v',
+		'-progress',
+		'-silent',
+		'-g',
+		'-cg',
+		'-repl',
+		'-live',
+		'-sharedlive',
+		'-shared',
+		'--enable-globals',
+		'-enable-globals',
+		'-autofree',
+		'-compress',
+		'-freestanding',
+		'-no-preludes',
+		'-prof',
+		'-profile',
+		'-profile-no-inline',
+		'-prod',
+		'-simulator',
+		'-stats',
+		'-obfuscate',
+		'-translated',
+		'-color',
+		'-nocolor',
+		'-showcc',
+		'-show-c-output',
+		'-experimental',
+		'-usecache',
+		'-prealloc',
+		'-parallel',
+		'-x64',
+		'-W',
+		'-reuse-tmpc',
+		'-w',
+		'-print_v_files',
+		'-error-limit',
+		'-os',
+		'-printfn',
+		'-cflags',
+		'-define',
+		'-d',
+		'-cc',
+		'-o',
+		'-b',
+		'-path',
+		'-custom-prelude',
+		'-name',
+		'-bundle',
+		'-V',
+		'-version',
+		'--version',
+	]
+	auto_complete_compilers = [
+		'cc',
+		'gcc',
+		'tcc',
+		'tinyc',
+		'clang',
+		'mingw',
+		'msvc',
+	]
+)
+
+pub fn auto_complete(args []string) {
+	if args.len <= 1 || args[0] != 'complete' {
+		if args.len == 1 {
+			eprintln('auto completion require arguments to work.')
+		} else {
+			eprintln('auto completion failed for "$args".')
+		}
+		exit(1)
+	}
+	sub := args[1]
+	sub_args := args[1..]
+	match sub {
+		'setup' {
+			if sub_args.len <= 1 || sub_args[1] !in auto_complete_shells {
+				eprintln('please specify a shell to setup auto completion for ($auto_complete_shells).')
+				exit(1)
+			}
+			shell := sub_args[1]
+			mut setup := ''
+			match shell {
+				'bash' { setup = r'
+_v_completions() {
+	local src
+	local limit
+	# Send all words up to the word the cursor is currently on
+	let limit=1+$COMP_CWORD
+	src=$(v complete bash "$(printf "%s\n" "${COMP_WORDS[@]: 0:$limit}")")
+	if [[ $? == 0 ]]; then
+		eval ${src}
+		#echo "${src}"
+	fi
+}
+
+complete -o nospace -F _v_completions v
+' }
+				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
+				// 'zsh' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L87
+				else {}
+			}
+			println(setup)
+		}
+		'bash' {
+			if sub_args.len <= 1 {
+				exit(0)
+			}
+			mut lines := []string{}
+			list := auto_complete_request(sub_args[1])
+			for entry in list {
+				lines << "COMPREPLY+=(\'$entry\')"
+			}
+			println(lines.join('\n'))
+		}
+		// 'fish' {} //TODO
+		// 'zsh' {} //TODO
+		else {}
+	}
+	exit(0)
+}
+
+fn auto_complete_request(request string) []string {
+	mut list := []string{}
+	// new_part := request.ends_with('\n\n')
+	mut parts := request.trim_right(' ').split('\n')
+	if parts.len <= 1 { // 'v <tab>' -> top level commands.
+		for command in auto_complete_commands {
+			list << command
+		}
+	} else {
+		part := parts.last().trim(' ')
+		if part.starts_with('-') { // 'v -<tab>' -> flags.
+			for flag in auto_complete_flags {
+				if flag == part {
+					if flag == '-cc' { // 'v -cc <tab>' -> list of available compilers.
+						for compiler in auto_complete_compilers {
+							path := os.find_abs_path_of_executable(compiler) or {
+								''
+							}
+							if path != '' {
+								list << compiler
+							}
+						}
+					}
+				} else if flag.starts_with(part) { // 'v -<char(s)><tab>' -> flags matching "<char(s)>".
+					list << flag
+				}
+			}
+		} else {
+			if part == 'help' { // 'v help <tab>' -> top level commands except "help".
+				list = auto_complete_commands.filter(it != part).filter(it != 'complete')
+			} else if part == 'build' { // 'v build <tab>' -> all flags.
+				list = auto_complete_flags
+			} else {
+				// 'v <char(s)><tab>' -> commands matching "<char(s)>".
+				// Don't include if part matches a full command - instead go to path completion below.
+				for command in auto_complete_commands {
+					if part != command && command.starts_with(part) {
+						list << command
+					}
+				}
+			}
+		}
+		// Nothing of value was found.
+		// Mimic shell dir and file completion
+		if list.len == 0 {
+			mut ls_path := '.'
+			mut collect_all := part in auto_complete_commands
+			mut path_complete := false
+			if part.ends_with(os.path_separator) || part == '.' || part == '..' { // 'v <command>(.*/$|.|..)<tab>' -> output full directory list
+				ls_path = '.' + os.path_separator + part
+				collect_all = true
+			} else if !collect_all && part.contains(os.path_separator) && os.is_dir(os.dir(part)) { // 'v <command>(.*/.* && os.is_dir)<tab>'  -> output completion friendly directory list
+				ls_path = os.dir(part)
+				path_complete = true
+			}
+			entries := os.ls(ls_path) or {
+				return list
+			}
+			last := part.all_after_last(os.path_separator)
+			if path_complete {
+				path := part.all_before_last(os.path_separator)
+				for entry in entries {
+					if entry.starts_with(last) {
+						list << entry
+					}
+				}
+				// If only one possible file - send full path to completion system.
+				// Please note that this might be bash specific - needs more testing.
+				if list.len == 1 {
+					list = [os.join_path(path, list[0])]
+				}
+			} else {
+				for entry in entries {
+					if collect_all {
+						list << entry
+					} else {
+						if entry.starts_with(last) {
+							list << entry
+						}
+					}
+				}
+			}
+		}
+	}
+	return list
+}
