@@ -302,11 +302,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.BranchStmt {
-			match node.kind {
-				.key_break { f.writeln('break') }
-				.key_continue { f.writeln('continue') }
-				else {}
-			}
+			f.writeln(node.str())
 		}
 		ast.CompFor {
 			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
@@ -359,6 +355,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.fn_decl(it)
 		}
 		ast.ForCStmt {
+			if node.label.len > 0 {
+				f.write('$node.label: ')
+			}
 			f.write('for ')
 			if it.has_init {
 				f.single_line_if = true // to keep all for ;; exprs on the same line
@@ -375,6 +374,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.ForInStmt {
+			if node.label.len > 0 {
+				f.write('$node.label: ')
+			}
 			f.write('for ')
 			if it.key_var != '' {
 				f.write(it.key_var)
@@ -399,6 +401,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.ForStmt {
+			if node.label.len > 0 {
+				f.write('$node.label: ')
+			}
 			f.write('for ')
 			f.expr(it.cond)
 			if it.is_inf {
