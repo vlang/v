@@ -825,7 +825,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if node.kind == .key_break {
 					g.writeln('goto $node.label\__break;')
 				} else {
-					assert node.kind == .key_continue
+					// assert node.kind == .key_continue
 					g.writeln('goto $node.label\__continue;')
 				}
 			} else {
