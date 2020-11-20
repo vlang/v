@@ -30,6 +30,7 @@ fn (cb &Clipboard) check_availability() bool {
 
 fn (mut cb Clipboard) clear() {
 	cb.foo = 0
+	cb.set_text('')
 	#[cb->pb clearContents];
 }
 

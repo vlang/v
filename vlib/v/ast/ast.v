@@ -739,6 +739,7 @@ pub:
 	is_pub      bool
 	parent_type table.Type
 	pos         token.Position
+	comments    []Comment
 }
 
 pub struct SumTypeDecl {
@@ -747,6 +748,7 @@ pub:
 	is_pub    bool
 	sub_types []table.Type
 	pos       token.Position
+	comments  []Comment
 }
 
 // New implementation of sum types
@@ -755,16 +757,18 @@ pub:
 	name      string
 	is_pub    bool
 	pos       token.Position
+	comments  []Comment
 pub mut:
 	sub_types []table.Type
 }
 
 pub struct FnTypeDecl {
 pub:
-	name   string
-	is_pub bool
-	typ    table.Type
-	pos    token.Position
+	name     string
+	is_pub   bool
+	typ      table.Type
+	pos      token.Position
+	comments []Comment
 }
 
 // TODO: handle this differently
