@@ -237,7 +237,6 @@ if %ERRORLEVEL% NEQ 0 (
     pushd %tcc_dir% || (
         echo  ^> TCC not found, even after cloning
         goto :error
-        exit /b 1
     )
     popd
     set tcc_exe="%tcc_dir%\tcc.exe"
@@ -297,7 +296,7 @@ exit /b 0
 :usage
 echo.
 echo Usage:
-echo     %~nx0 [compiler] [options]
+echo     make.bat [compiler] [options]
 echo.
 echo Compiler :
 echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
@@ -311,10 +310,10 @@ echo     -v ^| --verbose                Output compilation commands to stdout
 echo     -h ^| --help             	  Display this help message and exit
 echo.
 echo Examples:
-echo     %~nx0 -msvc
-echo     %~nx0 -gcc --local --logpath output.log
-echo     %~nx0 -fresh-tcc --local
-echo     %~nx0 --help
+echo     make.bat -msvc
+echo     make.bat -gcc --local --logpath output.log
+echo     make.bat -fresh-tcc --local
+echo     make.bat --help
 echo.
-echo Any invalid or undefined options will cause an error
+echo Note: Any invalid or undefined options will cause an error
 exit /b 0
