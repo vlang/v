@@ -274,7 +274,7 @@ fn main() {
 	q := if_expr()
 	s := return_if_expr()
 	free_inside_opt_block()
-	free_before_return()
+	// free_before_return()
 	// free_before_return_bool()
 	// free_map()
 	// loop_map()
