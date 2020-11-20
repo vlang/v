@@ -205,10 +205,13 @@ complete -o nospace -F _v_completions v
 }
 
 fn auto_complete_request(args []string) []string {
-	request := args.join('\n')
+	// Using space will ensure a uniform input in cases where the shell
+	// returns the completion input as a string
+	split_by := ' '
+	request := args.join(split_by)
 	mut list := []string{}
 	// new_part := request.ends_with('\n\n')
-	mut parts := request.trim_right(' ').split('\n')
+	mut parts := request.trim_right(' ').split(split_by)
 	if parts.len <= 1 { // 'v <tab>' -> top level commands.
 		for command in auto_complete_commands {
 			list << command
@@ -294,6 +297,6 @@ fn auto_complete_request(args []string) []string {
 
 fn main() {
 	args := os.args[1..]
-	// println('"$args"')
+	//println('"$args"')
 	auto_complete(args)
 }
