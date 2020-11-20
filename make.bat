@@ -4,6 +4,7 @@ setlocal EnableDelayedExpansion
 set /a valid_cc=0
 set /a use_local=0
 set /a verbose_log=0
+set /a debug_info=0
 
 REM option variables
 set log_file="%TEMP%\v_make.log"
@@ -21,20 +22,17 @@ if /I "%TCC_GIT%" NEQ "" (
 pushd %~dp0
 
 :verifyopt
+REM parameter EOL
+if /I "%~1" == "" (
+    goto :init
+)
+
 REM help option
 if /I "%~1" == "-h" (
     call :usage
     exit /b %ERRORLEVEL%
 )
-if /I "%~1" == "-help" (
-    call :usage
-    exit /b %ERRORLEVEL%
-)
 if /I "%~1" == "--help" (
-    call :usage
-    exit /b %ERRORLEVEL%
-)
-if /I "%~1" == "/?" (
     call :usage
     exit /b %ERRORLEVEL%
 )
@@ -97,12 +95,13 @@ if /I "%~1" == "-logfile" (
         exit /b 2
     )
     set log_file="%~sf2"
-    del "!log_file!"
     shift
     shift
     goto :verifyopt
 )
 
+:init
+del !log_file!>NUL 2>&1
 if !use_local! NEQ 1 (
     if exist "vc" (
         echo Updating vc...
@@ -117,12 +116,12 @@ if !use_local! NEQ 1 (
 
 echo Building V
 
-if "!compiler_opt!" EQU "clang" goto :clang_strap
-if "!compiler_opt!" EQU "gcc" goto :gcc_strap
-if "!compiler_opt!" EQU "msvc" goto :msvc_strap
-if "!compiler_opt!" EQU "tcc" goto :tcc_strap
-if "!compiler_opt!" EQU "fresh-tcc" goto :tcc_strap
-if "!compiler_opt!" EQU "" goto :clang_strap
+if !compiler_opt! EQU "clang" goto :clang_strap
+if !compiler_opt! EQU "gcc" goto :gcc_strap
+if !compiler_opt! EQU "msvc" goto :msvc_strap
+if !compiler_opt! EQU "tcc" goto :tcc_strap
+if !compiler_opt! EQU "fresh-tcc" goto :tcc_strap
+if !compiler_opt! EQU "" goto :clang_strap
 
 :clang_strap
 echo.
@@ -137,17 +136,17 @@ if %ERRORLEVEL% NEQ 0 (
 
 set /a valid_cc=1
 
-if !verbose_log! EQU 1 ( echo [Compile] clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>"!log_file!" )
-clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Compile] clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>!log_file! )
+clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 (
 	rem In most cases, compile errors happen because the version of Clang installed is too old
-	clang --version>>"!log_file!" 2>>&1
+	clang --version>>!log_file! 2>>&1
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe self>>"!log_file!" )
-v.exe -cc clang self>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Make] v.exe self>>!log_file! )
+v.exe -cc clang self>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -164,17 +163,17 @@ if %ERRORLEVEL% NEQ 0 (
 
 set /a valid_cc=1
 
-if !verbose_log! EQU 1 ( echo [Compile] gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!" )
-gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Compile] gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>!log_file! )
+gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 (
 	rem In most cases, compile errors happen because the version of GCC installed is too old
-	gcc --version>>"!log_file!" 2>>&1
+	gcc --version>>!log_file! 2>>&1
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe self>>"!log_file!" )
-v.exe self>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Make] v.exe self>>!log_file! )
+v.exe self>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -209,14 +208,14 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-if !verbose_log! EQU 1 ( echo [Compile] cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!" )
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Compile] cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>!log_file! )
+cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe -cc msvc self>>"!log_file!" )
-v.exe -cc msvc self>>"!log_file!" 2>>&1
-del %ObjFile%>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Make] v.exe -cc msvc self>>!log_file! )
+v.exe -cc msvc self>>!log_file! 2>>&1
+del %ObjFile%>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -252,19 +251,19 @@ pushd "%tcc_dir%"\
 git pull -q
 popd
 
-if !verbose_log! EQU 1 ( echo [Compile] "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" )
-"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!"
+if !verbose_log! EQU 1 ( echo [Compile] "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>!log_file! )
+"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>!log_file!
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe -cc "!tcc_exe!" self>>"!log_file!" )
-v.exe -cc "!tcc_exe!" self>>"!log_file!" 2>>&1
+if !verbose_log! EQU 1 ( echo [Make] v.exe -cc "!tcc_exe!" self>>!log_file! )
+v.exe -cc "!tcc_exe!" self>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :compile_error
 echo.
-type "!log_file!">nul 2>&1
+type !log_file!>NUL 2>&1
 goto :error
 
 :error
@@ -285,8 +284,8 @@ if !valid_cc! EQU 0 (
     echo.
 )
 
-del v_old.exe>>"!log_file!" 2>>&1
-del "!log_file!
+del v_old.exe>>!log_file! 2>>&1
+REM del "!log_file!
 
 :version
 echo.
@@ -296,6 +295,7 @@ popd
 exit /b 0
 
 :usage
+echo.
 echo Usage:
 echo     %~nx0 [compiler] [options]
 echo.
@@ -308,7 +308,7 @@ echo                                   syncing with remote
 echo     -logfile PATH                 Use the specified PATH as the log
 echo                                   file
 echo     -v ^| --verbose                Output compilation commands to stdout
-echo     -h ^| -help ^| -help            Display this help message and exit
+echo     -h ^| --help             	  Display this help message and exit
 echo.
 echo Examples:
 echo     %~nx0 -msvc
