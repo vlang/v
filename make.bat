@@ -130,7 +130,7 @@ echo Attempting to build v.c with Clang...
 where /q clang
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> Clang not found
-	if "!compiler_opt!" NEQ "" goto :error
+	if !compiler_opt! NEQ "" goto :error
 	goto :gcc_strap
 )
 
@@ -157,7 +157,7 @@ echo Attempting to build v.c with GCC...
 where /q gcc
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> GCC not found
-	if "!compiler_opt!" NEQ "" goto :error
+	if !compiler_opt! NEQ "" goto :error
 	goto :msvc_strap
 )
 
@@ -190,7 +190,7 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
-	if "!compiler_opt!" NEQ "" goto :error
+	if !compiler_opt! NEQ "" goto :error
 	goto :tcc_strap
 )
 
@@ -225,9 +225,7 @@ echo Attempting to build v.c with TCC...
 
 where /q tcc
 if %ERRORLEVEL% NEQ 0 (
-	if "!compiler_opt!" EQU "fresh-tcc" (
-        rd /s /q "%tcc_dir%"
-    )
+	if !compiler_opt! EQU "fresh-tcc" ( rd /s /q "%tcc_dir%" )
     if not exist "%tcc_dir%" (
         echo  ^> TCC not found
         echo  ^> Downloading TCC from %tcc_url%
@@ -285,7 +283,7 @@ if !valid_cc! EQU 0 (
 )
 
 del v_old.exe>>!log_file! 2>>&1
-del "!log_file!
+del !log_file!
 
 :version
 echo.
