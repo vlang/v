@@ -57,25 +57,29 @@ pub:
 	// vid needs this
 	// init_text bool
 	font_path         string
+	ui_mode           bool
 }
 
 pub struct Context {
-	render_text bool
+	render_text   bool
 mut:
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
-	image_cache []Image
+	image_cache   []Image
+	needs_refresh bool = true
+	ticks         int
 pub mut:
-	scale       f32 = 1.0
+	scale         f32 = 1.0
 	// will get set to 2.0 for retina, will remain 1.0 for normal
-	width       int
-	height      int
-	clear_pass  C.sg_pass_action
-	window      C.sapp_desc
-	timage_pip  C.sgl_pipeline
-	config      Config
-	ft          &FT
-	font_inited bool
+	width         int
+	height        int
+	clear_pass    C.sg_pass_action
+	window        C.sapp_desc
+	timage_pip    C.sgl_pipeline
+	config        Config
+	ft            &FT
+	font_inited   bool
+	ui_mode       bool // do not redraw everything 60 times/second, but only when the user requests
 }
 
 pub struct Size {
@@ -143,10 +147,24 @@ fn gg_init_sokol_window(user_data voidptr) {
 }
 
 fn gg_frame_fn(user_data voidptr) {
-	mut g := &Context(user_data)
-	if g.config.frame_fn != voidptr(0) {
-		g.config.frame_fn(g.config.user_data)
+	mut ctx := &Context(user_data)
+	if ctx.config.frame_fn == voidptr(0) {
+		return
 	}
+	if ctx.ui_mode && !ctx.needs_refresh {
+		// Draw 3 more frames after the "stop refresh" command
+		ctx.ticks++
+		if ctx.ticks > 3 {
+			return
+		}
+	}
+	ctx.config.frame_fn(ctx.config.user_data)
+	ctx.needs_refresh = false
+}
+
+pub fn (mut ctx Context) refresh_ui() {
+	ctx.needs_refresh = true
+	ctx.ticks = 0
 }
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
@@ -209,6 +227,7 @@ pub fn new_context(cfg Config) &Context {
 		config: cfg
 		render_text: cfg.font_path != ''
 		ft: 0
+		ui_mode: cfg.ui_mode
 	}
 	g.set_bg_color(cfg.bg_color)
 	// C.printf('new_context() %p\n', cfg.user_data)
