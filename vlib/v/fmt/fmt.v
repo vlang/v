@@ -305,31 +305,31 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln(node.str())
 		}
 		ast.CompFor {
-			typ := f.no_cur_mod(f.table.type_to_str(it.typ))
-			f.writeln('\$for $it.val_var in ${typ}.$it.kind.str() {')
-			f.stmts(it.stmts)
+			typ := f.no_cur_mod(f.table.type_to_str(node.typ))
+			f.writeln('\$for $node.val_var in ${typ}.$node.kind.str() {')
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 		ast.ConstDecl {
-			f.const_decl(it)
+			f.const_decl(node)
 		}
 		ast.DeferStmt {
 			f.writeln('defer {')
-			f.stmts(it.stmts)
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 		ast.EnumDecl {
-			f.attrs(it.attrs)
-			if it.is_pub {
+			f.attrs(node.attrs)
+			if node.is_pub {
 				f.write('pub ')
 			}
-			name := it.name.after('.')
+			name := node.name.after('.')
 			f.writeln('enum $name {')
-			f.comments(it.comments, {
+			f.comments(node.comments, {
 				inline: true
 				level: .indent
 			})
-			for field in it.fields {
+			for field in node.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
@@ -345,32 +345,32 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}\n')
 		}
 		ast.ExprStmt {
-			f.comments(it.comments, {})
-			f.expr(it.expr)
+			f.comments(node.comments, {})
+			f.expr(node.expr)
 			if !f.single_line_if {
 				f.writeln('')
 			}
 		}
 		ast.FnDecl {
-			f.fn_decl(it)
+			f.fn_decl(node)
 		}
 		ast.ForCStmt {
 			if node.label.len > 0 {
 				f.write('$node.label: ')
 			}
 			f.write('for ')
-			if it.has_init {
+			if node.has_init {
 				f.single_line_if = true // to keep all for ;; exprs on the same line
-				f.stmt(it.init)
+				f.stmt(node.init)
 				f.single_line_if = false
 			}
 			f.write('; ')
-			f.expr(it.cond)
+			f.expr(node.cond)
 			f.write('; ')
-			f.stmt(it.inc)
+			f.stmt(node.inc)
 			f.remove_new_line()
 			f.writeln(' {')
-			f.stmts(it.stmts)
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 		ast.ForInStmt {
@@ -378,26 +378,26 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.write('$node.label: ')
 			}
 			f.write('for ')
-			if it.key_var != '' {
-				f.write(it.key_var)
+			if node.key_var != '' {
+				f.write(node.key_var)
 			}
-			if it.val_var != '' {
-				if it.key_var != '' {
+			if node.val_var != '' {
+				if node.key_var != '' {
 					f.write(', ')
 				}
-				if it.val_is_mut {
+				if node.val_is_mut {
 					f.write('mut ')
 				}
-				f.write(it.val_var)
+				f.write(node.val_var)
 			}
 			f.write(' in ')
-			f.expr(it.cond)
-			if it.is_range {
+			f.expr(node.cond)
+			if node.is_range {
 				f.write(' .. ')
-				f.expr(it.high)
+				f.expr(node.high)
 			}
 			f.writeln(' {')
-			f.stmts(it.stmts)
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 		ast.ForStmt {
@@ -405,82 +405,82 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.write('$node.label: ')
 			}
 			f.write('for ')
-			f.expr(it.cond)
-			if it.is_inf {
+			f.expr(node.cond)
+			if node.is_inf {
 				f.writeln('{')
 			} else {
 				f.writeln(' {')
 			}
-			f.stmts(it.stmts)
+			f.stmts(node.stmts)
 			f.writeln('}')
 		}
 		ast.GlobalDecl {
-			f.global_decl(it)
+			f.global_decl(node)
 		}
 		ast.GoStmt {
 			f.write('go ')
-			f.expr(it.call_expr)
+			f.expr(node.call_expr)
 			f.writeln('')
 		}
 		ast.GotoLabel {
-			f.writeln('$it.name:')
+			f.writeln('$node.name:')
 		}
 		ast.GotoStmt {
-			f.writeln('goto $it.name')
+			f.writeln('goto $node.name')
 		}
 		ast.HashStmt {
-			f.writeln('#$it.val')
+			f.writeln('#$node.val')
 		}
 		ast.Import {
 			// Imports are handled after the file is formatted, to automatically add necessary modules
 			// f.imports(f.file.imports)
 		}
 		ast.InterfaceDecl {
-			f.interface_decl(it)
+			f.interface_decl(node)
 		}
 		ast.Module {
-			f.mod(it)
+			f.mod(node)
 		}
 		ast.Return {
-			f.comments(it.comments, {})
+			f.comments(node.comments, {})
 			f.write('return')
-			if it.exprs.len > 1 {
+			if node.exprs.len > 1 {
 				// multiple returns
 				f.write(' ')
-				for i, expr in it.exprs {
+				for i, expr in node.exprs {
 					f.expr(expr)
-					if i < it.exprs.len - 1 {
+					if i < node.exprs.len - 1 {
 						f.write(', ')
 					}
 				}
-			} else if it.exprs.len == 1 {
+			} else if node.exprs.len == 1 {
 				// normal return
 				f.write(' ')
-				f.expr(it.exprs[0])
+				f.expr(node.exprs[0])
 			}
 			f.writeln('')
 		}
 		ast.SqlStmt {
 			f.write('sql ')
-			f.expr(it.db_expr)
+			f.expr(node.db_expr)
 			f.writeln(' {')
-			match it.kind as k {
+			match node.kind as k {
 				.insert {
-					f.writeln('\tinsert $it.object_var_name into ${util.strip_mod_name(it.table_name)}')
+					f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
 				}
 				.update {
-					f.write('\tupdate ${util.strip_mod_name(it.table_name)} set ')
-					for i, col in it.updated_columns {
+					f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
+					for i, col in node.updated_columns {
 						f.write('$col = ')
-						f.expr(it.update_exprs[i])
-						if i < it.updated_columns.len - 1 {
+						f.expr(node.update_exprs[i])
+						if i < node.updated_columns.len - 1 {
 							f.write(', ')
 						} else {
 							f.write(' ')
 						}
 					}
 					f.write('where ')
-					f.expr(it.where_expr)
+					f.expr(node.where_expr)
 					f.writeln('')
 				}
 				.delete {
