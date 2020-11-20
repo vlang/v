@@ -557,6 +557,17 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 	return comments
 }
 
+pub fn (mut p Parser) eat_lineend_comments() []ast.Comment {
+	mut comments := []ast.Comment{}
+	for {
+		if p.tok.kind != .comment || p.tok.line_nr != p.prev_tok.line_nr {
+			break
+		}
+		comments << p.comment()
+	}
+	return comments
+}
+
 pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	$if trace_parser ? {
 		tok_pos := p.tok.position()
@@ -1929,15 +1940,18 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	mut sum_variants := []table.Type{}
 	p.check(.assign)
+	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
 		// function type: `type mycallback fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
+		comments = p.eat_lineend_comments()
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
 			typ: fn_type
 			pos: decl_pos
+			comments: comments
 		}
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
@@ -1964,11 +1978,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
+		comments = p.eat_lineend_comments()
 		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants
 			pos: decl_pos
+			comments: comments
 		}
 	}
 	// type MyType int
@@ -1995,11 +2011,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		is_public: is_pub
 	})
+	comments = p.eat_lineend_comments()
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
 		parent_type: parent_type
 		pos: decl_pos
+		comments: comments
 	}
 }
 
