@@ -158,6 +158,12 @@ const (
 		'-debug',
 		'-verify',
 	]
+	auto_complete_flags_bin2v = [
+		'-h', '--help','-m','--module','-p','--prefix','-w','--write'
+	]
+	auto_complete_flags_self = [
+		'-prod'
+	]
 	auto_complete_compilers = [
 		'cc',
 		'gcc',
@@ -259,14 +265,20 @@ fn auto_complete_request(args []string) []string {
 		}
 		if part.starts_with('-') { // 'v -<tab>' -> flags.
 			match parent_command {
-				'build' { // 'v build -<tab>' -> all flags.
+				'bin2v' { // 'v bin2v -<tab>'
+					list = get_flags(auto_complete_flags_bin2v, part)
+				}
+				'build' { // 'v build -<tab>' -> flags.
 					list = get_flags(auto_complete_flags, part)
 				}
-				'doc' { // 'v doc -<tab>' -> all flags.
+				'doc' { // 'v doc -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_doc, part)
 				}
-				'fmt' { // 'v fmt -<tab>' -> all flags.
+				'fmt' { // 'v fmt -<tab>' -> flags.
 					list = get_flags(auto_complete_flags_fmt, part)
+				}
+				'self' { // 'v self -<tab>' -> flags.
+					list = get_flags(auto_complete_flags_self, part)
 				}
 				else {
 					for flag in auto_complete_flags {
@@ -290,7 +302,7 @@ fn auto_complete_request(args []string) []string {
 		} else {
 			match part {
 				'help' { // 'v help <tab>' -> top level commands except "help".
-					list = auto_complete_commands.filter(it != part).filter(part != 'complete')
+					list = auto_complete_commands.filter(it != part && it != 'complete')
 				}
 				else {
 					// 'v <char(s)><tab>' -> commands matching "<char(s)>".
