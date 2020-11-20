@@ -8,7 +8,7 @@ fn test_vexe_is_set() {
 	assert vexe != ''
 }
 
-fn test_pipe_to_v_run() ? {
+fn pipe_to_v_run() ? {
 	cat_cmd := if os.user_os() == 'windows' { 'type' } else { 'cat' }
 	tmp_v_file := os.join_path(os.temp_dir(), 'generated_piped_program.v')
 	os.write_file(tmp_v_file, 'println(1 + 3)\nprintln("hello")\n') ?
@@ -20,4 +20,10 @@ fn test_pipe_to_v_run() ? {
 	assert res.output.trim_space().split('\n') == ['4', 'hello']
 	os.rm(tmp_v_file)
 	assert !os.exists(tmp_v_file)
+}
+
+fn test_pipe_to_v_run() {
+	pipe_to_v_run() or {
+		panic(err)
+	}
 }

@@ -4505,15 +4505,20 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 	}
 	// TODO c.pref.is_vet
-	if node.language == .v && !node.is_method && node.params.len == 0 && node.return_type == table.void_type_idx &&
-		node.name.after('.').starts_with('test_') && !c.file.path.ends_with('_test.v') {
-		// simple heuristic
-		for st in node.stmts {
-			if st is ast.AssertStmt {
-				c.warn('tests will not be run because filename does not end with `_test.v`',
-					node.pos)
-				break
+	if node.language == .v && !node.is_method && node.params.len == 0 && node.name.after('.').starts_with('test_') {
+		if !c.file.path.ends_with('_test.v') {
+			// simple heuristic
+			for st in node.stmts {
+				if st is ast.AssertStmt {
+					c.warn('tests will not be run, because filename does not end with `_test.v`',
+						node.pos)
+					break
+				}
 			}
+		}
+		// eprintln('> node.name: $node.name | node.return_type: $node.return_type')
+		if node.return_type != table.void_type_idx {
+			c.error('test functions should not return anything', node.pos)
 		}
 	}
 	c.expected_type = table.void_type
