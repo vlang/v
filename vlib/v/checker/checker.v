@@ -2408,7 +2408,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if c.in_for_count == 0 {
 				c.error('$node.kind.str() statement not within a loop', node.pos)
 			}
-			// TODO: check any node.label is in scope for goto
 		}
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
@@ -2575,9 +2574,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 		}
 		ast.GotoLabel {}
-		ast.GotoStmt {
-			// TODO: check label doesn't bypass variable declarations
-		}
+		ast.GotoStmt {}
 		ast.HashStmt {
 			c.hash_stmt(mut node)
 		}
