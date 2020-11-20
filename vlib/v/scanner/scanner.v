@@ -1196,7 +1196,6 @@ pub fn (mut s Scanner) warn(msg string) {
 	}
 	if s.pref.output_mode == .stdout {
 		eprintln(util.formatted_error('warning:', msg, s.file_path, pos))
-		exit(1)
 	} else {
 		s.warnings << errors.Warning{
 			file_path: s.file_path
