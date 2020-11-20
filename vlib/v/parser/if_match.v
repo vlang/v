@@ -87,8 +87,10 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		comments << p.eat_comments()
 		// `if mut name is T`
 		mut is_mut_name := false
-		if p.tok.kind == .key_mut && p.peek_tok2.kind == .key_is {
+		mut mut_pos := token.Position{}
+		if p.tok.kind == .key_mut {
 			is_mut_name = true
+			mut_pos = p.tok.position()
 			p.next()
 			comments << p.eat_comments()
 		}
@@ -135,6 +137,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			} else {
 				''
 			}
+			if !is_is_cast && is_mut_name {
+				p.error_with_pos('remove unnecessary `mut`', mut_pos)
+			}
+		} else if is_mut_name {
+			p.error_with_pos('remove unnecessary `mut`', mut_pos)
 		}
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()

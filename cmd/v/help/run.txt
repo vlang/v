@@ -1,7 +1,10 @@
-Usage: v [build flags] run <file.v|directory> [arguments...]
+Usage: v [build flags] run <file.v|directory|-> [arguments...]
 
 This command is equivalent to running `v build` and running the compiled executable.
 The executable is passed the arguments as provided in [arguments...].
+
+If the target is '-', it means that the V source code to build comes from stdin.
+If the '-o' option is not specified, and the target is '-', a temporary base name for the executable will be used.
 
 The exit status of run will be:
 * `1` if the compilation failed.

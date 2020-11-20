@@ -13,6 +13,6 @@ fn test_generate_from_mod() {
 	}
 	assert nested_mod_doc.head.name == nested_mod_name
 	assert nested_mod_doc.head.content == 'module $nested_mod_name'
-	assert nested_mod_doc.contents.len == 4
+	assert nested_mod_doc.contents.len == 3
 	assert nested_mod_doc.contents['ChunkScanner'].children.len == 3
 }

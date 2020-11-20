@@ -357,6 +357,11 @@ mut:
 
 __type Food = Milk | Eggs
 
+struct FoodWrapper {
+mut:
+	food Food
+}
+
 fn test_match_aggregate() {
 	f := Food(Milk{'test'})
 	match union f {
@@ -407,6 +412,28 @@ fn test_if_not_mut() {
 	if f is Milk {
 		// only works without smartcast
 		assert f is Milk
+	}
+}
+
+fn test_match_mut_selector() {
+	mut f := FoodWrapper{Food(Milk{'test'})}
+	match union mut f.food {
+		Eggs {
+			f.food.name = 'eggs'
+			assert f.food.name == 'eggs'
+		}
+		Milk {
+			f.food.name = 'milk'
+			assert f.food.name == 'milk'
+		}
+	}
+}
+
+fn test_if_mut_selector() {
+	mut f := FoodWrapper{Food(Milk{'test'})}
+	if mut f.food is Milk {
+		f.food.name = 'milk'
+		assert f.food.name == 'milk'
 	}
 }
 

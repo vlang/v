@@ -1360,6 +1360,7 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 @end
 @interface _sapp_macos_window_delegate : NSObject<NSWindowDelegate>
 @end
+
 #if defined(SOKOL_METAL)
     @interface _sapp_macos_view : MTKView
     @end
@@ -5452,7 +5453,7 @@ _SOKOL_PRIVATE LRESULT CALLBACK _sapp_win32_wndproc(HWND hWnd, UINT uMsg, WPARAM
                     _sapp_wgl_swap_buffers();
                 #endif
                 /* NOTE: resizing the swap-chain during resize leads to a substantial
-                   memory spike (hundreds of megabytes for a few seconds). 
+                   memory spike (hundreds of megabytes for a few seconds).
 
                 if (_sapp_win32_update_dimensions()) {
                     #if defined(SOKOL_D3D11)

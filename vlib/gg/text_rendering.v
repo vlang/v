@@ -114,9 +114,9 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 	}
 	// text := text_.trim_space() // TODO remove/optimize
 	mut text := text_
-	if text.contains('\t') {
-		text = text.replace('\t', '    ')
-	}
+	//if text.contains('\t') {
+		//text = text.replace('\t', '    ')
+	//}
 	ctx.set_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
 	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text.str, 0) // TODO: check offsets/alignment

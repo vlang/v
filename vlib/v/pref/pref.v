@@ -6,6 +6,7 @@ module pref
 import os.cmdline
 import os
 import v.vcache
+import rand
 
 pub enum BuildMode {
 	// `v program.v'
@@ -408,6 +409,44 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		}
 		res.path = args[command_pos + 1]
 		res.run_args = args[command_pos + 2..]
+		if res.path == '-' {
+			tmp_file_path := rand.ulid()
+			mut tmp_exe_file_path := res.out_name
+			mut output_option := ''
+			if tmp_exe_file_path == '' {
+				tmp_exe_file_path = '${tmp_file_path}.exe'
+				output_option = '-o "$tmp_exe_file_path"'
+			}
+			tmp_v_file_path := '${tmp_file_path}.v'
+			mut lines := []string{}
+			for {
+				iline := os.get_raw_line()
+				if iline.len == 0 {
+					break
+				}
+				lines << iline
+			}
+			contents := lines.join('')
+			os.write_file(tmp_v_file_path, contents) or {
+				panic('Failed to create temporary file $tmp_v_file_path')
+			}
+			run_options := cmdline.options_before(args, ['run']).join(' ')
+			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
+			vexe := vexe_path()
+			tmp_cmd := '"$vexe" $output_option $run_options run "$tmp_v_file_path" $command_options'
+			//
+			res.vrun_elog('tmp_cmd: $tmp_cmd')
+			tmp_result := os.system(tmp_cmd)
+			res.vrun_elog('exit code: $tmp_result')
+			//
+			if output_option.len != 0 {
+				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
+				os.rm(tmp_exe_file_path)
+			}
+			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
+			os.rm(tmp_v_file_path)
+			exit(tmp_result)
+		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
 			os.is_file(res.path + '.v') {
@@ -428,6 +467,12 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	// eprintln('>> res.build_options: $res.build_options')
 	res.fill_with_defaults()
 	return res, command
+}
+
+fn (pref &Preferences) vrun_elog(s string) {
+	if pref.is_verbose {
+		eprintln('> v run -, $s')
+	}
 }
 
 fn must_exist(path string) {
