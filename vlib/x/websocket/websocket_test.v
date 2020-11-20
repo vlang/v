@@ -2,10 +2,12 @@ import x.websocket
 import time
 
 // Tests with external ws & wss servers
-fn test_ws() ? {
+fn test_ws() {
 	go start_server()
 	time.sleep_ms(100)
-	ws_test('ws://localhost:30000')?
+	ws_test('ws://localhost:30000') or {
+		assert false
+	}
 }
 
 fn start_server() ? {
@@ -20,7 +22,7 @@ fn start_server() ? {
 			return false
 		}
 		return true
-	})?
+	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		// payload := if msg.payload.len == 0 { '' } else { string(msg.payload, msg.payload.len) }
 		// println('server client ($ws.id) got message: opcode: $msg.opcode, payload: $payload')
@@ -38,7 +40,7 @@ fn start_server() ? {
 
 fn ws_test(uri string) ? {
 	eprintln('connecting to $uri ...')
-	mut ws := websocket.new_client(uri)?
+	mut ws := websocket.new_client(uri) ?
 	ws.on_open(fn (mut ws websocket.Client) ? {
 		println('open!')
 		ws.pong()

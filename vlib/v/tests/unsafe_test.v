@@ -23,9 +23,7 @@ fn test_double_ptr() {
 		(*p) = &j
 		assert x == &j
 	}
-
-	/////////
-
+	// ///////
 	mut x := &int(0)
 	unsafe {
 		mut p := &x
@@ -60,7 +58,7 @@ fn test_if_expr_unsafe() {
 	assert *p == 4
 }
 
-fn test_unsafe_if_stmt() int {
+fn unsafe_if_stmt() int {
 	i := 4
 	unsafe {
 		if true {
@@ -68,6 +66,11 @@ fn test_unsafe_if_stmt() int {
 		}
 	}
 	return i
+}
+
+fn test_unsafe_if_stmt() {
+	x := unsafe_if_stmt()
+	assert x == 4
 }
 
 fn test_map_address_index() {
