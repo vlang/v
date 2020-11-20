@@ -27,7 +27,7 @@ module main
 import os
 
 const (
-	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell']
+	auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
 )
 
 // Snooped from cmd/v/v.v, vlib/v/pref/pref.v
@@ -132,6 +132,32 @@ const (
 		'-version',
 		'--version',
 	]
+	auto_complete_flags_doc = [
+		'-all',
+		'-f',
+		'-h',
+		'-help',
+		'-m',
+		'-o',
+		'-readme',
+		'-v',
+		'-filename',
+		'-pos',
+		'-no-timestamp',
+		'-inline-assets',
+		'-open',
+		'-p',
+		'-s',
+		'-l',
+	]
+	auto_complete_flags_fmt = [
+		'-c',
+		'-diff',
+		'-l',
+		'-w',
+		'-debug',
+		'-verify',
+	]
 	auto_complete_compilers = [
 		'cc',
 		'gcc',
@@ -206,7 +232,7 @@ complete -o nospace -F _v_completions v
 
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
-	// returns the completion input as a string
+	// returns the completion input as a string (['v','run'] vs. ['v run']).
 	split_by := ' '
 	request := args.join(split_by)
 	mut list := []string{}
@@ -218,34 +244,61 @@ fn auto_complete_request(args []string) []string {
 		}
 	} else {
 		part := parts.last().trim(' ')
+		mut parent_command := ''
+		for i := parts.len - 1; i >= 0; i-- {
+			if parts[i].starts_with('-') {
+				continue
+			}
+			parent_command = parts[i]
+			break
+		}
+		get_flags := fn (base []string, flag string) []string {
+			if flag.len == 1 { return base
+			 } else { return base.filter(it.starts_with(flag))
+			 }
+		}
 		if part.starts_with('-') { // 'v -<tab>' -> flags.
-			for flag in auto_complete_flags {
-				if flag == part {
-					if flag == '-cc' { // 'v -cc <tab>' -> list of available compilers.
-						for compiler in auto_complete_compilers {
-							path := os.find_abs_path_of_executable(compiler) or {
-								''
+			match parent_command {
+				'build' { // 'v build -<tab>' -> all flags.
+					list = get_flags(auto_complete_flags, part)
+				}
+				'doc' { // 'v doc -<tab>' -> all flags.
+					list = get_flags(auto_complete_flags_doc, part)
+				}
+				'fmt' { // 'v fmt -<tab>' -> all flags.
+					list = get_flags(auto_complete_flags_fmt, part)
+				}
+				else {
+					for flag in auto_complete_flags {
+						if flag == part {
+							if flag == '-cc' { // 'v -cc <tab>' -> list of available compilers.
+								for compiler in auto_complete_compilers {
+									path := os.find_abs_path_of_executable(compiler) or {
+										''
+									}
+									if path != '' {
+										list << compiler
+									}
+								}
 							}
-							if path != '' {
-								list << compiler
-							}
+						} else if flag.starts_with(part) { // 'v -<char(s)><tab>' -> flags matching "<char(s)>".
+							list << flag
 						}
 					}
-				} else if flag.starts_with(part) { // 'v -<char(s)><tab>' -> flags matching "<char(s)>".
-					list << flag
 				}
 			}
 		} else {
-			if part == 'help' { // 'v help <tab>' -> top level commands except "help".
-				list = auto_complete_commands.filter(it != part).filter(it != 'complete')
-			} else if part == 'build' { // 'v build <tab>' -> all flags.
-				list = auto_complete_flags
-			} else {
-				// 'v <char(s)><tab>' -> commands matching "<char(s)>".
-				// Don't include if part matches a full command - instead go to path completion below.
-				for command in auto_complete_commands {
-					if part != command && command.starts_with(part) {
-						list << command
+			match part {
+				'help' { // 'v help <tab>' -> top level commands except "help".
+					list = auto_complete_commands.filter(it != part).filter(part != 'complete')
+				}
+				else {
+					// 'v <char(s)><tab>' -> commands matching "<char(s)>".
+					// Don't include if part matches a full command - instead go to path completion below.
+					for command in auto_complete_commands {
+						if part != command && command.starts_with(part) {
+							list << command
+						}
 					}
 				}
 			}
@@ -297,6 +350,6 @@ fn auto_complete_request(args []string) []string {
 
 fn main() {
 	args := os.args[1..]
-	//println('"$args"')
+	// println('"$args"')
 	auto_complete(args)
 }
