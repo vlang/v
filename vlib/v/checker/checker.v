@@ -844,7 +844,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			// for example: `(a && b) || c` instead of `a && b || c`
 			if infix_expr.op in [.logical_or, .and] {
 				if mut infix_expr.left is ast.InfixExpr {
-					if infix_expr.left.op in [.logical_or, .and] && infix_expr.left.op != infix_expr.op {
+					if infix_expr.left.op in [.logical_or, .and] &&
+						infix_expr.left.op != infix_expr.op {
 						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
 					}
 				}
@@ -3768,8 +3769,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if (infix.left is ast.Ident ||
 					infix.left is ast.SelectorExpr) &&
 					infix.right is ast.Type {
-					is_variable := if mut infix.left is ast.Ident { infix.left.kind ==
-							.variable } else { true }
+					is_variable := if mut infix.left is ast.Ident { infix.left.kind == .variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
 						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] {
