@@ -15,156 +15,123 @@ set tcc_url="https://github.com/vlang/tccbin_win.git"
 set tcc_dir="%~dp0thirdparty\tcc"
 
 REM let a particular environment specify their own tcc
-if /I "%TCC_GIT%" NEQ "" (
+if /I not "%TCC_GIT%" == "" (
     set tcc_url="%TCC_GIT%"
 )
 
 pushd %~dp0
 
 :verifyopt
-REM parameter EOL
-if /I "%~1" == "" (
-    goto :init
-)
+REM end at EOL
+if ["%~1"] == [""] goto :init
 
 REM help option
-if /I "%~1" == "-h" (
-    call :usage
-    exit /b %ERRORLEVEL%
-)
-if /I "%~1" == "--help" (
-    call :usage
-    exit /b %ERRORLEVEL%
-)
+if "%~1" == "-h" call :usage& exit /b %ERRORLEVEL%
+if "%~1" == "--help" call :usage& exit /b %ERRORLEVEL%
 
 REM compiler option
-if !compiler_opt! == "" (
-    if /I "%~1" == "-gcc" (
-        set compiler_opt="gcc"
-        shift
-        goto :verifyopt
-    )
-    if /I "%~1" == "-msvc" (
-        set compiler_opt="msvc"
-        shift
-        goto :verifyopt
-    )
-    if /I "%~1" == "-tcc" (
-        set compiler_opt="tcc"
-        shift
-        goto :verifyopt
-    )
-    if /I "%~1" == "-fresh-tcc" (
-        set compiler_opt="fresh-tcc"
-        shift
-        goto :verifyopt
-    )
-    if /I "%~1" == "-clang" (
-        set compiler_opt="clang"
-        shift
-        goto :verifyopt
-    )
-) else (
-    echo A C compiler has already been specified: !compiler_opt!. 1>&2
-    exit /b 2
-)
+if "%~1" == "-gcc" set compiler_opt="gcc"& shift& goto :verifyopt
+if "%~1" == "-msvc" set compiler_opt="msvc"& shift& goto :verifyopt
+if "%~1" == "-tcc" set compiler_opt="tcc"& shift& goto :verifyopt
+if "%~1" == "-fresh-tcc" set compiler_opt="fresh-tcc"& shift& goto :verifyopt
+if "%~1" == "-clang" set compiler_opt="clang"& shift& goto :verifyopt
 
 REM standard options
-if /I "%~1" == "-local" (
+if "%~1" == "-local" (
     if !use_local! EQU 0 ( set /a use_local=1 )
     shift
     goto :verifyopt
 )
-if /I "%~1" == "-v" (
+if "%~1" == "-v" (
     if !verbose_log! EQU 0 ( set /a verbose_log=1 )
     shift
     goto :verifyopt
 )
-if /I "%~1" == "--verbose" (
+if "%~1" == "--verbose" (
     if !verbose_log! EQU 0 ( set /a verbose_log=1 )
     shift
     goto :verifyopt
 )
-if /I "%~1" == "-logfile" (
+if "%~1" == "-logfile" (
     if /I "%~2" == "" (
         echo Log file is not specified for -logfile parameter. 1>&2
         exit /b 2
     )
-    echo.>"%~sf2" || (
+    pushd "%~dp2" 2>NUL || (
         echo The log file specified for -logfile parameter does not exist. 1>&2
         exit /b 2
     )
+    popd
     set log_file="%~sf2"
     shift
     shift
     goto :verifyopt
 )
+echo Ignoring unidentified option: %~1 & shift
+goto :verifyopt
 
 :init
+echo.
 del !log_file!>NUL 2>&1
 if !use_local! NEQ 1 (
     if exist "vc" (
         echo Updating vc...
-        cd vc
-        git pull --quiet
-        cd ..
+        echo  ^> Sync with remote https://github.com/vlang/vc.git
+        call :buildcmd "cd vc" "  "
+        call :buildcmd "git pull --quiet" "  "
+        call :buildcmd "cd .." "  "
     ) else (
         echo Cloning vc...
-        git clone --depth 1 --quiet https://github.com/vlang/vc.git
+        echo  ^> Cloning from remote https://github.com/vlang/vc.git
+        call :buildcmd "git clone --depth 1 --quiet https://github.com/vlang/vc.git" "  "
     )
 )
 
-echo Building V
+echo.
+echo Building V...
 
-if !compiler_opt! EQU "clang" goto :clang_strap
-if !compiler_opt! EQU "gcc" goto :gcc_strap
-if !compiler_opt! EQU "msvc" goto :msvc_strap
-if !compiler_opt! EQU "tcc" goto :tcc_strap
-if !compiler_opt! EQU "fresh-tcc" goto :tcc_strap
-if !compiler_opt! EQU "" goto :clang_strap
+if !compiler_opt! == "clang" goto :clang_strap
+if !compiler_opt! == "gcc" goto :gcc_strap
+if !compiler_opt! == "msvc" goto :msvc_strap
+if !compiler_opt! == "tcc" goto :tcc_strap
+if !compiler_opt! == "fresh-tcc" goto :tcc_strap
+if !compiler_opt! == "" goto :gcc_strap
 
 :clang_strap
-echo.
-echo Attempting to build v.c with Clang...
-
 where /q clang
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> Clang not found
-	if !compiler_opt! NEQ "" goto :error
+	if not !compiler_opt! == "" goto :error
 	goto :gcc_strap
 )
 
 set /a valid_cc=1
 
-if !verbose_log! EQU 1 ( echo [Compile] clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>!log_file! )
-clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c>>!log_file! 2>>&1
+echo  ^> Attempting to build v.c with Clang
+call :buildcmd "clang -std=c99 -municode -pedantic -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
-	rem In most cases, compile errors happen because the version of Clang installed is too old
+	REM In most cases, compile errors happen because the version of Clang installed is too old
 	clang --version>>!log_file! 2>>&1
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe self>>!log_file! )
-v.exe -cc clang self>>!log_file! 2>>&1
+call :buildcmd "v.exe -cc clang self" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :gcc_strap
-echo.
-echo Attempting to build v.c with GCC...
-
 where /q gcc
 if %ERRORLEVEL% NEQ 0 (
 	echo  ^> GCC not found
-	if !compiler_opt! NEQ "" goto :error
+	if not !compiler_opt! == "" goto :error
 	goto :msvc_strap
 )
 
 set /a valid_cc=1
 
-if !verbose_log! EQU 1 ( echo [Compile] gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>!log_file! )
-gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>!log_file! 2>>&1
+echo  ^> Attempting to build v.c with GCC
+call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
 	rem In most cases, compile errors happen because the version of GCC installed is too old
 	gcc --version>>!log_file! 2>>&1
@@ -172,14 +139,11 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe self>>!log_file! )
-v.exe self>>!log_file! 2>>&1
+call :buildcmd "v.exe self" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :msvc_strap
-echo.
-echo Attempting to build v.c with MSVC...
 set VsWhereDir=%ProgramFiles(x86)%
 set HostArch=x64
 if "%PROCESSOR_ARCHITECTURE%" == "x86" (
@@ -190,7 +154,7 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
-	if !compiler_opt! NEQ "" goto :error
+	if not !compiler_opt! == "" goto :error
 	goto :tcc_strap
 )
 
@@ -208,31 +172,28 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-if !verbose_log! EQU 1 ( echo [Compile] cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>!log_file! )
-cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>!log_file! 2>>&1
+echo  ^> Attempting to build v.c with MSVC
+call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe -cc msvc self>>!log_file! )
-v.exe -cc msvc self>>!log_file! 2>>&1
+call :buildcmd "v.exe -cc msvc self" "  "
 del %ObjFile%>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :tcc_strap
-echo.
-echo Attempting to build v.c with TCC...
-
 where /q tcc
 if %ERRORLEVEL% NEQ 0 (
-	if !compiler_opt! EQU "fresh-tcc" (
-        rd /s /q "%tcc_dir%">NUL 2>&1
+	if !compiler_opt! == "fresh-tcc" (
+        echo  ^> Clean TCC directory
+        call :buildcmd "rd /s /q "%tcc_dir%">NUL 2>&1" "  "
         set /a valid_cc=1
-    ) else if !compiler_opt! EQU "tcc" ( set /a valid_cc=1 )
+    ) else if !compiler_opt! == "tcc" ( set /a valid_cc=1 )
     if not exist "%tcc_dir%" (
         echo  ^> TCC not found
         echo  ^> Downloading TCC from %tcc_url%
-        git clone --depth 1 --quiet "%tcc_url%" "%tcc_dir%"
+        call :buildcmd "git clone --depth 1 --quiet "%tcc_url%" "%tcc_dir%"" "  "
     )
     pushd %tcc_dir% || (
         echo  ^> TCC not found, even after cloning
@@ -247,16 +208,15 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo  ^> Updating prebuilt TCC...
 pushd "%tcc_dir%"\
-git pull -q
+call :buildcmd "git pull -q" "  "
 popd
 
-if !verbose_log! EQU 1 ( echo [Compile] "!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>!log_file! )
-"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>!log_file!
+echo  ^> Attempting to build v.c with TCC
+call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-if !verbose_log! EQU 1 ( echo [Make] v.exe -cc "!tcc_exe!" self>>!log_file! )
-v.exe -cc "!tcc_exe!" self>>!log_file! 2>>&1
+call :buildcmd "v.exe -cc "!tcc_exe!" self" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -284,7 +244,7 @@ if !valid_cc! EQU 0 (
 )
 
 del v_old.exe>>!log_file! 2>>&1
-del !log_file!
+REM del !log_file!
 
 :version
 echo.
@@ -292,6 +252,14 @@ echo | set /p="V version: "
 .\v.exe version
 popd
 exit /b 0
+
+:buildcmd
+if !verbose_log! EQU 1 (
+    echo [Debug] %~1>>!log_file!
+    echo %~2 %~1
+)
+%~1>>!log_file! 2>>&1
+exit /b %ERRORLEVEL%
 
 :usage
 echo.
@@ -315,5 +283,5 @@ echo     make.bat -gcc --local --logpath output.log
 echo     make.bat -fresh-tcc --local
 echo     make.bat --help
 echo.
-echo Note: Any invalid or undefined options will cause an error
+echo Note: Any undefined options will be ignored
 exit /b 0
