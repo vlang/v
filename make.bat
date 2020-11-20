@@ -225,7 +225,10 @@ echo Attempting to build v.c with TCC...
 
 where /q tcc
 if %ERRORLEVEL% NEQ 0 (
-	if !compiler_opt! EQU "fresh-tcc" ( rd /s /q "%tcc_dir%" )
+	if !compiler_opt! EQU "fresh-tcc" (
+        rd /s /q "%tcc_dir%"
+        set /a valid_cc=1
+    ) else if !compiler_opt! EQU "tcc" ( set /a valid_cc=1 )
     if not exist "%tcc_dir%" (
         echo  ^> TCC not found
         echo  ^> Downloading TCC from %tcc_url%
@@ -240,9 +243,8 @@ if %ERRORLEVEL% NEQ 0 (
     set tcc_exe="%tcc_dir%\tcc.exe"
 ) else (
 	for /f "delims=" %%i in ('where tcc') do set "tcc_exe=%%i"
+    set /a valid_cc=1
 )
-
-set /a valid_cc=1
 
 echo  ^> Updating prebuilt TCC...
 pushd "%tcc_dir%"\
