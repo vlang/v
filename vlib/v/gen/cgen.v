@@ -1058,7 +1058,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln('//af tmp')
 					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
 				}
-				// g.autofree_scope_vars(node.pos.pos - 1)
+				g.autofree_scope_vars(node.pos.pos - 1, 0)
 				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
@@ -2117,7 +2117,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	if !isnil(scope.parent) {
 		// g.autofree_scope_vars2(scope.parent, end_pos)
 		g.writeln('// af parent scope:')
-		// g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
+		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
 	}
 }
 
