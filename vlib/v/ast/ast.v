@@ -814,15 +814,15 @@ pub:
 
 pub struct ArrayInit {
 pub:
-	pos             token.Position
-	elem_type_pos   token.Position
+	pos             token.Position // `[]` position
+	elem_type_pos   token.Position // `Type` position
 	exprs           []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts          [][]Comment // optional iembed comments after each expr
 	is_fixed        bool
 	has_val         bool // fixed size literal `[expr, expr]!!`
 	mod             string
-	len_expr        Expr
-	cap_expr        Expr
+	len_expr        Expr // len: expr
+	cap_expr        Expr // cap: expr
 	default_expr    Expr // init: expr
 	has_len         bool
 	has_cap         bool
@@ -831,8 +831,8 @@ pub mut:
 	is_interface    bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
 	interface_types []table.Type // [Dog, Cat]
 	interface_type  table.Type // Animal
-	elem_type       table.Type
-	typ             table.Type
+	elem_type       table.Type // element type
+	typ             table.Type // array type
 }
 
 pub struct ChanInit {
