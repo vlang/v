@@ -414,20 +414,20 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if field.typ.is_ptr() {
 				continue
 			}
-			if field.default_expr is ast.IntegerLiteral as lit {
-				if lit.val == '0' {
+			if field.default_expr is ast.IntegerLiteral {
+				if field.default_expr.val == '0' {
 					c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
-						lit.pos)
+						field.default_expr.pos)
 				}
-			} else if field.default_expr is ast.StringLiteral as lit {
-				if lit.val == '' {
+			} else if field.default_expr is ast.StringLiteral {
+				if field.default_expr.val == '' {
 					c.warn("unnecessary default value of '': struct fields are zeroed by default",
-						lit.pos)
+						field.default_expr.pos)
 				}
-			} else if field.default_expr is ast.BoolLiteral as lit {
-				if lit.val == false {
+			} else if field.default_expr is ast.BoolLiteral {
+				if field.default_expr.val == false {
 					c.warn('unnecessary default value `false`: struct fields are zeroed by default',
-						lit.pos)
+						field.default_expr.pos)
 				}
 			}
 		}
@@ -732,17 +732,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					match infix_expr.right as infix_right {
+					match union mut infix_expr.right {
 						ast.FloatLiteral {
-							if infix_right.val.f64() == 0.0 {
+							if infix_expr.right.val.f64() == 0.0 {
 								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_right.pos)
+								c.error('$oper by zero', infix_expr.right.pos)
 							}
 						}
 						ast.IntegerLiteral {
-							if infix_right.val.int() == 0 {
+							if infix_expr.right.val.int() == 0 {
 								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_right.pos)
+								c.error('$oper by zero', infix_expr.right.pos)
 							}
 						}
 						else {}
@@ -843,9 +843,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			// use `()` to make the boolean expression clear error
 			// for example: `(a && b) || c` instead of `a && b || c`
 			if infix_expr.op in [.logical_or, .and] {
-				if infix_expr.left is ast.InfixExpr {
-					e := infix_expr.left as ast.InfixExpr
-					if e.op in [.logical_or, .and] && e.op != infix_expr.op {
+				if mut infix_expr.left is ast.InfixExpr {
+					if infix_expr.left.op in [.logical_or, .and] &&
+						infix_expr.left.op != infix_expr.op {
 						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
 					}
 				}
@@ -897,7 +897,7 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	mut to_lock := '' // name of variable that needs lock
 	mut pos := token.Position{} // and its position
 	mut explicit_lock_needed := false
-	match mut expr {
+	match union mut expr {
 		ast.CastExpr {
 			// TODO
 			return '', pos
@@ -1053,7 +1053,8 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
 	elem_sym := c.table.get_type_symbol(elem_typ)
-	match call_expr.args[0].expr as arg_expr {
+	arg_expr := call_expr.args[0].expr
+	match union arg_expr {
 		ast.AnonFn {
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', call_expr.pos)
@@ -1385,12 +1386,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	mut found := false
 	mut found_in_args := false
 	// anon fn direct call
-	if call_expr.left is ast.AnonFn {
+	if mut call_expr.left is ast.AnonFn {
 		// it was set to anon for checker errors, clear for gen
 		call_expr.name = ''
 		c.expr(call_expr.left)
-		anon_fn := call_expr.left as ast.AnonFn
-		anon_fn_sym := c.table.get_type_symbol(anon_fn.typ)
+		anon_fn_sym := c.table.get_type_symbol(call_expr.left.typ)
 		f = (anon_fn_sym.info as table.FnType).func
 		found = true
 	}
@@ -1741,7 +1741,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 }
 
 fn is_expr_panic_or_exit(expr ast.Expr) bool {
-	match expr {
+	match union expr {
 		ast.CallExpr { return expr.name in ['panic', 'exit'] }
 		else { return false }
 	}
@@ -1752,16 +1752,16 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 	c.prevent_sum_type_unwrapping_once = false
 	// T.name, typeof(expr).name
 	mut name_type := 0
-	match selector_expr.expr as left {
+	match union mut selector_expr.expr {
 		ast.Ident {
-			if left.name == 'T' {
+			if selector_expr.expr.name == 'T' {
 				name_type = table.Type(c.table.find_type_idx('T')).set_flag(.generic)
 			}
 		}
 		// Note: in future typeof() should be a type known at compile-time
 		// sum types should not be handled dynamically
 		ast.TypeOf {
-			name_type = c.expr(left.expr)
+			name_type = c.expr(selector_expr.expr.expr)
 		}
 		else {}
 	}
@@ -1911,21 +1911,20 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 			}
 		}
 		if field.has_expr {
-			match field.expr as field_expr {
+			match union field.expr {
 				ast.IntegerLiteral {
-					val := field_expr.val.i64()
+					val := field.expr.val.i64()
 					if val < int_min || val > int_max {
-						c.error('enum value `$val` overflows int', field_expr.pos)
+						c.error('enum value `$val` overflows int', field.expr.pos)
 					} else if !decl.is_multi_allowed && int(val) in seen {
-						c.error('enum value `$val` already exists', field_expr.pos)
+						c.error('enum value `$val` already exists', field.expr.pos)
 					}
 					seen << int(val)
 				}
 				ast.PrefixExpr {}
 				else {
 					if field.expr is ast.Ident {
-						expr := field.expr as ast.Ident
-						if expr.language == .c {
+						if field.expr.language == .c {
 							continue
 						}
 					}
@@ -1988,13 +1987,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if left_first is ast.Ident {
 			assigned_var := left_first
 			if node.right is ast.Ident {
-				ident := node.right as ast.Ident
 				scope := c.file.scope.innermost(node.pos.pos)
-				if v := scope.find_var(ident.name) {
+				if v := scope.find_var(node.right.name) {
 					right_type0 = v.typ
 					if node.op == .amp {
 						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$ident.name` is immutable, cannot have a mutable reference to it',
+							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
 								node.pos)
 						}
 					}
@@ -2049,7 +2047,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						negative = true
 					}
 				}
-				if expr is ast.IntegerLiteral {
+				if mut expr is ast.IntegerLiteral {
 					mut is_large := false
 					if expr.val.len > 8 {
 						val := expr.val.i64()
@@ -2073,7 +2071,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// left_type = c.expr(left)
 		}
 		assign_stmt.left_types << left_type
-		match mut left {
+		match union mut left {
 			ast.Ident {
 				if left.kind == .blank_ident {
 					left_type = right_type
@@ -2327,7 +2325,8 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	} else if array_init.is_fixed && array_init.exprs.len == 1 && array_init.elem_type != table.void_type {
 		// [50]byte
 		mut fixed_size := 1
-		match array_init.exprs[0] as init_expr {
+		init_expr := array_init.exprs[0]
+		match union init_expr {
 			ast.IntegerLiteral {
 				fixed_size = init_expr.val.int()
 			}
@@ -2369,8 +2368,8 @@ fn const_int_value(cfield ast.ConstField) ?int {
 }
 
 fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
-	match cfield.expr {
-		ast.IntegerLiteral { return *it }
+	match union cfield.expr {
+		ast.IntegerLiteral { return cfield.expr }
 		else {}
 	}
 	return none
@@ -2562,18 +2561,17 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				c.error('expression in `go` must be a function call', node.call_expr.position())
 			}
 			c.expr(node.call_expr)
-			if node.call_expr is ast.CallExpr {
-				call_expr := node.call_expr as ast.CallExpr
+			if mut node.call_expr is ast.CallExpr {
 				// Make sure there are no mutable arguments
-				for arg in call_expr.args {
+				for arg in node.call_expr.args {
 					if arg.is_mut && !arg.typ.is_ptr() {
 						c.error('function in `go` statement cannot contain mutable non-reference arguments',
 							arg.expr.position())
 					}
 				}
-				if call_expr.is_method && call_expr.receiver_type.is_ptr() && !call_expr.left_type.is_ptr() {
+				if node.call_expr.is_method && node.call_expr.receiver_type.is_ptr() && !node.call_expr.left_type.is_ptr() {
 					c.error('method in `go` statement cannot have non-reference mutable receiver',
-						call_expr.left.position())
+						node.call_expr.left.position())
 				}
 			}
 		}
@@ -2743,7 +2741,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		c.error('checker: too many expr levels: $c.expr_level ', node.position())
 		return table.void_type
 	}
-	match mut node {
+	match union mut node {
 		ast.CTempVar {
 			return node.typ
 		}
@@ -2894,10 +2892,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
 					c.error('cannot take the address of a string', node.pos)
 				}
-				if node.right is ast.IndexExpr as index {
-					typ_sym := c.table.get_type_symbol(index.left_type)
+				if mut node.right is ast.IndexExpr {
+					typ_sym := c.table.get_type_symbol(node.right.left_type)
 					mut is_mut := false
-					if index.left is ast.Ident as ident {
+					if mut node.right.left is ast.Ident {
+						ident := node.right.left
 						if ident.obj is ast.Var {
 							v := ident.obj as ast.Var
 							is_mut = v.is_mut
@@ -2906,11 +2905,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					if !c.inside_unsafe && is_mut {
 						if typ_sym.kind == .map {
 							c.error('cannot take the address of mutable map values outside unsafe blocks',
-								index.pos)
+								node.right.pos)
 						}
 						if typ_sym.kind == .array {
 							c.error('cannot take the address of mutable array elements outside unsafe blocks',
-								index.pos)
+								node.right.pos)
 						}
 					}
 				}
@@ -3049,10 +3048,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.string_type {
 		if to_type_sym.kind != .alias {
 			mut error_msg := 'cannot cast a string'
-			if node.expr is ast.StringLiteral {
-				str_lit := node.expr as ast.StringLiteral
-				if str_lit.val.len == 1 {
-					error_msg += ", for denoting characters use `$str_lit.val` instead of '$str_lit.val'"
+			if mut node.expr is ast.StringLiteral {
+				if node.expr.val.len == 1 {
+					error_msg += ", for denoting characters use `$node.expr.val` instead of '$node.expr.val'"
 				}
 			}
 			c.error(error_msg, node.pos)
@@ -3203,9 +3201,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
-						if obj.expr is ast.Ident {
-							inner_ident := obj.expr as ast.Ident
-							if inner_ident.kind == .unresolved {
+						if mut obj.expr is ast.Ident {
+							if obj.expr.kind == .unresolved {
 								c.error('unresolved variable: `$ident.name`', ident.pos)
 								return table.void_type
 							}
@@ -3446,7 +3443,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				}
 				continue
 			}
-			match expr {
+			match union expr {
 				ast.Type {
 					key = c.table.type_to_str(expr.typ)
 					expr_types << expr
@@ -3518,28 +3515,28 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					expr_type = expr_types[0].typ
 				}
 				mut scope := c.file.scope.innermost(branch.pos.pos)
-				match node.cond as node_cond {
+				match mut node.cond {
 					ast.SelectorExpr {
-						expr_sym := c.table.get_type_symbol(node_cond.expr_type)
-						field := c.table.struct_find_field(expr_sym, node_cond.field_name) or {
+						expr_sym := c.table.get_type_symbol(node.cond.expr_type)
+						field := c.table.struct_find_field(expr_sym, node.cond.field_name) or {
 							table.Field{}
 						}
 						is_mut := field.is_mut
-						is_root_mut := scope.is_selector_root_mutable(c.table, node_cond)
+						is_root_mut := scope.is_selector_root_mutable(c.table, node.cond)
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_root_mut && !is_mut) || node.is_mut {
 							scope.register_struct_field(ast.ScopeStructField{
-								struct_type: node_cond.expr_type
-								name: node_cond.field_name
+								struct_type: node.cond.expr_type
+								name: node.cond.field_name
 								typ: node.cond_type
 								sum_type_cast: expr_type
-								pos: node_cond.pos
+								pos: node.cond.pos
 							})
 						}
 					}
 					ast.Ident {
 						mut is_mut := false
-						if v := scope.find_var(node_cond.name) {
+						if v := scope.find_var(node.cond.name) {
 							is_mut = v.is_mut
 						}
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
@@ -3547,7 +3544,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							scope.register(node.var_name, ast.Var{
 								name: node.var_name
 								typ: node.cond_type
-								pos: node_cond.pos
+								pos: node.cond.pos
 								is_used: true
 								is_mut: node.is_mut
 								sum_type_cast: expr_type
@@ -3648,10 +3645,10 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 							stmt.pos)
 					}
 				} else {
-					if stmt.expr is ast.InfixExpr as expr {
-						if expr.left !is ast.Ident &&
-							expr.left !is ast.SelectorExpr && expr.left !is ast.IndexExpr {
-							c.error('channel in `select` key must be predefined', expr.left.position())
+					if stmt.expr is ast.InfixExpr {
+						if stmt.expr.left !is ast.Ident &&
+							stmt.expr.left !is ast.SelectorExpr && stmt.expr.left !is ast.IndexExpr {
+							c.error('channel in `select` key must be predefined', stmt.expr.left.position())
 						}
 					} else {
 						c.error('invalid expression for `select` key', stmt.expr.position())
@@ -3659,7 +3656,8 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 				}
 			}
 			ast.AssignStmt {
-				match stmt.right[0] as expr {
+				expr := stmt.right[0]
+				match union expr {
 					ast.PrefixExpr {
 						if expr.right !is ast.Ident &&
 							expr.right !is ast.SelectorExpr && expr.right !is ast.IndexExpr {
@@ -3774,15 +3772,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if (infix.left is ast.Ident ||
 					infix.left is ast.SelectorExpr) &&
 					infix.right is ast.Type {
-					is_variable := if infix.left is ast.Ident { (infix.left as ast.Ident).kind ==
-							.variable } else { true }
+					is_variable := if mut infix.left is ast.Ident { infix.left.kind == .variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
 						if left_sym.kind in [.sum_type, .interface_, .union_sum_type] {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
-							if infix.left is ast.Ident as infix_left {
-								if v := scope.find_var(infix_left.name) {
+							if mut infix.left is ast.Ident {
+								if v := scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
 								}
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
@@ -3792,29 +3789,29 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										name: branch.left_as_name
 										typ: infix.left_type
 										sum_type_cast: right_expr.typ
-										pos: infix.left.position()
+										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
 									})
 								}
-							} else if infix.left is ast.SelectorExpr as selector {
-								expr_sym := c.table.get_type_symbol(selector.expr_type)
-								field := c.table.struct_find_field(expr_sym, selector.field_name) or {
+							} else if mut infix.left is ast.SelectorExpr {
+								expr_sym := c.table.get_type_symbol(infix.left.expr_type)
+								field := c.table.struct_find_field(expr_sym, infix.left.field_name) or {
 									table.Field{}
 								}
 								is_mut = field.is_mut
 								is_root_mut := scope.is_selector_root_mutable(c.table,
-									selector)
+									infix.left)
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if ((!is_root_mut && !is_mut) ||
 									branch.is_mut_name) &&
 									left_sym.kind == .union_sum_type {
 									scope.register_struct_field(ast.ScopeStructField{
-										struct_type: selector.expr_type
-										name: selector.field_name
+										struct_type: infix.left.expr_type
+										name: infix.left.field_name
 										typ: infix.left_type
 										sum_type_cast: right_expr.typ
-										pos: infix.left.position()
+										pos: infix.left.pos
 									})
 								}
 							}
@@ -3946,7 +3943,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 // saying whether that branch's contents should be skipped (targets a different os for example)
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
-	match cond {
+	match union cond {
 		ast.ParExpr {
 			return c.comp_if_branch(cond.expr, pos)
 		}
@@ -3959,8 +3956,8 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		ast.PostfixExpr {
 			if cond.op != .question {
 				c.error('invalid \$if postfix operator', cond.pos)
-			} else if cond.expr is ast.Ident as ident {
-				return ident.name !in c.pref.compile_defines_all
+			} else if cond.expr is ast.Ident {
+				return cond.expr.name !in c.pref.compile_defines_all
 			} else {
 				c.error('invalid `\$if` condition', cond.pos)
 			}
@@ -4093,10 +4090,9 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	}
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
-		if node.left is ast.Ident {
-			ident := node.left as ast.Ident
-			scope := c.file.scope.innermost(ident.pos.pos)
-			if v := scope.find_var(ident.name) {
+		if mut node.left is ast.Ident {
+			scope := c.file.scope.innermost(node.left.pos.pos)
+			if v := scope.find_var(node.left.name) {
 				// `mut param []T` function parameter
 				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
 			}
@@ -4105,13 +4101,13 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 			c.warn('pointer indexing is only allowed in `unsafe` blocks', node.pos)
 		}
 	}
-	if node.index is ast.RangeExpr as range { // [1..2]
-		if range.has_low {
-			index_type := c.expr(range.low)
+	if mut node.index is ast.RangeExpr { // [1..2]
+		if node.index.has_low {
+			index_type := c.expr(node.index.low)
 			c.check_index_type(typ_sym, index_type, node.pos)
 		}
-		if range.has_high {
-			index_type := c.expr(range.high)
+		if node.index.has_high {
+			index_type := c.expr(node.index.high)
 			c.check_index_type(typ_sym, index_type, node.pos)
 		}
 		// array[1..2] => array
@@ -4559,8 +4555,8 @@ fn has_top_return(stmts []ast.Stmt) bool {
 				return true
 			}
 		} else if stmt is ast.ExprStmt {
-			if stmt.expr is ast.CallExpr as ce {
-				if ce.name in ['panic', 'exit'] {
+			if stmt.expr is ast.CallExpr {
+				if stmt.expr.name in ['panic', 'exit'] {
 					return true
 				}
 			}

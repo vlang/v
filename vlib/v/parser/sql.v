@@ -129,7 +129,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut table_name := ''
 	if kind != .delete {
 		expr := p.expr(0)
-		match expr {
+		match union expr {
 			ast.Ident {
 				if kind == .insert {
 					inserted_var_name = expr.name

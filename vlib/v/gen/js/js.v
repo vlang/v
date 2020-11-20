@@ -523,7 +523,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 }
 
 fn (mut g JsGen) expr(node ast.Expr) {
-	match node {
+	match union node {
 		ast.CTempVar {
 			g.write('/* ast.CTempVar: node.name */')
 		}
@@ -1008,19 +1008,19 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 
 fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
-	match node.call_expr {
+	match union node.call_expr {
 		ast.CallExpr {
-			mut name := it.name
-			if it.is_method {
-				receiver_sym := g.table.get_type_symbol(it.receiver_type)
+			mut name := node.call_expr.name
+			if node.call_expr.is_method {
+				receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
 				name = receiver_sym.name + '.' + name
 			}
 			g.writeln('await new Promise(function(resolve){')
 			g.inc_indent()
 			g.write('${name}(')
-			for i, arg in it.args {
+			for i, arg in node.call_expr.args {
 				g.expr(arg.expr)
-				if i < it.args.len - 1 {
+				if i < node.call_expr.args.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -1184,21 +1184,22 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			node := it
 			g.write(it.name)
 			g.write('(')
-			match node.args[0].expr {
+			expr := node.args[0].expr
+			match union expr {
 				ast.AnonFn {
-					g.gen_fn_decl(it.decl)
+					g.gen_fn_decl(expr.decl)
 					g.write(')')
 					return
 				}
 				ast.Ident {
-					if it.kind == .function {
-						g.write(g.js_name(it.name))
+					if expr.kind == .function {
+						g.write(g.js_name(expr.name))
 						g.write(')')
 						return
-					} else if it.kind == .variable {
-						v_sym := g.table.get_type_symbol(it.var_info().typ)
+					} else if expr.kind == .variable {
+						v_sym := g.table.get_type_symbol(expr.var_info().typ)
 						if v_sym.kind == .function {
-							g.write(g.js_name(it.name))
+							g.write(g.js_name(expr.name))
 							g.write(')')
 							return
 						}
@@ -1302,17 +1303,16 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		range := expr.index as ast.RangeExpr
 		g.expr(expr.left)
 		g.write('.slice(')
-		if range.has_low {
-			g.expr(range.low)
+		if expr.index.has_low {
+			g.expr(expr.index.low)
 		} else {
 			g.write('0')
 		}
 		g.write(', ')
-		if range.has_high {
-			g.expr(range.high)
+		if expr.index.has_high {
+			g.expr(expr.index.high)
 		} else {
 			g.expr(expr.left)
 			g.write('.length')
