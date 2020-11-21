@@ -3529,7 +3529,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					g.expr(branch.cond.expr)
 					g.writeln(', ${var_name}.ok) {')
 					if branch.cond.var_name != '_' {
-						g.writeln('\t${g.typ(branch.cond.expr_type)} $branch.cond.var_name = $var_name;')
+						base_type := g.base_type(branch.cond.expr_type)
+						g.writeln('\t$base_type $branch.cond.var_name = *($base_type*)${var_name}.data;')
 					}
 				}
 				else {
