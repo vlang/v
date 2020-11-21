@@ -98,8 +98,9 @@ pub fn (mut ws Client) connect() ? {
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
-	ws.conn.set_read_timeout(net.infinite_timeout)
-	ws.conn.set_write_timeout(net.infinite_timeout)
+	// Todo: make setting configurable
+	ws.conn.set_read_timeout(time.second * 30)
+	ws.conn.set_write_timeout(time.second * 30)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
@@ -111,7 +112,9 @@ pub fn (mut ws Client) listen() ? {
 	ws.logger.info('Starting client listener, server($ws.is_server)...')
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
-		ws.close(1000, 'closed by client')
+		if ws.state == .open {
+			ws.close(1000, 'closed by client')
+		}
 	}
 	for ws.state == .open {
 		msg := ws.read_next_message() or {
@@ -121,6 +124,9 @@ pub fn (mut ws Client) listen() ? {
 			ws.debug_log('failed to read next message: $err')
 			ws.send_error_event('failed to read next message: $err')
 			return error(err)
+		}
+		if ws.state in [.closed, .closing] {
+				return
 		}
 		ws.debug_log('got message: $msg.opcode') // , payload: $msg.payload') leaks
 		match msg.opcode {
@@ -345,14 +351,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
 		err_msg := 'Socket allready closed: $code'
 		ret_err := error(err_msg)
-		// unsafe {
-		// err_msg.free()
-		// }
 		return ret_err
-	}
-	defer {
-		ws.shutdown_socket()
-		ws.reset_state()
 	}
 	ws.set_state(.closing)
 	mut code32 := 0
@@ -367,12 +366,16 @@ pub fn (mut ws Client) close(code int, message string) ? {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame)?
+		ws.shutdown_socket()
+		ws.reset_state()
 		ws.send_close_event(code, message)
 		unsafe {
 			close_frame.free()
 		}
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', [])?
+		ws.shutdown_socket()
+		ws.reset_state()
 		ws.send_close_event(code, '')
 	}
 	ws.fragments = []

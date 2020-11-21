@@ -12,16 +12,16 @@ fn main() {
 		}
 	}
 	// update the reports
-	// uri := 'ws://autobahn_server:9001/updateReports?agent=v-client'
-	uri := 'ws://localhost:9001/updateReports?agent=v-client'
+	uri := 'wss://localhost:9002/updateReports?agent=v-client'
+	// uri := 'wss://autobahn_server_wss:9002/updateReports?agent=v-client'
 	mut ws := websocket.new_client(uri)?
 	ws.connect()?
 	ws.listen()?
 }
 
 fn handle_case(case_nr int) ? {
-	// uri := 'ws://autobahn_server:9001/runCase?case=$case_nr&agent=v-client'
-	uri := 'ws://localhost:9001/runCase?case=$case_nr&agent=v-client'
+	// uri := 'wss://autobahn_server_wss:9002/runCase?case=$case_nr&agent=v-client'
+	uri := 'wss://localhost:9002/runCase?case=$case_nr&agent=v-client'
 	mut ws := websocket.new_client(uri)?
 	ws.on_message(on_message)
 	ws.connect()?
