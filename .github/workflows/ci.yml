@@ -521,7 +521,7 @@ jobs:
     - name: Install dependencies
       run: sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev
     - name: Build V
-      run: make -j2 && ./v -g -cc gcc -o v cmd/v
+      run: make -j2 && ./v -cc gcc -o v cmd/v
     - name: Install markdown
       run: ./v install markdown
     - name: Build Gitly
