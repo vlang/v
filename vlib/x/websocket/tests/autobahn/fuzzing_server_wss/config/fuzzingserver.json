@@ -1,0 +1,16 @@
+{
+    "url": "wss://127.0.0.1:9002",
+    "outdir": "./reports/clients",
+    "key": "/config/server.key",
+    "cert": "/config/server.crt",
+    "cases": [
+        "*"
+    ],
+    "exclude-cases": [
+        "9.*",
+        "11.*",
+        "12.*",
+        "13.*"
+    ],
+    "exclude-agent-cases": {}
+}

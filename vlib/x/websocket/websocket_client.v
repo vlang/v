@@ -94,12 +94,13 @@ pub fn new_client(address string) ?&Client {
 
 // connect, connects and do handshake procedure with remote server
 pub fn (mut ws Client) connect() ? {
-	ws.assert_not_connected()
+	ws.assert_not_connected()?
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
-	ws.conn.set_read_timeout(net.infinite_timeout)
-	ws.conn.set_write_timeout(net.infinite_timeout)
+	// Todo: make setting configurable
+	ws.conn.set_read_timeout(time.second * 30)
+	ws.conn.set_write_timeout(time.second * 30)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
@@ -111,7 +112,9 @@ pub fn (mut ws Client) listen() ? {
 	ws.logger.info('Starting client listener, server($ws.is_server)...')
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
-		ws.close(1000, 'closed by client')
+		if ws.state == .open {
+			ws.close(1000, 'closed by client')
+		}
 	}
 	for ws.state == .open {
 		msg := ws.read_next_message() or {
@@ -121,6 +124,9 @@ pub fn (mut ws Client) listen() ? {
 			ws.debug_log('failed to read next message: $err')
 			ws.send_error_event('failed to read next message: $err')
 			return error(err)
+		}
+		if ws.state in [.closed, .closing] {
+				return
 		}
 		ws.debug_log('got message: $msg.opcode') // , payload: $msg.payload') leaks
 		match msg.opcode {
@@ -345,9 +351,6 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
 		err_msg := 'Socket allready closed: $code'
 		ret_err := error(err_msg)
-		// unsafe {
-		// err_msg.free()
-		// }
 		return ret_err
 	}
 	defer {
@@ -482,6 +485,7 @@ fn (ws Client) assert_not_connected() ? {
 	match ws.state {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }
+		.closing { return error('connect: reconnect on closing websocket not supported, please use new client') }
 		else {}
 	}
 }
