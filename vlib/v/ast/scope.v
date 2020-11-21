@@ -73,7 +73,7 @@ pub fn (s &Scope) is_known(name string) bool {
 
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
-		match obj {
+		match union obj {
 			Var { return obj }
 			else {}
 		}

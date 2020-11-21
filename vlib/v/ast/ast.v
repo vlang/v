@@ -23,7 +23,7 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
-pub type ScopeObject = ConstField | GlobalField | Var
+pub __type ScopeObject = ConstField | GlobalField | Var
 
 pub struct Type {
 pub:

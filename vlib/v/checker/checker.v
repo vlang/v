@@ -3693,8 +3693,8 @@ pub fn (mut c Checker) lock_expr(mut node ast.LockExpr) table.Type {
 	for i in 0 .. node.lockeds.len {
 		c.ident(mut node.lockeds[i])
 		id := node.lockeds[i]
-		if id.obj is ast.Var as v {
-			if v.typ.share() != .shared_t {
+		if mut id.obj is ast.Var {
+			if id.obj.typ.share() != .shared_t {
 				c.error('`$id.name` must be declared `shared` to be locked', id.pos)
 			}
 		} else {
