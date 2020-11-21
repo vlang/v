@@ -10,15 +10,27 @@ import v.util
 import v.builder
 
 const (
-	simple_cmd = [
-		'fmt', 'up', 'vet',
-		'self', 'tracev', 'symlink', 'bin2v',
-		'test', 'test-fmt', 'test-compiler', 'test-fixed', 'test-cleancode',
+	simple_cmd                          = [
+		'fmt',
+		'up',
+		'vet',
+		'self',
+		'tracev',
+		'symlink',
+		'bin2v',
+		'test',
+		'test-fmt',
+		'test-compiler',
+		'test-fixed',
+		'test-cleancode',
 		'repl',
 		'complete',
-		'build-tools', 'build-examples',
+		'build-tools',
+		'build-examples',
 		'build-vbinaries',
-		'setup-freetype', 'doc', 'doctor'
+		'setup-freetype',
+		'doc',
+		'doctor',
 	]
 	list_of_flags_that_allow_duplicates = ['cc', 'd', 'define', 'cf', 'cflags']
 )
@@ -45,7 +57,7 @@ fn main() {
 	if command == 'test-vet' {
 		println('Please use `v test-cleancode` instead.')
 		return
-	}    
+	}
 	// Start calling the correct functions/external tools
 	// Note for future contributors: Please add new subcommands in the `match` block below.
 	if command in simple_cmd {
