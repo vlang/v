@@ -1551,8 +1551,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		else {}
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`)
-	mut af := g.pref.autofree && assign_stmt.op == .assign && assign_stmt.left_types.len == 1 &&
-		assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident
+	mut af := g.pref.autofree && !g.is_builtin_mod && assign_stmt.op == .assign && assign_stmt.left_types.len ==
+		1 && assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident
 	mut sref_name := ''
 	if af {
 		ident := assign_stmt.left[0] as ast.Ident
