@@ -44,10 +44,8 @@ fn main() {
 			if is_atty(0) != 0 {
 				println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
 			} else {
-				mut args_and_flags := []string{}
-				args_and_flags << util.join_env_vflags_and_os_args()[1..]
-				args_and_flags << 'run'
-				args_and_flags << '-'
+				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
+				args_and_flags << ['run', '-']
 				pref.parse_args(args_and_flags)
 			}
 		}
