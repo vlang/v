@@ -647,6 +647,9 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	if g.is_js_call {
 		return
 	}
+	if g.inside_const {
+		return
+	}
 	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
 	g.tmp_count2++
 	mut scope := g.file.scope.innermost(node.pos.pos)
@@ -778,7 +781,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && g.pref.experimental && arg.typ == table.string_type &&
-			arg.is_tmp_autofree
+			arg.is_tmp_autofree && !g.inside_const
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
