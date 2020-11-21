@@ -106,15 +106,15 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.check(.decl_assign)
 			comments << p.eat_comments()
 			expr := p.expr(0)
-			p.scope.register(var_name, ast.Var{
-				name: var_name
-				expr: expr
-				pos: var_pos
-			})
 			cond = ast.IfGuardExpr{
 				var_name: var_name
 				expr: expr
 			}
+			p.scope.register(var_name, ast.Var{
+				name: var_name
+				expr: cond
+				pos: var_pos
+			})
 			prev_guard = true
 		} else {
 			prev_guard = false
