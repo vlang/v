@@ -72,6 +72,12 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> compiling vweb HTML template "$path"')
 	}
 	v_code := tmpl.compile_file(path, p.cur_fn_name)
+	$if print_vweb_template_expansions ? {
+		lines := v_code.split('\n')
+		for i, line in lines {
+			println('$path:${i + 1}: $line')
+		}
+	}
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: p.global_scope

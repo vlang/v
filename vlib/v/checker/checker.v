@@ -53,6 +53,7 @@ pub mut:
 	mod                              string // current module name
 	is_builtin_mod                   bool // are we in `builtin`?
 	inside_unsafe                    bool
+	inside_const                     bool
 	skip_flags                       bool // should `#flag` and `#include` be skipped
 	cur_generic_type                 table.Type
 mut:
@@ -1028,7 +1029,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 	// autofree: mark args that have to be freed (after saving them in tmp exprs)
 	free_tmp_arg_vars := c.pref.autofree && c.pref.experimental && !c.is_builtin_mod &&
 		call_expr.args.len > 0 && !call_expr.args[0].typ.has_flag(.optional)
-	if free_tmp_arg_vars {
+	if free_tmp_arg_vars && !c.inside_const {
 		for i, arg in call_expr.args {
 			if arg.typ != table.string_type {
 				continue
@@ -1896,6 +1897,48 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	}
 }
 
+pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
+	mut field_names := []string{}
+	mut field_order := []int{}
+	for i, field in node.fields {
+		// TODO Check const name once the syntax is decided
+		if field.name in c.const_names {
+			c.error('duplicate const `$field.name`', field.pos)
+		}
+		c.const_names << field.name
+		field_names << field.name
+		field_order << i
+	}
+	mut needs_order := false
+	mut done_fields := []int{}
+	for i, field in node.fields {
+		c.const_decl = field.name
+		c.const_deps << field.name
+		typ := c.expr(field.expr)
+		node.fields[i].typ = c.table.mktyp(typ)
+		for cd in c.const_deps {
+			for j, f in node.fields {
+				if j != i && cd in field_names && cd == f.name && j !in done_fields {
+					needs_order = true
+					x := field_order[j]
+					field_order[j] = field_order[i]
+					field_order[i] = x
+					break
+				}
+			}
+		}
+		done_fields << i
+		c.const_deps = []
+	}
+	if needs_order {
+		mut ordered_fields := []ast.ConstField{}
+		for order in field_order {
+			ordered_fields << node.fields[order]
+		}
+		node.fields = ordered_fields
+	}
+}
+
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	mut seen := []int{}
@@ -2421,45 +2464,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmts(node.stmts)
 		}
 		ast.ConstDecl {
-			mut field_names := []string{}
-			mut field_order := []int{}
-			for i, field in node.fields {
-				// TODO Check const name once the syntax is decided
-				if field.name in c.const_names {
-					c.error('duplicate const `$field.name`', field.pos)
-				}
-				c.const_names << field.name
-				field_names << field.name
-				field_order << i
-			}
-			mut needs_order := false
-			mut done_fields := []int{}
-			for i, field in node.fields {
-				c.const_decl = field.name
-				c.const_deps << field.name
-				typ := c.expr(field.expr)
-				node.fields[i].typ = c.table.mktyp(typ)
-				for cd in c.const_deps {
-					for j, f in node.fields {
-						if j != i && cd in field_names && cd == f.name && j !in done_fields {
-							needs_order = true
-							x := field_order[j]
-							field_order[j] = field_order[i]
-							field_order[i] = x
-							break
-						}
-					}
-				}
-				done_fields << i
-				c.const_deps = []
-			}
-			if needs_order {
-				mut ordered_fields := []ast.ConstField{}
-				for order in field_order {
-					ordered_fields << node.fields[order]
-				}
-				node.fields = ordered_fields
-			}
+			c.inside_const = true
+			c.const_decl(mut node)
+			c.inside_const = false
 		}
 		ast.DeferStmt {
 			c.stmts(node.stmts)
@@ -3212,7 +3219,14 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 								return table.void_type
 							}
 						}
-						typ = c.expr(obj.expr)
+						if mut obj.expr is ast.IfGuardExpr {
+							// new variable from if guard shouldn't have the optional flag for further use
+							// a temp variable will be generated which unwraps it
+							if_guard_var_type := c.expr(obj.expr.expr)
+							typ = if_guard_var_type.clear_flag(.optional)
+						} else {
+							typ = c.expr(obj.expr)
+						}
 					}
 					is_optional := typ.has_flag(.optional)
 					ident.kind = .variable

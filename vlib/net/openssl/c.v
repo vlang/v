@@ -42,10 +42,11 @@ fn C.SSL_set_fd() int
 fn C.SSL_connect() int
 fn C.SSL_set_cipher_list() int
 fn C.SSL_get_peer_certificate() int
+fn C.ERR_clear_error()
 fn C.SSL_get_error() int
 fn C.SSL_get_verify_result() int
 fn C.SSL_set_tlsext_host_name() int
-fn C.SSL_shutdown()
+fn C.SSL_shutdown() int
 fn C.SSL_free()
 fn C.SSL_write() int
 fn C.SSL_read() int

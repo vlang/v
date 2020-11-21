@@ -1356,6 +1356,16 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 
 /*== MACOS DECLARATIONS ======================================================*/
 #if defined(_SAPP_MACOS)
+@interface SokolWindow : NSWindow {
+}
+@end
+
+// A custom NSWindow interface to handle events in borderless windows.
+@implementation SokolWindow
+- (BOOL)canBecomeKeyWindow { return YES; } // needed for NSWindowStyleMaskBorderless
+- (BOOL)canBecomeMainWindow { return YES; }
+@end
+
 @interface _sapp_macos_app_delegate : NSObject<NSApplicationDelegate>
 @end
 @interface _sapp_macos_window_delegate : NSObject<NSWindowDelegate>
@@ -1373,7 +1383,8 @@ inline int sapp_run(const sapp_desc& desc) { return sapp_run(&desc); }
 typedef struct {
     uint32_t flags_changed_store;
     uint8_t mouse_buttons;
-    NSWindow* window;
+//    NSWindow* window;
+    SokolWindow* window;
     NSTrackingArea* tracking_area;
     _sapp_macos_app_delegate* app_dlg;
     _sapp_macos_window_delegate* win_dlg;
@@ -2714,13 +2725,13 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         }
         _sapp.dpi_scale = (float)_sapp.framebuffer_width / (float) _sapp.window_width;
     }
-    const NSUInteger style =
+    const NSUInteger style = _sapp.desc.fullscreen ? NSWindowStyleMaskBorderless :
         NSWindowStyleMaskTitled |
         NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable |
         NSWindowStyleMaskResizable;
     NSRect window_rect = NSMakeRect(0, 0, _sapp.window_width, _sapp.window_height);
-    _sapp.macos.window = [[NSWindow alloc]
+    _sapp.macos.window = [[SokolWindow alloc]
         initWithContentRect:window_rect
         styleMask:style
         backing:NSBackingStoreBuffered
@@ -2794,13 +2805,16 @@ _SOKOL_PRIVATE void _sapp_macos_frame(void) {
         timer_obj = nil;
     #endif
     _sapp.valid = true;
+   /*
     if (_sapp.fullscreen) {
-        /* on GL, this already toggles a rendered frame, so set the valid flag before */
+        // on GL, this already toggles a rendered frame, so set the valid flag before
         [_sapp.macos.window toggleFullScreen:self];
     }
     else {
         [_sapp.macos.window center];
     }
+   */
+    [_sapp.macos.window center];
     [_sapp.macos.window makeKeyAndOrderFront:nil];
     _sapp_macos_update_dimensions();
 }

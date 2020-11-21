@@ -1270,7 +1270,11 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					}
 					else {
 						g.write('if (')
-						g.expr(branch.cond)
+						if '$branch.cond' == 'js' {
+							g.write('true')
+						} else {
+							g.expr(branch.cond)
+						}
 						g.writeln(') {')
 					}
 				}
