@@ -75,7 +75,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
-			println('$path:${i+1}: $line')
+			println('$path:${i + 1}: $line')
 		}
 	}
 	mut scope := &ast.Scope{
