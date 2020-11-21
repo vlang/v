@@ -94,7 +94,7 @@ pub fn new_client(address string) ?&Client {
 
 // connect, connects and do handshake procedure with remote server
 pub fn (mut ws Client) connect() ? {
-	ws.assert_not_connected()
+	ws.assert_not_connected()?
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
@@ -353,6 +353,10 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		ret_err := error(err_msg)
 		return ret_err
 	}
+	defer {
+		ws.shutdown_socket()
+		ws.reset_state()
+	}
 	ws.set_state(.closing)
 	mut code32 := 0
 	if code > 0 {
@@ -366,16 +370,12 @@ pub fn (mut ws Client) close(code int, message string) ? {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame)?
-		ws.shutdown_socket()
-		ws.reset_state()
 		ws.send_close_event(code, message)
 		unsafe {
 			close_frame.free()
 		}
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', [])?
-		ws.shutdown_socket()
-		ws.reset_state()
 		ws.send_close_event(code, '')
 	}
 	ws.fragments = []
@@ -485,6 +485,7 @@ fn (ws Client) assert_not_connected() ? {
 	match ws.state {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }
+		.closing { return error('connect: reconnect on closing websocket not supported, please use new client') }
 		else {}
 	}
 }
