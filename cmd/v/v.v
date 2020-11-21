@@ -40,8 +40,14 @@ fn main() {
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
 		// Running `./v` without args launches repl
-		if args.len == 0 && is_atty(0) != 0 {
-			println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
+		if args.len == 0 {
+			if is_atty(0) != 0 {
+				println('Welcome to the V REPL (for help with V itself, type `exit`, then run `v help`).')
+			} else {
+				mut args_and_flags := util.join_env_vflags_and_os_args()[1..].clone()
+				args_and_flags << ['run', '-']
+				pref.parse_args(args_and_flags)
+			}
 		}
 		util.launch_tool(false, 'vrepl', os.args[1..])
 		return
