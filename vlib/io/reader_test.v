@@ -4,12 +4,12 @@ struct Buf {
 pub:
 	bytes []byte
 mut:
-	i int
+	i     int
 }
 
 fn (mut b Buf) read(mut buf []byte) ?int {
 	if !(b.i < b.bytes.len) {
-		return error("terminated")
+		return error('terminated')
 	}
 	n := copy(buf, b.bytes[b.i..b.bytes.len])
 	b.i += n
@@ -17,12 +17,14 @@ fn (mut b Buf) read(mut buf []byte) ?int {
 }
 
 fn test_read_all() {
-	buf := Buf{bytes: "123".repeat(10).bytes()}
+	buf := Buf{
+		bytes: '123'.repeat(10).bytes()
+	}
 	res := read_all(buf) or {
 		assert false
-		"".bytes()
+		''.bytes()
 	}
-	assert res == "123".repeat(10).bytes()
+	assert res == '123'.repeat(10).bytes()
 }
 
 /*
