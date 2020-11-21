@@ -3617,9 +3617,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		return
 	}
 	if is_exhaustive {
-		// avoid checking last condition
+		// optimization: avoid checking last condition
 		mut a := node.branches
-		if a.len > 1 {
+		if a.len > 1 && c.table.type_kind(node.cond_type) !in [.sum_type, .union_sum_type] {
 			a[a.len - 1].is_else = true
 		}
 		return
