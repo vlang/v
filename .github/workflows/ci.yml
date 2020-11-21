@@ -586,8 +586,3 @@ jobs:
         with:
             name: client wss
             path: ${{github.workspace}}/reports_wss/clients/index.html
-      - name: Publish report server wss
-        uses: actions/upload-artifact@v2
-        with:
-            name: server wss
-            path: ${{github.workspace}}/reports_wss/servers/index.html
