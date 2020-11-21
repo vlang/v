@@ -445,7 +445,7 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	ny := y * f32(ctx.scale)
 	width := w * f32(ctx.scale)
 	height := h * f32(ctx.scale)
-	segments := r
+	segments := 2 * math.pi * r
 	segdiv := segments / 4
 	rb := 0
 	lb := int(rb + segdiv)
