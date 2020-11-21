@@ -1044,8 +1044,9 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 			}
 			call_expr.args[i].is_tmp_autofree = true
 		}
+		// TODO copy pasta from above
 		if call_expr.receiver_type == table.string_type && !(call_expr.left is ast.Ident ||
-			call_expr.left is ast.StringLiteral) {
+			call_expr.left is ast.StringLiteral || call_expr.left is ast.SelectorExpr) {
 			call_expr.free_receiver = true
 		}
 	}
