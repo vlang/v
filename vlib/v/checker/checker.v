@@ -3216,8 +3216,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 							ast.IfGuardExpr {
 								// new variable from if guard shouldn't have the optional flag for further use
 								// a temp variable will be generated which unwraps it
-								if_guard_expr := c.expr(obj.expr.expr)
-								typ = if_guard_expr.clear_flag(.optional)
+								if_guard_var_type := c.expr(obj.expr.expr)
+								typ = if_guard_var_type.clear_flag(.optional)
 							}
 							else {
 								typ = c.expr(obj.expr)
