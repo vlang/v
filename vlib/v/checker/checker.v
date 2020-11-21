@@ -3206,7 +3206,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
-						match mut obj.expr {
+						match union mut obj.expr {
 							ast.Ident {
 								if obj.expr.kind == .unresolved {
 									c.error('unresolved variable: `$ident.name`', ident.pos)
