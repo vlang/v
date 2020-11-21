@@ -23,18 +23,18 @@ pub fn utf32_to_str_no_malloc(code u32, buf voidptr) string {
 			buffer[0] = byte(icode)
 			res = tos(buffer, 1)
 		}
-		if icode <= 2047 { /* 0x7FF */
+		else if icode <= 2047 { /* 0x7FF */
 			buffer[0] = 192 | byte(icode>>6)  /* 0xC0 - 110xxxxx */
 			buffer[1] = 128 | byte(icode & 63) /* 0x80 - 0x3F - 10xxxxxx */
 			res = tos(buffer, 2)
 		}
-		if icode <= 65535 { /* 0xFFFF */
+		else if icode <= 65535 { /* 0xFFFF */
 			buffer[0] = 224 | byte(icode>>12)/* 0xE0 - 1110xxxx */
 			buffer[1] = 128 | (byte(icode>>6) & 63) /* 0x80 - 0x3F - 10xxxxxx */
 			buffer[2] = 128 | byte(icode & 63) /* 0x80 - 0x3F - 10xxxxxx */
 			res = tos(buffer, 3)
 		}
-		if icode <= 1114111/* 0x10FFFF */ {
+		else if icode <= 1114111/* 0x10FFFF */ {
 			buffer[0] = 240 | byte(icode>>18)  /* 0xF0 - 11110xxx */
 			buffer[1] = 128 | (byte(icode>>12) & 63) /* 0x80 - 0x3F - 10xxxxxx */
 			buffer[2] = 128 | (byte(icode>>6) & 63) /* 0x80 - 0x3F - 10xxxxxx */
