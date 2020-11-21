@@ -18,6 +18,7 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
+		'cmd/v/v.v',
 		'vlib/builtin/array.v',
 		'vlib/os/file.v',
 		'vlib/math/bits/bits.v',
