@@ -32,7 +32,6 @@ fn test_run() {
 	assert p.status == .exited
 	//
 	eprintln('polling iterations: $i')
-	assert i > 1
 	assert i < 20
 }
 

@@ -72,6 +72,12 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> compiling vweb HTML template "$path"')
 	}
 	v_code := tmpl.compile_file(path, p.cur_fn_name)
+	$if print_vweb_template_expansions ? {
+		lines := v_code.split('\n')
+		for i, line in lines {
+			println('$path:${i + 1}: $line')
+		}
+	}
 	mut scope := &ast.Scope{
 		start_pos: 0
 		parent: p.global_scope
@@ -88,15 +94,18 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		file |
 		path: html_name
 	}
+	println('>>> vweb p.cur_fn_name: $p.cur_fn_name	| file.path: $file.path')
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
+			println('>> stmt.name: $stmt.name')
 			if stmt.name == 'main.vweb_tmpl_$p.cur_fn_name' {
 				mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
+						println('    >>> typeof obj: ' + typeof(obj) + ' | stmt: $stmt.name | v.name: $v.name')
 						tmpl_scope.register(v.name, *v)
 						// set the controller action var to used
 						// if its unused in the template it will warn
