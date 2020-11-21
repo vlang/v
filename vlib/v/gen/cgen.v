@@ -779,7 +779,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			// g.autofree_scope_vars(stmt.position().pos - 1)
 			stmt_pos := stmt.position()
 			g.writeln('// af scope_vars')
-			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr)
+			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
 		}
 	}
 }
@@ -2063,7 +2063,8 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
+// fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
+fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
@@ -2072,11 +2073,11 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
 	scope := g.file.scope.innermost(pos)
 	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
 	// g.autofree_scope_vars2(scope, scope.end_pos)
-	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr)
+	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
 }
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool) {
 	if isnil(scope) {
 		return
 	}
@@ -2113,7 +2114,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// }
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
-	if !isnil(scope.parent) {
+	if free_parent_scopes && !isnil(scope.parent) {
 		// g.autofree_scope_vars2(scope.parent, end_pos)
 		g.writeln('// af parent scope:')
 		// g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
@@ -4010,7 +4011,10 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 		}
 		if free {
 			g.writeln('; // free tmp exprs')
-			g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr)
+			// autofree before `return`
+			// set free_parent_scopes to true, since all variables defined in parent
+			// scopes need to be freed before the return
+			g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr, true)
 			g.write('return $tmp')
 		}
 	} else {
