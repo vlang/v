@@ -2069,8 +2069,16 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 		// In `builtin` everything is freed manually.
 		return
 	}
+	if pos == -1 {
+		// TODO why can pos be -1?
+		return
+	}
 	// eprintln('> free_scope_vars($pos)')
 	scope := g.file.scope.innermost(pos)
+	if scope.start_pos == 0 {
+		// TODO why can scope.pos be 0? (only outside fns?)
+		return
+	}
 	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
 	// g.autofree_scope_vars2(scope, scope.end_pos)
 	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
@@ -3460,9 +3468,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// For if expressions with multiple statements or another if expression inside, it's much
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
+	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || (g.pref.experimental &&
 		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)))
+	/*
+	needs_tmp_var := node.is_expr &&
+		(g.pref.autofree || g.pref.experimental) &&
+		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
+	*/
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
