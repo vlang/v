@@ -3206,13 +3206,23 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					c.prevent_sum_type_unwrapping_once = false
 					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
 					if typ == 0 {
-						if mut obj.expr is ast.Ident {
-							if obj.expr.kind == .unresolved {
-								c.error('unresolved variable: `$ident.name`', ident.pos)
-								return table.void_type
+						match mut obj.expr {
+							ast.Ident {
+								if obj.expr.kind == .unresolved {
+									c.error('unresolved variable: `$ident.name`', ident.pos)
+									return table.void_type
+								}
+							}
+							ast.IfGuardExpr {
+								// new variable from if guard shouldn't have the optional flag for further use
+								// a temp variable will be generated which unwraps it
+								if_guard_expr := c.expr(obj.expr.expr)
+								typ = if_guard_expr.clear_flag(.optional)
+							}
+							else {
+								typ = c.expr(obj.expr)
 							}
 						}
-						typ = c.expr(obj.expr)
 					}
 					is_optional := typ.has_flag(.optional)
 					ident.kind = .variable
