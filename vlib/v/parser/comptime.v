@@ -105,7 +105,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						println('    >>> typeof obj: ' + typeof(obj) + ' | stmt: $stmt.name | v.name: $v.name')
+						println('    >>> typeof obj: ' + typeof(obj) + ' | stmt: $stmt.name | v.name: $v.name | v.typ: $v.typ')
 						tmpl_scope.register(v.name, *v)
 						// set the controller action var to used
 						// if its unused in the template it will warn
