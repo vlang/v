@@ -106,15 +106,15 @@ fn test_converting_down() {
 	assert res[1].name == 'three'
 }
 
-fn test_nested_sumtype() {
-	mut a := Node{}
-	mut b := Node{}
-	a = StructDecl{pos: 1}
-	b = IfExpr{pos: 1}
-	c := Node(Expr(IfExpr{pos:1}))
-	if c is Expr {
-		if c is IfExpr {
-			assert true
+struct NodeWrapper {
+	node Node
+}
+
+fn test_nested_sumtype_selector() {
+	c := NodeWrapper{Node(Expr(IfExpr{pos: 1}))}
+	if c.node is Expr {
+		if c.node is IfExpr {
+			assert c.node.pos == 1
 		}
 		else {
 			assert false
@@ -122,6 +122,59 @@ fn test_nested_sumtype() {
 	}
 	else {
 		assert false
+	}
+}
+
+fn test_nested_sumtype_match_selector() {
+	c := NodeWrapper{Node(Expr(IfExpr{pos: 1}))}
+	match union c.node {
+		Expr {
+			match union c.node {
+				IfExpr {
+					assert c.node.pos == 1
+				}
+				else {
+					assert false
+				}
+			}
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+fn test_nested_sumtype() {
+	c := Node(Expr(IfExpr{pos:1}))
+	if c is Expr {
+		if c is IfExpr {
+			assert c.pos == 1
+		}
+		else {
+			assert false
+		}
+	}
+	else {
+		assert false
+	}
+}
+
+fn test_nested_sumtype_match() {
+	c := Node(Expr(IfExpr{pos: 1}))
+	match union c {
+		Expr {
+			match union c {
+				IfExpr {
+					assert c.pos == 1
+				}
+				else {
+					assert false
+				}
+			}
+		}
+		else {
+			assert false
+		}
 	}
 }
 
