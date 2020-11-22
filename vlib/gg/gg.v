@@ -433,7 +433,72 @@ pub fn (ctx &Context) draw_line(x f32, y f32, x2 f32, y2 f32, c gx.Color) {
 	sgl.end()
 }
 
-pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, width f32, height f32, radius f32, color gx.Color) {
+pub fn (ctx &Context) draw_rounded_rect(x f32, y f32, w f32, h f32, radius f32, color gx.Color) {
+	sgl.c4b(color.r, color.g, color.b, color.a)
+	sgl.begin_triangle_strip()
+	mut theta := f32(0)
+	mut xx := f32(0)
+	mut yy := f32(0)
+	r := radius * f32(ctx.scale)
+	nx := x * f32(ctx.scale)
+	ny := y * f32(ctx.scale)
+	width := w * f32(ctx.scale)
+	height := h * f32(ctx.scale)
+	segments := 2 * math.pi * r
+	segdiv := segments / 4
+	rb := 0
+	lb := int(rb + segdiv)
+	lt := int(lb + segdiv)
+	rt := int(lt + segdiv)
+	// left top
+	lx := nx + r
+	ly := ny + r
+	for i in lt .. rt {
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + lx, yy + ly)
+		sgl.v2f(lx, ly)
+	}
+	// right top
+	mut rx := nx + 2 * width - r
+	mut ry := ny + r
+	for i in rt .. int(segments) {
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + rx, yy + ry)
+		sgl.v2f(rx, ry)
+	}
+	// right bottom
+	mut rbx := rx
+	mut rby := ny + 2 * height - r
+	for i in rb .. lb {
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + rbx, yy + rby)
+		sgl.v2f(rbx, rby)
+	}
+	// left bottom
+	mut lbx := lx
+	mut lby := ny + 2 * height - r
+	for i in lb .. lt {
+		theta = 2 * f32(math.pi) * f32(i) / segments
+		xx = r * math.cosf(theta)
+		yy = r * math.sinf(theta)
+		sgl.v2f(xx + lbx, yy + lby)
+		sgl.v2f(lbx, lby)
+	}
+	sgl.v2f(lx + xx, ly)
+	sgl.v2f(lx, ly)
+	sgl.end()
+	sgl.begin_quads()
+	sgl.v2f(lx, ly)
+	sgl.v2f(rx, ry)
+	sgl.v2f(rbx, rby)
+	sgl.v2f(lbx, lby)
+	sgl.end()
 }
 
 pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius f32, border_color gx.Color) {
