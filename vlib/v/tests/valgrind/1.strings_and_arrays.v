@@ -256,6 +256,12 @@ fn get_user() User {
 	return user
 }
 
+fn string_array_get() {
+	s := ['a', 'b', 'c']
+	x := s[0]
+	println(s)
+}
+
 fn main() {
 	println('start')
 	simple()

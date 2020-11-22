@@ -1536,6 +1536,7 @@ fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write(')')
 }
 
+// TODO this function is scary. Simplify/split up.
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
 		g.write('static ')
@@ -1683,7 +1684,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
+						needs_clone := elem_typ == table.string_type && g.pref.autofree
+						if needs_clone {
+							g.write('/*1*/string_clone(')
+						}
 						g.expr(left.left)
+						if needs_clone {
+							g.write(')')
+						}
 						g.write(', ')
 						g.expr(left.index)
 						g.writeln(');')
@@ -3750,10 +3758,15 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						.function { 'voidptr*' }
 						else { '$elem_type_str*' }
 					}
+					needs_clone := info.elem_type == table.string_type_idx && g.pref.autofree &&
+						!g.is_assign_lhs
+					if needs_clone {
+						g.write('/*2*/string_clone(')
+					}
 					if is_direct_array_access {
 						g.write('(($array_ptr_type_str)')
 					} else {
-						g.write('(*($array_ptr_type_str)array_get(')
+						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('*')
 						}
@@ -3780,6 +3793,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(', ')
 						g.expr(node.index)
 						g.write('))')
+					}
+					if needs_clone {
+						g.write(')')
 					}
 				}
 			} else if sym.kind == .map {
@@ -3900,7 +3916,6 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 			if af {
 				// free the tmp arg expr if we have one before the return
 				g.autofree_call_postgen(node.pos.pos)
-				// g.strs_to_free = []
 			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
