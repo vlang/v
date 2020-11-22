@@ -14,14 +14,20 @@
 // On more recent versions of bash (>3.2) this should suffice:
 // `source <(v complete setup bash)`
 //
-// # fish
-// TODO
+// # fish // TODO
 //
 // # zsh
-// TODO
+// To install auto-completion for V in zsh - please add the following to your ~/.zshrc:
+// ```
+// autoload -Uz compinit
+// compinit
+// # Completion for v
+// v complete setup zsh | source /dev/stdin
+// ```
+// # It's important is to make sure the call to v to load the zsh completions happens after the call to compinit
 //
-// # powershell
-// TODO
+// # powershell //TODO
+//
 module main
 
 import os
@@ -219,7 +225,19 @@ _v_completions() {
 complete -o nospace -F _v_completions v
 ' }
 				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
-				// 'zsh' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L87
+				'zsh' { setup = '
+#compdef v
+_v() {
+	local src
+	# Send all words up to the word the cursor is currently on
+	src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
+	if [[ \$? == 0 ]]; then
+		eval \${src}
+		#echo \${src}
+	fi
+}
+compdef _v v
+' }
 				// 'powershell' {} //TODO
 				else {}
 			}
@@ -237,7 +255,17 @@ complete -o nospace -F _v_completions v
 			println(lines.join('\n'))
 		}
 		// 'fish' {} //TODO
-		// 'zsh' {} //TODO
+		'zsh' {
+			if sub_args.len <= 1 {
+				exit(0)
+			}
+			mut lines := []string{}
+			list := auto_complete_request(sub_args[1..])
+			for entry in list {
+				lines << 'compadd -U -S \"\" -- \'$entry\';'
+			}
+			println(lines.join('\n'))
+		}
 		// 'powershell' {} //TODO
 		else {}
 	}
