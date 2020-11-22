@@ -430,7 +430,7 @@ pub mut:
 	share       table.ShareType
 }
 
-pub type IdentInfo = IdentFn | IdentVar
+pub __type IdentInfo = IdentFn | IdentVar
 
 pub enum IdentKind {
 	unresolved
@@ -457,9 +457,9 @@ pub mut:
 }
 
 pub fn (i &Ident) var_info() IdentVar {
-	match i.info as info {
+	match union i.info {
 		IdentVar {
-			return *info
+			return i.info
 		}
 		else {
 			// return IdentVar{}
