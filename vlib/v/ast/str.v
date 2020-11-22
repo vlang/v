@@ -302,7 +302,7 @@ pub fn (node &BranchStmt) str() string {
 }
 
 pub fn (node Stmt) str() string {
-	match node {
+	match union node {
 		AssignStmt {
 			mut out := ''
 			for i, left in node.left {

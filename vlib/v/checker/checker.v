@@ -177,7 +177,7 @@ const (
 fn (mut c Checker) check_file_in_main(file ast.File) bool {
 	mut has_main_fn := false
 	for stmt in file.stmts {
-		match stmt {
+		match union stmt {
 			ast.ConstDecl {
 				if stmt.is_pub {
 					c.warn('const $no_pub_in_main_warning', stmt.pos)
@@ -232,18 +232,17 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.TypeDecl {
-				type_decl := *stmt
-				if type_decl is ast.AliasTypeDecl {
-					if type_decl.is_pub {
-						c.warn('type alias `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
+				if stmt is ast.AliasTypeDecl {
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
-				} else if type_decl is ast.SumTypeDecl {
-					if type_decl.is_pub {
-						c.warn('sum type `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
+				} else if stmt is ast.SumTypeDecl {
+					if stmt.is_pub {
+						c.warn('sum type `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
-				} else if type_decl is ast.FnTypeDecl {
-					if type_decl.is_pub {
-						c.warn('type alias `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
+				} else if stmt is ast.FnTypeDecl {
+					if stmt.is_pub {
+						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
 				}
 			}
@@ -1686,7 +1685,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 	}
 	last_stmt := or_expr.stmts[stmts_len - 1]
 	if ret_type != table.void_type {
-		match last_stmt {
+		match union last_stmt {
 			ast.ExprStmt {
 				last_stmt_typ := c.expr(last_stmt.expr)
 				type_fits := c.check_types(last_stmt_typ, ret_type)
@@ -1721,7 +1720,7 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 			}
 		}
 	} else {
-		match last_stmt {
+		match union last_stmt {
 			ast.ExprStmt {
 				if last_stmt.typ == table.void_type {
 					return
@@ -2431,7 +2430,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		eprintln('checking file: ${c.file.path:-30} | stmt pos: ${stmt_pos.str():-45} | stmt')
 	}
 	// c.expected_type = table.void_type
-	match mut node {
+	match union mut node {
 		ast.AssertStmt {
 			cur_exp_typ := c.expected_type
 			assert_type := c.expr(node.expr)
@@ -3375,7 +3374,8 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 		}
 		// If the last statement is an expression, return its type
 		if branch.stmts.len > 0 {
-			match mut branch.stmts[branch.stmts.len - 1] as stmt {
+			mut stmt := branch.stmts[branch.stmts.len - 1]
+			match union mut stmt {
 				ast.ExprStmt {
 					ret_type = c.expr(stmt.expr)
 					stmt.typ = ret_type
@@ -3657,27 +3657,27 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 	node.expected_type = c.expected_type
 	for branch in node.branches {
 		c.stmt(branch.stmt)
-		match branch.stmt as stmt {
+		match union branch.stmt {
 			ast.ExprStmt {
 				if branch.is_timeout {
-					if !stmt.typ.is_int() {
-						tsym := c.table.get_type_symbol(stmt.typ)
+					if !branch.stmt.typ.is_int() {
+						tsym := c.table.get_type_symbol(branch.stmt.typ)
 						c.error('invalid type `$tsym.name` for timeout - expected integer type aka `time.Duration`',
-							stmt.pos)
+							branch.stmt.pos)
 					}
 				} else {
-					if stmt.expr is ast.InfixExpr {
-						if stmt.expr.left !is ast.Ident &&
-							stmt.expr.left !is ast.SelectorExpr && stmt.expr.left !is ast.IndexExpr {
-							c.error('channel in `select` key must be predefined', stmt.expr.left.position())
+					if branch.stmt.expr is ast.InfixExpr {
+						if branch.stmt.expr.left !is ast.Ident &&
+							branch.stmt.expr.left !is ast.SelectorExpr && branch.stmt.expr.left !is ast.IndexExpr {
+							c.error('channel in `select` key must be predefined', branch.stmt.expr.left.position())
 						}
 					} else {
-						c.error('invalid expression for `select` key', stmt.expr.position())
+						c.error('invalid expression for `select` key', branch.stmt.expr.position())
 					}
 				}
 			}
 			ast.AssignStmt {
-				expr := stmt.right[0]
+				expr := branch.stmt.right[0]
 				match union expr {
 					ast.PrefixExpr {
 						if expr.right !is ast.Ident &&
@@ -3690,7 +3690,7 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 						}
 					}
 					else {
-						c.error('`<-` receive expression expected', stmt.right[0].position())
+						c.error('`<-` receive expression expected', branch.stmt.right[0].position())
 					}
 				}
 			}

@@ -607,18 +607,18 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					p.next()
 					if p.tok.kind == .key_for {
 						mut stmt := p.stmt(is_top_level)
-						match mut stmt {
+						match union mut stmt {
 							ast.ForStmt {
 								stmt.label = name
-								return *stmt
+								return stmt
 							}
 							ast.ForInStmt {
 								stmt.label = name
-								return *stmt
+								return stmt
 							}
 							ast.ForCStmt {
 								stmt.label = name
-								return *stmt
+								return stmt
 							}
 							else {
 								assert false

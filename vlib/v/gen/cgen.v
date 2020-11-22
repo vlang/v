@@ -801,7 +801,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
-	match node {
+	match union node {
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
@@ -843,7 +843,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.comp_for(node)
 		}
 		ast.DeferStmt {
-			mut defer_stmt := *node
+			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.defer_stmts << defer_stmt
 		}
@@ -914,7 +914,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			keep_fn_decl := g.fn_decl
-			g.fn_decl = node
+			g.fn_decl = &node
 			if node.name == 'main.main' {
 				g.has_main = true
 			}
@@ -3230,10 +3230,10 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			exception_branch = j
 			timeout_expr = (branch.stmt as ast.ExprStmt).expr
 		} else {
-			match branch.stmt as stmt {
+			match union branch.stmt {
 				ast.ExprStmt {
 					// send expression
-					expr := stmt.expr as ast.InfixExpr
+					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
 						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
@@ -3252,15 +3252,15 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					is_push << true
 				}
 				ast.AssignStmt {
-					rec_expr := stmt.right[0] as ast.PrefixExpr
+					rec_expr := branch.stmt.right[0] as ast.PrefixExpr
 					channels << rec_expr.right
 					is_push << false
 					// create tmp unless the object with *exactly* the type we need exists already
-					if stmt.op == .decl_assign || stmt.right_types[0] != stmt.left_types[0] {
+					if branch.stmt.op == .decl_assign || branch.stmt.right_types[0] != branch.stmt.left_types[0] {
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
-						el_stype := g.typ(stmt.right_types[0])
-						elem_types << if stmt.op == .decl_assign {
+						el_stype := g.typ(branch.stmt.right_types[0])
+						elem_types << if branch.stmt.op == .decl_assign {
 							el_stype + ' '
 						} else {
 							''
@@ -3270,7 +3270,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						tmp_objs << ''
 						elem_types << ''
 					}
-					objs << stmt.left[0]
+					objs << branch.stmt.left[0]
 				}
 				else {}
 			}
@@ -3469,9 +3469,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
+	first_branch := node.branches[0]
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || (g.pref.experimental &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)))
+		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt && (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || g.pref.experimental) &&

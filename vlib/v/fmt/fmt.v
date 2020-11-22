@@ -255,7 +255,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
 		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
 	}
-	match node {
+	match union node {
 		ast.AssignStmt {
 			f.comments(node.comments, {})
 			for i, left in node.left {
@@ -490,11 +490,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.StructDecl {
-			f.struct_decl(it)
+			f.struct_decl(node)
 		}
 		ast.TypeDecl {
 			// already handled in f.imports
-			f.type_decl(it)
+			f.type_decl(node)
 		}
 	}
 }
@@ -972,8 +972,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						f.write('> ')
 					}
 					f.single_line_if = true
-					match branch.stmt as stmt {
-						ast.ExprStmt { f.expr(stmt.expr) }
+					match branch.stmt {
+						ast.ExprStmt { f.expr(branch.stmt.expr) }
 						else { f.stmt(branch.stmt) }
 					}
 					f.single_line_if = false
@@ -1695,7 +1695,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
+	match union stmt {
 		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
 		ast.Return { return true }
 		ast.AssignStmt { return true }

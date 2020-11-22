@@ -16,7 +16,7 @@ pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | C
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
+pub __type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
 	StructDecl | TypeDecl
@@ -1124,7 +1124,7 @@ pub fn (expr Expr) is_expr() bool {
 
 // check if stmt can be an expression in C
 pub fn (stmt Stmt) check_c_expr() ? {
-	match stmt {
+	match union stmt {
 		AssignStmt {
 			return
 		}
@@ -1149,13 +1149,13 @@ pub:
 }
 
 pub fn (stmt Stmt) position() token.Position {
-	match stmt {
+	match union stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
 		TypeDecl {
-			type_decl := *stmt
-			match union type_decl {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return type_decl.pos }
+			// TODO: this can be merged with upper match @danieldaeschle
+			match union stmt {
+				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
 			}
 		}
 		// Please, do NOT use else{} here.
