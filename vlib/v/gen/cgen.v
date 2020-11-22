@@ -2907,11 +2907,19 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			} else {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
+			is_interface := elem_sym.kind == .interface_ && node.right_type != info.elem_type
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
+			// if g.pref.autofree && info.elem_type == table.string_type {
+			if info.elem_type == table.string_type {
+				g.write('string_clone(')
+			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
-			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
+			if info.elem_type == table.string_type {
+				g.write(')')
+			}
+			if is_interface {
 				g.write(')')
 			}
 			g.write(' }))')

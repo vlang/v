@@ -1032,6 +1032,17 @@ fn test_direct_array_access_via_ptr() {
 	}
 }
 
+fn test_push_arr_string_free() {
+	mut lines := ['hi']
+	s := 'a' + 'b'
+	lines << s
+	s.free() // make sure the data in the array is valid after freeing the string
+	println(lines)
+	assert lines.len == 2
+	assert lines[0] == 'hi'
+	assert lines[1] == 'ab'
+}
+
 const (
 	grid_size_1 = 2
 	grid_size_2 = 3
