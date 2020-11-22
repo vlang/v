@@ -219,7 +219,20 @@ _v_completions() {
 complete -o nospace -F _v_completions v
 ' }
 				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
-				// 'zsh' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L87
+				'zsh' { //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L87
+					setup = '
+#compdef v
+_v() {
+    local src
+    # Send all words up to the word the cursor is currently on
+    src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
+    if [[ \$? == 0 ]]; then
+        eval \${src}
+        #echo \${src}
+    fi
+}
+compdef _v v
+'}
 				// 'powershell' {} //TODO
 				else {}
 			}
@@ -237,7 +250,17 @@ complete -o nospace -F _v_completions v
 			println(lines.join('\n'))
 		}
 		// 'fish' {} //TODO
-		// 'zsh' {} //TODO
+		'zsh' { //TODO
+			if sub_args.len <= 1 {
+				exit(0)
+			}
+			mut lines := []string{}
+			list := auto_complete_request(sub_args[1..])
+			for entry in list {
+				lines << "compadd -U -S \"\" -- \'$entry\';"
+			}
+			println(lines.join('\n'))
+		}
 		// 'powershell' {} //TODO
 		else {}
 	}
