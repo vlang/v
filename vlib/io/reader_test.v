@@ -9,7 +9,7 @@ mut:
 
 fn (mut b Buf) read(mut buf []byte) ?int {
 	if !(b.i < b.bytes.len) {
-		return error('terminated')
+		return eof
 	}
 	n := copy(buf, b.bytes[b.i..b.bytes.len])
 	b.i += n
