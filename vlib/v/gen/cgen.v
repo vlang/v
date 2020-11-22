@@ -5040,7 +5040,13 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		g.write(', &($elem_type_str[]){')
+		if left_info.elem_type == table.string_type {
+			g.write('string_clone(')
+		}
 		g.expr(node.args[1].expr)
+		if left_info.elem_type == table.string_type {
+			g.write(')')
+		}
 		g.write('})')
 	}
 }
