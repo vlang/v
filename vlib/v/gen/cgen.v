@@ -2560,8 +2560,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 							// union sum type deref
 							g.write('(*')
 							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
-							if cast_sym.info is table.Aggregate as sym_info {
-								sum_type_deref_field = '_${sym_info.types[g.aggregate_type_idx]}'
+							if mut cast_sym.info is table.Aggregate {
+								sum_type_deref_field = '_${cast_sym.info.types[g.aggregate_type_idx]}'
 							} else {
 								sum_type_deref_field = '_$field.sum_type_cast'
 							}
@@ -3388,8 +3388,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 			if v.sum_type_cast != 0 {
 				if !prevent_sum_type_unwrapping_once {
 					sym := g.table.get_type_symbol(v.sum_type_cast)
-					if sym.info is table.Aggregate as sym_info {
-						g.write('(*${name}._${sym_info.types[g.aggregate_type_idx]})')
+					if mut sym.info is table.Aggregate {
+						g.write('(*${name}._${sym.info.types[g.aggregate_type_idx]})')
 					} else {
 						g.write('(*${name}._$v.sum_type_cast)')
 					}
@@ -3415,16 +3415,17 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			match g.match_sumtype_syms[i].info as sumtype {
+			info := g.match_sumtype_syms[i].info
+			match union info {
 				table.SumType {
-					for typ in sumtype.variants {
+					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
 							return false
 						}
 					}
 				}
 				table.UnionSumType {
-					for typ in sumtype.variants {
+					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
 							return false
 						}
@@ -4185,8 +4186,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
-		if sym.info is table.Struct as struct_info {
-			equal_fields := struct_info.fields.filter(it.name == field.name)
+		if mut sym.info is table.Struct {
+			equal_fields := sym.info.fields.filter(it.name == field.name)
 			if equal_fields.len == 0 {
 				continue
 			}
@@ -4237,8 +4238,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for field in info.fields {
-			if sym.info is table.Struct as struct_info {
-				equal_fields := struct_info.fields.filter(it.name == field.name)
+			if mut sym.info is table.Struct {
+				equal_fields := sym.info.fields.filter(it.name == field.name)
 				if equal_fields.len == 0 {
 					continue
 				}
@@ -4551,9 +4552,9 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 		}
 		// sym := g.table.get_type_symbol(typ)
 		mut name := util.no_dots(typ.name)
-		match typ.info as info {
+		match union mut typ.info {
 			table.Struct {
-				if info.generic_types.len > 0 {
+				if typ.info.generic_types.len > 0 {
 					continue
 				}
 				// TODO: yuck
@@ -4563,13 +4564,13 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
-				if info.is_union {
+				if typ.info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
 					g.type_definitions.writeln('struct $name {')
 				}
-				if info.fields.len > 0 {
-					for field in info.fields.filter(it.embed_alias_for == '') {
+				if typ.info.fields.len > 0 {
+					for field in typ.info.fields.filter(it.embed_alias_for == '') {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to
@@ -4603,7 +4604,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.SumType {
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Sum type $name = ')
-				for sv in it.variants {
+				for sv in typ.info.variants {
 					g.type_definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
 				}
 				g.type_definitions.writeln('typedef struct {')
@@ -4615,12 +4616,12 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.UnionSumType {
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
-				for variant in it.variants {
+				for variant in typ.info.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('typedef struct {')
 				g.type_definitions.writeln('    union {')
-				for variant in g.table.get_union_sum_type_variants(it) {
+				for variant in g.table.get_union_sum_type_variants(typ.info) {
 					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
@@ -4662,19 +4663,18 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 		}
 		// create list of deps
 		mut field_deps := []string{}
-		match t.info {
+		match union mut t.info {
 			table.ArrayFixed {
-				dep := g.table.get_type_symbol(it.elem_type).name
+				dep := g.table.get_type_symbol(t.info.elem_type).name
 				if dep in type_names {
 					field_deps << dep
 				}
 			}
 			table.Struct {
-				info := t.info as table.Struct
 				// if info.is_interface {
 				// continue
 				// }
-				for field in info.fields {
+				for field in t.info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
@@ -4707,11 +4707,11 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 	mut typ := etype
 	mut sym := g.table.get_type_symbol(typ)
-	if sym.info is table.Alias as alias_info {
-		parent_sym := g.table.get_type_symbol(alias_info.parent_type)
+	if mut sym.info is table.Alias {
+		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
 		if parent_sym.has_method('str') {
+			typ = sym.info.parent_type
 			sym = parent_sym
-			typ = alias_info.parent_type
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()

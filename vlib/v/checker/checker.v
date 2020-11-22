@@ -347,89 +347,90 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	struct_sym := c.table.find_type(decl.name) or {
+	mut struct_sym := c.table.find_type(decl.name) or {
 		table.TypeSymbol{}
 	}
-	mut struct_info := struct_sym.info as table.Struct
-	for i, field in decl.fields {
-		if decl.language == .v && !field.is_embed {
-			c.check_valid_snake_case(field.name, 'field name', field.pos)
-		}
-		sym := c.table.get_type_symbol(field.typ)
-		if field.is_embed {
-			if sym.info is table.Struct as sym_info {
-				for embed_field in sym_info.fields {
-					already_exists := struct_info.fields.filter(it.name == embed_field.name).len > 0
-					if !already_exists {
-						struct_info.fields << {
-							embed_field |
-							embed_alias_for: field.name
+	if mut struct_sym.info is table.Struct {
+		for i, field in decl.fields {
+			if decl.language == .v && !field.is_embed {
+				c.check_valid_snake_case(field.name, 'field name', field.pos)
+			}
+			sym := c.table.get_type_symbol(field.typ)
+			if field.is_embed {
+				if mut sym.info is table.Struct {
+					for embed_field in sym.info.fields {
+						already_exists := struct_sym.info.fields.filter(it.name == embed_field.name).len > 0
+						if !already_exists {
+							struct_sym.info.fields << {
+								embed_field |
+								embed_alias_for: field.name
+							}
 						}
 					}
+				} else {
+					c.error('`$sym.name` is not a struct', field.pos)
 				}
-			} else {
-				c.error('`$sym.name` is not a struct', field.pos)
 			}
-		}
-		for j in 0 .. i {
-			if field.name == decl.fields[j].name {
-				c.error('field name `$field.name` duplicate', field.pos)
+			for j in 0 .. i {
+				if field.name == decl.fields[j].name {
+					c.error('field name `$field.name` duplicate', field.pos)
+				}
 			}
-		}
-		if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
-			c.error(util.new_suggestion(sym.source_name, c.table.known_type_names()).say('unknown type `$sym.source_name`'),
-				field.type_pos)
-		}
-		if sym.kind == .array {
-			array_info := sym.array_info()
-			elem_sym := c.table.get_type_symbol(array_info.elem_type)
-			if elem_sym.kind == .placeholder {
-				c.error(util.new_suggestion(elem_sym.source_name, c.table.known_type_names()).say('unknown type `$elem_sym.source_name`'),
+			if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
+				c.error(util.new_suggestion(sym.source_name, c.table.known_type_names()).say('unknown type `$sym.source_name`'),
 					field.type_pos)
 			}
-		}
-		if sym.kind == .struct_ {
-			info := sym.info as table.Struct
-			if info.is_ref_only && !field.typ.is_ptr() {
-				c.error('`$sym.source_name` type can only be used as a reference: `&$sym.source_name`',
-					field.type_pos)
-			}
-		}
-		if sym.kind == .map {
-			info := sym.map_info()
-			key_sym := c.table.get_type_symbol(info.key_type)
-			value_sym := c.table.get_type_symbol(info.value_type)
-			if key_sym.kind == .placeholder {
-				c.error('unknown type `$key_sym.source_name`', field.type_pos)
-			}
-			if value_sym.kind == .placeholder {
-				c.error('unknown type `$value_sym.source_name`', field.type_pos)
-			}
-		}
-		if field.has_default_expr {
-			c.expected_type = field.typ
-			field_expr_type := c.expr(field.default_expr)
-			c.check_expected(field_expr_type, field.typ) or {
-				c.error('incompatible initializer for field `$field.name`: $err', field.default_expr.position())
-			}
-			// Check for unnecessary inits like ` = 0` and ` = ''`
-			if field.typ.is_ptr() {
-				continue
-			}
-			if field.default_expr is ast.IntegerLiteral {
-				if field.default_expr.val == '0' {
-					c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
-						field.default_expr.pos)
+			if sym.kind == .array {
+				array_info := sym.array_info()
+				elem_sym := c.table.get_type_symbol(array_info.elem_type)
+				if elem_sym.kind == .placeholder {
+					c.error(util.new_suggestion(elem_sym.source_name, c.table.known_type_names()).say('unknown type `$elem_sym.source_name`'),
+						field.type_pos)
 				}
-			} else if field.default_expr is ast.StringLiteral {
-				if field.default_expr.val == '' {
-					c.warn("unnecessary default value of '': struct fields are zeroed by default",
-						field.default_expr.pos)
+			}
+			if sym.kind == .struct_ {
+				info := sym.info as table.Struct
+				if info.is_ref_only && !field.typ.is_ptr() {
+					c.error('`$sym.source_name` type can only be used as a reference: `&$sym.source_name`',
+						field.type_pos)
 				}
-			} else if field.default_expr is ast.BoolLiteral {
-				if field.default_expr.val == false {
-					c.warn('unnecessary default value `false`: struct fields are zeroed by default',
-						field.default_expr.pos)
+			}
+			if sym.kind == .map {
+				info := sym.map_info()
+				key_sym := c.table.get_type_symbol(info.key_type)
+				value_sym := c.table.get_type_symbol(info.value_type)
+				if key_sym.kind == .placeholder {
+					c.error('unknown type `$key_sym.source_name`', field.type_pos)
+				}
+				if value_sym.kind == .placeholder {
+					c.error('unknown type `$value_sym.source_name`', field.type_pos)
+				}
+			}
+			if field.has_default_expr {
+				c.expected_type = field.typ
+				field_expr_type := c.expr(field.default_expr)
+				c.check_expected(field_expr_type, field.typ) or {
+					c.error('incompatible initializer for field `$field.name`: $err', field.default_expr.position())
+				}
+				// Check for unnecessary inits like ` = 0` and ` = ''`
+				if field.typ.is_ptr() {
+					continue
+				}
+				if field.default_expr is ast.IntegerLiteral {
+					if field.default_expr.val == '0' {
+						c.warn('unnecessary default value of `0`: struct fields are zeroed by default',
+							field.default_expr.pos)
+					}
+				} else if field.default_expr is ast.StringLiteral {
+					if field.default_expr.val == '' {
+						c.warn("unnecessary default value of '': struct fields are zeroed by default",
+							field.default_expr.pos)
+					}
+				} else if field.default_expr is ast.BoolLiteral {
+					if field.default_expr.val == false {
+						c.warn('unnecessary default value `false`: struct fields are zeroed by default',
+							field.default_expr.pos)
+					}
 				}
 			}
 		}
@@ -938,9 +939,8 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 				return '', pos
 			}
 			mut typ_sym := c.table.get_type_symbol(c.unwrap_generic(expr.expr_type))
-			if typ_sym.kind == .alias {
-				alias_info := typ_sym.info as table.Alias
-				typ_sym = c.table.get_type_symbol(alias_info.parent_type)
+			if mut typ_sym.info is table.Alias {
+				typ_sym = c.table.get_type_symbol(typ_sym.info.parent_type)
 			}
 			match typ_sym.kind {
 				.struct_ {
@@ -1147,8 +1147,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			arg_sym := c.table.get_type_symbol(arg_type)
 			// FIXME: match expr failed for now
 			mut ret_type := 0
-			match arg_sym.info as info {
-				table.FnType { ret_type = info.func.return_type }
+			match union mut arg_sym.info {
+				table.FnType { ret_type = arg_sym.info.func.return_type }
 				else { ret_type = arg_type }
 			}
 			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
@@ -1615,7 +1615,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 
 fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos token.Position) bool {
 	typ_sym := c.table.get_type_symbol(typ)
-	inter_sym := c.table.get_type_symbol(inter_typ)
+	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
@@ -1631,9 +1631,10 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 		}
 		c.error("`$styp` doesn't implement method `$imethod.name`", pos)
 	}
-	mut inter_info := inter_sym.info as table.Interface
-	if typ !in inter_info.types && typ_sym.kind != .interface_ {
-		inter_info.types << typ
+	if mut inter_sym.info is table.Interface {
+		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
+			inter_sym.info.types << typ
+		}
 	}
 	return true
 }
@@ -3047,9 +3048,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 			c.error('cannot cast `$from_type_sym.source_name` to `$to_type_sym.source_name`',
 				node.pos)
 		}
-	} else if to_type_sym.info is table.Alias as alias_info {
-		if !c.check_types(node.expr_type, alias_info.parent_type) {
-			parent_type_sym := c.table.get_type_symbol(alias_info.parent_type)
+	} else if mut to_type_sym.info is table.Alias {
+		if !c.check_types(node.expr_type, to_type_sym.info.parent_type) {
+			parent_type_sym := c.table.get_type_symbol(to_type_sym.info.parent_type)
 			c.error('cannot convert type `$from_type_sym.source_name` to `$to_type_sym.source_name` (alias to `$parent_type_sym.source_name`)',
 				node.pos)
 		}
@@ -3489,8 +3490,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				// c.type_implements(expr_type, c.expected_type, expr.position())
 				expr_pos := expr.position()
 				c.type_implements(expr_type, c.expected_type, expr_pos)
-			} else if cond_type_sym.info is table.UnionSumType as info {
-				if expr_type !in info.variants {
+			} else if mut cond_type_sym.info is table.UnionSumType {
+				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)
 					expect_str := c.table.type_to_str(c.expected_type)
 					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
@@ -3582,9 +3583,9 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// by listing all variants or values
 	mut is_exhaustive := true
 	mut unhandled := []string{}
-	match type_sym.info as info {
+	match union mut type_sym.info {
 		table.SumType {
-			for v in info.variants {
+			for v in type_sym.info.variants {
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {
 					is_exhaustive = false
@@ -3593,7 +3594,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			}
 		}
 		table.UnionSumType {
-			for v in info.variants {
+			for v in type_sym.info.variants {
 				v_str := c.table.type_to_str(v)
 				if v_str !in branch_exprs {
 					is_exhaustive = false
@@ -3603,7 +3604,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 		}
 		//
 		table.Enum {
-			for v in info.vals {
+			for v in type_sym.info.vals {
 				if v !in branch_exprs {
 					is_exhaustive = false
 					unhandled << '`.$v`'

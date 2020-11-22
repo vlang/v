@@ -263,12 +263,12 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
-		if ts.info is Struct as struct_info {
-			if field := struct_info.find_field(name) {
+		if mut ts.info is Struct {
+			if field := ts.info.find_field(name) {
 				return field
 			}
-		} else if ts.info is Aggregate as agg_info {
-			if field := agg_info.find_field(name) {
+		} else if mut ts.info is Aggregate {
+			if field := ts.info.find_field(name) {
 				return field
 			}
 			field := t.register_aggregate_field(mut ts, name) or {
@@ -392,6 +392,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 			}
 		}
 	}
+	
 	typ_idx := t.types.len
 	t.types << typ
 	t.type_idxs[typ.name] = typ_idx

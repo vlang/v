@@ -549,9 +549,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
 		mut sym := g.table.get_type_symbol(typ)
-		if sym.info is table.Alias as alias_info {
-			typ = alias_info.parent_type
-			sym = g.table.get_type_symbol(alias_info.parent_type)
+		if mut sym.info is table.Alias {
+			typ = sym.info.parent_type
+			sym = g.table.get_type_symbol(typ)
 		}
 		// check if alias parent also not a string
 		if typ != table.string_type {
