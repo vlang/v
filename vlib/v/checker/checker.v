@@ -64,6 +64,7 @@ mut:
 	vmod_file_content                string // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
+	loop_label                       string // set when inside a labelled for loop
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -2380,6 +2381,18 @@ fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	return none
 }
 
+[inline]
+fn (mut c Checker) check_loop_label(label string, pos token.Position) {
+	if label.len == 0 {
+		return // ignore
+	}
+	if c.loop_label.len != 0 {
+		c.error('nesting of labelled `for` loops is not supported', pos)
+		return
+	}
+	c.loop_label = label
+}
+
 fn (mut c Checker) stmt(node ast.Stmt) {
 	$if trace_checker ? {
 		stmt_pos := node.position()
@@ -2414,7 +2427,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if c.in_for_count == 0 {
 				c.error('$node.kind.str() statement not within a loop', node.pos)
 			}
-			// TODO: check any node.label is in scope for goto
+			if node.label.len > 0 {
+				if node.label != c.loop_label {
+					c.error('invalid label name `$node.label`', node.pos)
+				}
+			}
 		}
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
@@ -2482,7 +2499,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmt(node.init)
 			c.expr(node.cond)
 			c.stmt(node.inc)
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.ForInStmt {
@@ -2537,7 +2556,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				node.val_type = value_type
 				scope.update_var_type(node.val_var, value_type)
 			}
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.ForStmt {
@@ -2549,7 +2570,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			// TODO: update loop var type
 			// how does this work currenly?
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.GlobalDecl {
