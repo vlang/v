@@ -7,7 +7,7 @@ import v.token
 import v.table
 import v.errors
 
-pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
+pub __type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
 
 pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
 	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
@@ -456,8 +456,9 @@ pub mut:
 	is_mut   bool
 }
 
+
 pub fn (i &Ident) var_info() IdentVar {
-	match union i.info {
+	match union mut i.info {
 		IdentVar {
 			return i.info
 		}
@@ -1151,9 +1152,12 @@ pub fn (stmt Stmt) position() token.Position {
 	match stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
-		TypeDecl { match stmt {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
-			} }
+		TypeDecl {
+			type_decl := *stmt
+			match union type_decl {
+				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return type_decl.pos }
+			}
+		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.

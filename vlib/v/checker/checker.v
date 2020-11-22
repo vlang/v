@@ -232,17 +232,18 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				}
 			}
 			ast.TypeDecl {
-				if stmt is ast.AliasTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
+				type_decl := *stmt
+				if type_decl is ast.AliasTypeDecl {
+					if type_decl.is_pub {
+						c.warn('type alias `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
 					}
-				} else if stmt is ast.SumTypeDecl {
-					if stmt.is_pub {
-						c.warn('sum type `$stmt.name` $no_pub_in_main_warning', stmt.pos)
+				} else if type_decl is ast.SumTypeDecl {
+					if type_decl.is_pub {
+						c.warn('sum type `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
 					}
-				} else if stmt is ast.FnTypeDecl {
-					if stmt.is_pub {
-						c.warn('type alias `$stmt.name` $no_pub_in_main_warning', stmt.pos)
+				} else if type_decl is ast.FnTypeDecl {
+					if type_decl.is_pub {
+						c.warn('type alias `$type_decl.name` $no_pub_in_main_warning', type_decl.pos)
 					}
 				}
 			}
@@ -277,7 +278,7 @@ fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos t
 }
 
 pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
-	match node {
+	match union node {
 		ast.AliasTypeDecl {
 			// TODO Replace `c.file.mod.name != 'time'` by `it.language != .v` once available
 			if c.file.mod.name != 'time' && c.file.mod.name != 'builtin' {

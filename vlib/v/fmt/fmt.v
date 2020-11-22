@@ -501,7 +501,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	mut comments := []ast.Comment{}
-	match node {
+	match union node {
 		ast.AliasTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
