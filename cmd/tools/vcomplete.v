@@ -225,8 +225,7 @@ _v_completions() {
 complete -o nospace -F _v_completions v
 ' }
 				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
-				'zsh' {
-					setup = '
+				'zsh' { setup = '
 #compdef v
 _v() {
     local src
@@ -238,7 +237,7 @@ _v() {
     fi
 }
 compdef _v v
-'}
+' }
 				// 'powershell' {} //TODO
 				else {}
 			}
@@ -263,7 +262,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "compadd -U -S \"\" -- \'$entry\';"
+				lines << 'compadd -U -S \"\" -- \'$entry\';'
 			}
 			println(lines.join('\n'))
 		}
