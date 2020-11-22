@@ -2384,7 +2384,8 @@ fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 [inline]
 fn (mut c Checker) check_loop_label(label string, pos token.Position) {
 	if label.len == 0 {
-		return // ignore
+		// ignore
+		return
 	}
 	if c.loop_label.len != 0 {
 		c.error('nesting of labelled `for` loops is not supported', pos)
