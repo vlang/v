@@ -94,7 +94,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 	for _, obj in sc.objects {
-		match obj {
+		match union obj {
 			ast.Var {
 				if !c.pref.is_repl {
 					if !obj.is_used && obj.name[0] != `_` {
@@ -2139,9 +2139,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 					ident_var_info.typ = left_type
 					left.info = ident_var_info
 					if left_type != 0 {
-						match mut left.obj as v {
-							ast.Var { v.typ = left_type }
-							ast.GlobalField { v.typ = left_type }
+						match union mut left.obj {
+							ast.Var { left.obj.typ = left_type }
+							ast.GlobalField { left.obj.typ = left_type }
 							else {}
 						}
 						/*
@@ -3192,14 +3192,14 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
 		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if obj1 := start_scope.find(ident.name) {
-			match mut obj1 as obj {
+		if obj := start_scope.find(ident.name) {
+			match union mut obj {
 				ast.GlobalField {
 					ident.kind = .global
 					ident.info = ast.IdentVar{
 						typ: obj.typ
 					}
-					ident.obj = obj1
+					ident.obj = obj
 					return obj.typ
 				}
 				ast.Var {
@@ -3244,7 +3244,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					if !is_sum_type_cast {
 						obj.typ = typ
 					}
-					ident.obj = obj1
+					ident.obj = obj
 					// unwrap optional (`println(x)`)
 					if is_optional {
 						return typ.clear_flag(.optional)
@@ -3259,8 +3259,8 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
-		if obj1 := c.file.global_scope.find(name) {
-			match mut obj1 as obj {
+		if obj := c.file.global_scope.find(name) {
+			match union mut obj {
 				ast.ConstField {
 					mut typ := obj.typ
 					if typ == 0 {
@@ -3272,7 +3272,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						typ: typ
 					}
 					obj.typ = typ
-					ident.obj = obj1
+					ident.obj = obj
 					return typ
 				}
 				else {}

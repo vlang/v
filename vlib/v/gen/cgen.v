@@ -2090,25 +2090,24 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		return
 	}
 	for _, obj in scope.objects {
-		match obj {
+		match union obj {
 			ast.Var {
 				g.writeln('// var $obj.name pos=$obj.pos.pos')
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
-				v := *obj
 				// if v.pos.pos > end_pos {
-				if v.pos.pos > end_pos || (v.pos.pos < start_pos && v.pos.line_nr == line_nr) {
+				if obj.pos.pos > end_pos || (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr) {
 					// Do not free vars that were declared after this scope
 					continue
 				}
-				is_optional := v.typ.has_flag(.optional)
+				is_optional := obj.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
 					continue
 				}
-				g.autofree_variable(v)
+				g.autofree_variable(obj)
 			}
 			else {}
 		}
