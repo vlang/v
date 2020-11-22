@@ -228,13 +228,13 @@ complete -o nospace -F _v_completions v
 				'zsh' { setup = '
 #compdef v
 _v() {
-    local src
-    # Send all words up to the word the cursor is currently on
-    src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
-    if [[ \$? == 0 ]]; then
-        eval \${src}
-        #echo \${src}
-    fi
+	local src
+	# Send all words up to the word the cursor is currently on
+	src=\$($vexe complete zsh \$(printf "%s\\n" \${(@)words[1,\$CURRENT]}))
+	if [[ \$? == 0 ]]; then
+		eval \${src}
+		#echo \${src}
+	fi
 }
 compdef _v v
 ' }
