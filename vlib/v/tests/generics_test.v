@@ -1,3 +1,5 @@
+import simplemodule
+
 fn test_todo() {
 }
 
@@ -279,6 +281,11 @@ fn (f Foo<int>) value() string {
 fn test_generic_struct_method() {
 	foo_int := Foo<int>{2}
 	assert foo_int.value() == '2'
+}
+
+fn test_struct_from_other_module() {
+	g := simplemodule.ThisIsGeneric<Permission>{}
+	assert g.msg.name == ''
 }
 
 /*
