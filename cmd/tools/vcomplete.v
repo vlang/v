@@ -231,7 +231,7 @@ complete -o nospace -F _v_completions v
 					setup = '
 function __v_completions
     # Send all words up to the one before the cursor
-    \$vexe complete fish (commandline -cop)
+    $vexe complete fish (commandline -cop)
 end
 complete -f -c v -a "(__v_completions)"
 '}
