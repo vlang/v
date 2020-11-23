@@ -15,6 +15,11 @@ pub fn make_reader(r Reader) Reader {
 	return r
 }
 
+pub const (
+	eof_code = -1
+	eof = error_with_code('EOF', eof_code)
+)
+
 const (
 	read_all_len      = 10 * 1024
 	read_all_grow_len = 1024
