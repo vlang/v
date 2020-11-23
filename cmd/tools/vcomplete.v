@@ -27,7 +27,7 @@
 // # Completion for v
 // v complete setup zsh | source /dev/stdin
 // ```
-// # It's important is to make sure the call to v to load the zsh completions happens after the call to compinit
+// Please note that you should let v load the zsh completions after the call to compinit
 //
 // # powershell //TODO
 //
