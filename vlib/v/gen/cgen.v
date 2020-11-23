@@ -2572,7 +2572,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 								if i != 0 {
 									sum_type_deref_field += ').'
 								}
-								if cast_sym.info is table.Aggregate {
+								if mut cast_sym.info is table.Aggregate {
 									sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
 								} else {
 									sum_type_deref_field += '_$typ'
@@ -3417,7 +3417,7 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if i == 0 {
 							g.write(name)
 						}
-						if cast_sym.info is table.Aggregate {
+						if mut cast_sym.info is table.Aggregate {
 							g.write('._${cast_sym.info.types[g.aggregate_type_idx]}')
 						} else {
 							g.write('._$typ')
