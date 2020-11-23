@@ -1737,13 +1737,16 @@ fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
 	// no return
+	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr {
 		return ast.Return{
+			comments: comments
 			pos: first_pos
 		}
 	}
 	// return exprs
-	exprs, comments := p.expr_list()
+	exprs, comments2 := p.expr_list()
+	comments << comments2
 	end_pos := exprs.last().position()
 	return ast.Return{
 		exprs: exprs
