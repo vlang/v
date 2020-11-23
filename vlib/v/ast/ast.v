@@ -365,7 +365,7 @@ pub:
 	is_arg          bool // fn args should not be autofreed
 pub mut:
 	typ             table.Type
-	sum_type_casts  []table.Type
+	sum_type_casts  []table.Type // nested sum types require nested smart casting, for that a list of types is needed
 	pos             token.Position
 	is_used         bool
 	is_changed      bool // to detect mutable vars that are never changed
@@ -379,7 +379,7 @@ pub:
 	name           string
 	pos            token.Position
 	typ            table.Type
-	sum_type_casts []table.Type
+	sum_type_casts []table.Type // nested sum types require nested smart casting, for that a list of types is needed
 }
 
 pub struct GlobalField {
