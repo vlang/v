@@ -271,7 +271,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "\'$entry\'"
+				lines << "$entry"
 			}
 			println(lines.join('\n'))
 		}
