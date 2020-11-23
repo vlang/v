@@ -9,15 +9,18 @@
 // auto-completion features.
 //
 // # bash
-// To install auto-completion for V in bash, simply add this code to your ~/.bashrc:
+// To install auto-completion for V in bash, simply add this code to your `~/.bashrc`:
 // `source /dev/stdin <<<"$(v complete setup bash)"`
 // On more recent versions of bash (>3.2) this should suffice:
 // `source <(v complete setup bash)`
 //
-// # fish // TODO
+// # fish
+// For versions of fish <3.0.0, add the following to your `~/.config/fish/config.fish`
+// `v complete setup fish | source`
+// Later versions of fish source completions by default.
 //
 // # zsh
-// To install auto-completion for V in zsh - please add the following to your ~/.zshrc:
+// To install auto-completion for V in zsh - please add the following to your `~/.zshrc`:
 // ```
 // autoload -Uz compinit
 // compinit
@@ -224,7 +227,14 @@ _v_completions() {
 
 complete -o nospace -F _v_completions v
 ' }
-				// 'fish' {} //TODO see https://github.com/kovidgoyal/kitty/blob/75a94bcd96f74be024eb0a28de87ca9e15c4c995/kitty/complete.py#L113
+				'fish' {
+					setup = '
+function __v_completions
+    # Send all words up to the one before the cursor
+    \$vexe complete fish (commandline -cop)
+end
+complete -f -c v -a "(__v_completions)"
+'}
 				'zsh' { setup = '
 #compdef v
 _v() {
@@ -254,7 +264,17 @@ compdef _v v
 			}
 			println(lines.join('\n'))
 		}
-		// 'fish' {} //TODO
+		'fish' {
+			if sub_args.len <= 1 {
+				exit(0)
+			}
+			mut lines := []string{}
+			list := auto_complete_request(sub_args[1..])
+			for entry in list {
+				lines << "\'$entry\'"
+			}
+			println(lines.join('\n'))
+		}
 		'zsh' {
 			if sub_args.len <= 1 {
 				exit(0)
