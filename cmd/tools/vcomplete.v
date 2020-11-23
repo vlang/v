@@ -227,14 +227,13 @@ _v_completions() {
 
 complete -o nospace -F _v_completions v
 ' }
-				'fish' {
-					setup = '
+				'fish' { setup = '
 function __v_completions
     # Send all words up to the one before the cursor
     $vexe complete fish (commandline -cop)
 end
 complete -f -c v -a "(__v_completions)"
-'}
+' }
 				'zsh' { setup = '
 #compdef v
 _v() {
@@ -271,7 +270,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "$entry"
+				lines << '$entry'
 			}
 			println(lines.join('\n'))
 		}
