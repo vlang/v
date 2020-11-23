@@ -85,16 +85,6 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 }
 
-/*
-fn (mut f Fmt) find_comment(line_nr int) {
-	for comment in f.file.comments {
-		if comment.line_nr == line_nr {
-			f.writeln('// FFF $comment.line_nr $comment.text')
-			return
-		}
-	}
-}
-*/
 pub fn (mut f Fmt) write(s string) {
 	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
