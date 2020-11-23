@@ -738,9 +738,6 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 			if v.idx() == variant.idx() {
 				return true
 			}
-			if table.sumtype_has_variant(v, variant) {
-				return true
-			}
 		}
 	}
 	return false

@@ -1301,7 +1301,7 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 				scope := g.file.scope.innermost(expr.position().pos)
 				if expr is ast.Ident {
 					if v := scope.find_var(expr.name) {
-						if v.sum_type_cast != 0 {
+						if v.sum_type_casts.len > 0 {
 							is_already_sum_type = true
 						}
 					}
@@ -2567,12 +2567,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 						scope := g.file.scope.innermost(node.pos.pos)
 						if field := scope.find_struct_field(node.expr_type, node.field_name) {
 							// union sum type deref
-							g.write('(*')
-							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
-							if cast_sym.info is table.Aggregate as sym_info {
-								sum_type_deref_field = '_${sym_info.types[g.aggregate_type_idx]}'
-							} else {
-								sum_type_deref_field = '_$field.sum_type_cast'
+							for i, typ in field.sum_type_casts {
+								g.write('(*')
+								cast_sym := g.table.get_type_symbol(typ)
+								if i != 0 {
+									sum_type_deref_field += ').'
+								}
+								if cast_sym.info is table.Aggregate as sym_info {
+									sum_type_deref_field += '_${sym_info.types[g.aggregate_type_idx]}'
+								} else {
+									sum_type_deref_field += '_$typ'
+								}
 							}
 						}
 					}
@@ -3403,13 +3408,22 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_cast != 0 {
+			if v.sum_type_casts.len > 0 {
 				if !prevent_sum_type_unwrapping_once {
-					sym := g.table.get_type_symbol(v.sum_type_cast)
-					if sym.info is table.Aggregate as sym_info {
-						g.write('(*${name}._${sym_info.types[g.aggregate_type_idx]})')
-					} else {
-						g.write('(*${name}._$v.sum_type_cast)')
+					for _ in v.sum_type_casts {
+						g.write('(*')
+					}
+					for i, typ in v.sum_type_casts {
+						cast_sym := g.table.get_type_symbol(typ)
+						if i == 0 {
+							g.write(name)
+						}
+						if cast_sym.info is table.Aggregate as sym_info {
+							g.write('._${sym_info.types[g.aggregate_type_idx]}')
+						} else {
+							g.write('._$typ')
+						}
+						g.write(')')
 					}
 					return
 				}
@@ -4645,7 +4659,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				g.type_definitions.writeln('typedef struct {')
 				g.type_definitions.writeln('    union {')
-				for variant in g.table.get_union_sum_type_variants(it) {
+				for variant in it.variants {
 					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
