@@ -1,6 +1,6 @@
 fn fun() int {
 	// comment zero
-	return 0
+	return 0 // another comment
 }
 
 fn mr_fun() (int, int) {
