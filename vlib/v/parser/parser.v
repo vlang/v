@@ -59,6 +59,7 @@ mut:
 	warnings          []errors.Warning
 	vet_errors        []string
 	cur_fn_name       string
+	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 }
 
 // for tests
