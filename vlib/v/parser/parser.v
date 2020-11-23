@@ -1699,7 +1699,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 fn (mut p Parser) return_stmt() ast.Return {
 	first_pos := p.tok.position()
 	p.next()
-
 	// no return
 	mut comments := p.eat_comments()
 	if p.tok.kind == .rcbr {
@@ -1708,8 +1707,6 @@ fn (mut p Parser) return_stmt() ast.Return {
 			pos: first_pos
 		}
 	}
-
-
 	// return exprs
 	exprs, comments2 := p.expr_list()
 	comments << comments2
