@@ -1800,8 +1800,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			if !prevent_sum_type_unwrapping_once {
 				scope := c.file.scope.innermost(selector_expr.pos.pos)
 				if scope_field := scope.find_struct_field(utyp, field_name) {
-					last_idx := scope_field.sum_type_casts.len - 1
-					return scope_field.sum_type_casts[last_idx]
+					return scope_field.sum_type_casts.last()
 				}
 			}
 		}
@@ -3213,12 +3212,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 					}
 					is_sum_type_cast := obj.sum_type_casts.len != 0 && !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
-					mut typ := if is_sum_type_cast {
-						last_idx := obj.sum_type_casts.len - 1
-						obj.sum_type_casts[last_idx]
-					} else {
-						obj.typ
-					}
+					mut typ := if is_sum_type_cast { obj.sum_type_casts.last() } else { obj.typ }
 					if typ == 0 {
 						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
