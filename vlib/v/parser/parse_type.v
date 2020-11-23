@@ -211,7 +211,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		if !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 		}
-	} else if p.expr_mod != '' {
+	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if p.mod != 'builtin' && name.len > 1 && name !in p.table.type_idxs {
 		// `Foo` in module `mod` means `mod.Foo`
@@ -343,6 +343,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	mut bs_name := name
 	p.next()
+	p.in_generic_params = true
 	bs_name += '<'
 	mut generic_types := []table.Type{}
 	mut is_instance := false
@@ -361,6 +362,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		bs_name += ','
 	}
 	p.check(.gt)
+	p.in_generic_params = false
 	bs_name += '>'
 	if is_instance && generic_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
@@ -368,13 +370,17 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			return table.new_type(gt_idx)
 		}
 		gt_idx = p.table.add_placeholder_type(bs_name, .v)
+		mut parent_idx := p.table.type_idxs[name]
+		if parent_idx == 0 {
+			parent_idx = p.table.add_placeholder_type(name, .v)
+		}
 		idx := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
 			mod: p.mod
 			info: table.GenericStructInst{
-				parent_idx: p.table.type_idxs[name]
+				parent_idx: parent_idx
 				generic_types: generic_types
 			}
 		})
