@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  mongo:
+    image: 'mongo'
+    container_name: 'mongov'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: 'mongov'
+      MONGO_INITDB_ROOT_PASSWORD: 'mongov'
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data_container/:/data/db
+    networks:
+      - mongov
+
+volumes:
+  mongodb_data_container:
+networks:
+  mongov:
