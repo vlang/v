@@ -1301,7 +1301,7 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 				scope := g.file.scope.innermost(expr.position().pos)
 				if expr is ast.Ident {
 					if v := scope.find_var(expr.name) {
-						if v.sum_type_cast != 0 {
+						if v.sum_type_casts.len > 0 {
 							is_already_sum_type = true
 						}
 					}
@@ -1536,6 +1536,7 @@ fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
 	g.write(')')
 }
 
+// TODO this function is scary. Simplify/split up.
 fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	if assign_stmt.is_static {
 		g.write('static ')
@@ -1683,7 +1684,14 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
+						needs_clone := elem_typ == table.string_type && g.pref.autofree
+						if needs_clone {
+							g.write('/*1*/string_clone(')
+						}
 						g.expr(left.left)
+						if needs_clone {
+							g.write(')')
+						}
 						g.write(', ')
 						g.expr(left.index)
 						g.writeln(');')
@@ -2558,12 +2566,17 @@ fn (mut g Gen) expr(node ast.Expr) {
 						scope := g.file.scope.innermost(node.pos.pos)
 						if field := scope.find_struct_field(node.expr_type, node.field_name) {
 							// union sum type deref
-							g.write('(*')
-							cast_sym := g.table.get_type_symbol(field.sum_type_cast)
-							if mut cast_sym.info is table.Aggregate {
-								sum_type_deref_field = '_${cast_sym.info.types[g.aggregate_type_idx]}'
-							} else {
-								sum_type_deref_field = '_$field.sum_type_cast'
+							for i, typ in field.sum_type_casts {
+								g.write('(*')
+								cast_sym := g.table.get_type_symbol(typ)
+								if i != 0 {
+									sum_type_deref_field += ').'
+								}
+								if cast_sym.info is table.Aggregate {
+									sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
+								} else {
+									sum_type_deref_field += '_$typ'
+								}
 							}
 						}
 					}
@@ -2906,11 +2919,20 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			} else {
 				g.write(', _MOV(($elem_type_str[]){ ')
 			}
+			is_interface := elem_sym.kind == .interface_ && node.right_type != info.elem_type
 			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
 				g.interface_call(node.right_type, info.elem_type)
 			}
+			// if g.pref.autofree
+			needs_clone := info.elem_type == table.string_type && !g.is_builtin_mod
+			if needs_clone {
+				g.write('string_clone(')
+			}
 			g.expr_with_cast(node.right, node.right_type, info.elem_type)
-			if elem_sym.kind == .interface_ && node.right_type != info.elem_type {
+			if needs_clone {
+				g.write(')')
+			}
+			if is_interface {
 				g.write(')')
 			}
 			g.write(' }))')
@@ -3385,13 +3407,22 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 		scope := g.file.scope.innermost(node.pos.pos)
 		if v := scope.find_var(node.name) {
-			if v.sum_type_cast != 0 {
+			if v.sum_type_casts.len > 0 {
 				if !prevent_sum_type_unwrapping_once {
-					sym := g.table.get_type_symbol(v.sum_type_cast)
-					if mut sym.info is table.Aggregate {
-						g.write('(*${name}._${sym.info.types[g.aggregate_type_idx]})')
-					} else {
-						g.write('(*${name}._$v.sum_type_cast)')
+					for _ in v.sum_type_casts {
+						g.write('(*')
+					}
+					for i, typ in v.sum_type_casts {
+						cast_sym := g.table.get_type_symbol(typ)
+						if i == 0 {
+							g.write(name)
+						}
+						if cast_sym.info is table.Aggregate {
+							g.write('._${cast_sym.info.types[g.aggregate_type_idx]}')
+						} else {
+							g.write('._$typ')
+						}
+						g.write(')')
 					}
 					return
 				}
@@ -3742,10 +3773,15 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						.function { 'voidptr*' }
 						else { '$elem_type_str*' }
 					}
+					needs_clone := info.elem_type == table.string_type_idx && g.pref.autofree &&
+						!g.is_assign_lhs
+					if needs_clone {
+						g.write('/*2*/string_clone(')
+					}
 					if is_direct_array_access {
 						g.write('(($array_ptr_type_str)')
 					} else {
-						g.write('(*($array_ptr_type_str)array_get(')
+						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
 							g.write('*')
 						}
@@ -3772,6 +3808,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write(', ')
 						g.expr(node.index)
 						g.write('))')
+					}
+					if needs_clone {
+						g.write(')')
 					}
 				}
 			} else if sym.kind == .map {
@@ -3892,7 +3931,6 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 			if af {
 				// free the tmp arg expr if we have one before the return
 				g.autofree_call_postgen(node.pos.pos)
-				// g.strs_to_free = []
 			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
@@ -4622,7 +4660,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				g.type_definitions.writeln('typedef struct {')
 				g.type_definitions.writeln('    union {')
-				for variant in g.table.get_union_sum_type_variants(typ.info) {
+				for variant in typ.info.variants {
 					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
@@ -5032,7 +5070,13 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 		g.write('.len)')
 	} else {
 		g.write(', &($elem_type_str[]){')
+		if left_info.elem_type == table.string_type {
+			g.write('string_clone(')
+		}
 		g.expr(node.args[1].expr)
+		if left_info.elem_type == table.string_type {
+			g.write(')')
+		}
 		g.write('})')
 	}
 }
@@ -5152,7 +5196,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
 				g.writeln('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"), ${cvar_name}.v_error );')
 			} else {
-				g.writeln('\tv_panic(${cvar_name}.v_error);')
+				g.writeln('\tv_panic(_STR("optional not set (%.*s\\000)", 2, ${cvar_name}.v_error));')
 			}
 		} else {
 			// In ordinary functions, `opt()?` call is sugar for:

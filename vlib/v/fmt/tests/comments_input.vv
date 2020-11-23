@@ -1,5 +1,5 @@
 fn fun() int {
-	return /* comment zero */ 0
+	return /* comment zero */ 0 // another comment
 }
 
 fn mr_fun() (int, int) {
@@ -22,4 +22,5 @@ fn main() {
 	else /* after else */ {
 		println('else')
 	}
+  return // empty return
 }

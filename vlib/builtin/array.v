@@ -389,7 +389,7 @@ fn (mut a array) set(i int, val voidptr) {
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	unsafe {C.memcpy(byteptr(a.data) + a.element_size * a.len, val, a.element_size)}
+	unsafe {C.memmove(byteptr(a.data) + a.element_size * a.len, val, a.element_size)}
 	a.len++
 }
 

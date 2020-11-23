@@ -853,18 +853,6 @@ pub:
 	variants []Type
 }
 
-pub fn (table &Table) get_union_sum_type_variants(sum_type UnionSumType) []Type {
-	mut variants := []Type{}
-	for variant in sum_type.variants {
-		sym := table.get_type_symbol(variant)
-		if mut sym.info is UnionSumType {
-			variants << table.get_union_sum_type_variants(sym.info)
-		}
-		variants << variant
-	}
-	return variants
-}
-
 pub fn (table &Table) type_to_str(t Type) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.source_name

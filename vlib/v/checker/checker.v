@@ -65,6 +65,7 @@ mut:
 	vmod_file_content                string // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
+	loop_label                       string // set when inside a labelled for loop
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -1044,8 +1045,9 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 			}
 			call_expr.args[i].is_tmp_autofree = true
 		}
+		// TODO copy pasta from above
 		if call_expr.receiver_type == table.string_type && !(call_expr.left is ast.Ident ||
-			call_expr.left is ast.StringLiteral) {
+			call_expr.left is ast.StringLiteral || call_expr.left is ast.SelectorExpr) {
 			call_expr.free_receiver = true
 		}
 	}
@@ -1800,7 +1802,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			if !prevent_sum_type_unwrapping_once {
 				scope := c.file.scope.innermost(selector_expr.pos.pos)
 				if scope_field := scope.find_struct_field(utyp, field_name) {
-					return scope_field.sum_type_cast
+					return scope_field.sum_type_casts.last()
 				}
 			}
 		}
@@ -2424,6 +2426,19 @@ fn is_const_integer(cfield ast.ConstField) ?ast.IntegerLiteral {
 	return none
 }
 
+[inline]
+fn (mut c Checker) check_loop_label(label string, pos token.Position) {
+	if label.len == 0 {
+		// ignore
+		return
+	}
+	if c.loop_label.len != 0 {
+		c.error('nesting of labelled `for` loops is not supported', pos)
+		return
+	}
+	c.loop_label = label
+}
+
 fn (mut c Checker) stmt(node ast.Stmt) {
 	$if trace_checker ? {
 		stmt_pos := node.position()
@@ -2458,7 +2473,11 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			if c.in_for_count == 0 {
 				c.error('$node.kind.str() statement not within a loop', node.pos)
 			}
-			// TODO: check any node.label is in scope for goto
+			if node.label.len > 0 {
+				if node.label != c.loop_label {
+					c.error('invalid label name `$node.label`', node.pos)
+				}
+			}
 		}
 		ast.CompFor {
 			// node.typ = c.expr(node.expr)
@@ -2490,7 +2509,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.stmt(node.init)
 			c.expr(node.cond)
 			c.stmt(node.inc)
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.ForInStmt {
@@ -2545,7 +2566,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				node.val_type = value_type
 				scope.update_var_type(node.val_var, value_type)
 			}
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.ForStmt {
@@ -2557,7 +2580,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			// TODO: update loop var type
 			// how does this work currenly?
+			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
+			c.loop_label = ''
 			c.in_for_count--
 		}
 		ast.GlobalDecl {
@@ -3210,9 +3235,9 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 						c.error('undefined variable `$ident.name` (used before declaration)',
 							ident.pos)
 					}
-					is_sum_type_cast := obj.sum_type_cast != 0 && !c.prevent_sum_type_unwrapping_once
+					is_sum_type_cast := obj.sum_type_casts.len != 0 && !c.prevent_sum_type_unwrapping_once
 					c.prevent_sum_type_unwrapping_once = false
-					mut typ := if is_sum_type_cast { obj.sum_type_cast } else { obj.typ }
+					mut typ := if is_sum_type_cast { obj.sum_type_casts.last() } else { obj.typ }
 					if typ == 0 {
 						if mut obj.expr is ast.Ident {
 							if obj.expr.kind == .unresolved {
@@ -3538,37 +3563,47 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				mut scope := c.file.scope.innermost(branch.pos.pos)
 				match mut node.cond {
 					ast.SelectorExpr {
+						mut is_mut := false
+						mut sum_type_casts := []table.Type{}
 						expr_sym := c.table.get_type_symbol(node.cond.expr_type)
-						field := c.table.struct_find_field(expr_sym, node.cond.field_name) or {
-							table.Field{}
+						if field := c.table.struct_find_field(expr_sym, node.cond.field_name) {
+							is_mut = field.is_mut
 						}
-						is_mut := field.is_mut
+						if field := scope.find_struct_field(node.cond.expr_type, node.cond.field_name) {
+							sum_type_casts << field.sum_type_casts
+						}
 						is_root_mut := scope.is_selector_root_mutable(c.table, node.cond)
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_root_mut && !is_mut) || node.is_mut {
+							sum_type_casts << expr_type
 							scope.register_struct_field(ast.ScopeStructField{
 								struct_type: node.cond.expr_type
 								name: node.cond.field_name
 								typ: node.cond_type
-								sum_type_cast: expr_type
+								sum_type_casts: sum_type_casts
 								pos: node.cond.pos
 							})
 						}
 					}
 					ast.Ident {
 						mut is_mut := false
+						mut sum_type_casts := []table.Type{}
+						mut is_already_casted := false
 						if v := scope.find_var(node.cond.name) {
 							is_mut = v.is_mut
+							sum_type_casts << v.sum_type_casts
+							is_already_casted = v.pos.pos == node.cond.pos.pos
 						}
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
-						if !is_mut || node.is_mut {
+						if (!is_mut || node.is_mut) && !is_already_casted {
+							sum_type_casts << expr_type
 							scope.register(node.var_name, ast.Var{
 								name: node.var_name
 								typ: node.cond_type
 								pos: node.cond.pos
 								is_used: true
 								is_mut: node.is_mut
-								sum_type_cast: expr_type
+								sum_type_casts: sum_type_casts
 							})
 						}
 					}
@@ -3800,38 +3835,46 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
 							if mut infix.left is ast.Ident {
+								mut sum_type_casts := []table.Type{}
 								if v := scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
+									sum_type_casts << v.sum_type_casts
 								}
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if (!is_mut || branch.is_mut_name) &&
 									left_sym.kind == .union_sum_type {
+									sum_type_casts << right_expr.typ
 									scope.register(branch.left_as_name, ast.Var{
 										name: branch.left_as_name
 										typ: infix.left_type
-										sum_type_cast: right_expr.typ
+										sum_type_casts: sum_type_casts
 										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
 									})
 								}
 							} else if mut infix.left is ast.SelectorExpr {
+								mut sum_type_casts := []table.Type{}
 								expr_sym := c.table.get_type_symbol(infix.left.expr_type)
-								field := c.table.struct_find_field(expr_sym, infix.left.field_name) or {
-									table.Field{}
+								if field := c.table.struct_find_field(expr_sym, infix.left.field_name) {
+									is_mut = field.is_mut
 								}
-								is_mut = field.is_mut
+								if field := scope.find_struct_field(infix.left.expr_type,
+									infix.left.field_name) {
+									sum_type_casts << field.sum_type_casts
+								}
 								is_root_mut := scope.is_selector_root_mutable(c.table,
 									infix.left)
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if ((!is_root_mut && !is_mut) ||
 									branch.is_mut_name) &&
 									left_sym.kind == .union_sum_type {
+									sum_type_casts << right_expr.typ
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: infix.left.expr_type
 										name: infix.left.field_name
 										typ: infix.left_type
-										sum_type_cast: right_expr.typ
+										sum_type_casts: sum_type_casts
 										pos: infix.left.pos
 									})
 								}
