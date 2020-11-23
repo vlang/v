@@ -22,4 +22,5 @@ fn main() {
 	else /* after else */ {
 		println('else')
 	}
+  return // empty return
 }
