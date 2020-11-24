@@ -445,11 +445,11 @@ fn (mut v Builder) cc() {
 	if v.pref.os == .windows {
 		args << '-municode'
 	}
-	cflags := v.get_os_cflags()
+	os_cflags := v.get_os_cflags()
 	// add .o files
-	args << cflags.c_options_only_object_files()
+	args << os_cflags.c_options_only_object_files()
 	// add all flags (-I -l -L etc) not .o files
-	args << cflags.c_options_without_object_files()
+	args << os_cflags.c_options_without_object_files()
 	args << libs
 	// For C++ we must be very tolerant
 	if guessed_compiler.contains('++') {
@@ -649,8 +649,8 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	obj_file := b.out_name_c + '.o'
 	mut cc_args := '-fPIC -w -c -target x86_64-linux-gnu -c -o $obj_file $b.out_name_c -I $sysroot/include '
-	cflags := b.get_os_cflags()
-	cc_args += cflags.c_options_without_object_files()
+	os_cflags := b.get_os_cflags()
+	cc_args += os_cflags.c_options_without_object_files()
 	cc_cmd := 'cc $cc_args'
 	if b.pref.show_cc {
 		println(cc_cmd)
@@ -666,7 +666,7 @@ fn (mut b Builder) cc_linux_cross() {
 	}
 	linker_args := ['-L $sysroot/usr/lib/x86_64-linux-gnu/', '--sysroot=$sysroot -v -o $b.pref.out_name -m elf_x86_64',
 		'-dynamic-linker /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2', '$sysroot/crt1.o $sysroot/crti.o $obj_file',
-		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', cflags.c_options_only_object_files()]
+		'-lc', '-lcrypto', '-lssl', '-lpthread', '$sysroot/crtn.o', os_cflags.c_options_only_object_files()]
 	// -ldl
 	linker_args_str := linker_args.join(' ')
 	linker_cmd := '$sysroot/ld.lld $linker_args_str'
@@ -693,9 +693,9 @@ fn (mut c Builder) cc_windows_cross() {
 		c.pref.out_name += '.exe'
 	}
 	mut args := '-o $c.pref.out_name -w -L. '
-	cflags := c.get_os_cflags()
+	os_cflags := c.get_os_cflags()
 	// -I flags
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	args += if c.pref.ccompiler == 'msvc' { os_cflags.c_options_before_target_msvc() } else { os_cflags.c_options_before_target() }
 	mut optimization_options := ''
 	mut debug_options := ''
 	if c.pref.is_prod {
@@ -715,7 +715,7 @@ fn (mut c Builder) cc_windows_cross() {
 		}
 	}
 	args += ' $c.out_name_c '
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
+	args += if c.pref.ccompiler == 'msvc' { os_cflags.c_options_after_target_msvc() } else { os_cflags.c_options_after_target() }
 	/*
 	winroot := '${pref.default_module_path}/winroot'
 	if !os.is_dir(winroot) {
