@@ -1247,10 +1247,8 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 				if it.or_block.stmts.len > 1 {
 					g.stmts(it.or_block.stmts[..it.or_block.stmts.len-1])
 				}
-				g.inc_indent()
 				g.write('return ')
 				g.stmt(it.or_block.stmts.last())
-				g.dec_indent()
 			}
 			.propagate {
 				panicstr := '`optional not set (\${err})`'
