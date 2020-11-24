@@ -330,9 +330,9 @@ fn (mut v Builder) cc() {
 	}
 	if debug_mode {
 		args << debug_options
-		$if macos {
-			args << ' -ferror-limit=5000 '
-		}
+		// $if macos {
+		// args << ' -ferror-limit=5000 '
+		// }
 	}
 	if v.pref.is_prod {
 		args << optimization_options
