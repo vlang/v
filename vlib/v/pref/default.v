@@ -86,6 +86,11 @@ pub fn (mut p Preferences) fill_with_defaults() {
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
+	/// tcc is known to fail several tests on macos, so do not
+	/// try to use it by default, only when it is explicitly set
+	$if macos {
+		return
+	}
 	if p.ccompiler == 'tcc' {
 		p.ccompiler = default_tcc_compiler()
 		return
@@ -94,11 +99,6 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		p.ccompiler = default_tcc_compiler()
 		return
 	}
-	// /// tcc is known to fail several tests on macos, so do not
-	// /// try to use it by default, only when it is explicitly set
-	// $if macos {
-	// return
-	// }
 }
 
 pub fn default_tcc_compiler() string {
