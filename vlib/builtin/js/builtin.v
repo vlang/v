@@ -37,7 +37,52 @@ pub fn exit(c int) {
 	JS.process.exit(c)
 }
 
+pub fn unwrap(opt any) any {
+	o := &Option(opt)
+	if o.not_ok {
+		panic(o.error)
+		return o.error
+	}
+	return opt
+}
+
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	exit(1)
+}
+
+
+struct Option {
+	not_ok  bool
+	is_none bool
+	error   string
+	ecode   int
+	data    any
+}
+
+pub fn (o Option) str() string {
+   if !o.not_ok {
+	  return 'Option{ ok }'
+   }
+   if o.is_none {
+	  return 'Option{ none }'
+   }
+   return 'Option{ error: "${o.error}" }'
+}
+
+pub fn error(s string) Option {
+	return Option{
+		not_ok: true
+		is_none: false
+		error: s
+	}
+}
+
+pub fn error_with_code(s string, code int) Option {
+	return Option{
+		not_ok: true
+		is_none: false
+		error: s
+		ecode: code
+	}
 }
