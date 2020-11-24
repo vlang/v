@@ -1153,7 +1153,6 @@ pub fn (stmt Stmt) position() token.Position {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
 		TypeDecl {
-			// TODO: this can be merged with upper match @danieldaeschle
 			match union stmt {
 				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
 			}
