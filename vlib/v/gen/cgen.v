@@ -4652,19 +4652,20 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('')
 			}
 			table.UnionSumType {
+				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
 				for variant in it.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
-				g.type_definitions.writeln('typedef struct {')
+				g.type_definitions.writeln('struct $name {')
 				g.type_definitions.writeln('    union {')
 				for variant in it.variants {
 					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
 				g.type_definitions.writeln('    int typ;')
-				g.type_definitions.writeln('} $name;')
+				g.type_definitions.writeln('};')
 				g.type_definitions.writeln('')
 			}
 			table.ArrayFixed {
