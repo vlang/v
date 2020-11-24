@@ -166,13 +166,13 @@ fn (u User) to_json() string {
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
 	u2 := json2.decode<User2>(s) or {
-		exit(1)
+		assert false
+		User2{}
 	}
-	println(u2)
 	u := json2.decode<User>(s) or {
-		exit(1)
+		assert false
+		User{}
 	}
-	println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
 	assert u.is_registered == true
@@ -195,7 +195,6 @@ fn test_encode_user() {
 	}
 	expected := '{"age":10,"nums":[1,2,3],"lastName":"Johnson","IsRegistered":true,"type":0,"pet_animals":"foo"}'
 	out := json2.encode<User>(usr)
-	println(out)
 	assert out == expected
 }
 
@@ -218,8 +217,8 @@ fn (mut c Color) from_json(an json2.Any) {
 
 fn test_raw_json_field() {
 	color := json2.decode<Color>('{"space": "YCbCr", "point": {"Y": 123}}') or {
-		println('text')
-		return
+		assert false
+		Color{}
 	}
 	assert color.point == '{"Y":123}'
 	assert color.space == 'YCbCr'
@@ -257,7 +256,6 @@ fn test_encode_map() {
 	}
 	out := numbers.str()
 	// out := json.encode(numbers)
-	println(out)
 	assert out == expected
 }
 
