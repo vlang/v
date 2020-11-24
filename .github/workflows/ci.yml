@@ -149,7 +149,7 @@ jobs:
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
-      run:  sudo ./v symlink
+      run:  ./v symlink
 #    - name: Set up pg database
 #      run: |
 #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -162,8 +162,6 @@ jobs:
 #      run: ./v -silent build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Test symlink
-      run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
