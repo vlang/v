@@ -86,7 +86,7 @@ fn (p Person) to_json() string {
 
 fn main() {
     resp := os.read_file('./person.json')?
-    person := json2.decode<Person>(resp)
+    person := json2.decode<Person>(resp)?
     println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
     person_json := json2.encode<Person>(person)
     println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
