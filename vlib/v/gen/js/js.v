@@ -1175,6 +1175,10 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	} else {
 		name = g.js_name(it.name)
 	}
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.write('builtin.unwrap(')
+	}
 	g.expr(it.left)
 	if it.is_method { // foo.bar.baz()
 		sym := g.table.get_type_symbol(it.receiver_type)
@@ -1224,7 +1228,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(', ')
 		}
 	}
-	g.write(')')
+	if call_return_is_optional {
+		g.write('))')
+	} else {
+		g.write(')')
+	}
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
