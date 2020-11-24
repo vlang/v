@@ -6,4 +6,13 @@ fn main() {
 		2,
 		/* test 2 */
 	]
+	arr2 := [
+		'foo',
+		/*
+		'bar',
+		'baz',
+		'spam',
+		*/
+		'eggs',
+	]
 }
