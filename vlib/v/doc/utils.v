@@ -77,7 +77,7 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 }
 
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
-	match stmt {
+	match union stmt {
 		ast.Module {
 			return 'module $stmt.name'
 		}
@@ -93,12 +93,11 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 }
 
 pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
-	match stmt {
+	match union stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
 		ast.TypeDecl {
-			type_decl := *stmt
-			match union type_decl {
-				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl, ast.UnionSumTypeDecl { return type_decl.name }
+			match union stmt {
+				ast.SumTypeDecl, ast.FnTypeDecl, ast.AliasTypeDecl, ast.UnionSumTypeDecl { return stmt.name }
 			}
 		}
 		ast.ConstDecl { return '' } // leave it blank
