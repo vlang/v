@@ -217,6 +217,12 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	//
+	mut tried_compilation_commands := []string{}
+	original_pwd := os.getwd()
+	// TODO remove the start: goto start construct;
+	// use a labeled for break instead
+	start:
 	mut ccompiler := v.pref.ccompiler
 	$if windows {
 		if ccompiler == 'msvc' {
@@ -508,12 +514,7 @@ fn (mut v Builder) cc() {
 		v.pref.cleanup_files << v.out_name_c
 		v.pref.cleanup_files << response_file
 	}
-	original_pwd := os.getwd()
-	mut tried_compilation_commands := []string{}
 	//
-	// TODO remove the start: goto start construct;
-	// use a labeled for break instead
-	start:
 	todo()
 	os.chdir(vdir)
 	cmd := '$ccompiler @$response_file'
@@ -554,7 +555,6 @@ fn (mut v Builder) cc() {
 			}
 			eprintln('recompilation with tcc failed; retrying with cc ...')
 			v.pref.ccompiler = pref.default_c_compiler()
-			eprintln('>>> v.pref.ccompiler: $v.pref.ccompiler')
 			goto start
 		}
 		if res.exit_code == 127 {
