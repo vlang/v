@@ -371,22 +371,6 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types')
 	for typ in g.table.types {
-		if typ.kind == .sum_type {
-			sum_info := typ.info as table.SumType
-			tidx := g.table.find_type_idx(typ.name)
-			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
-			g.writeln('	switch(sidx) {')
-			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
-			for v in sum_info.variants {
-				subtype := g.table.get_type_symbol(v)
-				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
-			}
-			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
-			g.writeln('	}')
-			g.writeln('}')
-		}
-	}
-	for typ in g.table.types {
 		if typ.kind == .union_sum_type {
 			sum_info := typ.info as table.UnionSumType
 			tidx := g.table.find_type_idx(typ.name)
@@ -2293,7 +2277,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(node.arg)
 				}
 				g.write(')')
-			} else if sym.kind in [.sum_type, .union_sum_type] {
+			} else if sym.kind == .union_sum_type {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
 				styp := g.typ(node.typ)
@@ -2649,14 +2633,7 @@ fn (mut g Gen) type_name(type_ table.Type) {
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	sym := g.table.get_type_symbol(node.expr_type)
-	if sym.kind == .sum_type {
-		// When encountering a .sum_type, typeof() should be done at runtime,
-		// because the subtype of the expression may change:
-		sum_type_idx := node.expr_type.idx()
-		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
-		g.expr(node.expr)
-		g.write(').typ ))')
-	} else if sym.kind == .union_sum_type {
+	if sym.kind == .union_sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
@@ -3098,7 +3075,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 				g.write(cond_var)
 				// branch_sym := g.table.get_type_symbol(branch.typ)
-				if sym.kind in [.sum_type, .union_sum_type] {
+				if sym.kind == .union_sum_type {
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.write('typ == ')
@@ -3111,25 +3088,6 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(') ? ')
 				} else {
 					g.writeln(') {')
-				}
-			}
-			// g.writeln('/* M sum_type=$node.is_sum_type is_expr=$node.is_expr exp_type=${g.typ(node.expected_type)}*/')
-			if sym.kind != .union_sum_type && !branch.is_else && !node.is_expr {
-				// Use the nodes in the expr to generate `it` variable.
-				type_expr := branch.exprs[sumtype_index]
-				if type_expr !is ast.Type {
-					verror('match sum type')
-				}
-				it_type := g.typ((type_expr as ast.Type).typ)
-				// g.writeln('$it_type* it = ($it_type*)${tmp}.obj; // ST it')
-				g.write('\t$it_type* it = ($it_type*)')
-				g.write(cond_var)
-				dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
-				g.write(dot_or_ptr)
-				g.writeln('_object; // ST it')
-				if node.var_name.len > 0 {
-					// for now we just copy it
-					g.writeln('\t$it_type* $node.var_name = it;')
 				}
 			}
 			g.stmts(branch.stmts)
@@ -3449,13 +3407,6 @@ fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
 			info := g.match_sumtype_syms[i].info
 			match union info {
-				table.SumType {
-					for typ in info.variants {
-						if g.table.get_type_symbol(typ).kind == .struct_ {
-							return false
-						}
-					}
-				}
 				table.UnionSumType {
 					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
@@ -3591,18 +3542,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if branch.smartcast && branch.stmts.len > 0 {
 			infix := branch.cond as ast.InfixExpr
-			right_type := infix.right as ast.Type
-			left_type := infix.left_type
-			it_type := g.typ(right_type.typ)
-			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
-			g.expr(infix.left)
-			if left_type.is_ptr() {
-				g.write('->')
-			} else {
-				g.write('.')
+			if mut infix.left is ast.Ident {
+				right_type := infix.right as ast.Type
+				left_type := infix.left_type
+				it_type := g.typ(right_type.typ)
+				g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
+				g.expr(infix.left)
+				if left_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.writeln('_object;')
+				g.writeln('\t$it_type* $infix.left.name = _sc_tmp_$branch.pos.pos;')
 			}
-			g.writeln('_object;')
-			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
@@ -4640,19 +4593,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.type_definitions.writeln('};\n')
 			}
 			table.Alias {
-				// table.Alias, table.SumType { TODO
-			}
-			table.SumType {
-				g.type_definitions.writeln('')
-				g.type_definitions.writeln('// Sum type $name = ')
-				for sv in typ.info.variants {
-					g.type_definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
-				}
-				g.type_definitions.writeln('typedef struct {')
-				g.type_definitions.writeln('    void* _object;')
-				g.type_definitions.writeln('    int typ;')
-				g.type_definitions.writeln('} $name;')
-				g.type_definitions.writeln('')
+				// table.Alias { TODO
 			}
 			table.UnionSumType {
 				g.typedefs.writeln('typedef struct $name $name;')
@@ -4781,7 +4722,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			g.write('")')
 		}
 	} else if sym_has_str_method || sym.kind in
-		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
+		[.array, .array_fixed, .map, .struct_, .multi_return, .union_sum_type] {
 		is_p := typ.is_ptr()
 		val_type := if is_p { typ.deref() } else { typ }
 		str_fn_name := g.gen_str_for_type(val_type)
@@ -5449,7 +5390,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .union_sum_type, .sum_type, .array_fixed, .multi_return { '{0}' }
+		.interface_, .union_sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
@@ -5604,23 +5545,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// g.insert_before('
 	styp := g.typ(node.typ)
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
-	if expr_type_sym.kind == .sum_type {
-		/*
-		g.write('*($styp*)')
-		g.expr(node.expr)
-		g.write('.obj')
-		*/
-		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
-		g.write('/* as */ ($styp*)__as_cast((')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		g.write('_object, (')
-		g.expr(node.expr)
-		g.write(')')
-		g.write(dot)
-		g.write('typ, /*expected:*/$node.typ)')
-	} else if expr_type_sym.kind == .union_sum_type {
+	if expr_type_sym.kind == .union_sum_type {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		g.write('/* as */ *($styp*)__as_cast((')
 		g.expr(node.expr)
@@ -5652,7 +5577,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
-	} else if sym.kind in [.sum_type, .union_sum_type] {
+	} else if sym.kind == .union_sum_type {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)
@@ -5719,7 +5644,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
 		return '%lld\\000'
-	} else if sym.kind == .sum_type {
+	} else if sym.kind == .union_sum_type {
 		return '%.*s\\000'
 	}
 	return '%d\\000'

@@ -257,10 +257,6 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			joined := types.join(', ')
 			styp = '[$joined]'
 		}
-		.sum_type {
-			// TODO: Implement sumtypes
-			styp = 'sym_type'
-		}
 		.union_sum_type {
 			// TODO: Implement sumtypes
 			styp = 'union_sym_type'
@@ -1504,7 +1500,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 
 fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	sym := g.table.get_type_symbol(it.expr_type)
-	if sym.kind == .sum_type {
+	if sym.kind == .union_sum_type {
 		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed

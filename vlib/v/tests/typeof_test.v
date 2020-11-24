@@ -51,8 +51,8 @@ type MySumType = int | f32 | FooBar
 
 pub fn (ms MySumType) str() string {
 	match ms {
-		int { return it.str() }
-		f32 { return it.str() }
+		int { return ms.str() }
+		f32 { return ms.str() }
 		//FooBar { return it.x.str() }
 		else { return 'unknown: ' + typeof(ms) }
 	}
@@ -144,7 +144,7 @@ fn test_generic_type() {
 	assert type_name([v]) == '[]int'
 	assert type_name([[v]]) == '[][]int'
 	assert type_name(FooBar{}) == 'FooBar'
-	
+
 	assert array_item_type([v]) == 'int'
 	assert array_item_type([[v]]) == '[]int'
 	//assert array_item_type([&v]) == '&int'

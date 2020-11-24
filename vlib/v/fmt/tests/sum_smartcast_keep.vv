@@ -6,17 +6,15 @@ mut:
 struct S2 {
 }
 
-type Sum = S1 | S2
+__type Sum = S1 | S2
 
 fn f(sum Sum) {
 	if mut sum is S1 {
 		sum.i++
 	}
-	if sum is S1 as s1 {
+	if sum is S1 {
 	}
 	a := [sum]
 	if a[0] is S2 {
-	}
-	if a[0] is S2 as s2 {
 	}
 }

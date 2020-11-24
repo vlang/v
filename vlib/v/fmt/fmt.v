@@ -454,7 +454,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.write('sql ')
 			f.expr(node.db_expr)
 			f.writeln(' {')
-			match node.kind as k {
+			match node.kind {
 				.insert {
 					f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
 				}
@@ -542,26 +542,6 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			} else if fn_info.return_type.has_flag(.optional) {
 				f.write(' ?')
 			}
-			comments << node.comments
-		}
-		ast.SumTypeDecl {
-			if node.is_pub {
-				f.write('pub ')
-			}
-			f.write('type $node.name = ')
-			mut sum_type_names := []string{}
-			for t in node.sub_types {
-				sum_type_names << f.table.type_to_str(t)
-			}
-			sum_type_names.sort()
-			for i, name in sum_type_names {
-				f.write(name)
-				if i < sum_type_names.len - 1 {
-					f.write(' | ')
-				}
-				f.wrap_long_line(2, true)
-			}
-			// f.write(sum_type_names.join(' | '))
 			comments << node.comments
 		}
 		ast.UnionSumTypeDecl {
@@ -1412,15 +1392,6 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
-		// Check `sum is T` smartcast
-		mut smartcast_as := false
-		if branch.cond is ast.InfixExpr {
-			if branch.cond.op == .key_is {
-				// left_as_name is either empty, branch.cond.left.str() or the `as` name
-				smartcast_as = branch.left_as_name.len > 0 &&
-					branch.cond.left.str() != branch.left_as_name
-			}
-		}
 		if i == 0 {
 			// first `if`
 			f.comments(branch.comments, {})
@@ -1440,9 +1411,6 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				f.write('mut ')
 			}
 			f.expr(branch.cond)
-			if smartcast_as {
-				f.write(' as $branch.left_as_name')
-			}
 			f.write(' ')
 		}
 		f.write('{')
@@ -1560,7 +1528,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
-	// TODO: temporary, remove again
 	if it.is_union_match {
 		f.write('union ')
 	}
@@ -1570,12 +1537,6 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
 		f.it_name = it.cond.name
-	} else if it.cond is ast.SelectorExpr {
-		// `x.y as z`
-		// if ident.name != it.var_name && it.var_name != '' {
-	}
-	if it.var_name != '' && f.it_name != it.var_name {
-		f.write(' as $it.var_name')
 	}
 	f.writeln(' {')
 	f.indent++
