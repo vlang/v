@@ -529,14 +529,14 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond         Expr
-	pos          token.Position
-	body_pos     token.Position
-	comments     []Comment
-	is_mut_name  bool // `if mut name is`
+	cond        Expr
+	pos         token.Position
+	body_pos    token.Position
+	comments    []Comment
+	is_mut_name bool // `if mut name is`
 pub mut:
-	stmts        []Stmt
-	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
+	stmts       []Stmt
+	smartcast   bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
 }
 
 pub struct UnsafeExpr {

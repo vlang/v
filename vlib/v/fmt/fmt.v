@@ -548,7 +548,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			if node.is_pub {
 				f.write('pub ')
 			}
-			f.write('type $node.name = ')
+			f.write('__type $node.name = ')
 			mut sum_type_names := []string{}
 			for t in node.sub_types {
 				sum_type_names << f.table.type_to_str(t)
