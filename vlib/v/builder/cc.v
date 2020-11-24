@@ -419,7 +419,9 @@ fn (mut v Builder) cc() {
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
-		args << '-x objective-c'
+		if !is_cc_tcc {
+			args << '-x objective-c'
+		}
 	}
 	// The C file we are compiling
 	args << '"$v.out_name_c"'
