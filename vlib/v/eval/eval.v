@@ -8,7 +8,7 @@ import v.checker
 import v.table
 import v.pref
 
-pub type Object = int | string
+pub __type Object = int | string
 
 pub struct Eval {
 mut:
@@ -33,14 +33,14 @@ pub fn (mut e Eval) eval(file ast.File, table &table.Table) string {
 }
 
 fn print_object(o Object) {
-	match o {
+	match union o {
 		int { println(o) }
 		else { println('unknown object') }
 	}
 }
 
 pub fn (o Object) str() string {
-	match o {
+	match union o {
 		int { return o.str() }
 		else { println('unknown object') }
 	}

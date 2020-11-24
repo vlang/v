@@ -66,11 +66,10 @@ pub fn null() Null {
 // Use `Any` as a map.
 pub fn (f Any) as_map() map[string]Any {
 	if f is map[string]Any {
-		return *f
+		return f
 	} else if f is []Any {
 		mut mp := map[string]Any
-		arr := f
-		for i, fi in arr {
+		for i, fi in f {
 			mp['$i'] = fi
 		}
 		return mp
@@ -80,9 +79,9 @@ pub fn (f Any) as_map() map[string]Any {
 
 // Use `Any` as an integer.
 pub fn (f Any) int() int {
-	match f {
-		int  { return *f }
-		i64  { return int(*f) }
+	match union f {
+		int  { return f }
+		i64  { return int(f) }
 		f64  { return f.str().int() }
 		f32  { return f.str().int() }
 		bool { return int(f) }
@@ -92,9 +91,9 @@ pub fn (f Any) int() int {
 
 // Use `Any` as a 64-bit integer.
 pub fn (f Any) i64() i64 {
-	match f {
-		int  { return *f }
-		i64  { return int(*f) }
+	match union f {
+		int  { return f }
+		i64  { return int(f) }
 		f64  { return f.str().i64() }
 		f32  { return f.str().i64() }
 		bool { return int(f) }
@@ -104,33 +103,32 @@ pub fn (f Any) i64() i64 {
 
 // Use `Any` as a 32-bit float.
 pub fn (f Any) f32() f32 {
-	match f {
-		int { return *f }
-		i64 { return (*f).str().f32() }
-		f64 { return (*f).str().f32() }
-		f32 { return *f }
+	match union f {
+		int { return f }
+		i64 { return f.str().f32() }
+		f64 { return f.str().f32() }
+		f32 { return f }
 		else { return 0.0 }
 	}
 }
 
 // Use `Any` as a float.
 pub fn (f Any) f64() f64 {
-	match f {
-		int { return *f }
-		i64 { return *f }
-		f64 { return *f }
-		f32 { return (*f).str().f64() }
+	match union f {
+		int { return f }
+		i64 { return f }
+		f64 { return f }
+		f32 { return f.str().f64() }
 		else { return 0.0 }
 	}
 }
 // Use `Any` as an array.
 pub fn (f Any) arr() []Any {
 	if f is []Any {
-		return *f
+		return f
 	} else if f is map[string]Any {
 		mut arr := []Any{}
-		mp := *f
-		for _, v in mp {
+		for _, v in f {
 			arr << v
 		}
 		return arr
@@ -140,9 +138,9 @@ pub fn (f Any) arr() []Any {
 
 // Use `Any` as a bool
 pub fn (f Any) bool() bool {
-	match f {
-		bool { return *f }
-		string { return (*f).bool() }
+	match union f {
+		bool { return f }
+		string { return f.bool() }
 		else { return false }
 	}
 }

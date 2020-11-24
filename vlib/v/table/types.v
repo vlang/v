@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | UnionSumType
+pub __type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType |
+	GenericStructInst | Interface | Map | MultiReturn | Struct | SumType | UnionSumType
 
 pub enum Language {
 	v
@@ -421,56 +421,56 @@ pub fn (t &TypeSymbol) str() string {
 
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
-	match t.info {
-		Enum { return *it }
+	match union mut t.info {
+		Enum { return t.info }
 		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
-	match t.info {
-		MultiReturn { return *it }
+	match union mut t.info {
+		MultiReturn { return t.info }
 		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
-	match t.info {
-		Array { return *it }
+	match union mut t.info {
+		Array { return t.info }
 		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
-	match t.info {
-		ArrayFixed { return *it }
+	match union mut t.info {
+		ArrayFixed { return t.info }
 		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) chan_info() Chan {
-	match t.info {
-		Chan { return *it }
+	match union mut t.info {
+		Chan { return t.info }
 		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
-	match t.info {
-		Map { return *it }
+	match union mut t.info {
+		Map { return t.info }
 		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
 	}
 }
 
 [inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
-	match t.info {
-		Struct { return *it }
+	match union mut t.info {
+		Struct { return t.info }
 		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
 	}
 }
@@ -790,7 +790,7 @@ pub:
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
-pub type FExpr = byteptr | voidptr
+pub __type FExpr = byteptr | voidptr
 
 pub struct Field {
 pub:
