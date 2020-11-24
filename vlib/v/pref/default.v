@@ -99,7 +99,6 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 	}
 }
 
-
 pub fn default_tcc_compiler() string {
 	vexe := vexe_path()
 	vroot := os.dir(vexe)
