@@ -359,7 +359,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if field.is_embed {
 				if mut sym.info is table.Struct {
 					for embed_field in sym.info.fields {
-						already_exists := struct_sym.info.fields.filter(it.name == embed_field.name).len > 0
+						already_exists := struct_sym.info.fields.filter(it.name == embed_field.name).len >
+							0
 						if !already_exists {
 							struct_sym.info.fields << {
 								embed_field |
@@ -410,7 +411,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				c.expected_type = field.typ
 				field_expr_type := c.expr(field.default_expr)
 				c.check_expected(field_expr_type, field.typ) or {
-					c.error('incompatible initializer for field `$field.name`: $err', field.default_expr.position())
+					c.error('incompatible initializer for field `$field.name`: $err',
+						field.default_expr.position())
 				}
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {

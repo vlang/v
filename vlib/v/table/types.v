@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub __type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
-	Interface | Map | MultiReturn | Struct | SumType | UnionSumType
+pub __type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType |
+	GenericStructInst | Interface | Map | MultiReturn | Struct | SumType | UnionSumType
 
 pub enum Language {
 	v

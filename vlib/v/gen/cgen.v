@@ -3278,7 +3278,8 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					channels << rec_expr.right
 					is_push << false
 					// create tmp unless the object with *exactly* the type we need exists already
-					if branch.stmt.op == .decl_assign || branch.stmt.right_types[0] != branch.stmt.left_types[0] {
+					if branch.stmt.op == .decl_assign ||
+						branch.stmt.right_types[0] != branch.stmt.left_types[0] {
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
 						el_stype := g.typ(branch.stmt.right_types[0])
@@ -3503,7 +3504,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	first_branch := node.branches[0]
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || (g.pref.experimental &&
-		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt && (first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
+		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
+		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || g.pref.experimental) &&
