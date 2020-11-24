@@ -1052,7 +1052,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if it.exprs.len == 0 {
 		// Returns nothing
-		g.write('return;')
+		g.writeln('return;')
 		return
 	}
 	g.write('return ')
