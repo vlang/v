@@ -248,15 +248,6 @@ fn (mut v Builder) cc() {
 		args << '-fobjc-arc'
 	}
 	mut linker_flags := []string{}
-	// TCC on Linux by default, unless -cc was provided
-	// TODO if -cc = cc, TCC is still used, default compiler should be
-	// used instead.
-	if v.pref.fast {
-		tcc_path := os.join_path(vdir, 'thirdparty', 'tcc', 'tcc.exe')
-		if os.exists(tcc_path) {
-			v.pref.ccompiler = tcc_path
-		}
-	}
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
 		!v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
@@ -560,13 +551,16 @@ fn (mut v Builder) cc() {
 				exit(101)
 			}
 			eprintln('recompilation with tcc failed; retrying with cc ...')
-			v.pref.ccompiler = 'cc'
+			v.pref.ccompiler = pref.default_c_compiler()
+			eprintln('>>> v.pref.ccompiler: $v.pref.ccompiler')
 			goto start
 		}
-		verror('C compiler error, while attempting to run: \n' +
-			'-----------------------------------------------------------\n' + '$cmd\n' +
-			'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
-			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+		if res.exit_code == 127 {
+			verror('C compiler error, while attempting to run: \n' +
+				'-----------------------------------------------------------\n' + '$cmd\n' +
+				'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
+				'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+		}
 	}
 	if !v.pref.show_c_output {
 		v.post_process_c_compiler_output(res)
