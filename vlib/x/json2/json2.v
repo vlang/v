@@ -21,37 +21,30 @@ pub fn fast_raw_decode(src string) ?Any {
 }
 
 // A generic function that decodes a JSON string into the target type.
-//
-// TODO: decode must return an optional generics
-pub fn decode<T>(src string) T {
-	res := raw_decode(src) or {
-		panic(err)
-	}
+pub fn decode<T>(src string) ?T {
+	res := raw_decode(src) ?
+	/*
+	TODO: type check match src {
+		string {
+			return res.str()
+		}
+		int {
+			return res.int()
+		}
+		f64 {
+			return res.f64()
+		}
+		else {
+	*/
 	mut typ := T{}
 	typ.from_json(res)
 	return typ
+	/*
+	}
+	}
+	*/
 }
-// TODO: decode must return an optional generics
-// pub fn decode2<T>(src string) ?T {
-// 	res := raw_decode(src)?
 
-// 	match typeof(T) {
-// 		'string' {
-// 			return res.str()
-// 		}
-// 		'int' {
-// 			return res.int()
-// 		}
-// 		'f64' {
-// 			return res.f64()
-// 		}
-// 		else {
-// 			mut typ := T{}
-// 			typ.from_json(res)
-// 			return typ
-// 		}
-// 	}
-// }
 // A generic function that encodes a type into a JSON string.
 pub fn encode<T>(typ T) string {
 	// if typeof(typ).name in ['string', 'int', 'f64', 'f32', 'i64'] {
