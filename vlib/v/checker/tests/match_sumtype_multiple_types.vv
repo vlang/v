@@ -20,7 +20,8 @@ type NATOAlphabet = Alfa | Bravo | Charlie
 
 fn method_not_exists() {
 	a := Alfa{}
-	match NATOAlphabet(a) as l {
+	l := NATOAlphabet(a)
+	match l {
 		Alfa, Charlie {
 			assert l.char == `a`
 			assert l.letter() == 'a'

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/match_invalid_type.vv:5:3: error: cannot match `byte` with `IoS` condition
+vlib/v/checker/tests/match_invalid_type.vv:5:3: error: `IoS` has no variant `byte`
     3 | fn sum() {
     4 |     match IoS(1) {
     5 |         byte {

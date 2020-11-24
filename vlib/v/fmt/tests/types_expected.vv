@@ -1,11 +1,11 @@
 // Sumtype
-type FooBar = Bar | Foo
+__type FooBar = Bar | Foo
 
-pub type PublicBar = Bar | Foo | FooBar
+pub __type PublicBar = Bar | Foo | FooBar
 
-type Uint = byte | u16 | u32 | u64 // This should stay on the same line
+__type Uint = byte | u16 | u32 | u64
 
-type Float = f32 | f64
+__type Float = f32 | f64
 
 // Alias type
 type MyInt = int
