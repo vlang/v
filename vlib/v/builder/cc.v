@@ -288,6 +288,8 @@ fn (mut v Builder) cc() {
 		args << '-fPIC' // -Wl,-z,defs'
 		$if macos {
 			v.pref.out_name += '.dylib'
+		} $else $if windows {
+			v.pref.out_name += '.dll'
 		} $else {
 			v.pref.out_name += '.so'
 		}
