@@ -85,16 +85,6 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 }
 
-/*
-fn (mut f Fmt) find_comment(line_nr int) {
-	for comment in f.file.comments {
-		if comment.line_nr == line_nr {
-			f.writeln('// FFF $comment.line_nr $comment.text')
-			return
-		}
-	}
-}
-*/
 pub fn (mut f Fmt) write(s string) {
 	if !f.buffering {
 		if f.indent > 0 && f.empty_line {
@@ -255,7 +245,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
 		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
 	}
-	match node {
+	match union node {
 		ast.AssignStmt {
 			f.comments(node.comments, {})
 			for i, left in node.left {
@@ -490,18 +480,18 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.writeln('}')
 		}
 		ast.StructDecl {
-			f.struct_decl(it)
+			f.struct_decl(node)
 		}
 		ast.TypeDecl {
 			// already handled in f.imports
-			f.type_decl(it)
+			f.type_decl(node)
 		}
 	}
 }
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	mut comments := []ast.Comment{}
-	match node {
+	match union node {
 		ast.AliasTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
@@ -972,8 +962,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 						f.write('> ')
 					}
 					f.single_line_if = true
-					match branch.stmt as stmt {
-						ast.ExprStmt { f.expr(stmt.expr) }
+					match branch.stmt {
+						ast.ExprStmt { f.expr(branch.stmt.expr) }
 						else { f.stmt(branch.stmt) }
 					}
 					f.single_line_if = false
@@ -1224,8 +1214,14 @@ struct CommentsOptions {
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if options.iembed {
-		x := node.text.replace('\n', ' ').trim_left('\x01')
-		f.write('/* $x */')
+		x := node.text.trim_left('\x01')
+		if x.contains('\n') {
+			f.writeln('/*')
+			f.writeln(x)
+			f.write('*/')
+		} else {
+			f.write('/* $x */')
+		}
 		return
 	}
 	if !node.text.contains('\n') {
@@ -1695,7 +1691,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match stmt {
+	match union stmt {
 		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
 		ast.Return { return true }
 		ast.AssignStmt { return true }

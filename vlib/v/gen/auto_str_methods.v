@@ -10,9 +10,9 @@ import v.util
 fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
 	mut str_fn_name := styp_to_str_fn_name(styp)
-	if sym.info is table.Alias as sym_info {
-		if sym_info.is_import {
-			sym = g.table.get_type_symbol((sym.info as table.Alias).parent_type)
+	if mut sym.info is table.Alias {
+		if sym.info.is_import {
+			sym = g.table.get_type_symbol(sym.info.parent_type)
 			str_fn_name = styp_to_str_fn_name(sym.name.replace('.', '__'))
 		}
 	}
@@ -47,37 +47,37 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
 		g.str_types << already_generated_key
-		match sym.info as sym_info {
+		match union mut sym.info {
 			table.Alias {
-				if sym_info.is_import {
+				if sym.info.is_import {
 					g.gen_str_default(sym, styp, str_fn_name)
 				} else {
-					g.gen_str_for_alias(sym_info, styp, str_fn_name)
+					g.gen_str_for_alias(sym.info, styp, str_fn_name)
 				}
 			}
 			table.Array {
-				g.gen_str_for_array(it, styp, str_fn_name)
+				g.gen_str_for_array(sym.info, styp, str_fn_name)
 			}
 			table.ArrayFixed {
-				g.gen_str_for_array_fixed(it, styp, str_fn_name)
+				g.gen_str_for_array_fixed(sym.info, styp, str_fn_name)
 			}
 			table.Enum {
-				g.gen_str_for_enum(it, styp, str_fn_name)
+				g.gen_str_for_enum(sym.info, styp, str_fn_name)
 			}
 			table.Struct {
-				g.gen_str_for_struct(it, styp, str_fn_name)
+				g.gen_str_for_struct(sym.info, styp, str_fn_name)
 			}
 			table.Map {
-				g.gen_str_for_map(it, styp, str_fn_name)
+				g.gen_str_for_map(sym.info, styp, str_fn_name)
 			}
 			table.MultiReturn {
-				g.gen_str_for_multi_return(it, styp, str_fn_name)
+				g.gen_str_for_multi_return(sym.info, styp, str_fn_name)
 			}
 			table.SumType {
-				g.gen_str_for_sum_type(it, styp, str_fn_name)
+				g.gen_str_for_sum_type(sym.info, styp, str_fn_name)
 			}
 			table.UnionSumType {
-				g.gen_str_for_union_sum_type(it, styp, str_fn_name)
+				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
 			}
 			else {
 				verror("could not generate string method $str_fn_name for type \'$styp\'")
@@ -120,9 +120,9 @@ fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name stri
 fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name string) {
 	mut typ := info.elem_type
 	mut sym := g.table.get_type_symbol(info.elem_type)
-	if sym.info is table.Alias as alias_info {
-		typ = alias_info.parent_type
-		sym = g.table.get_type_symbol(alias_info.parent_type)
+	if mut sym.info is table.Alias {
+		typ = sym.info.parent_type
+		sym = g.table.get_type_symbol(typ)
 	}
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()
@@ -188,9 +188,9 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_fn_name string) {
 	mut typ := info.elem_type
 	mut sym := g.table.get_type_symbol(info.elem_type)
-	if sym.info is table.Alias as alias_info {
-		typ = alias_info.parent_type
-		sym = g.table.get_type_symbol(alias_info.parent_type)
+	if mut sym.info is table.Alias {
+		typ = sym.info.parent_type
+		sym = g.table.get_type_symbol(typ)
 	}
 	field_styp := g.typ(typ)
 	is_elem_ptr := typ.is_ptr()

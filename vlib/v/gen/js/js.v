@@ -164,7 +164,7 @@ pub fn (mut g JsGen) push_pub_var(s string) {
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 	for stmt in stmts {
-		match stmt {
+		match union stmt {
 			ast.FnDecl {
 				if stmt.is_method {
 					// Found struct method, store it to be generated along with the class.
@@ -437,7 +437,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
-	match node {
+	match union node {
 		ast.AssertStmt {
 			g.gen_assert_stmt(node)
 		}
@@ -456,7 +456,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_const_decl(node)
 		}
 		ast.DeferStmt {
-			g.defer_stmts << *node
+			g.defer_stmts << node
 		}
 		ast.EnumDecl {
 			g.gen_enum_decl(node)
@@ -466,7 +466,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
-			g.fn_decl = node
+			g.fn_decl = &node
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
@@ -1175,6 +1175,10 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	} else {
 		name = g.js_name(it.name)
 	}
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.write('builtin.unwrap(')
+	}
 	g.expr(it.left)
 	if it.is_method { // foo.bar.baz()
 		sym := g.table.get_type_symbol(it.receiver_type)
@@ -1224,7 +1228,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(', ')
 		}
 	}
-	g.write(')')
+	if call_return_is_optional {
+		g.write('))')
+	} else {
+		g.write(')')
+	}
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {

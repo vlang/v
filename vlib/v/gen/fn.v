@@ -549,9 +549,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.checker_bug('print arg.typ is 0', node.pos)
 		}
 		mut sym := g.table.get_type_symbol(typ)
-		if sym.info is table.Alias as alias_info {
-			typ = alias_info.parent_type
-			sym = g.table.get_type_symbol(alias_info.parent_type)
+		if mut sym.info is table.Alias {
+			typ = sym.info.parent_type
+			sym = g.table.get_type_symbol(typ)
 		}
 		// check if alias parent also not a string
 		if typ != table.string_type {
@@ -685,7 +685,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			// instead of `string t = ...`, and we need to mark this variable as unused,
 			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
 			if x := scope.find(t) {
-				match mut x {
+				match union mut x {
 					ast.Var { x.is_used = false }
 					else {}
 				}
@@ -740,27 +740,26 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
-		match mut obj {
+		match union mut obj {
 			ast.Var {
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
-				v := *obj
-				is_optional := v.typ.has_flag(.optional)
+				is_optional := obj.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
 					continue
 				}
-				if !v.is_autofree_tmp {
+				if !obj.is_autofree_tmp {
 					continue
 				}
-				if v.is_used {
+				if obj.is_used {
 					// this means this tmp expr var has already been freed
 					continue
 				}
 				obj.is_used = true
-				g.autofree_variable(v)
+				g.autofree_variable(obj)
 				// g.nr_vars_to_free--
 			}
 			else {}

@@ -603,7 +603,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 }
 
 fn (mut g Gen) stmt(node ast.Stmt) {
-	match node {
+	match union node {
 		ast.AssignStmt {
 			g.assign_stmt(node)
 		}
