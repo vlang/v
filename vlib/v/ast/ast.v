@@ -533,7 +533,6 @@ pub:
 	pos          token.Position
 	body_pos     token.Position
 	comments     []Comment
-	left_as_name string // `name` in `if cond is SumType as name`
 	is_mut_name  bool // `if mut name is`
 pub mut:
 	stmts        []Stmt

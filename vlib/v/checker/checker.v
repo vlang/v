@@ -3821,18 +3821,30 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									is_mut = v.is_mut
 									sum_type_casts << v.sum_type_casts
 								}
-								// smartcast either if the value is immutable or if the mut argument is explicitly given
-								if (!is_mut || branch.is_mut_name) &&
-									left_sym.kind == .union_sum_type {
-									sum_type_casts << right_expr.typ
+								if left_sym.kind == .union_sum_type {
+									// smartcast either if the value is immutable or if the mut argument is explicitly given
+									if !is_mut || branch.is_mut_name {
+										sum_type_casts << right_expr.typ
+										scope.register(infix.left.name, ast.Var{
+											name: infix.left.name
+											typ: infix.left_type
+											sum_type_casts: sum_type_casts
+											pos: infix.left.pos
+											is_used: true
+											is_mut: is_mut
+										})
+									}
+								} else if left_sym.kind == .interface_ {
 									scope.register(infix.left.name, ast.Var{
 										name: infix.left.name
-										typ: infix.left_type
+										typ: right_expr.typ.to_ptr()
 										sum_type_casts: sum_type_casts
 										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
 									})
+									// TODO: remove that later @danieldaeschle
+									node.branches[i].smartcast = true
 								}
 							} else if mut infix.left is ast.SelectorExpr {
 								mut sum_type_casts := []table.Type{}
@@ -3859,16 +3871,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										pos: infix.left.pos
 									})
 								}
-							}
-							if left_sym.kind != .union_sum_type && branch.left_as_name.len > 0 {
-								scope.register(branch.left_as_name, ast.Var{
-									name: branch.left_as_name
-									typ: right_expr.typ.to_ptr()
-									pos: infix.left.position()
-									is_used: true
-									is_mut: is_mut
-								})
-								node.branches[i].smartcast = true
 							}
 						}
 					}

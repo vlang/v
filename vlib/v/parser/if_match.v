@@ -120,22 +120,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			cond = p.expr(0)
 		}
 		comments << p.eat_comments()
-		mut left_as_name := ''
 		if mut cond is ast.InfixExpr {
 			// if sum is T
 			is_is_cast := cond.op == .key_is
-			is_ident := cond.left is ast.Ident
-			left_as_name = if is_comptime {
-				''
-			} else if is_is_cast && p.tok.kind == .key_as {
-				p.next()
-				p.check_name()
-			} else if is_ident {
-				ident := cond.left as ast.Ident
-				ident.name
-			} else {
-				''
-			}
 			if !is_is_cast && is_mut_name {
 				p.error_with_pos('remove unnecessary `mut`', mut_pos)
 			}
@@ -155,7 +142,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			pos: start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
-			left_as_name: left_as_name
 			is_mut_name: is_mut_name
 		}
 		comments = p.eat_comments()

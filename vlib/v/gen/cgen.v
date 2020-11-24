@@ -3542,18 +3542,20 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		}
 		if branch.smartcast && branch.stmts.len > 0 {
 			infix := branch.cond as ast.InfixExpr
-			right_type := infix.right as ast.Type
-			left_type := infix.left_type
-			it_type := g.typ(right_type.typ)
-			g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
-			g.expr(infix.left)
-			if left_type.is_ptr() {
-				g.write('->')
-			} else {
-				g.write('.')
+			if mut infix.left is ast.Ident {
+				right_type := infix.right as ast.Type
+				left_type := infix.left_type
+				it_type := g.typ(right_type.typ)
+				g.write('\t$it_type* _sc_tmp_$branch.pos.pos = ($it_type*)')
+				g.expr(infix.left)
+				if left_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.writeln('_object;')
+				g.writeln('\t$it_type* $infix.left.name = _sc_tmp_$branch.pos.pos;')
 			}
-			g.writeln('_object;')
-			g.writeln('\t$it_type* $branch.left_as_name = _sc_tmp_$branch.pos.pos;')
 		}
 		if needs_tmp_var {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
