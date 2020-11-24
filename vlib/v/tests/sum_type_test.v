@@ -28,8 +28,7 @@ fn handle(e Expr) string {
 	}
 	match e {
 		IntegerLiteral {
-			assert it.val == '12'
-			// assert e.val == '12' // TODO
+			assert e.val == '12'
 			return 'int'
 		}
 		IfExpr {
@@ -56,10 +55,10 @@ fn test_assignment_and_push() {
 	arr1 << expr
 	match arr1[0] {
 		IntegerLiteral {
-			arr1 << it
+			arr1 << arr1[0]
 			// should ref/dereference on assignent be made automatic?
 			// currently it is done for return stmt and fn args
-			expr1 = *it
+			expr1 = arr1[0]
 		}
 		else {}
 	}
@@ -96,7 +95,7 @@ fn test_converting_down() {
 	mut res := []Sub2{cap: out.len}
 	for d in out {
 		match d {
-			Sub2 { res << it }
+			Sub2 { res << d }
 			else {}
 		}
 	}
@@ -107,26 +106,6 @@ fn test_converting_down() {
 }
 
 fn test_nested_sumtype() {
-	mut a := Node{}
-	mut b := Node{}
-	a = StructDecl{pos: 1}
-	b = IfExpr{pos: 1}
-	match a {
-		StructDecl {
-			assert true
-		}
-		else {
-			assert false
-		}
-	}
-	// TODO: not working
-	// assert b is IfExpr
-	if b is IfExpr {
-		assert true
-	}
-	else {
-		assert false
-	}
 	c := Node(Expr(IfExpr{pos:1}))
 	if c is Expr {
 		if c is IfExpr {
@@ -202,8 +181,8 @@ fn is_gt_nested(val string, dst Number) bool {
 					return val.int() > dst
 				}
 				// this branch should never been hit
-				else { 
-					return val.int() < dst 
+				else {
+					return val.int() < dst
 				}
 			}
 		}
@@ -213,8 +192,8 @@ fn is_gt_nested(val string, dst Number) bool {
 					return dst < val.f64()
 				}
 				// this branch should never been hit
-				else { 
-					return dst > val.f64() 
+				else {
+					return dst > val.f64()
 				}
 			}
 		}
@@ -255,7 +234,7 @@ fn test_sum_type_match() {
 	assert is_gt_simple('3', 2)
 	assert !is_gt_simple('3', 5)
 	assert is_gt_simple('3', 1.2)
-	assert !is_gt_simple('3', 3.5)	
+	assert !is_gt_simple('3', 3.5)
 	assert is_gt_nested('3', 2)
 	assert !is_gt_nested('3', 5)
 	assert is_gt_nested('3', 1.2)
