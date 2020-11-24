@@ -801,7 +801,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
-	match node {
+	match union node {
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
@@ -843,7 +843,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.comp_for(node)
 		}
 		ast.DeferStmt {
-			mut defer_stmt := *node
+			mut defer_stmt := node
 			defer_stmt.ifdef = g.defer_ifdef
 			g.defer_stmts << defer_stmt
 		}
@@ -914,7 +914,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			}
 			keep_fn_decl := g.fn_decl
-			g.fn_decl = node
+			g.fn_decl = &node
 			if node.name == 'main.main' {
 				g.has_main = true
 			}
@@ -2098,25 +2098,24 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		return
 	}
 	for _, obj in scope.objects {
-		match obj {
+		match union obj {
 			ast.Var {
 				g.writeln('// var $obj.name pos=$obj.pos.pos')
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
 				// }
-				v := *obj
 				// if v.pos.pos > end_pos {
-				if v.pos.pos > end_pos || (v.pos.pos < start_pos && v.pos.line_nr == line_nr) {
+				if obj.pos.pos > end_pos || (obj.pos.pos < start_pos && obj.pos.line_nr == line_nr) {
 					// Do not free vars that were declared after this scope
 					continue
 				}
-				is_optional := v.typ.has_flag(.optional)
+				is_optional := obj.typ.has_flag(.optional)
 				if is_optional {
 					// TODO: free optionals
 					continue
 				}
-				g.autofree_variable(v)
+				g.autofree_variable(obj)
 			}
 			else {}
 		}
@@ -2573,8 +2572,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 								if i != 0 {
 									sum_type_deref_field += ').'
 								}
-								if cast_sym.info is table.Aggregate as sym_info {
-									sum_type_deref_field += '_${sym_info.types[g.aggregate_type_idx]}'
+								if mut cast_sym.info is table.Aggregate {
+									sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
 								} else {
 									sum_type_deref_field += '_$typ'
 								}
@@ -3253,10 +3252,10 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			exception_branch = j
 			timeout_expr = (branch.stmt as ast.ExprStmt).expr
 		} else {
-			match branch.stmt as stmt {
+			match union branch.stmt {
 				ast.ExprStmt {
 					// send expression
-					expr := stmt.expr as ast.InfixExpr
+					expr := branch.stmt.expr as ast.InfixExpr
 					channels << expr.left
 					if expr.right is ast.Ident ||
 						expr.right is ast.IndexExpr || expr.right is ast.SelectorExpr || expr.right is ast.StructInit {
@@ -3275,15 +3274,16 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 					is_push << true
 				}
 				ast.AssignStmt {
-					rec_expr := stmt.right[0] as ast.PrefixExpr
+					rec_expr := branch.stmt.right[0] as ast.PrefixExpr
 					channels << rec_expr.right
 					is_push << false
 					// create tmp unless the object with *exactly* the type we need exists already
-					if stmt.op == .decl_assign || stmt.right_types[0] != stmt.left_types[0] {
+					if branch.stmt.op == .decl_assign ||
+						branch.stmt.right_types[0] != branch.stmt.left_types[0] {
 						tmp_obj := g.new_tmp_var()
 						tmp_objs << tmp_obj
-						el_stype := g.typ(stmt.right_types[0])
-						elem_types << if stmt.op == .decl_assign {
+						el_stype := g.typ(branch.stmt.right_types[0])
+						elem_types << if branch.stmt.op == .decl_assign {
 							el_stype + ' '
 						} else {
 							''
@@ -3293,7 +3293,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 						tmp_objs << ''
 						elem_types << ''
 					}
-					objs << stmt.left[0]
+					objs << branch.stmt.left[0]
 				}
 				else {}
 			}
@@ -3418,8 +3418,8 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if i == 0 {
 							g.write(name)
 						}
-						if cast_sym.info is table.Aggregate as sym_info {
-							g.write('._${sym_info.types[g.aggregate_type_idx]}')
+						if mut cast_sym.info is table.Aggregate {
+							g.write('._${cast_sym.info.types[g.aggregate_type_idx]}')
 						} else {
 							g.write('._$typ')
 						}
@@ -3447,16 +3447,17 @@ fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
 fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			match g.match_sumtype_syms[i].info as sumtype {
+			info := g.match_sumtype_syms[i].info
+			match union info {
 				table.SumType {
-					for typ in sumtype.variants {
+					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
 							return false
 						}
 					}
 				}
 				table.UnionSumType {
-					for typ in sumtype.variants {
+					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
 							return false
 						}
@@ -3500,9 +3501,11 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
+	first_branch := node.branches[0]
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || (g.pref.experimental &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)))
+		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
+		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
 	/*
 	needs_tmp_var := node.is_expr &&
 		(g.pref.autofree || g.pref.experimental) &&
@@ -4224,8 +4227,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
-		if sym.info is table.Struct as struct_info {
-			equal_fields := struct_info.fields.filter(it.name == field.name)
+		if mut sym.info is table.Struct {
+			equal_fields := sym.info.fields.filter(it.name == field.name)
 			if equal_fields.len == 0 {
 				continue
 			}
@@ -4276,8 +4279,8 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for field in info.fields {
-			if sym.info is table.Struct as struct_info {
-				equal_fields := struct_info.fields.filter(it.name == field.name)
+			if mut sym.info is table.Struct {
+				equal_fields := sym.info.fields.filter(it.name == field.name)
 				if equal_fields.len == 0 {
 					continue
 				}
@@ -4590,9 +4593,9 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 		}
 		// sym := g.table.get_type_symbol(typ)
 		mut name := util.no_dots(typ.name)
-		match typ.info as info {
+		match union mut typ.info {
 			table.Struct {
-				if info.generic_types.len > 0 {
+				if typ.info.generic_types.len > 0 {
 					continue
 				}
 				// TODO: yuck
@@ -4602,13 +4605,13 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				}
 				// TODO avoid buffer manip
 				start_pos := g.type_definitions.len
-				if info.is_union {
+				if typ.info.is_union {
 					g.type_definitions.writeln('union $name {')
 				} else {
 					g.type_definitions.writeln('struct $name {')
 				}
-				if info.fields.len > 0 {
-					for field in info.fields.filter(it.embed_alias_for == '') {
+				if typ.info.fields.len > 0 {
+					for field in typ.info.fields.filter(it.embed_alias_for == '') {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to
@@ -4642,7 +4645,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.SumType {
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Sum type $name = ')
-				for sv in it.variants {
+				for sv in typ.info.variants {
 					g.type_definitions.writeln('//          | ${sv:4d} = ${g.typ(sv):-20s}')
 				}
 				g.type_definitions.writeln('typedef struct {')
@@ -4655,12 +4658,12 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
-				for variant in it.variants {
+				for variant in typ.info.variants {
 					g.type_definitions.writeln('//          | ${variant:4d} = ${g.typ(variant.idx()):-20s}')
 				}
 				g.type_definitions.writeln('struct $name {')
 				g.type_definitions.writeln('    union {')
-				for variant in it.variants {
+				for variant in typ.info.variants {
 					g.type_definitions.writeln('        ${g.typ(variant.to_ptr())} _$variant.idx();')
 				}
 				g.type_definitions.writeln('    };')
@@ -4702,19 +4705,18 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 		}
 		// create list of deps
 		mut field_deps := []string{}
-		match t.info {
+		match union mut t.info {
 			table.ArrayFixed {
-				dep := g.table.get_type_symbol(it.elem_type).name
+				dep := g.table.get_type_symbol(t.info.elem_type).name
 				if dep in type_names {
 					field_deps << dep
 				}
 			}
 			table.Struct {
-				info := t.info as table.Struct
 				// if info.is_interface {
 				// continue
 				// }
-				for field in info.fields {
+				for field in t.info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
 					if dep !in type_names || dep in field_deps || field.typ.is_ptr() {
@@ -4747,11 +4749,11 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 	mut typ := etype
 	mut sym := g.table.get_type_symbol(typ)
-	if sym.info is table.Alias as alias_info {
-		parent_sym := g.table.get_type_symbol(alias_info.parent_type)
+	if mut sym.info is table.Alias {
+		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
 		if parent_sym.has_method('str') {
+			typ = sym.info.parent_type
 			sym = parent_sym
-			typ = alias_info.parent_type
 		}
 	}
 	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()

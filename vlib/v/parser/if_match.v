@@ -443,12 +443,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = false
 			p.inside_select = false
-			match stmt {
+			match union mut stmt {
 				ast.ExprStmt {
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
 					} else {
-						match union stmt.expr {
+						match union mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
 									p.error_with_pos('select key: `<-` operator expected',
