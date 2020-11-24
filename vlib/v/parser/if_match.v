@@ -170,8 +170,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
+	mut is_union_match := false
 	if p.tok.kind == .key_union {
 		p.check(.key_union)
+		is_union_match = true
 	}
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
@@ -285,6 +287,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		is_sum_type: is_sum_type
 		pos: pos
 		is_mut: is_mut
+		is_union_match: is_union_match
 	}
 }
 

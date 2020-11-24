@@ -1528,6 +1528,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
+	if it.is_union_match {
+		f.write('union ')
+	}
 	if it.is_mut {
 		f.write('mut ')
 	}

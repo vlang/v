@@ -563,6 +563,7 @@ pub:
 	branches       []MatchBranch
 	pos            token.Position
 	is_mut         bool // `match mut ast_node {`
+	is_union_match bool // TODO: remove
 pub mut:
 	is_expr        bool // returns a value
 	return_type    table.Type
