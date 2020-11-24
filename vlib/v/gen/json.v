@@ -49,7 +49,7 @@ $dec_fn_dec {
 	if (!root) {
 		const char *error_ptr = cJSON_GetErrorPtr();
 		if (error_ptr != NULL)	{
-			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %%s\\n", error_ptr);
+			// fprintf(stderr, "Error in decode() for $styp error_ptr=: %s\\n", error_ptr);
 			// printf("\\nbad js=%%s\\n", js.str);
 			Option err = v_error(tos2(error_ptr));
 			return *(Option_$styp *)&err;
