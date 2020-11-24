@@ -96,28 +96,21 @@ fresh_vc:
 
 latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
-ifndef MAC
 ifndef local
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
 	@echo "Using local tcc"
 endif
 endif
-endif
 
 fresh_tcc:
 ifndef ANDROID
-ifndef MAC
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
-	rm -rf /var/tmp/tcc && git clone https://github.com/vlang/tccbin /var/tmp/tcc ## TODO: remove
-endif
 endif
 
 $(TMPTCC)/.git/config:
-ifndef MAC
 	$(MAKE) fresh_tcc
-endif
 
 $(VC)/.git/config:
 	$(MAKE) fresh_vc
