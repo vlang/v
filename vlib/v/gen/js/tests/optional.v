@@ -1,6 +1,10 @@
 module main
 
 fn main() {
+	try_propagation() or { println("captured: $err") }
+}
+
+fn try_propagation() ? {
 	try_numbers()?
 }
 
