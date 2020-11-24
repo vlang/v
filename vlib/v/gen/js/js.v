@@ -15,7 +15,7 @@ const (
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
 		'while', 'with', 'yield']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t'
 	]
 )
 
@@ -1011,6 +1011,10 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 				receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
 				name = receiver_sym.name + '.' + name
 			}
+			// todo: please add a name feild without the mod name for ast.CallExpr
+			if name.starts_with('$node.call_expr.mod\.') {
+				name = name[node.call_expr.mod.len+1..]
+			}
 			g.writeln('await new Promise(function(resolve){')
 			g.inc_indent()
 			g.write('${name}(')
@@ -1173,7 +1177,11 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	}
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
-		g.write('builtin.unwrap(')
+		g.writeln('(function(){')
+		g.inc_indent()
+		g.writeln('try {')
+		g.inc_indent()
+		g.write('return builtin.unwrap(')
 	}
 	g.expr(it.left)
 	if it.is_method { // foo.bar.baz()
@@ -1224,10 +1232,42 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(', ')
 		}
 	}
+	// end method call
+	g.write(')')
 	if call_return_is_optional {
-		g.write('))')
-	} else {
-		g.write(')')
+		// end unwrap
+		g.writeln(')')
+		g.dec_indent()
+		// begin catch block
+		g.writeln('} catch(err) {')
+		g.inc_indent()
+		// gen or block contents
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len-1])
+				}
+				g.inc_indent()
+				g.write('return ')
+				g.stmt(it.or_block.stmts.last())
+				g.dec_indent()
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin.panic($panicstr)')
+				} else {
+					g.writeln('builtin.js_throw(err)')
+				}
+			}
+			else {}
+		}
+		// end catch
+		g.dec_indent()
+		g.writeln('}')
+		// end anon fn
+		g.dec_indent()
+		g.write('})()')
 	}
 }
 

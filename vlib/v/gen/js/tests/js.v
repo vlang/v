@@ -59,8 +59,12 @@ fn main() {
 	}
 	for i, x in 'hello' {
 	}
+	mut evens := []int{}
 	for x in 1 .. 10 {
+		y := error_if_even(x) or { x + 1 }
+		evens << y
 	}
+	println(evens)
 	arr := [1, 2, 3, 4, 5]
 	for i in arr {
 	}
@@ -81,6 +85,7 @@ fn main() {
 		println(message)
 	})
 	hl.raw_js_log()
+	propagation() or { println(err) }
 }
 
 fn anon_consumer(greeting string, anon fn (message string)) {
@@ -119,4 +124,14 @@ fn (it Companies) method() int {
 	if a != 2 {
 	}
 	return 0
+}
+
+fn error_if_even(num int) ?int {
+	if num % 2 == 0 { return error('number is even') }
+	return num
+}
+
+fn propagation() ? {
+	println('Propagation test:')
+	return error('"Task failed successfully" - Windows XP')
 }
