@@ -1180,7 +1180,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		val_sym := g.table.get_type_symbol(it.val_type)
 		idx := g.new_tmp_var()
 		key := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		zero := g.type_default(it.val_type)
 		atmp := g.new_tmp_var()
 		atmp_styp := g.typ(it.cond_type)
 		g.write('$atmp_styp $atmp = ')
@@ -1195,12 +1194,13 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln('\t$key_styp $key = /*kkkk*/ $atmp\.key_values.keys[$idx];')
 		}
 		if it.val_var != '_' {
+			valstr := '(void*)($atmp\.key_values.values + $idx * (u32)($atmp\.value_bytes))'
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
-				g.writeln(' = (*(voidptr*)map_get($atmp, $key, &(voidptr[]){ $zero }));')
+				g.writeln(' = (*(voidptr*)$valstr);')
 			} else {
-				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)map_get($atmp, $key, &($val_styp[]){ $zero }));')
+				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)$valstr);')
 			}
 		}
 		g.stmts(it.stmts)

@@ -43,7 +43,7 @@ fn test_for_char_in_string() {
 	assert sum == 394 // ascii codes of `a` + `b` + `c` + `d`
 }
 
-fn test_for_char_in_map() {
+fn test_for_string_in_map() {
 	m := {
 		'a': 'b'
 		'c': 'd'
