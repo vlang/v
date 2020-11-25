@@ -34,7 +34,7 @@ pub fn (mut ctx Context) run() ? {
 		exit(1)
 	} else {
 		ctx.termios_setup()?
-		ctx.termios_loop()?
+		ctx.termios_loop()
 	}
 }
 

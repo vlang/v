@@ -55,7 +55,7 @@ fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	ctx.save_title()
 
-	if !ctx.cfg.skip_init_checks && !(isatty(C.STDIN_FILENO) && isatty(C.STDOUT_FILENO)) {
+	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) == 0) {
 		return error('not running under a TTY')
 	}
 
@@ -100,7 +100,7 @@ fn (mut ctx Context) termios_setup() ? {
 		// feature-test rgb (truecolor) support
 		ctx.enable_rgb = supports_truecolor()
 	}
-	
+
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
