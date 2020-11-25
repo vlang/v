@@ -1,4 +1,4 @@
-__type Abc = int | string
+type Abc = int | string
 
 struct Bar {
 mut:

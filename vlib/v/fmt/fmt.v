@@ -245,7 +245,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
 		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
 	}
-	match union node {
+	match node {
 		ast.AssignStmt {
 			f.comments(node.comments, {})
 			for i, left in node.left {
@@ -491,7 +491,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	mut comments := []ast.Comment{}
-	match union node {
+	match node {
 		ast.AliasTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
@@ -544,11 +544,11 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			comments << node.comments
 		}
-		ast.UnionSumTypeDecl {
+		ast.SumTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
 			}
-			f.write('__type $node.name = ')
+			f.write('type $node.name = ')
 			mut sum_type_names := []string{}
 			for t in node.sub_types {
 				sum_type_names << f.table.type_to_str(t)
@@ -741,7 +741,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
-	match union mut node {
+	match mut node {
 		ast.CTempVar {
 			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
 		}
@@ -1342,7 +1342,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	f.expr_bufs << f.out.str()
 	mut penalty := 3
-	match union mut node.left {
+	match mut node.left {
 		ast.InfixExpr {
 			if int(token.precedences[node.left.op]) > int(token.precedences[node.op]) {
 				penalty--
@@ -1353,7 +1353,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		}
 		else {}
 	}
-	match union node.right {
+	match node.right {
 		ast.InfixExpr { penalty-- }
 		ast.ParExpr { penalty = 1 }
 		else {}
@@ -1528,9 +1528,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
-	if it.is_union_match {
-		f.write('union ')
-	}
 	if it.is_mut {
 		f.write('mut ')
 	}
@@ -1652,7 +1649,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match union stmt {
+	match stmt {
 		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
 		ast.Return { return true }
 		ast.AssignStmt { return true }
@@ -1661,7 +1658,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
-	match union expr {
+	match expr {
 		ast.IfExpr { return false }
 		ast.Comment { return false }
 		else {}

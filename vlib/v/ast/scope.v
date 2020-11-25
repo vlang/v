@@ -73,7 +73,7 @@ pub fn (s &Scope) is_known(name string) bool {
 
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
-		match union obj {
+		match obj {
 			Var { return &obj }
 			else {}
 		}
@@ -83,7 +83,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
-		match union obj {
+		match obj {
 			ConstField { return &obj }
 			else {}
 		}
@@ -101,7 +101,7 @@ pub fn (s &Scope) known_var(name string) bool {
 pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 	s.end_pos = s.end_pos // TODO mut bug
 	mut obj := s.objects[name]
-	match union mut obj {
+	match mut obj {
 		Var {
 			if obj.typ == typ {
 				return
@@ -182,7 +182,7 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 	}
 	out += '$indent# $sc.start_pos - $sc.end_pos\n'
 	for _, obj in sc.objects {
-		match union obj {
+		match obj {
 			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
 			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
 			else {}

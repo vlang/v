@@ -47,7 +47,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
 		g.str_types << already_generated_key
-		match union mut sym.info {
+		match mut sym.info {
 			table.Alias {
 				if sym.info.is_import {
 					g.gen_str_default(sym, styp, str_fn_name)
@@ -73,7 +73,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 			table.MultiReturn {
 				g.gen_str_for_multi_return(sym.info, styp, str_fn_name)
 			}
-			table.UnionSumType {
+			table.SumType {
 				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
 			}
 			else {
@@ -438,7 +438,7 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name str
 			return '${fn_name}($obj)'
 		}
 		return 'indent_${fn_name}($obj, indent_count + 1)'
-	} else if sym.kind in [.array, .array_fixed, .map, .union_sum_type] {
+	} else if sym.kind in [.array, .array_fixed, .map, .sum_type] {
 		if has_custom_str {
 			return '${fn_name}(it->${c_name(field_name)})'
 		}
@@ -482,7 +482,7 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	g.auto_str_funcs.writeln('}')
 }
 
-fn (mut g Gen) gen_str_for_union_sum_type(info table.UnionSumType, styp string, str_fn_name string) {
+fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_fn_name string) {
 	mut gen_fn_names := map[string]string{}
 	for typ in info.variants {
 		sym := g.table.get_type_symbol(typ)

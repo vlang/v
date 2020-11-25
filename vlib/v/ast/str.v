@@ -129,7 +129,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 	if !needs_braces {
 		mut sub_expr := lit.exprs[i]
 		for {
-			match union mut sub_expr {
+			match mut sub_expr {
 				Ident {
 					if sub_expr.name[0] == `@` {
 						needs_braces = true
@@ -176,7 +176,7 @@ pub fn (lit &StringInterLiteral) get_fspec_braces(i int) (string, bool) {
 
 // string representation of expr
 pub fn (x Expr) str() string {
-	match union x {
+	match x {
 		CTempVar {
 			return x.orig.str()
 		}
@@ -302,7 +302,7 @@ pub fn (node &BranchStmt) str() string {
 }
 
 pub fn (node Stmt) str() string {
-	match union node {
+	match node {
 		AssignStmt {
 			mut out := ''
 			for i, left in node.left {

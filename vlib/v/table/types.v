@@ -15,8 +15,8 @@ import strings
 
 pub type Type = int
 
-pub __type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType |
-	GenericStructInst | Interface | Map | MultiReturn | Struct | UnionSumType
+pub type TypeInfo = Aggregate | Alias | Array | ArrayFixed | Chan | Enum | FnType | GenericStructInst |
+	Interface | Map | MultiReturn | Struct | SumType
 
 pub enum Language {
 	v
@@ -404,7 +404,7 @@ pub enum Kind {
 	struct_
 	generic_struct_inst
 	multi_return
-	union_sum_type
+	sum_type
 	alias
 	enum_
 	function
@@ -420,7 +420,7 @@ pub fn (t &TypeSymbol) str() string {
 
 [inline]
 pub fn (t &TypeSymbol) enum_info() Enum {
-	match union mut t.info {
+	match mut t.info {
 		Enum { return t.info }
 		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
 	}
@@ -428,7 +428,7 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 
 [inline]
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
-	match union mut t.info {
+	match mut t.info {
 		MultiReturn { return t.info }
 		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
 	}
@@ -436,7 +436,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 
 [inline]
 pub fn (t &TypeSymbol) array_info() Array {
-	match union mut t.info {
+	match mut t.info {
 		Array { return t.info }
 		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
 	}
@@ -444,7 +444,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 
 [inline]
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
-	match union mut t.info {
+	match mut t.info {
 		ArrayFixed { return t.info }
 		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
 	}
@@ -452,7 +452,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 
 [inline]
 pub fn (t &TypeSymbol) chan_info() Chan {
-	match union mut t.info {
+	match mut t.info {
 		Chan { return t.info }
 		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
 	}
@@ -460,7 +460,7 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 
 [inline]
 pub fn (t &TypeSymbol) map_info() Map {
-	match union mut t.info {
+	match mut t.info {
 		Map { return t.info }
 		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
 	}
@@ -468,7 +468,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 
 [inline]
 pub fn (t &TypeSymbol) struct_info() Struct {
-	match union mut t.info {
+	match mut t.info {
 		Struct { return t.info }
 		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
 	}
@@ -718,7 +718,7 @@ pub fn (k Kind) str() string {
 		.map { 'map' }
 		.chan { 'chan' }
 		.multi_return { 'multi_return' }
-		.union_sum_type { 'union_sum_type' }
+		.sum_type { 'sum_type' }
 		.alias { 'alias' }
 		.enum_ { 'enum' }
 		.any { 'any' }
@@ -788,7 +788,7 @@ pub:
 // NB: FExpr here is a actually an ast.Expr .
 // It should always be used by casting to ast.Expr, using ast.fe2ex()/ast.ex2fe()
 // That hack is needed to break an import cycle between v.ast and v.table .
-pub __type FExpr = byteptr | voidptr
+pub type FExpr = byteptr | voidptr
 
 pub struct Field {
 pub:
@@ -841,7 +841,7 @@ pub mut:
 	value_type Type
 }
 
-pub struct UnionSumType {
+pub struct SumType {
 pub:
 	variants []Type
 }
