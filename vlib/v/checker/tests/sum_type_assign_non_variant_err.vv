@@ -1,9 +1,9 @@
-__type Expr = IfExpr | CallExpr | MatchExpr
+type Expr = IfExpr | CallExpr | MatchExpr
 struct MatchExpr {}
 struct IfExpr {}
 struct CallExpr {}
 
-__type Stmt = Expr | AnotherThing
+type Stmt = Expr | AnotherThing
 struct AnotherThing {}
 
 fn main() {

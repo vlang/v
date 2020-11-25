@@ -174,7 +174,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 }
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
-	match union cond {
+	match cond {
 		ast.ParExpr {
 			g.write('(')
 			g.comp_if_expr(cond.expr)

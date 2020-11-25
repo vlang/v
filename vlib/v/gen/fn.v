@@ -366,7 +366,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
-	if left_sym.kind == .union_sum_type && node.name == 'type_name' {
+	if left_sym.kind == .sum_type && node.name == 'type_name' {
 		g.write('tos3( /* $left_sym.name */ v_typeof_unionsumtype_${node.receiver_type}( (')
 		g.expr(node.left)
 		g.write(').typ ))')
@@ -569,7 +569,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 			} else {
 				expr := node.args[0].expr
-				is_var := match union expr {
+				is_var := match expr {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
 					else { false }
@@ -685,7 +685,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			// instead of `string t = ...`, and we need to mark this variable as unused,
 			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
 			if x := scope.find(t) {
-				match union mut x {
+				match mut x {
 					ast.Var { x.is_used = false }
 					else {}
 				}
@@ -740,7 +740,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
-		match union mut obj {
+		match mut obj {
 			ast.Var {
 				// if var.typ == 0 {
 				// // TODO why 0?
@@ -887,7 +887,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
-			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .union_sum_type
+			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
 			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')
 			}

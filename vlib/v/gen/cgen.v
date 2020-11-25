@@ -371,8 +371,8 @@ pub fn (mut g Gen) write_typeof_functions() {
 	g.writeln('')
 	g.writeln('// >> typeof() support for sum types')
 	for typ in g.table.types {
-		if typ.kind == .union_sum_type {
-			sum_info := typ.info as table.UnionSumType
+		if typ.kind == .sum_type {
+			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('char * v_typeof_unionsumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
@@ -785,7 +785,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 	}
 	// println('cgen.stmt()')
 	// g.writeln('//// stmt start')
-	match union node {
+	match node {
 		ast.AssertStmt {
 			g.write_v_source_line_info(node.pos)
 			g.gen_assert_stmt(node)
@@ -1266,18 +1266,19 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 			got_styp := g.typ(got_type)
 			got_idx := got_type.idx()
 			got_sym := g.table.get_type_symbol(got_type)
+			// TODO: do we need 1-3?
 			if expected_is_ptr && got_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* union sum type cast 1 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = ')
+				g.write('/* sum type cast 1 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = ')
 				g.expr(expr)
 				g.write(', .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if expected_is_ptr {
 				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* union sum type cast 2 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = memdup(&($got_styp[]){')
+				g.write('/* sum type cast 2 */ ($exp_styp) memdup(&($exp_der_styp){._$got_type = memdup(&($got_styp[]){')
 				g.expr(expr)
 				g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}, sizeof($exp_der_styp))')
 			} else if got_is_ptr {
-				g.write('/* union sum type cast 3 */ ($exp_styp){._$got_idx = ')
+				g.write('/* sum type cast 3 */ ($exp_styp){._$got_idx = ')
 				g.expr(expr)
 				g.write(', .typ = $got_type /* $got_sym.name */}')
 			} else {
@@ -1299,7 +1300,7 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 					g.prevent_sum_type_unwrapping_once = true
 					g.expr(expr)
 				} else {
-					g.write('/* union sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
+					g.write('/* sum type cast 4 */ ($exp_styp){._$got_type = memdup(&($got_styp[]){')
 					g.expr(expr)
 					g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
 				}
@@ -1328,7 +1329,7 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 // use instead of expr() when you need to cast to sum type (can add other casts also)
 fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
 	sym := g.table.get_type_symbol(expected_type)
-	if sym.kind == .union_sum_type {
+	if sym.kind == .sum_type {
 		g.union_expr_with_cast(expr, got_type, expected_type)
 		return
 	}
@@ -1454,7 +1455,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	g.writeln('\t${metaname}.line_nr = $line_nr;')
 	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
 	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
-	match union mut a.expr {
+	match mut a.expr {
 		ast.InfixExpr {
 			g.writeln('\t${metaname}.op = ${ctoslit(a.expr.op.str())};')
 			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(a.expr.left.str()))};')
@@ -1477,7 +1478,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 
 fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 	unknown_value := '*unknown value*'
-	match union e {
+	match e {
 		ast.CastExpr, ast.IndexExpr, ast.MatchExpr {
 			g.write(ctoslit(unknown_value))
 		}
@@ -1529,7 +1530,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	op := if assign_stmt.op == .decl_assign { token.Kind.assign } else { assign_stmt.op }
 	is_decl := assign_stmt.op == .decl_assign
 	right_expr := assign_stmt.right[0]
-	match union right_expr {
+	match right_expr {
 		ast.CallExpr { return_type = right_expr.return_type }
 		ast.MatchExpr { return_type = right_expr.return_type }
 		ast.IfExpr { return_type = right_expr.typ }
@@ -1639,7 +1640,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	// TODO: non idents on left (exprs)
 	if assign_stmt.has_cross_var {
 		for i, left in assign_stmt.left {
-			match union left {
+			match left {
 				ast.Ident {
 					left_typ := assign_stmt.left_types[i]
 					left_sym := g.table.get_type_symbol(left_typ)
@@ -1746,7 +1747,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		styp := g.typ(var_type)
 		mut is_fixed_array_init := false
 		mut has_val := false
-		match union val {
+		match val {
 			ast.ArrayInit {
 				is_fixed_array_init = val.is_fixed
 				has_val = val.has_val
@@ -1947,7 +1948,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 
 fn (mut g Gen) gen_cross_tmp_variable(left []ast.Expr, val ast.Expr) {
 	val_ := val
-	match union val {
+	match val {
 		ast.Ident {
 			mut has_var := false
 			for lx in left {
@@ -2082,7 +2083,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		return
 	}
 	for _, obj in scope.objects {
-		match union obj {
+		match obj {
 			ast.Var {
 				g.writeln('// var $obj.name pos=$obj.pos.pos')
 				// if var.typ == 0 {
@@ -2194,7 +2195,7 @@ fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	// NB: please keep the type names in the match here in alphabetical order:
-	match union node {
+	match node {
 		ast.AnonFn {
 			// TODO: dont fiddle with buffers
 			g.gen_anon_fn_decl(node)
@@ -2277,7 +2278,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 					g.expr(node.arg)
 				}
 				g.write(')')
-			} else if sym.kind == .union_sum_type {
+			} else if sym.kind == .sum_type {
 				g.expr_with_cast(node.expr, node.expr_type, node.typ)
 			} else if sym.kind == .struct_ && !node.typ.is_ptr() && !(sym.info as table.Struct).is_typedef {
 				styp := g.typ(node.typ)
@@ -2544,7 +2545,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			mut sum_type_deref_field := ''
 			if field := g.table.struct_find_field(sym, node.field_name) {
 				field_sym := g.table.get_type_symbol(field.typ)
-				if field_sym.kind == .union_sum_type {
+				if field_sym.kind == .sum_type {
 					if !prevent_sum_type_unwrapping_once {
 						// check first if field is sum type because scope searching is expensive
 						scope := g.file.scope.innermost(node.pos.pos)
@@ -2633,7 +2634,7 @@ fn (mut g Gen) type_name(type_ table.Type) {
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	sym := g.table.get_type_symbol(node.expr_type)
-	if sym.kind == .union_sum_type {
+	if sym.kind == .sum_type {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
@@ -2665,7 +2666,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 }
 
 fn (mut g Gen) enum_expr(node ast.Expr) {
-	match union node {
+	match node {
 		ast.EnumVal { g.write(node.val) }
 		else { g.expr(node) }
 	}
@@ -3075,7 +3076,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				}
 				g.write(cond_var)
 				// branch_sym := g.table.get_type_symbol(branch.typ)
-				if sym.kind == .union_sum_type {
+				if sym.kind == .sum_type {
 					dot_or_ptr := if node.cond_type.is_ptr() { '->' } else { '.' }
 					g.write(dot_or_ptr)
 					g.write('typ == ')
@@ -3210,7 +3211,7 @@ fn (mut g Gen) select_expr(node ast.SelectExpr) {
 			exception_branch = j
 			timeout_expr = (branch.stmt as ast.ExprStmt).expr
 		} else {
-			match union branch.stmt {
+			match branch.stmt {
 				ast.ExprStmt {
 					// send expression
 					expr := branch.stmt.expr as ast.InfixExpr
@@ -3406,8 +3407,8 @@ fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
 	for i, expr in g.match_sumtype_exprs {
 		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
 			info := g.match_sumtype_syms[i].info
-			match union info {
-				table.UnionSumType {
+			match info {
+				table.SumType {
 					for typ in info.variants {
 						if g.table.get_type_symbol(typ).kind == .struct_ {
 							return false
@@ -3522,7 +3523,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.writeln('\tint errcode = ${cvar_name}.ecode;')
 			}
 		} else {
-			match union branch.cond {
+			match branch.cond {
 				ast.IfGuardExpr {
 					var_name := guard_vars[i]
 					g.write('if ($var_name = ')
@@ -3574,7 +3575,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 }
 
 fn (mut g Gen) index_expr(node ast.IndexExpr) {
-	match union node.index {
+	match node.index {
 		ast.RangeExpr {
 			sym := g.table.get_type_symbol(node.left_type)
 			if sym.kind == .string {
@@ -3835,7 +3836,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 
 [inline]
 fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
-	match union expr {
+	match expr {
 		ast.CallExpr { return g.table.get_type_symbol(expr.return_type).kind == .multi_return }
 		else { return false }
 	}
@@ -4060,7 +4061,7 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			}
 		} else {
 		*/
-		match union field.expr {
+		match field.expr {
 			ast.CharLiteral, ast.FloatLiteral, ast.IntegerLiteral {
 				g.const_decl_simple_define(name, val)
 			}
@@ -4546,7 +4547,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 		}
 		// sym := g.table.get_type_symbol(typ)
 		mut name := util.no_dots(typ.name)
-		match union mut typ.info {
+		match mut typ.info {
 			table.Struct {
 				if typ.info.generic_types.len > 0 {
 					continue
@@ -4595,7 +4596,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 			table.Alias {
 				// table.Alias { TODO
 			}
-			table.UnionSumType {
+			table.SumType {
 				g.typedefs.writeln('typedef struct $name $name;')
 				g.type_definitions.writeln('')
 				g.type_definitions.writeln('// Union sum type $name = ')
@@ -4646,7 +4647,7 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 		}
 		// create list of deps
 		mut field_deps := []string{}
-		match union mut t.info {
+		match mut t.info {
 			table.ArrayFixed {
 				dep := g.table.get_type_symbol(t.info.elem_type).name
 				if dep in type_names {
@@ -4707,7 +4708,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.expr(expr)
 		return true
 	} else if sym.kind == .enum_ {
-		is_var := match union expr {
+		is_var := match expr {
 			ast.SelectorExpr, ast.Ident { true }
 			else { false }
 		}
@@ -4722,7 +4723,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 			g.write('")')
 		}
 	} else if sym_has_str_method || sym.kind in
-		[.array, .array_fixed, .map, .struct_, .multi_return, .union_sum_type] {
+		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
 		is_p := typ.is_ptr()
 		val_type := if is_p { typ.deref() } else { typ }
 		str_fn_name := g.gen_str_for_type(val_type)
@@ -4806,7 +4807,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.writeln('.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	expr := node.args[0].expr
-	match union expr {
+	match expr {
 		ast.AnonFn {
 			g.gen_anon_fn_decl(expr)
 			g.write('${expr.decl.name}(it)')
@@ -4961,7 +4962,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln('.data)[i];')
 	g.write('if (')
 	expr := node.args[0].expr
-	match union expr {
+	match expr {
 		ast.AnonFn {
 			g.gen_anon_fn_decl(expr)
 			g.write('${expr.decl.name}(it)')
@@ -5157,7 +5158,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 }
 
 fn (mut g Gen) type_of_call_expr(node ast.Expr) string {
-	match union node {
+	match node {
 		ast.CallExpr { return g.typ(node.return_type) }
 		else { return typeof(node) }
 	}
@@ -5390,7 +5391,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		else {}
 	}
 	return match sym.kind {
-		.interface_, .union_sum_type, .array_fixed, .multi_return { '{0}' }
+		.interface_, .sum_type, .array_fixed, .multi_return { '{0}' }
 		.alias { g.type_default((sym.info as table.Alias).parent_type) }
 		else { '0' }
 	}
@@ -5545,7 +5546,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 	// g.insert_before('
 	styp := g.typ(node.typ)
 	expr_type_sym := g.table.get_type_symbol(node.expr_type)
-	if expr_type_sym.kind == .union_sum_type {
+	if expr_type_sym.kind == .sum_type {
 		dot := if node.expr_type.is_ptr() { '->' } else { '.' }
 		g.write('/* as */ *($styp*)__as_cast((')
 		g.expr(node.expr)
@@ -5577,7 +5578,7 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		sub_sym := g.table.get_type_symbol(sub_type.typ)
 		g.write('_${c_name(sym.name)}_${c_name(sub_sym.name)}_index')
 		return
-	} else if sym.kind == .union_sum_type {
+	} else if sym.kind == .sum_type {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)
@@ -5644,7 +5645,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
 		return '%lld\\000'
-	} else if sym.kind == .union_sum_type {
+	} else if sym.kind == .sum_type {
 		return '%.*s\\000'
 	}
 	return '%d\\000'

@@ -608,7 +608,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					p.next()
 					if p.tok.kind == .key_for {
 						mut stmt := p.stmt(is_top_level)
-						match union mut stmt {
+						match mut stmt {
 							ast.ForStmt {
 								stmt.label = name
 								return stmt
@@ -1933,16 +1933,16 @@ fn (mut p Parser) union_sum_type_decl() ast.TypeDecl {
 		}
 		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .union_sum_type
+			kind: .sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
 			mod: p.mod
-			info: table.UnionSumType{
+			info: table.SumType{
 				variants: sum_variants
 			}
 			is_public: is_pub
 		})
-		return ast.UnionSumTypeDecl{
+		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants
@@ -1999,17 +1999,17 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .union_sum_type
+			kind: .sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
 			mod: p.mod
-			info: table.UnionSumType{
+			info: table.SumType{
 				variants: sum_variants
 			}
 			is_public: is_pub
 		})
 		comments = p.eat_lineend_comments()
-		return ast.UnionSumTypeDecl{
+		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants
@@ -2139,7 +2139,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 
 pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 	if obj := p.scope.find(varname) {
-		match union mut obj {
+		match mut obj {
 			ast.Var {
 				obj.is_used = true
 				return true

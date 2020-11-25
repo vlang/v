@@ -122,7 +122,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	if node.name.len == 0 && node.comment.len == 0 && node.content.len == 0 {
 		return error('empty stmt')
 	}
-	match union stmt {
+	match stmt {
 		ast.ConstDecl {
 			node.kind = .const_group
 			node.parent_name = 'Constants'

@@ -170,11 +170,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
-	mut is_union_match := false
-	if p.tok.kind == .key_union {
-		p.check(.key_union)
-		is_union_match = true
-	}
 	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
 	if is_mut {
@@ -287,7 +282,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		is_sum_type: is_sum_type
 		pos: pos
 		is_mut: is_mut
-		is_union_match: is_union_match
 	}
 }
 
@@ -361,12 +355,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = false
 			p.inside_select = false
-			match union mut stmt {
+			match mut stmt {
 				ast.ExprStmt {
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
 					} else {
-						match union mut stmt.expr {
+						match mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
 									p.error_with_pos('select key: `<-` operator expected',
@@ -382,7 +376,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				}
 				ast.AssignStmt {
 					expr := stmt.right[0]
-					match union expr {
+					match expr {
 						ast.PrefixExpr {
 							if expr.op != .arrow {
 								p.error_with_pos('select key: `<-` operator expected',

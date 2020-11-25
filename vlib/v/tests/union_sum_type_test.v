@@ -1,6 +1,6 @@
-__type Expr = IfExpr | IntegerLiteral
-__type Stmt = FnDecl | StructDecl
-__type Node = Expr | Stmt
+type Expr = IfExpr | IntegerLiteral
+type Stmt = FnDecl | StructDecl
+type Node = Expr | Stmt
 
 struct FnDecl {
 	pos int
@@ -26,7 +26,7 @@ fn handle(e Expr) string {
 	if e is IntegerLiteral {
 		assert typeof(e.val) == 'string'
 	}
-	match union e {
+	match e {
 		IntegerLiteral {
 			assert e.val == '12'
 			// assert e.val == '12' // TODO
@@ -54,7 +54,7 @@ fn test_assignment_and_push() {
 		val: '111'
 	}
 	arr1 << expr
-	match union arr1[0] {
+	match arr1[0] {
 		IntegerLiteral {
 			arr1 << arr1[0]
 			// should ref/dereference on assignent be made automatic?
@@ -66,7 +66,7 @@ fn test_assignment_and_push() {
 }
 
 // Test moving structs between master/sub arrays
-__type Master = Sub1 | Sub2
+type Master = Sub1 | Sub2
 
 struct Sub1 {
 mut:
@@ -95,7 +95,7 @@ fn test_converting_down() {
 	}
 	mut res := []Sub2{cap: out.len}
 	for d in out {
-		match union d {
+		match d {
 			Sub2 { res << d }
 			else {}
 		}
@@ -127,9 +127,9 @@ fn test_nested_sumtype_selector() {
 
 fn test_nested_sumtype_match_selector() {
 	c := NodeWrapper{Node(Expr(IfExpr{pos: 1}))}
-	match union c.node {
+	match c.node {
 		Expr {
-			match union c.node {
+			match c.node {
 				IfExpr {
 					assert c.node.pos == 1
 				}
@@ -161,9 +161,9 @@ fn test_nested_sumtype() {
 
 fn test_nested_sumtype_match() {
 	c := Node(Expr(IfExpr{pos: 1}))
-	match union c {
+	match c {
 		Expr {
-			match union c {
+			match c {
 				IfExpr {
 					assert c.pos == 1
 				}
@@ -178,11 +178,11 @@ fn test_nested_sumtype_match() {
 	}
 }
 
-__type Abc = int | string
+type Abc = int | string
 
 fn test_string_cast_to_sumtype() {
 	a := Abc('test')
-	match union a {
+	match a {
 		int {
 			assert false
 		}
@@ -195,7 +195,7 @@ fn test_string_cast_to_sumtype() {
 fn test_int_cast_to_sumtype() {
 	// literal
 	a := Abc(111)
-	match union a {
+	match a {
 		int {
 			assert true
 		}
@@ -206,7 +206,7 @@ fn test_int_cast_to_sumtype() {
 	// var
 	i := 111
 	b := Abc(i)
-	match union b {
+	match b {
 		int {
 			assert true
 		}
@@ -217,10 +217,10 @@ fn test_int_cast_to_sumtype() {
 }
 
 // TODO: change definition once types other than int and f64 (int, f64, etc) are supported in sumtype
-__type Number = int | f64
+type Number = int | f64
 
 fn is_gt_simple(val string, dst Number) bool {
-	match union dst {
+	match dst {
 		int {
 			return val.int() > dst
 		}
@@ -232,9 +232,9 @@ fn is_gt_simple(val string, dst Number) bool {
 
 fn is_gt_nested(val string, dst Number) bool {
 	dst2 := dst
-	match union dst {
+	match dst {
 		int {
-			match union dst2 {
+			match dst2 {
 				int {
 					return val.int() > dst
 				}
@@ -245,7 +245,7 @@ fn is_gt_nested(val string, dst Number) bool {
 			}
 		}
 		f64 {
-			match union dst2 {
+			match dst2 {
 				f64 {
 					return dst < val.f64()
 				}
@@ -259,7 +259,7 @@ fn is_gt_nested(val string, dst Number) bool {
 }
 
 fn concat(val string, dst Number) string {
-	match union dst {
+	match dst {
 		int {
 			mut res := val + '(int)'
 			res += dst.str()
@@ -274,7 +274,7 @@ fn concat(val string, dst Number) string {
 }
 
 fn get_sum(val string, dst Number) f64 {
-	match union dst {
+	match dst {
 		int {
 			mut res := val.int()
 			res += dst
@@ -288,8 +288,8 @@ fn get_sum(val string, dst Number) f64 {
 	}
 }
 
-__type Bar = string | Test
-__type Xyz = int | string
+type Bar = string | Test
+type Xyz = int | string
 
 struct Test {
 	x string
@@ -337,11 +337,11 @@ fn test_assignment() {
 	}
 }
 
-__type Inner = int | string
+type Inner = int | string
 struct InnerStruct {
 	x Inner
 }
-__type Outer = string | InnerStruct
+type Outer = string | InnerStruct
 
 fn test_nested_if_is() {
 	b := Outer(InnerStruct{Inner(0)})
@@ -352,7 +352,7 @@ fn test_nested_if_is() {
 	}
 }
 
-__type Expr3 = CallExpr | CTempVarExpr
+type Expr3 = CallExpr | CTempVarExpr
 struct Expr3Wrapper {
 mut:
 	expr Expr3
@@ -408,7 +408,7 @@ mut:
 	name string
 }
 
-__type Food = Milk | Eggs
+type Food = Milk | Eggs
 
 struct FoodWrapper {
 mut:
@@ -417,7 +417,7 @@ mut:
 
 fn test_match_aggregate() {
 	f := Food(Milk{'test'})
-	match union f {
+	match f {
 		Milk, Eggs {
 			assert f.name == 'test'
 		}
@@ -426,7 +426,7 @@ fn test_match_aggregate() {
 
 fn test_match_mut() {
 	mut f := Food(Milk{'test'})
-	match union mut f {
+	match mut f {
 		Eggs {
 			f.name = 'eggs'
 			assert f.name == 'eggs'
@@ -440,7 +440,7 @@ fn test_match_mut() {
 
 fn test_match_not_mut() {
 	mut f := Food(Milk{'test'})
-	match union f {
+	match f {
 		Eggs {
 			// only works without smartcast
 			assert f is Eggs
@@ -470,7 +470,7 @@ fn test_if_not_mut() {
 
 fn test_match_mut_selector() {
 	mut f := FoodWrapper{Food(Milk{'test'})}
-	match union mut f.food {
+	match mut f.food {
 		Eggs {
 			f.food.name = 'eggs'
 			assert f.food.name == 'eggs'
