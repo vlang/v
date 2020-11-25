@@ -1,3 +1,6 @@
+// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module ui
 
 pub enum KeyCode {
@@ -164,11 +167,11 @@ pub struct Context {
 pub:
 	cfg 		  Config
 mut:
-	termios       C.termios
 	read_buf      []byte
 	print_buf     []byte
 	paused        bool
 	enable_su     bool
+	enable_rgb    bool
 pub mut:
 	frame_count   u64
 	window_width  int
@@ -176,21 +179,22 @@ pub mut:
 }
 
 pub struct Config {
-	user_data      voidptr
-	init_fn        fn(voidptr)
-	frame_fn       fn(voidptr)
-	cleanup_fn     fn(voidptr)
-	event_fn       fn(&Event, voidptr)
-	fail_fn        fn(string)
+	user_data            voidptr
+	init_fn              fn(voidptr)
+	frame_fn             fn(voidptr)
+	cleanup_fn           fn(voidptr)
+	event_fn             fn(&Event, voidptr)
+	fail_fn              fn(string)
 
-	buffer_size    int = 256
-	frame_rate     int = 30
-	use_x11        bool
+	buffer_size          int = 256
+	frame_rate           int = 30
+	use_x11              bool
 
-	window_title   string
-	hide_cursor    bool
-	capture_events bool
+	window_title         string
+	hide_cursor          bool
+	capture_events       bool
 	use_alternate_buffer bool = true
-	// All kill signals
-	reset          []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
+	skip_init_checks     bool
+	// All kill signals to set up exit listeners on
+	reset                []int = [1, 2, 3, 4, 6, 7, 8, 9, 11, 13, 14, 15, 19]
 }
