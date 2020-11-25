@@ -1650,7 +1650,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// manage ist_dot_char
 
-			m_state == .end
+			m_state = .end
 			break
 			//return no_match_found,0
 		}
@@ -1822,7 +1822,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//println("ist_or_branch False pc: $pc")
 				}
 				re.prog[pc].reset()
-				m_state == .ist_load
+				m_state = .ist_load
 				continue
 			}
 
