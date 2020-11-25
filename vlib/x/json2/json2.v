@@ -80,11 +80,12 @@ pub fn (f Any) as_map() map[string]Any {
 // Use `Any` as an integer.
 pub fn (f Any) int() int {
 	match union f {
-		int  { return f }
-		i64  { return int(f) }
-		f64  { return f.str().int() }
-		f32  { return f.str().int() }
+		int { return f }
+		i64 { return int(f) }
+		f64 { return f.str().int() }
+		f32 { return f.str().int() }
 		bool { return int(f) }
+		string { return f.int() }
 		else { return 0 }
 	}
 }
@@ -92,11 +93,12 @@ pub fn (f Any) int() int {
 // Use `Any` as a 64-bit integer.
 pub fn (f Any) i64() i64 {
 	match union f {
-		int  { return f }
-		i64  { return int(f) }
-		f64  { return f.str().i64() }
-		f32  { return f.str().i64() }
+		int { return f }
+		i64 { return int(f) }
+		f64 { return f.str().i64() }
+		f32 { return f.str().i64() }
 		bool { return int(f) }
+		string { return f.i64() }
 		else { return 0 }
 	}
 }
@@ -108,6 +110,7 @@ pub fn (f Any) f32() f32 {
 		i64 { return f.str().f32() }
 		f64 { return f.str().f32() }
 		f32 { return f }
+		string { return f.f32() }
 		else { return 0.0 }
 	}
 }
@@ -119,6 +122,7 @@ pub fn (f Any) f64() f64 {
 		i64 { return f }
 		f64 { return f }
 		f32 { return f.str().f64() }
+		string { return f.f64() }
 		else { return 0.0 }
 	}
 }
