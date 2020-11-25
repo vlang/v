@@ -99,6 +99,24 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+	#define VV_EXPORTED_SYMBOL extern __declspec(dllexport)
+	#define VV_LOCAL_SYMBOL static
+#else
+	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
+	// and does not support __has_attribute(visibility) ...
+	#ifndef __has_attribute
+		#define __has_attribute(x) 0  // Compatibility with non-clang compilers.
+	#endif
+	#if (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && __has_attribute(visibility))
+		#define VV_EXPORTED_SYMBOL extern __attribute__ ((visibility ("default")))
+		#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+	#else
+		#define VV_EXPORTED_SYMBOL extern
+		#define VV_LOCAL_SYMBOL static
+	#endif
+#endif
+
 #ifdef __cplusplus
 	#include <utility>
 	#define _MOV std::move

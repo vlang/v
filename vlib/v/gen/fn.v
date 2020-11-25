@@ -100,8 +100,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
-				g.write('static ')
-				g.definitions.write('static ')
+				g.write('VV_LOCAL_SYMBOL ')
+				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
 		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
@@ -170,7 +170,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
 			export_alias := '$type_name ${attr.arg}($arg_str)'
-			g.definitions.writeln('$export_alias;')
+			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $it.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
 			g.write(fargs.join(', '))
