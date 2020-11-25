@@ -1999,17 +1999,17 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .sum_type
+			kind: .union_sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
 			mod: p.mod
-			info: table.SumType{
+			info: table.UnionSumType{
 				variants: sum_variants
 			}
 			is_public: is_pub
 		})
 		comments = p.eat_lineend_comments()
-		return ast.SumTypeDecl{
+		return ast.UnionSumTypeDecl{
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants

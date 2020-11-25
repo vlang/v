@@ -35,13 +35,13 @@ pub fn eprint(s any) {
 // a 'real' way to exit in the browser.
 pub fn exit(c int) {
 	JS.process.exit(c)
+	js_throw('exit($c)')
 }
 
 pub fn unwrap(opt any) any {
 	o := &Option(opt)
 	if o.not_ok {
-		panic(o.error)
-		return o.error
+		js_throw(o.error)
 	}
 	return opt
 }

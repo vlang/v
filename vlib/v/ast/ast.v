@@ -7,7 +7,7 @@ import v.token
 import v.table
 import v.errors
 
-pub __type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl | UnionSumTypeDecl
+pub __type TypeDecl = AliasTypeDecl | FnTypeDecl | UnionSumTypeDecl
 
 pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
 	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
@@ -529,15 +529,14 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond         Expr
-	pos          token.Position
-	body_pos     token.Position
-	comments     []Comment
-	left_as_name string // `name` in `if cond is SumType as name`
-	is_mut_name  bool // `if mut name is`
+	cond        Expr
+	pos         token.Position
+	body_pos    token.Position
+	comments    []Comment
+	is_mut_name bool // `if mut name is`
 pub mut:
-	stmts        []Stmt
-	smartcast    bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
+	stmts       []Stmt
+	smartcast   bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
 }
 
 pub struct UnsafeExpr {
@@ -564,8 +563,7 @@ pub:
 	branches       []MatchBranch
 	pos            token.Position
 	is_mut         bool // `match mut ast_node {`
-	var_name       string // `match cond as var_name {`
-	is_union_match bool // temporary union key after match
+	is_union_match bool // TODO: remove
 pub mut:
 	is_expr        bool // returns a value
 	return_type    table.Type
@@ -746,15 +744,6 @@ pub:
 	parent_type table.Type
 	pos         token.Position
 	comments    []Comment
-}
-
-pub struct SumTypeDecl {
-pub:
-	name      string
-	is_pub    bool
-	sub_types []table.Type
-	pos       token.Position
-	comments  []Comment
 }
 
 // New implementation of sum types
@@ -1152,7 +1141,7 @@ pub fn (stmt Stmt) position() token.Position {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
 		TypeDecl { match union stmt {
-				AliasTypeDecl, FnTypeDecl, SumTypeDecl, UnionSumTypeDecl { return stmt.pos }
+				AliasTypeDecl, FnTypeDecl, UnionSumTypeDecl { return stmt.pos }
 			} }
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
