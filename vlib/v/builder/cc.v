@@ -497,7 +497,7 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
-	if is_cc_tcc {
+	if is_cc_tcc && 'no_backtrace' !in v.pref.compile_defines {
 		args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux

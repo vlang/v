@@ -83,13 +83,13 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 		eprintln('Some libc implementations like musl simply do not provide it.')
 		return false
 	}
-	$if tinyc {
-		C.tcc_backtrace("Backtrace")
-		return false
-	}
 	$if no_backtrace ? {
 		return false
 	} $else {
+		$if tinyc {
+			C.tcc_backtrace("Backtrace")
+			return false
+		}
 		buffer := [100]byteptr{}
 		nr_ptrs := C.backtrace(voidptr(buffer), 100)
 		if nr_ptrs < 2 {
