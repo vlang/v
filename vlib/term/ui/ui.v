@@ -57,12 +57,20 @@ pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 
 [inline]
 pub fn (mut ctx Context) set_color(c Color) {
-	ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
+	if ctx.enable_rgb {
+		ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
+	} else {
+		ctx.write('\x1b[38;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	}
 }
 
 [inline]
 pub fn (mut ctx Context) set_bg_color(c Color) {
-	ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
+	if ctx.enable_rgb {
+		ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
+	} else {
+		ctx.write('\x1b[48;5;${rgb2ansi(c.r, c.g, c.b)}m')
+	}
 }
 
 [inline]
