@@ -51,9 +51,13 @@ fn restore_terminal_state() {
 	os.flush()
 }
 
-fn (mut ctx Context) termios_setup() {
+fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	ctx.save_title()
+
+	if !ctx.cfg.skip_init_checks && !(isatty(C.STDIN_FILENO) && isatty(C.STDOUT_FILENO)) {
+		return error('not running under a TTY')
+	}
 
 	mut termios := get_termios()
 
@@ -75,26 +79,28 @@ fn (mut ctx Context) termios_setup() {
 		print('\x1b]0;$ctx.cfg.window_title\x07')
 	}
 
-	// prevent blocking during the feature detections, but allow enough time for the terminal
-	// to send back the relevant input data
-	termios.c_cc[C.VTIME] = 1
-	termios.c_cc[C.VMIN] = 0
-	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
-	// feature-test the SU spec
-	sx, sy := get_cursor_position()
-	print('$bsu$esu')
-	ex, ey := get_cursor_position()
-	if sx == ex && sy == ey {
-		// the terminal either ignored or handled the sequence properly, enable SU
-		ctx.enable_su = true
-	} else {
-		ctx.draw_line(sx, sy, ex, ey)
-		ctx.set_cursor_position(sx, sy)
-		ctx.flush()
+	if !ctx.cfg.skip_init_checks {
+		// prevent blocking during the feature detections, but allow enough time for the terminal
+		// to send back the relevant input data
+		termios.c_cc[C.VTIME] = 1
+		termios.c_cc[C.VMIN] = 0
+		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
+		// feature-test the SU spec
+		sx, sy := get_cursor_position()
+		print('$bsu$esu')
+		ex, ey := get_cursor_position()
+		if sx == ex && sy == ey {
+			// the terminal either ignored or handled the sequence properly, enable SU
+			ctx.enable_su = true
+		} else {
+			ctx.draw_line(sx, sy, ex, ey)
+			ctx.set_cursor_position(sx, sy)
+			ctx.flush()
+		}
+		// feature-test rgb (truecolor) support
+		ctx.enable_rgb = supports_truecolor()
 	}
-	// feature-test rgb (truecolor) support
-	ctx.enable_rgb = supports_truecolor()
-
+	
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0

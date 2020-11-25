@@ -28,13 +28,13 @@ pub fn (mut ctx Context) load_title() {
     print('\x1b[23;0t')
 }
 
-pub fn (mut ctx Context) run() {
+pub fn (mut ctx Context) run() ? {
 	if ctx.cfg.use_x11 {
 		ctx.fail('error: x11 backend not implemented yet')
 		exit(1)
 	} else {
-		ctx.termios_setup()
-		ctx.termios_loop()
+		ctx.termios_setup()?
+		ctx.termios_loop()?
 	}
 }
 
