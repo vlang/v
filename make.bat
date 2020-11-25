@@ -118,7 +118,7 @@ if !compiler! == "gcc" goto :gcc_strap
 if !compiler! == "msvc" goto :msvc_strap
 if !compiler! == "tcc" goto :tcc_strap
 if !compiler! == "fresh-tcc" goto :tcc_strap
-if [!compiler!] == [""] goto :gcc_strap
+if [!compiler!] == [""] goto :clang_strap
 
 :clang_strap
 where /q clang
@@ -177,7 +177,7 @@ if "%PROCESSOR_ARCHITECTURE%" == "x86" (
 
 if not exist "%VsWhereDir%\Microsoft Visual Studio\Installer\vswhere.exe" (
 	echo  ^> MSVC not found
-	if not !compiler! == "" goto :error
+	if not [!compiler!] == [""] goto :error
 	goto :tcc_strap
 )
 
