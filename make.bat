@@ -210,7 +210,7 @@ where /q tcc
 if %ERRORLEVEL% NEQ 0 (
 	if !compiler! == "fresh-tcc" (
         echo  ^> Clean TCC directory
-        call :buildcmd "rmdir /s /q "%tcc_dir%" "  "
+        call :buildcmd "rmdir /s /q "%tcc_dir%"" "  "
         set /a valid_cc=1
     ) else if !compiler! == "tcc" set /a valid_cc=1
     if not exist %tcc_dir% (
