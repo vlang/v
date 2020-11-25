@@ -93,7 +93,7 @@ fn (app App) show_current_v_version() {
 			latest_v_commit := vversion.split(' ').last().all_after('.')
 			if latest_v_commit_time := os.exec('git show -s --format=%ci $latest_v_commit') {
 				if latest_v_commit_time.exit_code == 0 {
-					vversion += ', commited at ' + latest_v_commit_time.output.trim_space()
+					vversion += ', timestamp: ' + latest_v_commit_time.output.trim_space()
 				}
 			}
 		}
