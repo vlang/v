@@ -7,9 +7,9 @@ import strings
 
 fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	str := v.str()
-	if v is string { 
-		wr.write('"$str"') 
-	} else { 
+	if v is string {
+		wr.write('"$str"')
+	} else {
 		wr.write(str)
 	}
 	if i >= len-1 { return }
@@ -51,7 +51,7 @@ pub fn (flds []Any) str() string {
 
 // String representation of the `Any` type.
 pub fn (f Any) str() string {
-	match union f {
+	match f {
 		string { return f }
 		int { return f.str() }
 		i64 { return f.str() }

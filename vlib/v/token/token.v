@@ -121,7 +121,7 @@ pub enum Kind {
 	key_struct
 	key_true
 	key_type
-	key___type // __type
+	key___type // type
 	key_typeof
 	key_orelse
 	key_union

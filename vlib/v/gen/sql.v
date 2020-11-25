@@ -256,7 +256,7 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 	//
 	// TODO `where id = some_column + 1` needs literal generation of `some_column` as a string,
 	// not a V variable. Need to distinguish column names from V variables.
-	match union expr {
+	match expr {
 		ast.InfixExpr {
 			g.sql_side = .left
 			g.expr_to_sql(expr.left)

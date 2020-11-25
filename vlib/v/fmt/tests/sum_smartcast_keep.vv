@@ -6,7 +6,7 @@ mut:
 struct S2 {
 }
 
-__type Sum = S1 | S2
+type Sum = S1 | S2
 
 fn f(sum Sum) {
 	if mut sum is S1 {

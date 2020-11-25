@@ -7,23 +7,23 @@ import v.token
 import v.table
 import v.errors
 
-pub __type TypeDecl = AliasTypeDecl | FnTypeDecl | UnionSumTypeDecl
+pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub __type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
+pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
 	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
 	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
 	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
-pub __type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
 	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
 	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
 	SqlStmt | StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
-pub __type ScopeObject = ConstField | GlobalField | Var
+pub type ScopeObject = ConstField | GlobalField | Var
 
 pub struct Type {
 pub:
@@ -430,7 +430,7 @@ pub mut:
 	share       table.ShareType
 }
 
-pub __type IdentInfo = IdentFn | IdentVar
+pub type IdentInfo = IdentFn | IdentVar
 
 pub enum IdentKind {
 	unresolved
@@ -457,7 +457,7 @@ pub mut:
 }
 
 pub fn (i &Ident) var_info() IdentVar {
-	match union mut i.info {
+	match mut i.info {
 		IdentVar {
 			return i.info
 		}
@@ -563,7 +563,6 @@ pub:
 	branches       []MatchBranch
 	pos            token.Position
 	is_mut         bool // `match mut ast_node {`
-	is_union_match bool // TODO: remove
 pub mut:
 	is_expr        bool // returns a value
 	return_type    table.Type
@@ -747,7 +746,7 @@ pub:
 }
 
 // New implementation of sum types
-pub struct UnionSumTypeDecl {
+pub struct SumTypeDecl {
 pub:
 	name      string
 	is_pub    bool
@@ -1047,7 +1046,7 @@ pub mut:
 
 [inline]
 pub fn (expr Expr) is_blank_ident() bool {
-	match union expr {
+	match expr {
 		Ident { return expr.kind == .blank_ident }
 		else { return false }
 	}
@@ -1055,7 +1054,7 @@ pub fn (expr Expr) is_blank_ident() bool {
 
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
-	match union expr {
+	match expr {
 		// KEKW2
 		AnonFn {
 			return expr.decl.pos
@@ -1091,7 +1090,7 @@ pub fn (expr Expr) position() token.Position {
 }
 
 pub fn (expr Expr) is_lvalue() bool {
-	match union expr {
+	match expr {
 		Ident { return true }
 		CTempVar { return true }
 		IndexExpr { return expr.left.is_lvalue() }
@@ -1102,7 +1101,7 @@ pub fn (expr Expr) is_lvalue() bool {
 }
 
 pub fn (expr Expr) is_expr() bool {
-	match union expr {
+	match expr {
 		IfExpr { return expr.is_expr }
 		MatchExpr { return expr.is_expr }
 		else {}
@@ -1112,7 +1111,7 @@ pub fn (expr Expr) is_expr() bool {
 
 // check if stmt can be an expression in C
 pub fn (stmt Stmt) check_c_expr() ? {
-	match union stmt {
+	match stmt {
 		AssignStmt {
 			return
 		}
@@ -1137,11 +1136,11 @@ pub:
 }
 
 pub fn (stmt Stmt) position() token.Position {
-	match union stmt {
+	match stmt {
 		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
 		GoStmt { return stmt.call_expr.position() }
-		TypeDecl { match union stmt {
-				AliasTypeDecl, FnTypeDecl, UnionSumTypeDecl { return stmt.pos }
+		TypeDecl { match stmt {
+				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
 			} }
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force

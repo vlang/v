@@ -164,7 +164,7 @@ pub fn (mut g JsGen) push_pub_var(s string) {
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 	for stmt in stmts {
-		match union stmt {
+		match stmt {
 			ast.FnDecl {
 				if stmt.is_method {
 					// Found struct method, store it to be generated along with the class.
@@ -257,7 +257,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			joined := types.join(', ')
 			styp = '[$joined]'
 		}
-		.union_sum_type {
+		.sum_type {
 			// TODO: Implement sumtypes
 			styp = 'union_sym_type'
 		}
@@ -433,7 +433,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
 	g.stmt_start_pos = g.out.len
-	match union node {
+	match node {
 		ast.AssertStmt {
 			g.gen_assert_stmt(node)
 		}
@@ -519,7 +519,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 }
 
 fn (mut g JsGen) expr(node ast.Expr) {
-	match union node {
+	match node {
 		ast.CTempVar {
 			g.write('/* ast.CTempVar: node.name */')
 		}
@@ -1004,7 +1004,7 @@ fn (mut g JsGen) gen_for_stmt(it ast.ForStmt) {
 
 fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
-	match union node.call_expr {
+	match node.call_expr {
 		ast.CallExpr {
 			mut name := node.call_expr.name
 			if node.call_expr.is_method {
@@ -1193,7 +1193,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(it.name)
 			g.write('(')
 			expr := node.args[0].expr
-			match union expr {
+			match expr {
 				ast.AnonFn {
 					g.gen_fn_decl(expr.decl)
 					g.write(')')
@@ -1538,7 +1538,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 
 fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	sym := g.table.get_type_symbol(it.expr_type)
-	if sym.kind == .union_sum_type {
+	if sym.kind == .sum_type {
 		// TODO: JS sumtypes not implemented yet
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
