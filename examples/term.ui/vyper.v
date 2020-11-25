@@ -326,8 +326,6 @@ fn (mut a App) draw() {
 	a.termui.clear()
 	a.termui.set_bg_color(white)
 	a.termui.draw_empty_rect(1, 1, a.width, a.height)
-	a.termui.set_bg_color(black)
-	a.termui.draw_rect(2, 2, a.width - 1, a.height - 1)
 	// determine if a special screen needs to be draw
 	match a.state {
 		.gameover {
