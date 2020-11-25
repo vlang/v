@@ -128,7 +128,7 @@ fn (p Parser) is_singlequote() bool {
 fn (mut p Parser) detect_parse_mode() {
 	src := p.scanner.text
 	if src.len > 1 && src[0].is_digit() && !src[1].is_digit() {
-		p.mode == .invalid
+		p.mode = .invalid
 		return
 	}
 
@@ -136,7 +136,7 @@ fn (mut p Parser) detect_parse_mode() {
 	p.n_tok = p.scanner.scan()
 
 	if src.len == 1 && p.tok.kind == .string && p.n_tok.kind == .eof {
-		p.mode == .invalid
+		p.mode = .invalid
 		return
 	}
 
