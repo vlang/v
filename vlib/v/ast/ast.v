@@ -16,10 +16,10 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTe
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
 
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl |
-	DeferStmt | EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl |
-	GoStmt | GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return |
-	SqlStmt | StructDecl | TypeDecl
+pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
+	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
+	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
+	StructDecl | TypeDecl
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
@@ -558,17 +558,17 @@ pub mut:
 
 pub struct MatchExpr {
 pub:
-	tok_kind       token.Kind
-	cond           Expr
-	branches       []MatchBranch
-	pos            token.Position
-	is_mut         bool // `match mut ast_node {`
+	tok_kind      token.Kind
+	cond          Expr
+	branches      []MatchBranch
+	pos           token.Position
+	is_mut        bool // `match mut ast_node {`
 pub mut:
-	is_expr        bool // returns a value
-	return_type    table.Type
-	cond_type      table.Type // type of `x` in `match x {`
-	expected_type  table.Type // for debugging only
-	is_sum_type    bool
+	is_expr       bool // returns a value
+	return_type   table.Type
+	cond_type     table.Type // type of `x` in `match x {`
+	expected_type table.Type // for debugging only
+	is_sum_type   bool
 }
 
 pub struct MatchBranch {
