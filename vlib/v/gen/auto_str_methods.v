@@ -367,6 +367,12 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	g.type_definitions.writeln('string indent_${str_fn_name}($styp x, int indent_count); // auto')
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_struct_v_type_name := styp.replace('__', '.')
+	if clean_struct_v_type_name.contains('_T_') {
+		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
+		// use something different than g.typ for styp
+		clean_struct_v_type_name = clean_struct_v_type_name.replace('_T_', '<').replace('_', ', ') +
+			'>'
+	}
 	if styp.ends_with('*') {
 		deref_typ := styp.replace('*', '')
 		g.auto_str_funcs.writeln('\t$deref_typ *it = x;')
