@@ -1179,7 +1179,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		val_styp := g.typ(it.val_type)
 		val_sym := g.table.get_type_symbol(it.val_type)
 		idx := g.new_tmp_var()
-		key := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		atmp := g.new_tmp_var()
 		atmp_styp := g.typ(it.cond_type)
 		g.write('$atmp_styp $atmp = ')
@@ -1187,11 +1186,14 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.writeln(';')
 		g.writeln('for (int $idx = 0; $idx < $atmp\.key_values.len; ++$idx) {')
 		g.writeln('\tif ($atmp\.key_values.keys[$idx].str == 0) {continue;}')
-		// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
-		if it.key_type == table.string_type {
-			g.writeln('\t$key_styp $key = /*kkkk*/ string_clone($atmp\.key_values.keys[$idx]);')
-		} else {
-			g.writeln('\t$key_styp $key = /*kkkk*/ $atmp\.key_values.keys[$idx];')
+		if it.key_var != '_' {
+			key := c_name(it.key_var)
+			// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
+			if it.key_type == table.string_type {
+				g.writeln('\t$key_styp $key = /*kkkk*/ string_clone($atmp\.key_values.keys[$idx]);')
+			} else {
+				g.writeln('\t$key_styp $key = /*kkkk*/ $atmp\.key_values.keys[$idx];')
+			}
 		}
 		if it.val_var != '_' {
 			valstr := '(void*)($atmp\.key_values.values + $idx * (u32)($atmp\.value_bytes))'
