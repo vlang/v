@@ -103,9 +103,11 @@ fn test_for_in_map_val() {
 }
 
 fn test_for_in_map_both() {
+	mut i := 0
 	for _, _ in m {
-		assert true
+		i++
 	}
+	assert i == 1
 }
 
 fn test_nested_for_in_map_key() {
@@ -127,11 +129,13 @@ fn test_nested_for_in_map_val() {
 }
 
 fn test_nested_for_in_map_both() {
+	mut i := 0
 	for _, _ in m {
 		for _, _ in m {
-			assert true
+			i++
 		}
 	}
+	assert i == 1
 }
 
 fn fn_for_in_variadic_args_simple(arr ...string) {
