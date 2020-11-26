@@ -3035,7 +3035,6 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string) {
-	type_sym := g.table.get_type_symbol(node.cond_type)
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
