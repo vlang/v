@@ -251,9 +251,6 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
-					if var_info.is_mut {
-						f.write(var_info.share.str() + ' ')
-					}
 					if var_info.is_static {
 						f.write('static ')
 					}
@@ -835,10 +832,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(node)
 		}
 		ast.Ident {
-			f.write_language_prefix(node.language)
-			if true {
-			} else {
+			if mut node.info is ast.IdentVar {
+				if node.info.is_mut {
+					f.write(node.info.share.str() + ' ')
+				}
 			}
+			f.write_language_prefix(node.language)
 			if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
 				f.write(f.it_name)
 			} else if node.kind == .blank_ident {
@@ -1411,9 +1410,6 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		}
 		if i < it.branches.len - 1 || !it.has_else {
 			f.write('${dollar}if ')
-			if branch.is_mut_name {
-				f.write('mut ')
-			}
 			f.expr(branch.cond)
 			f.write(' ')
 		}
@@ -1532,9 +1528,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
-	if it.is_mut {
-		f.write('mut ')
-	}
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
 		f.it_name = it.cond.name
