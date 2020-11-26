@@ -43,16 +43,24 @@ fn test_for_char_in_string() {
 	assert sum == 394 // ascii codes of `a` + `b` + `c` + `d`
 }
 
-fn test_for_char_in_map() {
+fn test_for_string_in_map() {
 	m := {
 		'a': 'b'
 		'c': 'd'
 	}
 	mut acc := ''
-	for k, char in m {
-		acc += '$k: $char, '
+	for k, v in m {
+		acc += '$k: $v, '
 	}
 	assert acc == 'a: b, c: d, '
+
+	mut m2 := {'a': 3, 'b': 4, 'c': 5}
+	m2.delete('b')
+	acc = ''
+	for k, v in m2 {
+		acc += '$k: $v, '
+	}
+	assert acc == 'a: 3, c: 5, '
 }
 
 fn test_mut_for() {
