@@ -2,7 +2,7 @@ fn one() string {
 	name := 'Peter'
 	age := 25
 	numbers := [1, 2, 3]
-	return $tmpl('tmpl/1.txt')
+	return $tmpl('vlib/v/tests/tmpl/1.txt')
 }
 
 fn test_tmpl() {
