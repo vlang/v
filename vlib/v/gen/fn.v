@@ -419,8 +419,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' &&
-		!g.should_write_asterisk_due_to_match_sumtype(node.left) {
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
 		g.write('${name}(')
