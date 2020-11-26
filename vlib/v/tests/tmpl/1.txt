@@ -1,0 +1,9 @@
+name: @name
+
+age: @age
+
+numbers: @numbers
+
+@for number in numbers
+@number
+@end

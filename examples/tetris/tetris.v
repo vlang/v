@@ -333,7 +333,7 @@ fn (g &Game) draw_tetro() {
 fn (g &Game) draw_next_tetro() {
 	if g.state != .gameover {
 		idx := g.next_tetro_idx * tetro_size * tetro_size
-		next_tetro := g.tetros_cache[idx..idx + tetro_size]
+		next_tetro := g.tetros_cache[idx..idx + tetro_size].clone()
 		pos_y := 0
 		pos_x := field_width / 2 - tetro_size / 2
 		for i in 0 .. tetro_size {
