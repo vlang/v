@@ -38,6 +38,51 @@ fn test_nested_if_smartcast() {
 	}
 }
 
+type Bar = string | Test
+type Xya = int | string
+
+struct Test {
+	x string
+	xya Xya
+}
+
+struct BarWrapper {
+	y Bar
+}
+
+fn test_nested_selector_smartcast() {
+	f := BarWrapper{
+		y: Bar(Test{
+			x: 'Hi'
+			xya: Xya(int(5))
+		})
+	}
+
+	if f.y is Test {
+		z := f.y.x
+		assert f.y.x == 'Hi'
+		assert z == 'Hi'
+		if f.y.xya is int {
+			assert f.y.xya == 5
+		}
+	}
+}
+
+type Inner = int | string
+struct InnerStruct {
+	x Inner
+}
+type Outer = string | InnerStruct
+
+fn test_nested_if_is() {
+	b := Outer(InnerStruct{Inner(0)})
+	if b is InnerStruct {
+		if b.x is int {
+			assert b.x == 0
+		}
+	}
+}
+
 struct MutContainer {
 mut:
 	abc Alphabet
@@ -120,5 +165,91 @@ fn test_mutability() {
 	cell = cell_u32
 	if mut cell is CellU32 {
 		println('$cell.u')
+	}
+}
+
+type Expr = CallExpr | CTempVarExpr
+struct ExprWrapper {
+mut:
+	expr Expr
+}
+struct CallExpr {
+	y int
+	x string
+}
+
+struct CTempVarExpr {
+	x string
+}
+
+fn gen(_ Expr) CTempVarExpr {
+	return CTempVarExpr{}
+}
+
+fn test_reassign_from_function_with_parameter_selector() {
+	mut f := ExprWrapper{Expr(CallExpr{})}
+	if f.expr is CallExpr {
+		f.expr = gen(f.expr)
+	}
+}
+
+type Node = Expr | string
+
+fn test_nested_sumtype() {
+	c := Node(Expr(CallExpr{y: 1}))
+	if c is Expr {
+		if c is CallExpr {
+			assert c.y == 1
+		}
+		else {
+			assert false
+		}
+	}
+	else {
+		assert false
+	}
+}
+
+type Food = Milk | Eggs
+
+struct FoodWrapper {
+mut:
+	food Food
+}
+
+struct Milk {
+mut:
+	name string
+}
+
+struct Eggs {
+mut:
+	name string
+}
+
+fn test_if_mut_selector() {
+	mut f := FoodWrapper{Food(Milk{'test'})}
+	if mut f.food is Milk {
+		f.food.name = 'milk'
+		assert f.food.name == 'milk'
+	}
+}
+
+struct NodeWrapper {
+	node Node
+}
+
+fn test_nested_sumtype_selector() {
+	c := NodeWrapper{Node(Expr(CallExpr{y: 1}))}
+	if c.node is Expr {
+		if c.node is CallExpr {
+			assert c.node.y == 1
+		}
+		else {
+			assert false
+		}
+	}
+	else {
+		assert false
 	}
 }

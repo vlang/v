@@ -1,3 +1,6 @@
+// Copyright (c) 2020 Raúl Hernández. All rights reserved.
+// Use of this source code is governed by an MIT license
+// that can be found in the LICENSE file.
 module ui
 
 import os
@@ -51,9 +54,13 @@ fn restore_terminal_state() {
 	os.flush()
 }
 
-fn (mut ctx Context) termios_setup() {
+fn (mut ctx Context) termios_setup() ? {
 	// store the current title, so restore_terminal_state can get it back
 	ctx.save_title()
+
+	if !ctx.cfg.skip_init_checks && !(is_atty(C.STDIN_FILENO) != 0 && is_atty(C.STDOUT_FILENO) != 0) {
+		return error('not running under a TTY')
+	}
 
 	mut termios := get_termios()
 
@@ -75,20 +82,28 @@ fn (mut ctx Context) termios_setup() {
 		print('\x1b]0;$ctx.cfg.window_title\x07')
 	}
 
-	C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
-	// feature-test the SU spec
-	sx, sy := get_cursor_position()
-	print('$bsu$esu')
-	ex, ey := get_cursor_position()
-
-	if sx == ex && sy == ey {
-		// the terminal either ignored or handled the sequence properly, enable SU
-		ctx.enable_su = true
-	} else {
-		ctx.draw_line(sx, sy, ex, ey)
-		ctx.set_cursor_position(sx, sy)
-		ctx.flush()
+	if !ctx.cfg.skip_init_checks {
+		// prevent blocking during the feature detections, but allow enough time for the terminal
+		// to send back the relevant input data
+		termios.c_cc[C.VTIME] = 1
+		termios.c_cc[C.VMIN] = 0
+		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
+		// feature-test the SU spec
+		sx, sy := get_cursor_position()
+		print('$bsu$esu')
+		ex, ey := get_cursor_position()
+		if sx == ex && sy == ey {
+			// the terminal either ignored or handled the sequence properly, enable SU
+			ctx.enable_su = true
+		} else {
+			ctx.draw_line(sx, sy, ex, ey)
+			ctx.set_cursor_position(sx, sy)
+			ctx.flush()
+		}
+		// feature-test rgb (truecolor) support
+		ctx.enable_rgb = supports_truecolor()
 	}
+
 	// Prevent stdin from blocking by making its read time 0
 	termios.c_cc[C.VTIME] = 0
 	termios.c_cc[C.VMIN] = 0
@@ -101,7 +116,6 @@ fn (mut ctx Context) termios_setup() {
 		// clear the terminal and set the cursor to the origin
 		print('\x1b[2J\x1b[3J\x1b[1;1H')
 	}
-	ctx.termios = termios
 	ctx.window_height, ctx.window_width = get_terminal_size()
 
 	// Reset console on exit
@@ -177,6 +191,61 @@ fn get_cursor_position() (int, int) {
 		}
 	}
 	return x, y
+}
+
+fn supports_truecolor() bool {
+	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
+	print('\x1b[48:2:1:2:3m')
+
+	sx, sy := get_cursor_position()
+	// sequence to query the current cursor position
+	print('\x1bP\$qm\x1b\\')
+	color := get_current_bg_color()
+	ex, ey := get_cursor_position()
+	// if the terminal doesn't understand the "get current color",
+	// assume it doesn't support truecolor either
+	if !(sx == ex && sy == ey) {
+		println('>>> different pos: ($sx, $sy) -> ($ex, $ey)')
+		return false
+	}
+	// TODO: iTerm emits a different sequence, but it's compatible anyways, so
+	if color !in [0x010203, 0x01010203] {
+		println('>>> no match: $color')
+		return false
+	}
+	return true
+}
+
+fn get_current_bg_color() int {
+	mut res := 0
+	mut colon_cnt := 0
+	mut cur_val := 0
+
+	for i := 0; i < 50 ; i++ {
+		ch := int(C.getchar())
+		b := byte(ch)
+
+		if b in [0, 255] {
+			return -1
+		} else if b == `m` {
+			if colon_cnt > 1 {
+				res = (res << 8) | cur_val
+				cur_val = 0
+			}
+			break
+		} else if b in [`:`, `;`] {
+			if colon_cnt > 1 {
+				res = (res << 8) | cur_val
+				cur_val = 0
+			}
+			colon_cnt++
+		} else if b.is_digit() {
+			if colon_cnt > 1 {
+				cur_val = cur_val * 10 + b - byte(`0`)
+			}
+		}
+	}
+	return res
 }
 
 fn termios_reset() {
