@@ -89,9 +89,9 @@ fn (mut ctx Context) termios_setup() ? {
 		termios.c_cc[C.VMIN] = 0
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
-		sx, sy := get_cursor_position()
+		sx, sy := ctx.get_cursor_position()
 		print('$bsu$esu')
-		ex, ey := get_cursor_position()
+		ex, ey := ctx.get_cursor_position()
 		if sx == ex && sy == ey {
 			// the terminal either ignored or handled the sequence properly, enable SU
 			ctx.enable_su = true
@@ -101,7 +101,7 @@ fn (mut ctx Context) termios_setup() ? {
 			ctx.flush()
 		}
 		// feature-test rgb (truecolor) support
-		ctx.enable_rgb = supports_truecolor()
+		ctx.enable_rgb = ctx.supports_truecolor()
 	}
 
 	// Prevent stdin from blocking by making its read time 0
@@ -162,90 +162,31 @@ fn (mut ctx Context) termios_setup() ? {
 	os.flush()
 }
 
-fn get_cursor_position() (int, int) {
+fn (mut ctx Context) get_cursor_position() (int, int) {
 	print('\033[6n')
-	// ESC [ YYY `;` XXX `R`
-	mut reading_x, mut reading_y := false, false
-	mut x, mut y := 0, 0
-	for i := 0; i < 15 ; i++ {
-		ch := int(C.getchar())
-		b := byte(ch)
-		i++
-		// state management:
-		if b == `R` {
-			break
-		} else if b == `[` {
-			reading_y = true
-			reading_x = false
-			continue
-		} else if b == `;` {
-			reading_y = false
-			reading_x = true
-			continue
-		}
-		// converting string vals to ints:
-		if reading_x {
-			x = x * 10 + b - byte(`0`)
-		} else if reading_y {
-			y = y * 10 + b - byte(`0`)
-		}
-	}
-	return x, y
+	ctx.read()
+	s := ctx.read_buf.bytestr()
+	ctx.read_buf.clear()
+	a := s[2..].split(';')
+	if a.len != 2 { return -1, -1 }
+	return a[0].int(), a[1].int()
 }
 
-fn supports_truecolor() bool {
+fn (mut ctx Context) supports_truecolor() bool {
+	// faster/simpler, but less reliable, check
+	if os.getenv('COLORTERM') in ['truecolor', '24bit'] {
+		return true
+	}
 	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
 	print('\x1b[48:2:1:2:3m')
 
-	sx, sy := get_cursor_position()
-	// sequence to query the current cursor position
+	// sequence to query the current color
 	print('\x1bP\$qm\x1b\\')
-	color := get_current_bg_color()
-	ex, ey := get_cursor_position()
-	// if the terminal doesn't understand the "get current color",
-	// assume it doesn't support truecolor either
-	if !(sx == ex && sy == ey) {
-		println('>>> different pos: ($sx, $sy) -> ($ex, $ey)')
-		return false
-	}
-	// TODO: iTerm emits a different sequence, but it's compatible anyways, so
-	if color !in [0x010203, 0x01010203] {
-		println('>>> no match: $color')
-		return false
-	}
-	return true
-}
+	ctx.read()
+	s := ctx.read_buf.bytestr()
+	ctx.read_buf.clear()
+	return '1:2:3' in s
 
-fn get_current_bg_color() int {
-	mut res := 0
-	mut colon_cnt := 0
-	mut cur_val := 0
-
-	for i := 0; i < 50 ; i++ {
-		ch := int(C.getchar())
-		b := byte(ch)
-
-		if b in [0, 255] {
-			return -1
-		} else if b == `m` {
-			if colon_cnt > 1 {
-				res = (res << 8) | cur_val
-				cur_val = 0
-			}
-			break
-		} else if b in [`:`, `;`] {
-			if colon_cnt > 1 {
-				res = (res << 8) | cur_val
-				cur_val = 0
-			}
-			colon_cnt++
-		} else if b.is_digit() {
-			if colon_cnt > 1 {
-				cur_val = cur_val * 10 + b - byte(`0`)
-			}
-		}
-	}
-	return res
 }
 
 fn termios_reset() {
@@ -259,6 +200,13 @@ fn termios_reset() {
 }
 
 ///////////////////////////////////////////
+
+fn (mut ctx Context) read() {
+	unsafe {
+		len := C.read(C.STDIN_FILENO, ctx.read_buf.data + ctx.read_buf.len, ctx.read_buf.cap - ctx.read_buf.len)
+		ctx.resize_arr(ctx.read_buf.len + len)
+	}
+}
 
 // TODO: do multiple sleep/read cycles, rather than one big one
 fn (mut ctx Context) termios_loop() {
@@ -278,9 +226,8 @@ fn (mut ctx Context) termios_loop() {
 		if !ctx.paused {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
-				len := C.read(C.STDIN_FILENO, ctx.read_buf.data, ctx.read_buf.cap - ctx.read_buf.len)
-				if len > 0 {
-					ctx.resize_arr(len)
+				ctx.read()
+				if ctx.read_buf.len > 0 {
 					ctx.parse_events()
 				}
 			}
