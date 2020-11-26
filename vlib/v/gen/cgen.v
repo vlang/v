@@ -109,8 +109,6 @@ mut:
 	inside_const                     bool
 	comp_for_method                  string // $for method in T {
 	comptime_var_type_map            map[string]table.Type
-	match_sumtype_exprs              []ast.Expr
-	match_sumtype_syms               []table.TypeSymbol
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
 	// autofree_pregen_buf   strings.Builder
@@ -2342,9 +2340,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(node.val)
 		}
 		ast.Ident {
-			if g.should_write_asterisk_due_to_match_sumtype(node) {
-				g.write('*')
-			}
 			g.ident(node)
 		}
 		ast.IfExpr {
@@ -3040,13 +3035,6 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 }
 
 fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string) {
-	type_sym := g.table.get_type_symbol(node.cond_type)
-	g.match_sumtype_exprs << node.cond
-	g.match_sumtype_syms << type_sym
-	defer {
-		g.match_sumtype_exprs.delete_last()
-		g.match_sumtype_syms.delete_last()
-	}
 	for j, branch in node.branches {
 		mut sumtype_index := 0
 		// iterates through all types in sumtype branches
@@ -3390,37 +3378,6 @@ fn (mut g Gen) ident(node ast.Ident) {
 		}
 	}
 	g.write(g.get_ternary_name(name))
-}
-
-[unlikely]
-fn (mut g Gen) should_write_asterisk_due_to_match_sumtype(expr ast.Expr) bool {
-	if expr is ast.Ident {
-		typ := if expr.info is ast.IdentVar { (expr.info as ast.IdentVar).typ } else { (expr.info as ast.IdentFn).typ }
-		return typ.is_ptr() && g.match_sumtype_has_no_struct_and_contains(expr)
-	} else {
-		return false
-	}
-}
-
-[unlikely]
-fn (mut g Gen) match_sumtype_has_no_struct_and_contains(node ast.Ident) bool {
-	for i, expr in g.match_sumtype_exprs {
-		if expr is ast.Ident && node.name == (expr as ast.Ident).name {
-			info := g.match_sumtype_syms[i].info
-			match info {
-				table.SumType {
-					for typ in info.variants {
-						if g.table.get_type_symbol(typ).kind == .struct_ {
-							return false
-						}
-					}
-				}
-				else {}
-			}
-			return true
-		}
-	}
-	return false
 }
 
 fn (mut g Gen) concat_expr(node ast.ConcatExpr) {
