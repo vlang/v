@@ -54,12 +54,13 @@ fn test_for_string_in_map() {
 	}
 	assert acc == 'a: b, c: d, '
 
-	m2 := {'a': 3, 'b': 4}
+	mut m2 := {'a': 3, 'b': 4, 'c': 5}
+	m2.delete('b')
 	acc = ''
 	for k, v in m2 {
 		acc += '$k: $v, '
 	}
-	assert acc == 'a: 3, b: 4, '
+	assert acc == 'a: 3, c: 5, '
 }
 
 fn test_mut_for() {
