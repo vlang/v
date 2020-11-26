@@ -64,7 +64,6 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	if !is_html {
 		p.check(.string)
 	}
-	println('SSSS "$s"')
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
@@ -92,12 +91,11 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 		// println('path is now "$path"')
 	}
-	if true || p.pref.is_verbose {
+	if p.pref.is_verbose {
 		println('>>> compiling comptime template file "$path"')
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	v_code := tmpl.compile_file(path, tmp_fn_name)
-	println('done')
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
@@ -108,7 +106,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	if true || p.pref.is_verbose {
+	if p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for $path:')
 		println(v_code)
@@ -143,6 +141,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		is_vweb: true
 		vweb_tmpl: file
 		method_name: n
+		args_var: s
 	}
 }
 
