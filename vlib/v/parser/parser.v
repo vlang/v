@@ -1276,21 +1276,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .dollar {
 		return p.comptime_method_call(left)
 	}
-	mut name_pos := p.tok.position()
+	name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
-		name_pos = p.tok.position()
-		p.scope_register_it()
-		// wrong tok position when using defer
-		// defer {
-		// p.close_scope()
-		// }
 	} else if field_name == 'sort' {
 		p.open_scope()
-		name_pos = p.tok.position()
-		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {

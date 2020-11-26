@@ -1,6 +1,6 @@
-vlib/v/checker/tests/array_filter_anon_fn_err_a.vv:2:23: error: function needs exactly 1 argument
+vlib/v/checker/tests/array_filter_anon_fn_err_a.vv:2:24: error: function needs exactly 1 argument
     1 | fn main() {
     2 |     a := [1,2,3,4].filter(fn(a int, b int) bool { return a > 0 })
-      |                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                           ~~
     3 |     println(a)
     4 | }

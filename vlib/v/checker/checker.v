@@ -1050,15 +1050,15 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 	match arg_expr {
 		ast.AnonFn {
 			if arg_expr.decl.params.len > 1 {
-				c.error('function needs exactly 1 argument', call_expr.pos)
+				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
 			} else if is_map &&
 				(arg_expr.decl.return_type != elem_typ || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.source_name) $elem_sym.source_name {...}`',
-					call_expr.pos)
+					arg_expr.decl.pos)
 			} else if !is_map &&
 				(arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.source_name) bool {...}`',
-					call_expr.pos)
+					arg_expr.decl.pos)
 			}
 		}
 		ast.Ident {
@@ -1071,11 +1071,11 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 					c.error('function needs exactly 1 argument', call_expr.pos)
 				} else if is_map && (func.return_type != elem_typ || func.params[0].typ != elem_typ) {
 					c.error('type mismatch, should use `fn(a $elem_sym.source_name) $elem_sym.source_name {...}`',
-						call_expr.pos)
+						arg_expr.pos)
 				} else if !is_map &&
 					(func.return_type != table.bool_type || func.params[0].typ != elem_typ) {
 					c.error('type mismatch, should use `fn(a $elem_sym.source_name) bool {...}`',
-						call_expr.pos)
+						arg_expr.pos)
 				}
 			}
 		}
@@ -1110,13 +1110,15 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		is_sort := method_name == 'sort'
 		if is_filter_map || is_sort {
 			array_info := left_type_sym.info as table.Array
-			mut scope := c.file.scope.innermost(call_expr.pos.pos)
+			args_pos := call_expr.pos.pos + call_expr.name.len
+			mut scope := c.file.scope.innermost(args_pos)
 			if is_filter_map {
-				scope.update_var_type('it', array_info.elem_type)
+				// position of `it` doesn't matter
+				scope_register_it(mut scope, call_expr.pos, array_info.elem_type)
 			} else if is_sort {
 				c.fail_if_immutable(call_expr.left)
-				scope.update_var_type('a', array_info.elem_type)
-				scope.update_var_type('b', array_info.elem_type)
+				// position of `a` and `b` doesn't matter, they're the same
+				scope_register_ab(mut scope, call_expr.pos, array_info.elem_type)
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
 					if call_expr.args[0].expr !is ast.InfixExpr {
@@ -2251,11 +2253,28 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 	}
 }
 
-fn (mut c Checker) open_scope(mut parent ast.Scope, start_pos int) &ast.Scope {
-	mut s := ast.new_scope(parent, start_pos)
-	s.end_pos = parent.end_pos
-	parent.children << s
-	return s
+fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
+	s.register('it', ast.Var{
+		name: 'it'
+		pos: pos
+		typ: typ
+		is_used: true
+	})
+}
+
+fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
+	s.register('a', ast.Var{
+		name: 'a'
+		pos: pos
+		typ: typ
+		is_used: true
+	})
+	s.register('b', ast.Var{
+		name: 'b'
+		pos: pos
+		typ: typ
+		is_used: true
+	})
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {

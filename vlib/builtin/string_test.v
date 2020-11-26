@@ -816,39 +816,8 @@ fn test_double_quote_inter() {
 	assert '${a} ${b}' == "1 2"
 }
 
-fn test_string_map() {
-	$if windows {
-		// TODO
-		return
-	}
-	original := 'Hello'
-	println('original.len = $original.len')
-	a := original.map(fn (b byte) byte {
-		return b + 1
-	})
-	expected := 'Ifmmp'
-	println('a[0] = ' + a[0].str())
-	println('a[1] = ' + a[1].str())
-	println('a[2] = ' + a[2].str())
-	println('a[3] = ' + a[3].str())
-	println('a[4] = ' + a[4].str())
-	println('a.len = $a.len')
-	assert a.len == expected.len
-	assert a == expected
-
-	assert 'foo'.map(foo) == r'\ee'
-}
-
 fn foo(b byte) byte {
 	return b - 10
-}
-
-fn test_string_filter() {
-	foo := 'V is awesome!!!!'.filter(fn (b byte) bool {
-		return b != `!`
-	})
-	assert foo == 'V is awesome'
-	assert 'Alexander'.filter(filter) == 'Alexnder'
 }
 
 fn filter(b byte) bool {

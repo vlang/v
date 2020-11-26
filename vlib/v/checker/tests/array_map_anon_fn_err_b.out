@@ -1,6 +1,6 @@
-vlib/v/checker/tests/array_map_anon_fn_err_b.vv:2:20: error: type mismatch, should use `fn(a int) int {...}`
+vlib/v/checker/tests/array_map_anon_fn_err_b.vv:2:21: error: type mismatch, should use `fn(a int) int {...}`
     1 | fn main() {
     2 |     a := [1,2,3,4].map(fn(a string) string { return a })
-      |                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                        ~~
     3 |     println(a)
     4 | }
