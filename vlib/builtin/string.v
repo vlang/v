@@ -1490,34 +1490,6 @@ pub fn (s string) fields() []string {
 	return s.replace('\t', ' ').split(' ')
 }
 
-pub fn (s string) map(func fn(byte) byte) string {
-	unsafe {
-		mut res := malloc(s.len + 1)
-		for i in 0..s.len {
-			res[i] = func(s[i])
-		}
-		return tos(res, s.len)
-	}
-}
-
-pub fn (s string) filter(func fn(b byte) bool) string {
-	mut new_len := 0
-	mut buf := malloc(s.len + 1)
-	for i in 0 .. s.len {
-		mut b := s[i]
-		if func(b) {
-			unsafe {
-				buf[new_len] = b
-			}
-			new_len++
-		}
-	}
-	unsafe {
-		buf[new_len] = 0
-		return buf.vstring_with_len(new_len)
-	}
-}
-
 // Allows multi-line strings to be formatted in a way that removes white-space
 // before a delimeter. by default `|` is used.
 // Note: the delimiter has to be a byte at this time. That means surrounding
