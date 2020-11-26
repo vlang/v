@@ -406,20 +406,20 @@ fn (c CommonType) str() string {
 fn sumtype_match_with_string_interpolation(code int) string {
 	match code {
 		1 {
-		    bar1 := CommonType(5)
-			match bar1 {
+		    bar := CommonType(5)
+			match bar {
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
-				int { return "it's an int: $bar1" }
+				int { return "it's an int: $bar" }
 				string { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 			}
 		}
 		2 {
-			bar2 := CommonType('hello')
-			match bar2 {
-				string { return "it's a string: $bar2" }
+			bar := CommonType('hello')
+			match bar {
+				string { return "it's a string: $bar" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
@@ -428,53 +428,55 @@ fn sumtype_match_with_string_interpolation(code int) string {
 			}
 		}
 		3 {
-			bar3 := CommonType(Color.green)
-			match bar3 {
+			bar := CommonType(Color.green)
+			match bar {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
 				Color {
-					match bar3 {
-						.red { return 'red_$bar3'}
-						.green { return 'green_$bar3' }
-						.blue { return 'blue_$bar3' }
+					match bar {
+						.red { return 'red_$bar'}
+						.green { return 'green_$bar' }
+						.blue { return 'blue_$bar' }
 					}
 				}
 			}
 		}
 		4 {
-			bar4 := CommonType(1.5)
-			match bar4 {
+			bar := CommonType(1.5)
+			match bar {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
-				f64 { return "it's a f64: $bar4" }
+				f64 { return "it's a f64: $bar" }
 				bool { return "shouldn't happen" }
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
 		5 {
-			bar5 := CommonType(false)
-			match bar5 {
+			mut bar := CommonType('hello')
+			bar = CommonType(false)
+			match bar {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
-				bool { return "it's a bool: $bar5" }
+				bool { return "it's a bool: $bar" }
 				IntAndStr { return "shouldn't happen" }
 			}
 		}
 		6 {
-			bar6 := CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
-			match bar6 {
+			mut bar := CommonType(100)
+			bar = CommonType(IntAndStr{foo: 2, bar: 'hi', baz: &IntAndStr{foo: 3, bar: 'hello', baz: 0}})
+			match bar {
 				string { return "shouldn't happen" }
 				int { return "shouldn't happen" }
 				Color { return "shouldn't happen" }
 				f64 { return "shouldn't happen" }
 				bool { return "shouldn't happen" }
-				IntAndStr { return "it's an IntAndStr: ${bar6.foo}_${bar6.bar}_${bar6.baz.foo}_${bar6.baz.bar}" }
+				IntAndStr { return "it's an IntAndStr: ${bar.foo}_${bar.bar}_${bar.baz.foo}_${bar.baz.bar}" }
 			}
 		}
 		else { return 'wrong' }
