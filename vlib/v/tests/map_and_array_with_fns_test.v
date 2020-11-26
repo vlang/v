@@ -1,8 +1,8 @@
-fn foo(a, b string) int {
+fn foo(a string, b string) int {
 	return 10 + a.len + b.len
 }
 
-fn foo2(a, b string) int {
+fn foo2(a string, b string) int {
 	return 20 + a.len + b.len
 }
 

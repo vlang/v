@@ -21,7 +21,7 @@ fn get_tests_in_dir(dir string) []string {
 	return tests
 }
 
-fn check_path(vexe, dir string, tests []string) int {
+fn check_path(vexe string, dir string, tests []string) int {
 	mut nb_fail := 0
 	paths := vtest.filter_vtest_only(tests, {
 		basepath: dir

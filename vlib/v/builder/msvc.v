@@ -23,7 +23,7 @@ struct MsvcResult {
 
 // shell32 for RegOpenKeyExW etc
 // Mimics a HKEY
-type RegKey voidptr
+type RegKey = voidptr
 
 // Taken from the windows SDK
 const (
@@ -84,19 +84,20 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		path := 'SOFTWARE\\Microsoft\\Windows Kits\\Installed Roots'
 		rc := C.RegOpenKeyEx(hkey_local_machine, path.to_wide(), 0, key_query_value | key_wow64_32key |
 			key_enumerate_sub_keys, &root_key)
-		defer {
-			C.RegCloseKey(root_key)
-		}
+		// TODO: Fix defer inside ifs
+		// defer {
+		// C.RegCloseKey(root_key)
+		// }
 		if rc != 0 {
 			return error('Unable to open root key')
 		}
 		// Try and find win10 kit
 		kit_root := find_windows_kit_internal(root_key, ['KitsRoot10', 'KitsRoot81']) or {
+			C.RegCloseKey(root_key)
 			return error('Unable to find a windows kit')
 		}
 		kit_lib := kit_root + 'Lib'
-		// println(kit_lib)
-		files := os.ls(kit_lib)?
+		files := os.ls(kit_lib) ?
 		mut highest_path := ''
 		mut highest_int := 0
 		for f in files {
@@ -109,7 +110,7 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 		}
 		kit_lib_highest := kit_lib + '\\$highest_path'
 		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
-		// println('$kit_lib_highest $kit_include_highest')
+		C.RegCloseKey(root_key)
 		return WindowsKit{
 			um_lib_path: kit_lib_highest + '\\um\\$host_arch'
 			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$host_arch'
@@ -127,7 +128,7 @@ struct VsInstallation {
 	exe_path     string
 }
 
-fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
+fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	$if !windows {
 		return error('Host OS does not support finding a Visual Studio installation')
 	}
@@ -135,7 +136,7 @@ fn find_vs(vswhere_dir, host_arch string) ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath')?
+	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
 	res_output := res.output.trim_right('\r\n')
 	// println('res: "$res"')
 	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
@@ -293,12 +294,7 @@ pub fn (mut v Builder) cc_msvc() {
 	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
-	if v.pref.is_verbose {
-		println('\n========== cl cmd line:')
-		println(cmd)
-		println('==========\n')
-	}
-	// println('$cmd')
+	v.show_cc(cmd, out_name_cmd_line, args)
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		println(err)
@@ -307,8 +303,10 @@ pub fn (mut v Builder) cc_msvc() {
 	}
 	diff := time.ticks() - ticks
 	v.timing_message('C msvc', diff)
-	if res.exit_code != 0 {
-		verror(res.output)
+	if v.pref.show_c_output {
+		v.show_c_compiler_output(res)
+	} else {
+		v.post_process_c_compiler_output(res)
 	}
 	// println(res)
 	// println('C OUTPUT:')
@@ -330,7 +328,7 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 		return
 	}
 	println('$obj_path not found, building it (with msvc)...')
-	cfiles := '${path[..path.len-2]}.c'
+	cfiles := '${path[..path.len - 2]}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')

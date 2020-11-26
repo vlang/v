@@ -5,6 +5,7 @@ module builder
 
 import time
 import os
+import rand
 import v.pref
 import v.util
 
@@ -21,13 +22,17 @@ fn get_vtmp_folder() string {
 	return vtmp
 }
 
-fn get_vtmp_filename(base_file_name, postfix string) string {
+fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
 	vtmp := get_vtmp_folder()
-	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + postfix))
+	mut uniq := ''
+	if !b.pref.reuse_tmpc {
+		uniq = '.$rand.u64()'
+	}
+	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'))
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
-	odir := os.base_dir(pref.out_name)
+	odir := os.dir(pref.out_name)
 	// When pref.out_name is just the name of an executable, i.e. `./v -o executable main.v`
 	// without a folder component, just use the current folder instead:
 	mut output_folder := odir
@@ -55,9 +60,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 		println('compilation took: ${util.bold(sw.elapsed().milliseconds().str())} ms')
 	}
 	// running does not require the parsers anymore
-	unsafe {
-		b.myfree()
-	}
+	unsafe {b.myfree()}
 	if pref.is_test || pref.is_run {
 		b.run_compiled_executable_and_exit()
 	}
@@ -68,13 +71,14 @@ pub fn compile(command string, pref &pref.Preferences) {
 fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
-	unsafe {
-		b.parsed_files.free()
-	}
+	unsafe {b.parsed_files.free()}
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {
 	if b.pref.skip_running {
+		return
+	}
+	if b.pref.only_check_syntax {
 		return
 	}
 	if b.pref.os == .ios && b.pref.is_ios_simulator == false {
@@ -92,9 +96,11 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
 		os.exec('xcrun simctl launch $device $bundle_id')
 	} else {
-		mut cmd := '"$b.pref.out_name"'
+		exefile := os.real_path(b.pref.out_name)
+		mut cmd := '"$exefile"'
 		if b.pref.backend == .js {
-			cmd = 'node "${b.pref.out_name}.js"'
+			jsfile := os.real_path('${b.pref.out_name}.js')
+			cmd = 'node "$jsfile"'
 		}
 		for arg in b.pref.run_args {
 			// Determine if there are spaces in the parameters
@@ -108,10 +114,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			println('command to run executable: $cmd')
 		}
 		if b.pref.is_test {
-			ret := os.system(cmd)
-			if ret != 0 {
-				exit(1)
-			}
+			exit(os.system(cmd))
 		}
 		if b.pref.is_run {
 			ret := os.system(cmd)
@@ -142,7 +145,7 @@ fn (mut v Builder) set_module_lookup_paths() {
 	// 3.2) search in ~/.vmodules/ (i.e. modules installed with vpm)
 	v.module_search_paths = []
 	if v.pref.is_test {
-		v.module_search_paths << os.base_dir(v.compiled_dir) // pdir of _test.v
+		v.module_search_paths << os.dir(v.compiled_dir) // pdir of _test.v
 	}
 	v.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
@@ -231,10 +234,6 @@ pub fn (v &Builder) get_user_files() []string {
 		user_files << os.join_path(preludes_path, 'profiled_program.v')
 	}
 	is_test := dir.ends_with('_test.v')
-	if v.pref.is_run && is_test {
-		println('use `v x_test.v` instead of `v run x_test.v`')
-		exit(1)
-	}
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
@@ -263,7 +262,7 @@ pub fn (v &Builder) get_user_files() []string {
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
-		dir = os.base_dir(single_test_v_file)
+		dir = os.dir(single_test_v_file)
 	}
 	does_exist := os.exists(dir)
 	if !does_exist {

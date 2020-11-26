@@ -58,7 +58,7 @@ const(
 // This implementation is the quickest with gcc -O2
 [inline]
 pub fn (nn int) str_l(max int) string {
-	mut n := nn
+	mut n := i64(nn)
 	mut d := 0
 	if n == 0 {
 		return '0'
@@ -76,8 +76,8 @@ pub fn (nn int) str_l(max int) string {
 		buf[index--] = `\0`
 	}
 	for n > 0 {
-		n1 := n / 100
-		d = ((n - (n1 * 100)) << 1)
+		n1 := int(n / 100)
+		d = ((int(n) - (n1 * 100)) << 1)
 		n = n1
 		unsafe {
 			buf[index--] = digit_pairs.str[d++]
@@ -368,6 +368,20 @@ pub fn (nn byteptr) str() string {
 	return u64(nn).hex()
 }
 
+// pub fn (nn byte) hex_full() string { return u64_to_hex(nn, 2) }
+// pub fn (nn i8)  hex_full() string { return u64_to_hex(byte(nn), 2) }
+// pub fn (nn u16) hex_full() string { return u64_to_hex(nn, 4) }
+// pub fn (nn i16) hex_full() string { return u64_to_hex(u16(nn), 4) }
+// pub fn (nn u32) hex_full() string { return u64_to_hex(nn, 8) }
+// pub fn (nn int) hex_full() string { return u64_to_hex(u32(nn), 8) }
+pub fn (nn u64) hex_full() string {
+	return u64_to_hex(nn, 16)
+}
+
+// pub fn (nn i64) hex_full() string { return u64_to_hex(u64(nn), 16) }
+// pub fn (nn any_int) hex_full() string { return u64_to_hex(nn, 16) }
+// pub fn (nn voidptr) hex_full() string { return u64_to_hex(nn, 16) }
+// pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (b byte) str() string {
 	// TODO
 	//return int(b).str_l(7)
@@ -380,6 +394,22 @@ pub fn (b byte) str() string {
 		str.str[1] = `\0`
 	}
 	//println(str)
+	return str
+}
+
+pub fn (b byte) str_escaped() string {
+	str := match b {
+		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
+		7 { '`\\a`' }
+		8 { '`\\b`' }
+		9 { '`\\t`' }
+		10 { '`\\n`' }
+		11 { '`\\v`' }
+		12 { '`\\f`' }
+		13 { '`\\r`' }
+		32...126 { b.str() }
+		else { '0x' + b.hex() }
+	}
 	return str
 }
 

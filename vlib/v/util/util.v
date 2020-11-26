@@ -4,6 +4,7 @@
 module util
 
 import os
+import time
 import v.pref
 import v.vmod
 
@@ -26,9 +27,7 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {
-		C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)
-	}
+	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)}
 	return tos_clone(buf)
 }
 
@@ -98,9 +97,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {
-		C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)
-	}
+	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)}
 	return tos_clone(buf)
 }
 
@@ -111,9 +108,10 @@ pub fn set_vroot_folder(vroot_path string) {
 	// can return it later to whoever needs it:
 	vname := if os.user_os() == 'windows' { 'v.exe' } else { 'v' }
 	os.setenv('VEXE', os.real_path(os.join_path(vroot_path, vname)), true)
+	os.setenv('VCHILD', 'true', true)
 }
 
-pub fn resolve_vroot(str, dir string) ?string {
+pub fn resolve_vroot(str string, dir string) ?string {
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_folder(dir)
 	if vmod_file_location.vmod_file.len == 0 {
@@ -128,9 +126,10 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	set_vroot_folder(vroot)
-	tool_args := args_quote_paths_with_spaces(args)
-	tool_exe := path_of_executable(os.real_path('$vroot/cmd/tools/$tool_name'))
-	tool_source := os.real_path('$vroot/cmd/tools/${tool_name}.v')
+	tool_args := args_quote_paths(args)
+	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
+	tool_exe := path_of_executable(tool_basename)
+	tool_source := tool_basename + '.v'
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
@@ -138,6 +137,43 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 		println('launch_tool tool_args   : $tool_args')
 		println('launch_tool tool_command: $tool_command')
 	}
+	should_compile := should_recompile_tool(vexe, tool_source)
+	if is_verbose {
+		println('launch_tool should_compile: $should_compile')
+	}
+	if should_compile {
+		emodules := external_module_dependencies_for_tool[tool_name]
+		for emodule in emodules {
+			check_module_is_installed(emodule, is_verbose) or {
+				panic(err)
+			}
+		}
+		mut compilation_command := '"$vexe" '
+		compilation_command += '"$tool_source"'
+		if is_verbose {
+			println('Compiling $tool_name with: "$compilation_command"')
+		}
+		tool_compilation := os.exec(compilation_command) or {
+			panic(err)
+		}
+		if tool_compilation.exit_code != 0 {
+			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
+			exit(1)
+		}
+	}
+	if is_verbose {
+		println('launch_tool running tool command: $tool_command ...')
+	}
+	exit(os.system(tool_command))
+}
+
+// NB: should_recompile_tool/2 compares unix timestamps that have 1 second resolution
+// That means that a tool can get recompiled twice, if called in short succession.
+// TODO: use a nanosecond mtime timestamp, if available.
+pub fn should_recompile_tool(vexe string, tool_source string) bool {
+	sfolder := os.dir(tool_source)
+	tool_name := os.base(tool_source).replace('.v', '')
+	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
 	// TODO Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
@@ -161,50 +197,24 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 			should_compile = true
 		}
 	}
-	if is_verbose {
-		println('launch_tool should_compile: $should_compile')
-	}
-	if should_compile {
-		emodules := external_module_dependencies_for_tool[tool_name]
-		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or {
-				panic(err)
-			}
-		}
-		mut compilation_command := '"$vexe" '
-		compilation_command += '"$tool_source"'
-		if is_verbose {
-			println('Compiling $tool_name with: "$compilation_command"')
-		}
-		tool_compilation := os.exec(compilation_command) or {
-			panic(err)
-		}
-		if tool_compilation.exit_code != 0 {
-			mut err := 'Permission denied'
-			if !tool_compilation.output.contains(err) {
-				err = '\n$tool_compilation.output'
-			}
-			eprintln('cannot compile `$tool_source`: $err')
-			exit(1)
-		}
-	}
-	if is_verbose {
-		println('launch_tool running tool command: $tool_command ...')
-	}
-	exit(os.system(tool_command))
+	return should_compile
 }
 
-pub fn quote_path_with_spaces(s string) string {
-	if s.contains(' ') {
-		return '"$s"'
+pub fn quote_path(s string) string {
+	mut qs := s
+	if qs.contains('&') {
+		qs = qs.replace('&', '\\&')
 	}
-	return s
+	if qs.contains(' ') {
+		return '"$qs"'
+	}
+	return qs
 }
 
-pub fn args_quote_paths_with_spaces(args []string) string {
+pub fn args_quote_paths(args []string) string {
 	mut res := []string{}
 	for a in args {
-		res << quote_path_with_spaces(a)
+		res << quote_path(a)
 	}
 	return res.join(' ')
 }
@@ -217,9 +227,14 @@ pub fn path_of_executable(path string) string {
 }
 
 pub fn read_file(file_path string) ?string {
-	mut raw_text := os.read_file(file_path) or {
+	raw_text := os.read_file(file_path) or {
 		return error('failed to open $file_path')
 	}
+	return skip_bom(raw_text)
+}
+
+pub fn skip_bom(file_content string) string {
+	mut raw_text := file_content
 	// BOM check
 	if raw_text.len >= 3 {
 		unsafe {
@@ -235,7 +250,7 @@ pub fn read_file(file_path string) ?string {
 }
 
 [inline]
-pub fn imin(a, b int) int {
+pub fn imin(a int, b int) int {
 	return if a < b {
 		a
 	} else {
@@ -244,7 +259,7 @@ pub fn imin(a, b int) int {
 }
 
 [inline]
-pub fn imax(a, b int) int {
+pub fn imax(a int, b int) int {
 	return if a > b {
 		a
 	} else {
@@ -288,7 +303,7 @@ fn non_empty(arg []string) []string {
 }
 
 pub fn check_module_is_installed(modulename string, is_verbose bool) ?bool {
-	mpath := os.join_path(os.home_dir(), '.vmodules', modulename)
+	mpath := os.join_path(os.vmodules_dir(), modulename)
 	mod_v_file := os.join_path(mpath, 'v.mod')
 	murl := 'https://github.com/vlang/$modulename'
 	if is_verbose {
@@ -360,17 +375,20 @@ pub fn no_dots(s string) string {
 	return s.replace('.', '__')
 }
 
+const (
+	map_prefix = 'map[string]'
+)
+
 // no_cur_mod - removes cur_mod. prefix from typename,
 // but *only* when it is at the start, i.e.:
 // no_cur_mod('vproto.Abdcdef', 'proto') == 'vproto.Abdcdef'
 // even though proto. is a substring
-pub fn no_cur_mod(typename, cur_mod string) string {
+pub fn no_cur_mod(typename string, cur_mod string) string {
 	mut res := typename
-	map_prefix := 'map[string]'
 	mod_prefix := cur_mod + '.'
 	has_map_prefix := res.starts_with(map_prefix)
 	if has_map_prefix {
-		res = res.replace(map_prefix, '')
+		res = res.replace_once(map_prefix, '')
 	}
 	no_symbols := res.trim_left('&[]')
 	should_shorten := no_symbols.starts_with(mod_prefix)
@@ -381,4 +399,24 @@ pub fn no_cur_mod(typename, cur_mod string) string {
 		res = map_prefix + res
 	}
 	return res
+}
+
+pub fn prepare_tool_when_needed(source_name string) {
+	vexe := os.getenv('VEXE')
+	vroot := os.dir(vexe)
+	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
+	if should_recompile_tool(vexe, stool) {
+		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
+		recompile_file(vexe, stool)
+	}
+}
+
+pub fn recompile_file(vexe string, file string) {
+	cmd := '$vexe $file'
+	println('recompilation command: $cmd')
+	recompile_result := os.system(cmd)
+	if recompile_result != 0 {
+		eprintln('could not recompile $file')
+		exit(2)
+	}
 }

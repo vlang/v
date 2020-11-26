@@ -230,7 +230,7 @@ fn simple_log(txt string) {
 * Token Structs
 *
 ******************************************************************************/
-pub type FnValidator fn (byte) bool
+pub type FnValidator = fn (byte) bool
 struct Token{
 mut:
 	ist rune
@@ -293,7 +293,7 @@ mut:
 	group_stack_index int = -1  // continuous save on capturing groups
 }
 
-pub type FnLog fn (string)
+pub type FnLog = fn (string)
 
 pub
 struct RE {
@@ -1346,7 +1346,7 @@ pub fn (re RE) get_query() string {
 
 	mut i := 0
 	for i < re.prog.len && re.prog[i].ist != ist_prog_end && re.prog[i].ist != 0{
-		tk := &re.prog[i]
+		tk := unsafe { &re.prog[i] }
 		ch := tk.ist
 
 		// GROUP start
@@ -1650,7 +1650,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// manage ist_dot_char
 
-			m_state == .end
+			m_state = .end
 			break
 			//return no_match_found,0
 		}
@@ -1822,7 +1822,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//println("ist_or_branch False pc: $pc")
 				}
 				re.prog[pc].reset()
-				m_state == .ist_load
+				m_state = .ist_load
 				continue
 			}
 

@@ -63,9 +63,15 @@ fn (mut p Parser) check_cross_variables(exprs []ast.Expr, val ast.Expr) bool {
 				}
 			}
 		}
-		ast.InfixExpr { return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right) }
-		ast.PrefixExpr { return p.check_cross_variables(exprs, val_.right) }
-		ast.PostfixExpr { return p.check_cross_variables(exprs, val_.expr) }
+		ast.InfixExpr {
+			return p.check_cross_variables(exprs, val_.left) || p.check_cross_variables(exprs, val_.right)
+		}
+		ast.PrefixExpr {
+			return p.check_cross_variables(exprs, val_.right)
+		}
+		ast.PostfixExpr {
+			return p.check_cross_variables(exprs, val_.expr)
+		}
 		ast.SelectorExpr {
 			for expr in exprs {
 				if expr.str() == val.str() {
@@ -105,6 +111,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 		}
 	}
+	mut is_static := false
 	for i, lx in left {
 		match mut lx {
 			ast.Ident {
@@ -114,7 +121,15 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					}
 					mut share := table.ShareType(0)
 					if lx.info is ast.IdentVar {
-						share = (lx.info as ast.IdentVar).share
+						iv := lx.info as ast.IdentVar
+						share = iv.share
+						if iv.is_static {
+							if !p.pref.translated {
+								p.error_with_pos('static variables are supported only in -translated mode',
+									lx.pos)
+							}
+							is_static = true
+						}
 					}
 					mut v := ast.Var{
 						name: lx.name
@@ -157,5 +172,6 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		pos: pos
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr
+		is_static: is_static
 	}
 }

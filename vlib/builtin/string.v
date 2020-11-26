@@ -125,7 +125,7 @@ pub fn tos_lit(s charptr) string {
 pub fn (bp byteptr) vstring() string {
 	return string{
 		str: bp
-		len: unsafe {C.strlen(bp)}
+		len: unsafe {C.strlen(charptr(bp))}
 	}
 }
 
@@ -134,6 +134,24 @@ pub fn (bp byteptr) vstring() string {
 pub fn (bp byteptr) vstring_with_len(len int) string {
 	return string{
 		str: bp
+		len: len
+	}
+}
+
+// charptr.vstring() - converts C char* to V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring() string {
+	return string{
+		str: byteptr(cp)
+		len: unsafe {C.strlen(cp)}
+	}
+}
+
+// charptr.vstring_with_len() - converts C char* to V string. NB: the string data is reused, NOT copied.
+[unsafe]
+pub fn (cp charptr) vstring_with_len(len int) string {
+	return string{
+		str: byteptr(cp)
 		len: len
 	}
 }
@@ -169,20 +187,25 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 	return tos_clone(cstr)
 }
 
-pub fn (s string) replace_once(rep, with string) string {
+pub fn (s string) replace_once(rep string, with string) string {
 	index := s.index(rep) or {
 		return s.clone()
 	}
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
 }
 
-pub fn (s string) replace(rep, with string) string {
+pub fn (s string) replace(rep string, with string) string {
 	if s.len == 0 || rep.len == 0 {
 		return s.clone()
 	}
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{}
+	defer  {
+		unsafe {
+			idxs.free()
+		}
+	}
 	mut idx := 0
 	for {
 		idx = s.index_after(rep, idx)
@@ -239,7 +262,7 @@ struct RepIndex {
 	val_idx int
 }
 
-fn compare_rep_index(a, b &RepIndex) int {
+fn compare_rep_index(a &RepIndex, b &RepIndex) int {
 	if a.idx < b.idx {
 		return -1
 	}
@@ -566,12 +589,12 @@ fn (s string) right(n int) string {
 }
 
 // used internally for [2..4]
-fn (s string) substr2(start, _end int, end_max bool) string {
+fn (s string) substr2(start int, _end int, end_max bool) string {
 	end := if end_max { s.len } else { _end }
 	return s.substr(start, end)
 }
 
-pub fn (s string) substr(start, end int) string {
+pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr($start, $end) out of bounds (len=$s.len)')
@@ -898,7 +921,7 @@ pub fn (s string) is_title() bool {
 
 // 'hey [man] how you doin'
 // find_between('[', ']') == 'man'
-pub fn (s string) find_between(start, end string) string {
+pub fn (s string) find_between(start string, end string) string {
 	start_pos := s.index(start) or {
 		return ''
 	}
@@ -1004,7 +1027,7 @@ pub fn (s string) trim_suffix(str string) string {
 	return s
 }
 
-pub fn compare_strings(a, b &string) int {
+pub fn compare_strings(a &string, b &string) int {
 	if a.lt(b) {
 		return -1
 	}
@@ -1014,7 +1037,17 @@ pub fn compare_strings(a, b &string) int {
 	return 0
 }
 
-fn compare_strings_by_len(a, b &string) int {
+fn compare_strings_reverse(a &string, b &string) int {
+	if a.lt(b) {
+		return 1
+	}
+	if a.gt(b) {
+		return -1
+	}
+	return 0
+}
+
+fn compare_strings_by_len(a &string, b &string) int {
 	if a.len < b.len {
 		return -1
 	}
@@ -1024,7 +1057,7 @@ fn compare_strings_by_len(a, b &string) int {
 	return 0
 }
 
-fn compare_lower_strings(a, b &string) int {
+fn compare_lower_strings(a &string, b &string) int {
 	aa := a.to_lower()
 	bb := b.to_lower()
 	return compare_strings(aa, bb)
@@ -1070,7 +1103,7 @@ pub fn (s string) ustring() ustring {
 // A hack that allows to create ustring without allocations.
 // It's called from functions like draw_text() where we know that the string is going to be freed
 // right away. Uses global buffer for storing runes []int array.
-__global g_ustring_runes []int
+__global ( g_ustring_runes []int )
 
 pub fn (s string) ustring_tmp() ustring {
 	if g_ustring_runes.len == 0 {
@@ -1190,7 +1223,7 @@ pub fn (u ustring) count(substr ustring) int {
 	return 0 // TODO can never get here - v doesn't know that
 }
 
-pub fn (u ustring) substr(_start, _end int) string {
+pub fn (u ustring) substr(_start int, _end int) string {
 	$if !no_bounds_checking? {
 		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
 			panic('substr($_start, $_end) out of bounds (len=$u.len)')
@@ -1455,34 +1488,6 @@ pub fn (s string) repeat(count int) string {
 pub fn (s string) fields() []string {
 	// TODO do this in a better way
 	return s.replace('\t', ' ').split(' ')
-}
-
-pub fn (s string) map(func fn(byte) byte) string {
-	unsafe {
-		mut res := malloc(s.len + 1)
-		for i in 0..s.len {
-			res[i] = func(s[i])
-		}
-		return tos(res, s.len)
-	}
-}
-
-pub fn (s string) filter(func fn(b byte) bool) string {
-	mut new_len := 0
-	mut buf := malloc(s.len + 1)
-	for i in 0 .. s.len {
-		mut b := s[i]
-		if func(b) {
-			unsafe {
-				buf[new_len] = b
-			}
-			new_len++
-		}
-	}
-	unsafe {
-		buf[new_len] = 0
-		return buf.vstring_with_len(new_len)
-	}
 }
 
 // Allows multi-line strings to be formatted in a way that removes white-space

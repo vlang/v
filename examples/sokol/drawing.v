@@ -55,7 +55,7 @@ fn draw() {
 	// line(0, 0, 500, 500)
 }
 
-fn draw_hollow_rect(x, y, w, h f32) {
+fn draw_hollow_rect(x f32, y f32, w f32, h f32) {
 	sgl.begin_line_strip()
 	sgl.v2f(x, y)
 	sgl.v2f(x + w, y)
@@ -65,7 +65,7 @@ fn draw_hollow_rect(x, y, w, h f32) {
 	sgl.end()
 }
 
-fn draw_filled_rect(x, y, w, h f32) {
+fn draw_filled_rect(x f32, y f32, w f32, h f32) {
 	sgl.begin_quads()
 	sgl.v2f(x, y)
 	sgl.v2f(x + w, y)

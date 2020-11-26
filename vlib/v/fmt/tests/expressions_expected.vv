@@ -15,7 +15,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 			[`E`, `F`, `G`, `e`, `f`, `g`, `d`, `u`, `x`, `X`, `o`, `c`, `s`, `p`, `_`] {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
-		if node.precisions[i] != 0 && !typ.is_float() {
+		if node.precisions[i] != 987698 && !typ.is_float() {
 			c.error('precision specification only valid for float types', node.fmt_poss[i])
 		}
 		if node.pluss[i] && !typ.is_number() {
@@ -36,7 +36,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 	return table.string_type
 }
 
-fn get_some_val(a_test, b_test, c_test, d_test, e_test, f_test f64) f64 {
+fn get_some_val(a_test f64, b_test f64, c_test f64, d_test f64, e_test f64, f_test f64) f64 {
 	return a_test * b_test * c_test * d_test +
 		e_test * f_test * a_test * d_test + a_test * b_test * c_test
 }
@@ -59,7 +59,7 @@ fn main() {
 	}
 }
 
-fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp, str_fn_name string) {
+fn gen_str_for_multi_return(mut g gen.Gen, info table.MultiReturn, styp string, str_fn_name string) {
 	for i, _ in info.types {
 		println('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 	}

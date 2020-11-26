@@ -37,7 +37,7 @@ mut:
 	values   [11]voidptr // TODO: Should use `max_len`
 }
 
-fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`
+fn new_sorted_map(n int, value_bytes int) SortedMap { // TODO: Remove `n`
 	return SortedMap {
 		value_bytes: value_bytes
 		root: new_node()
@@ -45,7 +45,7 @@ fn new_sorted_map(n, value_bytes int) SortedMap { // TODO: Remove `n`
 	}
 }
 
-fn new_sorted_map_init(n, value_bytes int, keys &string, values voidptr) SortedMap {
+fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) SortedMap {
 	mut out := new_sorted_map(n, value_bytes)
 	for i in 0 .. n {
 		unsafe {

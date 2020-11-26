@@ -2,7 +2,7 @@ module strings
 // #-js
 // use levenshtein distance algorithm to calculate
 // the distance between between two strings (lower is closer)
-pub fn levenshtein_distance(a, b string) int {
+pub fn levenshtein_distance(a string, b string) int {
 	mut f := [0].repeat(b.len + 1)
 	for j in 0..f.len {
 		f[j] = j
@@ -29,7 +29,7 @@ pub fn levenshtein_distance(a, b string) int {
 
 // use levenshtein distance algorithm to calculate
 // how similar two strings are as a percentage (higher is closer)
-pub fn levenshtein_distance_percentage(a, b string) f32 {
+pub fn levenshtein_distance_percentage(a string, b string) f32 {
 	d := levenshtein_distance(a, b)
 	l := if a.len >= b.len { a.len } else { b.len }
 	return (1.00 - f32(d) / f32(l)) * 100.00
@@ -38,7 +38,7 @@ pub fn levenshtein_distance_percentage(a, b string) f32 {
 // implementation of Sørensen–Dice coefficient.
 // find the similarity between two strings.
 // returns coefficient between 0.0 (not similar) and 1.0 (exact match).
-pub fn dice_coefficient(s1, s2 string) f32 {
+pub fn dice_coefficient(s1 string, s2 string) f32 {
 	if s1.len == 0 || s2.len == 0 {
 		return 0.0
 	}

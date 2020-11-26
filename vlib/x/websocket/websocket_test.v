@@ -2,10 +2,12 @@ import x.websocket
 import time
 
 // Tests with external ws & wss servers
-fn test_ws() ? {
+fn test_ws() {
 	go start_server()
 	time.sleep_ms(100)
-	ws_test('ws://localhost:30000')?
+	ws_test('ws://localhost:30000') or {
+		assert false
+	}
 }
 
 fn start_server() ? {
@@ -16,10 +18,11 @@ fn start_server() ? {
 		// Here you can look att the client info and accept or not accept
 		// just returning a true/false
 		if s.resource_name != '/' {
+			panic('unexpected resource name in test')
 			return false
 		}
 		return true
-	})?
+	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
 		// payload := if msg.payload.len == 0 { '' } else { string(msg.payload, msg.payload.len) }
 		// println('server client ($ws.id) got message: opcode: $msg.opcode, payload: $payload')
@@ -37,7 +40,7 @@ fn start_server() ? {
 
 fn ws_test(uri string) ? {
 	eprintln('connecting to $uri ...')
-	mut ws := websocket.new_client(uri)?
+	mut ws := websocket.new_client(uri) ?
 	ws.on_open(fn (mut ws websocket.Client) ? {
 		println('open!')
 		ws.pong()
@@ -61,11 +64,15 @@ fn ws_test(uri string) ? {
 			println('Binary message: $msg')
 		}
 	})
-	ws.connect()
+	ws.connect() or {
+		panic('fail to connect')
+	}
 	go ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame)?
+		ws.write(msg.bytes(), .text_frame) or {
+			panic('fail to write to websocket')
+		}
 		// sleep to give time to recieve response before send a new one
 		time.sleep_ms(100)
 	}

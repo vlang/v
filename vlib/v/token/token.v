@@ -43,12 +43,12 @@ pub enum Kind {
 	amp
 	hash
 	dollar
+	at // @
 	str_dollar
 	left_shift
 	right_shift
 	not_in // !in
 	not_is // !is
-	// at // @
 	assign // =
 	decl_assign // :=
 	plus_assign // +=
@@ -137,6 +137,38 @@ const (
 	.right_shift_assign, .left_shift_assign]
 	nr_tokens = int(Kind._end_)
 )
+
+// @FN => will be substituted with the name of the current V function
+// @MOD => will be substituted with the name of the current V module
+// @STRUCT => will be substituted with the name of the current V struct
+// @VEXE => will be substituted with the path to the V compiler
+// @FILE => will be substituted with the path of the V source file
+// @LINE => will be substituted with the V line number where it appears (as a string).
+// @COLUMN => will be substituted with the column where it appears (as a string).
+// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
+// @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
+// This allows things like this:
+// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+// ... which is useful while debugging/tracing
+//
+// @VROOT is special and handled in places like '#include ...'
+// @<type> is allowed for keyword variable names. E.g. 'type'
+pub enum AtKind {
+	unknown
+	fn_name
+	mod_name
+	struct_name
+	vexe_path
+	file_path
+	line_nr
+	column_nr
+	vhash
+	vmod_file
+}
+const (
+	valid_at_tokens = ['@FN','@MOD','@STRUCT','@VEXE','@FILE','@LINE','@COLUMN','@VHASH','@VMOD_FILE']
+)
+
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]Kind {
@@ -178,7 +210,6 @@ fn build_token_str() []string {
 	s[Kind.comma] = ','
 	s[Kind.not_in] = '!in'
 	s[Kind.not_is] = '!is'
-	// s[Kind.at] = '@'
 	s[Kind.semicolon] = ';'
 	s[Kind.colon] = ':'
 	s[Kind.arrow] = '<-'
@@ -212,6 +243,7 @@ fn build_token_str() []string {
 	s[Kind.comment] = '// comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
+	s[Kind.at] = '@'
 	s[Kind.str_dollar] = '$2'
 	s[Kind.key_assert] = 'assert'
 	s[Kind.key_struct] = 'struct'
@@ -329,9 +361,10 @@ pub fn build_precedences() []Precedence {
 
 	p[Kind.lsbr] = .index
 	p[Kind.dot] = .call
-	// `++` | `--`
+	// `++` | `--` | `?`
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
+	p[Kind.question] = .postfix
 	// `*` |  `/` | `%` | `<<` | `>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
@@ -406,6 +439,10 @@ pub fn (tok Kind) is_relational() bool {
 
 pub fn (k Kind) is_start_of_type() bool {
 	return k in [.name, .lpar, .amp, .lsbr, .question]
+}
+
+pub fn (kind Kind) is_prefix() bool {
+	return kind in [.minus, .amp, .mul, .not, .bit_not]
 }
 
 pub fn (kind Kind) is_infix() bool {

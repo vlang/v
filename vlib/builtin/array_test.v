@@ -1032,3 +1032,29 @@ fn test_direct_array_access_via_ptr() {
 	}
 }
 
+fn test_push_arr_string_free() {
+	mut lines := ['hi']
+	s := 'a' + 'b'
+	lines << s
+	s.free() // make sure the data in the array is valid after freeing the string
+	println(lines)
+	assert lines.len == 2
+	assert lines[0] == 'hi'
+	assert lines[1] == 'ab'
+}
+
+const (
+	grid_size_1 = 2
+	grid_size_2 = 3
+	grid_size_3 = 4
+	cell_value = 123
+)
+
+fn test_multidimensional_array_initialization_with_consts() {
+	mut data := [][][]int{ len: grid_size_1, init: [][]int{ len: grid_size_2, init: []int{ len: grid_size_3, init: cell_value } } }
+	assert data.len == grid_size_1
+	assert data[0].len == grid_size_2
+	assert data[0][0].len == grid_size_3
+	assert data[0][0][0] == cell_value
+	assert data[1][1][1] == cell_value
+}

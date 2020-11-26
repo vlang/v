@@ -31,7 +31,9 @@ fn (mut app App) int_method2() int {
 fn (mut app App) string_arg(x string) {
 }
 
-fn no_lines(s string) string { return s.replace('\n', ' ') }
+fn no_lines(s string) string {
+	return s.replace('\n', ' ')
+}
 
 fn test_comptime_for() {
 	println(@FN)
@@ -46,13 +48,13 @@ fn test_comptime_for_with_if() {
 	println(@FN)
 	$for method in App.methods {
 		println('  method: ' + no_lines('$method'))
-		$if method.Type is fn() {
+		$if method.typ is fn () {
 			assert method.name in ['run', 'method2']
 		}
-		$if method.ReturnType is int {
+		$if method.return_type is int {
 			assert method.name in ['int_method1', 'int_method2']
 		}
-		$if method.args[0].Type is string {
+		$if method.args[0].typ is string {
 			assert method.name == 'string_arg'
 		}
 	}
@@ -62,10 +64,10 @@ fn test_comptime_for_fields() {
 	println(@FN)
 	$for field in App.fields {
 		println('  field: $field.name | ' + no_lines('$field'))
-		$if field.Type is string {
+		$if field.typ is string {
 			assert field.name in ['a', 'b', 'g']
 		}
-		$if field.Type is f32 {
+		$if field.typ is f32 {
 			assert field.name in ['d', 'e']
 		}
 		if field.is_mut {

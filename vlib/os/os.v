@@ -57,7 +57,7 @@ pub fn read_file(path string) ?string {
 	}
 }
 
-/***************************** OS ops ************************/
+//***************************** OS ops ************************
 // file_size returns the size of the file located in `path`.
 pub fn file_size(path string) int {
 	mut s := C.stat{}
@@ -76,7 +76,7 @@ pub fn file_size(path string) int {
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(src, dst string) {
+pub fn mv(src string, dst string) {
 	mut rdst := dst
 	if is_dir(rdst) {
 		rdst = join_path(rdst.trim_right(path_separator),file_name(src.trim_right(path_separator)))
@@ -91,7 +91,7 @@ pub fn mv(src, dst string) {
 }
 
 // cp copies files or folders from `src` to `dst`.
-pub fn cp(src, dst string) ? {
+pub fn cp(src string, dst string) ? {
 	$if windows {
 		w_src := src.replace('/', '\\')
 		w_dst := dst.replace('/', '\\')
@@ -135,14 +135,14 @@ pub fn cp(src, dst string) ? {
 }
 
 [deprecated]
-pub fn cp_r(osource_path, odest_path string, overwrite bool) ? {
+pub fn cp_r(osource_path string, odest_path string, overwrite bool) ? {
 	eprintln('warning: `os.cp_r` has been deprecated, use `os.cp_all` instead')
 	return cp_all(osource_path, odest_path, overwrite)
 }
 
 // cp_all will recursively copy `src` to `dst`,
 // optionally overwriting files or dirs in `dst`.
-pub fn cp_all(src, dst string, overwrite bool) ? {
+pub fn cp_all(src string, dst string, overwrite bool) ? {
 	source_path := os.real_path(src)
 	dest_path := os.real_path(dst)
 	if !os.exists(source_path) {
@@ -190,7 +190,7 @@ pub fn mv_by_cp(source string, target string) ? {
 // vfopen returns an opened C file, given its path and open mode.
 // NB: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
-pub fn vfopen(path, mode string) ?&C.FILE {
+pub fn vfopen(path string, mode string) ?&C.FILE {
 	if path.len == 0 {
 		return error('vfopen called with ""')
 	}
@@ -267,6 +267,7 @@ pub fn open_file(path string, mode string, options ...int) ?File {
 		match m {
 			`r` { flags |= o_rdonly }
 			`w` { flags |= o_create | o_trunc }
+			`b` { flags |= o_binary }
 			`a` { flags |= o_create | o_append }
 			`s` { flags |= o_sync }
 			`n` { flags |= o_nonblock }
@@ -641,22 +642,46 @@ pub fn file_ext(path string) string {
 	return path[pos..]
 }
 
-// dir will return the part of `path` before the last occurence of a `path_separator`.
+// dir returns all but the last element of path, typically the path's directory.
+// After dropping the final element, trailing slashes are removed.
+// If the path is empty, dir returns ".". If the path consists entirely of separators,
+// dir returns a single separator.
+// The returned path does not end in a separator unless it is the root directory.
 pub fn dir(path string) string {
-	pos := path.last_index(path_separator) or {
+	if path == '' {
 		return '.'
+	}
+	mut pos := path.last_index(path_separator) or {
+		return '.'
+	}
+	if path.ends_with(path_separator) {
+		pos--
 	}
 	return path[..pos]
 }
 
-// base_dir will return the base directory of `path`.
-// The `path_separator` is included.
-pub fn base_dir(path string) string {
-	posx := path.last_index(path_separator) or {
+// base returns the last element of path.
+// Trailing path separators are removed before extracting the last element.
+// If the path is empty, base returns ".". If the path consists entirely of separators, base returns a
+// single separator.
+pub fn base(path string) string {
+	if path == '' {
+		return '.'
+	}
+	if path == path_separator {
+		return path_separator
+	}
+	if path.ends_with(path_separator) {
+		path2 := path[..path.len-1]
+		pos := path2.last_index(path_separator) or {
+			return path2.clone()
+		}
+		return path2[pos+1..]
+	}
+	pos := path.last_index(path_separator) or {
 		return path.clone()
 	}
-	// NB: *without* terminating /
-	return path[..posx]
+	return path[pos+1..]
 }
 
 // file_name will return all characters found after the last occurence of `path_separator`.
@@ -691,13 +716,13 @@ pub fn get_raw_line() string {
 			h_input := C.GetStdHandle(std_input_handle)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
-				C.ReadConsole(h_input, buf, max_line_chars * 2, &bytes_read, 0)
+				C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read), 0)
 				return string_from_wide2(&u16(buf), bytes_read)
 			}
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, 1, &bytes_read, 0)
+				res := C.ReadFile(h_input, pos, 1, C.LPDWORD(&bytes_read), 0)
 				if !res || bytes_read == 0 {
 						break
 				}
@@ -734,7 +759,7 @@ pub fn get_raw_stdin() []byte {
 			mut offset := 0
 			for {
 				pos := buf + offset
-				res := C.ReadFile(h_input, pos, block_bytes, &bytes_read, 0)
+				res := C.ReadFile(h_input, pos, block_bytes, C.LPDWORD(&bytes_read), 0)
 				offset += bytes_read
 
 				if !res {
@@ -791,7 +816,7 @@ pub fn user_os() string {
 		return 'linux'
 	}
 	$if macos {
-		return 'mac'
+		return 'macos'
 	}
 	$if windows {
 		return 'windows'
@@ -823,19 +848,19 @@ pub fn user_os() string {
 // home_dir returns path to user's home directory.
 pub fn home_dir() string {
 	$if windows {
-		return os.getenv('USERPROFILE') + os.path_separator
+		return os.getenv('USERPROFILE')
 	} $else {
 		//println('home_dir() call')
-		//res:= os.getenv('HOME') + os.path_separator
+		//res:= os.getenv('HOME')
 		//println('res="$res"')
-		return os.getenv('HOME') + os.path_separator
+		return os.getenv('HOME')
 	}
 }
 
 // write_file writes `text` data to a file in `path`.
-pub fn write_file(path, text string) ? {
+pub fn write_file(path string, text string) ? {
 	mut f := os.create(path)?
-	f.write(text)
+	f.write(text.bytes())
 	f.close()
 }
 
@@ -1116,8 +1141,26 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	}
-	return unsafe { fullpath.vstring() }
+	res := unsafe { fullpath.vstring() }
+	return normalize_drive_letter(res)
 }
+
+fn normalize_drive_letter(path string) string {
+	// normalize_drive_letter is needed, because a path like c:\nv\.bin (note the small `c`)
+	// in %PATH is NOT recognized by cmd.exe (and probably other programs too)...
+	// Capital drive letters do work fine.
+	$if !windows {
+		return path
+	}
+	if path.len > 2 && path[0] >= `a` && path[0] <= `z` && path[1] == `:` && path[2] == os.path_separator[0] {
+		unsafe {
+			x := &path.str[0]
+			(*x) = *x - 32
+		}
+	}
+	return path
+}
+
 
 // is_abs_path returns `true` if `path` is absolute.
 pub fn is_abs_path(path string) bool {
@@ -1139,7 +1182,7 @@ pub fn join_path(base string, dirs ...string) string {
 }
 
 // walk_ext returns a recursive list of all files in `path` ending with `ext`.
-pub fn walk_ext(path, ext string) []string {
+pub fn walk_ext(path string, ext string) []string {
 	if !os.is_dir(path) {
 		return []
 	}
@@ -1274,7 +1317,7 @@ pub fn cache_dir() string {
 			return xdg_cache_home
 		}
 	}
-	cdir := os.home_dir() + '.cache'
+	cdir := os.join_path(os.home_dir(), '.cache')
 	if !os.is_dir(cdir) && !os.is_link(cdir) {
 		os.mkdir(cdir) or {
 			panic(err)
@@ -1308,6 +1351,15 @@ pub fn temp_dir() string {
 	}
 	if path == '' {
 		path = '/tmp'
+	}
+	return path
+}
+
+// vmodules_dir returns the path to a folder, where v stores its global modules.
+pub fn vmodules_dir() string {
+	mut path := os.getenv('VMODULES')
+	if path == '' {
+		path = os.join_path(os.home_dir(), '.vmodules')
 	}
 	return path
 }

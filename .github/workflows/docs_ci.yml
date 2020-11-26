@@ -1,0 +1,24 @@
+name: Docs CI
+
+on:
+  push:
+    paths:
+      - ".github/workflows/docs_ci.yml"
+      - "cmd/tools/check-md.v"
+      - "**.md"
+  pull_request:
+    paths:
+      - ".github/workflows/docs_ci.yml"
+      - "cmd/tools/check-md.v"
+      - "**.md"
+
+jobs:
+  check-markdown:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 5
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make
+    - name: Check markdown line length & code examples
+      run: ./v run cmd/tools/check-md.v -all

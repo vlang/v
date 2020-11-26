@@ -1,6 +1,6 @@
 module eventbus
 
-pub type EventHandlerFn fn(receiver voidptr, args voidptr, sender voidptr)
+pub type EventHandlerFn = fn (receiver voidptr, args voidptr, sender voidptr)
 
 pub struct Publisher {
 mut:

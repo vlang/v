@@ -12,7 +12,7 @@ import rand
 $if linux {
 	$if tinyc {
 		// most Linux distributions have /usr/lib/libatomic.so, but Ubuntu uses gcc version specific dir
-		#flag -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
+		#flag -L/usr/lib/gcc/x86_64-linux-gnu/6 -L/usr/lib/gcc/x86_64-linux-gnu/7 -L/usr/lib/gcc/x86_64-linux-gnu/8 -L/usr/lib/gcc/x86_64-linux-gnu/9 -latomic
 	}
 }
 
@@ -109,17 +109,21 @@ pub fn new_channel<T>(n u32) &Channel {
 }
 
 fn new_channel_st(n u32, st u32) &Channel {
+	wsem := if n > 0 { n } else { 1 }
+	rsem := if n > 0 { u32(0) } else { 1 }
+	rbuf := if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
+	sbuf := if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
 	return &Channel{
-		writesem: new_semaphore_init(if n > 0 { n } else { 1 })
-		readsem:  new_semaphore_init(if n > 0 { u32(0) } else { 1 })
+		writesem: new_semaphore_init(wsem)
+		readsem:  new_semaphore_init(rsem)
 		writesem_im: new_semaphore()
 		readsem_im: new_semaphore()
 		objsize: st
 		cap: n
 		write_free: n
 		read_avail: 0
-		ringbuf: if n > 0 { malloc(int(n * st)) } else { byteptr(0) }
-		statusbuf: if n > 0 { vcalloc(int(n * 2)) } else { byteptr(0) }
+		ringbuf: rbuf
+		statusbuf: sbuf
 		write_subscriber: 0
 		read_subscriber: 0
 	}
@@ -321,6 +325,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
+	// this should not happen
+	assert false
+	return .success
 }
 
 [inline]
@@ -490,8 +497,9 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 				dest2 = dest
 			}
 		}
-		return .success
+		break        
 	}
+	return .success
 }
 
 // Wait `timeout` on any of `channels[i]` until one of them can push (`is_push[i] = true`) or pop (`is_push[i] = false`)
@@ -514,9 +522,13 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].sem = sem
 			subscr[i].prev = &ch.write_subscriber
-			subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
+			unsafe {
+				subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
+			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i]
+				unsafe {
+					subscr[i].nxt.prev = &subscr[i]
+				}
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
@@ -526,9 +538,11 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			}
 			subscr[i].sem = sem
 			subscr[i].prev = &ch.read_subscriber
-			subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
+			unsafe {
+				subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
+			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				subscr[i].nxt.prev = &subscr[i]
+				unsafe { subscr[i].nxt.prev = &subscr[i] }
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}

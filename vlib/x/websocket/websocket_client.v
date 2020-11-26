@@ -7,7 +7,7 @@
 // check with valgrind if you do any changes in the free calls
 module websocket
 
-import x.net
+import net
 import x.openssl
 import net.urllib
 import time
@@ -26,7 +26,6 @@ mut:
 	ssl_conn          &openssl.SSLConn
 	flags             []Flag
 	fragments         []Fragment
-	logger            &log.Log
 	message_callbacks []MessageEventHandler
 	error_callbacks   []ErrorEventHandler
 	open_callbacks    []OpenEventHandler
@@ -40,6 +39,7 @@ pub mut:
 	nonce_size        int = 16 // you can try 18 too
 	panic_on_callback bool
 	state             State
+	logger            &log.Log
 	resource_name     string
 	last_pong_ut      u64
 }
@@ -94,10 +94,13 @@ pub fn new_client(address string) ?&Client {
 
 // connect, connects and do handshake procedure with remote server
 pub fn (mut ws Client) connect() ? {
-	ws.assert_not_connected()
+	ws.assert_not_connected()?
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
 	ws.conn = ws.dial_socket()?
+	// Todo: make setting configurable
+	ws.conn.set_read_timeout(time.second * 30)
+	ws.conn.set_write_timeout(time.second * 30)
 	ws.handshake()?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
@@ -109,6 +112,9 @@ pub fn (mut ws Client) listen() ? {
 	ws.logger.info('Starting client listener, server($ws.is_server)...')
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
+		if ws.state == .open {
+			ws.close(1000, 'closed by client')
+		}
 	}
 	for ws.state == .open {
 		msg := ws.read_next_message() or {
@@ -118,6 +124,9 @@ pub fn (mut ws Client) listen() ? {
 			ws.debug_log('failed to read next message: $err')
 			ws.send_error_event('failed to read next message: $err')
 			return error(err)
+		}
+		if ws.state in [.closed, .closing] {
+				return
 		}
 		ws.debug_log('got message: $msg.opcode') // , payload: $msg.payload') leaks
 		match msg.opcode {
@@ -342,9 +351,6 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		ws.debug_log('close: Websocket allready closed ($ws.state), $message, $code handle($ws.conn.sock.handle)')
 		err_msg := 'Socket allready closed: $code'
 		ret_err := error(err_msg)
-		// unsafe {
-		// err_msg.free()
-		// }
 		return ret_err
 	}
 	defer {
@@ -444,15 +450,24 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 }
 
 // parse_uri, parses the url string to it's components
-// todo: support not using port to default ones
 fn parse_uri(url string) ?&Uri {
 	u := urllib.parse(url)?
 	v := u.request_uri().split('?')
+	mut port := u.port()
+	if port == '' {
+		port = if u.str().starts_with('ws://') {
+				'80'
+			} else if u.str().starts_with('wss://') {
+				'443'
+			} else {
+				u.port()
+			}
+	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
 		url: url
 		hostname: u.hostname()
-		port: u.port()
+		port: port
 		resource: v[0]
 		querystring: querystring
 	}
@@ -470,6 +485,7 @@ fn (ws Client) assert_not_connected() ? {
 	match ws.state {
 		.connecting { return error('connect: websocket is connecting') }
 		.open { return error('connect: websocket already open') }
+		.closing { return error('connect: reconnect on closing websocket not supported, please use new client') }
 		else {}
 	}
 }

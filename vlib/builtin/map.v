@@ -83,7 +83,7 @@ const (
 // the strings are very likely to be equal
 // TODO: add branch prediction hints
 [inline]
-fn fast_string_eq(a, b string) bool {
+fn fast_string_eq(a string, b string) bool {
 	if a.len != b.len {
 		return false
 	}
@@ -106,12 +106,13 @@ mut:
 [inline]
 [unsafe]
 fn new_dense_array(value_bytes int) DenseArray {
+	s8size := int(8 * sizeof(string))
 	return DenseArray{
 		value_bytes: value_bytes
 		cap: 8
 		len: 0
 		deletes: 0
-		keys: &string(malloc(int(8 * sizeof(string))))
+		keys: &string(malloc(s8size))
 		values: malloc(8 * value_bytes)
 	}
 }
@@ -152,7 +153,7 @@ fn (d DenseArray) get(i int) voidptr {
 fn (mut d DenseArray) zeros_to_end() {
 	mut tmp_value := malloc(d.value_bytes)
 	mut count := u32(0)
-	for i in 0 .. d.len {
+	for i in 0 .. int(d.len) {
 		if unsafe {d.keys[i]}.str != 0 {
 			// swap keys
 			unsafe {
@@ -205,19 +206,20 @@ pub mut:
 }
 
 fn new_map_1(value_bytes int) map {
+	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	return map{
 		value_bytes: value_bytes
 		cap: init_cap
 		cached_hashbits: max_cached_hashbits
 		shift: init_log_capicity
 		key_values: new_dense_array(value_bytes)
-		metas: &u32(vcalloc(int(sizeof(u32) * (init_capicity + extra_metas_inc))))
+		metas: &u32(vcalloc(metasize))
 		extra_metas: extra_metas_inc
 		len: 0
 	}
 }
 
-fn new_map_init(n, value_bytes int, keys &string, values voidptr) map {
+fn new_map_init(n int, value_bytes int, keys &string, values voidptr) map {
 	mut out := new_map_1(value_bytes)
 	for i in 0 .. n {
 		unsafe {
@@ -362,7 +364,8 @@ fn (mut m map) rehash() {
 // key completely, it uses the bits cached in `metas`.
 fn (mut m map) cached_rehash(old_cap u32) {
 	old_metas := m.metas
-	m.metas = &u32(vcalloc(int(sizeof(u32) * (m.cap + 2 + m.extra_metas))))
+	metasize := int(sizeof(u32) * (m.cap + 2 + m.extra_metas))
+	m.metas = &u32(vcalloc(metasize))
 	old_extra_metas := m.extra_metas
 	for i := u32(0); i <= old_cap + old_extra_metas; i += 2 {
 		if unsafe {old_metas[i]} == 0 {
@@ -404,6 +407,8 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 		// Key not found, insert key with zero-value
 		m.set(key, zero)
 	}
+	assert false    
+	return voidptr(0)    
 }
 
 // If `key` matches the key of an element in the container,
@@ -502,36 +507,38 @@ pub fn (m &map) keys() []string {
 
 [unsafe]
 pub fn (d DenseArray) clone() DenseArray {
+	ksize := int(d.cap * sizeof(string))
+	vsize := int(d.cap * u32(d.value_bytes))
 	res := DenseArray {
 		value_bytes: d.value_bytes
 		cap:         d.cap
-		len:        d.len
+		len:         d.len
 		deletes:     d.deletes
-		keys:        unsafe {&string(malloc(int(d.cap * sizeof(string))))}
-		values:      unsafe {byteptr(malloc(int(d.cap * u32(d.value_bytes))))}
+		keys:        unsafe {&string(malloc(ksize))}
+		values:      unsafe {byteptr(malloc(vsize))}
 	}
 	unsafe {
-		C.memcpy(res.keys, d.keys, d.cap * sizeof(string))
-		C.memcpy(res.values, d.values, d.cap * u32(d.value_bytes))
+		C.memcpy(res.keys, d.keys, ksize)
+		C.memcpy(res.values, d.values, vsize)
 	}
 	return res
 }
 
 [unsafe]
 pub fn (m map) clone() map {
-	metas_size := sizeof(u32) * (m.cap + 2 + m.extra_metas)
+	metasize := int(sizeof(u32) * (m.cap + 2 + m.extra_metas))
 	res := map{
 		value_bytes:     m.value_bytes
 		cap:             m.cap
 		cached_hashbits: m.cached_hashbits
 		shift:           m.shift
 		key_values:      unsafe {m.key_values.clone()}
-		metas:           &u32(malloc(int(metas_size)))
+		metas:           &u32(malloc(metasize))
 		extra_metas:     m.extra_metas
 		len:            m.len
 	}
 	unsafe {
-		C.memcpy(res.metas, m.metas, metas_size)
+		C.memcpy(res.metas, m.metas, metasize)
 	}
 	return res
 }

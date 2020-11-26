@@ -1,6 +1,7 @@
 // import time
 
 struct User {
+mut:
 	name string
 }
 
@@ -54,6 +55,10 @@ fn test_map() {
 	a.users['Bob'] = User{'Bob'}
 	q := a.users['Bob']
 	assert q.name == 'Bob'
+	// test struct field change
+	a.users['Bob'].name = 'bob'
+	q2 := a.users['Bob']
+	assert q2.name == 'bob'
 	a.m['one'] = 1
 	a.set('two', 2)
 	assert a.m['one'] == 1
@@ -182,17 +187,6 @@ fn test_delete() {
 	println('two' in m) // => true, on Linux  and Windows  <-- wrong !
 }
 
-/*
-fn test_ref() {
-	m := { 'one': 1 }
-	// TODO "cannot take the address of m['one']"
-	mut one := &m['one']
-	one++
-	println(*one)
-
-}
-*/
-
 fn test_delete_size() {
     arr := ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
     mut m := map[string]int
@@ -319,19 +313,19 @@ fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 		m['three'] = 3
 	}
 	if m['two'] != 1 {
-		m['four'] = 4	
+		m['four'] = 4
 	}
 	if m['one'] > 0 {
-		m['five'] = 5	
+		m['five'] = 5
 	}
 	if m['one'] < 2 {
-		m['six'] = 6	
+		m['six'] = 6
 	}
 	if m['two'] >= 2 {
-		m['seven'] = 7	
+		m['seven'] = 7
 	}
 	if m['two'] <= 2 {
-		m['eight'] = 8	
+		m['eight'] = 8
 	}
 }
 
@@ -344,4 +338,18 @@ fn test_mut_map_with_relation_op_in_fn() {
 	assert 'six' in m
 	assert 'seven' in m
 	assert 'eight' in m
+}
+
+fn test_map_str_after_delete() {
+	mut m := {
+		'first': 1,
+		'second': 2,
+		'third': 3,
+	}
+	osm := '$m'
+	m.delete('second')
+	nsm := '$m'
+    println('m: $m')
+	assert osm == "{'first': 1, 'second': 2, 'third': 3}"
+	assert nsm == "{'first': 1, 'third': 3}"
 }

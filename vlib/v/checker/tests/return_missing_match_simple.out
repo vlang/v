@@ -1,0 +1,5 @@
+vlib/v/checker/tests/return_missing_match_simple.vv:1:1: error: missing return at end of function `h`
+    1 | fn h() int {
+      | ~~~~~~~~~~
+    2 |     a := 1
+    3 |     match a {

@@ -1,16 +1,12 @@
 module mysql
 
-#flag -lmysqlclient
-#flag linux -I/usr/include/mysql
-#include <mysql.h>
-
 // TODO: Documentation
 pub struct Connection {
 mut:
 	conn     &C.MYSQL = C.mysql_init(0)
 pub mut:
-	host     string		= '127.0.0.1'
-	port     u32		= 3306
+	host     string = '127.0.0.1'
+	port     u32 = 3306
 	username string
 	password string
 	dbname   string
@@ -20,16 +16,8 @@ pub mut:
 // connect connects to a MySQL server.
 pub fn (mut conn Connection) connect() ?bool {
 	instance := C.mysql_init(conn.conn)
-	conn.conn = C.mysql_real_connect(
-		conn.conn,
-		conn.host.str,
-		conn.username.str,
-		conn.password.str,
-		conn.dbname.str,
-		conn.port,
-		0,
-		conn.flag
-	)
+	conn.conn = C.mysql_real_connect(conn.conn, conn.host.str, conn.username.str, conn.password.str,
+		conn.dbname.str, conn.port, 0, conn.flag)
 	if isnil(conn.conn) {
 		return error_with_code(get_error_msg(instance), get_errno(instance))
 	}
@@ -69,7 +57,7 @@ pub fn (conn Connection) select_db(dbname string) ?bool {
 // change_user changes the user of the specified database connection.
 // if desired, the empty string value can be passed to the `dbname` parameter
 // resulting in only changing the user and not selecting a database.
-pub fn (conn Connection) change_user(username, password, dbname string) ?bool {
+pub fn (conn Connection) change_user(username string, password string, dbname string) ?bool {
 	mut ret := true
 	if dbname != '' {
 		ret = C.mysql_change_user(conn.conn, username.str, password.str, dbname.str)
@@ -100,7 +88,7 @@ pub fn (conn Connection) tables(wildcard string) ?[]string {
 	if isnil(cres) {
 		return error_with_code(get_error_msg(conn.conn), get_errno(conn.conn))
 	}
-	res :=  Result{cres}
+	res := Result{cres}
 	mut tables := []string{}
 	for row in res.rows() {
 		tables << row.vals[0]
@@ -111,12 +99,9 @@ pub fn (conn Connection) tables(wildcard string) ?[]string {
 
 // escape_string creates a legal SQL string for use in an SQL statement.
 pub fn (conn Connection) escape_string(s string) string {
-    len := C.strlen(s.str)
-    to := malloc(2 * len + 1)
-    quote := byte(39) // single quote
-
-    C.mysql_real_escape_string_quote(conn.conn, to, s.str, len, quote)
-    return unsafe { to.vstring() }
+	to := malloc(2 * s.len + 1)
+	C.mysql_real_escape_string_quote(conn.conn, to, s.str, s.len, `\'`)
+	return unsafe {to.vstring()}
 }
 
 // set_option is used to set extra connect options and affect behavior for a connection.
@@ -166,8 +151,7 @@ pub fn (conn &Connection) close() {
 	C.mysql_close(conn.conn)
 }
 
-/* -------------------------- MYSQL INFO & VERSION -------------------------- */
-
+// -------------------------- MYSQL INFO & VERSION --------------------------
 // info returns information about the most recently executed query.
 pub fn (conn Connection) info() string {
 	return resolve_nil_str(C.mysql_info(conn.conn))
@@ -175,12 +159,12 @@ pub fn (conn Connection) info() string {
 
 // get_host_info returns a string describing the connection.
 pub fn (conn Connection) get_host_info() string {
-	return unsafe { C.mysql_get_host_info(conn.conn).vstring() }
+	return unsafe {C.mysql_get_host_info(conn.conn).vstring()}
 }
 
 // get_server_info returns the server version number as a string.
 pub fn (conn Connection) get_server_info() string {
-	return unsafe { C.mysql_get_server_info(conn.conn).vstring() }
+	return unsafe {C.mysql_get_server_info(conn.conn).vstring()}
 }
 
 // get_server_version returns the server version number as an integer.
@@ -188,11 +172,10 @@ pub fn (conn Connection) get_server_version() u64 {
 	return C.mysql_get_server_version(conn.conn)
 }
 
-/* --------------------------------- CLIENT --------------------------------- */
-
+// --------------------------------- CLIENT ---------------------------------
 // get_client_info returns client version information as a string.
 pub fn get_client_info() string {
-	return unsafe { C.mysql_get_client_info().vstring() }
+	return unsafe {C.mysql_get_client_info().vstring()}
 }
 
 // get_client_version returns client version information as an integer.
@@ -200,8 +183,7 @@ pub fn get_client_version() u64 {
 	return C.mysql_get_client_version()
 }
 
-/* ------------------------------- MYSQL DEBUG ------------------------------ */
-
+// ------------------------------- MYSQL DEBUG ------------------------------
 // dump_debug_info causes the server to write debug information to the log
 pub fn (conn Connection) dump_debug_info() ?bool {
 	if C.mysql_dump_debug_info(conn.conn) != 0 {

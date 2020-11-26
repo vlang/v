@@ -58,9 +58,10 @@ pub fn (mut b Builder) compile_c() {
 		// println(files)
 	}
 	$if windows {
-		b.pref.ccompiler = b.find_win_cc() or {
-			panic(no_compiler_error)
+		b.find_win_cc() or {
+			verror(no_compiler_error)
 		}
+		// TODO Probably extend this to other OS's?
 	}
 	// v1 compiler files
 	// v.add_v_files_to_compile()
@@ -74,9 +75,9 @@ pub fn (mut b Builder) compile_c() {
 		println('all .v files:')
 		println(files)
 	}
-	mut out_name_c := get_vtmp_filename(b.pref.out_name, '.tmp.c')
+	mut out_name_c := b.get_vtmp_filename(b.pref.out_name, '.tmp.c')
 	if b.pref.is_shared {
-		out_name_c = get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
+		out_name_c = b.get_vtmp_filename(b.pref.out_name, '.tmp.so.c')
 	}
 	b.build_c(files, out_name_c)
 	if b.pref.os == .ios {
@@ -84,7 +85,8 @@ pub fn (mut b Builder) compile_c() {
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
 		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
 		os.mkdir('$display_name\.app')
-		os.write_file('$display_name\.app/Info.plist', make_ios_plist(display_name, bundle_id, bundle_name, 1))
+		os.write_file('$display_name\.app/Info.plist', make_ios_plist(display_name, bundle_id,
+			bundle_name, 1))
 	}
 	b.cc()
 }

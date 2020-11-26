@@ -164,3 +164,69 @@ fn test_sum_type_name() {
 	}
 	assert f(a) == 'A1'
 }
+
+fn f_else(s Sum) string {
+	match s {
+		A1 { return typeof(s) }
+		else { return '' }
+	}
+}
+
+fn test_sum_type_else() {
+	a := A1{
+		pos: 22
+	}
+	assert f_else(a) == 'A1'
+}
+
+struct Alfa {
+	char rune = `a`
+}
+
+fn (a Alfa) letter() rune {
+	return a.char
+}
+
+struct Bravo {
+	// A field so that Alfa and Bravo structures aren't the same
+	dummy_field int
+	char        rune = `b`
+}
+
+fn (b Bravo) letter() rune {
+	return b.char
+}
+
+struct Charlie {
+	char rune = `c`
+}
+
+type NATOAlphabet = Alfa | Bravo | Charlie
+
+fn test_match_sumtype_multiple_types() {
+	a := Alfa{}
+	l := NATOAlphabet(a)
+	match l {
+		Alfa, Bravo {
+			assert l.char == `a`
+			// TODO make methods work
+			// assert l.letter() == `a`
+		}
+		Charlie {
+			assert false
+		}
+	}
+	// test one branch
+	match l {
+		Alfa, Bravo, Charlie {
+			assert l.char == `a`
+		}
+	}
+}
+
+fn test_sub_expression() {
+	b := false && match 1 {0 {true} else {true}}
+	assert !b
+	c := true || match 1 {0 {false} else {false}}
+	assert c
+}

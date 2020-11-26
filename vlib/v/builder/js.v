@@ -45,7 +45,11 @@ pub fn (mut b Builder) compile_js() {
 		println('all .v files:')
 		println(files)
 	}
-	b.build_js(files, b.pref.out_name + '.js')
+	mut name := b.pref.out_name
+	if !name.ends_with('.js') {
+		name += '.js'
+	}
+	b.build_js(files, name)
 }
 
 fn (mut b Builder) run_js() {

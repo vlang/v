@@ -1,10 +1,33 @@
 name: CI
-on: [push, pull_request]
-jobs:
 
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  code-formatting:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Environment info
+      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+    - name: Build local v
+      run: make -j4
+    - name: v test-cleancode
+      run: ./v -silent test-cleancode
+    - name: v test-fmt
+      run: ./v -silent test-fmt
 
 #  v-fmt:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    steps:
 #    - uses: actions/checkout@v2
 #    - name: getting all branch metainfo from github
@@ -20,8 +43,33 @@ jobs:
 #    - name: Run v test-fmt
 #      run: echo "TODO" #./v test-fmt
 
+  performance-regressions:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+    steps:
+    - uses: actions/checkout@v2
+    - name: Environment info
+      run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
+    - name: Build local v
+      run: (make -j4 && ./v -cg -o v cmd/v)
+    - name: Clone & Build vmaster/v
+      run: |
+        git clone --depth=1 https://github.com/vlang/v vmaster/
+        (cd vmaster; make -j4 && ./v -cg -o v cmd/v)
+    - name: V versions
+      run: ./v version && ./vmaster/v version
+    - name: Build the repeat tool
+      run: ./v cmd/tools/repeat.v
+    - name: Repeat -o hw.c examples/hello_world.v
+      run: cmd/tools/repeat --max_time 150 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o hw.c examples/hello_world.v' './vmaster/v -show-timings -o hw.c examples/hello_world.v'
+    - name: Repeat -o v.c cmd/v
+      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o v.c cmd/v' './vmaster/v -show-timings -o v.c cmd/v'
+
   ubuntu-tcc:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     env:
       VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
     steps:
@@ -43,30 +91,23 @@ jobs:
         tcc -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
 #        ./v -silent test-compiler
-    - name: Fixed tests
-      run: ./v test-fixed
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: Fixed tests
+      run: ./v -silent test-fixed
     - name: Test building v tools
-      run: ./v build-tools
-    - name: v vet
+      run: ./v -silent build-tools
+    - name: v doctor
       run: |
-        ./v vet vlib/sqlite
-        ./v vet vlib/v
-    - name: v fmt
-      run: |
-        ./v fmt -verify vlib/v/checker/checker.v
-        ./v fmt -verify vlib/v/fmt/fmt.v
-        ./v fmt -verify vlib/v/parser/parser.v
-        ./v fmt -verify vlib/v/gen/cgen.v
-        ./v fmt -verify vlib/v/gen/x64/gen.v
-#    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+        ./v doctor
+    - name: Test v binaries
+      run: ./v -silent build-vbinaries
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
     name: alpine-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:alpine-build
       env:
@@ -83,10 +124,11 @@ jobs:
           make CC=clang
       - name: Test V fixed tests
         run: |
-          v test-fixed
+          v -silent test-fixed
 
   macos:
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         os: [macOS-latest]
@@ -124,21 +166,21 @@ jobs:
     - name: Test symlink
       run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
-      run: VJOBS=1 ./v test-fixed
+      run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
-      run: ./v build-examples
-    - name: v vet
+      run: ./v -silent build-examples
+    - name: v doctor
       run: |
-        ./v vet vlib/sqlite
-        ./v vet vlib/v
+        ./v doctor
     - name: Cross-compilation to Linux
       run: ./v -os linux cmd/v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
-    - name: Test vid
+    - name: Test ved
       run: |
-        git clone --depth 1 https://github.com/vlang/vid
-        cd vid && ../v -o vid .
+        git clone --depth 1 https://github.com/vlang/ved
+        cd ved && ../v -o ved .
+        ../v -autofree -experimental .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui
@@ -146,11 +188,11 @@ jobs:
         mkdir -p ~/.vmodules
         ln -s $(pwd) ~/.vmodules/ui
         ../v examples/rectangles.v
-#        ../v examples/users.v
-#        ../v examples/calculator.v
+        ../v run examples/build_examples.vsh
 
   ubuntu:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
@@ -175,24 +217,32 @@ jobs:
 #      run: git clone --depth 1 https://github.com/vlang/vorum && cd vorum && ../v . && cd ..
 #    - name: Build vpm
 #      run: git clone --depth 1 https://github.com/vlang/vpm && cd vpm && ../v . && cd ..
-#    - name: Build V UI examples
-#      run: ./v install ui && git clone --depth 1 https://github.com/vlang/ui && cd ui && ../v examples/calculator.v && cd ..
 #    - name: Freestanding
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: |
-        ./v test-fixed
+        ./v -silent test-fixed
     - name: Fixed tests (-prod)
-      run: ./v -o vprod -prod cmd/v && ./vprod test-fixed
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
     - name: Build examples
-      run: ./v build-examples
+      run: ./v -silent build-examples
     - name: Build modules
       run: |
         ./v build-module vlib/os
         ./v build-module vlib/builtin
         ./v build-module vlib/strconv
+        ./v build-module vlib/time
+        ./v build-module vlib/term
+        ./v build-module vlib/math
+        ./v build-module vlib/strings
+        ./v build-module vlib/v/token
+        ./v build-module vlib/v/ast
+        ./v build-module vlib/v/parser
+        ./v build-module vlib/v/gen
+        ./v build-module vlib/v/depgraph
+        ./v build-module vlib/os/cmdline
     - name: x64 machine code generation
       run: |
         exit
@@ -218,6 +268,7 @@ jobs:
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
+#    timeout-minutes: 30
 #    env:
 #      VFLAGS: -cc gcc
 #    steps:
@@ -232,6 +283,7 @@ jobs:
   ubuntu-musl:
     name: ubuntu-musl
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     container:
       image: thevlang/vlang:ubuntu-build
       env:
@@ -249,10 +301,11 @@ jobs:
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
       - name: Test V fixed tests
         run: |
-          v test-fixed
+          ./v -silent test-fixed
 
 #   ubuntu-musl:
 #     runs-on: ubuntu-18.04
+#     timeout-minutes: 30
 #     env:
 #       VFLAGS: -cc musl-gcc
 #       V_CI_MUSL: 1
@@ -276,10 +329,11 @@ jobs:
 #     - name: quick debug
 #       run: ./v -stats vlib/strconv/format_test.v
 #     - name: Fixed tests
-#       run: ./v test-fixed
+#       run: ./v -silent test-fixed
 
   ubuntu-llvm-mingw:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
 #    - name: Cross-compile V
@@ -287,6 +341,7 @@ jobs:
 
   windows-gcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc gcc
     steps:
@@ -307,7 +362,7 @@ jobs:
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
-        .\v.exe test-fixed
+        .\v.exe -silent test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -321,6 +376,7 @@ jobs:
 
   windows-msvc:
     runs-on: windows-2019
+    timeout-minutes: 30
     env:
         VFLAGS: -cc msvc
     steps:
@@ -341,7 +397,10 @@ jobs:
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
-        ./v test-fixed
+        ./v -silent test-fixed
+    - name: v doctor
+      run: |
+        ./v doctor
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -353,6 +412,7 @@ jobs:
 
   windows-tcc:
     runs-on: windows-2019
+    timeout-minutes: 30
     # We are simulating a user with no cc installed.
     # This way, v's cc detection on Windows is also tested.
     # env:
@@ -378,7 +438,7 @@ jobs:
         ## .\.github\workflows\windows-install-sdl.bat
     - name: Fixed tests
       run: |
-        .\v.exe test-fixed
+        .\v.exe -silent test-fixed
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -390,18 +450,10 @@ jobs:
 #    - name: v2 self compilation
 #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
-  docs-line-len-check:
-    runs-on: ubuntu-18.04
-    steps:
-    - uses: actions/checkout@v2
-    - name: Build
-      run: make
-    - name: Check docs line length
-      run: ./v run cmd/tools/check-md.v doc/docs.md CHANGELOG.md
-
 
   compilable-v-c-and-v-win-c:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -428,6 +480,7 @@ jobs:
 
   ubuntu-c-plus-plus:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -445,10 +498,11 @@ jobs:
     - name: V self compilation with g++
       run: ./v -cc g++-9 -o v2 cmd/v && ./v2 -cc g++-9 -o v3 cmd/v
 ##    - name: Running tests with g++
-##      run: ./v -cc g++-9 test-fixed
+##      run: ./v -cc g++-9 -silent test-fixed
 
   install-modules:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -462,6 +516,7 @@ jobs:
 
   gitly-compiles:
     runs-on: ubuntu-18.04
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -475,14 +530,13 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        # ../v -autofree .
+        ../v -autofree -experimental .
         cd ..
-
-  # TODO: ACTIVATE THIS AFTER MERGE
 
   websocket_autobahn:
     name: Autobahn integrations tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -490,15 +544,23 @@ jobs:
       - name: Run autobahn services
         run: docker-compose -f ${{github.workspace}}/vlib/x/websocket/tests/autobahn/docker-compose.yml up -d
       - name: Build client test
-        run: docker exec autobahn_client "v" "/src/tests/autobahn/autobahn_client.v"
+        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client.v"
       - name: Run client test
-        run: docker exec autobahn_client "/src/tests/autobahn/autobahn_client"
+        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client"
+      - name: Build client wss test
+        run: docker exec autobahn_client "/src/v" "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss.v"
+      - name: Run client wss test
+        run: docker exec autobahn_client "/src/vlib/x/websocket/tests/autobahn/autobahn_client_wss"
       - name: Run server test
         run: docker exec autobahn_server "wstest" "-m" "fuzzingclient" "-s" "/config/fuzzingclient.json"
       - name: Copy reports
         run: docker cp autobahn_server:/reports ${{github.workspace}}/reports
+      - name: Copy reports wss
+        run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
       - name: Test success
         run: docker exec autobahn_server "python" "/check_results.py"
+      - name: Test success WSS
+        run: docker exec autobahn_server_wss "python" "/check_results.py"
 
       - name: Publish all reports
         uses: actions/upload-artifact@v2
@@ -515,4 +577,13 @@ jobs:
         with:
             name: server
             path: ${{github.workspace}}/reports/servers/index.html
-
+      - name: Publish all reports WSS
+        uses: actions/upload-artifact@v2
+        with:
+            name: full report wss
+            path: ${{github.workspace}}/reports_wss
+      - name: Publish report client wss
+        uses: actions/upload-artifact@v2
+        with:
+            name: client wss
+            path: ${{github.workspace}}/reports_wss/clients/index.html

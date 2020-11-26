@@ -74,35 +74,34 @@ pub enum Sig_index {
 }
 
 pub enum Signo {
-	sigint = 2	// Interactive attention signal.
-	sigill = 4	// Illegal instruction.
-	sigabrt = 6	// Abnormal termination.
-	sigfpe = 8	// Erroneous arithmetic operation.
-	sigsegv = 11	// Invalid access to storage.
-	sigterm = 15	// Termination request.
-
 	sighup =  1	// Hangup.
+	sigint = 2	// Interactive attention signal.
 	sigquit = 3	// Quit.
+	sigill = 4	// Illegal instruction.
 	sigtrap = 5	// Trace/breakpoint trap.
+	sigabrt = 6	// Abnormal termination.
+	sigbus = 7
+	sigfpe = 8	// Erroneous arithmetic operation.
 	sigkill = 9	// Killed.
+	sigusr1 = 10
+	sigsegv = 11	// Invalid access to storage.
+	sigusr2 = 12
 	sigpipe = 13	// Broken pipe.
 	sigalrm = 14	// Alarm clock.
-
-	sigttin = 21	// Background read from control terminal.
-	sigttou = 22	// Background write to control terminal.
-	sigxcpu = 24	// CPU time limit exceeded.
-	sigxfsz = 25	// File size limit exceeded.
-	sigvtalrm = 26	// Virtual timer expired.
-	sigprof = 27	// Profiling timer expired.
-
-	sigbus = 7
-	sigusr1 = 10
-	sigusr2 = 12
+	sigterm = 15	// Termination request.
+	sigstkflt = 16
 	sigchld = 17
 	sigcont = 18
 	sigstop = 19
 	sigtstp = 20
+	sigttin = 21	// Background read from control terminal.
+	sigttou = 22	// Background write to control terminal.
 	sigurg = 23
+	sigxcpu = 24	// CPU time limit exceeded.
+	sigxfsz = 25	// File size limit exceeded.
+	sigvtalrm = 26	// Virtual timer expired.
+	sigprof = 27	// Profiling timer expired.
+	sigwinch = 28
 	sigpoll = 29
 	sigsys = 31
 }

@@ -4,14 +4,11 @@
 module pref
 
 import os
+import v.vcache
 
 pub const (
-	default_module_path = mpath()
+	default_module_path = os.vmodules_dir()
 )
-
-fn mpath() string {
-	return os.home_dir() + '.vmodules'
-}
 
 pub fn new_preferences() Preferences {
 	mut p := Preferences{}
@@ -59,6 +56,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
+	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
@@ -70,6 +68,19 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+	// Prepare the cache manager. All options that can affect the generated cached .c files
+	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
+	p.cache_manager = vcache.new_cache_manager([
+		@VHASH,
+		/* ensure that different v versions use separate build artefacts */
+		'$p.backend | $p.os | $p.ccompiler',
+		p.cflags.trim_space(),
+		p.third_party_option.trim_space(),
+		'$p.compile_defines_all',
+		'$p.compile_defines',
+		'$p.lookup_path',
+	])
+	// eprintln('prefs.cache_manager: $p')
 }
 
 fn default_c_compiler() string {

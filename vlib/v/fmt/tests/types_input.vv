@@ -6,16 +6,16 @@
 
 type   Uint =   u16 | u64
 	| u32
-	    | byte
+	    | byte // This should stay on the same line
 type
 Float =
 	f32 |
 	f64
 
  // Alias type
-     type  MyInt    int
+     type  MyInt  =  int
 
- pub type Abc f32
+ pub type Abc = f32
 
 
 // Fn type decl
@@ -27,9 +27,11 @@ type TwoDiffArgs
 = fn (i    int, s string) bool
 
 
-	type TwoSameArgs = fn(i int, j int) string
+	type TwoSameArgs = fn(i int, j int) string // And a comment
 
 type VarArgs = fn
 (s ...string) int
 
 type NOVarArgs = fn(i int, s ...string) f64
+
+type NoNameArgs = fn( int,  string , ...string)

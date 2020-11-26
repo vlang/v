@@ -3,6 +3,7 @@ CFLAGS ?=
 LDFLAGS ?=
 TMPDIR ?= /tmp
 VC     ?= ./vc
+V      := ./v
 
 VCFILE := v.c
 TMPTCC := /var/tmp/tcc
@@ -18,6 +19,7 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
+V:=./v.exe
 endif
 
 ifeq ($(_SYS),Linux)
@@ -45,22 +47,22 @@ endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(VC)/$(VCFILE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
 ifdef prod
-	./v.exe -prod self
+	$(V) -prod self
 else
-	./v.exe self
+	$(V) self
 endif
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(VC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
+	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS) 
 ifdef ANDROID
 	chmod 755 v
 endif
 
 ifdef prod
-	./v -prod self
+	$(V) -prod self
 else
-	./v self
+	$(V) self
 endif
 
 ifndef ANDROID
@@ -68,7 +70,7 @@ ifndef ANDROID
 endif
 endif
 	@echo "V has been successfully built"
-	@./v -version
+	@$(V) -version
 
 #clean: clean_tmp
 #git clean -xf
@@ -94,7 +96,7 @@ ifndef local
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
 	@echo "Using local tcc"
-endif    
+endif
 endif
 endif
 
@@ -115,15 +117,15 @@ $(VC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -cg -o v cmd/v
+	$(V) -cg -o v cmd/v
 
 selfcompile-static:
-	./v -cg -cflags '--static' -o v-static cmd/v
+	$(V) -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:
-	#./v build module vlib/builtin > /dev/null
+	#$(V) build module vlib/builtin > /dev/null
 module_strings:
-	#./v build module vlib/strings > /dev/null
+	#$(V) build module vlib/strings > /dev/null
 module_strconv:
-	#./v build module vlib/strconv > /dev/null
+	#$(V) build module vlib/strconv > /dev/null

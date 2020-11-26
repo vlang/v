@@ -35,7 +35,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "${g.vlines_path}"')
+		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
 		g.writeln('')
 	}
 }
@@ -90,20 +90,47 @@ pub fn (mut g Gen) gen_c_main_footer() {
 }
 
 pub fn (mut g Gen) gen_c_android_sokol_main() {
-	// TODO get autofree weaved into android lifecycle somehow
-	/*
+	// Weave autofree into sokol lifecycle callback(s)
 	if g.autofree {
-		g.writeln('\t_vcleanup();')
+		g.writeln('// Wrapping cleanup/free callbacks for sokol to include _vcleanup()
+void (*_vsokol_user_cleanup_ptr)(void);
+void (*_vsokol_user_cleanup_cb_ptr)(void *);
+
+void (_vsokol_cleanup_cb)(void) {
+	if (_vsokol_user_cleanup_ptr) {
+		_vsokol_user_cleanup_ptr();
 	}
-	*/
-	// TODO do proper check for the global g_desc field we need
-	g.writeln('sapp_desc sokol_main(int argc, char* argv[]) {')
-	g.writeln('\t(void)argc; (void)argv;')
-	g.writeln('')
-	g.writeln('\t_vinit();')
-	g.writeln('\tmain__main();')
-	g.writeln('')
-	g.writeln('\treturn g_desc;')
+	_vcleanup();
+}
+
+void (_vsokol_cleanup_userdata_cb)(void* user_data) {
+	if (_vsokol_user_cleanup_cb_ptr) {
+		_vsokol_user_cleanup_cb_ptr(g_desc.user_data);
+	}
+	_vcleanup();
+}
+')
+	}
+	g.writeln('// The sokol_main entry point on Android
+sapp_desc sokol_main(int argc, char* argv[]) {
+	(void)argc; (void)argv;
+
+	_vinit();
+	main__main();
+')
+	if g.autofree {
+		g.writeln('	// Wrap user provided cleanup/free functions for sokol to be able to call _vcleanup()
+	if (g_desc.cleanup_cb) {
+		_vsokol_user_cleanup_ptr = g_desc.cleanup_cb;
+		g_desc.cleanup_cb = _vsokol_cleanup_cb;
+	}
+	else if (g_desc.cleanup_userdata_cb) {
+		_vsokol_user_cleanup_cb_ptr = g_desc.cleanup_userdata_cb;
+		g_desc.cleanup_userdata_cb = _vsokol_cleanup_userdata_cb;
+	}
+')
+	}
+	g.writeln('	return g_desc;')
 	g.writeln('}')
 }
 

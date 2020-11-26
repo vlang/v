@@ -1,4 +1,4 @@
-fn iadd(x, y int) int {
+fn iadd(x int, y int) int {
 	return x + y
 }
 

@@ -3,7 +3,6 @@ module clipboard
 import time
 
 #flag -lUser32
-
 struct WndClassEx {
 	cb_size         u32
 	style           u32
@@ -15,7 +14,7 @@ struct WndClassEx {
 	h_cursor        C.HCURSOR
 	hbr_background  C.HBRUSH
 	lpsz_menu_name  &u16 // LPCWSTR
-    lpsz_class_name &u16
+	lpsz_class_name &u16
 	h_icon_sm       &u16
 }
 
@@ -23,7 +22,7 @@ fn C.RegisterClassEx(class WndClassEx) int
 
 fn C.GetClipboardOwner() &C.HWND
 
-fn C.CreateWindowEx(dwExStyle i64, lpClassName, lpWindowName &u16, dwStyle i64, x, y, nWidth, nHeight int, hWndParent i64, hMenu, h_instance, lpParam voidptr) &C.HWND
+fn C.CreateWindowEx(dwExStyle i64, lpClassName &u16, lpWindowName &u16, dwStyle i64, x int, y int, nWidth int, nHeight int, hWndParent i64, hMenu voidptr, h_instance voidptr, lpParam voidptr) &C.HWND
 
 // fn C.MultiByteToWideChar(CodePage u32, dw_flags u16, lpMultiByteStr byteptr, cbMultiByte int, lpWideCharStr u16, cchWideChar int) int
 fn C.EmptyClipboard()
@@ -51,9 +50,9 @@ fn C.OpenClipboard(hwnd C.HWND) int
 fn C.DestroyWindow(hwnd C.HWND)
 
 struct Clipboard {
-    max_retries int
-    retry_delay int
-    mut:
+	max_retries int
+	retry_delay int
+mut:
 	hwnd        C.HWND
 	foo         int // TODO remove
 }
@@ -66,41 +65,41 @@ fn (cb &Clipboard) get_clipboard_lock() bool {
 		if retries < 0 {
 			break
 		}
-        last_error = C.GetLastError()
-        if C.OpenClipboard(cb.hwnd) > 0 {
-            return true
-        } else if last_error != u32(C.ERROR_ACCESS_DENIED) {
-            return false
-        }
+		last_error = C.GetLastError()
+		if C.OpenClipboard(cb.hwnd) > 0 {
+			return true
+		} else if last_error != u32(C.ERROR_ACCESS_DENIED) {
+			return false
+		}
 		time.sleep(cb.retry_delay)
 	}
-    C.SetLastError(last_error)
-    return false
+	C.SetLastError(last_error)
+	return false
 }
 
 fn new_clipboard() &Clipboard {
 	mut cb := &Clipboard{
-        max_retries: 5
-        retry_delay: 5
-    }
+		max_retries: 5
+		retry_delay: 5
+	}
 	class_name := 'clipboard'
 	wndclass := WndClassEx{
-        cb_size: sizeof(WndClassEx)
-        lpfn_wnd_proc: voidptr(&C.DefWindowProc)
-        lpsz_class_name: class_name.to_wide()
+		cb_size: sizeof(WndClassEx)
+		lpfn_wnd_proc: voidptr(&C.DefWindowProc)
+		lpsz_class_name: class_name.to_wide()
 		lpsz_menu_name: 0
 		h_icon_sm: 0
-    }
-    if C.RegisterClassEx(&wndclass) == 0 && C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
+	}
+	if C.RegisterClassEx(&wndclass) == 0 && C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
 		println('Failed registering class.')
-    }
-	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0, 0, 0,
-		0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
-    if hwnd == C.NULL {
+	}
+	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0,
+		0, 0, 0, 0, C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
+	if hwnd == C.NULL {
 		println('Error creating window!')
-    }
-    cb.hwnd = hwnd
-    return cb
+	}
+	cb.hwnd = hwnd
+	return cb
 }
 
 fn (cb &Clipboard) check_availability() bool {
@@ -108,73 +107,74 @@ fn (cb &Clipboard) check_availability() bool {
 }
 
 fn (cb &Clipboard) has_ownership() bool {
-    return C.GetClipboardOwner() == cb.hwnd
+	return C.GetClipboardOwner() == cb.hwnd
 }
 
 fn (mut cb Clipboard) clear() {
 	if !cb.get_clipboard_lock() {
 		return
 	}
-    C.EmptyClipboard()
-    C.CloseClipboard()
+	C.EmptyClipboard()
+	C.CloseClipboard()
 	cb.foo = 0
 }
 
 fn (mut cb Clipboard) free() {
-    C.DestroyWindow(cb.hwnd)
+	C.DestroyWindow(cb.hwnd)
 	cb.foo = 0
 }
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
 fn to_wide(text string) &C.HGLOBAL {
-	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len +
-		1, C.NULL, 0)
-    buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
-    if buf != C.HGLOBAL(C.NULL) {
-        mut locked := &u16(C.GlobalLock(buf))
-        C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1, locked, len_required)
-        unsafe {
-            locked[len_required - 1] = u16(0)
-        }
-        C.GlobalUnlock(buf)
-    }
-    return buf
+	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
+		text.len + 1, C.NULL, 0)
+	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
+	if buf != C.HGLOBAL(C.NULL) {
+		mut locked := &u16(C.GlobalLock(buf))
+		C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,
+			locked, len_required)
+		unsafe {
+			locked[len_required - 1] = u16(0)
+		}
+		C.GlobalUnlock(buf)
+	}
+	return buf
 }
 
 fn (mut cb Clipboard) set_text(text string) bool {
 	cb.foo = 0
-    buf := to_wide(text)
-    if !cb.get_clipboard_lock() {
-        C.GlobalFree(buf)
-        return false
-    } else {
-        // EmptyClipboard must be called to properly update clipboard ownership
-        C.EmptyClipboard()
-        if C.SetClipboardData(C.CF_UNICODETEXT, buf) == C.HANDLE(C.NULL) {
+	buf := to_wide(text)
+	if !cb.get_clipboard_lock() {
+		C.GlobalFree(buf)
+		return false
+	} else {
+		// EmptyClipboard must be called to properly update clipboard ownership
+		C.EmptyClipboard()
+		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == C.HANDLE(C.NULL) {
 			println('SetClipboardData: Failed.')
-            C.CloseClipboard()
-            C.GlobalFree(buf)
-            return false
-        }
-    }
-    // CloseClipboard appears to change the sequence number...
-    C.CloseClipboard()
-    return true
+			C.CloseClipboard()
+			C.GlobalFree(buf)
+			return false
+		}
+	}
+	// CloseClipboard appears to change the sequence number...
+	C.CloseClipboard()
+	return true
 }
 
 fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
-    if !cb.get_clipboard_lock() {
+	if !cb.get_clipboard_lock() {
 		return ''
-    }
-    h_data := C.GetClipboardData(C.CF_UNICODETEXT)
-    if h_data == C.HANDLE(C.NULL) {
-        C.CloseClipboard()
+	}
+	h_data := C.GetClipboardData(C.CF_UNICODETEXT)
+	if h_data == C.HANDLE(C.NULL) {
+		C.CloseClipboard()
 		return ''
-    }
-    str := string_from_wide(&u16(C.GlobalLock(h_data)))
-    C.GlobalUnlock(h_data)
-    return str
+	}
+	str := string_from_wide(&u16(C.GlobalLock(h_data)))
+	C.GlobalUnlock(h_data)
+	return str
 }
 
 pub fn new_primary() &Clipboard {

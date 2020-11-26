@@ -15,7 +15,7 @@ const (
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
 		'while', 'with', 'yield']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t',
+		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t'
 	]
 )
 
@@ -259,7 +259,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		}
 		.sum_type {
 			// TODO: Implement sumtypes
-			styp = 'sym_type'
+			styp = 'union_sym_type'
 		}
 		.alias {
 			// TODO: Implement aliases
@@ -275,13 +275,16 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 		// 'anon_fn_7_7_1' => '(a number, b number) => void'
 		.function {
 			info := sym.info as table.FnType
-			styp = g.fn_typ(info.func.args, info.func.return_type)
+			styp = g.fn_typ(info.func.params, info.func.return_type)
 		}
 		.interface_ {
 			styp = g.js_name(sym.name)
 		}
 		.rune {
 			styp = 'any'
+		}
+		.aggregate {
+			panic('TODO: unhandled aggregate in JS')
 		}
 	}
 	/*
@@ -445,14 +448,11 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_branch_stmt(node)
 		}
 		ast.CompFor {}
-		ast.CompIf {
-			// skip: JS has no compile time if
-		}
 		ast.ConstDecl {
 			g.gen_const_decl(node)
 		}
 		ast.DeferStmt {
-			g.defer_stmts << *node
+			g.defer_stmts << node
 		}
 		ast.EnumDecl {
 			g.gen_enum_decl(node)
@@ -462,7 +462,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_expr_stmt(node)
 		}
 		ast.FnDecl {
-			g.fn_decl = node
+			g.fn_decl = &node
 			g.gen_fn_decl(node)
 		}
 		ast.ForCStmt {
@@ -520,6 +520,9 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 
 fn (mut g JsGen) expr(node ast.Expr) {
 	match node {
+		ast.CTempVar {
+			g.write('/* ast.CTempVar: node.name */')
+		}
 		ast.AnonFn {
 			g.gen_fn_decl(node.decl)
 		}
@@ -619,6 +622,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.RangeExpr {
 			// Only used in IndexExpr, requires index type info
 		}
+		ast.SelectExpr {
+			// TODO: to be implemented
+		}
 		ast.SelectorExpr {
 			g.gen_selector_expr(node)
 		}
@@ -632,7 +638,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			g.write('"$node.val"')
+			text := node.val.replace('`', '\\`')
+			g.write('`$text`')
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
@@ -651,12 +658,14 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_typeof_expr(node)
 			// TODO: Should this print the V type or the JS type?
 		}
+		ast.AtExpr {
+			g.write('"$node.val"')
+		}
 		ast.ComptimeCall {
 			// TODO
 		}
 		ast.UnsafeExpr {
-			es := node.stmts[0] as ast.ExprStmt
-			g.expr(es.expr)
+			g.expr(node.expr)
 		}
 	}
 }
@@ -671,17 +680,17 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr+1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
 		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr+1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
 		g.writeln('	exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr+1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
 	g.writeln('builtin.exit(1);')
 	g.dec_indent()
 	g.writeln('}')
@@ -766,7 +775,7 @@ fn (mut g JsGen) gen_block(it ast.Block) {
 
 fn (mut g JsGen) gen_branch_stmt(it ast.BranchStmt) {
 	// continue or break
-	g.write(it.tok.kind.str())
+	g.write(it.kind.str())
 	g.writeln(';')
 }
 
@@ -875,7 +884,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 			g.push_pub_var(name)
 		}
 	}
-	mut args := it.args
+	mut args := it.params
 	if it.is_method {
 		args = args[1..]
 	}
@@ -883,7 +892,7 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 	g.writeln(') {')
 	if it.is_method {
 		g.inc_indent()
-		g.writeln('const ${it.args[0].name} = this;')
+		g.writeln('const ${it.params[0].name} = this;')
 		g.dec_indent()
 	}
 	g.stmts(it.stmts)
@@ -898,7 +907,6 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 }
 
 fn (mut g JsGen) fn_args(args []table.Param, is_variadic bool) {
-	// no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		name := g.js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
@@ -998,17 +1006,21 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 	// x := node.call_expr as ast.CallEpxr // TODO
 	match node.call_expr {
 		ast.CallExpr {
-			mut name := it.name
-			if it.is_method {
-				receiver_sym := g.table.get_type_symbol(it.receiver_type)
+			mut name := node.call_expr.name
+			if node.call_expr.is_method {
+				receiver_sym := g.table.get_type_symbol(node.call_expr.receiver_type)
 				name = receiver_sym.name + '.' + name
+			}
+			// todo: please add a name feild without the mod name for ast.CallExpr
+			if name.starts_with('$node.call_expr.mod\.') {
+				name = name[node.call_expr.mod.len+1..]
 			}
 			g.writeln('await new Promise(function(resolve){')
 			g.inc_indent()
 			g.write('${name}(')
-			for i, arg in it.args {
+			for i, arg in node.call_expr.args {
 				g.expr(arg.expr)
-				if i < it.args.len - 1 {
+				if i < node.call_expr.args.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -1040,7 +1052,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
 	if it.exprs.len == 0 {
 		// Returns nothing
-		g.write('return;')
+		g.writeln('return;')
 		return
 	}
 	g.write('return ')
@@ -1163,6 +1175,14 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 	} else {
 		name = g.js_name(it.name)
 	}
+	call_return_is_optional := it.return_type.has_flag(.optional)
+	if call_return_is_optional {
+		g.writeln('(function(){')
+		g.inc_indent()
+		g.writeln('try {')
+		g.inc_indent()
+		g.write('return builtin.unwrap(')
+	}
 	g.expr(it.left)
 	if it.is_method { // foo.bar.baz()
 		sym := g.table.get_type_symbol(it.receiver_type)
@@ -1172,21 +1192,22 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			node := it
 			g.write(it.name)
 			g.write('(')
-			match node.args[0].expr {
+			expr := node.args[0].expr
+			match expr {
 				ast.AnonFn {
-					g.gen_fn_decl(it.decl)
+					g.gen_fn_decl(expr.decl)
 					g.write(')')
 					return
 				}
 				ast.Ident {
-					if it.kind == .function {
-						g.write(g.js_name(it.name))
+					if expr.kind == .function {
+						g.write(g.js_name(expr.name))
 						g.write(')')
 						return
-					} else if it.kind == .variable {
-						v_sym := g.table.get_type_symbol(it.var_info().typ)
+					} else if expr.kind == .variable {
+						v_sym := g.table.get_type_symbol(expr.var_info().typ)
 						if v_sym.kind == .function {
-							g.write(g.js_name(it.name))
+							g.write(g.js_name(expr.name))
 							g.write(')')
 							return
 						}
@@ -1211,7 +1232,41 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write(', ')
 		}
 	}
+	// end method call
 	g.write(')')
+	if call_return_is_optional {
+		// end unwrap
+		g.writeln(')')
+		g.dec_indent()
+		// begin catch block
+		g.writeln('} catch(err) {')
+		g.inc_indent()
+		// gen or block contents
+		match it.or_block.kind {
+			.block {
+				if it.or_block.stmts.len > 1 {
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len-1])
+				}
+				g.write('return ')
+				g.stmt(it.or_block.stmts.last())
+			}
+			.propagate {
+				panicstr := '`optional not set (\${err})`'
+				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+					g.writeln('return builtin.panic($panicstr)')
+				} else {
+					g.writeln('builtin.js_throw(err)')
+				}
+			}
+			else {}
+		}
+		// end catch
+		g.dec_indent()
+		g.writeln('}')
+		// end anon fn
+		g.dec_indent()
+		g.write('})()')
+	}
 }
 
 fn (mut g JsGen) gen_ident(node ast.Ident) {
@@ -1257,7 +1312,11 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					}
 					else {
 						g.write('if (')
-						g.expr(branch.cond)
+						if '$branch.cond' == 'js' {
+							g.write('true')
+						} else {
+							g.expr(branch.cond)
+						}
 						g.writeln(') {')
 					}
 				}
@@ -1290,17 +1349,16 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 	left_typ := g.table.get_type_symbol(expr.left_type)
 	// TODO: Handle splice setting if it's implemented
 	if expr.index is ast.RangeExpr {
-		range := expr.index as ast.RangeExpr
 		g.expr(expr.left)
 		g.write('.slice(')
-		if range.has_low {
-			g.expr(range.low)
+		if expr.index.has_low {
+			g.expr(expr.index.low)
 		} else {
 			g.write('0')
 		}
 		g.write(', ')
-		if range.has_high {
-			g.expr(range.high)
+		if expr.index.has_high {
+			g.expr(expr.index.high)
 		} else {
 			g.expr(expr.left)
 			g.write('.length')
@@ -1442,7 +1500,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		fwidth := it.fwidths[i]
 		precision := it.precisions[i]
 		g.write('\${')
-		if fmt != `_` || fwidth != 0 || precision != 0 {
+		if fmt != `_` || fwidth != 0 || precision != 987698 {
 			// TODO: Handle formatting
 			g.expr(expr)
 		} else {
@@ -1490,7 +1548,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 		info := sym.info as table.FnType
 		fn_info := info.func
 		mut repr := 'fn ('
-		for i, arg in fn_info.args {
+		for i, arg in fn_info.params {
 			if i > 0 {
 				repr += ', '
 			}

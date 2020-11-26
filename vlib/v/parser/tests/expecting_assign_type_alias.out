@@ -1,0 +1,5 @@
+vlib/v/parser/tests/expecting_assign_type_alias.vv:1:10: error: unexpected name `int`, expecting `=`
+    1 | type Ttt int
+      |          ~~~
+    2 |
+    3 | fn main() {}

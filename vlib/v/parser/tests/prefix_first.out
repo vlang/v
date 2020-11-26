@@ -1,0 +1,28 @@
+vlib/v/parser/tests/prefix_first.vv:15:3: warning: move infix `-` operator before new line (if infix intended) or use brackets for a prefix expression
+   13 |     _ = if true {
+   14 |         v = 1
+   15 |         -1
+      |         ^
+   16 |     } else {1}
+   17 | }
+vlib/v/parser/tests/prefix_first.vv:26:3: warning: move infix `&` operator before new line (if infix intended) or use brackets for a prefix expression
+   24 |     _ = opt() or {
+   25 |         _ = 1
+   26 |         &v
+      |         ^
+   27 |     }
+   28 | }
+vlib/v/parser/tests/prefix_first.vv:13:6: error: `if` expression requires an expression as the last statement of every branch
+   11 | 
+   12 |     // later this should compile correctly
+   13 |     _ = if true {
+      |         ~~~~~~~
+   14 |         v = 1
+   15 |         -1
+vlib/v/parser/tests/prefix_first.vv:24:12: error: last statement in the `or {}` block should be an expression of type `&int` or exit parent scope
+   22 |     // later this should compile correctly
+   23 |     v := 3
+   24 |     _ = opt() or {
+      |               ~~~~
+   25 |         _ = 1
+   26 |         &v

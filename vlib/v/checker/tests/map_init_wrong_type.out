@@ -1,4 +1,4 @@
-vlib/v/checker/tests/map_init_wrong_type.vv:3:10: error: cannot assign `map[string]f64` to `a` of type `map[string]f32`
+vlib/v/checker/tests/map_init_wrong_type.vv:3:10: error: cannot assign to `a`: expected `map[string]f32`, not `map[string]f64`
     1 | fn main() {
     2 |    mut a := map[string]f32{}
     3 |    a = { 'x': 12.3 }

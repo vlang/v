@@ -1,0 +1,18 @@
+fn f() ?string {
+	return none
+}
+fn g() ?int {
+	return none
+}
+_ = '' + f()
+_ = f() + ''
+_ = f() + f()
+
+_ = 4 + g()
+_ = int(0) + g() // FIXME not detected
+_ = g() + int(3)
+_ = g() + 3
+
+// binary operands
+_ = 1 && 2
+_ = true || 2

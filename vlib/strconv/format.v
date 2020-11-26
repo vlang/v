@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 printf/sprintf V implementation
@@ -9,7 +11,6 @@ that can be found in the LICENSE file.
 This file contains the printf/sprintf functions
 
 */
-module strconv
 
 import strings
 
@@ -428,7 +429,6 @@ pub fn v_printf(str string, pt ... voidptr) {
 }
 
 pub fn v_sprintf(str string, pt ... voidptr) string{
-
 	mut res := strings.new_builder(pt.len * 16)
 
 	mut i            := 0                // main strign index
@@ -439,7 +439,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 	mut len1         := -1               // decimal part for floats
 	def_len1         := 6                // default value for len1
 	mut pad_ch       := byte(` `)              // pad char
-	mut th_separator := false            // thousands separator flag
 
 	// prefix chars for Length field
 	mut ch1 := `0`  // +1 char if present else `0`
@@ -453,7 +452,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			len0         = -1
 			len1         = -1
 			pad_ch       = ` `
-			th_separator = false
 			status = .norm_char
 			ch1 = `0`
 			ch2 = `0`
@@ -474,6 +472,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 		// single char, manage it here
 		if ch == `c` && status == .field_char {
+			v_sprintf_panic(p_index, pt.len)
 			d1 := unsafe {*(&byte(pt[p_index]))}
 			res.write_b(d1)
 			status = .reset_params
@@ -484,6 +483,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 		// pointer, manage it here
 		if ch == `p` && status == .field_char {
+			v_sprintf_panic(p_index, pt.len)
 			res.write("0x")
 			res.write(ptr_str(unsafe {pt[p_index]}))
 			status = .reset_params
@@ -516,7 +516,6 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				i++
 				continue
 			} else if ch == `'` {
-				th_separator = true
 				i++
 				continue
 			} else if ch == `.` && fc_ch1 >= `1` && fc_ch1 <= `9` {
@@ -526,8 +525,10 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			}
 			// manage "%.*s" precision field
 			else if ch == `.` && fc_ch1 == `*` && fc_ch2 == `s` {
+				v_sprintf_panic(p_index, pt.len)
 				len := unsafe {*(&int(pt[p_index]))}
 				p_index++
+				v_sprintf_panic(p_index, pt.len)
 				mut s := unsafe {*(&string(pt[p_index]))}
 				s = s[..len]
 				p_index++
@@ -630,6 +631,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 					// hh fot 8 bit int
 					`h` {
 						if ch2 == `h` {
+							v_sprintf_panic(p_index, pt.len)
 							x := unsafe {*(&i8(pt[p_index]))}
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
@@ -645,28 +647,31 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 						// placeholder for future 128bit integer code
 						/*
 						if ch2 == `l` {
+							v_sprintf_panic(p_index, pt.len)
 							x := *(&i128(pt[p_index]))
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u128(x) } else { u128(-x) }
 						} else {
+							v_sprintf_panic(p_index, pt.len)
 							x := *(&i64(pt[p_index]))
 							positive = if x >= 0 { true } else { false }
 							d1 = if positive { u64(x) } else { u64(-x) }
 						}
 						*/
+						v_sprintf_panic(p_index, pt.len)
 						x := unsafe {*(&i64(pt[p_index]))}
 						positive = if x >= 0 { true } else { false }
 						d1 = if positive { u64(x) } else { u64(-x) }
 					}
 					// default int
 					else {
+						v_sprintf_panic(p_index, pt.len)
 						x := unsafe {*(&int(pt[p_index]))}
 						positive = if x >= 0 { true } else { false }
 						d1 = if positive { u64(x) } else { u64(-x) }
 					}
 
 				}
-
 				res.write(format_dec(d1,{pad_ch: pad_ch, len0: len0, len1: 0, positive: positive, sign_flag: sign, allign: allign}))
 				status = .reset_params
 				p_index++
@@ -680,7 +685,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 			else if ch == `u` {
 				mut d1 := u64(0)
 				positive := true
-
+				v_sprintf_panic(p_index, pt.len)
 				match ch1 {
 					// h for 16 bit unsigned int
 					// hh fot 8 bit unsigned int
@@ -704,7 +709,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 						*/
 						d1 = u64(unsafe {*(&u64(pt[p_index]))})
 					}
-					// defualt int
+					// default int
 					else {
 						d1 = u64(unsafe {*(&u32(pt[p_index]))})
 					}
@@ -719,8 +724,8 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 			// hex
 			else if ch in [`x`, `X`] {
+				v_sprintf_panic(p_index, pt.len)
 				mut s := ""
-
 				match ch1 {
 					// h for 16 bit int
 					// hh fot 8 bit int
@@ -768,8 +773,9 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 			// float and double
 			if ch in [`f`, `F`] {
+				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_fl(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write(if ch == `F` {s.to_upper()} else {s})
@@ -779,8 +785,9 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				continue
 			}
 			else if ch in [`e`, `E`] {
+				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				len1 = if len1 >= 0 { len1 } else { def_len1 }
 				s := format_es(f64(x), {pad_ch: pad_ch, len0: len0, len1: len1, positive: positive, sign_flag: sign, allign: allign})
 				res.write(if ch == `E` {s.to_upper()} else {s})
@@ -790,8 +797,9 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 				continue
 			}
 			else if ch in [`g`, `G`] {
+				v_sprintf_panic(p_index, pt.len)
 				x := unsafe {*(&f64(pt[p_index]))}
-				mut positive := x >= f64(0.0)
+				positive := x >= f64(0.0)
 				mut s := ""
 				tx := fabs(x)
 				if tx < 999_999.0 && tx >= 0.00001 {
@@ -811,6 +819,7 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 
 			// string
 			else if ch == `s` {
+				v_sprintf_panic(p_index, pt.len)
 				s1 := unsafe{*(&string(pt[p_index]))}
 				pad_ch = ` `
 				res.write(format_str(s1, {pad_ch: pad_ch, len0: len0, len1: 0, positive: true, sign_flag: false, allign: allign}))
@@ -826,7 +835,18 @@ pub fn v_sprintf(str string, pt ... voidptr) string{
 		i++
 	}
 
+	if p_index != pt.len {
+		panic('${p_index} % conversion specifiers, but given ${pt.len} args')
+	}
+
 	return res.str()
+}
+
+[inline]
+fn v_sprintf_panic(idx int, len int) {
+	if idx >= len {
+		panic('${idx+1} % conversion specifiers, but given only ${len} args')
+	}
 }
 
 fn fabs(x f64) f64 {

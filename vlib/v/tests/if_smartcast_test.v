@@ -18,12 +18,12 @@ fn test_if_smartcast() {
 
 fn test_mutable() {
 	mut x := Alphabet(Abc{'original'})
-	if x is Abc {
+	if mut x is Abc {
 		assert x.val == 'original'
 		x.val = 'changed'
 		assert x.val == 'changed'
 	}
-	if x is Abc {
+	if mut x is Abc {
 		assert x.val == 'changed'
 	}
 }
@@ -38,11 +38,54 @@ fn test_nested_if_smartcast() {
 	}
 }
 
-fn test_as_cast() {
-	x := Alphabet(Abc{'test'})
-	if x is Abc as test {
-		assert test.val == 'test'
+type Bar = string | Test
+type Xya = int | string
+
+struct Test {
+	x string
+	xya Xya
+}
+
+struct BarWrapper {
+	y Bar
+}
+
+fn test_nested_selector_smartcast() {
+	f := BarWrapper{
+		y: Bar(Test{
+			x: 'Hi'
+			xya: Xya(int(5))
+		})
 	}
+
+	if f.y is Test {
+		z := f.y.x
+		assert f.y.x == 'Hi'
+		assert z == 'Hi'
+		if f.y.xya is int {
+			assert f.y.xya == 5
+		}
+	}
+}
+
+type Inner = int | string
+struct InnerStruct {
+	x Inner
+}
+type Outer = string | InnerStruct
+
+fn test_nested_if_is() {
+	b := Outer(InnerStruct{Inner(0)})
+	if b is InnerStruct {
+		if b.x is int {
+			assert b.x == 0
+		}
+	}
+}
+
+struct MutContainer {
+mut:
+	abc Alphabet
 }
 
 struct Container {
@@ -50,29 +93,24 @@ struct Container {
 }
 
 fn test_mutable_with_struct() {
-	mut c := Container{Abc{'original'}}
-	if c.abc is Abc as abc {
-		assert abc.val == 'original'
-		mut mabc := abc
-		// NB: since `abc` is a pointer,
-		// `mabc` points to the same data:
-		assert mabc.val == 'original'
-		// Modifying `mabc`, modifies the data of abc too.
-		mabc.val = 'xyz'
-		assert abc.val == 'xyz'
+	mut c := MutContainer{Abc{'original'}}
+	if mut c.abc is Abc {
+		assert c.abc.val == 'original'
+		c.abc.val = 'xyz'
+		assert c.abc.val == 'xyz'
 	}
-	if c.abc is Abc as another {
+	if mut c.abc is Abc {
 		// NB: in this second smart cast, `another` is
 		// the same wrapped value, that was changed in
 		// the first smart cast:
-		assert another.val == 'xyz'
+		assert c.abc.val == 'xyz'
 	}
 }
 
 fn test_as_cast_with_struct() {
 	x := Container{Abc{'test'}}
-	if x.abc is Abc as test {
-		assert test.val == 'test'
+	if x.abc is Abc {
+		assert x.abc.val == 'test'
 	}
 }
 
@@ -113,19 +151,105 @@ fn test_mutability() {
 	}
 	mut cell := Cell{}
 	cell = cell_str
-	if cell is CellStr {
+	if mut cell is CellStr {
 		println('$cell.str')
 	}
 	cell = cell_itg
-	if cell is CellInt {
+	if mut cell is CellInt {
 		println('$cell.itg')
 	}
 	cell = cell_flt
-	if cell is CellFloat {
+	if mut cell is CellFloat {
 		println('$cell.flt')
 	}
 	cell = cell_u32
-	if cell is CellU32 {
+	if mut cell is CellU32 {
 		println('$cell.u')
+	}
+}
+
+type Expr = CallExpr | CTempVarExpr
+struct ExprWrapper {
+mut:
+	expr Expr
+}
+struct CallExpr {
+	y int
+	x string
+}
+
+struct CTempVarExpr {
+	x string
+}
+
+fn gen(_ Expr) CTempVarExpr {
+	return CTempVarExpr{}
+}
+
+fn test_reassign_from_function_with_parameter_selector() {
+	mut f := ExprWrapper{Expr(CallExpr{})}
+	if f.expr is CallExpr {
+		f.expr = gen(f.expr)
+	}
+}
+
+type Node = Expr | string
+
+fn test_nested_sumtype() {
+	c := Node(Expr(CallExpr{y: 1}))
+	if c is Expr {
+		if c is CallExpr {
+			assert c.y == 1
+		}
+		else {
+			assert false
+		}
+	}
+	else {
+		assert false
+	}
+}
+
+type Food = Milk | Eggs
+
+struct FoodWrapper {
+mut:
+	food Food
+}
+
+struct Milk {
+mut:
+	name string
+}
+
+struct Eggs {
+mut:
+	name string
+}
+
+fn test_if_mut_selector() {
+	mut f := FoodWrapper{Food(Milk{'test'})}
+	if mut f.food is Milk {
+		f.food.name = 'milk'
+		assert f.food.name == 'milk'
+	}
+}
+
+struct NodeWrapper {
+	node Node
+}
+
+fn test_nested_sumtype_selector() {
+	c := NodeWrapper{Node(Expr(CallExpr{y: 1}))}
+	if c.node is Expr {
+		if c.node is CallExpr {
+			assert c.node.y == 1
+		}
+		else {
+			assert false
+		}
+	}
+	else {
+		assert false
 	}
 }

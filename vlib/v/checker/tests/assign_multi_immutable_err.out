@@ -5,3 +5,17 @@ vlib/v/checker/tests/assign_multi_immutable_err.vv:4:2: error: `a` is immutable,
       |     ^
     5 |
     6 |     println('$a, $b')
+vlib/v/checker/tests/assign_multi_immutable_err.vv:18:5: error: cannot assign to function `error`
+   16 |
+   17 | fn assign_fn() {
+   18 |     _, error = g()
+      |        ~~~~~
+   19 |     g = f()
+   20 | }
+vlib/v/checker/tests/assign_multi_immutable_err.vv:19:2: error: cannot assign to function `g`
+   17 | fn assign_fn() {
+   18 |     _, error = g()
+   19 |     g = f()
+      |     ^
+   20 | }
+   21 |

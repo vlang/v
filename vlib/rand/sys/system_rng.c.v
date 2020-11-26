@@ -46,7 +46,7 @@ pub fn (mut r SysRNG) seed(seed_data []u32) {
 		exit(1)
 	}
 	r.seed = seed_data[0]
-	unsafe { C.srand(int(r.seed)) }
+	unsafe {C.srand(int(r.seed))}
 }
 
 // r.default_rand() exposes the default behavior of the system's RNG
@@ -142,7 +142,7 @@ pub fn (r SysRNG) u64n(max u64) u64 {
 
 // r.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (r SysRNG) u32_in_range(min, max u32) u32 {
+pub fn (r SysRNG) u32_in_range(min u32, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -152,7 +152,7 @@ pub fn (r SysRNG) u32_in_range(min, max u32) u32 {
 
 // r.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (r SysRNG) u64_in_range(min, max u64) u64 {
+pub fn (r SysRNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -206,7 +206,7 @@ pub fn (r SysRNG) i64n(max i64) i64 {
 
 // r.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
 [inline]
-pub fn (r SysRNG) int_in_range(min, max int) int {
+pub fn (r SysRNG) int_in_range(min int, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -217,7 +217,7 @@ pub fn (r SysRNG) int_in_range(min, max int) int {
 
 // r.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (r SysRNG) i64_in_range(min, max i64) i64 {
+pub fn (r SysRNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -259,7 +259,7 @@ pub fn (r SysRNG) f64n(max f64) f64 {
 
 // r.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
 [inline]
-pub fn (r SysRNG) f32_in_range(min, max f32) f32 {
+pub fn (r SysRNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -269,7 +269,7 @@ pub fn (r SysRNG) f32_in_range(min, max f32) f32 {
 
 // r.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (r SysRNG) f64_in_range(min, max f64) f64 {
+pub fn (r SysRNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)

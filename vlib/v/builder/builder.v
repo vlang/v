@@ -15,8 +15,8 @@ pub:
 	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
 	module_path         string
 mut:
-	checker             checker.Checker
 	pref                &pref.Preferences
+	checker             checker.Checker
 	global_scope        &ast.Scope
 	out_name_c          string
 	out_name_js         string
@@ -31,7 +31,8 @@ pub mut:
 pub fn new_builder(pref &pref.Preferences) Builder {
 	rdir := os.real_path(pref.path)
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
-	table := table.new_table()
+	mut table := table.new_table()
+	table.is_fmt = false
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
@@ -228,7 +229,7 @@ fn module_path(mod string) string {
 	return mod.replace('.', os.path_separator)
 }
 
-pub fn (b &Builder) find_module_path(mod, fpath string) ?string {
+pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// support @VROOT/v.mod relative paths:
 	mut mcache := vmod.get_cache()
 	vmod_file_location := mcache.get_by_file(fpath)
@@ -309,24 +310,48 @@ fn (b &Builder) print_warnings_and_errors() {
 		exit(1)
 	}
 	if b.table.redefined_fns.len > 0 {
+		mut total_conflicts := 0
 		for fn_name in b.table.redefined_fns {
-			eprintln('redefinition of function `$fn_name`')
-			// eprintln('previous declaration at')
 			// Find where this function was already declared
+			mut redefines := []FunctionRedefinition{}
+			mut redefine_conflicts := map[string]int{}
 			for file in b.parsed_files {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fline := stmt.pos.line_nr
-							println('$file.path:$fline:')
+							fheader := stmt.stringify(b.table, 'main')
+							redefines << FunctionRedefinition{
+								fpath: file.path
+								fline: stmt.pos.line_nr
+								f: stmt
+								fheader: fheader
+							}
+							redefine_conflicts[fheader]++
 						}
 					}
 				}
 			}
+			if redefine_conflicts.len > 1 {
+				eprintln('redefinition of function `$fn_name`')
+				for redefine in redefines {
+					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
+						redefine.fpath, redefine.f.pos))
+				}
+				total_conflicts++
+			}
+		}
+		if total_conflicts > 0 {
 			b.show_total_warns_and_errors_stats()
 			exit(1)
 		}
 	}
+}
+
+struct FunctionRedefinition {
+	fpath   string
+	fline   int
+	fheader string
+	f       ast.FnDecl
 }
 
 fn verror(s string) {
@@ -334,7 +359,8 @@ fn verror(s string) {
 }
 
 pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	formatted_message := '$msg: ${util.bold(ms.str())} ms'
+	value := util.bold('$ms')
+	formatted_message := '$msg: $value ms'
 	if b.pref.show_timings {
 		println(formatted_message)
 	} else {

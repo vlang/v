@@ -7,6 +7,7 @@ fn test_all() {
 	mut total_errors := 0
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
+	os.chdir(vroot)
 	diff_cmd := util.find_working_diff_command() or {
 		''
 	}
@@ -89,7 +90,7 @@ fn test_all() {
 	assert total_errors == 0
 }
 
-fn normalize_panic_message(message, vroot string) string {
+fn normalize_panic_message(message string, vroot string) string {
 	mut msg := message.all_before('=========================================')
 	msg = msg.replace(vroot + os.path_separator, '')
 	msg = msg.trim_space()

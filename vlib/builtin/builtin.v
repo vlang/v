@@ -3,10 +3,12 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global g_m2_buf byteptr
-__global g_m2_ptr byteptr
+__global (
+	g_m2_buf byteptr
+	g_m2_ptr byteptr
+)
 
-type FnExitCb fn()
+type FnExitCb = fn()
 fn C.atexit(f FnExitCb) int
 
 pub fn exit(code int) {
@@ -34,7 +36,7 @@ pub fn print_backtrace() {
 }
 
 // replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file, mod, fn_name, s string) {
+fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
 	// During edits, the line number will change most frequently,
@@ -71,8 +73,8 @@ pub fn eprintln(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
-	C.write(2, c'\n', 1)	
+	C.write(2, s.str, s.len)
+	C.write(2, c'\n', 1)
 	C.fflush(C.stderr)
 }
 
@@ -82,12 +84,12 @@ pub fn eprint(s string) {
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
-	C.write(2, s.str, s.len)	
+	C.write(2, s.str, s.len)
 	C.fflush(C.stderr)
 }
 
 pub fn print(s string) {
-	C.write(1, s.str, s.len)	
+	C.write(1, s.str, s.len)
 }
 
 const (
@@ -125,10 +127,10 @@ pub fn println(s string) {
 	}
 }
 
-__global total_m i64=0
-__global nr_mallocs int=0
-
-fn looo(){} // TODO remove, [ pratt
+__global (
+	total_m    = i64(0)
+	nr_mallocs = int(0)
+)
 
 [unsafe]
 pub fn malloc(n int) byteptr {
@@ -237,7 +239,7 @@ pub fn is_atty(fd int) int {
 	}
 }
 
-fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
+fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
 		panic('as cast: cannot cast $obj_type to $expected_type')
 	}
@@ -273,16 +275,16 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 
 pub struct MethodArgs {
 pub:
-	Type int
+	typ int
 }
 
 pub struct FunctionData {
 pub:
-	name       string
-	attrs      []string
-	args       []MethodArgs
-	ReturnType int
-	Type       int
+	name        string
+	attrs       []string
+	args        []MethodArgs
+	return_type int
+	typ         int
 }
 
 pub struct FieldData {
@@ -291,5 +293,5 @@ pub:
 	attrs  []string
 	is_pub bool
 	is_mut bool
-	Type   int
+	typ    int
 }

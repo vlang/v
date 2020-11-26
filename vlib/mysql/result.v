@@ -30,11 +30,11 @@ pub fn (r Result) rows() []Row {
 	nr_cols := r.n_fields()
 	for rr := r.fetch_row(); rr; rr = r.fetch_row() {
 		mut row := Row{}
-		for i in 0..nr_cols {
-			if rr[i] == 0 {
+		for i in 0 .. nr_cols {
+			if unsafe {rr[i] == 0} {
 				row.vals << ''
 			} else {
-				row.vals << mystring( byteptr(rr[i]) )
+				row.vals << mystring(unsafe {byteptr(rr[i])})
 			}
 		}
 		rows << row
@@ -47,9 +47,9 @@ pub fn (r Result) maps() []map[string]string {
 	mut array_map := []map[string]string{}
 	rows := r.rows()
 	fields := r.fields()
-	for i in 0..rows.len {
-		mut map_val := map[string]string
-		for j in 0..fields.len {
+	for i in 0 .. rows.len {
+		mut map_val := map[string]string{}
+		for j in 0 .. fields.len {
 			map_val[fields[j].name] = rows[i].vals[j]
 		}
 		array_map << map_val
@@ -62,8 +62,8 @@ pub fn (r Result) fields() []Field {
 	mut fields := []Field{}
 	nr_cols := r.n_fields()
 	orig_fields := C.mysql_fetch_fields(r.result)
-	for i in 0..nr_cols {
-		fields << Field{
+	for i in 0 .. nr_cols {
+		unsafe {fields << Field{
 			name: mystring(orig_fields[i].name)
 			org_name: mystring(orig_fields[i].org_name)
 			table: mystring(orig_fields[i].table)
@@ -84,7 +84,7 @@ pub fn (r Result) fields() []Field {
 			decimals: orig_fields.decimals
 			charsetnr: orig_fields.charsetnr
 			type_: FieldType(orig_fields.@type)
-		}
+		}}
 	}
 	return fields
 }
@@ -134,7 +134,7 @@ pub fn (f Field) str() string {
 	flags: $f.flags
 	decimals: $f.decimals
 	charsetnr: $f.charsetnr
-	type: ${f.type_.str()}
+	type: $f.type_.str()
 }
 '
 }

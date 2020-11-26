@@ -148,6 +148,7 @@ fn (mut cmd Command) parse_flags() {
 		}
 		mut found := false
 		for i in 0 .. cmd.flags.len {
+			unsafe {
 			mut flag := &cmd.flags[i]
 			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
 				found = true
@@ -158,6 +159,7 @@ fn (mut cmd Command) parse_flags() {
 				}
 				break
 			}
+		  }
 		}
 		if !found {
 			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
@@ -183,34 +185,36 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-	// if no further command was found, execute current command
-	if int(cmd.execute) == 0 {
+	if cmd.is_root() && int(cmd.execute) == 0 {
 		if !cmd.disable_help {
 			cmd.execute_help()
+			return
 		}
-	} else {
-		if cmd.required_args > 0 {
-			if cmd.required_args > cmd.args.len {
-				println('Command `$cmd.name` needs at least $cmd.required_args arguments')
-				exit(1)
-			}
-		}
-		cmd.check_required_flags()
-		if int(cmd.pre_execute) > 0 {
-			cmd.pre_execute(*cmd) or {
-				println('cli preexecution error: $err')
-				exit(1)
-			}
-		}
-		cmd.execute(*cmd) or {
-			println('cli execution error: $err')
+	}
+	// if no further command was found, execute current command
+	if cmd.required_args > 0 {
+		if cmd.required_args > cmd.args.len {
+			eprintln('Command `$cmd.name` needs at least $cmd.required_args arguments')
 			exit(1)
 		}
-		if int(cmd.post_execute) > 0 {
-			cmd.post_execute(*cmd) or {
-				println('cli postexecution error: $err')
-				exit(1)
-			}
+	}
+	cmd.check_required_flags()
+	if int(cmd.pre_execute) > 0 {
+		cmd.pre_execute(*cmd) or {
+			eprintln('cli preexecution error: $err')
+			exit(1)
+		}
+	}
+	if int(cmd.execute) > 0 {
+		cmd.execute(*cmd) or {
+			eprintln('cli execution error: $err')
+			exit(1)
+		}
+	}
+	if int(cmd.post_execute) > 0 {
+		cmd.post_execute(*cmd) or {
+			eprintln('cli postexecution error: $err')
+			exit(1)
 		}
 	}
 }
@@ -269,7 +273,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error('Command `$name` not found')
+	return error('Command `$name` not found in $cmds')
 }
 
 fn (cmds []Command) contains(name string) bool {

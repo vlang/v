@@ -94,7 +94,7 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	ret_type_sym := p.table.get_type_symbol(return_type)
 	func := table.Fn{
 		name: name
-		args: args
+		params: args
 		is_variadic: is_variadic
 		return_type: return_type
 		return_type_source_name: ret_type_sym.source_name
@@ -152,13 +152,16 @@ pub fn (mut p Parser) parse_type() table.Type {
 	if p.tok.kind == .mul {
 		p.error('use `&Type` instead of `*Type` when declaring references')
 	}
+	mut nr_amps := 0
 	// &Type
 	for p.tok.kind == .amp {
+		nr_amps++
 		nr_muls++
 		p.next()
 	}
 	language := p.parse_language()
 	mut typ := table.void_type
+	is_array := p.tok.kind == .lsbr
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0, true)
@@ -177,11 +180,16 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	if nr_muls > 0 {
 		typ = typ.set_nr_muls(nr_muls)
+		if is_array && nr_amps > 0 {
+			p.error('V arrays are already references behind the scenes,
+there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
+If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
+		}
 	}
 	return typ
 }
 
-pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot bool) table.Type {
+pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check_dot bool) table.Type {
 	mut name := p.tok.lit
 	if language == .c {
 		name = 'C.$name'
@@ -191,7 +199,6 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
-			println(p.table.imports)
 			p.error('unknown module `$p.tok.lit`')
 		}
 		if p.tok.lit in p.imports {
@@ -204,9 +211,9 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 		if !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 		}
-	} else if p.expr_mod != '' {
+	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
-	} else if p.mod != 'builtin' && name !in p.table.type_idxs && name.len > 1 {
+	} else if p.mod != 'builtin' && name.len > 1 && name !in p.table.type_idxs {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
@@ -298,14 +305,14 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr, check_dot 
 					if p.peek_tok.kind == .lt {
 						return p.parse_generic_struct_inst_type(name)
 					}
-					return p.parse_enum_or_struct_type(name)
+					return p.parse_enum_or_struct_type(name, language)
 				}
 			}
 		}
 	}
 }
 
-pub fn (mut p Parser) parse_enum_or_struct_type(name string) table.Type {
+pub fn (mut p Parser) parse_enum_or_struct_type(name string, language table.Language) table.Type {
 	// struct / enum / placeholder
 	// struct / enum
 	mut idx := p.table.find_type_idx(name)
@@ -313,7 +320,7 @@ pub fn (mut p Parser) parse_enum_or_struct_type(name string) table.Type {
 		return table.new_type(idx)
 	}
 	// not found - add placeholder
-	idx = p.table.add_placeholder_type(name)
+	idx = p.table.add_placeholder_type(name, language)
 	// println('NOT FOUND: $name - adding placeholder - $idx')
 	return table.new_type(idx)
 }
@@ -326,6 +333,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
 		source_name: name
+		mod: p.mod
 		kind: .any
 		is_public: true
 	})
@@ -335,6 +343,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	mut bs_name := name
 	p.next()
+	p.in_generic_params = true
 	bs_name += '<'
 	mut generic_types := []table.Type{}
 	mut is_instance := false
@@ -353,23 +362,29 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		bs_name += ','
 	}
 	p.check(.gt)
+	p.in_generic_params = false
 	bs_name += '>'
 	if is_instance && generic_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
 		if gt_idx > 0 {
 			return table.new_type(gt_idx)
 		}
-		gt_idx = p.table.add_placeholder_type(bs_name)
+		gt_idx = p.table.add_placeholder_type(bs_name, .v)
+		mut parent_idx := p.table.type_idxs[name]
+		if parent_idx == 0 {
+			parent_idx = p.table.add_placeholder_type(name, .v)
+		}
 		idx := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
+			mod: p.mod
 			info: table.GenericStructInst{
-				parent_idx: p.table.type_idxs[name]
+				parent_idx: parent_idx
 				generic_types: generic_types
 			}
 		})
 		return table.new_type(idx)
 	}
-	return p.parse_enum_or_struct_type(name)
+	return p.parse_enum_or_struct_type(name, .v)
 }

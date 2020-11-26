@@ -1,6 +1,9 @@
 import vmod
 
+import os
+
 fn test_from_file() {
+	os.chdir(os.dir(os.getenv('VEXE')))
 	data := vmod.from_file('./v.mod') or {
 		panic(err)
 	}

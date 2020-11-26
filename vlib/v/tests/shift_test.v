@@ -1,4 +1,4 @@
-type MyInt int
+type MyInt = int
 
 fn test_shift_operators() {
 	// check that shift works with all integer types

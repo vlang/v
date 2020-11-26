@@ -1,9 +1,10 @@
 module main
+
 // /////////////////////////////////////////////////////////////////////
 // / This file will get compiled as a part of the same module,
 // / in which a given _test.v file is, when v is given -stats argument
 // / The methods defined here are called back by the test program's
-// / main function, so that customizing the look & feel of the results 
+// / main function, so that customizing the look & feel of the results
 // / is easy, since it is done in normal V code, instead of in embedded C ...
 // /////////////////////////////////////////////////////////////////////
 import os
@@ -77,7 +78,8 @@ fn (b &BenchedTests) fn_name() string {
 // Called at the end of the test program produced by `v -stats file_test.v`
 fn (mut b BenchedTests) end_testing() {
 	b.bench.stop()
-	println(inner_indent + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) + '"'))
+	println(inner_indent + b.bench.total_message('running V tests in "' + os.file_name(b.test_suit_file) +
+		'"'))
 }
 
 // ///////////////////////////////////////////////////////////////////

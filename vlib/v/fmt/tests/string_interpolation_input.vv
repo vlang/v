@@ -14,7 +14,7 @@ fn (c &Cc) f() int {
 	return c.a[0].xy
 }
 
-fn (c &Cc) g(k, l int) int {
+fn (c &Cc) g(k int, l int) int {
 	return c.a[k].xy+l
 }
 

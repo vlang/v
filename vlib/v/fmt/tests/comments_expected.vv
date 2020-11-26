@@ -1,6 +1,6 @@
 fn fun() int {
 	// comment zero
-	return 0
+	return 0 // another comment
 }
 
 fn mr_fun() (int, int) {
@@ -34,4 +34,6 @@ fn main() {
 	else {
 		println('else')
 	}
+	// empty return
+	return
 }

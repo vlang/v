@@ -3,6 +3,7 @@
 module gen
 
 import v.ast
+import v.util
 import v.table
 
 fn (mut g Gen) write_str_fn_definitions() {
@@ -118,11 +119,11 @@ string _STR_TMP(const char *fmt, ...) {
 
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
-		escaped_val := node.val.replace_each(['"', '\\"', '\\', '\\\\'])
+		escaped_val := util.smart_quote(node.val, true)
 		g.write('tos_lit("$escaped_val")')
 		return
 	}
-	escaped_val := node.val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n'])
+	escaped_val := util.smart_quote(node.val, false)
 	if g.is_c_call || node.language == .c {
 		// In C calls we have to generate C strings
 		// `C.printf("hi")` => `printf("hi");`
@@ -149,7 +150,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 	is_nl := call_expr.name == 'writeln'
 	// println('optimize sb $call_expr.name')
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		escaped_val := util.smart_quote(val, false)
 		// if val == '' {
 		// break
 		// continue
@@ -174,15 +175,8 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		g.expr(call_expr.left)
 		g.write(', ')
 		typ := node.expr_types[i]
-		sym := g.table.get_type_symbol(typ)
-		// if typ.is_number() {
-		if sym.kind == .alias && (sym.info as table.Alias).parent_type.is_number() {
-			// Handle number aliases TODO this must be more generic, handled by g.typ()?
-			g.write('int_str(')
-		} else {
-			g.write(g.typ(typ))
-			g.write('_str(')
-		}
+		g.write(g.typ(typ))
+		g.write('_str(')
 		g.expr(node.exprs[i])
 		g.writeln('));')
 	}
@@ -220,7 +214,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	// Build the string with %
 	mut end_string := false
 	for i, val in node.vals {
-		escaped_val := val.replace_each(['"', '\\"', '\r\n', '\\n', '\n', '\\n', '%', '%%'])
+		mut escaped_val := val.replace_each(['%', '%%'])
+		escaped_val = util.smart_quote(escaped_val, false)
 		if i >= node.exprs.len {
 			if escaped_val.len > 0 {
 				end_string = true
@@ -240,33 +235,34 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if node.fwidths[i] != 0 {
 			fmt = '$fmt${node.fwidths[i]}'
 		}
-		if node.precisions[i] != 0 {
+		if node.precisions[i] != 987698 {
 			fmt = '${fmt}.${node.precisions[i]}'
 		}
+		typ := g.unwrap_generic(node.expr_types[i])
 		if fspec == `s` {
 			if node.fwidths[i] == 0 {
 				g.write('.*s')
 			} else {
 				g.write('*.*s')
 			}
-		} else if node.expr_types[i].is_float() {
+		} else if typ.is_float() {
 			g.write('$fmt${fspec:c}')
-		} else if node.expr_types[i].is_pointer() {
+		} else if typ.is_pointer() {
 			if fspec == `p` {
 				g.write('${fmt}p')
 			} else {
 				g.write('$fmt"PRI${fspec:c}PTR"')
 			}
-		} else if node.expr_types[i].is_int() {
+		} else if typ.is_int() {
 			if fspec == `c` {
 				g.write('${fmt}c')
 			} else {
 				g.write('$fmt"PRI${fspec:c}')
-				if node.expr_types[i] in [table.i8_type, table.byte_type] {
+				if typ in [table.i8_type, table.byte_type] {
 					g.write('8')
-				} else if node.expr_types[i] in [table.i16_type, table.u16_type] {
+				} else if typ in [table.i16_type, table.u16_type] {
 					g.write('16')
-				} else if node.expr_types[i] in [table.i64_type, table.u64_type] {
+				} else if typ in [table.i64_type, table.u64_type] {
 					g.write('64')
 				} else {
 					g.write('32')
@@ -285,7 +281,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 	g.write('", $num_string_parts, ')
 	// Build args
 	for i, expr in node.exprs {
-		if node.expr_types[i] == table.string_type {
+		typ := g.unwrap_generic(node.expr_types[i])
+		if typ == table.string_type {
 			if g.inside_vweb_tmpl {
 				g.write('vweb__filter(')
 				g.expr(expr)
@@ -293,18 +290,17 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.expr(expr)
 			}
-		} else if node.expr_types[i] == table.bool_type {
+		} else if typ == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.expr_types[i].is_number() || node.expr_types[i].is_pointer() ||
-			node.fmts[i] == `d` {
-			if node.expr_types[i].is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
+		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
+			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
-				if node.expr_types[i] == table.i8_type {
+				if typ == table.i8_type {
 					g.write('(byte)(')
-				} else if node.expr_types[i] == table.i16_type {
+				} else if typ == table.i16_type {
 					g.write('(u16)(')
-				} else if node.expr_types[i] == table.int_type {
+				} else if typ == table.int_type {
 					g.write('(u32)(')
 				} else {
 					g.write('(u64)(')
@@ -315,7 +311,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 				g.expr(expr)
 			}
 		} else if node.fmts[i] == `s` {
-			g.gen_expr_to_string(expr, node.expr_types[i])
+			g.gen_expr_to_string(expr, typ)
 		} else {
 			g.expr(expr)
 		}

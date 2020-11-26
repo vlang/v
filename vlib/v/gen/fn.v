@@ -50,7 +50,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
-		name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
+		name = g.cc_type2(it.receiver.typ) + '_' + name
+		// name = g.table.get_type_symbol(it.receiver.typ).name + '_' + name
 	}
 	if it.language == .c {
 		name = util.no_dots(name)
@@ -62,7 +63,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// foo<T>() => foo_int(), foo_string() etc
 		gen_name := g.typ(g.cur_generic_type)
 		name += '_' + gen_name
-		type_name = type_name.replace('T', gen_name)
 	}
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
@@ -100,8 +100,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
-				g.write('static ')
-				g.definitions.write('static ')
+				g.write('VV_LOCAL_SYMBOL ')
+				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
 		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
@@ -109,7 +109,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.write(fn_header)
 	}
 	arg_start_pos := g.out.len
-	fargs, fargtypes := g.fn_args(it.args, it.is_variadic)
+	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
 	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
@@ -152,10 +152,14 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
 	}
-	//
-	if g.autofree && !g.pref.experimental {
-		// TODO: remove this, when g.write_autofree_stmts_when_needed works properly
-		g.autofree_scope_vars(it.body_pos.pos)
+	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
+		default_expr := g.type_default(it.return_type)
+		// TODO: perf?
+		if default_expr == '{0}' {
+			g.writeln('\treturn ($type_name)$default_expr;')
+		} else {
+			g.writeln('\treturn $default_expr;')
+		}
 	}
 	g.writeln('}')
 	g.defer_stmts = []
@@ -166,7 +170,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
 			export_alias := '$type_name ${attr.arg}($arg_str)'
-			g.definitions.writeln('$export_alias;')
+			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $it.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
 			g.write(fargs.join(', '))
@@ -176,6 +180,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 }
 
+/*
 fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
 	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
 	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
@@ -185,7 +190,7 @@ fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
 	// g.writeln(g.autofree_scope_vars(g.fn_decl.body_pos.pos))
 	// g.writeln('//--------------------------------------------------- ') // //g.write( g.autofree_scope_vars(r.pos.pos) )
 }
-
+*/
 fn (mut g Gen) write_defer_stmts_when_needed() {
 	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts()
@@ -202,20 +207,11 @@ fn (mut g Gen) write_defer_stmts_when_needed() {
 fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string) {
 	mut fargs := []string{}
 	mut fargtypes := []string{}
-	no_names := args.len > 0 && args[0].name == 'arg_1'
 	for i, arg in args {
 		caname := c_name(arg.name)
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		// if arg.name == 'xxx' {
-		// println('xxx arg type= ' + arg_type_name)
-		// }
-		if g.cur_generic_type != 0 {
-			// foo<T>() => foo_int(), foo_string() etc
-			gen_name := g.typ(g.cur_generic_type)
-			arg_type_name = arg_type_name.replace('T', gen_name)
-		}
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
 			varg_type_str := int(arg.typ).str()
@@ -235,25 +231,12 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			} else {
 				g.write('${g.typ(func.return_type)} (*$caname)(')
 				g.definitions.write('${g.typ(func.return_type)} (*$caname)(')
-				g.fn_args(func.args, func.is_variadic)
+				g.fn_args(func.params, func.is_variadic)
 				g.write(')')
 				g.definitions.write(')')
 			}
-		} else if no_names {
-			g.write(arg_type_name)
-			g.definitions.write(arg_type_name)
-			fargs << ''
-			fargtypes << arg_type_name
 		} else {
-			mut nr_muls := arg.typ.nr_muls()
 			s := arg_type_name + ' ' + caname
-			if arg.is_mut {
-				// mut arg needs one *
-				nr_muls = 1
-			}
-			// if nr_muls > 0 && !is_varg {
-			// s = arg_type_name + strings.repeat(`*`, nr_muls) + ' ' + caname
-			// }
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -331,12 +314,16 @@ pub fn (g &Gen) unwrap_generic(typ table.Type) table.Type {
 fn (mut g Gen) method_call(node ast.CallExpr) {
 	// TODO: there are still due to unchecked exprs (opt/some fn arg)
 	if node.left_type == 0 {
-		verror('method receiver type is 0, this means there are some uchecked exprs')
+		g.checker_bug('CallExpr.left_type is 0 in method_call', node.pos)
+	}
+	if node.receiver_type == 0 {
+		g.checker_bug('CallExpr.receiver_type is 0 in method_call', node.pos)
 	}
 	// mut receiver_type_name := g.cc_type(node.receiver_type)
 	// mut receiver_type_name := g.typ(node.receiver_type)
 	typ_sym := g.table.get_type_symbol(g.unwrap_generic(node.receiver_type))
-	mut receiver_type_name := util.no_dots(typ_sym.name)
+	// mut receiver_type_name := util.no_dots(typ_sym.name)
+	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
 		g.write('${c_name(receiver_type_name)}_name_table[')
@@ -379,6 +366,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
+	if left_sym.kind == .sum_type && node.name == 'type_name' {
+		g.write('tos3( /* $left_sym.name */ v_typeof_unionsumtype_${node.receiver_type}( (')
+		g.expr(node.left)
+		g.write(').typ ))')
+		return
+	}
 	if node.name == 'str' {
 		mut styp := g.typ(node.receiver_type)
 		if node.receiver_type.is_ptr() {
@@ -410,7 +403,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut is_range_slice := false
 	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
 		if node.left is ast.IndexExpr {
-			idx := (node.left as ast.IndexExpr).index
+			idx := node.left.index
 			if idx is ast.RangeExpr {
 				// expr is arr[range].clone()
 				// use array_clone_static instead of array_clone
@@ -419,7 +412,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
-	g.generate_tmp_autofree_arg_vars(node, name)
+	// TODO2
+	// g.generate_tmp_autofree_arg_vars(node, name)
+	//
 	// if node.receiver_type != 0 {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
@@ -440,7 +435,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
-	g.expr(node.left)
+	if node.free_receiver && !g.inside_lambda {
+		// The receiver expression needs to be freed, use the temp var.
+		fn_name := node.name.replace('.', '_')
+		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
+		g.write('/*af receiver arg*/' + arg_name)
+	} else {
+		g.expr(node.left)
+	}
 	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
 		1].has_flag(.variadic)
 	if node.args.len > 0 || is_variadic {
@@ -490,7 +492,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		cur_line := g.go_before_stmt(0)
 		if is_json_encode {
 			g.gen_json_for_type(node.args[0].typ)
-			json_type_str = g.table.get_type_symbol(node.args[0].typ).name
+			json_type_str = g.typ(node.args[0].typ)
 			// `json__encode` => `json__encode_User`
 			encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
 			g.writeln('// json.encode')
@@ -503,7 +505,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		} else {
 			ast_type := node.args[0].expr as ast.Type
 			// `json.decode(User, s)` => json.decode_User(s)
-			typ := c_name(g.table.get_type_symbol(ast_type.typ).name)
+			typ := c_name(g.typ(ast_type.typ))
 			fn_name := c_name(name) + '_' + typ
 			g.gen_json_for_type(ast_type.typ)
 			g.writeln('// json.decode')
@@ -518,7 +520,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			tmp2 = g.new_tmp_var()
 			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
-		g.write('cJSON_Delete($json_obj);')
+		if !g.pref.autofree {
+			g.write('cJSON_Delete($json_obj); //del')
+		}
 		g.write('\n$cur_line')
 		name = ''
 		json_obj = tmp2
@@ -534,118 +538,237 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// `foo<int>()` => `foo_int()`
 		name += '_' + g.typ(node.generic_type)
 	}
-	g.generate_tmp_autofree_arg_vars(node, name)
+	// TODO2
+	// cgen shouldn't modify ast nodes, this should be moved
+	// g.generate_tmp_autofree_arg_vars(node, name)
 	// Handle `print(x)`
+	mut print_auto_str := false
 	if is_print && node.args[0].typ != table.string_type { // && !free_tmp_arg_vars {
-		typ := node.args[0].typ
-		mut styp := g.typ(typ)
-		sym := g.table.get_type_symbol(typ)
-		if typ.is_ptr() {
-			styp = styp.replace('*', '')
+		mut typ := node.args[0].typ
+		if typ == 0 {
+			g.checker_bug('print arg.typ is 0', node.pos)
 		}
-		mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
-		if g.autofree && !typ.has_flag(.optional) {
-			// Create a temporary variable so that the value can be freed
-			tmp := g.new_tmp_var()
-			// tmps << tmp
-			g.write('string $tmp = ${str_fn_name}(')
-			g.expr(node.args[0].expr)
-			g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
-		} else {
-			expr := node.args[0].expr
-			is_var := match expr {
-				ast.SelectorExpr { true }
-				ast.Ident { true }
-				else { false }
+		mut sym := g.table.get_type_symbol(typ)
+		if mut sym.info is table.Alias {
+			typ = sym.info.parent_type
+			sym = g.table.get_type_symbol(typ)
+		}
+		// check if alias parent also not a string
+		if typ != table.string_type {
+			mut styp := g.typ(typ)
+			if typ.is_ptr() {
+				styp = styp.replace('*', '')
 			}
-			if typ.is_ptr() && sym.kind != .struct_ {
-				// ptr_str() for pointers
-				styp = 'ptr'
-				str_fn_name = 'ptr_str'
-			}
-			if sym.kind == .enum_ {
-				if is_var {
-					g.write('${print_method}(${str_fn_name}(')
-				} else {
-					// when no var, print string directly
-					g.write('${print_method}(tos3("')
-				}
-				if typ.is_ptr() {
-					// dereference
-					g.write('*')
-				}
-				g.enum_expr(expr)
-				if !is_var {
-					// end of string
-					g.write('"')
-				}
+			mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
+			if g.autofree && !typ.has_flag(.optional) {
+				// Create a temporary variable so that the value can be freed
+				tmp := g.new_tmp_var()
+				// tmps << tmp
+				g.write('string $tmp = ${str_fn_name}(')
+				g.expr(node.args[0].expr)
+				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 			} else {
-				g.write('${print_method}(${str_fn_name}(')
-				if typ.is_ptr() && sym.kind == .struct_ {
-					// dereference
-					g.write('*')
+				expr := node.args[0].expr
+				is_var := match expr {
+					ast.SelectorExpr { true }
+					ast.Ident { true }
+					else { false }
 				}
-				g.expr(expr)
+				if typ.is_ptr() && sym.kind != .struct_ {
+					// ptr_str() for pointers
+					styp = 'ptr'
+					str_fn_name = 'ptr_str'
+				}
+				if sym.kind == .enum_ {
+					if is_var {
+						g.write('${print_method}(${str_fn_name}(')
+					} else {
+						// when no var, print string directly
+						g.write('${print_method}(tos3("')
+					}
+					if typ.is_ptr() {
+						// dereference
+						g.write('*')
+					}
+					g.enum_expr(expr)
+					if !is_var {
+						// end of string
+						g.write('"')
+					}
+				} else {
+					g.write('${print_method}(${str_fn_name}(')
+					if typ.is_ptr() && sym.kind == .struct_ {
+						// dereference
+						g.write('*')
+					}
+					g.expr(expr)
+				}
+				g.write('))')
 			}
-			g.write('))')
+			print_auto_str = true
 		}
-	} else if g.pref.is_debug && node.name == 'panic' {
-		paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
-		g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
-		// g.call_args(node.args, node.expected_arg_types) // , [])
-		g.call_args(node)
-		g.write(')')
-	} else {
-		// Simple function call
-		// if free_tmp_arg_vars {
-		// g.writeln(';')
-		// g.write(cur_line + ' /* <== af cur line*/')
-		// }
-		g.write('${g.get_ternary_name(name)}(')
-		if g.is_json_fn {
-			g.write(json_obj)
-		} else {
-			// g.call_args(node.args, node.expected_arg_types) // , tmp_arg_vars_to_free)
+	}
+	if !print_auto_str {
+		if g.pref.is_debug && node.name == 'panic' {
+			paline, pafile, pamod, pafn := g.panic_debug_info(node.pos)
+			g.write('panic_debug($paline, tos3("$pafile"), tos3("$pamod"), tos3("$pafn"),  ')
+			// g.call_args(node.args, node.expected_arg_types) // , [])
 			g.call_args(node)
+			g.write(')')
+		} else {
+			// Simple function call
+			// if free_tmp_arg_vars {
+			// g.writeln(';')
+			// g.write(cur_line + ' /* <== af cur line*/')
+			// }
+			g.write('${g.get_ternary_name(name)}(')
+			if g.is_json_fn {
+				g.write(json_obj)
+			} else {
+				// g.call_args(node.args, node.expected_arg_types) // , tmp_arg_vars_to_free)
+				g.call_args(node)
+			}
+			g.write(')')
 		}
-		g.write(')')
 	}
 	g.is_c_call = false
 	g.is_json_fn = false
 }
 
-fn (mut g Gen) generate_tmp_autofree_arg_vars(node ast.CallExpr, name string) {
-	// Create a temporary var for each argument in order to free it (only if it's a complex expression,
+fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
+	// g.writeln('// autofree_call_pregen()')
+	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
 	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
 		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
-	// mut cur_line := ''
-	if free_tmp_arg_vars {
-		free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
-		g.tmp_count2++
-		for i, arg in node.args {
-			if !arg.is_tmp_autofree {
-				continue
-			}
-			free_tmp_arg_vars = true
-			// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
-			fn_name := node.name.replace('.', '_') // can't use name...
-			t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
-			g.called_fn_name = name
-			str_expr := g.write_expr_to_string(arg.expr)
-			g.insert_before_stmt('string $t = $str_expr; // new4. to free arg #$i name=$name')
-			// cur_line = g.go_before_stmt(0)
-			// println('cur line ="$cur_line"')
-			// g.writeln('string $t = $str_expr; // new3. to free arg #$i name=$name')
-			// Now free the tmp arg vars right after the function call
-			g.strs_to_free << 'string_free(&$t);'
+	if !free_tmp_arg_vars {
+		return
+	}
+	if g.is_js_call {
+		return
+	}
+	if g.inside_const {
+		return
+	}
+	free_tmp_arg_vars = false // set the flag to true only if we have at least one arg to free
+	g.tmp_count2++
+	mut scope := g.file.scope.innermost(node.pos.pos)
+	// prepend the receiver for now (TODO turn the receiver into a CallArg everywhere?)
+	mut args := [ast.CallArg{
+		typ: node.receiver_type
+		expr: node.left
+		is_tmp_autofree: node.free_receiver
+	}]
+	args << node.args
+	// for i, arg in node.args {
+	for i, arg in args {
+		if !arg.is_tmp_autofree {
+			continue
 		}
-		// g.strs_to_free << (';')
+		if arg.expr is ast.CallExpr {
+			// Any argument can be an expression that has to be freed. Generate a tmp expression
+			// for each of those recursively.
+			g.autofree_call_pregen(arg.expr)
+		}
+		free_tmp_arg_vars = true
+		// t := g.new_tmp_var() + '_arg_expr_${name}_$i'
+		fn_name := node.name.replace('.', '_') // can't use name...
+		// t := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+		t := '_arg_expr_${fn_name}_${i}_$node.pos.pos'
+		// g.called_fn_name = name
+		used := false // scope.known_var(t)
+		mut s := '$t = '
+		if used {
+			// This means this tmp var name was already used (the same function was called and
+			// `_arg_fnname_1` was already generated).
+			// We do not need to declare this variable again, so just generate `t = ...`
+			// instead of `string t = ...`, and we need to mark this variable as unused,
+			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
+			if x := scope.find(t) {
+				match mut x {
+					ast.Var { x.is_used = false }
+					else {}
+				}
+			}
+			s = '$t = '
+		} else {
+			scope.register(t, ast.Var{
+				name: t
+				typ: table.string_type // is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
+				is_autofree_tmp: true
+			})
+			s = 'string $t = '
+		}
+		// g.expr(arg.expr)
+		s += g.write_expr_to_string(arg.expr)
+		// g.writeln(';// new af pre')
+		s += ';// new af2 pre'
+		g.strs_to_free0 << s
+		// Now free the tmp arg vars right after the function call
+		// g.strs_to_free << t
+		// g.nr_vars_to_free++
+		// g.strs_to_free << 'string_free(&$t);'
 	}
 }
 
-// fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type, tmp_arg_vars_to_free []string) {
-// fn (mut g Gen) call_args(args []ast.CallArg, expected_types []table.Type) {
+fn (mut g Gen) autofree_call_postgen(node_pos int) {
+	/*
+	if g.strs_to_free.len == 0 {
+		return
+	}
+	*/
+	/*
+	g.writeln('\n/* strs_to_free3: $g.nr_vars_to_free */')
+	if g.nr_vars_to_free <= 0 {
+		return
+	}
+	*/
+	/*
+	for s in g.strs_to_free {
+		g.writeln('string_free(&$s);')
+	}
+	if !g.inside_or_block {
+		// we need to free the vars both inside the or block (in case of an error) and after it
+		// if we reset the array here, then the vars will not be freed after the block.
+		g.strs_to_free = []
+	}
+	*/
+	if g.inside_vweb_tmpl {
+		return
+	}
+	// g.doing_autofree_tmp = true
+	// g.write('/* postgen */')
+	scope := g.file.scope.innermost(node_pos)
+	for _, obj in scope.objects {
+		match mut obj {
+			ast.Var {
+				// if var.typ == 0 {
+				// // TODO why 0?
+				// continue
+				// }
+				is_optional := obj.typ.has_flag(.optional)
+				if is_optional {
+					// TODO: free optionals
+					continue
+				}
+				if !obj.is_autofree_tmp {
+					continue
+				}
+				if obj.is_used {
+					// this means this tmp expr var has already been freed
+					continue
+				}
+				obj.is_used = true
+				g.autofree_variable(obj)
+				// g.nr_vars_to_free--
+			}
+			else {}
+		}
+	}
+	// g.write('/* postgen end */')
+	// g.doing_autofree_tmp = false
+}
+
 fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
@@ -657,7 +780,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && g.pref.experimental && arg.typ == table.string_type &&
-			arg.is_tmp_autofree
+			arg.is_tmp_autofree && !g.inside_const
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
@@ -677,13 +800,14 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if is_interface {
 				g.expr(arg.expr)
 			} else if use_tmp_var_autofree {
-				if arg.is_tmp_autofree {
+				if arg.is_tmp_autofree { // && !g.is_js_call {
 					// We saved expressions in temp variables so that they can be freed later.
 					// `foo(str + str2) => x := str + str2; foo(x); x.free()`
 					// g.write('_arg_expr_${g.called_fn_name}_$i')
 					// Use these variables here.
 					fn_name := node.name.replace('.', '_')
-					name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+					// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+					name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 					g.write('/*af arg*/' + name)
 				}
 			} else {
@@ -693,7 +817,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			if use_tmp_var_autofree {
 				// TODO copypasta, move to an inline fn
 				fn_name := node.name.replace('.', '_')
-				name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+				// name := '_tt${g.tmp_count2}_arg_expr_${fn_name}_$i'
+				name := '_arg_expr_${fn_name}_${i + 1}_$node.pos.pos'
 				g.write('/*af arg2*/' + name)
 			} else {
 				g.expr(arg.expr)
@@ -734,6 +859,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 	arg_is_ptr := expected_type.is_ptr() || expected_type.idx() in table.pointer_type_idxs
 	expr_is_ptr := arg.typ.is_ptr() || arg.typ.idx() in table.pointer_type_idxs
+	if expected_type == 0 {
+		g.checker_bug('ref_or_deref_arg expected_type is 0', arg.pos)
+	}
 	exp_sym := g.table.get_type_symbol(expected_type)
 	if arg.is_mut && !arg_is_ptr {
 		g.write('&/*mut*/')
@@ -754,6 +882,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 		}
 		if !g.is_json_fn {
+			if arg.typ == 0 {
+				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
+			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
 			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type

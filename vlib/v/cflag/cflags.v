@@ -8,21 +8,26 @@ import os
 // parsed cflag
 pub struct CFlag {
 pub:
-	mod   string // the module in which the flag was given
-	os    string // eg. windows | darwin | linux
-	name  string // eg. -I
-	value string // eg. /path/to/include
+	mod    string // the module in which the flag was given
+	os     string // eg. windows | darwin | linux
+	name   string // eg. -I
+	value  string // eg. /path/to/include
+pub mut:
+	cached string // eg. ~/.vmodules/cache/ea/ea9878886727367672163.o (for .o files)
 }
 
 pub fn (c &CFlag) str() string {
-	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" }'
+	return 'CFlag{ name: "$c.name" value: "$c.value" mod: "$c.mod" os: "$c.os" cached: "$c.cached" }'
 }
 
 // format flag
 pub fn (cf &CFlag) format() string {
 	mut value := cf.value
+	if cf.cached != '' {
+		value = cf.cached
+	}
 	if cf.name in ['-l', '-Wa', '-Wl', '-Wp'] && value.len > 0 {
-		return '${cf.name}${value}'.trim_space()
+		return '$cf.name$value'.trim_space()
 	}
 	// convert to absolute path
 	if cf.name == '-I' || cf.name == '-L' || value.ends_with('.o') {

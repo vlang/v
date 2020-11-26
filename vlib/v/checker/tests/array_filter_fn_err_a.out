@@ -1,7 +1,7 @@
-vlib/v/checker/tests/array_filter_fn_err_a.vv:5:23: error: function needs exactly 1 argument
+vlib/v/checker/tests/array_filter_fn_err_a.vv:5:17: error: function needs exactly 1 argument
     3 | }
     4 | fn main() {
     5 |     a := [1,2,3,4].filter(fil)
-      |                          ~~~~~
+      |                    ~~~~~~~~~~~
     6 |     println(a)
     7 | }

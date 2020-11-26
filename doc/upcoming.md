@@ -22,7 +22,7 @@ Objects that are supposed to be used to exchange data between
 coroutines have to be declared with special care. Exactly one of the following
 4 kinds of declaration has to be chosen:
 
-```v
+```v ignore
 a := ...
 mut b := ...
 shared c := ...
@@ -41,14 +41,14 @@ atomic d := ...
   *concurrently*.<sup>2</sup> In order to avoid data races it has to
   be locked before access can occur and unlocked to allow access to
   other coroutines. This is done by one the following block structures:
-  ```v
+  ```v ignore
   lock c {
       // read, modify, write c
       ...
   }
   ```
   
-  ```v
+  ```v ignore
   rlock c {
       // read c
       ...
@@ -122,7 +122,7 @@ Outside of `lock`/`rlock` blocks function arguments must in general
 match - with the familiar exception that objects declared `mut` can be
 used to call functions expecting immutable arguments:
 
-```v
+```v ignore
 fn f(x St) {...}
 fn g(mut x St) {...}
 fn h(shared x St) {...}
@@ -145,7 +145,7 @@ i(atomic d)
 
 Inside a `lock c {...}` block `c` behaves like a `mut`,
 inside an `rlock c {...}` block like an immutable:
-```v
+```v ignore
 shared c := &St{...}
 lock c {
     g(mut c)
@@ -165,7 +165,7 @@ object is accessed outside of any corresponding `lock`/`rlock`
 block. However in simple and obvious cases the necessary lock/unlock
 can be generated automatically for `array`/`map` operations:
 
-```v
+```v ignore
 shared a []int{...}
 go h2(shared a)
 a << 3
@@ -191,97 +191,3 @@ are sometimes surprising. Each statement should be seen as a single
 transaction that is unrelated to the previous or following
 statement. Therefore - but also for performance reasons - it's often
 better to group consecutive coherent statements in an explicit `lock` block.
-
-### Channels
-Channels in V work basically like those in Go. You can `push()` objects into
-a channel and `pop()` objects from a channel. They can be buffered or unbuffered
-and it is possible to `select` from multiple channels.
-
-#### Syntax and Usage
-There is no support for channels in the core language (yet), so all functions
-are in the `sync` library. Channels must be created as `mut` objects.
-
-```v
-mut ch := sync.new_channel<int>(0)    // unbuffered
-mut ch2 := sync.new_channel<f64>(100) // buffer length 100
-```
-
-Channels can be passed to coroutines like normal `mut` variables:
-
-```v
-fn f(mut ch sync.Channel) {
-    ...
-}
-
-fn main() {
-    ...
-    go f(mut ch)
-    ...
-}
-```
-
-The routines `push()` and `pop()` both use *references* to objects. This way
-unnecessary copies of large objects are avoided and the call to `cannel_select()`
-(see below) is simpler:
-
-```v
-n := 5
-x := 7.3
-ch.push(&n)
-ch2.push(&x)
-
-mut m := int(0)
-mut y := f64(0.0)
-ch.pop(&m)
-ch2.pop(&y)
-```
-
-A channel can be closed to indicate that no further objects can be pushed. Any attempt
-to do so will then result in a runtime panic. The `pop()` method will return immediately `false`
-if the associated channel has been closed and the buffer is empty.
-
-```v
-ch.close()
-...
-if ch.pop(&m) {
-    println('got $m')
-} else {
-    println('channel has been closed')
-}
-```
-
-There are also methods `try_push()` and `try_pop()` which return immediatelly with the return value `.not_ready` if the transaction
-cannot be performed without waiting. The return value is of type `sync.TransactionState` which can also be
-`.success` or `.closed`.
-
-To monitor a channel there is a method `len()` which returns the number of elements currently in the queue and the attribute
-`cap` for the queue length. Please be aware that in general `channel.len() > 0` does not guarantee that the next
-`pop()` will succeed without waiting, since other threads may already have "stolen" elements from the queue. Use `try_pop()` to
-accomplish this kind of task.
-
-The select call is somewhat tricky. The `channel_select()` function needs three arrays that
-contain the channels, the directions (pop/push) and the object references and
-a timeout of type `time.Duration` (`time.infinite` or `-1` to wait unlimited) as parameters. It returns the
-index of the object that was pushed or popped or `-1` for timeout.
-
-```v
-mut chans := [ch, ch2]                    // the channels to monitor
-directions := [sync.Direction.pop, .pop]  // .push or .pop
-mut objs := [voidptr(&m), &y]             // the objects to push or pop
-
-// idx contains the index of the object that was pushed or popped, -1 means timeout occured
-idx := sync.channel_select(mut chans, directions, mut objs, 0) // wait unlimited
-match idx {
-    0 {
-        println('got $m')
-    }
-    1 {
-        println('got $y')
-    }
-    else {
-        // idx = -1
-        println('Timeout')
-    }
-}
-```
-If all channels have been closed `-2` is returned as index.

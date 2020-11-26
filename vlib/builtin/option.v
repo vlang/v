@@ -19,7 +19,7 @@ struct OptionBase {
 	ecode   int
 
 	// Data is trailing after ecode
-	// and is not included in here but in the 
+	// and is not included in here but in the
 	// derived Option_xxx types
 }
 
@@ -51,32 +51,16 @@ struct Option {
 	is_none bool
 	error   string
 	ecode   int
-
-	data    [400]byte
 }
 
 pub fn (o Option) str() string {
    if o.ok && !o.is_none {
-	  return 'Option{ data: ' + o.data[0..32].hex() + ' }'
+	  return 'Option{ ok }'
    }
    if o.is_none {
 	  return 'Option{ none }'
    }
    return 'Option{ error: "${o.error}" }'
-}
-
-// `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
-fn opt_ok(data voidptr, size int) Option {
-	if size >= 400 {
-		panic('option size too big: $size (max is 400), this is a temporary limit')
-	}
-	res := Option{
-		ok: true
-	}
-	unsafe {
-		C.memcpy(res.data, data, size)
-	}
-	return res
 }
 
 // used internally when returning `none`

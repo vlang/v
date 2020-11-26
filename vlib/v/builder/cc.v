@@ -10,7 +10,8 @@ import v.pref
 import term
 
 const (
-	c_error_info      = '
+	c_verror_message_marker = 'VERROR_MESSAGE '
+	c_error_info            = '
 ==================
 C error. This should never happen.
 
@@ -20,7 +21,7 @@ https://github.com/vlang/v/issues/new/choose
 
 You can also use #help on Discord: https://discord.gg/vlang
 '
-	no_compiler_error = '
+	no_compiler_error       = '
 ==================
 Error: no C compiler detected.
 
@@ -31,7 +32,9 @@ If you think you have one installed, make sure it is in your PATH.
 If you do have one in your PATH, please raise an issue on GitHub:
 https://github.com/vlang/v/issues/new/choose
 
-You can also use #help on Discord: https://discord.gg/vlang
+You can also use `v doctor`, to see what V knows about your current environment.
+
+You can also seek #help on Discord: https://discord.gg/vlang
 '
 )
 
@@ -42,7 +45,7 @@ const (
 fn todo() {
 }
 
-fn (v &Builder) find_win_cc() ?string {
+fn (mut v Builder) find_win_cc() ? {
 	$if !windows {
 		return none
 	}
@@ -58,15 +61,100 @@ fn (v &Builder) find_win_cc() ?string {
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
 			os.exec('$thirdparty_tcc -v') or {
 				if v.pref.is_verbose {
-					println('No C compiler found')
+					println('tcc not found')
 				}
 				return none
 			}
-			return thirdparty_tcc
+			v.pref.ccompiler = thirdparty_tcc
+			v.pref.ccompiler_type = .tinyc
+			return
 		}
-		return 'msvc'
+		v.pref.ccompiler = 'msvc'
+		v.pref.ccompiler_type = .msvc
+		return
 	}
-	return v.pref.ccompiler
+	v.pref.ccompiler_type = pref.cc_from_string(v.pref.ccompiler)
+}
+
+fn (mut v Builder) show_c_compiler_output(res os.Result) {
+	println('======== C Compiler output ========')
+	println(res.output)
+	println('=================================')
+}
+
+fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
+	if res.exit_code == 0 {
+		if v.pref.reuse_tmpc {
+			return
+		}
+		for tmpfile in v.pref.cleanup_files {
+			if os.is_file(tmpfile) {
+				if v.pref.is_verbose {
+					eprintln('>> remove tmp file: $tmpfile')
+				}
+				os.rm(tmpfile)
+			}
+		}
+		return
+	}
+	for emsg_marker in [c_verror_message_marker, 'error: include file '] {
+		if res.output.contains(emsg_marker) {
+			emessage := res.output.all_after(emsg_marker).all_before('\n').all_before('\r').trim_right('\r\n')
+			verror(emessage)
+		}
+	}
+	if v.pref.is_debug {
+		eword := 'error:'
+		khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
+		println(res.output.trim_right('\r\n').replace(eword, khighlight))
+	} else {
+		if res.output.len < 30 {
+			println(res.output)
+		} else {
+			elines := error_context_lines(res.output, 'error:', 1, 12)
+			println('==================')
+			for eline in elines {
+				println(eline)
+			}
+			println('...')
+			println('==================')
+			println('(Use `v -cg` to print the entire error message)\n')
+		}
+	}
+	verror(c_error_info)
+}
+
+fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	res := v.pref.cache_manager.exists('.o', imp_path) or {
+		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		// do run `v build-module x` always in main vfolder; x can be a relative path
+		pwd := os.getwd()
+		vroot := os.dir(vexe)
+		os.chdir(vroot)
+		boptions := v.pref.build_options.join(' ')
+		rebuild_cmd := '$vexe $boptions build-module $imp_path'
+		// eprintln('>> rebuild_cmd: $rebuild_cmd')
+		os.system(rebuild_cmd)
+		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
+			panic('could not rebuild cache module for $imp_path, error: $err')
+		}
+		os.chdir(pwd)
+		return rebuilded_o
+	}
+	return res
+}
+
+fn (mut v Builder) show_cc(cmd string, response_file string, response_file_content string) {
+	if v.pref.is_verbose || v.pref.show_cc {
+		println('')
+		println('=====================')
+		println('> C compiler cmd: $cmd')
+		if v.pref.show_cc {
+			println('> C compiler response file $response_file:')
+			println(response_file_content)
+		}
+		println('=====================')
+	}
 }
 
 fn (mut v Builder) cc() {
@@ -149,7 +237,7 @@ fn (mut v Builder) cc() {
 	// '-Werror',
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
-	mut args := [v.pref.cflags, '-std=gnu11', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
+	mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
 		'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
 	if v.pref.os == .ios {
 		args << '-framework Foundation'
@@ -200,6 +288,8 @@ fn (mut v Builder) cc() {
 		args << '-fPIC' // -Wl,-z,defs'
 		$if macos {
 			v.pref.out_name += '.dylib'
+		} $else $if windows {
+			v.pref.out_name += '.dll'
 		} $else {
 			v.pref.out_name += '.so'
 		}
@@ -211,14 +301,9 @@ fn (mut v Builder) cc() {
 		linker_flags << '-nostdlib'
 	}
 	if v.pref.build_mode == .build_module {
-		// Create the modules & out directory if it's not there.
-		out_dir := os.join_path(pref.default_module_path, 'cache', v.pref.path)
-		pdir := out_dir.all_before_last(os.path_separator)
-		if !os.is_dir(pdir) {
-			os.mkdir_all(pdir)
-		}
-		v.pref.out_name = '${out_dir}.o' // v.out_name
-		println('Building ${v.pref.out_name}...')
+		v.pref.out_name = v.pref.cache_manager.postfix_with_key2cpath('.o', v.pref.path) // v.out_name
+		println('Building $v.pref.path to $v.pref.out_name ...')
+		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n')
 		// println('v.table.imports:')
 		// println(v.table.imports)
 	}
@@ -291,7 +376,7 @@ fn (mut v Builder) cc() {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
 			linker_flags << '-rdynamic'
 		}
-		if v.pref.os == .mac || os.user_os() == 'mac' {
+		if v.pref.os == .macos || os.user_os() == 'macos' {
 			args << '-flat_namespace'
 		}
 	}
@@ -300,10 +385,7 @@ fn (mut v Builder) cc() {
 		args << '-c'
 	} else if v.pref.use_cache {
 		mut built_modules := []string{}
-		builtin_obj_path := os.join_path(pref.default_module_path, 'cache', 'vlib', 'builtin.o')
-		if !os.exists(builtin_obj_path) {
-			os.system('$vexe build-module vlib/builtin')
-		}
+		builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 		libs += ' ' + builtin_obj_path
 		for ast_file in v.parsed_files {
 			for imp_stmt in ast_file.imports {
@@ -333,14 +415,8 @@ fn (mut v Builder) cc() {
 				// continue
 				// }
 				imp_path := os.join_path('vlib', mod_path)
-				cache_path := os.join_path(pref.default_module_path, 'cache')
-				obj_path := os.join_path(cache_path, '${imp_path}.o')
-				if os.exists(obj_path) {
-					libs += ' ' + obj_path
-				} else {
-					println('$obj_path not found... building module $imp')
-					os.system('$vexe build-module $imp_path')
-				}
+				obj_path := v.rebuild_cached_module(vexe, imp_path)
+				libs += ' ' + obj_path
 				if obj_path.ends_with('vlib/ui.o') {
 					args << '-framework Cocoa -framework Carbon'
 				}
@@ -371,16 +447,16 @@ fn (mut v Builder) cc() {
 		verror("'$v.pref.out_name' is a directory")
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
-	if v.pref.os == .mac || v.pref.os == .ios {
+	if v.pref.os == .macos || v.pref.os == .ios {
 		args << '-x objective-c'
 	}
 	// The C file we are compiling
 	args << '"$v.out_name_c"'
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-x none'
 	}
 	// Min macos version is mandatory I think?
-	if v.pref.os == .mac {
+	if v.pref.os == .macos {
 		args << '-mmacosx-version-min=10.7'
 	}
 	if v.pref.os == .ios {
@@ -421,7 +497,7 @@ fn (mut v Builder) cc() {
 			}
 		}
 	}
-	if is_cc_tcc {
+	if is_cc_tcc && 'no_backtrace' !in v.pref.compile_defines {
 		args << '-bt25'
 	}
 	// Without these libs compilation will fail on Linux
@@ -442,7 +518,9 @@ fn (mut v Builder) cc() {
 	if !v.pref.is_bare && v.pref.os == .js && os.user_os() == 'linux' {
 		linker_flags << '-lm'
 	}
-	str_args := args.join(' ') + ' ' + linker_flags.join(' ')
+	env_cflags := os.getenv('CFLAGS')
+	env_ldflags := os.getenv('LDFLAGS')
+	str_args := env_cflags + ' ' + args.join(' ') + ' ' + linker_flags.join(' ') + ' ' + env_ldflags
 	if v.pref.is_verbose {
 		println('cc args=$str_args')
 		println(args)
@@ -453,21 +531,16 @@ fn (mut v Builder) cc() {
 	os.write_file(response_file, response_file_content) or {
 		verror('Unable to write response file "$response_file"')
 	}
+	if !debug_mode {
+		v.pref.cleanup_files << v.out_name_c
+		v.pref.cleanup_files << response_file
+	}
 	start:
 	todo()
 	// TODO remove
 	cmd := '$ccompiler @$response_file'
+	v.show_cc(cmd, response_file, response_file_content)
 	// Run
-	if v.pref.is_verbose || v.pref.show_cc {
-		println('')
-		println('=====================')
-		println('> C compiler cmd: $cmd')
-		if v.pref.show_cc {
-			println('> C compiler response file $response_file:')
-			println(response_file_content)
-		}
-		println('=====================')
-	}
 	ticks := time.ticks()
 	res := os.exec(cmd) or {
 		// C compilation failed.
@@ -483,49 +556,33 @@ fn (mut v Builder) cc() {
 		verror(err)
 		return
 	}
-	if res.exit_code != 0 {
-		// the command could not be found by the system
-		if res.exit_code == 127 {
-			$if linux {
-				// TCC problems on linux? Try GCC.
-				if ccompiler.contains('tcc') {
-					v.pref.ccompiler = 'cc'
-					goto start
-				}
-			}
-			verror('C compiler error, while attempting to run: \n' +
-				'-----------------------------------------------------------\n' + '$cmd\n' +
-				'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
-				'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
-		}
-		if v.pref.is_debug {
-			eword := 'error:'
-			khighlight := if term.can_show_color_on_stdout() { term.red(eword) } else { eword }
-			println(res.output.trim_right('\r\n').replace(eword, khighlight))
-			verror(c_error_info)
-		} else {
-			if res.output.len < 30 {
-				println(res.output)
-			} else {
-				elines := error_context_lines(res.output, 'error:', 1, 12)
-				println('==================')
-				for eline in elines {
-					println(eline)
-				}
-				println('...')
-				println('==================')
-				println('(Use `v -cg` to print the entire error message)\n')
-			}
-			verror(c_error_info)
-		}
-	}
 	diff := time.ticks() - ticks
+	v.timing_message('C ${ccompiler:3}', diff)
+	if v.pref.show_c_output {
+		v.show_c_compiler_output(res)
+	}
+	if res.exit_code == 127 {
+		// the command could not be found by the system
+		$if linux {
+			// TCC problems on linux? Try GCC.
+			if ccompiler.contains('tcc') {
+				v.pref.ccompiler = 'cc'
+				goto start
+			}
+		}
+		verror('C compiler error, while attempting to run: \n' +
+			'-----------------------------------------------------------\n' + '$cmd\n' +
+			'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
+			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+	}
+	if !v.pref.show_c_output {
+		v.post_process_c_compiler_output(res)
+	}
 	// Print the C command
 	if v.pref.is_verbose {
 		println('$ccompiler took $diff ms')
 		println('=========\n')
 	}
-	v.timing_message('C ${ccompiler:3}', diff)
 	// Link it if we are cross compiling and need an executable
 	/*
 	if v.os == .linux && !linux_host && v.pref.build_mode != .build {
@@ -587,11 +644,11 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut b Builder) cc_linux_cross() {
-	parent_dir := os.join_path(os.home_dir(), '.vmodules')
+	parent_dir := os.vmodules_dir()
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
 	}
-	sysroot := os.join_path(os.home_dir(), '.vmodules', 'linuxroot')
+	sysroot := os.join_path(os.vmodules_dir(), 'linuxroot')
 	if !os.is_dir(sysroot) {
 		println('Downloading files for Linux cross compilation (~18 MB)...')
 		zip_url := 'https://github.com/vlang/v/releases/download/0.1.27/linuxroot.zip'
@@ -689,7 +746,7 @@ fn (mut c Builder) cc_windows_cross() {
 	obj_name = obj_name.replace('.o.o', '.o')
 	include := '-I $winroot/include '
 	*/
-	if os.user_os() !in ['mac', 'darwin', 'linux'] {
+	if os.user_os() !in ['macos', 'linux'] {
 		println(os.user_os())
 		panic('your platform is not supported yet')
 	}
@@ -743,21 +800,27 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	if v.pref.os == .windows {
 		// Cross compiling for Windows
 		$if !windows {
-			if os.exists(obj_path) {
-				os.rm(obj_path)
-			}
 			v.pref.ccompiler = mingw_cc
 		}
 	}
-	if os.exists(obj_path) {
+	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
+	if os.exists(opath) {
 		return
 	}
-	println('$obj_path not found, building it...')
-	cfile := '${path[..path.len-2]}.c'
+	if os.exists(obj_path) {
+		// Some .o files are distributed with no source
+		// for example thirdparty\tcc\lib\openlibm.o
+		// the best we can do for them is just copy them,
+		// and hope that they work with any compiler...
+		os.cp(obj_path, opath)
+		return
+	}
+	println('$obj_path not found, building it in $opath ...')
+	cfile := '${obj_path[..obj_path.len - 2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -c -o "$obj_path" "$cfile" $atarget'
+	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
@@ -768,6 +831,7 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		verror(res.output)
 		return
 	}
+	v.pref.cache_manager.save('.description.txt', obj_path, '${obj_path:-30} @ $cmd\n')
 	println(res.output)
 }
 
@@ -784,7 +848,7 @@ fn missing_compiler_info() string {
 	return ''
 }
 
-fn error_context_lines(text, keyword string, before, after int) []string {
+fn error_context_lines(text string, keyword string, before int, after int) []string {
 	khighlight := if term.can_show_color_on_stdout() { term.red(keyword) } else { keyword }
 	mut eline_idx := 0
 	mut lines := text.split_into_lines()

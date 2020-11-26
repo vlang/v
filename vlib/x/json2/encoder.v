@@ -4,54 +4,67 @@
 module json2
 
 import strings
+
+fn write_value(v Any, i int, len int, mut wr strings.Builder) {
+	str := v.str()
+	if v is string {
+		wr.write('"$str"')
+	} else {
+		wr.write(str)
+	}
+	if i >= len-1 { return }
+	wr.write_b(`,`)
+}
+
 // String representation of the `map[string]Any`.
 pub fn (flds map[string]Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write('{')
+	wr.write_b(`{`)
 	mut i := 0
 	for k, v in flds {
 		wr.write('"$k":')
-		if v is string {
-			wr.write('"' + *v + '"')
-		} else {
-			wr.write(v.str())
-		}
-		if i < flds.len-1 { wr.write(',') }
+		write_value(v, i, flds.len, mut wr)
 		i++
 	}
-	wr.write('}')
-	return wr.str()
+	wr.write_b(`}`)
+	defer {
+		wr.free()
+	}
+	res := wr.str()
+	return res
 }
+
 // String representation of the `[]Any`.
 pub fn (flds []Any) str() string {
 	mut wr := strings.new_builder(200)
-	wr.write('[')
+	wr.write_b(`[`)
 	for i, v in flds {
-		if v is string {
-			wr.write('"' + *v + '"')
-		} else {
-			wr.write(v.str())
-		}
-		if i < flds.len-1 { wr.write(',') }
+		write_value(v, i, flds.len, mut wr)
 	}
-	wr.write(']')
-	return wr.str()
+	wr.write_b(`]`)
+	defer {
+		wr.free()
+	}
+	res := wr.str()
+	return res
 }
+
 // String representation of the `Any` type.
 pub fn (f Any) str() string {
 	match f {
-		string { return *f }
-		int { return (*f).str() }
-		f64 { return (*f).str() }
-		any_int {	return (*f).str() }
-		any_float {	return (*f).str() }
-		bool { return (*f).str() }
-		map[string]Any { return (*f).str() }
+		string { return f }
+		int { return f.str() }
+		i64 { return f.str() }
+		f32 { return f.str() }
+		f64 { return f.str() }
+		any_int { return f.str() }
+		any_float {	return f.str() }
+		bool { return f.str() }
+		map[string]Any { return f.str() }
 		Null { return 'null' }
 		else {
 			if f is []Any {
-				arr := f
-				return (*arr).str()
+				return f.str()
 			}
 			return ''
 		}

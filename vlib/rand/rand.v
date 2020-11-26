@@ -12,7 +12,8 @@ pub struct PRNGConfigStruct {
 	seed []u32 = util.time_seed_array(2)
 }
 
-__global default_rng &wyrand.WyRandRNG
+__global ( default_rng &wyrand.WyRandRNG )
+
 fn init() {
 	default_rng = new_default({})
 }
@@ -50,12 +51,12 @@ pub fn u64n(max u64) u64 {
 }
 
 // u32_in_range(min, max) returns a uniformly distributed pseudorandom 32-bit unsigned u32 in _[min, max)_
-pub fn u32_in_range(min, max u32) u32 {
+pub fn u32_in_range(min u32, max u32) u32 {
 	return default_rng.u32_in_range(min, max)
 }
 
 // u64_in_range(min, max) returns a uniformly distributed pseudorandom 64-bit unsigned u64 in _[min, max)_
-pub fn u64_in_range(min, max u64) u64 {
+pub fn u64_in_range(min u64, max u64) u64 {
 	return default_rng.u64_in_range(min, max)
 }
 
@@ -71,7 +72,7 @@ pub fn intn(max int) int {
 
 // int_in_range(min, max) returns a uniformly distributed pseudorandom
 // 32-bit signed int in [min, max). Both min and max can be negative, but we must have _min < max_.
-pub fn int_in_range(min, max int) int {
+pub fn int_in_range(min int, max int) int {
 	return default_rng.int_in_range(min, max)
 }
 
@@ -91,7 +92,7 @@ pub fn i64n(max i64) i64 {
 }
 
 // i64_in_range(min, max) returns a uniformly distributed pseudorandom 64-bit signed int in _[min, max)_
-pub fn i64_in_range(min, max i64) i64 {
+pub fn i64_in_range(min i64, max i64) i64 {
 	return default_rng.i64_in_range(min, max)
 }
 
@@ -121,12 +122,12 @@ pub fn f64n(max f64) f64 {
 }
 
 // f32_in_range(min, max) returns a uniformly distributed 32-bit floating point in _[min, max)_
-pub fn f32_in_range(min, max f32) f32 {
+pub fn f32_in_range(min f32, max f32) f32 {
 	return default_rng.f32_in_range(min, max)
 }
 
 // f64_in_range(min, max) returns a uniformly distributed 64-bit floating point in _[min, max)_
-pub fn f64_in_range(min, max f64) f64 {
+pub fn f64_in_range(min f64, max f64) f64 {
 	return default_rng.f64_in_range(min, max)
 }
 
@@ -141,7 +142,7 @@ pub fn string(len int) string {
 			buf[i] = chars[intn(chars.len)]
 		}
 	}
-	return unsafe { buf.vstring_with_len(len) }
+	return unsafe {buf.vstring_with_len(len)}
 }
 
 // rand.uuid_v4 generate a completely random UUID (v4)
@@ -181,17 +182,17 @@ pub fn uuid_v4() string {
 		buf[14] = `4`
 		buf[buflen] = 0
 	}
-	return unsafe { buf.vstring_with_len(buflen) }
+	return unsafe {buf.vstring_with_len(buflen)}
 }
 
-const(
-	ulid_encoding = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+const (
+	ulid_encoding = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 )
 
 // rand.ulid generates an Unique Lexicographically sortable IDentifier.
 // See https://github.com/ulid/spec .
 // NB: ULIDs can leak timing information, if you make them public, because
-// you can infer the rate at which some resource is being created, like 
+// you can infer the rate at which some resource is being created, like
 // users or business transactions.
 // (https://news.ycombinator.com/item?id=14526173)
 pub fn ulid() string {
@@ -204,7 +205,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	mut t := unix_time_milli
 	mut i := 9
 	for i >= 0 {
-		unsafe{
+		unsafe {
 			buf[i] = ulid_encoding[t & 0x1F]
 		}
 		t = t >> 5
@@ -214,7 +215,7 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	mut x := default_rng.u64()
 	i = 10
 	for i < 19 {
-		unsafe{
+		unsafe {
 			buf[i] = ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
@@ -223,14 +224,14 @@ pub fn ulid_at_millisecond(unix_time_milli u64) string {
 	// second rand set
 	x = default_rng.u64()
 	for i < 26 {
-		unsafe{
+		unsafe {
 			buf[i] = ulid_encoding[x & 0x1F]
 		}
 		x = x >> 5
 		i++
 	}
-	unsafe{
+	unsafe {
 		buf[26] = 0
 	}
-	return unsafe { buf.vstring_with_len(buflen) }
+	return unsafe {buf.vstring_with_len(buflen)}
 }

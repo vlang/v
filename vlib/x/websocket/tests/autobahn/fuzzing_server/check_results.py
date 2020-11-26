@@ -19,19 +19,6 @@ with open("/reports/clients/index.json") as f:
 
         nr_of_client_tests = nr_of_client_tests + 1
 
-with open("/reports/clients/index.json") as f:
-    data = json.load(f)
-
-    for i in data["v-client"]:
-        # Count errors
-        if (
-            data["v-client"][i]["behavior"] == "FAILED"
-            or data["v-client"][i]["behaviorClose"] == "FAILED"
-        ):
-            nr_of_client_errs = nr_of_client_errs + 1
-
-        nr_of_client_tests = nr_of_client_tests + 1
-
 with open("/reports/servers/index.json") as f:
     data = json.load(f)
 

@@ -12,6 +12,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	p.top_level_statement_start()
 	// save attributes, they will be changed later in fields
 	attrs := p.attrs
+	p.attrs = []
 	start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
@@ -71,6 +72,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
+	mut embedded_structs := []table.Type{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -142,52 +144,72 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			field_start_pos := p.tok.position()
-			field_name := p.check_name()
-			// p.warn('field $field_name')
-			for p.tok.kind == .comment {
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
+			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
+				p.peek_tok.kind == .dot) &&
+				language == .v
+			mut field_name := ''
+			mut typ := table.Type(0)
+			mut type_pos := token.Position{}
+			mut field_pos := token.Position{}
+			if is_embed {
+				// struct embedding
+				typ = p.parse_type()
+				sym := p.table.get_type_symbol(typ)
+				// main.Abc<int> => Abc
+				mut symbol_name := sym.name.split('.')[1]
+				// remove generic part from name
+				if '<' in symbol_name {
+					symbol_name = symbol_name.split('<')[0]
 				}
+				for p.tok.kind == .comment {
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
+				}
+				type_pos = p.prev_tok.position()
+				field_pos = p.prev_tok.position()
+				field_name = symbol_name
+				if typ in embedded_structs {
+					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
+				}
+				embedded_structs << typ
+			} else {
+				// struct field
+				field_name = p.check_name()
+				for p.tok.kind == .comment {
+					comments << p.comment()
+					if p.tok.kind == .rcbr {
+						break
+					}
+				}
+				typ = p.parse_type()
+				type_pos = p.prev_tok.position()
+				field_pos = field_start_pos.extend(type_pos)
 			}
 			// println(p.tok.position())
-			typ := p.parse_type()
-			type_pos := p.prev_tok.position()
-			field_pos := field_start_pos.extend(type_pos)
-			// if name == '_net_module_s' {
-			// if name.contains('App') {
-			// s := p.table.get_type_symbol(typ)
-			// println('struct decl field type ' + s.str())
-			// }
 			// Comments after type (same line)
-			line_pos := field_pos.line_nr
-			for p.tok.kind == .comment && line_pos + 1 == p.tok.line_nr {
-				if p.tok.lit.contains('\n') {
-					break
-				}
-				comments << p.comment()
-				if p.tok.kind == .rcbr {
-					break
-				}
-			}
+			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
 				// attrs are stored in `p.attrs`
 				p.attributes()
 			}
 			mut default_expr := ast.Expr{}
 			mut has_default_expr := false
-			if p.tok.kind == .assign {
-				// Default value
-				p.next()
-				// default_expr = p.tok.lit
-				// p.expr(0)
-				default_expr = p.expr(0)
-				match mut default_expr {
-					ast.EnumVal { default_expr.typ = typ }
-					// TODO: implement all types??
-					else {}
+			if !is_embed {
+				if p.tok.kind == .assign {
+					// Default value
+					p.next()
+					// default_expr = p.tok.lit
+					// p.expr(0)
+					default_expr = p.expr(0)
+					match mut default_expr {
+						ast.EnumVal { default_expr.typ = typ }
+						// TODO: implement all types??
+						else {}
+					}
+					has_default_expr = true
 				}
-				has_default_expr = true
 			}
 			// TODO merge table and ast Fields?
 			ast_fields << ast.StructField{
@@ -200,6 +222,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				has_default_expr: has_default_expr
 				attrs: p.attrs
 				is_public: is_field_pub
+				is_embed: is_embed
 			}
 			fields << table.Field{
 				name: field_name
@@ -210,9 +233,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				is_mut: is_field_mut
 				is_global: is_field_global
 				attrs: p.attrs
+				is_embed: is_embed
 			}
 			p.attrs = []
-			// println('struct field $ti.name $field_name')
 		}
 		p.top_level_statement_end()
 		p.check(.rcbr)
@@ -227,7 +250,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	t := table.TypeSymbol{
 		kind: .struct_
 		name: name
+		language: language
 		source_name: name
+		mod: p.mod
 		info: table.Struct{
 			fields: fields
 			is_typedef: attrs.contains('typedef')
@@ -235,7 +260,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
 		}
-		mod: p.mod
 		is_public: is_pub
 	}
 	mut ret := 0
@@ -264,18 +288,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_union: is_union
 		attrs: attrs
 		end_comments: end_comments
+		gen_types: generic_types
 	}
 }
 
 fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	first_pos := p.tok.position()
-	/*
-	defer {
-		if p.fileis('x.v') {
-			p.warn('end of struct init $short_syntax')
-		}
-	}
-	*/
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
@@ -283,6 +301,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	if !short_syntax {
 		p.check(.lcbr)
 	}
+	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
 	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
@@ -290,38 +309,39 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
-		comment := p.check_comment()
 		mut field_name := ''
+		mut expr := ast.Expr{}
+		mut field_pos := token.Position{}
+		mut comments := []ast.Comment{}
 		if no_keys {
-			expr := p.expr(0)
 			// name will be set later in checker
-			fields << ast.StructInitField{
-				expr: expr
-				pos: expr.position()
-				comment: comment
-			}
+			expr = p.expr(0)
+			field_pos = expr.position()
+			comments = p.eat_comments()
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
 			p.check(.colon)
-			expr := p.expr(0)
+			expr = p.expr(0)
+			comments = p.eat_comments()
 			last_field_pos := expr.position()
-			field_pos := token.Position{
+			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
 				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
-			}
-			fields << ast.StructInitField{
-				name: field_name
-				expr: expr
-				pos: field_pos
 			}
 		}
 		i++
 		if p.tok.kind == .comma {
 			p.next()
 		}
-		p.check_comment()
+		comments << p.eat_comments()
+		fields << ast.StructInitField{
+			name: field_name
+			expr: expr
+			pos: field_pos
+			comments: comments
+		}
 	}
 	last_pos := p.tok.position()
 	if !short_syntax {
@@ -337,6 +357,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			len: last_pos.pos - first_pos.pos + last_pos.len
 		}
 		is_short: no_keys
+		pre_comments: pre_comments
 	}
 	return node
 }
@@ -353,6 +374,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	interface_name := p.prepend_mod(p.check_name())
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
+	pre_comments := p.eat_comments()
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .interface_
@@ -370,9 +392,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	typ := table.new_type(reg_idx)
 	mut ts := p.table.get_type_symbol(typ)
 	// if methods were declared before, it's an error, ignore them
-	ts.methods.clear()
+	ts.methods = []table.Fn{cap: 20}
 	// Parse methods
-	mut methods := []ast.FnDecl{}
+	mut methods := []ast.FnDecl{cap: 20}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
@@ -396,7 +418,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mut method := ast.FnDecl{
 			name: name
 			mod: p.mod
-			args: args
+			params: args
 			file: p.file_name
 			return_type: table.void_type
 			is_pub: true
@@ -405,12 +427,14 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
+		mcomments := p.eat_comments()
+		method.comments = mcomments
 		methods << method
 		// println('register method $name')
 		return_type_sym := p.table.get_type_symbol(method.return_type)
 		ts.register_method(table.Fn{
 			name: name
-			args: args
+			params: args
 			return_type: method.return_type
 			return_type_source_name: return_type_sym.source_name
 			is_pub: true
@@ -423,5 +447,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		methods: methods
 		is_pub: is_pub
 		pos: start_pos
+		pre_comments: pre_comments
 	}
 }

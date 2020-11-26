@@ -1,3 +1,5 @@
+const delta = 20;
+
 (function () {
     var table = document.querySelector("table");
     var isTbody = table.children[0].nodeName == "TBODY";
@@ -31,13 +33,13 @@
                 vf: currentData.vf - prevData.vf,
                 vh: currentData.vh - prevData.vh
             };
-            if (Math.abs(result.vc) > 50)
+            if (Math.abs(result.vc) > delta)
                 tr.children[vc].appendChild(createElement(result.vc));
-            if (Math.abs(result.vv) > 50)
+            if (Math.abs(result.vv) > delta * 2)
                 tr.children[vv].appendChild(createElement(result.vv));
-            if (Math.abs(result.vf) > 50)
+            if (Math.abs(result.vf) > delta * 2)
                 tr.children[vf].appendChild(createElement(result.vf));
-            if (Math.abs(result.vh) > 50)
+            if (Math.abs(result.vh) > delta * 2)
                 tr.children[vh].appendChild(createElement(result.vh));
         }
     });
