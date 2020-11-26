@@ -276,8 +276,8 @@ fn is_gt_nested(val string, dst Number) bool {
 					return val.int() > dst
 				}
 				// this branch should never been hit
-				else { 
-					return val.int() < dst 
+				else {
+					return val.int() < dst
 				}
 			}
 		}
@@ -287,8 +287,8 @@ fn is_gt_nested(val string, dst Number) bool {
 					return dst < val.f64()
 				}
 				// this branch should never been hit
-				else { 
-					return dst > val.f64() 
+				else {
+					return dst > val.f64()
 				}
 			}
 		}
