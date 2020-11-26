@@ -718,14 +718,11 @@ pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 	table.fn_gen_types[fn_name] = a
 }
 
-// TODO: there is a bug when casting sumtype the other way if its pointer
-// so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
 pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := table.get_type_symbol(parent)
-	if parent_sym.kind == .sum_type {
-		parent_info := parent_sym.info as SumType
-		for v in parent_info.variants {
-			if v.idx() == variant.idx() {
+	if mut parent_sym.info is SumType {
+		for v in parent_sym.info.variants {
+			if v == variant {
 				return true
 			}
 		}
