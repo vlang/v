@@ -89,9 +89,9 @@ fn (mut ctx Context) termios_setup() ? {
 		termios.c_cc[C.VMIN] = 0
 		C.tcsetattr(C.STDIN_FILENO, C.TCSAFLUSH, &termios)
 		// feature-test the SU spec
-		sx, sy := ctx.get_cursor_position()
+		sx, sy := get_cursor_position()
 		print('$bsu$esu')
-		ex, ey := ctx.get_cursor_position()
+		ex, ey := get_cursor_position()
 		if sx == ex && sy == ey {
 			// the terminal either ignored or handled the sequence properly, enable SU
 			ctx.enable_su = true
@@ -101,7 +101,7 @@ fn (mut ctx Context) termios_setup() ? {
 			ctx.flush()
 		}
 		// feature-test rgb (truecolor) support
-		ctx.enable_rgb = ctx.supports_truecolor()
+		ctx.enable_rgb = supports_truecolor()
 	}
 
 	// Prevent stdin from blocking by making its read time 0
@@ -162,29 +162,30 @@ fn (mut ctx Context) termios_setup() ? {
 	os.flush()
 }
 
-fn (mut ctx Context) get_cursor_position() (int, int) {
+fn get_cursor_position() (int, int) {
 	print('\033[6n')
-	ctx.read()
-	s := ctx.read_buf.bytestr()
-	ctx.read_buf.clear()
+	buf := malloc(25)
+	len := C.read(C.STDIN_FILENO, buf, 24)
+	unsafe { buf[len] = 0 }
+	s := tos(buf, len)
 	a := s[2..].split(';')
 	if a.len != 2 { return -1, -1 }
 	return a[0].int(), a[1].int()
 }
 
-fn (mut ctx Context) supports_truecolor() bool {
+fn supports_truecolor() bool {
 	// faster/simpler, but less reliable, check
 	if os.getenv('COLORTERM') in ['truecolor', '24bit'] {
 		return true
 	}
 	// set the bg color to some arbirtrary value (#010203), assumed not to be the default
 	print('\x1b[48:2:1:2:3m')
-
-	// sequence to query the current color
+	// andquery the current color
 	print('\x1bP\$qm\x1b\\')
-	ctx.read()
-	s := ctx.read_buf.bytestr()
-	ctx.read_buf.clear()
+	buf := malloc(25)
+	len := C.read(C.STDIN_FILENO, buf, 24)
+	unsafe { buf[len] = 0 }
+	s := tos(buf, len)
 	return '1:2:3' in s
 
 }
@@ -200,13 +201,6 @@ fn termios_reset() {
 }
 
 ///////////////////////////////////////////
-
-fn (mut ctx Context) read() {
-	unsafe {
-		len := C.read(C.STDIN_FILENO, ctx.read_buf.data + ctx.read_buf.len, ctx.read_buf.cap - ctx.read_buf.len)
-		ctx.resize_arr(ctx.read_buf.len + len)
-	}
-}
 
 // TODO: do multiple sleep/read cycles, rather than one big one
 fn (mut ctx Context) termios_loop() {
@@ -226,7 +220,10 @@ fn (mut ctx Context) termios_loop() {
 		if !ctx.paused {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
-				ctx.read()
+				unsafe {
+					len := C.read(C.STDIN_FILENO, ctx.read_buf.data + ctx.read_buf.len, ctx.read_buf.cap - ctx.read_buf.len)
+					ctx.resize_arr(ctx.read_buf.len + len)
+				}
 				if ctx.read_buf.len > 0 {
 					ctx.parse_events()
 				}
