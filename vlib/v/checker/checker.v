@@ -1823,20 +1823,20 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 // TODO: non deferred
 pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 	c.expected_type = c.cur_fn.return_type
-	if return_stmt.exprs.len > 0 && c.expected_type == table.void_type {
+	expected_type := c.unwrap_generic(c.expected_type)
+	expected_type_sym := c.table.get_type_symbol(expected_type)
+	if return_stmt.exprs.len > 0 && c.cur_fn.return_type == table.void_type {
 		c.error('too many arguments to return, current function does not return anything',
 			return_stmt.pos)
 		return
 	} else if return_stmt.exprs.len == 0 && !(c.expected_type == table.void_type ||
-		c.table.get_type_symbol(c.expected_type).kind == .void) {
+		expected_type_sym.kind == .void) {
 		c.error('too few arguments to return', return_stmt.pos)
 		return
 	}
 	if return_stmt.exprs.len == 0 {
 		return
 	}
-	expected_type := c.unwrap_generic(c.expected_type)
-	expected_type_sym := c.table.get_type_symbol(expected_type)
 	exp_is_optional := expected_type.has_flag(.optional)
 	mut expected_types := [expected_type]
 	if expected_type_sym.kind == .multi_return {
@@ -2879,7 +2879,11 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 				c.nr_warnings += c2.nr_warnings
 				c.nr_errors += c2.nr_errors
 			}
-			return c.table.find_type_idx('vweb.Result')
+			if node.method_name == 'html' {
+				return c.table.find_type_idx('vweb.Result')
+			} else {
+				return table.string_type
+			}
 			// return table.void_type
 		}
 		ast.ConcatExpr {

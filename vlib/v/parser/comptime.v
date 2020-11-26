@@ -46,32 +46,58 @@ fn (mut p Parser) hash() ast.HashStmt {
 
 fn (mut p Parser) vweb() ast.ComptimeCall {
 	p.check(.dollar)
-	p.check(.name) // skip `vweb.html()` TODO
-	p.check(.dot)
-	p.check(.name)
+	error_msg := 'only `\$tmpl()` and `\$vweb.html()` comptime functions are supported right now'
+	if p.peek_tok.kind == .dot {
+		n := p.check_name() // skip `vweb.html()` TODO
+		if n != 'vweb' {
+			p.error(error_msg)
+		}
+		p.check(.dot)
+	}
+	n := p.check_name() // (.name)
+	if n != 'html' && n != 'tmpl' {
+		p.error(error_msg)
+	}
+	is_html := n == 'html'
 	p.check(.lpar)
+	s := if is_html { '' } else { p.tok.lit }
+	if !is_html {
+		p.check(.string)
+	}
+	println('SSSS "$s"')
 	p.check(.rpar)
 	// Compile vweb html template to V code, parse that V code and embed the resulting V function
 	// that returns an html string.
 	fn_path := p.cur_fn_name.split('_')
-	html_name := '${fn_path.last()}.html'
+	tmpl_path := if is_html { '${fn_path.last()}.html' } else { s }
 	// Looking next to the vweb program
 	dir := os.dir(p.scanner.file_path)
 	mut path := os.join_path(dir, fn_path.join('/'))
 	path += '.html'
+	if !is_html {
+		path = tmpl_path
+	}
 	if !os.exists(path) {
 		// can be in `templates/`
-		path = os.join_path(dir, 'templates', fn_path.join('/'))
-		path += '.html'
+		if is_html {
+			path = os.join_path(dir, 'templates', fn_path.join('/'))
+			path += '.html'
+		}
 		if !os.exists(path) {
-			p.error('vweb HTML template "$path" not found')
+			if is_html {
+				p.error('vweb HTML template "$path" not found')
+			} else {
+				p.error('template file "$path" not found')
+			}
 		}
 		// println('path is now "$path"')
 	}
-	if p.pref.is_verbose {
-		println('>>> compiling vweb HTML template "$path"')
+	if true || p.pref.is_verbose {
+		println('>>> compiling comptime template file "$path"')
 	}
-	v_code := tmpl.compile_file(path, p.cur_fn_name)
+	tmp_fn_name := p.cur_fn_name.replace('.', '__')
+	v_code := tmpl.compile_file(path, tmp_fn_name)
+	println('done')
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
@@ -82,22 +108,22 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		start_pos: 0
 		parent: p.global_scope
 	}
-	mut file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
-	if p.pref.is_verbose {
+	if true || p.pref.is_verbose {
 		println('\n\n')
 		println('>>> vweb template for $path:')
 		println(v_code)
 		println('>>> end of vweb template END')
 		println('\n\n')
 	}
+	mut file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
 	file = {
 		file |
-		path: html_name
+		path: tmpl_path
 	}
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
-			if stmt.name == 'main.vweb_tmpl_$p.cur_fn_name' {
+			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
 				mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
@@ -105,7 +131,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 						v.pos = stmt.body_pos
 						tmpl_scope.register(v.name, v)
 						// set the controller action var to used
-						// if its unused in the template it will warn
+						// if it's unused in the template it will warn
 						v.is_used = true
 					}
 				}
@@ -116,6 +142,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	return ast.ComptimeCall{
 		is_vweb: true
 		vweb_tmpl: file
+		method_name: n
 	}
 }
 
