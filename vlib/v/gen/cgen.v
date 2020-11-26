@@ -500,11 +500,10 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 fn (g &Gen) cc_type2(t table.Type) string {
 	sym := g.table.get_type_symbol(g.unwrap_generic(t))
 	mut styp := util.no_dots(sym.name)
-	if sym.kind == .struct_ {
-		info := sym.info as table.Struct
-		if info.generic_types.len > 0 {
+	if mut sym.info is table.Struct {
+		if sym.info.generic_types.len > 0 {
 			mut sgtyps := '_T'
-			for gt in info.generic_types {
+			for gt in sym.info.generic_types {
 				gts := g.table.get_type_symbol(if gt.has_flag(.generic) { g.unwrap_generic(gt) } else { gt })
 				sgtyps += '_$gts.name'
 			}
