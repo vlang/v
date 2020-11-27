@@ -2,8 +2,12 @@ import szip
 import os
 
 fn test_compile() {
-	szip.open('test_compile.zip', szip.best_speed, szip.m_write) or {
+	mut z := szip.open('test_compile.zip', szip.best_speed, szip.m_write) or {
 		assert false
+		return
 	}
-	os.rm('test_compile.zip') or { }
+	defer {
+		z.close()
+		os.rm('test_compile.zip') or { }
+	}
 }
