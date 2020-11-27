@@ -837,9 +837,11 @@ match x.bar {
 }
 ```
 
-For mutable values, the compiler doesn't do a type cast by default. Mutable variables can change by the time and and doing a cast would be unsafe.
+For mutable values, the compiler doesn't do a type cast by default.
+Mutable variables can change by the time and and doing a cast would be unsafe.
 However, sometimes it's needed to have a type cast despite of mutability.
-In this case the developer has to mark the expression with a `mut` keyword to tell the compiler that you're aware of what you're doing.
+In this case the developer has to mark the expression with a `mut` keyword
+to tell the compiler that you're aware of what you're doing.
 
 It works like this:
 ```v oksyntax
