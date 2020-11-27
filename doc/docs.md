@@ -838,7 +838,6 @@ match x.bar {
 ```
 
 Mutable variables can change, and doing a cast would be unsafe.
-Mutable variables can change by the time and and doing a cast would be unsafe.
 However, sometimes it's needed to have a type cast despite of mutability.
 In this case the developer has to mark the expression with a `mut` keyword
 to tell the compiler that you're aware of what you're doing.
