@@ -114,7 +114,7 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
 		val := cnewlines(node.val.replace('\r', '')).replace('\\', '\\\\')
 		g.write('tos_lit("$val")')
-	} else { 
+	} else {
 		val := node.val.replace('\\', '\\\\')
 		g.write('tos_lit("$val")')
 	}
