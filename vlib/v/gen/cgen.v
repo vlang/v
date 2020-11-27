@@ -829,10 +829,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.EnumDecl {
 			enum_name := util.no_dots(node.name)
+			is_flag := node.is_flag
 			g.enum_typedefs.writeln('typedef enum {')
 			mut cur_enum_expr := ''
 			mut cur_enum_offset := 0
-			for field in node.fields {
+			for i, field in node.fields {
 				g.enum_typedefs.write('\t${enum_name}_$field.name')
 				if field.has_expr {
 					g.enum_typedefs.write(' = ')
@@ -842,6 +843,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.out.go_back(expr_str.len)
 					g.enum_typedefs.write(expr_str)
 					cur_enum_expr = expr_str
+					cur_enum_offset = 0
+				} else if is_flag {
+					g.enum_typedefs.write(' = ')
+					cur_enum_expr = '1 << $i'
+					g.enum_typedefs.write((1 << i).str())
 					cur_enum_offset = 0
 				}
 				cur_value := if cur_enum_offset > 0 { '$cur_enum_expr+$cur_enum_offset' } else { cur_enum_expr }
