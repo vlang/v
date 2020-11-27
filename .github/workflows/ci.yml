@@ -169,6 +169,9 @@ jobs:
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
       run: ./v -silent build-examples
+    - name: Build examples with -autofree
+      run: |
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v && ./tetris
     - name: v doctor
       run: |
         ./v doctor
@@ -228,6 +231,9 @@ jobs:
       run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
     - name: Build examples
       run: ./v -silent build-examples
+    - name: Build examples with -autofree
+      run: |
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v && ./tetris
     - name: Build modules
       run: |
         ./v build-module vlib/os
