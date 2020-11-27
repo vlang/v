@@ -439,7 +439,7 @@ fn (mut v Builder) cc() {
 	// Output executable name
 	if v.pref.os == .ios {
 		bundle_name := v.pref.out_name.split('/').last()
-		args << '-o "$v.pref.out_name\.app/$bundle_name"'
+		args << '-o "${v.pref.out_name}.app/$bundle_name"'
 	} else {
 		args << '-o "$v.pref.out_name"'
 	}

@@ -2731,19 +2731,19 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 
 fn (mut c Checker) import_stmt(imp ast.Import) {
 	for sym in imp.syms {
-		name := '$imp.mod\.$sym.name'
+		name := '${imp.mod}.$sym.name'
 		if sym.kind == .fn_ {
 			c.table.find_fn(name) or {
-				c.error('module `$imp.mod` has no public fn named `$sym.name\()`', sym.pos)
+				c.error('module `$imp.mod` has no public fn named `${sym.name}()`', sym.pos)
 			}
 		}
 		if sym.kind == .type_ {
 			if type_sym := c.table.find_type(name) {
 				if type_sym.kind == .placeholder || !type_sym.is_public {
-					c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+					c.error('module `$imp.mod` has no public type `$sym.name{}`', sym.pos)
 				}
 			} else {
-				c.error('module `$imp.mod` has no public type `$sym.name\{}`', sym.pos)
+				c.error('module `$imp.mod` has no public type `$sym.name{}`', sym.pos)
 			}
 		}
 	}

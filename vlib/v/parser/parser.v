@@ -1612,7 +1612,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.position()
 		alias := p.check_name()
-		name := '$parent.mod\.$alias'
+		name := '${parent.mod}.$alias'
 		if alias[0].is_capital() {
 			idx := p.table.add_placeholder_type(name, .v)
 			typ := table.new_type(idx)

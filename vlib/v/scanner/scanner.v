@@ -579,9 +579,12 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
+			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`n`, `\\`, `t`] {
+				// s.warn('unknown escape sequence \\${s.look_ahead(2)}')
+			}
 			if s.is_inter_start && next_char == `(` {
 				if s.look_ahead(2) != `)` {
-					s.warn('use e.g. `\${f(expr)}` or `\$name\\(` instead of `\$f(expr)`')
+					s.warn('use `\${f(expr)}` instead of `\$f(expr)`')
 				}
 			} else if s.is_inter_start && next_char != `.` {
 				s.is_inter_end = true
@@ -1036,7 +1039,7 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'cannot use `\x00` (NULL character) in the string literal')
 			}
 		}
-		// ${var} (ignore in vfmt mode)
+		// ${var} (ignore in vfmt mode) (skip \$)
 		if prevc == `$` && c == `{` && !is_raw && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 {
 			s.is_inside_string = true
 			// so that s.pos points to $ at the next step
