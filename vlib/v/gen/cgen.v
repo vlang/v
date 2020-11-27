@@ -1522,8 +1522,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		g.write('static ')
 	}
 	mut return_type := table.void_type
-	op := if assign_stmt.op == .decl_assign { token.Kind.assign } else { assign_stmt.op }
 	is_decl := assign_stmt.op == .decl_assign
+	op := if is_decl { token.Kind.assign } else { assign_stmt.op }
 	right_expr := assign_stmt.right[0]
 	match right_expr {
 		ast.CallExpr { return_type = right_expr.return_type }
@@ -1756,12 +1756,18 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if blank_assign {
 					g.write('{')
 				}
-				ret_styp := g.typ(val.decl.return_type)
-				g.write('$ret_styp (*$ident.name) (')
-				def_pos := g.definitions.len
-				g.fn_args(val.decl.params, val.decl.is_variadic)
-				g.definitions.go_back(g.definitions.len - def_pos)
-				g.write(') = ')
+				// if it's a decl assign (`:=`) or a blank assignment `_ =`/`_ :=` then generate `void (*ident) (args) =`
+				if (is_decl || blank_assign) && left is ast.Ident {
+					ret_styp := g.typ(val.decl.return_type)
+					g.write('$ret_styp (*$ident.name) (')
+					def_pos := g.definitions.len
+					g.fn_args(val.decl.params, val.decl.is_variadic)
+					g.definitions.go_back(g.definitions.len - def_pos)
+					g.write(') = ')
+				} else {
+					g.expr(left)
+					g.write(' = ')
+				}
 				g.expr(val)
 				g.writeln(';')
 				if blank_assign {
