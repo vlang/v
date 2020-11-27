@@ -10,16 +10,19 @@ set /a shift_counter=0
 REM Option variables
 set log_file="%TEMP%\v_make.log"
 set compiler=""
-set target=""
+set target="build"
+set lblptr=usage
+set cflags=
 
-REM tcc variables
+REM TCC variables
 set "tcc_url=https://github.com/vlang/tccbin_win.git"
 set "tcc_dir=%~dp0thirdparty\tcc"
 set "vc_url=https://github.com/vlang/vc.git"
 set "vc_dir=%~dp0vc"
 
-REM Let a particular environment specify their own tcc repo
+REM Let particular envvars specify corresponding values
 if /I not ["%TCC_GIT%"] == [""] set "tcc_url=%TCC_GIT%"
+if /I not ["%CFLAGS%"] == [""] set "cflags=%CFLAGS%"
 
 pushd %~dp0
 
@@ -29,33 +32,57 @@ if ["%~1"] == [""] goto :init
 
 REM Target options
 if !shift_counter! LSS 1 (
-    if "%~1" == "build" set target="build"& shift& set /a shift_counter+=1& goto :verifyopt
-    if "%~1" == "clean" set target="clean"& shift& set /a shift_counter+=1& goto :verifyopt
-    if "%~1" == "clean-all" set target="clean-all"& shift& set /a shift_counter+=1& goto :verifyopt
-    if "%~1" == "help" (
-        if "%~2" == "build" call :help_build& exit /b %ERRORLEVEL%
-        if "%~2" == "clean" call :help_clean& exit /b %ERRORLEVEL%
-        if "%~2" == "clean-all" call :help_cleanall& exit /b %ERRORLEVEL%
-        if "%~2" == "help" call :help_help& exit /b %ERRORLEVEL%
-        if ["%~2"] == [""] call :usage& exit /b %ERRORLEVEL%
-        shift
+    if "%~1" == "build" set target="build"& set /a shift_counter+=1& shift& goto :verifyopt
+    if "%~1" == "clean" set target="clean"& set /a shift_counter+=1& shift& goto :verifyopt
+    if "%~1" == "clean-all" set target="clean-all"& set /a shift_counter+=1& shift& goto :verifyopt
+    if "%~1" == "help" set target="help"& set /a shift_counter+=1& shift& goto :verifyopt
+)
+
+REM Help options
+if !target! == "help" (
+    if !shift_counter! LSS 2 (
+        if "%~1" == "build" set /a shift_counter+=1& shift& set lblptr=help_build& goto :verifyopt
+        if "%~1" == "clean" set /a shift_counter+=1& shift& set lblptr=help_clean& goto :verifyopt
+        if "%~1" == "clean-all" set /a shift_counter+=1& shift& set lblptr=help_cleanall& goto :verifyopt
+        if "%~1" == "help" set /a shift_counter+=1& shift& set lblptr=help_help& goto :verifyopt
     )
 )
 
+
 REM Compiler option
-if "%~1" == "-gcc" set compiler="gcc"& set /a shift_counter+=1& shift& goto :verifyopt
-if "%~1" == "-msvc" set compiler="msvc"& set /a shift_counter+=1& shift& goto :verifyopt
-if "%~1" == "-tcc" set compiler="tcc"& set /a shift_counter+=1& shift& goto :verifyopt
-if "%~1" == "-fresh-tcc" set compiler="fresh-tcc"& set /a shift_counter+=1& shift& goto :verifyopt
-if "%~1" == "-clang" set compiler="clang"& set /a shift_counter+=1& shift& goto :verifyopt
+if !target! == "build" (
+    if [!compiler!] == [""] (
+        if "%~1" == "-gcc" set compiler="gcc"& set /a shift_counter+=1& shift& goto :verifyopt
+        if "%~1" == "-msvc" set compiler="msvc"& set /a shift_counter+=1& shift& goto :verifyopt
+        if "%~1" == "-tcc" set compiler="tcc"& set /a shift_counter+=1& shift& goto :verifyopt
+        if "%~1" == "-fresh-tcc" set compiler="fresh-tcc"& set /a shift_counter+=1& shift& goto :verifyopt
+        if "%~1" == "-clang" set compiler="clang"& set /a shift_counter+=1& shift& goto :verifyopt
+    )
+    if "%~1" == "--local" (
+        if !use_local! EQU 0 set /a use_local=1
+        set /a shift_counter+=1
+        shift
+        goto :verifyopt
+    )
+    if [!cflags!] == [] (
+        if "%~1" == "--cflags" (
+            set /a shift_counter+=1
+            if not ["%~2"]== [""] (
+                set "cflags=%~2"
+                set /a shift_counter+=1
+                shift
+                shift
+                goto :verifyopt
+            ) else (
+                echo No C flags were passed to the `-cflags` parameter. 1>&2
+                exit /b 2
+            )
+            shift
+        )
+    )
+)
 
 REM Standard options
-if "%~1" == "--local" (
-    if !use_local! EQU 0 set /a use_local=1
-    set /a shift_counter+=1
-    shift
-    goto :verifyopt
-)
 if "%~1" == "-v" (
     if !verbose_log! EQU 0 set /a verbose_log=1
     set /a shift_counter+=1
@@ -70,11 +97,11 @@ if "%~1" == "--verbose" (
 )
 if "%~1" == "--logfile" (
     if ["%~2"] == [""] (
-        echo Log file is not specified for -logfile parameter. 1>&2
+        echo Log file is not specified for `--logfile` parameter. 1>&2
         exit /b 2
     )
     pushd "%~dp2" 2>NUL || (
-        echo The log file specified for -logfile parameter does not exist. 1>&2
+        echo The log file specified for `--logfile` parameter does not exist. 1>&2
         exit /b 2
     )
     popd
@@ -91,7 +118,7 @@ exit /b 2
 if !target! == "build" goto :build
 if !target! == "clean" echo Cleanup build artifacts& goto :clean
 if !target! == "clean-all" echo Cleanup all& goto :cleanall
-if [!target!] == [""] goto :build
+if !target! == "help" goto :!lblptr!
 
 :build
 del !log_file!>NUL 2>&1
@@ -131,7 +158,11 @@ if %ERRORLEVEL% NEQ 0 (
 set /a valid_cc=1
 
 echo  ^> Attempting to build v.c with Clang
-call :buildcmd "clang -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+if [!cflags!] == [] (
+    call :buildcmd "clang -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+) else (
+    call :buildcmd "clang -std=c99 -municode !cflags! -w -o v.exe .\vc\v_win.c" "  "
+)
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
 	call :buildcmd "clang --version" "  "
@@ -139,7 +170,11 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc clang self" "  "
+if [!cflags!] == [] (
+    call :buildcmd "v.exe -cc clang self" "  "
+) else (
+    call :buildcmd "v.exe -cc clang -cflags "!cflags!" self" "  "
+)
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -154,7 +189,11 @@ if %ERRORLEVEL% NEQ 0 (
 set /a valid_cc=1
 
 echo  ^> Attempting to build v.c with GCC
-call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+if [!cflags!] == [] (
+    call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+) else (
+    call :buildcmd "gcc -std=c99 -municode !cflags! -w -o v.exe .\vc\v_win.c" "  "
+)
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
 	call :buildcmd "gcc --version" "  "
@@ -162,7 +201,11 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe self" "  "
+if [!cflags!] == [] (
+    call :buildcmd "v.exe -cc gcc self" "  "
+) else (
+    call :buildcmd "v.exe -cc gcc -cflags "!cflags!" self" "  "
+)
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -196,11 +239,19 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v.c with MSVC
-call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
+if [!cflags!] == [] (
+    call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD !cflags! /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
+) else (
+    call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
+)
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc msvc self" "  "
+if [!cflags!] == [] (
+    call :buildcmd "v.exe -cc msvc self" "  "
+) else (
+    call :buildcmd "v.exe -cc msvc -cflags "!cflags!" self" "  "
+)
 del %ObjFile%>>!log_file! 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
@@ -235,11 +286,19 @@ call :buildcmd "git pull -q" "  "
 popd
 
 echo  ^> Attempting to build v.c with TCC
-call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
+if [!cflags!] == [] (
+    call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 !cflags! -w -o v.exe vc\v_win.c" "  "
+) else (
+    call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
+)
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc "!tcc_exe!" self" "  "
+if [!cflags!] == [] (
+    call :buildcmd "v.exe -cc "!tcc_exe!" self" "  "
+) else (
+    call :buildcmd "v.exe -cc "!tcc_exe!" -cflags "!cflags!" self" "  "
+)
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -336,7 +395,7 @@ echo     make.bat clean
 echo.
 echo Options:
 echo    --logfile PATH                    Use the specified PATH as the log
-echo    -v ^| --verbose                    Output compilation commands to stdout
+echo    -v ^| --verbose                    Output cleanup commands to stdout
 exit /b 0
 
 :help_cleanall
@@ -345,7 +404,7 @@ echo     make.bat clean-all
 echo.
 echo Options:
 echo    --logfile PATH                    Use the specified PATH as the log
-echo    -v ^| --verbose                    Output compilation commands to stdout
+echo    -v ^| --verbose                    Output cleanup commands to stdout
 exit /b 0
 
 :help_build
@@ -356,6 +415,8 @@ echo Compiler:
 echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
 echo.
 echo Options:
+echo    --cflags FLAGS                    Use the provided FLAGS in addition
+echo                                      to the base flags
 echo    --local                           Use the local vc repository without
 echo                                      syncing with remote
 echo    --logfile PATH                    Use the specified PATH as the log
