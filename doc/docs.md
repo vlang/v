@@ -787,7 +787,7 @@ if x is Abc {
 ```
 
 If you have a struct field which should be checked, there is also a way to name an alias.
-```v
+```v ignore
 struct MyStruct {x int}
 struct MyStruct2 {y string}
 type MySumType = MyStruct | MyStruct2
@@ -1707,7 +1707,7 @@ if w is Mars {
 `w` has type `Mars` inside the body of the `if` statement. This is 
 known as *flow-sensitive typing*. You can also specify a variable name:
 
-```v oksyntax
+```v ignore
 if w is Mars as mars {
     assert typeof(w).name == 'World'
     if mars.dust_storm() {
@@ -1752,7 +1752,7 @@ There are two ways to access the cast variant inside a match branch:
 - the shadowed match variable
 - using `as` to specify a variable name
 
-```v
+```v ignore
 struct Moon {}
 struct Mars {}
 struct Venus {}
