@@ -41,39 +41,40 @@ This simple program covers many of the principal aspects of the `term ` module.
 Here are some functions you should be aware of in the `term `module:
 
 ```v oksyntax
+import term
 // returns the height and the width of the terminal
-term.get_terminal_size() (width, height)
+width, height := term.get_terminal_size()
 
 // returns the string as green text to be printed on stdout
-term.ok_message(string)
+term.ok_message('cool')
 
 // returns the string as red text to be printed on stdout
-term.fail_message(string)
+term.fail_message('oh, no')
 
 // returns the string as yellow text to be printed on stdout
-term.warning_message(string)
+term.warning_message('be warned')
 
 //clears the entire terminal and leaves a blank one
 term.clear()
 
 // colors the output of the output, the available colors are: black,blue,yellow,green,cyan,gray,bright_blue,bright_green,bright_red,bright_black,bright_cyan
-term.<color>(string)
+term.yellow('submarine')
 
 // transforms the given string into bold text
-term.bold(string)
+term.bold('and beautiful')
 
 // puts a strikethrough into the given string
-term.strikethrough(string)
+term.strikethrough('the core of the problem')
 
 // underlines the given string
-term.underline(string)
+term.underline('important')
 
 // colors the background of the output following the given color
 // the available colors are: black, blue, yellow, green, cyan, gray
-term.bg_<color>(string)
+term.bg_green('field')
 
 // sets the position of the cursor at a given place in the terminal
-term.set_cursor_position(term.Coord)
+term.set_cursor_position(x: 5, y: 10)
 
 // moves the cursor up
 term.cursor_up()

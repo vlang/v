@@ -30,7 +30,7 @@ A module to provide eventing capabilities using pub/sub.
 The function given to `subscribe`, `subscribe_method` and `subscribe_once` must match this:
 
 ```v oksyntax
-fn(receiver voidptr, args voidptr, sender voidptr) {
+fn cb(receiver voidptr, args voidptr, sender voidptr) {
 }
 
 // Since V can map structs to voidptr, this also works
@@ -40,7 +40,7 @@ struct ClickEvent {
 }
 
 // Example case where publisher sends ClickEvent as args.
-fn onPress(receiver voidptr, e &ClickEvent, sender voidptr){
+fn on_press(receiver voidptr, e &ClickEvent, sender voidptr){
     println(e.x)
     //your code here...
 }
@@ -48,7 +48,8 @@ fn onPress(receiver voidptr, e &ClickEvent, sender voidptr){
 
 ## Usage
 
-For **usage across modules** [check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
+For **usage across modules** 
+[check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
 
 _Note: As a general rule, you will need to **subscribe before publishing**._
 

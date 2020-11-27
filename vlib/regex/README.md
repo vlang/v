@@ -410,7 +410,7 @@ pub fn new() RE
 pub fn new_by_size(mult int) RE
 ```
 After a base initializer is used, the regex expression must be compiled with:
-```v oksyntax
+```v ignore
 // compile compiles the REgex returning an error if the compilation fails
 pub fn (re mut RE) compile_opt(in_txt string) ?
 ```
@@ -419,7 +419,7 @@ pub fn (re mut RE) compile_opt(in_txt string) ?
 
 These are the operative functions
 
-```v oksyntax
+```v ignore
 // match_string try to match the input string, return start and end index if found else start is -1
 pub fn (re mut RE) match_string(in_txt string) (int,int)
 
