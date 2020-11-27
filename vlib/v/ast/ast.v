@@ -106,6 +106,8 @@ pub:
 	pos        token.Position
 	expr       Expr // expr.field_name
 	field_name string
+	is_mut     bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
+	mut_pos    token.Position
 pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
 	typ        table.Type // type of the entire thing (`Foo.bar`)
@@ -447,6 +449,7 @@ pub:
 	language table.Language
 	tok_kind token.Kind
 	pos      token.Position
+	mut_pos  token.Position
 pub mut:
 	obj      ScopeObject
 	mod      string
@@ -529,14 +532,13 @@ pub mut:
 
 pub struct IfBranch {
 pub:
-	cond        Expr
-	pos         token.Position
-	body_pos    token.Position
-	comments    []Comment
-	is_mut_name bool // `if mut name is`
+	cond      Expr
+	pos       token.Position
+	body_pos  token.Position
+	comments  []Comment
 pub mut:
-	stmts       []Stmt
-	smartcast   bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
+	stmts     []Stmt
+	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
 }
 
 pub struct UnsafeExpr {
@@ -562,7 +564,6 @@ pub:
 	cond          Expr
 	branches      []MatchBranch
 	pos           token.Position
-	is_mut        bool // `match mut ast_node {`
 pub mut:
 	is_expr       bool // returns a value
 	return_type   table.Type

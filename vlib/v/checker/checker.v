@@ -623,6 +623,16 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
 	}
 	mut return_type := left_type
+	if infix_expr.op != .key_is {
+		match mut infix_expr.left {
+			ast.Ident, ast.SelectorExpr {
+				if infix_expr.left.is_mut {
+					c.error('remove unnecessary `mut`', infix_expr.left.mut_pos)
+				}
+			}
+			else {}
+		}
+	}
 	// Single side check
 	// Place these branches according to ops' usage frequency to accelerate.
 	// TODO: First branch includes ops where single side check is not needed, or needed but hasn't been implemented.
@@ -3451,11 +3461,6 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	// node.expected_type = c.expected_type
 	// }
 	node.return_type = ret_type
-	if node.is_mut {
-		// Mark `x` in `match mut x {` as changed, and ensure it's mutable
-		// TODO2 enable when code is fixed
-		// c.fail_if_immutable(node.cond)
-	}
 	return ret_type
 }
 
@@ -3585,9 +3590,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						if field := scope.find_struct_field(node.cond.expr_type, node.cond.field_name) {
 							sum_type_casts << field.sum_type_casts
 						}
-						is_root_mut := scope.is_selector_root_mutable(c.table, node.cond)
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
-						if (!is_root_mut && !is_mut) || node.is_mut {
+						if !is_mut || node.cond.is_mut {
 							sum_type_casts << expr_type
 							scope.register_struct_field(ast.ScopeStructField{
 								struct_type: node.cond.expr_type
@@ -3608,14 +3612,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							is_already_casted = v.pos.pos == node.cond.pos.pos
 						}
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
-						if (!is_mut || node.is_mut) && !is_already_casted {
+						if (!is_mut || node.cond.is_mut) && !is_already_casted {
 							sum_type_casts << expr_type
 							scope.register(node.cond.name, ast.Var{
 								name: node.cond.name
 								typ: node.cond_type
 								pos: node.cond.pos
 								is_used: true
-								is_mut: node.is_mut
+								is_mut: node.cond.is_mut
 								sum_type_casts: sum_type_casts
 							})
 						}
@@ -3846,7 +3850,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								}
 								if left_sym.kind == .sum_type {
 									// smartcast either if the value is immutable or if the mut argument is explicitly given
-									if !is_mut || branch.is_mut_name {
+									if !is_mut || infix.left.is_mut {
 										sum_type_casts << right_expr.typ
 										scope.register(infix.left.name, ast.Var{
 											name: infix.left.name
@@ -3879,12 +3883,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									infix.left.field_name) {
 									sum_type_casts << field.sum_type_casts
 								}
-								is_root_mut := scope.is_selector_root_mutable(c.table,
-									infix.left)
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
-								if ((!is_root_mut && !is_mut) ||
-									branch.is_mut_name) &&
-									left_sym.kind == .sum_type {
+								if (!is_mut || infix.left.is_mut) && left_sym.kind == .sum_type {
 									sum_type_casts << right_expr.typ
 									scope.register_struct_field(ast.ScopeStructField{
 										struct_type: infix.left.expr_type

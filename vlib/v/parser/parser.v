@@ -914,6 +914,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
+	mut_pos := p.tok.position()
 	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
 		p.next()
@@ -951,6 +952,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			mod: p.mod
 			pos: pos
 			is_mut: is_mut
+			mut_pos: mut_pos
 			info: ast.IdentVar{
 				is_mut: is_mut
 				is_static: is_static
@@ -1349,10 +1351,22 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		return mcall_expr
 	}
+	mut is_mut := false
+	mut mut_pos := token.Position{}
+	if p.inside_match || p.inside_if_expr {
+		match left {
+			ast.Ident, ast.SelectorExpr {
+				is_mut = left.is_mut
+				mut_pos = left.mut_pos
+			}
+			else {}
+		}
+	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field_name: field_name
 		pos: name_pos
+		is_mut: is_mut
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
