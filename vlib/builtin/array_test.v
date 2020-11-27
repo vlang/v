@@ -1047,14 +1047,48 @@ const (
 	grid_size_1 = 2
 	grid_size_2 = 3
 	grid_size_3 = 4
-	cell_value = 123
+	cell_value  = 123
 )
 
 fn test_multidimensional_array_initialization_with_consts() {
-	mut data := [][][]int{ len: grid_size_1, init: [][]int{ len: grid_size_2, init: []int{ len: grid_size_3, init: cell_value } } }
+	mut data := [][][]int{len: grid_size_1, init: [][]int{len: grid_size_2, init: []int{len: grid_size_3, init: cell_value}}}
 	assert data.len == grid_size_1
 	assert data[0].len == grid_size_2
 	assert data[0][0].len == grid_size_3
 	assert data[0][0][0] == cell_value
 	assert data[1][1][1] == cell_value
+}
+
+fn test_byteptr_vbytes() {
+	unsafe {
+		bp := malloc(5)
+		bp[0] = 1
+		bp[1] = 2
+		bp[2] = 3
+		bp[3] = 4
+		bp[4] = 255
+		bytes := bp.vbytes(5)
+		println(bytes)
+		assert bytes.len == 5
+		assert bytes[0] == 1
+		assert bytes[1] == 2
+		assert bytes[2] == 3
+		assert bytes[3] == 4
+		assert bytes[4] == 255
+	}
+}
+
+fn test_voidptr_vbytes() {
+	unsafe {
+		bp := malloc(3)
+		bp[0] = 4
+		bp[1] = 5
+		bp[2] = 6
+		bytes := voidptr(bp).vbytes(3)
+		assert bytes.len == 3
+		assert bytes[0] == 4
+		assert bytes[1] == 5
+		assert bytes[2] == 6
+		println(bytes)
+	}
 }
