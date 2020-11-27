@@ -589,7 +589,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						}
 					}
 					if !found {
-						c.error('field `${type_sym.source_name}.$field.name` is required',
+						c.error('field `${type_sym.source_name}.$field.name` must be initialized',
 							struct_init.pos)
 					}
 				}
