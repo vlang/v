@@ -96,6 +96,7 @@ Vweb often uses convention over configuration and adding a new action requires
 no routing rules either:
 
 ```v oksyntax
+import vweb
 fn (mut app App) time() vweb.Result {
 	app.vweb.text(time.now().format())
 	return vweb.Result{}
@@ -206,6 +207,7 @@ Add a SQLite handle to `App`:
 
 ```v oksyntax
 import sqlite
+import vweb
 
 struct App {
 pub mut:
@@ -332,6 +334,7 @@ Create `new.html`:
 ```
 
 ```v oksyntax
+import vweb
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
@@ -370,6 +373,7 @@ to render everything on the client or need an API, creating JSON endpoints
 in V is very simple:
 
 ```v oksyntax
+import vweb
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	app.vweb.json(json.encode(articles))
