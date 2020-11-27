@@ -720,3 +720,21 @@ pub fn (a array) pointers() []voidptr {
 	}
 	return res
 }
+
+// voidptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
+[unsafe]
+pub fn (data voidptr) vbytes(len int) []byte {
+	res := array{
+		element_size: 1
+		data: data
+		len: len
+		cap: len
+	}
+	return res
+}
+
+// byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
+[unsafe]
+pub fn (data byteptr) vbytes(len int) []byte {
+	return unsafe {voidptr(data).vbytes(len)}
+}
