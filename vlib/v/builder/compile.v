@@ -92,7 +92,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		os.exec('xcrun simctl boot $device')
 		bundle_name := b.pref.out_name.split('/').last()
 		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.exec('xcrun simctl install $device $display_name\.app')
+		os.exec('xcrun simctl install $device ${display_name}.app')
 		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
 		os.exec('xcrun simctl launch $device $bundle_id')
 	} else {

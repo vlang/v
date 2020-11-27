@@ -77,7 +77,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
 			}
 			else {
-				verror("could not generate string method $str_fn_name for type \'$styp\'")
+				verror("could not generate string method $str_fn_name for type '$styp'")
 			}
 		}
 	}
@@ -512,7 +512,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 	for typ in info.variants {
 		mut value_fmt := '%.*s\\000'
 		if typ == table.string_type {
-			value_fmt = "\'$value_fmt\'"
+			value_fmt = "'$value_fmt'"
 		}
 		typ_str := g.typ(typ)
 		mut func_name := if typ_str in gen_fn_names { gen_fn_names[typ_str] } else { g.gen_str_for_type_with_styp(typ,
