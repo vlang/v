@@ -112,10 +112,11 @@ fn cgen_attrs(attrs []table.Attr) []string {
 
 fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cnewlines(node.val.replace('\r', ''))
+		val := cnewlines(node.val.replace('\r', '')).replace('\\', '\\\\')
 		g.write('tos_lit("$val")')
 	} else {
-		g.write('tos_lit("$node.val")')
+		val := node.val.replace('\\', '\\\\')
+		g.write('tos_lit("$val")')
 	}
 }
 

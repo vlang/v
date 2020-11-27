@@ -1,6 +1,5 @@
-module scanner
-
 import os
+import v.pref
 
 struct TestStruct {
 	test string
@@ -67,15 +66,7 @@ fn fn_name_mod_level_high_order(cb fn (int)) {
 fn test_at_file() {
 	// Test @FILE
 	f := os.file_name(@FILE)
-	$if windows {
-		// TODO all after Drive letter
-		// no_drive := f.all_after(':')
-		// TODO assert the variable name on Windows???
-		// assert no_drive == 'scanner_at_literals_test.v'
-		assert true
-	} $else {
-		assert f == 'scanner_at_literals_test.v'
-	}
+	assert f == 'comptime_at_test.v'
 }
 
 fn test_at_fn() {
@@ -96,7 +87,7 @@ fn test_at_fn() {
 
 fn test_at_mod() {
 	// Test @MOD
-	assert @MOD == 'scanner'
+	assert @MOD == 'main'
 }
 
 fn test_at_struct() {
@@ -122,4 +113,8 @@ fn test_vmod_file() {
 	assert content.contains('name:')
 	assert content.contains('version:')
 	assert content.contains('description:')
+}
+
+fn test_comptime_at() {
+	assert @VEXE == pref.vexe_path()
 }
