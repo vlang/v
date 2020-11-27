@@ -579,7 +579,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
-			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`n`, `\\`, `t`] {
+			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`n`, `r`, `\\`, `t`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
