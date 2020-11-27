@@ -804,10 +804,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.write_v_source_line_info(node.pos)
 			if node.label.len > 0 {
 				if node.kind == .key_break {
-					g.writeln('goto $node.label\__break;')
+					g.writeln('goto ${node.label}__break;')
 				} else {
 					// assert node.kind == .key_continue
-					g.writeln('goto $node.label\__continue;')
+					g.writeln('goto ${node.label}__continue;')
 				}
 			} else {
 				// continue or break
@@ -945,11 +945,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
 			if node.label.len > 0 {
-				g.writeln('$node.label\__continue: {}')
+				g.writeln('${node.label}__continue: {}')
 			}
 			g.writeln('}')
 			if node.label.len > 0 {
-				g.writeln('$node.label\__break: {}')
+				g.writeln('${node.label}__break: {}')
 			}
 		}
 		ast.ForInStmt {
@@ -974,11 +974,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.is_vlines_enabled = true
 			g.stmts(node.stmts)
 			if node.label.len > 0 {
-				g.writeln('\t$node.label\__continue: {}')
+				g.writeln('\t${node.label}__continue: {}')
 			}
 			g.writeln('}')
 			if node.label.len > 0 {
-				g.writeln('$node.label\__break: {}')
+				g.writeln('${node.label}__break: {}')
 			}
 		}
 		ast.GlobalDecl {
@@ -1178,21 +1178,21 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < $atmp\.key_values.len; ++$idx) {')
-		g.writeln('\tif ($atmp\.key_values.keys[$idx].str == 0) {continue;}')
+		g.writeln('for (int $idx = 0; $idx < ${atmp}.key_values.len; ++$idx) {')
+		g.writeln('\tif (${atmp}.key_values.keys[$idx].str == 0) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
 			key := c_name(it.key_var)
 			// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
 			if it.key_type == table.string_type {
-				g.writeln('\t$key_styp $key = /*kkkk*/ string_clone($atmp\.key_values.keys[$idx]);')
+				g.writeln('\t$key_styp $key = /*key*/ string_clone(${atmp}.key_values.keys[$idx]);')
 			} else {
-				g.writeln('\t$key_styp $key = /*kkkk*/ $atmp\.key_values.keys[$idx];')
+				g.writeln('\t$key_styp $key = /*key*/ ${atmp}.key_values.keys[$idx];')
 			}
 		}
 		if it.val_var != '_' {
 			val_sym := g.table.get_type_symbol(it.val_type)
-			valstr := '(void*)($atmp\.key_values.values + $idx * (u32)($atmp\.value_bytes))'
+			valstr := '(void*)(${atmp}.key_values.values + $idx * (u32)(${atmp}.value_bytes))'
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
@@ -1207,11 +1207,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			// g.writeln('string_free(&$key);')
 		}
 		if it.label.len > 0 {
-			g.writeln('\t$it.label\__continue: {}')
+			g.writeln('\t${it.label}__continue: {}')
 		}
 		g.writeln('}')
 		if it.label.len > 0 {
-			g.writeln('\t$it.label\__break: {}')
+			g.writeln('\t${it.label}__break: {}')
 		}
 		return
 	} else if it.cond_type.has_flag(.variadic) {
@@ -1240,11 +1240,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 	}
 	g.stmts(it.stmts)
 	if it.label.len > 0 {
-		g.writeln('\t$it.label\__continue: {}')
+		g.writeln('\t${it.label}__continue: {}')
 	}
 	g.writeln('}')
 	if it.label.len > 0 {
-		g.writeln('\t$it.label\__break: {}')
+		g.writeln('\t${it.label}__break: {}')
 	}
 }
 
@@ -5566,7 +5566,7 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name st
 		convertor = 'bool'
 		typename_ = 'bool'
 	} else {
-		verror("could not generate string method for type \'$styp\'")
+		verror("could not generate string method for type '$styp'")
 	}
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')

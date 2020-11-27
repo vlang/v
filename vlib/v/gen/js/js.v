@@ -15,8 +15,7 @@ const (
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
 		'while', 'with', 'yield']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
-		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t'
-	]
+		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
 
 struct JsGen {
@@ -1012,8 +1011,8 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 				name = receiver_sym.name + '.' + name
 			}
 			// todo: please add a name feild without the mod name for ast.CallExpr
-			if name.starts_with('$node.call_expr.mod\.') {
-				name = name[node.call_expr.mod.len+1..]
+			if name.starts_with('${node.call_expr.mod}.') {
+				name = name[node.call_expr.mod.len + 1..]
 			}
 			g.writeln('await new Promise(function(resolve){')
 			g.inc_indent()
@@ -1245,7 +1244,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 		match it.or_block.kind {
 			.block {
 				if it.or_block.stmts.len > 1 {
-					g.stmts(it.or_block.stmts[..it.or_block.stmts.len-1])
+					g.stmts(it.or_block.stmts[..it.or_block.stmts.len - 1])
 				}
 				g.write('return ')
 				g.stmt(it.or_block.stmts.last())
