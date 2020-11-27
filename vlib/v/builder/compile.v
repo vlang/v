@@ -59,6 +59,7 @@ pub fn compile(command string, pref &pref.Preferences) {
 	if pref.is_stats {
 		println('compilation took: ${util.bold(sw.elapsed().milliseconds().str())} ms')
 	}
+	b.exit_on_invalid_syntax()
 	// running does not require the parsers anymore
 	unsafe {b.myfree()}
 	if pref.is_test || pref.is_run {
@@ -72,6 +73,21 @@ fn (mut b Builder) myfree() {
 	// for file in b.parsed_files {
 	// }
 	unsafe {b.parsed_files.free()}
+}
+
+fn (b &Builder) exit_on_invalid_syntax() {
+	// V should exit with an exit code of 1, when there are errors,
+	// even when -silent is passed in combination to -check-syntax:
+	if b.pref.only_check_syntax {
+		for pf in b.parsed_files {
+			if pf.errors.len > 0 {
+				exit(1)
+			}
+		}
+		if b.checker.nr_errors > 0 {
+			exit(1)
+		}
+	}
 }
 
 fn (mut b Builder) run_compiled_executable_and_exit() {

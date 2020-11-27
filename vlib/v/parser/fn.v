@@ -111,7 +111,12 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 
 pub fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
+	start_pos := p.tok.position()
 	for p.tok.kind != .rpar {
+		if p.tok.kind == .eof {
+			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
+			break
+		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
 		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
