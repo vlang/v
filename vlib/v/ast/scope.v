@@ -202,21 +202,3 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
 }
-
-// is_selector_root_mutable checks if the root ident is mutable
-// Example:
-// ```
-// mut x := MyStruct{}
-// x.foo.bar.z
-// ```
-// Since x is mutable, it returns true.
-pub fn (s &Scope) is_selector_root_mutable(t &table.Table, selector_expr SelectorExpr) bool {
-	if mut selector_expr.expr is SelectorExpr {
-		return s.is_selector_root_mutable(t, selector_expr.expr)
-	} else if mut selector_expr.expr is Ident {
-		if v := s.find_var(selector_expr.expr.name) {
-			return v.is_mut
-		}
-	}
-	return false
-}
