@@ -177,7 +177,7 @@ fn (mut g Game) init_game() {
 		mut row := [0].repeat(field_width + 2)
 		row[0] = -1
 		row[field_width + 1] = -1
-		g.field << row
+		g.field << row.clone()
 	}
 	for j in 0 .. field_width + 2 {
 		g.field[0][j] = -1
@@ -264,8 +264,7 @@ fn (mut g Game) move_right(dx int) bool {
 		tetro := g.tetro[i]
 		y := tetro.y + g.pos_y
 		x := tetro.x + g.pos_x + dx
-		row := g.field[y]
-		if row[x] != 0 {
+		if g.field[y][x] != 0 {
 			// Do not move
 			return false
 		}
