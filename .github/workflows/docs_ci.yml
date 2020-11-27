@@ -1,16 +1,8 @@
 name: Docs CI
 
-on:
-  push:
-    paths:
-      - ".github/workflows/docs_ci.yml"
-      - "cmd/tools/check-md.v"
-      - "**.md"
-  pull_request:
-    paths:
-      - ".github/workflows/docs_ci.yml"
-      - "cmd/tools/check-md.v"
-      - "**.md"
+### Run on *EVERY* commit. The documentation *SHOULD* stay valid, and
+### the developers should receive early warning if they break it.
+on: [push, pull_request]
 
 jobs:
   check-markdown:
