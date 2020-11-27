@@ -509,8 +509,7 @@ fn (g &Gen) cc_type2(t table.Type) string {
 			}
 			styp += sgtyps
 		} else if styp.contains('<') {
-			// TODO: yuck
-			styp = styp.replace('<', '_T_').replace('>', '').replace(',', '_')
+			styp = styp.replace_each(['<', '_T_', '>', '', ',', '_'])
 		}
 	}
 	return styp
@@ -4512,9 +4511,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if typ.info.generic_types.len > 0 {
 					continue
 				}
-				// TODO: yuck
 				if name.contains('<') {
-					name = name.replace('<', '_T_').replace('>', '').replace(',', '_')
+					name = name.replace_each(['<', '_T_', '>', '', ',', '_'])
 					g.typedefs.writeln('typedef struct $name $name;')
 				}
 				// TODO avoid buffer manip
