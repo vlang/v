@@ -16,8 +16,8 @@
 --kinddef-V=i,interface,interfaces
 --kinddef-V=S,sfield,struct field
 --kinddef-V=E,efield,enum field
---_roledef-V=m.imported,imported module
---_roledef-V=M.declared,module declaration
+--_roledef-V.m=imported,imported module
+--_roledef-V.M=declared,module declaration
 --regex-V=/^module[[:blank:]]+([0-9a-zA-Z]+)[[:blank:]]*$/\1/M/{_role=declared}{scope=push}
 --regex-V=/^import[[:blank:]]+(([0-9a-zA-Z]+)?|.*\.([a-zA-Z_][0-9a-zA-Z]+))[[:blank:]]*$/\2\3/m/{_role=imported}{scope=ref}
 --regex-V=/^[[:blank:]]*fn[[:blank:]]+C\.([a-zA-Z_][0-9a-zA-Z_]*)\(/C.\1/C/
