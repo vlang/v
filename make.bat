@@ -236,7 +236,7 @@ if %ERRORLEVEL% NEQ 0 (
     popd
     set "tcc_exe=%tcc_dir%\tcc.exe"
 ) else (
-	for /f "delims=" %%i in ('where tcc') do set "tcc_exe=%%i"
+	for /f "usebackq delims=" %%i in (`where tcc`) do set "tcc_exe=%%i"
 )
 
 echo  ^> Updating prebuilt TCC...
