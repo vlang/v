@@ -268,7 +268,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-W' {
 				res.warns_are_errors = true
 			}
-			'-reuse-tmpc' {
+			'-keepc' {
 				res.reuse_tmpc = true
 			}
 			'-w' {

@@ -122,7 +122,7 @@ const (
 		'-parallel',
 		'-x64',
 		'-W',
-		'-reuse-tmpc',
+		'-keepc',
 		'-w',
 		'-print_v_files',
 		'-error-limit',
