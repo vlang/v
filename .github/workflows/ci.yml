@@ -171,7 +171,7 @@ jobs:
       run: ./v -silent build-examples
     - name: Build examples with -autofree
       run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v && ./tetris
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
     - name: v doctor
       run: |
         ./v doctor
@@ -233,7 +233,7 @@ jobs:
       run: ./v -silent build-examples
     - name: Build examples with -autofree
       run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v && ./tetris
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
     - name: Build modules
       run: |
         ./v build-module vlib/os
