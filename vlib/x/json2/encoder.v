@@ -18,7 +18,7 @@ fn write_value(v Any, i int, len int, mut wr strings.Builder) {
 	wr.write_b(`,`)
 }
 
-// String representation of the `map[string]Any`.
+// str returns the string representation of the `map[string]Any`.
 pub fn (flds map[string]Any) str() string {
 	mut wr := strings.new_builder(200)
 	wr.write_b(`{`)
@@ -36,7 +36,7 @@ pub fn (flds map[string]Any) str() string {
 	return res
 }
 
-// String representation of the `[]Any`.
+// str returns the string representation of the `[]Any`.
 pub fn (flds []Any) str() string {
 	mut wr := strings.new_builder(200)
 	wr.write_b(`[`)
@@ -51,7 +51,7 @@ pub fn (flds []Any) str() string {
 	return res
 }
 
-// String representation of the `Any` type.
+// str returns the string representation of the `Any` type.
 pub fn (f Any) str() string {
 	match f {
 		string {
