@@ -102,7 +102,7 @@ jobs:
       uses: ncipollo/release-action@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN }}
-        tag: ${{ github.ref }}
+        tag: ${{ steps.split.outputs._2 }}
         name: ${{ steps.split.outputs._2 }}
         commit: ${{ github.sha }}
         draft: false
@@ -123,13 +123,19 @@ jobs:
         path: ./${{ matrix.version }}
     - name: Build
       run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}/*
+    - name: Get short tag name
+      uses: jungwinter/split@v1
+      id: split
+      with:
+        msg: ${{ github.ref }}
+        seperator: /
     - name: Get release
       id: get_release_info
       uses: leahlundqvist/get-release@v1.3.1
       env:
         GITHUB_TOKEN: ${{ github.token }}
       with:
-        tag_name: ${{ github.ref }}
+        tag_name: ${{ steps.split.outputs._2 }}
     - name: Upload Release Asset
       id: upload-release-asset 
       uses: actions/upload-release-asset@v1.0.1
