@@ -357,7 +357,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		}
 	}
 	if left_sym.kind == .sum_type && node.name == 'type_name' {
-		g.write('tos3( /* $left_sym.name */ v_typeof_unionsumtype_${node.receiver_type}( (')
+		g.write('tos3( /* $left_sym.name */ v_typeof_sumtype_${node.receiver_type}( (')
 		g.expr(node.left)
 		g.write(').typ ))')
 		return
