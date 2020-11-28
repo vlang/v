@@ -1,0 +1,9 @@
+struct Abc {
+    val string
+}
+struct Xyz {
+    foo string
+}
+type Alphabet1 = Abc | string | &Xyz
+type Alphabet2 = Abc | &Xyz | string
+type Alphabet3 = &Xyz | Abc | string
