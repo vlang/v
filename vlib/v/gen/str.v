@@ -186,30 +186,6 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 }
 
 fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
-	mut cur_line := ''
-	mut tmp := ''
-	free := false && !g.pref.experimental && g.pref.autofree && g.inside_call && !g.inside_return &&
-		g.inside_ternary == 0 && !g.inside_const
-	// && g.cur_fn != 0 &&
-	// g.cur_fn.name != ''
-	/*
-	if false && free {
-		// Save the string expr in a temporary variable, so that it can be removed after the call.
-		tmp = g.new_tmp_var()
-		/*
-		scope := g.file.scope.innermost(node.pos.pos)
-		scope.register(tmp, ast.Var{
-			name: tmp
-			typ: table.string_type
-		})
-		*/
-		// g.insert_before_stmt('// str tmp var\nstring $tmp = ')
-		cur_line = g.go_before_stmt(0)
-		g.writeln('// free _str2 $g.inside_call')
-		g.write('string $tmp = ')
-		g.strs_to_free += 'string_free(&$tmp); /*tmp str*/'
-	}
-	*/
 	g.write('_STR("')
 	// Build the string with %
 	mut end_string := false
@@ -323,9 +299,4 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	g.write(')')
-	if free {
-		g.writeln(';')
-		g.write(cur_line)
-		g.write(tmp)
-	}
 }
