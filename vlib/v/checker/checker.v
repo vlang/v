@@ -642,6 +642,14 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// TODO: Some of the checks are not single side. Should find a better way to organize them.
 	match infix_expr.op {
 		// .eq, .ne, .gt, .lt, .ge, .le, .and, .logical_or, .dot, .key_as, .right_shift {}
+		.eq, .ne {
+			is_alias_eq_struct := left.kind == .alias && right.kind == .struct_
+			is_struct_eq_alias := left.kind == .struct_ && right.kind == .alias
+			if is_alias_eq_struct || is_struct_eq_alias {
+				c.error('possible type mismatch of compared values of `$infix_expr.op` operation',
+					infix_expr.pos)
+			}
+		}
 		.key_in, .not_in {
 			match right.kind {
 				.array {
@@ -837,26 +845,22 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			}
 			return table.void_type
 		}
-		else {
-			if infix_expr.op in [.and, .logical_or] {
-				if infix_expr.left_type != table.bool_type_idx {
-					c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
-				}
-				if infix_expr.right_type != table.bool_type_idx {
-					c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
-				}
+		.and, .logical_or {
+			if infix_expr.left_type != table.bool_type_idx {
+				c.error('left operand for `$infix_expr.op` is not a boolean', infix_expr.left.position())
+			}
+			if infix_expr.right_type != table.bool_type_idx {
+				c.error('right operand for `$infix_expr.op` is not a boolean', infix_expr.right.position())
 			}
 			// use `()` to make the boolean expression clear error
 			// for example: `(a && b) || c` instead of `a && b || c`
-			if infix_expr.op in [.logical_or, .and] {
-				if mut infix_expr.left is ast.InfixExpr {
-					if infix_expr.left.op in [.logical_or, .and] &&
-						infix_expr.left.op != infix_expr.op {
-						c.error('use `()` to make the boolean expression clear', infix_expr.pos)
-					}
+			if mut infix_expr.left is ast.InfixExpr {
+				if infix_expr.left.op != infix_expr.op && infix_expr.left.op in [.logical_or, .and] {
+					c.error('use `()` to make the boolean expression clear', infix_expr.pos)
 				}
 			}
 		}
+		else {}
 	}
 	// TODO: Absorb this block into the above single side check block to accelerate.
 	if left_type == table.bool_type && infix_expr.op !in [.eq, .ne, .logical_or, .and] {
