@@ -1,0 +1,5 @@
+vlib/v/parser/tests/array_pos_err.vv:2:2: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     '' in []
+      |     ~~~~~~~~
+    3 | }
