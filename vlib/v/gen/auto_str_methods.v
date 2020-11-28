@@ -42,7 +42,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		return str_fn_name_no_ptr
 	}
 	already_generated_key := '$styp:$str_fn_name'
-	if !sym_has_str_method && already_generated_key !in g.str_types {
+	if !sym_has_str_method && already_generated_key !in g.str_types && !typ.has_flag(.optional) {
 		$if debugautostr ? {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
@@ -90,7 +90,47 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		}
 		return 'varg_$str_fn_name'
 	}
+	if typ.has_flag(.optional) {
+		option_already_generated_key := 'option_$already_generated_key'
+		if option_already_generated_key !in g.str_types {
+			g.gen_str_for_option(typ, styp, str_fn_name)
+			g.str_types << option_already_generated_key
+		}
+		return str_fn_name
+	}
 	return str_fn_name
+}
+
+fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name string) {
+	parent_type := typ.clear_flag(.optional)
+	sym := g.table.get_type_symbol(parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	sym_name := sym.name.replace('.', '__')
+	mut parent_str_fn_name := styp_to_str_fn_name(sym_name)
+	if !sym_has_str_method {
+		parent_styp := g.typ(parent_type)
+		parent_str_fn_name = g.gen_str_for_type_with_styp(parent_type, parent_styp)
+	}
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring res;')
+	g.auto_str_funcs.writeln('\tif (it.is_none) {')
+	g.auto_str_funcs.writeln('\t\tres = tos_lit("none");')
+	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
+	if typ.is_string() {
+		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym_name*)it.data));')
+	} else if sym.kind == .struct_ && !sym_has_str_method {
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym_name*)it.data, indent_count);')
+	} else {
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym_name*)it.data);')
+	}
+	g.auto_str_funcs.writeln('\t} else {')
+	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.v_error);')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
+	g.auto_str_funcs.writeln('}')
 }
 
 fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name string) {
