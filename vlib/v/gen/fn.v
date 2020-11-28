@@ -60,9 +60,10 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	mut type_name := g.typ(it.return_type)
 	if g.cur_generic_type != 0 {
-		// foo<T>() => foo_int(), foo_string() etc
+		// foo<T>() => foo_T_int(), foo_T_string() etc
 		gen_name := g.typ(g.cur_generic_type)
-		name += '_' + gen_name
+		// Using _T_ to differentiate between get<string> and get_string
+		name += '_T_' + gen_name
 	}
 	// if g.pref.show_cc && it.is_builtin {
 	// println(name)
@@ -534,8 +535,9 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = c_name(name)
 	}
 	if node.generic_type != table.void_type && node.generic_type != 0 {
-		// `foo<int>()` => `foo_int()`
-		name += '_' + g.typ(node.generic_type)
+		// Using _T_ to differentiate between get<string> and get_string
+		// `foo<int>()` => `foo_T_int()`
+		name += '_T_' + g.typ(node.generic_type)
 	}
 	// TODO2
 	// cgen shouldn't modify ast nodes, this should be moved
