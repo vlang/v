@@ -1538,25 +1538,32 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// Free the old value assigned to this string var (only if it's `str = [new value]`)
 	mut af := g.pref.autofree && !g.is_builtin_mod && assign_stmt.op == .assign && assign_stmt.left_types.len ==
-		1 && assign_stmt.left_types[0] == table.string_type && assign_stmt.left[0] is ast.Ident
+		1 && assign_stmt.left[0] is ast.Ident
+	// assign_stmt.left_types[0] in [table.string_type, table.array_type] &&
 	mut sref_name := ''
+	mut type_to_free := ''
 	if af {
-		ident := assign_stmt.left[0] as ast.Ident
-		if ident.name != '_' {
-			/*
-			g.write('string_free(&')
+		first_left_type := assign_stmt.left_types[0]
+		first_left_sym := g.table.get_type_symbol(assign_stmt.left_types[0])
+		if first_left_type == table.string_type || first_left_sym.kind == .array {
+			type_to_free = if first_left_type == table.string_type { 'string' } else { 'array' }
+			ident := assign_stmt.left[0] as ast.Ident
+			if ident.name != '_' {
+				/*
+				g.write('string_free(&')
 			g.expr(assign_stmt.left[0])
 			g.writeln('); // free str on re-assignment')
-			*/
-			sref_name = '_sref$assign_stmt.pos.pos'
-			g.write('string $sref_name = (') // TODO we are copying the entire string here, optimize
-			// we can't just do `.str` since we need the extra data from the string struct
-			// doing `&string` is also not an option since the stack memory with the data will be overwritten
-			g.expr(assign_stmt.left[0])
-			g.writeln('); // free str on re-assignment2')
-			defer {
-				if af {
-					g.writeln('string_free(&$sref_name);')
+				*/
+				sref_name = '_sref$assign_stmt.pos.pos'
+				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
+				// we can't just do `.str` since we need the extra data from the string struct
+				// doing `&string` is also not an option since the stack memory with the data will be overwritten
+				g.expr(assign_stmt.left[0])
+				g.writeln('); // free $type_to_free on re-assignment2')
+				defer {
+					if af {
+						g.writeln('${type_to_free}_free(&$sref_name);')
+					}
 				}
 			}
 		} else {
