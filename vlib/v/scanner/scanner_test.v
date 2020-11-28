@@ -136,3 +136,8 @@ fn test_ref_ref_array_ref_ref_foo() {
 	assert result[5] == .amp
 	assert result[6] == .name
 }
+
+fn test_escape_string() {
+	assert '\x61' == 'a'
+	assert '\x62' == 'b'
+}

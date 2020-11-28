@@ -1032,11 +1032,10 @@ fn (mut s Scanner) ident_string() string {
 				s.error(r'cannot use `\0` (NULL character) in the string literal')
 			}
 		}
-		// Don't allow \x00
-		if c == `0` && s.pos > 5 && s.expect('\\x0', s.pos - 3) {
-			if s.count_symbol_before(s.pos - 3, slash) % 2 == 0 {
-			} else if !is_cstr && !is_raw {
-				s.error(r'cannot use `\x00` (NULL character) in the string literal')
+		// escape `\x`
+		if prevc == slash && c == `x` && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 && !is_raw && !is_cstr {
+			if s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit() {
+				s.error(r'`\x` used with no following hex digits')
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
