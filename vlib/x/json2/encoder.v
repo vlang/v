@@ -64,10 +64,12 @@ pub fn (f Any) str() string {
 			return f.str()
 		}
 		f32 {
-			return f.str()
+			str_f32 := f.str()
+			return if str_f32.ends_with('.') { str_f32 + '0' } else { str_f32 }
 		}
 		f64 {
-			return f.str()
+			str_f64 := f.str()
+			return if str_f64.ends_with('.') { str_f64 + '0' } else { str_f64 }
 		}
 		any_int {
 			return f.str()
