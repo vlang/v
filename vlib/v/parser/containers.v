@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.table
-import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
@@ -23,6 +22,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut has_default := false
 	mut default_expr := ast.Expr{}
 	if p.tok.kind == .rsbr {
+		last_pos = p.tok.position()
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
 		p.next()
@@ -126,11 +126,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := token.Position{
-		line_nr: first_pos.line_nr
-		pos: first_pos.pos
-		len: last_pos.pos - first_pos.pos + last_pos.len
-	}
+	pos := first_pos.extend(last_pos)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val

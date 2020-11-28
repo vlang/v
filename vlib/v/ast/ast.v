@@ -1072,9 +1072,6 @@ pub fn (expr Expr) position() token.Position {
 		InfixExpr {
 			left_pos := expr.left.position()
 			right_pos := expr.right.position()
-			if left_pos.pos == 0 || right_pos.pos == 0 {
-				return expr.pos
-			}
 			return token.Position{
 				line_nr: expr.pos.line_nr
 				pos: left_pos.pos
