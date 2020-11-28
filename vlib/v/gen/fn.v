@@ -181,17 +181,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 }
 
-/*
-fn (mut g Gen) write_autofree_stmts_when_needed(r ast.Return) {
-	// TODO: write_autofree_stmts_when_needed should account for the current local scope vars.
-	// TODO: write_autofree_stmts_when_needed should not free the returned variables.
-	// It may require rewriting g.return_statement to assign the expressions
-	// to temporary variables, then protecting *them* from autofreeing ...
-	// g.writeln('// autofreeings before return:              -------')
-	// g.writeln(g.autofree_scope_vars(g.fn_decl.body_pos.pos))
-	// g.writeln('//--------------------------------------------------- ') // //g.write( g.autofree_scope_vars(r.pos.pos) )
-}
-*/
 fn (mut g Gen) write_defer_stmts_when_needed() {
 	if g.defer_stmts.len > 0 {
 		g.write_defer_stmts()
