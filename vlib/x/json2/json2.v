@@ -3,6 +3,10 @@
 // that can be found in the LICENSE file.
 module json2
 
+pub const (
+	null = Null{}
+)
+
 pub interface Serializable {
 	from_json(f Any)
 	to_json() string
@@ -51,11 +55,6 @@ pub fn encode<T>(typ T) string {
 	// return Any(typ).str()
 	// }
 	return typ.to_json()
-}
-
-// A simple function that returns `Null` struct. For use on constructing an `Any` object.
-pub fn null() Null {
-	return Null{}
 }
 
 // Use `Any` as a map.
