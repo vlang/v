@@ -141,3 +141,11 @@ pub fn (f Any) bool() bool {
 		else { return false }
 	}
 }
+
+// For testing. Use `Any` as a null
+pub fn (f Any) is_null() bool {
+	match union f {
+		Null { return true }
+		else { return false }
+	}
+}
