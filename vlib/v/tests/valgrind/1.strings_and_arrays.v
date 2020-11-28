@@ -106,6 +106,12 @@ fn reassign_str() {
 	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr
 }
 
+fn reassign_arr() {
+	mut x := [1, 2, 3]
+	// x must be freed before the re-assignment
+	x = [4, 5, 6]
+}
+
 fn match_expr() string {
 	x := 2
 	res := match x {
@@ -266,6 +272,7 @@ fn main() {
 	println('start')
 	simple()
 	reassign_str()
+	reassign_arr()
 	str_tmp_expr()
 	str_tmp_expr_advanced()
 	str_tmp_expr_advanced_var_decl()
