@@ -1040,15 +1040,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
 			if g.pref.autofree {
 				g.writeln('// ast.Return free')
-				if af {
-					g.writeln('//af tmp')
-					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
-				}
 				// g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
-			g.return_statement(node, af)
+			g.return_statement(node)
 		}
 		ast.SqlStmt {
 			g.sql_stmt(node)
@@ -1678,7 +1674,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
-						needs_clone := info.elem_type == table.string_type && g.pref.autofree
+						needs_clone := elem_typ == table.string_type && g.pref.autofree
 						if needs_clone {
 							g.write('/*1*/string_clone(')
 						}
@@ -3816,7 +3812,7 @@ fn (g &Gen) expr_is_multi_return_call(expr ast.Expr) bool {
 	}
 }
 
-fn (mut g Gen) return_statement(node ast.Return, af bool) {
+fn (mut g Gen) return_statement(node ast.Return) {
 	g.write_v_source_line_info(node.pos)
 	if node.exprs.len > 0 {
 		// skip `retun $vweb.html()`
@@ -3829,10 +3825,6 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 	g.inside_return = true
 	defer {
 		g.inside_return = false
-	}
-	if af {
-		tmp := g.new_tmp_var()
-		g.writeln('// $tmp = ...')
 	}
 	// got to do a correct check for multireturn
 	sym := g.table.get_type_symbol(g.fn_decl.return_type)
@@ -3858,10 +3850,6 @@ fn (mut g Gen) return_statement(node ast.Return, af bool) {
 			g.write('Option $tmp = ')
 			g.expr_with_cast(node.exprs[0], node.types[0], g.fn_decl.return_type)
 			g.writeln(';')
-			if af {
-				// free the tmp arg expr if we have one before the return
-				g.autofree_call_postgen(node.pos.pos)
-			}
 			styp := g.typ(g.fn_decl.return_type)
 			g.writeln('return *($styp*)&$tmp;')
 			return
