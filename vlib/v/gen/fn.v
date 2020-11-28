@@ -62,7 +62,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if g.cur_generic_type != 0 {
 		// foo<T>() => foo_T_int(), foo_T_string() etc
 		gen_name := g.typ(g.cur_generic_type)
-		// Using _T_ to differentiate betweem get<string> nad get_string
+		// Using _T_ to differentiate between get<string> and get_string
 		name += '_T_' + gen_name
 	}
 	// if g.pref.show_cc && it.is_builtin {
@@ -535,7 +535,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		name = c_name(name)
 	}
 	if node.generic_type != table.void_type && node.generic_type != 0 {
-		// Using _T_ to differentiate betweem get<string> nad get_string
+		// Using _T_ to differentiate between get<string> and get_string
 		// `foo<int>()` => `foo_T_int()`
 		name += '_T_' + g.typ(node.generic_type)
 	}
