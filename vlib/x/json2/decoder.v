@@ -225,7 +225,7 @@ fn (mut p Parser) decode_value() ?Any {
 				d_num := p.decode_number() ?
 				return d_num
 			}
-			return error("unknown token \'$p.tok.lit\' when decoding value")
+			return error("unknown token '$p.tok.lit' when decoding value")
 		}
 	}
 	if p.is_formfeed() {
@@ -375,7 +375,7 @@ fn (mut p Parser) decode_array() ?Any {
 		if p.tok.kind == .rsbr {
 			break
 		}
-		return error("unknown token \'$p.tok.lit\' when decoding arrays.")
+		return error("unknown token '$p.tok.lit' when decoding arrays.")
 	}
 	p.next()
 	return Any(items)
@@ -410,7 +410,7 @@ fn (mut p Parser) decode_object() ?Any {
 		} else if p.tok.kind == .rcbr {
 			break
 		}
-		return error("unknown token \'$p.tok.lit\' when decoding object.")
+		return error("unknown token '$p.tok.lit' when decoding object.")
 	}
 	p.next()
 	return Any(fields)
