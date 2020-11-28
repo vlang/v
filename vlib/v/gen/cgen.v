@@ -1565,6 +1565,8 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.writeln('${type_to_free}_free(&$sref_name);')
 					}
 				}
+			} else {
+				af = false
 			}
 		} else {
 			af = false
