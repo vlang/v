@@ -8,3 +8,16 @@ fn test_go_anon_fn() {
 	}(mut wg)
 	wg.wait()
 }
+
+struct AnonFnWrapper {
+mut:
+	fn_ fn () bool
+}
+
+fn test_anon_assign_struct() {
+	mut w := AnonFnWrapper{}
+	w.fn_ = fn () bool {
+		return true
+	}
+	assert w.fn_()
+}

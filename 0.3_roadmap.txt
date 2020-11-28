@@ -24,3 +24,4 @@
 - fix all remaining generics issues
 - merge v.c and v_win.c
 - more advanced errors, not just `error('message')`
+- VLS for autocomplete, refactoring, go to definition etc

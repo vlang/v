@@ -9,18 +9,28 @@ import v.util
 
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
+		is_html := node.method_name == 'html'
 		for stmt in node.vweb_tmpl.stmts {
 			if stmt is ast.FnDecl {
 				// insert stmts from vweb_tmpl fn
 				if stmt.name.starts_with('main.vweb_tmpl') {
-					g.inside_vweb_tmpl = true
+					if is_html {
+						g.inside_vweb_tmpl = true
+					}
 					g.stmts(stmt.stmts)
 					g.inside_vweb_tmpl = false
 					break
 				}
 			}
 		}
-		g.writeln('vweb__Context_html(&app->vweb, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+		if is_html {
+			// return vweb html template
+			g.writeln('vweb__Context_html(&app->vweb, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+		} else {
+			// return $tmpl string
+			fn_name := g.fn_decl.name.replace('.', '__')
+			g.writeln('return _tmpl_res_$fn_name;')
+		}
 		return
 	}
 	g.writeln('// $' + 'method call. sym="$node.sym.name"')
@@ -102,10 +112,11 @@ fn cgen_attrs(attrs []table.Attr) []string {
 
 fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cnewlines(node.val.replace('\r', ''))
+		val := cnewlines(node.val.replace('\r', '')).replace('\\', '\\\\')
 		g.write('tos_lit("$val")')
 	} else {
-		g.write('tos_lit("$node.val")')
+		val := node.val.replace('\\', '\\\\')
+		g.write('tos_lit("$val")')
 	}
 }
 
@@ -174,7 +185,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 }
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
-	match union cond {
+	match cond {
 		ast.ParExpr {
 			g.write('(')
 			g.comp_if_expr(cond.expr)

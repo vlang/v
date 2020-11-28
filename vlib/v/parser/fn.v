@@ -111,7 +111,12 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 
 pub fn (mut p Parser) call_args() []ast.CallArg {
 	mut args := []ast.CallArg{}
+	start_pos := p.tok.position()
 	for p.tok.kind != .rpar {
+		if p.tok.kind == .eof {
+			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
+			break
+		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
 		is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -567,7 +572,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 
 fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position) {
 	sym := p.table.get_type_symbol(typ)
-	if sym.kind !in [.array, .struct_, .map, .placeholder, .union_sum_type] && !typ.is_ptr() {
+	if sym.kind !in [.array, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
 			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
 			pos)

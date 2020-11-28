@@ -15,7 +15,7 @@ fn handle_users(users []User) {
 fn (u &User) foo(u2 &User) {
 }
 
-__type Expr = IfExpr | IntegerLiteral
+type Expr = IfExpr | IntegerLiteral
 
 fn exprs(e []Expr) {
 	println(e.len)

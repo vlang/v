@@ -269,3 +269,24 @@ fn test_alias_struct() {
 	assert t.str() == 'TestAlias($ts)'
 	assert '$t' == 'TestAlias(TestStruct{\n    x: 0\n})'
 }
+
+struct GenericStruct<T> {
+	x T
+}
+
+fn test_generic_struct() {
+	x := GenericStruct<TestStruct>{}
+	assert '$x' == 'GenericStruct<TestStruct>{\n    x: TestStruct{\n        x: 0\n    }\n}'
+	assert x.str() == 'GenericStruct<TestStruct>{\n    x: TestStruct{\n        x: 0\n    }\n}'
+}
+
+struct MultiGenericStruct<T, X> {
+	t T
+	x X
+}
+
+fn test_multi_generic_struct() {
+	x := MultiGenericStruct<TestStruct, TestStruct>{}
+	assert '$x' == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
+	assert x.str() == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
+}

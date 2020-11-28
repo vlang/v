@@ -121,7 +121,6 @@ pub enum Kind {
 	key_struct
 	key_true
 	key_type
-	key___type // __type
 	key_typeof
 	key_orelse
 	key_union
@@ -265,7 +264,6 @@ fn build_token_str() []string {
 	s[Kind.key_lock] = 'lock'
 	s[Kind.key_rlock] = 'rlock'
 	s[Kind.key_type] = 'type'
-	s[Kind.key___type] = '__type'
 	s[Kind.key_for] = 'for'
 	s[Kind.key_fn] = 'fn'
 	s[Kind.key_true] = 'true'

@@ -11,8 +11,7 @@ import v.util
 import v.pref
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub __type Any = Null | []Any | any_float | any_int | bool | f32 | f64 | i64 | int | map[string]Any |
-	string
+pub type Any = string | int | i64 | f32 | f64 | any_int | any_float | bool | Null | []Any | map[string]Any
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
@@ -130,13 +129,13 @@ fn (p Parser) is_singlequote() bool {
 fn (mut p Parser) detect_parse_mode() {
 	src := p.scanner.text
 	if src.len > 1 && src[0].is_digit() && !src[1].is_digit() {
-		p.mode == .invalid
+		p.mode = .invalid
 		return
 	}
 	p.tok = p.scanner.scan()
 	p.n_tok = p.scanner.scan()
 	if src.len == 1 && p.tok.kind == .string && p.n_tok.kind == .eof {
-		p.mode == .invalid
+		p.mode = .invalid
 		return
 	}
 	match p.tok.kind {
@@ -299,9 +298,7 @@ fn (mut p Parser) decode_string() ?Any {
 					strwr.write_b(`/`)
 					continue
 				}
-				else {
-					return error('invalid backslash escape.')
-				}
+				else { return error('invalid backslash escape.') }
 			}
 			if int(peek) == 85 {
 				return error('unicode endpoints must be in lowercase `u`.')

@@ -84,15 +84,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			p.error('cannot use `match` with `if` statements')
 		}
 		comments << p.eat_comments()
-		// `if mut name is T`
-		mut is_mut_name := false
-		mut mut_pos := token.Position{}
-		if p.tok.kind == .key_mut {
-			is_mut_name = true
-			mut_pos = p.tok.position()
-			p.next()
-			comments << p.eat_comments()
-		}
 		mut cond := ast.Expr{}
 		mut is_guard := false
 		// `if x := opt() {`
@@ -120,15 +111,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			cond = p.expr(0)
 		}
 		comments << p.eat_comments()
-		if mut cond is ast.InfixExpr {
-			// if sum is T
-			is_is_cast := cond.op == .key_is
-			if !is_is_cast && is_mut_name {
-				p.error_with_pos('remove unnecessary `mut`', mut_pos)
-			}
-		} else if is_mut_name {
-			p.error_with_pos('remove unnecessary `mut`', mut_pos)
-		}
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
 		p.inside_if = false
@@ -142,7 +124,6 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			pos: start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
-			is_mut_name: is_mut_name
 		}
 		comments = p.eat_comments()
 		if is_comptime {
@@ -170,16 +151,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 	match_first_pos := p.tok.position()
 	p.inside_match = true
 	p.check(.key_match)
-	mut is_union_match := false
-	if p.tok.kind == .key_union {
-		p.check(.key_union)
-		is_union_match = true
-	}
-	is_mut := p.tok.kind == .key_mut
 	mut is_sum_type := false
-	if is_mut {
-		p.next()
-	}
 	cond := p.expr(0)
 	p.inside_match = false
 	no_lcbr := p.tok.kind != .lcbr
@@ -286,8 +258,6 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		cond: cond
 		is_sum_type: is_sum_type
 		pos: pos
-		is_mut: is_mut
-		is_union_match: is_union_match
 	}
 }
 
@@ -361,12 +331,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			}
 			p.inside_match = false
 			p.inside_select = false
-			match union mut stmt {
+			match mut stmt {
 				ast.ExprStmt {
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
 					} else {
-						match union mut stmt.expr {
+						match mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
 									p.error_with_pos('select key: `<-` operator expected',
@@ -382,7 +352,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				}
 				ast.AssignStmt {
 					expr := stmt.right[0]
-					match union expr {
+					match expr {
 						ast.PrefixExpr {
 							if expr.op != .arrow {
 								p.error_with_pos('select key: `<-` operator expected',

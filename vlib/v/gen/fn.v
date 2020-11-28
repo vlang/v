@@ -100,8 +100,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				// if !(g.pref.build_mode == .build_module && g.is_builtin_mod) {
 				// If we are building vlib/builtin, we need all private functions like array_get
 				// to be public, so that all V programs can access them.
-				g.write('static ')
-				g.definitions.write('static ')
+				g.write('VV_LOCAL_SYMBOL ')
+				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
 		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
@@ -170,7 +170,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		if attr.name == 'export' {
 			g.writeln('// export alias: $attr.arg -> $name')
 			export_alias := '$type_name ${attr.arg}($arg_str)'
-			g.definitions.writeln('$export_alias;')
+			g.definitions.writeln('VV_EXPORTED_SYMBOL $export_alias; // exported fn $it.name')
 			g.writeln('$export_alias {')
 			g.write('\treturn ${name}(')
 			g.write(fargs.join(', '))
@@ -366,7 +366,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			else {}
 		}
 	}
-	if left_sym.kind == .union_sum_type && node.name == 'type_name' {
+	if left_sym.kind == .sum_type && node.name == 'type_name' {
 		g.write('tos3( /* $left_sym.name */ v_typeof_unionsumtype_${node.receiver_type}( (')
 		g.expr(node.left)
 		g.write(').typ ))')
@@ -419,8 +419,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	// g.write('/*${g.typ(node.receiver_type)}*/')
 	// g.write('/*expr_type=${g.typ(node.left_type)} rec type=${g.typ(node.receiver_type)}*/')
 	// }
-	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' &&
-		!g.should_write_asterisk_due_to_match_sumtype(node.left) {
+	if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name == 'str' {
 		g.write('ptr_str(')
 	} else {
 		g.write('${name}(')
@@ -569,7 +568,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
 			} else {
 				expr := node.args[0].expr
-				is_var := match union expr {
+				is_var := match expr {
 					ast.SelectorExpr { true }
 					ast.Ident { true }
 					else { false }
@@ -639,8 +638,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.autofree && g.pref.experimental && !g.is_builtin_mod &&
-		node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	mut free_tmp_arg_vars := g.autofree && !g.is_builtin_mod && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -685,7 +683,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			// instead of `string t = ...`, and we need to mark this variable as unused,
 			// so that it's freed after the call. (Used tmp arg vars are not freed to avoid double frees).
 			if x := scope.find(t) {
-				match union mut x {
+				match mut x {
 					ast.Var { x.is_used = false }
 					else {}
 				}
@@ -740,7 +738,7 @@ fn (mut g Gen) autofree_call_postgen(node_pos int) {
 	// g.write('/* postgen */')
 	scope := g.file.scope.innermost(node_pos)
 	for _, obj in scope.objects {
-		match union mut obj {
+		match mut obj {
 			ast.Var {
 				// if var.typ == 0 {
 				// // TODO why 0?
@@ -779,8 +777,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
-		use_tmp_var_autofree := g.autofree && g.pref.experimental && arg.typ == table.string_type &&
-			arg.is_tmp_autofree && !g.inside_const
+		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
+			!g.inside_const
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker
@@ -887,7 +885,7 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
 			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
-			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .union_sum_type
+			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
 			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')
 			}

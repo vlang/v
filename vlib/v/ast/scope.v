@@ -73,7 +73,7 @@ pub fn (s &Scope) is_known(name string) bool {
 
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
-		match union obj {
+		match obj {
 			Var { return &obj }
 			else {}
 		}
@@ -83,7 +83,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
-		match union obj {
+		match obj {
 			ConstField { return &obj }
 			else {}
 		}
@@ -101,7 +101,7 @@ pub fn (s &Scope) known_var(name string) bool {
 pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
 	s.end_pos = s.end_pos // TODO mut bug
 	mut obj := s.objects[name]
-	match union mut obj {
+	match mut obj {
 		Var {
 			if obj.typ == typ {
 				return
@@ -182,7 +182,7 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 	}
 	out += '$indent# $sc.start_pos - $sc.end_pos\n'
 	for _, obj in sc.objects {
-		match union obj {
+		match obj {
 			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
 			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
 			else {}
@@ -201,22 +201,4 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 
 pub fn (sc &Scope) str() string {
 	return sc.show(0, 0)
-}
-
-// is_selector_root_mutable checks if the root ident is mutable
-// Example:
-// ```
-// mut x := MyStruct{}
-// x.foo.bar.z
-// ```
-// Since x is mutable, it returns true.
-pub fn (s &Scope) is_selector_root_mutable(t &table.Table, selector_expr SelectorExpr) bool {
-	if mut selector_expr.expr is SelectorExpr {
-		return s.is_selector_root_mutable(t, selector_expr.expr)
-	} else if mut selector_expr.expr is Ident {
-		if v := s.find_var(selector_expr.expr.name) {
-			return v.is_mut
-		}
-	}
-	return false
 }

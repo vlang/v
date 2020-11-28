@@ -53,7 +53,7 @@ pub fn (flds []Any) str() string {
 
 // String representation of the `Any` type.
 pub fn (f Any) str() string {
-	match union f {
+	match f {
 		string {
 			return f
 		}

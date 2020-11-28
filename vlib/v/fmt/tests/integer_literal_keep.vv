@@ -4,7 +4,7 @@ struct IfExpr {
 struct MatchExpr {
 }
 
-__type Expr = IfExpr | MatchExpr
+type Expr = IfExpr | MatchExpr
 
 fn sum_types(a []Expr) {
 }

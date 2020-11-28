@@ -79,7 +79,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		f.mod2alias[imp.mod.all_after_last('.')] = imp.alias
 		for sym in imp.syms {
-			f.mod2alias['$imp.mod\.$sym.name'] = sym.name
+			f.mod2alias['${imp.mod}.$sym.name'] = sym.name
 			f.mod2alias[sym.name] = sym.name
 		}
 	}
@@ -245,15 +245,12 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
 		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
 	}
-	match union node {
+	match node {
 		ast.AssignStmt {
 			f.comments(node.comments, {})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
-					if var_info.is_mut {
-						f.write(var_info.share.str() + ' ')
-					}
 					if var_info.is_static {
 						f.write('static ')
 					}
@@ -491,7 +488,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 
 pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	mut comments := []ast.Comment{}
-	match union node {
+	match node {
 		ast.AliasTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
@@ -544,11 +541,11 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			comments << node.comments
 		}
-		ast.UnionSumTypeDecl {
+		ast.SumTypeDecl {
 			if node.is_pub {
 				f.write('pub ')
 			}
-			f.write('__type $node.name = ')
+			f.write('type $node.name = ')
 			mut sum_type_names := []string{}
 			for t in node.sub_types {
 				sum_type_names << f.table.type_to_str(t)
@@ -741,7 +738,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
 		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
 	}
-	match union mut node {
+	match mut node {
 		ast.CTempVar {
 			eprintln('ast.CTempVar of $node.orig.str() should be generated/used only in cgen')
 		}
@@ -807,7 +804,11 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.ComptimeCall {
 			if node.is_vweb {
-				f.write('$' + 'vweb.html()')
+				if node.method_name == 'html' {
+					f.write('\$vweb.html()')
+				} else {
+					f.write("\$tmpl('$node.args_var')")
+				}
 			} else {
 				f.write('${node.left}.\$${node.method_name}($node.args_var)')
 			}
@@ -831,10 +832,12 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.if_expr(node)
 		}
 		ast.Ident {
-			f.write_language_prefix(node.language)
-			if true {
-			} else {
+			if mut node.info is ast.IdentVar {
+				if node.info.is_mut {
+					f.write(node.info.share.str() + ' ')
+				}
 			}
+			f.write_language_prefix(node.language)
 			if node.name == 'it' && f.it_name != '' && !f.inside_lambda { // allow `it` in lambdas
 				f.write(f.it_name)
 			} else if node.kind == .blank_ident {
@@ -1342,7 +1345,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 	}
 	f.expr_bufs << f.out.str()
 	mut penalty := 3
-	match union mut node.left {
+	match mut node.left {
 		ast.InfixExpr {
 			if int(token.precedences[node.left.op]) > int(token.precedences[node.op]) {
 				penalty--
@@ -1353,7 +1356,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		}
 		else {}
 	}
-	match union node.right {
+	match node.right {
 		ast.InfixExpr { penalty-- }
 		ast.ParExpr { penalty = 1 }
 		else {}
@@ -1407,9 +1410,6 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		}
 		if i < it.branches.len - 1 || !it.has_else {
 			f.write('${dollar}if ')
-			if branch.is_mut_name {
-				f.write('mut ')
-			}
 			f.expr(branch.cond)
 			f.write(' ')
 		}
@@ -1528,12 +1528,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	f.write('match ')
-	if it.is_union_match {
-		f.write('union ')
-	}
-	if it.is_mut {
-		f.write('mut ')
-	}
 	f.expr(it.cond)
 	if it.cond is ast.Ident {
 		f.it_name = it.cond.name
@@ -1652,7 +1646,7 @@ fn (mut f Fmt) write_language_prefix(lang table.Language) {
 }
 
 fn stmt_is_single_line(stmt ast.Stmt) bool {
-	match union stmt {
+	match stmt {
 		ast.ExprStmt { return expr_is_single_line(stmt.expr) }
 		ast.Return { return true }
 		ast.AssignStmt { return true }
@@ -1661,7 +1655,7 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 }
 
 fn expr_is_single_line(expr ast.Expr) bool {
-	match union expr {
+	match expr {
 		ast.IfExpr { return false }
 		ast.Comment { return false }
 		else {}

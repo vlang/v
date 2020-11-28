@@ -1,4 +1,4 @@
-vlib/v/checker/tests/struct_required_field.vv:12:6: error: field `Abc.f3` is required
+vlib/v/checker/tests/struct_required_field.vv:12:6: error: field `Abc.f3` must be initialized
    10 |         f3: 789
    11 |     }
    12 |     _ = Abc{

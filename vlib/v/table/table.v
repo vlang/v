@@ -722,8 +722,8 @@ pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
 pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := table.get_type_symbol(parent)
-	if parent_sym.kind == .union_sum_type {
-		parent_info := parent_sym.info as UnionSumType
+	if parent_sym.kind == .sum_type {
+		parent_info := parent_sym.info as SumType
 		for v in parent_info.variants {
 			if v.idx() == variant.idx() {
 				return true

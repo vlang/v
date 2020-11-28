@@ -6,7 +6,7 @@
 
 type   Uint =   u16 | u64
 	| u32
-	    | byte
+	    | byte // This should stay on the same line
 type
 Float =
 	f32 |

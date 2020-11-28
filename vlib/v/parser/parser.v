@@ -435,9 +435,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 					.key_type {
 						return p.type_decl()
 					}
-					.key___type {
-						return p.union_sum_type_decl()
-					}
 					else {
 						p.error('wrong pub keyword usage')
 						return ast.Stmt{}
@@ -479,9 +476,6 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 			}
 			.key_type {
 				return p.type_decl()
-			}
-			.key___type {
-				return p.union_sum_type_decl()
 			}
 			.key_enum {
 				return p.enum_decl()
@@ -608,7 +602,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					p.next()
 					if p.tok.kind == .key_for {
 						mut stmt := p.stmt(is_top_level)
-						match union mut stmt {
+						match mut stmt {
 							ast.ForStmt {
 								stmt.label = name
 								return stmt
@@ -892,10 +886,10 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	}
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
-	} else if is_top_level && tok.kind !in
-		[.key_if, .key_match, .key_lock, .key_rlock, .key_select] && left0 !is ast.CallExpr &&
-		left0 !is ast.PostfixExpr && !(left0 is ast.InfixExpr &&
-		(left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is ast.ComptimeCall {
+	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] &&
+		left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr) && left0 !is ast.PostfixExpr &&
+		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
+		ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 	}
 	if left.len == 1 {
@@ -920,6 +914,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	// p.warn('name ')
 	is_shared := p.tok.kind == .key_shared
 	is_atomic := p.tok.kind == .key_atomic
+	mut_pos := p.tok.position()
 	is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
 	if is_mut {
 		p.next()
@@ -957,6 +952,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			mod: p.mod
 			pos: pos
 			is_mut: is_mut
+			mut_pos: mut_pos
 			info: ast.IdentVar{
 				is_mut: is_mut
 				is_static: is_static
@@ -1282,21 +1278,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .dollar {
 		return p.comptime_method_call(left)
 	}
-	mut name_pos := p.tok.position()
+	name_pos := p.tok.position()
 	field_name := p.check_name()
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
-		name_pos = p.tok.position()
-		p.scope_register_it()
-		// wrong tok position when using defer
-		// defer {
-		// p.close_scope()
-		// }
 	} else if field_name == 'sort' {
 		p.open_scope()
-		name_pos = p.tok.position()
-		p.scope_register_ab()
 	}
 	// ! in mutable methods
 	if p.tok.kind == .not && p.peek_tok.kind == .lpar {
@@ -1363,10 +1351,22 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 		return mcall_expr
 	}
+	mut is_mut := false
+	mut mut_pos := token.Position{}
+	if p.inside_match || p.inside_if_expr {
+		match left {
+			ast.Ident, ast.SelectorExpr {
+				is_mut = left.is_mut
+				mut_pos = left.mut_pos
+			}
+			else {}
+		}
+	}
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field_name: field_name
 		pos: name_pos
+		is_mut: is_mut
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
@@ -1626,7 +1626,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.position()
 		alias := p.check_name()
-		name := '$parent.mod\.$alias'
+		name := '${parent.mod}.$alias'
 		if alias[0].is_capital() {
 			idx := p.table.add_placeholder_type(name, .v)
 			typ := table.new_type(idx)
@@ -1869,13 +1869,19 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')
 		}
+		for f in fields {
+			if f.has_expr {
+				p.error_with_pos('when an enum is used as a bit field, you can not assign custom values',
+					f.pos)
+			}
+		}
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
 		p.scanner.codegen('
 //
-$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (1 << int(flag))) != 0 }
-$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (1 << int(flag)) } }
-$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(1 << int(flag)) } }
-$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (1 << int(flag)) } }
+$pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (int(flag)) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(int(flag)) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (int(flag)) } }
 //
 ')
 	}
@@ -1900,58 +1906,6 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
-}
-
-fn (mut p Parser) union_sum_type_decl() ast.TypeDecl {
-	start_pos := p.tok.position()
-	is_pub := p.tok.kind == .key_pub
-	if is_pub {
-		p.next()
-	}
-	p.check(.key___type)
-	end_pos := p.tok.position()
-	decl_pos := start_pos.extend(end_pos)
-	name := p.check_name()
-	if name.len == 1 && name[0].is_capital() {
-		p.error_with_pos('single letter capital names are reserved for generic template types.',
-			decl_pos)
-	}
-	p.check(.assign)
-	mut sum_variants := []table.Type{}
-	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
-	if p.tok.kind == .pipe {
-		p.next()
-		sum_variants << first_type
-		// type SumType = A | B | c
-		for {
-			variant_type := p.parse_type()
-			sum_variants << variant_type
-			if p.tok.kind != .pipe {
-				break
-			}
-			p.check(.pipe)
-		}
-		prepend_mod_name := p.prepend_mod(name)
-		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .union_sum_type
-			name: prepend_mod_name
-			source_name: prepend_mod_name
-			mod: p.mod
-			info: table.UnionSumType{
-				variants: sum_variants
-			}
-			is_public: is_pub
-		})
-		return ast.UnionSumTypeDecl{
-			name: name
-			is_pub: is_pub
-			sub_types: sum_variants
-			pos: decl_pos
-		}
-	}
-	// just for this implementation
-	p.error_with_pos('wrong union sum type declaration', decl_pos)
-	return ast.TypeDecl{}
 }
 
 fn (mut p Parser) type_decl() ast.TypeDecl {
@@ -1999,17 +1953,17 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
-			kind: .union_sum_type
+			kind: .sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
 			mod: p.mod
-			info: table.UnionSumType{
+			info: table.SumType{
 				variants: sum_variants
 			}
 			is_public: is_pub
 		})
 		comments = p.eat_lineend_comments()
-		return ast.UnionSumTypeDecl{
+		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
 			sub_types: sum_variants
@@ -2139,7 +2093,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 
 pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 	if obj := p.scope.find(varname) {
-		match union mut obj {
+		match mut obj {
 			ast.Var {
 				obj.is_used = true
 				return true
