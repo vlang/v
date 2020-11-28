@@ -16,6 +16,13 @@ const (
 	}
 )
 
+fn is_null(f Any) bool {
+	match f {
+		json2.Null { return true }
+		else { return false }
+	}
+}
+
 fn test_f32() {
 	// valid conversions
 	assert sample_data['int'].f32() == 1.0
@@ -79,7 +86,7 @@ fn test_as_map() {
 	assert sample_data['f64'].as_map()['0'].f64() == 1.283
 	assert sample_data['bool'].as_map()['0'].bool() == false
 	assert sample_data['str'].as_map()['0'].str() == 'test'
-	assert sample_data['null'].as_map()['0'].is_null() == true
+	assert is_null(sample_data['null'].as_map()['0']) == true
 	assert sample_data['arr'].as_map()['0'].str() == 'lol'
 	assert sample_data['obj'].as_map()['foo'].int() == 10
 }
@@ -91,7 +98,7 @@ fn test_arr() {
 	assert sample_data['f64'].arr()[0].f64() == 1.283
 	assert sample_data['bool'].arr()[0].bool() == false
 	assert sample_data['str'].arr()[0].str() == 'test'
-	assert sample_data['null'].arr()[0].is_null() == true
+	assert is_null(sample_data['null'].arr()[0]) == true
 	assert sample_data['arr'].arr()[0].str() == 'lol'
 	assert sample_data['obj'].arr()[0].int() == 10
 }
