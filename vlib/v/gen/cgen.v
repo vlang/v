@@ -1037,12 +1037,12 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
-			af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
-			if g.pref.autofree {
+			// af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
+			af := g.pref.autofree && !g.is_builtin_mod
+			if af {
 				g.writeln('// ast.Return free')
 				// g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.writeln('// ast.Return free_end')
-				// g.write_autofree_stmts_when_needed(node)
 			}
 			g.return_statement(node)
 		}
