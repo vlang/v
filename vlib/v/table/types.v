@@ -183,6 +183,21 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 	return int(t) & (1 << (int(flag) + 24)) > 0
 }
 
+pub fn (ts TypeSymbol) debug() []string {
+	mut res := []string{}
+	res << 'parent_idx: $ts.parent_idx'
+	res << 'mod: $ts.mod'
+	res << 'name: $ts.name'
+	res << 'source_name: $ts.source_name'
+	res << 'info: $ts.info'
+	res << 'kind: $ts.kind'
+	res << 'is_public: $ts.is_public'
+	res << 'is_written: $ts.is_written'
+	res << 'language: $ts.language'
+	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	return res
+}
+
 pub fn (t Type) debug() []string {
 	mut res := []string{}
 	res << 'idx: ${t.idx():5}'

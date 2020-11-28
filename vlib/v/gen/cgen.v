@@ -1678,7 +1678,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						if left.left_type.is_ptr() {
 							g.write('*')
 						}
-						needs_clone := elem_typ == table.string_type && g.pref.autofree
+						needs_clone := info.elem_type == table.string_type && g.pref.autofree
 						if needs_clone {
 							g.write('/*1*/string_clone(')
 						}
