@@ -246,6 +246,16 @@ fn free_before_return_bool() bool {
 	return true
 }
 
+fn free_before_break() {
+	s := 'a' + 'b'
+	for {
+		q := [1, 2, 3]
+		if true {
+			break
+		}
+	}
+}
+
 struct User {
 	name string
 	age  int
@@ -289,6 +299,7 @@ fn main() {
 	free_inside_opt_block()
 	// free_before_return()
 	// free_before_return_bool()
+	// free_before_break()
 	// free_map()
 	// loop_map()
 	// free_array_except_returned_element()
