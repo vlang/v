@@ -74,7 +74,7 @@ fn test_all() {
 		//
 		exe_filename := '$wrkdir/x'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -experimental -autofree "$full_path_to_source_file"'
+		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()
