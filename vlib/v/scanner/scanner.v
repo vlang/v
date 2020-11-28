@@ -1033,7 +1033,8 @@ fn (mut s Scanner) ident_string() string {
 			}
 		}
 		// escape `\x`
-		if prevc == slash && c == `x` && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 && !is_raw && !is_cstr {
+		if prevc == slash &&
+			c == `x` && s.count_symbol_before(s.pos - 2, slash) % 2 == 0 && !is_raw && !is_cstr {
 			if s.text[s.pos + 1] == s.quote || !s.text[s.pos + 1].is_hex_digit() {
 				s.error(r'`\x` used with no following hex digits')
 			}
