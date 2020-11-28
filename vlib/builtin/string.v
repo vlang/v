@@ -1274,6 +1274,7 @@ fn (u &ustring) free() {
 	}
 	unsafe {
 		u.runes.free()
+		u.s.free()
 	}
 }
 
