@@ -271,7 +271,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			g.write(' ? _SLIT("true") : _SLIT("false")')
 		} else if node.fmts[i] == `s` {
 			g.gen_expr_to_string(expr, typ)
-		}else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
+		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
 				// convert to unsigned first befors C's integer propagation strikes
 				if typ == table.i8_type {
@@ -288,7 +288,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.expr(expr)
 			}
-		}  else {
+		} else {
 			g.expr(expr)
 		}
 		if node.fmts[i] == `s` && node.fwidths[i] != 0 {
