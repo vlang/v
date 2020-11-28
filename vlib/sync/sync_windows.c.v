@@ -91,6 +91,34 @@ pub fn (mut m Mutex) m_lock() {
 	}
 }
 
+pub fn (mut m Mutex) try_lock() bool {
+	// if mutex handle not initalized
+	if isnil(m.mx) {
+		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
+		if isnil(m.mx) {
+			m.state = .broken // handle broken and mutex state are broken
+			return false
+		}
+	}
+	state := C.WaitForSingleObject(m.mx, 0)
+	/* TODO fix match/enum combo
+	m.state = match state {
+		C.WAIT_ABANDONED { .abandoned }
+		C.WAIT_OBJECT_0  { .waiting }
+		else           { .broken }
+	}
+	*/
+	if state == C.WAIT_ABANDONED {
+		m.state = .abandoned
+	// FIXME Use C constant instead
+	} else if state == 0 /* C.WAIT_OBJECT_0 */ {
+		m.state = .waiting
+	} else {
+		m.state = .broken
+	}
+	return m.state == .waiting
+}
+
 pub fn (mut m Mutex) unlock() {
 	if m.state == .waiting {
 		if C.ReleaseMutex(m.mx) {

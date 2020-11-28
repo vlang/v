@@ -66,6 +66,10 @@ pub fn (mut m Mutex) m_lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
+pub fn (mut m Mutex) try_lock() bool {
+	return C.pthread_mutex_trylock(&m.mutex) == 0
+}
+
 pub fn (mut m Mutex) unlock() {
 	C.pthread_mutex_unlock(&m.mutex)
 }
