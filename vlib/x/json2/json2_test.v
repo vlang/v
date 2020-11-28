@@ -255,7 +255,6 @@ fn test_encode_map() {
 		'four': json2.Any(4)
 	}
 	out := numbers.str()
-	// out := json.encode(numbers)
 	assert out == expected
 }
 
