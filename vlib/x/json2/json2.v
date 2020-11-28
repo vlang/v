@@ -24,40 +24,20 @@ pub fn fast_raw_decode(src string) ?Any {
 	return p.decode()
 }
 
-// A generic function that decodes a JSON string into the target type.
+// decode is a generic function that decodes a JSON string into the target type.
 pub fn decode<T>(src string) ?T {
 	res := raw_decode(src) ?
-	/*
-	TODO: type check match src {
-		string {
-			return res.str()
-		}
-		int {
-			return res.int()
-		}
-		f64 {
-			return res.f64()
-		}
-		else {
-	*/
 	mut typ := T{}
 	typ.from_json(res)
 	return typ
-	/*
-	}
-	}
-	*/
 }
 
-// A generic function that encodes a type into a JSON string.
+// encode is a generic function that encodes a type into a JSON string.
 pub fn encode<T>(typ T) string {
-	// if typeof(typ).name in ['string', 'int', 'f64', 'f32', 'i64'] {
-	// return Any(typ).str()
-	// }
 	return typ.to_json()
 }
 
-// Use `Any` as a map.
+// as_map uses `Any` as a map.
 pub fn (f Any) as_map() map[string]Any {
 	if f is map[string]Any {
 		return f
@@ -73,7 +53,7 @@ pub fn (f Any) as_map() map[string]Any {
 	}
 }
 
-// Use `Any` as an integer.
+// int uses `Any` as an integer.
 pub fn (f Any) int() int {
 	match f {
 		int { return f }
@@ -82,7 +62,7 @@ pub fn (f Any) int() int {
 	}
 }
 
-// Use `Any` as a 64-bit integer.
+// i64 uses `Any` as a 64-bit integer.
 pub fn (f Any) i64() i64 {
 	match f {
 		i64 { return f }
@@ -91,7 +71,7 @@ pub fn (f Any) i64() i64 {
 	}
 }
 
-// Use `Any` as a 32-bit float.
+// f32 uses `Any` as a 32-bit float.
 pub fn (f Any) f32() f32 {
 	match f {
 		f32 { return f }
@@ -100,7 +80,7 @@ pub fn (f Any) f32() f32 {
 	}
 }
 
-// Use `Any` as a float.
+// f64 uses `Any` as a float.
 pub fn (f Any) f64() f64 {
 	match f {
 		f64 { return f }
@@ -109,7 +89,7 @@ pub fn (f Any) f64() f64 {
 	}
 }
 
-// Use `Any` as an array.
+// arr uses `Any` as an array.
 pub fn (f Any) arr() []Any {
 	if f is []Any {
 		return f
@@ -123,19 +103,11 @@ pub fn (f Any) arr() []Any {
 	return [f]
 }
 
-// Use `Any` as a bool
+// bool uses `Any` as a bool
 pub fn (f Any) bool() bool {
 	match f {
 		bool { return f }
 		string { return f.bool() }
-		else { return false }
-	}
-}
-
-// For testing. Use `Any` as a null
-pub fn (f Any) is_null() bool {
-	match f {
-		Null { return true }
 		else { return false }
 	}
 }
