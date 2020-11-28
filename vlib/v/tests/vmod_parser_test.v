@@ -1,5 +1,4 @@
 import vmod
-
 import os
 
 fn test_from_file() {
@@ -9,7 +8,7 @@ fn test_from_file() {
 	}
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'
-	assert data.version == '0.1.29'
+	assert data.version == '0.1.30'
 	assert data.dependencies.len == 0
 }
 

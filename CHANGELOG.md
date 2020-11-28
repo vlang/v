@@ -1,7 +1,12 @@
+## V 0.1.30
+*28 Nov 2020*
+(V 0.2 RC)
+TODO
+
 ## V 0.1.27
 *5 May 2020*
 
-- vfmt has been re-written from scratch using the new AST parser. 
+- vfmt has been re-written from scratch using the new AST parser.
     It's much faster, cleaner, and can format
 files with compilation errors.
 - `strconv`, `sprintf`, and `printf` in native V, without any libc calls.
@@ -38,14 +43,14 @@ files with compilation errors.
 ## V 0.1.25
 *1 Apr 2020*
 
-- The entire compiler has been re-written with an AST parser. 
-    The code is now a lot cleaner and more maintainable. 
+- The entire compiler has been re-written with an AST parser.
+    The code is now a lot cleaner and more maintainable.
     ~15k lines of old compiler code were removed.
 
 ## V 0.1.24
 *31 Dec 2019*
 
-- A new parser/generator built on top of an AST that simplifies code greatly 
+- A new parser/generator built on top of an AST that simplifies code greatly
     and allows to implement new backends much faster.
 - Sum types (`type Expr = IfExpr | MatchExpr | IntegerLiteral`).
 - B-tree map (sped up the V compiler by ~10%).
@@ -94,7 +99,7 @@ files with compilation errors.
 - `os.cp()` for copying files and directores.
 - Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
 - All C functions now have to be declared, all missing C functions have been defined.
-- Global variables (only with the `--enable-globals` flag) 
+- Global variables (only with the `--enable-globals` flag)
     for low level applications like kernels and drivers.
 - Nothing can be cast to bool (previously code like `if bool(1) {` worked).
 - `<<` and `>>` now work with all integer types.
@@ -336,9 +341,9 @@ this backend.
 ## V 0.1.12
 *4 Jul 2019*
 - V can finally compile itself on Windows (https://github.com/vlang/v#mingw-w64).
-- `os` module now uses optionals in all functions that return `File`. 
+- `os` module now uses optionals in all functions that return `File`.
 - Lots of bugs with optionals were fixed.
-- `println` was optimized. It no longer results in allocations. 
+- `println` was optimized. It no longer results in allocations.
     Now it also works correctly with all integer types.
 - Lots of `vfmt` fixes, it will be enabled tomorrow.
 - New `strings` module.
