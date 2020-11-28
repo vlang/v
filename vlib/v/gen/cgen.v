@@ -1044,7 +1044,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.writeln('//af tmp')
 					// g.autofree_call_pregen(node.exprs[0] as ast.CallExpr)
 				}
-				// g.autofree_scope_vars(node.pos.pos - 1)
+				// g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 				g.writeln('// ast.Return free_end')
 				// g.write_autofree_stmts_when_needed(node)
 			}
