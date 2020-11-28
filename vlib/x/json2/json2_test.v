@@ -257,7 +257,6 @@ fn test_encode_map() {
 	out := numbers.str()
 	assert out == expected
 }
-
 /*
 fn test_parse_map() {
 	expected := {
