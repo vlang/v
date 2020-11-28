@@ -1922,8 +1922,9 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			decl_pos)
 	}
-	mut sum_variants := []table.Type{}
+	mut sum_variants := []ast.SumTypeVariant{}
 	p.check(.assign)
+	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
 		// function type: `type mycallback fn(string, int)`
@@ -1940,17 +1941,31 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
 	if p.tok.kind == .pipe {
+		mut type_end_pos := p.prev_tok.position()
+		type_pos = type_pos.extend(type_end_pos)
 		p.next()
-		sum_variants << first_type
+		sum_variants << ast.SumTypeVariant{
+			typ: first_type
+			pos: type_pos
+		}
 		// type SumType = A | B | c
 		for {
+			type_pos = p.tok.position()
 			variant_type := p.parse_type()
-			sum_variants << variant_type
+			// TODO: needs to be its own var, otherwise TCC fails because of a known stack error
+			prev_tok := p.prev_tok
+			type_end_pos = prev_tok.position()
+			type_pos = type_pos.extend(type_end_pos)
+			sum_variants << ast.SumTypeVariant{
+				typ: variant_type
+				pos: type_pos
+			}
 			if p.tok.kind != .pipe {
 				break
 			}
 			p.check(.pipe)
 		}
+		variant_types := sum_variants.map(it.typ)
 		prepend_mod_name := p.prepend_mod(name)
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
@@ -1958,7 +1973,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			source_name: prepend_mod_name
 			mod: p.mod
 			info: table.SumType{
-				variants: sum_variants
+				variants: variant_types
 			}
 			is_public: is_pub
 		})
@@ -1966,7 +1981,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
-			sub_types: sum_variants
+			variants: sum_variants
 			pos: decl_pos
 			comments: comments
 		}

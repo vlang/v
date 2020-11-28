@@ -372,7 +372,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
-			g.writeln('char * v_typeof_unionsumtype_${tidx}(int sidx) { /* $typ.name */ ')
+			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
 			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
@@ -1250,7 +1250,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to union sum type (can add other casts also)
-fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -1300,64 +1300,6 @@ fn (mut g Gen) union_expr_with_cast(expr ast.Expr, got_type table.Type, expected
 					g.expr(expr)
 					g.write('}, sizeof($got_styp)), .typ = $got_type /* $got_sym.name */}')
 				}
-			}
-			return
-		}
-	}
-	// Generic dereferencing logic
-	expected_sym := g.table.get_type_symbol(expected_type)
-	got_is_ptr := got_type.is_ptr()
-	expected_is_ptr := expected_type.is_ptr()
-	neither_void := table.voidptr_type !in [got_type, expected_type]
-	if got_is_ptr && !expected_is_ptr && neither_void && expected_sym.kind !in [.interface_, .placeholder] {
-		got_deref_type := got_type.deref()
-		deref_sym := g.table.get_type_symbol(got_deref_type)
-		deref_will_match := expected_type in [got_type, got_deref_type, deref_sym.parent_idx]
-		got_is_opt := got_type.has_flag(.optional)
-		if deref_will_match || got_is_opt {
-			g.write('*')
-		}
-	}
-	// no cast
-	g.expr(expr)
-}
-
-// use instead of expr() when you need to cast to sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
-	sym := g.table.get_type_symbol(expected_type)
-	if sym.kind == .sum_type {
-		g.union_expr_with_cast(expr, got_type, expected_type)
-		return
-	}
-	// cast to sum type
-	if expected_type != table.void_type {
-		expected_is_ptr := expected_type.is_ptr()
-		expected_deref_type := if expected_is_ptr { expected_type.deref() } else { expected_type }
-		got_is_ptr := got_type.is_ptr()
-		got_deref_type := if got_is_ptr { got_type.deref() } else { got_type }
-		if g.table.sumtype_has_variant(expected_deref_type, got_deref_type) {
-			exp_styp := g.typ(expected_type)
-			got_styp := g.typ(got_type)
-			got_idx := got_type.idx()
-			got_sym := g.table.get_type_symbol(got_type)
-			if expected_is_ptr && got_is_ptr {
-				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._object = ')
-				g.expr(expr)
-				g.write(', .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
-			} else if expected_is_ptr {
-				exp_der_styp := g.typ(expected_deref_type)
-				g.write('/* sum type cast */ ($exp_styp) memdup(&($exp_der_styp){._object = memdup(&($got_styp[]) {')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}, sizeof($exp_der_styp))')
-			} else if got_is_ptr {
-				g.write('/* sum type cast */ ($exp_styp) {._object = ')
-				g.expr(expr)
-				g.write(', .typ = $got_idx /* $got_sym.name */}')
-			} else {
-				g.write('/* sum type cast */ ($exp_styp) {._object = memdup(&($got_styp[]) {')
-				g.expr(expr)
-				g.write('}, sizeof($got_styp)), .typ = $got_idx /* $got_sym.name */}')
 			}
 			return
 		}
@@ -2646,7 +2588,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
 		sum_type_idx := node.expr_type.idx()
-		g.write('tos3( /* $sym.name */ v_typeof_unionsumtype_${sum_type_idx}( (')
+		g.write('tos3( /* $sym.name */ v_typeof_sumtype_${sum_type_idx}( (')
 		g.expr(node.expr)
 		g.write(').typ ))')
 	} else if sym.kind == .array_fixed {

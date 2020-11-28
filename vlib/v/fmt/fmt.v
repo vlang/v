@@ -547,8 +547,8 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 			}
 			f.write('type $node.name = ')
 			mut sum_type_names := []string{}
-			for t in node.sub_types {
-				sum_type_names << f.table.type_to_str(t)
+			for t in node.variants {
+				sum_type_names << f.table.type_to_str(t.typ)
 			}
 			sum_type_names.sort()
 			for i, name in sum_type_names {

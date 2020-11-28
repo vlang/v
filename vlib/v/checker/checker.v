@@ -313,8 +313,11 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 		}
 		ast.SumTypeDecl {
 			c.check_valid_pascal_case(node.name, 'sum type', node.pos)
-			for typ in node.sub_types {
-				mut sym := c.table.get_type_symbol(typ)
+			for variant in node.variants {
+				if variant.typ.is_ptr() {
+					c.error('sum type cannot hold a reference type', variant.pos)
+				}
+				mut sym := c.table.get_type_symbol(variant.typ)
 				if sym.kind == .placeholder {
 					c.error("type `$sym.source_name` doesn't exist", node.pos)
 				} else if sym.kind == .interface_ {

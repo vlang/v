@@ -749,12 +749,18 @@ pub:
 // New implementation of sum types
 pub struct SumTypeDecl {
 pub:
-	name      string
-	is_pub    bool
-	pos       token.Position
-	comments  []Comment
+	name     string
+	is_pub   bool
+	pos      token.Position
+	comments []Comment
 pub mut:
-	sub_types []table.Type
+	variants []SumTypeVariant
+}
+
+pub struct SumTypeVariant {
+pub:
+	typ table.Type
+	pos token.Position
 }
 
 pub struct FnTypeDecl {
