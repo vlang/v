@@ -52,7 +52,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			match p.peek_tok.kind {
 				.name { return p.vweb() }
 				.key_if { return p.if_expr(true) }
-				else { p.error('unexpected $') }
+				else { p.error_with_pos('unexpected `$`', p.peek_tok.position()) }
 			}
 		}
 		.chartoken {
@@ -191,10 +191,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					lit := if p.tok.lit != '' { p.tok.lit } else { p.tok.kind.str() }
-					p.error('unexpected `$lit`, expecting `:`')
+					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
+					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
 				} else {
-					p.error('unexpected `$p.tok.lit`, expecting struct key')
+					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
+						p.tok.position())
 				}
 			}
 			p.check(.rcbr)
@@ -230,7 +231,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		else {
-			p.error('expr(): bad token `$p.tok.kind.str()`')
+			p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
+				p.tok.position())
 		}
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
