@@ -134,7 +134,7 @@ pub fn (f Any) bool() bool {
 
 // For testing. Use `Any` as a null
 pub fn (f Any) is_null() bool {
-	match union f {
+	match f {
 		Null { return true }
 		else { return false }
 	}
