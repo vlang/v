@@ -16,7 +16,7 @@ const (
 	}
 )
 
-fn is_null(f Any) bool {
+fn is_null(f json2.Any) bool {
 	match f {
 		json2.Null { return true }
 		else { return false }
