@@ -483,10 +483,14 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			g.gen_json_for_type(node.args[0].typ)
 			json_type_str = g.typ(node.args[0].typ)
 			// `json__encode` => `json__encode_User`
-			encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
+			// encode_name := c_name(name) + '_' + util.no_dots(json_type_str)
+			encode_name := js_enc_name(json_type_str)
 			g.writeln('// json.encode')
 			g.write('cJSON* $json_obj = ${encode_name}(')
 			// g.call_args(node.args, node.expected_arg_types) // , [])
+			if node.args[0].typ.is_ptr() {
+				g.write('*')
+			}
 			g.call_args(node)
 			g.writeln(');')
 			tmp2 = g.new_tmp_var()

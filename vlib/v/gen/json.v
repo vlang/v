@@ -139,7 +139,8 @@ $enc_fn_dec {
 }
 
 fn js_enc_name(typ string) string {
-	name := 'json__encode_$typ'
+	suffix := if typ.ends_with('*') { typ.replace('*', '') } else { typ }
+	name := 'json__encode_$suffix'
 	return util.no_dots(name)
 }
 
