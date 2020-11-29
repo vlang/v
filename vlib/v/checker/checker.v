@@ -3575,6 +3575,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					expr_type = c.table.register_type_symbol(table.TypeSymbol{
 						name: name
 						source_name: name
+						cname: util.no_dots(name)
 						kind: .aggregate
 						mod: c.mod
 						info: table.Aggregate{

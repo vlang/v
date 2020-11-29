@@ -518,11 +518,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 		mut func_name := if typ_str in gen_fn_names { gen_fn_names[typ_str] } else { g.gen_str_for_type_with_styp(typ,
 				typ_str) }
 		sym := g.table.get_type_symbol(typ)
-		sname := sym.name.replace('.', '_')
 		if sym.kind == .struct_ {
 			func_name = 'indent_$func_name'
 		}
-		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$sname')
+		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$sym.cname')
 		if sym.kind == .struct_ {
 			g.auto_str_funcs.write(', indent_count')
 		}
