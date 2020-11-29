@@ -1050,7 +1050,7 @@ fn (mut s Scanner) ident_string() string {
 				s.text[s.pos + 2] == s.quote || s.text[s.pos + 3] == s.quote || s.text[s.pos + 4] == s.quote ||
 				!s.text[s.pos + 1].is_hex_digit() || !s.text[s.pos + 2].is_hex_digit() || !s.text[s.pos + 3].is_hex_digit() ||
 				!s.text[s.pos + 4].is_hex_digit()) {
-				s.error(r'`\u` incomplete universal character name')
+				s.error(r'`\u` incomplete unicode character value')
 			}
 		}
 		// ${var} (ignore in vfmt mode) (skip \$)
