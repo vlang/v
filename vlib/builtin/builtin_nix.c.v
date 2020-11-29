@@ -54,7 +54,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
 		}
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+		C.backtrace_symbols_fd(&voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 2)
 	}
 	return true
 }
@@ -67,7 +67,7 @@ fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
 		}
-		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
+		C.backtrace_symbols_fd(&voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 2)
 	}
 	return true
 }
