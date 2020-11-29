@@ -3566,11 +3566,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 							agg_cname.write('___')
 						}
 						type_str := c.table.type_to_str(expr.typ)
-						name := if c.is_builtin_mod {
-							type_str
-						} else {
-							'${c.mod}.$type_str'
-						}
+						name := if c.is_builtin_mod { type_str } else { '${c.mod}.$type_str' }
 						agg_name.write(name)
 						agg_cname.write(util.no_dots(name))
 					}
