@@ -1636,6 +1636,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 				kind: .alias
 				name: prepend_mod_name
 				source_name: prepend_mod_name
+				cname: util.no_dots(prepend_mod_name)
 				mod: p.mod
 				parent_idx: idx
 				info: table.Alias{
@@ -1890,6 +1891,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		kind: .enum_
 		name: name
 		source_name: name
+		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
@@ -1972,6 +1974,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			kind: .sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
+			cname: util.no_dots(prepend_mod_name)
 			mod: p.mod
 			info: table.SumType{
 				variants: variant_types
@@ -2003,6 +2006,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		kind: .alias
 		name: prepend_mod_name
 		source_name: prepend_mod_name
+		cname: util.no_dots(prepend_mod_name)
 		mod: p.mod
 		parent_idx: pid
 		info: table.Alias{

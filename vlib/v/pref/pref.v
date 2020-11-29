@@ -85,6 +85,7 @@ pub mut:
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
+	m64                 bool // true = generate 64-bit code, defaults to x64
 	ccompiler           string // the name of the C compiler used
 	ccompiler_type      CompilerType // the type of the C compiler used
 	third_party_option  string
@@ -96,7 +97,6 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh    bool
-	fast                bool // use tcc/x64 codegen
 	enable_globals      bool // allow __global for low level code
 	is_fmt              bool
 	is_vet              bool
@@ -138,6 +138,9 @@ pub mut:
 
 pub fn parse_args(args []string) (&Preferences, string) {
 	mut res := &Preferences{}
+	$if x64 {
+		res.m64 = true // follow V model by default
+	}
 	mut command := ''
 	mut command_pos := 0
 	// for i, arg in args {
@@ -239,6 +242,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-color' {
 				res.use_color = .always
 			}
+			'-m32', '-m64' {
+				res.m64 = arg[2] == `6`
+				res.cflags += ' $arg'
+			}
 			'-nocolor' {
 				res.use_color = .never
 			}
@@ -319,6 +326,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.out_name = cmdline.option(current_args, '-o', '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js
+				}
+				if !os.is_abs_path(res.out_name) {
+					res.out_name = os.join_path(os.getwd(), res.out_name)
 				}
 				i++
 			}
