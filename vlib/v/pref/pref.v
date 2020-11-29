@@ -245,6 +245,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
+				res.cflags += ' $arg'
 			}
 			'-nocolor' {
 				res.use_color = .never
@@ -399,7 +400,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
-	res.cflags += if res.m64 { ' -m64' } else { ' -m32' }
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
 	} else if command == 'build' {
