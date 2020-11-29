@@ -393,7 +393,7 @@ jobs:
         echo $VFLAGS
         .\make.bat -msvc
     - name: Test new v.c
-      run: .\v.exe -cc msvc -cflags -Werror -o v cmd/v 
+      run: .\v.exe -cc msvc -o v cmd/v 
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
