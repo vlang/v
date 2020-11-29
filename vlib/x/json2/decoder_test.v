@@ -57,6 +57,5 @@ fn test_raw_decode_invalid() {
 		assert err == '[json] invalid JSON. (0:0)'
 		return
 	}
-
 	assert false
 }
