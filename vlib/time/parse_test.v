@@ -45,6 +45,25 @@ fn test_parse_rfc2822_invalid() {
 	assert false
 }
 
+fn test_iso8601_parse_utc() {
+	format_utc 	:= '2020-06-05T15:38:06.015959Z'
+	t_utc 	:= time.parse_iso8601(format_utc) or {panic(err)}
+
+	assert t_utc.year  == 2020
+	assert t_utc.month == 6
+	assert t_utc.day == 5
+
+}
+
+fn test_iso8601_parse_loacl() {
+	format_utc 	:= '2020-06-05T15:38:06.015959'
+	t_utc 	:= time.parse_iso8601(format_utc) or {panic(err)}
+
+	assert t_utc.year  == 2020
+	assert t_utc.month == 6
+	assert t_utc.day == 5
+}
+
 fn test_iso8601_parse_utc_diff() {
 	format_utc 	:= '2020-06-05T15:38:06.015959+00:00'
 	format_cest := '2020-06-05T15:38:06.015959+02:00'
