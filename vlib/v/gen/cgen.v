@@ -201,18 +201,15 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if autofree_used {
 		g.autofree = true // so that void _vcleanup is generated
 	}
+	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, typ in g.table.types {
-			if idx == 0 || typ.info is table.Aggregate {
-				continue
-			}
+			if idx == 0 { continue }
 			g.definitions.writeln('int _v_type_idx_${typ.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, typ in g.table.types {
-			if idx == 0 || typ.info is table.Aggregate {
-				continue
-			}
+			if idx == 0 { continue }
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
@@ -5521,6 +5518,7 @@ fn styp_to_str_fn_name(styp string) string {
 
 [inline]
 fn (mut g Gen) gen_str_for_type(typ table.Type) string {
+	// note: why was this here, removed for --usecache fix
 	// if g.pref.build_mode == .build_module {
 	// return ''
 	// }
