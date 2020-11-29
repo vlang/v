@@ -45,16 +45,16 @@ fn (mut p Process) unix_spawn_process() int {
 	}
 	mut cargv := []charptr{}
 	mut cenvs := []charptr{}
-	cargv << p.filename.str
+	cargv << charptr(p.filename.str)
 	for i in 0 .. p.args.len {
-		cargv << p.args[i].str
+		cargv << charptr(p.args[i].str)
 	}
 	for i in 0 .. p.env.len {
-		cenvs << p.env[i].str
+		cenvs << charptr(p.env[i].str)
 	}
 	cargv << charptr(0)
 	cenvs << charptr(0)
-	C.execve(p.filename.str, cargv.data, cenvs.data)
+	C.execve(charptr(p.filename.str), cargv.data, cenvs.data)
 	// NB: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	eprintln(posix_get_error_msg(C.errno))

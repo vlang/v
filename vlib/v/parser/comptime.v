@@ -23,14 +23,14 @@ fn (mut p Parser) hash() ast.HashStmt {
 	val := p.tok.lit
 	kind := val.all_before(' ')
 	p.next()
-	mut main := ''
+	mut main_str := ''
 	mut msg := ''
 	content := val.all_after('$kind ').all_before('//')
 	if content.contains(' #') {
-		main = content.all_before(' #').trim_space()
+		main_str = content.all_before(' #').trim_space()
 		msg = content.all_after(' #').trim_space()
 	} else {
-		main = content.trim_space()
+		main_str = content.trim_space()
 		msg = ''
 	}
 	// p.trace('a.v', 'kind: ${kind:-10s} | pos: ${pos:-45s} | hash: $val')
@@ -38,7 +38,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 		mod: p.mod
 		val: val
 		kind: kind
-		main: main
+		main: main_str
 		msg: msg
 		pos: pos
 	}

@@ -1367,6 +1367,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		field_name: field_name
 		pos: name_pos
 		is_mut: is_mut
+		mut_pos: mut_pos
 	}
 	mut node := ast.Expr{}
 	node = sel_expr

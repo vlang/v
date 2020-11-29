@@ -316,7 +316,7 @@ fn (mut v Builder) cc() {
 	//
 	if is_cc_clang {
 		if debug_mode {
-			debug_options = '-g3 -O0 -no-pie'
+			debug_options = '-g3 -O0'
 		}
 		optimization_options = '-O3'
 		mut have_flto := true

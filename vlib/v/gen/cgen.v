@@ -1191,7 +1191,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln(' = (*$atmp)[$i];')
 		}
 	} else if it.kind == .map {
-		// `for key, val in map {`
+		// `for key, val in map {
 		g.writeln('// FOR IN map')
 		idx := g.new_tmp_var()
 		atmp := g.new_tmp_var()
@@ -1199,7 +1199,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < ${atmp}.key_values.len; ++$idx) {')
+		g.writeln('for (int $idx = 0; $idx < (int)${atmp}.key_values.len; ++$idx) {')
 		g.writeln('\tif (${atmp}.key_values.keys[$idx].str == 0) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
