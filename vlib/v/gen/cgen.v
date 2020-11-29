@@ -203,12 +203,16 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	}
 	if g.pref.build_mode == .build_module {
 		for idx, typ in g.table.types {
-			if idx == 0 || typ.info is table.Aggregate { continue }
+			if idx == 0 || typ.info is table.Aggregate {
+				continue
+			}
 			g.definitions.writeln('int _v_type_idx_${typ.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, typ in g.table.types {
-			if idx == 0 || typ.info is table.Aggregate { continue }
+			if idx == 0 || typ.info is table.Aggregate {
+				continue
+			}
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
@@ -279,10 +283,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		b.write(g.stringliterals.str())
 	}
 	if g.auto_str_funcs.len > 0 {
-		//if g.pref.build_mode != .build_module {
-			b.writeln('\n// V auto str functions:')
-			b.write(g.auto_str_funcs.str())
-		//}
+		// if g.pref.build_mode != .build_module {
+		b.writeln('\n// V auto str functions:')
+		b.write(g.auto_str_funcs.str())
+		// }
 	}
 	b.writeln('\n// V out')
 	b.write(g.out.str())
@@ -2526,7 +2530,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 								if mut cast_sym.info is table.Aggregate {
 									agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
 									sum_type_deref_field += '_$agg_sym.cname'
-									//sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
+									// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
 								} else {
 									sum_type_deref_field += '_$cast_sym.cname'
 								}
@@ -2570,7 +2574,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			// type_idx := node.typ.idx()
 			sym := g.table.get_type_symbol(node.typ)
 			sidx := g.type_sidx(node.typ)
-			//g.write('$type_idx /* $sym.name */')
+			// g.write('$type_idx /* $sym.name */')
 			g.write('$sidx /* $sym.name */')
 		}
 		ast.TypeOf {
@@ -5480,7 +5484,7 @@ fn (mut g Gen) as_cast(node ast.AsCast) {
 		g.expr(node.expr)
 		g.write(')')
 		g.write(dot)
-		//g.write('typ, /*expected:*/$node.typ)')
+		// g.write('typ, /*expected:*/$node.typ)')
 		sidx := g.type_sidx(node.typ)
 		g.write('typ, /*expected:*/$sidx)')
 	}
@@ -5517,9 +5521,9 @@ fn styp_to_str_fn_name(styp string) string {
 
 [inline]
 fn (mut g Gen) gen_str_for_type(typ table.Type) string {
-	//if g.pref.build_mode == .build_module {
-	//	return ''
-	//}
+	// if g.pref.build_mode == .build_module {
+	// return ''
+	// }
 	styp := g.typ(typ)
 	return g.gen_str_for_type_with_styp(typ, styp)
 }
