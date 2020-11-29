@@ -16,7 +16,7 @@ jobs:
     - name: Compile
       env:
         CC: ${{ matrix.compiler }}
-      run: make && v -o v -prod cmd/v
+      run: make && ./v -o v -prod cmd/v
     - name: Create artifact
       uses: actions/upload-artifact@v2
       with:
@@ -44,7 +44,7 @@ jobs:
     - name: Compile
       env:
         CC: ${{ matrix.compiler }}
-      run: make && v -o v -prod cmd/v
+      run: make && ./v -o v -prod cmd/v
     - name: Create artifact
       uses: actions/upload-artifact@v2
       with:
