@@ -263,7 +263,7 @@ $c_common_macros
 #endif
 
 // g_live_info is used by live.info()
-void* g_live_info = NULL;
+static void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
@@ -436,7 +436,7 @@ void _vcleanup();
 #endif
 
 voidptr memdup(voidptr src, int sz);
-voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	free(ptr);
 	return memdup(src, sz);
 }
