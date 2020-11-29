@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc tcc -cflags -bt10
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -83,12 +83,12 @@ jobs:
     - name: Build v
       run: |
         echo $VFLAGS
+        sudo ln -s $PWD/thirdparty/tcc/tcc.exe /usr/local/bin/tcc ## TODO: remove
         make -j4
         ./v -cg -o v cmd/v
     - name: Test v->c
       run: |
-        sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
-        tcc -version
+        thirdparty/tcc/tcc.exe -version
         ./v -cg -o v cmd/v # Make sure vtcc can build itself twice
 #        ./v -silent test-compiler
     - name: v self compilation
@@ -112,7 +112,7 @@ jobs:
       image: thevlang/vlang:alpine-build
       env:
         V_CI_MUSL: 1
-
+        VFLAGS: -cc gcc
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:
@@ -127,11 +127,10 @@ jobs:
           v -silent test-fixed
 
   macos:
-    runs-on: ${{ matrix.os }}
+    runs-on: macOS-latest
     timeout-minutes: 30
-    strategy:
-      matrix:
-        os: [macOS-latest]
+    env:
+      VFLAGS: -cc clang
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-node@v1
@@ -146,11 +145,11 @@ jobs:
         ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
-      run:  make -j4 && ./v -cg -o v cmd/v
+      run:  make -j4 && ./v -o v cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: Test symlink
-      run:  sudo ./v symlink
+      run:  ./v symlink
 #    - name: Set up pg database
 #      run: |
 #        pg_ctl -D /usr/local/var/postgres -l /usr/local/var/postgres/server.log start
@@ -163,8 +162,6 @@ jobs:
 #      run: ./v -silent build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
-    - name: Test symlink
-      run:  ./v symlink && v -o v2 cmd/v
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
