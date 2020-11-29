@@ -392,8 +392,7 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
-    - name: Test new v
-      run: .\v.exe -o v.exe cmd/v -cflags "/WX"
+        v -cflags /WX self
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
