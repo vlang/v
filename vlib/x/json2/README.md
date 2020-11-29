@@ -1,7 +1,7 @@
-> `json2` was named just to avoid any unwanted potential conflicts with the existing codegen
-> tailored for the main `json` module which is powered by CJSON.
+> The name `json2` was chosen to avoid any unwanted potential conflicts with the 
+> existing codegen tailored for the main `json` module which is powered by CJSON.
 
-An experimental version of the JSON parser written from scratch on V.
+`x.json2` is an experimental JSON parser written from scratch on V.
 
 ## Usage
 ```v oksyntax
@@ -29,7 +29,7 @@ fn main() {
     mut arr := []json2.Any
     arr << 'rock'
     arr << 'papers'
-    arr << json2.null()
+    arr << json2.null
     arr << 12
 
     me['interests'] = arr
@@ -40,7 +40,12 @@ fn main() {
 
     // Stringify to JSON
     println(me.str())
-    //{"name":"Bob","age":18,"interests":["rock","papers","scissors",null,12],"pets":{"Sam":"Maltese"}}
+    //{
+    //   "name":"Bob",
+    //   "age":18,
+    //   "interests":["rock","papers","scissors",null,12],
+    //   "pets":{"Sam":"Maltese"}
+    //}
 
     // Encode a struct/type to JSON
     encoded_json := json2.encode<Person>(person2)
@@ -86,7 +91,7 @@ fn (p Person) to_json() string {
 
 fn main() {
     resp := os.read_file('./person.json')?
-    person := json2.decode<Person>(resp)
+    person := json2.decode<Person>(resp)?
     println(person) // Person{name: 'Bob', age: 28, pets: ['Floof']}
     person_json := json2.encode<Person>(person)
     println(person_json) // {"name": "Bob", "age": 28, "pets": ["Floof"]}
@@ -94,12 +99,36 @@ fn main() {
 ```
 
 ## Using struct tags
-`x.json2` cannot use struct tags just like when you use the `json` module.
-However, it emits an `Any` type when decoding so it can be flexible on the way you use it.
+`x.json2` can access and use the struct field tags similar to the 
+`json` module by using the comp-time `$for` for structs.
+
+```v ignore
+fn (mut p Person) from_json(f json2.Any) {
+    mp := an.as_map()
+	mut js_field_name := ''
+    $for field in Person.fields {
+        js_field_name = field.name
+
+        for attr in field.attrs {
+			if attr.starts_with('json:') {
+				js_field_name = attr.all_after('json:').trim_left(' ')
+				break
+			}
+		}
+        
+        match field.name {
+            'name' { p.name = mp[js_field_name].str() }
+			'age' { u.age = mp[js_field_name].int() }
+			'pets' { u.pets = mp[js_field_name].arr().map(it.str()) }
+			else {}
+		}
+    }
+}
+```
 
 ### Null Values
-`x.json2` have a `null` value for differentiating an undefined value and a null value.
-Use `is` for verifying the field you're using is a null.
+`x.json2` has a separate `null` type for differentiating an undefined value and a null value.
+To verify that the field you're accessing is a `null`, use `<typ> is json2.Null`.
 
 ```v ignore
 fn (mut p Person) from_json(f json2.Any) {
@@ -112,9 +141,8 @@ fn (mut p Person) from_json(f json2.Any) {
 ```
 
 ### Custom field names
-In `json`, you can specify the field name you're mapping into the struct field by specifying
-a `json:` tag. In `x.json2`, just simply cast the base field into a map (`as_map()`)
-and get the value of the field you wish to put into the struct/type.
+Aside from using struct tags, you can also just simply cast the base field into a map (`as_map()`)
+and access the field you wish to put into the struct/type.
 
 ```v ignore
 fn (mut p Person) from_json(f json2.Any) {
@@ -142,6 +170,6 @@ The following list shows the possible outputs when casting a value to an incompa
 
 1. Casting non-array values as array (`arr()`) will return an array with the value as the content.
 2. Casting non-map values as map (`as_map()`) will return a map with the value as the content.
-3. Casting non-string values to string (`str()`)
-    will return the stringified representation of the value.
-4. Casting non-numeric values to int/float (`int()`/`f64()`) will return zero.
+3. Casting non-string values to string (`str()`) will return the 
+JSON string representation of the value.
+4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
