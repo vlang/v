@@ -45,15 +45,23 @@ enum MutexState {
 	destroyed
 }
 
+[inline]
+fn (mut m Mutex) ensure_mutex() bool {
+	if isnil(m.mx) { // if mutex handle not initalized
+		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
+		if isnil(m.mx) {
+			m.state = .broken // handle broken and mutex state are broken
+			return false
+		}
+	}
+	return true
+}
+
 pub fn new_mutex() &Mutex {
 	sm := &Mutex{}
 	unsafe {
 		mut m := sm
-		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
-		if isnil(m.mx) {
-			m.state = .broken // handle broken and mutex state are broken
-			return sm
-		}
+		m.ensure_mutex()
 	}
 	return sm
 }
@@ -65,14 +73,10 @@ pub fn new_rwmutex() &RwMutex {
 }
 
 pub fn (mut m Mutex) m_lock() {
-	// if mutex handle not initalized
-	if isnil(m.mx) {
-		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
-		if isnil(m.mx) {
-			m.state = .broken // handle broken and mutex state are broken
-			return
-		}
+	if !m.ensure_mutex() {
+		return
 	}
+
 	state := C.WaitForSingleObject(m.mx, C.INFINITE) // infinite wait
 	/* TODO fix match/enum combo
 	m.state = match state {
@@ -83,40 +87,26 @@ pub fn (mut m Mutex) m_lock() {
 	*/
 	if state == C.WAIT_ABANDONED {
 		m.state = .abandoned
-	// FIXME Use C constant instead
-	} else if state == 0 /* C.WAIT_OBJECT_0 */ {
+	} else if state == C.WAIT_OBJECT_0 {
 		m.state = .waiting
 	} else {
 		m.state = .broken
 	}
 }
 
+// Mutex.try_lock tries to acquire a mutex. Returns false immediately if the mutex can not be acquired.
 pub fn (mut m Mutex) try_lock() bool {
-	// if mutex handle not initalized
-	if isnil(m.mx) {
-		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
-		if isnil(m.mx) {
-			m.state = .broken // handle broken and mutex state are broken
-			return false
-		}
+	if !m.ensure_mutex() {
+		return false
 	}
+
 	state := C.WaitForSingleObject(m.mx, 0)
-	/* TODO fix match/enum combo
-	m.state = match state {
-		C.WAIT_ABANDONED { .abandoned }
-		C.WAIT_OBJECT_0  { .waiting }
-		else           { .broken }
-	}
-	*/
-	if state == C.WAIT_ABANDONED {
-		m.state = .abandoned
-	// FIXME Use C constant instead
-	} else if state == 0 /* C.WAIT_OBJECT_0 */ {
+
+	if state == C.WAIT_OBJECT_0 {
 		m.state = .waiting
-	} else {
-		m.state = .broken
+		return true
 	}
-	return m.state == .waiting
+	return false
 }
 
 pub fn (mut m Mutex) unlock() {

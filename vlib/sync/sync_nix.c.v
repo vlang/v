@@ -66,6 +66,7 @@ pub fn (mut m Mutex) m_lock() {
 	C.pthread_mutex_lock(&m.mutex)
 }
 
+// Mutex.try_lock tries to acquire a mutex. Returns false immediately if the mutex can not be acquired.
 pub fn (mut m Mutex) try_lock() bool {
 	return C.pthread_mutex_trylock(&m.mutex) == 0
 }
