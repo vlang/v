@@ -49,7 +49,7 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
 		buffer := [100]byteptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&voidptr(buffer), 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
@@ -62,7 +62,7 @@ fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
 		buffer := [100]byteptr{}
-		nr_ptrs := C.backtrace(buffer, 100)
+		nr_ptrs := C.backtrace(&voidptr(buffer), 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
