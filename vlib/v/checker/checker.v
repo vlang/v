@@ -3558,23 +3558,24 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				mut expr_type := table.Type(0)
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
+					mut agg_cname := strings.new_builder(20)
 					agg_name.write('(')
 					for i, expr in expr_types {
 						if i > 0 {
 							agg_name.write(' | ')
+							agg_cname.write('___')
 						}
 						type_str := c.table.type_to_str(expr.typ)
-						agg_name.write(if c.is_builtin_mod {
-							type_str
-						} else {
-							'${c.mod}.$type_str'
-						})
+						name := if c.is_builtin_mod { type_str } else { '${c.mod}.$type_str' }
+						agg_name.write(name)
+						agg_cname.write(util.no_dots(name))
 					}
 					agg_name.write(')')
 					name := agg_name.str()
 					expr_type = c.table.register_type_symbol(table.TypeSymbol{
 						name: name
 						source_name: name
+						cname: agg_cname.str()
 						kind: .aggregate
 						mod: c.mod
 						info: table.Aggregate{
