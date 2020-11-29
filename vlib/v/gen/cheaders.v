@@ -124,6 +124,11 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 	#define _MOV
 #endif
 
+#if defined(__TINYC__) && defined(__has_include)
+// tcc does not support has_include properly yet, turn it off completely
+#undef __has_include
+#endif
+
 #ifndef _WIN32
 	#if defined __has_include
 		#if __has_include (<execinfo.h>)

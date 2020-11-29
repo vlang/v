@@ -14,13 +14,17 @@ set subcmd=
 set target=build
 
 REM TCC variables
-set "tcc_url=https://github.com/vlang/tccbin_win.git"
+set "tcc_url=https://github.com/vlang/tccbin"
 set "tcc_dir=%~dp0thirdparty\tcc"
-set "vc_url=https://github.com/vlang/vc.git"
+set "tcc_branch=thirdparty-windows-amd64"
+
+REM VC settings
+set "vc_url=https://github.com/vlang/vc"
 set "vc_dir=%~dp0vc"
 
 REM Let a particular environment specify their own TCC repo
 if /I not ["%TCC_GIT%"] == [""] set "tcc_url=%TCC_GIT%"
+if /I not ["%TCC_BRANCH%"] == [""] set "tcc_branch=%TCC_BRANCH%"
 
 pushd %~dp0
 
@@ -227,7 +231,7 @@ if %ERRORLEVEL% NEQ 0 (
     if not exist %tcc_dir% (
         echo  ^> TCC not found
         echo  ^> Downloading TCC from %tcc_url%
-        call :buildcmd "git clone --depth 1 --quiet "!tcc_url!" "%tcc_dir%"" "  "
+        call :buildcmd "git clone --depth 1 --quiet --single-branch --branch "!tcc_branch!" "!tcc_url!" "%tcc_dir%"" "  "
     )
     pushd %tcc_dir% || (
         echo  ^> TCC not found, even after cloning

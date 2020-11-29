@@ -53,6 +53,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
 	}
+	//
+	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
@@ -83,7 +85,33 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	// eprintln('prefs.cache_manager: $p')
 }
 
-fn default_c_compiler() string {
+fn (mut p Preferences) try_to_use_tcc_by_default() {
+	if p.ccompiler == 'tcc' {
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+	if p.ccompiler == '' {
+		// tcc is known to fail several tests on macos, so do not
+		// try to use it by default, only when it is explicitly set
+		$if macos {
+			return
+		}
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+}
+
+pub fn default_tcc_compiler() string {
+	vexe := vexe_path()
+	vroot := os.dir(vexe)
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.exists(vtccexe) {
+		return vtccexe
+	}
+	return ''
+}
+
+pub fn default_c_compiler() string {
 	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	// if os.exists(fast_clang) {
 	// return fast_clang

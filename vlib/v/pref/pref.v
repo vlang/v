@@ -97,7 +97,6 @@ pub mut:
 	// This is on by default, since a vast majority of users do not
 	// work on the builtin module itself.
 	// generating_vh    bool
-	fast                bool // use tcc/x64 codegen
 	enable_globals      bool // allow __global for low level code
 	is_fmt              bool
 	is_vet              bool
@@ -327,6 +326,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.out_name = cmdline.option(current_args, '-o', '')
 				if res.out_name.ends_with('.js') {
 					res.backend = .js
+				}
+				if !os.is_abs_path(res.out_name) {
+					res.out_name = os.join_path(os.getwd(), res.out_name)
 				}
 				i++
 			}

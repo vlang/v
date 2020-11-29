@@ -122,9 +122,6 @@ fn (mut a App) collect_info() {
 	a.line('Git vroot status', a.git_info())
 	a.line('.git/config present', os.is_file('.git/config').str())
 	//
-	if os_kind == 'linux' {
-		a.report_tcc_version('/var/tmp/tcc')
-	}
 	a.report_tcc_version('thirdparty/tcc')
 }
 
