@@ -44,6 +44,9 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       List of OS supported by V: `linux`, `windows`, `ios`, `mac`, `freebsd`, `openbsd`,
                                  `netbsd`, `dragonfly`, `solaris`, `android` and `haiku`.
 
+   -m32, -m64
+      Specify whether 32-bit or 64-bit machine code is generated.
+
    -sanitize
       Pass flags related to sanitization to the C compiler.
 
