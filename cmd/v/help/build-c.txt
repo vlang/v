@@ -59,5 +59,8 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       Useful for similar use-case as above option, except it replaces V-generated prelude with
       your custom one loaded from specified <path>.
 
+   -showcc
+      Prints the C command that is used to build the program.
+
    -keepc
       Do not remove the temporary .tmp.c and .tmp.c.rsp files. Also do not use a random prefix for them, so they would be fixed and predictable.
