@@ -19,7 +19,6 @@ pub mut:
 	fn_gen_types  map[string][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
 	is_fmt        bool
-	m64           bool
 }
 
 pub struct Fn {

@@ -33,7 +33,6 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 	compiled_dir := if os.is_dir(rdir) { rdir } else { os.dir(rdir) }
 	mut table := table.new_table()
 	table.is_fmt = false
-	table.m64 = pref.m64
 	if pref.use_color == .always {
 		util.emanager.set_support_color(true)
 	}
