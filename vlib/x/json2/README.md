@@ -1,5 +1,5 @@
-> The name `json2` was chosen to avoid any unwanted potential conflicts 
-> with the existing codegen tailored for the main `json` module which is powered by CJSON.
+> The name `json2` was chosen to avoid any unwanted potential conflicts with the 
+> existing codegen tailored for the main `json` module which is powered by CJSON.
 
 `x.json2` is an experimental JSON parser written from scratch on V.
 
@@ -40,7 +40,12 @@ fn main() {
 
     // Stringify to JSON
     println(me.str())
-    //{"name":"Bob","age":18,"interests":["rock","papers","scissors",null,12],"pets":{"Sam":"Maltese"}}
+    //{
+    //   "name":"Bob",
+    //   "age":18,
+    //   "interests":["rock","papers","scissors",null,12],
+    //   "pets":{"Sam":"Maltese"}
+    //}
 
     // Encode a struct/type to JSON
     encoded_json := json2.encode<Person>(person2)
