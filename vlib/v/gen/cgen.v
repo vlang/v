@@ -204,12 +204,16 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	// to make sure type idx's are the same in cached mods
 	if g.pref.build_mode == .build_module {
 		for idx, typ in g.table.types {
-			if idx == 0 { continue }
+			if idx == 0 {
+				continue
+			}
 			g.definitions.writeln('int _v_type_idx_${typ.cname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, typ in g.table.types {
-			if idx == 0 { continue }
+			if idx == 0 {
+				continue
+			}
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
