@@ -1,0 +1,4 @@
+fn main() {
+    cr_str := rc'hello'
+    println(cr_str) 
+}
