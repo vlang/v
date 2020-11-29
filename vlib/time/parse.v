@@ -62,20 +62,22 @@ pub fn parse_iso8601(s string) ?Time {
 	second := 0
 	mic_second := 0
 	time_char := `a`
-	plus_min := `a`
+	plus_min_z := `a`
 	offset_hour := 0
 	offset_min := 0
 	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d',
-		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min), &offset_hour,
+		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min_z), &offset_hour,
 		&offset_min)}
-	if count != 11 {
+	is_local_time := plus_min_z == `a` && count == 8
+	is_utc := plus_min_z == `Z` && count == 9
+	if count != 11 && !is_local_time && !is_utc {
 		return error('Invalid 8601 format')
 	}
 	if time_char != `T` && time_char != ` ` {
 		return error('Invalid 8601 format, expected space or `T` as time separator')
 	}
-	if plus_min != `+` && plus_min != `-` {
-		return error('Invalid 8601 format, expected `+` or `-` as time separator')
+	if plus_min_z != `+` && plus_min_z != `-` && plus_min_z != `Z` && !is_local_time {
+		return error('Invalid 8601 format, expected `Z` or `+` or `-` as time separator')
 	}
 	mut t := new_time(Time{
 		year: year
@@ -86,6 +88,10 @@ pub fn parse_iso8601(s string) ?Time {
 		second: second
 		microsecond: mic_second
 	})
+	if is_local_time {
+		return to_local_time(t)
+	}
+
 	mut unix_time := t.unix
 	mut unix_offset := int(0)
 	if offset_hour > 0 {
@@ -95,7 +101,7 @@ pub fn parse_iso8601(s string) ?Time {
 		unix_offset += 60 * offset_min
 	}
 	if unix_offset != 0 {
-		if plus_min == `+` {
+		if plus_min_z == `+` {
 			unix_time -= u64(unix_offset)
 		} else {
 			unix_time += u64(unix_offset)
