@@ -381,7 +381,7 @@ jobs:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-        VFLAGS: -cc msvc -cflags /WX
+        VFLAGS: -cc msvc
     steps:
     - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
@@ -392,6 +392,8 @@ jobs:
         echo %VFLAGS%
         echo $VFLAGS
         .\make.bat -msvc
+    - name: Test new v.c
+      run: .\v.exe -cc msvc -cflags -Werror -o v cmd/v 
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
