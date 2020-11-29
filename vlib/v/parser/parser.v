@@ -1044,7 +1044,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	// and give a separate error for `rc` or `cr` as string prefix as users might "think"
 	// that it is possible and be used
 	if p.tok.lit !in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
-		prefix_error_msg := if p.tok.lit in ['rc', 'cr'] {'cannot use `r` (raw string) and `c` (c string) together'} else {'unknown string prefix `${p.tok.lit}`'}
+		prefix_error_msg := if p.tok.lit in ['rc', 'cr'] { 'cannot use `r` (raw string) and `c` (c string) together' } else { 'unknown string prefix `$p.tok.lit`' }
 		p.error(prefix_error_msg)
 	}
 	// don't allow r`byte` and c`byte`
