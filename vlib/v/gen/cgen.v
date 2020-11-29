@@ -205,13 +205,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		for idx, typ in g.table.types {
 			if idx == 0 || typ.info is table.Aggregate { continue }
 			sname := typ.name.replace('.', '_')
-			g.definitions.writeln('int VTypeIdx_${sname}();')
+			g.definitions.writeln('int _v_type_idx_${sname}();')
 		}
 	} else if g.pref.use_cache {
 		for idx, typ in g.table.types {
 			if idx == 0 || typ.info is table.Aggregate { continue }
 			sname := typ.name.replace('.', '_')
-			g.definitions.writeln('int VTypeIdx_${sname}() { return $idx; };')
+			g.definitions.writeln('int _v_type_idx_${sname}() { return $idx; };')
 		}
 	}
 	g.write_variadic_types()
@@ -547,9 +547,12 @@ fn (g &Gen) cc_type(t table.Type) string {
 
 [inline]
 fn (g &Gen) type_sidx(t table.Type) string {
-	sym := g.table.get_type_symbol(g.unwrap_generic(t))
-	sname := sym.name.replace('.', '_')
-	return if g.pref.build_mode == .build_module { 'VTypeIdx_${sname}()' } else { '$t.idx()' }
+	if g.pref.build_mode == .build_module {
+		sym := g.table.get_type_symbol(t)
+		sname := sym.name.replace('.', '_')
+		return '_v_type_idx_${sname}()'
+	}
+	return '$t.idx()'
 }
 
 //
