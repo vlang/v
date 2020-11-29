@@ -84,7 +84,7 @@ jobs:
       run: |
         echo $VFLAGS
         make -j4
-        ./v -cg -o v cmd/v
+        ./v -cg -cflags -Werror -o v cmd/v
     - name: Test v->c
       run: |
         sudo ln -s /var/tmp/tcc/bin/tcc /usr/local/bin/tcc
@@ -384,7 +384,7 @@ jobs:
     runs-on: windows-2019
     timeout-minutes: 30
     env:
-        VFLAGS: -cc msvc
+        VFLAGS: -cc msvc -cflags -Werror
     steps:
     - uses: actions/checkout@v2
     #- uses: actions/setup-node@v1
@@ -436,7 +436,7 @@ jobs:
         move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
         .\make.bat
     - name: Test new v.c
-      run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -w -ladvapi32 -bt10 v.c
+      run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
