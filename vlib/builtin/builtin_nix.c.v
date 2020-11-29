@@ -48,26 +48,26 @@ fn print_backtrace_skipping_top_frames(xskipframes int) bool {
 // so there is no need to have their twins in builtin_windows.v
 fn print_backtrace_skipping_top_frames_mac(skipframes int) bool {
 	$if macos {
-		buffer := [100]byteptr{}
-		nr_ptrs := C.backtrace(&voidptr(buffer), 100)
+		buffer := [100]voidptr{}
+		nr_ptrs := C.backtrace(buffer, 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
 		}
-		C.backtrace_symbols_fd(&voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 2)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
 
 fn print_backtrace_skipping_top_frames_freebsd(skipframes int) bool {
 	$if freebsd {
-		buffer := [100]byteptr{}
-		nr_ptrs := C.backtrace(&voidptr(buffer), 100)
+		buffer := [100]voidptr{}
+		nr_ptrs := C.backtrace(buffer, 100)
 		if nr_ptrs < 2 {
 			eprintln('C.backtrace returned less than 2 frames')
 			return false
 		}
-		C.backtrace_symbols_fd(&voidptr(&buffer[skipframes]), nr_ptrs - skipframes, 2)
+		C.backtrace_symbols_fd(&buffer[skipframes], nr_ptrs - skipframes, 2)
 	}
 	return true
 }
