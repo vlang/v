@@ -4,6 +4,7 @@
 module parser
 
 import v.table
+import v.util
 
 pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
@@ -333,6 +334,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
 		source_name: name
+		cname: util.no_dots(name)
 		mod: p.mod
 		kind: .any
 		is_public: true
@@ -378,6 +380,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
+			cname: util.no_dots(bs_name)
 			mod: p.mod
 			info: table.GenericStructInst{
 				parent_idx: parent_idx

@@ -6,6 +6,7 @@ module table
 import os
 import v.cflag
 import v.token
+import v.util
 
 pub struct Table {
 pub mut:
@@ -506,6 +507,7 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
 		kind: .chan
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		info: Chan{
 			elem_type: elem_type
 			is_mut: is_mut
@@ -528,6 +530,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 		kind: .map
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		info: Map{
 			key_type: key_type
 			value_type: value_type
@@ -550,6 +553,7 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod str
 		kind: .array
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		info: Array{
 			elem_type: elem_type
 			nr_dims: nr_dims
@@ -572,6 +576,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, nr_d
 		kind: .array_fixed
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		info: ArrayFixed{
 			elem_type: elem_type
 			size: size
@@ -603,6 +608,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 		kind: .multi_return
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		info: MultiReturn{
 			types: mr_typs
 		}
@@ -618,6 +624,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 		kind: .function
 		name: name
 		source_name: source_name
+		cname: util.no_dots(name)
 		mod: mod
 		info: FnType{
 			is_anon: anon
@@ -635,6 +642,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
+		cname: util.no_dots(name)
 		language: language
 		source_name: name
 		mod: modname
