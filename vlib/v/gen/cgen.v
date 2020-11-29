@@ -904,10 +904,6 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					// Skip functions that don't have to be generated for this module.
 					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
 					skip = true
-				} else {
-					a, b := node.name.all_before_last('.'), g.module_built
-					c, d := node.mod, g.module_built.after('/')
-					println('$a != $b && $c != $d => ${a != b} && ${c != d}')
 				}
 				if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
 					skip = false
