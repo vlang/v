@@ -99,7 +99,8 @@ fn main() {
 ```
 
 ## Using struct tags
-`x.json2` can access and use the struct field tags similar to the `json` module by using the comp-time `$for` for structs.
+`x.json2` can access and use the struct field tags similar to the 
+`json` module by using the comp-time `$for` for structs.
 
 ```v ignore
 fn (mut p Person) from_json(f json2.Any) {
@@ -169,5 +170,6 @@ The following list shows the possible outputs when casting a value to an incompa
 
 1. Casting non-array values as array (`arr()`) will return an array with the value as the content.
 2. Casting non-map values as map (`as_map()`) will return a map with the value as the content.
-3. Casting non-string values to string (`str()`) will return the JSON string representation of the value.
+3. Casting non-string values to string (`str()`) will return the 
+JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
