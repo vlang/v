@@ -388,7 +388,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 		if typ.kind == .sum_type {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
-			g.writeln('char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
+			g.writeln('static char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
 			g.writeln('	switch(sidx) {')
 			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
 			for v in sum_info.variants {
@@ -899,13 +899,13 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// if node.name.contains('parse_text') {
 				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
 				// }
-				if !node.name.starts_with(g.module_built + '.') && node.mod != g.module_built.after('/') {
-					// Skip functions that don't have to be generated
-					// for this module.
-					println('skip bm $node.name mode=$node.mod module_built=$g.module_built')
+				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
+				if mod != g.module_built && node.mod != g.module_built.after('/') {
+					// Skip functions that don't have to be generated for this module.
+					// println('skip bm $node.name mod=$node.mod module_built=$g.module_built')
 					skip = true
 				}
-				if g.is_builtin_mod && g.module_built == 'builtin' {
+				if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
 					skip = false
 				}
 				if !skip {
@@ -4044,12 +4044,13 @@ fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ ta
 }
 
 fn (mut g Gen) global_decl(node ast.GlobalDecl) {
+	mod := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' } else { '' }
 	for field in node.fields {
 		styp := g.typ(field.typ)
 		if field.has_expr {
-			g.definitions.writeln('$styp $field.name = $field.expr; // global')
+			g.definitions.writeln('$mod$styp $field.name = $field.expr; // global')
 		} else {
-			g.definitions.writeln('$styp $field.name; // global')
+			g.definitions.writeln('$mod$styp $field.name; // global')
 		}
 	}
 }
