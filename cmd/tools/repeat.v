@@ -32,6 +32,8 @@ mut:
 	verbose                 bool
 	commands                []string
 	results                 []CmdResult
+	cmd_template            string // {T} will be substituted with the current command
+	cmd_params              map[string][]string
 	cline                   string // a terminal clearing line
 }
 
@@ -109,6 +111,14 @@ fn (mut context Context) parse_options() {
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression).')
+	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command.')
+	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `{p}=val1,val2,val2` means that {p} in the template, will be substituted with each of val1, val2, val3.')
+	for p in cmd_params {
+		parts := p.split(':')
+		if parts.len > 1 {
+			context.cmd_params[parts[0]] = parts[1].split(',')
+		}
+	}
 	if context.show_help {
 		println(fp.usage())
 		exit(0)
@@ -116,17 +126,44 @@ fn (mut context Context) parse_options() {
 	if context.verbose {
 		scripting.set_verbose(true)
 	}
-	x := fp.finalize() or {
+	commands := fp.finalize() or {
 		eprintln('Error: ' + err)
 		exit(1)
 	}
-	context.commands = x
+	context.commands = context.expand_all_commands(commands)
 	context.results = []CmdResult{len: context.commands.len, init: CmdResult{}}
 	context.cline = '\r' + term.h_divider('')
 }
 
 fn (mut context Context) clear_line() {
 	print(context.cline)
+}
+
+fn (mut context Context) expand_all_commands(commands []string) []string {
+	mut all_commands := []string{}
+	for cmd in commands {
+		maincmd := context.cmd_template.replace('{T}', cmd)
+		mut substituted_commands := [maincmd]
+		for paramk, paramlist in context.cmd_params {
+			for paramv in paramlist {
+				mut new_substituted_commands := []string{}
+				for cscmd in substituted_commands {
+					scmd := cscmd.replace(paramk, paramv)
+					new_substituted_commands << scmd
+				}
+				substituted_commands << new_substituted_commands
+			}
+		}
+		all_commands << substituted_commands
+	}
+	mut unique := map[string]int{}
+	for x in all_commands {
+		if x.contains('{') && x.contains('}') {
+			continue
+		}
+		unique[x] = 1
+	}
+	return unique.keys()
 }
 
 fn (mut context Context) run() {
