@@ -28,10 +28,10 @@ pub struct C.timeval {
 	tv_usec u64
 }
 
-fn init_time_base() InternalTimeBase {
+fn init_time_base() C.mach_timebase_info_data_t {
 	tb := C.mach_timebase_info_data_t{}
 	C.mach_timebase_info(&tb)
-	return InternalTimeBase{numer:tb.numer, denom:tb.denom}
+	return C.mach_timebase_info_data_t{numer:tb.numer, denom:tb.denom}
 }
 
 fn sys_mono_now_darwin() u64 {
