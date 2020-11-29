@@ -9,13 +9,13 @@ const (
 )
 
 [typedef]
-struct C.mach_timebase_info_t {
+struct C.mach_timebase_info {
 	numer u32
 	denom u32
 }
 
 fn C.mach_absolute_time() u64
-fn C.mach_timebase_info(&C.mach_timebase_info_t)
+fn C.mach_timebase_info(&C.mach_timebase_info)
 fn C.clock_gettime_nsec_np(int) u64
 
 struct InternalTimeBase {
@@ -29,7 +29,7 @@ pub struct C.timeval {
 }
 
 fn init_time_base() InternalTimeBase {
-	tb := C.mach_timebase_info_t{}
+	tb := C.mach_timebase_info{}
 	C.mach_timebase_info(&tb)
 	return InternalTimeBase{numer:tb.numer, denom:tb.denom}
 }
