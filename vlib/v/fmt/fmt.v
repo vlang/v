@@ -1031,6 +1031,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.StringLiteral {
 			if node.is_raw {
 				f.write('r')
+			} else if node.language == table.Language.c {
+				f.write('c')
 			}
 			if node.val.contains("'") && !node.val.contains('"') {
 				f.write('"$node.val"')
