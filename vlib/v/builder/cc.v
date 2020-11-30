@@ -57,7 +57,7 @@ fn (mut v Builder) find_win_cc() ? {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
-			vpath := os.dir(os.getenv('VEXE'))
+			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
 			os.exec('$thirdparty_tcc -v') or {
 				if v.pref.is_verbose {
@@ -814,12 +814,19 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	//
+	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
+	current_folder := os.getwd()
+	os.chdir(os.dir(pref.vexe_path()))
+	//
 	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
+	// eprintln('>>> cmd: $cmd')
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
+	os.chdir(current_folder)
 	if res.exit_code != 0 {
 		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)
