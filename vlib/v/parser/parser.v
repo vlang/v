@@ -1037,8 +1037,16 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.peek_tok.kind == .string && !p.inside_str_interp {
-		return p.string_expr()
+	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_tok2.kind != .colon {
+		if p.tok.lit in ['r', 'c', 'js'] && p.tok.kind == .name {
+			return p.string_expr()
+		} else {
+			// don't allow any other string prefix except `r`, `js` and `c`
+			// and give a separate error for `rc` or `cr` as string prefix as users might "think"
+			// that it is possible and be used
+			prefix_error_msg := if p.tok.lit in ['rc', 'cr'] { 'cannot use `r` (raw string) and `c` (c string) together' } else { 'unknown string prefix `$p.tok.lit`' }
+			p.error(prefix_error_msg)
+		}
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
@@ -1392,13 +1400,6 @@ fn (mut p Parser) string_expr() ast.Expr {
 	is_cstr := p.tok.kind == .name && p.tok.lit == 'c'
 	if is_raw || is_cstr {
 		p.next()
-	}
-	// don't allow any other string prefix except `r`, `js` and `c`
-	// and give a separate error for `rc` or `cr` as string prefix as users might "think"
-	// that it is possible and be used
-	if p.tok.kind == .name && p.tok.lit !in ['r', 'c', 'js'] {
-		prefix_error_msg := if p.tok.lit in ['rc', 'cr'] { 'cannot use `r` (raw string) and `c` (c string) together' } else { 'unknown string prefix `$p.tok.lit`' }
-		p.error(prefix_error_msg)
 	}
 	mut node := ast.Expr{}
 	val := p.tok.lit
