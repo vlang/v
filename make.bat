@@ -226,6 +226,7 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :tcc_strap
+if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v.c with TCC
 call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
@@ -236,7 +237,6 @@ if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
 :download_tcc
-if [!compiler!] == [] set /a invalid_cc=1
 pushd %tcc_dir% 2>NUL && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
