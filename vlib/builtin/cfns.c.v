@@ -1,7 +1,7 @@
 module builtin
 
 // <string.h>
-fn C.memcpy(byteptr, byteptr, int) voidptr
+fn C.memcpy(dest byteptr, src byteptr, n int) voidptr
 
 fn C.memcmp(byteptr, byteptr, int) int
 
