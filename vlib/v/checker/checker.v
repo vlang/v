@@ -107,6 +107,11 @@ pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
 					// c.warn('`$obj.name` is declared as mutable, but it was never changed',
 					// obj.pos)
 				}
+				for imp in c.file.imports {
+					if obj.name == imp.alias {
+						c.error('variable name conflicts with imported module', obj.pos)
+					}
+				}
 			}
 			else {}
 		}
