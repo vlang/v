@@ -544,7 +544,7 @@ fn (mut v Builder) cc() {
 	}
 	diff := time.ticks() - ticks
 	v.timing_message('C ${ccompiler:3}', diff)
-	if v.pref.show_c_output {
+	if v.pref.is_verbose || v.pref.show_c_output || v.pref.show_cc {
 		v.show_c_compiler_output(res)
 	}
 	os.chdir(original_pwd)
