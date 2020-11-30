@@ -37,10 +37,8 @@ enum HighlightTokenTyp {
 const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	exe_path        = os.executable()
-	exe_dir         = os.dir(exe_path)
-	res_path        = os.join_path(exe_dir, 'vdoc-resources')
-	vexe_path       = os.dir(@VEXE)
+	res_path        = os.resource_abs_path('vdoc-resources')
+	vexe_path       = os.dir(pref.vexe_path())
 	html_content    = '
 	<!DOCTYPE html>
 	<html lang="en">
@@ -192,7 +190,9 @@ struct VdocHttpServerContext {
 }
 
 fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
-	mut reader := io.new_buffered_reader(reader: io.make_reader(con))
+	mut reader := io.new_buffered_reader({
+		reader: io.make_reader(con)
+	})
 	first_line := reader.read_line() or {
 		send_http_response(mut con, 501, ctx.content_type, 'bad request')
 		return
