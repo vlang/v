@@ -205,7 +205,7 @@ pub mut:
 }
 
 fn fooo() {
-	a := AttrTest{1, 2, 3, 4, 5, 6}
+	_ := AttrTest{1, 2, 3, 4, 5, 6}
 }
 
 /*
@@ -275,7 +275,7 @@ struct Country {
 }
 
 fn test_levels() {
-	c := Country{
+	_ := Country{
 		name: 'UK'
 		capital: {
 			name: 'London'
