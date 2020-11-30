@@ -24,7 +24,7 @@ fn (mut p Preferences) expand_lookup_paths() {
 	vlib_path := os.join_path(p.vroot, 'vlib')
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
-	}	
+	}
 	mut expanded_paths := []string{}
 	for path in p.lookup_path {
 		match path {
