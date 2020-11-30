@@ -110,7 +110,19 @@ fn measure(cmd string, description string) int {
 		exec(cmd)
 	}
 	println('  Building...')
-	sw := time.new_stopwatch({})
-	exec(cmd)
-	return int(sw.elapsed().milliseconds())
+	mut runs := []int{}
+	for r in 0 .. 5 {
+		println('  Sample ${r+1}/5')
+		sw := time.new_stopwatch({})
+		exec(cmd)
+		runs << int(sw.elapsed().milliseconds())
+	}
+	// discard lowest and highest time
+	runs.sort()
+	runs = runs[1..4]
+	mut sum := 0
+	for run in runs {
+		sum += run
+	}
+	return int(sum / 3)
 }
