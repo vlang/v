@@ -1354,13 +1354,27 @@ pub fn temp_dir() string {
 	return path
 }
 
+fn default_vmodules_path() string {
+	return os.join_path(os.home_dir(), '.vmodules')
+}
 // vmodules_dir returns the path to a folder, where v stores its global modules.
 pub fn vmodules_dir() string {
+	paths := vmodules_paths()
+	if paths.len > 0 {
+		return paths[0]
+	}
+	return os.default_vmodules_path()
+}
+
+// vmodules_paths returns a list of paths, where v looks up for modules.
+// You can customize it through setting the environment variable VMODULES
+pub fn vmodules_paths() []string {
 	mut path := os.getenv('VMODULES')
 	if path == '' {
-		path = os.join_path(os.home_dir(), '.vmodules')
+		path = os.default_vmodules_path()
 	}
-	return path
+	list := path.split(os.path_delimiter).map(it.trim_right(os.path_separator))
+	return list
 }
 
 // chmod change file access attributes of `path` to `mode`.
