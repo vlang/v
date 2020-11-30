@@ -1160,7 +1160,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				table.FnType { ret_type = arg_sym.info.func.return_type }
 				else { ret_type = arg_type }
 			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type, 1, c.mod)
+			call_expr.return_type = c.table.find_or_register_array(ret_type, 1)
 		} else if method_name == 'filter' {
 			// check fn
 			c.check_map_and_filter(false, elem_typ, call_expr)
@@ -1608,7 +1608,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			elem_info := return_sym.info as table.Array
 			elem_sym := c.table.get_type_symbol(elem_info.elem_type)
 			if elem_sym.source_name == 'T' {
-				idx := c.table.find_or_register_array(call_expr.generic_type, 1, return_sym.mod)
+				idx := c.table.find_or_register_array(call_expr.generic_type, 1)
 				return table.new_type(idx)
 			}
 		}
@@ -2393,8 +2393,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				1)
 			array_init.typ = table.new_type(idx)
 		} else {
-			sym := c.table.get_type_symbol(elem_type)
-			idx := c.table.find_or_register_array(elem_type, 1, sym.mod)
+			idx := c.table.find_or_register_array(elem_type, 1)
 			array_init.typ = table.new_type(idx)
 		}
 		array_init.elem_type = elem_type
@@ -4191,7 +4190,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		// fixed_array[1..2] => array
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
-			idx := c.table.find_or_register_array(elem_type, 1, c.mod)
+			idx := c.table.find_or_register_array(elem_type, 1)
 			return table.new_type(idx)
 		}
 		return typ.set_nr_muls(0)
@@ -4542,21 +4541,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// if sym.has_method(node.name) {
 		// c.warn('duplicate method `$node.name`', node.pos)
 		// }
-		// Do not allow to modify types from other modules
-		if sym.mod != c.mod && !c.is_builtin_mod && sym.mod != '' { // TODO remove != ''
-			// remove the method to hide other related errors (`method is private` etc)
-			mut idx := 0
-			for i, m in sym.methods {
-				if m.name == node.name {
-					idx = i
-					break
-				}
-			}
-			sym.methods.delete(idx)
-			//
-			c.error('cannot define new methods on non-local `$sym.source_name` (' +
-				'current module is `$c.mod`, `$sym.source_name` is from `$sym.mod`)', node.pos)
-		}
 		// needed for proper error reporting during vweb route checking
 		sym.methods[node.method_idx].source_fn = voidptr(node)
 	}

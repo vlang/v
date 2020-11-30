@@ -30,10 +30,9 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
-			sym := p.table.get_type_symbol(elem_type)
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1, sym.mod)
+			idx := p.table.find_or_register_array(elem_type, 1)
 			array_type = table.new_type(idx)
 			has_type = true
 		}

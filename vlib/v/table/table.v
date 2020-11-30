@@ -539,7 +539,7 @@ pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod string) int {
+pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	name := t.array_name(elem_type, nr_dims)
 	source_name := t.array_source_name(elem_type)
 	// existing
@@ -558,7 +558,6 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod str
 			elem_type: elem_type
 			nr_dims: nr_dims
 		}
-		mod: mod
 	}
 	return t.register_type_symbol(array_type)
 }
