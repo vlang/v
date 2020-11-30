@@ -97,17 +97,17 @@ pub fn (mut m Mutex) m_lock() {
 // Mutex.try_lock tries to acquire a mutex. Returns false immediately if the mutex can not be acquired.
 pub fn (mut m Mutex) try_lock() bool {
 	if !m.ensure_mutex() {
-		println('ensure_mutex returned false')
+		// println('ensure_mutex returned false')
 		return false
 	}
 
-	state := C.WaitForSingleObject(m.mx, 0)
+	state := C.WaitForSingleObject(m.mx, C.INFINITE)
 
 	if state == C.WAIT_OBJECT_0 {
 		m.state = .waiting
 		return true
 	}
-	println('final return false')
+	// println('final return false')
 	return false
 }
 
