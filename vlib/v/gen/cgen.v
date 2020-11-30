@@ -5563,22 +5563,16 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name st
 
 fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if (typ.is_int() || typ.is_float()) && typ.is_ptr() {
+	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map] {
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "\'%.*s\\000\'"
-	} else if sym.kind == .bool {
-		return '%.*s\\000'
-	} else if sym.kind == .enum_ {
-		return '%.*s\\000'
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
 		return '%lld\\000'
-	} else if sym.kind == .sum_type {
-		return '%.*s\\000'
 	}
 	return '%d\\000'
 }
