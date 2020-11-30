@@ -1,4 +1,4 @@
-pub fn (b byte) str_escaped() string {
+pub fn str_escaped(b byte) string {
 	str := match b {
 		0 { '`\\' + '0`' } // Bug is preventing \\0 in a literal
 		7 { '`\\a`' }
