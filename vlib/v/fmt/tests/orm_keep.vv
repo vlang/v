@@ -42,4 +42,8 @@ fn main() {
 	sql db {
 		insert new_customer into Customer
 	}
+	// delete a row
+	sql db {
+		delete from Customer where nr_orders == 10 && name == 'Bob'
+	}
 }
