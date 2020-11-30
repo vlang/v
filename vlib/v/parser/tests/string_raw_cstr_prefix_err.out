@@ -1,6 +1,0 @@
-vlib/v/parser/tests/string_raw_cstr_prefix_err.vv:2:15: error: cannot use `r` (raw string) and `c` (c string) together
-    1 | fn main() {
-    2 |     cr_str := rc'hello'
-      |               ~~
-    3 |     println(cr_str) 
-    4 | }

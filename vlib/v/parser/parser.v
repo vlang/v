@@ -1042,10 +1042,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return p.string_expr()
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
-			// and give a separate error for `rc` or `cr` as string prefix as users might "think"
-			// that it is possible and be used
-			prefix_error_msg := if p.tok.lit in ['rc', 'cr'] { 'cannot use `r` (raw string) and `c` (c string) together' } else { 'unknown string prefix `$p.tok.lit`' }
-			p.error(prefix_error_msg)
+			p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
 		}
 	}
 	// don't allow r`byte` and c`byte`
