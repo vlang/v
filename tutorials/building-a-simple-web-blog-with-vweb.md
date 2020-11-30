@@ -37,6 +37,11 @@ from source, follow the simple instructions here:
 https://github.com/vlang/v#installing-v-from-source
 
 
+### Install SQLite development dependency
+
+If you don't have it already installed, look at the [`sqlite` README](../vlib/sqlite/README.md) for instructions.
+
+
 ### Creating a new Vweb project
 
 V projects can be created anywhere and don't need to have a certain structure:
