@@ -83,7 +83,7 @@ fn new_array_from_c_array_no_alloc(len int, cap int, elm_size int, c_array voidp
 	return arr
 }
 
-// Private function. Doubles array capacity if needed
+// Private function. Doubles array capacity if needed.
 [inline]
 fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
@@ -101,7 +101,7 @@ fn (mut a array) ensure_cap(required int) {
 	a.cap = cap
 }
 
-// repeat returns new array with the given array elements repeated given times.
+// repeat returns a new array with the given array elements repeated given times.
 pub fn (a array) repeat(count int) array {
 	if count < 0 {
 		panic('array.repeat: count is negative: $count')
@@ -130,12 +130,12 @@ pub fn (a array) repeat(count int) array {
 	return arr
 }
 
-// array.sort sorts array in-place using given `compare` function as comparator
+// sort sorts array in-place using given `compare` function as comparator.
 pub fn (mut a array) sort_with_compare(compare voidptr) {
 	C.qsort(mut a.data, a.len, a.element_size, compare)
 }
 
-// array.insert
+// insert inserts a value in the array at index `i`
 pub fn (mut a array) insert(i int, val voidptr) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
@@ -150,7 +150,7 @@ pub fn (mut a array) insert(i int, val voidptr) {
 	a.len++
 }
 
-// array.insert_many
+// insert_many inserts many values into the array from index `i`.
 pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i > a.len {
@@ -167,17 +167,17 @@ pub fn (mut a array) insert_many(i int, val voidptr, size int) {
 	a.len += size
 }
 
-// array.prepend
+// prepend prepends one value to the array.
 pub fn (mut a array) prepend(val voidptr) {
 	a.insert(0, val)
 }
 
-// array.prepend_many
+// prepend_many prepends another array to this array.
 pub fn (mut a array) prepend_many(val voidptr, size int) {
 	a.insert_many(0, val, size)
 }
 
-// array.delete deletes array element at the given index
+// delete deletes array element at index `i`.
 pub fn (mut a array) delete(i int) {
 	$if !no_bounds_checking ? {
 		if i < 0 || i >= a.len {
@@ -190,13 +190,13 @@ pub fn (mut a array) delete(i int) {
 	a.len--
 }
 
-// clears the array without deallocating the allocated data
+// clear clears the array without deallocating the allocated data.
 pub fn (mut a array) clear() {
 	a.len = 0
 }
 
-// trims the array length to "index" without modifying the allocated data. If "index" is greater
-// than len nothing will be changed
+// trim trims the array length to "index" without modifying the allocated data. If "index" is greater
+// than len nothing will be changed.
 pub fn (mut a array) trim(index int) {
 	if index < a.len {
 		a.len = index
@@ -212,7 +212,7 @@ fn (a array) get_unsafe(i int) voidptr {
 	}
 }
 
-// Private function. Used to implement array[] operator
+// Private function. Used to implement array[] operator.
 fn (a array) get(i int) voidptr {
 	$if !no_bounds_checking ? {
 		if i < 0 || i >= a.len {
@@ -224,7 +224,7 @@ fn (a array) get(i int) voidptr {
 	}
 }
 
-// array.first returns the first element of the array
+// first returns the first element of the array.
 pub fn (a array) first() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -234,7 +234,7 @@ pub fn (a array) first() voidptr {
 	return a.data
 }
 
-// array.last returns the last element of the array
+// last returns the last element of the array.
 pub fn (a array) last() voidptr {
 	$if !no_bounds_checking ? {
 		if a.len == 0 {
@@ -246,7 +246,7 @@ pub fn (a array) last() voidptr {
 	}
 }
 
-// array.pop returns the last element of the array, and removes it
+// pop returns the last element of the array, and removes it.
 pub fn (mut a array) pop() voidptr {
 	// in a sense, this is the opposite of `a << x`
 	$if !no_bounds_checking ? {
@@ -262,7 +262,7 @@ pub fn (mut a array) pop() voidptr {
 	return memdup(last_elem, a.element_size)
 }
 
-// array.delete_last efficiently deletes the last element of the array
+// delete_last efficiently deletes the last element of the array.
 pub fn (mut a array) delete_last() {
 	// copy pasting code for performance
 	$if !no_bounds_checking ? {
@@ -273,7 +273,7 @@ pub fn (mut a array) delete_last() {
 	a.len--
 }
 
-// array.slice returns an array using the same buffer as original array
+// slice returns an array using the same buffer as original array
 // but starting from the `start` element and ending with the element before
 // the `end` element of the original array with the length and capacity
 // set to the number of the elements in the slice.
@@ -310,13 +310,13 @@ fn (a array) slice2(start int, _end int, end_max bool) array {
 	return a.slice(start, end)
 }
 
-// array.clone_static returns an independent copy of a given array
+// clone_static returns an independent copy of a given array
 // It should be used only in -autofree generated code.
 fn (a array) clone_static() array {
 	return a.clone()
 }
 
-// array.clone returns an independent copy of a given array
+// clone returns an independent copy of a given array.
 pub fn (a &array) clone() array {
 	mut size := a.cap * a.element_size
 	if size == 0 {
@@ -427,8 +427,7 @@ pub fn (mut a array) reverse_in_place() {
 	}
 }
 
-// array.reverse returns a new array with the elements of
-// the original array in reverse order.
+// reverse returns a new array with the elements of the original array in reverse order.
 pub fn (a array) reverse() array {
 	if a.len < 2 {
 		return a
@@ -446,6 +445,7 @@ pub fn (a array) reverse() array {
 }
 
 // pub fn (a []int) free() {
+// free frees all memory occupied by the array.
 [unsafe]
 pub fn (a &array) free() {
 	$if prealloc {
@@ -457,8 +457,8 @@ pub fn (a &array) free() {
 	C.free(a.data)
 }
 
-// []string.str returns a string representation of the array of strings
-// => '["a", "b", "c"]'
+// str returns a string representation of the array of strings
+// => '["a", "b", "c"]'.
 pub fn (a []string) str() string {
 	mut sb := strings.new_builder(a.len * 3)
 	sb.write('[')
@@ -475,8 +475,8 @@ pub fn (a []string) str() string {
 	return sb.str()
 }
 
-// []byte.hex returns a string with the hexadecimal representation
-// of the byte elements of the array
+// hex returns a string with the hexadecimal representation
+// of the byte elements of the array.
 pub fn (b []byte) hex() string {
 	mut hex := malloc(b.len * 2 + 1)
 	mut dst_i := 0
@@ -551,12 +551,12 @@ fn compare_floats_reverse(a &f64, b &f64) int {
 	return 0
 }
 
-// []int.sort sorts array of int in place in ascending order.
+// sort sorts array of int in place in ascending order.
 pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
-// []string.index returns the index of the first element equal to the given value,
+// index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []string) index(v string) int {
 	for i in 0 .. a.len {
@@ -567,7 +567,7 @@ pub fn (a []string) index(v string) int {
 	return -1
 }
 
-// []int.index returns the index of the first element equal to the given value,
+// index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []int) index(v int) int {
 	for i in 0 .. a.len {
@@ -578,7 +578,7 @@ pub fn (a []int) index(v int) int {
 	return -1
 }
 
-// []byte.index returns the index of the first element equal to the given value,
+// index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 pub fn (a []byte) index(v byte) int {
 	for i in 0 .. a.len {
@@ -598,7 +598,7 @@ pub fn (a []rune) index(v rune) int {
 	return -1
 }
 
-// []char.index returns the index of the first element equal to the given value,
+// index returns the index of the first element equal to the given value,
 // or -1 if the value is not found in the array.
 // TODO is `char` type yet in the language?
 pub fn (a []char) index(v char) int {
@@ -610,7 +610,7 @@ pub fn (a []char) index(v char) int {
 	return -1
 }
 
-// []int.reduce executes a given reducer function on each element of the array,
+// reduce executes a given reducer function on each element of the array,
 // resulting in a single output value.
 pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	mut accum_ := accum_start
@@ -620,6 +620,7 @@ pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
+// grow grows the array's capacity by `amount` elements.
 pub fn (mut a array) grow(amount int) {
 	a.ensure_cap(a.len + amount)
 }
@@ -711,8 +712,8 @@ pub fn compare_f32(a &f32, b &f32) int {
 	return 0
 }
 
-// a.pointers() returns a new array, where each element
-// is the address of the corresponding element in a.
+// pointers returns a new array, where each element
+// is the address of the corresponding element in the array.
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0 .. a.len {
