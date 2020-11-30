@@ -43,7 +43,7 @@ if !shift_counter! LSS 1 (
 )
 
 REM Compiler option
-for %%g in (-gcc -msvc -tcc -fresh-tcc -clang) do (
+for %%g in (-gcc -msvc -tcc -clang) do (
     if "%~1" == "%%g" set compiler=%~1& set compiler=!compiler:~1!& shift& set /a shift_counter+=1& goto :verifyopt
 )
 
@@ -93,6 +93,7 @@ goto :!target!
 
 :cleanall
 call :clean
+if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 echo.
 echo Cleanup vc
 echo  ^> Purge TCC binaries
@@ -119,6 +120,8 @@ if %ERRORLEVEL% NEQ 0 echo Invalid subcommand: !subcmd!
 exit /b %ERRORLEVEL%
 
 :build
+call :download_tcc
+if %ERRORLEVEL% NEQ 0 goto :error
 del "!log_file!">NUL 2>&1
 if !flag_local! NEQ 1 (
     pushd "%vc_dir%" 2>NUL && (
@@ -127,12 +130,12 @@ if !flag_local! NEQ 1 (
         call :buildcmd "cd "%vc_dir%"" "  "
         call :buildcmd "git pull --quiet" "  "
         call :buildcmd "cd .." "  "
+        popd
     ) || (
         echo Cloning vc...
         echo  ^> Cloning from remote !vc_url!
         call :buildcmd "git clone --depth 1 --quiet "%vc_url%"" "  "
     )
-    popd
     echo.
 )
 
@@ -151,7 +154,7 @@ echo  ^> Attempting to build v.c with Clang
 call :buildcmd "clang -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
-	call :buildcmd "clang --version" "  "
+	call :buildcmd "clang --version" "  " 1
 	goto :compile_error
 )
 
@@ -172,7 +175,7 @@ echo  ^> Attempting to build v.c with GCC
 call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
-	call :buildcmd "gcc --version" "  "
+	call :buildcmd "gcc --version" "  " 1
 	goto :compile_error
 )
 
@@ -210,7 +213,11 @@ set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v.c with MSVC
 call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
-if %ERRORLEVEL% NEQ 0 goto :compile_error
+if %ERRORLEVEL% NEQ 0 (
+    REM In some cases, compile errors happen because of the MSVC compiler version
+	call :buildcmd "cl.exe 1>NUL" "  " 1
+    goto :compile_error
+)
 
 echo  ^> Compiling with .\v.exe self
 call :buildcmd "v.exe -cc msvc self" "  "
@@ -218,36 +225,7 @@ del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
-:fresh-tcc_strap
-echo  ^> Clean TCC directory
-call :buildcmd "rmdir /s /q "%tcc_dir%"" "  "
-call :tcc_strap
-exit /b %ERRORLEVEL%
-
 :tcc_strap
-where /q tcc
-if %ERRORLEVEL% NEQ 0 (
-    if [!compiler!] == [] set /a invalid_cc=1
-    if not exist %tcc_dir% (
-        echo  ^> TCC not found
-        echo  ^> Downloading TCC from %tcc_url%
-        call :buildcmd "git clone --depth 1 --quiet --single-branch --branch "!tcc_branch!" "!tcc_url!" "%tcc_dir%"" "  "
-    )
-    pushd %tcc_dir% || (
-        echo  ^> TCC not found, even after cloning
-        goto :error
-    )
-    popd
-    set "tcc_exe=%tcc_dir%\tcc.exe"
-) else (
-	for /f "usebackq delims=" %%i in (`where tcc`) do set "tcc_exe=%%i"
-)
-
-echo  ^> Updating prebuilt TCC...
-pushd "%tcc_dir%\"
-call :buildcmd "git pull -q" "  "
-popd
-
 echo  ^> Attempting to build v.c with TCC
 call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
@@ -256,6 +234,28 @@ echo  ^> Compiling with .\v.exe self
 call :buildcmd "v.exe -cc "!tcc_exe!" self" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
+
+:download_tcc
+if [!compiler!] == [] set /a invalid_cc=1
+pushd %tcc_dir% 2>NUL && (
+    echo Updating TCC
+    echo  ^> Syncing TCC from !tcc_url!
+    call :buildcmd "git pull --quiet" "  "
+    popd
+) || (
+    echo Bootstraping TCC...
+    echo  ^> TCC not found
+    echo  ^> Downloading TCC from !tcc_url!
+    call :buildcmd "git clone --depth 1 --quiet --single-branch --branch "!tcc_branch!" "!tcc_url!" "%tcc_dir%"" "  "
+)
+for /f "usebackq delims=" %%i in (`dir %tcc_dir% /b /a /s tcc.exe`) do (
+    set "attrib=%%~ai"
+    set "dattrib=%attrib:~0,1%"
+    if /I not "%dattrib%" == "d" set "tcc_exe=%%i"
+)
+if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error
+echo.
+exit /b 0
 
 :compile_error
 echo.
@@ -293,6 +293,7 @@ if !flag_verbose! EQU 1 (
     echo [Debug] %~1>>"!log_file!"
     echo %~2 %~1
 )
+if not [%~3] == [] echo.& %~1
 %~1>>"!log_file!" 2>>&1
 exit /b %ERRORLEVEL%
 
@@ -301,7 +302,7 @@ echo Usage:
 echo     make.bat [target] [compiler] [options]
 echo.
 echo Compiler:
-echo     -msvc ^| -gcc ^| -[fresh-]tcc ^| -clang    Set C compiler
+echo     -msvc ^| -gcc ^| -tcc ^| -clang    Set C compiler
 echo.
 echo Target:
 echo    build[default]                    Compiles V using the given C compiler
