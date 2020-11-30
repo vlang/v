@@ -48,7 +48,7 @@ enum MutexState {
 [inline]
 fn (mut m Mutex) ensure_mutex() bool {
 	if isnil(m.mx) { // if mutex handle not initalized
-		m.mx = MHANDLE(C.CreateMutex(0, true, 0))
+		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
 		if isnil(m.mx) {
 			m.state = .broken // handle broken and mutex state are broken
 			return false
@@ -97,7 +97,6 @@ pub fn (mut m Mutex) m_lock() {
 // Mutex.try_lock tries to acquire a mutex. Returns false immediately if the mutex can not be acquired.
 pub fn (mut m Mutex) try_lock() bool {
 	if !m.ensure_mutex() {
-		// println('ensure_mutex returned false')
 		return false
 	}
 
@@ -107,7 +106,6 @@ pub fn (mut m Mutex) try_lock() bool {
 		m.state = .waiting
 		return true
 	}
-	// println('final return false')
 	return false
 }
 
