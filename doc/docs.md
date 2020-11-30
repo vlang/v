@@ -2482,7 +2482,7 @@ For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/
 ## Writing Documentation
 
 The way it works is very similar to Go. It's very simple: there's no need to
-write documentation separately for your code,you
+write documentation separately for your code,
 vdoc will generate it from docstrings in the source code.
 
 Documentation for each function/type/const must be placed right before the declaration:
