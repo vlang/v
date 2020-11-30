@@ -16,7 +16,7 @@ pub fn new_preferences() Preferences {
 	return p
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
@@ -24,10 +24,26 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	vlib_path := os.join_path(p.vroot, 'vlib')
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
+	}	
+	mut expanded_paths := []string{}
+	for path in p.lookup_path {
+		match path {
+			'@vlib' {
+				expanded_paths << vlib_path
+			}
+			'@vmodules' {
+				expanded_paths << os.vmodules_paths()
+			}
+			else{
+				expanded_paths << path
+			}
+		}
 	}
-	for i, path in p.lookup_path {
-		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
-	}
+	p.lookup_path = expanded_paths
+}
+	
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.expand_lookup_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
