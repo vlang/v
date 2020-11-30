@@ -2355,6 +2355,25 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ_str := g.typ(node.value_type)
 			value_typ := g.table.get_type_symbol(node.value_type)
 			size := node.vals.len
+			mut shared_styp := '' // only needed for shared &[]{...}
+			mut styp := ''
+			is_amp := g.is_amp
+			g.is_amp = false
+			if is_amp {
+				g.out.go_back(1) // delete the `&` already generated in `prefix_expr()
+				if g.is_shared {
+					mut shared_typ := node.typ.set_flag(.shared_f)
+					shared_styp = g.typ(shared_typ)
+					g.writeln('($shared_styp*)memdup(&($shared_styp){.val = ')
+				} else {
+					styp = g.typ(node.typ)
+					g.write('($styp*)memdup(&') // TODO: doesn't work with every compiler
+				}
+			} else {
+				if g.is_shared {
+					g.writeln('{.val = ($styp*)')
+				}
+			}
 			if size > 0 {
 				if value_typ.kind == .function {
 					g.write('new_map_init($size, sizeof(voidptr), _MOV(($key_typ_str[$size]){')
@@ -2377,6 +2396,14 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('}))')
 			} else {
 				g.write('new_map_1(sizeof($value_typ_str))')
+			}
+			if g.is_shared {
+				g.write(', .mtx = sync__new_rwmutex()}')
+				if is_amp {
+					g.write(', sizeof($shared_styp))')
+				}
+			} else if is_amp {
+				g.write(', sizeof($styp))')
 			}
 		}
 		ast.None {
@@ -3715,10 +3742,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
 					g.is_array_set = true
 					g.write('map_set(')
-					if !left_is_ptr {
+					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
 					g.expr(node.left)
+					if node.left_type.has_flag(.shared_f) {
+						if left_is_ptr {
+							g.write('->val')
+						} else {
+							g.write('.val')
+						}
+					}
 					g.write(', ')
 					g.expr(node.index)
 					if elem_typ.kind == .function {
@@ -3744,10 +3778,17 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write('(*($elem_type_str*)map_get(')
 					}
-					if node.left_type.is_ptr() {
+					if node.left_type.is_ptr() && !node.left_type.has_flag(.shared_f) {
 						g.write('*')
 					}
 					g.expr(node.left)
+					if node.left_type.has_flag(.shared_f) {
+						if left_is_ptr {
+							g.write('->val')
+						} else {
+							g.write('.val')
+						}
+					}
 					g.write(', ')
 					g.expr(node.index)
 					if elem_typ.kind == .function {
@@ -4637,7 +4678,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 		g.write(')')
 	} else if typ == table.string_type {
 		g.expr(expr)
-		return true
 	} else if sym.kind == .enum_ {
 		is_var := match expr {
 			ast.SelectorExpr, ast.Ident { true }
@@ -5564,22 +5604,16 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name st
 
 fn (g &Gen) type_to_fmt(typ table.Type) string {
 	sym := g.table.get_type_symbol(typ)
-	if (typ.is_int() || typ.is_float()) && typ.is_ptr() {
+	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
-	} else if sym.kind in [.struct_, .array, .array_fixed, .map] {
+	} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "\'%.*s\\000\'"
-	} else if sym.kind == .bool {
-		return '%.*s\\000'
-	} else if sym.kind == .enum_ {
-		return '%.*s\\000'
 	} else if sym.kind in [.f32, .f64] {
 		return '%g\\000' // g removes trailing zeros unlike %f
 	} else if sym.kind == .u64 {
 		return '%lld\\000'
-	} else if sym.kind == .sum_type {
-		return '%.*s\\000'
 	}
 	return '%d\\000'
 }
