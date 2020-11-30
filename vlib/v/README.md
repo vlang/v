@@ -10,10 +10,10 @@ See `Builder.get_builtin_files` as example.
 If the file is a `.vsh` file and the backend is C, `vlib/os` will also be loaded as builtin.
 
 ### Getting project files
-Either you there is a specific file: `my_file.v` or a directory containing V files.
+Either there is a specific file: `my_file.v` or a directory containing V files.
 In the last case it scans that directory for all files.
 See `Builder.v_files_from_dir` as the helper method.
-This list of files needs to be filtered that only `*.v` files exist.
+This list of files needs to be filtered so that only `*.v` files exist.
 
 Skips the following file types:
 - `*_test.v`
@@ -52,7 +52,7 @@ parsed_file := parser.parse_text(code, table, .parse_comments, &pref, &scope)
 ```
 
 ## Parse a single file
-For parsing files which are on disk it needs to be a path provided.
+For parsing files on disk, a path needs to be provided.
 The paths are collected one step earlier.
 ```v oksyntax
 import v.parser
@@ -72,7 +72,7 @@ parsed_files := parser.parse_files(paths, table, &pref, &scope)
 ```
 
 ## Parse imports
-A file often contains imports. This imports might needs to be parsed as well.
+A file often contains imports. These imports might need to be parsed as well.
 The builder contains a method which does this: `Builder.parse_imports`.
 
 If the module which is imported isn't parsed already,
