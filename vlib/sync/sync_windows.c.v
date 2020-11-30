@@ -48,7 +48,7 @@ enum MutexState {
 [inline]
 fn (mut m Mutex) ensure_mutex() bool {
 	if isnil(m.mx) { // if mutex handle not initalized
-		m.mx = MHANDLE(C.CreateMutex(0, false, 0))
+		m.mx = MHANDLE(C.CreateMutex(0, true, 0))
 		if isnil(m.mx) {
 			m.state = .broken // handle broken and mutex state are broken
 			return false
@@ -101,7 +101,7 @@ pub fn (mut m Mutex) try_lock() bool {
 		return false
 	}
 
-	state := C.WaitForSingleObject(m.mx, C.INFINITE)
+	state := C.WaitForSingleObject(m.mx, 0)
 
 	if state == C.WAIT_OBJECT_0 {
 		m.state = .waiting
