@@ -1416,10 +1416,11 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
-	mut set_short_args := false
-	if node.args.len > 0 && (node.args.last()).expr is ast.StructInit {
+	old_short_arg_state := f.use_short_fn_args
+	if f.use_short_fn_args {
+		f.use_short_fn_args = false
+	} else if node.args.len > 0 && (node.args.last()).expr is ast.StructInit {
 		f.use_short_fn_args = true
-		set_short_args = true
 	}
 	for arg in node.args {
 		f.comments(arg.comments, {})
@@ -1496,9 +1497,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
-	if set_short_args {
-		f.use_short_fn_args = false
-	}
+	f.use_short_fn_args = old_short_arg_state
 }
 
 pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {

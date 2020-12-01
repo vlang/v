@@ -1634,9 +1634,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
 			if !imethod.is_same_method_as(method) {
-				sig := c.table.fn_signature(imethod, {
-					skip_receiver: true
-				})
+				sig := c.table.fn_signature(imethod, skip_receiver: true)
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.source_name`, expected `$sig`',
 					pos)
 				return false
@@ -2275,27 +2273,27 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
-	s.register('it', ast.Var{
+	s.register('it', 
 		name: 'it'
 		pos: pos
 		typ: typ
 		is_used: true
-	})
+	)
 }
 
 fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
-	s.register('a', ast.Var{
+	s.register('a', 
 		name: 'a'
 		pos: pos
 		typ: typ
 		is_used: true
-	})
-	s.register('b', ast.Var{
+	)
+	s.register('b', 
 		name: 'b'
 		pos: pos
 		typ: typ
 		is_used: true
-	})
+	)
 }
 
 fn (mut c Checker) check_array_init_para_type(para string, expr ast.Expr, pos token.Position) {
@@ -3572,16 +3570,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					}
 					agg_name.write(')')
 					name := agg_name.str()
-					expr_type = c.table.register_type_symbol(table.TypeSymbol{
+					expr_type = c.table.register_type_symbol(
 						name: name
 						source_name: name
 						cname: agg_cname.str()
 						kind: .aggregate
 						mod: c.mod
-						info: table.Aggregate{
-							types: expr_types.map(it.typ)
-						}
-					})
+						info: types: expr_types.map(it.typ)
+					)
 				} else {
 					expr_type = expr_types[0].typ
 				}
@@ -3600,13 +3596,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if !is_mut || node.cond.is_mut {
 							sum_type_casts << expr_type
-							scope.register_struct_field(ast.ScopeStructField{
+							scope.register_struct_field(
 								struct_type: node.cond.expr_type
 								name: node.cond.field_name
 								typ: node.cond_type
 								sum_type_casts: sum_type_casts
 								pos: node.cond.pos
-							})
+							)
 						}
 					}
 					ast.Ident {
@@ -3621,14 +3617,14 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_mut || node.cond.is_mut) && !is_already_casted {
 							sum_type_casts << expr_type
-							scope.register(node.cond.name, ast.Var{
+							scope.register(node.cond.name, 
 								name: node.cond.name
 								typ: node.cond_type
 								pos: node.cond.pos
 								is_used: true
 								is_mut: node.cond.is_mut
 								sum_type_casts: sum_type_casts
-							})
+							)
 						}
 					}
 					else {}
@@ -3859,24 +3855,24 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									// smartcast either if the value is immutable or if the mut argument is explicitly given
 									if !is_mut || infix.left.is_mut {
 										sum_type_casts << right_expr.typ
-										scope.register(infix.left.name, ast.Var{
+										scope.register(infix.left.name, 
 											name: infix.left.name
 											typ: infix.left_type
 											sum_type_casts: sum_type_casts
 											pos: infix.left.pos
 											is_used: true
 											is_mut: is_mut
-										})
+										)
 									}
 								} else if left_sym.kind == .interface_ {
-									scope.register(infix.left.name, ast.Var{
+									scope.register(infix.left.name, 
 										name: infix.left.name
 										typ: right_expr.typ.to_ptr()
 										sum_type_casts: sum_type_casts
 										pos: infix.left.pos
 										is_used: true
 										is_mut: is_mut
-									})
+									)
 									// TODO: remove that later @danieldaeschle
 									node.branches[i].smartcast = true
 								}
@@ -3893,13 +3889,13 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if (!is_mut || infix.left.is_mut) && left_sym.kind == .sum_type {
 									sum_type_casts << right_expr.typ
-									scope.register_struct_field(ast.ScopeStructField{
+									scope.register_struct_field(
 										struct_type: infix.left.expr_type
 										name: infix.left.field_name
 										typ: infix.left_type
 										sum_type_casts: sum_type_casts
 										pos: infix.left.pos
-									})
+									)
 								}
 							}
 						}
