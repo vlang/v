@@ -37,10 +37,9 @@ enum HighlightTokenTyp {
 const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	exe_path        = os.executable()
-	exe_dir         = os.dir(exe_path)
-	res_path        = os.join_path(exe_dir, 'vdoc-resources')
-	vexe_path       = os.dir(@VEXE)
+	res_path        = os.resource_abs_path('vdoc-resources')
+	vexe            = pref.vexe_path()
+	vroot           = os.dir(vexe)
 	html_content    = '
 	<!DOCTYPE html>
 	<html lang="en">
@@ -192,7 +191,9 @@ struct VdocHttpServerContext {
 }
 
 fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
-	mut reader := io.new_buffered_reader(reader: io.make_reader(con))
+	mut reader := io.new_buffered_reader({
+		reader: io.make_reader(con)
+	})
 	first_line := reader.read_line() or {
 		send_http_response(mut con, 501, ctx.content_type, 'bad request')
 		return
@@ -715,7 +716,7 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		exit(1)
 	}
 	dir_path := if cfg.is_vlib {
-		vexe_path
+		vroot
 	} else if os.is_dir(cfg.input_path) {
 		cfg.input_path
 	} else {
@@ -935,11 +936,11 @@ fn (cfg DocConfig) get_resource(name string, minify bool) string {
 }
 
 fn main() {
-	args := os.args[2..].clone()
-	if args.len == 0 || args[0] in ['help', '-h', '--help'] {
-		os.system('${@VEXE} help doc')
+	if os.args.len < 2 || '-h' in os.args || '--help' in os.args || os.args[1..] == ['doc', 'help'] {
+		os.system('$vexe help doc')
 		exit(0)
 	}
+	args := os.args[2..].clone()
 	mut cfg := DocConfig{
 		manifest: vmod.Manifest{
 			repo_url: ''
@@ -1050,7 +1051,7 @@ fn main() {
 	if cfg.input_path.trim_right('/') == 'vlib' {
 		cfg.is_vlib = true
 		cfg.is_multi = true
-		cfg.input_path = os.join_path(vexe_path, 'vlib')
+		cfg.input_path = os.join_path(vroot, 'vlib')
 	} else if !is_path {
 		cfg.vprintln('Input "$cfg.input_path" is not a valid path. Looking for modules named "$cfg.input_path"...')
 		mod_path := doc.lookup_module(cfg.input_path) or {

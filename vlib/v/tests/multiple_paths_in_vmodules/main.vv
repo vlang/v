@@ -1,0 +1,9 @@
+import yyy
+import xxx
+import zzz
+
+fn main() {
+	all := [xxx.f(), yyy.f(), zzz.f()]
+    println(all)
+    assert all == ['x','y','z']
+}
