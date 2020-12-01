@@ -13,7 +13,9 @@ const (
 		'default', 'delete', 'do', 'else', 'enum', 'export', 'extends', 'finally', 'for', 'function', 'if',
 		'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private', 'protected',
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
-		'while', 'with', 'yield']
+		'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map']
+	// used to generate V_type structs
+	v_types = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'any_int', 'any_float', 'size_t', 'bool', 'string', 'map', 'array']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
@@ -167,7 +169,7 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 			ast.FnDecl {
 				if stmt.is_method {
 					// Found struct method, store it to be generated along with the class.
-					class_name := g.table.get_type_name(stmt.receiver.typ)
+					mut class_name := g.table.get_type_name(stmt.receiver.typ)
 					// Workaround until `map[key] << val` works.
 					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
@@ -189,171 +191,6 @@ pub fn (g JsGen) hashes() string {
 	mut res := '// V_COMMIT_HASH $util.vhash()\n'
 	res += '// V_CURRENT_COMMIT_HASH ${util.githash(g.pref.building_v)}\n'
 	return res
-}
-
-// V type to JS type
-pub fn (mut g JsGen) typ(t table.Type) string {
-	sym := g.table.get_type_symbol(t)
-	mut styp := ''
-	match sym.kind {
-		.placeholder {
-			// This should never happen: means checker bug
-			styp = 'any'
-		}
-		.void {
-			styp = 'void'
-		}
-		.voidptr {
-			styp = 'any'
-		}
-		.byteptr, .charptr {
-			styp = 'string'
-		}
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
-			// TODO: Should u64 and i64 use BigInt rather than number?
-			styp = 'number'
-		}
-		.bool {
-			styp = 'boolean'
-		}
-		.none_ {
-			styp = 'undefined'
-		}
-		.string, .ustring, .char {
-			styp = 'string'
-		}
-		// 'array_array_int' => 'number[][]'
-		.array {
-			info := sym.info as table.Array
-			styp = g.typ(info.elem_type) + '[]'
-		}
-		.array_fixed {
-			info := sym.info as table.ArrayFixed
-			styp = g.typ(info.elem_type) + '[]'
-		}
-		.chan {
-			styp = 'chan'
-		}
-		// 'map[string]int' => 'Map<string, number>'
-		.map {
-			info := sym.info as table.Map
-			key := g.typ(info.key_type)
-			val := g.typ(info.value_type)
-			styp = 'Map<$key, $val>'
-		}
-		.any {
-			styp = 'any'
-		}
-		// ns.Foo => alias["Foo"]["prototype"]
-		.struct_ {
-			styp = g.struct_typ(sym.name)
-		}
-		.generic_struct_inst {}
-		// 'multi_return_int_int' => '[number, number]'
-		.multi_return {
-			info := sym.info as table.MultiReturn
-			types := info.types.map(g.typ(it))
-			joined := types.join(', ')
-			styp = '[$joined]'
-		}
-		.sum_type {
-			// TODO: Implement sumtypes
-			styp = 'union_sym_type'
-		}
-		.alias {
-			// TODO: Implement aliases
-			styp = 'alias'
-		}
-		.enum_ {
-			// NB: We could declare them as TypeScript enums but TS doesn't like
-			// our namespacing so these break if declared in a different module.
-			// Until this is fixed, We need to use the type of an enum's members
-			// rather than the enum itself, and this can only be 'number' for now
-			styp = 'number'
-		}
-		// 'anon_fn_7_7_1' => '(a number, b number) => void'
-		.function {
-			info := sym.info as table.FnType
-			styp = g.fn_typ(info.func.params, info.func.return_type)
-		}
-		.interface_ {
-			styp = g.js_name(sym.name)
-		}
-		.rune {
-			styp = 'any'
-		}
-		.aggregate {
-			panic('TODO: unhandled aggregate in JS')
-		}
-	}
-	/*
-	else {
-			println('jsgen.typ: Unhandled type $t')
-			styp = sym.name
-		}
-	*/
-	if styp.starts_with('JS.') {
-		return styp[3..]
-	}
-	return styp
-}
-
-fn (mut g JsGen) fn_typ(args []table.Param, return_type table.Type) string {
-	mut res := '('
-	for i, arg in args {
-		res += '$arg.name: ${g.typ(arg.typ)}'
-		if i < args.len - 1 {
-			res += ', '
-		}
-	}
-	return res + ') => ' + g.typ(return_type)
-}
-
-fn (mut g JsGen) struct_typ(s string) string {
-	ns := get_ns(s)
-	mut name := if ns == g.namespace { s.split('.').last() } else { g.get_alias(s) }
-	mut styp := ''
-	for i, v in name.split('.') {
-		if i == 0 {
-			styp = v
-		} else {
-			styp += '["$v"]'
-		}
-	}
-	if ns in ['', g.namespace] {
-		return styp
-	}
-	return styp + '["prototype"]'
-}
-
-fn (mut g JsGen) to_js_typ_val(t table.Type) string {
-	sym := g.table.get_type_symbol(t)
-	mut styp := ''
-	match sym.kind {
-		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
-			styp = '0'
-		}
-		.bool {
-			styp = 'false'
-		}
-		.string {
-			styp = '""'
-		}
-		.map {
-			styp = 'new Map()'
-		}
-		.array {
-			styp = '[]'
-		}
-		.struct_ {
-			styp = 'new ${g.js_name(sym.name)}({})'
-		}
-		else {
-			// TODO
-			styp = 'undefined'
-		}
-	}
-	return styp
 }
 
 pub fn (mut g JsGen) gen_indent() {
@@ -574,7 +411,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write('${styp}.$node.val')
 		}
 		ast.FloatLiteral {
-			g.write(node.val)
+			g.write('(new ${g.typ(table.Type(table.f32_type))}($node.val))')
 		}
 		ast.Ident {
 			g.gen_ident(node)
@@ -592,7 +429,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.write(node.val)
+			g.write('(new ${g.typ(table.Type(table.int_type))}($node.val))')
 		}
 		ast.LockExpr {
 			g.gen_lock_expr(node)
@@ -645,8 +482,9 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_string_inter_literal(node)
 		}
 		ast.StringLiteral {
-			text := node.val.replace('`', '\\`')
-			g.write('`$text`')
+			text := node.val.replace('\'', "\\'")
+			type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
+			g.write('(new ${type_prefix}string(\'$text\'))')
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
@@ -885,6 +723,12 @@ fn (mut g JsGen) gen_method_decl(it ast.FnDecl) {
 		}
 		if !it.is_method {
 			g.write('function ')
+		} else {
+			if it.attrs.contains('js_getter') {
+				g.write('get ')
+			} else if it.attrs.contains('js_setter') {
+				g.write('set ')
+			}
 		}
 		g.write('${name}(')
 		if it.is_pub && !it.is_method {
@@ -1076,12 +920,21 @@ fn (mut g JsGen) gen_hash_stmt(it ast.HashStmt) {
 }
 
 fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
-	if node.name.starts_with('JS.') {
+	mut name := node.name
+	if name.starts_with('JS.') {
 		return
+	}
+	// remove V_ from basic types such as `i8` and `string`
+	basic_v_type := g.file.mod.name == 'builtin' && name.starts_with('V_') && name[2..] in v_types
+	if basic_v_type {
+		name = name[2..]
 	}
 	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
-	g.write('function ${g.js_name(node.name)}({ ')
+	g.write('function ${g.js_name(name)}(')
+	if !basic_v_type {
+		g.write('{ ')
+	}
 	for i, field in node.fields {
 		g.write('$field.name = ')
 		if field.has_default_expr {
@@ -1093,16 +946,19 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.write(', ')
 		}
 	}
-	g.writeln(' }) {')
+	if !basic_v_type {
+		g.write(' }')
+	}
+	g.writeln(') {')
 	g.inc_indent()
 	for field in node.fields {
 		g.writeln('this.$field.name = $field.name')
 	}
 	g.dec_indent()
 	g.writeln('};')
-	g.writeln('${g.js_name(node.name)}.prototype = {')
+	g.writeln('${g.js_name(name)}.prototype = {')
 	g.inc_indent()
-	fns := g.method_fn_decls[node.name]
+	fns := g.method_fn_decls[name]
 	for i, field in node.fields {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
@@ -1124,7 +980,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.dec_indent()
 	g.writeln('};\n')
 	if node.is_pub {
-		g.push_pub_var(node.name)
+		g.push_pub_var(name)
 	}
 }
 
@@ -1279,6 +1135,7 @@ fn (mut g JsGen) gen_ident(node ast.Ident) {
 	// TODO `is`
 	// TODO handle optionals
 	g.write(name)
+	// TODO: Generate .val for basic types
 }
 
 fn (mut g JsGen) gen_lock_expr(node ast.LockExpr) {
@@ -1490,7 +1347,8 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
-	g.write('`')
+	type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
+	g.write('(new ${type_prefix}string(`')
 	for i, val in it.vals {
 		escaped_val := val.replace('`', '\\`')
 		g.write(escaped_val)
@@ -1514,7 +1372,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		}
 		g.write('}')
 	}
-	g.write('`')
+	g.write('`))')
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
