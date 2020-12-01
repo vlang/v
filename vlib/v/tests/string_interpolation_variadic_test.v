@@ -9,7 +9,7 @@ struct Man {
 }
 
 fn my_variadic_function(x ...Man) string {
-	return '$x'	// this interpolation should generate .str() methods for Man
+	return '$x' // this interpolation should generate .str() methods for Man
 }
 
 fn test_vargs_string_interpolation() {
@@ -28,4 +28,17 @@ fn test_vargs_string_interpolation() {
 	assert results.contains('}]')
 	//
 	println(results)
+}
+
+fn variadic_int(x ...int) string {
+	return '$x'
+}
+
+fn variadic_bool(x ...bool) string {
+	return '$x'
+}
+
+fn test_variadic_interpolation() {
+	assert variadic_int(3, 2, 1) == '[3, 2, 1]'
+	assert variadic_bool(true, false, true) == '[true, false, true]'
 }
