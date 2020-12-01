@@ -61,7 +61,6 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	generic_funcs                    []&ast.FnDecl
 	vmod_file_content                string // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
@@ -90,7 +89,6 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 		c.stmt(stmt)
 	}
 	c.check_scope_vars(c.file.scope)
-	c.post_process_generic_fns()
 }
 
 pub fn (mut c Checker) check_scope_vars(sc &ast.Scope) {
@@ -150,6 +148,17 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 				return_type: table.void_type
 			}
 			has_main_fn = true
+		}
+	}
+	// post process generic functions. must be done after all files have been
+	// checked, to eunsure all generic calls are processed as this information
+	// is needed when the generic type is auto inferred from the call argument
+	for i in 0 .. ast_files.len {
+		file := unsafe {&ast_files[i]}
+		if file.generic_fns.len > 0 {
+			c.file = file
+			c.mod = file.mod.name
+			c.post_process_generic_fns()
 		}
 	}
 	c.verify_all_vweb_routes()
@@ -1510,10 +1519,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name in ['println', 'print'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
-		// check optional argument
-		if call_expr.args[0].typ.has_flag(.optional) {
-			c.error('cannot print optional type', call_expr.args[0].expr.position())
-		}
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:
@@ -2348,8 +2353,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
 		mut expected_value_type := table.void_type
 		mut expecting_interface_array := false
-		cap := array_init.exprs.len
-		mut interface_types := []table.Type{cap: cap}
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
 			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
@@ -2367,12 +2370,13 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// }
 		for i, expr in array_init.exprs {
 			typ := c.expr(expr)
+			array_init.expr_types << typ
+			// The first element's type
 			if expecting_interface_array {
 				if i == 0 {
 					elem_type = expected_value_type
 					c.expected_type = elem_type
 				}
-				interface_types << typ
 				continue
 			}
 			// The first element's type
@@ -2384,9 +2388,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			c.check_expected(typ, elem_type) or {
 				c.error('invalid array element: $err', expr.position())
 			}
-		}
-		if expecting_interface_array {
-			array_init.interface_types = interface_types
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
@@ -4493,12 +4494,13 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	for i in 0 .. c.generic_funcs.len {
+	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
-		mut node := c.generic_funcs[i]
+		mut node := c.file.generic_fns[i]
+		c.mod = node.mod
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
 			c.fn_decl(mut node)
@@ -4507,12 +4509,7 @@ fn (mut c Checker) post_process_generic_fns() {
 			}
 		}
 		c.cur_generic_type = 0
-		c.generic_funcs[i] = 0
 	}
-	// The generic funtions for each file/mod should be
-	// postprocessed just once in the checker, while the file/mod
-	// context is still the same.
-	c.generic_funcs = []
 }
 
 fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
@@ -4524,7 +4521,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_gen_types with
 		// the correct concrete types.
-		c.generic_funcs << node
+		c.file.generic_fns << node
 		return
 	}
 	if node.language == .v && !c.is_builtin_mod {

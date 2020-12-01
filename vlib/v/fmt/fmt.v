@@ -471,7 +471,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.writeln('')
 				}
 				.delete {
-					// TODO delete
+					f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+					f.expr(node.where_expr)
+					f.writeln('')
 				}
 			}
 			f.writeln('}')
