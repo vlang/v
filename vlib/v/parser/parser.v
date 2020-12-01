@@ -1624,7 +1624,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	pos_t := p.tok.position()
 	if import_pos.line_nr == pos_t.line_nr {
-		if p.tok.kind !in [.lcbr, .eof] {
+		if p.tok.kind !in [.lcbr, .eof, .comment] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
 		}
 	}
