@@ -2353,8 +2353,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	if array_init.exprs.len > 0 && array_init.elem_type == table.void_type {
 		mut expected_value_type := table.void_type
 		mut expecting_interface_array := false
-		cap := array_init.exprs.len
-		mut interface_types := []table.Type{cap: cap}
 		if c.expected_type != 0 {
 			expected_value_type = c.table.value_type(c.expected_type)
 			if c.table.get_type_symbol(expected_value_type).kind == .interface_ {
@@ -2372,12 +2370,13 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// }
 		for i, expr in array_init.exprs {
 			typ := c.expr(expr)
+			array_init.expr_types << typ
+			// The first element's type
 			if expecting_interface_array {
 				if i == 0 {
 					elem_type = expected_value_type
 					c.expected_type = elem_type
 				}
-				interface_types << typ
 				continue
 			}
 			// The first element's type
@@ -2389,9 +2388,6 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			c.check_expected(typ, elem_type) or {
 				c.error('invalid array element: $err', expr.position())
 			}
-		}
-		if expecting_interface_array {
-			array_init.interface_types = interface_types
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,

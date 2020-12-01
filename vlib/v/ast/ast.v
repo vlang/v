@@ -825,6 +825,7 @@ pub:
 	has_cap         bool
 	has_default     bool
 pub mut:
+	expr_types      []table.Type // [Dog, Cat] // also used for interface_types
 	is_interface    bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
 	interface_types []table.Type // [Dog, Cat]
 	interface_type  table.Type // Animal
