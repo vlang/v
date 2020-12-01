@@ -312,21 +312,14 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			}
 			name := node.name.after('.')
 			f.writeln('enum $name {')
-			f.comments(node.comments, {
-				inline: true
-				level: .indent
-			})
+			f.comments(node.comments, inline: true, level: .indent)
 			for field in node.fields {
 				f.write('\t$field.name')
 				if field.has_expr {
 					f.write(' = ')
 					f.expr(field.expr)
 				}
-				f.comments(field.comments, {
-					inline: true
-					has_nl: false
-					level: .indent
-				})
+				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 				f.writeln('')
 			}
 			f.writeln('}\n')
@@ -566,9 +559,7 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	}
 	if comments.len > 0 {
 		f.write(' ')
-		f.comments(comments, CommentsOptions{
-			has_nl: false
-		})
+		f.comments(comments, has_nl: false)
 	}
 	f.writeln('\n')
 }
@@ -668,9 +659,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			} else {
 				f.write(' ')
 			}
-			f.comments(comments[comm_idx..], {
-				level: .indent
-			})
+			f.comments(comments[comm_idx..], level: .indent)
 		} else {
 			f.writeln('')
 		}
@@ -684,9 +673,7 @@ pub fn (mut f Fmt) comments_after_last_field(comments []ast.Comment) {
 	for comment in comments {
 		f.indent++
 		f.empty_line = true
-		f.comment(comment, {
-			inline: true
-		})
+		f.comment(comment, inline: true)
 		f.writeln('')
 		f.indent--
 	}
@@ -702,11 +689,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	for method in node.methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod).after('fn '))
-		f.comments(method.comments, {
-			inline: true
-			has_nl: false
-			level: .indent
-		})
+		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
 	f.writeln('}\n')
@@ -795,13 +778,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.Comment {
 			if f.array_init_depth > 0 {
-				f.comment(node, {
-					iembed: true
-				})
+				f.comment(node, iembed: true)
 			} else {
-				f.comment(node, {
-					inline: true
-				})
+				f.comment(node, inline: true)
 			}
 		}
 		ast.ComptimeCall {
@@ -935,9 +914,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.indent++
 			for branch in node.branches {
 				if branch.comment.text != '' {
-					f.comment(branch.comment, {
-						inline: true
-					})
+					f.comment(branch.comment, inline: true)
 					f.writeln('')
 				}
 				if branch.is_else {
@@ -960,9 +937,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				}
 				f.writeln('}')
 				if branch.post_comments.len > 0 {
-					f.comments(branch.post_comments, {
-						inline: true
-					})
+					f.comments(branch.post_comments, inline: true)
 				}
 			}
 			f.indent--
@@ -1136,9 +1111,6 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		}
 		if i > 0 {
 			f.wrap_long_line(2, true)
-		}
-		if i == args.len - 1 && arg.expr is ast.StructInit {
-			f.use_short_fn_args = true
 		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
@@ -1435,9 +1407,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	f.single_line_if = false
 	if it.post_comments.len > 0 {
 		f.writeln('')
-		f.comments(it.post_comments, {
-			has_nl: false
-		})
+		f.comments(it.post_comments, has_nl: false)
 	}
 }
 
@@ -1446,6 +1416,9 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	if node.args.len > 0 && (node.args.last()).expr is ast.StructInit {
+		f.use_short_fn_args = true
+	}
 	for arg in node.args {
 		f.comments(arg.comments, {})
 	}
@@ -1548,9 +1521,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 	}
 	for branch in it.branches {
 		for cmnt in branch.comments {
-			f.comment(cmnt, {
-				inline: true
-			})
+			f.comment(cmnt, inline: true)
 			f.writeln('')
 		}
 		if !branch.is_else {
@@ -1561,9 +1532,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 				if j < branch.ecmnts.len && branch.ecmnts[j].len > 0 {
 					f.write(' ')
 					for cmnt in branch.ecmnts[j] {
-						f.comment(cmnt, {
-							iembed: true
-						})
+						f.comment(cmnt, iembed: true)
 					}
 				}
 				if j < branch.exprs.len - 1 {
@@ -1592,9 +1561,7 @@ pub fn (mut f Fmt) match_expr(it ast.MatchExpr) {
 			}
 		}
 		if branch.post_comments.len > 0 {
-			f.comments(branch.post_comments, {
-				inline: true
-			})
+			f.comments(branch.post_comments, inline: true)
 		}
 	}
 	f.indent--
@@ -1771,9 +1738,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		if i < it.ecmnts.len && it.ecmnts[i].len > 0 {
 			f.write(' ')
 			for cmt in it.ecmnts[i] {
-				f.comment(cmt, {
-					iembed: true
-				})
+				f.comment(cmt, iembed: true)
 			}
 		}
 		if i == it.exprs.len - 1 {
@@ -1840,21 +1805,17 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		if !f.use_short_fn_args {
 			f.writeln('$name{')
 		}
-		f.comments(it.pre_comments, {
-			inline: true
-			has_nl: true
-			level: .indent
-		})
+		f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
 		f.indent++
+		single_line_short_args := f.use_short_fn_args && it.fields.len < 4
+		if f.use_short_fn_args && !single_line_short_args {
+			f.writeln('')
+		}
 		for i, field in it.fields {
 			f.write('$field.name: ')
 			f.prefix_expr_cast_expr(field.expr)
-			f.comments(field.comments, {
-				inline: true
-				has_nl: false
-				level: .indent
-			})
-			if f.use_short_fn_args {
+			f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+			if single_line_short_args {
 				if i < it.fields.len - 1 {
 					f.write(', ')
 				}
@@ -1885,9 +1846,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		comments := field.comments
 		mut j := 0
 		for j < comments.len && comments[j].pos.pos < field.pos.pos {
-			f.comment(comments[j], {
-				inline: true
-			})
+			f.comment(comments[j], inline: true)
 			f.writeln('')
 			j++
 		}
@@ -1925,9 +1884,7 @@ fn (mut f Fmt) global_decl(it ast.GlobalDecl) {
 	for field in it.fields {
 		comments := field.comments
 		for comment in comments {
-			f.comment(comment, {
-				inline: true
-			})
+			f.comment(comment, inline: true)
 			f.writeln('')
 		}
 		f.write('$field.name ')
