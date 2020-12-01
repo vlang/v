@@ -343,9 +343,11 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 
 pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	mut bs_name := name
+	mut bs_cname := name
 	p.next()
 	p.in_generic_params = true
 	bs_name += '<'
+	bs_cname += '_T_'
 	mut generic_types := []table.Type{}
 	mut is_instance := false
 	for {
@@ -355,12 +357,14 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		}
 		gts := p.table.get_type_symbol(gt)
 		bs_name += gts.name
+		bs_cname += gts.name
 		generic_types << gt
 		if p.tok.kind != .comma {
 			break
 		}
 		p.next()
 		bs_name += ','
+		bs_cname += '_'
 	}
 	p.check(.gt)
 	p.in_generic_params = false
@@ -379,7 +383,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
-			cname: util.no_dots(bs_name)
+			cname: util.no_dots(bs_cname)
 			mod: p.mod
 			info: table.GenericStructInst{
 				parent_idx: parent_idx

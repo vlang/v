@@ -531,8 +531,6 @@ fn (g &Gen) cc_type2(t table.Type) string {
 				sgtyps += '_$gts.name'
 			}
 			styp += sgtyps
-		} else if styp.contains('<') {
-			styp = styp.replace_each(['<', '_T_', '>', '', ',', '_'])
 		}
 	}
 	return styp
@@ -4531,8 +4529,7 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				if typ.info.generic_types.len > 0 {
 					continue
 				}
-				if name.contains('<') {
-					name = name.replace_each(['<', '_T_', '>', '', ',', '_'])
+				if name.contains('_T_') {
 					g.typedefs.writeln('typedef struct $name $name;')
 				}
 				// TODO avoid buffer manip
