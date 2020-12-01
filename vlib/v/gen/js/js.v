@@ -170,6 +170,9 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 				if stmt.is_method {
 					// Found struct method, store it to be generated along with the class.
 					mut class_name := g.table.get_type_name(stmt.receiver.typ)
+					if g.file.mod.name == 'builtin' && class_name[0..2] == 'V_' {
+						class_name = class_name[2..]
+					}
 					// Workaround until `map[key] << val` works.
 					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
