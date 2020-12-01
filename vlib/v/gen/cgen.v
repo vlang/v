@@ -4742,11 +4742,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
 				g.write(')')
 			}
 		}
-	} else if g.typ(typ).starts_with('Option') {
-		str_fn_name := 'OptionBase_str'
-		g.write('${str_fn_name}(*(OptionBase*)&')
-		g.expr(expr)
-		g.write(')')
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')

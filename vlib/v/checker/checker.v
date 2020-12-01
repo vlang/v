@@ -1510,10 +1510,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if fn_name in ['println', 'print'] && call_expr.args.len > 0 {
 		c.expected_type = table.string_type
 		call_expr.args[0].typ = c.expr(call_expr.args[0].expr)
-		// check optional argument
-		if call_expr.args[0].typ.has_flag(.optional) {
-			c.error('cannot print optional type', call_expr.args[0].expr.position())
-		}
 		/*
 		// TODO: optimize `struct T{} fn (t &T) str() string {return 'abc'} mut a := []&T{} a << &T{} println(a[0])`
 		// It currently generates:

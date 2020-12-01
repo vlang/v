@@ -1,6 +1,0 @@
-vlib/v/checker/tests/print_optional_type_err.vv:3:13: error: cannot print optional type
-    1 | import os
-    2 | fn main() {
-    3 |     println(os.ls('.'))
-      |                ~~~~~~~
-    4 | }

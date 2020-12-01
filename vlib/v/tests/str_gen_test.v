@@ -290,3 +290,71 @@ fn test_multi_generic_struct() {
 	assert '$x' == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 	assert x.str() == 'MultiGenericStruct<TestStruct, TestStruct>{\n    t: TestStruct{\n        x: 0\n    }\n    x: TestStruct{\n        x: 0\n    }\n}'
 }
+
+fn create_option_err() ?string {
+	return error('this is an error')
+}
+
+fn test_option_err() {
+	assert '$create_option_err()' == 'Option(error: \'this is an error\')'
+}
+
+fn create_option_none() ?string {
+	return none
+}
+
+fn test_option_none() {
+	assert '$create_option_none()' == 'Option(none)'
+}
+
+fn create_option_string() ?string {
+	return 'this is a string'
+}
+
+fn test_option_string() {
+	assert '$create_option_string()' == 'Option(\'this is a string\')'
+}
+
+fn create_option_int() ?int {
+	return 5
+}
+
+fn test_option_int() {
+	assert '$create_option_int()' == 'Option(5)'
+}
+
+fn create_option_array() ?[]int {
+	return [1, 2, 3]
+}
+
+fn test_option_array() {
+	assert '$create_option_array()' == 'Option([1, 2, 3])'
+}
+
+fn create_option_struct() ?TestStruct {
+	return TestStruct{}
+}
+
+fn test_option_struct() {
+	assert '$create_option_struct()' == 'Option(TestStruct{\n    x: 0\n})'
+}
+
+struct OptionWrapper {
+	x ?TestStruct
+}
+
+fn test_struct_with_option() {
+	w := OptionWrapper{}
+	assert '$w' == 'OptionWrapper{\n    x: Option(error: \'\')\n}'
+}
+
+/* TODO: doesn't work yet
+struct OptionWrapperInt {
+	x ?int
+}
+
+fn test_struct_with_option() {
+	w := OptionWrapperInt{}
+	assert '$w' == 'OptionWrapperInt{\n    x: Option(error: \'\')\n}'
+}
+*/

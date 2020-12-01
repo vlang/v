@@ -23,16 +23,6 @@ struct OptionBase {
 	// derived Option_xxx types
 }
 
-pub fn (o OptionBase) str() string {
-   if o.ok && !o.is_none {
-	  return 'Option{ valid }'
-   }
-   if o.is_none {
-	  return 'Option{ none }'
-   }
-   return 'Option{ error: "${o.error}" }'
-}
-
 // `fn foo() ?Foo { return foo }` => `fn foo() ?Foo { return opt_ok(foo); }`
 fn opt_ok2(data voidptr, mut option &OptionBase, size int) {
 	unsafe {
