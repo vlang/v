@@ -45,13 +45,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
 					p.open_scope()
-					p.scope.register('errcode', ast.Var{
+					p.scope.register(ast.Var{
 						name: 'errcode'
 						typ: table.int_type
 						pos: body_pos
 						is_used: true
 					})
-					p.scope.register('err', ast.Var{
+					p.scope.register(ast.Var{
 						name: 'err'
 						typ: table.string_type
 						pos: body_pos
@@ -100,7 +100,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				var_name: var_name
 				expr: expr
 			}
-			p.scope.register(var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: var_name
 				expr: cond
 				pos: var_pos

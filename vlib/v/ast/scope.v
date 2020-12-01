@@ -121,7 +121,8 @@ pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
 	s.struct_fields << field
 }
 
-pub fn (mut s Scope) register(name string, obj ScopeObject) {
+pub fn (mut s Scope) register(obj ScopeObject) {
+	name := typeof(obj).name
 	if name == '_' {
 		return
 	}

@@ -1276,7 +1276,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 }
 
 fn (mut p Parser) scope_register_it() {
-	p.scope.register('it', ast.Var{
+	p.scope.register(ast.Var{
 		name: 'it'
 		pos: p.tok.position()
 		is_used: true
@@ -1284,12 +1284,12 @@ fn (mut p Parser) scope_register_it() {
 }
 
 fn (mut p Parser) scope_register_ab() {
-	p.scope.register('a', ast.Var{
+	p.scope.register(ast.Var{
 		name: 'a'
 		pos: p.tok.position()
 		is_used: true
 	})
-	p.scope.register('b', ast.Var{
+	p.scope.register(ast.Var{
 		name: 'b'
 		pos: p.tok.position()
 		is_used: true
@@ -1328,13 +1328,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
-			p.scope.register('errcode', ast.Var{
+			p.scope.register(ast.Var{
 				name: 'errcode'
 				typ: table.int_type
 				pos: p.tok.position()
 				is_used: true
 			})
-			p.scope.register('err', ast.Var{
+			p.scope.register(ast.Var{
 				name: 'err'
 				typ: table.string_type
 				pos: p.tok.position()
@@ -1746,7 +1746,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field.name, field)
+		p.global_scope.register(field)
 		comments = []
 	}
 	p.top_level_statement_end()
@@ -1835,7 +1835,7 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 			comments: comments
 		}
 		fields << field
-		p.global_scope.register(field.name, field)
+		p.global_scope.register(field)
 		comments = []
 	}
 	p.check(.rpar)
