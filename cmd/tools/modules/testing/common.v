@@ -14,9 +14,11 @@ pub mut:
 	skip_files    []string
 	vexe          string
 	vroot         string
+	vtmp_dir      string
 	vargs         string
 	failed        bool
 	benchmark     benchmark.Benchmark
+	rm_binaries   bool = true
 	silent_mode   bool
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
@@ -102,11 +104,13 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
+	new_vtmp_dir := setup_new_vtmp_folder()
 	return TestSession{
 		vexe: vexe
 		vroot: os.dir(vexe)
 		skip_files: skip_files
 		vargs: vargs
+		vtmp_dir: new_vtmp_dir
 		silent_mode: _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
 	}
@@ -124,7 +128,6 @@ pub fn (mut ts TestSession) test() {
 	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
 		ts.root_relative = true
 	}
-	new_vtmp_dir := setup_new_vtmp_folder()
 	//
 	ts.init()
 	mut remaining_files := []string{}
@@ -174,13 +177,15 @@ pub fn (mut ts TestSession) test() {
 	eprintln(term.h_divider('-'))
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
-		os.rmdir_all(new_vtmp_dir)
+		if ts.rm_binaries {
+			os.rmdir_all(ts.vtmp_dir)
+		}
 	}
 }
 
 fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
-	tmpd := os.temp_dir()
+	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
@@ -203,14 +208,15 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			'') }
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
-		os.rm(generated_binary_fpath)
+		if ts.rm_binaries {
+			os.rm(generated_binary_fpath)
+		}
 	}
 	mut cmd_options := [ts.vargs]
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}
 	cmd := '"$ts.vexe" ' + cmd_options.join(' ') + ' "$file"'
-	// eprintln('>>> v cmd: $cmd')
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
@@ -251,7 +257,9 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 	}
 	if os.exists(generated_binary_fpath) {
-		os.rm(generated_binary_fpath)
+		if ts.rm_binaries {
+			os.rm(generated_binary_fpath)
+		}
 	}
 	return sync.no_result
 }
@@ -268,9 +276,7 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	return v_build_failing_skipped(zargs, folder, [])
 }
 
-pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
-	main_label := 'Building $folder ...'
-	finish_label := 'building $folder'
+pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
@@ -314,6 +320,13 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 	}
 	session.files << mains
 	session.skip_files << skipped
+	return session
+}
+
+pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
+	main_label := 'Building $folder ...'
+	finish_label := 'building $folder'
+	mut session := prepare_test_session(zargs, folder, oskipped, main_label)
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	return session.failed
