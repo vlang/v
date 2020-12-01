@@ -782,9 +782,25 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			// go back 1 position is important so we dont get the
 			// internal scope of for loops and possibly other nodes
 			// g.autofree_scope_vars(stmt.position().pos - 1)
-			stmt_pos := stmt.position()
-			g.writeln('// af scope_vars')
-			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
+			mut stmt_pos := stmt.position()
+			if stmt_pos.pos == 0 {
+				// Do not autofree if the position is 0, since the correct scope won't be found.
+				// Report a bug, since position shouldn't be 0 for most nodes.
+				if stmt is ast.Module {
+					return
+				}
+				if stmt is ast.ExprStmt {
+					// For some reason ExprStmt.pos is 0 when ExprStmt.expr is comp if expr
+					// Extract the pos. TODO figure out why and fix.
+					stmt_pos = stmt.expr.position()
+				}
+				if stmt_pos.pos == 0 {
+					print('autofree: first stmt pos = 0. ')
+					println(typeof(stmt))
+					return
+				}
+			}
+			g.autofree_scope_vars(stmt_pos.pos, stmt_pos.line_nr, false)
 		}
 	}
 }
