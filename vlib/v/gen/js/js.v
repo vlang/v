@@ -411,12 +411,20 @@ fn (mut g JsGen) get_alias(name string) string {
 }
 
 fn (mut g JsGen) js_name(name_ string) string {
-	ns := get_ns(name_)
-	mut name := if ns == g.namespace { name_.split('.').last() } else { g.get_alias(name_) }
+	mut is_js := false
+	mut name := name_
+	if name.starts_with('JS.') {
+		name = name[3..]
+		is_js = true
+	}
+	ns := get_ns(name)
+	name = if ns == g.namespace { name.split('.').last() } else { g.get_alias(name) }
 	mut parts := name.split('.')
-	for i, p in parts {
-		if p in js_reserved {
-			parts[i] = 'v_$p'
+	if !is_js {
+		for i, p in parts {
+			if p in js_reserved {
+				parts[i] = 'v_$p'
+			}
 		}
 	}
 	return parts.join('.')
@@ -1168,12 +1176,7 @@ fn (mut g JsGen) gen_array_init_values(exprs []ast.Expr) {
 }
 
 fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
-	mut name := ''
-	if it.name.starts_with('JS.') {
-		name = it.name[3..]
-	} else {
-		name = g.js_name(it.name)
-	}
+	mut name := g.js_name(it.name)
 	call_return_is_optional := it.return_type.has_flag(.optional)
 	if call_return_is_optional {
 		g.writeln('(function(){')
@@ -1224,7 +1227,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			g.write('builtin.')
 		}
 	}
-	g.write('${g.js_name(name)}(')
+	g.write('${name}(')
 	for i, arg in it.args {
 		g.expr(arg.expr)
 		if i != it.args.len - 1 {
