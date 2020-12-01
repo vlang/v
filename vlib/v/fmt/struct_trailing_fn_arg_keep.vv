@@ -1,0 +1,15 @@
+struct Bar {
+    x string
+    y int
+}
+
+fn main() {
+    bar_func(x: 'test', y: 13)
+    foobar('first arg', y: 42)
+}
+
+fn bar_func(bar Bar) {
+}
+
+fn foobar(foo string, bar Bar) {
+}

@@ -1137,6 +1137,9 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 		if i > 0 {
 			f.wrap_long_line(2, true)
 		}
+		if i == args.len - 1 && arg.expr is ast.StructInit {
+			f.use_short_fn_args = true
+		}
 		f.expr(arg.expr)
 		if i < args.len - 1 {
 			f.write(', ')
@@ -1443,15 +1446,6 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
-	/*
-	if node.args.len == 1 && node.expected_arg_types.len == 1 && node.args[0].expr is ast.StructInit &&
-		node.args[0].typ == node.expected_arg_types[0] {
-		// struct_init := node.args[0].expr as ast.StructInit
-		// if struct_init.typ == node.args[0].typ {
-		f.use_short_fn_args = true
-		// }
-	}
-	*/
 	for arg in node.args {
 		f.comments(arg.comments, {})
 	}
@@ -1843,9 +1837,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		f.write('}')
 	} else {
-		if f.use_short_fn_args {
-			f.writeln('')
-		} else {
+		if !f.use_short_fn_args {
 			f.writeln('$name{')
 		}
 		f.comments(it.pre_comments, {
@@ -1854,7 +1846,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 			level: .indent
 		})
 		f.indent++
-		for field in it.fields {
+		for i, field in it.fields {
 			f.write('$field.name: ')
 			f.prefix_expr_cast_expr(field.expr)
 			f.comments(field.comments, {
@@ -1862,7 +1854,13 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				has_nl: false
 				level: .indent
 			})
-			f.writeln('')
+			if f.use_short_fn_args {
+				if i < it.fields.len - 1 {
+					f.write(', ')
+				}
+			} else {
+				f.writeln('')
+			}
 		}
 		f.indent--
 		if !f.use_short_fn_args {
