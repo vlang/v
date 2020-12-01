@@ -122,7 +122,7 @@ jobs:
         name: ${{ matrix.version }}
         path: ./${{ matrix.version }}
     - name: Build
-      run: zip -r ${{ matrix.version }}.zip ./${{ matrix.version }}/*
+      run: zip -r v_${{ matrix.version }}.zip ./${{ matrix.version }}/*
     - name: Get short tag name
       uses: jungwinter/split@v1
       id: split
