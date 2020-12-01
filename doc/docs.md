@@ -610,7 +610,6 @@ println(upper) // ['HELLO', 'WORLD']
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
 
-
 #### Multidimensional Arrays
 
 Arrays can have more than one dimension.
