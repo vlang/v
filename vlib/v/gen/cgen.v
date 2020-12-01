@@ -1453,9 +1453,7 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 				// without special casing ast.CastExpr here
 				g.write(ctoslit(unknown_value))
 			} else {
-				g.gen_expr_to_string(e, t) or {
-					g.write(ctoslit('[$err]'))
-				}
+				g.gen_expr_to_string(e, t)
 			}
 		}
 		ast.Type {
@@ -1463,9 +1461,7 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 			g.write(ctoslit('$sym.name'))
 		}
 		else {
-			g.gen_expr_to_string(e, t) or {
-				g.write(ctoslit('[$err]'))
-			}
+			g.gen_expr_to_string(e, t)
 		}
 	}
 	g.write(' /* typeof: ' + typeof(e) + ' type: ' + t.str() + ' */ ')
@@ -4664,90 +4660,6 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	return types_sorted
 }
 
-fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) ?bool {
-	mut typ := etype
-	mut sym := g.table.get_type_symbol(typ)
-	if mut sym.info is table.Alias {
-		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
-		if parent_sym.has_method('str') {
-			typ = sym.info.parent_type
-			sym = parent_sym
-		}
-	}
-	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
-	if typ.has_flag(.variadic) {
-		str_fn_name := g.gen_str_for_type(typ)
-		g.write('${str_fn_name}(')
-		g.expr(expr)
-		g.write(')')
-	} else if typ == table.string_type {
-		g.expr(expr)
-	} else if sym.kind == .enum_ {
-		is_var := match expr {
-			ast.SelectorExpr, ast.Ident { true }
-			else { false }
-		}
-		if is_var {
-			str_fn_name := g.gen_str_for_type(typ)
-			g.write('${str_fn_name}(')
-			g.enum_expr(expr)
-			g.write(')')
-		} else {
-			g.write('tos_lit("')
-			g.enum_expr(expr)
-			g.write('")')
-		}
-	} else if sym_has_str_method || sym.kind in
-		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
-		is_p := typ.is_ptr()
-		val_type := if is_p { typ.deref() } else { typ }
-		str_fn_name := g.gen_str_for_type(val_type)
-		if is_p && str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}((')
-		}
-		if is_p && !str_method_expects_ptr {
-			g.write('string_add(_SLIT("&"), ${str_fn_name}(*(')
-		}
-		if !is_p && !str_method_expects_ptr {
-			g.write('${str_fn_name}(')
-		}
-		if !is_p && str_method_expects_ptr {
-			g.write('${str_fn_name}(&')
-		}
-		if expr is ast.ArrayInit {
-			if expr.is_fixed {
-				s := g.typ(expr.typ)
-				g.write('($s)')
-			}
-		}
-		if expr is ast.CTempVar {
-			if expr.is_ptr {
-				g.write('*')
-			}
-		}
-		g.expr(expr)
-		if sym.kind == .struct_ && !sym_has_str_method {
-			if is_p {
-				g.write(')))')
-			} else {
-				g.write(')')
-			}
-		} else {
-			if is_p {
-				g.write(')))')
-			} else {
-				g.write(')')
-			}
-		}
-	} else {
-		str_fn_name := g.gen_str_for_type(typ)
-		g.write('${str_fn_name}(')
-		g.expr(expr)
-		g.write(')')
-	}
-	return true
-}
-
 // `nums.map(it % 2 == 0)`
 fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	g.inside_lambda = true
@@ -5553,21 +5465,6 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)
-}
-
-[inline]
-fn styp_to_str_fn_name(styp string) string {
-	return styp.replace('*', '_ptr') + '_str'
-}
-
-[inline]
-fn (mut g Gen) gen_str_for_type(typ table.Type) string {
-	// note: why was this here, removed for --usecache fix
-	// if g.pref.build_mode == .build_module {
-	// return ''
-	// }
-	styp := g.typ(typ)
-	return g.gen_str_for_type_with_styp(typ, styp)
 }
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {

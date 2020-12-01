@@ -201,6 +201,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			break
 		}
 		g.write(escaped_val)
+		typ := g.unwrap_generic(node.expr_types[i])
 		// write correct format specifier to intermediate string
 		g.write('%')
 		fspec := node.fmts[i]
@@ -214,7 +215,6 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		if node.precisions[i] != 987698 {
 			fmt = '${fmt}.${node.precisions[i]}'
 		}
-		typ := g.unwrap_generic(node.expr_types[i])
 		if fspec == `s` {
 			if node.fwidths[i] == 0 {
 				g.write('.*s')
@@ -268,12 +268,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.expr(expr)
 			}
-		} else if typ.has_flag(.variadic) {
-			g.gen_expr_to_string(expr, typ)
-		} else if typ == table.bool_type {
-			g.expr(expr)
-			g.write(' ? _SLIT("true") : _SLIT("false")')
-		} else if node.fmts[i] == `s` {
+		} else if node.fmts[i] == `s` || typ.has_flag(.variadic) {
 			g.gen_expr_to_string(expr, typ)
 		} else if typ.is_number() || typ.is_pointer() || node.fmts[i] == `d` {
 			if typ.is_signed() && node.fmts[i] in [`x`, `X`, `o`] {
@@ -303,4 +298,75 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		}
 	}
 	g.write(')')
+}
+
+fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
+	mut typ := etype
+	mut sym := g.table.get_type_symbol(typ)
+	// when type is alias, print the aliased value
+	if mut sym.info is table.Alias {
+		parent_sym := g.table.get_type_symbol(sym.info.parent_type)
+		if parent_sym.has_method('str') {
+			typ = sym.info.parent_type
+			sym = parent_sym
+		}
+	}
+	sym_has_str_method, str_method_expects_ptr, _ := sym.str_method_info()
+	if typ.has_flag(.variadic) {
+		str_fn_name := g.gen_str_for_type(typ)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
+	} else if typ == table.string_type {
+		g.expr(expr)
+	} else if typ == table.bool_type {
+		g.expr(expr)
+		g.write(' ? _SLIT("true") : _SLIT("false")')
+	} else if sym.kind == .none_ {
+		g.write('_SLIT("none")')
+	} else if sym.kind == .enum_ {
+		is_var := match expr {
+			ast.SelectorExpr, ast.Ident { true }
+			else { false }
+		}
+		if is_var {
+			str_fn_name := g.gen_str_for_type(typ)
+			g.write('${str_fn_name}(')
+			g.enum_expr(expr)
+			g.write(')')
+		} else {
+			g.write('_SLIT("')
+			g.enum_expr(expr)
+			g.write('")')
+		}
+	} else if sym_has_str_method || sym.kind in
+		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
+		is_ptr := typ.is_ptr()
+		str_fn_name := g.gen_str_for_type(typ)
+		if is_ptr {
+			g.write('_STR("&%.*s\\000", 2, ')
+		}
+		g.write('${str_fn_name}(')
+		if str_method_expects_ptr && !is_ptr {
+			g.write('&')
+		} else if !str_method_expects_ptr && is_ptr {
+			g.write('*')
+		}
+		if expr is ast.ArrayInit {
+			if expr.is_fixed {
+				s := g.typ(expr.typ)
+				g.write('($s)')
+			}
+		}
+		g.expr(expr)
+		g.write(')')
+		if is_ptr {
+			g.write(')')
+		}
+	} else {
+		str_fn_name := g.gen_str_for_type(typ)
+		g.write('${str_fn_name}(')
+		g.expr(expr)
+		g.write(')')
+	}
 }

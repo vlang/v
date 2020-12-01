@@ -239,7 +239,6 @@ fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
 	if key_type.is_string() {
 		key += '(($styp*)${keys_tmp}.data)[i];'
 	} else {
-		// g.gen_str_for_type(key_type)
 		// key += '${styp}_str((($styp*)${keys_tmp}.data)[i]);'
 		verror('json: encode only maps with string keys')
 	}

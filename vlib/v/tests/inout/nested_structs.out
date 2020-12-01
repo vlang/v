@@ -5,7 +5,7 @@ Aaa{
         name: ''
     }
 }
-Bbb{
+&Bbb{
     pass: false
     name: ''
 }
