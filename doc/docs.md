@@ -464,15 +464,6 @@ age := 12
 println('age = $age')
 ```
 
-#### String slicing
-
-We can extract parts of a string using `[start..end]` operator:
-
-```v
-s := 'hello world'
-println(s[0..5]) // "hello"
-```
-
 ### Numbers
 
 ```v
@@ -529,6 +520,8 @@ println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
+
+println(nums[0..2]) // slicing gives an array "[1, 5]"
 
 println(nums.len) // "3"
 nums = [] // The array is now empty
@@ -616,15 +609,6 @@ println(upper) // ['HELLO', 'WORLD']
 ```
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
-
-#### Array slicing
-
-As string slicing we can extract parts of an array using `[start..end]` operator:
-
-```v
-nums := [1, 2, 3, 4, 5, 6]
-println(nums[0..4]) // "[1, 2, 3, 4]"
-```
 
 
 #### Multidimensional Arrays
