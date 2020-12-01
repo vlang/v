@@ -77,7 +77,9 @@ pub mut:
 	show_c_output       bool // -show-c-output, print all cc output even if the code was compiled correctly
 	// NB: passing -cg instead of -g will set is_vlines to false and is_debug to true, thus making v generate cleaner C files,
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
-	use_cache           bool // turns on v usage of the module cache to speed up compilation.
+	// use cached modules to speed up compilation.
+	use_cache           bool //  = true
+	no_cache            bool
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
@@ -260,6 +262,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-usecache' {
 				res.use_cache = true
+			}
+			'-nocache' {
+				res.no_cache = true
 			}
 			'-prealloc' {
 				res.prealloc = true
