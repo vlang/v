@@ -278,6 +278,15 @@ fn string_array_get() {
 	println(s)
 }
 
+fn comp_if() {
+	// compif pos used to be 0, if it was the first statement in a block, vars wouldn't be freed
+	$if macos {
+		println('macos')
+	}
+	s := 'a' + 'b'
+	println(s)
+}
+
 fn main() {
 	println('start')
 	simple()
@@ -297,6 +306,7 @@ fn main() {
 	q := if_expr()
 	s := return_if_expr()
 	free_inside_opt_block()
+	comp_if()
 	// free_before_return()
 	// free_before_return_bool()
 	// free_before_break()
