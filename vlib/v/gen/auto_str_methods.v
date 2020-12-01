@@ -357,21 +357,8 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	} else {
 		g.auto_str_funcs.write('\treturn _STR("$clean_struct_v_type_name{\\n"')
 		for field in info.fields {
-			sym := g.table.get_type_symbol(field.typ)
 			mut fmt := if field.typ.is_ptr() { '&' } else { '' }
-			if field.typ.is_ptr() && (field.typ.is_int() || field.typ.is_float()) {
-				fmt += '%.*s\\000'
-			} else if sym.kind in [.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type] {
-				fmt += '%.*s\\000'
-			} else if sym.kind == .string {
-				fmt += "\'%.*s\\000\'"
-			} else if sym.kind in [.f32, .f64] {
-				fmt += '%g\\000' // g removes trailing zeros unlike %f
-			} else if sym.kind == .u64 {
-				fmt += '%lld\\000'
-			} else {
-				fmt += '%d\\000'
-			}
+			fmt += g.type_to_fmt(field.typ)
 			g.auto_str_funcs.writeln('\t\t"%.*s\\000    $field.name: $fmt\\n"')
 		}
 		g.auto_str_funcs.write('\t\t"%.*s\\000}", ${2 * (info.fields.len + 1)}')
