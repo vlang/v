@@ -221,6 +221,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
+		} else if typ.has_flag(.variadic) {
+			g.write('.*s')
 		} else if typ.is_float() {
 			g.write('$fmt${fspec:c}')
 		} else if typ.is_pointer() {
@@ -266,6 +268,8 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.expr(expr)
 			}
+		} else if typ.has_flag(.variadic) {
+			g.gen_expr_to_string(expr, typ)
 		} else if typ == table.bool_type {
 			g.expr(expr)
 			g.write(' ? _SLIT("true") : _SLIT("false")')
