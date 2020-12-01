@@ -1613,7 +1613,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	if f.is_generic && call_expr.generic_type == table.void_type {
 		// no type arguments given in call, attempt implicit instantiation
-		println('try infer for $f.name')
 		c.infer_fn_types(f, mut call_expr)
 	}
 	if call_expr.generic_type != table.void_type && f.return_type != 0 { // table.t_type {
