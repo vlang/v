@@ -24,14 +24,14 @@ The code is available <a href='https://github.com/vlang/v/tree/master/tutorials/
 
 ```
 wget https://github.com/vlang/v/releases/latest/download/linux.zip
-unzip linux.zip
+unzip v_linux.zip
 cd v
 sudo ./v symlink
 ```
 
 Now V should be globally available on your system.
 
-> On macOS use `macos.zip`, on Windows - `windows.zip`.
+> On macOS use `v_macos.zip`, on Windows - `v_windows.zip`.
 If you use a BSD system, Solaris, Android, or simply want to install V
 from source, follow the simple instructions here:
 https://github.com/vlang/v#installing-v-from-source
