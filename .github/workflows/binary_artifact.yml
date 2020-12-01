@@ -143,6 +143,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.get_release_info.outputs.upload_url }}
-        asset_path: ./${{ matrix.version }}.zip
-        asset_name: ${{ matrix.version }}.zip
+        asset_path: ./v_${{ matrix.version }}.zip
+        asset_name: v_${{ matrix.version }}.zip
         asset_content_type: application/zip
