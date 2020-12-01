@@ -363,11 +363,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		return
 	}
 	if node.name == 'str' {
-		mut styp := g.typ(node.receiver_type)
-		if node.receiver_type.is_ptr() {
-			styp = styp.replace('*', '')
-		}
-		g.gen_str_for_type_with_styp(node.receiver_type, styp)
+		g.gen_str_for_type(node.receiver_type)
 	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
@@ -549,55 +545,18 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 		// check if alias parent also not a string
 		if typ != table.string_type {
-			mut styp := g.typ(typ)
-			if typ.is_ptr() {
-				styp = styp.replace('*', '')
-			}
-			mut str_fn_name := g.gen_str_for_type_with_styp(typ, styp)
+			expr := node.args[0].expr
 			if g.autofree && !typ.has_flag(.optional) {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()
 				// tmps << tmp
-				g.write('string $tmp = ${str_fn_name}(')
-				g.expr(node.args[0].expr)
-				g.writeln('); ${print_method}($tmp); string_free(&$tmp); //MEM2 $styp')
+				g.write('string $tmp = ')
+				g.gen_expr_to_string(expr, typ)
+				g.writeln('; ${print_method}($tmp); string_free(&$tmp);')
 			} else {
-				expr := node.args[0].expr
-				is_var := match expr {
-					ast.SelectorExpr { true }
-					ast.Ident { true }
-					else { false }
-				}
-				if typ.is_ptr() && sym.kind != .struct_ {
-					// ptr_str() for pointers
-					styp = 'ptr'
-					str_fn_name = 'ptr_str'
-				}
-				if sym.kind == .enum_ {
-					if is_var {
-						g.write('${print_method}(${str_fn_name}(')
-					} else {
-						// when no var, print string directly
-						g.write('${print_method}(tos3("')
-					}
-					if typ.is_ptr() {
-						// dereference
-						g.write('*')
-					}
-					g.enum_expr(expr)
-					if !is_var {
-						// end of string
-						g.write('"')
-					}
-				} else {
-					g.write('${print_method}(${str_fn_name}(')
-					if typ.is_ptr() && sym.kind == .struct_ {
-						// dereference
-						g.write('*')
-					}
-					g.expr(expr)
-				}
-				g.write('))')
+				g.write('${print_method}(')
+				g.gen_expr_to_string(expr, typ)
+				g.write(')')
 			}
 			print_auto_str = true
 		}
