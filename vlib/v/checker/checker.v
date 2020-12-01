@@ -61,17 +61,10 @@ mut:
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	generic_fn_queue                 []&ast.FnDecl
 	vmod_file_content                string // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
-}
-
-struct GenericFnQueueInfo {
-	file_idx int
-	start    int
-	end      int
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -134,8 +127,6 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_mod_file := false
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
-	mut generic_fn_count := 0
-	mut generic_fn_queue_info := []GenericFnQueueInfo{}
 	for i in 0 .. ast_files.len {
 		file := unsafe {&ast_files[i]}
 		c.check(file)
@@ -145,12 +136,6 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			if c.check_file_in_main(file) {
 				has_main_fn = true
 			}
-		}
-		// add queue info for generic functions
-		if c.generic_fn_queue.len > 0 {
-			generic_fn_queue_info <<
-				GenericFnQueueInfo{i, generic_fn_count, c.generic_fn_queue.len}
-			generic_fn_count = c.generic_fn_queue.len
 		}
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
@@ -168,15 +153,13 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
-	if c.generic_fn_queue.len > 0 {
-		for queue_item in generic_fn_queue_info {
-			file := unsafe {&ast_files[queue_item.file_idx]}
-			// set the context
+	for i in 0 .. ast_files.len {
+		file := unsafe {&ast_files[i]}
+		if file.generic_fns.len > 0 {
 			c.file = file
 			c.mod = file.mod.name
-			c.post_process_generic_fns(queue_item.start, queue_item.end)
+			c.post_process_generic_fns()
 		}
-		c.generic_fn_queue = []
 	}
 	c.verify_all_vweb_routes()
 	// Make sure fn main is defined in non lib builds
@@ -4512,15 +4495,15 @@ fn (mut c Checker) fetch_and_verify_orm_fields(info table.Struct, pos token.Posi
 	return fields
 }
 
-fn (mut c Checker) post_process_generic_fns(start int, end int) {
+fn (mut c Checker) post_process_generic_fns() {
 	// Loop thru each generic function concrete type.
 	// Check each specific fn instantiation.
-	for i in start .. end {
+	for i in 0 .. c.file.generic_fns.len {
 		if c.table.fn_gen_types.len == 0 {
 			// no concrete types, so just skip:
 			continue
 		}
-		mut node := c.generic_fn_queue[i]
+		mut node := c.file.generic_fns[i]
 		c.mod = node.mod
 		for gen_type in c.table.fn_gen_types[node.name] {
 			c.cur_generic_type = gen_type
@@ -4530,7 +4513,6 @@ fn (mut c Checker) post_process_generic_fns(start int, end int) {
 			}
 		}
 		c.cur_generic_type = 0
-		c.generic_fn_queue[i] = 0
 	}
 }
 
@@ -4543,7 +4525,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// This is done so that all generic function calls can
 		// have a chance to populate c.table.fn_gen_types with
 		// the correct concrete types.
-		c.generic_fn_queue << node
+		c.file.generic_fns << node
 		return
 	}
 	if node.language == .v && !c.is_builtin_mod {
