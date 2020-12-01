@@ -1,13 +1,16 @@
+# Install SQLite Dependency
 
-# to use module `sqlite`, install `sqlite-devel` first.
+**Fedora 31**:
 
-for **Fedora 31**:
-
-     sudo dnf -y install sqlite-devel
+`sudo dnf -y install sqlite-devel`
 
 
- for **Ubuntu 20.04**:
- 
-     sudo apt install -y libsqlite3-dev
-     
+**Ubuntu 20.04**:
 
+`sudo apt install -y libsqlite3-dev`
+
+
+**Windows**:
+- Download the source zip from [SQLite Downloads](https://sqlite.org/download.html)
+- Create a new `sqlite` subfolder inside `v/thirdparty`
+- Extract the zip into that folder
