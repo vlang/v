@@ -106,6 +106,10 @@ fn (mut p Preferences) try_to_use_tcc_by_default() {
 		$if macos {
 			return
 		}
+		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
+		if p.is_prod {
+			return
+		}
 		p.ccompiler = default_tcc_compiler()
 		return
 	}
