@@ -1265,7 +1265,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 			f.stmts(node.stmts)
 			f.write('}')
 		}
-		if !node.is_anon {
+		if !node.is_anon && !node.no_body {
 			f.writeln('\n')
 		}
 	} else {
