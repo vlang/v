@@ -2663,6 +2663,8 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 			repr += ' ${util.strip_main_name(g.table.get_type_name(fn_info.return_type))}'
 		}
 		g.write('tos_lit("$repr")')
+	} else if node.expr_type.has_flag(.variadic) {
+		g.write('tos_lit("...${util.strip_main_name(sym.name)}")')
 	} else {
 		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
 	}

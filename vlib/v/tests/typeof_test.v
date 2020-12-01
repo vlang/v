@@ -2,7 +2,7 @@ fn test_typeof_on_simple_expressions() {
 	a := int(123)
 	assert typeof(int(42)) == 'int'
 	assert typeof(f64(3.14)) == 'f64'
-	assert typeof(int(2)+2*10) == 'int'
+	assert typeof(int(2) + 2 * 10) == 'int'
 	assert typeof(f64(1.0) * 12.2) == 'f64'
 	// assert typeof(1.0 * f32(12.2)) == 'f32'
 	assert typeof(a) == 'int'
@@ -47,13 +47,13 @@ fn test_typeof_on_structs() {
 	assert typeof(astruct_dynamic).name == '[]FooBar'
 }
 
-type MySumType = int | f32 | FooBar
+type MySumType = FooBar | f32 | int
 
 pub fn (ms MySumType) str() string {
 	match ms {
 		int { return ms.str() }
 		f32 { return ms.str() }
-		//FooBar { return it.x.str() }
+		// FooBar { return it.x.str() }
 		else { return 'unknown: ' + typeof(ms) }
 	}
 }
@@ -61,7 +61,9 @@ pub fn (ms MySumType) str() string {
 fn test_typeof_on_sumtypes() {
 	a := MySumType(int(32))
 	b := MySumType(f32(123.0))
-	c := MySumType(FooBar{x:43})
+	c := MySumType(FooBar{
+		x: 43
+	})
 	assert typeof(a) == 'int'
 	assert typeof(b) == 'f32'
 	assert typeof(c) == 'FooBar'
@@ -75,11 +77,20 @@ fn test_typeof_on_sumtypes() {
 }
 
 //
+struct UnaryExpr {
+	a string
+}
 
-struct UnaryExpr { a string }
-struct BinExpr { a string b string }
-struct BoolExpr { z int }
-type ExprType = BoolExpr | BinExpr | UnaryExpr
+struct BinExpr {
+	a string
+	b string
+}
+
+struct BoolExpr {
+	z int
+}
+
+type ExprType = BinExpr | BoolExpr | UnaryExpr
 
 fn fexpr(k int) ExprType {
 	match k {
@@ -108,10 +119,14 @@ fn test_typeof_on_sumtypes_of_structs() {
 fn myfn(i int) int {
 	return i
 }
-fn myfn2() {}
+
+fn myfn2() {
+}
+
 fn myfn3(i int, s string) byte {
 	return byte(0)
 }
+
 fn myfn4() i8 {
 	return -1
 }
@@ -139,13 +154,30 @@ fn array_item_type<T>(v []T) string {
 fn test_generic_type() {
 	v := 5
 	assert type_name(v) == 'int'
-	//assert type_name(&v) == '&int'
-	//assert type_name([v]!!) == '[1]int'
+	// assert type_name(&v) == '&int'
+	// assert type_name([v]!!) == '[1]int'
 	assert type_name([v]) == '[]int'
 	assert type_name([[v]]) == '[][]int'
 	assert type_name(FooBar{}) == 'FooBar'
-
 	assert array_item_type([v]) == 'int'
 	assert array_item_type([[v]]) == '[]int'
-	//assert array_item_type([&v]) == '&int'
+	// assert array_item_type([&v]) == '&int'
+}
+
+fn variadic_int(x ...int) string {
+	return typeof(x)
+}
+
+fn variadic_bool(x ...bool) string {
+	return typeof(x)
+}
+
+fn variadic_f64(x ...f64) string {
+	return typeof(x)
+}
+
+fn test_variadic_type() {
+	assert variadic_int(1, 2, 3) == '...int'
+	assert variadic_bool(true, false) == '...bool'
+	assert variadic_f64(3.1, 3.2) == '...f64'
 }
