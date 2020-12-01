@@ -81,11 +81,11 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
+pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
-		table: b_table
+		table: table
 		pref: pref
 		scope: scope
 		errors: []errors.Error{}
@@ -95,7 +95,25 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 	return p.parse()
 }
 
-pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	s := scanner.new_scanner(text, comments_mode, pref)
+	mut p := Parser{
+		scanner: s
+		comments_mode: comments_mode
+		table: table
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: global_scope
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+	return p.parse()
+}
+
+pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -107,7 +125,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
-		table: b_table
+		table: table
 		file_name: path
 		file_base: os.base(path)
 		file_name_dir: os.dir(path)
