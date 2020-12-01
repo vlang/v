@@ -25,39 +25,40 @@ pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Config {
 pub:
-	width             int
-	height            int
-	use_ortho         bool
-	retina            bool
-	resizable         bool
-	user_data         voidptr
-	font_size         int
-	create_window     bool
+	width                 int
+	height                int
+	use_ortho             bool
+	retina                bool
+	resizable             bool
+	user_data             voidptr
+	font_size             int
+	create_window         bool
 	// window_user_ptr voidptr
-	window_title      string
-	borderless_window bool
-	always_on_top     bool
-	bg_color          gx.Color
-	init_fn           FNCb = voidptr(0)
-	frame_fn          FNCb = voidptr(0)
-	cleanup_fn        FNCb = voidptr(0)
-	fail_fn           FNFail = voidptr(0)
-	event_fn          FNEvent = voidptr(0)
-	keydown_fn        FNKeyDown = voidptr(0)
+	window_title          string
+	borderless_window     bool
+	always_on_top         bool
+	bg_color              gx.Color
+	init_fn               FNCb = voidptr(0)
+	frame_fn              FNCb = voidptr(0)
+	cleanup_fn            FNCb = voidptr(0)
+	fail_fn               FNFail = voidptr(0)
+	event_fn              FNEvent = voidptr(0)
+	keydown_fn            FNKeyDown = voidptr(0)
 	// special case of event_fn
-	char_fn           FNChar = voidptr(0)
+	char_fn               FNChar = voidptr(0)
 	// special case of event_fn
-	move_fn           FNMove = voidptr(0)
+	move_fn               FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn          FNMove = voidptr(0)
+	click_fn              FNMove = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen        bool
-	scale             f32 = 1.0
+	fullscreen            bool
+	scale                 f32 = 1.0
 	// vid needs this
 	// init_text bool
-	font_path         string
-	ui_mode           bool
+	font_path             string
+	custom_bold_font_path string
+	ui_mode               bool // refreshes only on events to save CPU usage
 }
 
 pub struct Context {
@@ -122,6 +123,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 		// t := time.ticks()
 		g.ft = new_ft({
 			font_path: g.config.font_path
+			custom_bold_font_path: g.config.custom_bold_font_path
 			scale: sapp.dpi_scale()
 		}) or {
 			panic(err)

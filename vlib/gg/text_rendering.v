@@ -26,6 +26,7 @@ pub:
 
 struct FTConfig {
 	font_path string
+	custom_bold_font_path string
 	scale     f32 = 1.0
 	font_size int
 }
@@ -52,7 +53,7 @@ fn new_ft(c FTConfig) ?&FT {
 			return none
 		}
 	}
-	bold_path := get_font_path_variant(c.font_path, .bold)
+	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path, .bold)}
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bytes
