@@ -113,7 +113,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		println('>>> end of vweb template END')
 		println('\n\n')
 	}
-	mut file := parse_text(v_code, p.table, p.pref, scope, p.global_scope)
+	mut file := parse_comptime(v_code, p.table, p.pref, scope, p.global_scope)
 	file = {
 		file |
 		path: tmpl_path
