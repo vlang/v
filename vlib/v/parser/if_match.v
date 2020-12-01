@@ -18,8 +18,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	pos := if is_comptime {
 		p.inside_ct_if_expr = true
 		p.next() // `$`
-		// p.prev_tok.position().extend(p.tok.position())
-		p.tok.position()
+		p.prev_tok.position().extend(p.tok.position())
 	} else {
 		p.tok.position()
 	}
