@@ -414,6 +414,7 @@ pub mut:
 	imports      []Import
 	errors       []errors.Error
 	warnings     []errors.Warning
+	generic_fns  []&FnDecl
 }
 
 pub struct IdentFn {
