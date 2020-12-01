@@ -63,3 +63,7 @@ fn JS.Math.round(f64) f64
 fn JS.Math.sin(f64) f64
 fn JS.Math.sqrt(f64) f64
 fn JS.Math.tan(f64) f64
+
+// JSON
+fn JS.JSON.stringify(any) string
+fn JS.JSON.parse(string) any
