@@ -76,8 +76,12 @@ fn test_parse_user() {
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
 }
 
+fn (mut u User) foo() string {
+	return json.encode(u)
+}
+
 fn test_encode_user() {
-	usr := User{
+	mut usr := User{
 		age: 10
 		nums: [1, 2, 3]
 		last_name: 'Johnson'
@@ -89,6 +93,8 @@ fn test_encode_user() {
 	out := json.encode(usr)
 	println(out)
 	assert out == expected
+	// Test json.encode on mutable pointers
+	assert usr.foo() == expected
 }
 
 struct Color {

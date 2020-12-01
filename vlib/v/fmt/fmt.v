@@ -471,7 +471,9 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.writeln('')
 				}
 				.delete {
-					// TODO delete
+					f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+					f.expr(node.where_expr)
+					f.writeln('')
 				}
 			}
 			f.writeln('}')
@@ -1031,6 +1033,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		ast.StringLiteral {
 			if node.is_raw {
 				f.write('r')
+			} else if node.language == table.Language.c {
+				f.write('c')
 			}
 			if node.val.contains("'") && !node.val.contains('"') {
 				f.write('"$node.val"')

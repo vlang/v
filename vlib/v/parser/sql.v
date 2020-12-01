@@ -76,7 +76,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	if !query_one && !is_count {
 		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
+		typ = table.new_type(p.table.find_or_register_array(table_type, 1))
 	} else if !is_count {
 		// return a single object
 		// TODO optional

@@ -4,6 +4,7 @@
 module parser
 
 import v.table
+import v.util
 
 pub fn (mut p Parser) parse_array_type() table.Type {
 	p.check(.lsbr)
@@ -28,8 +29,7 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.check(.rsbr)
 		nr_dims++
 	}
-	sym := p.table.get_type_symbol(elem_type)
-	idx := p.table.find_or_register_array(elem_type, nr_dims, sym.mod)
+	idx := p.table.find_or_register_array(elem_type, nr_dims)
 	return table.new_type(idx)
 }
 
@@ -333,6 +333,7 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
 		source_name: name
+		cname: util.no_dots(name)
 		mod: p.mod
 		kind: .any
 		is_public: true
@@ -342,9 +343,11 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 
 pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	mut bs_name := name
+	mut bs_cname := name
 	p.next()
 	p.in_generic_params = true
 	bs_name += '<'
+	bs_cname += '_T_'
 	mut generic_types := []table.Type{}
 	mut is_instance := false
 	for {
@@ -354,12 +357,14 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		}
 		gts := p.table.get_type_symbol(gt)
 		bs_name += gts.name
+		bs_cname += gts.name
 		generic_types << gt
 		if p.tok.kind != .comma {
 			break
 		}
 		p.next()
 		bs_name += ','
+		bs_cname += '_'
 	}
 	p.check(.gt)
 	p.in_generic_params = false
@@ -378,6 +383,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 			kind: .generic_struct_inst
 			name: bs_name
 			source_name: bs_name
+			cname: util.no_dots(bs_cname)
 			mod: p.mod
 			info: table.GenericStructInst{
 				parent_idx: parent_idx

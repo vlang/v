@@ -16,7 +16,7 @@ pub fn new_preferences() Preferences {
 	return p
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
@@ -25,9 +25,19 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
-	for i, path in p.lookup_path {
-		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
+	mut expanded_paths := []string{}
+	for path in p.lookup_path {
+		match path {
+			'@vlib' { expanded_paths << vlib_path }
+			'@vmodules' { expanded_paths << os.vmodules_paths() }
+			else { expanded_paths << path }
+		}
 	}
+	p.lookup_path = expanded_paths
+}
+
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.expand_lookup_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
@@ -53,6 +63,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
 	}
+	//
+	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
@@ -83,7 +95,37 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	// eprintln('prefs.cache_manager: $p')
 }
 
-fn default_c_compiler() string {
+fn (mut p Preferences) try_to_use_tcc_by_default() {
+	if p.ccompiler == 'tcc' {
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+	if p.ccompiler == '' {
+		// tcc is known to fail several tests on macos, so do not
+		// try to use it by default, only when it is explicitly set
+		$if macos {
+			return
+		}
+		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
+		if p.is_prod {
+			return
+		}
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+}
+
+pub fn default_tcc_compiler() string {
+	vexe := vexe_path()
+	vroot := os.dir(vexe)
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.exists(vtccexe) {
+		return vtccexe
+	}
+	return ''
+}
+
+pub fn default_c_compiler() string {
 	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	// if os.exists(fast_clang) {
 	// return fast_clang

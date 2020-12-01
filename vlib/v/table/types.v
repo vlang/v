@@ -39,6 +39,7 @@ pub mut:
 	kind        Kind
 	name        string // the internal name of the type or underlying type, i.e. `array_fixed_int_5`. See also .source_name below.
 	source_name string // the original source name of the type, i.e. `[5]int`.
+	cname       string // the name with no dots for use in the generated C code
 	methods     []Fn
 	mod         string
 	is_public   bool
@@ -505,95 +506,111 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .void
 		name: 'void'
 		source_name: 'void'
+		cname: 'void'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .voidptr
 		name: 'voidptr'
 		source_name: 'voidptr'
+		cname: 'voidptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .byteptr
 		name: 'byteptr'
 		source_name: 'byteptr'
+		cname: 'byteptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .charptr
 		name: 'charptr'
 		source_name: 'charptr'
+		cname: 'charptr'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i8
 		name: 'i8'
 		source_name: 'i8'
+		cname: 'i8'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i16
 		name: 'i16'
 		source_name: 'i16'
+		cname: 'i16'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .int
 		name: 'int'
 		source_name: 'int'
+		cname: 'int'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .i64
 		name: 'i64'
 		source_name: 'i64'
+		cname: 'i64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .byte
 		name: 'byte'
 		source_name: 'byte'
+		cname: 'byte'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u16
 		name: 'u16'
 		source_name: 'u16'
+		cname: 'u16'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u32
 		name: 'u32'
 		source_name: 'u32'
+		cname: 'u32'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .u64
 		name: 'u64'
 		source_name: 'u64'
+		cname: 'u64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .f32
 		name: 'f32'
 		source_name: 'f32'
+		cname: 'f32'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .f64
 		name: 'f64'
 		source_name: 'f64'
+		cname: 'f64'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .char
 		name: 'char'
 		source_name: 'char'
+		cname: 'char'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .bool
 		name: 'bool'
+		cname: 'bool'
 		source_name: 'bool'
 		mod: 'builtin'
 	})
@@ -601,66 +618,77 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .none_
 		name: 'none'
 		source_name: 'none'
+		cname: 'none'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .string
 		name: 'string'
 		source_name: 'string'
+		cname: 'string'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .ustring
 		name: 'ustring'
 		source_name: 'ustring'
+		cname: 'ustring'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .array
 		name: 'array'
 		source_name: 'array'
+		cname: 'array'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .map
 		name: 'map'
 		source_name: 'map'
+		cname: 'map'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .chan
 		name: 'chan'
 		source_name: 'chan'
+		cname: 'chan'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .size_t
 		name: 'size_t'
 		source_name: 'size_t'
+		cname: 'size_t'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .rune
 		name: 'rune'
 		source_name: 'rune'
+		cname: 'rune'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .any
 		name: 'any'
 		source_name: 'any'
+		cname: 'any'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .any_float
 		name: 'any_float'
 		source_name: 'any_float'
+		cname: 'any_float'
 		mod: 'builtin'
 	})
 	t.register_type_symbol({
 		kind: .any_int
 		name: 'any_int'
 		source_name: 'any_int'
+		cname: 'any_int'
 		mod: 'builtin'
 	})
 	// TODO: remove. for v1 map compatibility
@@ -670,6 +698,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .alias
 		name: 'map_string'
 		source_name: 'map_string'
+		cname: 'map_string'
 		mod: 'builtin'
 		parent_idx: map_string_string_idx
 	})
@@ -677,6 +706,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		kind: .alias
 		name: 'map_int'
 		source_name: 'map_int'
+		cname: 'map_int'
 		mod: 'builtin'
 		parent_idx: map_string_int_idx
 	})

@@ -24,6 +24,7 @@ const (
 )
 
 [inline]
+// write puts the string `s` into the print buffer.
 pub fn (mut ctx Context) write(s string) {
 	if s == '' {
 		return
@@ -32,6 +33,7 @@ pub fn (mut ctx Context) write(s string) {
 }
 
 [inline]
+// flush displays the accumulated print buffer to the screen.
 pub fn (mut ctx Context) flush() {
 	$if windows {
 		// TODO
@@ -48,17 +50,20 @@ pub fn (mut ctx Context) flush() {
 	}
 }
 
+// bold sets the character state to bold.
 [inline]
 pub fn (mut ctx Context) bold() {
 	ctx.write('\x1b[1m')
 }
 
 [inline]
+// set_cursor_position positions the cusor at the given coordinates `x`,`y`.
 pub fn (mut ctx Context) set_cursor_position(x int, y int) {
 	ctx.write('\x1b[$y;${x}H')
 }
 
 [inline]
+// set_color sets the current foreground color used by any succeeding `draw_*` calls.
 pub fn (mut ctx Context) set_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[38;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
@@ -68,6 +73,7 @@ pub fn (mut ctx Context) set_color(c Color) {
 }
 
 [inline]
+// set_color sets the current background color used by any succeeding `draw_*` calls.
 pub fn (mut ctx Context) set_bg_color(c Color) {
 	if ctx.enable_rgb {
 		ctx.write('\x1b[48;2;${int(c.r)};${int(c.g)};${int(c.b)}m')
@@ -77,16 +83,19 @@ pub fn (mut ctx Context) set_bg_color(c Color) {
 }
 
 [inline]
+// reset_color sets the current foreground color back to it's default value.
 pub fn (mut ctx Context) reset_color() {
 	ctx.write('\x1b[39m')
 }
 
 [inline]
+// reset_bg_color sets the current background color back to it's default value.
 pub fn (mut ctx Context) reset_bg_color() {
 	ctx.write('\x1b[49m')
 }
 
 [inline]
+// reset restores the state of all colors and text formats back to their default values.
 pub fn (mut ctx Context) reset() {
 	ctx.write('\x1b[0m')
 }
@@ -97,22 +106,26 @@ pub fn (mut ctx Context) clear() {
 }
 
 [inline]
+// set_window_title sets the string `s` as the window title.
 pub fn (mut ctx Context) set_window_title(s string) {
 	print('\x1b]0;$s\x07')
 }
 
 [inline]
+// draw_point draws a point at position `x`,`y`.
 pub fn (mut ctx Context) draw_point(x int, y int) {
 	ctx.set_cursor_position(x, y)
 	ctx.write(' ')
 }
 
 [inline]
+// draw_text draws the string `s`, starting from position `x`,`y`.
 pub fn (mut ctx Context) draw_text(x int, y int, s string) {
 	ctx.set_cursor_position(x, y)
 	ctx.write(s)
 }
 
+// draw_line draws a line segment, starting at point `x`,`y`, and ending at point `x2`,`y2`.
 pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 	min_x, min_y := if x < x2 { x } else { x2 }, if y < y2 { y } else { y2 }
 	max_x, _ := if x > x2 { x } else { x2 }, if y > y2 { y } else { y2 }
@@ -148,6 +161,7 @@ pub fn (mut ctx Context) draw_line(x int, y int, x2 int, y2 int) {
 	}
 }
 
+// draw_dashed_line draws a dashed line segment, starting at point `x`,`y`, and ending at point `x2`,`y2`.
 pub fn (mut ctx Context) draw_dashed_line(x int, y int, x2 int, y2 int) {
 	// Draw the various points with Bresenham's line algorithm:
 	mut x0, x1 := x, x2
@@ -178,6 +192,7 @@ pub fn (mut ctx Context) draw_dashed_line(x int, y int, x2 int, y2 int) {
 	}
 }
 
+// draw_rect draws a rectangle, starting at top left `x`,`y`, and ending at bottom right `x2`,`y2`.
 pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
 		ctx.draw_line(x, y, x2, y2)
@@ -189,6 +204,7 @@ pub fn (mut ctx Context) draw_rect(x int, y int, x2 int, y2 int) {
 	}
 }
 
+// draw_empty_dashed_rect draws a rectangle with dashed lines, starting at top left `x`,`y`, and ending at bottom right `x2`,`y2`.
 pub fn (mut ctx Context) draw_empty_dashed_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
 		ctx.draw_dashed_line(x, y, x2, y2)
@@ -212,6 +228,7 @@ pub fn (mut ctx Context) draw_empty_dashed_rect(x int, y int, x2 int, y2 int) {
 	}
 }
 
+// draw_empty_rect draws a rectangle with no fill, starting at top left `x`,`y`, and ending at bottom right `x2`,`y2`.
 pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 	if y == y2 || x == x2 {
 		ctx.draw_line(x, y, x2, y2)
@@ -224,6 +241,7 @@ pub fn (mut ctx Context) draw_empty_rect(x int, y int, x2 int, y2 int) {
 }
 
 [inline]
+// horizontal_separator draws a horizontal separator, spanning the width of the screen.
 pub fn (mut ctx Context) horizontal_separator(y int) {
 	ctx.set_cursor_position(0, y)
 	ctx.write(strings.repeat(/* `⎽` */`-`, ctx.window_width))

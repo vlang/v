@@ -1025,8 +1025,7 @@ pub fn find_abs_path_of_executable(exepath string) ?string {
 		return os.real_path(exepath)
 	}
 	mut res := ''
-	env_path_delimiter := if os.user_os() == 'windows' { ';' } else { ':' }
-	paths := os.getenv('PATH').split(env_path_delimiter)
+	paths := os.getenv('PATH').split(path_delimiter)
 	for p in paths {
 		found_abs_path := os.join_path( p, exepath )
 		if os.exists( found_abs_path ) && os.is_executable( found_abs_path ) {
@@ -1355,13 +1354,27 @@ pub fn temp_dir() string {
 	return path
 }
 
+fn default_vmodules_path() string {
+	return os.join_path(os.home_dir(), '.vmodules')
+}
 // vmodules_dir returns the path to a folder, where v stores its global modules.
 pub fn vmodules_dir() string {
+	paths := vmodules_paths()
+	if paths.len > 0 {
+		return paths[0]
+	}
+	return os.default_vmodules_path()
+}
+
+// vmodules_paths returns a list of paths, where v looks up for modules.
+// You can customize it through setting the environment variable VMODULES
+pub fn vmodules_paths() []string {
 	mut path := os.getenv('VMODULES')
 	if path == '' {
-		path = os.join_path(os.home_dir(), '.vmodules')
+		path = os.default_vmodules_path()
 	}
-	return path
+	list := path.split(os.path_delimiter).map(it.trim_right(os.path_separator))
+	return list
 }
 
 // chmod change file access attributes of `path` to `mode`.

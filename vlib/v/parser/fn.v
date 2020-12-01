@@ -273,6 +273,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_method {
 		mut type_sym := p.table.get_type_symbol(rec_type)
 		ret_type_sym := p.table.get_type_symbol(return_type)
+		// Do not allow to modify / add methods to types from other modules
+		// arrays/maps dont belong to a module only their element types do
+		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
+		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
+			p.error('cannot define new methods on non-local type $type_sym.name')
+		}
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym_method_idx = type_sym.register_method(table.Fn{
 			name: name

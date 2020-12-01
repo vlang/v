@@ -57,7 +57,7 @@ fn (mut v Builder) find_win_cc() ? {
 			if v.pref.is_verbose {
 				println('msvc not found, looking for thirdparty/tcc...')
 			}
-			vpath := os.dir(os.getenv('VEXE'))
+			vpath := os.dir(pref.vexe_path())
 			thirdparty_tcc := os.join_path(vpath, 'thirdparty', 'tcc', 'tcc.exe')
 			os.exec('$thirdparty_tcc -v') or {
 				if v.pref.is_verbose {
@@ -125,6 +125,11 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 }
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
+	// TODO: move this check somewhere else, this is really not the best place for it :/
+	// strconv is already imported inside builtin, so skip generating its object file
+	if imp_path == 'vlib/strconv' {
+		return ''
+	}
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
 		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
 		// do run `v build-module x` always in main vfolder; x can be a relative path
@@ -217,6 +222,12 @@ fn (mut v Builder) cc() {
 			return
 		}
 	}
+	//
+	mut tried_compilation_commands := []string{}
+	original_pwd := os.getwd()
+	// TODO remove the start: goto start construct;
+	// use a labeled for break instead
+	start:
 	mut ccompiler := v.pref.ccompiler
 	$if windows {
 		if ccompiler == 'msvc' {
@@ -248,35 +259,6 @@ fn (mut v Builder) cc() {
 		args << '-fobjc-arc'
 	}
 	mut linker_flags := []string{}
-	// TCC on Linux by default, unless -cc was provided
-	// TODO if -cc = cc, TCC is still used, default compiler should be
-	// used instead.
-	if v.pref.fast {
-		$if linux {
-			$if !android {
-				tcc_3rd := '$vdir/thirdparty/tcc/bin/tcc'
-				// println('tcc third "$tcc_3rd"')
-				tcc_path := '/var/tmp/tcc/bin/tcc'
-				if os.exists(tcc_3rd) && !os.exists(tcc_path) {
-					// println('moving tcc')
-					// if there's tcc in thirdparty/, that means this is
-					// a prebuilt V_linux.zip.
-					// Until the libtcc1.a bug is fixed, we neeed to move
-					// it to /var/tmp/
-					os.system('mv $vdir/thirdparty/tcc /var/tmp/')
-				}
-				if v.pref.ccompiler == 'cc' && os.exists(tcc_path) {
-					// TODO tcc bug, needs an empty libtcc1.a fila
-					// os.mkdir('/var/tmp/tcc/lib/tcc/') or { panic(err) }
-					// os.create('/var/tmp/tcc/lib/tcc/libtcc1.a')
-					v.pref.ccompiler = tcc_path
-					args << '-m64'
-				}
-			}
-		} $else {
-			verror('-fast is only supported on Linux right now')
-		}
-	}
 	if !v.pref.is_shared && v.pref.build_mode != .build_module && os.user_os() == 'windows' &&
 		!v.pref.out_name.ends_with('.exe') {
 		v.pref.out_name += '.exe'
@@ -334,7 +316,7 @@ fn (mut v Builder) cc() {
 	//
 	if is_cc_clang {
 		if debug_mode {
-			debug_options = '-g3 -O0 -no-pie'
+			debug_options = '-g3 -O0'
 		}
 		optimization_options = '-O3'
 		mut have_flto := true
@@ -353,9 +335,9 @@ fn (mut v Builder) cc() {
 	}
 	if debug_mode {
 		args << debug_options
-		$if macos {
-			args << ' -ferror-limit=5000 '
-		}
+		// $if macos {
+		// args << ' -ferror-limit=5000 '
+		// }
 	}
 	if v.pref.is_prod {
 		args << optimization_options
@@ -448,7 +430,9 @@ fn (mut v Builder) cc() {
 	}
 	// macOS code can include objective C  TODO remove once objective C is replaced with C
 	if v.pref.os == .macos || v.pref.os == .ios {
-		args << '-x objective-c'
+		if !is_cc_tcc {
+			args << '-x objective-c'
+		}
 	}
 	// The C file we are compiling
 	args << '"$v.out_name_c"'
@@ -535,10 +519,11 @@ fn (mut v Builder) cc() {
 		v.pref.cleanup_files << v.out_name_c
 		v.pref.cleanup_files << response_file
 	}
-	start:
+	//
 	todo()
-	// TODO remove
+	os.chdir(vdir)
 	cmd := '$ccompiler @$response_file'
+	tried_compilation_commands << cmd
 	v.show_cc(cmd, response_file, response_file_content)
 	// Run
 	ticks := time.ticks()
@@ -546,6 +531,7 @@ fn (mut v Builder) cc() {
 		// C compilation failed.
 		// If we are on Windows, try msvc
 		println('C compilation failed.')
+		os.chdir(original_pwd)
 		/*
 		if os.user_os() == 'windows' && v.pref.ccompiler != 'msvc' {
 			println('Trying to build with MSVC')
@@ -561,19 +547,27 @@ fn (mut v Builder) cc() {
 	if v.pref.show_c_output {
 		v.show_c_compiler_output(res)
 	}
-	if res.exit_code == 127 {
-		// the command could not be found by the system
-		$if linux {
-			// TCC problems on linux? Try GCC.
-			if ccompiler.contains('tcc') {
-				v.pref.ccompiler = 'cc'
-				goto start
+	os.chdir(original_pwd)
+	if res.exit_code != 0 {
+		if ccompiler.contains('tcc.exe') {
+			// a TCC problem? Retry with the system cc:
+			if tried_compilation_commands.len > 1 {
+				eprintln('Recompilation loop detected (ccompiler: $ccompiler):')
+				for recompile_command in tried_compilation_commands {
+					eprintln('   $recompile_command')
+				}
+				exit(101)
 			}
+			eprintln('recompilation with tcc failed; retrying with cc ...')
+			v.pref.ccompiler = pref.default_c_compiler()
+			goto start
 		}
-		verror('C compiler error, while attempting to run: \n' +
-			'-----------------------------------------------------------\n' + '$cmd\n' +
-			'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
-			'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+		if res.exit_code == 127 {
+			verror('C compiler error, while attempting to run: \n' +
+				'-----------------------------------------------------------\n' + '$cmd\n' +
+				'-----------------------------------------------------------\n' + 'Probably your C compiler is missing. \n' +
+				'Please reinstall it, or make it available in your PATH.\n\n' + missing_compiler_info())
+		}
 	}
 	if !v.pref.show_c_output {
 		v.post_process_c_compiler_output(res)
@@ -820,12 +814,19 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
 	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
+	//
+	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
+	current_folder := os.getwd()
+	os.chdir(os.dir(pref.vexe_path()))
+	//
 	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
+	// eprintln('>>> cmd: $cmd')
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)
 		return
 	}
+	os.chdir(current_folder)
 	if res.exit_code != 0 {
 		eprintln('failed thirdparty object build cmd:\n$cmd')
 		verror(res.output)

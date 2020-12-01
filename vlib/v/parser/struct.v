@@ -252,6 +252,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		name: name
 		language: language
 		source_name: name
+		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Struct{
 			fields: fields
@@ -380,6 +381,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		kind: .interface_
 		name: interface_name
 		source_name: interface_name
+		cname: util.no_dots(interface_name)
 		mod: p.mod
 		info: table.Interface{
 			types: []

@@ -30,8 +30,8 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		already_generated_key_no_ptr := '$styp:$str_fn_name_no_ptr'
 		if already_generated_key_no_ptr !in g.str_types {
 			g.str_types << already_generated_key_no_ptr
-			g.type_definitions.writeln('string ${str_fn_name_no_ptr}($styp it); // auto no_ptr version')
-			g.auto_str_funcs.writeln('string ${str_fn_name_no_ptr}($styp it){ return ${str_fn_name}(&it); }')
+			g.type_definitions.writeln('static string ${str_fn_name_no_ptr}($styp it); // auto no_ptr version')
+			g.auto_str_funcs.writeln('static string ${str_fn_name_no_ptr}($styp it){ return ${str_fn_name}(&it); }')
 		}
 		/*
 		typ_is_ptr := typ.is_ptr()
@@ -42,7 +42,7 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		return str_fn_name_no_ptr
 	}
 	already_generated_key := '$styp:$str_fn_name'
-	if !sym_has_str_method && already_generated_key !in g.str_types {
+	if !sym_has_str_method && already_generated_key !in g.str_types && !typ.has_flag(.optional) {
 		$if debugautostr ? {
 			eprintln('> gen_str_for_type_with_styp: |typ: ${typ:5}, ${sym.name:20}|has_str: ${sym_has_str_method:5}|expects_ptr: ${str_method_expects_ptr:5}|nr_args: ${str_nr_args:1}|fn_name: ${str_fn_name:20}')
 		}
@@ -90,7 +90,47 @@ fn (mut g Gen) gen_str_for_type_with_styp(typ table.Type, styp string) string {
 		}
 		return 'varg_$str_fn_name'
 	}
+	if typ.has_flag(.optional) {
+		option_already_generated_key := 'option_$already_generated_key'
+		if option_already_generated_key !in g.str_types {
+			g.gen_str_for_option(typ, styp, str_fn_name)
+			g.str_types << option_already_generated_key
+		}
+		return str_fn_name
+	}
 	return str_fn_name
+}
+
+fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name string) {
+	parent_type := typ.clear_flag(.optional)
+	sym := g.table.get_type_symbol(parent_type)
+	sym_has_str_method, _, _ := sym.str_method_info()
+	sym_name := sym.name.replace('.', '__')
+	mut parent_str_fn_name := styp_to_str_fn_name(sym_name)
+	if !sym_has_str_method {
+		parent_styp := g.typ(parent_type)
+		parent_str_fn_name = g.gen_str_for_type_with_styp(parent_type, parent_styp)
+	}
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.auto_str_funcs.writeln('\tstring res;')
+	g.auto_str_funcs.writeln('\tif (it.is_none) {')
+	g.auto_str_funcs.writeln('\t\tres = tos_lit("none");')
+	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
+	if typ.is_string() {
+		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym_name*)it.data));')
+	} else if sym.kind == .struct_ && !sym_has_str_method {
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym_name*)it.data, indent_count);')
+	} else {
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym_name*)it.data);')
+	}
+	g.auto_str_funcs.writeln('\t} else {')
+	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.v_error);')
+	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('\treturn _STR("Option(%.*s\\000)", 2, res);')
+	g.auto_str_funcs.writeln('}')
 }
 
 fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name string) {
@@ -102,10 +142,10 @@ fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name stri
 		parent_str_fn_name = g.gen_str_for_type_with_styp(info.parent_type, parent_styp)
 	}
 	mut clean_type_v_type_name := util.strip_main_name(styp.replace('__', '.'))
-	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp it, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
 	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
@@ -137,10 +177,10 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	if !sym_has_str_method {
 		g.gen_str_for_type_with_styp(typ, field_styp)
 	}
-	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp a, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp a, int indent_count) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
@@ -202,10 +242,10 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 	if !sym.has_method('str') {
 		elem_str_fn_name = g.gen_str_for_type_with_styp(typ, field_styp)
 	}
-	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp a, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp a, int indent_count) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) { return indent_${str_fn_name}(a, 0);}')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
@@ -246,10 +286,10 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 		g.gen_str_for_type_with_styp(info.value_type, val_styp)
 	}
 	zero := g.type_default(info.value_type)
-	g.type_definitions.writeln('string ${str_fn_name}($styp m); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp m, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp m); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
 	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; ++i) {')
@@ -280,8 +320,8 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 }
 
 fn (mut g Gen) gen_str_for_varg(styp string, str_fn_name string, has_str_method bool) {
-	g.definitions.writeln('string varg_${str_fn_name}(varg_$styp it); // auto')
-	g.auto_str_funcs.writeln('string varg_${str_fn_name}(varg_$styp it) {')
+	g.definitions.writeln('static string varg_${str_fn_name}(varg_$styp it); // auto')
+	g.auto_str_funcs.writeln('static string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
 	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; ++i) {')
@@ -303,8 +343,8 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 			g.gen_str_for_type_with_styp(typ, field_styp)
 		}
 	}
-	g.type_definitions.writeln('string ${str_fn_name}($styp a); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp a) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("("));')
 	for i, typ in info.types {
@@ -362,10 +402,10 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 		}
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.type_definitions.writeln('string ${str_fn_name}($styp x); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0);}')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp x, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp x, int indent_count) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0);}')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_struct_v_type_name := styp.replace('__', '.')
 	if clean_struct_v_type_name.contains('_T_') {
 		// TODO: this is a bit hacky. styp shouldn't be even parsed with _T_
@@ -470,8 +510,8 @@ fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name str
 
 fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string) {
 	s := util.no_dots(styp)
-	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_enum */')
 	g.auto_str_funcs.writeln('\tswitch(it) {')
 	// Only use the first multi value on the lookup
 	mut seen := []string{len: info.vals.len}
@@ -499,10 +539,10 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 		}
 	}
 	// _str() functions should have a single argument, the indenting ones take 2:
-	g.type_definitions.writeln('string ${str_fn_name}($styp x); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
-	g.type_definitions.writeln('string indent_${str_fn_name}($styp x, int indent_count); // auto')
-	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp x, int indent_count) {')
+	g.type_definitions.writeln('static string ${str_fn_name}($styp x); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp x) { return indent_${str_fn_name}(x, 0); }')
+	g.type_definitions.writeln('static string indent_${str_fn_name}($styp x, int indent_count); // auto')
+	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp x, int indent_count) {')
 	mut clean_sum_type_v_type_name := styp.replace('__', '.')
 	if styp.ends_with('*') {
 		clean_sum_type_v_type_name = '&' + clean_sum_type_v_type_name.replace('*', '')
@@ -521,7 +561,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 		if sym.kind == .struct_ {
 			func_name = 'indent_$func_name'
 		}
-		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$typ.idx()')
+		g.auto_str_funcs.write('\t\tcase $typ: return _STR("${clean_sum_type_v_type_name}($value_fmt)", 2, ${func_name}(*($typ_str*)x._$sym.cname')
 		if sym.kind == .struct_ {
 			g.auto_str_funcs.write(', indent_count')
 		}

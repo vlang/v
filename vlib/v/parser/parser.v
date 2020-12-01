@@ -81,11 +81,11 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 	return p.stmt(false)
 }
 
-pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
+pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
 		scanner: s
-		table: b_table
+		table: table
 		pref: pref
 		scope: scope
 		errors: []errors.Error{}
@@ -95,7 +95,25 @@ pub fn parse_text(text string, b_table &table.Table, pref &pref.Preferences, sco
 	return p.parse()
 }
 
-pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+	s := scanner.new_scanner(text, comments_mode, pref)
+	mut p := Parser{
+		scanner: s
+		comments_mode: comments_mode
+		table: table
+		pref: pref
+		scope: &ast.Scope{
+			start_pos: 0
+			parent: global_scope
+		}
+		errors: []errors.Error{}
+		warnings: []errors.Warning{}
+		global_scope: global_scope
+	}
+	return p.parse()
+}
+
+pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	// NB: when comments_mode == .toplevel_comments,
 	// the parser gives feedback to the scanner about toplevel statements, so that the scanner can skip
 	// all the tricky inner comments. This is needed because we do not have a good general solution
@@ -107,7 +125,7 @@ pub fn parse_file(path string, b_table &table.Table, comments_mode scanner.Comme
 	mut p := Parser{
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
-		table: b_table
+		table: table
 		file_name: path
 		file_base: os.base(path)
 		file_name_dir: os.dir(path)
@@ -1037,8 +1055,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		}
 	}
 	// Raw string (`s := r'hello \n ')
-	if p.tok.lit in ['r', 'c', 'js'] && p.peek_tok.kind == .string && !p.inside_str_interp {
-		return p.string_expr()
+	if p.peek_tok.kind == .string && !p.inside_str_interp && p.peek_tok2.kind != .colon {
+		if p.tok.lit in ['r', 'c', 'js'] && p.tok.kind == .name {
+			return p.string_expr()
+		} else {
+			// don't allow any other string prefix except `r`, `js` and `c`
+			p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
+		}
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
@@ -1367,6 +1390,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		field_name: field_name
 		pos: name_pos
 		is_mut: is_mut
+		mut_pos: mut_pos
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
@@ -1635,6 +1659,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 				kind: .alias
 				name: prepend_mod_name
 				source_name: prepend_mod_name
+				cname: util.no_dots(prepend_mod_name)
 				mod: p.mod
 				parent_idx: idx
 				info: table.Alias{
@@ -1889,6 +1914,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		kind: .enum_
 		name: name
 		source_name: name
+		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Enum{
 			vals: vals
@@ -1971,6 +1997,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			kind: .sum_type
 			name: prepend_mod_name
 			source_name: prepend_mod_name
+			cname: util.no_dots(prepend_mod_name)
 			mod: p.mod
 			info: table.SumType{
 				variants: variant_types
@@ -2002,6 +2029,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		kind: .alias
 		name: prepend_mod_name
 		source_name: prepend_mod_name
+		cname: util.no_dots(prepend_mod_name)
 		mod: p.mod
 		parent_idx: pid
 		info: table.Alias{

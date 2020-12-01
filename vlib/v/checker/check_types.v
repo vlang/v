@@ -305,7 +305,9 @@ pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
 }
 
 pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
-	if typ.is_float() {
+	if ftyp.has_flag(.optional) {
+		return `s`
+	} else if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_any_int() {
 		return `d`
@@ -325,8 +327,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 		}
 		if ftyp in [table.string_type, table.bool_type] ||
 			sym.kind in
-			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type] || ftyp.has_flag(.optional) ||
-			sym.has_method('str') {
+			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type] || sym.has_method('str') {
 			return `s`
 		} else {
 			return `_`
