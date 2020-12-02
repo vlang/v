@@ -800,7 +800,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 					return
 				}
 			}
-			g.autofree_scope_vars(stmt_pos.pos, stmt_pos.line_nr, false)
+			g.autofree_scope_vars(stmt_pos.pos - 1, stmt_pos.line_nr, false)
 		}
 	}
 }
