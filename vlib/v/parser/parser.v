@@ -1351,12 +1351,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			or_kind = .propagate
 		}
 		//
-		end_pos := p.tok.position()
-		pos := token.Position{
-			line_nr: name_pos.line_nr
-			pos: name_pos.pos
-			len: end_pos.pos - name_pos.pos
-		}
+		end_pos := p.prev_tok.position()
+		pos := name_pos.extend(end_pos)
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
