@@ -1221,28 +1221,27 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.expr(it.cond)
 		g.writeln(';')
 		g.writeln('for (int $idx = 0; $idx < (int)${atmp}.key_values.len; ++$idx) {')
-		g.writeln('\tif (${atmp}.key_values.keys[$idx].str == 0) {continue;}')
+		g.writeln('\tif (!DenseArray_has_index(&${atmp}.key_values, $idx)) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
 			key := c_name(it.key_var)
+			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&${atmp}.key_values, $idx);')
 			// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
 			if it.key_type == table.string_type {
-				g.writeln('\t$key_styp $key = /*key*/ string_clone(${atmp}.key_values.keys[$idx]);')
-			} else {
-				g.writeln('\t$key_styp $key = /*key*/ ${atmp}.key_values.keys[$idx];')
+				g.writeln('\t$key = string_clone($key);')
 			}
 		}
 		if it.val_var != '_' {
 			val_sym := g.table.get_type_symbol(it.val_type)
-			valstr := '(void*)(${atmp}.key_values.values + $idx * (u32)(${atmp}.value_bytes))'
 			if val_sym.kind == .function {
 				g.write('\t')
 				g.write_fn_ptr_decl(val_sym.info as table.FnType, c_name(it.val_var))
-				g.writeln(' = (*(voidptr*)$valstr);')
+				g.write(' = (*(voidptr*)')
 			} else {
 				val_styp := g.typ(it.val_type)
-				g.writeln('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)$valstr);')
+				g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
 			}
+			g.writeln('DenseArray_value(&${atmp}.key_values, $idx));')
 		}
 		g.stmts(it.stmts)
 		if it.key_type == table.string_type && !g.is_builtin_mod {
