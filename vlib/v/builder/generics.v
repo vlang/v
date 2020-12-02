@@ -2,6 +2,9 @@ module builder
 
 import v.table
 
+// NOTE: Think about generic struct implementation
+// this might not be the best strategy. - joe-c
+//
 // generic struct instantiations to concrete types
 pub fn (b &Builder) generic_struct_insts_to_concrete() {
 	for idx, _ in b.table.types {
@@ -9,6 +12,10 @@ pub fn (b &Builder) generic_struct_insts_to_concrete() {
 		if typ.kind == .generic_struct_inst {
 			info := typ.info as table.GenericStructInst
 			parent := b.table.types[info.parent_idx]
+			if parent.kind == .placeholder {
+				typ.kind = .placeholder
+				continue
+			}
 			mut parent_info := parent.info as table.Struct
 			mut fields := parent_info.fields.clone()
 			for i, _ in fields {
