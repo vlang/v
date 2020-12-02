@@ -171,10 +171,10 @@ TODO
 //fn malloc_size(b byteptr) int
 
 [unsafe]
-pub fn v_realloc(b byteptr, n u32) byteptr {
+pub fn v_realloc(b byteptr, n int) byteptr {
 	$if prealloc {
 		unsafe {
-			new_ptr := malloc(int(n))
+			new_ptr := malloc(n)
 			size := 0 //malloc_size(b)
 			C.memcpy(new_ptr, b, size)
 			return new_ptr
