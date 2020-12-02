@@ -54,20 +54,13 @@ fn (mut a App) collect_info() {
 		os_details = a.get_linux_os_name()
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
-			// WSL 2 is a hypervisor
 			if 'microsoft' in a.cmd({
 				command: 'cat /proc/sys/kernel/osrelease'
 			}) {
-				os_details += ' (WSL 2)'
+				os_details += ' (WSL)'
 			} else {
 				os_details += ' (VM)'
 			}
-		}
-		// WSL 1 is NOT a hypervisor 
-		if 'Microsoft' in a.cmd({
-				command: 'cat /proc/sys/kernel/osrelease'
-		}) {
-				os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
 		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
