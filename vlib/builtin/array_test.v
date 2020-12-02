@@ -1002,6 +1002,27 @@ fn test_array_string_pop() {
 	assert a.cap == 3
 }
 
+fn test_array_first() {
+	a := [3]
+	assert a.first() == 3
+	b := [1, 2, 3, 4]
+	assert b.first() == 1
+	c := ['abc', 'def']
+	assert c.first()[0] == `a`
+	s := [Chunk{'a'}]
+	assert s.first().val == 'a'
+}
+
+fn test_array_last() {
+	a := [3]
+	assert a.last() == 3
+	b := [1, 2, 3, 4]
+	assert b.last() == 4
+	c := ['abc', 'def']
+	assert c.last()[0] == `d`
+	s := [Chunk{'a'}]
+	assert s.last().val == 'a'
+}
 
 [direct_array_access]
 fn test_direct_array_access() {
