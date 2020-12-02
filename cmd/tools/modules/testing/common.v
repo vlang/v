@@ -61,8 +61,16 @@ pub fn (mut ts TestSession) print_messages() {
 			return
 		}
 		ts.nmessage_idx++
-		msg := rmessage.message.replace('TMP1', '${ts.nmessage_idx:1d}').replace('TMP2',
-			'${ts.nmessage_idx:2d}').replace('TMP3', '${ts.nmessage_idx:3d}')
+		msg := rmessage.message.replace_each([
+			'TMP1',
+			'${ts.nmessage_idx:1d}',
+			'TMP2',
+			'${ts.nmessage_idx:2d}',
+			'TMP3',
+			'${ts.nmessage_idx:3d}',
+			'TMP4',
+			'${ts.nmessage_idx:4d}',
+		])
 		is_ok := rmessage.kind == .ok
 		//
 		time_passed := print_msg_time.elapsed().seconds()
