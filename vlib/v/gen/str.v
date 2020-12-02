@@ -120,7 +120,7 @@ string _STR_TMP(const char *fmt, ...) {
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		escaped_val := util.smart_quote(node.val, true)
-		g.write('tos_lit("$escaped_val")')
+		g.write('_SLIT("$escaped_val")')
 		return
 	}
 	escaped_val := util.smart_quote(node.val, false)
@@ -135,7 +135,7 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
 		// g.write('tos4("$escaped_val", $it.val.len)')
 		// g.write('_SLIT("$escaped_val")')
-		g.write('tos_lit("$escaped_val")')
+		g.write('_SLIT("$escaped_val")')
 	}
 }
 
@@ -157,7 +157,7 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		// }
 		g.write('strings__Builder_write(&')
 		g.expr(call_expr.left)
-		g.write(', tos_lit("')
+		g.write(', _SLIT("')
 		g.write(escaped_val)
 		g.writeln('"));')
 		//
