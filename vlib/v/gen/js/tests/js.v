@@ -34,13 +34,15 @@ fn main() {
 	mut a := 1
 	a *= 2
 	a += 3
-	println(a) // TODO: Handle string interpolation
+	println(a)
 	mut b := hl.Aaa{}
 	b.update('an update')
 	println(b)
 	mut c := Foo{hl.Aaa{}}
 	c.a.update('another update')
 	println(c)
+	d := 1.5
+	println(i8(d))
 	_ = 'done'
 	{
 		_ = 'block'

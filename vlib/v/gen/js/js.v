@@ -397,9 +397,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO
 		}
 		ast.CastExpr {
-			// JS has no types, so no need to cast
-			// Just write the expression inside
-			g.expr(node.expr)
+			g.gen_type_cast_expr(node)
 		}
 		ast.CharLiteral {
 			g.write("'$node.val'")
@@ -1435,4 +1433,10 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	} else {
 		g.write('"$sym.name"')
 	}
+}
+
+fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
+	g.write('(new ${g.typ(it.typ)}(')
+	g.expr(it.expr)
+	g.write('))')
 }
