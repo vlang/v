@@ -3,10 +3,10 @@ module websocket
 import encoding.utf8
 
 const (
-length	header_len_offset           = 2 // offset for lengthpart of websocket header
+	header_len_offset           = 2 // offset for lengthpart of websocket header
 	buffer_size                 = 256 // default buffer size
-	extended_payload16_end_byte = 4 // 16 bit offset for extended length of websocket header
-	extended_payload64_end_byte = 10 // 64 bit offset for extended length of websocket header
+	extended_payload16_end_byte = 4 // header length with 16-bit extended payload
+	extended_payload64_end_byte = 10 // header length with 64-bit extended payload
 )
 
 // Fragment represents a websocket data fragment
