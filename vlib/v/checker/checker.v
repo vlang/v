@@ -1433,6 +1433,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	if c.pref.is_script && !found {
 		os_name := 'os.$fn_name'
 		if f1 := c.table.find_fn(os_name) {
+			if f1.is_generic && call_expr.generic_type != table.void_type {
+				c.table.fn_gen_types[os_name] = c.table.fn_gen_types['${call_expr.mod}.$call_expr.name']
+			}
 			call_expr.name = os_name
 			found = true
 			f = f1
