@@ -5,7 +5,9 @@
 module builtin
 
 pub fn println(s any) {
-	JS.console.log(s)
+	// Quickfix to properly print basic types
+	// TODO: Add proper detection code for this
+	JS.console.log(s + "")
 }
 
 pub fn print(s any) {
