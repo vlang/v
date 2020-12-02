@@ -353,3 +353,11 @@ fn test_map_str_after_delete() {
 	assert osm == "{'first': 1, 'second': 2, 'third': 3}"
 	assert nsm == "{'first': 1, 'third': 3}"
 }
+
+fn test_modify_map_value() {
+	mut m1 := {'foo': 3, 'bar': -7}
+	m1['foo'] += 5
+	m1['bar'] *= -2
+	assert m1['foo'] == 8
+	assert m1['bar'] == 14
+}
