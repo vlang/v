@@ -3,10 +3,10 @@ module websocket
 import encoding.utf8
 
 const (
-	header_len_offset           = 2 // offset for lenghtpart of websocket header
+length	header_len_offset           = 2 // offset for lengthpart of websocket header
 	buffer_size                 = 256 // default buffer size
-	extended_payload16_end_byte = 4 // 16 bit offset for extended lenght of websocket header
-	extended_payload64_end_byte = 10 // 64 bit offset for extended lenght of websocket header
+	extended_payload16_end_byte = 4 // 16 bit offset for extended length of websocket header
+	extended_payload64_end_byte = 10 // 64 bit offset for extended length of websocket header
 )
 
 // Fragment represents a websocket data fragment
@@ -18,7 +18,7 @@ struct Fragment {
 // Frame represents a data frame header
 struct Frame {
 mut:
-	header_len  int = 2 // lenght of the websocket header part
+	header_len  int = 2 // length of the websocket header part
 	frame_size  int = 2	// size of total frame
 	fin         bool // true if final fragment of message
 	rsv1        bool // reserved for future use in websocket RFC
