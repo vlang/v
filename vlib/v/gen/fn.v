@@ -365,6 +365,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if node.name == 'str' {
 		g.gen_str_for_type(node.receiver_type)
 	}
+	mut has_cast := false
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
 		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {
@@ -374,7 +375,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		receiver_type_name = 'array'
 		if node.name in ['last', 'first', 'pop'] {
 			return_type_str := g.typ(node.return_type)
-			g.write('*($return_type_str*)')
+			has_cast = true
+			g.write('(*($return_type_str*)')
 		}
 	}
 	mut name := util.no_dots('${receiver_type_name}_$node.name')
@@ -427,6 +429,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		g.expr(node.left)
+	}
+	if has_cast {
+		g.write(')')
 	}
 	is_variadic := node.expected_arg_types.len > 0 && node.expected_arg_types[node.expected_arg_types.len -
 		1].has_flag(.variadic)
