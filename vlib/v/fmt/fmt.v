@@ -1419,8 +1419,16 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
-	if node.args.len > 0 && (node.args.last()).expr is ast.StructInit {
-		f.use_short_fn_args = true
+	if node.args.len > 0 {
+		last_expr := node.args.last().expr
+		fn_name := '${f.cur_mod}.$node.name'
+		// Prevent usage of short_fn_args for sumtypes
+		if last_expr is ast.StructInit && fn_name in f.table.fns {
+			struct_param := f.table.fns[fn_name].params.last()
+			if struct_param.typ == (last_expr as ast.StructInit).typ {
+				f.use_short_fn_args = true
+			}
+		}
 	}
 	for arg in node.args {
 		f.comments(arg.comments, {})
