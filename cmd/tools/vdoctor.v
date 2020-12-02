@@ -63,33 +63,20 @@ fn (mut a App) collect_info() {
 		os_details = a.get_linux_os_name()
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
-<<<<<<< HEAD
-			if 'microsoft' in wsl_check {
-				// WSL 2 is a Managed VM and Full Linux Kernel
-				// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
-=======
 			// WSL 2 is a hypervisor
 			if 'microsoft' in a.cmd({
 				command: 'cat /proc/sys/kernel/osrelease'
 			}) {
->>>>>>> vdoctor: add detection for wsl 1 and wsl 2
 				os_details += ' (WSL 2)'
 			} else {
 				os_details += ' (VM)'
 			}
 		}
-<<<<<<< HEAD
-		// WSL 1 is NOT a Managed VM and Full Linux Kernel
-		// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
-		if 'Microsoft' in wsl_check {
-			os_details += ' (WSL)'
-=======
 		// WSL 1 is NOT a hypervisor 
 		if 'Microsoft' in a.cmd({
 				command: 'cat /proc/sys/kernel/osrelease'
 		}) {
 				os_details += ' (WSL)'
->>>>>>> vdoctor: add detection for wsl 1 and wsl 2
 		}
 		// From https://unix.stackexchange.com/a/14346
 		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
