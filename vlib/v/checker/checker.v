@@ -2278,7 +2278,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
-	s.register('it', ast.Var{
+	s.register(ast.Var{
 		name: 'it'
 		pos: pos
 		typ: typ
@@ -2287,13 +2287,13 @@ fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
 }
 
 fn scope_register_ab(mut s ast.Scope, pos token.Position, typ table.Type) {
-	s.register('a', ast.Var{
+	s.register(ast.Var{
 		name: 'a'
 		pos: pos
 		typ: typ
 		is_used: true
 	})
-	s.register('b', ast.Var{
+	s.register(ast.Var{
 		name: 'b'
 		pos: pos
 		typ: typ
@@ -3624,7 +3624,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_mut || node.cond.is_mut) && !is_already_casted {
 							sum_type_casts << expr_type
-							scope.register(node.cond.name, ast.Var{
+							scope.register(ast.Var{
 								name: node.cond.name
 								typ: node.cond_type
 								pos: node.cond.pos
@@ -3862,7 +3862,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									// smartcast either if the value is immutable or if the mut argument is explicitly given
 									if !is_mut || infix.left.is_mut {
 										sum_type_casts << right_expr.typ
-										scope.register(infix.left.name, ast.Var{
+										scope.register(ast.Var{
 											name: infix.left.name
 											typ: infix.left_type
 											sum_type_casts: sum_type_casts
@@ -3872,7 +3872,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										})
 									}
 								} else if left_sym.kind == .interface_ {
-									scope.register(infix.left.name, ast.Var{
+									scope.register(ast.Var{
 										name: infix.left.name
 										typ: right_expr.typ.to_ptr()
 										sum_type_casts: sum_type_casts

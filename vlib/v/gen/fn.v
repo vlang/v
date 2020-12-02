@@ -649,7 +649,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 			}
 			s = '$t = '
 		} else {
-			scope.register(t, ast.Var{
+			scope.register(ast.Var{
 				name: t
 				typ: table.string_type // is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
 				is_autofree_tmp: true
