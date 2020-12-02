@@ -75,13 +75,6 @@ fn (mut a App) collect_info() {
 		// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
 		if 'Microsoft' in wsl_check {
 			os_details += ' (WSL)'
-		}
-		// From https://unix.stackexchange.com/a/14346
-		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
-			os_details += ' (chroot)'
-		}
-	} else if os_kind == 'macos' {
-		mut details := []string{}
 		details << a.cmd({
 			command: 'sw_vers -productName'
 		})
