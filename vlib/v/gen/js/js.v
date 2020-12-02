@@ -981,7 +981,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		for i, field in node.fields {
 			g.write(if i == 0 { ' ' } else { ', ' })
 			match g.typ(field.typ).split('.').last() {
-				"string" { g.write('$field.name: "\${this["${field.name}"].toString()}" ') }
+				"string" { g.write('$field.name: "\${this["${field.name}"].toString()}"') }
 				else { g.write('$field.name: \${this["${field.name}"].toString()} ') }
 			}
 		}
