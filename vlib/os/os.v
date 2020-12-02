@@ -766,7 +766,7 @@ pub fn get_raw_stdin() []byte {
 					break
 				}
 
-				buf = v_realloc(buf, u32(offset + block_bytes + (block_bytes-bytes_read)))
+				buf = v_realloc(buf, offset + block_bytes + (block_bytes-bytes_read))
 			}
 
 			C.CloseHandle(h_input)

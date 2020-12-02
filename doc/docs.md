@@ -521,6 +521,8 @@ println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
 
+println(nums[0..2]) // slicing gives an array "[1, 5]"
+
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
@@ -600,10 +602,20 @@ Arrays can be efficiently filtered and mapped with the `.filter()` and
 nums := [1, 2, 3, 4, 5, 6]
 even := nums.filter(it % 2 == 0)
 println(even) // [2, 4, 6]
+// filter can accept anonymous functions
+even_fn := nums.filter(fn (x int) bool {
+	return x % 2 == 0
+})
+println(even_fn)
 
 words := ['hello', 'world']
 upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
+// map can also accept anonymous functions
+upper_fn := words.map(fn (w string) string {
+	return w.to_upper()
+})
+println(upper_fn) // ['HELLO', 'WORLD']
 ```
 
 `it` is a builtin variable which refers to element currently being processed in filter/map methods.
