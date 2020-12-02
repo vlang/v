@@ -63,13 +63,13 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.inside_or_expr = true
 		p.next()
 		p.open_scope()
-		p.scope.register('err', ast.Var{
+		p.scope.register(ast.Var{
 			name: 'err'
 			typ: table.string_type
 			pos: p.tok.position()
 			is_used: true
 		})
-		p.scope.register('errcode', ast.Var{
+		p.scope.register(ast.Var{
 			name: 'errcode'
 			typ: table.int_type
 			pos: p.tok.position()
@@ -251,7 +251,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
 				break
 			}
-			p.scope.register(param.name, ast.Var{
+			p.scope.register(ast.Var{
 				name: param.name
 				typ: param.typ
 				is_mut: param.is_mut
@@ -370,7 +370,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
 	for arg in args {
-		p.scope.register(arg.name, ast.Var{
+		p.scope.register(ast.Var{
 			name: arg.name
 			typ: arg.typ
 			is_mut: arg.is_mut

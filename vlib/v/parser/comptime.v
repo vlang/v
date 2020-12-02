@@ -127,7 +127,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v.name, v)
+						tmpl_scope.register(v)
 						// set the controller action var to used
 						// if it's unused in the template it will warn
 						v.is_used = true
@@ -159,12 +159,12 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
 	if for_val == 'methods' {
-		p.scope.register(val_var, ast.Var{
+		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FunctionData')
 		})
 	} else if for_val == 'fields' {
-		p.scope.register(val_var, ast.Var{
+		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FieldData')
 		})

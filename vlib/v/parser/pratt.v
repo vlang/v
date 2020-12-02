@@ -362,13 +362,13 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 		if p.tok.kind == .key_orelse {
 			p.next()
 			p.open_scope()
-			p.scope.register('errcode', ast.Var{
+			p.scope.register(ast.Var{
 				name: 'errcode'
 				typ: table.int_type
 				pos: p.tok.position()
 				is_used: true
 			})
-			p.scope.register('err', ast.Var{
+			p.scope.register(ast.Var{
 				name: 'err'
 				typ: table.string_type
 				pos: p.tok.position()

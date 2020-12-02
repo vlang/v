@@ -94,7 +94,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			if p.scope.known_var(val_var_name) {
 				p.error('redefinition of value iteration variable `$val_var_name`')
 			}
-			p.scope.register(key_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: key_var_name
 				typ: table.int_type
 				pos: key_var_pos
@@ -117,7 +117,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			is_range = true
 			p.next()
 			high_expr = p.expr(0)
-			p.scope.register(val_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: val_var_name
 				typ: table.int_type
 				pos: val_var_pos
@@ -127,7 +127,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			}
 		} else {
 			// this type will be set in checker
-			p.scope.register(val_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: val_var_name
 				pos: val_var_pos
 				is_mut: val_is_mut

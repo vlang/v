@@ -140,7 +140,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 					}
 					obj := ast.ScopeObject(v)
 					lx.obj = obj
-					p.scope.register(lx.name, obj)
+					p.scope.register(obj)
 				}
 			}
 			ast.IndexExpr {
