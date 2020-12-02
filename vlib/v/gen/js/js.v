@@ -966,20 +966,30 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
 		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
-		if i < node.fields.len - 1 || fns.len > 0 {
-			g.writeln(',')
-		} else {
-			g.writeln('')
-		}
+		g.writeln(',')
 	}
 	for i, cfn in fns {
 		g.gen_method_decl(cfn)
-		if i < fns.len - 1 {
-			g.writeln(',')
-		} else {
-			g.writeln('')
-		}
+		g.writeln(',')
 	}
+	// gen toString method
+	fn_names := fns.map(it.name)
+	if !('toString' in fn_names) {
+		g.writeln('toString() {')
+		g.inc_indent()
+		g.write('return `{')
+		for i, field in node.fields {
+			g.write(if i == 0 { ' ' } else { ', ' })
+			match g.typ(field.typ).split('.').last() {
+				"string" { g.write('$field.name: "\${this["${field.name}"].toString()}" ') }
+				else { g.write('$field.name: \${this["${field.name}"].toString()} ') }
+			}
+		}
+		g.writeln('}`')
+		g.dec_indent()
+		g.writeln('}')
+	}
+
 	g.dec_indent()
 	g.writeln('};\n')
 	if node.is_pub {
