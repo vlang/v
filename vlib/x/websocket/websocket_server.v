@@ -8,31 +8,35 @@ import sync
 import time
 import rand
 
+// Server holds state of websocket server connection
 pub struct Server {
 mut:
-	clients                 map[string]&ServerClient
-	logger                  &log.Log
-	ls                      net.TcpListener
-	accept_client_callbacks []AcceptClientFn
-	message_callbacks       []MessageEventHandler
-	close_callbacks         []CloseEventHandler
+	clients                 map[string]&ServerClient // Clients connected to this server
+	logger                  &log.Log // Logger used to log
+	ls                      net.TcpListener // TCpLister used to get incoming connection to socket
+	accept_client_callbacks []AcceptClientFn // Accept client callback functions
+	message_callbacks       []MessageEventHandler // New message callback functions
+	close_callbacks         []CloseEventHandler // Close message callback functions
 pub:
-	port                    int
-	is_ssl                  bool
+	port                    int // Port used as listen to incoming connections
+	is_ssl                  bool // True if secure connection (not supported yet on server)
 pub mut:
-	ping_interval           int = 30 // in seconds
-	state                   State
+	ping_interval           int = 30
+	// Interval for automatic sending ping to connected clients in seconds
+	state                   State // Current state of connection
 }
 
+// ServerClient has state of connected clients
 struct ServerClient {
 pub:
-	resource_name string
-	client_key    string
+	resource_name string // The resource that the client access
+	client_key    string // Unique key of client
 pub mut:
-	server        &Server
-	client        &Client
+	server        &Server // The server instance
+	client        &Client // The client instance
 }
 
+// new_server instance new websocket server on port and route
 pub fn new_server(port int, route string) &Server {
 	return &Server{
 		port: port
@@ -43,13 +47,15 @@ pub fn new_server(port int, route string) &Server {
 	}
 }
 
+// set_ping_interval sets the interval that the server will send ping messages to clients
 pub fn (mut s Server) set_ping_interval(seconds int) {
 	s.ping_interval = seconds
 }
 
+// listen, start listen to incoming connections
 pub fn (mut s Server) listen() ? {
 	s.logger.info('websocket server: start listen on port $s.port')
-	s.ls = net.listen_tcp(s.port)?
+	s.ls = net.listen_tcp(s.port) ?
 	s.set_state(.open)
 	go s.handle_ping()
 	for {
@@ -61,10 +67,11 @@ pub fn (mut s Server) listen() ? {
 	s.logger.info('websocket server: end listen on port $s.port')
 }
 
+// Close server (not implemented)
 fn (mut s Server) close() {
 }
 
-// Todo: make thread safe
+// handle_ping sends ping to all clients every set interval
 fn (mut s Server) handle_ping() {
 	mut clients_to_remove := []string{}
 	for s.state == .open {
@@ -74,8 +81,7 @@ fn (mut s Server) handle_ping() {
 			if c.client.state == .open {
 				c.client.ping() or {
 					s.logger.debug('server-> error sending ping to client')
-					// todo fix better close message, search the standard
-					c.client.close(1002, 'Clossing connection: ping send error') or {
+					c.client.close(1002, 'Closing connection: ping send error') or {
 						// we want to continue even if error
 						continue
 					}
@@ -99,20 +105,21 @@ fn (mut s Server) handle_ping() {
 	}
 }
 
+// serve_client accepts incoming connection and setup the websocket handshake
 fn (mut s Server) serve_client(mut c Client) ? {
 	c.logger.debug('server-> Start serve client ($c.id)')
 	defer {
 		c.logger.debug('server-> End serve client ($c.id)')
 	}
-	mut handshake_response, mut server_client := s.handle_server_handshake(mut c)?
-	accept := s.send_connect_event(mut server_client)?
+	mut handshake_response, mut server_client := s.handle_server_handshake(mut c) ?
+	accept := s.send_connect_event(mut server_client) ?
 	if !accept {
 		s.logger.debug('server-> client not accepted')
-		c.shutdown_socket()?
+		c.shutdown_socket() ?
 		return
 	}
 	// The client is accepted
-	c.socket_write(handshake_response.bytes())?
+	c.socket_write(handshake_response.bytes()) ?
 	lock  {
 		s.clients[server_client.client.id] = server_client
 	}
@@ -123,6 +130,7 @@ fn (mut s Server) serve_client(mut c Client) ? {
 	}
 }
 
+// setup_callbacks initialize all callback functions
 fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	if s.message_callbacks.len > 0 {
 		for cb in s.message_callbacks {
@@ -151,8 +159,9 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	}, sc)
 }
 
+// accept_new_client creates a new client instance for client connects to socket
 fn (mut s Server) accept_new_client() ?&Client {
-	mut new_conn := s.ls.accept()?
+	mut new_conn := s.ls.accept() ?
 	c := &Client{
 		is_server: true
 		conn: new_conn
@@ -166,18 +175,16 @@ fn (mut s Server) accept_new_client() ?&Client {
 }
 
 // set_state sets current state in a thread safe way
-[inline]
 fn (mut s Server) set_state(state State) {
 	lock  {
 		s.state = state
 	}
 }
 
+// free, manual free memory of Server instance
 pub fn (mut s Server) free() {
 	unsafe {
 		s.clients.free()
-		// s.logger.free()
-		// s.ls.free()
 		s.accept_client_callbacks.free()
 		s.message_callbacks.free()
 		s.close_callbacks.free()

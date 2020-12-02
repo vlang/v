@@ -3,33 +3,37 @@ module websocket
 import encoding.utf8
 
 const (
-	header_len_offset           = 2
-	buffer_size                 = 256
-	extended_payload16_end_byte = 4
-	extended_payload64_end_byte = 10
+	header_len_offset           = 2 // Offset for lenghtpart of websocket header
+	buffer_size                 = 256 // Default buffer size
+	extended_payload16_end_byte = 4 // Offset for extended lenght 16 bit of websocket header
+	extended_payload64_end_byte = 10 // Offset for extended lenght 64 bit of websocket header
 )
 
+// A websocket data fragment
 struct Fragment {
-	data   []byte
-	opcode OPCode
+	data   []byte // The included data payload data in a fragment
+	opcode OPCode // Defines the interpretation of the payload data
 }
 
+// Represents a data frame header
 struct Frame {
 mut:
 	header_len  int = 2
+	// Lenght of the websocket header part
 	frame_size  int = 2
-	fin         bool
-	rsv1        bool
-	rsv2        bool
-	rsv3        bool
-	opcode      OPCode
-	has_mask    bool
-	payload_len int
-	masking_key [4]byte
+	// Size of the total frame
+	fin         bool // Indicates if final fragment of message
+	rsv1        bool // Reserved for future use in websocket RFC
+	rsv2        bool // Reserved for future use in websocket RFC
+	rsv3        bool // Reserved for future use in websocket RFC
+	opcode      OPCode // Defines the interpretation of the payload data
+	has_mask    bool // Defines whether the payload data is masked.
+	payload_len int // Payload lenght
+	masking_key [4]byte // All frames from client to server is masked with this key
 }
 
 const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
+	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] // List of invalid close codes
 )
 
 // validate_client, validate client frame rules from RFC6455
@@ -40,53 +44,52 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 	}
 	if (int(frame.opcode) >= 3 && int(frame.opcode) <= 7) ||
 		(int(frame.opcode) >= 11 && int(frame.opcode) <= 15) {
-		ws.close(1002, 'use of reserved opcode')?
+		ws.close(1002, 'use of reserved opcode') ?
 		return error('use of reserved opcode')
 	}
 	if frame.has_mask && !ws.is_server {
 		// Server should never send masked frames
 		// to client, close connection
-		ws.close(1002, 'client got masked frame')?
+		ws.close(1002, 'client got masked frame') ?
 		return error('client sent masked frame')
 	}
 	if is_control_frame(frame.opcode) {
 		if !frame.fin {
-			ws.close(1002, 'control message must not be fragmented')?
+			ws.close(1002, 'control message must not be fragmented') ?
 			return error('unexpected control frame with no fin')
 		}
 		if frame.payload_len > 125 {
-			ws.close(1002, 'control frames must not exceed 125 bytes')?
+			ws.close(1002, 'control frames must not exceed 125 bytes') ?
 			return error('unexpected control frame payload length')
 		}
 	}
 	if frame.fin == false && ws.fragments.len == 0 && frame.opcode == .continuation {
 		err_msg := 'unexecpected continuation, there are no frames to continue, $frame'
-		ws.close(1002, err_msg)?
+		ws.close(1002, err_msg) ?
 		return error(err_msg)
 	}
 }
 
-[inline]
+// is_control_frame returns true if the fram is a control frame
 fn is_control_frame(opcode OPCode) bool {
 	return opcode !in [.text_frame, .binary_frame, .continuation]
 }
 
-[inline]
+// is_data_frame returns true if the fram is a control frame
 fn is_data_frame(opcode OPCode) bool {
 	return opcode in [.text_frame, .binary_frame]
 }
 
-// read_payload, reads the payload from socket
+// read_payload, reads the payload from the socket
 fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	if frame.payload_len == 0 {
 		return []byte{}
 	}
-	// TODO: make a dynamic reusable memory pool here
 	mut buffer := []byte{cap: frame.payload_len}
 	mut read_buf := [1]byte{}
 	mut bytes_read := 0
 	for bytes_read < frame.payload_len {
-		len := ws.socket_read_ptr(byteptr(&read_buf), 1)?
+		len := ws.socket_read_ptr(byteptr(&read_buf), 1) ?
 		if len != 1 {
 			return error('expected read all message, got zero')
 		}
@@ -104,8 +107,8 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	return buffer
 }
 
-// validate_utf_8, validates payload for valid utf encoding
-// todo: support fail fast utf errors for strict autobahn conformance
+// validate_utf_8, validates payload for valid utf8 encoding
+// - Future implementation needs to support fail fast utf errors for strict autobahn conformance
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
 		ws.logger.error('malformed utf8 payload, payload len: ($payload.len)')
@@ -118,11 +121,11 @@ fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 // read_next_message reads 1 to n frames to compose a message
 pub fn (mut ws Client) read_next_message() ?Message {
 	for {
-		frame := ws.parse_frame_header()?
+		frame := ws.parse_frame_header() ?
 		// This debug message leaks so remove if needed
 		// ws.debug_log('read_next_message: frame\n$frame')
-		ws.validate_frame(&frame)?
-		frame_payload := ws.read_payload(&frame)?
+		ws.validate_frame(&frame) ?
+		frame_payload := ws.read_payload(&frame) ?
 		if is_control_frame(frame.opcode) {
 			// Control frames can interject other frames
 			// and need to be returned immediately
@@ -130,9 +133,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				opcode: OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
-			unsafe {
-				frame_payload.free()
-			}
+			unsafe {frame_payload.free()}
 			return msg
 		}
 		// If the message is fragmented we just put it on fragments
@@ -142,9 +143,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				data: frame_payload.clone()
 				opcode: frame.opcode
 			}
-			unsafe {
-				frame_payload.free()
-			}
+			unsafe {frame_payload.free()}
 			continue
 		}
 		if ws.fragments.len == 0 {
@@ -157,21 +156,19 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				opcode: OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
-			unsafe {
-				frame_payload.free()
-			}
+			unsafe {frame_payload.free()}
 			return msg
 		}
 		defer {
 			ws.fragments = []
 		}
 		if is_data_frame(frame.opcode) {
-			ws.close(0, '')?
+			ws.close(0, '') ?
 			return error('Unexpected frame opcode')
 		}
-		payload := ws.payload_from_fragments(frame_payload)?
+		payload := ws.payload_from_fragments(frame_payload) ?
 		opcode := ws.opcode_from_fragments()
-		ws.validate_utf_8(opcode, payload)?
+		ws.validate_utf_8(opcode, payload) ?
 		msg := Message{
 			opcode: opcode
 			payload: payload.clone()
@@ -206,24 +203,20 @@ fn (ws Client) payload_from_fragments(fin_payload []byte) ?[]byte {
 	return total_buffer
 }
 
-// opcode_from_fragments, returns the opcode for message from the first fragment sent
+// opcode_from_fragments returns the opcode for message from the first fragment sent
 fn (ws Client) opcode_from_fragments() OPCode {
 	return OPCode(ws.fragments[0].opcode)
 }
 
 // parse_frame_header parses next message by decoding the incoming frames
 pub fn (mut ws Client) parse_frame_header() ?Frame {
-	// TODO: make a dynamic reusable memory pool here
-	// mut buffer := []byte{cap: buffer_size}
 	mut buffer := [256]byte{}
 	mut bytes_read := 0
 	mut frame := Frame{}
 	mut rbuff := [1]byte{}
 	mut mask_end_byte := 0
 	for ws.state == .open {
-		// Todo: different error scenarios to make sure we close correctly on error
-		// reader.read_into(mut rbuff) ?
-		read_bytes := ws.socket_read_ptr(byteptr(rbuff), 1)?
+		read_bytes := ws.socket_read_ptr(byteptr(rbuff), 1) ?
 		if read_bytes == 0 {
 			// This is probably a timeout or close
 			continue
@@ -268,7 +261,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 			}
 		}
 		if frame.payload_len == 127 && bytes_read == u64(extended_payload64_end_byte) {
-			frame.header_len += 8 // TODO Not sure...
+			frame.header_len += 8
 			frame.payload_len = 0
 			frame.payload_len |= buffer[2] << 56
 			frame.payload_len |= buffer[3] << 48
