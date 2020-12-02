@@ -1,27 +1,30 @@
 module websocket
 
-// All this plumbing will go awauy when we can do EventHandler<T> properly
+// Represents a callback on a new message
 struct MessageEventHandler {
-	handler  SocketMessageFn
-	handler2 SocketMessageFn2
-	is_ref   bool
-	ref      voidptr
+	handler  SocketMessageFn // Callback function
+	handler2 SocketMessageFn2 // Callback function with reference
+	is_ref   bool // Has a reference object
+	ref      voidptr // The referenced object
 }
 
+// Represents a callback on error
 struct ErrorEventHandler {
-	handler  SocketErrorFn
-	handler2 SocketErrorFn2
-	is_ref   bool
-	ref      voidptr
+	handler  SocketErrorFn // Callback function
+	handler2 SocketErrorFn2 // Callback function with reference
+	is_ref   bool // Has a reference object
+	ref      voidptr // The referenced object
 }
 
+// Represents a callback when connection is opened
 struct OpenEventHandler {
-	handler  SocketOpenFn
-	handler2 SocketOpenFn2
-	is_ref   bool
-	ref      voidptr
+	handler  SocketOpenFn // Callback function
+	handler2 SocketOpenFn2 // Callback function with reference
+	is_ref   bool // Has a reference object
+	ref      voidptr // The referenced object
 }
 
+// Represents a callback on a closing event
 struct CloseEventHandler {
 	handler  SocketCloseFn
 	handler2 SocketCloseFn2
@@ -47,21 +50,12 @@ pub type SocketCloseFn = fn (mut c Client, code int, reason string) ?
 
 pub type SocketCloseFn2 = fn (mut c Client, code int, reason string, v voidptr) ?
 
+// on_connect register callback when client connects to the server
 pub fn (mut s Server) on_connect(fun AcceptClientFn) ? {
 	if s.accept_client_callbacks.len > 0 {
 		return error('only one callback can be registered for accept client')
 	}
 	s.accept_client_callbacks << fun
-}
-
-fn (mut s Server) send_connect_event(mut c ServerClient) ?bool {
-	if s.accept_client_callbacks.len == 0 {
-		// If no callback all client will be accepted
-		return true
-	}
-	fun := s.accept_client_callbacks[0]
-	res := fun(mut c)?
-	return res
 }
 
 // on_message, register a callback on new messages
@@ -160,6 +154,18 @@ pub fn (mut ws Client) on_close_ref(fun SocketCloseFn2, ref voidptr) {
 	}
 }
 
+// send_connect_event, invokes the on_connect callback
+fn (mut s Server) send_connect_event(mut c ServerClient) ?bool {
+	if s.accept_client_callbacks.len == 0 {
+		// If no callback all client will be accepted
+		return true
+	}
+	fun := s.accept_client_callbacks[0]
+	res := fun(mut c) ?
+	return res
+}
+
+// send_message_event invokes the on_message callback
 fn (mut ws Client) send_message_event(msg &Message) {
 	ws.debug_log('sending on_message event')
 	for ev_handler in ws.message_callbacks {
@@ -171,6 +177,7 @@ fn (mut ws Client) send_message_event(msg &Message) {
 	}
 }
 
+// send_error_event invokes the on_error callback
 fn (mut ws Client) send_error_event(err string) {
 	ws.debug_log('sending on_error event')
 	for ev_handler in ws.error_callbacks {
@@ -182,6 +189,7 @@ fn (mut ws Client) send_error_event(err string) {
 	}
 }
 
+// send_close_event invokes the on_close callback
 fn (mut ws Client) send_close_event(code int, reason string) {
 	ws.debug_log('sending on_close event')
 	for ev_handler in ws.close_callbacks {
@@ -193,6 +201,7 @@ fn (mut ws Client) send_close_event(code int, reason string) {
 	}
 }
 
+// send_open_event invokes the on_open callback
 fn (mut ws Client) send_open_event() {
 	ws.debug_log('sending on_open event')
 	for ev_handler in ws.open_callbacks {

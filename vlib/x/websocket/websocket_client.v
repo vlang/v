@@ -23,27 +23,29 @@ const (
 pub struct Client {
 	is_server         bool
 mut:
-	ssl_conn          &openssl.SSLConn
-	flags             []Flag
-	fragments         []Fragment
-	message_callbacks []MessageEventHandler
-	error_callbacks   []ErrorEventHandler
-	open_callbacks    []OpenEventHandler
-	close_callbacks   []CloseEventHandler
+	ssl_conn          &openssl.SSLConn // Secure connection used when wss is used
+	flags             []Flag // Flags
+	fragments         []Fragment // Current fragments
+	message_callbacks []MessageEventHandler // All callbacks on_message
+	error_callbacks   []ErrorEventHandler // All callbacks on_error
+	open_callbacks    []OpenEventHandler // All callbacks on_open
+	close_callbacks   []CloseEventHandler // All callbacks on_close
 pub:
-	is_ssl            bool
-	uri               Uri
-	id                string
+	is_ssl            bool // True if secure socket is used
+	uri               Uri // Uri of current connection
+	id                string // Unique id of client
 pub mut:
-	conn              net.TcpConn
-	nonce_size        int = 16 // you can try 18 too
-	panic_on_callback bool
-	state             State
-	logger            &log.Log
-	resource_name     string
-	last_pong_ut      u64
+	conn              net.TcpConn // Underlying TCP connection
+	nonce_size        int = 16
+	// you can try 18 too
+	panic_on_callback bool // Set to true of callbacks can panic
+	state             State // Current state of connection
+	logger            &log.Log // Logger used to log messages
+	resource_name     string // Name of current resource
+	last_pong_ut      u64 // Last time in unix time we got a pong message
 }
 
+// Flag of websocket handshake
 enum Flag {
 	has_accept
 	has_connection
@@ -78,7 +80,7 @@ pub enum OPCode {
 
 // new_client, instance a new websocket client
 pub fn new_client(address string) ?&Client {
-	uri := parse_uri(address)?
+	uri := parse_uri(address) ?
 	return &Client{
 		is_server: false
 		ssl_conn: openssl.new_ssl_conn()
@@ -94,14 +96,14 @@ pub fn new_client(address string) ?&Client {
 
 // connect, connects and do handshake procedure with remote server
 pub fn (mut ws Client) connect() ? {
-	ws.assert_not_connected()?
+	ws.assert_not_connected() ?
 	ws.set_state(.connecting)
 	ws.logger.info('connecting to host $ws.uri')
-	ws.conn = ws.dial_socket()?
+	ws.conn = ws.dial_socket() ?
 	// Todo: make setting configurable
 	ws.conn.set_read_timeout(time.second * 30)
 	ws.conn.set_write_timeout(time.second * 30)
-	ws.handshake()?
+	ws.handshake() ?
 	ws.set_state(.open)
 	ws.logger.info('successfully connected to host $ws.uri')
 	ws.send_open_event()
@@ -126,23 +128,19 @@ pub fn (mut ws Client) listen() ? {
 			return error(err)
 		}
 		if ws.state in [.closed, .closing] {
-				return
+			return
 		}
 		ws.debug_log('got message: $msg.opcode') // , payload: $msg.payload') leaks
 		match msg.opcode {
 			.text_frame {
 				ws.debug_log('read: text')
 				ws.send_message_event(msg)
-				unsafe {
-					msg.free()
-				}
+				unsafe {msg.free()}
 			}
 			.binary_frame {
 				ws.debug_log('read: binary')
 				ws.send_message_event(msg)
-				unsafe {
-					msg.free()
-				}
+				unsafe {msg.free()}
 			}
 			.ping {
 				ws.debug_log('read: ping, sending pong')
@@ -155,9 +153,7 @@ pub fn (mut ws Client) listen() ? {
 					continue
 				}
 				if msg.payload.len > 0 {
-					unsafe {
-						msg.free()
-					}
+					unsafe {msg.free()}
 				}
 			}
 			.pong {
@@ -165,9 +161,7 @@ pub fn (mut ws Client) listen() ? {
 				ws.last_pong_ut = time.now().unix
 				ws.send_message_event(msg)
 				if msg.payload.len > 0 {
-					unsafe {
-						msg.free()
-					}
+					unsafe {msg.free()}
 				}
 			}
 			.close {
@@ -177,50 +171,46 @@ pub fn (mut ws Client) listen() ? {
 				}
 				if msg.payload.len > 0 {
 					if msg.payload.len == 1 {
-						ws.close(1002, 'close payload cannot be 1 byte')?
+						ws.close(1002, 'close payload cannot be 1 byte') ?
 						return error('close payload cannot be 1 byte')
 					}
 					code := (int(msg.payload[0]) << 8) + int(msg.payload[1])
 					if code in invalid_close_codes {
-						ws.close(1002, 'invalid close code: $code')?
+						ws.close(1002, 'invalid close code: $code') ?
 						return error('invalid close code: $code')
 					}
 					reason := if msg.payload.len > 2 { msg.payload[2..] } else { []byte{} }
 					if reason.len > 0 {
-						ws.validate_utf_8(.close, reason)?
+						ws.validate_utf_8(.close, reason) ?
 					}
 					if ws.state !in [.closing, .closed] {
 						// sending close back according to spec
 						ws.debug_log('close with reason, code: $code, reason: $reason')
 						r := reason.bytestr()
-						ws.close(code, r)?
+						ws.close(code, r) ?
 					}
-					unsafe {
-						msg.free()
-					}
+					unsafe {msg.free()}
 				} else {
 					if ws.state !in [.closing, .closed] {
 						ws.debug_log('close with reason, no code')
 						// sending close back according to spec
-						ws.close(1000, 'normal')?
+						ws.close(1000, 'normal') ?
 					}
-					unsafe {
-						msg.free()
-					}
+					unsafe {msg.free()}
 				}
 				return
 			}
 			.continuation {
 				ws.logger.error('unexpected opcode continuation, nothing to continue')
 				ws.send_error_event('unexpected opcode continuation, nothing to continue')
-				ws.close(1002, 'nothing to continue')?
+				ws.close(1002, 'nothing to continue') ?
 				return error('unexpected opcode continuation, nothing to continue')
 			}
 		}
 	}
 }
 
-// this function was needed for defer
+// manage_clean_close closes connection in a clean way
 fn (mut ws Client) manage_clean_close() {
 	ws.send_close_event(1000, 'closed by client')
 }
@@ -228,13 +218,13 @@ fn (mut ws Client) manage_clean_close() {
 // ping, sends ping message to server,
 // ping response will be pushed to message callback
 pub fn (mut ws Client) ping() ? {
-	ws.send_control_frame(.ping, 'PING', [])?
+	ws.send_control_frame(.ping, 'PING', []) ?
 }
 
-// pong, sends pog message to server,
+// pong, sends pong message to server,
 // pongs are normally automatically sent back to server
 pub fn (mut ws Client) pong() ? {
-	ws.send_control_frame(.pong, 'PONG', [])?
+	ws.send_control_frame(.pong, 'PONG', []) ?
 }
 
 // write_ptr, writes len bytes provided a byteptr with a websocket messagetype
@@ -265,18 +255,11 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := C.htons(payload_len)
 			header[1] = 126
-			// 0x80
-			// todo: fix v style copy instead
-			unsafe {
-				C.memcpy(&header[2], &len16, 2)
-			}
+			unsafe {C.memcpy(&header[2], &len16, 2)}
 		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
 			len_bytes := htonl64(u64(payload_len))
 			header[1] = 127 // 0x80
-			// todo: fix v style copy instead
-			unsafe {
-				C.memcpy(&header[2], len_bytes.data, 8)
-			}
+			unsafe {C.memcpy(&header[2], len_bytes.data, 8)}
 		}
 	} else {
 		if payload_len <= 125 {
@@ -288,10 +271,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := C.htons(payload_len)
 			header[1] = (126 | 0x80)
-			// todo: fix v style copy instead
-			unsafe {
-				C.memcpy(&header[2], &len16, 2)
-			}
+			unsafe {C.memcpy(&header[2], &len16, 2)}
 			header[4] = masking_key[0]
 			header[5] = masking_key[1]
 			header[6] = masking_key[2]
@@ -299,17 +279,13 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff { // 65535 && 18446744073709551615
 			len64 := htonl64(u64(payload_len))
 			header[1] = (127 | 0x80)
-			// todo: fix v style copy instead
-			unsafe {
-				C.memcpy(&header[2], len64.data, 8)
-			}
+			unsafe {C.memcpy(&header[2], len64.data, 8)}
 			header[10] = masking_key[0]
 			header[11] = masking_key[1]
 			header[12] = masking_key[2]
 			header[13] = masking_key[3]
 		} else {
-			// l.c('write: frame too large')
-			ws.close(1009, 'frame too large')?
+			ws.close(1009, 'frame too large') ?
 			return error('frame too large')
 		}
 	}
@@ -326,7 +302,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 			frame_buf[header_len + i] ^= masking_key[i % 4] & 0xff
 		}
 	}
-	ws.socket_write(frame_buf)?
+	ws.socket_write(frame_buf) ?
 	// Temporary hack until memory management is done
 	unsafe {
 		frame_buf.free()
@@ -337,9 +313,10 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 
 // write, writes a byte array with a websocket messagetype
 pub fn (mut ws Client) write(bytes []byte, code OPCode) ? {
-	ws.write_ptr(byteptr(bytes.data), bytes.len, code)?
+	ws.write_ptr(byteptr(bytes.data), bytes.len, code) ?
 }
 
+// write_str, writes a string with a websocket texttype
 pub fn (mut ws Client) write_str(str string) ? {
 	ws.write_ptr(str.str, str.len, .text_frame)
 }
@@ -362,20 +339,18 @@ pub fn (mut ws Client) close(code int, message string) ? {
 	if code > 0 {
 		code_ := C.htons(code)
 		message_len := message.len + 2
-		mut close_frame := []byte{len: message_len} // [`0`].repeat(message_len)
+		mut close_frame := []byte{len: message_len}
 		close_frame[0] = byte(code_ & 0xFF)
 		close_frame[1] = byte(code_ >> 8)
 		code32 = (close_frame[0] << 8) + close_frame[1]
 		for i in 0 .. message.len {
 			close_frame[i + 2] = message[i]
 		}
-		ws.send_control_frame(.close, 'CLOSE', close_frame)?
+		ws.send_control_frame(.close, 'CLOSE', close_frame) ?
 		ws.send_close_event(code, message)
-		unsafe {
-			close_frame.free()
-		}
+		unsafe {close_frame.free()}
 	} else {
-		ws.send_control_frame(.close, 'CLOSE', [])?
+		ws.send_control_frame(.close, 'CLOSE', []) ?
 		ws.send_close_event(code, '')
 	}
 	ws.fragments = []
@@ -413,20 +388,14 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 		if payload.len >= 2 {
 			if !ws.is_server {
 				mut parsed_payload := []byte{len: payload.len + 1}
-				unsafe {
-					C.memcpy(parsed_payload.data, &payload[0], payload.len)
-				}
+				unsafe {C.memcpy(parsed_payload.data, &payload[0], payload.len)}
 				parsed_payload[payload.len] = `\0`
 				for i in 0 .. payload.len {
 					control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff
 				}
-				unsafe {
-					parsed_payload.free()
-				}
+				unsafe {parsed_payload.free()}
 			} else {
-				unsafe {
-					C.memcpy(&control_frame[2], &payload[0], payload.len)
-				}
+				unsafe {C.memcpy(&control_frame[2], &payload[0], payload.len)}
 			}
 		}
 	} else {
@@ -438,9 +407,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 			}
 		} else {
 			if payload.len > 0 {
-				unsafe {
-					C.memcpy(&control_frame[2], &payload[0], payload.len)
-				}
+				unsafe {C.memcpy(&control_frame[2], &payload[0], payload.len)}
 			}
 		}
 	}
@@ -451,17 +418,17 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 
 // parse_uri, parses the url string to it's components
 fn parse_uri(url string) ?&Uri {
-	u := urllib.parse(url)?
+	u := urllib.parse(url) ?
 	v := u.request_uri().split('?')
 	mut port := u.port()
 	if port == '' {
 		port = if u.str().starts_with('ws://') {
-				'80'
-			} else if u.str().starts_with('wss://') {
-				'443'
-			} else {
-				u.port()
-			}
+			'80'
+		} else if u.str().starts_with('wss://') {
+			'443'
+		} else {
+			u.port()
+		}
 	}
 	querystring := if v.len > 1 { '?' + v[1] } else { '' }
 	return &Uri{
@@ -480,7 +447,7 @@ fn (mut ws Client) set_state(state State) {
 	}
 }
 
-[inline]
+// assert_not_connected returns error if the connection is not connected
 fn (ws Client) assert_not_connected() ? {
 	match ws.state {
 		.connecting { return error('connect: websocket is connecting') }
@@ -500,6 +467,7 @@ fn (mut ws Client) reset_state() {
 	}
 }
 
+// debug_log makes debug logging output different depending if client or server
 fn (mut ws Client) debug_log(text string) {
 	if ws.is_server {
 		ws.logger.debug('server-> $text')
@@ -508,14 +476,12 @@ fn (mut ws Client) debug_log(text string) {
 	}
 }
 
-[unsafe]
+// free, manual free memory of Message struct
 pub fn (m &Message) free() {
-	unsafe {
-		m.payload.free()
-	}
+	unsafe {m.payload.free()}
 }
 
-[unsafe]
+// free, manual free memory of Client struct
 pub fn (c &Client) free() {
 	unsafe {
 		c.flags.free()
