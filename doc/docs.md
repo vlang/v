@@ -521,6 +521,8 @@ println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
 
+println(nums[0..2]) // slicing gives an array "[1, 5]"
+
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
