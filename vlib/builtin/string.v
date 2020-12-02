@@ -111,9 +111,7 @@ pub fn tos3(s charptr) string {
 	}
 }
 
-[deprecated]
 pub fn tos_lit(s charptr) string {
-	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')
 	return string{
 		str: byteptr(s)
 		len: unsafe {C.strlen(s)}
