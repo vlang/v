@@ -1620,7 +1620,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
 		p.import_syms(mut node)
-		p.register_used_import(mod_name) // no `unused import` msg for parent
+		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.position()
 	if import_pos.line_nr == pos_t.line_nr {
