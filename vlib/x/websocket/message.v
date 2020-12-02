@@ -5,33 +5,33 @@ import encoding.utf8
 const (
 	header_len_offset           = 2 // offset for lenghtpart of websocket header
 	buffer_size                 = 256 // default buffer size
-	extended_payload16_end_byte = 4 // offset for extended lenght 16 bit of websocket header
-	extended_payload64_end_byte = 10 // offset for extended lenght 64 bit of websocket header
+	extended_payload16_end_byte = 4 // 16 bit offset for extended lenght of websocket header
+	extended_payload64_end_byte = 10 // 64 bit offset for extended lenght of websocket header
 )
 
 // Fragment represents a websocket data fragment
 struct Fragment {
-	data   []byte // the included data payload data in a fragment
-	opcode OPCode // defines the interpretation of the payload data
+	data   []byte // included data payload data in a fragment
+	opcode OPCode // interpretation of the payload data
 }
 
 // Frame represents a data frame header
 struct Frame {
 mut:
-	header_len  int = 2	// lenght of the websocket header part
-	frame_size  int = 2	// size of the total frame
+	header_len  int = 2 // lenght of the websocket header part
+	frame_size  int = 2	// size of total frame
 	fin         bool // true if final fragment of message
 	rsv1        bool // reserved for future use in websocket RFC
 	rsv2        bool // reserved for future use in websocket RFC
 	rsv3        bool // reserved for future use in websocket RFC
-	opcode      OPCode // defines the interpretation of the payload data
+	opcode      OPCode // interpretation of the payload data
 	has_mask    bool // true if the payload data is masked
-	payload_len int // payload lenght
+	payload_len int // payload length
 	masking_key [4]byte // all frames from client to server is masked with this key
 }
 
 const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] // List of invalid websocket close codes
+	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] 
 )
 
 // validate_client validates client frame rules from RFC6455

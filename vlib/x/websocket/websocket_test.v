@@ -31,9 +31,7 @@ fn start_server() ? {
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or {
-		// not used
-	}
+	s.listen() or {}
 }
 
 // ws_test tests connect to the websocket server from websocket client

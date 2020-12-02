@@ -24,14 +24,14 @@ pub mut:
 	state                   State // current state of connection
 }
 
-// ServerClient represent a connected client
+// ServerClient represents a connected client
 struct ServerClient {
 pub:
 	resource_name string // resource that the client access
 	client_key    string // unique key of client
 pub mut:
-	server        &Server // server instance
-	client        &Client // client instance
+	server        &Server 
+	client        &Client 
 }
 
 // new_server instance a new websocket server on provided port and route
@@ -67,7 +67,7 @@ pub fn (mut s Server) listen() ? {
 
 // Close closes server (not implemented yet)
 fn (mut s Server) close() {
-	// todo: implement close when moving to net from x.net
+	// TODO: implement close when moving to net from x.net
 }
 
 // handle_ping sends ping to all clients every set interval
@@ -94,7 +94,7 @@ fn (mut s Server) handle_ping() {
 				}
 			}
 		}
-		// todo: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
+		// TODO: replace for with s.clients.delete_all(clients_to_remove) if (https://github.com/vlang/v/pull/6020) merges
 		for client in clients_to_remove {
 			lock  {
 				s.clients.delete(client)
@@ -104,7 +104,7 @@ fn (mut s Server) handle_ping() {
 	}
 }
 
-// serve_client accepts incoming connection and setup the callbacks
+// serve_client accepts incoming connection and sets up the callbacks
 fn (mut s Server) serve_client(mut c Client) ? {
 	c.logger.debug('server-> Start serve client ($c.id)')
 	defer {
@@ -158,7 +158,7 @@ fn (mut s Server) setup_callbacks(mut sc ServerClient) {
 	}, sc)
 }
 
-// accept_new_client creates a new client instance for client that connects to socket
+// accept_new_client creates a new client instance for client that connects to the socket
 fn (mut s Server) accept_new_client() ?&Client {
 	mut new_conn := s.ls.accept() ?
 	c := &Client{
@@ -180,7 +180,7 @@ fn (mut s Server) set_state(state State) {
 	}
 }
 
-// free manage manual free of memory for Server instance
+// free manages manual free of memory for Server instance
 pub fn (mut s Server) free() {
 	unsafe {
 		s.clients.free()

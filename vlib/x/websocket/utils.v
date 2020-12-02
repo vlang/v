@@ -43,7 +43,7 @@ fn create_key_challenge_response(seckey string) ?string {
 	return b64
 }
 
-// get_nonce creates an randomized array used in handshake process
+// get_nonce creates a randomized array used in handshake process
 fn get_nonce(nonce_size int) string {
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'

@@ -1,11 +1,5 @@
 // websocket module implements websocket client and a websocket server
-// that implements the websocket capabilities
-// The client is a refactor of the original V-websocket client class
-// from @thecoderr. The server implementation is new.
-// There are quite a few manual memory management free() going on
-// in the code. This will be refactored once the memory management
-// is done. For now there are no leaks on message levels. Please
-// check with valgrind if you do any changes in the free calls
+// attribution: @thecoderr the author of original websocket client 
 module websocket
 
 import net

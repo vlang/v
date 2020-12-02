@@ -3,7 +3,7 @@ module websocket
 import encoding.base64
 import strings
 
-// handshake manage the websocket handshake process
+// handshake manages the websocket handshake process
 fn (mut ws Client) handshake() ? {
 	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
@@ -33,7 +33,7 @@ fn (mut ws Client) handshake() ? {
 	unsafe {handshake_bytes.free()}
 }
 
-// handle_server_handshake manage websocket server handshake process
+// handle_server_handshake manages websocket server handshake process
 fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient) {
 	msg := c.read_handshake_str() ?
 	handshake_response, client := s.parse_client_handshake(msg, mut c) ?
@@ -134,7 +134,7 @@ fn (mut ws Client) read_handshake(seckey string) ? {
 }
 
 // check_handshake_response checks the response from handshake and returns
-// the response and secure key provided by websocket client
+// the response and secure key provided by the websocket client
 fn (mut ws Client) check_handshake_response(handshake_response string, seckey string) ? {
 	ws.debug_log('handshake response:\n$handshake_response')
 	lines := handshake_response.split_into_lines()
