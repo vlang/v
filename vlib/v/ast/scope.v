@@ -122,7 +122,13 @@ pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
 }
 
 pub fn (mut s Scope) register(obj ScopeObject) {
-	name := typeof(obj).name
+	name := if obj is ConstField {
+		obj.name
+	} else if obj is GlobalField {
+		obj.name
+	} else {
+		(obj as Var).name
+	}
 	if name == '_' {
 		return
 	}
