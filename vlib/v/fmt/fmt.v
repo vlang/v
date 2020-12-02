@@ -1424,8 +1424,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		fn_name := '${f.cur_mod}.$node.name'
 		// Prevent usage of short_fn_args for sumtypes
 		if last_expr is ast.StructInit && fn_name in f.table.fns {
-			struct_param := f.table.fns[fn_name].params.last()
-			if struct_param.typ == (last_expr as ast.StructInit).typ {
+			trailing_param := f.table.fns[fn_name].params.last()
+			passed_typ := (last_expr as ast.StructInit).typ
+			if trailing_param.typ == passed_typ || passed_typ == 1 {
 				f.use_short_fn_args = true
 			}
 		}
