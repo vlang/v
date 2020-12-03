@@ -10,7 +10,12 @@ fn incr(shared foo map[string]int, key string, sem sync.Semaphore) {
 }
 
 fn test_shared_array() {
-	shared foo := &{'p': 10, 'q': 20}
+	shared foo := &{'p': 10, 'q': 0}
+	lock foo {
+		unsafe {
+			foo['q'] = 20
+		}
+	}
 	sem := sync.new_semaphore()
 	go incr(shared foo, 'p', sem)
 	go incr(shared foo, 'q', sem)
@@ -19,8 +24,8 @@ fn test_shared_array() {
 	for _ in 0 .. 50000 {
 		lock foo {
 			unsafe {
-				foo['p'] = foo['p'] - 2
-				foo['q'] = foo['q'] + 3
+				foo['p'] -= 2
+				foo['q'] += 3
 			}
 		}
 	}

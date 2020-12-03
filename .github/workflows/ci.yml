@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
     - name: Environment info
@@ -47,17 +47,17 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc gcc
     steps:
     - uses: actions/checkout@v2
     - name: Environment info
       run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
     - name: Build local v
-      run: (make -j4 && ./v -cg -o v cmd/v)
+      run: (make -j4)
     - name: Clone & Build vmaster/v
       run: |
         git clone --depth=1 https://github.com/vlang/v vmaster/
-        (cd vmaster; make -j4 && ./v -cg -o v cmd/v)
+        (cd vmaster; make -j4)
     - name: V versions
       run: ./v version && ./vmaster/v version
     - name: Build the repeat tool
