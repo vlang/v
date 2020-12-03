@@ -231,8 +231,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 		}
 		else {
-			p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
-				p.tok.position())
+			if p.tok.kind != .eof {
+				// eof should be handled where it happens
+				p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
+					p.tok.position())
+			}
 		}
 	}
 	return p.expr_with_left(node, precedence, is_stmt_ident)
