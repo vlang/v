@@ -60,6 +60,7 @@ pub struct V_u32 {
 	val JS.Number
 }
 fn (v V_u32) valueOf() JS.Number { return v.val }
+fn (v V_u32) toString() JS.Number { return v.val.toString() }
 
 pub struct V_u64 {
 	val JS.Number
