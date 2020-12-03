@@ -581,6 +581,15 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	sgl.end()
 }
 
+
+pub fn screen_size() Size {
+	$if macos {
+		return C.gg_get_screen_size()
+	}
+	// TODO windows, linux, etc
+	return Size{}
+}
+
 fn C.WaitMessage()
 
 /*
