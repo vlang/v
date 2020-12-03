@@ -24,21 +24,21 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 			}
 		}
 		ast.InfixExpr {
-			p.check_undefined_variables(exprs, val.left)?
-			p.check_undefined_variables(exprs, val.right)?
+			p.check_undefined_variables(exprs, val.left) ?
+			p.check_undefined_variables(exprs, val.right) ?
 		}
 		ast.ParExpr {
-			p.check_undefined_variables(exprs, val.expr)?
+			p.check_undefined_variables(exprs, val.expr) ?
 		}
 		ast.PostfixExpr {
-			p.check_undefined_variables(exprs, val.expr)?
+			p.check_undefined_variables(exprs, val.expr) ?
 		}
 		ast.PrefixExpr {
-			p.check_undefined_variables(exprs, val.right)?
+			p.check_undefined_variables(exprs, val.right) ?
 		}
 		ast.StringInterLiteral {
 			for expr_ in val.exprs {
-				p.check_undefined_variables(exprs, expr_)?
+				p.check_undefined_variables(exprs, expr_) ?
 			}
 		}
 		else {}
@@ -130,7 +130,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							if !p.pref.translated {
 								p.error_with_pos('static variables are supported only in -translated mode',
 									lx.pos)
-									return ast.Stmt{}
+								return ast.Stmt{}
 							}
 							is_static = true
 						}
@@ -163,7 +163,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 				if op == .decl_assign {
 					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
 						lx.pos)
-						return ast.Stmt{}
+					return ast.Stmt{}
 				}
 				lx.is_setter = true
 			}
@@ -173,7 +173,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 				if op == .decl_assign {
 					p.error_with_pos('struct fields can only be declared during the initialization',
 						lx.pos)
-						return ast.Stmt{}
+					return ast.Stmt{}
 				}
 			}
 			else {

@@ -50,8 +50,12 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name { return p.vweb() }
-				.key_if { return p.if_expr(true) }
+				.name {
+					return p.vweb()
+				}
+				.key_if {
+					return p.if_expr(true)
+				}
 				else {
 					p.error_with_pos('unexpected `$`', p.peek_tok.position())
 					return ast.Expr{}
