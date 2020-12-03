@@ -1764,7 +1764,6 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		if util.contains_capital(name) {
 			p.warn_with_pos('const names cannot contain uppercase letters, use snake_case instead',
 				pos)
-			return ast.ConstDecl{}
 		}
 		full_name := p.prepend_mod(name)
 		// name := p.check_name()
