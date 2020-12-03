@@ -1,0 +1,8 @@
+vlib/v/parser/tests/unused_import_warn.vv:1:8: warning: module 'parser (v.parser)' is imported but never used
+    1 | import v.parser
+      |        ~~~~~~~~
+    2 | import os
+vlib/v/parser/tests/unused_import_warn.vv:2:8: warning: module 'os' is imported but never used
+    1 | import v.parser
+    2 | import os
+      |        ~~

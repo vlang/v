@@ -1602,6 +1602,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_name += '.' + submod_name
 		mod_alias = submod_name
 	}
+	last_pos := p.prev_tok.position()
 	if p.tok.kind == .key_as {
 		p.next()
 		mod_alias = p.check_name()
@@ -1610,7 +1611,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		}
 	}
 	mut node := ast.Import{
-		pos: pos
+		pos: pos.extend(last_pos)
 		mod: mod_name
 		alias: mod_alias
 	}
