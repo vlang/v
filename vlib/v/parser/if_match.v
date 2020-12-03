@@ -35,6 +35,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 			comments << p.eat_comments()
 			if p.tok.kind == .key_match {
 				p.error('cannot use `match` with `if` statements')
+				return ast.IfExpr{}
 			}
 			if p.tok.kind == .lcbr {
 				// else {
@@ -82,6 +83,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		p.check(.key_if)
 		if p.tok.kind == .key_match {
 			p.error('cannot use `match` with `if` statements')
+			return ast.IfExpr{}
 		}
 		comments << p.eat_comments()
 		mut cond := ast.Expr{}
@@ -129,6 +131,7 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		if is_comptime {
 			if p.tok.kind == .key_else {
 				p.error('use `\$else` instead of `else` in compile-time `if` branches')
+				return ast.IfExpr{}
 			}
 			if p.peek_tok.kind == .key_else {
 				p.check(.dollar)
@@ -199,6 +202,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				if p.tok.kind == .dotdot {
 					p.error_with_pos('match only supports inclusive (`...`) ranges, not exclusive (`..`)',
 						p.tok.position())
+					return ast.MatchExpr{}
 				} else if p.tok.kind == .ellipsis {
 					p.next()
 					expr2 := p.expr(0)
@@ -283,10 +287,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			if has_timeout {
 				p.error_with_pos('timeout `> t` and `else` are mutually exclusive `select` keys',
 					p.tok.position())
+				return ast.SelectExpr{}
 			}
 			if has_else {
 				p.error_with_pos('at most one `else` branch allowed in `select` block',
 					p.tok.position())
+				return ast.SelectExpr{}
 			}
 			is_else = true
 			has_else = true
@@ -295,10 +301,12 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			if has_else {
 				p.error_with_pos('`else` and timeout `> t` are mutually exclusive `select` keys',
 					p.tok.position())
+				return ast.SelectExpr{}
 			}
 			if has_timeout {
 				p.error_with_pos('at most one timeout `> t` branch allowed in `select` block',
 					p.tok.position())
+				return ast.SelectExpr{}
 			}
 			is_timeout = true
 			has_timeout = true
@@ -318,6 +326,7 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 			exprs, comments := p.expr_list()
 			if exprs.len != 1 {
 				p.error('only one expression allowed as `select` key')
+				return ast.SelectExpr{}
 			}
 			if p.tok.kind in [.assign, .decl_assign] {
 				stmt = p.partial_assign_stmt(exprs, comments)
@@ -335,17 +344,20 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 				ast.ExprStmt {
 					if !stmt.is_expr {
 						p.error_with_pos('select: invalid expression', stmt.pos)
+						return ast.SelectExpr{}
 					} else {
 						match mut stmt.expr {
 							ast.InfixExpr {
 								if stmt.expr.op != .arrow {
 									p.error_with_pos('select key: `<-` operator expected',
 										stmt.expr.pos)
+									return ast.SelectExpr{}
 								}
 							}
 							else {
 								p.error_with_pos('select key: send expression (`ch <- x`) expected',
 									stmt.pos)
+								return ast.SelectExpr{}
 							}
 						}
 					}
@@ -357,16 +369,19 @@ fn (mut p Parser) select_expr() ast.SelectExpr {
 							if expr.op != .arrow {
 								p.error_with_pos('select key: `<-` operator expected',
 									expr.pos)
+								return ast.SelectExpr{}
 							}
 						}
 						else {
 							p.error_with_pos('select key: receive expression expected',
 								stmt.right[0].position())
+							return ast.SelectExpr{}
 						}
 					}
 				}
 				else {
 					p.error_with_pos('select: transmission statement expected', stmt.position())
+					return ast.SelectExpr{}
 				}
 			}
 		}
