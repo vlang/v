@@ -267,7 +267,7 @@ static void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
-#define _SLIT(s) ((string){.str=(byteptr)(s), .len=(strlen(s))})
+#define _SLIT(s) ((string){.str=(byteptr)(s), .len=(strlen(s)), .is_lit=1})
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
 #define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map_exists(m, val)

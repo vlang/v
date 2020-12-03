@@ -4,6 +4,7 @@
 module builtin
 
 import strconv
+
 /*
 NB: A V string should be/is immutable from the point of view of
     V user programs after it is first created. A V string is
@@ -40,15 +41,14 @@ NB: A V string should be/is immutable from the point of view of
     time, when used with pure V functions, but fail in strange ways,
     when used with modules using C functions (for example os and so on).
 */
-
-
 pub struct string {
 pub:
-	str byteptr // points to a C style 0 terminated string of bytes.
-	len int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	str    byteptr // points to a C style 0 terminated string of bytes.
+	len    int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int
 }
+
 // mut:
 // hash_cache int
 //
@@ -56,9 +56,8 @@ mut:
 // .is_lit == 0 => a fresh string, should be freed by autofree
 // .is_lit == 1 => a literal string from .rodata, should NOT be freed
 // .is_lit == -98761234 => already freed string, protects against double frees.
-//            ^^^^^^^^^ calling free on these is a bug.
+// ^^^^^^^^^ calling free on these is a bug.
 // Any other value means that the string has been corrupted.
-
 pub struct ustring {
 pub mut:
 	s     string
@@ -180,7 +179,6 @@ pub fn (s string) cstr() byteptr {
 	return clone.str
 }
 */
-
 // cstring_to_vstring creates a copy of cstr and turns it into a v string
 [unsafe]
 pub fn cstring_to_vstring(cstr byteptr) string {
@@ -201,10 +199,8 @@ pub fn (s string) replace(rep string, with string) string {
 	// TODO PERF Allocating ints is expensive. Should be a stack array
 	// Get locations of all reps within this string
 	mut idxs := []int{}
-	defer  {
-		unsafe {
-			idxs.free()
-		}
+	defer {
+		unsafe {idxs.free()}
 	}
 	mut idx := 0
 	for {
@@ -229,7 +225,7 @@ pub fn (s string) replace(rep string, with string) string {
 	for i := 0; i < s.len; i++ {
 		if i == cur_idx {
 			// Reached the location of rep, replace it with "with"
-			for j in 0..with.len {
+			for j in 0 .. with.len {
 				unsafe {
 					b[b_i] = with[j]
 				}
@@ -242,8 +238,7 @@ pub fn (s string) replace(rep string, with string) string {
 			if idx_pos < idxs.len {
 				cur_idx = idxs[idx_pos]
 			}
-		}
-		else {
+		} else {
 			// Rep doesnt start here, just copy
 			unsafe {
 				b[b_i] = s[i]
@@ -272,7 +267,6 @@ fn compare_rep_index(a &RepIndex, b &RepIndex) int {
 	return 0
 }
 
-
 fn (mut a []RepIndex) sort2() {
 	a.sort_with_compare(compare_rep_index)
 }
@@ -283,8 +277,6 @@ fn (a RepIndex) < (b RepIndex) bool {
 	return a.idx < b.idx
 }
 */
-
-
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s
@@ -311,9 +303,9 @@ pub fn (s string) replace_each(vals []string) string {
 			}
 			// We need to remember both the position in the string,
 			// and which rep/with pair it refers to.
-			idxs << RepIndex {
-				idx:idx
-				val_idx:rep_i
+			idxs << RepIndex{
+				idx: idx
+				val_idx: rep_i
 			}
 			idx += rep.len
 			new_len += with.len - rep.len
@@ -334,7 +326,7 @@ pub fn (s string) replace_each(vals []string) string {
 			// Reached the location of rep, replace it with "with"
 			rep := vals[cur_idx.val_idx]
 			with := vals[cur_idx.val_idx + 1]
-			for j in 0..with.len {
+			for j in 0 .. with.len {
 				unsafe {
 					b[b_i] = with[j]
 				}
@@ -347,8 +339,7 @@ pub fn (s string) replace_each(vals []string) string {
 			if idx_pos < idxs.len {
 				cur_idx = idxs[idx_pos]
 			}
-		}
-		else {
+		} else {
 			// Rep doesnt start here, just copy
 			unsafe {
 				b[b_i] = s.str[i]
@@ -425,11 +416,10 @@ fn (s string) ne(a string) bool {
 
 // s < a
 fn (s string) lt(a string) bool {
-	for i in 0..s.len {
+	for i in 0 .. s.len {
 		if i >= a.len || s[i] > a[i] {
 			return false
-		}
-		else if s[i] < a[i] {
+		} else if s[i] < a[i] {
 			return true
 		}
 	}
@@ -461,12 +451,12 @@ fn (s string) add(a string) string {
 		str: malloc(new_len + 1)
 		len: new_len
 	}
-	for j in 0..s.len {
+	for j in 0 .. s.len {
 		unsafe {
 			res.str[j] = s.str[j]
 		}
 	}
-	for j in 0..a.len {
+	for j in 0 .. a.len {
 		unsafe {
 			res.str[s.len + j] = a.str[j]
 		}
@@ -520,13 +510,11 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 			if val.starts_with(delim) {
 				val = val.right(delim.len)
 			}
-
 			was_last := nth > 0 && res.len == nth_1
 			if was_last {
 				res << s.right(start)
 				break
 			}
-
 			res << val
 			start = i + delim.len
 		}
@@ -548,24 +536,16 @@ pub fn (s string) split_into_lines() []string {
 		is_lf := unsafe {s.str[i]} == `\n`
 		is_crlf := i != s.len - 1 && unsafe {s.str[i] == `\r` && s.str[i + 1] == `\n`}
 		is_eol := is_lf || is_crlf
-		is_last := if is_crlf {
-			i == s.len - 2
-		} else {
-			i == s.len - 1
-		}
-
+		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
 		if is_eol || is_last {
 			if is_last && !is_eol {
 				i++
 			}
-
 			line := s.substr(start, i)
 			res << line
-
 			if is_crlf {
 				i++
 			}
-
 			start = i + 1
 		}
 	}
@@ -595,7 +575,7 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 }
 
 pub fn (s string) substr(start int, end int) string {
-	$if !no_bounds_checking? {
+	$if !no_bounds_checking ? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
 			panic('substr($start, $end) out of bounds (len=$s.len)')
 		}
@@ -605,7 +585,7 @@ pub fn (s string) substr(start int, end int) string {
 		str: malloc(len + 1)
 		len: len
 	}
-	for i in 0..len {
+	for i in 0 .. len {
 		unsafe {
 			res.str[i] = s.str[start + i]
 		}
@@ -618,7 +598,7 @@ pub fn (s string) substr(start int, end int) string {
 		str: s.str + start
 		len: len
 	}
-*/
+	*/
 	return res
 }
 
@@ -663,7 +643,7 @@ fn (s string) index_kmp(p string) int {
 	if p.len > s.len {
 		return -1
 	}
-	mut prefix := []int{len:p.len}
+	mut prefix := []int{len: p.len}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
 		for unsafe {p.str[j] != p.str[i]} && j > 0 {
@@ -675,7 +655,7 @@ fn (s string) index_kmp(p string) int {
 		prefix[i] = j
 	}
 	j = 0
-	for i in 0..s.len {
+	for i in 0 .. s.len {
 		for unsafe {p.str[j] != s.str[i]} && j > 0 {
 			j = prefix[j - 1]
 		}
@@ -745,7 +725,7 @@ pub fn (s string) index_after(p string, start int) int {
 }
 
 pub fn (s string) index_byte(c byte) int {
-	for i in 0..s.len {
+	for i in 0 .. s.len {
 		if unsafe {s.str[i]} == c {
 			return i
 		}
@@ -818,7 +798,7 @@ pub fn (s string) starts_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0..p.len {
+	for i in 0 .. p.len {
 		if unsafe {s.str[i] != p.str[i]} {
 			return false
 		}
@@ -830,7 +810,7 @@ pub fn (s string) ends_with(p string) bool {
 	if p.len > s.len {
 		return false
 	}
-	for i in 0..p.len {
+	for i in 0 .. p.len {
 		if p[i] != s[s.len - p.len + i] {
 			return false
 		}
@@ -842,7 +822,7 @@ pub fn (s string) ends_with(p string) bool {
 pub fn (s string) to_lower() string {
 	unsafe {
 		mut b := malloc(s.len + 1)
-		for i in 0..s.len {
+		for i in 0 .. s.len {
 			b[i] = byte(C.tolower(s.str[i]))
 		}
 		return tos(b, s.len)
@@ -850,7 +830,7 @@ pub fn (s string) to_lower() string {
 }
 
 pub fn (s string) is_lower() bool {
-	for i in 0..s.len {
+	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
@@ -861,7 +841,7 @@ pub fn (s string) is_lower() bool {
 pub fn (s string) to_upper() string {
 	unsafe {
 		mut b := malloc(s.len + 1)
-		for i in 0..s.len {
+		for i in 0 .. s.len {
 			b[i] = byte(C.toupper(s.str[i]))
 		}
 		return tos(b, s.len)
@@ -869,7 +849,7 @@ pub fn (s string) to_upper() string {
 }
 
 pub fn (s string) is_upper() bool {
-	for i in 0..s.len {
+	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
 			return false
 		}
@@ -882,16 +862,16 @@ pub fn (s string) capitalize() string {
 		return ''
 	}
 	return s[0].str().to_upper() + s[1..]
-	//sl := s.to_lower()
-	//cap := sl[0].str().to_upper() + sl.right(1)
-	//return cap
+	// sl := s.to_lower()
+	// cap := sl[0].str().to_upper() + sl.right(1)
+	// return cap
 }
 
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
 	}
-	for i in 1..s.len {
+	for i in 1 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
@@ -953,7 +933,6 @@ pub fn (a []string) to_c() voidptr {
 	return res
 }
 */
-
 pub fn (c byte) is_space() bool {
 	// 0x0085 is NEXT LINE (NEL)
 	// 0x00a0 is NO-BREAK SPACE
@@ -1010,7 +989,11 @@ pub fn (s string) trim_right(cutset string) string {
 	for pos >= 0 && s[pos] in cs_arr {
 		pos--
 	}
-	return if pos < 0 { '' } else { s.left(pos + 1) }
+	return if pos < 0 {
+		''
+	} else {
+		s.left(pos + 1)
+	}
 }
 
 pub fn (s string) trim_prefix(str string) string {
@@ -1022,7 +1005,7 @@ pub fn (s string) trim_prefix(str string) string {
 
 pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
-		return s[..s.len-str.len]
+		return s[..s.len - str.len]
 	}
 	return s
 }
@@ -1080,15 +1063,13 @@ pub fn (s string) str() string {
 }
 
 pub fn (s ustring) str() string {
-   return s.s
+	return s.s
 }
 
 pub fn (s string) ustring() ustring {
 	mut res := ustring{
-		s: s
-		// runes will have at least s.len elements, save reallocations
-		// TODO use VLA for small strings?
-
+		s: s // runes will have at least s.len elements, save reallocations
+			// TODO use VLA for small strings?
 		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
@@ -1224,7 +1205,7 @@ pub fn (u ustring) count(substr ustring) int {
 }
 
 pub fn (u ustring) substr(_start int, _end int) string {
-	$if !no_bounds_checking? {
+	$if !no_bounds_checking ? {
 		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
 			panic('substr($_start, $_end) out of bounds (len=$u.len)')
 		}
@@ -1248,7 +1229,7 @@ pub fn (u ustring) right(pos int) string {
 }
 
 fn (s string) at(idx int) byte {
-	$if !no_bounds_checking? {
+	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= s.len {
 			panic('string index out of range: $idx / $s.len')
 		}
@@ -1259,7 +1240,7 @@ fn (s string) at(idx int) byte {
 }
 
 pub fn (u ustring) at(idx int) string {
-	$if !no_bounds_checking? {
+	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= u.len {
 			panic('string index out of range: $idx / $u.runes.len')
 		}
@@ -1357,8 +1338,7 @@ pub fn (s string) after_char(dot byte) string {
 	if pos == 0 {
 		return s
 	}
-	return s.right(pos+1)
-
+	return s.right(pos + 1)
 }
 
 // fn (s []string) substr(a, b int) string {
@@ -1380,7 +1360,7 @@ pub fn (a []string) join(del string) string {
 	mut idx := 0
 	// Go thru every string and copy its every char one by one
 	for i, val in a {
-		for j in 0..val.len {
+		for j in 0 .. val.len {
 			unsafe {
 				res.str[idx] = val.str[j]
 			}
@@ -1388,7 +1368,7 @@ pub fn (a []string) join(del string) string {
 		}
 		// Add del if it's not last
 		if i != a.len - 1 {
-			for k in 0..del.len {
+			for k in 0 .. del.len {
 				unsafe {
 					res.str[idx] = del.str[k]
 				}
@@ -1455,10 +1435,8 @@ pub fn (s string) bytes() []byte {
 	if s.len == 0 {
 		return []
 	}
-	mut buf := []byte{ len:s.len }
-	unsafe {
-		C.memcpy(buf.data, s.str, s.len)
-	}
+	mut buf := []byte{len: s.len}
+	unsafe {C.memcpy(buf.data, s.str, s.len)}
 	return buf
 }
 
@@ -1498,20 +1476,21 @@ pub fn (s string) fields() []string {
 //
 // Example:
 // st := 'Hello there,
-//       |this is a string,
-//       |    Everything before the first | is removed'.strip_margin()
+// |this is a string,
+// |    Everything before the first | is removed'.strip_margin()
 // Returns:
 // Hello there,
 // this is a string,
-//     Everything before the first | is removed
+// Everything before the first | is removed
 pub fn (s string) strip_margin() string {
-   return s.strip_margin_custom(`|`)
+	return s.strip_margin_custom(`|`)
 }
+
 pub fn (s string) strip_margin_custom(del byte) string {
 	mut sep := del
 	if sep.is_space() {
-		eprintln("Warning: `strip_margin` cannot use white-space as a delimiter")
-		eprintln("    Defaulting to `|`")
+		eprintln('Warning: `strip_margin` cannot use white-space as a delimiter')
+		eprintln('    Defaulting to `|`')
 		sep = `|`
 	}
 	// don't know how much space the resulting string will be, but the max it
@@ -1525,14 +1504,13 @@ pub fn (s string) strip_margin_custom(del byte) string {
 			}
 			count++
 			// CRLF
-			if s[i] == `\r` && i < s.len - 1 && s[i+1] == `\n` {
+			if s[i] == `\r` && i < s.len - 1 && s[i + 1] == `\n` {
 				unsafe {
-					ret[count] = s[i+1]
+					ret[count] = s[i + 1]
 				}
 				count++
 				i++
 			}
-
 			for s[i] != sep {
 				i++
 				if i >= s.len {
