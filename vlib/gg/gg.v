@@ -121,11 +121,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	exists := $if !android { os.is_file(g.config.font_path) } $else { true }
 	if g.config.font_path != '' && exists {
 		// t := time.ticks()
-		g.ft = new_ft({
-			font_path: g.config.font_path
-			custom_bold_font_path: g.config.custom_bold_font_path
-			scale: sapp.dpi_scale()
-		}) or {
+		g.ft = new_ft(font_path: g.config.font_path, custom_bold_font_path: g.config.custom_bold_font_path, scale: sapp.dpi_scale()) or {
 			panic(err)
 		}
 		// println('FT took ${time.ticks()-t} ms')
