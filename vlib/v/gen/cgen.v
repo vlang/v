@@ -509,7 +509,7 @@ fn (mut g Gen) register_chan_pop_optional_call(opt_el_type string, styp string) 
 static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 	$opt_el_type _tmp;
 	if (sync__Channel_try_pop_priv(ch, _tmp.data, false)) {
-		Option _tmp2 = v_error(tos_lit("channel closed"));
+		Option _tmp2 = v_error(_SLIT("channel closed"));
 		return *($opt_el_type*)&_tmp2;
 	}
 	_tmp.ok = true; _tmp.is_none = false; _tmp.v_error = (string){.str=(byteptr)""}; _tmp.ecode = 0;
@@ -1369,9 +1369,9 @@ fn cestring(s string) string {
 	return s.replace('\\', '\\\\').replace('"', "\'")
 }
 
-// ctoslit returns a 'tos_lit("$s")' call, where s is properly escaped.
+// ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.
 fn ctoslit(s string) string {
-	return 'tos_lit("' + cestring(s) + '")'
+	return '_SLIT("' + cestring(s) + '")'
 }
 
 fn (mut g Gen) gen_attrs(attrs []table.Attr) {
@@ -1414,7 +1414,7 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 	g.writeln(' {} else {')
 	metaname_panic := g.gen_assert_metainfo(a)
 	g.writeln('\t__print_assert_failure(&$metaname_panic);')
-	g.writeln('\tv_panic(tos_lit("Assertion failed..."));')
+	g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
 	g.writeln('\texit(1);')
 	g.writeln('}')
 }
@@ -1449,7 +1449,7 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 			g.writeln(';')
 		}
 		ast.CallExpr {
-			g.writeln('\t${metaname}.op = tos_lit("call");')
+			g.writeln('\t${metaname}.op = _SLIT("call");')
 		}
 		else {}
 	}
@@ -2648,7 +2648,7 @@ fn (mut g Gen) type_name(type_ table.Type) {
 		typ = g.cur_generic_type
 	}
 	s := g.table.type_to_str(typ)
-	g.write('tos_lit("${util.strip_main_name(s)}")')
+	g.write('_SLIT("${util.strip_main_name(s)}")')
 }
 
 fn (mut g Gen) typeof_expr(node ast.TypeOf) {
@@ -2663,7 +2663,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('tos_lit("[$fixed_info.size]${util.strip_main_name(typ_name)}")')
+		g.write('_SLIT("[$fixed_info.size]${util.strip_main_name(typ_name)}")')
 	} else if sym.kind == .function {
 		info := sym.info as table.FnType
 		fn_info := info.func
@@ -2678,11 +2678,11 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		if fn_info.return_type != table.void_type {
 			repr += ' ${util.strip_main_name(g.table.get_type_name(fn_info.return_type))}'
 		}
-		g.write('tos_lit("$repr")')
+		g.write('_SLIT("$repr")')
 	} else if node.expr_type.has_flag(.variadic) {
-		g.write('tos_lit("...${util.strip_main_name(sym.name)}")')
+		g.write('_SLIT("...${util.strip_main_name(sym.name)}")')
 	} else {
-		g.write('tos_lit("${util.strip_main_name(sym.name)}")')
+		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
 	}
 }
 
@@ -4450,7 +4450,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){tos_lit("")})), v)) {') }
+		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){_SLIT("")})), v)) {') }
 		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
 		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
 	}
@@ -5336,7 +5336,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	/*
 	return match typ {
 	'bool', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte', 'int', 'rune', 'byteptr', 'voidptr' {'0'}
-	'string'{ 'tos_lit("")'}
+	'string'{ '_SLIT("")'}
 	'f32'{ '0.0'}
 	'f64'{ '0.0'}
 	else { '{0} '}
@@ -5543,11 +5543,11 @@ fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name st
 	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
 	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
 	if convertor == 'bool' {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), ($convertor)it ? tos_lit("true") : tos_lit("false"));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
 	} else {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(tos_lit("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
 	}
-	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, tos_lit(")"));')
+	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, _SLIT(")"));')
 	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
 	g.auto_str_funcs.writeln('\treturn tmp2;')
 	g.auto_str_funcs.writeln('}')
@@ -5773,7 +5773,7 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('})')
 		} else if it.has_len && it.elem_type == table.string_type {
 			g.write('&($elem_type_str[]){')
-			g.write('tos_lit("")')
+			g.write('_SLIT("")')
 			g.write('})')
 		} else {
 			g.write('0)')
