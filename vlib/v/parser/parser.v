@@ -922,6 +922,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
 		ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
+		p.next()
 		return ast.Stmt{}
 	}
 	if left.len == 1 {
