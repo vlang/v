@@ -4,6 +4,7 @@ on:
   push:
      tags:
        - weekly.**
+       - 0.**
 
 jobs:
   build-linux:
@@ -119,7 +120,7 @@ jobs:
       run: |
            cd ${{ matrix.version }}/
            chmod 755 v || true
-           chmod 755 v.exe || true 
+           chmod 755 v.exe || true
            zip -r9 --symlinks ../v_${{ matrix.version }}.zip ./*
            cd ..
     - name: Get short tag name
