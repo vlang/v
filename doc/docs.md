@@ -3016,7 +3016,7 @@ To improve safety and maintainability, operator overloading is limited:
 
 TODO: not implemented yet
 
-```v failcompile
+```v
 fn main() {
     a := 10
     asm x64 {
