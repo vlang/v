@@ -645,7 +645,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				} else if p.peek_tok.kind == .name {
 					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
 				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-					p.peek_tok.kind in [.rcbr, .eof] {
+					p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
 					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
 				}
 			}
