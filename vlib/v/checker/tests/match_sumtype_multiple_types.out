@@ -1,4 +1,3 @@
-found:
 vlib/v/checker/tests/match_sumtype_multiple_types.vv:26:13: error: type `Charlie` has no field or method `char`
    24 |     match l {
    25 |         Alfa, Charlie {
