@@ -16,7 +16,7 @@ jobs:
     - name: Compile
       env:
         CC: ${{ matrix.compiler }}
-      run: make && ./v -o v -prod cmd/v
+      run: make && ./v -cc $CC -o v -prod cmd/v
     - name: Create artifact
       uses: actions/upload-artifact@v2
       with:
@@ -42,7 +42,7 @@ jobs:
     - name: Compile
       env:
         CC: ${{ matrix.compiler }}
-      run: make && ./v -o v -prod cmd/v
+      run: make && ./v -cc $CC -o v -prod cmd/v
     - name: Create artifact
       uses: actions/upload-artifact@v2
       with:
@@ -115,8 +115,13 @@ jobs:
       with:
         name: ${{ matrix.version }}
         path: ./${{ matrix.version }}
-    - name: Build
-      run: zip -r v_${{ matrix.version }}.zip ./${{ matrix.version }}/*
+    - name: Build Zip Archives
+      run: |
+           cd ${{ matrix.version }}/
+           chmod 755 v || true
+           chmod 755 v.exe || true 
+           zip -r9 --symlinks ../v_${{ matrix.version }}.zip ./*
+           cd ..
     - name: Get short tag name
       uses: jungwinter/split@v1
       id: split
