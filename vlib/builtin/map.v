@@ -117,6 +117,23 @@ fn new_dense_array(value_bytes int) DenseArray {
 	}
 }
 
+[inline]
+fn (d &DenseArray) key(i int) voidptr {
+	return unsafe {voidptr(d.keys + i)}
+}
+
+// for cgen
+[inline]
+fn (d &DenseArray) value(i int) voidptr {
+	return unsafe {voidptr(d.values + i * d.value_bytes)}
+}
+
+[inline]
+fn (d &DenseArray) has_index(i int) bool {
+	pkey := unsafe {d.keys + i}
+	return pkey.str != 0
+}
+
 // Push element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
