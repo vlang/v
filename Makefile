@@ -107,8 +107,8 @@ fresh_tcc:
 ifndef ANDROID
 ifdef LINUX
 	rm -rf /var/tmp/tcc
-	git clone https://github.com/vlang/tccbin /var/tmp/tcc
-endif    
+	$(GITFASTCLONE) $(TCCREPO) /var/tmp/tcc
+endif
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
 endif
