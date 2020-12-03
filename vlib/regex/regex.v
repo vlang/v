@@ -158,7 +158,7 @@ fn is_not_space(in_char byte) bool {
 [inline]
 fn is_digit(in_char byte) bool {
 	tmp := in_char - `0`
-	return tmp <= 0x09 && tmp >= 0
+	return tmp <= 0x09
 }
 
 [inline]
@@ -179,13 +179,13 @@ fn is_not_wordchar(in_char byte) bool {
 [inline]
 fn is_lower(in_char byte) bool {
 	tmp := in_char - `a`
-	return  tmp >= 0x00 && tmp <= 25
+	return tmp <= 25
 }
 
 [inline]
 fn is_upper(in_char byte) bool {
 	tmp := in_char - `A`
-	return  tmp >= 0x00 && tmp <= 25
+	return tmp <= 25
 }
 
 pub fn (re RE) get_parse_error_string(err int) string {
@@ -920,7 +920,6 @@ pub fn (mut re RE) compile(in_txt string) (int,int) {
 fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	mut i        := 0      // input string index
 	mut pc       := 0      // program counter
-	mut tmp_code := u32(0)
 
 	// group management variables
 	mut group_count           := -1
@@ -932,7 +931,6 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 	i = 0
 	for i < in_txt.len {
-		tmp_code = u32(0)
 		mut char_tmp := u32(0)
 		mut char_len := 0
 		//println("i: ${i:3d} ch: ${in_txt.str[i]:c}")
