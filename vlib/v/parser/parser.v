@@ -60,6 +60,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
+	unexpected_eof    bool // is set if eof is detected unexpected
 }
 
 // for tests
@@ -95,11 +96,14 @@ pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, s
 	return p.parse()
 }
 
-pub fn parse_text(text string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, comments_mode, pref)
 	mut p := Parser{
 		scanner: s
 		comments_mode: comments_mode
+		file_name: path
+		file_base: os.base(path)
+		file_name_dir: os.dir(path)
 		table: table
 		pref: pref
 		scope: &ast.Scope{
@@ -1716,6 +1720,11 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
+		if p.tok.kind == .eof {
+			p.unexpected_eof = true
+			p.error('unexpected eof, expecting `)`')
+			return ast.ConstDecl{}
+		}
 		comments = p.eat_comments()
 		if p.tok.kind == .rpar {
 			break
