@@ -154,3 +154,13 @@ fn test_nested_optional_with_opt_fn_call_as_last_value() {
 	// }
 	// assert e == false
 }
+
+fn remove_suffix1(s string) string {
+    n := s.len
+    i := s.last_index('.') or { n }
+    return s[0..i]
+}
+
+fn test_var_inside_or_block() {
+	assert remove_suffix1('Vlang.foo') == 'Vlang'
+}

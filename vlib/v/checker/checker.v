@@ -1294,7 +1294,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			} else {
 				if param.is_mut && (!arg.is_mut || param.typ.share() != arg.share) {
 					tok := arg.share.str()
-					c.error('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
+					c.warn('`$call_expr.name` parameter `$param.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
 						1}`', arg.expr.position())
 				}
 			}
@@ -1566,7 +1566,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		} else {
 			if arg.is_mut && (!call_arg.is_mut || arg.typ.share() != call_arg.share) {
 				tok := call_arg.share.str()
-				c.error('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
+				c.warn('`$call_expr.name` parameter `$arg.name` is `$tok`, you need to provide `$tok` e.g. `$tok arg${i +
 					1}`', call_arg.expr.position())
 			}
 		}
@@ -3432,8 +3432,13 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			mut stmt := branch.stmts[branch.stmts.len - 1]
 			match mut stmt {
 				ast.ExprStmt {
-					ret_type = c.expr(stmt.expr)
-					stmt.typ = ret_type
+					if ret_type == table.void_type {
+						ret_type = c.expr(stmt.expr)
+						stmt.typ = ret_type
+					} else if node.is_expr && ret_type != c.expr(stmt.expr) {
+						sym := c.table.get_type_symbol(ret_type)
+						c.error('return type mismatch, it should be `$sym.name`', stmt.expr.position())
+					}
 				}
 				else {
 					// TODO: ask alex about this
@@ -4007,14 +4012,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	} else if node.typ == table.any_flt_type {
 		node.typ = table.f64_type
 	}
-	if expr_required {
-		if !node.has_else {
-			d := if node.is_comptime { '$' } else { '' }
-			c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
-		}
-		return node.typ
+	if expr_required && !node.has_else {
+		d := if node.is_comptime { '$' } else { '' }
+		c.error('`$if_kind` expression needs `${d}else` clause', node.pos)
 	}
-	return table.bool_type
+	return node.typ
 }
 
 // comp_if_branch checks the condition of a compile-time `if` branch. It returns a `bool` that
