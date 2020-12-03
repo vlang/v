@@ -118,11 +118,12 @@ jobs:
         path: ./${{ matrix.version }}
     - name: Build Zip Archives
       run: |
-           cd ${{ matrix.version }}/
+           mv ${{ matrix.version }}/    v_${{ matrix.version }}/
+           cd v_${{ matrix.version }}/
            chmod 755 v || true
            chmod 755 v.exe || true
-           zip -r9 --symlinks ../v_${{ matrix.version }}.zip ./*
            cd ..
+           zip -r9 --symlinks v_${{ matrix.version }}.zip ./v_${{ matrix.version }}/*
     - name: Get short tag name
       uses: jungwinter/split@v1
       id: split
