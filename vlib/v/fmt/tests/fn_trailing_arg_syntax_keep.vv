@@ -22,9 +22,7 @@ fn main() {
 		z: 3
 		a: 4
 	)
-	func_from_other_file({
-		val: 'something'
-	})
+	func_from_other_file(val: 'something')
 }
 
 fn bar_func(bar Bar) {
