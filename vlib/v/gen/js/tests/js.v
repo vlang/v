@@ -43,6 +43,8 @@ fn main() {
 	println(c)
 	d := 1.5
 	println(i8(d))
+	e := int(10) + f32(127)
+	println(typeof(e))
 	_ = 'done'
 	{
 		_ = 'block'
@@ -54,7 +56,7 @@ fn main() {
 	await := '$super: $debugger'
 	mut finally := 'implemented'
 	println('$await $finally')
-	dun := i_am_a_const * 20
+	dun := i_am_a_const * 20 + 2
 	dunn := hl.hello // External constant
 	_ = hl1.nested()
 	for i := 0; i < 10; i++ {

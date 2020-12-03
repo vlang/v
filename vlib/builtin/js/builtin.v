@@ -4,10 +4,12 @@
 
 module builtin
 
+fn (a any) toString()
+
 pub fn println(s any) {
 	// Quickfix to properly print basic types
 	// TODO: Add proper detection code for this
-	JS.console.log(s + "")
+	JS.console.log(s.toString())
 }
 
 pub fn print(s any) {

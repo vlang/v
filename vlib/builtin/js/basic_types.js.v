@@ -8,6 +8,7 @@ pub struct JS.Boolean {}
 pub struct JS.Array {}
 pub struct JS.Map {}
 
+fn (v JS.String) toString() JS.String
 fn (v JS.Number) toString() JS.String
 fn (v JS.Boolean) toString() JS.String
 fn (v JS.Array) toString() JS.String

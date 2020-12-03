@@ -15,29 +15,26 @@ fn (mut g JsGen) to_js_typ_def_val(s string) string {
 
 fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
-	mut type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
 	mut styp := ''
+	mut prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' } 
 	match sym.kind {
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
-			styp = 'new ${type_prefix}${g.sym_to_js_typ(sym)}(0)'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(0)'
 		}
 		.bool {
-			styp = 'new ${type_prefix}${g.sym_to_js_typ(sym)}(false)'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(false)'
 		}
 		.string {
-			styp = 'new ${type_prefix}${g.sym_to_js_typ(sym)}("")'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}("")'
 		}
 		.map {
-			styp = 'new ${type_prefix}${g.sym_to_js_typ(sym)}(new Map())'
+			styp = 'new Map()'
 		}
 		.array {
-			styp = 'new ${type_prefix}${g.sym_to_js_typ(sym)}([])'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}([])'
 		}
 		.struct_ {
-			if !(sym.name[2..] in v_types) {
-				type_prefix = ''
-			}
-			styp = 'new ${type_prefix}${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
+			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
 		}
 		else {
 			// TODO
@@ -78,8 +75,8 @@ fn (mut g JsGen) sym_to_js_typ(sym table.TypeSymbol) string {
 // V type to JS type
 pub fn (mut g JsGen) typ(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
-	type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
 	mut styp := ''
+	prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' } 
 	match sym.kind {
 		.placeholder {
 			// This should never happen: means checker bug
@@ -92,28 +89,28 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			styp = 'any'
 		}
 		.byteptr, .charptr {
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}'
 		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}'
 		}
 		.none_ {
 			styp = 'undefined'
 		}
 		.string, .ustring, .char {
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}'
 		}
 		// 'array_array_int' => 'number[][]'
 		.array {
 			info := sym.info as table.Array
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.array_fixed {
 			info := sym.info as table.ArrayFixed
-			styp = '${type_prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.chan {
 			styp = 'chan'

@@ -3,6 +3,7 @@ module js
 import strings
 import v.ast
 import v.table
+import v.token
 import v.pref
 import v.util
 import v.depgraph
@@ -131,13 +132,28 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			}
 			out += key.replace('.', '_')
 		}
-		out += ');\n\n'
+		out += ');\n'
+		// generate builtin basic type casts
+		if name == 'builtin' {
+			out += 'const ['
+			for i, typ in v_types {
+				if i > 0 { out += ',' }
+				out += '\n\t$typ'
+			}
+			out += '\n] = ['
+			for i, typ in v_types {
+				if i > 0 { out += ',' }
+				out += '\n\tfunction(val) { return new builtin.${typ}(val) }'
+			}
+			out += '\n]\n'
+		}
 	}
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
 		export := nodes[nodes.len - 1].name
-		out += 'if (typeof module === "object" && module.exports) module.exports = $export;'
+		out += 'if (typeof module === "object" && module.exports) module.exports = $export;\n'
 	}
+	out += '\n'
 	return out
 }
 
@@ -412,7 +428,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.write('${styp}.$node.val')
 		}
 		ast.FloatLiteral {
-			g.write('(new ${g.typ(table.Type(table.f32_type))}($node.val))')
+			g.write('${g.typ(table.Type(table.f32_type))}($node.val)')
 		}
 		ast.Ident {
 			g.gen_ident(node)
@@ -430,7 +446,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.gen_infix_expr(node)
 		}
 		ast.IntegerLiteral {
-			g.write('(new ${g.typ(table.Type(table.int_type))}($node.val))')
+			g.write('${g.typ(table.Type(table.int_type))}($node.val)')
 		}
 		ast.LockExpr {
 			g.gen_lock_expr(node)
@@ -484,8 +500,8 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			text := node.val.replace('\'', "\\'")
-			type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
-			g.write('(new ${type_prefix}string(\'$text\'))')
+			if g.file.mod.name == 'builtin' { g.write('new ') }
+			g.write('string(\'$text\')')
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
@@ -930,9 +946,10 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if basic_v_type {
 		name = name[2..]
 	}
+	js_name := g.js_name(name)
 	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
-	g.write('function ${g.js_name(name)}(')
+	g.write('function ${js_name}(')
 	if !basic_v_type {
 		g.write('{ ')
 	}
@@ -957,7 +974,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	}
 	g.dec_indent()
 	g.writeln('};')
-	g.writeln('${g.js_name(name)}.prototype = {')
+	g.writeln('${js_name}.prototype = {')
 	g.inc_indent()
 	fns := g.method_fn_decls[name]
 	for i, field in node.fields {
@@ -975,7 +992,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if !('toString' in fn_names) {
 		g.writeln('toString() {')
 		g.inc_indent()
-		g.write('return `{')
+		g.write('return `${js_name} {')
 		for i, field in node.fields {
 			g.write(if i == 0 { ' ' } else { ', ' })
 			match g.typ(field.typ).split('.').last() {
@@ -1305,6 +1322,10 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 	} else {
 		both_are_int := int(it.left_type) in table.integer_type_idxs &&
 			int(it.right_type) in table.integer_type_idxs
+		is_arithmetic := it.op in [token.Kind.plus, .minus, .mul, .div, .mod]
+		if is_arithmetic {
+			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
+		}
 		if it.op == .div && both_are_int {
 			g.write('(')
 		}
@@ -1318,11 +1339,45 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write(' $it.op ')
 		}
 		g.expr(it.right)
-		// Int division: 2.5 -> 2 by prepending |0
+		// Int division: 2.5 -> 2 by appending |0
 		if it.op == .div && both_are_int {
 			g.write('|0)')
 		}
+		if is_arithmetic {
+			g.write(')')
+		}
 	}
+}
+
+fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
+	l := int(left)
+	r := int(right)
+	lr := [l,r]
+
+	if table.string_type_idx in lr { return table.Type(table.string_type_idx) }
+
+	should_float := (l in table.integer_type_idxs && r in table.float_type_idxs) || (r in table.integer_type_idxs && l in table.float_type_idxs)
+	if should_float {
+		if table.f64_type_idx in lr { return table.Type(table.f64_type_idx) }
+		if table.f32_type_idx in lr { return table.Type(table.f32_type_idx) }
+		return table.Type(table.any_flt_type)
+	}
+
+	should_int := (l in table.integer_type_idxs && r in table.integer_type_idxs)
+	if should_int {
+		// cant add to u64 - if (table.u64_type_idx in lr) { return table.Type(table.u64_type_idx) }
+		// just guessing this order
+		if table.i64_type_idx in lr { return table.Type(table.i64_type_idx) }
+		if table.u32_type_idx in lr { return table.Type(table.u32_type_idx) }
+		if table.int_type_idx in lr { return table.Type(table.int_type_idx) }
+		if table.u16_type_idx in lr { return table.Type(table.u16_type_idx) }
+		if table.i16_type_idx in lr { return table.Type(table.i16_type_idx) }
+		if table.byte_type_idx in lr { return table.Type(table.byte_type_idx) }
+		if table.i8_type_idx in lr { return table.Type(table.i8_type_idx) }
+		return table.Type(table.any_int_type_idx)
+	}
+
+	return table.Type(l)
 }
 
 fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
@@ -1358,8 +1413,8 @@ fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
-	type_prefix := if g.file.mod.name != 'builtin' { 'builtin.' } else { '' }
-	g.write('(new ${type_prefix}string(`')
+	if g.file.mod.name == 'builtin' { g.write('new ') }
+	g.write('string(`')
 	for i, val in it.vals {
 		escaped_val := val.replace('`', '\\`')
 		g.write(escaped_val)
@@ -1383,7 +1438,7 @@ fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
 		}
 		g.write('}')
 	}
-	g.write('`))')
+	g.write('`)')
 }
 
 fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
@@ -1436,7 +1491,19 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 }
 
 fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
-	g.write('(new ${g.typ(it.typ)}(')
+	is_literal := it.expr is ast.IntegerLiteral || it.expr is ast.FloatLiteral
+	typ := g.typ(it.typ)
+	if !is_literal {
+		if !(typ in v_types) {
+			g.write('new ')
+		}
+		g.write('${typ}(')
+	}
 	g.expr(it.expr)
-	g.write('))')
+	if typ == 'string' && !(it.expr is ast.StringLiteral) {
+		g.write('.toString()')
+	}
+	if !is_literal {
+		g.write(')')
+	}
 }
