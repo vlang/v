@@ -9,6 +9,6 @@ vlib/v/checker/tests/match_sumtype_multiple_types.vv:27:13: error: unknown metho
    25 |         Alfa, Charlie {
    26 |             assert l.char == `a`
    27 |             assert l.letter() == 'a'
-      |                      ~~~~~~~~~
+      |                      ~~~~~~~~
    28 |         }
    29 |         Bravo {
