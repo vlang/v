@@ -1327,7 +1327,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 			g.write('${g.typ(g.greater_typ(it.left_type, it.right_type))}(')
 		}
 		if it.op == .div && both_are_int {
-parentheses			g.write('((')
+			g.write('((')
 		}
 		g.expr(it.left)
 		// in js == is non-strict & === is strict, always do strict
