@@ -95,11 +95,14 @@ pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, s
 	return p.parse()
 }
 
-pub fn parse_text(text string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
+pub fn parse_text(text string, path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
 	s := scanner.new_scanner(text, comments_mode, pref)
 	mut p := Parser{
 		scanner: s
 		comments_mode: comments_mode
+		file_name: path
+		file_base: os.base(path)
+		file_name_dir: os.dir(path)
 		table: table
 		pref: pref
 		scope: &ast.Scope{
@@ -1708,14 +1711,20 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.next()
 	}
 	end_pos := p.tok.position()
+	const_pos := p.tok.position()
 	p.check(.key_const)
 	if p.tok.kind != .lpar {
-		p.error('consts must be grouped, e.g.\nconst (\n\ta = 1\n)')
+		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
+		return ast.ConstDecl{}
 	}
 	p.next() // (
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
+		if p.tok.kind == .eof {
+			p.error_with_pos('const declaration is missing closing `)`', const_pos)
+			return ast.ConstDecl{}
+		}
 		comments = p.eat_comments()
 		if p.tok.kind == .rpar {
 			break
