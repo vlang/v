@@ -165,9 +165,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		global_scope: global_scope
 	}
 	if p.scanner.text.contains('\n  ') {
-		source_lines := os.read_lines(path) or {
-			[]string{}
-		}
+		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber)

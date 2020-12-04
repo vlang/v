@@ -39,9 +39,7 @@ pub fn (mut b Builder) build_c(v_files []string, out_file string) {
 	b.pref.out_name_c = os.real_path(out_file)
 	b.info('build_c($out_file)')
 	output2 := b.gen_c(v_files)
-	mut f := os.create(out_file) or {
-		panic(err)
-	}
+	mut f := os.create(out_file) or { panic(err) }
 	f.writeln(output2)
 	f.close()
 	// os.write_file(out_file, b.gen_c(v_files))
@@ -58,9 +56,7 @@ pub fn (mut b Builder) compile_c() {
 		// println(files)
 	}
 	$if windows {
-		b.find_win_cc() or {
-			verror(no_compiler_error)
-		}
+		b.find_win_cc() or { verror(no_compiler_error) }
 		// TODO Probably extend this to other OS's?
 	}
 	// v1 compiler files

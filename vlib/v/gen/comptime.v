@@ -38,9 +38,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	result_type := g.table.find_type_idx('vweb.Result') // TODO not just vweb
 	if node.method_name == 'method' {
 		// `app.$method()`
-		m := node.sym.find_method(g.comp_for_method) or {
-			return
-		}
+		m := node.sym.find_method(g.comp_for_method) or { return }
 		/*
 		vals := m.attrs[0].split('/')
 		args := vals.filter(it.starts_with(':')).map(it[1..])

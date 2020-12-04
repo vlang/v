@@ -202,9 +202,7 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 	} else if !os.is_dir(dir) {
 		verror("$dir isn't a directory!")
 	}
-	mut files := os.ls(dir) or {
-		panic(err)
-	}
+	mut files := os.ls(dir) or { panic(err) }
 	if b.pref.is_verbose {
 		println('v_files_from_dir ("$dir")')
 	}

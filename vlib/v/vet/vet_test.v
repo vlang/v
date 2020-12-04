@@ -13,9 +13,7 @@ fn test_vet() {
 }
 
 fn get_tests_in_dir(dir string) []string {
-	files := os.ls(dir) or {
-		panic(err)
-	}
+	files := os.ls(dir) or { panic(err) }
 	mut tests := files.filter(it.ends_with('.vv'))
 	tests.sort()
 	return tests
@@ -27,12 +25,8 @@ fn check_path(vexe string, dir string, tests []string) int {
 	for path in paths {
 		program := path
 		print(path + ' ')
-		res := os.exec('$vexe vet $program') or {
-			panic(err)
-		}
-		mut expected := os.read_file(program.replace('.vv', '') + '.out') or {
-			panic(err)
-		}
+		res := os.exec('$vexe vet $program') or { panic(err) }
+		mut expected := os.read_file(program.replace('.vv', '') + '.out') or { panic(err) }
 		expected = clean_line_endings(expected)
 		found := clean_line_endings(res.output)
 		if expected != found {

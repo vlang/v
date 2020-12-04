@@ -210,9 +210,7 @@ fn (mut v Builder) cc() {
 			}
 		}
 		// v.out_name_c may be on a different partition than v.out_name
-		os.mv_by_cp(v.out_name_c, v.pref.out_name) or {
-			panic(err)
-		}
+		os.mv_by_cp(v.out_name_c, v.pref.out_name) or { panic(err) }
 		return
 	}
 	// Cross compiling for Windows

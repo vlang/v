@@ -71,9 +71,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 				break
 			}
 			// 'ref: refs/heads/master' ... the current branch name
-			head_content := os.read_file(git_head_file) or {
-				break
-			}
+			head_content := os.read_file(git_head_file) or { break }
 			mut current_branch_hash := head_content
 			if head_content.starts_with('ref: ') {
 				gcbranch_rel_path := head_content.replace('ref: ', '').trim_space()
@@ -83,9 +81,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 					break
 				}
 				// get the full commit hash contained in the ref heads file
-				branch_hash := os.read_file(gcbranch_file) or {
-					break
-				}
+				branch_hash := os.read_file(gcbranch_file) or { break }
 				current_branch_hash = branch_hash
 			}
 			desired_hash_length := 7
@@ -144,18 +140,14 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if should_compile {
 		emodules := external_module_dependencies_for_tool[tool_name]
 		for emodule in emodules {
-			check_module_is_installed(emodule, is_verbose) or {
-				panic(err)
-			}
+			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
 		mut compilation_command := '"$vexe" '
 		compilation_command += '"$tool_source"'
 		if is_verbose {
 			println('Compiling $tool_name with: "$compilation_command"')
 		}
-		tool_compilation := os.exec(compilation_command) or {
-			panic(err)
-		}
+		tool_compilation := os.exec(compilation_command) or { panic(err) }
 		if tool_compilation.exit_code != 0 {
 			eprintln('cannot compile `$tool_source`: \n$tool_compilation.output')
 			exit(1)
@@ -227,9 +219,7 @@ pub fn path_of_executable(path string) string {
 }
 
 pub fn read_file(file_path string) ?string {
-	raw_text := os.read_file(file_path) or {
-		return error('failed to open $file_path')
-	}
+	raw_text := os.read_file(file_path) or { return error('failed to open $file_path') }
 	return skip_bom(raw_text)
 }
 
@@ -356,9 +346,7 @@ pub fn ensure_modules_for_all_tools_are_installed(is_verbose bool) {
 			eprintln('Installing modules for tool: $tool_name ...')
 		}
 		for emodule in tool_modules {
-			check_module_is_installed(emodule, is_verbose) or {
-				panic(err)
-			}
+			check_module_is_installed(emodule, is_verbose) or { panic(err) }
 		}
 	}
 }

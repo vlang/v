@@ -153,9 +153,7 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 }
 
 pub fn (t &Table) known_fn(name string) bool {
-	t.find_fn(name) or {
-		return false
-	}
+	t.find_fn(name) or { return false }
 	return true
 }
 
@@ -272,9 +270,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 			if field := ts.info.find_field(name) {
 				return field
 			}
-			field := t.register_aggregate_field(mut ts, name) or {
-				return error(err)
-			}
+			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
 			return field
 		}
 		if ts.parent_idx == 0 {
@@ -400,9 +396,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	t.find_type(name) or {
-		return false
-	}
+	t.find_type(name) or { return false }
 	return true
 }
 
