@@ -106,10 +106,20 @@ fn reassign_str() {
 	s = s + '!' // old s ref must be copied and freed after the assignment, since s is still used in the right expr
 }
 
+struct Foo2 {
+mut:
+	nums []int
+}
+
 fn reassign_arr() {
 	mut x := [1, 2, 3]
 	// x must be freed before the re-assignment
 	x = [4, 5, 6]
+	mut foo := Foo2{[10, 20, 30]}
+	foo.nums = [40, 50, 60] // same with struct fields
+	foo.nums = [70, 80, 90]
+	// TODO remove this once structs are freed automatically
+	foo.nums.free()
 }
 
 fn match_expr() string {
@@ -145,9 +155,7 @@ fn optional_str() {
 	// test assigning an optional to an existing var
 	mut p := 0
 	for {
-		p = opt('query:$q') or {
-			break
-		}
+		p = opt('query:$q') or { break }
 		break
 	}
 }
@@ -161,9 +169,7 @@ fn return_error_with_freed_expr() ?string {
 }
 
 fn optional_return() {
-	return_error_with_freed_expr() or {
-		return
-	}
+	return_error_with_freed_expr() or { return }
 }
 
 fn handle_string(s string) bool {
