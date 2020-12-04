@@ -3,13 +3,11 @@ module websocket
 import encoding.base64
 import strings
 
-// handshake manage the websocket handshake process
+// handshake manages the websocket handshake process
 fn (mut ws Client) handshake() ? {
 	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
-	// handshake := 'GET $ws.uri.resource$ws.uri.querystring HTTP/1.1\r\nHost: $ws.uri.hostname:$ws.uri.port\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $seckey\r\nSec-WebSocket-Version: 13\r\n\r\n'
 	mut sb := strings.new_builder(1024)
-	// todo, remove when autofree
 	defer {
 		sb.free()
 	}
@@ -35,7 +33,7 @@ fn (mut ws Client) handshake() ? {
 	unsafe {handshake_bytes.free()}
 }
 
-// handle_server_handshake manage websocket server handshake
+// handle_server_handshake manages websocket server handshake process
 fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient) {
 	msg := c.read_handshake_str() ?
 	handshake_response, client := s.parse_client_handshake(msg, mut c) ?
@@ -43,7 +41,7 @@ fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient)
 	return handshake_response, client
 }
 
-// parse_client_handshake parses handshake result
+// parse_client_handshake parses result from handshake process
 fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) ?(string, &ServerClient) {
 	s.logger.debug('server-> client handshake:\n$client_handshake')
 	lines := client_handshake.split_into_lines()
@@ -82,7 +80,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 				flags << .has_accept
 			}
 			else {
-				// We ignore other headers like protocol for now
+				// we ignore other headers like protocol for now
 			}
 		}
 		unsafe {keys.free()}
@@ -107,7 +105,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 	return server_handshake, server_client
 }
 
-// / read_handshake_str returns the handshake response
+// read_handshake_str returns the handshake response
 fn (mut ws Client) read_handshake_str() ?string {
 	mut total_bytes_read := 0
 	mut msg := [1024]byte{}
@@ -128,7 +126,7 @@ fn (mut ws Client) read_handshake_str() ?string {
 	return res
 }
 
-// read_handshake reads the handshake and check if valid
+// read_handshake reads the handshake result and check if valid
 fn (mut ws Client) read_handshake(seckey string) ? {
 	mut msg := ws.read_handshake_str() ?
 	ws.check_handshake_response(msg, seckey) ?
@@ -136,7 +134,7 @@ fn (mut ws Client) read_handshake(seckey string) ? {
 }
 
 // check_handshake_response checks the response from handshake and returns
-// the response and secure key
+// the response and secure key provided by the websocket client
 fn (mut ws Client) check_handshake_response(handshake_response string, seckey string) ? {
 	ws.debug_log('handshake response:\n$handshake_response')
 	lines := handshake_response.split_into_lines()
