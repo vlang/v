@@ -123,6 +123,7 @@ jobs:
            cd workdir/v/
            chmod 755 v || true
            chmod 755 v.exe || true
+           chmod 755 thirdparty/tcc/tcc.exe || true
            cd ..
            zip -r9 --symlinks ../v_${{ matrix.version }}.zip v/*
            cd ..
