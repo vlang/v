@@ -2089,6 +2089,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				if obj.is_or {
+					g.writeln('// skipping `or{}` var "$obj.name"')
 					// Skip vars inited with the `or {}`, since they are generated
 					// after the or block in C.
 					continue
@@ -4051,12 +4052,16 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that it all args (a,b,c) can be freed
-			tmp = g.new_tmp_var()
-			g.write(g.typ(g.fn_decl.return_type))
-			g.write(' ')
-			g.write(tmp)
-			g.write(' = ')
-			// g.write('return $tmp;')
+			// Don't use a tmp var if a variable is simply returned: `return x`
+			if node.exprs[0] !is ast.Ident {
+				tmp = g.new_tmp_var()
+				g.write(g.typ(g.fn_decl.return_type))
+				g.write(' ')
+				g.write(tmp)
+				g.write(' = ')
+			} else {
+				g.write('return ')
+			}
 		} else {
 			g.write('return ')
 		}
@@ -4069,16 +4074,21 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write(')')
 		}
 		if free {
-			g.writeln('; // free tmp exprs')
-			// autofree before `return`
-			// set free_parent_scopes to true, since all variables defined in parent
-			// scopes need to be freed before the return
 			expr := node.exprs[0]
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
+			if tmp != '' {
+				g.writeln('; // free tmp exprs + all vars before return')
+			}
+			g.writeln(';')
+			// autofree before `return`
+			// set free_parent_scopes to true, since all variables defined in parent
+			// scopes need to be freed before the return
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.write('return $tmp')
+			if tmp != '' {
+				g.write('return $tmp')
+			}
 		}
 	} else { // if node.exprs.len == 0 {
 		println('this should never happen')
