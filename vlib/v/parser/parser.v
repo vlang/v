@@ -874,7 +874,7 @@ pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
 		// In the silent mode however, the parser continues to run, even though it would have stopped. Some
 		// of the parser logic does not expect that, and may loop forever.
 		// The p.next() here is needed, so the parser is more robust, and *always* advances, even in the -silent mode.
-		// p.next()
+		p.next()
 	}
 }
 
@@ -922,7 +922,6 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
 		ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
-		p.next()
 		return ast.Stmt{}
 	}
 	if left.len == 1 {
