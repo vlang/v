@@ -127,7 +127,7 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	// TODO: move this check somewhere else, this is really not the best place for it :/
 	// strconv is already imported inside builtin, so skip generating its object file
-	if imp_path == 'vlib/strconv' {
+	if imp_path in ['vlib/strconv', 'vlib/strings'] {
 		return ''
 	}
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
