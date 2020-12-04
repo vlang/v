@@ -994,8 +994,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// No automatic lock for array slicing (yet(?))
 					explicit_lock_needed = true
 				}
-			} else {
-				c.error('cannot use function call as mut', expr.pos)
 			}
 		}
 		ast.ArrayInit {
