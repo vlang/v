@@ -1207,6 +1207,10 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
+	if s.pref.warns_are_errors {
+		s.error(msg)
+		return
+	}
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
