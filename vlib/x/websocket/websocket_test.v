@@ -1,7 +1,7 @@
 import x.websocket
 import time
 
-// Tests with external ws & wss servers
+// tests with internal ws servers
 fn test_ws() {
 	go start_server()
 	time.sleep_ms(100)
@@ -12,10 +12,10 @@ fn test_ws() {
 
 fn start_server() ? {
 	mut s := websocket.new_server(30000, '')
-	// Make that in execution test time give time to execute at least one time
+	// make that in execution test time give time to execute at least one time
 	s.ping_interval = 100
 	s.on_connect(fn (mut s websocket.ServerClient) ?bool {
-		// Here you can look att the client info and accept or not accept
+		// here you can look att the client info and accept or not accept
 		// just returning a true/false
 		if s.resource_name != '/' {
 			panic('unexpected resource name in test')
@@ -24,20 +24,17 @@ fn start_server() ? {
 		return true
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		// payload := if msg.payload.len == 0 { '' } else { string(msg.payload, msg.payload.len) }
-		// println('server client ($ws.id) got message: opcode: $msg.opcode, payload: $payload')
 		ws.write(msg.payload, msg.opcode) or {
 			panic(err)
 		}
 	})
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
-		// println('client ($ws.id) closed connection')
+		// not used
 	})
-	s.listen() or {
-		// println('error on server listen: $err')
-	}
+	s.listen() or {}
 }
 
+// ws_test tests connect to the websocket server from websocket client
 fn ws_test(uri string) ? {
 	eprintln('connecting to $uri ...')
 	mut ws := websocket.new_client(uri) ?

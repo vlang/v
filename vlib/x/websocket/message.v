@@ -3,40 +3,38 @@ module websocket
 import encoding.utf8
 
 const (
-	header_len_offset           = 2 // Offset for lenghtpart of websocket header
-	buffer_size                 = 256 // Default buffer size
-	extended_payload16_end_byte = 4 // Offset for extended lenght 16 bit of websocket header
-	extended_payload64_end_byte = 10 // Offset for extended lenght 64 bit of websocket header
+	header_len_offset           = 2 // offset for lengthpart of websocket header
+	buffer_size                 = 256 // default buffer size
+	extended_payload16_end_byte = 4 // header length with 16-bit extended payload
+	extended_payload64_end_byte = 10 // header length with 64-bit extended payload
 )
 
-// A websocket data fragment
+// Fragment represents a websocket data fragment
 struct Fragment {
-	data   []byte // The included data payload data in a fragment
-	opcode OPCode // Defines the interpretation of the payload data
+	data   []byte // included data payload data in a fragment
+	opcode OPCode // interpretation of the payload data
 }
 
-// Represents a data frame header
+// Frame represents a data frame header
 struct Frame {
 mut:
-	header_len  int = 2
-	// Lenght of the websocket header part
-	frame_size  int = 2
-	// Size of the total frame
-	fin         bool // Indicates if final fragment of message
-	rsv1        bool // Reserved for future use in websocket RFC
-	rsv2        bool // Reserved for future use in websocket RFC
-	rsv3        bool // Reserved for future use in websocket RFC
-	opcode      OPCode // Defines the interpretation of the payload data
-	has_mask    bool // Defines whether the payload data is masked.
-	payload_len int // Payload lenght
-	masking_key [4]byte // All frames from client to server is masked with this key
+	header_len  int = 2 // length of the websocket header part
+	frame_size  int = 2	// size of total frame
+	fin         bool // true if final fragment of message
+	rsv1        bool // reserved for future use in websocket RFC
+	rsv2        bool // reserved for future use in websocket RFC
+	rsv3        bool // reserved for future use in websocket RFC
+	opcode      OPCode // interpretation of the payload data
+	has_mask    bool // true if the payload data is masked
+	payload_len int // payload length
+	masking_key [4]byte // all frames from client to server is masked with this key
 }
 
 const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] // List of invalid close codes
+	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] 
 )
 
-// validate_client, validate client frame rules from RFC6455
+// validate_client validates client frame rules from RFC6455
 pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 	if frame.rsv1 || frame.rsv2 || frame.rsv3 {
 		ws.close(1002, 'rsv cannot be other than 0, not negotiated')
@@ -48,7 +46,7 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 		return error('use of reserved opcode')
 	}
 	if frame.has_mask && !ws.is_server {
-		// Server should never send masked frames
+		// server should never send masked frames
 		// to client, close connection
 		ws.close(1002, 'client got masked frame') ?
 		return error('client sent masked frame')
@@ -70,17 +68,17 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 	}
 }
 
-// is_control_frame returns true if the fram is a control frame
+// is_control_frame returns true if the frame is a control frame
 fn is_control_frame(opcode OPCode) bool {
 	return opcode !in [.text_frame, .binary_frame, .continuation]
 }
 
-// is_data_frame returns true if the fram is a control frame
+// is_data_frame returns true if the frame is a control frame
 fn is_data_frame(opcode OPCode) bool {
 	return opcode in [.text_frame, .binary_frame]
 }
 
-// read_payload, reads the payload from the socket
+// read_payload reads the message payload from the socket
 fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	if frame.payload_len == 0 {
 		return []byte{}
@@ -107,7 +105,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 	return buffer
 }
 
-// validate_utf_8, validates payload for valid utf8 encoding
+// validate_utf_8 validates payload for valid utf8 encoding
 // - Future implementation needs to support fail fast utf errors for strict autobahn conformance
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
@@ -122,8 +120,6 @@ fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 pub fn (mut ws Client) read_next_message() ?Message {
 	for {
 		frame := ws.parse_frame_header() ?
-		// This debug message leaks so remove if needed
-		// ws.debug_log('read_next_message: frame\n$frame')
 		ws.validate_frame(&frame) ?
 		frame_payload := ws.read_payload(&frame) ?
 		if is_control_frame(frame.opcode) {
@@ -136,7 +132,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 			unsafe {frame_payload.free()}
 			return msg
 		}
-		// If the message is fragmented we just put it on fragments
+		// if the message is fragmented we just put it on fragments
 		// a fragment is allowed to have zero size payload
 		if !frame.fin {
 			ws.fragments << &Fragment{
@@ -181,7 +177,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 	}
 }
 
-// payload_from_fragments, returs the whole paylaod from fragmented message
+// payload_from_fragments returs the whole paylaod from fragmented message
 fn (ws Client) payload_from_fragments(fin_payload []byte) ?[]byte {
 	mut total_size := 0
 	for f in ws.fragments {
@@ -218,7 +214,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 	for ws.state == .open {
 		read_bytes := ws.socket_read_ptr(byteptr(rbuff), 1) ?
 		if read_bytes == 0 {
-			// This is probably a timeout or close
+			// this is probably a timeout or close
 			continue
 		}
 		buffer[bytes_read] = rbuff[0]
@@ -242,7 +238,7 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 					header_len_offset + 12
 				} else {
 					0
-				} // Impossible
+				} // impossible
 			}
 			frame.payload_len = frame.payload_len
 			frame.frame_size = frame.header_len + frame.payload_len
@@ -275,7 +271,6 @@ pub fn (mut ws Client) parse_frame_header() ?Frame {
 				break
 			}
 		}
-		// We have a mask and we read the whole mask data
 		if frame.has_mask && bytes_read == mask_end_byte {
 			frame.masking_key[0] = buffer[mask_end_byte - 4]
 			frame.masking_key[1] = buffer[mask_end_byte - 3]

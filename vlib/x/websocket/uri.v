@@ -1,13 +1,13 @@
 module websocket
 
-// Represents an Uri for websocket connections
+// Uri represents an Uri for websocket connections
 struct Uri {
 mut:
-	url         string // The url to the websocket endpoint
-	hostname    string // The hostname to the websocket endpoint
-	port        string // The port to the websocket endpoint
-	resource    string // The resource used on the websocket endpoint
-	querystring string // The query string on the websocket endpoint
+	url         string // url to the websocket endpoint
+	hostname    string // hostname of the websocket endpoint
+	port        string // port of the websocket endpoint
+	resource    string // resource of the websocket endpoint
+	querystring string // query string of the websocket endpoint
 }
 
 // str returns the string representation of the Uri

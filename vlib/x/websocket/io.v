@@ -4,7 +4,7 @@ import net
 import time
 import sync
 
-// socket_read reads into the provided buffer with its length
+// socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 	lock  {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
@@ -27,7 +27,7 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 	}
 }
 
-// socket_read reads into the provided byte pointer and length
+// socket_read reads from socket into the provided byte pointer and length
 fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 	lock  {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
@@ -50,7 +50,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 	}
 }
 
-// socket_write, writes the whole byte array provided to the socket
+// socket_write writes the provided byte array to the socket
 fn (mut ws Client) socket_write(bytes []byte) ? {
 	lock  {
 		if ws.state == .closed || ws.conn.sock.handle <= 1 {
@@ -73,7 +73,7 @@ fn (mut ws Client) socket_write(bytes []byte) ? {
 	}
 }
 
-// shutdown_socket, shut down socket properly closing the connection
+// shutdown_socket shuts down the socket properly when connection is closed
 fn (mut ws Client) shutdown_socket() ? {
 	ws.debug_log('shutting down socket')
 	if ws.is_ssl {
@@ -84,7 +84,7 @@ fn (mut ws Client) shutdown_socket() ? {
 	return none
 }
 
-// dial_socket, setup socket communication, options and timeouts
+// dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() ?net.TcpConn {
 	mut t := net.dial_tcp('$ws.uri.hostname:$ws.uri.port') ?
 	optval := int(1)

@@ -4,7 +4,7 @@ import rand
 import crypto.sha1
 import encoding.base64
 
-// htonl64 converts payload lenght to header bits
+// htonl64 converts payload length to header bits
 fn htonl64(payload_len u64) []byte {
 	mut ret := []byte{len: 8}
 	ret[0] = byte(((payload_len & (u64(0xff) << 56)) >> 56) & 0xff)
@@ -18,7 +18,7 @@ fn htonl64(payload_len u64) []byte {
 	return ret
 }
 
-// create_masking_key returs a new masking key byte array
+// create_masking_key returs a new masking key to use when masking websocket messages
 fn create_masking_key() []byte {
 	mask_bit := byte(rand.intn(255))
 	buf := []byte{len: 4, init: `0`}
@@ -43,7 +43,7 @@ fn create_key_challenge_response(seckey string) ?string {
 	return b64
 }
 
-// get_nonce, returns a randomized array used in handshake process
+// get_nonce creates a randomized array used in handshake process
 fn get_nonce(nonce_size int) string {
 	mut nonce := []byte{len: nonce_size, cap: nonce_size}
 	alphanum := '0123456789ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnopqrstuvwxyz'
