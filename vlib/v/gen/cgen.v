@@ -1079,7 +1079,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings']
+			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings', 'gg']
 			g.cur_mod = node.name
 		}
 		ast.Return {
@@ -2070,7 +2070,7 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 		// TODO why can scope.pos be 0? (only outside fns?)
 		return
 	}
-	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
+	g.writeln('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
 	// g.autofree_scope_vars2(scope, scope.end_pos)
 	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
 }
@@ -2083,9 +2083,14 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				g.writeln('// var $obj.name pos=$obj.pos.pos')
+				g.writeln('// var "$obj.name" var.pos=$obj.pos.pos var.line_nr=$obj.pos.line_nr')
 				if obj.name == g.returned_var_name {
 					g.writeln('// skipping returned var')
+					continue
+				}
+				if obj.is_or {
+					// Skip vars inited with the `or {}`, since they are generated
+					// after the or block in C.
 					continue
 				}
 				// if var.typ == 0 {
@@ -2117,7 +2122,6 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
 	if free_parent_scopes && !isnil(scope.parent) {
-		// g.autofree_scope_vars2(scope.parent, end_pos)
 		g.writeln('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true)
 	}
@@ -3918,7 +3922,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			if g.pref.autofree && !g.is_builtin_mod {
 				g.writeln('// free before return (no values returned)')
-				g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr, true)
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
 			g.writeln('return;')
 		}
