@@ -1519,9 +1519,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
 	}
-	// Free the old value assigned to this string var (only if it's `str = [new value]`)
+	// Free the old value assigned to this string var (only if it's `str = [new value]`
+	// or `x.str = [new value]` )
 	mut af := g.pref.autofree && !g.is_builtin_mod && assign_stmt.op == .assign && assign_stmt.left_types.len ==
-		1 && assign_stmt.left[0] is ast.Ident
+		1 &&
+		(assign_stmt.left[0] is ast.Ident || assign_stmt.left[0] is ast.SelectorExpr)
 	// assign_stmt.left_types[0] in [table.string_type, table.array_type] &&
 	mut sref_name := ''
 	mut type_to_free := ''
@@ -1530,18 +1532,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		first_left_sym := g.table.get_type_symbol(assign_stmt.left_types[0])
 		if first_left_type == table.string_type || first_left_sym.kind == .array {
 			type_to_free = if first_left_type == table.string_type { 'string' } else { 'array' }
-			ident := assign_stmt.left[0] as ast.Ident
-			if ident.name != '_' {
-				/*
-				g.write('string_free(&')
-			g.expr(assign_stmt.left[0])
-			g.writeln('); // free str on re-assignment')
-				*/
+			mut ok := true
+			left0 := assign_stmt.left[0]
+			if left0 is ast.Ident {
+				if left0.name == '_' {
+					ok = false
+				}
+			}
+			if ok {
 				sref_name = '_sref$assign_stmt.pos.pos'
 				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
-				g.expr(assign_stmt.left[0])
+				g.expr(left0) // assign_stmt.left[0])
 				g.writeln('); // free $type_to_free on re-assignment2')
 				defer {
 					if af {
