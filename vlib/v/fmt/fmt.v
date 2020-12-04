@@ -1612,9 +1612,7 @@ pub fn (mut f Fmt) mark_module_as_used(name string) {
 	if !name.contains('.') {
 		return
 	}
-	pos := name.last_index('.') or {
-		0
-	}
+	pos := name.last_index('.') or { 0 }
 	mod := name[..pos]
 	if mod in f.used_imports {
 		return

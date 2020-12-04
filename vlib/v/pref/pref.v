@@ -340,9 +340,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-b' {
 				sbackend := cmdline.option(current_args, '-b', 'c')
 				res.build_options << '$arg $sbackend'
-				b := backend_from_string(sbackend) or {
-					continue
-				}
+				b := backend_from_string(sbackend) or { continue }
 				res.backend = b
 				i++
 			}
@@ -442,9 +440,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				lines << iline
 			}
 			contents := lines.join('')
-			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file $tmp_v_file_path')
-			}
+			os.write_file(tmp_v_file_path, contents) or { panic('Failed to create temporary file $tmp_v_file_path') }
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
 			vexe := vexe_path()

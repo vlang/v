@@ -273,9 +273,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or {
-		-1
-	}
+	idx := name.last_index('.') or { -1 }
 	return name[(idx + 1)..]
 }
 
@@ -348,9 +346,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	mut struct_sym := c.table.find_type(decl.name) or {
-		table.TypeSymbol{}
-	}
+	mut struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
 	if mut struct_sym.info is table.Struct {
 		for i, field in decl.fields {
 			if decl.language == .v && !field.is_embed {
@@ -411,10 +407,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if field.has_default_expr {
 				c.expected_type = field.typ
 				field_expr_type := c.expr(field.default_expr)
-				c.check_expected(field_expr_type, field.typ) or {
-					c.error('incompatible initializer for field `$field.name`: $err',
-						field.default_expr.position())
-				}
+				c.check_expected(field_expr_type, field.typ) or { c.error('incompatible initializer for field `$field.name`: $err',
+					field.default_expr.position()) }
 				// Check for unnecessary inits like ` = 0` and ` = ''`
 				if field.typ.is_ptr() {
 					continue
@@ -570,9 +564,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
 				if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
-					c.check_expected(expr_type, info_field.typ) or {
-						c.error('cannot assign to field `$info_field.name`: $err', field.pos)
-					}
+					c.check_expected(expr_type, info_field.typ) or { c.error('cannot assign to field `$info_field.name`: $err',
+						field.pos) }
 				}
 				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
 					!expr_type.is_number() {
@@ -664,23 +657,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 				.array {
 					elem_type := right.array_info().elem_type
 					// if left_default.kind != right_sym.kind {
-					c.check_expected(left_type, elem_type) or {
-						c.error('left operand to `$infix_expr.op` does not match the array element type: $err',
-							infix_expr.pos)
-					}
+					c.check_expected(left_type, elem_type) or { c.error('left operand to `$infix_expr.op` does not match the array element type: $err',
+						infix_expr.pos) }
 				}
 				.map {
 					elem_type := right.map_info().key_type
-					c.check_expected(left_type, elem_type) or {
-						c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
-							infix_expr.pos)
-					}
+					c.check_expected(left_type, elem_type) or { c.error('left operand to `$infix_expr.op` does not match the map key type: $err',
+						infix_expr.pos) }
 				}
 				.string {
-					c.check_expected(left_type, right_type) or {
-						c.error('left operand to `$infix_expr.op` does not match: $err',
-							infix_expr.pos)
-					}
+					c.check_expected(left_type, right_type) or { c.error('left operand to `$infix_expr.op` does not match: $err',
+						infix_expr.pos) }
 				}
 				else {
 					c.error('`$infix_expr.op.str()` can only be used with an array/map/string',
@@ -2268,9 +2255,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder {
 			// Dual sides check (compatibility check)
-			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
-				c.error('cannot assign to `$left`: $err', right.position())
-			}
+			c.check_expected(right_type_unwrapped, left_type_unwrapped) or { c.error('cannot assign to `$left`: $err',
+				right.position()) }
 		}
 	}
 }
@@ -2386,9 +2372,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.expected_type = elem_type
 				continue
 			}
-			c.check_expected(typ, elem_type) or {
-				c.error('invalid array element: $err', expr.position())
-			}
+			c.check_expected(typ, elem_type) or { c.error('invalid array element: $err', expr.position()) }
 		}
 		if array_init.is_fixed {
 			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
@@ -2735,9 +2719,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		// println('adding flag "$flag"')
-		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
-			c.error(err, node.pos)
-		}
+		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or { c.error(err, node.pos) }
 	} else {
 		if node.kind != 'define' {
 			c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
@@ -2750,9 +2732,8 @@ fn (mut c Checker) import_stmt(imp ast.Import) {
 	for sym in imp.syms {
 		name := '${imp.mod}.$sym.name'
 		if sym.kind == .fn_ {
-			c.table.find_fn(name) or {
-				c.error('module `$imp.mod` has no public fn named `${sym.name}()`', sym.pos)
-			}
+			c.table.find_fn(name) or { c.error('module `$imp.mod` has no public fn named `${sym.name}()`',
+				sym.pos) }
 		}
 		if sym.kind == .type_ {
 			if type_sym := c.table.find_type(name) {
@@ -2847,9 +2828,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(node.pos.pos)
-			v := scope.find_var(node.var_name) or {
-				panic(err)
-			}
+			v := scope.find_var(node.var_name) or { panic(err) }
 			for i, _ in node.fields {
 				c.expr(node.exprs[i])
 			}
@@ -3193,9 +3172,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 					c.error('@VMOD_FILE can be used only in projects, that have v.mod file',
 						node.pos)
 				}
-				vmod_content := os.read_file(vmod_file_location.vmod_file) or {
-					''
-				}
+				vmod_content := os.read_file(vmod_file_location.vmod_file) or { '' }
 				$if windows {
 					c.vmod_file_content = vmod_content.replace('\r\n', '\n')
 				} $else {
@@ -3422,9 +3399,7 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			// probably any mismatch will be caught by not producing a value instead
 			for st in branch.stmts[0..branch.stmts.len - 1] {
 				// must not contain C statements
-				st.check_c_expr() or {
-					c.error('`match` expression branch has $err', st.position())
-				}
+				st.check_c_expr() or { c.error('`match` expression branch has $err', st.position()) }
 			}
 		}
 		// If the last statement is an expression, return its type
@@ -3978,9 +3953,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			for st in branch.stmts {
 				// must not contain C statements
-				st.check_c_expr() or {
-					c.error('`if` expression branch has $err', st.position())
-				}
+				st.check_c_expr() or { c.error('`if` expression branch has $err', st.position()) }
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed

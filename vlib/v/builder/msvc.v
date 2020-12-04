@@ -166,12 +166,8 @@ fn find_msvc() ?MsvcResult {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
 		vswhere_dir := if processor_architecture == 'x86' { '%ProgramFiles%' } else { '%ProgramFiles(x86)%' }
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		wk := find_windows_kit_root(host_arch) or {
-			return error('Unable to find windows sdk')
-		}
-		vs := find_vs(vswhere_dir, host_arch) or {
-			return error('Unable to find visual studio')
-		}
+		wk := find_windows_kit_root(host_arch) or { return error('Unable to find windows sdk') }
+		vs := find_vs(vswhere_dir, host_arch) or { return error('Unable to find visual studio') }
 		return MsvcResult{
 			full_cl_exe_path: os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
 			exe_path: vs.exe_path
@@ -288,9 +284,7 @@ pub fn (mut v Builder) cc_msvc() {
 	a << lib_paths
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
-	os.write_file(out_name_cmd_line, args) or {
-		verror('Unable to write response file to "$out_name_cmd_line"')
-	}
+	os.write_file(out_name_cmd_line, args) or { verror('Unable to write response file to "$out_name_cmd_line"') }
 	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
