@@ -37,6 +37,8 @@ mut:
 	cmd_params              map[string][]string
 	cline                   string // a terminal clearing line
 	cgoback                 string
+	nmins                   int // number of minimums to discard
+	nmaxs                   int // number of maximums to discard
 }
 
 struct Aints {
@@ -46,15 +48,28 @@ mut:
 	imax    int
 	average f64
 	stddev  f64
+	nmins   int // number of discarded fastest results
+	nmaxs   int // number of discarded slowest results
 }
 
-fn new_aints(vals []int) Aints {
+fn new_aints(ovals []int, extreme_mins int, extreme_maxs int) Aints {
 	mut res := Aints{
-		values: vals
+		values: ovals // remember the original values
+		nmins: extreme_mins
+		nmaxs: extreme_maxs
 	}
 	mut sum := i64(0)
 	mut imin := math.max_i32
 	mut imax := -math.max_i32
+	// discard the extremes:
+	mut vals := ovals.clone()
+	vals.sort()
+	if vals.len > extreme_mins + extreme_maxs {
+		vals = vals[extreme_mins..vals.len - extreme_maxs]
+	} else {
+		vals = []
+	}
+	// statistical processing of the remaining values:
 	for i in vals {
 		sum += i
 		if i < imin {
@@ -76,16 +91,17 @@ fn new_aints(vals []int) Aints {
 		devsum += (x * x)
 	}
 	res.stddev = math.sqrt(devsum / f64(vals.len))
+	// eprintln('\novals: $ovals\n vals: $vals\n vals.len: $vals.len |  res.imin: $res.imin | res.imax: $res.imax | res.average: $res.average | res.stddev: $res.stddev')
 	return res
 }
 
 fn (a Aints) str() string {
-	return util.bold('${a.average:9.3f}') +
-		'ms ± σ: ${a.stddev:-5.1f}ms, min … max: ${a.imin}ms … ${a.imax}ms'
+	return util.bold('${a.average:6.2f}') +
+		'ms ± σ: ${a.stddev:4.1f}ms, min: ${a.imin:4}ms, max: ${a.imax:4}ms, runs:${a.values.len:3}, nmins:${a.nmins:2}, nmaxs:${a.nmaxs:2}'
 }
 
 const (
-	max_fail_percent             = 100000
+	max_fail_percent             = 100 * 1000
 	max_time                     = 60 * 1000 // ms
 	performance_regression_label = 'Performance regression detected, failing since '
 )
@@ -109,13 +125,15 @@ fn (mut context Context) parse_options() {
 	context.series = fp.int('series', `s`, 2, 'Series count. `-s 2 -c 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -c 2 a b` => aabbaabbaabb.')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs. These are done *only at the start*, and are ignored.')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
-	context.use_newline = fp.bool('newline', `N`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
+	context.use_newline = fp.bool('newline', `n`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. NB: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
 	context.fail_on_regress_percent = fp.int('fail_percent', `f`, max_fail_percent, 'Fail with exit code 3, when first cmd is X% slower than the rest (regression).')
 	context.cmd_template = fp.string('template', `t`, '{T}', 'Command template. {T} will be substituted with the current command.')
 	cmd_params := fp.string_multi('parameter', `p`, 'A parameter substitution list. `{p}=val1,val2,val2` means that {p} in the template, will be substituted with each of val1, val2, val3.')
+	context.nmins = fp.int('nmins', `i`, 0, 'Ignore the BOTTOM X results (minimum execution time). Makes the results more robust to performance flukes.')
+	context.nmaxs = fp.int('nmaxs', `a`, 1, 'Ignore the TOP X results (maximum execution time). Makes the results more robust to performance flukes.')
 	for p in cmd_params {
 		parts := p.split(':')
 		if parts.len > 1 {
@@ -217,7 +235,8 @@ fn (mut context Context) run() {
 			context.results[icmd].cmd = cmd
 			context.results[icmd].icmd = icmd
 			context.results[icmd].runs += runs
-			context.results[icmd].atiming = new_aints(context.results[icmd].timings)
+			context.results[icmd].atiming = new_aints(context.results[icmd].timings, context.nmins,
+				context.nmaxs)
 			context.clear_line()
 			print(context.cgoback)
 			mut m := map[string][]int{}
@@ -232,7 +251,7 @@ fn (mut context Context) run() {
 			mut summary := map[string]Aints{}
 			for k, v in m {
 				// show a temporary summary for the current series/cmd cycle
-				s := new_aints(v)
+				s := new_aints(v, context.nmins, context.nmaxs)
 				println('  $k: $s')
 				summary[k] = s
 			}
@@ -255,7 +274,7 @@ fn (mut context Context) run() {
 	for icmd in 0 .. context.results.len {
 		mut new_full_summary := map[string]Aints{}
 		for k, v in context.results[icmd].oms {
-			new_full_summary[k] = new_aints(v)
+			new_full_summary[k] = new_aints(v, context.nmins, context.nmaxs)
 		}
 		context.results[icmd].summary = new_full_summary
 	}
@@ -280,7 +299,7 @@ fn (mut context Context) show_diff_summary() {
 		if r.icmd == 0 {
 			first_cmd_percentage = cpercent
 		}
-		println(' $first_marker${(i + 1):3} | ${cpercent:6.1f}% slower | ${r.cmd:-55s} | $r.atiming')
+		println(' $first_marker${(i + 1):3} | ${cpercent:5.1f}% slower | ${r.cmd:-57s} | $r.atiming')
 	}
 	$if debugcontext ? {
 		println('context: $context')
