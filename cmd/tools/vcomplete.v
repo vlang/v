@@ -259,7 +259,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << "COMPREPLY+=(\'$entry\')"
+				lines << "COMPREPLY+=('$entry')"
 			}
 			println(lines.join('\n'))
 		}
@@ -281,7 +281,7 @@ compdef _v v
 			mut lines := []string{}
 			list := auto_complete_request(sub_args[1..])
 			for entry in list {
-				lines << 'compadd -U -S \"\" -- \'$entry\';'
+				lines << "compadd -U -S \"\" -- '$entry';"
 			}
 			println(lines.join('\n'))
 		}

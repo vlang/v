@@ -327,9 +327,7 @@ pub fn (mut d Doc) generate() ? {
 	// get all files
 	d.base_path = if os.is_dir(d.base_path) { d.base_path } else { os.real_path(os.dir(d.base_path)) }
 	d.is_vlib = 'vlib' !in d.base_path
-	project_files := os.ls(d.base_path) or {
-		return error_with_code(err, 0)
-	}
+	project_files := os.ls(d.base_path) or { return error_with_code(err, 0) }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)
 	if v_files.len == 0 {
 		return error_with_code('vdoc: No valid V files were found.', 1)
@@ -345,14 +343,10 @@ pub fn (mut d Doc) generate() ? {
 	mut file_asts := []ast.File{}
 	for i, file_path in v_files {
 		if i == 0 {
-			d.parent_mod_name = get_parent_mod(d.base_path) or {
-				''
-			}
+			d.parent_mod_name = get_parent_mod(d.base_path) or { '' }
 		}
 		filename := os.base(file_path)
-		d.sources[filename] = util.read_file(file_path) or {
-			''
-		}
+		d.sources[filename] = util.read_file(file_path) or { '' }
 		file_asts <<
 			parser.parse_file(file_path, d.table, comments_mode, d.prefs, global_scope)
 	}

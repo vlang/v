@@ -52,9 +52,7 @@ pub fn from_file(vmod_path string) ?Manifest {
 	if !os.exists(vmod_path) {
 		return error('v.mod: v.mod file not found.')
 	}
-	contents := os.read_file(vmod_path) or {
-		panic('v.mod: cannot parse v.mod')
-	}
+	contents := os.read_file(vmod_path) or { panic('v.mod: cannot parse v.mod') }
 	return decode(contents)
 }
 

@@ -25,7 +25,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.write('${dbtype}__DB $db_name = ')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, _SLIT("')
 	if node.kind == .insert {
 		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
 	} else if node.kind == .update {
@@ -124,7 +124,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	if node.has_where {
 		sql_query += ' WHERE '
 	}
-	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
+	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
 	g.sql_stmt_name = g.new_tmp_var()
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
@@ -132,8 +132,8 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.write('${dbtype}__DB $db_name = ') // $node.db_var_name;')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.write(sql_query)
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)

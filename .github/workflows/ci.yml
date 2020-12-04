@@ -148,6 +148,8 @@ jobs:
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Test symlink
       run:  ./v symlink
 #    - name: Set up pg database
@@ -180,7 +182,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/ved
         cd ved && ../v -o ved .
-        ../v -autofree -experimental .
+#        ../v -autofree .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui
@@ -221,6 +223,8 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -534,7 +538,6 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree -experimental .
         cd ..
 
   websocket_autobahn:

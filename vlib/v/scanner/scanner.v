@@ -579,7 +579,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			}
 			// end of `$expr`
 			// allow `'$a.b'` and `'$a.c()'`
-			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`n`, `r`, `\\`, `t`] {
+			if s.is_inter_start && next_char == `\\` && s.look_ahead(2) !in [`x`, `n`, `r`, `\\`, `t`] {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
@@ -1207,6 +1207,10 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
+	if s.pref.warns_are_errors {
+		s.error(msg)
+		return
+	}
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos

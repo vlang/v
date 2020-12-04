@@ -26,9 +26,7 @@ fn test_vlib_fmt() {
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	os.chdir(vroot)
 	input_files := os.walk_ext('vlib/v/', '.v').filter(!it.contains('/tests/'))

@@ -36,11 +36,17 @@ fn (mut a App) collect_info() {
 	}
 	if os_kind == 'linux' {
 		info := a.cpu_info()
-		if info['model name'] != '' {
-			arch_details << info['model name']
-		} else {
-			arch_details << info['hardware']
+		mut cpu_details := ''
+		if cpu_details == '' {
+			cpu_details = info['model name']
 		}
+		if cpu_details == '' {
+			cpu_details = info['hardware']
+		}
+		if cpu_details == '' {
+			cpu_details = os.uname().machine
+		}
+		arch_details << cpu_details
 	}
 	if os_kind == 'windows' {
 		arch_details << a.cmd({
@@ -51,13 +57,13 @@ fn (mut a App) collect_info() {
 	//
 	mut os_details := ''
 	wsl_check := a.cmd({
-				command: 'cat /proc/sys/kernel/osrelease'
-			})
+		command: 'cat /proc/sys/kernel/osrelease'
+	})
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
-			if 'microsoft' in wsl_check  {
+			if 'microsoft' in wsl_check {
 				// WSL 2 is a Managed VM and Full Linux Kernel
 				// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
 				os_details += ' (WSL 2)'
@@ -104,6 +110,7 @@ fn (mut a App) collect_info() {
 		command: 'cc --version'
 	}))
 	a.println('')
+	a.line('getwd', os.getwd())
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
