@@ -1421,7 +1421,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	f.use_short_fn_args = false
 	if node.args.len > 0 && node.args.last().expr is ast.StructInit {
 		struct_typ := (node.args.last().expr as ast.StructInit).typ
-		if struct_typ == 1 {
+		if struct_typ == table.void_type {
 			f.use_short_fn_args = true
 		}
 	}
