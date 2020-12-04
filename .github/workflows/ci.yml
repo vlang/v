@@ -182,7 +182,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/ved
         cd ved && ../v -o ved .
-        ../v -autofree -experimental .
+#        ../v -autofree .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui

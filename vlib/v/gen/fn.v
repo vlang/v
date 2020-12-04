@@ -15,6 +15,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// || it.no_body {
 		return
 	}
+	g.returned_var_name = ''
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
@@ -737,7 +738,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
-			!g.inside_const
+			!g.inside_const && !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker

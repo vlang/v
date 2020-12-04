@@ -125,6 +125,7 @@ mut:
 	// where an aggregate (at least two types) is generated
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx               int
+	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
 }
 
 const (
@@ -920,6 +921,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// if node.name.contains('parse_text') {
 				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
 				// }
+				// TODO true for not just "builtin"
 				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 				if mod != g.module_built && node.mod != g.module_built.after('/') {
 					// Skip functions that don't have to be generated for this module.
@@ -1073,18 +1075,20 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv']
+			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings']
 			g.cur_mod = node.name
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
 			// af := g.pref.autofree && node.exprs.len > 0 && node.exprs[0] is ast.CallExpr && !g.is_builtin_mod
+			/*
 			af := g.pref.autofree && !g.is_builtin_mod
-			if af {
+			if false && af {
 				g.writeln('// ast.Return free')
-				// g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-				g.writeln('// ast.Return free_end')
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
+				g.writeln('// ast.Return free_end2')
 			}
+			*/
 			g.return_statement(node)
 		}
 		ast.SqlStmt {
@@ -2076,6 +2080,10 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 		match obj {
 			ast.Var {
 				g.writeln('// var $obj.name pos=$obj.pos.pos')
+				if obj.name == g.returned_var_name {
+					g.writeln('// skipping returned var')
+					continue
+				}
 				// if var.typ == 0 {
 				// // TODO why 0?
 				// continue
@@ -2107,7 +2115,7 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	if free_parent_scopes && !isnil(scope.parent) {
 		// g.autofree_scope_vars2(scope.parent, end_pos)
 		g.writeln('// af parent scope:')
-		// g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr)
+		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true)
 	}
 }
 
@@ -2158,6 +2166,9 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 		// tmp expr vars do not need to be freed again here
 		return
 	}
+	if g.is_builtin_mod {
+		return
+	}
 	// if v.is_autofree_tmp && !g.doing_autofree_tmp {
 	// return
 	// }
@@ -2168,7 +2179,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod $g.is_builtin_mod')
 	}
 }
 
@@ -3901,6 +3912,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('$styp $tmp = {.ok = true};')
 			g.writeln('return $tmp;')
 		} else {
+			if g.pref.autofree && !g.is_builtin_mod {
+				g.writeln('// free before return (no values returned)')
+				g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr, true)
+			}
 			g.writeln('return;')
 		}
 		return
@@ -4022,7 +4037,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.writeln('return $opt_tmp;')
 			return
 		}
-		free := g.pref.autofree && node.exprs[0] is ast.CallExpr
+		free := g.pref.autofree && !g.is_builtin_mod // node.exprs[0] is ast.CallExpr
 		mut tmp := ''
 		if free {
 			// `return foo(a, b, c)`
@@ -4050,11 +4065,16 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// autofree before `return`
 			// set free_parent_scopes to true, since all variables defined in parent
 			// scopes need to be freed before the return
-			g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr, true)
+			expr := node.exprs[0]
+			if expr is ast.Ident {
+				g.returned_var_name = expr.name
+			}
+			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			g.write('return $tmp')
 		}
-	} else {
-		g.write('return')
+	} else { // if node.exprs.len == 0 {
+		println('this should never happen')
+		g.write('/*F*/return')
 	}
 	g.writeln(';')
 }
