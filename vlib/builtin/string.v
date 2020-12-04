@@ -56,7 +56,7 @@ mut:
 // .is_lit == 0 => a fresh string, should be freed by autofree
 // .is_lit == 1 => a literal string from .rodata, should NOT be freed
 // .is_lit == -98761234 => already freed string, protects against double frees.
-// ^^^^^^^^^ calling free on these is a bug.
+//            ^^^^^^^^^ calling free on these is a bug.
 // Any other value means that the string has been corrupted.
 pub struct ustring {
 pub mut:
@@ -111,7 +111,9 @@ pub fn tos3(s charptr) string {
 	}
 }
 
+[deprecated]
 pub fn tos_lit(s charptr) string {
+	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')
 	return string{
 		str: byteptr(s)
 		len: unsafe {C.strlen(s)}
@@ -186,9 +188,7 @@ pub fn cstring_to_vstring(cstr byteptr) string {
 }
 
 pub fn (s string) replace_once(rep string, with string) string {
-	index := s.index(rep) or {
-		return s.clone()
-	}
+	index := s.index(rep) or { return s.clone() }
 	return s.substr(0, index) + with + s.substr(index + rep.len, s.len)
 }
 
@@ -671,9 +671,7 @@ fn (s string) index_kmp(p string) int {
 
 pub fn (s string) index_any(chars string) int {
 	for c in chars {
-		index := s.index(c.str()) or {
-			continue
-		}
+		index := s.index(c.str()) or { continue }
 		return index
 	}
 	return -1
@@ -767,9 +765,7 @@ pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
 	}
-	s.index(substr) or {
-		return false
-	}
+	s.index(substr) or { return false }
 	return true
 }
 
@@ -902,14 +898,10 @@ pub fn (s string) is_title() bool {
 // 'hey [man] how you doin'
 // find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
-	start_pos := s.index(start) or {
-		return ''
-	}
+	start_pos := s.index(start) or { return '' }
 	// First get everything to the right of 'start'
 	val := s.right(start_pos + start.len)
-	end_pos := val.index(end) or {
-		return val
-	}
+	end_pos := val.index(end) or { return val }
 	return val.left(end_pos)
 }
 
@@ -1296,30 +1288,22 @@ pub fn (s &string) free() {
 
 // all_before('23:34:45.234', '.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
-	pos := s.index(dot) or {
-		return s
-	}
+	pos := s.index(dot) or { return s }
 	return s.left(pos)
 }
 
 pub fn (s string) all_before_last(dot string) string {
-	pos := s.last_index(dot) or {
-		return s
-	}
+	pos := s.last_index(dot) or { return s }
 	return s.left(pos)
 }
 
 pub fn (s string) all_after(dot string) string {
-	pos := s.index(dot) or {
-		return s
-	}
+	pos := s.index(dot) or { return s }
 	return s.right(pos + dot.len)
 }
 
 pub fn (s string) all_after_last(dot string) string {
-	pos := s.last_index(dot) or {
-		return s
-	}
+	pos := s.last_index(dot) or { return s }
 	return s.right(pos + dot.len)
 }
 
