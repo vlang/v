@@ -93,6 +93,8 @@ jobs:
 #        ./v -silent test-compiler
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Fixed tests
       run: ./v -silent test-fixed
     - name: Test building v tools
@@ -221,6 +223,8 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
