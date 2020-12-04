@@ -27,6 +27,7 @@ mut:
 	warmup                  int
 	show_help               bool
 	show_output             bool
+	use_newline             bool // use \n instead of \r, so the last line is not overwritten
 	fail_on_regress_percent int
 	fail_on_maxtime         int // in ms
 	verbose                 bool
@@ -35,6 +36,7 @@ mut:
 	cmd_template            string // {T} will be substituted with the current command
 	cmd_params              map[string][]string
 	cline                   string // a terminal clearing line
+	cgoback                 string
 }
 
 struct Aints {
@@ -107,6 +109,7 @@ fn (mut context Context) parse_options() {
 	context.series = fp.int('series', `s`, 2, 'Series count. `-s 2 -c 4 a b` => aaaabbbbaaaabbbb, while `-s 3 -c 2 a b` => aabbaabbaabb.')
 	context.warmup = fp.int('warmup', `w`, 2, 'Warmup runs. These are done *only at the start*, and are ignored.')
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
+	context.use_newline = fp.bool('newline', `N`, false, 'Use \\n, do not overwrite the last line. Produces more output, but easier to diagnose.')
 	context.show_output = fp.bool('output', `O`, false, 'Show command stdout/stderr in the progress indicator for each command. NB: slower, for verbose commands.')
 	context.verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.fail_on_maxtime = fp.int('max_time', `m`, max_time, 'Fail with exit code 2, when first cmd takes above M milliseconds (regression).')
@@ -132,7 +135,13 @@ fn (mut context Context) parse_options() {
 	}
 	context.commands = context.expand_all_commands(commands)
 	context.results = []CmdResult{len: context.commands.len, init: CmdResult{}}
-	context.cline = '\r' + term.h_divider('')
+	if context.use_newline {
+		context.cline = '\n'
+		context.cgoback = '\n'
+	} else {
+		context.cline = '\r' + term.h_divider('')
+		context.cgoback = '\r'
+	}
 }
 
 fn (mut context Context) clear_line() {
@@ -177,11 +186,9 @@ fn (mut context Context) run() {
 			println('Series: ${si:4}/${context.series:-4}, command: $cmd')
 			if context.warmup > 0 && run_warmups < context.commands.len {
 				for i in 1 .. context.warmup + 1 {
-					print('\r warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
+					print('${context.cgoback}warming up run: ${i:4}/${context.warmup:-4} for ${cmd:-50s} took ${duration:6} ms ...')
 					mut sw := time.new_stopwatch({})
-					os.exec(cmd) or {
-						continue
-					}
+					os.exec(cmd) or { continue }
 					duration = int(sw.elapsed().milliseconds())
 				}
 				run_warmups++
@@ -189,14 +196,12 @@ fn (mut context Context) run() {
 			context.clear_line()
 			for i in 1 .. (context.count + 1) {
 				avg := f64(sum) / f64(i)
-				print('\rAverage: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
+				print('${context.cgoback}Average: ${avg:9.3f}ms | run: ${i:4}/${context.count:-4} | took ${duration:6} ms')
 				if context.show_output {
 					print(' | result: ${oldres:s}')
 				}
 				mut sw := time.new_stopwatch({})
-				res := scripting.exec(cmd) or {
-					continue
-				}
+				res := scripting.exec(cmd) or { continue }
 				duration = int(sw.elapsed().milliseconds())
 				if res.exit_code != 0 {
 					eprintln('${i:10} non 0 exit code for cmd: $cmd')
@@ -214,7 +219,7 @@ fn (mut context Context) run() {
 			context.results[icmd].runs += runs
 			context.results[icmd].atiming = new_aints(context.results[icmd].timings)
 			context.clear_line()
-			print('\r')
+			print(context.cgoback)
 			mut m := map[string][]int{}
 			for o in context.results[icmd].outputs {
 				x := o.split(':')
