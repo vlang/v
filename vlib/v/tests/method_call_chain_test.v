@@ -12,5 +12,5 @@ fn (mut t Test) div(x int) &Test { t.val /= x return t }
 
 fn test_method_call_chains() {
 	mut x := new(4).inc().inc().inc().inc().add(4).div(2).inc()
-	assert x == 7
+	assert x.val == 7
 }
