@@ -1602,7 +1602,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 		//******************************************
 /*		if ist == ist_prog_end {
-			println("HERE")
+			//println("HERE")
 			break
 		}
 */
@@ -1612,7 +1612,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// manage groups
 			if group_index >= 0 && state.match_index >= 0 {
-				println("End text with open groups!")
+				//println("End text with open groups!")
 				// close the groups
 				for group_index >= 0 {
 					tmp_pc := group_data[group_index]
@@ -1654,20 +1654,20 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			if pc == -1 {
 				pc = last_fnd_pc
 			}
-			println("Finished text!!")
-			println("Instruction: ${ist:08x} pc: $pc")
-			println("min_rep: ${re.prog[pc].rep_min} max_rep: ${re.prog[pc].rep_max} rep: ${re.prog[pc].rep}")
+			//println("Finished text!!")
+			//println("Instruction: ${ist:08x} pc: $pc")
+			//println("min_rep: ${re.prog[pc].rep_min} max_rep: ${re.prog[pc].rep_max} rep: ${re.prog[pc].rep}")
 			
 			// program end
 			if ist == ist_prog_end {
-				println("Program end on end of text!")
+				//println("Program end on end of text!")
 				return first_match,i
 			}
 
 			// if we go out of text and we are the last instruction .* check
 			if (re.prog[pc+1].ist == ist_prog_end) && 
 			(re.prog[pc].rep >= re.prog[pc].rep_min && re.prog[pc].rep <= re.prog[pc].rep_max) {
-				println("Ok .* rep match!")
+				//println("Ok .* rep match!")
 				return first_match,i
 			}		
 			
@@ -1888,7 +1888,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 /*
 				// manage * and {0,} quantifier
 				if re.prog[pc].rep_max == max_quantifier {
-					println("manage .*")
+					//println("manage .*")
 					m_state = .ist_load
 					continue
 				}
@@ -2199,21 +2199,21 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		if group_index < 0 {
 			
 			if re.prog[pc].ist == ist_prog_end {
-				println("program ended!!")
+				//println("program ended!!")
 				
 				if (re.flag & f_src) != 0 {
-					println("find return")
+					//println("find return")
 					return first_match, i
 				} else {
 					return 0, i
 				}
 			}
 			
-			println("No Group here, natural end [$first_match,$i] state: ${state_str(m_state)} ist: $ist pgr_end: $re.prog.len")
+			//println("No Group here, natural end [$first_match,$i] state: ${state_str(m_state)} ist: $ist pgr_end: $re.prog.len")
 				
 			if re.prog[pc+1].ist == ist_prog_end || re.prog[pc].ist == ist_prog_end{
 				rep := re.prog[pc].rep
-				println("rep: $rep re.prog[pc].rep_min: ${re.prog[pc].rep_min} re.prog[pc].rep_max: ${re.prog[pc].rep_max}")
+				//println("rep: $rep re.prog[pc].rep_min: ${re.prog[pc].rep_min} re.prog[pc].rep_max: ${re.prog[pc].rep_max}")
 				if rep >= re.prog[pc].rep_min && rep <= re.prog[pc].rep_max {
 					return first_match, i
 				}
@@ -2221,21 +2221,16 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				return no_match_found, 0
 			}
 			if src_end {
-				println("program end")
+				//println("program end")
 				return first_match, i
 			}
-			print("No match found!!")
+			//print("No match found!!")
 			return no_match_found, 0
-/*
-			if ist < (ist_prog_end-1) {
-				return no_match_found, 0
-			}
-*/
-//			return first_match, i
+
 
 		} else {
-			println("Group match! OK")
-			println("first_match: $first_match, i: $i")
+			//println("Group match! OK")
+			//println("first_match: $first_match, i: $i")
 
 			//println("Skip last group")
 			return first_match,i
@@ -2294,13 +2289,11 @@ fn impl_new_regex_by_size(mult int) RE {
 
 pub fn (mut re RE) match_string(in_txt string) (int,int) {
 
-	tmp_str := in_txt + "\uFFFF"
-	start, mut end := re.match_base(tmp_str.str, tmp_str.len)
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
 	if end > in_txt.len {
 		end = in_txt.len
 	}
 
-//	start, end := re.match_base(in_txt.str, in_txt.len)
 	if start >= 0 && end > start {
 		if (re.flag & f_ms) != 0 && start > 0 {
 			return no_match_found, 0
@@ -2323,20 +2316,15 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 // find try to find the first match in the input string
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
-	tmp_str := in_txt + "\uFFFF"
+	
 	re.flag |= f_src  // enable search mode
-	start, mut end := re.match_base(tmp_str.str, tmp_str.len)
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	//print("Find [$start,$end] '${in_txt[start..end]}'")
 	if end > in_txt.len {
 		end = in_txt.len
 	}
 	re.flag = old_flag
-/*
-	old_flag := re.flag
-	re.flag |= f_src  // enable search mode
-	start, end := re.match_base(in_txt.str, in_txt.len)
-	//print("Find [$start,$end] '${in_txt[start..end]}'")
-	re.flag = old_flag
-*/
+
 	if start >= 0 && end > start {
 		return start, end
 	}

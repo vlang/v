@@ -187,12 +187,16 @@ cgroups_test_suite = [
 ]
 )
 
+const (
+	debug = false
+)
+
 fn test_regex(){
 
 	// check capturing groups
 	for c,to in cgroups_test_suite {
 		// debug print
-		println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
+		if debug { println("#$c [$to.src] q[$to.q] ($to.s, $to.e)") }
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -244,9 +248,9 @@ fn test_regex(){
 	}
 
 	// check find_all
-	for _,to in match_test_suite_fa{
+	for c,to in match_test_suite_fa{
 		// debug print
-		//println("#$c [$to.src] q[$to.q] $to.r")
+		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -272,9 +276,9 @@ fn test_regex(){
 	}
 
 	// check replace
-	for _,to in match_test_suite_re{
+	for c,to in match_test_suite_re{
 		// debug print
-		//println("#$c [$to.src] q[$to.q] $to.r")
+		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -293,7 +297,7 @@ fn test_regex(){
 	// check match and find
 	for c,to in match_test_suite {
 		// debug print
-		println("#$c [$to.src] q[$to.q] $to.s $to.e")
+		if debug { println("#$c [$to.src] q[$to.q] $to.s $to.e") }
 
 		// test the find
 		if to.s > 0 {
@@ -353,4 +357,5 @@ fn test_regex(){
 		}
 
 	}
+	if debug { println("DONE!") }
 }
