@@ -241,6 +241,16 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 	f.indent--
 }
 
+pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
+	was_empty_line := f.empty_line
+	pos := f.out.len
+	f.stmt(node)
+	str := f.out.after(pos).trim_space()
+	f.out.go_back_to(pos)
+	f.empty_line = was_empty_line
+	return str
+}
+
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
 		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
@@ -1126,6 +1136,11 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 		.block {
 			if or_block.stmts.len == 0 {
 				f.write(' or { }')
+			} else if or_block.stmts.len == 1 {
+				// the control stmts (return/break/continue...) print a newline inside them,
+				// so, since this'll all be on one line, trim any possible whitespace
+				str := f.stmt_str(or_block.stmts[0]).trim_space()
+				f.write(' or { $str }')
 			} else {
 				f.writeln(' or {')
 				f.stmts(or_block.stmts)
