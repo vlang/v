@@ -194,12 +194,13 @@ fn (mut f MDFile) check_examples() (int, int) {
 			panic(err)
 		}
 		mut acommands := e.command.split(' ')
+		nofmt := 'nofmt' in acommands
 		for command in acommands {
 			match command {
 				'compile' {
 					res := os.system('"$vexe" -silent -o x.c $vfile')
 					os.rm('x.c') or { }
-					fmt_res := os.system('"$vexe" fmt -verify $vfile')
+					fmt_res := if nofmt { 1 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -216,7 +217,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'live' {
 					res := os.system('"$vexe" -silent -live -o x.c $vfile')
-					fmt_res := os.system('"$vexe" fmt -verify $vfile')
+					fmt_res := if nofmt { 1 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -245,7 +246,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'oksyntax' {
 					res := os.system('"$vexe" -silent -check-syntax $vfile')
-					fmt_res := os.system('"$vexe" fmt -verify $vfile')
+					fmt_res := if nofmt { 1 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
@@ -271,6 +272,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					}
 					oks++
 				}
+				'nofmt' {}
 				else {
 					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
 					should_cleanup_vfile = false
