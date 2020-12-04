@@ -1712,20 +1712,20 @@ There is no explicit declaration of intent, no "implements" keyword.
 We can test the underlying type of an interface using dynamic cast operators:
 ```v oksyntax
 fn announce(s Speaker) {
-    if s is Dog {
-        println('a $s.breed') // `s` is automatically cast to `Dog` (smart cast)
-    } else if s is Cat {
-        println('a cat')
-    } else {
-        println('something else')
-    }
+	if s is Dog {
+		println('a $s.breed') // `s` is automatically cast to `Dog` (smart cast)
+	} else if s is Cat {
+		println('a cat')
+	} else {
+		println('something else')
+	}
 }
 ```
 For more information, see [Dynamic casts](#dynamic-casts).
 
 ### Enums
 
-```v
+```v nofmt
 enum Color {
     red green blue
 }
@@ -1740,7 +1740,6 @@ match color {
     .green { ... }
     .blue { ... }
 }
-
 ```
 
 Enum match must be exhaustive or have an `else` branch.
@@ -1752,11 +1751,16 @@ A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
 ```v
-struct Moon {}
-struct Mars {}
-struct Venus {}
+struct Moon {
+}
 
-type World = Moon | Mars | Venus
+struct Mars {
+}
+
+struct Venus {
+}
+
+type World = Mars | Moon | Venus
 
 sum := World(Moon{})
 assert sum.type_name() == 'Moon'
@@ -1771,24 +1775,30 @@ To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
 ```v
-struct Moon {}
-struct Mars {}
-struct Venus {}
+struct Moon {
+}
 
-type World = Moon | Mars | Venus
+struct Mars {
+}
 
-fn (m Mars) dust_storm() bool { return true }
+struct Venus {
+}
+
+type World = Mars | Moon | Venus
+
+fn (m Mars) dust_storm() bool {
+	return true
+}
 
 fn main() {
-    mut w := World(Moon{})
-    assert w is Moon
-
-    w = Mars{}
-    // use `as` to access the Mars instance
-    mars := w as Mars
-    if mars.dust_storm() {
-        println('bad weather!')
-    }
+	mut w := World(Moon{})
+	assert w is Moon
+	w = Mars{}
+	// use `as` to access the Mars instance
+	mars := w as Mars
+	if mars.dust_storm() {
+		println('bad weather!')
+	}
 }
 ```
 
@@ -1799,10 +1809,10 @@ A safer way is to use a smart cast.
 
 ```v oksyntax
 if w is Mars {
-    assert typeof(w).name == 'Mars'
-    if w.dust_storm() {
-        println('bad weather!')
-    }
+	assert typeof(w).name == 'Mars'
+	if w.dust_storm() {
+		println('bad weather!')
+	}
 }
 ```
 `w` has type `Mars` inside the body of the `if` statement. This is
@@ -1824,26 +1834,33 @@ complex expression than just a variable name.
 You can also use `match` to determine the variant:
 
 ```v
-struct Moon {}
-struct Mars {}
-struct Venus {}
+struct Moon {
+}
 
-type World = Moon | Mars | Venus
+struct Mars {
+}
 
-fn open_parachutes(n int) { println(n) }
+struct Venus {
+}
+
+type World = Mars | Moon | Venus
+
+fn open_parachutes(n int) {
+	println(n)
+}
 
 fn land(w World) {
-    match w {
-        Moon {} // no atmosphere
-        Mars {
-            // light atmosphere
-            open_parachutes(3)
-        }
-        Venus {
-            // heavy atmosphere
-            open_parachutes(1)
-        }
-    }
+	match w {
+		Moon {} // no atmosphere
+		Mars {
+			// light atmosphere
+			open_parachutes(3)
+		}
+		Venus {
+			// heavy atmosphere
+			open_parachutes(1)
+		}
+	}
 }
 ```
 
@@ -1891,33 +1908,35 @@ It will not work on struct fields, array indexes, or map keys.
 Option types are declared with `?Type`:
 ```v
 struct User {
-    id int
-    name string
+	id   int
+	name string
 }
 
 struct Repo {
-    users []User
+	users []User
 }
 
 fn (r Repo) find_user_by_id(id int) ?User {
-    for user in r.users {
-        if user.id == id {
-            // V automatically wraps this into an option type
-            return user
-        }
-    }
-    return error('User $id not found')
+	for user in r.users {
+		if user.id == id {
+			// V automatically wraps this into an option type
+			return user
+		}
+	}
+	return error('User $id not found')
 }
 
 fn main() {
-    repo := Repo {
-        users: [User{1, 'Andrew'}, User {2, 'Bob'}, User {10, 'Charles'}]
-    }
-    user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
-        return
-    }
-    println(user.id) // "10"
-    println(user.name) // "Charles"
+	repo := Repo{
+		users: [User{1, 'Andrew'}, User{2, 'Bob'},
+			User{10, 'Charles'},
+		]
+	}
+	user := repo.find_user_by_id(10) or { // Option types must be handled by `or` blocks
+		return
+	}
+	println(user.id) // "10"
+	println(user.name) // "Charles"
 }
 ```
 
@@ -1938,8 +1957,8 @@ to the `error()` function. `err` is empty if `none` was returned.
 
 ```v oksyntax
 user := repo.find_user_by_id(7) or {
-    println(err) // "User 7 not found"
-    return
+	println(err) // "User 7 not found"
+	return
 }
 ```
 
@@ -1952,8 +1971,8 @@ propagate the error:
 import net.http
 
 fn f(url string) ?string {
-    resp := http.get(url) ?
-    return resp.text
+	resp := http.get(url) ?
+	return resp.text
 }
 ```
 
@@ -1978,7 +1997,7 @@ The second method is to break from execution early:
 
 ```v oksyntax
 user := repo.find_user_by_id(7) or {
-    return
+	return
 }
 ```
 
@@ -1995,10 +2014,12 @@ The third method is to provide a default value at the end of the `or` block.
 In case of an error, that value would be assigned instead,
 so it must have the same type as the content of the `Option` being handled.
 
-```v
+```v nofmt
 fn do_something(s string) ?string {
-    if s == 'foo' { return 'foo' }
-    return error('invalid string') // Could be `return none` as well
+	if s == 'foo' {
+		return 'foo'
+	}
+	return error('invalid string') // Could be `return none` as well
 }
 
 a := do_something('foo') or { 'default' } // a will be 'foo'
@@ -2012,10 +2033,11 @@ The fourth method is to use `if` unwrapping:
 
 ```v
 import net.http
+
 if resp := http.get('https://google.com') {
-    println(resp.text) // resp is a http.Response, not an optional
+	println(resp.text) // resp is a http.Response, not an optional
 } else {
-    println(err)
+	println(err)
 }
 ```
 Above, `http.get` returns a `?http.Response`. `resp` is only in scope for the first
@@ -2053,15 +2075,15 @@ runtime parameter types. This is why `find_by_id` can omit `<T>`, because the
 receiver argument `r` uses a generic type `T`.
 
 Another example:
-```v
+```v nofmt
 fn compare<T>(a T, b T) int {
-    if a < b {
-        return -1
-    }
-    if a > b {
-        return 1
-    }
-    return 0
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // compare<int>
@@ -2091,30 +2113,32 @@ thread. Soon coroutines and a scheduler will be implemented.
 import sync
 import time
 
-fn task(id, duration int, mut wg sync.WaitGroup) {
-    println("task ${id} begin")
-    time.sleep_ms(duration)
-    println("task ${id} end")
-    wg.done()
+fn task(id int, duration int, mut wg sync.WaitGroup) {
+	println('task $id begin')
+	time.sleep_ms(duration)
+	println('task $id end')
+	wg.done()
 }
 
 fn main() {
-    mut wg := sync.new_waitgroup()
-    wg.add(3)
-    go task(1, 500, mut wg)
-    go task(2, 900, mut wg)
-    go task(3, 100, mut wg)
-    wg.wait()
-    println('done')
+	mut wg := sync.new_waitgroup()
+	wg.add(3)
+	go task(1, 500, mut wg)
+	go task(2, 900, mut wg)
+	go task(3, 100, mut wg)
+	wg.wait()
+	println('done')
 }
 
-// Output: task 1 begin
-//         task 2 begin
-//         task 3 begin
-//         task 3 end
-//         task 1 end
-//         task 2 end
-//         done
+// Output:
+// task 1 begin
+// task 2 begin
+// task 3 begin
+// task 3 end
+// task 1 end
+// task 2 end
+// done
+
 ```
 
 ### Channels
@@ -2126,7 +2150,7 @@ Channels can be buffered or unbuffered and it is possible to `select` from multi
 Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
 in the declaration:
 
-```v
+```v nofmt
 ch := chan int{}          // unbuffered - "synchronous"
 ch2 := chan f64{cap: 100} // buffer length 100
 ```
@@ -2136,14 +2160,16 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
+import sync
+
 fn f(ch chan int) {
-    // ...
+	// ...
 }
 
 fn main() {
-    ch := chan int{}
-    go f(ch)
-    // ...
+	ch := chan int{}
+	go f(ch)
+	// ...
 }
 ```
 
@@ -2151,6 +2177,8 @@ Objects can be pushed to channels using the arrow operator. The same operator ca
 pop objects from the other end:
 
 ```v
+import sync
+
 mut ch := chan int{}
 mut ch2 := chan f64{}
 n := 5
@@ -2235,7 +2263,9 @@ if select {
 #### Special Channel Features
 
 For special purposes there are some builtin properties and methods:
-```v
+```v nofmt
+import sync
+
 struct Abc{x int}
 
 a := 2.13
@@ -2252,6 +2282,7 @@ println(c)
 // mut ch2 := chan f64{}
 // res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
 ```
+
 The `try_push/pop()` methods will return immediately with one of the results
 `.success`, `.not_ready` or `.closed` - dependent on whether the object has been transferred or
 the reason why not.
@@ -2267,17 +2298,14 @@ import sync
 
 struct St {
 mut:
-	x int // share data
+	x   int // share data
 	mtx &sync.Mutex
 }
 
 fn (mut b St) g() {
-
 	b.mtx.m_lock()
 	// read/modify/write b.x
-
 	b.mtx.unlock()
-
 }
 
 fn caller() {
@@ -2286,12 +2314,9 @@ fn caller() {
 		mtx: sync.new_mutex()
 	}
 	go a.g()
-
 	a.mtx.m_lock()
 	// read/modify/write a.x
-
 	a.mtx.unlock()
-
 }
 ```
 
@@ -2303,29 +2328,27 @@ import json
 struct Foo {
 	x int
 }
+
 struct User {
-    name string
-    age  int
-
-    // Use the `skip` attribute to skip certain fields
-    foo Foo [skip]
-
-    // If the field name is different in JSON, it can be specified
-    last_name string [json:lastName]
+	name      string
+	age       int
+	// Use the `skip` attribute to skip certain fields
+	foo       Foo    [skip]
+	// If the field name is different in JSON, it can be specified
+	last_name string [json: lastName]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25 }'
 user := json.decode(User, data) or {
-    eprintln('Failed to decode json')
-    return
+	eprintln('Failed to decode json')
+	return
 }
 println(user.name)
 println(user.last_name)
 println(user.age)
-
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos)?
+foos := json.decode([]Foo, sfoos) ?
 println(foos[0].x)
 println(foos[1].x)
 ```
@@ -2344,7 +2367,10 @@ No runtime reflection is used. This results in much better performance.
 ### Asserts
 
 ```v
-fn foo(mut v []int) { v[0] = 1 }
+fn foo(mut v []int) {
+	v[0] = 1
+}
+
 mut v := [20]
 foo(mut v)
 assert v[0] < 4
@@ -2360,13 +2386,16 @@ unexpected value. Assert statements can be used in any function.
 ```v
 // hello.v
 module main
+
 fn hello() string {
-    return 'Hello world'
+	return 'Hello world'
 }
+
 fn main() {
-    println(hello())
+	println(hello())
 }
 ```
+
 ```v failcompile
 module main
 // hello_test.v
@@ -2417,18 +2446,19 @@ to be leak free. For example:
 
 ```v
 import strings
+
 fn draw_text(s string, x int, y int) {
-    // ...
+	// ...
 }
 
 fn draw_scene() {
-    // ...
-    name1 := 'abc'
-    name2 := 'def ghi'
-    draw_text('hello $name1', 10, 10)
-    draw_text('hello $name2', 100, 10)
-    draw_text(strings.repeat(`X`, 10000), 10, 50)
-    // ...
+	// ...
+	name1 := 'abc'
+	name2 := 'def ghi'
+	draw_text('hello $name1', 10, 10)
+	draw_text('hello $name2', 100, 10)
+	draw_text(strings.repeat(`X`, 10000), 10, 50)
+	// ...
 }
 ```
 
