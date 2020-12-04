@@ -50,9 +50,16 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.dollar {
 			match p.peek_tok.kind {
-				.name { return p.vweb() }
-				.key_if { return p.if_expr(true) }
-				else { p.error_with_pos('unexpected `$`', p.peek_tok.position()) }
+				.name {
+					return p.vweb()
+				}
+				.key_if {
+					return p.if_expr(true)
+				}
+				else {
+					p.error_with_pos('unexpected `$`', p.peek_tok.position())
+					return ast.Expr{}
+				}
 			}
 		}
 		.chartoken {
@@ -100,6 +107,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.next()
 			if p.inside_unsafe {
 				p.error_with_pos('already inside `unsafe` block', pos)
+				return ast.Expr{}
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
@@ -193,9 +201,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					p.next()
 					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
 					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
+					return ast.Expr{}
 				} else {
 					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
 						p.tok.position())
+					return ast.Expr{}
 				}
 			}
 			p.check(.rcbr)
@@ -235,6 +245,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				// eof should be handled where it happens
 				p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
 					p.tok.position())
+				return ast.Expr{}
 			}
 		}
 	}

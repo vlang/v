@@ -44,6 +44,7 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	// if key_type_sym.kind != .string {
 	if key_type.idx() != table.string_type_idx {
 		p.error('maps can only have string keys for now')
+		return 0
 	}
 	p.check(.rsbr)
 	value_type := p.parse_type()
@@ -151,6 +152,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 	}
 	if p.tok.kind == .mul {
 		p.error('use `&Type` instead of `*Type` when declaring references')
+		return 0
 	}
 	mut nr_amps := 0
 	// &Type
@@ -167,6 +169,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 		typ = p.parse_any_type(language, nr_muls > 0, true)
 		if typ == table.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
+			return 0
 		}
 	}
 	if is_optional {
@@ -184,6 +187,7 @@ pub fn (mut p Parser) parse_type() table.Type {
 			p.error('V arrays are already references behind the scenes,
 there is no need to use a reference to an array (e.g. use `[]string` instead of `&[]string`).
 If you need to modify an array in a function, use a mutable argument instead: `fn foo(mut s []string) {}`.')
+			return 0
 		}
 	}
 	return typ
@@ -200,6 +204,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
 			p.error('unknown module `$p.tok.lit`')
+			return 0
 		}
 		if p.tok.lit in p.imports {
 			p.register_used_import(p.tok.lit)
@@ -210,6 +215,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		name = '${p.imports[name]}.$p.tok.lit'
 		if !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
+			return 0
 		}
 	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
@@ -231,6 +237,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 			// multiple return
 			if is_ptr {
 				p.error('parse_type: unexpected `&` before multiple returns')
+				return 0
 			}
 			return p.parse_multi_return_type()
 		}
@@ -248,6 +255,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
 				p.error('bad type syntax')
+				return 0
 			}
 			match name {
 				'voidptr' {

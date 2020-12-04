@@ -359,6 +359,7 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 			if c > 1000000 {
 				p.error_with_pos('parsed over $c statements from fn $p.cur_fn_name, the parser is probably stuck',
 					p.tok.position())
+				return []
 			}
 		}
 	}
@@ -396,8 +397,10 @@ fn (mut p Parser) check(expected token.Kind) {
 	if p.tok.kind != expected {
 		if p.tok.kind == .name {
 			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+			return
 		} else {
 			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+			return
 		}
 	}
 	p.next()
@@ -645,9 +648,11 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					}
 				} else if p.peek_tok.kind == .name {
 					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+					return ast.Stmt{}
 				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
 					p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
 					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+					return ast.Stmt{}
 				}
 			}
 			return p.parse_multi_expr(is_top_level)
@@ -761,11 +766,13 @@ fn (mut p Parser) attributes() {
 		attr := p.parse_attr()
 		if p.attrs.contains(attr.name) {
 			p.error_with_pos('duplicate attribute `$attr.name`', start_pos.extend(p.prev_tok.position()))
+			return
 		}
 		if attr.is_ctdefine {
 			if has_ctdefine {
 				p.error_with_pos('only one `[if flag]` may be applied at a time `$attr.name`',
 					start_pos.extend(p.prev_tok.position()))
+				return
 			} else {
 				has_ctdefine = true
 			}
@@ -777,11 +784,13 @@ fn (mut p Parser) attributes() {
 				break
 			}
 			p.error('unexpected `$p.tok.kind.str()`, expecting `;`')
+			return
 		}
 		p.next()
 	}
 	if p.attrs.len == 0 {
 		p.error_with_pos('attributes cannot be empty', p.prev_tok.position().extend(p.tok.position()))
+		return
 	}
 }
 
@@ -808,8 +817,10 @@ fn (mut p Parser) parse_attr() table.Attr {
 		name = p.check_name()
 		if name == 'unsafe_fn' {
 			p.error_with_pos('please use `[unsafe]` instead', p.tok.position())
+			return table.Attr{}
 		} else if name == 'trusted_fn' {
 			p.error_with_pos('please use `[trusted]` instead', p.tok.position())
+			return table.Attr{}
 		}
 		if p.tok.kind == .colon {
 			p.next()
@@ -841,6 +852,9 @@ pub fn (mut p Parser) warn(s string) {
 }
 
 pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
+	if p.pref.fatal_errors {
+		exit(1)
+	}
 	mut kind := 'error:'
 	if p.pref.output_mode == .stdout {
 		if p.pref.is_verbose {
@@ -902,6 +916,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	left0 := left[0]
 	if tok.kind == .key_mut && p.tok.kind != .decl_assign {
 		p.error('expecting `:=` (e.g. `mut x :=`)')
+		return ast.Stmt{}
 	}
 	if p.tok.kind in [.assign, .decl_assign] || p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left, left_comments)
@@ -910,6 +925,7 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
 		ast.ComptimeCall {
 		p.error_with_pos('expression evaluated but not used', left0.position())
+		return ast.Stmt{}
 	}
 	if left.len == 1 {
 		return ast.ExprStmt{
@@ -980,6 +996,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		}
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
+		return ast.Ident{}
 	}
 	return ast.Ident{}
 }
@@ -1040,9 +1057,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				}
 				'len', 'init' {
 					p.error('`$key` cannot be initialized for `chan`. Did you mean `cap`?')
+					return ast.Expr{}
 				}
 				else {
 					p.error('wrong field `$key`, expecting `cap`')
+					return ast.Expr{}
 				}
 			}
 			last_pos = p.tok.position()
@@ -1062,12 +1081,14 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		} else {
 			// don't allow any other string prefix except `r`, `js` and `c`
 			p.error('only `c`, `r`, `js` are recognized string prefixes, but you tried to use `$p.tok.lit`')
+			return ast.Expr{}
 		}
 	}
 	// don't allow r`byte` and c`byte`
 	if p.tok.lit in ['r', 'c'] && p.peek_tok.kind == .chartoken {
 		opt := if p.tok.lit == 'r' { '`r` (raw string)' } else { '`c` (c string)' }
 		p.error('cannot use $opt with `byte` and `rune`')
+		return ast.Expr{}
 	}
 	known_var := p.mark_var_as_used(p.tok.lit)
 	mut is_mod_cast := false
@@ -1321,6 +1342,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		args := p.call_args()
 		if is_filter && args.len != 1 {
 			p.error('needs exactly 1 argument')
+			return ast.Expr{}
 		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
@@ -1486,6 +1508,7 @@ fn (mut p Parser) string_expr() ast.Expr {
 					p.next()
 				} else {
 					p.error('format specifier may only be one letter')
+					return ast.Expr{}
 				}
 			}
 		}
@@ -1544,13 +1567,16 @@ fn (mut p Parser) module_decl() ast.Module {
 		name = p.check_name()
 		if module_pos.line_nr != pos.line_nr {
 			p.error_with_pos('`module` and `$name` must be at same line', pos)
+			return ast.Module{}
 		}
 		pos = p.tok.position()
 		if module_pos.line_nr == pos.line_nr && p.tok.kind != .comment {
 			if p.tok.kind != .name {
 				p.error_with_pos('`module x` syntax error', pos)
+				return ast.Module{}
 			} else {
 				p.error_with_pos('`module x` can only declare one module', pos)
+				return ast.Module{}
 			}
 		}
 		module_pos = module_pos.extend(pos)
@@ -1584,10 +1610,12 @@ fn (mut p Parser) import_stmt() ast.Import {
 	pos := p.tok.position()
 	if p.tok.kind == .lpar {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
+		return ast.Import{}
 	}
 	mut mod_name := p.check_name()
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
+		return ast.Import{}
 	}
 	mut mod_alias := mod_name
 	for p.tok.kind == .dot {
@@ -1595,9 +1623,11 @@ fn (mut p Parser) import_stmt() ast.Import {
 		pos_t := p.tok.position()
 		if p.tok.kind != .name {
 			p.error_with_pos('module syntax error, please use `x.y.z`', pos)
+			return ast.Import{}
 		}
 		if import_pos.line_nr != pos_t.line_nr {
 			p.error_with_pos('`import` and `submodule` must be at same line', pos)
+			return ast.Import{}
 		}
 		submod_name := p.check_name()
 		mod_name += '.' + submod_name
@@ -1608,6 +1638,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 		mod_alias = p.check_name()
 		if mod_alias == mod_name.split('.').last() {
 			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
+			return ast.Import{}
 		}
 	}
 	mut node := ast.Import{
@@ -1623,6 +1654,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 	if import_pos.line_nr == pos_t.line_nr {
 		if p.tok.kind !in [.lcbr, .eof, .comment] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
+			return ast.Import{}
 		}
 	}
 	p.imports[mod_alias] = mod_name
@@ -1639,10 +1671,12 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	pos_t := p.tok.position()
 	if p.tok.kind == .rcbr { // closed too early
 		p.error_with_pos('empty `$parent.mod` import set, remove `{}`', pos_t)
+		return
 	}
 	if p.tok.kind != .name { // not a valid inner name
 		p.error_with_pos('import syntax error, please specify a valid fn or type name',
 			pos_t)
+		return
 	}
 	for p.tok.kind == .name {
 		pos := p.tok.position()
@@ -1697,6 +1731,7 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	}
 	if p.tok.kind != .rcbr {
 		p.error_with_pos('import syntax error, no closing `}`', p.tok.position())
+		return
 	}
 	p.next()
 }
@@ -1739,6 +1774,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		p.check(.assign)
 		if p.tok.kind == .key_fn {
 			p.error('const initializer fn literal is not a constant')
+			return ast.ConstDecl{}
 		}
 		expr := p.expr(0)
 		field := ast.ConstField{
@@ -1795,12 +1831,14 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		p.mod != 'ui' && p.mod != 'gg2' && p.mod != 'uiold' && !p.pref.enable_globals && !p.pref.is_fmt &&
 		p.mod !in global_enabled_mods {
 		p.error('use `v --enable-globals ...` to enable globals')
+		return ast.GlobalDecl{}
 	}
 	start_pos := p.tok.position()
 	end_pos := p.tok.position()
 	p.check(.key_global)
 	if p.tok.kind != .lpar {
 		p.error('globals must be grouped, e.g. `__global ( a = int(1) )`')
+		return ast.GlobalDecl{}
 	}
 	p.next() // (
 	mut fields := []ast.GlobalField{}
@@ -1819,11 +1857,13 @@ fn (mut p Parser) global_decl() ast.GlobalDecl {
 		typ := p.parse_type()
 		if p.tok.kind == .assign {
 			p.error('global assign must have the type around the value, use `__global ( name = type(value) )`')
+			return ast.GlobalDecl{}
 		}
 		mut expr := ast.Expr{}
 		if has_expr {
 			if p.tok.kind != .lpar {
 				p.error('global assign must have a type and value, use `__global ( name = type(value) )` or `__global ( name type )`')
+				return ast.GlobalDecl{}
 			}
 			p.next() // (
 			expr = p.expr(0)
@@ -1862,6 +1902,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			end_pos)
+		return ast.EnumDecl{}
 	}
 	name := p.prepend_mod(enum_name)
 	p.check(.lcbr)
@@ -1896,11 +1937,13 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	if is_flag {
 		if fields.len > 32 {
 			p.error('when an enum is used as bit field, it must have a max of 32 fields')
+			return ast.EnumDecl{}
 		}
 		for f in fields {
 			if f.has_expr {
 				p.error_with_pos('when an enum is used as a bit field, you can not assign custom values',
 					f.pos)
+				return ast.EnumDecl{}
 			}
 		}
 		pubfn := if p.mod == 'main' { 'fn' } else { 'pub fn' }
@@ -1950,6 +1993,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			decl_pos)
+		return ast.TypeDecl{}
 	}
 	mut sum_variants := []ast.SumTypeVariant{}
 	p.check(.assign)
@@ -2155,10 +2199,12 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	p.next()
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
+		return ast.Stmt{}
 	}
 	p.next()
 	if p.inside_unsafe {
 		p.error_with_pos('already inside `unsafe` block', pos)
+		return ast.Stmt{}
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`

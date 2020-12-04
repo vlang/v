@@ -51,12 +51,14 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
 			p.error(error_msg)
+			return ast.ComptimeCall{}
 		}
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
 	if n != 'html' && n != 'tmpl' {
 		p.error(error_msg)
+		return ast.ComptimeCall{}
 	}
 	is_html := n == 'html'
 	p.check(.lpar)
@@ -85,8 +87,10 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		if !os.exists(path) {
 			if is_html {
 				p.error('vweb HTML template "$path" not found')
+				return ast.ComptimeCall{}
 			} else {
 				p.error('template file "$path" not found')
+				return ast.ComptimeCall{}
 			}
 		}
 		// println('path is now "$path"')
@@ -171,6 +175,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		kind = .fields
 	} else {
 		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
+		return ast.CompFor{}
 	}
 	spos := p.tok.position()
 	stmts := p.parse_block()

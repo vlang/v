@@ -1236,6 +1236,9 @@ pub fn (mut s Scanner) error(msg string) {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 		exit(1)
 	} else {
+		if s.pref.fatal_errors {
+			exit(1)
+		}
 		s.errors << errors.Error{
 			file_path: s.file_path
 			pos: pos
