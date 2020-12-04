@@ -311,9 +311,6 @@ pub mut:
 	generic_type       table.Type // TODO array, to support multiple types
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
-	// autofree_pregen    string
-	// autofree_vars      []AutofreeArgVar
-	// autofree_vars_ids  []int
 }
 
 /*
@@ -371,6 +368,8 @@ pub mut:
 	pos             token.Position
 	is_used         bool
 	is_changed      bool // to detect mutable vars that are never changed
+	is_or           bool // `x := foo() or { ... }`
+	// (for setting the position after the or block for autofree)
 }
 
 // used for smartcasting only

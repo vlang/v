@@ -131,12 +131,24 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							is_static = true
 						}
 					}
+					r0 := right[0]
 					mut v := ast.Var{
 						name: lx.name
 						expr: if left.len == right.len { right[i] } else { ast.Expr{} }
 						share: share
 						is_mut: lx.is_mut || p.inside_for
 						pos: lx.pos
+					}
+					if p.pref.autofree {
+						if r0 is ast.CallExpr {
+							// Set correct variable position (after the or block)
+							// so that autofree doesn't free it in cgen before
+							// it's declared. (`Or` variables are declared after the or block).
+							if r0.or_block.pos.pos > 0 {
+								v.is_or = true
+								// v.pos = r0.or_block.pos.
+							}
+						}
 					}
 					obj := ast.ScopeObject(v)
 					lx.obj = obj
