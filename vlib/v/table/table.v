@@ -619,7 +619,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name.clone() }
 	source_name := if f.name.len == 0 { 'fn $f.source_signature()' } else { f.name.clone() }
 	anon := f.name.len == 0 || is_anon
-	return t.register_type_symbol(TypeSymbol{
+	return t.register_type_symbol(
 		kind: .function
 		name: name
 		source_name: source_name
@@ -630,7 +630,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 			has_decl: has_decl
 			func: f
 		}
-	})
+	)
 }
 
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {

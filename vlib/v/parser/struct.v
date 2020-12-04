@@ -377,7 +377,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.check(.lcbr)
 	pre_comments := p.eat_comments()
 	// Declare the type
-	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
+	reg_idx := p.table.register_type_symbol(
 		kind: .interface_
 		name: interface_name
 		source_name: interface_name
@@ -386,7 +386,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		info: table.Interface{
 			types: []
 		}
-	})
+	)
 	if reg_idx == -1 {
 		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
 			name_pos)
@@ -434,13 +434,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		methods << method
 		// println('register method $name')
 		return_type_sym := p.table.get_type_symbol(method.return_type)
-		ts.register_method(table.Fn{
+		ts.register_method(
 			name: name
 			params: args
 			return_type: method.return_type
 			return_type_source_name: return_type_sym.source_name
 			is_pub: true
-		})
+		)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
