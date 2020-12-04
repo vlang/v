@@ -538,7 +538,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree -experimental .
+#        ../v -autofree .
         cd ..
 
   websocket_autobahn:
