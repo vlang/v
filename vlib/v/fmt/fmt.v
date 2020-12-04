@@ -243,11 +243,13 @@ pub fn (mut f Fmt) stmts(stmts []ast.Stmt) {
 
 pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 	was_empty_line := f.empty_line
+	prev_line_len := f.line_len
 	pos := f.out.len
 	f.stmt(node)
 	str := f.out.after(pos).trim_space()
 	f.out.go_back_to(pos)
 	f.empty_line = was_empty_line
+	f.line_len = prev_line_len
 	return str
 }
 
@@ -1140,7 +1142,15 @@ pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
 				// the control stmts (return/break/continue...) print a newline inside them,
 				// so, since this'll all be on one line, trim any possible whitespace
 				str := f.stmt_str(or_block.stmts[0]).trim_space()
-				f.write(' or { $str }')
+				single_line := ' or { $str }'
+				if single_line.len + f.line_len <= max_len.last() {
+					f.write(single_line)
+				} else {
+					// if the line would be too long, make it multiline
+					f.writeln(' or {')
+					f.stmts(or_block.stmts)
+					f.write('}')
+				}
 			} else {
 				f.writeln(' or {')
 				f.stmts(or_block.stmts)

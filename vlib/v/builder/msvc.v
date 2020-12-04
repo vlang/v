@@ -284,7 +284,9 @@ pub fn (mut v Builder) cc_msvc() {
 	a << lib_paths
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
-	os.write_file(out_name_cmd_line, args) or { verror('Unable to write response file to "$out_name_cmd_line"') }
+	os.write_file(out_name_cmd_line, args) or {
+		verror('Unable to write response file to "$out_name_cmd_line"')
+	}
 	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.

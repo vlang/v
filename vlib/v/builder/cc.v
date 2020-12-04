@@ -140,7 +140,9 @@ fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 		rebuild_cmd := '$vexe $boptions build-module $imp_path'
 		// eprintln('>> rebuild_cmd: $rebuild_cmd')
 		os.system(rebuild_cmd)
-		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or { panic('could not rebuild cache module for $imp_path, error: $err') }
+		rebuilded_o := v.pref.cache_manager.exists('.o', imp_path) or {
+			panic('could not rebuild cache module for $imp_path, error: $err')
+		}
 		os.chdir(pwd)
 		return rebuilded_o
 	}
@@ -233,7 +235,9 @@ fn (mut v Builder) cc() {
 		}
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
-			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or { panic("Couldn\'t find iphonesimulator") }
+			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
+				panic("Couldn\'t find iphonesimulator")
+			}
 			mut isysroot := ios_sdk_path_res.output.replace('\n', '')
 			ccompiler = 'xcrun --sdk iphoneos clang -isysroot $isysroot'
 		}
@@ -506,7 +510,9 @@ fn (mut v Builder) cc() {
 		// write args to response file
 		response_file := '${v.out_name_c}.rsp'
 		response_file_content := str_args.replace('\\', '\\\\')
-		os.write_file(response_file, response_file_content) or { verror('Unable to write response file "$response_file"') }
+		os.write_file(response_file, response_file_content) or {
+			verror('Unable to write response file "$response_file"')
+		}
 		if !debug_mode {
 			v.pref.cleanup_files << v.out_name_c
 			v.pref.cleanup_files << response_file

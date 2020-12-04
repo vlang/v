@@ -440,7 +440,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				lines << iline
 			}
 			contents := lines.join('')
-			os.write_file(tmp_v_file_path, contents) or { panic('Failed to create temporary file $tmp_v_file_path') }
+			os.write_file(tmp_v_file_path, contents) or {
+				panic('Failed to create temporary file $tmp_v_file_path')
+			}
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
 			vexe := vexe_path()
