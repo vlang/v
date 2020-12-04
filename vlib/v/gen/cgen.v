@@ -4767,16 +4767,14 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if inp_sym.kind != .array {
 		verror('map() requires an array')
 	}
-	g.writeln('')
-	g.write('int ${tmp}_len = ')
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
-	g.writeln('.len;')
+	g.writeln(';')
+	g.write('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.write('\t$inp_elem_type it = (($inp_elem_type*) ')
-	g.expr(node.left)
-	g.writeln('.data)[$i];')
+	g.write('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	expr := node.args[0].expr
 	match expr {
@@ -4919,14 +4917,13 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	info := sym.info as table.Array
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
-	g.write('\nint ${tmp}_len = ')
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
-	g.writeln('.len;')
+	g.writeln(';')
+	g.write('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));')
 	g.writeln('for (int i = 0; i < ${tmp}_len; ++i) {')
-	g.write('  $elem_type_str it = (($elem_type_str*) ')
-	g.expr(node.left)
-	g.writeln('.data)[i];')
+	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[i];')
 	g.write('if (')
 	expr := node.args[0].expr
 	match expr {
