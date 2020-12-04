@@ -25,10 +25,10 @@ pub:
 }
 
 struct FTConfig {
-	font_path string
+	font_path             string
 	custom_bold_font_path string
-	scale     f32 = 1.0
-	font_size int
+	scale                 f32 = 1.0
+	font_size             int
 }
 
 fn new_ft(c FTConfig) ?&FT {
@@ -53,7 +53,8 @@ fn new_ft(c FTConfig) ?&FT {
 			return none
 		}
 	}
-	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path, .bold)}
+	bold_path := if c.custom_bold_font_path != '' { c.custom_bold_font_path } else { get_font_path_variant(c.font_path,
+			.bold) }
 	bytes_bold := os.read_bytes(bold_path) or {
 		debug_font_println('failed to load font "$bold_path"')
 		bytes
@@ -114,13 +115,13 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg gx.TextCfg) {
 		return
 	}
 	// text := text_.trim_space() // TODO remove/optimize
-	mut text := text_
-	//if text.contains('\t') {
-		//text = text.replace('\t', '    ')
-	//}
+	// mut text := text_
+	// if text.contains('\t') {
+	// text = text.replace('\t', '    ')
+	// }
 	ctx.set_cfg(cfg)
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text.str, 0) // TODO: check offsets/alignment
+	C.fonsDrawText(ctx.ft.fons, x * scale, y * scale, text_.str, 0) // TODO: check offsets/alignment
 }
 
 pub fn (ctx &Context) draw_text_def(x int, y int, text string) {
@@ -186,9 +187,7 @@ pub fn system_font_path() string {
 			}
 		}
 	}
-	s := os.exec('fc-list') or {
-		panic('failed to fetch system fonts')
-	}
+	s := os.exec('fc-list') or { panic('failed to fetch system fonts') }
 	system_fonts := s.output.split('\n')
 	for line in system_fonts {
 		for font in fonts {
