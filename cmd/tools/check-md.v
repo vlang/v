@@ -191,14 +191,12 @@ fn (mut f MDFile) check_examples() (int, int) {
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
 		vcontent := e.text.join('\n')
-		os.write_file(vfile, vcontent) or {
-			panic(err)
-		}
+		os.write_file(vfile, vcontent) or { panic(err) }
 		mut acommands := e.command.split(' ')
 		for command in acommands {
 			match command {
 				'compile' {
-					res := os.system('"$vexe" -silent -o x.c $vfile')
+					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
 					if res != 0 {
 						eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -210,7 +208,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'live' {
-					res := os.system('"$vexe" -silent -live -o x.c $vfile')
+					res := os.system('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
 					if res != 0 {
 						eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
 						eprintln(vcontent)
@@ -221,7 +219,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'failcompile' {
-					res := os.system('"$vexe" -silent -o x.c $vfile')
+					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`failcompile` example compiled'))
@@ -233,7 +231,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'oksyntax' {
-					res := os.system('"$vexe" -silent -check-syntax $vfile')
+					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
 					if res != 0 {
 						eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
 						eprintln(vcontent)
@@ -244,7 +242,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					oks++
 				}
 				'badsyntax' {
-					res := os.system('"$vexe" -silent -check-syntax $vfile')
+					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
 					if res == 0 {
 						eprintln(eline(f.path, e.sline, 0, '`badsyntax` example can be parsed fine'))
 						eprintln(vcontent)
@@ -262,9 +260,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 			}
 		}
 		if should_cleanup_vfile {
-			os.rm(vfile) or {
-				panic(err)
-			}
+			os.rm(vfile) or { panic(err) }
 		}
 	}
 	return errors, oks
