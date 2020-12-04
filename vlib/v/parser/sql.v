@@ -184,17 +184,13 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			idx := p.table.find_type_idx(p.prepend_mod(table_name))
 			table_type = table.new_type(idx)
 		}
-		p.check_sql_keyword('where') or {
-			return ast.SqlStmt{}
-		}
+		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
 		table_type = p.parse_type()
 		sym := p.table.get_type_symbol(table_type)
 		table_name = sym.name
-		p.check_sql_keyword('where') or {
-			return ast.SqlStmt{}
-		}
+		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	}
 	p.check(.rcbr)
