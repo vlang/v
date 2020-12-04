@@ -148,7 +148,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 							// Set correct variable position (after the or block)
 							// so that autofree doesn't free it in cgen before
 							// it's declared. (`Or` variables are declared after the or block).
-							if r0.or_block.pos.pos > 0 {
+							if r0.or_block.pos.pos > 0 && r0.or_block.stmts.len > 0 {
 								v.is_or = true
 								// v.pos = r0.or_block.pos.
 							}
