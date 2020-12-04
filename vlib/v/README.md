@@ -26,18 +26,23 @@ or `Preferences.compile_defines_all` **if any file is defined**.
 To parse something a new template is created as the first step:
 ```v
 import v.table
+
 table := table.new_table()
 ```
+
 a new preference is created:
 ```v
 import v.pref
+
 pref := pref.Preferences{}
 ```
+
 and a new scope is created:
 ```v
 import v.ast
+
 scope := ast.Scope{
-    parent: 0
+	parent: 0
 }
 ```
 after that, you can parse your files.
@@ -46,6 +51,7 @@ after that, you can parse your files.
 If you want to parse only text which isn't saved on the disk you can use this function.
 ```v oksyntax
 import v.parser
+
 code := ''
 // table, pref and scope needs to be passed as reference
 parsed_file := parser.parse_text(code, table, .parse_comments, &pref, &scope)
@@ -56,6 +62,7 @@ For parsing files on disk, a path needs to be provided.
 The paths are collected one step earlier.
 ```v oksyntax
 import v.parser
+
 path := ''
 // table, pref and scope needs to be passed as reference
 parsed_file := parser.parse_file(path, table, .parse_comments, &pref, &scope)
@@ -66,6 +73,7 @@ If you have a batch of paths available which should be parsed,
 there is also a function which does all the work.
 ```v oksyntax
 import v.parser
+
 paths := ['']
 // table, pref and scope needs to be passed as reference
 parsed_files := parser.parse_files(paths, table, &pref, &scope)
@@ -86,6 +94,7 @@ Then all files from that directory are collected and parsed again like the previ
 A new checker is created:
 ```v oksyntax
 import v.checker
+
 mut checker := checker.new_checker(table, &pref)
 ```
 
@@ -105,5 +114,6 @@ checker.check_files(parsed_files)
 Generating C code works just as this:
 ```v oksyntax
 import v.gen
+
 res := gen.cgen(parsed_files, table, &pref)
 ```
