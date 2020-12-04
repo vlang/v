@@ -726,6 +726,10 @@ pub fn (mut g Gen) new_tmp_var() string {
 	return '_t$g.tmp_count'
 }
 
+pub fn (mut g Gen) current_tmp_var() string {
+	return '_t$g.tmp_count'
+}
+
 /*
 pub fn (mut g Gen) new_tmp_var2() string {
 	g.tmp_count2++
@@ -4125,6 +4129,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 					g.stringliterals.writeln('\t_const_$name = $val;')
 				}
 			}
+			ast.CallExpr {
+				if val.starts_with('Option_') {
+					g.inits[field.mod].writeln(val)
+					g.const_decl_init_later(field.mod, name, g.current_tmp_var(), field.typ)
+				} else {
+					g.const_decl_init_later(field.mod, name, val, field.typ)
+				}
+			}
 			else {
 				g.const_decl_init_later(field.mod, name, val, field.typ)
 			}
@@ -5086,7 +5098,7 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.stmts(stmts)
 		}
 	} else if or_block.kind == .propagate {
-		if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
+		if g.file.mod.name == 'main' && (isnil(g.fn_decl) || g.fn_decl.name == 'main.main') {
 			// In main(), an `opt()?` call is sugar for `opt() or { panic(err) }`
 			if g.pref.is_debug {
 				paline, pafile, pamod, pafn := g.panic_debug_info(or_block.pos)
@@ -5849,6 +5861,9 @@ fn (mut g Gen) interface_call(typ table.Type, interface_type table.Type) {
 
 fn (mut g Gen) panic_debug_info(pos token.Position) (int, string, string, string) {
 	paline := pos.line_nr + 1
+	if isnil(g.fn_decl) {
+		return paline, '', 'main', 'C._vinit'
+	}
 	pafile := g.fn_decl.file.replace('\\', '/')
 	pafn := g.fn_decl.name.after('.')
 	pamod := g.fn_decl.modname()
