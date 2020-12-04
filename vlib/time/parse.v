@@ -48,7 +48,7 @@ pub fn parse_rfc2822(s string) ?Time {
 	return parse(tos(tmstr, count))
 }
 
-// parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
+// parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
 // remarks: not all iso8601 is supported only the 'yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd'
@@ -108,6 +108,5 @@ pub fn parse_iso8601(s string) ?Time {
 		}
 		t = unix2(int(unix_time), t.microsecond)
 	}
-	// Convert the time to local time
-	return to_local_time(t)
+	return t
 }
