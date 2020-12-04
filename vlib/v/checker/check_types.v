@@ -85,14 +85,27 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		}
 	}
 	// TODO
-	if exp_type_sym.name == 'array' || got_type_sym.name == 'array' {
+	// if exp_type_sym.name == 'array' || got_type_sym.name == 'array' {
+	if got_idx == table.array_type_idx || exp_idx == table.array_type_idx {
 		return true
 	}
-	// TODO
-	// accept [] when an expected type is an array
-	if got_type_sym.kind == .array &&
-		got_type_sym.name == 'array_void' && exp_type_sym.kind == .array {
-		return true
+	if got_type_sym.kind == .array && exp_type_sym.kind == .array {
+		// TODO
+		// accept [] when an expected type is an array
+		if got_type_sym.name == 'array_void' {
+			return true
+		}
+		// if elem_type is an alias, check it
+		// TODO: think about recursion, how many levels of alias can there be?
+		got_info := got_type_sym.info as table.Array
+		exp_info := exp_type_sym.info as table.Array
+		got_elem_sym := c.table.get_type_symbol(got_info.elem_type)
+		exp_elem_sym := c.table.get_type_symbol(exp_info.elem_type)
+		if (got_elem_sym.kind == .alias ||
+			exp_elem_sym.kind == .alias) &&
+			c.check_basic(got_info.elem_type, exp_info.elem_type) {
+			return true
+		}
 	}
 	// type alias
 	if (got_type_sym.kind == .alias &&
