@@ -38,7 +38,7 @@ match_test_suite = [
 	TestItem{"this these those ",r"(th[eio]se? ?)+",0,17},
 	TestItem{"this these those ",r"(th[eio]se? )+",0,17},
 	TestItem{"this,these,those. over",r"(th[eio]se?[,. ])+",0,17},
-	TestItem{"soday,this,these,those. over",r"(th[eio]se?[,. ])+",6,23},
+	TestItem{"soday,this,these,those. over",r".+(th[eio]se?[,. ])+",0,23},
 
 	TestItem{"cpapaz",r"(c(pa)+z)",0,6},
 	TestItem{"this is a cpapaz over",r"(c(pa)+z)",10,16},
@@ -60,7 +60,7 @@ match_test_suite = [
 	TestItem{"soday,this,these,those. over",r".*,(th[eio]se?[,. ])+",0,23},
 	TestItem{"soday,this,these,thesa.thesi over",r".*,(th[ei]se?[,. ])+(thes[ai][,. ])+",0,29},
 	TestItem{"cpapaz ole. pippo,",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,18},
-	TestItem{"cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,17},
+	TestItem{"cpapaz ole. pippo",r"(c(pa)+z)(\s+\a+[\.,]?)+",0,17},
 	TestItem{"cpapaz ole. pippo, 852",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,18},
 	TestItem{"123cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
 	TestItem{"...cpapaz ole. pippo",r".*(c(pa)+z)(\s+\a+[\.,]?)+",0,20},
@@ -73,7 +73,6 @@ match_test_suite = [
 	TestItem{" abb",r"\s(.*)",0,4},
 
 	TestItem{"/home/us_er/pippo/info-01.txt", r"(/?[-\w_]+)*\.txt$",0,29}
-
 
 	// negative
 	TestItem{"zthis ciao",r"((t[hieo]+se?)\s*)+",-1,0},
@@ -88,6 +87,25 @@ match_test_suite = [
 	// check unicode
 	TestItem{"this is a Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r".*a [Ⅰ-Ⅵ ]+",0,34},
 	TestItem{"123Ⅰ Ⅱ Ⅲ Ⅳ Ⅴ Ⅵ test",r"[Ⅰ-Ⅴ\s]+",3,23},
+
+	// new edge cases
+	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",-1,0},
+	TestItem{"12345678", r"[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]",0,8},
+	TestItem{"123456789", r"^[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$",0,9}
+	TestItem{"12345678", r"^\d{8}$",0,8},
+	TestItem{"12345678", r"^\d{7}$",-1,0},
+	TestItem{"12345678", r"^\d{9}$",-1,0},
+	
+	TestItem{"eth", r"(oth)|(eth)",0,3},
+	TestItem{"et", r"(oth)|(eth)",-1,0},
+	TestItem{"et", r".*(oth)|(eth)",-1,0},
+	TestItem{"peoth", r".*(ith)|(eth)",-1,0},
+
+	TestItem{"poth", r"(eth)|(oth)",1,4},
+	TestItem{"poth", r"(oth)|(eth)",1,4},
+	TestItem{"poth", r".(oth)|(eth)$",0,4},
+	TestItem{"poth", r"^.(oth)|(eth)$",0,4},
+	TestItem{"poth", r"^\w+$",0,4},
 ]
 )
 
@@ -150,30 +168,31 @@ const (
 cgroups_test_suite = [
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
-		r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+",0,46,
-		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+[\.|/])+",0,42,
+		[7, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42],
 		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
-		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		[2, 0, 0, 4, 1, 7, 10],
 		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
-		r"(?P<format>https?)|(?P<format>ftps?)://([\w_]+.)+",0,46,
-		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46],
+		r"(?P<format>https?)|(?P<format>ftps?)://([\w_]+\.)+",0,16,
+		[3, 0, 0, 4, 1, 7, 11, 1, 11, 16],
 		{'format':int(0)}
 	},
 ]
 )
 
 fn test_regex(){
+
 	// check capturing groups
 	for c,to in cgroups_test_suite {
 		// debug print
-		//println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
+		println("#$c [$to.src] q[$to.q] ($to.s, $to.e)")
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -191,16 +210,16 @@ fn test_regex(){
 		}
 
 		if start != to.s || end != to.e {
-			println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			//println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
 			println("ERROR!")
-			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+			C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
 		}
 
 		// check cgroups
 		if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
-			println("Capturing group len error!")
+			println("Capturing group len error! ${re.group_csave[0]}")
 			assert false
 			continue
 		}
@@ -289,7 +308,7 @@ fn test_regex(){
 
 			if start != to.s || end != to.e {
 				err_str := re.get_parse_error_string(start)
-				println("ERROR : $err_str")
+				println("ERROR : $err_str start: ${start} end: ${end}")
 				assert false
 			} else {
 				//tmp_str := text[start..end]
