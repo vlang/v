@@ -4391,6 +4391,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		return
 	}
 	if !warn {
+		if c.pref.fatal_errors {
+			exit(1)
+		}
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{

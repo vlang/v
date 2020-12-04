@@ -852,6 +852,9 @@ pub fn (mut p Parser) warn(s string) {
 }
 
 pub fn (mut p Parser) error_with_pos(s string, pos token.Position) {
+	if p.pref.fatal_errors {
+		exit(1)
+	}
 	mut kind := 'error:'
 	if p.pref.output_mode == .stdout {
 		if p.pref.is_verbose {
