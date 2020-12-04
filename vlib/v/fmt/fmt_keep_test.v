@@ -26,9 +26,7 @@ fn test_fmt() {
 	os.chdir(vroot)
 	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')

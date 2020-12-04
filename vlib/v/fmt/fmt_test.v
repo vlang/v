@@ -23,9 +23,7 @@ fn test_fmt() {
 	}
 	vroot := os.dir(vexe)
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	// Lookup the existing test _input.vv files:
 	input_files := os.walk_ext('$vroot/vlib/v/fmt/tests', '_input.vv')

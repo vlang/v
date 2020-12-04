@@ -1016,9 +1016,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	t.find_method(name) or {
-		return false
-	}
+	t.find_method(name) or { return false }
 	return true
 }
 

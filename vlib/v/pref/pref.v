@@ -340,9 +340,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-b' {
 				sbackend := cmdline.option(current_args, '-b', 'c')
 				res.build_options << '$arg $sbackend'
-				b := backend_from_string(sbackend) or {
-					continue
-				}
+				b := backend_from_string(sbackend) or { continue }
 				res.backend = b
 				i++
 			}

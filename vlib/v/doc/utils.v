@@ -62,9 +62,7 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 
 fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 	if filename !in d.sources {
-		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or {
-			''
-		}
+		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or { '' }
 	}
 	source := d.sources[filename]
 	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
