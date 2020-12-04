@@ -4841,10 +4841,7 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 				compare_fn += '_reverse'
 			}
 			// Register a new custom `compare_xxx` function for qsort()
-			g.table.register_fn({
-				name: compare_fn
-				return_type: table.int_type
-			})
+			g.table.register_fn(name: compare_fn, return_type: table.int_type)
 			infix_expr := node.args[0].expr as ast.InfixExpr
 			styp := g.typ(typ)
 			// Variables `a` and `b` are used in the `.sort(a < b)` syntax, so we can reuse them
