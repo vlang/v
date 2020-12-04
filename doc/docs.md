@@ -2440,16 +2440,19 @@ These two strings are small,
 V will use a preallocated buffer for them.
 
 ```v
-struct User{ name string }
+struct User {
+	name string
+}
+
 fn test() []int {
-    number := 7 // stack variable
-    user := User{} // struct allocated on stack
-    numbers := [1, 2, 3] // array allocated on heap, will be freed as the function exits
-    println(number)
-    println(user)
-    println(numbers)
-    numbers2 := [4, 5, 6] // array that's being returned, won't be freed here
-    return numbers2
+	number := 7 // stack variable
+	user := User{} // struct allocated on stack
+	numbers := [1, 2, 3] // array allocated on heap, will be freed as the function exits
+	println(number)
+	println(user)
+	println(numbers)
+	numbers2 := [4, 5, 6] // array that's being returned, won't be freed here
+	return numbers2
 }
 ```
 
@@ -2469,7 +2472,7 @@ V's ORM provides a number of benefits:
 - Readability and simplicity. (You don't need to manually parse the results of a query and
     then manually construct objects from the parsed results.)
 
-```v
+```v nofmt
 import sqlite
 struct Customer { // struct name has to be the same as the table name (for now)
     id int // a field named `id` of integer type must be the first field
@@ -2514,7 +2517,6 @@ Documentation for each function/type/const must be placed right before the decla
 ```v
 // clearall clears all bits in the array
 fn clearall() {
-
 }
 ```
 
@@ -2570,10 +2572,11 @@ You can sort on column 3 (average time per function) using:
 You can also use stopwatches to measure just portions of your code explicitly:
 ```v
 import time
-fn main(){
-    sw := time.new_stopwatch({})
-    println('Hello world')
-    println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
+
+fn main() {
+	sw := time.new_stopwatch({})
+	println('Hello world')
+	println('Greeting the world took: ${sw.elapsed().nanoseconds()}ns')
 }
 ```
 
@@ -2629,53 +2632,62 @@ surrounding code).
 ```v
 #flag -lsqlite3
 #include "sqlite3.h"
-
 // See also the example from https://www.sqlite.org/quickstart.html
-struct C.sqlite3{}
-struct C.sqlite3_stmt{}
+struct C.sqlite3 {
+}
 
-type FnSqlite3Callback = fn(voidptr, int, &charptr, &charptr) int
+struct C.sqlite3_stmt {
+}
+
+type FnSqlite3Callback = fn (voidptr, int, &charptr, &charptr) int
 
 fn C.sqlite3_open(charptr, &&C.sqlite3) int
+
 fn C.sqlite3_close(&C.sqlite3) int
+
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
+
 // ... you can also just define the type of parameter & leave out the C. prefix
 fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
+
 fn C.sqlite3_step(&sqlite3_stmt)
+
 fn C.sqlite3_finalize(&sqlite3_stmt)
-fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback, cb_arg voidptr, emsg &charptr) int
+
+fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg voidptr, emsg &charptr) int
+
 fn C.sqlite3_free(voidptr)
 
 fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
-    for i in 0..howmany {
-	    print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+	for i in 0 .. howmany {
+		print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
 	}
-    println('|')
-    return 0
+	println('|')
+	return 0
 }
 
 fn main() {
-    db := &C.sqlite3(0) // this means `sqlite3* db = 0`
-    // passing a string literal to a C function call results in a C string, not a V string
-    C.sqlite3_open('users.db', &db)
-    // C.sqlite3_open(db_path.str, &db)
-    // you can also use `.str byteptr` field to convert a V string to a C char pointer
-    query := 'select count(*) from users'
-    stmt := &C.sqlite3_stmt(0)
-    C.sqlite3_prepare_v2(db, query.str, - 1, &stmt, 0)
-    C.sqlite3_step(stmt)
-    nr_users := C.sqlite3_column_int(stmt, 0)
-    C.sqlite3_finalize(stmt)
-    println('There are $nr_users users in the database.')
-    //
-    error_msg := charptr(0)
-    query_all_users := 'select * from users'
-    rc := C.sqlite3_exec(db, query_all_users.str, my_callback, 7, &error_msg)
-    if rc != C.SQLITE_OK {
-        eprintln( cstring_to_vstring(error_msg) )
-        C.sqlite3_free(error_msg)
-    }
-    C.sqlite3_close(db)
+	db := &C.sqlite3(0) // this means `sqlite3* db = 0`
+	// passing a string literal to a C function call results in a C string, not a V string
+	C.sqlite3_open('users.db', &db)
+	// C.sqlite3_open(db_path.str, &db)
+	// you can also use `.str byteptr` field to convert a V string to a C char pointer
+	query := 'select count(*) from users'
+	stmt := &C.sqlite3_stmt(0)
+	C.sqlite3_prepare_v2(db, query.str, -1, &stmt, 0)
+	C.sqlite3_step(stmt)
+	nr_users := C.sqlite3_column_int(stmt, 0)
+	C.sqlite3_finalize(stmt)
+	println('There are $nr_users users in the database.')
+	//
+	error_msg := charptr(0)
+	query_all_users := 'select * from users'
+	rc := C.sqlite3_exec(db, query_all_users.str, my_callback, 7, &error_msg)
+	if rc != C.SQLITE_OK {
+		eprintln(cstring_to_vstring(error_msg))
+		C.sqlite3_free(error_msg)
+	}
+	C.sqlite3_close(db)
 }
 ```
 
@@ -2819,39 +2831,34 @@ use `v help`, `v help build` and `v help build-c`.
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
-    println('Running on a mobile device!')
+	println('Running on a mobile device!')
 }
 $if linux && x64 {
-    println('64-bit Linux.')
+	println('64-bit Linux.')
 }
-
 // Usage as expression
 os := $if windows { 'Windows' } $else { 'UNIX' }
 println('Using $os')
-
 // $else-$if branches
 $if tinyc {
-    println('tinyc')
+	println('tinyc')
 } $else $if clang {
-    println('clang')
+	println('clang')
 } $else $if gcc {
-    println('gcc')
+	println('gcc')
 } $else {
-    println('different compiler')
+	println('different compiler')
 }
-
 $if test {
-    println('testing')
+	println('testing')
 }
-
 // v -cg ...
 $if debug {
-    println('debugging')
+	println('debugging')
 }
-
 // v -d option ...
 $if option ? {
-    println('custom option')
+	println('custom option')
 }
 ```
 
@@ -2885,7 +2892,7 @@ that are substituted at compile time:
 
 That allows you to do the following example, useful while debugging/logging/tracing your code:
 ```v
-eprintln( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+eprintln('file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 ```
 
 Another example, is if you want to embed the version/name from v.mod *inside* your executable:
@@ -2969,33 +2976,27 @@ fn decode_User(data string) User {
 
 ```v
 struct Vec {
-    x int
-    y int
+	x int
+	y int
 }
 
 fn (a Vec) str() string {
-    return '{$a.x, $a.y}'
+	return '{$a.x, $a.y}'
 }
 
-fn (a Vec) + (b Vec) Vec {
-    return Vec {
-        a.x + b.x,
-        a.y + b.y
-    }
+fn (a Vec) +(b Vec) Vec {
+	return Vec{a.x + b.x, a.y + b.y}
 }
 
-fn (a Vec) - (b Vec) Vec {
-    return Vec {
-        a.x - b.x,
-        a.y - b.y
-    }
+fn (a Vec) -(b Vec) Vec {
+	return Vec{a.x - b.x, a.y - b.y}
 }
 
 fn main() {
-    a := Vec{2, 3}
-    b := Vec{4, 5}
-    println(a + b) // "{6, 8}"
-    println(a - b) // "{-2, -2}"
+	a := Vec{2, 3}
+	b := Vec{4, 5}
+	println(a + b) // "{6, 8}"
+	println(a - b) // "{-2, -2}"
 }
 ```
 
@@ -3052,10 +3053,10 @@ Run `v translate test.cpp` and V will generate `test.v`:
 
 ```v
 fn main() {
-    mut s := []string{}
-    s << 'V is '
-    s << 'awesome'
-    println(s.len)
+	mut s := []string{}
+	s << 'V is '
+	s << 'awesome'
+	println(s.len)
 }
 ```
 
@@ -3083,16 +3084,15 @@ import os
 
 [live]
 fn print_message() {
-    println('Hello! Modify this message while the program is running.')
+	println('Hello! Modify this message while the program is running.')
 }
 
 fn main() {
-    for {
-        print_message()
-        time.sleep_ms(500)
-    }
+	for {
+		print_message()
+		time.sleep_ms(500)
+	}
 }
-
 ```
 
 Build this example with `v -live message.v`.
@@ -3178,11 +3178,13 @@ and applies only to the following declaration.
 ```v
 // Calling this function will result in a deprecation warning
 [deprecated]
-fn old_function() {}
+fn old_function() {
+}
 
 // This function's calls will be inlined.
 [inline]
-fn inlined_function() {}
+fn inlined_function() {
+}
 
 // The following struct can only be used as a reference (`&Window`) and allocated on the heap.
 [ref_only]
@@ -3192,15 +3194,17 @@ struct Window {
 // V will not generate this function and all its calls if the provided flag is false.
 // To use a flag, use `v -d flag`
 [if debug]
-fn foo() { }
+fn foo() {
+}
 
 fn bar() {
-   foo() // will not be called if `-d debug` is not passed
+	foo() // will not be called if `-d debug` is not passed
 }
 
 // For C interop only, tells V that the following struct is defined with `typedef struct` in C
 [typedef]
-struct C.Foo { }
+struct C.Foo {
+}
 
 // Used in Win32 API code when you need to pass callback function
 [windows_stdcall]

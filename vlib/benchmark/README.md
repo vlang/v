@@ -23,10 +23,12 @@ benchmark.start() and b.measure() are convenience methods,
 intended to be used in combination. Their goal is to make
 benchmarking of small snippets of code as *short*, easy to
 write, and then to read and analyze the results, as possible.
+
 Example:
-```v
+```v nofmt
 import time
 import benchmark
+
 mut b := benchmark.start()
 
 // your code section 1 ...
@@ -37,6 +39,7 @@ b.measure('code_1')
 time.sleep_ms(500)
 b.measure('code_2')
 ```
+
 ... which will produce on stdout something like this:
 ```text
 SPENT 1500.063 ms in code_1
