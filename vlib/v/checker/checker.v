@@ -994,8 +994,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// No automatic lock for array slicing (yet(?))
 					explicit_lock_needed = true
 				}
-			} else {
-				c.error('cannot use function call as mut', expr.pos)
 			}
 		}
 		ast.ArrayInit {
@@ -1700,7 +1698,8 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 		match last_stmt {
 			ast.ExprStmt {
 				last_stmt_typ := c.expr(last_stmt.expr)
-				type_fits := c.check_types(last_stmt_typ, ret_type)
+				type_fits := c.check_types(last_stmt_typ, ret_type) && last_stmt_typ.nr_muls() ==
+					ret_type.nr_muls()
 				is_panic_or_exit := is_expr_panic_or_exit(last_stmt.expr)
 				if type_fits || is_panic_or_exit {
 					return
@@ -2317,7 +2316,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		}
 		sym := c.table.get_type_symbol(array_init.elem_type)
 		if array_init.has_default {
-			c.expr(array_init.default_expr)
+			default_typ := c.expr(array_init.default_expr)
+			c.check_expected(default_typ, array_init.elem_type) or {
+				c.error(err, array_init.default_expr.position())
+			}
 		}
 		if sym.kind == .sum_type {
 			if array_init.has_len && !array_init.has_default {
@@ -4391,6 +4393,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		return
 	}
 	if !warn {
+		if c.pref.fatal_errors {
+			exit(1)
+		}
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{

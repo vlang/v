@@ -847,7 +847,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-			if node.label.len > 0 {
+			if node.label != '' {
 				if node.kind == .key_break {
 					g.writeln('goto ${node.label}__break;')
 				} else {
@@ -856,6 +856,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			} else {
 				// continue or break
+				if g.pref.autofree && !g.is_builtin_mod {
+					g.writeln('// free before continue/break')
+					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, false)
+				}
 				g.writeln('$node.kind;')
 			}
 		}
@@ -1079,7 +1083,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
-			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings']
+			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings', 'gg']
 			g.cur_mod = node.name
 		}
 		ast.Return {
@@ -1519,9 +1523,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		ast.IfExpr { return_type = right_expr.typ }
 		else {}
 	}
-	// Free the old value assigned to this string var (only if it's `str = [new value]`)
+	// Free the old value assigned to this string var (only if it's `str = [new value]`
+	// or `x.str = [new value]` )
 	mut af := g.pref.autofree && !g.is_builtin_mod && assign_stmt.op == .assign && assign_stmt.left_types.len ==
-		1 && assign_stmt.left[0] is ast.Ident
+		1 &&
+		(assign_stmt.left[0] is ast.Ident || assign_stmt.left[0] is ast.SelectorExpr)
 	// assign_stmt.left_types[0] in [table.string_type, table.array_type] &&
 	mut sref_name := ''
 	mut type_to_free := ''
@@ -1530,18 +1536,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		first_left_sym := g.table.get_type_symbol(assign_stmt.left_types[0])
 		if first_left_type == table.string_type || first_left_sym.kind == .array {
 			type_to_free = if first_left_type == table.string_type { 'string' } else { 'array' }
-			ident := assign_stmt.left[0] as ast.Ident
-			if ident.name != '_' {
-				/*
-				g.write('string_free(&')
-			g.expr(assign_stmt.left[0])
-			g.writeln('); // free str on re-assignment')
-				*/
+			mut ok := true
+			left0 := assign_stmt.left[0]
+			if left0 is ast.Ident {
+				if left0.name == '_' {
+					ok = false
+				}
+			}
+			if ok {
 				sref_name = '_sref$assign_stmt.pos.pos'
 				g.write('$type_to_free $sref_name = (') // TODO we are copying the entire string here, optimize
 				// we can't just do `.str` since we need the extra data from the string struct
 				// doing `&string` is also not an option since the stack memory with the data will be overwritten
-				g.expr(assign_stmt.left[0])
+				g.expr(left0) // assign_stmt.left[0])
 				g.writeln('); // free $type_to_free on re-assignment2')
 				defer {
 					if af {
@@ -2070,7 +2077,7 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 		// TODO why can scope.pos be 0? (only outside fns?)
 		return
 	}
-	g.writeln('// autofree_scope_vars(pos=$pos scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
+	g.writeln('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
 	// g.autofree_scope_vars2(scope, scope.end_pos)
 	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
 }
@@ -2083,9 +2090,15 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	for _, obj in scope.objects {
 		match obj {
 			ast.Var {
-				g.writeln('// var $obj.name pos=$obj.pos.pos')
+				g.writeln('// var "$obj.name" var.pos=$obj.pos.pos var.line_nr=$obj.pos.line_nr')
 				if obj.name == g.returned_var_name {
 					g.writeln('// skipping returned var')
+					continue
+				}
+				if obj.is_or {
+					g.writeln('// skipping `or{}` var "$obj.name"')
+					// Skip vars inited with the `or {}`, since they are generated
+					// after the or block in C.
 					continue
 				}
 				// if var.typ == 0 {
@@ -2117,7 +2130,6 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
 	if free_parent_scopes && !isnil(scope.parent) {
-		// g.autofree_scope_vars2(scope.parent, end_pos)
 		g.writeln('// af parent scope:')
 		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true)
 	}
@@ -2912,11 +2924,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		info := left_sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
-			g.write('_PUSH_MANY(&')
+			g.write('_PUSH_MANY(')
+			mut expected_push_many_atype := left_type
+			if !expected_push_many_atype.is_ptr() {
+				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &
+				g.write('&')
+			} else {
+				expected_push_many_atype = expected_push_many_atype.deref()
+			}
 			g.expr(node.left)
 			g.write(', (')
 			g.expr_with_cast(node.right, node.right_type, left_type)
-			styp := g.typ(left_type)
+			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp, $styp)')
 		} else {
 			// push a single element
@@ -3918,7 +3937,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		} else {
 			if g.pref.autofree && !g.is_builtin_mod {
 				g.writeln('// free before return (no values returned)')
-				g.autofree_scope_vars(node.pos.pos + 1, node.pos.line_nr, true)
+				g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
 			}
 			g.writeln('return;')
 		}
@@ -4047,12 +4066,16 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			// `return foo(a, b, c)`
 			// `tmp := foo(a, b, c); free(a); free(b); free(c); return tmp;`
 			// Save return value in a temp var so that it all args (a,b,c) can be freed
-			tmp = g.new_tmp_var()
-			g.write(g.typ(g.fn_decl.return_type))
-			g.write(' ')
-			g.write(tmp)
-			g.write(' = ')
-			// g.write('return $tmp;')
+			// Don't use a tmp var if a variable is simply returned: `return x`
+			if node.exprs[0] !is ast.Ident {
+				tmp = g.new_tmp_var()
+				g.write(g.typ(g.fn_decl.return_type))
+				g.write(' ')
+				g.write(tmp)
+				g.write(' = ')
+			} else {
+				g.write('return ')
+			}
 		} else {
 			g.write('return ')
 		}
@@ -4065,16 +4088,21 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			g.write(')')
 		}
 		if free {
-			g.writeln('; // free tmp exprs')
-			// autofree before `return`
-			// set free_parent_scopes to true, since all variables defined in parent
-			// scopes need to be freed before the return
 			expr := node.exprs[0]
 			if expr is ast.Ident {
 				g.returned_var_name = expr.name
 			}
+			if tmp != '' {
+				g.writeln('; // free tmp exprs + all vars before return')
+			}
+			g.writeln(';')
+			// autofree before `return`
+			// set free_parent_scopes to true, since all variables defined in parent
+			// scopes need to be freed before the return
 			g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, true)
-			g.write('return $tmp')
+			if tmp != '' {
+				g.write('return $tmp')
+			}
 		}
 	} else { // if node.exprs.len == 0 {
 		println('this should never happen')
@@ -4763,16 +4791,14 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	if inp_sym.kind != .array {
 		verror('map() requires an array')
 	}
-	g.writeln('')
-	g.write('int ${tmp}_len = ')
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
-	g.writeln('.len;')
+	g.writeln(';')
+	g.write('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$ret_typ $tmp = __new_array(0, ${tmp}_len, sizeof($ret_elem_type));')
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
-	g.write('\t$inp_elem_type it = (($inp_elem_type*) ')
-	g.expr(node.left)
-	g.writeln('.data)[$i];')
+	g.write('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
 	g.write('\t$ret_elem_type ti = ')
 	expr := node.args[0].expr
 	match expr {
@@ -4915,14 +4941,13 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	info := sym.info as table.Array
 	styp := g.typ(node.return_type)
 	elem_type_str := g.typ(info.elem_type)
-	g.write('\nint ${tmp}_len = ')
+	g.write('${g.typ(node.left_type)} ${tmp}_orig = ')
 	g.expr(node.left)
-	g.writeln('.len;')
+	g.writeln(';')
+	g.write('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));')
 	g.writeln('for (int i = 0; i < ${tmp}_len; ++i) {')
-	g.write('  $elem_type_str it = (($elem_type_str*) ')
-	g.expr(node.left)
-	g.writeln('.data)[i];')
+	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[i];')
 	g.write('if (')
 	expr := node.args[0].expr
 	match expr {
