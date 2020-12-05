@@ -189,7 +189,7 @@ In order to simplify the use of the captured groups it possible to use the utili
 
 This function return a list of groups using this support struct:
 
-```v
+```v oksyntax 
 pub
 struct Re_group {
 pub:
@@ -200,7 +200,7 @@ pub:
 
 Here an example of use:
 
-```v
+```v oksyntax 
 /*
 This simple function convert an HTML RGB value with 3 or 6 hex digits to an u32 value,
 this function is not optimized and it si only for didatical purpose
@@ -420,7 +420,7 @@ In order to simplify the use of the named groups it possible to use names map in
 
 Here a more complex example of use:
 
-```v
+```v oksyntax 
 /*
 This function demostrate the use of the named groups
 */
@@ -457,7 +457,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 
 It is possible to set some flags in the regex parser that change the behavior of the parser itself.
 
-```v oksyntax
+```v ignore
 // example of flag settings
 mut re := regex.new()
 re.flag = regex.F_BIN
@@ -481,14 +481,14 @@ a `RE` struct can be created manually if you needed.
 
 #### **Simplified initializer**
 
-```v
+```v ignore 
 // regex create a regex object from the query string and compile it
 pub fn regex_opt(in_query string) ?RE
 ```
 
 #### **Base initializer**
 
-```v
+```v ignore 
 // new_regex create a REgex of small size, usually sufficient for ordinary use
 pub fn new() RE
 
