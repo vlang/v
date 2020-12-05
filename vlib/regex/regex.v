@@ -1,6 +1,6 @@
 /*
 
-regex 0.9g
+regex 0.9h
 
 Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -19,7 +19,7 @@ module regex
 import strings
 
 pub const(
-	v_regex_version = "0.9g"      // regex module version
+	v_regex_version = "0.9h"      // regex module version
 
 	max_code_len     = 256        // default small base code len for the regex programs
 	max_quantifier   = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
@@ -2381,3 +2381,34 @@ pub fn (mut re RE) replace(in_txt string, repl string) string {
 	}
 	return in_txt
 }
+
+/*
+
+Utilities
+
+*/
+
+pub
+struct Re_group {
+pub:
+	start int = -1
+	end   int = -1
+}
+
+// get_group_list return a list of Re_group for the found groups
+pub fn (re RE) get_group_list() []Re_group {
+	mut res := []Re_group{len: re.groups.len >> 1}
+	mut gi := 0
+	//println("len: ${re.groups.len} groups: ${re.groups}")
+	for gi < re.groups.len {
+		if re.groups[gi] >= 0 {
+			//println("#${gi/2} start: ${re.groups[gi]} end: ${re.groups[gi + 1]} ")
+			tmp := Re_group{ start: re.groups[gi], end: re.groups[gi + 1]}
+			//println(tmp)
+			res[gi >> 1] = tmp
+		}
+		gi += 2
+	}
+	return res
+}
+

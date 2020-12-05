@@ -1,4 +1,4 @@
-# V RegEx (Regular expression) 0.9g
+# V RegEx (Regular expression) 0.9h
 
 [TOC]
 
@@ -185,6 +185,56 @@ for gi < re.groups.len {
 **note:** *to show the `group id number` in the result of the `get_query()`*
 *the flag `debug` of the RE object must be `1` or `2`*
 
+In order to simplify the use of the captured groups it possible to use the 
+utility function: `get_group_list`.
+
+This function return a list of groups using this support struct:
+
+```v oksyntax 
+pub
+struct Re_group {
+pub:
+	start int = -1
+	end   int = -1
+}
+```
+
+Here an example of use:
+
+```v oksyntax 
+/*
+This simple function convert an HTML RGB value with 3 or 6 hex digits to an u32 value,
+this function is not optimized and it si only for didatical purpose
+example: #A0B0CC #A9F
+*/
+fn convert_html_rgb(in_col string) u32 {
+	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
+	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
+
+	// this is the regex query, it use the V string interpolation to customize the regex query
+	// NOTE: if you want use escaped code you must use the r"" (raw) strings, 
+	//       *** please remember that the V interpoaltion doesn't work on raw strings. ***
+
+	query:= "#([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})([a-fA-F0-9]{$n_digit})"
+
+	mut re := regex.regex_opt(query) or { panic(err) }
+	start, end := re.match_string(in_col)
+	println("start: $start, end: $end")
+	mut res := u32(0)
+	if start >= 0 {
+		group_list := re.get_group_list() // this is the utility function
+		r := ("0x" + in_col[group_list[0].start..group_list[0].end]).int() << col_mul
+		g := ("0x" + in_col[group_list[1].start..group_list[1].end]).int() << col_mul
+		b := ("0x" + in_col[group_list[2].start..group_list[2].end]).int() << col_mul
+		println("r: $r g: $g b: $b")
+		res = u32(r) << 16 | u32(g) << 8 | u32(b)
+	}
+	return res
+}
+```
+
+
+
 ### Groups Continuous saving
 
 In particular situations it is useful have a continuous save of the groups,
@@ -281,7 +331,7 @@ Have a look at the example for the use of them.
 
 example:
 
-```v oksyntax
+```v ignore
 import regex
 fn main() {
 	test_regex()
@@ -367,11 +417,49 @@ named capturing groups:
 'token':[42, 46] => 'html'
 ```
 
+In order to simplify the use of the named groups it possible to use names map in the `re`
+struct using the function `re.get_group`.
+
+Here a more complex example of use:
+
+```v oksyntax 
+/*
+This function demostrate the use of the named groups
+*/
+fn convert_html_rgb_n(in_col string) u32 {
+	mut n_digit := if in_col.len == 4 { 1 } else { 2 }
+	mut col_mul := if in_col.len == 4 { 4 } else { 0 }
+
+	query:= "#(?P<red>[a-fA-F0-9]{$n_digit})(?P<green>[a-fA-F0-9]{$n_digit})(?P<blue>[a-fA-F0-9]{$n_digit})"
+
+	mut re := regex.regex_opt(query) or { panic(err) }
+	start, end := re.match_string(in_col)
+	println("start: $start, end: $end")
+	mut res := u32(0)
+	if start >= 0 {
+		red_s, red_e := re.get_group("red")
+		r := ("0x" + in_col[red_s..red_e]).int() << col_mul
+		
+		green_s, green_e := re.get_group("green")
+		g := ("0x" + in_col[green_s..green_e]).int() << col_mul
+		
+		blue_s, blue_e := re.get_group("blue")
+		b := ("0x" + in_col[blue_s..blue_e]).int() << col_mul
+		
+		println("r: $r g: $g b: $b")
+		res = u32(r) << 16 | u32(g) << 8 | u32(b)
+	}
+	return res
+}
+```
+
+
+
 ## Flags
 
 It is possible to set some flags in the regex parser that change the behavior of the parser itself.
 
-```v oksyntax
+```v ignore
 // example of flag settings
 mut re := regex.new()
 re.flag = regex.F_BIN
@@ -395,14 +483,14 @@ a `RE` struct can be created manually if you needed.
 
 #### **Simplified initializer**
 
-```v
+```v ignore 
 // regex create a regex object from the query string and compile it
 pub fn regex_opt(in_query string) ?RE
 ```
 
 #### **Base initializer**
 
-```v
+```v ignore 
 // new_regex create a REgex of small size, usually sufficient for ordinary use
 pub fn new() RE
 
