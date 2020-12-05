@@ -654,6 +654,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 				name: t
 				typ: table.string_type
 				is_autofree_tmp: true
+				pos: node.pos
 			})
 			s = 'string $t = '
 		}
