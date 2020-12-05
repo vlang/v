@@ -1233,7 +1233,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < (int)${atmp}.key_values.len; ++$idx) {')
+		g.writeln('for (int $idx = 0; $idx < ${atmp}.key_values.len; ++$idx) {')
 		g.writeln('\tif (!DenseArray_has_index(&${atmp}.key_values, $idx)) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
