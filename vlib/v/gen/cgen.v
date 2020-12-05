@@ -4866,6 +4866,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		table.int_type {
 			compare_fn = 'compare_ints'
 		}
+		table.u64_type {
+			compare_fn = 'compare_u64s'
+		}
 		table.string_type {
 			compare_fn = 'compare_strings'
 		}
