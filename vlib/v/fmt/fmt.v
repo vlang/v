@@ -872,10 +872,16 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.writeln('{')
 			f.indent++
+			mut maxfieldlen := 0
+			for _, key in node.keys {
+				if key.str().len > maxfieldlen {
+					maxfieldlen = key.str().len
+				}
+			}
 			for i, key in node.keys {
 				f.expr(key)
-				// f.write(strings.repeat(` `, max - field.name.len))
 				f.write(': ')
+				f.write(strings.repeat(` `, maxfieldlen - key.str().len))
 				f.expr(node.vals[i])
 				f.writeln('')
 			}
