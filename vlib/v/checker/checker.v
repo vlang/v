@@ -39,7 +39,7 @@ pub mut:
 	warnings                         []errors.Warning
 	error_lines                      []int // to avoid printing multiple errors for the same line
 	expected_type                    table.Type
-	expected_or_type                 table.Type // expected_type is reset by the time we get to or block stmts/exprs
+	expected_or_type                 table.Type // fn() or { 'this type' } eg. string. expected or block type
 	cur_fn                           &ast.FnDecl // current function
 	const_decl                       string
 	const_deps                       []string
@@ -1060,7 +1060,7 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 			call_expr.free_receiver = true
 		}
 	}
-	c.expected_or_type = call_expr.return_type
+	c.expected_or_type = call_expr.return_type.clear_flag(.optional)
 	c.stmts(call_expr.or_block.stmts)
 	c.expected_or_type = table.void_type
 	return typ
@@ -2532,7 +2532,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			node.typ = c.expr(node.expr)
 			c.expected_type = table.void_type
 			c.check_expr_opt_call(node.expr, table.void_type)
-			// c.expected_type = table.void_type
 			// TODO This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_opt_call(node.expr, table.void_type)
 		}
