@@ -1799,7 +1799,7 @@ pub fn (mut f Fmt) map_init(it ast.MapInit) {
 	f.writeln('{')
 	f.indent++
 	mut max_field_len := 0
-	for _, key in it.keys {
+	for key in it.keys {
 		if key.str().len > max_field_len {
 			max_field_len = key.str().len
 		}
