@@ -291,6 +291,11 @@ fn free_before_break() {
 			continue
 		}
 	}
+	x := ['1', '2', '3']
+	for n in x {
+		f := 'f'
+		println('$n => $f')
+	}
 }
 
 struct User {
