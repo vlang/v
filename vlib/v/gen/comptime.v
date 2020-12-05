@@ -110,7 +110,7 @@ fn cgen_attrs(attrs []table.Attr) []string {
 
 fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
-		val := cnewlines(node.val.replace('\r', '')).replace('\\', '\\\\')
+		val := cnewlines(node.val.replace('\r', ''))
 		g.write('_SLIT("$val")')
 	} else {
 		val := node.val.replace('\\', '\\\\')
