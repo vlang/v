@@ -2100,9 +2100,14 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				if obj.is_or {
-					g.writeln('// skipping `or{}` var "$obj.name"')
 					// Skip vars inited with the `or {}`, since they are generated
 					// after the or block in C.
+					g.writeln('// skipping `or{}` var "$obj.name"')
+					continue
+				}
+				if obj.is_tmp {
+					// Skip for loop vars
+					g.writeln('// skipping tmp var "$obj.name"')
 					continue
 				}
 				// if var.typ == 0 {
