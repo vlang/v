@@ -1207,6 +1207,10 @@ fn (mut s Scanner) inc_line_number() {
 }
 
 pub fn (mut s Scanner) warn(msg string) {
+	if s.pref.warns_are_errors {
+		s.error(msg)
+		return
+	}
 	pos := token.Position{
 		line_nr: s.line_nr
 		pos: s.pos
@@ -1232,6 +1236,9 @@ pub fn (mut s Scanner) error(msg string) {
 		eprintln(util.formatted_error('error:', msg, s.file_path, pos))
 		exit(1)
 	} else {
+		if s.pref.fatal_errors {
+			exit(1)
+		}
 		s.errors << errors.Error{
 			file_path: s.file_path
 			pos: pos

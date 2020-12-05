@@ -1,0 +1,12 @@
+module main
+
+struct Bar {}
+
+fn foo() ?&Bar {
+	return none
+}
+
+fn main() {
+	x := foo() or { Bar{} }
+	println(x)
+}

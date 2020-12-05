@@ -153,9 +153,7 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 }
 
 pub fn (t &Table) known_fn(name string) bool {
-	t.find_fn(name) or {
-		return false
-	}
+	t.find_fn(name) or { return false }
 	return true
 }
 
@@ -272,9 +270,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 			if field := ts.info.find_field(name) {
 				return field
 			}
-			field := t.register_aggregate_field(mut ts, name) or {
-				return error(err)
-			}
+			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
 			return field
 		}
 		if ts.parent_idx == 0 {
@@ -400,9 +396,7 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	t.find_type(name) or {
-		return false
-	}
+	t.find_type(name) or { return false }
 	return true
 }
 
@@ -619,7 +613,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name.clone() }
 	source_name := if f.name.len == 0 { 'fn $f.source_signature()' } else { f.name.clone() }
 	anon := f.name.len == 0 || is_anon
-	return t.register_type_symbol(TypeSymbol{
+	return t.register_type_symbol(
 		kind: .function
 		name: name
 		source_name: source_name
@@ -630,7 +624,7 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 			has_decl: has_decl
 			func: f
 		}
-	})
+	)
 }
 
 pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
