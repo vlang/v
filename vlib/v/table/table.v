@@ -33,7 +33,6 @@ pub:
 	is_pub                  bool
 	is_deprecated           bool
 	is_unsafe               bool
-	is_placeholder          bool
 	mod                     string
 	ctdefine                string // compile time define. myflag, when [if myflag] tag
 	attrs                   []Attr

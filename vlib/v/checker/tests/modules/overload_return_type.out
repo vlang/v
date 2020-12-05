@@ -1,4 +1,4 @@
-vlib/v/checker/tests/modules/overload_return_type/main.v:14:8: error: cannot assign to `two`: expected `Point`, not `int`
+vlib/v/checker/tests/modules/overload_return_type/main.v:14:8: error: cannot assign to `two`: expected `point.Point`, not `int`
    12 |         y: 1
    13 |     }
    14 |     two = one + two

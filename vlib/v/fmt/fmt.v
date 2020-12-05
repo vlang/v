@@ -1288,6 +1288,9 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if !name.contains('.') {
 		return name
 	}
+	if name in f.mod2alias {
+		return f.mod2alias[name]
+	}
 	if name.ends_with('>') {
 		x := name.trim_suffix('>').split('<')
 		if x.len == 2 {
@@ -1718,7 +1721,14 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('}')
 			return
 		}
-		f.write(f.table.type_to_str(it.typ))
+		// TODO: do nicely
+		mut type_str := f.table.type_to_str(it.typ)
+		elem_type_str := type_str.all_after(']')
+		if elem_type_str in f.mod2alias {
+			type_str = type_str.replace(elem_type_str, f.mod2alias[elem_type_str])
+		}
+		f.write(type_str)
+		//f.write(f.table.type_to_str(it.typ))
 		f.write('{')
 		// TODO copypasta
 		if it.has_len {

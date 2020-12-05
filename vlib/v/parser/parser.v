@@ -46,6 +46,7 @@ mut:
 	imports           map[string]string // alias => mod_name
 	ast_imports       []ast.Import // mod_names
 	used_imports      []string // alias
+	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
 	inside_match      bool // to separate `match A { }` from `Struct{}`
@@ -1649,25 +1650,8 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.position()
 		alias := p.check_name()
-		name := '${parent.mod}.$alias'
+		p.imported_symbols[alias] = parent.mod
 		if alias[0].is_capital() {
-			idx := p.table.add_placeholder_type(name, .v)
-			typ := table.new_type(idx)
-			prepend_mod_name := p.prepend_mod(alias)
-			p.table.register_type_symbol(table.TypeSymbol{
-				kind: .alias
-				name: prepend_mod_name
-				source_name: prepend_mod_name
-				cname: util.no_dots(prepend_mod_name)
-				mod: p.mod
-				parent_idx: idx
-				info: table.Alias{
-					parent_type: typ
-					language: table.Language.v
-					is_import: true
-				}
-				is_public: false
-			})
 			// so we can work with the fully declared type in fmt+checker
 			parent.syms << ast.ImportSymbol{
 				pos: pos
@@ -1675,13 +1659,6 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 				kind: .type_
 			}
 		} else {
-			if !p.table.known_fn(name) {
-				p.table.fns[alias] = table.Fn{
-					is_placeholder: true
-					mod: parent.mod
-					name: name
-				}
-			}
 			// so we can work with this in fmt+checker
 			parent.syms << ast.ImportSymbol{
 				pos: pos

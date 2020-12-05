@@ -83,11 +83,9 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		or_kind = .propagate
 	}
 	mut fn_mod := p.mod
-	if registered := p.table.find_fn(fn_name) {
-		if registered.is_placeholder {
-			fn_mod = registered.mod
-			fn_name = registered.name
-		}
+	if fn_name in p.imported_symbols {
+		fn_mod = p.imported_symbols[fn_name]
+		fn_name = '${fn_mod}.$fn_name'
 	}
 	return ast.CallExpr{
 		name: fn_name
