@@ -43,7 +43,6 @@ fn (mut g Gen) gen_json_for_type(typ table.Type) {
 	g.register_optional(utyp)
 	dec_fn_dec := 'Option_$styp ${dec_fn_name}(cJSON* root)'
 	dec.writeln('
-//Option_$styp ${dec_fn_name}(cJSON* root, $styp* res) {
 $dec_fn_dec {
 	$styp res;
 	if (!root) {
@@ -80,53 +79,26 @@ $enc_fn_dec {
 		g.gen_json_for_type(m.value_type)
 		dec.writeln(g.decode_map(m.key_type, m.value_type))
 		enc.writeln(g.encode_map(m.key_type, m.value_type))
+	} else if sym.kind == .alias {
+		a := sym.info as table.Alias
+		parent_typ := a.parent_type
+		psym := g.table.get_type_symbol(parent_typ)
+		if is_js_prim(g.typ(parent_typ)) {
+			g.gen_json_for_type(parent_typ)
+			return
+		}
+		enc.writeln('\to = cJSON_CreateObject();')
+		if psym.info !is table.Struct {
+			verror('json: $sym.name is not struct')
+		}
+		g.gen_struct_enc_dec(psym.info, styp, mut enc, mut dec)
 	} else {
 		enc.writeln('\to = cJSON_CreateObject();')
 		// Structs. Range through fields
 		if sym.info !is table.Struct {
 			verror('json: $sym.name is not struct')
 		}
-		info := sym.info as table.Struct
-		for field in info.fields {
-			if field.attrs.contains('skip') {
-				continue
-			}
-			mut name := field.name
-			for attr in field.attrs {
-				if attr.name == 'json' {
-					name = attr.arg
-					break
-				}
-			}
-			field_type := g.typ(field.typ)
-			if field.attrs.contains('raw') {
-				dec.writeln('\tres.${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
-			} else {
-				// Now generate decoders for all field types in this struct
-				// need to do it here so that these functions are generated first
-				g.gen_json_for_type(field.typ)
-				dec_name := js_dec_name(field_type)
-				if is_js_prim(field_type) {
-					dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
-				} else if g.table.get_type_symbol(field.typ).kind == .enum_ {
-					dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
-				} else {
-					// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
-					tmp := g.new_tmp_var()
-					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
-					dec.writeln('\tif(!${tmp}.ok) {')
-					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
-					dec.writeln('\t}')
-					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
-				}
-			}
-			mut enc_name := js_enc_name(field_type)
-			if g.table.get_type_symbol(field.typ).kind == .enum_ {
-				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
-			} else {
-				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
-			}
-		}
+		g.gen_struct_enc_dec(sym.info, styp, mut enc, mut dec)
 	}
 	// cJSON_delete
 	// p.cgen.fns << '$dec return opt_ok(res); \n}'
@@ -136,6 +108,73 @@ $enc_fn_dec {
 	enc.writeln('\treturn o;\n}')
 	g.definitions.writeln(dec.str())
 	g.gowrappers.writeln(enc.str())
+}
+
+[inline]
+fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
+	info := type_info as table.Struct
+	for field in info.fields {
+		if field.attrs.contains('skip') {
+			continue
+		}
+		mut name := field.name
+		for attr in field.attrs {
+			if attr.name == 'json' {
+				name = attr.arg
+				break
+			}
+		}
+		field_type := g.typ(field.typ)
+		field_sym := g.table.get_type_symbol(field.typ)
+		if field.attrs.contains('raw') {
+			dec.writeln('\tres.${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+		} else {
+			// Now generate decoders for all field types in this struct
+			// need to do it here so that these functions are generated first
+			g.gen_json_for_type(field.typ)
+			dec_name := js_dec_name(field_type)
+			if is_js_prim(field_type) {
+				dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
+			} else if field_sym.kind == .enum_ {
+				dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
+			} else if field_sym.kind == .alias {
+				alias := field_sym.info as table.Alias
+				parent_type := g.typ(alias.parent_type)
+				parent_dec_name := js_dec_name(parent_type)
+				if is_js_prim(parent_type) {
+					dec.writeln('\tres.${c_name(field.name)} = $parent_dec_name (js_get(root, "$name"));')
+				} else {
+					g.gen_json_for_type(field.typ)
+					tmp := g.new_tmp_var()
+					dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+					dec.writeln('\tif(!${tmp}.ok) {')
+					dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+					dec.writeln('\t}')
+					dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+				}
+			} else {
+				// dec.writeln(' $dec_name (js_get(root, "$name"), & (res . $field.name));')
+				tmp := g.new_tmp_var()
+				dec.writeln('\tOption_$field_type $tmp = $dec_name (js_get(root,"$name"));')
+				dec.writeln('\tif(!${tmp}.ok) {')
+				dec.writeln('\t\treturn *(Option_$styp*) &$tmp;')
+				dec.writeln('\t}')
+				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
+			}
+		}
+		mut enc_name := js_enc_name(field_type)
+		if !is_js_prim(field_type) {
+			if field_sym.kind == .alias {
+				ainfo := field_sym.info as table.Alias
+				enc_name = js_enc_name(g.typ(ainfo.parent_type))
+			}
+		}
+		if field_sym.kind == .enum_ {
+			enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
+		} else {
+			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
+		}
+	}
 }
 
 fn js_enc_name(typ string) string {
