@@ -112,7 +112,7 @@ These are:
 
 ```v
 fn main() {
-    println('hello world')
+	println('hello world')
 }
 ```
 
@@ -150,8 +150,8 @@ println('hello world')
 
 ```v
 // This is a single line comment.
-
-/* This is a multiline comment.
+/*
+This is a multiline comment.
    /* It can be nested. */
 */
 ```
@@ -160,16 +160,16 @@ println('hello world')
 
 ```v
 fn main() {
-    println(add(77, 33))
-    println(sub(100, 50))
+	println(add(77, 33))
+	println(sub(100, 50))
 }
 
 fn add(x int, y int) int {
-    return x + y
+	return x + y
 }
 
 fn sub(x int, y int) int {
-    return x - y
+	return x - y
 }
 ```
 
@@ -185,7 +185,7 @@ or thinking about the order of files and declarations.
 
 ### Returning multiple values
 
-```v
+```v nofmt
 fn foo() (int, int) {
     return 2, 3
 }
@@ -198,7 +198,7 @@ c, _ := foo() // ignore values using `_`
 
 ### Variable number of arguments
 
-```v
+```v nofmt
 fn sum(a ...int) int {
     mut total := 0
     for x in a {
@@ -286,7 +286,7 @@ All variables need to be declared in V.
 
 ```v
 fn main() {
-    age := 21
+	age := 21
 }
 ```
 
@@ -368,7 +368,7 @@ negative values).
 
 ### Strings
 
-```v
+```v nofmt
 name := 'Bob'
 println(name.len)
 println(name[0]) // indexing gives a byte B
@@ -402,7 +402,7 @@ Both single and double quotes can be used to denote strings. For consistency,
 
 For raw strings, prepend `r`. Raw strings are not escaped:
 
-```v
+```v nofmt
 s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
@@ -411,7 +411,7 @@ println(s) // "hello\nworld"
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
 The variable will be converted to a string and embedded into the literal:
-```v
+```v nofmt
 name := 'Bob'
 println('Hello, $name!') // Hello, Bob!
 ```
@@ -422,7 +422,7 @@ Format specifiers similar to those in C's `printf()` are also supported.
 `f`, `g`, `x`, etc. are optional and specify the output format.
 The compiler takes care of the storage size, so there is no `hd` or `llu`.
 
-```v
+```v nofmt
 x := 123.4567
 println('x = ${x:4.2f}')
 println('[${x:10}]')       // pad with spaces on the left
@@ -431,7 +431,7 @@ println('[${int(x):-10}]') // pad with spaces on the right
 
 ### String operators
 
-```v
+```v nofmt
 name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
@@ -485,7 +485,7 @@ All of these will be assigned the same value, 123. They will all have type
 
 V also supports writing numbers with `_` as separator:
 
-```v
+```v nofmt
 num := 1_000_000 // same as 1000000
 three := 0b0_11 // same as 0b11
 float_num := 3_122.55  // same as 3122.55
@@ -513,7 +513,7 @@ will have the type of `f64`.
 
 ### Arrays
 
-```v
+```v nofmt
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
@@ -545,7 +545,7 @@ See [Access modifiers](#access-modifiers).
 
 #### Array operations
 
-```v
+```v nofmt
 mut nums := [1, 2, 3]
 nums << 4
 println(nums) // "[1, 2, 3, 4]"
@@ -573,13 +573,14 @@ During initialization you can specify the capacity of the array (`cap`), its ini
 and the default element (`init`):
 
 ```v
-arr := []int{ len: 5, init: -1 } // `[-1, -1, -1, -1, -1]`
+arr := []int{len: 5, init: -1}
+// `[-1, -1, -1, -1, -1]`
 ```
 
 Setting the capacity improves performance of insertions,
 as it reduces the number of reallocations needed:
 
-```v
+```v nofmt
 mut numbers := []int{ cap: 1000 }
 println(numbers.len) // 0
 // Now appending elements won't reallocate
@@ -597,7 +598,7 @@ with `s := arr.str()`.
 Arrays can be efficiently filtered and mapped with the `.filter()` and
 `.map()` methods:
 
-```v
+```v nofmt
 nums := [1, 2, 3, 4, 5, 6]
 even := nums.filter(it % 2 == 0)
 println(even) // [2, 4, 6]
@@ -624,14 +625,14 @@ println(upper_fn) // ['HELLO', 'WORLD']
 Arrays can have more than one dimension.
 
 2d array example:
-```v
+```v nofmt
 mut a := [][]int{len:2, init: []int{len:3}}
 a[0][1] = 2
 println(a) // [[0, 2, 0], [0, 0, 0]]
 ```
 
 3d array example:
-```v
+```v nofmt
 mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
@@ -642,13 +643,13 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
 
-```v
+```v nofmt
 mut numbers := [1, 3, 2]
 numbers.sort()      // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
-```v
+```v nofmt
 struct User { age int  name string }
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
 users.sort(a.age < b.age)   // sort by User.age int field
@@ -657,7 +658,7 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 
 ### Maps
 
-```v
+```v nofmt
 mut m := map[string]int // Only maps with string keys are allowed for now
 m['one'] = 1
 m['two'] = 2
@@ -683,9 +684,9 @@ Modules can be imported using the `import` keyword:
 import os
 
 fn main() {
-    // read text from stdin
-    name := os.input('Enter your name: ')
-    println('Hello, $name!')
+	// read text from stdin
+	name := os.input('Enter your name: ')
+	println('Hello, $name!')
 }
 ```
 This program can use any public definitions from the `os` module, such
@@ -701,7 +702,7 @@ which module is being called. This is especially useful in large code bases.
 
 You can also import specific functions and types from modules directly:
 
-```v
+```v nofmt
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
@@ -744,17 +745,17 @@ import time
 type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
-    return 1 + t.year % 100
+	return 1 + t.year % 100
 }
 
 fn main() {
-    mut my_time := MyTime{
-        year: 2020,
-        month: 12,
-        day: 25
-    }
-    println(time.new_time(my_time).utc_string())
-    println('Century: ${my_time.century()}')
+	mut my_time := MyTime{
+		year: 2020
+		month: 12
+		day: 25
+	}
+	println(time.new_time(my_time).utc_string())
+	println('Century: $my_time.century()')
 }
 ```
 
@@ -766,11 +767,11 @@ fn main() {
 a := 10
 b := 20
 if a < b {
-    println('$a < $b')
+	println('$a < $b')
 } else if a > b {
-    println('$a > $b')
+	println('$a > $b')
 } else {
-    println('$a == $b')
+	println('$a == $b')
 }
 ```
 
@@ -782,20 +783,16 @@ there are no parentheses surrounding the condition and the braces are always req
 
 ```v
 num := 777
-s := if num % 2 == 0 {
-    'even'
-}
-else {
-    'odd'
-}
-println(s) // "odd"
+s := if num % 2 == 0 { 'even' } else { 'odd' }
+println(s)
+// "odd"
 ```
 
 #### Type checks and casts
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
-```v
+```v nofmt
 struct Abc {
     val string
 }
@@ -816,47 +813,46 @@ if x !is Abc {
 or using `match`:
 ```v oksyntax
 match x {
-    Abc {
-        // x is automatically casted to Abc and can be used here
-        println(x)
-    }
-    Xyz {
-        // x is automatically casted to Xyz and can be used here
-        println(x)
-    }
+	Abc {
+		// x is automatically casted to Abc and can be used here
+		println(x)
+	}
+	Xyz {
+		// x is automatically casted to Xyz and can be used here
+		println(x)
+	}
 }
 ```
 
 This works also with struct fields:
 ```v
 struct MyStruct {
-    x int
+	x int
 }
+
 struct MyStruct2 {
-    y string
+	y string
 }
 
 type MySumType = MyStruct | MyStruct2
 
 struct Abc {
-    bar MySumType
+	bar MySumType
 }
 
 x := Abc{
-    bar: MyStruct{123} // MyStruct will be converted to MySumType type automatically
+	bar: MyStruct{123} // MyStruct will be converted to MySumType type automatically
 }
-
 if x.bar is MyStruct {
-    // x.bar is automatically casted
-    println(x.bar)
+	// x.bar is automatically casted
+	println(x.bar)
 }
-
 match x.bar {
-    MyStruct {
-        // x.bar is automatically casted
-        println(x.bar)
-    }
-    else {}
+	MyStruct {
+		// x.bar is automatically casted
+		println(x.bar)
+	}
+	else {}
 }
 ```
 
@@ -868,20 +864,18 @@ to tell the compiler that you're aware of what you're doing.
 It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
-
 if mut x is MyStruct {
-    // x is casted to MyStruct even it's mutable
-    // without the mut keyword that wouldn't work
-    println(x)
+	// x is casted to MyStruct even it's mutable
+	// without the mut keyword that wouldn't work
+	println(x)
 }
-
 // same with match
 match mut x {
-    MyStruct {
-        // x is casted to MyStruct even it's mutable
-        // without the mut keyword that wouldn't work
-        println(x)
-    }
+	MyStruct {
+		// x is casted to MyStruct even it's mutable
+		// without the mut keyword that wouldn't work
+		println(x)
+	}
 }
 ```
 
@@ -889,7 +883,7 @@ match mut x {
 
 `in` allows to check whether an array or a map contains an element.
 
-```v
+```v nofmt
 nums := [1, 2, 3]
 println(1 in nums) // true
 
@@ -900,16 +894,23 @@ println('one' in m) // true
 It's also useful for writing boolean expressions that are clearer and more compact:
 
 ```v
-enum Token { plus minus div mult }
-struct Parser { token Token }
-parser := Parser{}
-if parser.token == .plus || parser.token == .minus ||
-    parser.token == .div || parser.token == .mult {
-    // ...
+enum Token {
+	plus
+	minus
+	div
+	mult
 }
 
+struct Parser {
+	token Token
+}
+
+parser := Parser{}
+if parser.token == .plus || parser.token == .minus || parser.token == .div || parser.token == .mult {
+	// ...
+}
 if parser.token in [.plus, .minus, .div, .mult] {
-    // ...
+	// ...
 }
 ```
 
@@ -922,7 +923,7 @@ V has only one looping keyword: `for`, with several forms.
 
 #### Array `for`
 
-```v
+```v nofmt
 numbers := [1, 2, 3, 4, 5]
 for num in numbers {
     println(num)
@@ -939,10 +940,10 @@ If an index is required, an alternative form `for index, value in arr` can be us
 Note, that the value is read-only.
 If you need to modify the array while looping, you have to use indexing:
 
-```v
+```v nofmt
 mut numbers := [0, 1, 2]
 for i, _ in numbers {
-    numbers[i]++
+	numbers[i]++
 }
 println(numbers) // [1, 2, 3]
 ```
@@ -950,7 +951,7 @@ When an identifier is just a single underscore, it is ignored.
 
 #### Map `for`
 
-```v
+```v nofmt
 m := {'one':1, 'two':2}
 for key, value in m {
     println("$key -> $value")  // Output: one -> 1
@@ -958,7 +959,7 @@ for key, value in m {
 ```
 
 Either key or value can be ignored by using a single underscore as the identifer.
-```v
+```v nofmt
 m := {'one':1, 'two':2}
 
 // iterate over keys
@@ -976,8 +977,8 @@ for _, value in m {
 
 ```v
 // Prints '01234'
-for i in 0..5 {
-    print(i)
+for i in 0 .. 5 {
+	print(i)
 }
 ```
 `low..high` means an *exclusive* range, which represents all values
@@ -985,12 +986,12 @@ from `low` up to *but not including* `high`.
 
 #### Condition `for`
 
-```v
+```v nofmt
 mut sum := 0
 mut i := 0
 for i <= 100 {
-    sum += i
-    i++
+	sum += i
+	i++
 }
 println(sum) // "5050"
 ```
@@ -1001,13 +1002,13 @@ Again, there are no parentheses surrounding the condition, and the braces are al
 
 #### Bare `for`
 
-```v
+```v nofmt
 mut num := 0
 for {
-    num += 2
-    if num >= 10 {
-        break
-    }
+	num += 2
+	if num >= 10 {
+		break
+	}
 }
 println(num) // "10"
 ```
@@ -1018,11 +1019,11 @@ The condition can be omitted, resulting in an infinite loop.
 
 ```v
 for i := 0; i < 10; i += 2 {
-    // Don't print 6
-    if i == 6 {
-        continue
-    }
-    println(i)
+	// Don't print 6
+	if i == 6 {
+		continue
+	}
+	println(i)
 }
 ```
 
@@ -1039,11 +1040,14 @@ You can also use `break` and `continue` followed by a label name to refer to an 
 loop:
 
 ```v
-outer: for i := 4;; i++ {
+outer: for i := 4; true; i++ {
 	println(i)
 	for {
-		if i < 7 {continue outer}
-		else {break outer}
+		if i < 7 {
+			continue outer
+		} else {
+			break outer
+		}
 	}
 }
 ```
@@ -1062,9 +1066,9 @@ The above code prints:
 os := 'windows'
 print('V is running on ')
 match os {
-    'darwin' { println('macOS.') }
-    'linux'  { println('Linux.') }
-    else     { println(os) }
+	'darwin' { println('macOS.') }
+	'linux' { println('Linux.') }
+	else { println(os) }
 }
 ```
 
@@ -1075,9 +1079,9 @@ The else branch will be run when no other branches match.
 ```v
 number := 2
 s := match number {
-    1    { 'one' }
-    2    { 'two' }
-    else { 'many'}
+	1 { 'one' }
+	2 { 'two' }
+	else { 'many' }
 }
 ```
 
@@ -1085,16 +1089,16 @@ A match expression returns the final expression from each branch.
 
 ```v
 enum Color {
-    red
-    blue
-    green
+	red
+	blue
+	green
 }
 
 fn is_red_or_blue(c Color) bool {
-    return match c {
-        .red, .blue  { true } // comma can be used to test multiple values
-        .green { false }
-    }
+	return match c {
+		.red, .blue { true } // comma can be used to test multiple values
+		.green { false }
+	}
 }
 ```
 
@@ -1105,12 +1109,13 @@ when all the branches are exhaustive.
 ```v
 c := `v`
 typ := match c {
-    `0`...`9` { 'digit' }
-    `A`...`Z` { 'uppercase' }
-    `a`...`z` { 'lowercase' }
-    else      { 'other' }
+	`0`...`9` { 'digit' }
+	`A`...`Z` { 'uppercase' }
+	`a`...`z` { 'lowercase' }
+	else { 'other' }
 }
-println(typ) // 'lowercase'
+println(typ)
+// 'lowercase'
 ```
 
 You can also use ranges as `match` patterns. If the value falls within the range
@@ -1131,22 +1136,24 @@ until the surrounding function returns.
 import os
 
 fn read_log() {
-    mut ok := false
-    mut f := os.open('log.txt') or { panic(err) }
-    defer { f.close() }
-    // ...
-    if !ok {
-        // defer statement will be called here, the file will be closed
-        return
-    }
-    // ...
-    // defer statement will be called here, the file will be closed
+	mut ok := false
+	mut f := os.open('log.txt') or { panic(err) }
+	defer {
+		f.close()
+	}
+	// ...
+	if !ok {
+		// defer statement will be called here, the file will be closed
+		return
+	}
+	// ...
+	// defer statement will be called here, the file will be closed
 }
 ```
 
 ## Structs
 
-```v
+```v nofmt
 struct Point {
     x int
     y int
@@ -1171,9 +1178,10 @@ and get a reference to it, use the `&` prefix:
 
 ```v
 struct Point {
-    x int
-    y int
+	x int
+	y int
 }
+
 p := &Point{10, 10}
 // References have the same syntax for accessing fields
 println(p.x)
@@ -1194,12 +1202,13 @@ mut:
 }
 
 struct Button {
-mut:
-    Widget
-    title string
+	Widget
+	title  string
 }
 
-mut button := Button{title: 'Click me'}
+mut button := Button{
+	title: 'Click me'
+}
 button.x = 3
 ```
 Without embedding we'd have to name the `Widget` field and do:
@@ -1212,10 +1221,10 @@ button.widget.x = 3
 
 ```v
 struct Foo {
-    n   int      // n is 0 by default
-    s   string   // s is '' by default
-    a   []int    // a is `[]int{}` by default
-    pos int = -1 // custom default value
+	n   int // n is 0 by default
+	s   string // s is '' by default
+	a   []int // a is `[]int{}` by default
+	pos int = -1 // custom default value
 }
 ```
 
