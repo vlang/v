@@ -847,7 +847,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-			if node.label.len > 0 {
+			if node.label != '' {
 				if node.kind == .key_break {
 					g.writeln('goto ${node.label}__break;')
 				} else {
@@ -856,6 +856,10 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			} else {
 				// continue or break
+				if g.pref.autofree && !g.is_builtin_mod {
+					g.writeln('// free before continue/break')
+					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, false)
+				}
 				g.writeln('$node.kind;')
 			}
 		}
