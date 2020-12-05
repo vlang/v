@@ -627,9 +627,13 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	mut left := c.table.get_type_symbol(left_type)
 	left_pos := infix_expr.left.position()
 	right_pos := infix_expr.right.position()
-	if (left_type.is_ptr() || left.is_pointer()) &&
-		infix_expr.op in [.plus, .minus] && !c.inside_unsafe {
-		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
+	if (left_type.is_ptr() || left.is_pointer()) && infix_expr.op in [.plus, .minus] {
+		if !c.inside_unsafe {
+			c.warn('pointer arithmetic is only allowed in `unsafe` blocks', left_pos)
+		}
+		if left_type == table.voidptr_type {
+			c.error('`$infix_expr.op` cannot be used with `voidptr`', left_pos)
+		}
 	}
 	mut return_type := left_type
 	if infix_expr.op != .key_is {
@@ -2228,10 +2232,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 							right.position())
 					}
-				} else if !left_sym.is_number() && !left_sym.is_pointer() {
+				} else if !left_sym.is_number() && left_sym.kind !in
+					[.byteptr, .charptr] {
 					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number() && !right_sym.is_pointer() {
+				} else if !right_sym.is_number() && left_sym.kind !in
+					[.byteptr, .charptr] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
 				} else if right is ast.IntegerLiteral {
