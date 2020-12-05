@@ -128,7 +128,7 @@ fn (d &DenseArray) key(i int) voidptr {
 // for cgen
 [inline]
 fn (d &DenseArray) value(i int) voidptr {
-	return unsafe {d.key(i) + d.key_bytes}
+	return unsafe {d.data + i * d.slot_bytes + d.key_bytes}
 }
 
 [inline]
@@ -152,7 +152,7 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 	unsafe {
 		ptr := d.key(push_index)
 		C.memcpy(ptr, key, d.key_bytes)
-		C.memcpy(ptr + d.key_bytes, value, d.value_bytes)
+		C.memcpy(byteptr(ptr) + d.key_bytes, value, d.value_bytes)
 	}
 	d.len++
 	return push_index
@@ -401,7 +401,7 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 				kv_index := int(unsafe {m.metas[index + 1]})
 				pkey := unsafe {&string(m.key_values.key(kv_index))}
 				if fast_string_eq(key, *pkey) {
-					return unsafe {voidptr(pkey) + m.key_values.key_bytes}
+					return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 				}
 			}
 			index += 2
@@ -425,7 +425,7 @@ fn (m map) get(key string, zero voidptr) voidptr {
 			kv_index := int(unsafe {m.metas[index + 1]})
 			pkey := unsafe {&string(m.key_values.key(kv_index))}
 			if fast_string_eq(key, *pkey) {
-				return unsafe {voidptr(pkey) + m.key_values.key_bytes}
+				return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 			}
 		}
 		index += 2
