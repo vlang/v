@@ -486,7 +486,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	return res, command
 }
 
-fn (pref &Preferences) vrun_elog(s string) {
+pub fn (pref &Preferences) vrun_elog(s string) {
 	if pref.is_verbose {
 		eprintln('> v run -, $s')
 	}
