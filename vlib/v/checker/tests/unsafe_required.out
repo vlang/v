@@ -1,48 +1,20 @@
-vlib/v/checker/tests/unsafe_required.vv:4:3: error: pointer arithmetic is only allowed in `unsafe` blocks 
-    2 |     mut v := 5
-    3 |     mut p := &v
-    4 |     p++
-      |      ~~
-    5 |     p += 2
-    6 |     _ := v
-vlib/v/checker/tests/unsafe_required.vv:5:4: error: pointer arithmetic is only allowed in `unsafe` blocks 
-    3 |     mut p := &v
-    4 |     p++
-    5 |     p += 2
-      |       ~~
-    6 |     _ := v
-    7 | }
-vlib/v/checker/tests/unsafe_required.vv:11:14: error: pointer arithmetic is only allowed in `unsafe` blocks 
-    9 | fn test_ptr_infix() {
-   10 |     v := 4
-   11 |     mut q := &v - 1
-      |              ^
-   12 |     q = q + 3
-   13 |     _ := q
-vlib/v/checker/tests/unsafe_required.vv:12:9: error: pointer arithmetic is only allowed in `unsafe` blocks 
-   10 |     v := 4
-   11 |     mut q := &v - 1
-   12 |     q = q + 3
-      |         ^
-   13 |     _ := q
-   14 |     _ := v
-vlib/v/checker/tests/unsafe_required.vv:24:7: error: method `S1.f` must be called from an `unsafe` block 
-   22 | fn test_funcs() {
-   23 |     s := S1{}
-   24 |     s.f()
+vlib/v/checker/tests/unsafe_required.vv:8:7: error: method `S1.f` must be called from an `unsafe` block
+    6 | fn test_funcs() {
+    7 |     s := S1{}
+    8 |     s.f()
       |       ~~~
-   25 | }
-   26 |
-vlib/v/checker/tests/unsafe_required.vv:32:7: error: pointer indexing is only allowed in `unsafe` blocks 
-   30 |     _ = b[0]
-   31 |     c := &b
-   32 |     _ = c[0]
+    9 | }
+   10 |
+vlib/v/checker/tests/unsafe_required.vv:16:7: error: pointer indexing is only allowed in `unsafe` blocks
+   14 |     _ = b[0] // OK
+   15 |     c := &b
+   16 |     _ = c[0]
       |          ~~~
-   33 | 
-   34 |     v := 4
-vlib/v/checker/tests/unsafe_required.vv:36:10: error: pointer indexing is only allowed in `unsafe` blocks 
-   34 |     v := 4
-   35 |     p := &v
-   36 |     _ = p[0]
+   17 | 
+   18 |     v := 4
+vlib/v/checker/tests/unsafe_required.vv:20:10: error: pointer indexing is only allowed in `unsafe` blocks
+   18 |     v := 4
+   19 |     p := &v
+   20 |     _ = p[0]
       |          ~~~
-   37 | }
+   21 | }
