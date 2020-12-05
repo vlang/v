@@ -102,7 +102,6 @@ fn eline(file_path string, lnumber int, column int, message string) string {
 	return btext('$file_path:${lnumber + 1}:${column + 1}:') + btext(rtext(' error: $message'))
 }
 
-//
 const (
 	default_command = 'compile'
 )
@@ -190,16 +189,23 @@ fn (mut f MDFile) check_examples() (int, int) {
 		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
-		vcontent := e.text.join('\n')
+		vcontent := e.text.join('\n') + '\n'
 		os.write_file(vfile, vcontent) or { panic(err) }
 		mut acommands := e.command.split(' ')
+		nofmt := 'nofmt' in acommands
 		for command in acommands {
 			match command {
 				'compile' {
 					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
-					if res != 0 {
-						eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
+					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false
 						errors++
@@ -209,8 +215,14 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'live' {
 					res := os.system('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
-					if res != 0 {
-						eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
+					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, 'example is not formatted'))
+						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false
 						errors++
@@ -232,8 +244,14 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'oksyntax' {
 					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
-					if res != 0 {
-						eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
+					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
+					if res != 0 || fmt_res != 0 {
+						if res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
+						}
+						if fmt_res != 0 {
+							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example is not formatted'))
+						}
 						eprintln(vcontent)
 						should_cleanup_vfile = false
 						errors++
@@ -252,6 +270,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 					}
 					oks++
 				}
+				'nofmt' {}
 				else {
 					eprintln(eline(f.path, e.sline, 0, 'unrecognized command: "$command", use one of: wip/ignore/compile/failcompile/oksyntax/badsyntax'))
 					should_cleanup_vfile = false

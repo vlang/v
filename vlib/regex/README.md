@@ -160,20 +160,17 @@ that is an `[]int` inside the `RE` struct.
 **example:**
 
 ```v oksyntax
-text := "cpaz cpapaz cpapapaz"
-query:= r"(c(pa)+z ?)+"
+text := 'cpaz cpapaz cpapapaz'
+query := r'(c(pa)+z ?)+'
 mut re := regex.regex_opt(query) or { panic(err) }
-
 println(re.get_query())
 // #0(c#1(pa)+z ?)+  // #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
-
 start, end := re.match_string(text)
 // [start=0, end=20]  match => [cpaz cpapaz cpapapaz]
-
 mut gi := 0
 for gi < re.groups.len {
 	if re.groups[gi] >= 0 {
-		println("${gi/2} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
+		println('${gi / 2} :[${text[re.groups[gi]..re.groups[gi + 1]]}]')
 	}
 	gi += 2
 }
@@ -260,45 +257,42 @@ If the space ends no error is raised, further records will not be saved.
 ```v oksyntax
 fn example2() {
 	test_regex()
-
-	text := "tst: 01,23,45 ,56, 78"
-	query:= r".*:(\s*\d+[\s,]*)+"
-
+	text := 'tst: 01,23,45 ,56, 78'
+	query := r'.*:(\s*\d+[\s,]*)+'
 	mut re := new() or { panic(err) }
-	//re.debug = 2
-	re.group_csave = [-1].repeat(3*20+1)  // we expect max 20 records
-
-	re.compile_opt(query) or { println(err) return }
-
-    q_str := re.get_query()
-    println("Query: $q_str")
-
-    start, end := re.match_string(text)
-    if start < 0 {
-        println("ERROR : ${re.get_parse_error_string(start)}, $start")
-    } else {
-        println("found in [$start, $end] => [${text[start..end]}]")
-    }
-
-    // groups capture
-    mut gi := 0
-    for gi < re.groups.len {
-        if re.groups[gi] >= 0 {
-            println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
-        }
-        gi += 2
-    }
-
-    // continuous saving
-    gi = 0
-    println("num: ${re.group_csave[0]}")
-    for gi < re.group_csave[0] {
-        id := re.group_csave[1+gi*3]
-        st := re.group_csave[1+gi*3+1]
-        en := re.group_csave[1+gi*3+2]
-        println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
-        gi++
-    }
+	// re.debug = 2
+	re.group_csave = [-1].repeat(3 * 20 + 1) // we expect max 20 records
+	re.compile_opt(query) or {
+		println(err)
+		return
+	}
+	q_str := re.get_query()
+	println('Query: $q_str')
+	start, end := re.match_string(text)
+	if start < 0 {
+		println('ERROR : ${re.get_parse_error_string(start)}, $start')
+	} else {
+		println('found in [$start, $end] => [${text[start..end]}]')
+	}
+	// groups capture
+	mut gi := 0
+	for gi < re.groups.len {
+		if re.groups[gi] >= 0 {
+			println('${gi / 2} ${re.groups[gi]},${re.groups[gi + 1]} :[${text[re.groups[gi]..re.groups[gi +
+				1]]}]')
+		}
+		gi += 2
+	}
+	// continuous saving
+	gi = 0
+	println('num: ${re.group_csave[0]}')
+	for gi < re.group_csave[0] {
+		id := re.group_csave[1 + gi * 3]
+		st := re.group_csave[1 + gi * 3 + 1]
+		en := re.group_csave[1 + gi * 3 + 2]
+		println('cg id: $id [$st, $en] => [${text[st..en]}]')
+		gi++
+	}
 }
 ```
 
@@ -333,64 +327,61 @@ example:
 
 ```v ignore
 import regex
+
 fn main() {
 	test_regex()
-
-	text := "http://www.ciao.mondo/hello/pippo12_/pera.html"
-	query:= r"(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+"
-
+	text := 'http://www.ciao.mondo/hello/pippo12_/pera.html'
+	query := r'(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+'
 	mut re := new()
 	re.debug = 2
-
 	// must provide an array of the right size if want the continuos saving of the groups
-	re.group_csave = [-1].repeat(3*20+1)
-
-	re.compile_opt(query) or { println(err) return }
-
-    q_str := re.get_query()
-    println("O.Query: $query")
-    println("Query  : $q_str")
-
-    re.debug = 0
-    start, end := re.match_string(text)
-    if start < 0 {
-        err_str := re.get_parse_error_string(start)
-        println("ERROR : $err_str, $start")
-    } else {
-        text1 := text[start..end]
-        println("found in [$start, $end] => [$text1]")
-    }
-
-    // groups
-    mut gi := 0
-    for gi < re.groups.len {
-        if re.groups[gi] >= 0 {
-            println("${gi/2} ${re.groups[gi]},${re.groups[gi+1]} :[${text[re.groups[gi]..re.groups[gi+1]]}]")
-        }
-        gi += 2
-    }
-    // continuous saving
-    gi = 0
-    println("num of group item saved: ${re.group_csave[0]}")
-    for gi < re.group_csave[0] {
-        id := re.group_csave[1+gi*3]
-        st := re.group_csave[1+gi*3+1]
-        en := re.group_csave[1+gi*3+2]
-        println("cg id: ${id} [${st}, ${en}] => [${text[st..en]}]")
-        gi++
-    }
-    println("raw array: ${re.group_csave[0..gi*3+2-1]}")
-
-    // named capturing groups
-    println("named capturing groups:")
-    for g_name in re.group_map.keys() {
-        s,e := re.get_group(g_name)
-        if s >= 0 && e > s {
-            println("'${g_name}':[$s, $e] => '${text[s..e]}'")
-        } else {
-            println("Group [${g_name}] doesn't exist.")
-        }
-    }
+	re.group_csave = [-1].repeat(3 * 20 + 1)
+	re.compile_opt(query) or {
+		println(err)
+		return
+	}
+	q_str := re.get_query()
+	println('O.Query: $query')
+	println('Query  : $q_str')
+	re.debug = 0
+	start, end := re.match_string(text)
+	if start < 0 {
+		err_str := re.get_parse_error_string(start)
+		println('ERROR : $err_str, $start')
+	} else {
+		text1 := text[start..end]
+		println('found in [$start, $end] => [$text1]')
+	}
+	// groups
+	mut gi := 0
+	for gi < re.groups.len {
+		if re.groups[gi] >= 0 {
+			println('${gi / 2} ${re.groups[gi]},${re.groups[gi + 1]} :[${text[re.groups[gi]..re.groups[gi +
+				1]]}]')
+		}
+		gi += 2
+	}
+	// continuous saving
+	gi = 0
+	println('num of group item saved: ${re.group_csave[0]}')
+	for gi < re.group_csave[0] {
+		id := re.group_csave[1 + gi * 3]
+		st := re.group_csave[1 + gi * 3 + 1]
+		en := re.group_csave[1 + gi * 3 + 2]
+		println('cg id: $id [$st, $en] => [${text[st..en]}]')
+		gi++
+	}
+	println('raw array: ${re.group_csave[0..gi * 3 + 2 - 1]}')
+	// named capturing groups
+	println('named capturing groups:')
+	for g_name in re.group_map.keys() {
+		s, e := re.get_group(g_name)
+		if s >= 0 && e > s {
+			println("'$g_name':[$s, $e] => '${text[s..e]}'")
+		} else {
+			println("Group [$g_name] doesn't exist.")
+		}
+	}
 }
 ```
 
@@ -530,17 +521,14 @@ This module has few small utilities to help the writing of regex expressions.
 the following example code show how to visualize the syntax errors in the compilation phase:
 
 ```v oksyntax
-query:= r"ciao da ab[ab-]"  // there is an error, a range not closed!!
+query := r'ciao da ab[ab-]'
+// there is an error, a range not closed!!
 mut re := new()
-
 re.compile_opt(query) or { println(err) }
-
 // output!!
-
-//query: ciao da ab[ab-]
-//err  : ----------^
-//ERROR: ERR_SYNTAX_ERROR
-
+// query: ciao da ab[ab-]
+// err  : ----------^
+// ERROR: ERR_SYNTAX_ERROR
 ```
 
 ### **Compiled code**
@@ -636,12 +624,12 @@ it is possible to  provide an alternative output setting a custom output functio
 ```v oksyntax
 // custom print function, the input will be the regex debug string
 fn custom_print(txt string) {
-	println("my log: $txt")
+	println('my log: $txt')
 }
 
 mut re := new()
-re.log_func = custom_print  // every debug output from now will call this function
-
+re.log_func = custom_print
+// every debug output from now will call this function
 ```
 
 ## Example code
@@ -652,44 +640,45 @@ Here there is a simple code to perform some basically match of strings
 struct TestObj {
 	source string // source string to parse
 	query  string // regex query string
-	s int         // expected match start index
-	e int         // expected match end index
+	s      int // expected match start index
+	e      int // expected match end index
 }
+
 const (
-tests = [
-	TestObj{"this is a good.",r"this (\w+) a",0,9},
-	TestObj{"this,these,those. over",r"(th[eio]se?[,. ])+",0,17},
-	TestObj{"test1@post.pip.com, pera",r"[\w]+@([\w]+\.)+\w+",0,18},
-	TestObj{"cpapaz ole. pippo,",r".*c.+ole.*pi",0,14},
-	TestObj{"adce aabe",r"(a(ab)+)|(a(dc)+)e",0,4},
-]
+	tests = [
+		TestObj{'this is a good.', r'this (\w+) a', 0, 9},
+		TestObj{'this,these,those. over', r'(th[eio]se?[,. ])+', 0, 17},
+		TestObj{'test1@post.pip.com, pera', r'[\w]+@([\w]+\.)+\w+', 0, 18},
+		TestObj{'cpapaz ole. pippo,', r'.*c.+ole.*pi', 0, 14},
+		TestObj{'adce aabe', r'(a(ab)+)|(a(dc)+)e', 0, 4},
+	]
 )
 
 fn example() {
-	for c,tst in tests {
+	for c, tst in tests {
 		mut re := regex.new()
-		re.compile_opt(tst.query) or { println(err) continue }
-
-        // print the query parsed with the groups ids
-        re.debug = 1 // set debug on at minimum level
-        println("#${c:2d} query parsed: ${re.get_query()}")
-        re.debug = 0
-
-        // do the match
-        start, end := re.match_string(tst.source)
-        if start >= 0 && end > start {
-            println("#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]")
-        }
-
-        // print the groups
-        mut gi := 0
-        for gi < re.groups.len {
-            if re.groups[gi] >= 0 {
-                println("group ${gi/2:2d} :[${tst.source[re.groups[gi]..re.groups[gi+1]]}]")
-            }
-            gi += 2
-        }
-        println("")
+		re.compile_opt(tst.query) or {
+			println(err)
+			continue
+		}
+		// print the query parsed with the groups ids
+		re.debug = 1 // set debug on at minimum level
+		println('#${c:2d} query parsed: $re.get_query()')
+		re.debug = 0
+		// do the match
+		start, end := re.match_string(tst.source)
+		if start >= 0 && end > start {
+			println('#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]')
+		}
+		// print the groups
+		mut gi := 0
+		for gi < re.groups.len {
+			if re.groups[gi] >= 0 {
+				println('group ${gi / 2:2d} :[${tst.source[re.groups[gi]..re.groups[gi + 1]]}]')
+			}
+			gi += 2
+		}
+		println('')
 	}
 }
 

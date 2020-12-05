@@ -4,7 +4,7 @@ A V module for designing terminal UI apps
 
 #### Quickstart
 
-```v
+```v nofmt
 import term.ui as tui
 
 struct App {

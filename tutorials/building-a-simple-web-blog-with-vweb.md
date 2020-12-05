@@ -75,8 +75,11 @@ pub fn (mut app App) index() vweb.Result {
 	return vweb.Result{}
 }
 
-pub fn (app &App) init() {}
-pub fn (app &App) init_once() {}
+pub fn (app &App) init() {
+}
+
+pub fn (app &App) init_once() {
+}
 ```
 
 Run it with
@@ -103,6 +106,8 @@ no routing rules either:
 
 ```v oksyntax
 import vweb
+import time
+
 fn (mut app App) time() vweb.Result {
 	app.vweb.text(time.now().format())
 	return vweb.Result{}
@@ -341,10 +346,11 @@ Create `new.html`:
 
 ```v oksyntax
 import vweb
+
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.vweb.form['title']
 	text := app.vweb.form['text']
-	if title == '' || text == ''  {
+	if title == '' || text == '' {
 		app.vweb.text('Empty text/title')
 		return vweb.Result{}
 	}
@@ -380,6 +386,8 @@ in V is very simple:
 
 ```v oksyntax
 import vweb
+import json
+
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
 	app.vweb.json(json.encode(articles))
