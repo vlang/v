@@ -3,7 +3,7 @@ name: Build binary artifacts
 on:
   push:
      tags:
-       - weekly.**
+       - latest.**
        - 0.**
 
 jobs:
