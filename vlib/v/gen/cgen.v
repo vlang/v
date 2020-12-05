@@ -2924,11 +2924,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		info := left_sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
-			g.write('_PUSH_MANY(&')
+			g.write('_PUSH_MANY(')
+			mut expected_push_many_atype := left_type
+			if !expected_push_many_atype.is_ptr() {
+				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &
+				g.write('&')
+			} else {
+				expected_push_many_atype = expected_push_many_atype.deref()
+			}
 			g.expr(node.left)
 			g.write(', (')
 			g.expr_with_cast(node.right, node.right_type, left_type)
-			styp := g.typ(left_type)
+			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp, $styp)')
 		} else {
 			// push a single element
