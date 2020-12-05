@@ -111,7 +111,7 @@ $enc_fn_dec {
 }
 
 [inline]
-fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc, dec strings.Builder) {
+fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc strings.Builder, mut dec strings.Builder) {
 	info := type_info as table.Struct
 	for field in info.fields {
 		if field.attrs.contains('skip') {
