@@ -185,7 +185,8 @@ for gi < re.groups.len {
 **note:** *to show the `group id number` in the result of the `get_query()`*
 *the flag `debug` of the RE object must be `1` or `2`*
 
-In order to simplify the use of the captured groups it possible to use the utility function: `get_group_list`.
+In order to simplify the use of the captured groups it possible to use the 
+utility function: `get_group_list`.
 
 This function return a list of groups using this support struct:
 
@@ -330,7 +331,7 @@ Have a look at the example for the use of them.
 
 example:
 
-```v oksyntax
+```v ignore
 import regex
 fn main() {
 	test_regex()
@@ -416,7 +417,8 @@ named capturing groups:
 'token':[42, 46] => 'html'
 ```
 
-In order to simplify the use of the named groups it possible to use names map in the `re` struct using the function `re.get_group`.
+In order to simplify the use of the named groups it possible to use names map in the `re`
+struct using the function `re.get_group`.
 
 Here a more complex example of use:
 
