@@ -2217,28 +2217,27 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		// Single side check
 		match assign_stmt.op {
 			.assign {} // No need to do single side check for =. But here put it first for speed.
-			.plus_assign {
-				if !left_sym.is_number() && left_type != table.string_type && !left_sym.is_pointer() {
-					c.error('operator += not defined on left operand type `$left_sym.name`',
-						left.position())
-				} else if !right_sym.is_number() && right_type != table.string_type && !right_sym.is_pointer() {
-					c.error('operator += not defined on right operand type `$right_sym.name`',
-						right.position())
-				}
-				if right is ast.IntegerLiteral && right.str().int() == 1 {
-					c.error('use `++` instead of `+= 1`', assign_stmt.pos)
-				}
-			}
-			.minus_assign {
-				if !left_sym.is_number() && !left_sym.is_pointer() {
-					c.error('operator -= not defined on left operand type `$left_sym.name`',
+			.plus_assign, .minus_assign {
+				if left_type == table.string_type {
+					if assign_stmt.op != .plus_assign {
+						c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
+							left.position())
+					}
+					if right_type != table.string_type {
+						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
+							right.position())
+					}
+				} else if !left_sym.is_number() && !left_sym.is_pointer() {
+					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() && !right_sym.is_pointer() {
-					c.error('operator -= not defined on right operand type `$right_sym.name`',
+					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
-				}
-				if right is ast.IntegerLiteral && right.str().int() == 1 {
-					c.error('use `--` instead of `-= 1`', assign_stmt.pos)
+				} else if right is ast.IntegerLiteral {
+					if right.val == '1' {
+						op := if assign_stmt.op == .plus_assign { token.Kind.inc } else { token.Kind.dec }
+						c.error('use `$op` instead of `$assign_stmt.op 1`', assign_stmt.pos)
+					}
 				}
 			}
 			.mult_assign, .div_assign {

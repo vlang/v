@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_type_err_i.vv:3:9: error: cannot assign to `foo`: expected `f64`, not `string`
+vlib/v/checker/tests/assign_expr_type_err_i.vv:3:9: error: invalid right operand: f64 += string
     1 | fn main() {
     2 |     mut foo := 1.5
     3 |     foo += 'hello' 
