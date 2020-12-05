@@ -865,28 +865,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.lock_expr(node)
 		}
 		ast.MapInit {
-			if node.keys.len == 0 {
-				f.write(f.table.type_to_str(node.typ))
-				f.write('{}')
-				return
-			}
-			f.writeln('{')
-			f.indent++
-			mut maxfieldlen := 0
-			for _, key in node.keys {
-				if key.str().len > maxfieldlen {
-					maxfieldlen = key.str().len
-				}
-			}
-			for i, key in node.keys {
-				f.expr(key)
-				f.write(': ')
-				f.write(strings.repeat(` `, maxfieldlen - key.str().len))
-				f.expr(node.vals[i])
-				f.writeln('')
-			}
-			f.indent--
-			f.write('}')
+			f.map_init(node)
 		}
 		ast.MatchExpr {
 			f.match_expr(node)
@@ -1809,6 +1788,31 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('{}')
 		}
 	}
+}
+
+pub fn (mut f Fmt) map_init(it ast.MapInit) {
+	if it.keys.len == 0 {
+		f.write(f.table.type_to_str(it.typ))
+		f.write('{}')
+		return
+	}
+	f.writeln('{')
+	f.indent++
+	mut max_field_len := 0
+	for _, key in it.keys {
+		if key.str().len > max_field_len {
+			max_field_len = key.str().len
+		}
+	}
+	for i, key in it.keys {
+		f.expr(key)
+		f.write(': ')
+		f.write(strings.repeat(` `, max_field_len - key.str().len))
+		f.expr(it.vals[i])
+		f.writeln('')
+	}
+	f.indent--
+	f.write('}')
 }
 
 pub fn (mut f Fmt) struct_init(it ast.StructInit) {
