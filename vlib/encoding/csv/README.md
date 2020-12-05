@@ -7,9 +7,7 @@ data := 'x,y\na,b,c\n'
 mut parser := csv.new_reader(data)
 // read each line
 for {
-	items := parser.read() or {
-		break
-	}
+	items := parser.read() or { break }
 	println(items)
 }
 ```

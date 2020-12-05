@@ -1228,7 +1228,7 @@ It's also possible to define custom default values.
 
 ```v
 struct Foo {
-    n int [required]
+	n int [required]
 }
 ```
 
@@ -1245,14 +1245,20 @@ _ = Foo{}
 ### Short struct literal syntax
 
 ```v
-struct Point{
-    x int
-    y int
+struct Point {
+	x int
+	y int
 }
-mut p := Point{x: 10, y: 20}
 
+mut p := Point{
+	x: 10
+	y: 20
+}
 // you can omit the struct name when it's already known
-p = {x: 30, y: 4}
+p = {
+	x: 30
+	y: 4
+}
 assert p.y == 4
 ```
 
@@ -1266,27 +1272,27 @@ literal syntax can be used instead:
 
 ```v
 struct ButtonConfig {
-    text        string
-    is_disabled bool
-    width       int = 70
-    height      int = 20
+	text        string
+	is_disabled bool
+	width       int = 70
+	height      int = 20
 }
 
 struct Button {
-    text   string
-    width  int
-    height int
+	text   string
+	width  int
+	height int
 }
 
 fn new_button(c ButtonConfig) &Button {
-    return &Button{
-        width: c.width
-        height: c.height
-        text: c.text
-    }
+	return &Button{
+		width: c.width
+		height: c.height
+		text: c.text
+	}
 }
 
-button := new_button(text:'Click me', width:100)
+button := new_button(text: 'Click me', width: 100)
 // the height is unset, so it's the default value
 assert button.height == 20
 ```
@@ -1305,7 +1311,7 @@ Struct fields are private and immutable by default (making structs immutable as 
 Their access modifiers can be changed with
 `pub` and `mut`. In total, there are 5 possible options:
 
-```v
+```v nofmt
 struct Foo {
     a int   // private immutable (default)
 mut:
@@ -1347,7 +1353,7 @@ no need in getters/setters or properties.
 
 ### Methods
 
-```v
+```v nofmt
 struct User {
     age int
 }
@@ -1390,7 +1396,7 @@ intended for low-level applications like kernels and drivers.
 
 It is possible to modify function arguments by using the keyword `mut`:
 
-```v
+```v nofmt
 struct User {
 	name string
 mut:
@@ -1412,14 +1418,15 @@ so `register()` can change the user object. The same works with non-receiver arg
 
 ```v
 fn multiply_by_2(mut arr []int) {
-    for i in 0..arr.len {
-        arr[i] *= 2
-    }
+	for i in 0 .. arr.len {
+		arr[i] *= 2
+	}
 }
 
 mut nums := [1, 2, 3]
 multiply_by_2(mut nums)
-println(nums) // "[2, 4, 6]"
+println(nums)
+// "[2, 4, 6]"
 ```
 
 Note, that you have to add `mut` before `nums` when calling this function. This makes
@@ -1438,12 +1445,23 @@ instead of `register(mut user)`.
 V makes it easy to return a modified version of an object:
 
 ```v
-struct User{ name string  age int  is_registered bool }
-fn register(u User) User {
-    return { u | is_registered: true }
+struct User {
+	name          string
+	age           int
+	is_registered bool
 }
 
-mut user := User{name: 'abc' age: 23}
+fn register(u User) User {
+	return {
+		u |
+		is_registered: true
+	}
+}
+
+mut user := User{
+	name: 'abc'
+	age: 23
+}
 user = register(user)
 println(user)
 ```
@@ -1452,39 +1470,39 @@ println(user)
 
 ```v
 fn sqr(n int) int {
-    return n * n
+	return n * n
 }
 
-fn run(value int, op fn(int) int) int {
-    return op(value)
+fn run(value int, op fn (int) int) int {
+	return op(value)
 }
 
-fn main()  {
-    println(run(5, sqr)) // "25"
-
-    // Anonymous functions can be declared inside other functions:
-    double_fn := fn(n int) int {
-        return n + n
-    }
-    println(run(5, double_fn)) // "10"
-
-    // Functions can be passed around without assigning them to variables:
-    res := run(5, fn(n int) int {
-        return n + n
-    })
+fn main() {
+	println(run(5, sqr)) // "25"
+	// Anonymous functions can be declared inside other functions:
+	double_fn := fn (n int) int {
+		return n + n
+	}
+	println(run(5, double_fn)) // "10"
+	// Functions can be passed around without assigning them to variables:
+	res := run(5, fn (n int) int {
+		return n + n
+	})
 }
 ```
 
 ## References
 
 ```v
-struct Foo{}
+struct Foo {
+}
+
 fn (foo Foo) bar_method() {
-    // ...
+	// ...
 }
 
 fn bar_function(foo Foo) {
-    // ...
+	// ...
 }
 ```
 
@@ -1499,10 +1517,12 @@ You can ensure that the struct is always passed by reference by
 adding `&`:
 
 ```v
-struct Foo{ abc int }
+struct Foo {
+	abc int
+}
 
 fn (foo &Foo) bar() {
-    println(foo.abc)
+	println(foo.abc)
 }
 ```
 
@@ -1524,8 +1544,8 @@ struct Node<T> {
 
 ```v
 const (
-    pi    = 3.14
-    world = '世界'
+	pi    = 3.14
+	world = '世界'
 )
 
 println(pi)
@@ -1541,19 +1561,28 @@ V constants are more flexible than in most languages. You can assign more comple
 
 ```v
 struct Color {
-        r int
-        g int
-        b int
+	r int
+	g int
+	b int
 }
 
-fn rgb(r, g, b int) Color { return Color{r: r, g: g, b: b} }
+fn rgb(r int, g int, b int) Color {
+	return Color{
+		r: r
+		g: g
+		b: b
+	}
+}
 
 const (
-    numbers = [1, 2, 3]
-
-    red  = Color{r: 255, g: 0, b: 0}
-    // evaluate function call at compile-time
-    blue = rgb(0, 0, 255)
+	numbers = [1, 2, 3]
+	red     = Color{
+		r: 255
+		g: 0
+		b: 0
+	}
+	// evaluate function call at compile-time
+	blue    = rgb(0, 0, 255)
 )
 
 println(numbers)
@@ -1580,7 +1609,7 @@ println('Top cities: $top_cities.filter(.usa)')
 `println` is a simple yet powerful builtin function. It can print anything:
 strings, numbers, arrays, maps, structs.
 
-```v
+```v nofmt
 struct User{ name string age int }
 println(1) // "1"
 println('hi') // "hi"
@@ -1593,14 +1622,20 @@ If you want to define a custom print value for your type, simply define a
 
 ```v
 struct Color {
-    r int
-    g int
-    b int
+	r int
+	g int
+	b int
 }
 
-pub fn (c Color) str() string { return '{$c.r, $c.g, $c.b}' }
+pub fn (c Color) str() string {
+	return '{$c.r, $c.g, $c.b}'
+}
 
-red := Color{r: 255, g: 0, b: 0}
+red := Color{
+	r: 255
+	g: 0
+	b: 0
+}
 println(red)
 ```
 
@@ -1663,7 +1698,7 @@ you can use a module `init` function:
 
 ```v
 fn init() {
-    // your setup code here ...
+	// your setup code here ...
 }
 ```
 
@@ -1676,32 +1711,31 @@ particularly useful for initializing a C library.
 
 ```v
 struct Dog {
-    breed string
+	breed string
 }
 
 struct Cat {
 }
 
 fn (d Dog) speak() string {
-    return 'woof'
+	return 'woof'
 }
 
 fn (c Cat) speak() string {
-    return 'meow'
+	return 'meow'
 }
 
 interface Speaker {
-    speak() string
+	speak() string
 }
 
 dog := Dog{'Leonberger'}
 cat := Cat{}
-
 mut arr := []Speaker{}
 arr << dog
 arr << cat
 for item in arr {
-    item.speak()
+	item.speak()
 }
 ```
 
@@ -1985,9 +2019,7 @@ any further.
 The body of `f` is essentially a condensed version of:
 
 ```v ignore
-    resp := http.get(url) or {
-        return error(err)
-    }
+    resp := http.get(url) or { return error(err) }
     return resp.text
 ```
 
@@ -1995,9 +2027,7 @@ The body of `f` is essentially a condensed version of:
 The second method is to break from execution early:
 
 ```v oksyntax
-user := repo.find_user_by_id(7) or {
-	return
-}
+user := repo.find_user_by_id(7) or { return }
 ```
 
 Here, you can either call `panic()` or `exit()`, which will stop the execution of the
@@ -2137,7 +2167,6 @@ fn main() {
 // task 1 end
 // task 2 end
 // done
-
 ```
 
 ### Channels
@@ -2175,7 +2204,7 @@ fn main() {
 Objects can be pushed to channels using the arrow operator. The same operator can be used to
 pop objects from the other end:
 
-```v
+```v nofmt
 import sync
 
 mut ch := chan int{}
@@ -2184,7 +2213,6 @@ n := 5
 x := 7.3
 ch <- n    // push
 ch2 <- x
-
 mut y := f64(0.0)
 m := <-ch  // pop creating new variable
 y = <-ch2  // pop into existing variable

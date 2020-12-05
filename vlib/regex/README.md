@@ -162,9 +162,7 @@ that is an `[]int` inside the `RE` struct.
 ```v oksyntax
 text := 'cpaz cpapaz cpapapaz'
 query := r'(c(pa)+z ?)+'
-mut re := regex.regex_opt(query) or {
-	panic(err)
-}
+mut re := regex.regex_opt(query) or { panic(err) }
 println(re.get_query())
 // #0(c#1(pa)+z ?)+  // #0 and #1 are the ids of the groups, are shown if re.debug is 1 or 2
 start, end := re.match_string(text)
@@ -211,9 +209,7 @@ fn example2() {
 	test_regex()
 	text := 'tst: 01,23,45 ,56, 78'
 	query := r'.*:(\s*\d+[\s,]*)+'
-	mut re := new() or {
-		panic(err)
-	}
+	mut re := new() or { panic(err) }
 	// re.debug = 2
 	re.group_csave = [-1].repeat(3 * 20 + 1) // we expect max 20 records
 	re.compile_opt(query) or {
@@ -440,9 +436,7 @@ the following example code show how to visualize the syntax errors in the compil
 query := r'ciao da ab[ab-]'
 // there is an error, a range not closed!!
 mut re := new()
-re.compile_opt(query) or {
-	println(err)
-}
+re.compile_opt(query) or { println(err) }
 // output!!
 // query: ciao da ab[ab-]
 // err  : ----------^

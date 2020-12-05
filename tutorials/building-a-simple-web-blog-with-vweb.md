@@ -233,9 +233,7 @@ Modify the `init_once()` method we created earlier to connect to a database:
 
 ```v oksyntax
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') or {
-		panic(err)
-	}
+	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
 	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
 	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
