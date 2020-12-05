@@ -258,17 +258,28 @@ fn free_before_break() {
 		q := [1, 2, 3]
 		break
 	}
-	/*
 	for {
-		qq := [1, 2, 3]
+		aa := [1, 2, 3]
 		if true {
 			// breaking should free only vars in the closest for loop's scope
 			// `qq`, not `s`
 			break
 		}
+		// nested 1
+		for {
+			bb := [4, 5, 6]
+			if true {
+				break
+			}
+			// nested 2
+			for {
+				cc := [7, 8, 9]
+				if true {
+					break
+				}
+			}
+		}
 	}
-	*/
-	/*
 	mut i := 0
 	for {
 		i++
@@ -280,7 +291,6 @@ fn free_before_break() {
 			continue
 		}
 	}
-	*/
 }
 
 struct User {

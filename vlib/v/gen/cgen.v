@@ -858,7 +858,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// continue or break
 				if g.pref.autofree && !g.is_builtin_mod {
 					g.writeln('// free before continue/break')
-					g.autofree_scope_vars(node.pos.pos - 1, node.pos.line_nr, false)
+					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
+						node.parent_pos)
 				}
 				g.writeln('$node.kind;')
 			}
@@ -2061,8 +2062,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-// fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
+	g.autofree_scope_vars_stop(pos, line_nr, free_parent_scopes, -1)
+}
+
+fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
@@ -2078,12 +2082,12 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 		return
 	}
 	g.writeln('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
-	// g.autofree_scope_vars2(scope, scope.end_pos)
-	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
+	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes,
+		stop_pos)
 }
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
 	if isnil(scope) {
 		return
 	}
@@ -2129,9 +2133,10 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// }
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
-	if free_parent_scopes && !isnil(scope.parent) {
+	if free_parent_scopes && !isnil(scope.parent) &&
+		(stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
 		g.writeln('// af parent scope:')
-		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true)
+		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
 	}
 }
 
