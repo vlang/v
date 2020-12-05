@@ -60,7 +60,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	branch_parent_pos int  // used in BranchStmt (continue/break) autofree stop position
+	branch_parent_pos int // used in BranchStmt (continue/break) autofree stop position
 }
 
 // for tests
