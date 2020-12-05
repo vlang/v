@@ -1698,7 +1698,8 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 		match last_stmt {
 			ast.ExprStmt {
 				last_stmt_typ := c.expr(last_stmt.expr)
-				type_fits := c.check_types(last_stmt_typ, ret_type)
+				type_fits := c.check_types(last_stmt_typ, ret_type) && last_stmt_typ.nr_muls() ==
+					ret_type.nr_muls()
 				is_panic_or_exit := is_expr_panic_or_exit(last_stmt.expr)
 				if type_fits || is_panic_or_exit {
 					return
