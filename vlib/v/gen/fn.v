@@ -15,6 +15,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		// || it.no_body {
 		return
 	}
+	g.returned_var_name = ''
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
@@ -422,7 +423,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
 		g.write('/*rec*/*')
 	}
-	if node.free_receiver && !g.inside_lambda {
+	if node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
 		// The receiver expression needs to be freed, use the temp var.
 		fn_name := node.name.replace('.', '_')
 		arg_name := '_arg_expr_${fn_name}_0_$node.pos.pos'
@@ -651,7 +652,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		} else {
 			scope.register(ast.Var{
 				name: t
-				typ: table.string_type // is_arg: true // TODO hack so that it's not freed twice when out of scope. it's probably better to use one model
+				typ: table.string_type
 				is_autofree_tmp: true
 			})
 			s = 'string $t = '
@@ -661,10 +662,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 		// g.writeln(';// new af pre')
 		s += ';// new af2 pre'
 		g.strs_to_free0 << s
-		// Now free the tmp arg vars right after the function call
-		// g.strs_to_free << t
-		// g.nr_vars_to_free++
-		// g.strs_to_free << 'string_free(&$t);'
+		// This tmp arg var will be freed with the rest of the vars at the end of the scope.
 	}
 }
 
@@ -737,7 +735,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
-			!g.inside_const
+			!g.inside_const && !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false
 		// some c fn definitions dont have args (cfns.v) or are not updated in checker

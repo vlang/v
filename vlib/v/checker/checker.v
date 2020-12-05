@@ -273,9 +273,7 @@ fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos to
 }
 
 fn stripped_name(name string) string {
-	idx := name.last_index('.') or {
-		-1
-	}
+	idx := name.last_index('.') or { -1 }
 	return name[(idx + 1)..]
 }
 
@@ -348,9 +346,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
-	mut struct_sym := c.table.find_type(decl.name) or {
-		table.TypeSymbol{}
-	}
+	mut struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
 	if mut struct_sym.info is table.Struct {
 		for i, field in decl.fields {
 			if decl.language == .v && !field.is_embed {
@@ -998,8 +994,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// No automatic lock for array slicing (yet(?))
 					explicit_lock_needed = true
 				}
-			} else {
-				c.error('cannot use function call as mut', expr.pos)
 			}
 		}
 		ast.ArrayInit {
@@ -1637,9 +1631,7 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 	for imethod in inter_sym.methods {
 		if method := typ_sym.find_method(imethod.name) {
 			if !imethod.is_same_method_as(method) {
-				sig := c.table.fn_signature(imethod, {
-					skip_receiver: true
-				})
+				sig := c.table.fn_signature(imethod, skip_receiver: true)
 				c.error('`$styp` incorrectly implements method `$imethod.name` of interface `$inter_sym.source_name`, expected `$sig`',
 					pos)
 				return false
@@ -2323,7 +2315,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		}
 		sym := c.table.get_type_symbol(array_init.elem_type)
 		if array_init.has_default {
-			c.expr(array_init.default_expr)
+			default_typ := c.expr(array_init.default_expr)
+			c.check_expected(default_typ, array_init.elem_type) or {
+				c.error(err, array_init.default_expr.position())
+			}
 		}
 		if sym.kind == .sum_type {
 			if array_init.has_len && !array_init.has_default {
@@ -2737,9 +2732,7 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 			}
 		}
 		// println('adding flag "$flag"')
-		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or {
-			c.error(err, node.pos)
-		}
+		c.table.parse_cflag(flag, c.mod, c.pref.compile_defines_all) or { c.error(err, node.pos) }
 	} else {
 		if node.kind != 'define' {
 			c.error('expected `#define`, `#flag`, `#include` or `#pkgconfig` not $node.val',
@@ -2849,9 +2842,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.Assoc {
 			scope := c.file.scope.innermost(node.pos.pos)
-			v := scope.find_var(node.var_name) or {
-				panic(err)
-			}
+			v := scope.find_var(node.var_name) or { panic(err) }
 			for i, _ in node.fields {
 				c.expr(node.exprs[i])
 			}
@@ -3195,9 +3186,7 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 					c.error('@VMOD_FILE can be used only in projects, that have v.mod file',
 						node.pos)
 				}
-				vmod_content := os.read_file(vmod_file_location.vmod_file) or {
-					''
-				}
+				vmod_content := os.read_file(vmod_file_location.vmod_file) or { '' }
 				$if windows {
 					c.vmod_file_content = vmod_content.replace('\r\n', '\n')
 				} $else {
@@ -3980,9 +3969,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			for st in branch.stmts {
 				// must not contain C statements
-				st.check_c_expr() or {
-					c.error('`if` expression branch has $err', st.position())
-				}
+				st.check_c_expr() or { c.error('`if` expression branch has $err', st.position()) }
 			}
 		}
 		// Also check for returns inside a comp.if's statements, even if its contents aren't parsed
@@ -4405,6 +4392,9 @@ fn (mut c Checker) warn_or_error(message string, pos token.Position, warn bool) 
 		return
 	}
 	if !warn {
+		if c.pref.fatal_errors {
+			exit(1)
+		}
 		c.nr_errors++
 		if pos.line_nr !in c.error_lines {
 			err := errors.Error{

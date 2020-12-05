@@ -109,7 +109,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
 			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
-			break
+			return []
 		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
@@ -195,6 +195,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_type = p.parse_type_with_mut(rec_mut)
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
+			return ast.FnDecl{}
 		}
 		if is_shared {
 			rec_type = rec_type.set_flag(.shared_f)
@@ -218,11 +219,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
+			return ast.FnDecl{}
 		}
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
 			p.error('duplicate method `$name`')
+			return ast.FnDecl{}
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
@@ -243,7 +246,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		for param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
-				break
+				return ast.FnDecl{}
 			}
 			p.scope.register(ast.Var{
 				name: param.name
@@ -272,6 +275,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
 			p.error('cannot define new methods on non-local type $type_sym.name')
+			return ast.FnDecl{}
 		}
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym_method_idx = type_sym.register_method(table.Fn{
@@ -327,6 +331,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.close_scope()
 	if !no_body && are_args_type_only {
 		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
+		return ast.FnDecl{}
 	}
 	return ast.FnDecl{
 		name: name
@@ -450,7 +455,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 					}
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic`or `shared`', pos)
-					break
+					return []table.Param{}, false, false
 				}
 				// if arg_type.is_ptr() {
 				// p.error('cannot mut')
@@ -471,7 +476,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
 						pos)
-					break
+					return []table.Param{}, false, false
 				}
 				p.next()
 			}
@@ -486,7 +491,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			arg_no++
 			if arg_no > 1024 {
 				p.error_with_pos('too many args', pos)
-				break
+				return []table.Param{}, false, false
 			}
 		}
 	} else {
@@ -532,7 +537,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				} else if is_shared || is_atomic {
 					p.error_with_pos('generic object cannot be `atomic` or `shared`',
 						pos)
-					break
+					return []table.Param{}, false, false
 				}
 				typ = typ.set_nr_muls(1)
 				if is_shared {
@@ -558,7 +563,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				if is_variadic && p.tok.kind == .comma {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
 						arg_pos[i])
-					break
+					return []table.Param{}, false, false
 				}
 			}
 			if p.tok.kind != .rpar {

@@ -297,8 +297,7 @@ In development mode the compiler will warn you that you haven't used the variabl
 In production mode (enabled by passing the `-prod` flag to v – `v -prod foo.v`)
 it will not compile at all (like in Go).
 
-<!-- this should be `failcompile`, but it compiles -->
-```v
+```v failcompile
 fn main() {
     a := 10
     if true {
@@ -1736,9 +1735,9 @@ color = .green
 println(color) // "green"
 
 match color {
-    .red { ... }
-    .green { ... }
-    .blue { ... }
+    .red { println('the color was red') }
+    .green { println('the color was green') }
+    .blue { println('the color was blue') }
 }
 
 ```

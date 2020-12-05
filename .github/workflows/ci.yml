@@ -63,9 +63,9 @@ jobs:
     - name: Build the repeat tool
       run: ./v cmd/tools/repeat.v
     - name: Repeat -o hw.c examples/hello_world.v
-      run: cmd/tools/repeat --max_time 150 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o hw.c examples/hello_world.v' './vmaster/v -show-timings -o hw.c examples/hello_world.v'
+      run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o hw.c examples/hello_world.v' ./v ./vmaster/v
     - name: Repeat -o v.c cmd/v
-      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o v.c cmd/v' './vmaster/v -show-timings -o v.c cmd/v'
+      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
 
   ubuntu-tcc:
     runs-on: ubuntu-18.04
@@ -170,7 +170,7 @@ jobs:
       run: ./v -silent build-examples
     - name: Build examples with -autofree
       run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+        ./v -autofree -o tetris examples/tetris/tetris.v
     - name: v doctor
       run: |
         ./v doctor
@@ -182,7 +182,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/ved
         cd ved && ../v -o ved .
-        ../v -autofree -experimental .
+        ../v -autofree .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui
@@ -538,7 +538,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree -experimental .
+        ../v -autofree .
         cd ..
 
   websocket_autobahn:
