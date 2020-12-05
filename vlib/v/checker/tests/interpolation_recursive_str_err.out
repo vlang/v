@@ -1,4 +1,4 @@
-vlib/v/checker/tests/interpolation_recursive_str_err.vv:8:8: error: `str()` method is called recursively
+vlib/v/checker/tests/interpolation_recursive_str_err.vv:8:8: error: cannot call `str()` method recursively
     6 |
     7 | fn (t Test) str() string {
     8 |     _ = '$t'

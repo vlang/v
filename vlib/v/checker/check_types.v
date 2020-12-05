@@ -392,7 +392,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 		}
 		// check recursive str
 		if c.cur_fn.is_method && c.cur_fn.name == 'str' && c.cur_fn.receiver.name == expr.str() {
-			c.error('`str()` method is called recursively', expr.position())
+			c.error('cannot call `str()` method recursively', expr.position())
 		}
 	}
 	return table.string_type
