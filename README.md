@@ -198,6 +198,20 @@ Fedora:
 sudo dnf install openssl-devel
 ```
 
+## V sync
+V's `sync` module and channel implementation uses libatomic.
+It is most likely already installed on your system, but if not,
+you can install it, by doing the following:
+```bash
+MacOS: already installed
+
+Debian/Ubuntu:
+sudo apt install libatomic1
+
+Fedora/CentOS/RH:
+sudo dnf install libatomic-static
+```
+
 ## V UI
 
 <a href="https://github.com/vlang/ui">
