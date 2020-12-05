@@ -181,7 +181,12 @@ fn find_msvc() ?MsvcResult {
 			valid: true
 		}
 	} $else {
-		return error('msvc not found')
+		// This hack allows to at least see the generated .c file with `-os windows -cc msvc -o x.c`
+		// Please do not remove it, unless you also check that the above continues to work.
+		return MsvcResult{
+			full_cl_exe_path: '/usr/bin/true'
+			valid: true
+		}
 	}
 }
 
