@@ -39,6 +39,7 @@ pub mut:
 	warnings                         []errors.Warning
 	error_lines                      []int // to avoid printing multiple errors for the same line
 	expected_type                    table.Type
+	expected_or_type                 table.Type // expected_type is reset by the time we get to or block stmts/exprs
 	cur_fn                           &ast.FnDecl // current function
 	const_decl                       string
 	const_deps                       []string
@@ -1012,7 +1013,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 }
 
 pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
-	c.stmts(call_expr.or_block.stmts)
 	// First check everything that applies to both fns and methods
 	// TODO merge logic from call_method and call_fn
 	/*
@@ -1060,6 +1060,9 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 			call_expr.free_receiver = true
 		}
 	}
+	c.expected_or_type = call_expr.return_type
+	c.stmts(call_expr.or_block.stmts)
+	c.expected_or_type = table.void_type
 	return typ
 }
 
@@ -1697,7 +1700,10 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 	if ret_type != table.void_type {
 		match last_stmt {
 			ast.ExprStmt {
+				c.expected_type = ret_type
+				c.expected_or_type = ret_type.clear_flag(.optional)
 				last_stmt_typ := c.expr(last_stmt.expr)
+				c.expected_or_type = table.void_type
 				type_fits := c.check_types(last_stmt_typ, ret_type) && last_stmt_typ.nr_muls() ==
 					ret_type.nr_muls()
 				is_panic_or_exit := is_expr_panic_or_exit(last_stmt.expr)
@@ -2333,7 +2339,11 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 	}
 	// a = []
 	if array_init.exprs.len == 0 {
-		type_sym := c.table.get_type_symbol(c.expected_type)
+		// a := fn_returing_opt_array() or { [] }
+		if c.expected_type == table.void_type && c.expected_or_type != table.void_type {
+			c.expected_type = c.expected_or_type
+		}
+		mut type_sym := c.table.get_type_symbol(c.expected_type)
 		if type_sym.kind != .array {
 			c.error('array_init: no type specified (maybe: `[]Type{}` instead of `[]`)',
 				array_init.pos)
@@ -2522,6 +2532,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			node.typ = c.expr(node.expr)
 			c.expected_type = table.void_type
 			c.check_expr_opt_call(node.expr, table.void_type)
+			// c.expected_type = table.void_type
 			// TODO This should work, even if it's prolly useless .-.
 			// node.typ = c.check_expr_opt_call(node.expr, table.void_type)
 		}
@@ -3424,10 +3435,11 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 			mut stmt := branch.stmts[branch.stmts.len - 1]
 			match mut stmt {
 				ast.ExprStmt {
+					expr_type := c.expr(stmt.expr)
 					if ret_type == table.void_type {
-						ret_type = c.expr(stmt.expr)
+						ret_type = expr_type
 						stmt.typ = ret_type
-					} else if node.is_expr && ret_type != c.expr(stmt.expr) {
+					} else if node.is_expr && ret_type != expr_type {
 						sym := c.table.get_type_symbol(ret_type)
 						c.error('return type mismatch, it should be `$sym.name`', stmt.expr.position())
 					}
@@ -3540,12 +3552,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			} else if mut cond_type_sym.info is table.SumType {
 				if expr_type !in cond_type_sym.info.variants {
 					expr_str := c.table.type_to_str(expr_type)
-					expect_str := c.table.type_to_str(c.expected_type)
+					expect_str := c.table.type_to_str(node.cond_type)
 					c.error('`$expect_str` has no variant `$expr_str`', expr.position())
 				}
-			} else if !c.check_types(expr_type, c.expected_type) {
+			} else if !c.check_types(expr_type, node.cond_type) {
 				expr_str := c.table.type_to_str(expr_type)
-				expect_str := c.table.type_to_str(c.expected_type)
+				expect_str := c.table.type_to_str(node.cond_type)
 				c.error('cannot match `$expr_str` with `$expect_str` condition', expr.position())
 			}
 			branch_exprs[key] = val + 1
