@@ -2980,7 +2980,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op == .arrow {
 		// chan <- val
-		styp := util.no_dots(left_sym.cname)
+		styp := left_sym.cname
 		g.write('__${styp}_pushval(')
 		g.expr(node.left)
 		g.write(', ')
