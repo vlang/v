@@ -66,8 +66,8 @@ pub fn parse_iso8601(s string) ?Time {
 	offset_hour := 0
 	offset_min := 0
 	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d',
-		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min_z), &offset_hour,
-		&offset_min)}
+		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min_z),
+		&offset_hour, &offset_min)}
 	is_local_time := plus_min_z == `a` && count == 8
 	is_utc := plus_min_z == `Z` && count == 9
 	if count != 11 && !is_local_time && !is_utc {
@@ -91,7 +91,6 @@ pub fn parse_iso8601(s string) ?Time {
 	if is_local_time {
 		return to_local_time(t)
 	}
-
 	mut unix_time := t.unix
 	mut unix_offset := int(0)
 	if offset_hour > 0 {

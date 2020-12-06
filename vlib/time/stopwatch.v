@@ -17,39 +17,40 @@ pub mut:
 
 pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	mut initial := u64(0)
-
 	if opts.auto_start {
-		initial = time.sys_mono_now()
+		initial = sys_mono_now()
 	}
-
-	return StopWatch{elapsed: 0, start: initial, end: 0}
+	return StopWatch{
+		elapsed: 0
+		start: initial
+		end: 0
+	}
 }
 
 // start Starts the timer. If the timer was paused, restarts counting.
 pub fn (mut t StopWatch) start() {
-	t.start = time.sys_mono_now()
+	t.start = sys_mono_now()
 	t.end = 0
 }
 
 pub fn (mut t StopWatch) restart() {
-	t.start = time.sys_mono_now()
+	t.start = sys_mono_now()
 	t.end = 0
 	t.elapsed = 0
 }
 
 pub fn (mut t StopWatch) stop() {
-	t.end = time.sys_mono_now()
+	t.end = sys_mono_now()
 }
 
 pub fn (mut t StopWatch) pause() {
 	if t.start > 0 {
 		if t.end == 0 {
-			t.elapsed += time.sys_mono_now() - t.start
+			t.elapsed += sys_mono_now() - t.start
 		} else {
 			t.elapsed += t.end - t.start
 		}
 	}
-
 	t.start = 0
 }
 
@@ -57,11 +58,10 @@ pub fn (mut t StopWatch) pause() {
 pub fn (t StopWatch) elapsed() Duration {
 	if t.start > 0 {
 		if t.end == 0 {
-			return Duration(i64(time.sys_mono_now() - t.start + t.elapsed))
+			return Duration(i64(sys_mono_now() - t.start + t.elapsed))
 		} else {
 			return Duration(i64(t.end - t.start + t.elapsed))
 		}
 	}
-
 	return Duration(i64(t.elapsed))
 }

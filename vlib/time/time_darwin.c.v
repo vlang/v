@@ -1,11 +1,10 @@
 module time
 
 #include <mach/mach_time.h>
-
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
 	start_time = C.mach_absolute_time()
-	time_base = init_time_base()
+	time_base  = init_time_base()
 )
 
 [typedef]
@@ -15,7 +14,9 @@ struct C.mach_timebase_info_data_t {
 }
 
 fn C.mach_absolute_time() u64
+
 fn C.mach_timebase_info(&C.mach_timebase_info_data_t)
+
 fn C.clock_gettime_nsec_np(int) u64
 
 struct InternalTimeBase {
@@ -31,7 +32,10 @@ pub struct C.timeval {
 fn init_time_base() C.mach_timebase_info_data_t {
 	tb := C.mach_timebase_info_data_t{}
 	C.mach_timebase_info(&tb)
-	return C.mach_timebase_info_data_t{numer:tb.numer, denom:tb.denom}
+	return C.mach_timebase_info_data_t{
+		numer: tb.numer
+		denom: tb.denom
+	}
 }
 
 fn sys_mono_now_darwin() u64 {
@@ -59,14 +63,11 @@ fn vpc_now_darwin() u64 {
 // the microseconds seconds part and converts to local time
 [inline]
 fn darwin_now() Time {
-
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-
 	loc_tm := C.tm{}
 	C.localtime_r(&tv.tv_sec, &loc_tm)
-
 	return convert_ctime(loc_tm, int(tv.tv_usec))
 }
 
@@ -76,10 +77,8 @@ fn darwin_now() Time {
 // the microseconds seconds part and normal local time to get correct local time
 [inline]
 fn darwin_utc() Time {
-
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
 	C.gettimeofday(&tv, 0)
-
 	return unix2(int(tv.tv_sec), int(tv.tv_usec))
 }
