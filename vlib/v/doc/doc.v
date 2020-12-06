@@ -380,12 +380,22 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 		}
 		contents := d.file_ast(file_ast)
 		for name, node in contents {
-			if name in d.contents && (d.contents[name].kind != .none_ || node.kind == .none_) {
-				d.contents[name].children << node.children
-				d.contents[name].children.sort_by_name()
+			if name !in d.contents {
+				d.contents[name] = node
 				continue
 			}
-			d.contents[name] = node
+
+			if d.contents[name].kind == .typedef && node.kind !in [.typedef, .none_] {
+				old_children := d.contents[name].children.clone()
+				d.contents[name] = node
+				d.contents[name].children = old_children
+			}
+
+			if d.contents[name].kind != .none_ || node.kind == .none_ {
+				d.contents[name].children << node.children
+				d.contents[name].children.sort_by_name()
+				d.contents[name].children.sort_by_kind()
+			}
 		}
 	}
 	d.time_generated = time.now()
