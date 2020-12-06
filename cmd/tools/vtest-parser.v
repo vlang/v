@@ -11,6 +11,14 @@ const (
 	vexe          = pref.vexe_path()
 	vroot         = os.dir(vexe)
 	support_color = term.can_show_color_on_stderr() && term.can_show_color_on_stdout()
+	ecode_timeout = 101
+	ecode_memout  = 102
+	ecode_exec    = 103
+	ecode_details = {
+		'101': 'too slow'
+		'102': 'too memory hungry'
+		'103': 'worker executable not found'
+	}
 )
 
 struct Context {
@@ -18,6 +26,7 @@ mut:
 	is_help    bool
 	is_worker  bool
 	is_verbose bool
+	timeout_ms int
 	myself     string // path to this executable, so the supervisor can launch worker processes
 	all_paths  []string // all files given to the supervisor process
 	path       string // the current path, given to a worker process
@@ -44,6 +53,10 @@ fn main() {
 		}
 		mut source := os.read_file(context.path) ?
 		source = source[..context.cut_index]
+		go fn (ms int) {
+			time.sleep_ms(ms)
+			exit(ecode_timeout)
+		}(context.timeout_ms)
 		_ := parser.parse_text(source, context.path, context.table, .skip_comments, context.pref,
 			context.scope)
 		context.log('> worker ${pid:5} finished parsing $context.path')
@@ -87,6 +100,7 @@ fn process_cli_args() &Context {
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
 	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
 	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
+	context.timeout_ms = fp.int('timeout_ms', `t`, 250, 'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
 	context.path = fp.string('path', `p`, '', 'worker specific flag - path to the current source file, which will be parsed.')
 	//
 	if context.is_help {
@@ -185,11 +199,11 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	mut panics := 0
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
-		cmd := '"$context.myself" $verbosity --worker --path "$path" --cut_index $i'
+		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
 		res := os.exec(cmd) or { os.Result{
 			output: err
-			exit_code: 123
+			exit_code: ecode_exec
 		} }
 		context.log('worker exit_code: $res.exit_code | worker output:\n$res.output')
 		if res.exit_code != 0 {
@@ -203,7 +217,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			line := part.count('\n') + 1
 			last_line := part.all_after_last('\n')
 			col := last_line.len
-			err := if is_panic { red('parser failure: panic') } else { red('parser failure: crash') }
+			err := if is_panic { red('parser failure: panic') } else { red('parser failure: crash, ${ecode_details[res.exit_code.str()]}') }
 			path_to_line := bold('$path:$line:$col:')
 			err_line := italic(last_line.trim_left('\t'))
 			println('$path_to_line $err')
