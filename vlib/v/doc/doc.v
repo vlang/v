@@ -75,8 +75,9 @@ pub mut:
 	parent_name string
 	return_type string
 	children    []DocNode
-	attrs       map[string]string
+	attrs       map[string]string [json:attributes]
 	from_scope  bool
+	is_pub		bool [json:public]
 }
 
 pub fn new_vdoc_preferences() &pref.Preferences {
@@ -111,10 +112,11 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		content: d.stmt_signature(stmt)
 		comment: ''
 		pos: d.convert_pos(filename, stmt.position())
-		file_path: os.join_path(d.base_path, filename)
+		file_path: os.join_path(d.base_path, filename),
+		is_pub: d.stmt_pub(stmt)
 	}
-	if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol not public')
+	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
+		return error('symbol $node.name not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -220,7 +222,6 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	mut prev_comments := []ast.Comment{}
 	mut imports_section := true
 	for sidx, stmt in stmts {
-		// eprintln('stmt typeof: ' + typeof(stmt))
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.Comment {
 				prev_comments << stmt.expr

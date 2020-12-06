@@ -101,6 +101,16 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	}
 }
 
+pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
+	match stmt {
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl { return stmt.is_pub }
+		ast.TypeDecl { match stmt {
+				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.is_pub }
+			} }
+		else { return false }
+	}
+}
+
 pub fn (d Doc) type_to_str(typ table.Type) string {
 	return d.fmt.table.type_to_str(typ).all_after('&')
 }
