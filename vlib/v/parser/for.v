@@ -9,7 +9,11 @@ import v.table
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
 	pos := p.tok.position()
+	prev_branch_parent_pos := p.branch_parent_pos
 	p.branch_parent_pos = pos.pos
+	defer {
+		p.branch_parent_pos = prev_branch_parent_pos
+	}
 	p.open_scope()
 	p.inside_for = true
 	if p.tok.kind == .key_match {

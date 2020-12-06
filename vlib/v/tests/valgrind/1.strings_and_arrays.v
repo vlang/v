@@ -275,6 +275,9 @@ fn free_before_break() {
 			for {
 				cc := [7, 8, 9]
 				if true {
+					if true {
+						break
+					}
 					break
 				}
 			}
