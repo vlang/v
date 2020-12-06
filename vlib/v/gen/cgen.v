@@ -3801,8 +3801,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				elem_typ := g.table.get_type_symbol(info.value_type)
 				get_and_set_types := elem_typ.kind in [.struct_, .map]
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
-					g.is_array_set = true
-					g.write('map_set(')
+					if g.assign_op == .assign || info.value_type == table.string_type {
+						g.is_array_set = true
+						g.write('map_set(')
+					} else {
+						g.write('*(($elem_type_str*)map_get_and_set(')
+					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
@@ -3821,42 +3825,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write(', &($elem_type_str[]) { ')
 					}
-					if g.assign_op != .assign &&
-						g.assign_op in token.assign_tokens && info.value_type != table.string_type {
-						g.write('(*(int*)map_get(')
-						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-							g.write('*')
-						}
-						g.expr(node.left)
-						if node.left_type.has_flag(.shared_f) {
-							if left_is_ptr {
-								g.write('->val')
-							} else {
-								g.write('.val')
-							}
-						}
-						g.write(', ')
-						g.expr(node.index)
+					if g.assign_op != .assign && info.value_type != table.string_type {
 						zero := g.type_default(info.value_type)
-						if elem_typ.kind == .function {
-							g.write(', &(voidptr[]){ $zero }))')
-						} else {
-							g.write(', &($elem_type_str[]){ $zero }))')
-						}
-						op := match g.assign_op {
-							.mult_assign { '*' }
-							.plus_assign { '+' }
-							.minus_assign { '-' }
-							.div_assign { '/' }
-							.xor_assign { '^' }
-							.mod_assign { '%' }
-							.or_assign { '|' }
-							.and_assign { '&' }
-							.left_shift_assign { '<<' }
-							.right_shift_assign { '>>' }
-							else { '' }
-						}
-						g.write(' $op ')
+						g.write('$zero }))')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
