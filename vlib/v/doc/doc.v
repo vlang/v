@@ -314,7 +314,7 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 }
 
 // file_ast_with_pos has the same function as the `file_ast` but
-//instead returns a list of variables in a given offset-based position.
+// instead returns a list of variables in a given offset-based position.
 pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
@@ -415,7 +415,6 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	}
 	d.time_generated = time.now()
 }
-
 
 // generate documents a certain file directory and returns an
 // instance of `Doc` if it is successful. Otherwise, it will  throw an error.
