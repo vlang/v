@@ -75,9 +75,9 @@ pub mut:
 	parent_name string
 	return_type string
 	children    []DocNode
-	attrs       map[string]string [json:attributes]
+	attrs       map[string]string [json: attributes]
 	from_scope  bool
-	is_pub		bool [json:public]
+	is_pub      bool              [json: public]
 }
 
 pub fn new_vdoc_preferences() &pref.Preferences {
@@ -112,7 +112,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		content: d.stmt_signature(stmt)
 		comment: ''
 		pos: d.convert_pos(filename, stmt.position())
-		file_path: os.join_path(d.base_path, filename),
+		file_path: os.join_path(d.base_path, filename)
 		is_pub: d.stmt_pub(stmt)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
@@ -385,13 +385,11 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 				d.contents[name] = node
 				continue
 			}
-
 			if d.contents[name].kind == .typedef && node.kind !in [.typedef, .none_] {
 				old_children := d.contents[name].children.clone()
 				d.contents[name] = node
 				d.contents[name].children = old_children
 			}
-
 			if d.contents[name].kind != .none_ || node.kind == .none_ {
 				d.contents[name].children << node.children
 				d.contents[name].children.sort_by_name()
