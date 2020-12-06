@@ -48,6 +48,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	eprintln('     file: $file')
 	eprintln('     line: ' + line_no.str())
 	eprintln('=========================================')
+	$if exit_after_panic_message ? {
+		C.exit(1)
+	}
 	// recent versions of tcc print better backtraces automatically
 	$if !tinyc {
 		print_backtrace_skipping_top_frames(1)
@@ -58,6 +61,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 
 pub fn panic(s string) {
 	eprintln('V panic: $s')
+	$if exit_after_panic_message ? {
+		C.exit(1)
+	}
 	// recent versions of tcc print better backtraces automatically
 	$if !tinyc {
 		print_backtrace()
