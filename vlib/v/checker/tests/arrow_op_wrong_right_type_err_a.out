@@ -1,4 +1,4 @@
-vlib/v/checker/tests/arrow_op_wrong_right_type_err_a.vv:4:8: error: cannot push `string` on `chan_u64`
+vlib/v/checker/tests/arrow_op_wrong_right_type_err_a.vv:4:8: error: cannot push `string` on `chan u64`
     2 |     ch := chan u64{cap: 10}
     3 |     obj := 'test'
     4 |     ch <- obj

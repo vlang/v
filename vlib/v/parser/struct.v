@@ -258,9 +258,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	t := table.TypeSymbol{
 		kind: .struct_
-		name: name
 		language: language
-		source_name: name
+		name: name
 		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Struct{
@@ -382,7 +381,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.next() // `interface`
 	name_pos := p.tok.position()
-	interface_name := p.prepend_mod(p.check_name())
+	interface_name := p.prepend_mod(p.check_name()).clone()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments()
@@ -390,7 +389,6 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	reg_idx := p.table.register_type_symbol(
 		kind: .interface_
 		name: interface_name
-		source_name: interface_name
 		cname: util.no_dots(interface_name)
 		mod: p.mod
 		info: table.Interface{
@@ -409,6 +407,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse methods
 	mut methods := []ast.FnDecl{cap: 20}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
@@ -422,11 +421,9 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 		// field_names << name
 		args2, _, _ := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
-		sym := p.table.get_type_symbol(typ)
 		mut args := [table.Param{
 			name: 'x'
 			typ: typ
-			type_source_name: sym.source_name
 			is_hidden: true
 		}]
 		args << args2
@@ -446,12 +443,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		method.comments = mcomments
 		methods << method
 		// println('register method $name')
-		return_type_sym := p.table.get_type_symbol(method.return_type)
 		ts.register_method(
 			name: name
 			params: args
 			return_type: method.return_type
-			return_type_source_name: return_type_sym.source_name
 			is_pub: true
 		)
 	}

@@ -407,15 +407,19 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	mut typ := table.void_type
 	for i, param in f.params {
 		arg := call_expr.args[i]
-		if param.type_source_name == gt_name {
+		if param.typ.has_flag(.generic) {
 			typ = arg.typ
 			break
 		}
 		arg_sym := c.table.get_type_symbol(arg.typ)
-		if arg_sym.kind == .array && param.type_source_name == '[]$gt_name' {
-			info := arg_sym.info as table.Array
-			typ = info.elem_type
-			break
+		param_type_sym := c.table.get_type_symbol(param.typ)
+		if arg_sym.kind == .array && param_type_sym.kind == .array {
+			param_info := param_type_sym.info as table.Array
+			if param_info.elem_type.has_flag(.generic) {
+				arg_info := arg_sym.info as table.Array
+				typ = arg_info.elem_type
+				break
+			}
 		}
 	}
 	if typ == table.void_type {

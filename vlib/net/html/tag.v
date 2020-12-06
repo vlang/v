@@ -32,7 +32,7 @@ fn (mut tag Tag) add_child(t &Tag) int {
 	return tag.children.len
 }
 
-pub fn (tag Tag) get_children() []Tag_ptr {
+pub fn (tag Tag) get_children() []&Tag {
 	return tag.children
 }
 

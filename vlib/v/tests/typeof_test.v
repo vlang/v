@@ -18,8 +18,8 @@ fn test_typeof_on_simple_expressions() {
 fn test_arrays() {
 	aint := []int{}
 	astring := []string{}
-	assert typeof(aint) == 'array_int'
-	assert typeof(astring) == 'array_string'
+	assert typeof(aint) == '[]int'
+	assert typeof(astring) == '[]string'
 	assert typeof(aint).name == '[]int'
 	assert typeof(astring).name == '[]string'
 }
@@ -43,7 +43,7 @@ fn test_typeof_on_structs() {
 	astruct_dynamic := [FooBar{}, FooBar{}]
 	assert typeof(astruct_static) == '[2]FooBar'
 	assert typeof(astruct_static).name == '[2]FooBar'
-	assert typeof(astruct_dynamic) == 'array_FooBar'
+	assert typeof(astruct_dynamic) == '[]FooBar'
 	assert typeof(astruct_dynamic).name == '[]FooBar'
 }
 
