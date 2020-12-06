@@ -1654,9 +1654,10 @@ The number of builtin functions is low. Other builtin functions are:
 
 
 ```v ignore
-fn exit(exit_code int)
+fn exit(exit_code int) // terminate the program
 fn panic(message string)
 fn print_backtrace()
+fn eprintln(s string) // same as println, but use stderr
 ```
 
 ## Modules
