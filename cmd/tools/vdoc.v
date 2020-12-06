@@ -154,9 +154,7 @@ fn (mut cfg DocConfig) serve_html() {
 	}
 	def_name := docs.keys()[0]
 	server_url := 'http://localhost:' + cfg.server_port.str()
-	server := net.listen_tcp(cfg.server_port) or {
-		panic(err)
-	}
+	server := net.listen_tcp(cfg.server_port) or { panic(err) }
 	println('Serving docs on: $server_url')
 	if cfg.open_docs {
 		open_url(server_url)
@@ -178,9 +176,7 @@ fn (mut cfg DocConfig) serve_html() {
 			panic(err)
 		}
 		handle_http_connection(mut conn, server_context)
-		conn.close() or {
-			eprintln('error closing the connection: $err')
-		}
+		conn.close() or { eprintln('error closing the connection: $err') }
 	}
 }
 
@@ -191,9 +187,7 @@ struct VdocHttpServerContext {
 }
 
 fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
-	mut reader := io.new_buffered_reader({
-		reader: io.make_reader(con)
-	})
+	mut reader := io.new_buffered_reader(reader: io.make_reader(con))
 	first_line := reader.read_line() or {
 		send_http_response(mut con, 501, ctx.content_type, 'bad request')
 		return
@@ -230,15 +224,11 @@ fn send_http_response(mut con net.TcpConn, http_code int, content_type string, h
 	http_response.write('\r\n')
 	http_response.write(html)
 	sresponse := http_response.str()
-	con.write_str(sresponse) or {
-		eprintln('error sending http response: $err')
-	}
+	con.write_str(sresponse) or { eprintln('error sending http response: $err') }
 }
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
-	mut url := urllib.parse(repo_url) or {
-		return ''
-	}
+	mut url := urllib.parse(repo_url) or { return '' }
 	if url.path.len <= 1 || file_name.len == 0 {
 		return ''
 	}
@@ -656,13 +646,13 @@ fn (mut cfg DocConfig) render_static() {
 		return
 	}
 	cfg.assets = {
-		'doc_css': cfg.get_resource(css_js_assets[0], true)
+		'doc_css':       cfg.get_resource(css_js_assets[0], true)
 		'normalize_css': cfg.get_resource(css_js_assets[1], true)
-		'doc_js': cfg.get_resource(css_js_assets[2], !cfg.serve_http)
-		'light_icon': cfg.get_resource('light.svg', true)
-		'dark_icon': cfg.get_resource('dark.svg', true)
-		'menu_icon': cfg.get_resource('menu.svg', true)
-		'arrow_icon': cfg.get_resource('arrow.svg', true)
+		'doc_js':        cfg.get_resource(css_js_assets[2], !cfg.serve_http)
+		'light_icon':    cfg.get_resource('light.svg', true)
+		'dark_icon':     cfg.get_resource('dark.svg', true)
+		'menu_icon':     cfg.get_resource('menu.svg', true)
+		'arrow_icon':    cfg.get_resource('arrow.svg', true)
 	}
 }
 
@@ -679,9 +669,7 @@ fn (cfg DocConfig) get_readme(path string) string {
 	}
 	readme_path := os.join_path(path, '${fname}.md')
 	cfg.vprintln('Reading README file from $readme_path')
-	readme_contents := os.read_file(readme_path) or {
-		''
-	}
+	readme_contents := os.read_file(readme_path) or { '' }
 	return readme_contents
 }
 
@@ -809,16 +797,12 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			cfg.output_path = os.real_path('.')
 		}
 		if !os.exists(cfg.output_path) {
-			os.mkdir(cfg.output_path) or {
-				panic(err)
-			}
+			os.mkdir(cfg.output_path) or { panic(err) }
 		}
 		if cfg.is_multi {
 			cfg.output_path = os.join_path(cfg.output_path, '_docs')
 			if !os.exists(cfg.output_path) {
-				os.mkdir(cfg.output_path) or {
-					panic(err)
-				}
+				os.mkdir(cfg.output_path) or { panic(err) }
 			} else {
 				for fname in css_js_assets {
 					os.rm(os.join_path(cfg.output_path, fname))
@@ -865,9 +849,7 @@ fn get_ignore_paths(path string) ?[]string {
 		}
 		res = final.map(os.join_path(path, it.trim_right('/')))
 	} else {
-		mut dirs := os.ls(path) or {
-			return []string{}
-		}
+		mut dirs := os.ls(path) or { return []string{} }
 		res = dirs.map(os.join_path(path, it)).filter(os.is_dir(it))
 	}
 	return res.map(it.replace('/', os.path_separator))
@@ -887,12 +869,8 @@ fn is_included(path string, ignore_paths []string) bool {
 }
 
 fn get_modules_list(path string, ignore_paths2 []string) []string {
-	files := os.ls(path) or {
-		return []string{}
-	}
-	mut ignore_paths := get_ignore_paths(path) or {
-		[]string{}
-	}
+	files := os.ls(path) or { return []string{} }
+	mut ignore_paths := get_ignore_paths(path) or { []string{} }
 	ignore_paths << ignore_paths2
 	mut dirs := []string{}
 	for file in files {
@@ -912,9 +890,7 @@ fn get_modules_list(path string, ignore_paths2 []string) []string {
 
 fn (cfg DocConfig) get_resource(name string, minify bool) string {
 	path := os.join_path(res_path, name)
-	mut res := os.read_file(path) or {
-		panic('vdoc: could not read $path')
-	}
+	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
 	if minify {
 		if name.ends_with('.js') {
 			res = js_compress(res)
