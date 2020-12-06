@@ -126,7 +126,7 @@ mut:
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx               int
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
-	branch_parent_pos                int    // used in BranchStmt (continue/break) for autofree stop position
+	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
 }
 
 const (
