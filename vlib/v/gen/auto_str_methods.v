@@ -81,8 +81,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	parent_type := typ.clear_flag(.optional)
 	sym := g.table.get_type_symbol(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
-	sym_name := sym.name.replace('.', '__')
-	mut parent_str_fn_name := styp_to_str_fn_name(sym_name)
+	mut parent_str_fn_name := styp_to_str_fn_name(sym.cname)
 	if !sym_has_str_method {
 		parent_str_fn_name = g.gen_str_for_type(parent_type)
 	}
@@ -95,11 +94,11 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
 	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
 	if typ.is_string() {
-		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym_name*)it.data));')
+		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if sym.kind == .struct_ && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym_name*)it.data, indent_count);')
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
 	} else {
-		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym_name*)it.data);')
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
 	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.v_error);')

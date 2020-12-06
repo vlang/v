@@ -626,14 +626,8 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 		g.write_multi_return_type_declaration(mut retsym)
 	}
 	if !info.has_decl && (not_anon || is_fn_sig) {
-		fn_name := if func.language == .c {
-			util.no_dots(func.name)
-		} else if info.is_anon {
-			sym.name
-		} else {
-			c_name(func.name)
-		}
-		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
+		fn_name := sym.cname
+		g.type_definitions.write('/* HERE */typedef ${g.typ(func.return_type)} /* HERE2 */(*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write(g.typ(param.typ))
 			if i < func.params.len - 1 {
@@ -2977,7 +2971,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op == .arrow {
 		// chan <- val
-		styp := util.no_dots(left_sym.name)
+		styp := util.no_dots(left_sym.cname)
 		g.write('__${styp}_pushval(')
 		g.expr(node.left)
 		g.write(', ')

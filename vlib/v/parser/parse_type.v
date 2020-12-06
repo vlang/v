@@ -92,13 +92,11 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 	if p.tok.line_nr == line_nr && p.tok.kind.is_start_of_type() {
 		return_type = p.parse_type()
 	}
-	ret_type_sym := p.table.get_type_symbol(return_type)
 	func := table.Fn{
 		name: name
 		params: args
 		is_variadic: is_variadic
 		return_type: return_type
-		return_type_source_name: ret_type_sym.source_name
 	}
 	idx := p.table.find_or_register_fn_type(p.mod, func, false, false)
 	return table.new_type(idx)
@@ -340,7 +338,6 @@ pub fn (mut p Parser) parse_generic_template_type(name string) table.Type {
 	}
 	idx = p.table.register_type_symbol(table.TypeSymbol{
 		name: name
-		source_name: name
 		cname: util.no_dots(name)
 		mod: p.mod
 		kind: .any
@@ -390,7 +387,6 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		idx := p.table.register_type_symbol(table.TypeSymbol{
 			kind: .generic_struct_inst
 			name: bs_name
-			source_name: bs_name
 			cname: util.no_dots(bs_cname)
 			mod: p.mod
 			info: table.GenericStructInst{
