@@ -60,7 +60,6 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	branch_parent_pos int // used in BranchStmt (continue/break) autofree stop position
 }
 
 // for tests
@@ -691,7 +690,6 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				kind: tok.kind
 				label: label
 				pos: tok.position()
-				parent_pos: p.branch_parent_pos
 			}
 		}
 		.key_unsafe {

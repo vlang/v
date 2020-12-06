@@ -126,6 +126,7 @@ mut:
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx               int
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
+	branch_parent_pos                int    // used in BranchStmt (continue/break) for autofree stop position
 }
 
 const (
@@ -853,7 +854,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if g.pref.autofree && !g.is_builtin_mod {
 					g.writeln('// free before continue/break')
 					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
-						node.parent_pos)
+						g.branch_parent_pos)
 				}
 				g.writeln('$node.kind;')
 			}
@@ -1008,6 +1009,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			g.for_in(node)
 		}
 		ast.ForStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
@@ -1031,6 +1034,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.label.len > 0 {
 				g.writeln('${node.label}__break: {}')
 			}
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.GlobalDecl {
 			g.global_decl(node)
