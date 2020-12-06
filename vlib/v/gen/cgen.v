@@ -5340,7 +5340,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	// Always set pointers to 0
 	if typ.is_ptr() {
-		return '
+		return '0'
 	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
