@@ -7,7 +7,6 @@ import v.table
 import v.checker
 import v.pref
 import term
-import os
 
 fn test_eval() {
 	/*
@@ -176,3 +175,14 @@ fn test_parse_expr() {
 		}
 	}
 }
+
+/*
+table := &table.Table{}
+for s in text_expr {
+	// print using str method
+	x := parse_expr(s, table)
+	println('source: $s')
+	println('parsed: $x')
+	println('===================')
+}    
+*/
