@@ -1387,6 +1387,13 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		it.branches[1].stmts.len == 1 &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
+	mut is_one_line_stmt := true
+	for branch in it.branches {
+		if branch.stmts.len != 1 {
+			is_one_line_stmt = false
+			break
+		}
+	}
 	for i, branch in it.branches {
 		if i == 0 {
 			// first `if`
@@ -1407,6 +1414,16 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			f.write(' ')
 		}
 		f.write('{')
+		if is_one_line_stmt {
+			// the control stmts (return/break/continue...) print a newline inside them,
+			// so, since this'll all be on one line, trim any possible whitespace
+			str := f.stmt_str(branch.stmts[0]).trim_space()
+			line := ' $str '
+			if line.len + f.line_len <= max_len.last() {
+					f.write(line)
+			}
+			continue
+		}
 		if single_line {
 			f.write(' ')
 		} else {
