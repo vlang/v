@@ -115,4 +115,4 @@ A: Like XPath yes. Exactly equal to it, no.
   - [x] finish dom test
 
 ## License
-[MIT](../../LICENSE)
+[MIT](../../../LICENSE)
