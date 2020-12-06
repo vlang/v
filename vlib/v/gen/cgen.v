@@ -627,7 +627,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	}
 	if !info.has_decl && (not_anon || is_fn_sig) {
 		fn_name := sym.cname
-		g.type_definitions.write('/* HERE */typedef ${g.typ(func.return_type)} /* HERE2 */(*$fn_name)(')
+		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write(g.typ(param.typ))
 			if i < func.params.len - 1 {
@@ -5340,7 +5340,7 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	// Always set pointers to 0
 	if typ.is_ptr() {
-		return '0'
+		return '
 	}
 	sym := g.table.get_type_symbol(typ)
 	if sym.kind == .array {
