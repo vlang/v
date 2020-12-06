@@ -370,6 +370,7 @@ pub mut:
 	is_changed      bool // to detect mutable vars that are never changed
 	is_or           bool // `x := foo() or { ... }`
 	// (for setting the position after the or block for autofree)
+	is_tmp          bool // for tmp for loop vars, so that autofree can skip them
 }
 
 // used for smartcasting only
