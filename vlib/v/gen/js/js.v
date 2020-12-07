@@ -18,16 +18,23 @@ const (
 		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
 )
 
+struct Namespace {
+	name     string
+mut:
+	out      strings.Builder = strings.new_builder(128)
+	pub_vars []string
+	imports  map[string]string
+	indent   int
+	methods  map[string][]ast.FnDecl
+}
+
 struct JsGen {
 	table             &table.Table
 	pref              &pref.Preferences
 mut:
 	definitions       strings.Builder
-	out               strings.Builder
-	namespaces        map[string]strings.Builder
-	namespaces_pub    map[string][]string
-	namespace_imports map[string]map[string]string
-	namespace         string
+	ns                &Namespace
+	namespaces        map[string]&Namespace
 	doc               &JsDoc
 	enable_doc        bool
 	file              ast.File
@@ -35,8 +42,8 @@ mut:
 	inside_ternary    bool
 	inside_loop       bool
 	inside_map_set    bool // map.set(key, value)
+	inside_builtin    bool
 	is_test           bool
-	indents           map[string]int // indentations mapped to namespaces
 	stmt_start_pos    int
 	defer_stmts       []ast.DeferStmt
 	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
@@ -48,13 +55,13 @@ mut:
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	mut g := &JsGen{
-		out: strings.new_builder(100)
 		definitions: strings.new_builder(100)
 		table: table
 		pref: pref
 		fn_decl: 0
 		empty_line: true
 		doc: 0
+		ns: 0
 		enable_doc: true
 	}
 	g.doc = new_jsdoc(g)
@@ -96,7 +103,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '/** @namespace $name */\n'
 		}
 		out += 'const $name = (function ('
-		imports := g.namespace_imports[node.name]
+		imports := g.namespaces[node.name].imports
 		for i, key in imports.keys() {
 			if i > 0 {
 				out += ', '
@@ -105,20 +112,20 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		}
 		out += ') {\n\t'
 		// private scope
-		out += g.namespaces[node.name].str().trim_space()
+		out += g.namespaces[node.name].out.str().trim_space()
 		// public scope
 		out += '\n'
 		if g.enable_doc {
 			out += '\n\t/* module exports */'
 		}
 		out += '\n\treturn {'
-		for i, pub_var in g.namespaces_pub[node.name] {
+		for i, pub_var in g.namespaces[node.name].pub_vars {
 			out += '\n\t\t$pub_var'
-			if i < g.namespaces_pub[node.name].len - 1 {
+			if i < g.namespaces[node.name].pub_vars.len - 1 {
 				out += ','
 			}
 		}
-		if g.namespaces_pub[node.name].len > 0 {
+		if g.namespaces[node.name].pub_vars.len > 0 {
 			out += '\n\t'
 		}
 		out += '};'
@@ -139,26 +146,27 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	return out
 }
 
-pub fn (mut g JsGen) enter_namespace(n string) {
-	g.namespace = n
-	if g.namespaces[g.namespace].len == 0 {
+pub fn (mut g JsGen) enter_namespace(name string) {
+	if g.namespaces[name] == 0 {
 		// create a new namespace
-		g.out = strings.new_builder(100)
-		g.indents[g.namespace] = 0
+		ns := &Namespace{
+			name: name
+		}
+		g.namespaces[name] = ns
+		g.ns = ns
 	} else {
-		g.out = g.namespaces[g.namespace]
+		g.ns = g.namespaces[name]
 	}
+	g.inside_builtin = name == 'builtin'
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.namespaces[g.namespace] = g.out
-	g.namespace = ''
+	g.ns = 0
+	g.inside_builtin = false
 }
 
 pub fn (mut g JsGen) push_pub_var(s string) {
-	mut arr := g.namespaces_pub[g.namespace]
-	arr << g.js_name(s)
-	g.namespaces_pub[g.namespace] = arr
+	g.ns.pub_vars << g.js_name(s)
 }
 
 pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
@@ -311,7 +319,7 @@ fn (mut g JsGen) fn_typ(args []table.Param, return_type table.Type) string {
 
 fn (mut g JsGen) struct_typ(s string) string {
 	ns := get_ns(s)
-	mut name := if ns == g.namespace { s.split('.').last() } else { g.get_alias(s) }
+	mut name := if ns == g.ns.name { s.split('.').last() } else { g.get_alias(s) }
 	mut styp := ''
 	for i, v in name.split('.') {
 		if i == 0 {
@@ -320,7 +328,7 @@ fn (mut g JsGen) struct_typ(s string) string {
 			styp += '["$v"]'
 		}
 	}
-	if ns in ['', g.namespace] {
+	if ns in ['', g.ns.name] {
 		return styp
 	}
 	return styp + '["prototype"]'
@@ -356,32 +364,46 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 	return styp
 }
 
+[inline]
+fn verror(msg string) {
+	eprintln('jsgen error: $msg')
+	exit(1)
+}
+
+[inline]
 pub fn (mut g JsGen) gen_indent() {
-	if g.indents[g.namespace] > 0 && g.empty_line {
-		g.out.write(tabs[g.indents[g.namespace]])
+	if g.ns.indent > 0 && g.empty_line {
+		g.ns.out.write(tabs[g.ns.indent])
 	}
 	g.empty_line = false
 }
 
+[inline]
 pub fn (mut g JsGen) inc_indent() {
-	g.indents[g.namespace]++
+	g.ns.indent++
 }
 
+[inline]
 pub fn (mut g JsGen) dec_indent() {
-	g.indents[g.namespace]--
+	g.ns.indent--
 }
 
+[inline]
 pub fn (mut g JsGen) write(s string) {
+	if g.ns == 0 { verror('g.write: not in a namespace') }
 	g.gen_indent()
-	g.out.write(s)
+	g.ns.out.write(s)
 }
 
+[inline]
 pub fn (mut g JsGen) writeln(s string) {
+	if g.ns == 0 { verror('g.writeln: not in a namespace') }
 	g.gen_indent()
-	g.out.writeln(s)
+	g.ns.out.writeln(s)
 	g.empty_line = true
 }
 
+[inline]
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
 	return '_tmp$g.tmp_count'
@@ -391,9 +413,7 @@ pub fn (mut g JsGen) new_tmp_var() string {
 // 'fn' => ''
 [inline]
 fn get_ns(s string) string {
-	idx := s.last_index('.') or {
-		return ''
-	}
+	idx := s.last_index('.') or { return '' }
 	return s.substr(0, idx)
 }
 
@@ -402,8 +422,7 @@ fn (mut g JsGen) get_alias(name string) string {
 	if ns == '' {
 		return name
 	}
-	imports := g.namespace_imports[g.namespace]
-	alias := imports[ns]
+	alias := g.ns.imports[ns]
 	if alias == '' {
 		return name
 	}
@@ -418,7 +437,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 		is_js = true
 	}
 	ns := get_ns(name)
-	name = if ns == g.namespace { name.split('.').last() } else { g.get_alias(name) }
+	name = if g.ns == 0 { name } else if ns == g.ns.name { name.split('.').last() } else { g.get_alias(name) }
 	mut parts := name.split('.')
 	if !is_js {
 		for i, p in parts {
@@ -439,7 +458,7 @@ fn (mut g JsGen) stmts(stmts []ast.Stmt) {
 }
 
 fn (mut g JsGen) stmt(node ast.Stmt) {
-	g.stmt_start_pos = g.out.len
+	g.stmt_start_pos = g.ns.out.len
 	match node {
 		ast.AssertStmt {
 			g.gen_assert_stmt(node)
@@ -501,7 +520,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 			g.gen_hash_stmt(node)
 		}
 		ast.Import {
-			g.gen_import_stmt(node)
+			g.ns.imports[node.mod] = node.alias
 		}
 		ast.InterfaceDecl {
 			g.gen_interface_decl(node)
@@ -840,7 +859,7 @@ fn (mut g JsGen) gen_fn_decl(it ast.FnDecl) {
 		// Struct methods are handled by class generation code.
 		return
 	}
-	if g.namespace == 'builtin' {
+	if g.inside_builtin {
 		g.builtin_fns << it.name
 	}
 	g.gen_method_decl(it)
@@ -1041,9 +1060,7 @@ fn (mut g JsGen) gen_go_stmt(node ast.GoStmt) {
 }
 
 fn (mut g JsGen) gen_import_stmt(it ast.Import) {
-	mut imports := g.namespace_imports[g.namespace]
-	imports[it.mod] = it.alias
-	g.namespace_imports[g.namespace] = imports
+	g.ns.imports[it.mod] = it.alias
 }
 
 fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
