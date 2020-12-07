@@ -532,8 +532,9 @@ fn (mut s Scanner) text_scan() token.Token {
 		// }
 		if s.is_started {
 			s.pos++
+		} else {
+			s.is_started = true
 		}
-		s.is_started = true
 		if s.pos >= s.text.len {
 			return s.end_of_file()
 		}
