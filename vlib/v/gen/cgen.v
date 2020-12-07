@@ -331,6 +331,13 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
+	g.definitions.writeln('#define STATIC_ASSERT(COND, UNDERSCORE_MSG) \\')
+	g.definitions.writeln('\ttypedef char static_assertion_##UNDERSCORE_MSG[(COND) ? 1 : -1]')
+	if g.pref.m64 {
+		g.definitions.writeln('STATIC_ASSERT(sizeof(size_t) == 8, size_t_must_be_8);')
+	} else {
+		g.definitions.writeln('STATIC_ASSERT(sizeof(size_t) == 4, size_t_must_be_4);')
+	}
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	if g.pref.build_mode != .build_module {
