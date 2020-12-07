@@ -1423,7 +1423,8 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				str = str.trim_space()
 				line = ' $str '
 			} else {
-				line = ' $str ' 
+				is_one_line_stmt = false
+				goto label
 			}
 			if line.len + f.line_len <= max_len.last() {
 					f.write(line)
@@ -1436,6 +1437,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				//f.stmts(branch.stmts)
 			}
 		}
+// TODO: try to find a solution without goto
 label:
 		if single_line {
 			f.write(' ')

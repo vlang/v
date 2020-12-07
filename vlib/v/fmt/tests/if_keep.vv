@@ -1,0 +1,12 @@
+fn main() {
+	mut foo := 'foo'
+	mut bar := 'bar'
+	if true {
+		if foo == 'foo' {
+			foo = 'foo2'
+			bar = 'bar2'
+		}
+	}
+}
+
+// TODO: add more test cases
