@@ -15,7 +15,7 @@ const (
 		'implements', 'import', 'in', 'instanceof', 'interface', 'let', 'new', 'package', 'private', 'protected',
 		'public', 'return', 'static', 'super', 'switch', 'this', 'throw', 'try', 'typeof', 'var', 'void',
 		'while', 'with', 'yield', 'Number', 'String', 'Boolean', 'Array', 'Map']
-	// used to generate V_type structs
+	// used to generate type structs
 	v_types = ['i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'f32', 'f64', 'any_int', 'any_float', 'size_t', 'bool', 'string', 'map', 'array']
 	tabs        = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t', '\t\t\t\t\t\t\t\t\t']
@@ -114,6 +114,10 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += imports[key]
 		}
 		out += ') {\n\t'
+		// builtin types
+		if node.name == 'builtin' {
+			out += g.gen_builtin_type_defs()
+		}
 		// private scope
 		out += g.namespaces[node.name].out.str().trim_space()
 		// public scope
@@ -122,6 +126,12 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += '\n\t/* module exports */'
 		}
 		out += '\n\treturn {'
+		// export builtin types
+		if node.name == 'builtin' {
+			for typ in v_types {
+				out += '\n\t\t$typ,'
+			}
+		}
 		for i, pub_var in g.namespaces[node.name].pub_vars {
 			out += '\n\t\t$pub_var'
 			if i < g.namespaces[node.name].pub_vars.len - 1 {
@@ -142,12 +152,13 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		out += ');\n'
 		// generate builtin basic type casts
 		if name == 'builtin' {
+			out += '// builtin type casts\n'
 			out += 'const ['
 			for i, typ in v_types {
-				if i > 0 { out += ',' }
-				out += '\n\t$typ'
+				if i > 0 { out += ', ' }
+				out += '$typ'
 			}
-			out += '\n] = ['
+			out += '] = ['
 			for i, typ in v_types {
 				if i > 0 { out += ',' }
 				out += '\n\tfunction(val) { return new builtin.${typ}(val) }'
@@ -194,9 +205,6 @@ pub fn (mut g JsGen) find_class_methods(stmts []ast.Stmt) {
 				if stmt.is_method {
 					// Found struct method, store it to be generated along with the class.
 					mut class_name := g.table.get_type_name(stmt.receiver.typ)
-					if g.file.mod.name == 'builtin' && class_name[0..2] == 'V_' {
-						class_name = class_name[2..]
-					}
 					// Workaround until `map[key] << val` works.
 					mut arr := g.method_fn_decls[class_name]
 					arr << stmt
@@ -958,18 +966,10 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if name.starts_with('JS.') {
 		return
 	}
-	// remove V_ from basic types such as `i8` and `string`
-	basic_v_type := g.file.mod.name == 'builtin' && name.starts_with('V_') && name[2..] in v_types
-	if basic_v_type {
-		name = name[2..]
-	}
 	js_name := g.js_name(name)
 	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
-	g.write('function ${js_name}(')
-	if !basic_v_type {
-		g.write('{ ')
-	}
+	g.write('function ${js_name}({ ')
 	for i, field in node.fields {
 		g.write('$field.name = ')
 		if field.has_default_expr {
@@ -981,10 +981,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 			g.write(', ')
 		}
 	}
-	if !basic_v_type {
-		g.write(' }')
-	}
-	g.writeln(') {')
+	g.writeln(' }) {')
 	g.inc_indent()
 	for field in node.fields {
 		g.writeln('this.$field.name = $field.name')

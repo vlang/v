@@ -31,7 +31,7 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 			styp = 'new Map()'
 		}
 		.array {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}([])'
+			styp = 'new Array([])'
 		}
 		.struct_ {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
@@ -206,4 +206,50 @@ fn (mut g JsGen) struct_typ(s string) string {
 		return styp
 	}
 	return styp + '["prototype"]'
+}
+
+// ugly arguments but not sure a config struct would be worth it (for now)
+fn (mut g JsGen) gen_builtin_prototype(typ_name string, default_value string, constructor string, value_of string, to_string string, extras string) string {
+	mut out := ''
+	out += 'function $typ_name\(val = $default_value\) { $constructor }\n'
+	out += '\t$typ_name\.prototype = {\n'
+	out += '\t\tval: $default_value,\n'
+	if extras.len > 0 {
+		out += '\t\t$extras,\n'
+	}
+	out += '\t\tvalueOf() { return $value_of },\n'
+	out += '\t\ttoString() { return $to_string }\n'
+	out += '\t};\n\n\t'
+	return out
+}
+
+// generate builtin type definitions, used for casting and methods.
+fn (mut g JsGen) gen_builtin_type_defs() string {
+	mut out := ''
+	for typ_name in v_types {
+		// TODO: JsDoc
+		match typ_name {
+			'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'any_int', 'size_t' {
+				// TODO: Bounds checking
+				out += g.gen_builtin_prototype(typ_name, 'new Number(0)', 'this.val = val | 0;', 'this.val | 0', '(this.val | 0).toString()', '')
+			}
+			'f32', 'f64', 'any_float' {
+				out += g.gen_builtin_prototype(typ_name, 'new Number(0)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+			}
+			'bool' {
+				out += g.gen_builtin_prototype(typ_name, 'new Boolean(false)', 'this.val = val == true;', 'this.val', 'this.val.toString()', '')
+			}
+			'string' {
+				out += g.gen_builtin_prototype(typ_name, 'new String("")', 'this.val = val;', 'this.val', 'this.val.toString()', 'get length() { return this.val.length }')
+			}
+			'map' {
+				out += g.gen_builtin_prototype(typ_name, 'new Map()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+			}
+			'array' {
+				out += g.gen_builtin_prototype(typ_name, 'new Array()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+			}
+			else {}
+		}
+	}
+	return out
 }

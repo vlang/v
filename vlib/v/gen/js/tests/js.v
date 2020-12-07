@@ -41,10 +41,9 @@ fn main() {
 	mut c := Foo{hl.Aaa{}}
 	c.a.update('another update')
 	println(c)
-	d := 1.5
-	println(i8(d))
-	e := int(10) + f32(127)
-	println(typeof(e))
+	println('int(1.5) == "${int(1.5)}"')
+	d := int(10) + f32(127)
+	println('typeof (int + f32) == "${typeof(d)}"')
 	_ = 'done'
 	{
 		_ = 'block'

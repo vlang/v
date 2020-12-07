@@ -7,6 +7,21 @@
 
 module builtin
 
+pub struct JS.Number {}
+pub struct JS.String {
+	length JS.Number
+}
+pub struct JS.Boolean {}
+pub struct JS.Array {}
+pub struct JS.Map {}
+
+// Type prototype functions
+fn (v JS.String) toString() JS.String
+fn (v JS.Number) toString() JS.String
+fn (v JS.Boolean) toString() JS.String
+fn (v JS.Array) toString() JS.String
+fn (v JS.Map) toString() JS.String
+
 // Top level functions
 fn JS.eval(string) any
 fn JS.parseInt(string, f64) f64
