@@ -920,10 +920,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
 			// cur_mod.Type => Type
 			if res.starts_with(table.cmod_prefix) {
-				res2 := res.replace_once(table.cmod_prefix, '')
-				if res2 != res {
-					res = res2
-				}
+				res = res.replace_once(table.cmod_prefix, '')
 			}
 			if res in import_aliases {
 				res = import_aliases[res]
