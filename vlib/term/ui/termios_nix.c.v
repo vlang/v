@@ -221,7 +221,7 @@ fn (mut ctx Context) termios_loop() {
 			sw.restart()
 			if ctx.cfg.event_fn != voidptr(0) {
 				unsafe {
-					len := C.read(C.STDIN_FILENO, ctx.read_buf.data + ctx.read_buf.len, ctx.read_buf.cap - ctx.read_buf.len)
+					len := C.read(C.STDIN_FILENO, byteptr(ctx.read_buf.data) + ctx.read_buf.len, ctx.read_buf.cap - ctx.read_buf.len)
 					ctx.resize_arr(ctx.read_buf.len + len)
 				}
 				if ctx.read_buf.len > 0 {
