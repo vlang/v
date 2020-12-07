@@ -6,7 +6,7 @@ import v.parser
 import v.ast
 import v.pref
 
-// get_parent_mod - return the parent mod name, in dot format.
+// get_parent_mod returns the parent mod name, in dot format.
 // It works by climbing up the folder hierarchy, until a folder,
 // that either contains main .v files, or a v.mod file is reached.
 // For example, given something like /languages/v/vlib/x/websocket/tests/autobahn
@@ -55,6 +55,8 @@ fn get_parent_mod(input_dir string) ?string {
 	return file_ast.mod.name
 }
 
+// lookup_module_with_path looks up the path of a given module name.
+// Throws an error if the module was not found.
 pub fn lookup_module_with_path(mod string, base_path string) ?string {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
@@ -76,10 +78,13 @@ pub fn lookup_module_with_path(mod string, base_path string) ?string {
 	return error('module "$mod" not found.')
 }
 
+// lookup_module returns the result of the `lookup_module_with_path`
+// but with the current directory as the provided base lookup path.
 pub fn lookup_module(mod string) ?string {
 	return lookup_module_with_path(mod, os.dir('.'))
 }
 
+// generate_from_mod generates a documentation from a specific module.
 pub fn generate_from_mod(module_name string, pub_only bool, with_comments bool) ?Doc {
 	mod_path := lookup_module(module_name) ?
 	return generate(mod_path, pub_only, with_comments)

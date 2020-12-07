@@ -11,7 +11,8 @@ import v.scanner
 import v.table
 import v.util
 
-// intentionally in order as a guide when arranging the docnodes
+// SymbolKind categorizes the symbols it documents.
+// The names are intentionally not in order as a guide when sorting the nodes.
 pub enum SymbolKind {
 	none_
 	const_group
@@ -75,10 +76,12 @@ pub mut:
 	parent_name string
 	return_type string
 	children    []DocNode
-	attrs       map[string]string
+	attrs       map[string]string [json: attributes]
 	from_scope  bool
+	is_pub      bool              [json: public]
 }
 
+// new_vdoc_preferences creates a new instance of pref.Preferences tailored for v.doc.
 pub fn new_vdoc_preferences() &pref.Preferences {
 	// vdoc should be able to parse as much user code as possible
 	// so its preferences should be permissive:
@@ -87,6 +90,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	}
 }
 
+// new creates a new instance of a `Doc` struct.
 pub fn new(input_path string) Doc {
 	mut d := Doc{
 		base_path: os.real_path(input_path)
@@ -105,6 +109,9 @@ pub fn new(input_path string) Doc {
 	return d
 }
 
+// stmt reads the data of an `ast.Stmt` node and returns a `DocNode`.
+// An option error is thrown if the symbol is not exposed to the public
+// (when `pub_only` is enabled) or the content's of the AST node is empty.
 pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	mut node := DocNode{
 		name: d.stmt_name(stmt)
@@ -112,9 +119,10 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		comment: ''
 		pos: d.convert_pos(filename, stmt.position())
 		file_path: os.join_path(d.base_path, filename)
+		is_pub: d.stmt_pub(stmt)
 	}
-	if (!node.content.starts_with('pub') && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol not public')
+	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
+		return error('symbol $node.name not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -205,6 +213,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 	return node
 }
 
+// file_ast reads the contents of `ast.File` and returns a map of `DocNode`s.
 pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	mut contents := map[string]DocNode{}
 	stmts := file_ast.stmts
@@ -220,7 +229,6 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	mut prev_comments := []ast.Comment{}
 	mut imports_section := true
 	for sidx, stmt in stmts {
-		// eprintln('stmt typeof: ' + typeof(stmt))
 		if stmt is ast.ExprStmt {
 			if stmt.expr is ast.Comment {
 				prev_comments << stmt.expr
@@ -302,6 +310,8 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 	return contents
 }
 
+// file_ast_with_pos has the same function as the `file_ast` but
+// instead returns a list of variables in a given offset-based position.
 pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocNode {
 	lscope := file_ast.scope.innermost(pos)
 	mut contents := map[string]DocNode{}
@@ -323,6 +333,8 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 	return contents
 }
 
+// generate is a `Doc` method that will start documentation
+// process based on a file path provided.
 pub fn (mut d Doc) generate() ? {
 	// get all files
 	d.base_path = if os.is_dir(d.base_path) { d.base_path } else { os.real_path(os.dir(d.base_path)) }
@@ -353,6 +365,8 @@ pub fn (mut d Doc) generate() ? {
 	return d.file_asts(file_asts)
 }
 
+// file_asts has the same function as the `file_ast` function but
+// accepts an array of `ast.File` and throws an error if necessary.
 pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 	mut fname_has_set := false
 	d.orig_mod_name = file_asts[0].mod.name
@@ -380,17 +394,27 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 		}
 		contents := d.file_ast(file_ast)
 		for name, node in contents {
-			if name in d.contents && (d.contents[name].kind != .none_ || node.kind == .none_) {
-				d.contents[name].children << node.children
-				d.contents[name].children.sort_by_name()
+			if name !in d.contents {
+				d.contents[name] = node
 				continue
 			}
-			d.contents[name] = node
+			if d.contents[name].kind == .typedef && node.kind !in [.typedef, .none_] {
+				old_children := d.contents[name].children.clone()
+				d.contents[name] = node
+				d.contents[name].children = old_children
+			}
+			if d.contents[name].kind != .none_ || node.kind == .none_ {
+				d.contents[name].children << node.children
+				d.contents[name].children.sort_by_name()
+				d.contents[name].children.sort_by_kind()
+			}
 		}
 	}
 	d.time_generated = time.now()
 }
 
+// generate documents a certain file directory and returns an
+// instance of `Doc` if it is successful. Otherwise, it will  throw an error.
 pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = pub_only
@@ -399,6 +423,8 @@ pub fn generate(input_path string, pub_only bool, with_comments bool) ?Doc {
 	return doc
 }
 
+// generate_with_pos has the same function as the `generate` function but
+// accepts an offset-based position and enables the comments by default.
 pub fn generate_with_pos(input_path string, filename string, pos int) ?Doc {
 	mut doc := new(input_path)
 	doc.pub_only = false
