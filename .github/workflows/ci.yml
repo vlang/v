@@ -167,7 +167,7 @@ jobs:
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
-      run: ./v -silent build-examples
+      run: ./v build-examples
     - name: Build examples with -autofree
       run: |
         ./v -autofree -o tetris examples/tetris/tetris.v
@@ -231,7 +231,7 @@ jobs:
     - name: Fixed tests (-prod)
       run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
     - name: Build examples
-      run: ./v -silent build-examples
+      run: ./v build-examples
     - name: Build examples with -autofree
       run: |
         ./v -autofree -experimental -o tetris examples/tetris/tetris.v
