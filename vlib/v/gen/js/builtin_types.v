@@ -193,7 +193,7 @@ fn (mut g JsGen) fn_typ(args []table.Param, return_type table.Type) string {
 fn (mut g JsGen) struct_typ(s string) string {
 	ns := get_ns(s)
 	if ns == 'JS' { return s[3..] }
-	mut name := if ns == g.namespace { s.split('.').last() } else { g.get_alias(s) }
+	mut name := if ns == g.ns.name { s.split('.').last() } else { g.get_alias(s) }
 	mut styp := ''
 	for i, v in name.split('.') {
 		if i == 0 {
@@ -202,7 +202,7 @@ fn (mut g JsGen) struct_typ(s string) string {
 			styp += '["$v"]'
 		}
 	}
-	if ns in ['', g.namespace] {
+	if ns in ['', g.ns.name] {
 		return styp
 	}
 	return styp + '["prototype"]'
