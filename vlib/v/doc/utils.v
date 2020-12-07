@@ -78,7 +78,7 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 	}
 }
 
-// stmt_signature is a `Doc` method that returns the signature of a given `ast.Stmt` node.
+// stmt_signature returns the signature of a given `ast.Stmt` node.
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	match stmt {
 		ast.Module {
@@ -95,7 +95,7 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	}
 }
 
-// stmt_name is a `Doc` method that returns the name of a given `ast.Stmt` node.
+// stmt_name returns the name of a given `ast.Stmt` node.
 pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
@@ -107,7 +107,7 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	}
 }
 
-// stmt_pub is a `Doc` method that returns a boolean if a given `ast.Stmt` node
+// stmt_pub returns a boolean if a given `ast.Stmt` node
 // is exposed to the public.
 pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
 	match stmt {

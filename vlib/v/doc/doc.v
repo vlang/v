@@ -11,7 +11,7 @@ import v.scanner
 import v.table
 import v.util
 
-// SymbolKind is an enum that categorizes the symbols it documents.
+// SymbolKind categorizes the symbols it documents.
 // The names are intentionally not in order as a guide when sorting the nodes.
 pub enum SymbolKind {
 	none_
@@ -28,7 +28,6 @@ pub enum SymbolKind {
 	struct_field
 }
 
-// Doc is a struct that is served as an instance for documenting a certain module or project.
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
@@ -58,7 +57,6 @@ pub mut:
 	extract_vars    bool
 }
 
-// DocPos is a struct that stores the position information of a certain symbol.
 pub struct DocPos {
 pub:
 	line int
@@ -66,7 +64,6 @@ pub:
 	len  int
 }
 
-// DocNode is a struct that stores the contents of the symbol.
 pub struct DocNode {
 pub mut:
 	name        string
@@ -93,7 +90,7 @@ pub fn new_vdoc_preferences() &pref.Preferences {
 	}
 }
 
-// new is creates a new instance of a `Doc` struct.
+// new creates a new instance of a `Doc` struct.
 pub fn new(input_path string) Doc {
 	mut d := Doc{
 		base_path: os.real_path(input_path)
