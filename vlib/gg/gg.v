@@ -128,7 +128,12 @@ fn gg_init_sokol_window(user_data voidptr) {
 		g.font_inited = true
 	} else {
 		if !exists {
-			eprintln('font file $g.config.font_path does not exist')
+			sfont := system_font_path()
+			eprintln('font file "$g.config.font_path" does not exist, the system font was used instead.')
+			g.ft = new_ft(font_path: sfont, custom_bold_font_path: g.config.custom_bold_font_path, scale: sapp.dpi_scale()) or {
+				panic(err)
+			}
+			g.font_inited = true
 		}
 	}
 	//
