@@ -1,0 +1,42 @@
+vlib/v/checker/tests/pointer_ops.vv:5:7: error: `+` cannot be used with `voidptr`
+    3 |     unsafe {
+    4 |         mut p := voidptr(0)
+    5 |         _ = p + 1
+      |             ^
+    6 |         p++
+    7 |         p += 3
+vlib/v/checker/tests/pointer_ops.vv:6:4: error: invalid operation: ++ (non-numeric type `voidptr`)
+    4 |         mut p := voidptr(0)
+    5 |         _ = p + 1
+    6 |         p++
+      |          ~~
+    7 |         p += 3
+    8 |         _ = p - 1
+vlib/v/checker/tests/pointer_ops.vv:7:3: error: operator `+=` not defined on left operand type `voidptr`
+    5 |         _ = p + 1
+    6 |         p++
+    7 |         p += 3
+      |         ^
+    8 |         _ = p - 1
+    9 |         p--
+vlib/v/checker/tests/pointer_ops.vv:8:7: error: `-` cannot be used with `voidptr`
+    6 |         p++
+    7 |         p += 3
+    8 |         _ = p - 1
+      |             ^
+    9 |         p--
+   10 |         p -= 3
+vlib/v/checker/tests/pointer_ops.vv:9:4: error: invalid operation: -- (non-numeric type `voidptr`)
+    7 |         p += 3
+    8 |         _ = p - 1
+    9 |         p--
+      |          ~~
+   10 |         p -= 3
+   11 |     }
+vlib/v/checker/tests/pointer_ops.vv:10:3: error: operator `-=` not defined on left operand type `voidptr`
+    8 |         _ = p - 1
+    9 |         p--
+   10 |         p -= 3
+      |         ^
+   11 |     }
+   12 | }

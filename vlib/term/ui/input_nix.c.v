@@ -46,7 +46,7 @@ pub fn (mut ctx Context) run() ? {
 // TODO: remove
 fn (mut ctx Context) shift(len int) {
 	unsafe {
-		C.memmove(ctx.read_buf.data, ctx.read_buf.data + len, ctx.read_buf.cap - len)
+		C.memmove(ctx.read_buf.data, byteptr(ctx.read_buf.data) + len, ctx.read_buf.cap - len)
 		ctx.resize_arr(ctx.read_buf.len - len)
 	}
 }
