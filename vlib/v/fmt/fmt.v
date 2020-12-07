@@ -1415,15 +1415,28 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		}
 		f.write('{')
 		if is_one_line_stmt {
+			mut str := f.stmt_str(branch.stmts[0])
+			mut line := ''
 			// the control stmts (return/break/continue...) print a newline inside them,
 			// so, since this'll all be on one line, trim any possible whitespace
-			str := f.stmt_str(branch.stmts[0]).trim_space()
-			line := ' $str '
+			if !str.contains('\n') {
+				str = str.trim_space()
+				line = ' $str '
+			} else {
+				line = ' $str ' 
+			}
 			if line.len + f.line_len <= max_len.last() {
 					f.write(line)
+					continue
+			} else {
+				is_one_line_stmt = false
+				goto label
+				//continue
+				//f.writeln('')
+				//f.stmts(branch.stmts)
 			}
-			continue
 		}
+label:
 		if single_line {
 			f.write(' ')
 		} else {
