@@ -3686,7 +3686,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						}
 					}
 					g.expr(node.left)
-					// TODO: test direct_array_access when 'shared' is implemented
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
