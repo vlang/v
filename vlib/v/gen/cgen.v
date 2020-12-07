@@ -969,6 +969,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ForCStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
@@ -1003,10 +1005,14 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.label.len > 0 {
 				g.writeln('${node.label}__break: {}')
 			}
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForInStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.for_in(node)
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForStmt {
 			prev_branch_parent_pos := g.branch_parent_pos
