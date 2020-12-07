@@ -90,7 +90,3 @@ pub fn error_with_code(s string, code int) Option {
 		ecode: code
 	}
 }
-
-pub fn (mut i int) add_one() {
-	i++
-} 
