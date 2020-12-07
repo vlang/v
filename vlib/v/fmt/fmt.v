@@ -1695,7 +1695,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('}')
 			return
 		}
-		f.write(f.table.type_to_str_using_aliases(it.typ, &f.mod2alias))
+		f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
 		f.write('{')
 		// TODO copypasta
 		if it.has_len {

@@ -842,11 +842,11 @@ pub:
 }
 
 pub fn (table &Table) type_to_str(t Type) string {
-	return table.type_to_str_using_aliases(t, &map[string]string{})
+	return table.type_to_str_using_aliases(t, map[string]string{})
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
-pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases &map[string]string) string {
+pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[string]string) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
