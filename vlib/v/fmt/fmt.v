@@ -1384,8 +1384,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
 	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
-		it.branches[1].stmts.len == 1 &&
-		(it.is_expr || f.is_assign)
+		it.branches[1].stmts.len == 1 && (it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	mut is_one_line_stmt := true
 	for branch in it.branches {
@@ -1394,6 +1393,12 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 			break
 		}
 	}
+	was_empty_line := f.empty_line
+	prev_line_len := f.line_len
+	start_pos := f.out.len
+
+// TODO: try to find a solution without goto
+start:
 	for i, branch in it.branches {
 		if i == 0 {
 			// first `if`
@@ -1424,21 +1429,22 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 				line = ' $str '
 			} else {
 				is_one_line_stmt = false
-				goto label
+				f.out.go_back_to(start_pos)
+				f.empty_line = was_empty_line
+				f.line_len = prev_line_len
+				goto start
 			}
-			if line.len + f.line_len <= max_len.last() {
-					f.write(line)
-					continue
+			if line.len + f.line_len + 2 <= max_len.last() {
+				f.write(line)
+				continue
 			} else {
 				is_one_line_stmt = false
-				goto label
-				//continue
-				//f.writeln('')
-				//f.stmts(branch.stmts)
+				f.out.go_back_to(start_pos)
+				f.empty_line = was_empty_line
+				f.line_len = prev_line_len
+				goto start
 			}
 		}
-// TODO: try to find a solution without goto
-label:
 		if single_line {
 			f.write(' ')
 		} else {
