@@ -1,3 +1,10 @@
+vlib/v/checker/tests/modules/overload_return_type/main.v:3:16: error: module `point` has no type `Point`
+    1 | module main
+    2 |
+    3 | import point { Point }
+      |                ~~~~~
+    4 |
+    5 | fn main() {
 vlib/v/checker/tests/modules/overload_return_type/main.v:14:8: error: cannot assign to `two`: expected `point.Point`, not `int`
    12 |         y: 1
    13 |     }

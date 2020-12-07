@@ -2755,24 +2755,24 @@ fn (mut c Checker) import_stmt(imp ast.Import) {
 		name := '${imp.mod}.$sym.name'
 		if sym.name[0].is_capital() {
 			if type_sym := c.table.find_type(name) {
-				if type_sym.kind == .placeholder {
-					c.error('module `$imp.mod` has no type `$sym.name`', sym.pos)
-				} else if !type_sym.is_public {
-					c.error('module `$imp.mod` type `$sym.name` is not public', sym.pos)
+				if type_sym.kind != .placeholder && !type_sym.is_public {
+					c.error('module `$imp.mod` type `$sym.name` is private', sym.pos)
+					continue
 				}
-				continue
 			}
+			c.error('module `$imp.mod` has no type `$sym.name`', sym.pos)
+			continue
 		}
 		if func := c.table.find_fn(name) {
 			if !func.is_pub {
-				c.error('module `$imp.mod` function `${sym.name}()` is not public', sym.pos)
+				c.error('module `$imp.mod` function `${sym.name}()` is private', sym.pos)
 			}
 			continue
 		}
 		if _ := c.file.global_scope.find_const(name) {
 			continue
 		}
-		c.error('module `$imp.mod` has no symbol `$sym.name`', sym.pos)
+		c.error('module `$imp.mod` has no constant or function `$sym.name`', sym.pos)
 	}
 }
 
