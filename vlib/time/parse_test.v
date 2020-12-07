@@ -58,7 +58,7 @@ fn test_iso8601_parse_utc() {
 	assert t_utc.day == 5
 }
 
-fn test_iso8601_parse_loacl() {
+fn test_iso8601_parse_local() {
 	format_utc := '2020-06-05T15:38:06.015959'
 	t_utc := time.parse_iso8601(format_utc) or {
 		panic(err)
