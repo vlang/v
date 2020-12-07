@@ -387,6 +387,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	pre_comments := p.eat_comments()
 	// Declare the type
 	reg_idx := p.table.register_type_symbol(
+		is_public: is_pub
 		kind: .interface_
 		name: interface_name
 		cname: util.no_dots(interface_name)

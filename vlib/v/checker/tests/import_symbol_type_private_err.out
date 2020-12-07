@@ -1,0 +1,11 @@
+vlib/v/checker/tests/import_symbol_type_private_err.vv:1:13: error: module `io` type `ReaderWriterImpl` is private
+    1 | import io { ReaderWriterImpl }
+      |             ~~~~~~~~~~~~~~~~
+    2 | fn main() {
+    3 |   _ := ReaderWriterImpl{}
+vlib/v/checker/tests/import_symbol_type_private_err.vv:3:8: error: type `io.ReaderWriterImpl` is private
+    1 | import io { ReaderWriterImpl }
+    2 | fn main() {
+    3 |   _ := ReaderWriterImpl{}
+      |        ~~~~~~~~~~~~~~~~~~
+    4 | }

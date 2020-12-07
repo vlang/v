@@ -842,6 +842,11 @@ pub:
 }
 
 pub fn (table &Table) type_to_str(t Type) string {
+	return table.type_to_str_using_aliases(t, map[string]string{})
+}
+
+// import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
+pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[string]string) string {
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
@@ -854,12 +859,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 				return 'array'
 			}
 			info := sym.info as Array
-			elem_str := table.type_to_str(info.elem_type)
+			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
 			res = '[]$elem_str'
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
-			elem_str := table.type_to_str(info.elem_type)
+			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
 			res = '[$info.size]$elem_str'
 		}
 		.chan {
@@ -872,7 +877,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 					mut_str = 'mut '
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
-				elem_str := table.type_to_str(elem_type)
+				elem_str := table.type_to_str_using_aliases(elem_type, import_aliases)
 				res = 'chan $mut_str$elem_str'
 			}
 		}
@@ -887,8 +892,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 				return 'map'
 			}
 			info := sym.info as Map
-			key_str := table.type_to_str(info.key_type)
-			val_str := table.type_to_str(info.value_type)
+			key_str := table.type_to_str_using_aliases(info.key_type, import_aliases)
+			val_str := table.type_to_str_using_aliases(info.value_type, import_aliases)
 			res = 'map[$key_str]$val_str'
 		}
 		.multi_return {
@@ -898,7 +903,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 				if i > 0 {
 					res += ', '
 				}
-				res += table.type_to_str(typ)
+				res += table.type_to_str_using_aliases(typ, import_aliases)
 			}
 			res += ')'
 		}
@@ -916,6 +921,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 			// cur_mod.Type => Type
 			if res.starts_with(table.cmod_prefix) {
 				res = res.replace_once(table.cmod_prefix, '')
+			}
+			if res in import_aliases {
+				res = import_aliases[res]
 			}
 		}
 	}

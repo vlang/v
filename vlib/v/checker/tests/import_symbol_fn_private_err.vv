@@ -1,0 +1,4 @@
+import time { now, since }
+fn main() {
+  since(now())
+}

@@ -1,6 +1,6 @@
 module main
 
-import point { Point }
+import geometry { Point }
 
 fn test_operator_overloading() {
     one := Point {x:1, y:2}
