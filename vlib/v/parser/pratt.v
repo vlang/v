@@ -10,7 +10,7 @@ import v.token
 pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	$if trace_parser ? {
 		tok_pos := p.tok.position()
-		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr($precedence)')
+		eprintln('parsing file: ${p.file_name:-30} | tok.kind: ${p.tok.kind:-10} | tok.lit: ${p.tok.lit:-10} | tok_pos: ${tok_pos.str():-45} | expr(${precedence})')
 	}
 	// println('\n\nparser.expr()')
 	mut node := ast.Expr{}
@@ -199,11 +199,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
-					s := if p.tok.lit != '' { '`$p.tok.lit`' } else { p.tok.kind.str() }
-					p.error_with_pos('unexpected $s, expecting `:`', p.tok.position())
+					s := if p.tok.lit != '' { '`${p.tok.lit}`' } else { p.tok.kind.str() }
+					p.error_with_pos('unexpected ${s}, expecting `:`', p.tok.position())
 					return ast.Expr{}
 				} else {
-					p.error_with_pos('unexpected `$p.tok.lit`, expecting struct key',
+					p.error_with_pos('unexpected `${p.tok.lit}`, expecting struct key',
 						p.tok.position())
 					return ast.Expr{}
 				}
@@ -243,7 +243,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
+				p.error_with_pos('invalid expression: unexpected ${p.tok.kind.str()} token',
 					p.tok.position())
 				return ast.Expr{}
 			}
@@ -291,7 +291,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 					return node
 				}
 				// added 10/2020: LATER this will be parsed as PrefixExpr instead
-				p.warn_with_pos('move infix `$p.tok.kind` operator before new line (if infix intended) or use brackets for a prefix expression',
+				p.warn_with_pos('move infix `${p.tok.kind}` operator before new line (if infix intended) or use brackets for a prefix expression',
 					p.tok.position())
 			}
 			// continue on infix expr
@@ -304,7 +304,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 			// Postfix
 			// detect `f(x++)`, `a[x++]`
 			if p.peek_tok.kind in [.rpar, .rsbr] && p.mod !in ['builtin', 'regex', 'strconv'] { // temp
-				p.warn_with_pos('`$p.tok.kind` operator can only be used as a statement',
+				p.warn_with_pos('`${p.tok.kind}` operator can only be used as a statement',
 					p.peek_tok.position())
 			}
 			node = ast.PostfixExpr{

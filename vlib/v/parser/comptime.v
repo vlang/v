@@ -25,7 +25,7 @@ fn (mut p Parser) hash() ast.HashStmt {
 	p.next()
 	mut main_str := ''
 	mut msg := ''
-	content := val.all_after('$kind ').all_before('//')
+	content := val.all_after('${kind} ').all_before('//')
 	if content.contains(' #') {
 		main_str = content.all_before(' #').trim_space()
 		msg = content.all_after(' #').trim_space()
@@ -86,24 +86,24 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		}
 		if !os.exists(path) {
 			if is_html {
-				p.error('vweb HTML template "$path" not found')
+				p.error('vweb HTML template "${path}" not found')
 				return ast.ComptimeCall{}
 			} else {
-				p.error('template file "$path" not found')
+				p.error('template file "${path}" not found')
 				return ast.ComptimeCall{}
 			}
 		}
 		// println('path is now "$path"')
 	}
 	if p.pref.is_verbose {
-		println('>>> compiling comptime template file "$path"')
+		println('>>> compiling comptime template file "${path}"')
 	}
 	tmp_fn_name := p.cur_fn_name.replace('.', '__')
 	v_code := tmpl.compile_file(path, tmp_fn_name)
 	$if print_vweb_template_expansions ? {
 		lines := v_code.split('\n')
 		for i, line in lines {
-			println('$path:${i + 1}: $line')
+			println('${path}:${i + 1}: ${line}')
 		}
 	}
 	mut scope := &ast.Scope{
@@ -112,7 +112,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	}
 	if p.pref.is_verbose {
 		println('\n\n')
-		println('>>> vweb template for $path:')
+		println('>>> vweb template for ${path}:')
 		println(v_code)
 		println('>>> end of vweb template END')
 		println('\n\n')
@@ -125,7 +125,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 	// copy vars from current fn scope into vweb_tmpl scope
 	for stmt in file.stmts {
 		if stmt is ast.FnDecl {
-			if stmt.name == 'main.vweb_tmpl_$tmp_fn_name' {
+			if stmt.name == 'main.vweb_tmpl_${tmp_fn_name}' {
 				mut tmpl_scope := file.scope.innermost(stmt.body_pos.pos)
 				for _, obj in p.scope.objects {
 					if obj is ast.Var {
@@ -174,7 +174,7 @@ fn (mut p Parser) comp_for() ast.CompFor {
 		})
 		kind = .fields
 	} else {
-		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
+		p.error('unknown kind `${for_val}`, available are: `methods` or `fields`')
 		return ast.CompFor{}
 	}
 	spos := p.tok.position()
@@ -262,7 +262,7 @@ fn os_from_string(os string) pref.OS {
 			return .linux
 		}
 		else {
-			panic('bad os $os')
+			panic('bad os ${os}')
 		}
 	}
 	// println('bad os $os') // todo panic?

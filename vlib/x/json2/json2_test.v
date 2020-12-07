@@ -45,13 +45,13 @@ fn (mut e Employee) from_json(any json2.Any) {
 fn test_simple() {
 	x := Employee{'Peter', 28, 95000.5, .worker}
 	s := json2.encode<Employee>(x)
-	eprintln('Employee x: $s')
+	eprintln('Employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"title":2}'
 	y := json2.decode<Employee>(s) or {
 		assert false
 		Employee{}
 	}
-	eprintln('Employee y: $y')
+	eprintln('Employee y: ${y}')
 	assert y.name == 'Peter'
 	assert y.age == 28
 	assert y.salary == 95000.5
@@ -82,7 +82,7 @@ fn test_character_unescape() {
 		json2.Any{}
 	}
 	lines := obj.as_map()
-	eprintln('$lines')
+	eprintln('${lines}')
 	assert lines['newline'].str() == 'new\nline'
 	assert lines['tab'].str() == '\ttab'
 	assert lines['backslash'].str() == 'back\\slash'
@@ -249,14 +249,15 @@ fn test_struct_in_struct() {
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
-		'one': json2.Any(1)
-		'two': json2.Any(2)
+		'one':   json2.Any(1)
+		'two':   json2.Any(2)
 		'three': json2.Any(3)
-		'four': json2.Any(4)
+		'four':  json2.Any(4)
 	}
 	out := numbers.str()
 	assert out == expected
 }
+
 /*
 fn test_parse_map() {
 	expected := {

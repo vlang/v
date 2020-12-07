@@ -13,5 +13,5 @@ fn main() {
 	f := &Foo{
 		a: []int{len: int(size)}
 	}
-	println('f.a: $f.a')
+	println('f.a: ${f.a}')
 }

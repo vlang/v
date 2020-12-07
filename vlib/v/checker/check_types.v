@@ -144,7 +144,7 @@ pub fn (mut c Checker) check_matching_function_symbols(got_type_sym &table.TypeS
 		if exp_arg_is_ptr != got_arg_is_ptr {
 			exp_arg_pointedness := if exp_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
 			got_arg_pointedness := if got_arg_is_ptr { 'a pointer' } else { 'NOT a pointer' }
-			c.add_error_detail("`$exp_fn.name`\'s expected fn argument: `$exp_arg.name` is $exp_arg_pointedness, but the passed fn argument: `$got_arg.name` is $got_arg_pointedness")
+			c.add_error_detail("`${exp_fn.name}`\'s expected fn argument: `${exp_arg.name}` is ${exp_arg_pointedness}, but the passed fn argument: `${got_arg.name}` is ${got_arg_pointedness}")
 			return false
 		}
 		if !c.check_basic(got_arg.typ, exp_arg.typ) {
@@ -166,7 +166,7 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 			// allow `bool << 2` in translated C code
 			return table.int_type
 		}
-		c.error('invalid operation: shift of type `$sym.name`', left_pos)
+		c.error('invalid operation: shift of type `${sym.name}`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
@@ -297,7 +297,7 @@ pub fn (mut c Checker) check_expected(got table.Type, expected table.Type) ? {
 	}
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return error('expected `$exps`, not `$gots`')
+	return error('expected `${exps}`, not `${gots}`')
 }
 
 pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
@@ -423,11 +423,11 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 		}
 	}
 	if typ == table.void_type {
-		c.error('could not infer generic type `$gt_name` in call to `$f.name`', call_expr.pos)
+		c.error('could not infer generic type `${gt_name}` in call to `${f.name}`', call_expr.pos)
 	} else {
 		if c.pref.is_verbose {
 			s := c.table.type_to_str(typ)
-			println('inferred `$f.name<$s>`')
+			println('inferred `${f.name}<${s}>`')
 		}
 		c.table.register_fn_gen_type(f.name, typ)
 		call_expr.generic_type = typ

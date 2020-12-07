@@ -120,14 +120,14 @@ string _STR_TMP(const char *fmt, ...) {
 fn (mut g Gen) string_literal(node ast.StringLiteral) {
 	if node.is_raw {
 		escaped_val := util.smart_quote(node.val, true)
-		g.write('_SLIT("$escaped_val")')
+		g.write('_SLIT("${escaped_val}")')
 		return
 	}
 	escaped_val := util.smart_quote(node.val, false)
 	if g.is_c_call || node.language == .c {
 		// In C calls we have to generate C strings
 		// `C.printf("hi")` => `printf("hi");`
-		g.write('"$escaped_val"')
+		g.write('"${escaped_val}"')
 	} else {
 		// TODO calculate the literal's length in V, it's a bit tricky with all the
 		// escape characters.
@@ -135,7 +135,7 @@ fn (mut g Gen) string_literal(node ast.StringLiteral) {
 		// g.write('tos4("$escaped_val", strlen("$escaped_val"))')
 		// g.write('tos4("$escaped_val", $it.val.len)')
 		// g.write('_SLIT("$escaped_val")')
-		g.write('_SLIT("$escaped_val")')
+		g.write('_SLIT("${escaped_val}")')
 	}
 }
 
@@ -210,7 +210,7 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			fmt = '${fmt}0'
 		}
 		if node.fwidths[i] != 0 {
-			fmt = '$fmt${node.fwidths[i]}'
+			fmt = '${fmt}${node.fwidths[i]}'
 		}
 		if node.precisions[i] != 987698 {
 			fmt = '${fmt}.${node.precisions[i]}'
@@ -224,18 +224,18 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 		} else if typ.has_flag(.variadic) {
 			g.write('.*s')
 		} else if typ.is_float() {
-			g.write('$fmt${fspec:c}')
+			g.write('${fmt}${fspec:c}')
 		} else if typ.is_pointer() {
 			if fspec == `p` {
 				g.write('${fmt}p')
 			} else {
-				g.write('$fmt"PRI${fspec:c}PTR"')
+				g.write('${fmt}"PRI${fspec:c}PTR"')
 			}
 		} else if typ.is_int() {
 			if fspec == `c` {
 				g.write('${fmt}c')
 			} else {
-				g.write('$fmt"PRI${fspec:c}')
+				g.write('${fmt}"PRI${fspec:c}')
 				if typ in [table.i8_type, table.byte_type] {
 					g.write('8')
 				} else if typ in [table.i16_type, table.u16_type] {
@@ -249,14 +249,14 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			}
 		} else {
 			// TODO: better check this case
-			g.write('$fmt"PRId32"')
+			g.write('${fmt}"PRId32"')
 		}
 		if i < node.exprs.len - 1 {
 			g.write('\\000')
 		}
 	}
 	num_string_parts := if end_string { node.exprs.len + 1 } else { node.exprs.len }
-	g.write('", $num_string_parts, ')
+	g.write('", ${num_string_parts}, ')
 	// Build args
 	for i, expr in node.exprs {
 		typ := g.unwrap_generic(node.expr_types[i])
@@ -355,7 +355,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 		if expr is ast.ArrayInit {
 			if expr.is_fixed {
 				s := g.typ(expr.typ)
-				g.write('($s)')
+				g.write('(${s})')
 			}
 		}
 		g.expr(expr)

@@ -209,7 +209,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 
 fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
-		p.error('orm: expecting `$name`')
+		p.error('orm: expecting `${name}`')
 		return none
 	}
 	return true

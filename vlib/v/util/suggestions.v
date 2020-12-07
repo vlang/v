@@ -70,20 +70,20 @@ pub fn (s Suggestion) say(msg string) string {
 		if top_posibility.similarity > 0.10 {
 			val := top_posibility.value
 			if !val.starts_with('[]') {
-				res += '.\nDid you mean `$val`?'
+				res += '.\nDid you mean `${val}`?'
 				found = true
 			}
 		}
 	}
 	if !found {
 		if s.known.len > 0 {
-			mut values := s.known.map('`$it.svalue`')
+			mut values := s.known.map('`${it.svalue}`')
 			values.sort()
 			if values.len == 1 {
 				res += '.\n1 possibility: ${values[0]}.'
 			} else if values.len < 25 {
 				// it is hard to read/use too many suggestions
-				res += '.\n$values.len possibilities: ' + values.join(', ') + '.'
+				res += '.\n${values.len} possibilities: ' + values.join(', ') + '.'
 			}
 		}
 	}
@@ -100,5 +100,5 @@ pub fn short_module_name(name string) string {
 	}
 	mname := vals[vals.len - 2]
 	symname := vals[vals.len - 1]
-	return '${mname}.$symname'
+	return '${mname}.${symname}'
 }

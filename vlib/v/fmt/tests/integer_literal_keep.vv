@@ -13,7 +13,7 @@ fn main() {
 	x := 0xdeadbeef
 	u := 9978654321
 	o := 0o664
-	eprintln('  hex constant in decimal: $x')
-	eprintln('    u constant in decimal: $u')
-	eprintln('octal constant in decimal: $o')
+	eprintln('  hex constant in decimal: ${x}')
+	eprintln('    u constant in decimal: ${u}')
+	eprintln('octal constant in decimal: ${o}')
 }

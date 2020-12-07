@@ -5,9 +5,7 @@ import time
 fn test_ws() {
 	go start_server()
 	time.sleep_ms(100)
-	ws_test('ws://localhost:30000') or {
-		assert false
-	}
+	ws_test('ws://localhost:30000') or { assert false }
 }
 
 fn start_server() ? {
@@ -24,19 +22,17 @@ fn start_server() ? {
 		return true
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		ws.write(msg.payload, msg.opcode) or {
-			panic(err)
-		}
+		ws.write(msg.payload, msg.opcode) or { panic(err) }
 	})
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or {}
+	s.listen() or { }
 }
 
 // ws_test tests connect to the websocket server from websocket client
 fn ws_test(uri string) ? {
-	eprintln('connecting to $uri ...')
+	eprintln('connecting to ${uri} ...')
 	mut ws := websocket.new_client(uri) ?
 	ws.on_open(fn (mut ws websocket.Client) ? {
 		println('open!')
@@ -44,7 +40,7 @@ fn ws_test(uri string) ? {
 		assert true
 	})
 	ws.on_error(fn (mut ws websocket.Client, err string) ? {
-		println('error: $err')
+		println('error: ${err}')
 		// this can be thrown by internet connection problems
 		assert false
 	})
@@ -52,24 +48,20 @@ fn ws_test(uri string) ? {
 		println('closed')
 	})
 	ws.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		println('client got type: $msg.opcode payload:\n$msg.payload')
+		println('client got type: ${msg.opcode} payload:\n${msg.payload}')
 		if msg.opcode == .text_frame {
 			smessage := msg.payload.bytestr()
-			println('Message: $smessage')
+			println('Message: ${smessage}')
 			assert smessage == 'a'
 		} else {
-			println('Binary message: $msg')
+			println('Binary message: ${msg}')
 		}
 	})
-	ws.connect() or {
-		panic('fail to connect')
-	}
+	ws.connect() or { panic('fail to connect') }
 	go ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame) or {
-			panic('fail to write to websocket')
-		}
+		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket') }
 		// sleep to give time to recieve response before send a new one
 		time.sleep_ms(100)
 	}

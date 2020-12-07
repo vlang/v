@@ -17,8 +17,8 @@ fn (mut p Parser) check_undefined_variables(exprs []ast.Expr, val ast.Expr) ? {
 			for expr in exprs {
 				if expr is ast.Ident {
 					if expr.name == val.name {
-						p.error_with_pos('undefined variable: `$val.name`', val.pos)
-						return error('undefined variable: `$val.name`')
+						p.error_with_pos('undefined variable: `${val.name}`', val.pos)
+						return error('undefined variable: `${val.name}`')
 					}
 				}
 			}
@@ -105,7 +105,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error('unexpected $op.str(), expecting := or = or comma')
+				p.error('unexpected ${op.str()}, expecting := or = or comma')
 				return ast.Stmt{}
 			}
 			if has_cross_var {
@@ -119,7 +119,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			ast.Ident {
 				if op == .decl_assign {
 					if p.scope.known_var(lx.name) {
-						p.error_with_pos('redefinition of `$lx.name`', lx.pos)
+						p.error_with_pos('redefinition of `${lx.name}`', lx.pos)
 						return ast.Stmt{}
 					}
 					mut share := table.ShareType(0)
@@ -161,7 +161,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 			}
 			ast.IndexExpr {
 				if op == .decl_assign {
-					p.error_with_pos('non-name `$lx.left[$lx.index]` on left side of `:=`',
+					p.error_with_pos('non-name `${lx.left}[${lx.index}]` on left side of `:=`',
 						lx.pos)
 					return ast.Stmt{}
 				}

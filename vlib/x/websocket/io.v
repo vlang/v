@@ -86,7 +86,7 @@ fn (mut ws Client) shutdown_socket() ? {
 
 // dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() ?net.TcpConn {
-	mut t := net.dial_tcp('$ws.uri.hostname:$ws.uri.port') ?
+	mut t := net.dial_tcp('${ws.uri.hostname}:${ws.uri.port}') ?
 	optval := int(1)
 	t.sock.set_option_int(.keep_alive, optval) ?
 	t.set_read_timeout(10 * time.millisecond)

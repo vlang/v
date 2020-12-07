@@ -64,7 +64,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					pos := p.tok.position()
 					n := p.check_name()
 					if n != 'init' {
-						p.error_with_pos('expected `init:`, not `$n`', pos)
+						p.error_with_pos('expected `init:`, not `${n}`', pos)
 						return ast.ArrayInit{}
 					}
 					p.check(.colon)
@@ -117,7 +117,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					default_expr = p.expr(0)
 				}
 				else {
-					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					p.error('wrong field `${key}`, expecting `len`, `cap`, or `init`')
 					return ast.ArrayInit{}
 				}
 			}

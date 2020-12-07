@@ -38,7 +38,7 @@ pub mut:
 }
 
 fn (mut pc PkgConfig) parse_list(s string) []string {
-	operators := [ '=', '<', '>', '>=', '<=' ]
+	operators := ['=', '<', '>', '>=', '<=']
 	r := pc.parse_line(s.replace(',', '')).split(' ')
 	mut res := []string{}
 	mut skip := false
@@ -58,15 +58,11 @@ fn (mut pc PkgConfig) parse_list(s string) []string {
 fn (mut pc PkgConfig) parse_line(s string) string {
 	mut r := s.trim_space()
 	for r.contains('\${') {
-		tok0 := r.index('\${') or {
-			break
-		}
-		mut tok1 := r[tok0..].index('}') or {
-			break
-		}
+		tok0 := r.index('\${') or { break }
+		mut tok1 := r[tok0..].index('}') or { break }
 		tok1 += tok0
 		v := r[tok0 + 2..tok1]
-		r = r.replace('\${$v}', pc.vars[v])
+		r = r.replace('\${${v}}', pc.vars[v])
 	}
 	return r.trim_space()
 }
@@ -81,9 +77,7 @@ fn (mut pc PkgConfig) setvar(line string) {
 }
 
 fn (mut pc PkgConfig) parse(file string) bool {
-	data := os.read_file(file) or {
-		return false
-	}
+	data := os.read_file(file) or { return false }
 	if pc.options.debug {
 		eprintln(data)
 	}
@@ -130,31 +124,23 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 		pc.paths << '.'
 	}
 	for path in pc.paths {
-		file := '$path/${pkgname}.pc'
+		file := '${path}/${pkgname}.pc'
 		if os.exists(file) {
 			return file
 		}
 	}
-	return error('Cannot find "$pkgname" pkgconfig file')
+	return error('Cannot find "${pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
-	v0 := semver.from(version) or {
-		return false
-	}
-	v1 := semver.from(v) or {
-		return false
-	}
+	v0 := semver.from(version) or { return false }
+	v1 := semver.from(v) or { return false }
 	return v0.gt(v1)
 }
 
 pub fn (mut pc PkgConfig) atleast(v string) bool {
-	v0 := semver.from(pc.version) or {
-		return false
-	}
-	v1 := semver.from(v) or {
-		return false
-	}
+	v0 := semver.from(pc.version) or { return false }
+	v1 := semver.from(v) or { return false }
 	return v0.gt(v1)
 }
 
@@ -181,9 +167,7 @@ fn (mut pc PkgConfig) load_requires() {
 		mut pcdep := PkgConfig{
 			paths: pc.paths
 		}
-		depfile := pcdep.resolve(dep) or {
-			break
-		}
+		depfile := pcdep.resolve(dep) or { break }
 		pcdep.parse(depfile)
 		pcdep.load_requires()
 		pc.extend(pcdep)
@@ -219,9 +203,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 		options: options
 	}
 	pc.load_paths()
-	file := pc.resolve(pkgname) or {
-		return error(err)
-	}
+	file := pc.resolve(pkgname) or { return error(err) }
 	pc.parse(file)
 	/*
 	if pc.name != pc.modname {
@@ -241,9 +223,7 @@ pub fn list() []string {
 	pc.load_paths()
 	mut modules := []string{}
 	for path in pc.paths {
-		files := os.ls(path) or {
-			continue
-		}
+		files := os.ls(path) or { continue }
 		for file in files {
 			if file.ends_with('.pc') {
 				name := file.replace('.pc', '')

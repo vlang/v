@@ -35,7 +35,7 @@ fn (mut g Gen) gen_vlines_reset() {
 		g.vlines_path = util.vlines_escape_path(g.pref.out_name_c, g.pref.ccompiler)
 		g.writeln('')
 		g.writeln('\n// Reset the file/line numbers')
-		g.writeln('\n#line $lines_so_far "$g.vlines_path"')
+		g.writeln('\n#line ${lines_so_far} "${g.vlines_path}"')
 		g.writeln('')
 	}
 }
@@ -149,12 +149,12 @@ pub fn (mut g Gen) write_tests_main() {
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing(${all_tfuncs.len}, _SLIT("${g.pref.path}"));')
 	}
 	for t in all_tfuncs {
 		g.writeln('')
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$t"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("${t}"));')
 		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
 		if g.pref.is_stats {

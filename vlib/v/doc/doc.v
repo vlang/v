@@ -122,7 +122,7 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 		is_pub: d.stmt_pub(stmt)
 	}
 	if (!node.is_pub && d.pub_only) || stmt is ast.GlobalDecl {
-		return error('symbol $node.name not public')
+		return error('symbol ${node.name} not public')
 	}
 	if node.name.starts_with(d.orig_mod_name + '.') {
 		node.name = node.name.all_after(d.orig_mod_name + '.')
@@ -382,7 +382,7 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			}
 			d.head = DocNode{
 				name: module_name
-				content: 'module $module_name'
+				content: 'module ${module_name}'
 				kind: .none_
 			}
 		} else if file_ast.mod.name != d.orig_mod_name {

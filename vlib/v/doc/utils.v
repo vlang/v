@@ -82,7 +82,7 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	match stmt {
 		ast.Module {
-			return 'module $stmt.name'
+			return 'module ${stmt.name}'
 		}
 		ast.FnDecl {
 			return stmt.stringify(d.table, d.fmt.cur_mod)

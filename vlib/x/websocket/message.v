@@ -18,8 +18,10 @@ struct Fragment {
 // Frame represents a data frame header
 struct Frame {
 mut:
-	header_len  int = 2 // length of the websocket header part
-	frame_size  int = 2	// size of total frame
+	header_len  int = 2
+	// length of the websocket header part
+	frame_size  int = 2
+	// size of total frame
 	fin         bool // true if final fragment of message
 	rsv1        bool // reserved for future use in websocket RFC
 	rsv2        bool // reserved for future use in websocket RFC
@@ -31,7 +33,7 @@ mut:
 }
 
 const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] 
+	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
 )
 
 // validate_client validates client frame rules from RFC6455
@@ -62,7 +64,7 @@ pub fn (mut ws Client) validate_frame(frame &Frame) ? {
 		}
 	}
 	if frame.fin == false && ws.fragments.len == 0 && frame.opcode == .continuation {
-		err_msg := 'unexecpected continuation, there are no frames to continue, $frame'
+		err_msg := 'unexecpected continuation, there are no frames to continue, ${frame}'
 		ws.close(1002, err_msg) ?
 		return error(err_msg)
 	}
@@ -109,7 +111,7 @@ fn (mut ws Client) read_payload(frame &Frame) ?[]byte {
 // - Future implementation needs to support fail fast utf errors for strict autobahn conformance
 fn (mut ws Client) validate_utf_8(opcode OPCode, payload []byte) ? {
 	if opcode in [.text_frame, .close] && !utf8.validate(payload.data, payload.len) {
-		ws.logger.error('malformed utf8 payload, payload len: ($payload.len)')
+		ws.logger.error('malformed utf8 payload, payload len: (${payload.len})')
 		ws.send_error_event('Recieved malformed utf8.')
 		ws.close(1007, 'malformed utf8 payload')
 		return error('malformed utf8 payload')
@@ -144,8 +146,8 @@ pub fn (mut ws Client) read_next_message() ?Message {
 		}
 		if ws.fragments.len == 0 {
 			ws.validate_utf_8(frame.opcode, frame_payload) or {
-				ws.logger.error('UTF8 validation error: $err, len of payload($frame_payload.len)')
-				ws.send_error_event('UTF8 validation error: $err, len of payload($frame_payload.len)')
+				ws.logger.error('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
+				ws.send_error_event('UTF8 validation error: ${err}, len of payload(${frame_payload.len})')
 				return error(err)
 			}
 			msg := Message{

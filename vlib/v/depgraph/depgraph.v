@@ -47,7 +47,7 @@ pub fn (o &OrderedDepMap) get(name string) []string {
 
 pub fn (mut o OrderedDepMap) delete(name string) {
 	if name !in o.data {
-		panic('delete: no such key: $name')
+		panic('delete: no such key: ${name}')
 	}
 	for i, _ in o.keys {
 		if o.keys[i] == name {
@@ -128,7 +128,7 @@ pub fn (graph &DepGraph) display() string {
 	mut out := '\n'
 	for node in graph.nodes {
 		for dep in node.deps {
-			out += ' * $node.name -> $dep\n'
+			out += ' * ${node.name} -> ${dep}\n'
 		}
 	}
 	return out
@@ -147,7 +147,7 @@ pub fn (graph &DepGraph) display_cycles() string {
 			}
 			dn := node_names[dep]
 			if node.name in dn.deps {
-				out += ' * $node.name -> $dep\n'
+				out += ' * ${node.name} -> ${dep}\n'
 			}
 		}
 	}

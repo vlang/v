@@ -22,18 +22,18 @@ pub fn find_working_diff_command() ?string {
 			}
 			continue
 		}
-		p := os.exec('$diffcmd --version') or { continue }
+		p := os.exec('${diffcmd} --version') or { continue }
 		if p.exit_code == 127 && diffcmd == env_difftool {
 			// user setup is wonky, fix it
-			return error('could not find specified VDIFF_TOOL $diffcmd')
+			return error('could not find specified VDIFF_TOOL ${diffcmd}')
 		}
 		if p.exit_code == 0 { // success
 			if diffcmd in ['code', 'code.cmd'] {
 				// there is no guarantee that the env opts exist
 				// or include `-d`, so (harmlessly) add it
-				return '$diffcmd $env_diffopts -d'
+				return '${diffcmd} ${env_diffopts} -d'
 			}
-			return '$diffcmd $env_diffopts'
+			return '${diffcmd} ${env_diffopts}'
 		}
 	}
 	return error('No working "diff" command found')
@@ -52,8 +52,8 @@ fn opendiff_exists() bool {
 
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
-		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " "$file1" "$file2" '
-		x := os.exec(full_cmd) or { return 'comparison command: `$full_cmd` failed' }
+		full_cmd := '${diff_cmd} --minimal --text --unified=2  --show-function-line="fn " "${file1}" "${file2}" '
+		x := os.exec(full_cmd) or { return 'comparison command: `${full_cmd}` failed' }
 		return x.output.trim_right('\r\n')
 	}
 	return ''

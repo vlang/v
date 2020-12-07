@@ -41,7 +41,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 				}
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration) ?
 						if ready {
 							break
 						}
@@ -49,7 +49,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 					continue
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration) ?
 						if ready {
 							break
 						}
@@ -60,7 +60,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 					if s.sslctx != 0 {
 						C.SSL_CTX_free(s.sslctx)
 					}
-					return error('unexepedted ssl error $err_res')
+					return error('unexepedted ssl error ${err_res}')
 				}
 				if s.ssl != 0 {
 					C.SSL_free(s.ssl)
@@ -68,7 +68,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 				if s.sslctx != 0 {
 					C.SSL_CTX_free(s.sslctx)
 				}
-				return error('Could not connect using SSL. ($err_res),err')
+				return error('Could not connect using SSL. (${err_res}),err')
 			} else if res == 0 {
 				continue
 			} else if res == 1 {
@@ -101,10 +101,10 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn) ? {
 	for {
 		res := C.SSL_connect(s.ssl)
 		if res != 1 {
-			err_res := openssl.ssl_error(res, s.ssl)?
+			err_res := openssl.ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
-					ready := @select(s.handle, .read, s.duration)?
+					ready := @select(s.handle, .read, s.duration) ?
 					if ready {
 						break
 					}
@@ -112,14 +112,14 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn) ? {
 				continue
 			} else if err_res == .ssl_error_want_write {
 				for {
-					ready := @select(s.handle, .write, s.duration)?
+					ready := @select(s.handle, .write, s.duration) ?
 					if ready {
 						break
 					}
 				}
 				continue
 			}
-			return error('Could not connect using SSL. ($err_res),err')
+			return error('Could not connect using SSL. (${err_res}),err')
 		}
 		break
 	}
@@ -130,10 +130,10 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 	for {
 		res = C.SSL_read(s.ssl, buf_ptr, len)
 		if res < 0 {
-			err_res := openssl.ssl_error(res, s.ssl)?
+			err_res := openssl.ssl_error(res, s.ssl) ?
 			if err_res == .ssl_error_want_read {
 				for {
-					ready := @select(s.handle, .read, s.duration)?
+					ready := @select(s.handle, .read, s.duration) ?
 					if ready {
 						break
 					}
@@ -141,7 +141,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 				continue
 			} else if err_res == .ssl_error_want_write {
 				for {
-					ready := @select(s.handle, .write, s.duration)?
+					ready := @select(s.handle, .write, s.duration) ?
 					if ready {
 						break
 					}
@@ -150,7 +150,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 			} else if err_res == .ssl_error_zero_return {
 				return 0
 			}
-			return error('Could not read using SSL. ($err_res)')
+			return error('Could not read using SSL. (${err_res})')
 		}
 		break
 	}
@@ -158,7 +158,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 }
 
 pub fn (mut s SSLConn) read_into(mut buffer []Byte) ?int {
-	res := s.socket_read_into_ptr(byteptr(buffer.data), buffer.len)?
+	res := s.socket_read_into_ptr(byteptr(buffer.data), buffer.len) ?
 	return res
 }
 
@@ -172,17 +172,17 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 			remaining := bytes.len - total_sent
 			mut sent := C.SSL_write(s.ssl, ptr, remaining)
 			if sent <= 0 {
-				err_res := openssl.ssl_error(sent, s.ssl)?
+				err_res := openssl.ssl_error(sent, s.ssl) ?
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration) ?
 						if ready {
 							break
 						}
 					}
 				} else if err_res == .ssl_error_want_write {
 					for {
-						ready := @select(s.handle, .write, s.duration)?
+						ready := @select(s.handle, .write, s.duration) ?
 						if ready {
 							break
 						}
@@ -191,7 +191,7 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 				} else if err_res == .ssl_error_zero_return {
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', err_res)
+				return error_with_code('Could not write SSL. (${err_res}),err', err_res)
 			}
 			total_sent += sent
 		}
@@ -209,38 +209,25 @@ pub struct C.fd_set {
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) ?bool {
-    set := C.fd_set{}
-
-    C.FD_ZERO(&set)
-    C.FD_SET(handle, &set)
-
-    seconds := timeout.milliseconds() / 1000
-    microseconds := timeout - (seconds * time.second)
-
-    mut tt := C.timeval{
-        tv_sec: u64(seconds)
-        tv_usec: u64(microseconds)
-    }
-
-    mut timeval_timeout := &tt
-
-    // infinite timeout is signaled by passing null as the timeout to
-    // select
-    if timeout == net.infinite_timeout {
-        timeval_timeout = &C.timeval(0)
-    }
-
-    match test {
-        .read {
-            net.socket_error(C.@select(handle+1, &set, C.NULL, C.NULL, timeval_timeout))?
-        }
-        .write {
-            net.socket_error(C.@select(handle+1, C.NULL, &set, C.NULL, timeval_timeout))?
-        }
-        .except {
-            net.socket_error(C.@select(handle+1, C.NULL, C.NULL, &set, timeval_timeout))?
-        }
-    }
-
-    return C.FD_ISSET(handle, &set)
+	set := C.fd_set{}
+	C.FD_ZERO(&set)
+	C.FD_SET(handle, &set)
+	seconds := timeout.milliseconds() / 1000
+	microseconds := timeout - (seconds * time.second)
+	mut tt := C.timeval{
+		tv_sec: u64(seconds)
+		tv_usec: u64(microseconds)
+	}
+	mut timeval_timeout := &tt
+	// infinite timeout is signaled by passing null as the timeout to
+	// select
+	if timeout == net.infinite_timeout {
+		timeval_timeout = &C.timeval(0)
+	}
+	match test {
+		.read { net.socket_error(C.@select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)) ? }
+		.write { net.socket_error(C.@select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)) ? }
+		.except { net.socket_error(C.@select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)) ? }
+	}
+	return C.FD_ISSET(handle, &set)
 }

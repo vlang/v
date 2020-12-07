@@ -70,7 +70,7 @@ pub fn (mut table Table) parse_cflag(cflg string, mod string, ctimedefines []str
 		}
 		if (name in ['-I', '-l', '-L']) && value == '' {
 			hint := if name == '-l' { 'library name' } else { 'path' }
-			return error('bad #flag `$flag_orig`: missing $hint after `$name`')
+			return error('bad #flag `${flag_orig}`: missing ${hint} after `${name}`')
 		}
 		cf := cflag.CFlag{
 			mod: mod

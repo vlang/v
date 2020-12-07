@@ -11,7 +11,8 @@ import v.util
 import v.pref
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = string | int | i64 | f32 | f64 | any_int | any_float | bool | Null | []Any | map[string]Any
+pub type Any = Null | []Any | any_float | any_int | bool | f32 | f64 | i64 | int | map[string]Any |
+	string
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {
@@ -64,7 +65,7 @@ fn (p Parser) emit_error(msg string) string {
 	}
 	column := util.imax(0, cur.pos - pp + cur.len - 1)
 	line := cur.line_nr
-	return '[json] $msg ($line:$column)'
+	return '[json] ${msg} (${line}:${column})'
 }
 
 fn new_parser(srce string, convert_type bool) Parser {
@@ -103,11 +104,9 @@ fn (mut p Parser) decode() ?Any {
 	if p.mode == .invalid {
 		return error(p.emit_error('invalid JSON.'))
 	}
-	fi := p.decode_value() or {
-		return error(p.emit_error(err))
-	}
+	fi := p.decode_value() or { return error(p.emit_error(err)) }
 	if p.tok.kind != .eof {
-		return error(p.emit_error('unknown token `$p.tok.kind`.'))
+		return error(p.emit_error('unknown token `${p.tok.kind}`.'))
 	}
 	return fi
 }
@@ -204,7 +203,7 @@ fn (mut p Parser) decode_value() ?Any {
 		}
 		.name {
 			if p.tok.lit != 'null' {
-				return error('unknown identifier `$p.tok.lit`')
+				return error('unknown identifier `${p.tok.lit}`')
 			}
 			p.next()
 			return if p.convert_type {
@@ -225,7 +224,7 @@ fn (mut p Parser) decode_value() ?Any {
 				d_num := p.decode_number() ?
 				return d_num
 			}
-			return error("unknown token '$p.tok.lit' when decoding value")
+			return error("unknown token '${p.tok.lit}' when decoding value")
 		}
 	}
 	if p.is_formfeed() {
@@ -298,7 +297,9 @@ fn (mut p Parser) decode_string() ?Any {
 					strwr.write_b(`/`)
 					continue
 				}
-				else { return error('invalid backslash escape.') }
+				else {
+					return error('invalid backslash escape.')
+				}
 			}
 			if int(peek) == 85 {
 				return error('unicode endpoints must be in lowercase `u`.')
@@ -346,7 +347,7 @@ fn (mut p Parser) decode_number() ?Any {
 		}
 	}
 	if p.p_tok.kind == .minus && p.tok.pos == p.p_tok.pos + 1 {
-		tl = '-$tl'
+		tl = '-${tl}'
 	}
 	p.next()
 	if p.convert_type {
@@ -375,7 +376,7 @@ fn (mut p Parser) decode_array() ?Any {
 		if p.tok.kind == .rsbr {
 			break
 		}
-		return error("unknown token '$p.tok.lit' when decoding arrays.")
+		return error("unknown token '${p.tok.lit}' when decoding arrays.")
 	}
 	p.next()
 	return Any(items)
@@ -398,7 +399,7 @@ fn (mut p Parser) decode_object() ?Any {
 			return error('object keys must be in single quotes.')
 		}
 		if !is_key {
-			return error("invalid token `$p.tok.lit`, expected \'string\'")
+			return error("invalid token `${p.tok.lit}`, expected \'string\'")
 		}
 		cur_key = p.tok.lit
 		p.next()
@@ -410,7 +411,7 @@ fn (mut p Parser) decode_object() ?Any {
 		} else if p.tok.kind == .rcbr {
 			break
 		}
-		return error("unknown token '$p.tok.lit' when decoding object.")
+		return error("unknown token '${p.tok.lit}' when decoding object.")
 	}
 	p.next()
 	return Any(fields)

@@ -8,15 +8,15 @@ fn make_ios_plist(display_name string, bundle_id string, bundle_name string, bun
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>$display_name</string>
+	<string>${display_name}</string>
 	<key>CFBundleExecutable</key>
-	<string>$bundle_name</string>
+	<string>${bundle_name}</string>
 	<key>CFBundleIdentifier</key>
-	<string>$bundle_id</string>
+	<string>${bundle_id}</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$bundle_name</string>
+	<string>${bundle_name}</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -24,7 +24,7 @@ fn make_ios_plist(display_name string, bundle_id string, bundle_name string, bun
 	<key>CFBundleSignature</key>
 	<string>VIOS</string>
 	<key>CFBundleVersion</key>
-	<string>$bundle_version</string>
+	<string>${bundle_version}</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UISupportedInterfaceOrientations</key>

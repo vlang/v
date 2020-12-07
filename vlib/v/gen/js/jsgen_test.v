@@ -17,11 +17,17 @@ fn test_example_compilation() {
 	files := find_test_files()
 	for file in files {
 		path := os.join_path(test_dir, file)
-		println('Testing $file')
-		v_code := os.system('$vexe $v_options -o ${output_dir}${file}.js $path')
-		if v_code != 0 { assert false } // Compilation failed
+		println('Testing ${file}')
+		v_code := os.system('${vexe} ${v_options} -o ${output_dir}${file}.js ${path}')
+		if v_code != 0 {
+			assert false
+		}
+		// Compilation failed
 		js_code := os.system('node ${output_dir}${file}.js')
-		if js_code != 0 { assert false } // Running failed
+		if js_code != 0 {
+			assert false
+		}
+		// Running failed
 	}
 }
 

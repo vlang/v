@@ -61,12 +61,12 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
-		p.error('`$p.tok.lit` lacks body')
+		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
 	}
 	if language == .v &&
 		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
-		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
+		p.error_with_pos('struct name `${name}` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
@@ -179,7 +179,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_pos = p.prev_tok.position()
 				field_name = symbol_name
 				if typ in embedded_structs {
-					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
+					p.error_with_pos('cannot embed `${field_name}` more than once', type_pos)
 					return ast.StructDecl{}
 				}
 				embedded_structs << typ
@@ -250,9 +250,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.check(.rcbr)
 	}
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else {
 		name = p.prepend_mod(name)
 	}
@@ -281,7 +281,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {
-		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
+		p.error_with_pos('cannot register struct `${name}`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
 	}
@@ -396,7 +396,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 	)
 	if reg_idx == -1 {
-		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
+		p.error_with_pos('cannot register interface `${interface_name}`, another type with this name exists',
 			name_pos)
 		return ast.InterfaceDecl{}
 	}
@@ -412,7 +412,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
 		if ts.has_method(name) {
-			p.error_with_pos('duplicate method `$name`', method_start_pos)
+			p.error_with_pos('duplicate method `${name}`', method_start_pos)
 			return ast.InterfaceDecl{}
 		}
 		if util.contains_capital(name) {

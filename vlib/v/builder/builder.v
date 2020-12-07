@@ -105,20 +105,20 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				verror('cannot import module "$mod" (not found)')
+				verror('cannot import module "${mod}" (not found)')
 				break
 			}
 			v_files := b.v_files_from_dir(import_path)
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
-				verror('cannot import module "$mod" (no .v files in "$import_path")')
+				verror('cannot import module "${mod}" (no .v files in "${import_path}")')
 			}
 			// Add all imports referenced by these libs
 			parsed_files := parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: ${ast_file.path} imports module "${mod}" but ${file.path} is defined as module `${file.mod.name}`')
 				}
 			}
 			b.parsed_files << parsed_files
@@ -198,13 +198,13 @@ pub fn (b Builder) v_files_from_dir(dir string) []string {
 			println('looks like you are trying to build V with an old command')
 			println('use `v -o v cmd/v` instead of `v -o v compiler`')
 		}
-		verror("$dir doesn't exist")
+		verror("${dir} doesn't exist")
 	} else if !os.is_dir(dir) {
-		verror("$dir isn't a directory!")
+		verror("${dir} isn't a directory!")
 	}
 	mut files := os.ls(dir) or { panic(err) }
 	if b.pref.is_verbose {
-		println('v_files_from_dir ("$dir")')
+		println('v_files_from_dir ("${dir}")')
 	}
 	return b.pref.should_compile_filtered_files(dir, files)
 }
@@ -241,17 +241,17 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
-			println('  >> trying to find $mod in $try_path ..')
+			println('  >> trying to find ${mod} in ${try_path} ..')
 		}
 		if os.is_dir(try_path) {
 			if b.pref.is_verbose {
-				println('  << found $try_path .')
+				println('  << found ${try_path} .')
 			}
 			return try_path
 		}
 	}
 	smodule_lookup_paths := module_lookup_paths.join(', ')
-	return error('module "$mod" not found in:\n$smodule_lookup_paths')
+	return error('module "${mod}" not found in:\n${smodule_lookup_paths}')
 }
 
 fn (b &Builder) show_total_warns_and_errors_stats() {
@@ -271,15 +271,15 @@ fn (b &Builder) print_warnings_and_errors() {
 		return
 	}
 	if b.pref.is_verbose && b.checker.nr_warnings > 1 {
-		println('$b.checker.nr_warnings warnings')
+		println('${b.checker.nr_warnings} warnings')
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
-			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
+			kind := if b.pref.is_verbose { '${err.reporter} warning #${b.checker.nr_warnings}:' } else { 'warning:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('details: ${err.details}')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -289,15 +289,15 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	//
 	if b.pref.is_verbose && b.checker.nr_errors > 1 {
-		println('$b.checker.nr_errors errors')
+		println('${b.checker.nr_errors} errors')
 	}
 	if b.checker.nr_errors > 0 {
 		for i, err in b.checker.errors {
-			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+			kind := if b.pref.is_verbose { '${err.reporter} error #${b.checker.nr_errors}:' } else { 'error:' }
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
-				eprintln('details: $err.details')
+				eprintln('details: ${err.details}')
 			}
 			// eprintln('')
 			if i > b.max_nr_errors {
@@ -330,7 +330,7 @@ fn (b &Builder) print_warnings_and_errors() {
 				}
 			}
 			if redefine_conflicts.len > 1 {
-				eprintln('redefinition of function `$fn_name`')
+				eprintln('redefinition of function `${fn_name}`')
 				for redefine in redefines {
 					eprintln(util.formatted_error('conflicting declaration:', redefine.fheader,
 						redefine.fpath, redefine.f.pos))
@@ -357,8 +357,8 @@ fn verror(s string) {
 }
 
 pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	value := util.bold('$ms')
-	formatted_message := '$msg: $value ms'
+	value := util.bold('${ms}')
+	formatted_message := '${msg}: ${value} ms'
 	if b.pref.show_timings {
 		println(formatted_message)
 	} else {

@@ -67,7 +67,7 @@ pub fn (mut g Gen) generate_elf_header() {
 	g.write64(0x1000) // p_align
 	// user code starts here at
 	// address: 00070 and a half
-	println('code_start_pos = $g.buf.len.hex()')
+	println('code_start_pos = ${g.buf.len.hex()}')
 	g.code_start_pos = i64(g.buf.len)
 	g.debug_pos = g.buf.len
 	g.call(placeholder) // call main function, it's not guaranteed to be the first, we don't know its address yet

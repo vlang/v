@@ -20,7 +20,7 @@ pub fn (attr Attr) str() string {
 		s += 'if '
 	}
 	if attr.is_string {
-		s += "'$attr.name'"
+		s += "'${attr.name}'"
 	} else {
 		s += attr.name
 		if attr.arg.len > 0 {
@@ -29,7 +29,7 @@ pub fn (attr Attr) str() string {
 				mut a := attr.arg.replace('\\', '\\\\')
 				// FIXME: other escapes e.g. \r\n
 				a = a.replace("'", "\\'")
-				s += "'$a'"
+				s += "'${a}'"
 			} else {
 				s += attr.arg
 			}

@@ -26,9 +26,9 @@ fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) stri
 	vtmp := get_vtmp_folder()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
-		uniq = '.$rand.u64()'
+		uniq = '.${rand.u64()}'
 	}
-	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '$uniq$postfix'))
+	return os.real_path(os.join_path(vtmp, os.file_name(os.real_path(base_file_name)) + '${uniq}${postfix}'))
 }
 
 pub fn compile(command string, pref &pref.Preferences) {
@@ -101,22 +101,22 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		panic('Running iOS apps on physical devices is not yet supported. Please run in the simulator using the -simulator flag.')
 	}
 	if b.pref.is_verbose {
-		println('============ running $b.pref.out_name ============')
+		println('============ running ${b.pref.out_name} ============')
 	}
 	if b.pref.os == .ios {
 		device := '"iPhone SE (2nd generation)"'
-		os.exec('xcrun simctl boot $device')
+		os.exec('xcrun simctl boot ${device}')
 		bundle_name := b.pref.out_name.split('/').last()
 		display_name := if b.pref.display_name != '' { b.pref.display_name } else { bundle_name }
-		os.exec('xcrun simctl install $device ${display_name}.app')
-		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.$bundle_name' }
-		os.exec('xcrun simctl launch $device $bundle_id')
+		os.exec('xcrun simctl install ${device} ${display_name}.app')
+		bundle_id := if b.pref.bundle_id != '' { b.pref.bundle_id } else { 'app.vlang.${bundle_name}' }
+		os.exec('xcrun simctl launch ${device} ${bundle_id}')
 	} else {
 		exefile := os.real_path(b.pref.out_name)
-		mut cmd := '"$exefile"'
+		mut cmd := '"${exefile}"'
 		if b.pref.backend == .js {
 			jsfile := os.real_path('${b.pref.out_name}.js')
-			cmd = 'node "$jsfile"'
+			cmd = 'node "${jsfile}"'
 		}
 		for arg in b.pref.run_args {
 			// Determine if there are spaces in the parameters
@@ -127,7 +127,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 			}
 		}
 		if b.pref.is_verbose {
-			println('command to run executable: $cmd')
+			println('command to run executable: ${cmd}')
 		}
 		if b.pref.is_test || b.pref.is_run {
 			ret := os.system(cmd)
@@ -140,7 +140,7 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
 	if os.is_file(exefile) {
-		v.pref.vrun_elog('remove run executable: $exefile')
+		v.pref.vrun_elog('remove run executable: ${exefile}')
 		os.rm(exefile)
 	}
 }
@@ -168,7 +168,7 @@ fn (mut v Builder) set_module_lookup_paths() {
 	v.module_search_paths << v.compiled_dir
 	x := os.join_path(v.compiled_dir, 'modules')
 	if v.pref.is_verbose {
-		println('x: "$x"')
+		println('x: "${x}"')
 	}
 	v.module_search_paths << os.join_path(v.compiled_dir, 'modules')
 	v.module_search_paths << v.pref.lookup_path
@@ -189,7 +189,7 @@ pub fn (v Builder) get_builtin_files() []string {
 		return []
 	}
 	*/
-	v.log('v.pref.lookup_path: $v.pref.lookup_path')
+	v.log('v.pref.lookup_path: ${v.pref.lookup_path}')
 	// Lookup for built-in folder in lookup path.
 	// Assumption: `builtin/` folder implies usable implementation of builtin
 	for location in v.pref.lookup_path {
@@ -226,7 +226,7 @@ pub fn (v &Builder) get_user_files() []string {
 		return []
 	}
 	mut dir := v.pref.path
-	v.log('get_v_files($dir)')
+	v.log('get_v_files(${dir})')
 	// Need to store user files separately, because they have to be added after
 	// libs, but we dont know	which libs need to be added yet
 	mut user_files := []string{}
@@ -255,7 +255,7 @@ pub fn (v &Builder) get_user_files() []string {
 	mut is_internal_module_test := false
 	if is_test {
 		tcontent := os.read_file(dir) or {
-			verror('$dir does not exist')
+			verror('${dir} does not exist')
 			exit(0)
 		}
 		slines := tcontent.trim_space().split_into_lines()
@@ -276,7 +276,7 @@ pub fn (v &Builder) get_user_files() []string {
 		// v volt/slack_test.v: compile all .v files to get the environment
 		single_test_v_file := os.real_path(dir)
 		if v.pref.is_verbose {
-			v.log('> Compiling an internal module _test.v file $single_test_v_file .')
+			v.log('> Compiling an internal module _test.v file ${single_test_v_file} .')
 			v.log('> That brings in all other ordinary .v files in the same module too .')
 		}
 		user_files << single_test_v_file
@@ -284,7 +284,7 @@ pub fn (v &Builder) get_user_files() []string {
 	}
 	does_exist := os.exists(dir)
 	if !does_exist {
-		verror("$dir doesn't exist")
+		verror("${dir} doesn't exist")
 		exit(1)
 	}
 	is_real_file := does_exist && !os.is_dir(dir)
@@ -293,18 +293,18 @@ pub fn (v &Builder) get_user_files() []string {
 		// Just compile one file and get parent dir
 		user_files << single_v_file
 		if v.pref.is_verbose {
-			v.log('> just compile one file: "$single_v_file"')
+			v.log('> just compile one file: "${single_v_file}"')
 		}
 	} else if os.is_dir(dir) {
 		if v.pref.is_verbose {
-			v.log('> add all .v files from directory "$dir" ...')
+			v.log('> add all .v files from directory "${dir}" ...')
 		}
 		// Add .v files from the directory being compiled
 		user_files << v.v_files_from_dir(dir)
 	} else {
 		println('usage: `v file.v` or `v directory`')
 		ext := os.file_ext(dir)
-		println('unknown file extension `$ext`')
+		println('unknown file extension `${ext}`')
 		exit(1)
 	}
 	if user_files.len == 0 {
@@ -312,7 +312,7 @@ pub fn (v &Builder) get_user_files() []string {
 		exit(1)
 	}
 	if v.pref.is_verbose {
-		v.log('user_files: $user_files')
+		v.log('user_files: ${user_files}')
 	}
 	return user_files
 }

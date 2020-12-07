@@ -54,33 +54,25 @@ fn test_different_options_should_produce_different_cache_entries_for_same_key_an
 
 fn test_exists() {
 	mut cm := vcache.new_cache_manager([])
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	x := cm.save('.x', 'abc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	y := cm.save('.o', 'zbc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert true
-	}
+	cm.exists('.o', 'abc') or { assert true }
 	//
 	z := cm.save('.o', 'abc', '') or {
 		assert false
 		''
 	}
-	cm.exists('.o', 'abc') or {
-		assert false
-	}
+	cm.exists('.o', 'abc') or { assert false }
 	//
 	assert os.is_file(x)
 	assert os.is_file(y)

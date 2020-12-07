@@ -154,7 +154,7 @@ pub fn (t Type) to_ptr() Type {
 pub fn (t Type) deref() Type {
 	nr_muls := (int(t) >> 16) & 0xff
 	if nr_muls == 0 {
-		panic('deref: type `$t` is not a pointer')
+		panic('deref: type `${t}` is not a pointer')
 	}
 	return int(t) & 0xff00ffff | ((nr_muls - 1) << 16)
 }
@@ -185,16 +185,16 @@ pub fn (t Type) has_flag(flag TypeFlag) bool {
 
 pub fn (ts TypeSymbol) debug() []string {
 	mut res := []string{}
-	res << 'parent_idx: $ts.parent_idx'
-	res << 'mod: $ts.mod'
-	res << 'name: $ts.name'
-	res << 'cname: $ts.cname'
-	res << 'info: $ts.info'
-	res << 'kind: $ts.kind'
-	res << 'is_public: $ts.is_public'
-	res << 'is_written: $ts.is_written'
-	res << 'language: $ts.language'
-	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
+	res << 'parent_idx: ${ts.parent_idx}'
+	res << 'mod: ${ts.mod}'
+	res << 'name: ${ts.name}'
+	res << 'cname: ${ts.cname}'
+	res << 'info: ${ts.info}'
+	res << 'kind: ${ts.kind}'
+	res << 'is_public: ${ts.is_public}'
+	res << 'is_written: ${ts.is_written}'
+	res << 'language: ${ts.language}'
+	res << 'methods (${ts.methods.len}): ' + ts.methods.map(it.str()).join(', ')
 	return res
 }
 
@@ -202,7 +202,7 @@ pub fn (t Type) debug() []string {
 	mut res := []string{}
 	res << 'idx: ${t.idx():5}'
 	res << 'type: ${t:10}'
-	res << 'nr_muls: $t.nr_muls()'
+	res << 'nr_muls: ${t.nr_muls()}'
 	if t.has_flag(.optional) {
 		res << 'optional'
 	}
@@ -437,7 +437,7 @@ pub fn (t &TypeSymbol) str() string {
 pub fn (t &TypeSymbol) enum_info() Enum {
 	match mut t.info {
 		Enum { return t.info }
-		else { panic('TypeSymbol.enum_info(): no enum info for type: $t.name') }
+		else { panic('TypeSymbol.enum_info(): no enum info for type: ${t.name}') }
 	}
 }
 
@@ -445,7 +445,7 @@ pub fn (t &TypeSymbol) enum_info() Enum {
 pub fn (t &TypeSymbol) mr_info() MultiReturn {
 	match mut t.info {
 		MultiReturn { return t.info }
-		else { panic('TypeSymbol.mr_info(): no multi return info for type: $t.name') }
+		else { panic('TypeSymbol.mr_info(): no multi return info for type: ${t.name}') }
 	}
 }
 
@@ -453,7 +453,7 @@ pub fn (t &TypeSymbol) mr_info() MultiReturn {
 pub fn (t &TypeSymbol) array_info() Array {
 	match mut t.info {
 		Array { return t.info }
-		else { panic('TypeSymbol.array_info(): no array info for type: $t.name') }
+		else { panic('TypeSymbol.array_info(): no array info for type: ${t.name}') }
 	}
 }
 
@@ -461,7 +461,7 @@ pub fn (t &TypeSymbol) array_info() Array {
 pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 	match mut t.info {
 		ArrayFixed { return t.info }
-		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: $t.name') }
+		else { panic('TypeSymbol.array_fixed(): no array fixed info for type: ${t.name}') }
 	}
 }
 
@@ -469,7 +469,7 @@ pub fn (t &TypeSymbol) array_fixed_info() ArrayFixed {
 pub fn (t &TypeSymbol) chan_info() Chan {
 	match mut t.info {
 		Chan { return t.info }
-		else { panic('TypeSymbol.chan_info(): no chan info for type: $t.name') }
+		else { panic('TypeSymbol.chan_info(): no chan info for type: ${t.name}') }
 	}
 }
 
@@ -477,7 +477,7 @@ pub fn (t &TypeSymbol) chan_info() Chan {
 pub fn (t &TypeSymbol) map_info() Map {
 	match mut t.info {
 		Map { return t.info }
-		else { panic('TypeSymbol.map_info(): no map info for type: $t.name') }
+		else { panic('TypeSymbol.map_info(): no map info for type: ${t.name}') }
 	}
 }
 
@@ -485,7 +485,7 @@ pub fn (t &TypeSymbol) map_info() Map {
 pub fn (t &TypeSymbol) struct_info() Struct {
 	match mut t.info {
 		Struct { return t.info }
-		else { panic('TypeSymbol.struct_info(): no struct info for type: $t.name') }
+		else { panic('TypeSymbol.struct_info(): no struct info for type: ${t.name}') }
 	}
 }
 
@@ -855,12 +855,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 			}
 			info := sym.info as Array
 			elem_str := table.type_to_str(info.elem_type)
-			res = '[]$elem_str'
+			res = '[]${elem_str}'
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
 			elem_str := table.type_to_str(info.elem_type)
-			res = '[$info.size]$elem_str'
+			res = '[${info.size}]${elem_str}'
 		}
 		.chan {
 			// TODO currently the `chan` struct in builtin is not considered a struct but a chan
@@ -873,7 +873,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
 				elem_str := table.type_to_str(elem_type)
-				res = 'chan $mut_str$elem_str'
+				res = 'chan ${mut_str}${elem_str}'
 			}
 		}
 		.function {
@@ -889,7 +889,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 			info := sym.info as Map
 			key_str := table.type_to_str(info.key_type)
 			val_str := table.type_to_str(info.value_type)
-			res = 'map[$key_str]$val_str'
+			res = 'map[${key_str}]${val_str}'
 		}
 		.multi_return {
 			res = '('
@@ -941,7 +941,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		// TODO write receiver
 	}
 	if !opts.type_only {
-		sb.write('$func.name')
+		sb.write('${func.name}')
 	}
 	sb.write('(')
 	start := int(opts.skip_receiver)
@@ -956,10 +956,10 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 			sb.write('mut ')
 		}
 		if !opts.type_only {
-			sb.write('$param.name ')
+			sb.write('${param.name} ')
 		}
 		styp := t.type_to_str(typ)
-		sb.write('$styp')
+		sb.write('${styp}')
 	}
 	sb.write(')')
 	if func.return_type != void_type {
@@ -1018,5 +1018,5 @@ pub fn (s Struct) get_field(name string) Field {
 	if field := s.find_field(name) {
 		return field
 	}
-	panic('unknown field `$name`')
+	panic('unknown field `${name}`')
 }

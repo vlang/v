@@ -80,14 +80,14 @@ pub fn formatted_error(kind string, omsg string, filepath string, pos token.Posi
 	}
 	//
 	source, column := filepath_pos_to_source_and_column(filepath, pos)
-	position := '$path:${pos.line_nr + 1}:${imax(1, column + 1)}:'
+	position := '${path}:${pos.line_nr + 1}:${imax(1, column + 1)}:'
 	scontext := source_context(kind, source, column, pos).join('\n')
 	final_position := bold(position)
 	final_kind := bold(color(kind, kind))
 	final_msg := emsg
-	final_context := if scontext.len > 0 { '\n$scontext' } else { '' }
+	final_context := if scontext.len > 0 { '\n${scontext}' } else { '' }
 	//
-	return '$final_position $final_kind $final_msg$final_context'.trim_space()
+	return '${final_position} ${final_kind} ${final_msg}${final_context}'.trim_space()
 }
 
 pub fn filepath_pos_to_source_and_column(filepath string, pos token.Position) (string, int) {
@@ -143,7 +143,7 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 
 pub fn verror(kind string, s string) {
 	final_kind := bold(color(kind, kind))
-	eprintln('$final_kind: $s')
+	eprintln('${final_kind}: ${s}')
 	exit(1)
 }
 
