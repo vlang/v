@@ -96,7 +96,7 @@ fn (mut a array) ensure_cap(required int) {
 	if a.cap == 0 {
 		a.data = vcalloc(cap * a.element_size)
 	} else {
-		a.data = v_realloc(a.data, u32(cap * a.element_size))
+		a.data = v_realloc(a.data, cap * a.element_size)
 	}
 	a.cap = cap
 }
@@ -522,6 +522,26 @@ fn compare_ints(a &int, b &int) int {
 }
 
 fn compare_ints_reverse(a &int, b &int) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_u64s(a &u64, b &u64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_u64s_reverse(a &u64, b &u64) int {
 	if *a > *b {
 		return -1
 	}

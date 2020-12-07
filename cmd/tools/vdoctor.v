@@ -36,11 +36,17 @@ fn (mut a App) collect_info() {
 	}
 	if os_kind == 'linux' {
 		info := a.cpu_info()
-		if info['model name'] != '' {
-			arch_details << info['model name']
-		} else {
-			arch_details << info['hardware']
+		mut cpu_details := ''
+		if cpu_details == '' {
+			cpu_details = info['model name']
 		}
+		if cpu_details == '' {
+			cpu_details = info['hardware']
+		}
+		if cpu_details == '' {
+			cpu_details = os.uname().machine
+		}
+		arch_details << cpu_details
 	}
 	if os_kind == 'windows' {
 		arch_details << a.cmd({
@@ -50,17 +56,25 @@ fn (mut a App) collect_info() {
 	}
 	//
 	mut os_details := ''
+	wsl_check := a.cmd({
+		command: 'cat /proc/sys/kernel/osrelease'
+	})
 	if os_kind == 'linux' {
 		os_details = a.get_linux_os_name()
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
-			if 'microsoft' in a.cmd({
-				command: 'cat /proc/sys/kernel/osrelease'
-			}) {
-				os_details += ' (WSL)'
+			if 'microsoft' in wsl_check {
+				// WSL 2 is a Managed VM and Full Linux Kernel
+				// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
+				os_details += ' (WSL 2)'
 			} else {
 				os_details += ' (VM)'
 			}
+		}
+		// WSL 1 is NOT a Managed VM and Full Linux Kernel
+		// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
+		if 'Microsoft' in wsl_check {
+			os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
 		if a.cmd(command: '[ "$(awk \'\$5=="/" {print \$1}\' </proc/1/mountinfo)" != "$(awk \'\$5=="/" {print \$1}\' </proc/$$/mountinfo)" ] ; echo \$?') == '0' {
@@ -96,16 +110,18 @@ fn (mut a App) collect_info() {
 		command: 'cc --version'
 	}))
 	a.println('')
+	getwd := os.getwd()
+	vmodules := os.vmodules_dir()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot)	
+	a.line('getwd', getwd)
+	a.line('vmodules', vmodules)
 	a.line('vroot', vroot)
 	a.line('vexe', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
-	is_writable_vroot := os.is_writable_folder(vroot) or {
-		false
-	}
-	a.line('is vroot writable', is_writable_vroot.str())
+	a.line('is vroot writable', is_writable_dir(vroot).str())
+	a.line('is vmodules writable', is_writable_dir(vmodules).str())
 	a.line('V full version', util.full_v_version(true))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
@@ -262,6 +278,13 @@ fn (mut a App) report_info() {
 	for x in a.report_lines {
 		println(x)
 	}
+}
+
+fn is_writable_dir(path string) bool {
+	res := os.is_writable_folder(path) or {
+		false
+	}
+	return res
 }
 
 fn main() {

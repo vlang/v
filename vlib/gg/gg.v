@@ -121,11 +121,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	exists := $if !android { os.is_file(g.config.font_path) } $else { true }
 	if g.config.font_path != '' && exists {
 		// t := time.ticks()
-		g.ft = new_ft({
-			font_path: g.config.font_path
-			custom_bold_font_path: g.config.custom_bold_font_path
-			scale: sapp.dpi_scale()
-		}) or {
+		g.ft = new_ft(font_path: g.config.font_path, custom_bold_font_path: g.config.custom_bold_font_path, scale: sapp.dpi_scale()) or {
 			panic(err)
 		}
 		// println('FT took ${time.ticks()-t} ms')
@@ -579,6 +575,14 @@ pub fn (ctx &Context) draw_empty_rounded_rect(x f32, y f32, w f32, h f32, radius
 	}
 	sgl.v2f(lx + xx, ly)
 	sgl.end()
+}
+
+pub fn screen_size() Size {
+	$if macos {
+		return C.gg_get_screen_size()
+	}
+	// TODO windows, linux, etc
+	return Size{}
 }
 
 fn C.WaitMessage()

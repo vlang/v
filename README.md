@@ -24,7 +24,7 @@
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ≈80k loc/s with a Clang backend, 
+- Fast compilation: ≈80k loc/s with a Clang backend,
     ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)*
 - Easy to develop: V compiles itself in less than a second
 - Performance: as fast as C (V's main backend compiles to human readable C)
@@ -81,7 +81,7 @@ v up
 
 ### C compiler
 
-It's recommended to use Clang or GCC or Visual Studio. 
+It's recommended to use Clang or GCC or Visual Studio.
 If you are doing development, you most likely already have one of those installed.
 
 Otherwise, follow these instructions:
@@ -90,8 +90,8 @@ Otherwise, follow these instructions:
 
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-However, if none is found when running `make` on Linux or Windows, 
-TCC would be downloaded and set as an alternative C backend. 
+However, if none is found when running `make` on Linux or Windows,
+TCC would be downloaded and set as an alternative C backend.
 It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
@@ -198,6 +198,20 @@ Fedora:
 sudo dnf install openssl-devel
 ```
 
+## V sync
+V's `sync` module and channel implementation uses libatomic.
+It is most likely already installed on your system, but if not,
+you can install it, by doing the following:
+```bash
+MacOS: already installed
+
+Debian/Ubuntu:
+sudo apt install libatomic1
+
+Fedora/CentOS/RH:
+sudo dnf install libatomic-static
+```
+
 ## V UI
 
 <a href="https://github.com/vlang/ui">
@@ -213,9 +227,9 @@ https://github.com/vlang/ui
 
 ```v
 fn main() {
-        for i in 0..3 {
-                println('Hello from V.js')
-        }
+	for i in 0 .. 3 {
+		println('Hello from V.js')
+	}
 }
 ```
 

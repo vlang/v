@@ -123,6 +123,7 @@ pub mut:
 	skip_running        bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool // like C's "-w"
 	warns_are_errors    bool // -W, like C's "-Werror", treat *every* warning is an error
+	fatal_errors        bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc          bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
@@ -171,6 +172,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
+			}
+			'-Wfatal-errors' {
+				res.fatal_errors = true
 			}
 			'-silent' {
 				res.output_mode = .silent
@@ -340,9 +344,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-b' {
 				sbackend := cmdline.option(current_args, '-b', 'c')
 				res.build_options << '$arg $sbackend'
-				b := backend_from_string(sbackend) or {
-					continue
-				}
+				b := backend_from_string(sbackend) or { continue }
 				res.backend = b
 				i++
 			}
@@ -484,7 +486,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	return res, command
 }
 
-fn (pref &Preferences) vrun_elog(s string) {
+pub fn (pref &Preferences) vrun_elog(s string) {
 	if pref.is_verbose {
 		eprintln('> v run -, $s')
 	}

@@ -796,6 +796,57 @@ fn test_in_struct() {
 	assert baz.bar[0] == 3
 }
 
+[direct_array_access]
+fn test_direct_modification() {
+	mut foo := [2, 0, 5]
+	foo[1] = 3
+	foo[0] *= 7
+	foo[1]--
+	foo[2] -= 2
+	assert foo[0] == 14
+	assert foo[1] == 2
+	assert foo[2] == 3
+}
+
+fn test_shared_modification() {
+	shared foo := &[2, 0, 5]
+	lock foo {
+		unsafe {
+			foo[1] = 3
+			foo[0] *= 7
+			foo[1]--
+			foo[2] -= 2
+		}
+	}
+	rlock foo {
+		unsafe {
+			assert foo[0] == 14
+			assert foo[1] == 2
+			assert foo[2] == 3
+		}
+	}
+}
+
+[direct_array_access]
+fn test_shared_direct_modification() {
+	shared foo := &[2, 0, 5]
+	lock foo {
+		unsafe {
+			foo[1] = 3
+			foo[0] *= 7
+			foo[1]--
+			foo[2] -= 2
+		}
+	}
+	rlock foo {
+		unsafe {
+			assert foo[0] == 14
+			assert foo[1] == 2
+			assert foo[2] == 3
+		}
+	}
+}
+
 fn test_bools() {
 	println('test b')
 	mut a := [true, false]
@@ -1002,6 +1053,27 @@ fn test_array_string_pop() {
 	assert a.cap == 3
 }
 
+fn test_array_first() {
+	a := [3]
+	assert a.first() == 3
+	b := [1, 2, 3, 4]
+	assert b.first() == 1
+	c := ['abc', 'def']
+	assert c.first()[0] == `a`
+	s := [Chunk{'a'}]
+	assert s.first().val == 'a'
+}
+
+fn test_array_last() {
+	a := [3]
+	assert a.last() == 3
+	b := [1, 2, 3, 4]
+	assert b.last() == 4
+	c := ['abc', 'def']
+	assert c.last()[0] == `d`
+	s := [Chunk{'a'}]
+	assert s.last().val == 'a'
+}
 
 [direct_array_access]
 fn test_direct_array_access() {

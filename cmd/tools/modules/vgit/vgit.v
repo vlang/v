@@ -27,7 +27,7 @@ pub fn validate_commit_exists(commit string) {
 	if commit.len == 0 {
 		return
 	}
-	cmd := "git cat-file -t \'$commit\' "
+	cmd := "git cat-file -t '$commit' "
 	if !scripting.exit_0_status(cmd) {
 		eprintln('Commit: "$commit" does not exist in the current repository.')
 		exit(3)

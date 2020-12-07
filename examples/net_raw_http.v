@@ -1,6 +1,5 @@
 // Simple raw HTTP head request
 import net
-import time
 import io
 
 // Make a new connection

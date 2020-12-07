@@ -22,9 +22,7 @@ pub fn find_working_diff_command() ?string {
 			}
 			continue
 		}
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
+		p := os.exec('$diffcmd --version') or { continue }
 		if p.exit_code == 127 && diffcmd == env_difftool {
 			// user setup is wonky, fix it
 			return error('could not find specified VDIFF_TOOL $diffcmd')
@@ -43,9 +41,7 @@ pub fn find_working_diff_command() ?string {
 
 // determine if the FileMerge opendiff tool is available
 fn opendiff_exists() bool {
-	o := os.exec('opendiff') or {
-		return false
-	}
+	o := os.exec('opendiff') or { return false }
 	if o.exit_code == 1 { // failed (expected), but found (i.e. not 127)
 		if o.output.contains('too few arguments') { // got some exptected output
 			return true
@@ -57,9 +53,7 @@ fn opendiff_exists() bool {
 pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
 		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " "$file1" "$file2" '
-		x := os.exec(full_cmd) or {
-			return 'comparison command: `$full_cmd` failed'
-		}
+		x := os.exec(full_cmd) or { return 'comparison command: `$full_cmd` failed' }
 		return x.output.trim_right('\r\n')
 	}
 	return ''

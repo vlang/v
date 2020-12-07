@@ -81,8 +81,7 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	parent_type := typ.clear_flag(.optional)
 	sym := g.table.get_type_symbol(parent_type)
 	sym_has_str_method, _, _ := sym.str_method_info()
-	sym_name := sym.name.replace('.', '__')
-	mut parent_str_fn_name := styp_to_str_fn_name(sym_name)
+	mut parent_str_fn_name := styp_to_str_fn_name(sym.cname)
 	if !sym_has_str_method {
 		parent_str_fn_name = g.gen_str_for_type(parent_type)
 	}
@@ -92,14 +91,14 @@ fn (mut g Gen) gen_str_for_option(typ table.Type, styp string, str_fn_name strin
 	g.auto_str_funcs.writeln('string indent_${str_fn_name}($styp it, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstring res;')
 	g.auto_str_funcs.writeln('\tif (it.is_none) {')
-	g.auto_str_funcs.writeln('\t\tres = tos_lit("none");')
+	g.auto_str_funcs.writeln('\t\tres = _SLIT("none");')
 	g.auto_str_funcs.writeln('\t} else if (it.ok) {')
 	if typ.is_string() {
-		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym_name*)it.data));')
+		g.auto_str_funcs.writeln('\t\tres = _STR("\'%.*s\\000\'", 2, ${parent_str_fn_name}(*($sym.cname*)it.data));')
 	} else if sym.kind == .struct_ && !sym_has_str_method {
-		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym_name*)it.data, indent_count);')
+		g.auto_str_funcs.writeln('\t\tres = indent_${parent_str_fn_name}(*($sym.cname*)it.data, indent_count);')
 	} else {
-		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym_name*)it.data);')
+		g.auto_str_funcs.writeln('\t\tres = ${parent_str_fn_name}(*($sym.cname*)it.data);')
 	}
 	g.auto_str_funcs.writeln('\t} else {')
 	g.auto_str_funcs.writeln('\t\tres = _STR("error: \'%.*s\\000\'", 2, it.v_error);')
@@ -120,9 +119,9 @@ fn (mut g Gen) gen_str_for_alias(info table.Alias, styp string, str_fn_name stri
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { return indent_${str_fn_name}(it, 0); }')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp it, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp it, int indent_count) {')
-	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
+	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\treturn _STR("%.*s\\000${clean_type_v_type_name}(%.*s\\000)", 3, indents, ${parent_str_fn_name}(it));')
 	g.auto_str_funcs.writeln('}')
@@ -156,7 +155,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(a.len * 10);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\t$field_styp it = (*($field_styp*)array_get(a, i));')
 	if sym.kind == .struct_ && !sym_has_str_method {
@@ -185,10 +184,10 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		g.auto_str_funcs.writeln('\t\tstring_free(&x);')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i < a.len-1) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("]"));')
 	g.auto_str_funcs.writeln('\tstring res = strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('\tstrings__Builder_free(&sb);')
 	// g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
@@ -221,7 +220,7 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp a, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp a, int indent_count) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.size * 10);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < $info.size; ++i) {')
 	if sym.kind == .struct_ && !sym_has_str_method {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(a[i], indent_count));')
@@ -239,10 +238,10 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tif (i < ${info.size - 1}) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("]"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
@@ -258,22 +257,18 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	if !val_sym.has_method('str') {
 		g.gen_str_for_type(info.value_type)
 	}
-	zero := g.type_default(info.value_type)
 	g.type_definitions.writeln('static string ${str_fn_name}($styp m); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp m) { return indent_${str_fn_name}(m, 0);}')
 	g.type_definitions.writeln('static string indent_${str_fn_name}($styp m, int indent_count); // auto')
 	g.auto_str_funcs.writeln('static string indent_${str_fn_name}($styp m, int indent_count) { /* gen_str_for_map */')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(m.key_values.len*10);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("{"));')
-	g.auto_str_funcs.writeln('\tfor (unsigned int i = 0; i < m.key_values.len; ++i) {')
-	g.auto_str_funcs.writeln('\t\tif (m.key_values.keys[i].str == 0) { continue; }')
-	g.auto_str_funcs.writeln('\t\tstring key = (*(string*)DenseArray_get(m.key_values, i));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("{"));')
+	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
+	g.auto_str_funcs.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
+	g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos_lit(": "));')
-	g.auto_str_funcs.write('\t$val_styp it = (*($val_styp*)map_get(')
-	g.auto_str_funcs.write('m, (*(string*)DenseArray_get(m.key_values, i))')
-	g.auto_str_funcs.write(', ')
-	g.auto_str_funcs.writeln(' &($val_styp[]) { $zero }));')
+	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _SLIT(": "));')
+	g.auto_str_funcs.writeln('\t\t$val_styp it = *($val_styp*)DenseArray_value(&m.key_values, i);')
 	if val_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, it));')
 	} else if val_sym.kind == .struct_ && !val_sym.has_method('str') {
@@ -284,10 +279,10 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
 	}
 	g.auto_str_funcs.writeln('\t\tif (i != m.key_values.len-1) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("}"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("}"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
@@ -296,14 +291,14 @@ fn (mut g Gen) gen_str_for_varg(styp string, str_fn_name string, has_str_method 
 	g.definitions.writeln('static string varg_${str_fn_name}(varg_$styp it); // auto')
 	g.auto_str_funcs.writeln('static string varg_${str_fn_name}(varg_$styp it) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("["));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("["));')
 	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i]));')
 	g.auto_str_funcs.writeln('\t\tif (i < it.len-1) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, tos_lit(", "));')
+	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("]"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("]"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
@@ -318,7 +313,7 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 	g.type_definitions.writeln('static string ${str_fn_name}($styp a); // auto')
 	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp a) {')
 	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder($info.types.len * 10);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit("("));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("("));')
 	for i, typ in info.types {
 		sym := g.table.get_type_symbol(typ)
 		field_styp := g.typ(typ)
@@ -347,10 +342,10 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 			}
 		}
 		if i != info.types.len - 1 {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit(", "));')
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT(", "));')
 		}
 	}
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, tos_lit(")"));')
+	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT(")"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
@@ -387,9 +382,9 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 	}
 	clean_struct_v_type_name = util.strip_main_name(clean_struct_v_type_name)
 	// generate ident / indent length = 4 spaces
-	g.auto_str_funcs.writeln('\tstring indents = tos_lit("");')
+	g.auto_str_funcs.writeln('\tstring indents = _SLIT("");')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < indent_count; ++i) {')
-	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, tos_lit("    "));')
+	g.auto_str_funcs.writeln('\t\tindents = string_add(indents, _SLIT("    "));')
 	g.auto_str_funcs.writeln('\t}')
 	if info.fields.len == 0 {
 		g.auto_str_funcs.write('\treturn _SLIT("$clean_struct_v_type_name{}");')
@@ -481,9 +476,9 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 		} else if info.is_multi_allowed {
 			seen << val
 		}
-		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return tos_lit("$val");')
+		g.auto_str_funcs.writeln('\t\tcase ${s}_$val: return _SLIT("$val");')
 	}
-	g.auto_str_funcs.writeln('\t\tdefault: return tos_lit("unknown enum value");')
+	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown enum value");')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('}')
 }
@@ -526,7 +521,7 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 		}
 		g.auto_str_funcs.writeln('));')
 	}
-	g.auto_str_funcs.writeln('\t\tdefault: return tos_lit("unknown sum type value");')
+	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('}')
 }

@@ -166,12 +166,8 @@ fn find_msvc() ?MsvcResult {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
 		vswhere_dir := if processor_architecture == 'x86' { '%ProgramFiles%' } else { '%ProgramFiles(x86)%' }
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
-		wk := find_windows_kit_root(host_arch) or {
-			return error('Unable to find windows sdk')
-		}
-		vs := find_vs(vswhere_dir, host_arch) or {
-			return error('Unable to find visual studio')
-		}
+		wk := find_windows_kit_root(host_arch) or { return error('Unable to find windows sdk') }
+		vs := find_vs(vswhere_dir, host_arch) or { return error('Unable to find visual studio') }
 		return MsvcResult{
 			full_cl_exe_path: os.real_path(vs.exe_path + os.path_separator + 'cl.exe')
 			exe_path: vs.exe_path
@@ -185,7 +181,12 @@ fn find_msvc() ?MsvcResult {
 			valid: true
 		}
 	} $else {
-		return error('msvc not found')
+		// This hack allows to at least see the generated .c file with `-os windows -cc msvc -o x.c`
+		// Please do not remove it, unless you also check that the above continues to work.
+		return MsvcResult{
+			full_cl_exe_path: '/usr/bin/true'
+			valid: true
+		}
 	}
 }
 

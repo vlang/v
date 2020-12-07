@@ -45,6 +45,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if name.len == 1 && name[0].is_capital() {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
 			name_pos)
+		return ast.StructDecl{}
 	}
 	mut generic_types := []table.Type{}
 	if p.tok.kind == .lt {
@@ -61,13 +62,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
 		p.error('`$p.tok.lit` lacks body')
+		return ast.StructDecl{}
 	}
 	if language == .v &&
 		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
 		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
+		return ast.StructDecl{}
 	}
 	if name.len == 1 {
 		p.error_with_pos('struct names must have more than one character', name_pos)
+		return ast.StructDecl{}
 	}
 	// println('struct decl $name')
 	mut ast_fields := []ast.StructField{}
@@ -100,6 +104,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .key_mut {
 					if pub_mut_pos != -1 {
 						p.error('redefinition of `pub mut` section')
+						return ast.StructDecl{}
 					}
 					p.next()
 					pub_mut_pos = fields.len
@@ -109,6 +114,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				} else {
 					if pub_pos != -1 {
 						p.error('redefinition of `pub` section')
+						return ast.StructDecl{}
 					}
 					pub_pos = fields.len
 					is_field_pub = true
@@ -119,6 +125,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_mut {
 				if mut_pos != -1 {
 					p.error('redefinition of `mut` section')
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
@@ -129,6 +136,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			} else if p.tok.kind == .key_global {
 				if global_pos != -1 {
 					p.error('redefinition of `global` section')
+					return ast.StructDecl{}
 				}
 				p.next()
 				p.check(.colon)
@@ -172,6 +180,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_name = symbol_name
 				if typ in embedded_structs {
 					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
+					return ast.StructDecl{}
 				}
 				embedded_structs << typ
 			} else {
@@ -249,9 +258,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	t := table.TypeSymbol{
 		kind: .struct_
-		name: name
 		language: language
-		source_name: name
+		name: name
 		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Struct{
@@ -275,6 +283,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	if ret == -1 {
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
+		return ast.StructDecl{}
 	}
 	p.expr_mod = ''
 	return ast.StructDecl{
@@ -372,24 +381,25 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.next() // `interface`
 	name_pos := p.tok.position()
-	interface_name := p.prepend_mod(p.check_name())
+	interface_name := p.prepend_mod(p.check_name()).clone()
 	// println('interface decl $interface_name')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments()
 	// Declare the type
-	reg_idx := p.table.register_type_symbol(table.TypeSymbol{
+	reg_idx := p.table.register_type_symbol(
+		is_public: is_pub
 		kind: .interface_
 		name: interface_name
-		source_name: interface_name
 		cname: util.no_dots(interface_name)
 		mod: p.mod
 		info: table.Interface{
 			types: []
 		}
-	})
+	)
 	if reg_idx == -1 {
 		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
 			name_pos)
+		return ast.InterfaceDecl{}
 	}
 	typ := table.new_type(reg_idx)
 	mut ts := p.table.get_type_symbol(typ)
@@ -398,22 +408,23 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	// Parse methods
 	mut methods := []ast.FnDecl{cap: 20}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
+		ts = p.table.get_type_symbol(typ) // removing causes memory bug visible by `v -silent test-fmt`
 		method_start_pos := p.tok.position()
 		line_nr := p.tok.line_nr
 		name := p.check_name()
 		if ts.has_method(name) {
 			p.error_with_pos('duplicate method `$name`', method_start_pos)
+			return ast.InterfaceDecl{}
 		}
 		if util.contains_capital(name) {
 			p.error('interface methods cannot contain uppercase letters, use snake_case instead')
+			return ast.InterfaceDecl{}
 		}
 		// field_names << name
 		args2, _, _ := p.fn_args() // TODO merge table.Param and ast.Arg to avoid this
-		sym := p.table.get_type_symbol(typ)
 		mut args := [table.Param{
 			name: 'x'
 			typ: typ
-			type_source_name: sym.source_name
 			is_hidden: true
 		}]
 		args << args2
@@ -433,14 +444,12 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		method.comments = mcomments
 		methods << method
 		// println('register method $name')
-		return_type_sym := p.table.get_type_symbol(method.return_type)
-		ts.register_method(table.Fn{
+		ts.register_method(
 			name: name
 			params: args
 			return_type: method.return_type
-			return_type_source_name: return_type_sym.source_name
 			is_pub: true
-		})
+		)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)

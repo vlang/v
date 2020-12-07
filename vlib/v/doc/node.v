@@ -10,10 +10,12 @@ pub fn (nodes []DocNode) find(symname string) ?DocNode {
 	return error('symbol not found')
 }
 
+// sort_by_name sorts the array based on the symbol names.
 pub fn (mut nodes []DocNode) sort_by_name() {
 	nodes.sort_with_compare(compare_nodes_by_name)
 }
 
+// sort_by_kind sorts the array based on the symbol kind.
 pub fn (mut nodes []DocNode) sort_by_kind() {
 	nodes.sort_with_compare(compare_nodes_by_kind)
 }
@@ -36,6 +38,7 @@ fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 	return compare_strings(al, bl)
 }
 
+// arr() converts the map into an array of `DocNode`.
 pub fn (cnts map[string]DocNode) arr() []DocNode {
 	mut contents := cnts.keys().map(cnts[it])
 	contents.sort_by_name()

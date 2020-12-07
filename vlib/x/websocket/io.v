@@ -2,20 +2,16 @@ module websocket
 
 import net
 import time
+import sync
 
-interface WebsocketIO {
-	socket_read(mut buffer []byte) ?int
-	socket_write(bytes []byte) ?
-}
-
-// socket_read reads into the provided buffer with its length
+// socket_read reads from socket into the provided buffer
 fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 	lock  {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 			return error('socket_read: trying to read a closed socket')
 		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.read_into(mut buffer)?
+			r := ws.ssl_conn.read_into(mut buffer) ?
 			return r
 		} else {
 			for {
@@ -31,14 +27,14 @@ fn (mut ws Client) socket_read(mut buffer []byte) ?int {
 	}
 }
 
+// socket_read reads from socket into the provided byte pointer and length
 fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 	lock  {
 		if ws.state in [.closed, .closing] || ws.conn.sock.handle <= 1 {
 			return error('socket_read_ptr: trying to read a closed socket')
-		}	
-		
+		}
 		if ws.is_ssl {
-			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len)?
+			r := ws.ssl_conn.socket_read_into_ptr(buf_ptr, len) ?
 			return r
 		} else {
 			for {
@@ -54,7 +50,7 @@ fn (mut ws Client) socket_read_ptr(buf_ptr byteptr, len int) ?int {
 	}
 }
 
-// socket_write, writes the whole byte array provided to the socket
+// socket_write writes the provided byte array to the socket
 fn (mut ws Client) socket_write(bytes []byte) ? {
 	lock  {
 		if ws.state == .closed || ws.conn.sock.handle <= 1 {
@@ -62,7 +58,7 @@ fn (mut ws Client) socket_write(bytes []byte) ? {
 			return error('socket_write: trying to write on a closed socket')
 		}
 		if ws.is_ssl {
-			ws.ssl_conn.write(bytes)?
+			ws.ssl_conn.write(bytes) ?
 		} else {
 			for {
 				ws.conn.write(bytes) or {
@@ -77,26 +73,26 @@ fn (mut ws Client) socket_write(bytes []byte) ? {
 	}
 }
 
-// shutdown_socket, proper shutdown make PR in Emeliy repo
+// shutdown_socket shuts down the socket properly when connection is closed
 fn (mut ws Client) shutdown_socket() ? {
 	ws.debug_log('shutting down socket')
 	if ws.is_ssl {
-		ws.ssl_conn.shutdown()?
+		ws.ssl_conn.shutdown() ?
 	} else {
-		ws.conn.close()?
+		ws.conn.close() ?
 	}
 	return none
 }
 
-// dial_socket, setup socket communication, options and timeouts
+// dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() ?net.TcpConn {
-	mut t := net.dial_tcp('$ws.uri.hostname:$ws.uri.port')?
+	mut t := net.dial_tcp('$ws.uri.hostname:$ws.uri.port') ?
 	optval := int(1)
-	t.sock.set_option_int(.keep_alive, optval)?
+	t.sock.set_option_int(.keep_alive, optval) ?
 	t.set_read_timeout(10 * time.millisecond)
 	t.set_write_timeout(10 * time.millisecond)
 	if ws.is_ssl {
-		ws.ssl_conn.connect(mut t)?
+		ws.ssl_conn.connect(mut t) ?
 	}
 	return t
 }

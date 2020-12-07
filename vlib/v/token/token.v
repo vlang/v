@@ -179,7 +179,7 @@ fn build_keys() map[string]Kind {
 
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := []string{len: (nr_tokens)}
+	mut s := []string{len: nr_tokens}
 	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
@@ -295,8 +295,7 @@ const (
 )
 
 pub fn key_to_token(key string) Kind {
-	a := Kind(keywords[key])
-	return a
+	return Kind(keywords[key])
 }
 
 pub fn is_key(key string) bool {
@@ -353,7 +352,7 @@ pub enum Precedence {
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{len: int(Kind._end_), cap: int(Kind._end_)}
+	mut p := []Precedence{len: int(Kind._end_)}
 	p[Kind.lsbr] = .index
 	p[Kind.dot] = .call
 	// `++` | `--` | `?`

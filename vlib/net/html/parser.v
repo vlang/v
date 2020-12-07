@@ -265,7 +265,7 @@ pub fn (mut parser Parser) finalize() {
 	parser.generate_tag()
 }
 
-pub fn (parser Parser) get_tags() []Tag_ptr {
+pub fn (parser Parser) get_tags() []&Tag {
 	return parser.tags
 }
 

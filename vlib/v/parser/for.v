@@ -13,6 +13,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	p.inside_for = true
 	if p.tok.kind == .key_match {
 		p.error('cannot use `match` in `for` loop')
+		return ast.Stmt{}
 	}
 	// defer { p.close_scope() }
 	// Infinite loop
@@ -29,6 +30,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		// `for i := 0; i < 10; i++ {`
 		if p.tok.kind == .key_mut {
 			p.error('`mut` is not needed in `for ;;` loops: use `for i := 0; i < n; i ++ {`')
+			return ast.Stmt{}
 		}
 		mut init := ast.Stmt{}
 		mut cond := p.new_true_expr()
@@ -47,6 +49,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			// Disallow `for i := 0; i++; i < ...`
 			if p.tok.kind == .name && p.peek_tok.kind in [.inc, .dec] {
 				p.error('cannot use $p.tok.lit$p.peek_tok.kind as value')
+				return ast.Stmt{}
 			}
 			cond = p.expr(0)
 			has_cond = true
@@ -87,24 +90,30 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			val_var_name = p.check_name()
 			if key_var_name == val_var_name && key_var_name != '_' {
 				p.error_with_pos('key and value in a for loop cannot be the same', val_var_pos)
+				return ast.Stmt{}
 			}
 			if p.scope.known_var(key_var_name) {
 				p.error('redefinition of key iteration variable `$key_var_name`')
+				return ast.Stmt{}
 			}
 			if p.scope.known_var(val_var_name) {
 				p.error('redefinition of value iteration variable `$val_var_name`')
+				return ast.Stmt{}
 			}
-			p.scope.register(key_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: key_var_name
 				typ: table.int_type
 				pos: key_var_pos
+				is_tmp: true
 			})
 		} else if p.scope.known_var(val_var_name) {
 			p.error('redefinition of value iteration variable `$val_var_name`')
+			return ast.Stmt{}
 		}
 		p.check(.key_in)
 		if p.tok.kind == .name && p.tok.lit in [key_var_name, val_var_name] {
 			p.error('in a `for x in array` loop, the key or value iteration variable `$p.tok.lit` can not be the same as the array variable')
+			return ast.Stmt{}
 		}
 		// arr_expr
 		cond := p.expr(0)
@@ -117,20 +126,23 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			is_range = true
 			p.next()
 			high_expr = p.expr(0)
-			p.scope.register(val_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: val_var_name
 				typ: table.int_type
 				pos: val_var_pos
+				is_tmp: true
 			})
 			if key_var_name.len > 0 {
 				p.error_with_pos('cannot declare index variable with range `for`', key_var_pos)
+				return ast.Stmt{}
 			}
 		} else {
 			// this type will be set in checker
-			p.scope.register(val_var_name, ast.Var{
+			p.scope.register(ast.Var{
 				name: val_var_name
 				pos: val_var_pos
 				is_mut: val_is_mut
+				is_tmp: true
 			})
 		}
 		p.inside_for = false

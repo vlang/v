@@ -3,13 +3,11 @@ module websocket
 import encoding.base64
 import strings
 
-// handshake manage the handshake part of connecting
+// handshake manages the websocket handshake process
 fn (mut ws Client) handshake() ? {
 	nonce := get_nonce(ws.nonce_size)
 	seckey := base64.encode(nonce)
-	// handshake := 'GET $ws.uri.resource$ws.uri.querystring HTTP/1.1\r\nHost: $ws.uri.hostname:$ws.uri.port\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $seckey\r\nSec-WebSocket-Version: 13\r\n\r\n'
 	mut sb := strings.new_builder(1024)
-	// todo, remove when autofree
 	defer {
 		sb.free()
 	}
@@ -24,7 +22,6 @@ fn (mut ws Client) handshake() ? {
 	sb.write('Sec-WebSocket-Key: ')
 	sb.write(seckey)
 	sb.write('\r\nSec-WebSocket-Version: 13\r\n\r\n')
-	// handshake := 'GET $ws.uri.resource$ws.uri.querystring HTTP/1.1\r\nHost: $ws.uri.hostname:$ws.uri.port\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: $seckey\r\nSec-WebSocket-Version: 13\r\n\r\n'
 	handshake := sb.str()
 	defer {
 		handshake.free()
@@ -36,7 +33,7 @@ fn (mut ws Client) handshake() ? {
 	unsafe {handshake_bytes.free()}
 }
 
-// handshake manage the handshake part of connecting
+// handle_server_handshake manages websocket server handshake process
 fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient) {
 	msg := c.read_handshake_str() ?
 	handshake_response, client := s.parse_client_handshake(msg, mut c) ?
@@ -44,6 +41,7 @@ fn (mut s Server) handle_server_handshake(mut c Client) ?(string, &ServerClient)
 	return handshake_response, client
 }
 
+// parse_client_handshake parses result from handshake process
 fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) ?(string, &ServerClient) {
 	s.logger.debug('server-> client handshake:\n$client_handshake')
 	lines := client_handshake.split_into_lines()
@@ -52,12 +50,13 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 		return error_with_code('unexpected get operation, $get_tokens', 1)
 	}
 	if get_tokens[0].trim_space() != 'GET' {
-		return error_with_code("unexpected request '${get_tokens[0]}', expected 'GET'", 2)
+		return error_with_code("unexpected request '${get_tokens[0]}', expected 'GET'",
+			2)
 	}
 	if get_tokens[2].trim_space() != 'HTTP/1.1' {
-		return error_with_code("unexpected request $get_tokens, expected 'HTTP/1.1'", 3)
+		return error_with_code("unexpected request $get_tokens, expected 'HTTP/1.1'",
+			3)
 	}
-	// path := get_tokens[1].trim_space()
 	mut seckey := ''
 	mut flags := []Flag{}
 	mut key := ''
@@ -81,7 +80,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 				flags << .has_accept
 			}
 			else {
-				// We ignore other headers like protocol for now
+				// we ignore other headers like protocol for now
 			}
 		}
 		unsafe {keys.free()}
@@ -106,6 +105,7 @@ fn (mut s Server) parse_client_handshake(client_handshake string, mut c Client) 
 	return server_handshake, server_client
 }
 
+// read_handshake_str returns the handshake response
 fn (mut ws Client) read_handshake_str() ?string {
 	mut total_bytes_read := 0
 	mut msg := [1024]byte{}
@@ -126,19 +126,22 @@ fn (mut ws Client) read_handshake_str() ?string {
 	return res
 }
 
-// read_handshake reads the handshake and check if valid
+// read_handshake reads the handshake result and check if valid
 fn (mut ws Client) read_handshake(seckey string) ? {
 	mut msg := ws.read_handshake_str() ?
 	ws.check_handshake_response(msg, seckey) ?
 	unsafe {msg.free()}
 }
 
+// check_handshake_response checks the response from handshake and returns
+// the response and secure key provided by the websocket client
 fn (mut ws Client) check_handshake_response(handshake_response string, seckey string) ? {
 	ws.debug_log('handshake response:\n$handshake_response')
 	lines := handshake_response.split_into_lines()
 	header := lines[0]
 	if !header.starts_with('HTTP/1.1 101') && !header.starts_with('HTTP/1.0 101') {
-		return error_with_code('handshake_handler: invalid HTTP status response code, $header', 6)
+		return error_with_code('handshake_handler: invalid HTTP status response code, $header',
+			6)
 	}
 	for i in 1 .. lines.len {
 		if lines[i].len <= 0 || lines[i] == '\r\n' {
@@ -157,7 +160,8 @@ fn (mut ws Client) check_handshake_response(handshake_response string, seckey st
 				challenge := create_key_challenge_response(seckey) ?
 				ws.debug_log('challenge: $challenge, response: ${keys[1]}')
 				if keys[1].trim_space() != challenge {
-					return error_with_code('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.', 7)
+					return error_with_code('handshake_handler: Sec-WebSocket-Accept header does not match computed sha1/base64 response.',
+						7)
 				}
 				ws.flags << .has_accept
 				unsafe {challenge.free()}

@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
     - name: Environment info
@@ -47,25 +47,25 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc /var/tmp/tcc/bin/tcc -cflags -bt10
+      VFLAGS: -cc gcc
     steps:
     - uses: actions/checkout@v2
     - name: Environment info
       run: echo $VFLAGS $GITHUB_SHA $GITHUB_REF
     - name: Build local v
-      run: (make -j4 && ./v -cg -o v cmd/v)
+      run: (make -j4)
     - name: Clone & Build vmaster/v
       run: |
         git clone --depth=1 https://github.com/vlang/v vmaster/
-        (cd vmaster; make -j4 && ./v -cg -o v cmd/v)
+        (cd vmaster; make -j4)
     - name: V versions
       run: ./v version && ./vmaster/v version
     - name: Build the repeat tool
       run: ./v cmd/tools/repeat.v
     - name: Repeat -o hw.c examples/hello_world.v
-      run: cmd/tools/repeat --max_time 150 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o hw.c examples/hello_world.v' './vmaster/v -show-timings -o hw.c examples/hello_world.v'
+      run: cmd/tools/repeat --max_time 150 --series 3 --count 10 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o hw.c examples/hello_world.v' ./v ./vmaster/v
     - name: Repeat -o v.c cmd/v
-      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --warmup 3 --fail_percent 10 './v -show-timings -o v.c cmd/v' './vmaster/v -show-timings -o v.c cmd/v'
+      run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
 
   ubuntu-tcc:
     runs-on: ubuntu-18.04
@@ -148,6 +148,8 @@ jobs:
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Test symlink
       run:  ./v symlink
 #    - name: Set up pg database
@@ -168,7 +170,7 @@ jobs:
       run: ./v -silent build-examples
     - name: Build examples with -autofree
       run: |
-        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+        ./v -autofree -o tetris examples/tetris/tetris.v
     - name: v doctor
       run: |
         ./v doctor
@@ -180,7 +182,7 @@ jobs:
       run: |
         git clone --depth 1 https://github.com/vlang/ved
         cd ved && ../v -o ved .
-        ../v -autofree -experimental .
+        ../v -autofree .
     - name: Build V UI examples
       run: |
         git clone --depth 1 https://github.com/vlang/ui
@@ -221,6 +223,8 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -534,7 +538,7 @@ jobs:
         git clone --depth 1 https://github.com/vlang/gitly
         cd gitly
         ../v .
-        ../v -autofree -experimental .
+        ../v -autofree .
         cd ..
 
   websocket_autobahn:

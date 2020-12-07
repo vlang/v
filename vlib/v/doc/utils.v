@@ -7,6 +7,7 @@ import v.token
 import v.table
 import os
 
+// merge_comments merges all the comment contents into a single text.
 pub fn merge_comments(comments []ast.Comment) string {
 	mut res := []string{}
 	for comment in comments {
@@ -15,6 +16,8 @@ pub fn merge_comments(comments []ast.Comment) string {
 	return res.join('\n')
 }
 
+// get_comment_block_right_before merges all the comments starting from
+// the last up to the first item of the array.
 pub fn get_comment_block_right_before(comments []ast.Comment) string {
 	if comments.len == 0 {
 		return ''
@@ -60,11 +63,10 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 	return comment
 }
 
+// convert_pos converts the `token.Position` data into a `DocPos`.
 fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 	if filename !in d.sources {
-		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or {
-			''
-		}
+		d.sources[filename] = util.read_file(os.join_path(d.base_path, filename)) or { '' }
 	}
 	source := d.sources[filename]
 	mut p := util.imax(0, util.imin(source.len - 1, pos.pos))
@@ -76,6 +78,7 @@ fn (mut d Doc) convert_pos(filename string, pos token.Position) DocPos {
 	}
 }
 
+// stmt_signature returns the signature of a given `ast.Stmt` node.
 pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	match stmt {
 		ast.Module {
@@ -92,6 +95,7 @@ pub fn (mut d Doc) stmt_signature(stmt ast.Stmt) string {
 	}
 }
 
+// stmt_name returns the name of a given `ast.Stmt` node.
 pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	match stmt {
 		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl { return stmt.name }
@@ -103,10 +107,26 @@ pub fn (d Doc) stmt_name(stmt ast.Stmt) string {
 	}
 }
 
+// stmt_pub returns a boolean if a given `ast.Stmt` node
+// is exposed to the public.
+pub fn (d Doc) stmt_pub(stmt ast.Stmt) bool {
+	match stmt {
+		ast.FnDecl, ast.StructDecl, ast.EnumDecl, ast.InterfaceDecl, ast.ConstDecl { return stmt.is_pub }
+		ast.TypeDecl { match stmt {
+				ast.FnTypeDecl, ast.AliasTypeDecl, ast.SumTypeDecl { return stmt.is_pub }
+			} }
+		else { return false }
+	}
+}
+
+// type_to_str is a wrapper function around `fmt.table.type_to_str`.
 pub fn (d Doc) type_to_str(typ table.Type) string {
 	return d.fmt.table.type_to_str(typ).all_after('&')
 }
 
+// expr_typ_to_string has the same function as `Doc.typ_to_str`
+// but for `ast.Expr` nodes. The checker will check first the
+// node and it executes the `type_to_str` method.
 pub fn (mut d Doc) expr_typ_to_string(ex ast.Expr) string {
 	expr_typ := d.checker.expr(ex)
 	return d.type_to_str(expr_typ)

@@ -51,12 +51,14 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		n := p.check_name() // skip `vweb.html()` TODO
 		if n != 'vweb' {
 			p.error(error_msg)
+			return ast.ComptimeCall{}
 		}
 		p.check(.dot)
 	}
 	n := p.check_name() // (.name)
 	if n != 'html' && n != 'tmpl' {
 		p.error(error_msg)
+		return ast.ComptimeCall{}
 	}
 	is_html := n == 'html'
 	p.check(.lpar)
@@ -85,8 +87,10 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 		if !os.exists(path) {
 			if is_html {
 				p.error('vweb HTML template "$path" not found')
+				return ast.ComptimeCall{}
 			} else {
 				p.error('template file "$path" not found')
+				return ast.ComptimeCall{}
 			}
 		}
 		// println('path is now "$path"')
@@ -127,7 +131,7 @@ fn (mut p Parser) vweb() ast.ComptimeCall {
 					if obj is ast.Var {
 						mut v := obj
 						v.pos = stmt.body_pos
-						tmpl_scope.register(v.name, v)
+						tmpl_scope.register(v)
 						// set the controller action var to used
 						// if it's unused in the template it will warn
 						v.is_used = true
@@ -159,18 +163,19 @@ fn (mut p Parser) comp_for() ast.CompFor {
 	for_val := p.check_name()
 	mut kind := ast.CompForKind.methods
 	if for_val == 'methods' {
-		p.scope.register(val_var, ast.Var{
+		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FunctionData')
 		})
 	} else if for_val == 'fields' {
-		p.scope.register(val_var, ast.Var{
+		p.scope.register(ast.Var{
 			name: val_var
 			typ: p.table.find_type_idx('FieldData')
 		})
 		kind = .fields
 	} else {
 		p.error('unknown kind `$for_val`, available are: `methods` or `fields`')
+		return ast.CompFor{}
 	}
 	spos := p.tok.position()
 	stmts := p.parse_block()

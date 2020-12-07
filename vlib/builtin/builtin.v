@@ -48,6 +48,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	eprintln('     file: $file')
 	eprintln('     line: ' + line_no.str())
 	eprintln('=========================================')
+	$if exit_after_panic_message ? {
+		C.exit(1)
+	}
 	// recent versions of tcc print better backtraces automatically
 	$if !tinyc {
 		print_backtrace_skipping_top_frames(1)
@@ -58,6 +61,9 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 
 pub fn panic(s string) {
 	eprintln('V panic: $s')
+	$if exit_after_panic_message ? {
+		C.exit(1)
+	}
 	// recent versions of tcc print better backtraces automatically
 	$if !tinyc {
 		print_backtrace()
@@ -171,10 +177,10 @@ TODO
 //fn malloc_size(b byteptr) int
 
 [unsafe]
-pub fn v_realloc(b byteptr, n u32) byteptr {
+pub fn v_realloc(b byteptr, n int) byteptr {
 	$if prealloc {
 		unsafe {
-			new_ptr := malloc(int(n))
+			new_ptr := malloc(n)
 			size := 0 //malloc_size(b)
 			C.memcpy(new_ptr, b, size)
 			return new_ptr

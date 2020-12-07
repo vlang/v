@@ -65,6 +65,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					n := p.check_name()
 					if n != 'init' {
 						p.error_with_pos('expected `init:`, not `$n`', pos)
+						return ast.ArrayInit{}
 					}
 					p.check(.colon)
 					has_default = true
@@ -117,6 +118,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				}
 				else {
 					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					return ast.ArrayInit{}
 				}
 			}
 			if p.tok.kind != .rcbr {

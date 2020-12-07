@@ -33,18 +33,17 @@ pub enum Language {
 // See also: Table.get_type_symbol.
 pub struct TypeSymbol {
 pub:
-	parent_idx  int
+	parent_idx int
 pub mut:
-	info        TypeInfo
-	kind        Kind
-	name        string // the internal name of the type or underlying type, i.e. `array_fixed_int_5`. See also .source_name below.
-	source_name string // the original source name of the type, i.e. `[5]int`.
-	cname       string // the name with no dots for use in the generated C code
-	methods     []Fn
-	mod         string
-	is_public   bool
-	is_written  bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
-	language    Language
+	info       TypeInfo
+	kind       Kind
+	name       string // the internal & source name of the type, i.e. `[5]int`.
+	cname      string // the name with no dots for use in the generated C code
+	methods    []Fn
+	mod        string
+	is_public  bool
+	is_written bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
+	language   Language
 }
 
 // max of 8
@@ -189,7 +188,7 @@ pub fn (ts TypeSymbol) debug() []string {
 	res << 'parent_idx: $ts.parent_idx'
 	res << 'mod: $ts.mod'
 	res << 'name: $ts.name'
-	res << 'source_name: $ts.source_name'
+	res << 'cname: $ts.cname'
 	res << 'info: $ts.info'
 	res << 'kind: $ts.kind'
 	res << 'is_public: $ts.is_public'
@@ -498,218 +497,169 @@ pub fn (t TypeSymbol) str() string {
 pub fn (mut t Table) register_builtin_type_symbols() {
 	// reserve index 0 so nothing can go there
 	// save index check, 0 will mean not found
-	t.register_type_symbol({
-		kind: .placeholder
-		name: 'reserved_0'
-	})
-	t.register_type_symbol(TypeSymbol{
+	t.register_type_symbol(kind: .placeholder, name: 'reserved_0')
+	t.register_type_symbol(
 		kind: .void
 		name: 'void'
-		source_name: 'void'
 		cname: 'void'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .voidptr
 		name: 'voidptr'
-		source_name: 'voidptr'
 		cname: 'voidptr'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .byteptr
 		name: 'byteptr'
-		source_name: 'byteptr'
 		cname: 'byteptr'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .charptr
 		name: 'charptr'
-		source_name: 'charptr'
 		cname: 'charptr'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .i8
 		name: 'i8'
-		source_name: 'i8'
 		cname: 'i8'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .i16
 		name: 'i16'
-		source_name: 'i16'
 		cname: 'i16'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .int
 		name: 'int'
-		source_name: 'int'
 		cname: 'int'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .i64
 		name: 'i64'
-		source_name: 'i64'
 		cname: 'i64'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .byte
 		name: 'byte'
-		source_name: 'byte'
 		cname: 'byte'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .u16
 		name: 'u16'
-		source_name: 'u16'
 		cname: 'u16'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .u32
 		name: 'u32'
-		source_name: 'u32'
 		cname: 'u32'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .u64
 		name: 'u64'
-		source_name: 'u64'
 		cname: 'u64'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .f32
 		name: 'f32'
-		source_name: 'f32'
 		cname: 'f32'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .f64
 		name: 'f64'
-		source_name: 'f64'
 		cname: 'f64'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .char
 		name: 'char'
-		source_name: 'char'
 		cname: 'char'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .bool
 		name: 'bool'
 		cname: 'bool'
-		source_name: 'bool'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .none_
 		name: 'none'
-		source_name: 'none'
 		cname: 'none'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .string
 		name: 'string'
-		source_name: 'string'
 		cname: 'string'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .ustring
 		name: 'ustring'
-		source_name: 'ustring'
 		cname: 'ustring'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .array
 		name: 'array'
-		source_name: 'array'
 		cname: 'array'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .map
 		name: 'map'
-		source_name: 'map'
 		cname: 'map'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .chan
 		name: 'chan'
-		source_name: 'chan'
 		cname: 'chan'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .size_t
 		name: 'size_t'
-		source_name: 'size_t'
 		cname: 'size_t'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .rune
 		name: 'rune'
-		source_name: 'rune'
 		cname: 'rune'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .any
 		name: 'any'
-		source_name: 'any'
 		cname: 'any'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .any_float
 		name: 'any_float'
-		source_name: 'any_float'
 		cname: 'any_float'
 		mod: 'builtin'
-	})
-	t.register_type_symbol({
+	)
+	t.register_type_symbol(
 		kind: .any_int
 		name: 'any_int'
-		source_name: 'any_int'
 		cname: 'any_int'
 		mod: 'builtin'
-	})
-	// TODO: remove. for v1 map compatibility
-	map_string_string_idx := t.find_or_register_map(string_type, string_type)
-	map_string_int_idx := t.find_or_register_map(string_type, int_type)
-	t.register_type_symbol({
-		kind: .alias
-		name: 'map_string'
-		source_name: 'map_string'
-		cname: 'map_string'
-		mod: 'builtin'
-		parent_idx: map_string_string_idx
-	})
-	t.register_type_symbol({
-		kind: .alias
-		name: 'map_int'
-		source_name: 'map_int'
-		cname: 'map_int'
-		mod: 'builtin'
-		parent_idx: map_string_int_idx
-	})
+	)
 }
 
 [inline]
@@ -892,8 +842,13 @@ pub:
 }
 
 pub fn (table &Table) type_to_str(t Type) string {
+	return table.type_to_str_using_aliases(t, map[string]string{})
+}
+
+// import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
+pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[string]string) string {
 	sym := table.get_type_symbol(t)
-	mut res := sym.source_name
+	mut res := sym.name
 	match sym.kind {
 		.any_int, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_float, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
@@ -904,12 +859,12 @@ pub fn (table &Table) type_to_str(t Type) string {
 				return 'array'
 			}
 			info := sym.info as Array
-			elem_str := table.type_to_str(info.elem_type)
+			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
 			res = '[]$elem_str'
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
-			elem_str := table.type_to_str(info.elem_type)
+			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
 			res = '[$info.size]$elem_str'
 		}
 		.chan {
@@ -922,16 +877,14 @@ pub fn (table &Table) type_to_str(t Type) string {
 					mut_str = 'mut '
 					elem_type = elem_type.set_nr_muls(elem_type.nr_muls() - 1)
 				}
-				elem_str := table.type_to_str(elem_type)
+				elem_str := table.type_to_str_using_aliases(elem_type, import_aliases)
 				res = 'chan $mut_str$elem_str'
 			}
 		}
 		.function {
 			if !table.is_fmt {
 				info := sym.info as FnType
-				res = table.fn_signature(info.func, {
-					type_only: true
-				})
+				res = table.fn_signature(info.func, type_only: true)
 			}
 		}
 		.map {
@@ -939,8 +892,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 				return 'map'
 			}
 			info := sym.info as Map
-			key_str := table.type_to_str(info.key_type)
-			val_str := table.type_to_str(info.value_type)
+			key_str := table.type_to_str_using_aliases(info.key_type, import_aliases)
+			val_str := table.type_to_str_using_aliases(info.value_type, import_aliases)
 			res = 'map[$key_str]$val_str'
 		}
 		.multi_return {
@@ -950,7 +903,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 				if i > 0 {
 					res += ', '
 				}
-				res += table.type_to_str(typ)
+				res += table.type_to_str_using_aliases(typ, import_aliases)
 			}
 			res += ')'
 		}
@@ -968,6 +921,9 @@ pub fn (table &Table) type_to_str(t Type) string {
 			// cur_mod.Type => Type
 			if res.starts_with(table.cmod_prefix) {
 				res = res.replace_once(table.cmod_prefix, '')
+			}
+			if res in import_aliases {
+				res = import_aliases[res]
 			}
 		}
 	}
@@ -1021,9 +977,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {
-	t.find_method(name) or {
-		return false
-	}
+	t.find_method(name) or { return false }
 	return true
 }
 

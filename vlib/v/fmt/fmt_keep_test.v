@@ -26,18 +26,14 @@ fn test_fmt() {
 	os.chdir(vroot)
 	basepath := os.join_path(vroot, '')
 	tmpfolder := os.temp_dir()
-	diff_cmd := util.find_working_diff_command() or {
-		''
-	}
+	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
 	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
 	mut input_files := []string{}
 	input_files << keep_input_files
 	input_files << expected_input_files
-	input_files = vtest.filter_vtest_only(input_files, {
-		basepath: vroot
-	})
+	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep

@@ -149,12 +149,12 @@ pub fn (mut g Gen) write_tests_main() {
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
-		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, tos_lit("$g.pref.path"));')
+		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
 	}
 	for t in all_tfuncs {
 		g.writeln('')
 		if g.pref.is_stats {
-			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, tos_lit("$t"));')
+			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$t"));')
 		}
 		g.writeln('\tif (!setjmp(g_jump_buffer)) ${t}();')
 		if g.pref.is_stats {
