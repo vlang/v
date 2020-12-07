@@ -926,9 +926,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 				}
 			}
 			if res in import_aliases {
-				unsafe {
-					res = import_aliases[res]
-				}
+				res = import_aliases[res]
 			}
 		}
 	}
