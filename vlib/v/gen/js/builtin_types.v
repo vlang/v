@@ -31,7 +31,7 @@ fn (mut g JsGen) to_js_typ_val(t table.Type) string {
 			styp = 'new Map()'
 		}
 		.array {
-			styp = 'new Array([])'
+			styp = '${prefix}${g.sym_to_js_typ(sym)}()'
 		}
 		.struct_ {
 			styp = 'new ${g.js_name(sym.name)}(${g.to_js_typ_def_val(sym.name)})'
@@ -76,7 +76,6 @@ fn (mut g JsGen) sym_to_js_typ(sym table.TypeSymbol) string {
 pub fn (mut g JsGen) typ(t table.Type) string {
 	sym := g.table.get_type_symbol(t)
 	mut styp := ''
-	prefix := if g.file.mod.name == 'builtin' { 'new ' } else { '' } 
 	match sym.kind {
 		.placeholder {
 			// This should never happen: means checker bug
@@ -89,28 +88,28 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			styp = 'any'
 		}
 		.byteptr, .charptr {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .any_int, .any_float, .size_t {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.bool {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		.none_ {
 			styp = 'undefined'
 		}
 		.string, .ustring, .char {
-			styp = '${prefix}${g.sym_to_js_typ(sym)}'
+			styp = '${g.sym_to_js_typ(sym)}'
 		}
 		// 'array_array_int' => 'number[][]'
 		.array {
 			info := sym.info as table.Array
-			styp = '${prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.array_fixed {
 			info := sym.info as table.ArrayFixed
-			styp = '${prefix}${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
+			styp = '${g.sym_to_js_typ(sym)}(${g.typ(info.elem_type)})'
 		}
 		.chan {
 			styp = 'chan'
@@ -208,48 +207,54 @@ fn (mut g JsGen) struct_typ(s string) string {
 	return styp + '["prototype"]'
 }
 
-// ugly arguments but not sure a config struct would be worth it (for now)
-fn (mut g JsGen) gen_builtin_prototype(typ_name string, default_value string, constructor string, value_of string, to_string string, extras string) string {
-	mut out := ''
-	out += 'function $typ_name\(val = $default_value\) { $constructor }\n'
-	out += '\t$typ_name\.prototype = {\n'
-	out += '\t\tval: $default_value,\n'
+// ugly arguments but not sure a config struct would be worth it
+fn (mut g JsGen) gen_builtin_prototype(typ_name string, val_name string, default_value string, constructor string, value_of string, to_string string, extras string) {
+	g.writeln('function $typ_name\($val_name = $default_value\) { $constructor }')
+	g.writeln('$typ_name\.prototype = {')
+	g.inc_indent()
+	g.writeln('val: $default_value,')
 	if extras.len > 0 {
-		out += '\t\t$extras,\n'
+		g.writeln('$extras,')
 	}
-	out += '\t\tvalueOf() { return $value_of },\n'
-	out += '\t\ttoString() { return $to_string }\n'
-	out += '\t};\n\n\t'
-	return out
+	for method in g.method_fn_decls[typ_name] {
+		g.inside_def_typ_decl = true
+		g.gen_method_decl(method)
+		g.inside_def_typ_decl = false
+		g.writeln(',')
+	}
+	g.writeln('valueOf() { return $value_of },')
+	g.writeln('toString() { return $to_string }')
+	g.dec_indent()
+	g.writeln('};\n')
 }
 
 // generate builtin type definitions, used for casting and methods.
-fn (mut g JsGen) gen_builtin_type_defs() string {
-	mut out := ''
+fn (mut g JsGen) gen_builtin_type_defs() {
+	g.inc_indent()
 	for typ_name in v_types {
 		// TODO: JsDoc
 		match typ_name {
 			'i8', 'i16', 'int', 'i64', 'byte', 'u16', 'u32', 'u64', 'any_int', 'size_t' {
 				// TODO: Bounds checking
-				out += g.gen_builtin_prototype(typ_name, 'new Number(0)', 'this.val = val | 0;', 'this.val | 0', '(this.val | 0).toString()', '')
+				g.gen_builtin_prototype(typ_name, 'val', 'new Number(0)', 'this.val = val | 0;', 'this.val | 0', '(this.val | 0).toString()', '')
 			}
 			'f32', 'f64', 'any_float' {
-				out += g.gen_builtin_prototype(typ_name, 'new Number(0)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype(typ_name, 'val', 'new Number(0)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
 			}
 			'bool' {
-				out += g.gen_builtin_prototype(typ_name, 'new Boolean(false)', 'this.val = val == true;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype(typ_name, 'val', 'new Boolean(false)', 'this.val = val;', 'this.val', 'this.val.toString()', '')
 			}
 			'string' {
-				out += g.gen_builtin_prototype(typ_name, 'new String("")', 'this.val = val;', 'this.val', 'this.val.toString()', 'get length() { return this.val.length }')
+				g.gen_builtin_prototype(typ_name, 'str', 'new String("")', 'this.str = str;', 'this.str', 'this.str.toString()', 'get length() { return this.str.length }')
 			}
 			'map' {
-				out += g.gen_builtin_prototype(typ_name, 'new Map()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype(typ_name, 'val', 'new Map()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
 			}
 			'array' {
-				out += g.gen_builtin_prototype(typ_name, 'new Array()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
+				g.gen_builtin_prototype(typ_name, 'val', 'new Array()', 'this.val = val;', 'this.val', 'this.val.toString()', '')
 			}
 			else {}
 		}
 	}
-	return out
+	g.dec_indent()
 }

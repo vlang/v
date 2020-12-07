@@ -15,7 +15,7 @@ pub fn println(s any) {
 pub fn print(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stdout.write(s)
+		JS.process.stdout.write(s.toString())
 	// } $else {
 	//	panic('Cannot `print` in a browser, use `println` instead')
 	// }

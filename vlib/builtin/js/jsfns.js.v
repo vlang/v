@@ -22,6 +22,8 @@ fn (v JS.Boolean) toString() JS.String
 fn (v JS.Array) toString() JS.String
 fn (v JS.Map) toString() JS.String
 
+fn (v JS.String) slice(a int, b int) JS.String
+
 // Top level functions
 fn JS.eval(string) any
 fn JS.parseInt(string, f64) f64

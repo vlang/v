@@ -35,25 +35,27 @@ struct JsGen {
 	table             &table.Table
 	pref              &pref.Preferences
 mut:
-	definitions       strings.Builder
-	ns                &Namespace
-	namespaces        map[string]&Namespace
-	doc               &JsDoc
-	enable_doc        bool
-	file              ast.File
-	tmp_count         int
-	inside_ternary    bool
-	inside_loop       bool
-	inside_map_set    bool // map.set(key, value)
-	inside_builtin    bool
-	is_test           bool
-	stmt_start_pos    int
-	defer_stmts       []ast.DeferStmt
-	fn_decl           &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
-	str_types         []string // types that need automatic str() generation
-	method_fn_decls   map[string][]ast.FnDecl
-	builtin_fns       []string // Functions defined in `builtin`
-	empty_line        bool
+	definitions       	strings.Builder
+	ns                	&Namespace
+	namespaces        	map[string]&Namespace
+	doc               	&JsDoc
+	enable_doc        	bool
+	file              	ast.File
+	tmp_count         	int
+	inside_ternary    	bool
+	inside_loop       	bool
+	inside_map_set    	bool // map.set(key, value)
+	inside_builtin    	bool
+	generated_builtin 	bool
+	inside_def_typ_decl bool
+	is_test           	bool
+	stmt_start_pos    	int
+	defer_stmts       	[]ast.DeferStmt
+	fn_decl           	&ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	str_types         	[]string // types that need automatic str() generation
+	method_fn_decls   	map[string][]ast.FnDecl
+	builtin_fns       	[]string // Functions defined in `builtin`
+	empty_line        	bool
 }
 
 pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
@@ -92,6 +94,11 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			imports << imp.mod
 		}
 		graph.add(g.file.mod.name, imports)
+		// builtin types
+		if g.file.mod.name == 'builtin' && !g.generated_builtin {
+			g.gen_builtin_type_defs()
+			g.generated_builtin = true
+		}
 		g.stmts(file.stmts)
 		// store the current namespace
 		g.escape_namespace()
@@ -114,10 +121,6 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 			out += imports[key]
 		}
 		out += ') {\n\t'
-		// builtin types
-		if node.name == 'builtin' {
-			out += g.gen_builtin_type_defs()
-		}
 		// private scope
 		out += g.namespaces[node.name].out.str().trim_space()
 		// public scope
@@ -127,7 +130,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		}
 		out += '\n\treturn {'
 		// export builtin types
-		if node.name == 'builtin' {
+		if name == 'builtin' {
 			for typ in v_types {
 				out += '\n\t\t$typ,'
 			}
@@ -966,6 +969,9 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	if name.starts_with('JS.') {
 		return
 	}
+	if name in v_types && g.ns.name == 'builtin' {
+		return
+	}
 	js_name := g.js_name(name)
 	g.gen_attrs(node.attrs)
 	g.doc.gen_fac_fn(node.fields)
@@ -1274,6 +1280,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			g.write('.get(')
 		}
 		g.expr(expr.index)
+		g.write('.toString()')
 		if !expr.is_setter {
 			g.write(')')
 		}
@@ -1283,7 +1290,7 @@ fn (mut g JsGen) gen_index_expr(expr ast.IndexExpr) {
 			// 'string'[3] = `o`
 		} else {
 			g.expr(expr.left)
-			g.write('.charCodeAt(')
+			g.write('.str.charCodeAt(')
 			g.expr(expr.index)
 			g.write(')')
 		}
@@ -1315,10 +1322,15 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		g.expr(it.right)
 		g.write(if r_sym.kind == .map {
 			'.has('
+		} else if r_sym.kind == .string {
+			'.str.includes('
 		} else {
 			'.includes('
 		})
 		g.expr(it.left)
+		if l_sym.kind == .string {
+			g.write('.str')
+		}
 		g.write(')')
 		if it.op == .not_in {
 			g.write(')')
@@ -1511,7 +1523,7 @@ fn (mut g JsGen) gen_type_cast_expr(it ast.CastExpr) {
 	)
 	typ := g.typ(it.typ)
 	if !is_literal {
-		if !(typ in v_types) {
+		if !(typ in v_types) || g.ns.name == 'builtin' {
 			g.write('new ')
 		}
 		g.write('${typ}(')

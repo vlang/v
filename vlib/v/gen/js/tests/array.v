@@ -78,6 +78,8 @@ for i, _ in arr2 { println(i) }
 println('\n\n4 to 5\t=> ')
 for _, v in slice3 { println(v) }
 
+println(int(1.5))
+
 println('\n\n')
 
 // map
