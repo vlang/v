@@ -493,13 +493,12 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 		return res
 	}
 	mut start := 0
-	nth_1 := nth - 1
 	// Take the left part for each delimiter occurence
 	for i <= s.len {
 		is_delim := i + delim.len <= s.len && s.substr(i, i + delim.len) == delim
 		if is_delim {
 			val := s.substr(start, i)
-			was_last := nth > 0 && res.len == nth_1
+			was_last := nth > 0 && res.len == nth - 1
 			if was_last {
 				break
 			}
