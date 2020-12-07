@@ -66,7 +66,7 @@ fn (mut pc PkgConfig) parse_line(s string) string {
 		}
 		tok1 += tok0
 		v := r[tok0 + 2..tok1]
-		r = r.replace('\${$v}', pc.vars[v])
+		r = r.replace('\${${v}}', pc.vars[v])
 	}
 	return r.trim_space()
 }
@@ -130,12 +130,12 @@ fn (mut pc PkgConfig) resolve(pkgname string) ?string {
 		pc.paths << '.'
 	}
 	for path in pc.paths {
-		file := '$path/${pkgname}.pc'
+		file := '${path}/${pkgname}.pc'
 		if os.exists(file) {
 			return file
 		}
 	}
-	return error('Cannot find "$pkgname" pkgconfig file')
+	return error('Cannot find "${pkgname}" pkgconfig file')
 }
 
 pub fn atleast(v string) bool {
@@ -225,7 +225,7 @@ pub fn load(pkgname string, options Options) ?&PkgConfig {
 	pc.parse(file)
 	/*
 	if pc.name != pc.modname {
-		eprintln('Warning: modname and filename differ $pc.name $pc.modname')
+		eprintln('Warning: modname and filename differ ${pc.name} ${pc.modname}')
 	}
 	*/
 	if !options.norecurse {

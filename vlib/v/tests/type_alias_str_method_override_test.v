@@ -3,13 +3,13 @@ struct Human {
 }
 
 fn (h Human) str() string {
-	return 'Human: $h.name'
+	return 'Human: ${h.name}'
 }
 
 type Person = Human
 
 fn (h Person) str() string {
-	return 'Person: $h.name'
+	return 'Person: ${h.name}'
 }
 
 fn test_type_print() {

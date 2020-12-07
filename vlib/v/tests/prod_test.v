@@ -11,7 +11,7 @@ fn test_all_v_prod_files() {
 	options := runner.new_prod_options()
 	mut bmark := benchmark.new_benchmark()
 	for file in options.files {
-		// println('file:$file')
+		// println('file:${file}')
 		bmark.step()
 		fres := runner.run_prod_file(options.wd, options.vexec, file) or {
 			bmark.fail()

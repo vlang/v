@@ -49,9 +49,9 @@ fn main() {
 	_ = hl.Ccc.a
 	debugger := 'JS keywords'
 	// TODO: Implement interpolation
-	await := '$super: $debugger'
+	await := '${super}: ${debugger}'
 	mut finally := 'implemented'
-	println('$await $finally')
+	println('${await} ${finally}')
 	dun := i_am_a_const * 20
 	dunn := hl.hello // External constant
 	_ = hl1.nested()
@@ -78,7 +78,7 @@ fn main() {
 	}
 	go async(0, 'hello')
 	fn_in_var := fn (number int) {
-		println('number: $number')
+		println('number: ${number}')
 	}
 	hl.debugger()
 	anon_consumer(hl.excited(), fn (message string) {

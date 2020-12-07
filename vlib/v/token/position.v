@@ -11,7 +11,7 @@ pub:
 }
 
 pub fn (pos Position) str() string {
-	return 'Position{ line_nr: $pos.line_nr, pos: $pos.pos, len: $pos.len }'
+	return 'Position{ line_nr: ${pos.line_nr}, pos: ${pos.pos}, len: ${pos.len} }'
 }
 
 pub fn (pos Position) extend(end Position) Position {

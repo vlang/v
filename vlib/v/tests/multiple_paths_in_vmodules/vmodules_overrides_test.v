@@ -9,13 +9,13 @@ const (
 
 fn test_vexe_is_set() {
 	assert vexe != ''
-	println('vexe: $vexe')
+	println('vexe: ${vexe}')
 }
 
 fn test_compiling_without_vmodules_fails() {
 	os.chdir(vroot)
 	os.setenv('VMODULES', '', true)
-	res := os.exec('"$vexe" run "$mainvv"') or {
+	res := os.exec('"${vexe}" run "${mainvv}"') or {
 		panic(err)
 	}
 	assert res.exit_code == 1
@@ -26,7 +26,7 @@ fn test_compiling_with_vmodules_works() {
 	os.chdir(vroot)	
 	vmpaths := ['path1', 'path2', 'path3'].map(os.join_path(basepath, it))	
 	os.setenv('VMODULES', vmpaths.join(os.path_delimiter), true)
-	res := os.exec('"$vexe" run "$mainvv"') or {
+	res := os.exec('"${vexe}" run "${mainvv}"') or {
 		panic(err)
 	}
 	assert res.exit_code == 0

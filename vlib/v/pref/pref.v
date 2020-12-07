@@ -223,7 +223,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-prof', '-profile' {
 				res.profile_file = cmdline.option(current_args, '-profile', '-')
 				res.is_prof = true
-				res.build_options << '$arg $res.profile_file'
+				res.build_options << '${arg} ${res.profile_file}'
 				i++
 			}
 			'-profile-no-inline' {
@@ -250,7 +250,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-m32', '-m64' {
 				res.m64 = arg[2] == `6`
-				res.cflags += ' $arg'
+				res.cflags += ' ${arg}'
 			}
 			'-nocolor' {
 				res.use_color = .never
@@ -304,11 +304,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 						res.output_cross_c = true
 						continue
 					}
-					eprintln('unknown operating system target `$target_os`')
+					eprintln('unknown operating system target `${target_os}`')
 					exit(1)
 				}
 				res.os = target_os_kind
-				res.build_options << '$arg $target_os'
+				res.build_options << '${arg} ${target_os}'
 			}
 			'-printfn' {
 				res.printfn_list << cmdline.option(current_args, '-printfn', '')
@@ -316,7 +316,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-cflags' {
 				res.cflags += ' ' + cmdline.option(current_args, '-cflags', '')
-				res.build_options << '$arg "$res.cflags.trim_space()"'
+				res.build_options << '${arg} "${res.cflags.trim_space()}"'
 				i++
 			}
 			'-define', '-d' {
@@ -328,7 +328,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-cc' {
 				res.ccompiler = cmdline.option(current_args, '-cc', 'cc')
-				res.build_options << '$arg "$res.ccompiler"'
+				res.build_options << '${arg} "${res.ccompiler}"'
 				i++
 			}
 			'-o' {
@@ -343,22 +343,22 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-b' {
 				sbackend := cmdline.option(current_args, '-b', 'c')
-				res.build_options << '$arg $sbackend'
+				res.build_options << '${arg} ${sbackend}'
 				b := backend_from_string(sbackend) or { continue }
 				res.backend = b
 				i++
 			}
 			'-path' {
 				path := cmdline.option(current_args, '-path', '')
-				res.build_options << '$arg "$path"'
+				res.build_options << '${arg} "${path}"'
 				res.lookup_path = path.replace('|', os.path_delimiter).split(os.path_delimiter)
 				i++
 			}
 			'-custom-prelude' {
 				path := cmdline.option(current_args, '-custom-prelude', '')
-				res.build_options << '$arg $path'
+				res.build_options << '${arg} ${path}'
 				prelude := os.read_file(path) or {
-					eprintln('cannot open custom prelude file: $err')
+					eprintln('cannot open custom prelude file: ${err}')
 					exit(1)
 				}
 				res.custom_prelude = prelude
@@ -395,11 +395,11 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
-				eprint('Unknown argument `$arg`')
+				eprint('Unknown argument `${arg}`')
 				eprintln(if command.len == 0 {
 					''
 				} else {
-					' for command `$command`'
+					' for command `${command}`'
 				})
 				exit(1)
 			}
@@ -432,7 +432,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			mut output_option := ''
 			if tmp_exe_file_path == '' {
 				tmp_exe_file_path = '${tmp_file_path}.exe'
-				output_option = '-o "$tmp_exe_file_path"'
+				output_option = '-o "${tmp_exe_file_path}"'
 			}
 			tmp_v_file_path := '${tmp_file_path}.v'
 			mut lines := []string{}
@@ -445,29 +445,29 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			contents := lines.join('')
 			os.write_file(tmp_v_file_path, contents) or {
-				panic('Failed to create temporary file $tmp_v_file_path')
+				panic('Failed to create temporary file ${tmp_v_file_path}')
 			}
 			run_options := cmdline.options_before(args, ['run']).join(' ')
 			command_options := cmdline.options_after(args, ['run'])[1..].join(' ')
 			vexe := vexe_path()
-			tmp_cmd := '"$vexe" $output_option $run_options run "$tmp_v_file_path" $command_options'
+			tmp_cmd := '"${vexe}" ${output_option} ${run_options} run "${tmp_v_file_path}" ${command_options}'
 			//
-			res.vrun_elog('tmp_cmd: $tmp_cmd')
+			res.vrun_elog('tmp_cmd: ${tmp_cmd}')
 			tmp_result := os.system(tmp_cmd)
-			res.vrun_elog('exit code: $tmp_result')
+			res.vrun_elog('exit code: ${tmp_result}')
 			//
 			if output_option.len != 0 {
-				res.vrun_elog('remove tmp exe file: $tmp_exe_file_path')
+				res.vrun_elog('remove tmp exe file: ${tmp_exe_file_path}')
 				os.rm(tmp_exe_file_path)
 			}
-			res.vrun_elog('remove tmp v file: $tmp_v_file_path')
+			res.vrun_elog('remove tmp v file: ${tmp_v_file_path}')
 			os.rm(tmp_v_file_path)
 			exit(tmp_result)
 		}
 		must_exist(res.path)
 		if !res.path.ends_with('.v') && os.is_executable(res.path) && os.is_file(res.path) &&
 			os.is_file(res.path + '.v') {
-			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "$res.path" is an executable.')
+			eprintln('It looks like you wanted to run "${res.path}.v", so we went ahead and did that since "${res.path}" is an executable.')
 			res.path += '.v'
 		}
 	}
@@ -481,20 +481,20 @@ pub fn parse_args(args []string) (&Preferences, string) {
 		m[x] = ''
 	}
 	res.build_options = m.keys()
-	// eprintln('>> res.build_options: $res.build_options')
+	// eprintln('>> res.build_options: ${res.build_options}')
 	res.fill_with_defaults()
 	return res, command
 }
 
 pub fn (pref &Preferences) vrun_elog(s string) {
 	if pref.is_verbose {
-		eprintln('> v run -, $s')
+		eprintln('> v run -, ${s}')
 	}
 }
 
 fn must_exist(path string) {
 	if !os.exists(path) {
-		eprintln('v expects that `$path` exists, but it does not')
+		eprintln('v expects that `${path}` exists, but it does not')
 		exit(1)
 	}
 }
@@ -504,7 +504,7 @@ pub fn backend_from_string(s string) ?Backend {
 		'c' { return .c }
 		'js' { return .js }
 		'x64' { return .x64 }
-		else { return error('Unknown backend type $s') }
+		else { return error('Unknown backend type ${s}') }
 	}
 }
 

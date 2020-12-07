@@ -36,7 +36,7 @@ pub fn os_from_string(os_str string) ?OS {
 		'haiku' { return .haiku }
 		'linux_or_macos' { return .linux }
 		'' { return ._auto }
-		else { return error('bad OS $os_str') }
+		else { return error('bad OS ${os_str}') }
 	}
 }
 

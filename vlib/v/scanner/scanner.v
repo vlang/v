@@ -100,7 +100,7 @@ pub fn new_scanner_file(file_path string, comments_mode CommentsMode, pref &pref
 
 pub fn new_vet_scanner_file(file_path string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
 	if !os.exists(file_path) {
-		verror("$file_path doesn't exist")
+		verror("${file_path} doesn't exist")
 	}
 	raw_text := util.read_file(file_path) or {
 		verror(err)
@@ -222,7 +222,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.error('number part of this binary is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this binary number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this binary number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -261,7 +261,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.error('number part of this hexadecimal is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this hexadecimal number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this hexadecimal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -300,7 +300,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		s.error('number part of this octal is not provided')
 	} else if has_wrong_digit {
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this octal number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this octal number has unsuitable digit `${first_wrong_digit.str()}`')
 	}
 	number := filter_num_sep(s.text.str, start_pos, s.pos)
 	s.pos--
@@ -401,7 +401,7 @@ fn (mut s Scanner) ident_dec_number() string {
 	if has_wrong_digit {
 		// error check: wrong digit
 		s.pos = first_wrong_digit_pos // adjust error position
-		s.error('this number has unsuitable digit `$first_wrong_digit.str()`')
+		s.error('this number has unsuitable digit `${first_wrong_digit.str()}`')
 	} else if s.text[s.pos - 1] in [`e`, `E`] {
 		// error check: 5e
 		s.pos-- // adjust error position
@@ -450,7 +450,7 @@ fn (mut s Scanner) end_of_file() token.Token {
 	s.eofs++
 	if s.eofs > 50 {
 		s.line_nr--
-		panic('the end of file `$s.file_path` has been reached 50 times already, the v parser is probably stuck.\n' +
+		panic('the end of file `${s.file_path}` has been reached 50 times already, the v parser is probably stuck.\n' +
 			'This should not happen. Please report the bug here, and include the last 2-3 lines of your source code:\n' +
 			'https://github.com/vlang/v/issues/new?labels=Bug&template=bug_report.md')
 	}
@@ -477,7 +477,7 @@ pub fn (mut s Scanner) scan_all_tokens_in_buffer() {
 	s.tidx = 0
 	$if debugscanner ? {
 		for t in s.all_tokens {
-			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: $t.lit')
+			eprintln('> tidx:${t.tidx:-5} | kind: ${t.kind:-10} | lit: ${t.lit}')
 		}
 	}
 }
@@ -527,7 +527,7 @@ fn (mut s Scanner) text_scan() token.Token {
 		// println('\nscan()')
 		// }
 		// if s.line_comment != '' {
-		// s.fgenln('// LC "$s.line_comment"')
+		// s.fgenln('// LC "${s.line_comment}"')
 		// s.line_comment = ''
 		// }
 		if s.is_started {
@@ -771,7 +771,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
-						at_error_msg += '\nAvailable compile time variables:\n$token.valid_at_tokens'
+						at_error_msg += '\nAvailable compile time variables:\n${token.valid_at_tokens}'
 					}
 					s.error(at_error_msg)
 				}
@@ -807,7 +807,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
 					s.line_comment = s.text[start + 1..s.pos].trim_space()
-					// s.fgenln('// shebang line "$s.line_comment"')
+					// s.fgenln('// shebang line "${s.line_comment}"')
 					continue
 				}
 				hash := s.text[start..s.pos].trim_space()
@@ -926,7 +926,7 @@ fn (mut s Scanner) text_scan() token.Token {
 						}
 						return s.new_token(.comment, comment, comment.len + 2)
 					}
-					// s.fgenln('// ${s.prev_tok.str()} "$s.line_comment"')
+					// s.fgenln('// ${s.prev_tok.str()} "${s.line_comment}"')
 					// Skip the comment (return the next token)
 					continue
 				}
@@ -970,7 +970,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.end_of_file()
 			}
 		}
-		s.error('invalid character `$c.str()`')
+		s.error('invalid character `${c.str()}`')
 		break
 	}
 	return s.end_of_file()
@@ -1001,7 +1001,7 @@ fn (mut s Scanner) ident_string() string {
 	}
 	// if s.file_path.contains('string_test') {
 	// println('\nident_string() at char=${s.text[s.pos].str()}')
-	// println('linenr=$s.line_nr quote=  $qquote ${qquote.str()}')
+	// println('linenr=${s.line_nr} quote=  ${qquote} ${qquote.str()}')
 	// }
 	mut n_cr_chars := 0
 	mut start := s.pos
@@ -1166,14 +1166,14 @@ fn (mut s Scanner) debug_tokens() {
 	s.is_started = false
 	s.is_debug = true
 	fname := s.file_path.all_after_last(os.path_separator)
-	println('\n===DEBUG TOKENS $fname===')
+	println('\n===DEBUG TOKENS ${fname}===')
 	for {
 		tok := s.scan()
 		tok_kind := tok.kind
 		lit := tok.lit
 		print(tok_kind.str())
 		if lit != '' {
-			println(' `$lit`')
+			println(' `${lit}`')
 		} else {
 			println('')
 		}
@@ -1250,7 +1250,7 @@ pub fn (mut s Scanner) error(msg string) {
 }
 
 fn (mut s Scanner) vet_error(msg string) {
-	eline := '$s.file_path:$s.line_nr: $msg'
+	eline := '${s.file_path}:${s.line_nr}: ${msg}'
 	s.vet_errors << eline
 }
 
@@ -1265,7 +1265,7 @@ pub fn (mut s Scanner) codegen(newtext string) {
 	if s.comments_mode == .skip_comments {
 		s.text += newtext
 		$if debug_codegen ? {
-			eprintln('scanner.codegen:\n $newtext')
+			eprintln('scanner.codegen:\n ${newtext}')
 		}
 	}
 }

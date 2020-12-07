@@ -133,7 +133,7 @@ pub fn (mut s Scope) register(obj ScopeObject) {
 		return
 	}
 	if name in s.objects {
-		// println('existing obect: $name')
+		// println('existing obect: ${name}')
 		return
 	}
 	s.objects[name] = obj
@@ -156,7 +156,7 @@ pub fn (s &Scope) innermost(pos int) &Scope {
 		mut last := s.children.len - 1
 		mut middle := last / 2
 		for first <= last {
-			// println('FIRST: $first, LAST: $last, LEN: $s.children.len-1')
+			// println('FIRST: ${first}, LAST: ${last}, LEN: ${s.children.len}-1')
 			s1 := s.children[middle]
 			if s1.end_pos < pos {
 				first = middle + 1
@@ -187,16 +187,16 @@ pub fn (sc &Scope) show(depth int, max_depth int) string {
 	for _ in 0 .. depth * 4 {
 		indent += ' '
 	}
-	out += '$indent# $sc.start_pos - $sc.end_pos\n'
+	out += '${indent}# ${sc.start_pos} - ${sc.end_pos}\n'
 	for _, obj in sc.objects {
 		match obj {
-			ConstField { out += '$indent  * const: $obj.name - $obj.typ\n' }
-			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
+			ConstField { out += '${indent}  * const: ${obj.name} - ${obj.typ}\n' }
+			Var { out += '${indent}  * var: ${obj.name} - ${obj.typ}\n' }
 			else {}
 		}
 	}
 	for field in sc.struct_fields {
-		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
+		out += '${indent}  * struct_field: ${field.struct_type} ${field.name} - ${field.typ}\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {

@@ -7,12 +7,12 @@ fn simple() {
 	nums_copy := nums // array assignments call .clone()
 	println(nums_copy)
 	name := 'Peter' // string literals mustn't be freed
-	str_inter := 'hello, $name' // concatenated strings must be freed
+	str_inter := 'hello, ${name}' // concatenated strings must be freed
 	// nums.free() // this should result in a double free and a CI error
 	if true {
 		// test the freeing of local vars in a new scope
 		nums2 := [4, 5, 6]
-		str_inter2 := 'hello, $name'
+		str_inter2 := 'hello, ${name}'
 		println(nums2)
 	}
 	arr := return_array([])
@@ -66,7 +66,7 @@ struct Foo {
 
 fn str_inter() {
 	a := 10
-	println('a = $a')
+	println('a = ${a}')
 	// foo := Foo{10, 'x' + 'x'}
 	// println('foo = $foo') // TODO
 }
@@ -140,14 +140,14 @@ fn optional_str() {
 	q := 'select'
 	s := 'query: select'
 	// optional fn args must be freed
-	pos2 := opt('query:$q') or {
-		// pos := s.index('query: $q') or {
+	pos2 := opt('query:${q}') or {
+		// pos := s.index('query: ${q}') or {
 		println('exiting')
 		return
 	}
 	println(pos2 + 1)
 	// optional method args must be freed
-	pos := s.index('query: $q') or {
+	pos := s.index('query: ${q}') or {
 		println('exiting')
 		return
 	}
@@ -155,7 +155,7 @@ fn optional_str() {
 	// test assigning an optional to an existing var
 	mut p := 0
 	for {
-		p = opt('query:$q') or { break }
+		p = opt('query:${q}') or { break }
 		break
 	}
 }
@@ -163,7 +163,7 @@ fn optional_str() {
 fn return_error_with_freed_expr() ?string {
 	if true {
 		msg := 'oops'
-		return error('hm $msg')
+		return error('hm ${msg}')
 	}
 	return 'ok'
 }
@@ -297,7 +297,7 @@ fn free_before_break() {
 	x := ['1', '2', '3']
 	for n in x {
 		f := 'f'
-		println('$n => $f')
+		println('${n} => ${f}')
 	}
 }
 

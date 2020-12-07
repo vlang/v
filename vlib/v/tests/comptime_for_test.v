@@ -39,7 +39,7 @@ fn test_comptime_for() {
 	println(@FN)
 	methods := ['run', 'method2', 'int_method1', 'int_method2', 'string_arg']
 	$for method in App.methods {
-		println('  method: $method.name | ' + no_lines('$method'))
+		println('  method: ${method.name} | ' + no_lines('${method}'))
 		assert method.name in methods
 	}
 }
@@ -47,7 +47,7 @@ fn test_comptime_for() {
 fn test_comptime_for_with_if() {
 	println(@FN)
 	$for method in App.methods {
-		println('  method: ' + no_lines('$method'))
+		println('  method: ' + no_lines('${method}'))
 		$if method.typ is fn () {
 			assert method.name in ['run', 'method2']
 		}
@@ -63,7 +63,7 @@ fn test_comptime_for_with_if() {
 fn test_comptime_for_fields() {
 	println(@FN)
 	$for field in App.fields {
-		println('  field: $field.name | ' + no_lines('$field'))
+		println('  field: ${field.name} | ' + no_lines('${field}'))
 		$if field.typ is string {
 			assert field.name in ['a', 'b', 'g']
 		}

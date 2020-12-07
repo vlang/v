@@ -34,9 +34,9 @@ fn test_all() {
 	os.chdir(vroot)
 	checker_dir := 'vlib/v/checker/tests'
 	parser_dir := 'vlib/v/parser/tests'
-	module_dir := '$checker_dir/modules'
-	global_dir := '$checker_dir/globals'
-	run_dir := '$checker_dir/run'
+	module_dir := '${checker_dir}/modules'
+	global_dir := '${checker_dir}/globals'
+	run_dir := '${checker_dir}/run'
 	//
 	checker_tests := get_tests_in_dir(checker_dir, false)
 	parser_tests := get_tests_in_dir(parser_dir, false)
@@ -160,7 +160,7 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	program := task.path
-	cli_cmd := '$task.vexe $task.voptions $program'
+	cli_cmd := '${task.vexe} ${task.voptions} ${program}'
 	res := os.exec(cli_cmd) or {
 		panic(err)
 	}

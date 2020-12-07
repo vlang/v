@@ -72,18 +72,18 @@ fn test_all() {
 			}
 		}
 		//
-		exe_filename := '$wrkdir/x'
+		exe_filename := '${wrkdir}/x'
 		full_path_to_source_file := os.join_path(vroot, test)
-		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
+		compile_cmd := '${vexe} -o ${exe_filename} -cg -cflags "-w" -autofree "${full_path_to_source_file}"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
 		res := os.exec(compile_cmd) or {
 			bench.fail()
-			eprintln(bench.step_message_fail('valgrind $test failed'))
+			eprintln(bench.step_message_fail('valgrind ${test} failed'))
 			continue
 		}
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
+			eprintln(bench.step_message_fail('file: ${test} could not be compiled.'))
 			eprintln(res.output)
 			continue
 		}
@@ -94,7 +94,7 @@ fn test_all() {
 				continue
 			}
 		}
-		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
+		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full ${exe_filename}'
 		vprintln('valgrind cmd: ${util.bold(valgrind_cmd)}')
 		valgrind_res := os.exec(valgrind_cmd) or {
 			bench.fail()

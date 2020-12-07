@@ -71,7 +71,7 @@ pub:
 	pos      token.Position
 }
 
-// 'name: $name'
+// 'name: ${name}'
 pub struct StringInterLiteral {
 pub:
 	vals       []string

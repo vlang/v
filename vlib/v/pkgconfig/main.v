@@ -65,7 +65,7 @@ pub fn main(args []string) ?&Main {
 					continue
 				}
 				pad := strings.repeat(` `, 20 - mod.len)
-				m.res += '$mod $pad $d\n'
+				m.res += '${mod} ${pad} ${d}\n'
 			}
 		} else {
 			m.res = modules.join('\n')
@@ -126,7 +126,7 @@ pub fn (mut m Main) run() ?string {
 	}
 	if opt.variables {
 		for k, _ in pc.vars {
-			res += '$k\n'
+			res += '${k}\n'
 		}
 	}
 	if opt.requires {
@@ -169,13 +169,13 @@ fn filter(libs []string, prefix string, prefix2 string) string {
 	if prefix2 != '' {
 		for lib in libs {
 			if !lib.starts_with(prefix) && !lib.starts_with(prefix2) {
-				res += ' $lib'
+				res += ' ${lib}'
 			}
 		}
 	} else {
 		for lib in libs {
 			if lib.starts_with(prefix) {
-				res += ' $lib'
+				res += ' ${lib}'
 			}
 		}
 	}

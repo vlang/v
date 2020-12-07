@@ -81,10 +81,10 @@ for _, v in slice3 { println(v) }
 println('\n\n')
 
 // map
-a := arr1.map('VAL: $it')
+a := arr1.map('VAL: ${it}')
 b := arr1.map(map_cb)
 c := arr1.map(map_cb(it))
-d := arr1.map(fn(a string) string { return 'ANON: $a' })
+d := arr1.map(fn(a string) string { return 'ANON: ${a}' })
 // I don't know when this would ever be used,
 // but it's what the C backend does ¯\_(ツ)_/¯
 e := arr1.map(456)
@@ -116,8 +116,8 @@ f3 := ['foo', 'bar']!!
 f4 := [u64(0xffffffffffffffff), 0xdeadface]!!
 
 println('
-$f1
-$f2
-$f3
-$f4')
+${f1}
+${f2}
+${f3}
+${f4}')
 }

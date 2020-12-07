@@ -17,10 +17,10 @@ fn test_c_files() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	for i in 1 .. (nr_tests + 1) {
-		path := '$vroot/vlib/v/gen/tests/${i}.vv'
+		path := '${vroot}/vlib/v/gen/tests/${i}.vv'
 		ctext := os.read_file('$vroot/vlib/v/gen/tests/${i}.c') or { panic(err) }
 		mut b := builder.new_builder(pref.Preferences{})
-		b.module_search_paths = ['$vroot/vlib/v/gen/tests/']
+		b.module_search_paths = ['${vroot}/vlib/v/gen/tests/']
 		mut res := b.gen_c([path]).after('#endbuiltin')
 		if res.contains('string _STR') {
 			pos := res.index('string _STR') or { -1 }
@@ -28,7 +28,7 @@ fn test_c_files() {
 			res = res[..pos] + res[end + 15..]
 		}
 		if compare_texts(res, ctext, path) {
-			println('$term_ok $i')
+			println('${term_ok} ${i}')
 		} else {
 			assert false
 		}
@@ -45,7 +45,7 @@ fn compare_texts(a string, b string, path string) bool {
 	/*
 	if lines_a.len != lines_b.len {
 		println(term.red('different len'))
-		println('${path}: got\n$a')
+		println('${path}: got\n${a}')
 		return false
 	}
 	*/
@@ -56,8 +56,8 @@ fn compare_texts(a string, b string, path string) bool {
 		}
 		line_b := lines_b[i]
 		if line_a.trim_space() != line_b.trim_space() {
-			println('$path: Got\n$a')
-			println('$path:$i: $term_fail')
+			println('${path}: Got\n${a}')
+			println('${path}:${i}: ${term_fail}')
 			println(term.bold(term.bright_yellow('actual  : ')) + line_a)
 			println(term.green('expected: ') + line_b)
 			println(lines_b[i + 1])

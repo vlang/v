@@ -143,7 +143,7 @@ fn test_parse_expr() {
 		parent: 0
 	}
 	for s in input {
-		println('\n\nst="$s"')
+		println('\n\nst="${s}"')
 		e << parse_stmt(s, table, scope)
 	}
 	program := ast.File{
@@ -163,10 +163,10 @@ fn test_parse_expr() {
 			continue
 		}
 		if line != expecting[i] {
-			println('V:"$line" expecting:"${expecting[i]}"')
+			println('V:"${line}" expecting:"${expecting[i]}"')
 		}
 		assert line == expecting[i]
-		println(term.green('$i OK'))
+		println(term.green('${i} OK'))
 		println(line)
 		println('')
 		i++
@@ -181,8 +181,8 @@ table := &table.Table{}
 for s in text_expr {
 	// print using str method
 	x := parse_expr(s, table)
-	println('source: $s')
-	println('parsed: $x')
+	println('source: ${s}')
+	println('parsed: ${x}')
 	println('===================')
 }
 */

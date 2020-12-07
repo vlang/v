@@ -32,7 +32,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 			styp = styp[1..] // remove &
 		}
 		styp = util.no_cur_mod(styp, cur_mod)
-		receiver = '($m$node.receiver.name $styp) '
+		receiver = '(${m}${node.receiver.name} ${styp}) '
 		/*
 		sym := t.get_type_symbol(node.receiver.typ)
 		name := sym.name.after('.')
@@ -40,16 +40,16 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		if !node.rec_mut && node.receiver.typ.is_ptr() {
 			m = '&'
 		}
-		receiver = '($node.receiver.name $m$name) '
+		receiver = '(${node.receiver.name} ${m}${name}) '
 		*/
 	}
 	mut name := if node.is_anon { '' } else { node.name.after('.') }
 	if node.language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if node.language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	}
-	f.write('fn $receiver$name')
+	f.write('fn ${receiver}${name}')
 	if node.is_generic {
 		f.write('<T>')
 	}
@@ -102,14 +102,14 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 }
 
 pub fn (x &InfixExpr) str() string {
-	return '$x.left.str() $x.op.str() $x.right.str()'
+	return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 }
 
 // Expressions in string interpolations may have to be put in braces if they
 // are non-trivial, if they would interfere with the next character or if a
 // format specification is given. In the latter case
 // the format specifier must be appended, separated by a colon:
-// '$z $z.b $z.c.x ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
+// '${z} ${z.b} ${z.c.x} ${x[4]} ${z:8.3f} ${a:-20} ${a>b+2}'
 // This method creates the format specifier (including the colon) or an empty
 // string if none is needed and also returns (as bool) if the expression
 // must be enclosed in braces.
@@ -184,26 +184,26 @@ pub fn (x Expr) str() string {
 			return x.val.str()
 		}
 		CastExpr {
-			return '${x.typname}($x.expr.str())'
+			return '${x.typname}(${x.expr.str()})'
 		}
 		AtExpr {
-			return '$x.val'
+			return '${x.val}'
 		}
 		CallExpr {
 			sargs := args2str(x.args)
 			if x.is_method {
-				return '${x.left.str()}.${x.name}($sargs)'
+				return '${x.left.str()}.${x.name}(${sargs})'
 			}
 			if x.name.starts_with('${x.mod}.') {
-				return util.strip_main_name('${x.name}($sargs)')
+				return util.strip_main_name('${x.name}(${sargs})')
 			}
-			return '${x.mod}.${x.name}($sargs)'
+			return '${x.mod}.${x.name}(${sargs})'
 		}
 		CharLiteral {
-			return '`$x.val`'
+			return '`${x.val}`'
 		}
 		EnumVal {
-			return '.$x.val'
+			return '.${x.val}'
 		}
 		FloatLiteral, IntegerLiteral {
 			return x.val
@@ -212,13 +212,13 @@ pub fn (x Expr) str() string {
 			return x.name
 		}
 		IndexExpr {
-			return '$x.left.str()[$x.index.str()]'
+			return '${x.left.str()}[${x.index.str()}]'
 		}
 		InfixExpr {
-			return '$x.left.str() $x.op.str() $x.right.str()'
+			return '${x.left.str()} ${x.op.str()} ${x.right.str()}'
 		}
 		ParExpr {
-			return '($x.expr)'
+			return '(${x.expr})'
 		}
 		PrefixExpr {
 			return x.op.str() + x.right.str()
@@ -226,18 +226,18 @@ pub fn (x Expr) str() string {
 		RangeExpr {
 			mut s := '..'
 			if x.has_low {
-				s = '$x.low ' + s
+				s = '${x.low} ' + s
 			}
 			if x.has_high {
-				s = s + ' $x.high'
+				s = s + ' ${x.high}'
 			}
 			return s
 		}
 		SelectorExpr {
-			return '${x.expr.str()}.$x.field_name'
+			return '${x.expr.str()}.${x.field_name}'
 		}
 		SizeOf {
-			return 'sizeof($x.expr)'
+			return 'sizeof(${x.expr})'
 		}
 		StringInterLiteral {
 			mut res := []string{}
@@ -262,16 +262,16 @@ pub fn (x Expr) str() string {
 			return res.join('')
 		}
 		StringLiteral {
-			return '"$x.val"'
+			return '"${x.val}"'
 		}
 		TypeOf {
-			return 'typeof($x.expr.str())'
+			return 'typeof(${x.expr.str()})'
 		}
 		Likely {
-			return '_likely_($x.expr.str())'
+			return '_likely_(${x.expr.str()})'
 		}
 		UnsafeExpr {
-			return 'unsafe { $x.expr }'
+			return 'unsafe { ${x.expr} }'
 		}
 		else {}
 	}
@@ -280,9 +280,9 @@ pub fn (x Expr) str() string {
 
 pub fn (a CallArg) str() string {
 	if a.is_mut {
-		return 'mut $a.expr.str()'
+		return 'mut ${a.expr.str()}'
 	}
-	return '$a.expr.str()'
+	return '${a.expr.str()}'
 }
 
 pub fn args2str(args []CallArg) string {
@@ -294,9 +294,9 @@ pub fn args2str(args []CallArg) string {
 }
 
 pub fn (node &BranchStmt) str() string {
-	mut s := '$node.kind'
+	mut s := '${node.kind}'
 	if node.label.len > 0 {
-		s += ' $node.label'
+		s += ' ${node.label}'
 	}
 	return s
 }
@@ -317,7 +317,7 @@ pub fn (node Stmt) str() string {
 					out += ','
 				}
 			}
-			out += ' $node.op.str() '
+			out += ' ${node.op.str()} '
 			for i, val in node.right {
 				out += val.str()
 				if i < node.right.len - 1 {
@@ -333,7 +333,7 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}() { $node.stmts.len stmts }'
+			return 'fn ${node.name}() { ${node.stmts.len} stmts }'
 		}
 		else {
 			return '[unhandled stmt str type: ${typeof(node)} ]'

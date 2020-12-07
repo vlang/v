@@ -155,7 +155,7 @@ fn mul_int(x int, y int) int {
 
 fn assert_eq<T>(a, b T) {
 	r := a == b
-	println('$a == $b: ${r.str()}')
+	println('${a} == ${b}: ${r.str()}')
 	assert r
 }
 
@@ -164,7 +164,7 @@ fn print_nice<T>(x T, indent int) {
 	for _ in 0..indent {
 		space = space + ' '
 	}
-	println('$space$x')
+	println('${space}${x}')
 }
 
 fn test_generic_fn() {
@@ -249,7 +249,7 @@ fn test_generic_struct() {
 	}
 	// a.model.name = 'joe'
 	assert a.model.name == 'joe'
-	println('a.model.name: $a.model.name')
+	println('a.model.name: ${a.model.name}')
 	mut b := Repo<Group, Permission>{
 		permission: Permission{
 			name: 'superuser'
@@ -258,8 +258,8 @@ fn test_generic_struct() {
 	b.model.name = 'admins'
 	assert b.model.name == 'admins'
 	assert b.permission.name == 'superuser'
-	println('b.model.name: $b.model.name')
-	println('b.permission.name: $b.permission.name')
+	println('b.model.name: ${b.model.name}')
+	println('b.permission.name: ${b.permission.name}')
 	assert typeof(a.model) == 'User'
 	assert typeof(b.model) == 'Group'
 	println('typeof(a.model): ' + typeof(a.model))

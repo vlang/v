@@ -39,7 +39,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut name := p.check_name()
 	// defer {
 	// if name.contains('App') {
-	// println('end of struct decl $name')
+	// println('end of struct decl ${name}')
 	// }
 	// }
 	if name.len == 1 && name[0].is_capital() {
@@ -61,19 +61,19 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	}
 	no_body := p.tok.kind != .lcbr
 	if language == .v && no_body {
-		p.error('`$p.tok.lit` lacks body')
+		p.error('`${p.tok.lit}` lacks body')
 		return ast.StructDecl{}
 	}
 	if language == .v &&
 		p.mod != 'builtin' && name.len > 0 && !name[0].is_capital() && !p.pref.translated {
-		p.error_with_pos('struct name `$name` must begin with capital letter', name_pos)
+		p.error_with_pos('struct name `${name}` must begin with capital letter', name_pos)
 		return ast.StructDecl{}
 	}
 	if name.len == 1 {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
 	}
-	// println('struct decl $name')
+	// println('struct decl ${name}')
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
 	mut embedded_structs := []table.Type{}
@@ -179,7 +179,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				field_pos = p.prev_tok.position()
 				field_name = symbol_name
 				if typ in embedded_structs {
-					p.error_with_pos('cannot embed `$field_name` more than once', type_pos)
+					p.error_with_pos('cannot embed `${field_name}` more than once', type_pos)
 					return ast.StructDecl{}
 				}
 				embedded_structs << typ
@@ -250,9 +250,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.check(.rcbr)
 	}
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else {
 		name = p.prepend_mod(name)
 	}
@@ -277,11 +277,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		// with the real struct type info parsed from builtin
 		ret = p.table.register_builtin_type_symbol(t)
 	} else {
-		// println('reg type symbol $name mod=$p.mod')
+		// println('reg type symbol ${name} mod=${p.mod}')
 		ret = p.table.register_type_symbol(t)
 	}
 	if ret == -1 {
-		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
+		p.error_with_pos('cannot register struct `${name}`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
 	}
@@ -307,7 +307,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	typ := if short_syntax { table.void_type } else { p.parse_type() }
 	p.expr_mod = ''
 	// sym := p.table.get_type_symbol(typ)
-	// p.warn('struct init typ=$sym.name')
+	// p.warn('struct init typ=${sym.name}')
 	if !short_syntax {
 		p.check(.lcbr)
 	}
@@ -382,7 +382,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.next() // `interface`
 	name_pos := p.tok.position()
 	interface_name := p.prepend_mod(p.check_name()).clone()
-	// println('interface decl $interface_name')
+	// println('interface decl ${interface_name}')
 	p.check(.lcbr)
 	pre_comments := p.eat_comments()
 	// Declare the type
@@ -396,7 +396,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		}
 	)
 	if reg_idx == -1 {
-		p.error_with_pos('cannot register interface `$interface_name`, another type with this name exists',
+		p.error_with_pos('cannot register interface `${interface_name}`, another type with this name exists',
 			name_pos)
 		return ast.InterfaceDecl{}
 	}
@@ -412,7 +412,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		line_nr := p.tok.line_nr
 		name := p.check_name()
 		if ts.has_method(name) {
-			p.error_with_pos('duplicate method `$name`', method_start_pos)
+			p.error_with_pos('duplicate method `${name}`', method_start_pos)
 			return ast.InterfaceDecl{}
 		}
 		if util.contains_capital(name) {
@@ -442,7 +442,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		mcomments := p.eat_comments()
 		method.comments = mcomments
 		methods << method
-		// println('register method $name')
+		// println('register method ${name}')
 		ts.register_method(
 			name: name
 			params: args

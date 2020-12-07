@@ -14,11 +14,11 @@ interface Animal {
 }
 
 fn (d Dog) say(s string) {
-	println('Dog $d.name: "$s"')
+	println('Dog ${d.name}: "${s}"')
 }
 
 fn (c Cat) say(s string) {
-	println('Cat $c.name: "$s"')
+	println('Cat ${c.name}: "${s}"')
 }
 
 fn (d Dog) greet() int {

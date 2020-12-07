@@ -49,7 +49,7 @@ fn test_match_integers() {
 		}
 		else {
 			a = 3
-			println('a is $a')
+			println('a is ${a}')
 		}
 	}
 	assert a == 3
@@ -101,7 +101,7 @@ fn test_match_enums() {
 			b = .blue
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .red
 		}
 	}
@@ -111,7 +111,7 @@ fn test_match_enums() {
 			b = .green
 		}
 		else {
-			println('b is $b.str()')
+			println('b is ${b.str()}')
 			b = .blue
 		}
 	}

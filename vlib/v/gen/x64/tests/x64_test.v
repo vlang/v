@@ -31,11 +31,11 @@ fn test_x64() {
 	for test in tests {
 		bench.step()
 		full_test_path := os.real_path(test)
-		println('x.v: $wrkdir/x.v')
-		os.system('cp $dir/$test $wrkdir/x.v') // cant run .vv file
-		os.exec('$vexe -o exe -x64 $wrkdir/x.v') or {
+		println('x.v: ${wrkdir}/x.v')
+		os.system('cp ${dir}/${test} ${wrkdir}/x.v') // cant run .vv file
+		os.exec('${vexe} -o exe -x64 ${wrkdir}/x.v') or {
 			bench.fail()
-			eprintln(bench.step_message_fail('x64 $test failed'))
+			eprintln(bench.step_message_fail('x64 ${test} failed'))
 			continue
 		}
 		res := os.exec('./exe') or {
@@ -44,11 +44,11 @@ fn test_x64() {
 		}
 		if res.exit_code != 0 {
 			bench.fail()
-			eprintln(bench.step_message_fail('$full_test_path failed to run'))
+			eprintln(bench.step_message_fail('${full_test_path} failed to run'))
 			eprintln(res.output)
 			continue
 		}
-		mut expected := os.read_file('$dir/${test}.out') or {
+		mut expected := os.read_file('${dir}/${test}.out') or {
 			panic(err)
 		}
 		expected = expected.trim_right('\r\n').replace('\r\n', '\n')
@@ -57,15 +57,15 @@ fn test_x64() {
 		if expected != found {
 			println(term.red('FAIL'))
 			println('============')
-			println('expected: "$expected" len=$expected.len')
+			println('expected: "${expected}" len=${expected.len}')
 			println('============')
-			println('found:"$found" len=$found.len')
+			println('found:"${found}" len=${found.len}')
 			println('============\n')
 			bench.fail()
 			continue
 		}
 		bench.ok()
-		eprintln(bench.step_message_ok('testing file: $test'))
+		eprintln(bench.step_message_ok('testing file: ${test}'))
 	}
 	bench.stop()
 	eprintln(term.h_divider('-'))

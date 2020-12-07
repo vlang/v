@@ -194,14 +194,14 @@ If you need to modify an array in a function, use a mutable argument instead: `f
 pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check_dot bool) table.Type {
 	mut name := p.tok.lit
 	if language == .c {
-		name = 'C.$name'
+		name = 'C.${name}'
 	} else if language == .js {
-		name = 'JS.$name'
+		name = 'JS.${name}'
 	} else if p.peek_tok.kind == .dot && check_dot {
 		// `module.Type`
 		// /if !(p.tok.lit in p.table.imports) {
 		if !p.known_import(name) {
-			p.error('unknown module `$p.tok.lit`')
+			p.error('unknown module `${p.tok.lit}`')
 			return 0
 		}
 		if p.tok.lit in p.imports {
@@ -210,7 +210,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		p.next()
 		p.check(.dot)
 		// prefix with full module
-		name = '${p.imports[name]}.$p.tok.lit'
+		name = '${p.imports[name]}.${p.tok.lit}'
 		if !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
@@ -221,7 +221,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name
 	}
-	// p.warn('get type $name')
+	// p.warn('get type ${name}')
 	match p.tok.kind {
 		.key_fn {
 			// func
@@ -327,7 +327,7 @@ pub fn (mut p Parser) parse_enum_or_struct_type(name string, language table.Lang
 	}
 	// not found - add placeholder
 	idx = p.table.add_placeholder_type(name, language)
-	// println('NOT FOUND: $name - adding placeholder - $idx')
+	// println('NOT FOUND: ${name} - adding placeholder - ${idx}')
 	return table.new_type(idx)
 }
 

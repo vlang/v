@@ -108,12 +108,12 @@ fn find_windows_kit_root(host_arch string) ?WindowsKit {
 				highest_path = f
 			}
 		}
-		kit_lib_highest := kit_lib + '\\$highest_path'
+		kit_lib_highest := kit_lib + '\\${highest_path}'
 		kit_include_highest := kit_lib_highest.replace('Lib', 'Include')
 		C.RegCloseKey(root_key)
 		return WindowsKit{
-			um_lib_path: kit_lib_highest + '\\um\\$host_arch'
-			ucrt_lib_path: kit_lib_highest + '\\ucrt\\$host_arch'
+			um_lib_path: kit_lib_highest + '\\um\\${host_arch}'
+			ucrt_lib_path: kit_lib_highest + '\\ucrt\\${host_arch}'
 			um_include_path: kit_include_highest + '\\um'
 			ucrt_include_path: kit_include_highest + '\\ucrt'
 			shared_include_path: kit_include_highest + '\\shared'
@@ -136,28 +136,28 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 	// VSWhere is guaranteed to be installed at this location now
 	// If its not there then end user needs to update their visual studio
 	// installation!
-	res := os.exec('"$vswhere_dir\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
+	res := os.exec('"${vswhere_dir}\\Microsoft Visual Studio\\Installer\\vswhere.exe" -latest -prerelease -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath') ?
 	res_output := res.output.trim_right('\r\n')
-	// println('res: "$res"')
-	version := os.read_file('$res_output\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
+	// println('res: "${res}"')
+	version := os.read_file('${res_output}\\VC\\Auxiliary\\Build\\Microsoft.VCToolsVersion.default.txt') or {
 		// println('Unable to find msvc version')
 		return error('Unable to find vs installation')
 	}
 	version2 := version // TODO remove. cgen option bug if expr
-	// println('version: $version')
+	// println('version: ${version}')
 	v := if version.ends_with('\n') { version2[..version.len - 2] } else { version2 }
-	lib_path := '$res.output\\VC\\Tools\\MSVC\\$v\\lib\\$host_arch'
-	include_path := '$res.output\\VC\\Tools\\MSVC\\$v\\include'
+	lib_path := '${res.output}\\VC\\Tools\\MSVC\\${v}\\lib\\${host_arch}'
+	include_path := '${res.output}\\VC\\Tools\\MSVC\\${v}\\include'
 	if os.exists('$lib_path\\vcruntime.lib') {
-		p := '$res.output\\VC\\Tools\\MSVC\\$v\\bin\\Host$host_arch\\$host_arch'
-		// println('$lib_path $include_path')
+		p := '${res.output}\\VC\\Tools\\MSVC\\${v}\\bin\\Host${host_arch}\\${host_arch}'
+		// println('${lib_path} ${include_path}')
 		return VsInstallation{
 			exe_path: p
 			lib_path: lib_path
 			include_path: include_path
 		}
 	}
-	println('Unable to find vs installation (attempted to use lib path "$lib_path")')
+	println('Unable to find vs installation (attempted to use lib path "${lib_path}")')
 	return error('Unable to find vs exe folder')
 }
 
@@ -204,7 +204,7 @@ pub fn (mut v Builder) cc_msvc() {
 	// -w: no warnings
 	// 2 unicode defines
 	// /Fo sets the object file name - needed so we can clean up after ourselves properly
-	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"$out_name_obj"']
+	mut a := ['-w', '/we4013', '/volatile:ms', '/Fo"${out_name_obj}"']
 	if v.pref.is_prod {
 		a << '/O2'
 		a << '/MD'
@@ -215,7 +215,7 @@ pub fn (mut v Builder) cc_msvc() {
 	if v.pref.is_debug {
 		// /Zi generates a .pdb
 		// /Fd sets the pdb file name (so its not just vc140 all the time)
-		a << ['/Zi', '/Fd"$out_name_pdb"']
+		a << ['/Zi', '/Fd"${out_name_pdb}"']
 	}
 	if v.pref.is_shared {
 		if !v.pref.out_name.ends_with('.dll') {
@@ -234,7 +234,7 @@ pub fn (mut v Builder) cc_msvc() {
 	} else if v.pref.build_mode == .default_mode {
 		/*
 		b := os.real_path( '${pref.default_module_path}/vlib/builtin.obj' )
-		alibs << '"$b"'
+		alibs << '"${b}"'
 		if !os.exists(b) {
 			println('`builtin.obj` not found')
 			exit(1)
@@ -251,7 +251,7 @@ pub fn (mut v Builder) cc_msvc() {
 		println('Sanitize not supported on msvc.')
 	}
 	// The C file we are compiling
-	// a << '"$TmpPath/$v.out_name_c"'
+	// a << '"${TmpPath}/${v.out_name_c}"'
 	a << '"' + os.real_path(v.out_name_c) + '"'
 	// Emily:
 	// Not all of these are needed (but the compiler should discard them if they are not used)
@@ -265,10 +265,10 @@ pub fn (mut v Builder) cc_msvc() {
 	defines := sflags.defines
 	other_flags := sflags.other_flags
 	// Include the base paths
-	a << '-I "$r.ucrt_include_path"'
-	a << '-I "$r.vs_include_path"'
-	a << '-I "$r.um_include_path"'
-	a << '-I "$r.shared_include_path"'
+	a << '-I "${r.ucrt_include_path}"'
+	a << '-I "${r.vs_include_path}"'
+	a << '-I "${r.um_include_path}"'
+	a << '-I "${r.shared_include_path}"'
 	a << defines
 	a << inc_paths
 	a << other_flags
@@ -276,10 +276,10 @@ pub fn (mut v Builder) cc_msvc() {
 	a << real_libs.join(' ')
 	a << '/link'
 	a << '/NOLOGO'
-	a << '/OUT:"$v.pref.out_name"'
-	a << '/LIBPATH:"$r.ucrt_lib_path"'
-	a << '/LIBPATH:"$r.um_lib_path"'
-	a << '/LIBPATH:"$r.vs_lib_path"'
+	a << '/OUT:"${v.pref.out_name}"'
+	a << '/LIBPATH:"${r.ucrt_lib_path}"'
+	a << '/LIBPATH:"${r.um_lib_path}"'
+	a << '/LIBPATH:"${r.vs_lib_path}"'
 	a << '/DEBUG:FULL' // required for prod builds to generate PDB
 	if v.pref.is_prod {
 		a << '/INCREMENTAL:NO' // Disable incremental linking
@@ -290,9 +290,9 @@ pub fn (mut v Builder) cc_msvc() {
 	args := a.join(' ')
 	// write args to a file so that we dont smash createprocess
 	os.write_file(out_name_cmd_line, args) or {
-		verror('Unable to write response file to "$out_name_cmd_line"')
+		verror('Unable to write response file to "${out_name_cmd_line}"')
 	}
-	cmd := '"$r.full_cl_exe_path" @$out_name_cmd_line'
+	cmd := '"${r.full_cl_exe_path}" @${out_name_cmd_line}'
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
@@ -325,26 +325,26 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	mut obj_path := '${path}bj'
 	obj_path = os.real_path(obj_path)
 	if os.exists(obj_path) {
-		// println('$obj_path already built.')
+		// println('${obj_path} already built.')
 		return
 	}
-	println('$obj_path not found, building it (with msvc)...')
+	println('${obj_path} not found, building it (with msvc)...')
 	cfiles := '${path[..path.len - 2]}.c'
 	flags := msvc_string_flags(moduleflags)
 	inc_dirs := flags.inc_paths.join(' ')
 	defines := flags.defines.join(' ')
-	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
-	// println('cfiles: $cfiles')
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $defines $include_string /c $cfiles /Fo"$obj_path"'
+	include_string := '-I "${msvc.ucrt_include_path}" -I "${msvc.vs_include_path}" -I "${msvc.um_include_path}" -I "${msvc.shared_include_path}" ${inc_dirs}'
+	// println('cfiles: ${cfiles}')
+	cmd := '"${msvc.full_cl_exe_path}" /volatile:ms /DNDEBUG ${defines} ${include_string} /c ${cfiles} /Fo"${obj_path}"'
 	// NB: the quotes above ARE balanced.
-	// println('thirdparty cmd line: $cmd')
+	// println('thirdparty cmd line: ${cmd}')
 	res := os.exec(cmd) or {
-		println('msvc: failed thirdparty object build cmd: $cmd')
+		println('msvc: failed thirdparty object build cmd: ${cmd}')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('msvc: failed thirdparty object build cmd: $cmd')
+		println('msvc: failed thirdparty object build cmd: ${cmd}')
 		verror(res.output)
 		return
 	}
@@ -368,13 +368,13 @@ pub fn msvc_string_flags(cflags []cflag.CFlag) MsvcStringFlags {
 	mut defines := []string{}
 	mut other_flags := []string{}
 	for flag in cflags {
-		// println('fl: $flag.name | flag arg: $flag.value')
+		// println('fl: ${flag.name} | flag arg: ${flag.value}')
 		// We need to see if the flag contains -l
 		// -l isnt recognised and these libs will be passed straight to the linker
 		// by the compiler
 		if flag.name == '-l' {
 			if flag.value.ends_with('.dll') {
-				verror('MSVC cannot link against a dll (`#flag -l $flag.value`)')
+				verror('MSVC cannot link against a dll (`#flag -l ${flag.value}`)')
 			}
 			// MSVC has no method of linking against a .dll
 			// TODO: we should look for .defs aswell

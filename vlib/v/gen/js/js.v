@@ -93,9 +93,9 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	for node in nodes {
 		name := g.js_name(node.name).replace('.', '_')
 		if g.enable_doc {
-			out += '/** @namespace $name */\n'
+			out += '/** @namespace ${name} */\n'
 		}
-		out += 'const $name = (function ('
+		out += 'const ${name} = (function ('
 		imports := g.namespace_imports[node.name]
 		for i, key in imports.keys() {
 			if i > 0 {
@@ -113,7 +113,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 		}
 		out += '\n\treturn {'
 		for i, pub_var in g.namespaces_pub[node.name] {
-			out += '\n\t\t$pub_var'
+			out += '\n\t\t${pub_var}'
 			if i < g.namespaces_pub[node.name].len - 1 {
 				out += ','
 			}
@@ -134,7 +134,7 @@ pub fn gen(files []ast.File, table &table.Table, pref &pref.Preferences) string 
 	if pref.is_shared {
 		// Export, through CommonJS, the module of the entry file if `-shared` was passed
 		export := nodes[nodes.len - 1].name
-		out += 'if (typeof module === "object" && module.exports) module.exports = $export;'
+		out += 'if (typeof module === "object" && module.exports) module.exports = ${export};'
 	}
 	return out
 }
@@ -186,7 +186,7 @@ pub fn (mut g JsGen) init() {
 }
 
 pub fn (g JsGen) hashes() string {
-	mut res := '// V_COMMIT_HASH $util.vhash()\n'
+	mut res := '// V_COMMIT_HASH ${util.vhash()}\n'
 	res += '// V_CURRENT_COMMIT_HASH ${util.githash(g.pref.building_v)}\n'
 	return res
 }
@@ -239,7 +239,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			info := sym.info as table.Map
 			key := g.typ(info.key_type)
 			val := g.typ(info.value_type)
-			styp = 'Map<$key, $val>'
+			styp = 'Map<${key}, ${val}>'
 		}
 		.any {
 			styp = 'any'
@@ -254,7 +254,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 			info := sym.info as table.MultiReturn
 			types := info.types.map(g.typ(it))
 			joined := types.join(', ')
-			styp = '[$joined]'
+			styp = '[${joined}]'
 		}
 		.sum_type {
 			// TODO: Implement sumtypes
@@ -288,7 +288,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 	}
 	/*
 	else {
-			println('jsgen.typ: Unhandled type $t')
+			println('jsgen.typ: Unhandled type ${t}')
 			styp = sym.name
 		}
 	*/
@@ -301,7 +301,7 @@ pub fn (mut g JsGen) typ(t table.Type) string {
 fn (mut g JsGen) fn_typ(args []table.Param, return_type table.Type) string {
 	mut res := '('
 	for i, arg in args {
-		res += '$arg.name: ${g.typ(arg.typ)}'
+		res += '${arg.name}: ${g.typ(arg.typ)}'
 		if i < args.len - 1 {
 			res += ', '
 		}
@@ -317,7 +317,7 @@ fn (mut g JsGen) struct_typ(s string) string {
 		if i == 0 {
 			styp = v
 		} else {
-			styp += '["$v"]'
+			styp += '["${v}"]'
 		}
 	}
 	if ns in ['', g.namespace] {
@@ -384,7 +384,7 @@ pub fn (mut g JsGen) writeln(s string) {
 
 pub fn (mut g JsGen) new_tmp_var() string {
 	g.tmp_count++
-	return '_tmp$g.tmp_count'
+	return '_tmp${g.tmp_count}'
 }
 
 // 'mod1.mod2.fn' => 'mod1.mod2'
@@ -423,7 +423,7 @@ fn (mut g JsGen) js_name(name_ string) string {
 	if !is_js {
 		for i, p in parts {
 			if p in js_reserved {
-				parts[i] = 'v_$p'
+				parts[i] = 'v_${p}'
 			}
 		}
 	}
@@ -562,7 +562,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			g.expr(node.expr)
 		}
 		ast.CharLiteral {
-			g.write("'$node.val'")
+			g.write("'${node.val}'")
 		}
 		ast.Comment {}
 		ast.ConcatExpr {
@@ -571,7 +571,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.EnumVal {
 			sym := g.table.get_type_symbol(node.typ)
 			styp := g.js_name(sym.name)
-			g.write('${styp}.$node.val')
+			g.write('${styp}.${node.val}')
 		}
 		ast.FloatLiteral {
 			g.write(node.val)
@@ -646,7 +646,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		}
 		ast.StringLiteral {
 			text := node.val.replace('`', '\\`')
-			g.write('`$text`')
+			g.write('`${text}`')
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
@@ -666,7 +666,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 			// TODO: Should this print the V type or the JS type?
 		}
 		ast.AtExpr {
-			g.write('"$node.val"')
+			g.write('"${node.val}"')
 		}
 		ast.ComptimeCall {
 			// TODO
@@ -687,17 +687,17 @@ fn (mut g JsGen) gen_assert_stmt(a ast.AssertStmt) {
 	mut mod_path := g.file.path.replace('\\', '\\\\')
 	if g.is_test {
 		g.writeln('	g_test_oks++;')
-		g.writeln('	cb_assertion_ok("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_ok("${mod_path}", ${a.pos.line_nr + 1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
 		g.writeln('} else {')
 		g.writeln('	g_test_fails++;')
-		g.writeln('	cb_assertion_failed("$mod_path", ${a.pos.line_nr + 1}, "assert $s_assertion", "${g.fn_decl.name}()" );')
+		g.writeln('	cb_assertion_failed("${mod_path}", ${a.pos.line_nr + 1}, "assert ${s_assertion}", "${g.fn_decl.name}()" );')
 		g.writeln('	exit(1);')
 		g.writeln('}')
 		return
 	}
 	g.writeln('} else {')
 	g.inc_indent()
-	g.writeln('builtin.eprintln("$mod_path:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert $s_assertion");')
+	g.writeln('builtin.eprintln("${mod_path}:${a.pos.line_nr + 1}: FAIL: fn ${g.fn_decl.name}(): assert ${s_assertion}");')
 	g.writeln('builtin.exit(1);')
 	g.dec_indent()
 	g.writeln('}')
@@ -732,7 +732,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				if left.kind == .blank_ident || left.name in ['', '_'] {
 					tmp_var := g.new_tmp_var()
 					// TODO: Can the tmp_var declaration be omitted?
-					g.write('const $tmp_var = ')
+					g.write('const ${tmp_var} = ')
 					g.expr(val)
 					g.writeln(';')
 					continue
@@ -756,7 +756,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 				g.expr(val)
 				g.write(')')
 			} else {
-				g.write(' $op ')
+				g.write(' ${op} ')
 				g.expr(val)
 			}
 			if g.inside_loop {
@@ -770,7 +770,7 @@ fn (mut g JsGen) gen_assign_stmt(stmt ast.AssignStmt) {
 
 fn (mut g JsGen) gen_attrs(attrs []table.Attr) {
 	for attr in attrs {
-		g.writeln('/* [$attr.name] */')
+		g.writeln('/* [${attr.name}] */')
 	}
 }
 
@@ -814,7 +814,7 @@ fn (mut g JsGen) gen_enum_decl(it ast.EnumDecl) {
 	g.inc_indent()
 	mut i := 0
 	for field in it.fields {
-		g.write('$field.name: ')
+		g.write('${field.name}: ')
 		if field.has_expr && field.expr is ast.IntegerLiteral {
 			e := field.expr as ast.IntegerLiteral
 			i = e.val.int()
@@ -918,7 +918,7 @@ fn (mut g JsGen) fn_args(args []table.Param, is_variadic bool) {
 		name := g.js_name(arg.name)
 		is_varg := i == args.len - 1 && is_variadic
 		if is_varg {
-			g.write('...$name')
+			g.write('...${name}')
 		} else {
 			g.write(name)
 		}
@@ -958,11 +958,11 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 			i = g.new_tmp_var()
 		}
 		g.inside_loop = true
-		g.write('for (let $i = ')
+		g.write('for (let ${i} = ')
 		g.expr(it.cond)
-		g.write('; $i < ')
+		g.write('; ${i} < ')
 		g.expr(it.high)
-		g.writeln('; ++$i) {')
+		g.writeln('; ++${i}) {')
 		g.inside_loop = false
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -972,14 +972,14 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
 		// styp := g.typ(it.val_type)
 		g.inside_loop = true
-		g.write('for (let $i = 0; $i < ')
+		g.write('for (let ${i} = 0; ${i} < ')
 		g.expr(it.cond)
-		g.writeln('.length; ++$i) {')
+		g.writeln('.length; ++${i}) {')
 		g.inside_loop = false
 		if val !in ['', '_'] {
-			g.write('\tconst $val = ')
+			g.write('\tconst ${val} = ')
 			g.expr(it.cond)
-			g.writeln('[$i];')
+			g.writeln('[${i}];')
 		}
 		g.stmts(it.stmts)
 		g.writeln('}')
@@ -989,7 +989,7 @@ fn (mut g JsGen) gen_for_in_stmt(it ast.ForInStmt) {
 		// val_styp := g.typ(it.val_type)
 		key := if it.key_var in ['', '_'] { '' } else { it.key_var }
 		val := if it.val_var in ['', '_'] { '' } else { it.val_var }
-		g.write('for (let [$key, $val] of ')
+		g.write('for (let [${key}, ${val}] of ')
 		g.expr(it.cond)
 		g.writeln(') {')
 		g.stmts(it.stmts)
@@ -1053,7 +1053,7 @@ fn (mut g JsGen) gen_interface_decl(it ast.InterfaceDecl) {
 	// This is a hack to make the interface's type accessible outside its namespace
 	// TODO: interfaces are always `pub`?
 	name := g.js_name(it.name)
-	g.push_pub_var('/** @type $name */\n\t\t$name: undefined')
+	g.push_pub_var('/** @type ${name} */\n\t\t${name}: undefined')
 }
 
 fn (mut g JsGen) gen_return_stmt(it ast.Return) {
@@ -1083,7 +1083,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.doc.gen_fac_fn(node.fields)
 	g.write('function ${g.js_name(node.name)}({ ')
 	for i, field in node.fields {
-		g.write('$field.name = ')
+		g.write('${field.name} = ')
 		if field.has_default_expr {
 			g.expr(field.default_expr)
 		} else {
@@ -1096,7 +1096,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln(' }) {')
 	g.inc_indent()
 	for field in node.fields {
-		g.writeln('this.$field.name = $field.name')
+		g.writeln('this.${field.name} = ${field.name}')
 	}
 	g.dec_indent()
 	g.writeln('};')
@@ -1106,7 +1106,7 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	for i, field in node.fields {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
-		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
+		g.write('${field.name}: ${g.to_js_typ_val(field.typ)}')
 		if i < node.fields.len - 1 || fns.len > 0 {
 			g.writeln(',')
 		} else {
@@ -1140,10 +1140,10 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		t2 := g.new_tmp_var()
 		g.writeln('(function() {')
 		g.inc_indent()
-		g.writeln('const $t1 = [];')
-		g.write('for (let $t2 = 0; $t2 < ')
+		g.writeln('const ${t1} = [];')
+		g.write('for (let ${t2} = 0; ${t2} < ')
 		g.expr(it.len_expr)
-		g.writeln('; $t2++) {')
+		g.writeln('; ${t2}++) {')
 		g.inc_indent()
 		g.write('${t1}.push(')
 		if it.has_default {
@@ -1156,7 +1156,7 @@ fn (mut g JsGen) gen_array_init_expr(it ast.ArrayInit) {
 		g.writeln(');')
 		g.dec_indent()
 		g.writeln('};')
-		g.writeln('return $t1;')
+		g.writeln('return ${t1};')
 		g.dec_indent()
 		g.write('})()')
 	} else {
@@ -1255,7 +1255,7 @@ fn (mut g JsGen) gen_call_expr(it ast.CallExpr) {
 			.propagate {
 				panicstr := '`optional not set (\${err})`'
 				if g.file.mod.name == 'main' && g.fn_decl.name == 'main.main' {
-					g.writeln('return builtin.panic($panicstr)')
+					g.writeln('return builtin.panic(${panicstr})')
 				} else {
 					g.writeln('builtin.js_throw(err)')
 				}
@@ -1314,7 +1314,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 					}
 					else {
 						g.write('if (')
-						if '$branch.cond' == 'js' {
+						if '${branch.cond}' == 'js' {
 							g.write('true')
 						} else {
 							g.expr(branch.cond)
@@ -1329,7 +1329,7 @@ fn (mut g JsGen) gen_if_expr(node ast.IfExpr) {
 			} else if i == node.branches.len - 1 && node.has_else {
 				/*
 				if is_guard {
-					//g.writeln('} if (!$guard_ok) { /* else */')
+					//g.writeln('} if (!${guard_ok}) { /* else */')
 				} else {
 				*/
 				g.writeln('} else {')
@@ -1447,7 +1447,7 @@ fn (mut g JsGen) gen_infix_expr(it ast.InfixExpr) {
 		} else if it.op == .ne {
 			g.write(' !== ')
 		} else {
-			g.write(' $it.op ')
+			g.write(' ${it.op} ')
 		}
 		g.expr(it.right)
 		// Int division: 2.5 -> 2 by prepending |0
@@ -1486,7 +1486,7 @@ fn (mut g JsGen) gen_map_init_expr(it ast.MapInit) {
 
 fn (mut g JsGen) gen_selector_expr(it ast.SelectorExpr) {
 	g.expr(it.expr)
-	g.write('.$it.field_name')
+	g.write('.${it.field_name}')
 }
 
 fn (mut g JsGen) gen_string_inter_literal(it ast.StringInterLiteral) {
@@ -1526,7 +1526,7 @@ fn (mut g JsGen) gen_struct_init(it ast.StructInit) {
 		g.writeln('new ${g.js_name(name)}({')
 		g.inc_indent()
 		for i, field in it.fields {
-			g.write('$field.name: ')
+			g.write('${field.name}: ')
 			g.expr(field.expr)
 			if i < it.fields.len - 1 {
 				g.write(',')
@@ -1545,7 +1545,7 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 	} else if sym.kind == .array_fixed {
 		fixed_info := sym.info as table.ArrayFixed
 		typ_name := g.table.get_type_name(fixed_info.elem_type)
-		g.write('"[$fixed_info.size]$typ_name"')
+		g.write('"[${fixed_info.size}]${typ_name}"')
 	} else if sym.kind == .function {
 		info := sym.info as table.FnType
 		fn_info := info.func
@@ -1560,8 +1560,8 @@ fn (mut g JsGen) gen_typeof_expr(it ast.TypeOf) {
 		if fn_info.return_type != table.void_type {
 			repr += ' ${g.table.get_type_name(fn_info.return_type)}'
 		}
-		g.write('"$repr"')
+		g.write('"${repr}"')
 	} else {
-		g.write('"$sym.name"')
+		g.write('"${sym.name}"')
 	}
 }

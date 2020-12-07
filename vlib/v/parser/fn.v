@@ -12,11 +12,11 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
-		'C.$p.check_name()'
+		'C.${p.check_name()}'
 	} else if language == .js {
-		'JS.$p.check_js_name()'
+		'JS.${p.check_js_name()}'
 	} else if mod.len > 0 {
-		'${mod}.$p.check_name()'
+		'${mod}.${p.check_name()}'
 	} else {
 		p.check_name()
 	}
@@ -224,7 +224,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error('duplicate method `$name`')
+			p.error('duplicate method `${name}`')
 			return ast.FnDecl{}
 		}
 	}
@@ -245,7 +245,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if !are_args_type_only {
 		for param in params {
 			if p.scope.known_var(param.name) {
-				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
+				p.error_with_pos('redefinition of parameter `${param.name}`', param.pos)
 				return ast.FnDecl{}
 			}
 			p.scope.register(ast.Var{
@@ -273,10 +273,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
-			p.error('cannot define new methods on non-local type $type_sym.name')
+			p.error('cannot define new methods on non-local type ${type_sym.name}')
 			return ast.FnDecl{}
 		}
-		// p.warn('reg method $type_sym.name . $name ()')
+		// p.warn('reg method ${type_sym.name} . ${name} ()')
 		type_sym_method_idx = type_sym.register_method(table.Fn{
 			name: name
 			params: params
@@ -291,16 +291,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		})
 	} else {
 		if language == .c {
-			name = 'C.$name'
+			name = 'C.${name}'
 		} else if language == .js {
-			name = 'JS.$name'
+			name = 'JS.${name}'
 		} else {
 			name = p.prepend_mod(name)
 		}
 		if _ := p.table.find_fn(name) {
 			p.fn_redefinition_error(name)
 		}
-		// p.warn('reg functn $name ()')
+		// p.warn('reg functn ${name} ()')
 		p.table.register_fn(table.Fn{
 			name: name
 			params: params
@@ -468,7 +468,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			if p.tok.kind == .comma {
 				if is_variadic {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter no ${arg_no}',
 						pos)
 					return []table.Param{}, false, false
 				}
@@ -551,7 +551,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 				// if typ.typ.kind == .variadic && p.tok.kind == .comma {
 				if is_variadic && p.tok.kind == .comma {
-					p.error_with_pos('cannot use ...(variadic) with non-final parameter $arg_name',
+					p.error_with_pos('cannot use ...(variadic) with non-final parameter ${arg_name}',
 						arg_pos[i])
 					return []table.Param{}, false, false
 				}
@@ -569,7 +569,7 @@ fn (mut p Parser) check_fn_mutable_arguments(typ table.Type, pos token.Position)
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.array, .struct_, .map, .placeholder, .sum_type] && !typ.is_ptr() {
 		p.error_with_pos('mutable arguments are only allowed for arrays, maps, and structs\n' +
-			'return values instead: `fn foo(mut n $sym.name) {` => `fn foo(n $sym.name) $sym.name {`',
+			'return values instead: `fn foo(mut n ${sym.name}) {` => `fn foo(n ${sym.name}) ${sym.name} {`',
 			pos)
 	}
 }
@@ -586,7 +586,7 @@ fn (mut p Parser) check_fn_atomic_arguments(typ table.Type, pos token.Position) 
 	sym := p.table.get_type_symbol(typ)
 	if sym.kind !in [.u32, .int, .u64] {
 		p.error_with_pos('atomic arguments are only allowed for 32/64 bit integers\n' +
-			'use shared arguments instead: `fn foo(atomic n $sym.name) {` => `fn foo(shared n $sym.name) {`',
+			'use shared arguments instead: `fn foo(atomic n ${sym.name}) {` => `fn foo(shared n ${sym.name}) {`',
 			pos)
 	}
 }
@@ -603,7 +603,7 @@ fn (mut p Parser) fn_redefinition_error(name string) {
 	}
 	*/
 	p.table.redefined_fns << name
-	// p.error('redefinition of function `$name`')
+	// p.error('redefinition of function `${name}`')
 }
 
 fn have_fn_main(stmts []ast.Stmt) bool {

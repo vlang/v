@@ -20,7 +20,7 @@ fn string_0(x int) ?string {
 	if x == 0 {
 		return error('my error 3')
 	}
-	return '$x'
+	return '${x}'
 }
 
 fn b_0(b bool) ?bool {

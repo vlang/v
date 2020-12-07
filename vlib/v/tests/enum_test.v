@@ -97,8 +97,8 @@ fn test_typed_enum() {
 	// expr = i
 	/*
 	match expr {
-		IntExpr(n)  { println('INT $n')  }
-		BoolExpr(b) { println('BOOL $b') }
+		IntExpr(n)  { println('INT ${n}')  }
+		BoolExpr(b) { println('BOOL ${b}') }
 	}
 	*/
 }
@@ -110,11 +110,11 @@ fn test_typed_enum() {
 	//    val = expr;
 	if (expr.typ == IntExpr_type) {
 		int n = (int)expr.obj;
-		println('INT $n');
+		println('INT ${n}');
 	}
 	else if (expr.typ == BoolExpr_type) {
 		int b = (bool)expr.obj;
-		println('BOOL $b');
+		println('BOOL ${b}');
 	}
 }
 */

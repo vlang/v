@@ -50,7 +50,7 @@ fn test_defer_early_exit() {
 	for i in 0 .. 10 {
 		set_num(i, mut sum)
 	}
-	println('sum: $sum.val')
+	println('sum: ${sum.val}')
 	assert sum.val == 15
 }
 
