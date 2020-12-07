@@ -138,8 +138,8 @@ fn test_split_nth() {
 	assert (d.split_nth(',', -1).len == 2)
 	assert (d.split_nth(',', 3).len == 2)
 	e := ",,,0,,,,,a,,b,"
-	// assert (e.split(',,').len == 5)
-	// assert (e.split_nth(',,', 3).len == 2)
+	assert (e.split(',,').len == 5)
+	assert (e.split_nth(',,', 3).len == 3)
 	assert (e.split_nth(',', -1).len == 12)
 	assert (e.split_nth(',', 3).len == 3)
 }
@@ -213,6 +213,12 @@ fn test_split() {
 	assert a[4] == 'o'
 	assert a[5] == 'm'
 	assert a[6] == 'e'
+	// /////////
+	s = 'wavy turquoise bags'
+	vals = s.split(' bags')
+	assert vals.len == 2
+	assert vals[0] == 'wavy turquoise'
+	assert vals[1] == ''
 }
 
 fn test_trim_space() {
