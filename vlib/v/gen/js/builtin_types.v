@@ -63,7 +63,7 @@ fn (mut g JsGen) sym_to_js_typ(sym table.TypeSymbol) string {
 		.bool { styp = 'bool' }
 		.string { styp = 'string' }
 		.map { styp = 'map' }
-		.array { styp = 'arr' }
+		.array { styp = 'array' }
 		else {
 			// TODO
 			styp = 'undefined'
