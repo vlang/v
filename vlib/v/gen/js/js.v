@@ -531,7 +531,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.StringLiteral {
 			text := node.val.replace('\'', "\\'")
 			if g.file.mod.name == 'builtin' { g.write('new ') }
-			g.write('string(\'$text\')')
+			g.write("string('$text')")
 		}
 		ast.StructInit {
 			// `user := User{name: 'Bob'}`
@@ -997,13 +997,13 @@ fn (mut g JsGen) gen_struct_decl(node ast.StructDecl) {
 	g.writeln('${js_name}.prototype = {')
 	g.inc_indent()
 	fns := g.method_fn_decls[name]
-	for i, field in node.fields {
+	for field in node.fields {
 		typ := g.typ(field.typ)
 		g.doc.gen_typ(typ)
 		g.write('$field.name: ${g.to_js_typ_val(field.typ)}')
 		g.writeln(',')
 	}
-	for i, cfn in fns {
+	for cfn in fns {
 		g.gen_method_decl(cfn)
 		g.writeln(',')
 	}
