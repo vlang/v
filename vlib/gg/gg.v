@@ -126,6 +126,10 @@ fn gg_init_sokol_window(user_data voidptr) {
 		}
 		// println('FT took ${time.ticks()-t} ms')
 		g.font_inited = true
+	} else {
+		if !exists {
+			eprintln('font file $g.config.font_path does not exist')
+		}
 	}
 	//
 	mut pipdesc := C.sg_pipeline_desc{}
