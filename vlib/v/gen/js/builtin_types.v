@@ -209,7 +209,7 @@ fn (mut g JsGen) struct_typ(s string) string {
 
 // ugly arguments but not sure a config struct would be worth it
 fn (mut g JsGen) gen_builtin_prototype(typ_name string, val_name string, default_value string, constructor string, value_of string, to_string string, extras string) {
-	g.writeln('function $typ_name\($val_name = $default_value\) { $constructor }')
+	g.writeln('function ${typ_name}($val_name = ${default_value}) { $constructor }')
 	g.writeln('$typ_name\.prototype = {')
 	g.inc_indent()
 	g.writeln('val: $default_value,')
