@@ -129,18 +129,20 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 		if b.pref.is_verbose {
 			println('command to run executable: $cmd')
 		}
-		if b.pref.is_test {
-			exit(os.system(cmd))
-		}
-		if b.pref.is_run {
+		if b.pref.is_test || b.pref.is_run {
 			ret := os.system(cmd)
-			// TODO: make the runner wrapping as transparent as possible
-			// (i.e. use execve when implemented). For now though, the runner
-			// just returns the same exit code as the child process.
+			b.cleanup_run_executable_after_exit(exefile)
 			exit(ret)
 		}
 	}
 	exit(0)
+}
+
+fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
+	if os.is_file(exefile) {
+		v.pref.vrun_elog('remove run executable: $exefile')
+		os.rm(exefile)
+	}
 }
 
 // 'strings' => 'VROOT/vlib/strings'

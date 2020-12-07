@@ -35,20 +35,20 @@ fn cb(receiver voidptr, args voidptr, sender voidptr) {
 
 // Since V can map structs to voidptr, this also works
 struct ClickEvent {
-    x int
-    y int
+	x int
+	y int
 }
 
 // Example case where publisher sends ClickEvent as args.
-fn on_press(receiver voidptr, e &ClickEvent, sender voidptr){
-    println(e.x)
-    //your code here...
+fn on_press(receiver voidptr, e &ClickEvent, sender voidptr) {
+	println(e.x)
+	// your code here...
 }
 ```
 
 ## Usage
 
-For **usage across modules** 
+For **usage across modules**
 [check the example](https://github.com/vlang/v/tree/master/examples/eventbus).
 
 _Note: As a general rule, you will need to **subscribe before publishing**._
@@ -57,25 +57,26 @@ _Note: As a general rule, you will need to **subscribe before publishing**._
 
 ```v oksyntax
 module main
+
 import eventbus
 
 // initialize it globally
 const (
-    eb = eventbus.new()
+	eb = eventbus.new()
 )
 
-fn main(){
-    // get a mutable reference to the subscriber
+fn main() {
+	// get a mutable reference to the subscriber
 	mut sub := eb.subscriber
-    // subscribe to the 'error' event
-	sub.subscribe("error", on_error)
-    // start the work
+	// subscribe to the 'error' event
+	sub.subscribe('error', on_error)
+	// start the work
 	do_work()
 }
 
 // the event handler
 fn on_error(receiver voidptr, e &Error, work &Work) {
-	println('error occured on ${work.hours}. Error: ${e.message}')
+	println('error occured on ${work.hours}. Error: $e.message')
 }
 ```
 
@@ -84,20 +85,20 @@ fn on_error(receiver voidptr, e &Error, work &Work) {
 ```v oksyntax
 module main
 
-struct Work{
-    hours int
+struct Work {
+	hours int
 }
 
 struct Error {
-    message string
+	message string
 }
 
-fn do_work(){
-    work := Work{20}
-    // get a mutable Params instance & put some data into it
-	error := &Error{"Error: no internet connection."}
-    // publish the event
-    eb.publish("error", work, error)
+fn do_work() {
+	work := Work{20}
+	// get a mutable Params instance & put some data into it
+	error := &Error{'Error: no internet connection.'}
+	// publish the event
+	eb.publish('error', work, error)
 }
 ```
 

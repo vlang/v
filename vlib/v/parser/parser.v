@@ -1682,8 +1682,24 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 	for p.tok.kind == .name {
 		pos := p.tok.position()
 		alias := p.check_name()
-		p.imported_symbols[alias] = parent.mod
+		name := '${parent.mod}.$alias'
 		if alias[0].is_capital() {
+			idx := p.table.add_placeholder_type(name, .v)
+			typ := table.new_type(idx)
+			prepend_mod_name := p.prepend_mod(alias)
+			p.table.register_type_symbol(table.TypeSymbol{
+				kind: .alias
+				name: prepend_mod_name
+				cname: util.no_dots(prepend_mod_name)
+				mod: p.mod
+				parent_idx: idx
+				info: table.Alias{
+					parent_type: typ
+					language: table.Language.v
+					is_import: true
+				}
+				is_public: false
+			})
 			// so we can work with the fully declared type in fmt+checker
 			parent.syms << ast.ImportSymbol{
 				pos: pos
@@ -1691,6 +1707,13 @@ fn (mut p Parser) import_syms(mut parent ast.Import) {
 				kind: .type_
 			}
 		} else {
+			if !p.table.known_fn(name) {
+				p.table.fns[alias] = table.Fn{
+					is_placeholder: true
+					mod: parent.mod
+					name: name
+				}
+			}
 			// so we can work with this in fmt+checker
 			parent.syms << ast.ImportSymbol{
 				pos: pos
@@ -1936,7 +1959,6 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
-		source_name: name
 		cname: util.no_dots(name)
 		mod: p.mod
 		info: table.Enum{
@@ -2020,7 +2042,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.table.register_type_symbol(table.TypeSymbol{
 			kind: .sum_type
 			name: prepend_mod_name
-			source_name: prepend_mod_name
 			cname: util.no_dots(prepend_mod_name)
 			mod: p.mod
 			info: table.SumType{
@@ -2052,7 +2073,6 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name
-		source_name: prepend_mod_name
 		cname: util.no_dots(prepend_mod_name)
 		mod: p.mod
 		parent_idx: pid

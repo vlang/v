@@ -110,17 +110,18 @@ fn (mut a App) collect_info() {
 		command: 'cc --version'
 	}))
 	a.println('')
-	a.line('getwd', os.getwd())
+	getwd := os.getwd()
+	vmodules := os.vmodules_dir()
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
-	os.chdir(vroot)
+	os.chdir(vroot)	
+	a.line('getwd', getwd)
+	a.line('vmodules', vmodules)
 	a.line('vroot', vroot)
 	a.line('vexe', vexe)
 	a.line('vexe mtime', time.unix(os.file_last_mod_unix(vexe)).str())
-	is_writable_vroot := os.is_writable_folder(vroot) or {
-		false
-	}
-	a.line('is vroot writable', is_writable_vroot.str())
+	a.line('is vroot writable', is_writable_dir(vroot).str())
+	a.line('is vmodules writable', is_writable_dir(vmodules).str())
 	a.line('V full version', util.full_v_version(true))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
@@ -277,6 +278,13 @@ fn (mut a App) report_info() {
 	for x in a.report_lines {
 		println(x)
 	}
+}
+
+fn is_writable_dir(path string) bool {
+	res := os.is_writable_folder(path) or {
+		false
+	}
+	return res
 }
 
 fn main() {

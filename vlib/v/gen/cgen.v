@@ -126,6 +126,7 @@ mut:
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx               int
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
+	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
 }
 
 const (
@@ -626,13 +627,7 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 		g.write_multi_return_type_declaration(mut retsym)
 	}
 	if !info.has_decl && (not_anon || is_fn_sig) {
-		fn_name := if func.language == .c {
-			util.no_dots(func.name)
-		} else if info.is_anon {
-			sym.name
-		} else {
-			c_name(func.name)
-		}
+		fn_name := sym.cname
 		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
 		for i, param in func.params {
 			g.type_definitions.write(g.typ(param.typ))
@@ -847,7 +842,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.BranchStmt {
 			g.write_v_source_line_info(node.pos)
-			if node.label.len > 0 {
+			if node.label != '' {
 				if node.kind == .key_break {
 					g.writeln('goto ${node.label}__break;')
 				} else {
@@ -856,6 +851,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				}
 			} else {
 				// continue or break
+				if g.pref.autofree && !g.is_builtin_mod {
+					g.writeln('// free before continue/break')
+					g.autofree_scope_vars_stop(node.pos.pos - 1, node.pos.line_nr, true,
+						g.branch_parent_pos)
+				}
 				g.writeln('$node.kind;')
 			}
 		}
@@ -969,6 +969,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			}
 		}
 		ast.ForCStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
@@ -1003,12 +1005,18 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.label.len > 0 {
 				g.writeln('${node.label}__break: {}')
 			}
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForInStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.for_in(node)
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.ForStmt {
+			prev_branch_parent_pos := g.branch_parent_pos
+			g.branch_parent_pos = node.pos.pos
 			g.write_v_source_line_info(node.pos)
 			g.is_vlines_enabled = false
 			if node.label.len > 0 {
@@ -1032,6 +1040,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if node.label.len > 0 {
 				g.writeln('${node.label}__break: {}')
 			}
+			g.branch_parent_pos = prev_branch_parent_pos
 		}
 		ast.GlobalDecl {
 			g.global_decl(node)
@@ -1228,7 +1237,8 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < (int)${atmp}.key_values.len; ++$idx) {')
+		g.writeln('for (int $idx = 0; $idx < ${atmp}.key_values.len; ++$idx) {')
+		// TODO: don't have this check when the map has no deleted elements
 		g.writeln('\tif (!DenseArray_has_index(&${atmp}.key_values, $idx)) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
@@ -2057,8 +2067,11 @@ fn (mut g Gen) gen_clone_assignment(val ast.Expr, right_sym table.TypeSymbol, ad
 	return true
 }
 
-// fn (mut g Gen) autofree_scope_vars(pos int, line_nr int) {
 fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool) {
+	g.autofree_scope_vars_stop(pos, line_nr, free_parent_scopes, -1)
+}
+
+fn (mut g Gen) autofree_scope_vars_stop(pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
 	if g.is_builtin_mod {
 		// In `builtin` everything is freed manually.
 		return
@@ -2074,12 +2087,12 @@ fn (mut g Gen) autofree_scope_vars(pos int, line_nr int, free_parent_scopes bool
 		return
 	}
 	g.writeln('// autofree_scope_vars(pos=$pos line_nr=$line_nr scope.pos=$scope.start_pos scope.end_pos=$scope.end_pos)')
-	// g.autofree_scope_vars2(scope, scope.end_pos)
-	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes)
+	g.autofree_scope_vars2(scope, scope.start_pos, scope.end_pos, line_nr, free_parent_scopes,
+		stop_pos)
 }
 
 // fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, end_pos int) {
-fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool) {
+fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int, line_nr int, free_parent_scopes bool, stop_pos int) {
 	if isnil(scope) {
 		return
 	}
@@ -2092,9 +2105,14 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 					continue
 				}
 				if obj.is_or {
-					g.writeln('// skipping `or{}` var "$obj.name"')
 					// Skip vars inited with the `or {}`, since they are generated
 					// after the or block in C.
+					g.writeln('// skipping `or{}` var "$obj.name"')
+					continue
+				}
+				if obj.is_tmp {
+					// Skip for loop vars
+					g.writeln('// skipping tmp var "$obj.name"')
 					continue
 				}
 				// if var.typ == 0 {
@@ -2125,9 +2143,10 @@ fn (mut g Gen) autofree_scope_vars2(scope &ast.Scope, start_pos int, end_pos int
 	// }
 	// ```
 	// if !isnil(scope.parent) && line_nr > 0 {
-	if free_parent_scopes && !isnil(scope.parent) {
+	if free_parent_scopes && !isnil(scope.parent) &&
+		(stop_pos == -1 || scope.parent.start_pos >= stop_pos) {
 		g.writeln('// af parent scope:')
-		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true)
+		g.autofree_scope_vars2(scope.parent, start_pos, end_pos, line_nr, true, stop_pos)
 	}
 }
 
@@ -2920,11 +2939,18 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		info := left_sym.info as table.Array
 		if right_sym.kind == .array && info.elem_type != node.right_type {
 			// push an array => PUSH_MANY, but not if pushing an array to 2d array (`[][]int << []int`)
-			g.write('_PUSH_MANY(&')
+			g.write('_PUSH_MANY(')
+			mut expected_push_many_atype := left_type
+			if !expected_push_many_atype.is_ptr() {
+				// fn f(mut a []int) { a << [1,2,3] } -> type of `a` is `array_int*` -> no need for &
+				g.write('&')
+			} else {
+				expected_push_many_atype = expected_push_many_atype.deref()
+			}
 			g.expr(node.left)
 			g.write(', (')
 			g.expr_with_cast(node.right, node.right_type, left_type)
-			styp := g.typ(left_type)
+			styp := g.typ(expected_push_many_atype)
 			g.write('), $tmp, $styp)')
 		} else {
 			// push a single element
@@ -2960,7 +2986,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op == .arrow {
 		// chan <- val
-		styp := util.no_dots(left_sym.name)
+		styp := left_sym.cname
 		g.write('__${styp}_pushval(')
 		g.expr(node.left)
 		g.write(', ')
@@ -3781,8 +3807,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				elem_typ := g.table.get_type_symbol(info.value_type)
 				get_and_set_types := elem_typ.kind in [.struct_, .map]
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
-					g.is_array_set = true
-					g.write('map_set(')
+					if g.assign_op == .assign || info.value_type == table.string_type {
+						g.is_array_set = true
+						g.write('map_set(')
+					} else {
+						g.write('*(($elem_type_str*)map_get_and_set(')
+					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
@@ -3801,42 +3831,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write(', &($elem_type_str[]) { ')
 					}
-					if g.assign_op != .assign &&
-						g.assign_op in token.assign_tokens && info.value_type != table.string_type {
-						g.write('(*(int*)map_get(')
-						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
-							g.write('*')
-						}
-						g.expr(node.left)
-						if node.left_type.has_flag(.shared_f) {
-							if left_is_ptr {
-								g.write('->val')
-							} else {
-								g.write('.val')
-							}
-						}
-						g.write(', ')
-						g.expr(node.index)
+					if g.assign_op != .assign && info.value_type != table.string_type {
 						zero := g.type_default(info.value_type)
-						if elem_typ.kind == .function {
-							g.write(', &(voidptr[]){ $zero }))')
-						} else {
-							g.write(', &($elem_type_str[]){ $zero }))')
-						}
-						op := match g.assign_op {
-							.mult_assign { '*' }
-							.plus_assign { '+' }
-							.minus_assign { '-' }
-							.div_assign { '/' }
-							.xor_assign { '^' }
-							.mod_assign { '%' }
-							.or_assign { '|' }
-							.and_assign { '&' }
-							.left_shift_assign { '<<' }
-							.right_shift_assign { '>>' }
-							else { '' }
-						}
-						g.write(' $op ')
+						g.write('$zero }))')
 					}
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
@@ -4849,6 +4846,9 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	match typ {
 		table.int_type {
 			compare_fn = 'compare_ints'
+		}
+		table.u64_type {
+			compare_fn = 'compare_u64s'
 		}
 		table.string_type {
 			compare_fn = 'compare_strings'

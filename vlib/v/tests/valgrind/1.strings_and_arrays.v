@@ -256,9 +256,48 @@ fn free_before_break() {
 	s := 'a' + 'b'
 	for {
 		q := [1, 2, 3]
+		break
+	}
+	for {
+		aa := [1, 2, 3]
 		if true {
+			// breaking should free only vars in the closest for loop's scope
+			// `qq`, not `s`
 			break
 		}
+		// nested 1
+		for {
+			bb := [4, 5, 6]
+			if true {
+				break
+			}
+			// nested 2
+			for {
+				cc := [7, 8, 9]
+				if true {
+					if true {
+						break
+					}
+					break
+				}
+			}
+		}
+	}
+	mut i := 0
+	for {
+		i++
+		qq := [1, 2, 3]
+		if i > 10 {
+			break
+		}
+		if true {
+			continue
+		}
+	}
+	x := ['1', '2', '3']
+	for n in x {
+		f := 'f'
+		println('$n => $f')
 	}
 }
 
@@ -315,7 +354,7 @@ fn main() {
 	comp_if()
 	free_before_return()
 	free_before_return_bool()
-	// free_before_break()
+	free_before_break()
 	// free_map()
 	// loop_map()
 	// free_array_except_returned_element()

@@ -531,6 +531,26 @@ fn compare_ints_reverse(a &int, b &int) int {
 	return 0
 }
 
+fn compare_u64s(a &u64, b &u64) int {
+	if *a < *b {
+		return -1
+	}
+	if *a > *b {
+		return 1
+	}
+	return 0
+}
+
+fn compare_u64s_reverse(a &u64, b &u64) int {
+	if *a > *b {
+		return -1
+	}
+	if *a < *b {
+		return 1
+	}
+	return 0
+}
+
 fn compare_floats(a &f64, b &f64) int {
 	if *a < *b {
 		return -1

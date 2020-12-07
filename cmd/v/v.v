@@ -20,6 +20,7 @@ const (
 		'bin2v',
 		'test',
 		'test-fmt',
+		'test-parser',
 		'test-compiler',
 		'test-fixed',
 		'test-cleancode',

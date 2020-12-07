@@ -216,6 +216,7 @@ fn abs(num i64) i64 {
 	}
 }
 
+// cmp_i64s compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
 fn cmp_i64s(a i64, b i64) int {
 	if a == b {
 		return 0
@@ -226,6 +227,7 @@ fn cmp_i64s(a i64, b i64) int {
 	}
 }
 
+// cmp_f64s compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
 fn cmp_f64s(a f64, b f64) int {
 	// V uses epsilon comparison internally
 	if a == b {
@@ -243,6 +245,7 @@ fn safe_to_multiply(a i64, b i64) bool {
 	return (bits.len_64(u64(abs(a))) + bits.len_64(u64(abs(b)))) < 64
 }
 
+// cmp compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
 fn cmp(f1 Fraction, f2 Fraction) int {
 	if safe_to_multiply(f1.n, f2.d) && safe_to_multiply(f2.n, f1.d) {
 		return cmp_i64s(f1.n * f2.d, f2.n * f1.d)

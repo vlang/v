@@ -1,6 +1,6 @@
 /*
 
-regex 0.9g
+regex 0.9h
 
 Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -19,7 +19,7 @@ module regex
 import strings
 
 pub const(
-	v_regex_version = "0.9g"      // regex module version
+	v_regex_version = "0.9h"      // regex module version
 
 	max_code_len     = 256        // default small base code len for the regex programs
 	max_quantifier   = 1073741824 // default max repetitions allowed for the quantifiers = 2^30
@@ -616,7 +616,7 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
 				}
 			}
 			if status == .in_bsls {
-				println("CC bsls not found [${ch:c}]")
+				//println("CC bsls not found [${ch:c}]")
 				status = .in_char
 			}else {
 				continue
@@ -1212,6 +1212,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 	// set the jump in the right places
 	pc1 = 0
 	for pc1 < pc-2 {
+		//println("Here $pc1 ${pc-2}")
 		// two consecutive OR are a syntax error
 		if re.prog[pc1+1].ist == ist_or_branch && re.prog[pc1+2].ist == ist_or_branch {
 			return err_syntax_error, i
@@ -1238,7 +1239,12 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 					re.prog[pc1+1].rep_max = pc2 + 1
 					break
 				}
+				
 				pc2++
+			}
+			// special case query of few chars, teh true can't go on the first instruction
+			if re.prog[pc1+1].rep_max == pc1 {
+				re.prog[pc1+1].rep_max = 3
 			}
 			//println("Compile OR postproc. [$pc1,OR ${pc1+1},$pc2]")
 			pc1 = pc2
@@ -1490,6 +1496,8 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut ch       := rune(0)           // examinated char
 	mut char_len := 0                 // utf8 examinated char len
 	mut m_state  := Match_state.start // start point for the matcher FSM
+	mut src_end  := false
+	mut last_fnd_pc := -1
 
 	mut pc    := -1                   // program counter
 	mut state := StateObj{}           // actual state
@@ -1599,9 +1607,14 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			dbg_line++
 		}
 		//******************************************
-
+/*		if ist == ist_prog_end {
+			//println("HERE")
+			break
+		}
+*/
 		// we're out of text, manage it
 		if i >= in_txt_len || m_state == .new_line {
+			src_end = true
 
 			// manage groups
 			if group_index >= 0 && state.match_index >= 0 {
@@ -1644,11 +1657,29 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				}
 			}
 
-			// manage ist_dot_char
+			if pc == -1 {
+				pc = last_fnd_pc
+			}
+			//println("Finished text!!")
+			//println("Instruction: ${ist:08x} pc: $pc")
+			//println("min_rep: ${re.prog[pc].rep_min} max_rep: ${re.prog[pc].rep_max} rep: ${re.prog[pc].rep}")
+			
+			// program end
+			if ist == ist_prog_end {
+				//println("Program end on end of text!")
+				return first_match,i
+			}
 
-			m_state = .end
-			break
-			//return no_match_found,0
+			// if we go out of text and we are the last instruction .* check
+			if (re.prog[pc+1].ist == ist_prog_end) && 
+			(re.prog[pc].rep >= re.prog[pc].rep_min && re.prog[pc].rep <= re.prog[pc].rep_max) {
+				//println("Ok .* rep match!")
+				return first_match,i
+			}		
+			
+			//m_state = .end
+			//break
+			return no_match_found,0
 		}
 
 		// starting and init
@@ -1697,7 +1728,8 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		if m_state == .stop {
 
 			// we are in search mode, don't exit until the end
-			if re.flag & f_src != 0 && ist != ist_prog_end {
+			if ((re.flag & f_src) != 0) && (ist != ist_prog_end) {
+				last_fnd_pc = pc
 				pc = -1
 				i += char_len
 				m_state = .ist_next
@@ -1741,9 +1773,10 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// we have a DOT MATCH on going
 				//println("ist_prog_end l_ist: ${l_ist:08x}", l_ist)
 				if re.state_stack_index>=0 && l_ist == ist_dot_char {
+					i = in_txt_len // dario
 					m_state = .stop
 					continue
-				}
+				}				
 
 				re.state_stack_index = -1
 				m_state = .stop
@@ -1832,7 +1865,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					first_match = i
 				}
 				state.match_index = i
-				re.prog[pc].rep++
+				re.prog[pc].rep++ // increase repetitions
 
 				//if re.prog[pc].rep >= re.prog[pc].rep_min && re.prog[pc].rep <= re.prog[pc].rep_max {
 				if re.prog[pc].rep >= 0 && re.prog[pc].rep <= re.prog[pc].rep_max {
@@ -1857,12 +1890,15 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					re.state_stack[re.state_stack_index].i  = i + char_len
 				}
 
+				//i += char_len // next char
+/*
 				// manage * and {0,} quantifier
-				if re.prog[pc].rep_min > 0 {
-					i += char_len // next char
-					l_ist = u32(ist_dot_char)
+				if re.prog[pc].rep_max == max_quantifier {
+					//println("manage .*")
+					m_state = .ist_load
+					continue
 				}
-
+*/
 				m_state = .ist_next
 				continue
 
@@ -2163,14 +2199,48 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		return err_internal_error, i
 	}
 
+	//println("Check end of text!")
 	// Check the results
 	if state.match_index >= 0 {
 		if group_index < 0 {
-			//println("OK match,natural end [$first_match,$i]")
-			return first_match, i
+			
+			if re.prog[pc].ist == ist_prog_end {
+				//println("program ended!!")
+				
+				if (re.flag & f_src) != 0 {
+					//println("find return")
+					return first_match, i
+				} else {
+					return 0, i
+				}
+			}
+			
+			//println("No Group here, natural end [$first_match,$i] state: ${state_str(m_state)} ist: $ist pgr_end: $re.prog.len")
+				
+			if re.prog[pc+1].ist == ist_prog_end || re.prog[pc].ist == ist_prog_end{
+				rep := re.prog[pc].rep
+				//println("rep: $rep re.prog[pc].rep_min: ${re.prog[pc].rep_min} re.prog[pc].rep_max: ${re.prog[pc].rep_max}")
+				if rep >= re.prog[pc].rep_min && rep <= re.prog[pc].rep_max {
+					return first_match, i
+				}
+				//println("Program not finished! ")
+				return no_match_found, 0
+			}
+			if src_end {
+				//println("program end")
+				return first_match, i
+			}
+			//print("No match found!!")
+			return no_match_found, 0
+
+
 		} else {
+			//println("Group match! OK")
+			//println("first_match: $first_match, i: $i")
+
 			//println("Skip last group")
-			return first_match,group_stack[group_index--]
+			return first_match,i
+			//return first_match,group_stack[group_index--]
 		}
 	}
 	//println("no_match_found, natural end")
@@ -2224,7 +2294,12 @@ fn impl_new_regex_by_size(mult int) RE {
 //
 
 pub fn (mut re RE) match_string(in_txt string) (int,int) {
-	start, end := re.match_base(in_txt.str,in_txt.len)
+
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	if end > in_txt.len {
+		end = in_txt.len
+	}
+
 	if start >= 0 && end > start {
 		if (re.flag & f_ms) != 0 && start > 0 {
 			return no_match_found, 0
@@ -2247,9 +2322,15 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 // find try to find the first match in the input string
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
+	
 	re.flag |= f_src  // enable search mode
-	start, end := re.match_base(in_txt.str, in_txt.len)
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	//print("Find [$start,$end] '${in_txt[start..end]}'")
+	if end > in_txt.len {
+		end = in_txt.len
+	}
 	re.flag = old_flag
+
 	if start >= 0 && end > start {
 		return start, end
 	}
@@ -2300,3 +2381,34 @@ pub fn (mut re RE) replace(in_txt string, repl string) string {
 	}
 	return in_txt
 }
+
+/*
+
+Utilities
+
+*/
+
+pub
+struct Re_group {
+pub:
+	start int = -1
+	end   int = -1
+}
+
+// get_group_list return a list of Re_group for the found groups
+pub fn (re RE) get_group_list() []Re_group {
+	mut res := []Re_group{len: re.groups.len >> 1}
+	mut gi := 0
+	//println("len: ${re.groups.len} groups: ${re.groups}")
+	for gi < re.groups.len {
+		if re.groups[gi] >= 0 {
+			//println("#${gi/2} start: ${re.groups[gi]} end: ${re.groups[gi + 1]} ")
+			tmp := Re_group{ start: re.groups[gi], end: re.groups[gi + 1]}
+			//println(tmp)
+			res[gi >> 1] = tmp
+		}
+		gi += 2
+	}
+	return res
+}
+

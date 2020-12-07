@@ -1,9 +1,10 @@
 module f
 
 import fontstash
+import sokol.c
 
 pub const (
-  used_import = 1 + fontstash.used_import
+  used_import = fontstash.used_import + c.used_import
 )
 
 /*
