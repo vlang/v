@@ -2757,8 +2757,8 @@ fn (mut c Checker) import_stmt(imp ast.Import) {
 			if type_sym := c.table.find_type(name) {
 				if type_sym.kind != .placeholder && !type_sym.is_public {
 					c.error('module `$imp.mod` type `$sym.name` is private', sym.pos)
-					continue
 				}
+				continue
 			}
 			c.error('module `$imp.mod` has no type `$sym.name`', sym.pos)
 			continue
