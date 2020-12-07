@@ -834,7 +834,7 @@ const (
 // Link to Winsock library
 #flag -lws2_32
 #include <winsock2.h>
-#include <Ws2tcpip.h>
+#include <ws2tcpip.h>
 
 // Constants that windows needs
 const (
