@@ -233,16 +233,10 @@ pub mut:
 	syms  []ImportSymbol
 }
 
-pub enum ImportSymbolKind {
-	fn_
-	type_
-}
-
 pub struct ImportSymbol {
 pub:
 	pos  token.Position
 	name string
-	kind ImportSymbolKind
 }
 
 pub struct AnonFn {
@@ -406,16 +400,17 @@ pub mut:
 
 pub struct File {
 pub:
-	path         string
-	mod          Module
-	global_scope &Scope
+	path             string
+	mod              Module
+	global_scope     &Scope
 pub mut:
-	scope        &Scope
-	stmts        []Stmt
-	imports      []Import
-	errors       []errors.Error
-	warnings     []errors.Warning
-	generic_fns  []&FnDecl
+	scope            &Scope
+	stmts            []Stmt
+	imports          []Import
+	imported_symbols map[string]string // 'Type' => 'module.Type'
+	errors           []errors.Error
+	warnings         []errors.Warning
+	generic_fns      []&FnDecl
 }
 
 pub struct IdentFn {

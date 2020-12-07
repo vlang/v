@@ -218,7 +218,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 	} else if p.expr_mod != '' && !p.in_generic_params { // p.expr_mod is from the struct and not from the generic parameter
 		name = p.expr_mod + '.' + name
 	} else if name in p.imported_symbols {
-		name = p.imported_symbols[name] + '.' + name
+		name = p.imported_symbols[name]
 	} else if p.mod != 'builtin' && name.len > 1 && name !in p.table.type_idxs {
 		// `Foo` in module `mod` means `mod.Foo`
 		name = p.mod + '.' + name

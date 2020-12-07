@@ -1695,14 +1695,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 			f.write('}')
 			return
 		}
-		// TODO: do nicely
-		mut type_str := f.table.type_to_str(it.typ)
-		elem_type_str := type_str.all_after(']')
-		if elem_type_str in f.mod2alias {
-			type_str = type_str.replace(elem_type_str, f.mod2alias[elem_type_str])
-		}
-		f.write(type_str)
-		//f.write(f.table.type_to_str(it.typ))
+		f.write(f.table.type_to_str_using_aliases(it.typ, &f.mod2alias))
 		f.write('{')
 		// TODO copypasta
 		if it.has_len {

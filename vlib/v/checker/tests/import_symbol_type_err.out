@@ -1,4 +1,4 @@
-vlib/v/checker/tests/import_symbol_type_err.vv:1:17: error: module `crypto` has no public type `Coin{}`
+vlib/v/checker/tests/import_symbol_type_err.vv:1:17: error: module `crypto` has no type `Coin`
     1 | import crypto { Coin }
       |                 ~~~~
     2 | fn main() {

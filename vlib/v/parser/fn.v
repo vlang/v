@@ -82,15 +82,13 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next()
 		or_kind = .propagate
 	}
-	mut fn_mod := p.mod
 	if fn_name in p.imported_symbols {
-		fn_mod = p.imported_symbols[fn_name]
-		fn_name = '${fn_mod}.$fn_name'
+		fn_name = p.imported_symbols[fn_name]
 	}
 	return ast.CallExpr{
 		name: fn_name
 		args: args
-		mod: fn_mod
+		mod: p.mod
 		pos: pos
 		language: language
 		generic_type: generic_type

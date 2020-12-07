@@ -2753,20 +2753,26 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 fn (mut c Checker) import_stmt(imp ast.Import) {
 	for sym in imp.syms {
 		name := '${imp.mod}.$sym.name'
-		if sym.kind == .fn_ {
-			c.table.find_fn(name) or {
-				c.error('module `$imp.mod` has no public fn named `${sym.name}()`', sym.pos)
-			}
-		}
-		if sym.kind == .type_ {
+		if sym.name[0].is_capital() {
 			if type_sym := c.table.find_type(name) {
-				if type_sym.kind == .placeholder || !type_sym.is_public {
-					c.error('module `$imp.mod` has no public type `$sym.name{}`', sym.pos)
+				if type_sym.kind == .placeholder {
+					c.error('module `$imp.mod` has no type `$sym.name`', sym.pos)
+				} else if !type_sym.is_public {
+					c.error('module `$imp.mod` type `$sym.name` is not public', sym.pos)
 				}
-			} else {
-				c.error('module `$imp.mod` has no public type `$sym.name{}`', sym.pos)
+				continue
 			}
 		}
+		if func := c.table.find_fn(name) {
+			if !func.is_pub {
+				c.error('module `$imp.mod` function `${sym.name}()` is not public', sym.pos)
+			}
+			continue
+		}
+		if _ := c.file.global_scope.find_const(name) {
+			continue
+		}
+		c.error('module `$imp.mod` has no symbol `$sym.name`', sym.pos)
 	}
 }
 
@@ -3308,9 +3314,13 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 				else {}
 			}
 		}
-		// prepend mod to look for fn call or const
 		mut name := ident.name
-		if !name.contains('.') && ident.mod != 'builtin' {
+		// check for imported symbol
+		if name in c.file.imported_symbols {
+			name = c.file.imported_symbols[name]
+		}
+		// prepend mod to look for fn call or const
+		else if !name.contains('.') && ident.mod != 'builtin' {
 			name = '${ident.mod}.$ident.name'
 		}
 		if obj := c.file.global_scope.find(name) {
