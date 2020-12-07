@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_type_err_h.vv:3:9: error: operator += not defined on right operand type `bool`
+vlib/v/checker/tests/assign_expr_type_err_h.vv:3:9: error: invalid right operand: string += bool
     1 | fn main() {
     2 |     mut foo := 'hello'
     3 |     foo += false

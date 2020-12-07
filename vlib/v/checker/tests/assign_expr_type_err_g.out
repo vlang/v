@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_type_err_g.vv:3:2: error: operator += not defined on left operand type `bool`
+vlib/v/checker/tests/assign_expr_type_err_g.vv:3:2: error: operator `+=` not defined on left operand type `bool`
     1 | fn main() {
     2 |     mut foo := true
     3 |     foo += false
