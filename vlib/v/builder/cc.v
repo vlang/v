@@ -723,6 +723,7 @@ fn (mut c Builder) cc_windows_cross() {
 			libs += ' "$pref.default_module_path/vlib/${imp}.o"'
 		}
 	}
+	args += ' ' + cflags.c_options_only_object_files() + ' '
 	args += ' $c.out_name_c '
 	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
 	/*
