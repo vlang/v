@@ -9,7 +9,7 @@ pub fn parse(text string) DocumentObjectModel {
 	return parser.get_dom()
 }
 
-// parse parses and returns the DOM from the contents of a file.
+// parse_file parses and returns the DOM from the contents of a file.
 pub fn parse_file(filename string) DocumentObjectModel {
 	content := os.read_file(filename) or { return DocumentObjectModel{
 		root: &Tag{}
