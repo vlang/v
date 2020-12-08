@@ -2611,7 +2611,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 								g.write('(*')
 								cast_sym := g.table.get_type_symbol(typ)
 								if i != 0 {
-									sum_type_deref_field += ').'
+									dot := if field.typ.is_ptr() { '->' } else { '.' }
+									sum_type_deref_field += ')$dot'
 								}
 								if mut cast_sym.info is table.Aggregate {
 									agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
@@ -3439,11 +3440,12 @@ fn (mut g Gen) ident(node ast.Ident) {
 						if i == 0 {
 							g.write(name)
 						}
+						dot := if v.typ.is_ptr() { '->' } else { '.' }
 						if mut cast_sym.info is table.Aggregate {
 							sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
-							g.write('._$sym.cname')
+							g.write('${dot}_$sym.cname')
 						} else {
-							g.write('._$cast_sym.cname')
+							g.write('${dot}_$cast_sym.cname')
 						}
 						g.write(')')
 					}
