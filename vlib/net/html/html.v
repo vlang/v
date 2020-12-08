@@ -2,13 +2,17 @@ module html
 
 import os
 
-pub fn parse(text string) []&Tag {
+// parse parses and returns the DOM from the given text.
+pub fn parse(text string) DocumentObjectModel {
 	mut parser := Parser{}
 	parser.parse_html(text)
-	return parser.tags
+	return parser.get_dom()
 }
 
-pub fn parse_file(filename string) []&Tag {
-	content := os.read_file(filename) or { return []&Tag{} }
+// parse parses and returns the DOM from the contents of a file.
+pub fn parse_file(filename string) DocumentObjectModel {
+	content := os.read_file(filename) or { return DocumentObjectModel{
+		root: &Tag{}
+	} }
 	return parse(content)
 }
