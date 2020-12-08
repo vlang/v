@@ -21,7 +21,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.check_name()
 	}
 	if language != .v {
-		p.check_for_unpure_v(language, first_pos)
+		p.check_for_impure_v(language, first_pos)
 	}
 	mut or_kind := ast.OrKind.absent
 	if fn_name == 'json.decode' {
@@ -158,7 +158,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if language != .v {
 		p.next()
 		p.check(.dot)
-		p.check_for_unpure_v(language, p.tok.position())
+		p.check_for_impure_v(language, p.tok.position())
 	}
 	// Receiver?
 	mut rec_name := ''

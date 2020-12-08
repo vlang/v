@@ -126,8 +126,15 @@ The build flags are shared by the build and run commands:
       Treat all warnings as errors, even in development builds.
    
    -Wfatal-errors
-      Unconditionally exit with exit(1) after the first error. Useful for scripts/tooling that calls V.
+      Unconditionally exit with exit(1) after the first error. 
+      Useful for scripts/tooling that calls V.
 
+   -Wimpure-v
+      Warn about using C. or JS. symbols in plain .v files. 
+      These should be moved in .c.v and .js.v .
+      NB: in the future, this will be turned on by default,
+      and will become an error, after vlib is cleaned up.
+      
 For C-specific build flags, use `v help build-c`.
 
 See also:

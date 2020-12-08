@@ -853,12 +853,12 @@ fn (mut p Parser) parse_attr() table.Attr {
 	}
 }
 
-pub fn (mut p Parser) check_for_unpure_v(language table.Language, pos token.Position) {
+pub fn (mut p Parser) check_for_impure_v(language table.Language, pos token.Position) {
 	if language == .v {
 		// pure V code is always allowed everywhere
 		return
 	}
-	if !p.pref.warn_unpure_v {
+	if !p.pref.warn_impure_v {
 		// the stricter mode is not ON yet => allow everything for now
 		return
 	}
@@ -1050,10 +1050,10 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	mut language := table.Language.v
 	if p.tok.lit == 'C' {
 		language = table.Language.c
-		p.check_for_unpure_v(language, p.tok.position())
+		p.check_for_impure_v(language, p.tok.position())
 	} else if p.tok.lit == 'JS' {
 		language = table.Language.js
-		p.check_for_unpure_v(language, p.tok.position())
+		p.check_for_impure_v(language, p.tok.position())
 	}
 	mut mod := ''
 	// p.warn('resetting')
@@ -2065,10 +2065,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	mut language := table.Language.v
 	if parent_name.len > 2 && parent_name.starts_with('C.') {
 		language = table.Language.c
-		p.check_for_unpure_v(language, decl_pos)
+		p.check_for_impure_v(language, decl_pos)
 	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
 		language = table.Language.js
-		p.check_for_unpure_v(language, decl_pos)
+		p.check_for_impure_v(language, decl_pos)
 	}
 	prepend_mod_name := p.prepend_mod(name)
 	p.table.register_type_symbol(table.TypeSymbol{

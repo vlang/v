@@ -122,7 +122,7 @@ pub mut:
 	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
 	skip_running        bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
 	skip_warnings       bool // like C's "-w", forces warnings to be ignored.
-	warn_unpure_v       bool // -Wunpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
+	warn_impure_v       bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
 	warns_are_errors    bool // -W, like C's "-Werror", treat *every* warning is an error
 	fatal_errors        bool // unconditionally exit after the first error with exit(1)
 	reuse_tmpc          bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
@@ -174,8 +174,8 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
 			}
-			'-Wunpure-v' {
-				res.warn_unpure_v = true
+			'-Wimpure-v' {
+				res.warn_impure_v = true
 			}
 			'-Wfatal-errors' {
 				res.fatal_errors = true
