@@ -15,7 +15,7 @@ pub mut:
 	cap          int // cap is capacity of the array
 }
 
-// // array.data uses a void pointer, which allows implementing arrays without generics and without generating
+// array.data uses a void pointer, which allows implementing arrays without generics and without generating
 // extra code for every type
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
