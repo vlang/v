@@ -1814,6 +1814,12 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 							re.groups[g_index] = 0
 						}
 						re.groups[g_index+1] = i
+						
+						// if a group end with a dot, manage the not increased char index 
+						if i == re.groups[g_index] {
+							re.groups[g_index+1] = i+1
+						}
+						
 						//println("GROUP ${re.prog[pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}]")
 
 						// continuous save, save until we have space
@@ -2092,6 +2098,13 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				re.prog[tmp_pc].group_rep = 0 // clear the repetitions
 				group_index--
 				m_state = .ist_next
+				
+				// if dot char manage advance of the group
+				if l_ist == u32(ist_dot_char) {
+					//print("dot char next char")
+					i+=char_len
+				}
+
 				continue
 			}
 			else if rep >= re.prog[tmp_pc].rep_min {
