@@ -65,6 +65,19 @@ pub fn (mut f File) writeln(s string) ?int {
 	return (written + 1)
 }
 
+pub fn (mut f File) write_string(s string) ?int {
+	if !f.is_opened {
+		return error('file is not opened')
+	}
+	// TODO perf
+	written := C.fwrite(s.str, s.len, 1, f.cfile)
+	if written == 0 && s.len != 0 {
+		return error('0 bytes written')
+	}
+	return written
+}
+
+
 // write_to implements the RandomWriter interface
 pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)
