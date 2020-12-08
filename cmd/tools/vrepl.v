@@ -301,7 +301,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 }
 
 fn print_output(s os.Result) {
-	lines := s.output.trim_right('\n\r').split('\n')
+	lines := s.output.trim_right('\n\r').split_into_lines()
 	for line in lines {
 		if line.contains('.vrepl_temp.v:') {
 			// Hide the temporary file name
