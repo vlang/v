@@ -13,3 +13,4 @@ fn main() {
 	println(tag.str()) // <h1 class="title">Hello world!</h1>
 }
 ```
+More examples found on [`parser_test.v`](parser_test.v) and [`html_test.v`](html_test.v)
