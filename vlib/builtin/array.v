@@ -14,9 +14,9 @@ pub mut:
 	len          int // len is length of the array
 	cap          int // cap is capacity of the array
 }
+
 // array.data uses a void pointer allows to implement arrays without generics and without generating
 // extra code for every type
-
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
@@ -686,7 +686,6 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 */
-
 // eq checks if the arrays ahave same element or not
 // TODO: make it generic or use compiler magic??
 pub fn (a1 []string) eq(a2 []string) bool {
