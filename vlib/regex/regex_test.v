@@ -190,6 +190,18 @@ cgroups_test_suite = [
 		[3, 0, 0, 4, 1, 7, 11, 1, 11, 16],
 		{'format':int(0)}
 	},
+	TestItemCGroup{
+		"acc +13 pippo",
+		r"(\w+)\s(.)([0-9]+) \w+",0,13,
+		[0, 3, 4, 5, 5, 7],
+		map[string]int{}
+	},
+	TestItemCGroup{
+		"acc +13",
+		r"(\w+)\s(.)([0-9]+)",0,7,
+		[0, 3, 4, 5, 5, 7],
+		map[string]int{}
+	},
 ]
 )
 
@@ -210,7 +222,12 @@ fn test_regex(){
 			continue
 		}
 
-		re.group_csave = [-1].repeat(3*20+1)
+		if to.cgn.len > 0 {
+			re.group_csave = [-1].repeat(3*20+1)
+			if debug { println("continuous save")}
+		} else {
+			if debug { println("NO continuous save")}
+		}
 
 		start, end := re.match_string(to.src)
 
@@ -225,31 +242,46 @@ fn test_regex(){
 			C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
-		}
+		}	
 
 		// check cgroups
-		if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
-			println("Capturing group len error! ${re.group_csave[0]}")
-			assert false
-			continue
-		}
-
-		// check captured groups
-		mut ln := re.group_csave[0]*3
-		for ln > 0 {
-			if re.group_csave[ln] != to.cg[ln] {
-				assert false
-			}
-			ln--
-		}
-
-		// check named captured groups
-		for k in to.cgn.keys() {
-			if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
-				println("Named capturing group error! [$k]")
+		if to.cgn.len > 0 {
+			if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
+				println("Capturing group len error! ${re.group_csave[0]}")
 				assert false
 				continue
 			}
+
+			// check captured groups
+			mut ln := re.group_csave[0]*3
+			for ln > 0 {
+				if re.group_csave[ln] != to.cg[ln] {
+					assert false
+				}
+				ln--
+			}
+
+			// check named captured groups
+			for k in to.cgn.keys() {
+				if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
+					println("Named capturing group error! [$k]")
+					assert false
+					continue
+				}
+			}
+		} else {
+			// check normal captured groups
+			if re.groups.len != to.cg.len {
+				assert false
+			}
+			for ln:=0; ln < re.groups.len; ln++ {
+				if re.groups[ln] != to.cg[ln] {
+					println("Capture group doesn't match:")
+					println("true ground: [${to.cg}]")
+					println("elaborated : [${re.groups}]")
+					assert false
+				}
+			} 
 		}
 	}
 
