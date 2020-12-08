@@ -853,7 +853,6 @@ fn (mut p Parser) parse_attr() table.Attr {
 	}
 }
 
-
 pub fn (mut p Parser) check_for_unpure_v(language table.Language, pos token.Position) {
 	if language == .v {
 		// pure V code is always allowed everywhere
@@ -866,10 +865,12 @@ pub fn (mut p Parser) check_for_unpure_v(language table.Language, pos token.Posi
 	if p.file_backend_mode != language {
 		upcase_language := language.str().to_upper()
 		if p.file_backend_mode == .v {
-			p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead', pos)
+			p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
+				pos)
 			return
 		} else {
-			p.warn_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file', pos)
+			p.warn_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
+				pos)
 			return
 		}
 	}
