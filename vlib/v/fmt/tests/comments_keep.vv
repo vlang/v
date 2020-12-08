@@ -1,5 +1,7 @@
 struct User {
 	name string // name
+	// middle comment
+	age  int
 	// last comment
 	// last comment2
 }
@@ -15,4 +17,11 @@ fn main() {
 	// else
 	// else {
 	// }
+	_ := User{
+		name: 'Henry' // comment after name
+		// on the next line
+		age: 42
+		// after age line
+		// after line2
+	}
 }
