@@ -5,15 +5,17 @@ module builtin
 
 import strings
 
+// array is a builtin struct used for denoting array types in V
 pub struct array {
 pub:
-	element_size int
+	element_size int // element_size is no. of elements in the array
 pub mut:
-	data         voidptr // Using a void pointer allows to implement arrays without generics and without generating
-	// extra code for every type.
-	len          int
-	cap          int
+	data         voidptr // data is the array data
+	len          int // len is length of the array
+	cap          int // cap is capacity of the array
 }
+// array.data uses a void pointer allows to implement arrays without generics and without generating
+// extra code for every type
 
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
@@ -415,6 +417,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.len += size
 }
 
+// reverse_in_place reverses the array in place
 pub fn (mut a array) reverse_in_place() {
 	if a.len < 2 {
 		return
@@ -613,6 +616,8 @@ pub fn (a []byte) index(v byte) int {
 	return -1
 }
 
+// index returns the index of the first element equal to the given value,
+// or -1 if the value is not found in the array.
 pub fn (a []rune) index(v rune) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -681,6 +686,9 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 */
+
+// eq checks if the arrays ahave same element or not
+// TODO: make it generic or use compiler magic??
 pub fn (a1 []string) eq(a2 []string) bool {
 	// return array_eq(a, a2)
 	if a1.len != a2.len {
