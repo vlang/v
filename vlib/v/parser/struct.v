@@ -36,6 +36,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.next() // .
 	}
 	name_pos := p.tok.position()
+	p.check_for_unpure_v(language, name_pos)
 	mut name := p.check_name()
 	// defer {
 	// if name.contains('App') {
