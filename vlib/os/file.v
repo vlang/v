@@ -77,7 +77,6 @@ pub fn (mut f File) write_string(s string) ?int {
 	return written
 }
 
-
 // write_to implements the RandomWriter interface
 pub fn (mut f File) write_to(pos int, buf []byte) ?int {
 	C.fseek(f.cfile, pos, C.SEEK_SET)

@@ -114,8 +114,7 @@ mut:
 	// autofree_pregen_buf   strings.Builder
 	// autofree_tmp_vars     []string // to avoid redefining the same tmp vars in a single function
 	called_fn_name                   string
-	cur_mod                          string // TODO remove
-	cur_mod_node                     ast.Module
+	cur_mod                          ast.Module
 	is_js_call                       bool // for handling a special type arg #1 `json.decode(User, ...)`
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
@@ -1090,8 +1089,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.Module {
 			// g.is_builtin_mod = node.name == 'builtin'
 			g.is_builtin_mod = node.name in ['builtin', 'os', 'strconv', 'strings', 'gg']
-			g.cur_mod = node.name
-			g.cur_mod_node = node
+			// g.cur_mod = node.name
+			g.cur_mod = node
 		}
 		ast.Return {
 			g.write_defer_stmts_when_needed()
@@ -2212,7 +2211,7 @@ fn (mut g Gen) autofree_var_call(free_fn_name string, v ast.Var) {
 	if v.typ.is_ptr() {
 		g.writeln('\t${free_fn_name}(${c_name(v.name)}); // autofreed ptr var')
 	} else {
-		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod $g.is_builtin_mod')
+		g.writeln('\t${free_fn_name}(&${c_name(v.name)}); // autofreed var $g.cur_mod.name $g.is_builtin_mod')
 	}
 }
 
