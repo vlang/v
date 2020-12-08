@@ -13,31 +13,24 @@ fn generate_temp_html() string {
 	return temp_html.str()
 }
 
-fn generate_dom(temp_html string) DocumentObjectModel {
-	mut parser := Parser{}
-	parser.parse_html(temp_html)
-	dom := parser.get_dom()
-	return dom
-}
-
 fn test_search_by_tag_type() {
-	dom := generate_dom(generate_temp_html())
-	assert dom.get_by_tag('div').len == 4
-	assert dom.get_by_tag('head').len == 1
-	assert dom.get_by_tag('body').len == 1
+	dom := parse(generate_temp_html())
+	assert dom.get_tag('div').len == 4
+	assert dom.get_tag('head').len == 1
+	assert dom.get_tag('body').len == 1
 }
 
 fn test_search_by_attribute_value() {
-	mut dom := generate_dom(generate_temp_html())
+	mut dom := parse(generate_temp_html())
 	// println(temp_html)
 	print('Amount ')
-	println(dom.get_by_attribute_value('id', 'name_0'))
-	assert dom.get_by_attribute_value('id', 'name_0').len == 1
+	println(dom.get_tag_by_attribute_value('id', 'name_0'))
+	assert dom.get_tag_by_attribute_value('id', 'name_0').len == 1
 }
 
 fn test_access_parent() {
-	mut dom := generate_dom(generate_temp_html())
-	div_tags := dom.get_by_tag('div')
+	mut dom := parse(generate_temp_html())
+	div_tags := dom.get_tag('div')
 	parent := div_tags[0].parent
 	assert parent != 0
 	for div_tag in div_tags {
@@ -46,18 +39,18 @@ fn test_access_parent() {
 }
 
 fn test_search_by_attributes() {
-	dom := generate_dom(generate_temp_html())
-	assert dom.get_by_attribute('id').len == 4
+	dom := parse(generate_temp_html())
+	assert dom.get_tag_by_attribute('id').len == 4
 }
 
 fn test_tags_used() {
-	dom := generate_dom(generate_temp_html())
-	assert dom.get_all_tags().len == 9
+	dom := parse(generate_temp_html())
+	assert dom.get_tags().len == 9
 }
 
 fn test_access_tag_fields() {
-	dom := generate_dom(generate_temp_html())
-	id_tags := dom.get_by_attribute('id')
+	dom := parse(generate_temp_html())
+	id_tags := dom.get_tag_by_attribute('id')
 	assert id_tags[0].name == 'div'
 	assert id_tags[1].attributes['class'] == 'several-1'
 }
