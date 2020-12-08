@@ -117,25 +117,22 @@ pub fn new_scanner(text string, comments_mode CommentsMode, pref &pref.Preferenc
 }
 
 pub fn new_vet_scanner(text string, comments_mode CommentsMode, pref &pref.Preferences) &Scanner {
-	is_fmt := pref.is_fmt
-	mut s := &Scanner{
+	return &Scanner{
 		pref: pref
 		text: text
 		is_print_line_on_error: true
 		is_print_colored_error: true
 		is_print_rel_paths_on_error: true
-		is_fmt: is_fmt
+		is_fmt: pref.is_fmt
 		comments_mode: comments_mode
+		file_path: 'internal_memory'
 	}
-	s.file_path = 'internal_memory'
-	return s
 }
 
 [inline]
 fn (s &Scanner) should_parse_comment() bool {
-	res := (s.comments_mode == .parse_comments) ||
+	return (s.comments_mode == .parse_comments) ||
 		(s.comments_mode == .toplevel_comments && !s.is_inside_toplvl_statement)
-	return res
 }
 
 // NB: this is called by v's parser
@@ -1026,7 +1023,7 @@ fn (mut s Scanner) ident_string() string {
 			s.inc_line_number()
 		}
 		// Don't allow \0
-		if c == `0` && s.pos > 2 && s.text[s.pos - 1] == slash {
+		if c == `0` && s.pos > 2 && prevc == slash {
 			if (s.pos < s.text.len - 1 && s.text[s.pos + 1].is_digit()) ||
 				s.count_symbol_before(s.pos - 1, slash) % 2 == 0 {
 			} else if !is_cstr && !is_raw {
