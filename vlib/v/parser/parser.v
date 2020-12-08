@@ -15,11 +15,12 @@ import runtime
 import time
 
 pub struct Parser {
+	pref              &pref.Preferences
+mut:
 	file_base         string // "hello.v"
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
-	pref              &pref.Preferences
-mut:
+	file_backend_mode table.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .v otherwise.
 	scanner           &scanner.Scanner
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
@@ -101,9 +102,6 @@ pub fn parse_text(text string, path string, table &table.Table, comments_mode sc
 	mut p := Parser{
 		scanner: s
 		comments_mode: comments_mode
-		file_name: path
-		file_base: os.base(path)
-		file_name_dir: os.dir(path)
 		table: table
 		pref: pref
 		scope: &ast.Scope{
@@ -114,7 +112,21 @@ pub fn parse_text(text string, path string, table &table.Table, comments_mode sc
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	p.set_path(path)
 	return p.parse()
+}
+
+pub fn (mut p Parser) set_path(path string) {
+	p.file_name = path
+	p.file_base = os.base(path)
+	p.file_name_dir = os.dir(path)
+	p.file_backend_mode = .v
+	if path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
+		p.file_backend_mode = .c
+	}
+	if path.ends_with('.js.v') || path.ends_with('.js.vv') || path.ends_with('.js.vsh') {
+		p.file_backend_mode = .js
+	}
 }
 
 pub fn parse_file(path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
@@ -130,9 +142,6 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		scanner: scanner.new_scanner_file(path, comments_mode, pref)
 		comments_mode: comments_mode
 		table: table
-		file_name: path
-		file_base: os.base(path)
-		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -142,6 +151,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	p.set_path(path)
 	return p.parse()
 }
 
@@ -153,9 +163,6 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		scanner: scanner.new_vet_scanner_file(path, .parse_comments, pref)
 		comments_mode: .parse_comments
 		table: table_
-		file_name: path
-		file_base: os.base(path)
-		file_name_dir: os.dir(path)
 		pref: pref
 		scope: &ast.Scope{
 			start_pos: 0
@@ -165,6 +172,7 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		warnings: []errors.Warning{}
 		global_scope: global_scope
 	}
+	p.set_path(path)
 	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
@@ -845,6 +853,29 @@ fn (mut p Parser) parse_attr() table.Attr {
 	}
 }
 
+pub fn (mut p Parser) check_for_impure_v(language table.Language, pos token.Position) {
+	if language == .v {
+		// pure V code is always allowed everywhere
+		return
+	}
+	if !p.pref.warn_impure_v {
+		// the stricter mode is not ON yet => allow everything for now
+		return
+	}
+	if p.file_backend_mode != language {
+		upcase_language := language.str().to_upper()
+		if p.file_backend_mode == .v {
+			p.warn_with_pos('$upcase_language code will not be allowed in pure .v files, please move it to a .${language}.v file instead',
+				pos)
+			return
+		} else {
+			p.warn_with_pos('$upcase_language code is not allowed in .${p.file_backend_mode}.v files, please move it to a .${language}.v file',
+				pos)
+			return
+		}
+	}
+}
+
 pub fn (mut p Parser) error(s string) {
 	p.error_with_pos(s, p.tok.position())
 }
@@ -1016,12 +1047,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			pos: type_pos
 		}
 	}
-	language := if p.tok.lit == 'C' {
-		table.Language.c
+	mut language := table.Language.v
+	if p.tok.lit == 'C' {
+		language = table.Language.c
+		p.check_for_impure_v(language, p.tok.position())
 	} else if p.tok.lit == 'JS' {
-		table.Language.js
-	} else {
-		table.Language.v
+		language = table.Language.js
+		p.check_for_impure_v(language, p.tok.position())
 	}
 	mut mod := ''
 	// p.warn('resetting')
@@ -2030,12 +2062,13 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	parent_type := first_type
 	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
-	language := if parent_name.len > 2 && parent_name.starts_with('C.') {
-		table.Language.c
+	mut language := table.Language.v
+	if parent_name.len > 2 && parent_name.starts_with('C.') {
+		language = table.Language.c
+		p.check_for_impure_v(language, decl_pos)
 	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
-		table.Language.js
-	} else {
-		table.Language.v
+		language = table.Language.js
+		p.check_for_impure_v(language, decl_pos)
 	}
 	prepend_mod_name := p.prepend_mod(name)
 	p.table.register_type_symbol(table.TypeSymbol{
