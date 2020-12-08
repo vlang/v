@@ -9,9 +9,6 @@ pub fn parse(text string) []&Tag {
 }
 
 pub fn parse_file(filename string) []&Tag {
-	content := os.read_file(filename) or {
-		return []&Tag{}
-	}
-
+	content := os.read_file(filename) or { return []&Tag{} }
 	return parse(content)
 }

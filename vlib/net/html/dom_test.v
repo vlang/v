@@ -5,7 +5,6 @@ import strings
 fn generate_temp_html() string {
 	mut temp_html := strings.new_builder(200)
 	temp_html.write('<!doctype html><html><head><title>Giant String</title></head><body>')
-
 	for counter := 0; counter < 4; counter++ {
 		temp_html.write("<div id='name_$counter' ")
 		temp_html.write("class='several-$counter'>Look at $counter</div>")
@@ -59,6 +58,6 @@ fn test_tags_used() {
 fn test_access_tag_fields() {
 	dom := generate_dom(generate_temp_html())
 	id_tags := dom.get_by_attribute('id')
-	assert id_tags[0].name == "div"
-	assert id_tags[1].attributes['class'] == "several-1"
+	assert id_tags[0].name == 'div'
+	assert id_tags[1].attributes['class'] == 'several-1'
 }

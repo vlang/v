@@ -15,9 +15,9 @@ mut:
 	line_count       int
 	lexeme_builder   strings.Builder = strings.Builder{}
 	code_tags        map[string]bool = {
-		'script': true
-		'style': true
-	}
+	'script': true
+	'style':  true
+}
 }
 
 // Responsible for read HTML in full strings or splited string and returns all Tag objets of
@@ -26,8 +26,8 @@ pub struct Parser {
 mut:
 	dom                DocumentObjectModel
 	lexical_attributes LexicalAttributes = LexicalAttributes{
-		current_tag: &Tag{}
-	}
+	current_tag: &Tag{}
+}
 	filename           string = 'direct-parse'
 	initialized        bool
 	tags               []&Tag
@@ -39,7 +39,9 @@ mut:
 // like `add_code_tag('script')` will make all `script` tags content be jumped,
 // so you still have its content, but will not confuse the parser with it's `>` or `<`.
 pub fn (mut parser Parser) add_code_tag(name string) {
-	if name.len <= 0 { return }
+	if name.len <= 0 {
+		return
+	}
 	parser.lexical_attributes.code_tags[name] = true
 }
 
@@ -81,7 +83,9 @@ fn blank_string(data string) bool {
 // ### WARNING
 // If you want to reuse parser object to parse another HTML, call `initialize_all()` function first
 fn (mut parser Parser) init() {
-	if parser.initialized { return }
+	if parser.initialized {
+		return
+	}
 	parser.dom = DocumentObjectModel{
 		debug_file: parser.debug_file
 		root: &Tag{}
@@ -94,7 +98,9 @@ fn (mut parser Parser) init() {
 }
 
 fn (mut parser Parser) generate_tag() {
-	if parser.lexical_attributes.open_tag { return }
+	if parser.lexical_attributes.open_tag {
+		return
+	}
 	if parser.lexical_attributes.current_tag.name.len > 0 ||
 		parser.lexical_attributes.current_tag.content.len > 0 {
 		parser.tags << parser.lexical_attributes.current_tag
@@ -115,7 +121,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 		}
 		if parser.lexical_attributes.open_code { // here will verify all needed to know if open_code finishes and string in code
 			parser.lexical_attributes.lexeme_builder.write_b(chr)
-			if parser.lexical_attributes.open_string > 0 && parser.lexical_attributes.open_string == string_code {
+			if parser.lexical_attributes.open_string > 0 &&
+				parser.lexical_attributes.open_string == string_code {
 				parser.lexical_attributes.open_string = 0
 			} else if is_quote {
 				parser.lexical_attributes.open_string = string_code
@@ -163,8 +170,8 @@ pub fn (mut parser Parser) split_parse(data string) {
 			} else if chr == `>` { // close tag >
 				complete_lexeme := parser.builder_str().to_lower()
 				parser.lexical_attributes.current_tag.closed = (complete_lexeme.len > 0 &&
-					complete_lexeme[complete_lexeme.len - 1] == 47) // if equals to /
-				if complete_lexeme.len > 0 && complete_lexeme[0] == 47 {
+					complete_lexeme[complete_lexeme.len - 1] == `/`) // if equals to /
+				if complete_lexeme.len > 0 && complete_lexeme[0] == `/` {
 					parser.dom.close_tags[complete_lexeme] = true
 				}
 				/*
@@ -237,7 +244,6 @@ pub fn (mut parser Parser) parse_html(data string) {
 	parser.dom.debug_file = parser.debug_file
 	parser.dom.construct(parser.tags)
 }
-
 
 // When using **split_parse** method, you must call this function to ends the parse completely.
 [inline]

@@ -35,14 +35,15 @@ fn (mut tag Tag) add_child(t &Tag) int {
 // Returns the content of the tag and all tags inside it.
 // Also, any `<br>` tag will be converted into `\n`.
 pub fn (tag Tag) text() string {
-	if tag.name.len >= 2 && tag.name[0..2] == 'br' {
+	if tag.name.len >= 2 && tag.name[..2] == 'br' {
 		return '\n'
 	}
-	mut to_return := tag.content.replace('\n', '')
-	for index := 0; index < tag.children.len; index++ {
-		to_return += tag.children[index].text()
+	mut text_str := strings.new_builder(200)
+	text_str.write(tag.content.replace('\n', ''))
+	for child in tag.children {
+		text_str.write(child.text())
 	}
-	return to_return
+	return text_str.str()
 }
 
 pub fn (tag &Tag) str() string {
@@ -54,7 +55,11 @@ pub fn (tag &Tag) str() string {
 			html_str.write('="$value"')
 		}
 	}
-	html_str.write(if tag.closed && tag.close_type == .in_name { '/>' } else { '>' })
+	html_str.write(if tag.closed && tag.close_type == .in_name {
+		'/>'
+	} else {
+		'>'
+	})
 	html_str.write(tag.content)
 	if tag.children.len > 0 {
 		for child in tag.children {

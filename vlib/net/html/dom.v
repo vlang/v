@@ -109,20 +109,15 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 		dom.print_debug(tag.str())
 		if is_close_tag(tag) {
 			temp_int = stack.peek()
-			temp_string = tag.name[1..tag.name.len] // print(temp_string + " != " + tag_list[temp_int].name + " >> ") // println(temp_string != tag_list[temp_int].name)
-			for !is_null(temp_int) &&
-				temp_string != tag_list[temp_int].name && !tag_list[temp_int].closed {
-				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' +
-					(temp_string == tag_list[temp_int].name).str())
+			temp_string = tag.name[1..]
+			for !is_null(temp_int) && temp_string != tag_list[temp_int].name && !tag_list[temp_int].closed {
+				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' + (temp_string ==
+					tag_list[temp_int].name).str())
 				stack.pop()
 				temp_int = stack.peek()
 			}
 			temp_int = stack.peek()
-			temp_int = if !is_null(temp_int) {
-				stack.pop()
-			} else {
-				root_index
-			}
+			temp_int = if !is_null(temp_int) { stack.pop() } else { root_index }
 			if is_null(temp_int) {
 				stack.push(root_index)
 			}
@@ -143,8 +138,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 				dom.print_debug("Added ${tag.name} as child of '" + tag_list[temp_int].name +
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
-				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.children.len childrens")
+				dom.print_debug("Added $tag.name as child of '" + temp_tag.name + "' which now has $temp_tag.children.len childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}
