@@ -8,14 +8,14 @@ import strings
 // array is a builtin struct used for denoting array types in V
 pub struct array {
 pub:
-	element_size int // element_size is no. of elements in the array
+	element_size int // element_size is size in bytes of one element in the array
 pub mut:
 	data         voidptr // data is the array data
 	len          int // len is length of the array
 	cap          int // cap is capacity of the array
 }
 
-// array.data uses a void pointer allows to implement arrays without generics and without generating
+// // array.data uses a void pointer, which allows implementing arrays without generics and without generating
 // extra code for every type
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
@@ -686,7 +686,7 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 */
-// eq checks if the arrays ahave same element or not
+// eq checks if the arrays have the same element or not
 // TODO: make it generic or use compiler magic??
 pub fn (a1 []string) eq(a2 []string) bool {
 	// return array_eq(a, a2)
