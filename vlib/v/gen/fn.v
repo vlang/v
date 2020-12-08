@@ -149,10 +149,18 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	if g.pref.is_prof {
 		g.profile_fn(it)
 	}
+	// we could be in an anon fn so save outer fn defer stmts
+	prev_defer_stmts := g.defer_stmts
+	g.defer_stmts = []
 	g.stmts(it.stmts)
 	//
 	if it.return_type == table.void_type {
 		g.write_defer_stmts_when_needed()
+	}
+	if it.is_anon {
+		g.defer_stmts = prev_defer_stmts
+	} else {
+		g.defer_stmts = []
 	}
 	if it.return_type != table.void_type && it.stmts.len > 0 && it.stmts.last() !is ast.Return {
 		default_expr := g.type_default(it.return_type)
@@ -164,7 +172,6 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		}
 	}
 	g.writeln('}')
-	g.defer_stmts = []
 	if g.pref.printfn_list.len > 0 && g.last_fn_c_name in g.pref.printfn_list {
 		println(g.out.after(fn_start_pos))
 	}
