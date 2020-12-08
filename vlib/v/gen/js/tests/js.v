@@ -34,13 +34,16 @@ fn main() {
 	mut a := 1
 	a *= 2
 	a += 3
-	println(a) // TODO: Handle string interpolation
+	println(a)
 	mut b := hl.Aaa{}
 	b.update('an update')
 	println(b)
 	mut c := Foo{hl.Aaa{}}
 	c.a.update('another update')
 	println(c)
+	println('int(1.5) == "${int(1.5)}"')
+	d := int(10) + f32(127)
+	println('typeof (int + f32) == "${typeof(d)}"')
 	_ = 'done'
 	{
 		_ = 'block'
@@ -52,7 +55,7 @@ fn main() {
 	await := '$super: $debugger'
 	mut finally := 'implemented'
 	println('$await $finally')
-	dun := i_am_a_const * 20
+	dun := i_am_a_const * 20 + 2
 	dunn := hl.hello // External constant
 	_ = hl1.nested()
 	for i := 0; i < 10; i++ {
