@@ -4,6 +4,9 @@ Usage:
 Formats the given V source files, then prints their formatted source to stdout.
 
 Options:
+  -c      Check if a file is already formatted. If not, print the filepath and exit with code 2.
+          Compared to -verify it is quicker but has a small trade-off in precision.
+
   -diff   Display the differences between the formatted source(s) and the original source(s).
           This will attempt to find a working `diff` command automatically unless you
           specify one with the VDIFF_TOOL environment variable.
