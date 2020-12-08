@@ -301,6 +301,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 }
 
 fn print_output(s os.Result) {
+	if s.output == '' { return }	
 	lines := s.output.trim_right('\n\r').split('\n')
 	for line in lines {
 		if line.contains('.vrepl_temp.v:') {
