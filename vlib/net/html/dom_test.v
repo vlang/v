@@ -1,18 +1,22 @@
 module html
 
+import strings
+
 fn generate_temp_html() string {
-	mut temp_html := '<!doctype html><html><head><title>Giant String</title></head><body>'
+	mut temp_html := strings.new_builder(200)
+	temp_html.write('<!doctype html><html><head><title>Giant String</title></head><body>')
+
 	for counter := 0; counter < 4; counter++ {
-		temp_html += "<div id='name_$counter' "
-		temp_html += "class='several-$counter'>Look at $counter</div>"
+		temp_html.write("<div id='name_$counter' ")
+		temp_html.write("class='several-$counter'>Look at $counter</div>")
 	}
-	temp_html += '</body></html>'
-	return temp_html
+	temp_html.write('</body></html>')
+	return temp_html.str()
 }
 
 fn generate_dom(temp_html string) DocumentObjectModel {
 	mut parser := Parser{}
-	parser.parse_html(temp_html, false)
+	parser.parse_html(temp_html)
 	dom := parser.get_dom()
 	return dom
 }
@@ -35,14 +39,11 @@ fn test_search_by_attribute_value() {
 fn test_access_parent() {
 	mut dom := generate_dom(generate_temp_html())
 	div_tags := dom.get_by_tag('div')
-	assert div_tags[0].get_parent() != C.NULL
-	/*
-	parent := div_tags[0].get_parent()
-	assert parent != C.NULL
+	parent := div_tags[0].parent
+	assert parent != 0
 	for div_tag in div_tags {
-		assert div_tag.get_parent() == parent
+		assert div_tag.parent == parent
 	}
-	*/
 }
 
 fn test_search_by_attributes() {
@@ -58,6 +59,6 @@ fn test_tags_used() {
 fn test_access_tag_fields() {
 	dom := generate_dom(generate_temp_html())
 	id_tags := dom.get_by_attribute('id')
-	assert id_tags[0].get_name() == "div"
-	assert id_tags[1].get_attributes()['class'] == "several-1"
+	assert id_tags[0].name == "div"
+	assert id_tags[1].attributes['class'] == "several-1"
 }

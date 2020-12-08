@@ -2,6 +2,7 @@ module html
 
 import os
 
+// A DOM object that will make easier to access some tags and search it.
 pub struct DocumentObjectModel {
 mut:
 	root           &Tag
@@ -25,24 +26,14 @@ fn (mut dom DocumentObjectModel) print_debug(data string) {
 	}
 }
 
-/*
-fn (dom mut DocumentObjectModel) new_root(tag &Tag) {
-	mut new_tag := &Tag{} new_tag.name = "div"
-	new_tag.add_child(dom.root) new_tag.add_child(tag)
-	dom.root = new_tag
-}
-*/
+[inline]
 fn is_close_tag(tag &Tag) bool {
-	if tag.name.len > 0 {
-		return tag.name[0] == 47 // return if equals to /
-	}
-	return false
+	return tag.name.len > 0 && tag.name[0] == `/`
 }
 
 fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name string) int {
-	if !(attribute_name in dom.attributes) {
-		temp_array := []string{}
-		dom.attributes[attribute_name] = temp_array
+	if attribute_name !in dom.attributes {
+		dom.attributes[attribute_name] = []string{}
 	}
 	mut string_array := dom.attributes[attribute_name]
 	mut counter := 0
@@ -58,10 +49,10 @@ fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name strin
 }
 
 fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
-	for attribute_name in tag.attributes.keys() {
+	for attribute_name, _ in tag.attributes {
 		attribute_value := tag.attributes[attribute_name]
 		location := dom.where_is(attribute_value, attribute_name)
-		if !(attribute_name in dom.tag_attributes) {
+		if attribute_name !in dom.tag_attributes {
 			dom.tag_attributes[attribute_name] = []
 		}
 		for {
@@ -91,7 +82,7 @@ fn (mut dom DocumentObjectModel) add_tag_by_type(tag &Tag) {
 
 fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 	for attribute_name in tag.attributes.keys() {
-		if !(attribute_name in dom.all_attributes) {
+		if attribute_name !in dom.all_attributes {
 			dom.all_attributes[attribute_name] = [tag]
 		} else {
 			mut temp_array := dom.all_attributes[attribute_name]
@@ -101,22 +92,10 @@ fn (mut dom DocumentObjectModel) add_tag_by_attribute(tag &Tag) {
 	}
 }
 
-fn compare_string(a string, b string) bool { // for some reason == doesn't work
-	if a.len != b.len {
-		return false
-	}
-	for i := 0; i < a.len; i++ {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.constructed = true
 	mut temp_map := map[string]int{}
-	mut temp_int := C.INT_MIN
+	mut temp_int := null_element
 	mut temp_string := ''
 	mut stack := Stack{}
 	dom.btree = BTree{}
@@ -131,20 +110,20 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 		if is_close_tag(tag) {
 			temp_int = stack.peek()
 			temp_string = tag.name[1..tag.name.len] // print(temp_string + " != " + tag_list[temp_int].name + " >> ") // println(temp_string != tag_list[temp_int].name)
-			for !stack.is_null(temp_int) &&
-				!compare_string(temp_string, tag_list[temp_int].name) && !tag_list[temp_int].closed {
+			for !is_null(temp_int) &&
+				temp_string != tag_list[temp_int].name && !tag_list[temp_int].closed {
 				dom.print_debug(temp_string + ' >> ' + tag_list[temp_int].name + ' ' +
-					compare_string(temp_string, tag_list[temp_int].name).str())
+					(temp_string == tag_list[temp_int].name).str())
 				stack.pop()
 				temp_int = stack.peek()
 			}
 			temp_int = stack.peek()
-			if !stack.is_null(temp_int) {
-				temp_int = stack.pop()
+			temp_int = if !is_null(temp_int) {
+				stack.pop()
 			} else {
-				temp_int = root_index
+				root_index
 			}
-			if stack.is_null(temp_int) {
+			if is_null(temp_int) {
 				stack.push(root_index)
 			}
 			dom.print_debug('Removed ' + temp_string + ' -- ' + tag_list[temp_int].name)
@@ -154,7 +133,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 			dom.add_tag_by_type(tag)
 			dom.all_tags << tag
 			temp_int = stack.peek()
-			if !stack.is_null(temp_int) {
+			if !is_null(temp_int) {
 				dom.btree.move_pointer(temp_map[temp_int.str()])
 				temp_map[index.str()] = dom.btree.add_children(tag)
 				mut temp_tag := tag_list[temp_int]
@@ -165,7 +144,7 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 					"' which now has ${dom.btree.get_children().len} childrens")
 				*/
 				dom.print_debug("Added $tag.name as child of '" + temp_tag.name +
-					"' which now has $temp_tag.get_children().len childrens")
+					"' which now has $temp_tag.children.len childrens")
 			} else { // dom.new_root(tag)
 				stack.push(root_index)
 			}
@@ -179,26 +158,33 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.root = tag_list[0]
 }
 
+// This function retuns a Tag array with all tags in document
+// that have a attribute with given name and given value.
 pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
-	if dom.tag_attributes[name].len > location {
-		return dom.tag_attributes[name][location]
+	return if dom.tag_attributes[name].len > location {
+		dom.tag_attributes[name][location]
+	} else {
+		[]&Tag{}
 	}
-	return []&Tag{}
 }
 
+// This function retuns a Tag array with all tags in document that have a name with the given value.
 pub fn (dom DocumentObjectModel) get_by_tag(name string) []&Tag {
-	if name in dom.tag_type {
-		return dom.tag_type[name]
+	return if name in dom.tag_type {
+		dom.tag_type[name]
+	} else {
+		[]&Tag{}
 	}
-	return []&Tag{}
 }
 
+// This function retuns a Tag array with all tags in document that have a attribute with given name.
 pub fn (dom DocumentObjectModel) get_by_attribute(name string) []&Tag {
-	if name in dom.all_attributes {
-		return dom.all_attributes[name]
+	return if name in dom.all_attributes {
+		dom.all_attributes[name]
+	} else {
+		[]&Tag{}
 	}
-	return []&Tag{}
 }
 
 pub fn (dom DocumentObjectModel) get_root() &Tag {
@@ -208,11 +194,3 @@ pub fn (dom DocumentObjectModel) get_root() &Tag {
 pub fn (dom DocumentObjectModel) get_all_tags() []&Tag {
 	return dom.all_tags
 }
-
-/*
-pub fn (dom DocumentObjectModel) get_xpath() XPath {
-	return XPath{
-		dom: dom
-	}
-}
-*/
