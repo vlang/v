@@ -16,7 +16,6 @@ import vhelp
 
 struct FormatOptions {
 	is_l       bool
-	is_c       bool // NB: This refers to the '-c' fmt flag, NOT the C backend
 	is_w       bool
 	is_diff    bool
 	is_verbose bool
@@ -50,8 +49,10 @@ fn main() {
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
+	if '-c' in args {
+		eprintln('`-c` is deprectaed. Please use `-verify` instead.')
+	}
 	foptions := FormatOptions{
-		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
 		is_diff: '-diff' in args
@@ -225,13 +226,6 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		return
 	}
 	is_formatted_different := fc != formatted_fc
-	if foptions.is_c {
-		if is_formatted_different {
-			eprintln('File is not formatted: $file')
-			exit(2)
-		}
-		return
-	}
 	if foptions.is_l {
 		if is_formatted_different {
 			eprintln('File needs formatting: $file')
