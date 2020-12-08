@@ -2,7 +2,11 @@ module html
 
 import os
 
-// A DOM object that will make easier to access some tags and search it.
+// The W3C Document Object Model (DOM) is a platform and language-neutral
+// interface that allows programs and scripts to dynamically access and
+// update the content, structure, and style of a document.
+//
+// https://www.w3.org/TR/WD-DOM/introduction.html
 pub struct DocumentObjectModel {
 mut:
 	root           &Tag
@@ -152,9 +156,8 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	dom.root = tag_list[0]
 }
 
-// This function retuns a Tag array with all tags in document
-// that have a attribute with given name and given value.
-pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name string, value string) []&Tag {
+// get_tag_by_attribute_value retrieves all the tags in the document that has the given attribute name and value.
+pub fn (mut dom DocumentObjectModel) get_tag_by_attribute_value(name string, value string) []&Tag {
 	location := dom.where_is(value, name)
 	return if dom.tag_attributes[name].len > location {
 		dom.tag_attributes[name][location]
@@ -163,8 +166,8 @@ pub fn (mut dom DocumentObjectModel) get_by_attribute_value(name string, value s
 	}
 }
 
-// This function retuns a Tag array with all tags in document that have a name with the given value.
-pub fn (dom DocumentObjectModel) get_by_tag(name string) []&Tag {
+// get_tag retrieves all the tags in the document that has the given tag name.
+pub fn (dom DocumentObjectModel) get_tag(name string) []&Tag {
 	return if name in dom.tag_type {
 		dom.tag_type[name]
 	} else {
@@ -172,8 +175,8 @@ pub fn (dom DocumentObjectModel) get_by_tag(name string) []&Tag {
 	}
 }
 
-// This function retuns a Tag array with all tags in document that have a attribute with given name.
-pub fn (dom DocumentObjectModel) get_by_attribute(name string) []&Tag {
+// get_tag_by_attribute retrieves all the tags in the document that has the given attribute name.
+pub fn (dom DocumentObjectModel) get_tag_by_attribute(name string) []&Tag {
 	return if name in dom.all_attributes {
 		dom.all_attributes[name]
 	} else {
@@ -181,10 +184,12 @@ pub fn (dom DocumentObjectModel) get_by_attribute(name string) []&Tag {
 	}
 }
 
+// get_root returns the root of the document.
 pub fn (dom DocumentObjectModel) get_root() &Tag {
 	return dom.root
 }
 
-pub fn (dom DocumentObjectModel) get_all_tags() []&Tag {
+// get_tags returns all of the tags stored in the document.
+pub fn (dom DocumentObjectModel) get_tags() []&Tag {
 	return dom.all_tags
 }

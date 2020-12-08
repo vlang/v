@@ -7,7 +7,7 @@ enum CloseTagType {
 	new_tag
 }
 
-// An object that holds tags information, such as `name`, `attributes`, `children`.
+// Tag holds the information of an HTML tag.
 [ref_only]
 pub struct Tag {
 pub mut:
@@ -32,8 +32,7 @@ fn (mut tag Tag) add_child(t &Tag) int {
 	return tag.children.len
 }
 
-// Returns the content of the tag and all tags inside it.
-// Also, any `<br>` tag will be converted into `\n`.
+// text returns the text contents of the tag.
 pub fn (tag Tag) text() string {
 	if tag.name.len >= 2 && tag.name[..2] == 'br' {
 		return '\n'

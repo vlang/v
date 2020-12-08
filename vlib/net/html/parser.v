@@ -20,8 +20,7 @@ mut:
 }
 }
 
-// Responsible for read HTML in full strings or splited string and returns all Tag objets of
-// it HTML or return a DocumentObjectModel, that will try to find how the HTML Tree is.
+// Parser is responsible for reading the HTML strings and converting them into a `DocumentObjectModel`.
 pub struct Parser {
 mut:
 	dom                DocumentObjectModel
@@ -80,8 +79,7 @@ fn blank_string(data string) bool {
 	return count == data.len
 }
 
-// ### WARNING
-// If you want to reuse parser object to parse another HTML, call `initialize_all()` function first
+// init initializes the parser.
 fn (mut parser Parser) init() {
 	if parser.initialized {
 		return
@@ -245,13 +243,13 @@ pub fn (mut parser Parser) parse_html(data string) {
 	parser.dom.construct(parser.tags)
 }
 
-// When using **split_parse** method, you must call this function to ends the parse completely.
+// finalize finishes the parsing stage .
 [inline]
 pub fn (mut parser Parser) finalize() {
 	parser.generate_tag()
 }
 
-// Returns the DocumentObjectModel for current parsed tags.
+// get_dom returns the parser's current DOM representation.
 pub fn (mut parser Parser) get_dom() DocumentObjectModel {
 	if !parser.dom.constructed {
 		parser.generate_tag()
