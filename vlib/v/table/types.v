@@ -885,6 +885,8 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			if !table.is_fmt {
 				info := sym.info as FnType
 				res = table.fn_signature(info.func, type_only: true)
+			} else {
+				res = table.shorten_user_defined_typenames(res, import_aliases)
 			}
 		}
 		.map {
@@ -914,17 +916,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			return 'void'
 		}
 		else {
-			// types defined by the user
-			// mod.submod.submod2.Type => submod2.Type
-			parts := res.split('.')
-			res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
-			// cur_mod.Type => Type
-			if res.starts_with(table.cmod_prefix) {
-				res = res.replace_once(table.cmod_prefix, '')
-			}
-			if res in import_aliases {
-				res = import_aliases[res]
-			}
+			res = table.shorten_user_defined_typenames(res, import_aliases)
 		}
 	}
 	nr_muls := t.nr_muls()
@@ -933,6 +925,22 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	}
 	if t.has_flag(.optional) {
 		res = '?' + res
+	}
+	return res
+}
+
+fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
+	mut res := originalname
+	// types defined by the user
+	// mod.submod.submod2.Type => submod2.Type
+	parts := res.split('.')
+	res = if parts.len > 1 { parts[parts.len - 2..].join('.') } else { parts[0] }
+	// cur_mod.Type => Type
+	if res.starts_with(t.cmod_prefix) {
+		res = res.replace_once(t.cmod_prefix, '')
+	}
+	if res in import_aliases {
+		res = import_aliases[res]
 	}
 	return res
 }
