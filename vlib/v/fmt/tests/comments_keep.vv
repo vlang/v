@@ -15,4 +15,14 @@ fn main() {
 	// else
 	// else {
 	// }
+	u2 := User{
+		name: 'Henry' // comment after name
+		// on the next line
+		age: 42
+		// after age line
+		// after line2
+	}
+	_ := User{
+		// Just a comment
+	}
 }

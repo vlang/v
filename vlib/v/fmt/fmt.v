@@ -1829,8 +1829,14 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		name = ''
 	}
 	if it.fields.len == 0 {
-		// `Foo{}` on one line if there are no fields
-		f.write('$name{}')
+		// `Foo{}` on one line if there are no fields or comments
+		if it.pre_comments.len == 0 {
+			f.write('$name{}')
+		} else {
+			f.writeln('$name{')
+			f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
+			f.write('}')
+		}
 	} else if it.is_short {
 		// `Foo{1,2,3}` (short syntax )
 		// if name != '' {
