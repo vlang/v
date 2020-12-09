@@ -1,20 +1,22 @@
 module html
 
+import strings
+
 enum CloseTagType {
 	in_name
 	new_tag
 }
 
+// Tag holds the information of an HTML tag.
 [ref_only]
 pub struct Tag {
 pub mut:
 	name               string
 	content            string
 	children           []&Tag
-mut:
 	attributes         map[string]string // attributes will be like map[name]value
 	last_attribute     string
-	parent             &Tag = C.NULL
+	parent             &Tag = 0
 	position_in_parent int
 	closed             bool
 	close_type         CloseTagType = .in_name
@@ -26,62 +28,45 @@ fn (mut tag Tag) add_parent(t &Tag, position int) {
 }
 
 fn (mut tag Tag) add_child(t &Tag) int {
-	mut children := tag.children
-	children << t
-	tag.children = children
+	tag.children << t
 	return tag.children.len
 }
 
-pub fn (tag Tag) get_children() []&Tag {
-	return tag.children
-}
-
-pub fn (tag Tag) get_parent() &Tag {
-	return tag.parent
-}
-
-pub fn (tag Tag) get_name() string {
-	return tag.name
-}
-
-pub fn (tag Tag) get_content() string {
-	return tag.content
-}
-
-pub fn (tag Tag) get_attributes() map[string]string {
-	return tag.attributes
-}
-
+// text returns the text contents of the tag.
 pub fn (tag Tag) text() string {
-	if tag.name.len >= 2 && tag.name[0..2] == 'br' {
+	if tag.name.len >= 2 && tag.name[..2] == 'br' {
 		return '\n'
 	}
-	mut to_return := tag.content.replace('\n', '')
-	for index := 0; index < tag.children.len; index++ {
-		to_return += tag.children[index].text()
+	mut text_str := strings.new_builder(200)
+	text_str.write(tag.content.replace('\n', ''))
+	for child in tag.children {
+		text_str.write(child.text())
 	}
-	return to_return
+	return text_str.str()
 }
 
 pub fn (tag &Tag) str() string {
-	mut to_return := '<$tag.name'
-	for key in tag.attributes.keys() {
-		to_return += ' $key'
-		value := tag.attributes[key]
+	mut html_str := strings.new_builder(200)
+	html_str.write('<$tag.name')
+	for key, value in tag.attributes {
+		html_str.write(' $key')
 		if value.len > 0 {
-			to_return += '=' + '"${tag.attributes[key]}"'
+			html_str.write('="$value"')
 		}
 	}
-	to_return += if tag.closed && tag.close_type == .in_name { '/>' } else { '>' }
-	to_return += '$tag.content'
+	html_str.write(if tag.closed && tag.close_type == .in_name {
+		'/>'
+	} else {
+		'>'
+	})
+	html_str.write(tag.content)
 	if tag.children.len > 0 {
-		// println('${tag.name} have ${tag.children.len} childrens')
-		for index := 0; index < tag.children.len; index++ {
-			to_return += tag.get_children()[index].str()
+		for child in tag.children {
+			html_str.write(child.str())
 		}
 	}
 	if !tag.closed || tag.close_type == .new_tag {
-		to_return += '</$tag.name>'
+		html_str.write('</$tag.name>')
 	}
-	return to_return
+	return html_str.str()
 }
