@@ -111,6 +111,22 @@ pub fn tos3(s charptr) string {
 	}
 }
 
+// Same as `tos2`, but returns empty string on nil ptr
+pub fn tos4(s byteptr) string {
+	if s == 0 {
+		return ""
+	}
+	return tos2(s)
+}
+
+// Same as `tos4`, but for char*, to avoid warnings
+pub fn tos5(s charptr) string {
+	if s == 0 {
+		return ""
+	}
+	return tos3(s)
+}
+
 [deprecated]
 pub fn tos_lit(s charptr) string {
 	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')

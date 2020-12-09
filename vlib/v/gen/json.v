@@ -127,7 +127,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 		field_type := g.typ(field.typ)
 		field_sym := g.table.get_type_symbol(field.typ)
 		if field.attrs.contains('raw') {
-			dec.writeln('\tres.${c_name(field.name)} = tos2(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
+			dec.writeln('\tres.${c_name(field.name)} = tos4(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 		} else {
 			// Now generate decoders for all field types in this struct
 			// need to do it here so that these functions are generated first

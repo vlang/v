@@ -111,6 +111,15 @@ fn test_raw_json_field() {
 	assert color.space == 'YCbCr'
 }
 
+fn test_bad_raw_json_field() {
+	color := json.decode(Color, '{"space": "YCbCr"}') or {
+		println('text')
+		return
+	}
+	assert color.point == ''
+	assert color.space == 'YCbCr'
+}
+
 struct City {
 	name string
 }
