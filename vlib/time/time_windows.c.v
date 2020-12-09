@@ -71,6 +71,7 @@ fn init_win_time_start() u64 {
 	return s
 }
 
+// sys_mono_now returns the os time
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
@@ -191,6 +192,7 @@ pub fn solaris_now() Time {
 	return Time{}
 }
 
+// dummy to compile with all compilers
 pub fn darwin_utc() Time {
 	return Time{}
 }

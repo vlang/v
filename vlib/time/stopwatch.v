@@ -3,10 +3,12 @@
 // that can be found in the LICENSE file.
 module time
 
+// StopWatchOptions can set if the StopWatch will start automatically
 pub struct StopWatchOptions {
 	auto_start bool = true
 }
 
+// StopWatch can be used to hold time. It can be started, stopped, paused, restarted. In addition, it is possible to measure the time elapsed.
 pub struct StopWatch {
 mut:
 	elapsed u64
@@ -15,6 +17,7 @@ pub mut:
 	end     u64
 }
 
+// new_stopwatch returns a new stopwatch with StopWatchOptions as options
 pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	mut initial := u64(0)
 	if opts.auto_start {
@@ -27,22 +30,25 @@ pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	}
 }
 
-// start Starts the timer. If the timer was paused, restarts counting.
+// start starts the stopwatch. If the timer was paused, restarts counting.
 pub fn (mut t StopWatch) start() {
 	t.start = sys_mono_now()
 	t.end = 0
 }
 
+// restart restarts the stopwatch. If the timer was paused, restarts counting.
 pub fn (mut t StopWatch) restart() {
 	t.start = sys_mono_now()
 	t.end = 0
 	t.elapsed = 0
 }
 
+// stop stops the timer, even if the time is running
 pub fn (mut t StopWatch) stop() {
 	t.end = sys_mono_now()
 }
 
+// pause pauses the timer
 pub fn (mut t StopWatch) pause() {
 	if t.start > 0 {
 		if t.end == 0 {
