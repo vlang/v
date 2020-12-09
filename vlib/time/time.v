@@ -234,8 +234,8 @@ pub fn (t Time) relative() string {
 }
 
 // relative_short returns a string saying how long ago a time occured as follows:
-// 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the 
-// nearest minute, hour or day; anything higher than 10000 days (about 27 years) 
+// 0-30 seconds: `"now"`; 30-60 seconds: `"1m"`; anything else is rounded to the
+// nearest minute, hour or day; anything higher than 10000 days (about 27 years)
 // years returns an empty string.
 // Some Examples:
 // `0s -> 'now'`;
