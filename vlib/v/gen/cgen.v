@@ -1740,8 +1740,10 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
-			if left.info is ast.IdentVar {
-				share := (left.info as ast.IdentVar).share
+			// TODO: temporary, remove this
+			left_info := left.info
+			if left_info is ast.IdentVar {
+				share := left_info.share
 				if share == .shared_t {
 					var_type = var_type.set_flag(.shared_f)
 				}
@@ -3413,19 +3415,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write('_const_')
 	}
 	mut name := c_name(node.name)
-	if node.info is ast.IdentVar {
-		ident_var := node.info as ast.IdentVar
+	// TODO: temporary, remove this
+	node_info := node.info
+	if node_info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
-		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
+		if node_info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_type(ident_var.typ)
+			styp := g.base_type(node_info.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
-		if !g.is_assign_lhs && ident_var.share == .shared_t {
+		if !g.is_assign_lhs && node_info.share == .shared_t {
 			g.write('${name}.val')
 			return
 		}

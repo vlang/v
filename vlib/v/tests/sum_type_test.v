@@ -216,6 +216,41 @@ fn test_match() {
 	}
 }
 
+type WrapperType = FoodWrapper | string
+
+fn test_non_mut_ident_mut_selector_cast_match() {
+	w := WrapperType(FoodWrapper{Food(Eggs{'test'})})
+	match w {
+		FoodWrapper {
+			match w.food {
+				Eggs {
+					assert w.food.name + '2' == 'test2'
+				}
+				else {
+					assert false
+				}
+			}
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+fn test_non_mut_ident_mut_selector_cast_if() {
+	w := WrapperType(FoodWrapper{Food(Eggs{'test'})})
+	if w is FoodWrapper {
+		if w.food is Eggs {
+			assert w.food.name + '2' == 'test2'
+			
+		} else {
+			assert false
+		}
+	} else {
+		assert false
+	}
+}
+
 type Abc = int | string
 
 fn test_string_cast_to_sumtype() {

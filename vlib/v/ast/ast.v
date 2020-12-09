@@ -114,6 +114,16 @@ pub mut:
 	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
 }
 
+// root_ident returns the origin ident where the selector started.
+pub fn (e &SelectorExpr) root_ident() Ident {
+	mut root := e.expr
+	for root is SelectorExpr {
+		selector_expr := root as SelectorExpr
+		root = selector_expr.expr
+	}
+	return root as Ident
+}
+
 // module declaration
 pub struct Module {
 pub:
