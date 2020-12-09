@@ -150,7 +150,7 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :gcc_strap
 )
 
-echo  ^> Attempting to build v.c with Clang
+echo  ^> Attempting to build v_win.c with Clang
 call :buildcmd "clang -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
@@ -171,7 +171,7 @@ if %ERRORLEVEL% NEQ 0 (
 	goto :msvc_strap
 )
 
-echo  ^> Attempting to build v.c with GCC
+echo  ^> Attempting to build v_win.c with GCC
 call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
@@ -211,7 +211,7 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 
 set ObjFile=.v.c.obj
 
-echo  ^> Attempting to build v.c with MSVC
+echo  ^> Attempting to build v_win.c with MSVC
 call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
@@ -227,7 +227,7 @@ goto :success
 
 :tcc_strap
 if [!compiler!] == [] set /a invalid_cc=1
-echo  ^> Attempting to build v.c with TCC
+echo  ^> Attempting to build v_win.c with TCC
 call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
