@@ -276,7 +276,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
-			p.error_with_pos('cannot define new methods on non-local type $type_sym.name', rec_type_pos)
+			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
+				rec_type_pos)
 			return ast.FnDecl{}
 		}
 		// p.warn('reg method $type_sym.name . $name ()')
