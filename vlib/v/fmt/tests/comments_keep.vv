@@ -24,4 +24,7 @@ fn main() {
 		// after age line
 		// after line2
 	}
+	_ := User{
+		// Just a comment
+	}
 }

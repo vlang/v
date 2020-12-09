@@ -324,6 +324,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	mut receiver_type_name := util.no_dots(g.cc_type2(g.unwrap_generic(node.receiver_type)))
 	if typ_sym.kind == .interface_ {
 		// Speaker_name_table[s._interface_idx].speak(s._object)
+		$if debug_interface_method_call ? {
+			eprintln('>>> interface typ_sym.name: $typ_sym.name | receiver_type_name: $receiver_type_name')
+		}
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
