@@ -584,7 +584,7 @@ pub fn (mut p Parser) eat_comments() []ast.Comment {
 	return comments
 }
 
-pub fn (mut p Parser) eat_lineend_comments() []ast.Comment {
+pub fn (mut p Parser) eat_line_end_comments() []ast.Comment {
 	mut comments := []ast.Comment{}
 	for {
 		if p.tok.kind != .comment || p.tok.line_nr != p.prev_tok.line_nr {
@@ -2002,7 +2002,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		// function type: `type mycallback fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
-		comments = p.eat_lineend_comments()
+		comments = p.eat_line_end_comments()
 		return ast.FnTypeDecl{
 			name: fn_name
 			is_pub: is_pub
@@ -2049,7 +2049,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			}
 			is_public: is_pub
 		})
-		comments = p.eat_lineend_comments()
+		comments = p.eat_line_end_comments()
 		return ast.SumTypeDecl{
 			name: name
 			is_pub: is_pub
@@ -2083,7 +2083,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 		is_public: is_pub
 	})
-	comments = p.eat_lineend_comments()
+	comments = p.eat_line_end_comments()
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub

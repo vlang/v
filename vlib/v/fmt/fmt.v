@@ -1866,6 +1866,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 			} else {
 				f.writeln('')
 			}
+			f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
 		}
 		f.indent--
 		if !use_short_args {

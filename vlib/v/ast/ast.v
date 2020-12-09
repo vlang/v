@@ -207,6 +207,7 @@ pub:
 	expr          Expr
 	pos           token.Position
 	comments      []Comment
+	next_comments []Comment
 pub mut:
 	name          string
 	typ           table.Type
