@@ -48,14 +48,18 @@ fn test_parse_rfc2822_invalid() {
 	assert false
 }
 
-fn test_iso8601_parse_utc() {
+fn test_parse_iso8601() {
 	formats := [
-		'2020-06-05T15:38:06.015959Z',
+		'2020-06-05',
 		'2020-06-05T15:38:06Z',
+		'2020-06-05T15:38:06.015959Z',
+		'2020-06-05T15:38:06.015959'
 	]
 	times := [
-		[2020, 6, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 0, 0, 0, 0],
 		[2020, 6, 5, 15, 38, 6, 0],
+		[2020, 6, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 15, 38, 6, 15959],
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or { panic(err) }
@@ -68,16 +72,6 @@ fn test_iso8601_parse_utc() {
 		assert t.second == tt[5]
 		assert t.microsecond == tt[6]
 	}
-}
-
-fn test_iso8601_parse_local() {
-	format_utc := '2020-06-05T15:38:06.015959'
-	t_utc := time.parse_iso8601(format_utc) or {
-		panic(err)
-	}
-	assert t_utc.year == 2020
-	assert t_utc.month == 6
-	assert t_utc.day == 5
 }
 
 fn test_iso8601_parse_utc_diff() {

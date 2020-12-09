@@ -105,11 +105,14 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 pub fn parse_iso8601(s string) ?Time {
 	t_i := s.index('T') or { -1 }
 	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
-	if parts.len != 2 {
+	if !(parts.len == 1 || parts.len == 2) {
 		return err_invalid_8601
 	}
 	year, month, day := parse_iso8601_date(parts[0]) ?
-	hour, minute, second, microsecond, unix_offset, is_utc := parse_iso8601_time(parts[1]) ?
+	mut hour, mut minute, mut second, mut microsecond, mut unix_offset, mut is_utc := 0, 0, 0, 0, i64(0), false
+	if parts.len == 2 {
+		hour, minute, second, microsecond, unix_offset, is_utc = parse_iso8601_time(parts[1]) ?
+	}
 	mut t := new_time(Time{
 		year: year
 		month: month
