@@ -5630,8 +5630,7 @@ fn (mut g Gen) interface_table() string {
 		if g.pref.ccompiler == 'msvc' {
 			// msvc can not process `static struct x[0] = {};`
 			// for now just skip adding `static`.
-			// TODO: generate a non empty _name_table in this case,
-			// a dummy element...
+			// TODO: generate a non empty _name_table in this case, a dummy element...
 			staticprefix = ''
 		}
 		methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
