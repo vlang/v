@@ -5598,9 +5598,6 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		inter_info := ityp.info as table.Interface
-		if inter_info.types.len == 0 {
-			continue
-		}
 		// interface_name is for example Speaker
 		interface_name := c_name(ityp.name)
 		// generate a struct that references interface methods
