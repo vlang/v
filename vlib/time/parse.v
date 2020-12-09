@@ -97,7 +97,7 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	return hour, minute, second, microsecond, unix_offset, is_utc
 }
 
-// parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
+// parse_iso8601 parses iso8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
 // remarks: not all iso8601 is supported
