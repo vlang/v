@@ -5626,16 +5626,12 @@ fn (mut g Gen) interface_table() string {
 		// generate an array of the interface methods for the structs using the interface
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
+		//
 		mut staticprefix := 'static'
 		iname_table_length := inter_info.types.len
-		if g.pref.ccompiler == 'msvc' {
-			staticprefix = ''
-			if iname_table_length == 0 {
-				// msvc can not process `static struct x[0] = {};`
-				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
-			} else {
-				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
-			}
+		if iname_table_length == 0 {
+			// msvc can not process `static struct x[0] = {};`
+			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
 		} else {
 			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
 		}
@@ -5724,7 +5720,7 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 			sb.writeln('int $interface_index_name = $iin_idx;')
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
-		if g.pref.ccompiler == 'msvc' && iname_table_length == 0 {
+		if iname_table_length == 0 {
 			methods_struct.writeln('')
 		} else {
 			methods_struct.writeln('};')
