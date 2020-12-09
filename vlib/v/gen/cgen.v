@@ -5627,13 +5627,18 @@ fn (mut g Gen) interface_table() string {
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
 		mut staticprefix := 'static'
+		iname_table_length := inter_info.types.len
 		if g.pref.ccompiler == 'msvc' {
-			// msvc can not process `static struct x[0] = {};`
-			// for now just skip adding `static`.
-			// TODO: generate a non empty _name_table in this case, a dummy element...
 			staticprefix = ''
+			if iname_table_length == 0 {
+				// msvc can not process `static struct x[0] = {};`
+				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
+			}else{
+				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+			}
+		} else {
+			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
 		}
-		methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
@@ -5719,7 +5724,11 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 			sb.writeln('int $interface_index_name = $iin_idx;')
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
-		methods_struct.writeln('};')
+		if g.pref.ccompiler == 'msvc' && iname_table_length == 0 {
+			methods_struct.writeln('')
+		}else {
+			methods_struct.writeln('};')
+		}
 		// add line return after interface index declarations
 		sb.writeln('')
 		sb.writeln(methods_wrapper.str())
