@@ -5633,7 +5633,7 @@ fn (mut g Gen) interface_table() string {
 			if iname_table_length == 0 {
 				// msvc can not process `static struct x[0] = {};`
 				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
-			}else{
+			} else {
 				methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
 			}
 		} else {
@@ -5726,7 +5726,7 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		if g.pref.ccompiler == 'msvc' && iname_table_length == 0 {
 			methods_struct.writeln('')
-		}else {
+		} else {
 			methods_struct.writeln('};')
 		}
 		// add line return after interface index declarations
