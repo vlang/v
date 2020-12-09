@@ -5626,7 +5626,7 @@ fn (mut g Gen) interface_table() string {
 		// generate an array of the interface methods for the structs using the interface
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
-		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
+		methods_struct.writeln('static $methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
