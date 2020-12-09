@@ -373,13 +373,6 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-// Time subtract using operator overloading
-pub fn (lhs Time) -(rhs Time) Duration {
-	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
-	rhs_micro := rhs.unix * 1000 * 1000 + u64(rhs.microsecond)
-	return (i64(lhs_micro) - i64(rhs_micro)) * microsecond
-}
-
 // convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
