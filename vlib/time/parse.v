@@ -44,44 +44,72 @@ pub fn parse_rfc2822(s string) ?Time {
 	return parse(tos(tmstr, count))
 }
 
+const (
+	err_invalid_8601 = error('Invalid 8601 Format')
+)
+
+fn parse_iso8601_date(s string) ?(int, int, int) {
+	year, month, day := 0, 0, 0
+	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d', &year, &month, &day)}
+	if count != 3 {
+		return err_invalid_8601
+	}
+	return year, month, day
+}
+
+fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
+	hour := 0
+	minute := 0
+	second := 0
+	microsecond := 0
+	plus_min_z := `a`
+	offset_hour := 0
+	offset_minute := 0
+	mut count := unsafe {C.sscanf(charptr(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour, &minute,
+		&second, &microsecond, charptr(&plus_min_z), &offset_hour, &offset_minute)}
+	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
+	if count < 4 {
+		count = unsafe {C.sscanf(charptr(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour, &minute,
+			&second, charptr(&plus_min_z), &offset_hour, &offset_minute)}
+		count++ // Increment count because skipped microsecond
+	}
+	if count < 4 {
+		return err_invalid_8601
+	}
+	is_local_time := plus_min_z == `a` && count == 4
+	is_utc := plus_min_z == `Z` && count == 5
+	if !(count == 7 || is_local_time || is_utc) {
+		return err_invalid_8601
+	}
+	if plus_min_z != `+` && plus_min_z != `-` && !is_utc && !is_local_time {
+		return error('Invalid 8601 format, expected `Z` or `+` or `-` as time separator')
+	}
+	mut unix_offset := 0
+	if offset_hour > 0 {
+		unix_offset += 3600 * offset_hour
+	}
+	if offset_minute > 0 {
+		unix_offset += 60 * offset_minute
+	}
+	if plus_min_z == `+` {
+		unix_offset *= -1
+	}
+	return hour, minute, second, microsecond, unix_offset, is_utc
+}
+
 // parse_iso8601 parses rfc8601 time format yyyy-MM-ddTHH:mm:ss.dddddd+dd:dd as local time
 // the fraction part is difference in milli seconds and the last part is offset
 // from UTC time and can be both +/- HH:mm
 // remarks: not all iso8601 is supported
 // also checks and support for leapseconds should be added in future PR
 pub fn parse_iso8601(s string) ?Time {
-	year := 0
-	month := 0
-	day := 0
-	hour := 0
-	minute := 0
-	second := 0
-	mic_second := 0
-	time_char := `a`
-	plus_min_z := `a`
-	offset_hour := 0
-	offset_min := 0
-	mut count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c%2d:%2d:%2d.%6d%c%2d:%2d',
-		&year, &month, &day, charptr(&time_char), &hour, &minute, &second, &mic_second, charptr(&plus_min_z),
-		&offset_hour, &offset_min)}
-	// Missread microsec ([Year Month Day T Sec Hour Minute].len == 7 < 8)
-	if count < 8 {
-		count = unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c%2d:%2d:%2d%c%2d:%2d',
-			&year, &month, &day, charptr(&time_char), &hour, &minute, &second, charptr(&plus_min_z),
-			&offset_hour, &offset_min)}
-		count++ // Increment count because skipped microsec
+	t_i := s.index('T') or { -1 }
+	parts := if t_i != -1 { [s[..t_i], s[t_i + 1..]] } else { s.split(' ') }
+	if parts.len != 2 {
+		return err_invalid_8601
 	}
-	is_local_time := plus_min_z == `a` && count == 8
-	is_utc := plus_min_z == `Z` && count == 9
-	if count != 11 && !is_local_time && !is_utc {
-		return error('Invalid 8601 format')
-	}
-	if time_char != `T` && time_char != ` ` {
-		return error('Invalid 8601 format, expected space or `T` as time separator')
-	}
-	if plus_min_z != `+` && plus_min_z != `-` && plus_min_z != `Z` && !is_local_time {
-		return error('Invalid 8601 format, expected `Z` or `+` or `-` as time separator')
-	}
+	year, month, day := parse_iso8601_date(parts[0]) ?
+	hour, minute, second, microsecond, unix_offset, is_utc := parse_iso8601_time(parts[1]) ?
 	mut t := new_time(Time{
 		year: year
 		month: month
@@ -89,30 +117,18 @@ pub fn parse_iso8601(s string) ?Time {
 		hour: hour
 		minute: minute
 		second: second
-		microsecond: mic_second
+		microsecond: microsecond
 	})
 	if is_utc {
 		return t
 	}
-	if is_local_time {
-		return to_local_time(t)
-	}
 	mut unix_time := t.unix
-	mut unix_offset := int(0)
-	if offset_hour > 0 {
-		unix_offset += 3600 * offset_hour
+	if unix_offset < 0 {
+		unix_time -= u64(-unix_offset)
+	} else if unix_offset > 0 {
+		unix_time += u64(unix_offset)
 	}
-	if offset_min > 0 {
-		unix_offset += 60 * offset_min
-	}
-	if unix_offset != 0 {
-		if plus_min_z == `+` {
-			unix_time -= u64(unix_offset)
-		} else {
-			unix_time += u64(unix_offset)
-		}
-		t = unix2(int(unix_time), t.microsecond)
-	}
+	t = unix2(int(unix_time), t.microsecond)
 	// Convert the time to local time
 	return to_local_time(t)
 }
