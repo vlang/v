@@ -5638,6 +5638,10 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
+			$if debug_interface_table ? {
+				eprintln('>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
+					g.table.get_type_symbol(st).name)
+			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			if already_generated_mwrappers[interface_index_name] > 0 {

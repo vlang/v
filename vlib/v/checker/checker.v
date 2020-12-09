@@ -1575,12 +1575,6 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
 			continue
 		}
-		// Handle expected interface array
-		/*
-		if exp_type_sym.kind == .array && t.get_type_symbol(t.value_type(exp_idx)).kind == .interface_ {
-			return true
-		}
-		*/
 		c.check_expected(typ, arg.typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
@@ -1631,6 +1625,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 }
 
 fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos token.Position) bool {
+	$if debug_interface_type_implements ? {
+		eprintln('> type_implements typ: $typ.debug() | inter_typ: $inter_typ.debug()')
+	}
 	typ_sym := c.table.get_type_symbol(typ)
 	mut inter_sym := c.table.get_type_symbol(inter_typ)
 	styp := c.table.type_to_str(typ)
@@ -2388,6 +2385,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				if i == 0 {
 					elem_type = expected_value_type
 					c.expected_type = elem_type
+					c.type_implements(typ, elem_type, expr.position())
 				}
 				continue
 			}
