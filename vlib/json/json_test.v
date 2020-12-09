@@ -319,3 +319,35 @@ fn test_encode_alias_struct() {
 	out := json.encode(msg)
 	assert out == expected
 }
+
+struct List {
+	id int
+	items []string
+}
+
+fn test_list() {
+	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}') or {
+		println('error')
+		return
+	}
+	assert list.id == 1
+	assert list.items == ["1", "2"]
+}
+
+fn test_list_no_id() {
+	list := json.decode(List, '{"items": ["1", "2"]}') or {
+		println('error')
+		return
+	}
+	assert list.id == 0
+	assert list.items == ["1", "2"]
+}
+
+fn test_list_no_items() {
+	list := json.decode(List, '{"id": 1}') or {
+		println('error')
+		return
+	}
+	assert list.id == 1
+	assert list.items == []
+}

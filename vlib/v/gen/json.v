@@ -211,7 +211,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 '
 	}
 	return '
-	if(!cJSON_IsArray(root)) {
+	if(root && !cJSON_IsArray(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_array_$styp *)&err;
 	}
