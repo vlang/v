@@ -4561,7 +4561,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
 			if sym.kind == .placeholder {
-				c.error('unknown type `$sym.name`', node.pos)
+				c.error('unknown type `$sym.name`', node.method_type_pos)
 			}
 		}
 	}

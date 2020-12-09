@@ -249,33 +249,34 @@ pub mut:
 
 pub struct FnDecl {
 pub:
-	name          string
-	mod           string
-	params        []table.Param
-	is_deprecated bool
-	is_pub        bool
-	is_variadic   bool
-	is_anon       bool
-	receiver      Field
-	receiver_pos  token.Position
-	is_method     bool
-	method_idx    int
-	rec_mut       bool // is receiver mutable
-	rec_share     table.ShareType
-	language      table.Language
-	no_body       bool // just a definition `fn C.malloc()`
-	is_builtin    bool // this function is defined in builtin/strconv
-	pos           token.Position
-	body_pos      token.Position
-	file          string
-	is_generic    bool
-	is_direct_arr bool // direct array access
-	attrs         []table.Attr
+	name            string
+	mod             string
+	params          []table.Param
+	is_deprecated   bool
+	is_pub          bool
+	is_variadic     bool
+	is_anon         bool
+	receiver        Field
+	receiver_pos    token.Position
+	is_method       bool
+	method_type_pos token.Position
+	method_idx      int
+	rec_mut         bool // is receiver mutable
+	rec_share       table.ShareType
+	language        table.Language
+	no_body         bool // just a definition `fn C.malloc()`
+	is_builtin      bool // this function is defined in builtin/strconv
+	pos             token.Position
+	body_pos        token.Position
+	file            string
+	is_generic      bool
+	is_direct_arr   bool // direct array access
+	attrs           []table.Attr
 pub mut:
-	stmts         []Stmt
-	return_type   table.Type
-	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	source_file   &File = 0
+	stmts           []Stmt
+	return_type     table.Type
+	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	source_file     &File = 0
 }
 
 // break, continue

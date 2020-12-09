@@ -164,6 +164,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut rec_name := ''
 	mut is_method := false
 	mut receiver_pos := token.Position{}
+	mut rec_type_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
 	mut params := []table.Param{}
@@ -195,6 +196,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type = p.parse_type_with_mut(rec_mut)
+		rec_type_pos = p.prev_tok.position()
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 			return ast.FnDecl{}
@@ -346,6 +348,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		receiver_pos: receiver_pos
 		is_method: is_method
+		method_type_pos: rec_type_pos
 		method_idx: type_sym_method_idx
 		rec_mut: rec_mut
 		language: language
