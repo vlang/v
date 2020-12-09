@@ -195,8 +195,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
+		rec_type_pos = p.tok.position()
 		rec_type = p.parse_type_with_mut(rec_mut)
-		rec_type_pos = p.prev_tok.position()
+		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 			return ast.FnDecl{}
@@ -275,7 +276,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
-			p.error('cannot define new methods on non-local type $type_sym.name')
+			p.error_with_pos('cannot define new methods on non-local type $type_sym.name', rec_type_pos)
 			return ast.FnDecl{}
 		}
 		// p.warn('reg method $type_sym.name . $name ()')
