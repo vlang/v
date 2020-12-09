@@ -304,10 +304,11 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		if sym.info is table.Struct {
-			info := sym.info as table.Struct
-			mut fields := info.fields.filter(it.attrs.len == 0)
-			fields_with_attrs := info.fields.filter(it.attrs.len > 0)
+		// TODO: temporary, remove this
+		sym_info := sym.info
+		if sym_info is table.Struct {
+			mut fields := sym_info.fields.filter(it.attrs.len == 0)
+			fields_with_attrs := sym_info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
 			if fields.len > 0 {
 				g.writeln('\tFieldData $node.val_var;')

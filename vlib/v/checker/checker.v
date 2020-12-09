@@ -2977,9 +2977,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					mut is_mut := false
 					if mut node.right.left is ast.Ident {
 						ident := node.right.left
-						if ident.obj is ast.Var {
-							v := ident.obj as ast.Var
-							is_mut = v.is_mut
+						// TODO: temporary, remove this
+						ident_obj := ident.obj
+						if ident_obj is ast.Var {
+							is_mut = ident_obj.is_mut
 						}
 					}
 					if !c.inside_unsafe && is_mut {
@@ -3611,7 +3612,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						mut sum_type_casts := []table.Type{}
 						expr_sym := c.table.get_type_symbol(node.cond.expr_type)
 						if field := c.table.struct_find_field(expr_sym, node.cond.field_name) {
-							is_mut = field.is_mut
+							if field.is_mut {
+								root_ident := node.cond.root_ident()
+								if v := scope.find_var(root_ident.name) {
+									is_mut = v.is_mut
+								}
+							}
 						}
 						if field := scope.find_struct_field(node.cond.expr_type, node.cond.field_name) {
 							sum_type_casts << field.sum_type_casts
@@ -3864,6 +3870,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					is_variable := if mut infix.left is ast.Ident { infix.left.kind == .variable } else { true }
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
+						// TODO: merge this code with match_expr because it has the same logic implemented
 						if left_sym.kind in [.interface_, .sum_type] {
 							mut is_mut := false
 							mut scope := c.file.scope.innermost(branch.body_pos.pos)
@@ -3902,7 +3909,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								mut sum_type_casts := []table.Type{}
 								expr_sym := c.table.get_type_symbol(infix.left.expr_type)
 								if field := c.table.struct_find_field(expr_sym, infix.left.field_name) {
-									is_mut = field.is_mut
+									if field.is_mut {
+										root_ident := infix.left.root_ident()
+										if v := scope.find_var(root_ident.name) {
+											is_mut = v.is_mut
+										}
+									}
 								}
 								if field := scope.find_struct_field(infix.left.expr_type,
 									infix.left.field_name) {
