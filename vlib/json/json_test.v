@@ -111,6 +111,15 @@ fn test_raw_json_field() {
 	assert color.space == 'YCbCr'
 }
 
+fn test_bad_raw_json_field() {
+	color := json.decode(Color, '{"space": "YCbCr"}') or {
+		println('text')
+		return
+	}
+	assert color.point == ''
+	assert color.space == 'YCbCr'
+}
+
 struct City {
 	name string
 }
@@ -309,4 +318,36 @@ fn test_encode_alias_struct() {
 	msg := Message{'118499178790780929'}
 	out := json.encode(msg)
 	assert out == expected
+}
+
+struct List {
+	id int
+	items []string
+}
+
+fn test_list() {
+	list := json.decode(List, '{"id": 1, "items": ["1", "2"]}') or {
+		println('error')
+		return
+	}
+	assert list.id == 1
+	assert list.items == ["1", "2"]
+}
+
+fn test_list_no_id() {
+	list := json.decode(List, '{"items": ["1", "2"]}') or {
+		println('error')
+		return
+	}
+	assert list.id == 0
+	assert list.items == ["1", "2"]
+}
+
+fn test_list_no_items() {
+	list := json.decode(List, '{"id": 1}') or {
+		println('error')
+		return
+	}
+	assert list.id == 1
+	assert list.items == []
 }
