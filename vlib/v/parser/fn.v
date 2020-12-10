@@ -431,6 +431,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.tok.position())
+				return []table.Param{}, false, false
+			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -443,6 +447,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
+			if arg_type == 0 {
+				// error is added in parse_type
+				return []table.Param{}, false, false
+			}
 			if is_mut {
 				if !arg_type.has_flag(.generic) {
 					if is_shared {
@@ -471,6 +479,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			if is_variadic {
 				arg_type = arg_type.set_flag(.variadic)
 			}
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				return []table.Param{}, false, false
+			}
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
@@ -493,6 +505,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.tok.position())
+				return []table.Param{}, false, false
+			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			mut is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -522,6 +538,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut typ := p.parse_type()
+			if typ == 0 {
+				// error is added in parse_type
+				return []table.Param{}, false, false
+			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
 					if is_shared {
@@ -560,6 +580,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 						arg_pos[i])
 					return []table.Param{}, false, false
 				}
+			}
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				return []table.Param{}, false, false
 			}
 			if p.tok.kind != .rpar {
 				p.check(.comma)
