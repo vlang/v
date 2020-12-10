@@ -1384,7 +1384,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	// println(fn_name)
 	// }
 	if fn_name == 'json.encode' {
-	} else if fn_name == 'json.decode' {
+	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
 			typ := typeof(expr)
