@@ -570,11 +570,13 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					expected_type_sym := c.table.get_type_symbol(info_field.typ)
 					if expected_type_sym.kind == .sum_type || expr_type_sym.kind == .sum_type {
 						if expr_type != info_field.typ && !c.table.sumtype_has_variant(info_field.typ, expr_type) {
-							c.error('cannot assign to field `$info_field.name`: expected `$expected_type_sym.name`, not `$expr_type_sym.name`', field.pos)
+							c.error('cannot assign to field `$info_field.name`: expected `$expected_type_sym.name`, not `$expr_type_sym.name`',
+								field.pos)
 						}
 					} else {
 						c.check_expected(expr_type, info_field.typ) or {
-							c.error('cannot assign to field `$info_field.name`: $err', field.pos)
+							c.error('cannot assign to field `$info_field.name`: $err',
+								field.pos)
 						}
 					}
 				}
@@ -2277,8 +2279,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		if !is_blank_ident && right_sym.kind != .placeholder {
 			// Dual sides check (compatibility check)
 			if !is_decl && (left_sym.kind == .sum_type || right_sym.kind == .sum_type) {
-				if right_type_unwrapped != left_type_unwrapped && !c.table.sumtype_has_variant(left_type_unwrapped, right_type_unwrapped) {
-					c.error('cannot assign to `$left`: expected `$left_sym.name`, not `$right_sym.name`', right.position())
+				if right_type_unwrapped != left_type_unwrapped &&
+					!c.table.sumtype_has_variant(left_type_unwrapped, right_type_unwrapped) {
+					c.error('cannot assign to `$left`: expected `$left_sym.name`, not `$right_sym.name`',
+						right.position())
 				}
 			} else {
 				c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
