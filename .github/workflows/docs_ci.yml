@@ -2,15 +2,21 @@ name: Docs CI
 
 ### Run on *EVERY* commit. The documentation *SHOULD* stay valid, and
 ### the developers should receive early warning if they break it.
-on: [push, pull_request]
+on:
+  push:
+    paths:
+      - "**.md"
+  pull_request:
+    paths:
+      - "**.md"
 
 jobs:
   check-markdown:
     runs-on: ubuntu-18.04
     timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v2
-    - name: Build V
-      run: make
-    - name: Check markdown line length & code examples
-      run: ./v run cmd/tools/check-md.v -all
+      - uses: actions/checkout@v2
+      - name: Build V
+        run: make
+      - name: Check markdown line length & code examples
+        run: ./v run cmd/tools/check-md.v -all
