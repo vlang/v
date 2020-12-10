@@ -283,9 +283,14 @@ pub fn (mut c Checker) check_expected(got table.Type, expected table.Type) ? {
 	if c.check_types(got, expected) {
 		return
 	}
+	return error(c.expected_msg(got, expected))
+}
+
+[inline]
+fn (c &Checker) expected_msg(got table.Type, expected table.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return error('expected `$exps`, not `$gots`')
+	return 'expected `$exps`, not `$gots`'
 }
 
 pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {

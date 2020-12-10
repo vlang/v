@@ -193,7 +193,7 @@ pub fn (mut g JsGen) enter_namespace(name string) {
 }
 
 pub fn (mut g JsGen) escape_namespace() {
-	g.ns = 0
+	g.ns = &Namespace(0)
 	g.inside_builtin = false
 }
 
