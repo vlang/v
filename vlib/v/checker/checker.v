@@ -4086,7 +4086,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					if cond.left is ast.SelectorExpr && cond.right is ast.Type {
 						// $if method.@type is string
 					} else {
-						c.error('invalid `\$if` condition: ${cond.left}', cond.pos)
+						c.error('invalid `\$if` condition: $cond.left', cond.pos)
 					}
 				}
 				.eq, .ne {
@@ -4103,12 +4103,17 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 						if !c.check_types(right_type, left_type) {
 							left_name := c.table.type_to_str(left_type)
 							right_name := c.table.type_to_str(right_type)
-							c.error('mismatched types `$left_name` and `$right_name`', cond.pos)
+							c.error('mismatched types `$left_name` and `$right_name`',
+								cond.pos)
 						}
 						// :)
 						// until `v.eval` is stable, I can't think of a better way to do this
 						different := expr.str() != cond.right.str()
-						return if cond.op == .eq { different } else { !different }
+						return if cond.op == .eq {
+							different
+						} else {
+							!different
+						}
 					} else {
 						c.error('invalid `\$if` condition: ${typeof(cond.left)}', cond.pos)
 					}
@@ -4166,15 +4171,10 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 
 fn (mut c Checker) find_definition(ident ast.Ident) ?ast.Expr {
 	match ident.kind {
-		.unresolved, .blank_ident {
-			return none
-		} .variable, .constant {
-			return c.find_obj_definition(ident.obj)
-		} .global {
-			return error('$ident.name is a global variable')
-		} .function {
-			return error('$ident.name is a function')
-		}
+		.unresolved, .blank_ident { return none }
+		.variable, .constant { return c.find_obj_definition(ident.obj) }
+		.global { return error('$ident.name is a global variable') }
+		.function { return error('$ident.name is a function') }
 	}
 }
 
