@@ -95,6 +95,10 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: ./v -silent test-fixed
+    - name: Test time functions in a timezone A, different than UTC
+      run: TZ=UTC+3 ./v test vlib/time/
+    - name: Test time functions in a timezone B, different than UTC
+      run: TZ=UTC+12 ./v test vlib/time/
     - name: Test building v tools
       run: ./v -silent build-tools
     - name: v doctor
