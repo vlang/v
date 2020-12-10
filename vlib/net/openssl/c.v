@@ -91,6 +91,8 @@ fn C.SSL_library_init()
 
 fn C.SSLv23_client_method() &C.SSL_METHOD
 
+fn C.TLS_method() &C.SSL_METHOD
+
 fn C.TLSv1_2_method() voidptr
 
 fn init() {
