@@ -352,7 +352,7 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
 		mut c := 0
-		for {
+		for p.tok.kind != .eof {
 			stmts << p.stmt(is_top_level)
 			// p.warn('after stmt(): tok=$p.tok.str()')
 			if p.tok.kind in [.eof, .rcbr] {
