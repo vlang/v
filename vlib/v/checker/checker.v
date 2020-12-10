@@ -1240,8 +1240,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		} else if !method.is_variadic && call_expr.args.len > nr_args {
 			unexpected_arguments := call_expr.args[min_required_args..]
 			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
-			c.error('expected $nr_args arguments, but got $call_expr.args.len',
-				unexpected_arguments_pos)
+			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
 		// if method_name == 'clone' {
