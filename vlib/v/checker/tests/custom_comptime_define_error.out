@@ -1,7 +1,7 @@
-vlib/v/checker/tests/custom_comptime_define_error.vv:6:9: error: unknown $if value
+vlib/v/checker/tests/custom_comptime_define_error.vv:6:13: error: undefined ident: `mysymbol`
     4 |             println('optional compitme define works')
     5 |         }
     6 |         $if mysymbol {
-      |         ~~~~~~~~~~~~
+      |             ~~~~~~~~
     7 |             // this will produce a checker error when `-d mysymbol` is not given on the CLI
     8 |             println('non optional comptime define works')

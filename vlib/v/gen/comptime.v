@@ -184,6 +184,9 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 
 fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 	match cond {
+		ast.BoolLiteral {
+			g.expr(cond)
+		}
 		ast.ParExpr {
 			g.write('(')
 			g.comp_if_expr(cond.expr)
@@ -194,7 +197,10 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 			g.comp_if_expr(cond.right)
 		}
 		ast.PostfixExpr {
-			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true)
+			ifdef := g.comp_if_to_ifdef((cond.expr as ast.Ident).name, true) or {
+				verror(err)
+				return
+			}
 			g.write('defined($ifdef)')
 		}
 		ast.InfixExpr {
@@ -213,15 +219,19 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 				}
 				.eq, .ne {
 					// TODO Implement `$if method.args.len == 1`
+					g.write('1')
 				}
 				else {}
 			}
 		}
 		ast.Ident {
-			ifdef := g.comp_if_to_ifdef(cond.name, false)
+			ifdef := g.comp_if_to_ifdef(cond.name, false) or { 'true' } // handled in checker
 			g.write('defined($ifdef)')
 		}
-		else {}
+		else {
+			// should be unreachable, but just in case
+			g.write('1')
+		}
 	}
 }
 

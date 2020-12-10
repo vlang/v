@@ -4049,6 +4049,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 	// TODO: better error messages here
 	match cond {
+		ast.BoolLiteral {
+			return !cond.val
+		}
 		ast.ParExpr {
 			return c.comp_if_branch(cond.expr, pos)
 		}
@@ -4080,17 +4083,34 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
-					// $if method.@type is string
-					// TODO better checks here, will be done in comp. for PR
-					if cond.left !is ast.SelectorExpr || cond.right !is ast.Type {
-						c.error('invalid `\$if` condition', cond.pos)
+					if cond.left is ast.SelectorExpr && cond.right is ast.Type {
+						// $if method.@type is string
+					} else {
+						c.error('invalid `\$if` condition: ${cond.left}', cond.pos)
 					}
 				}
 				.eq, .ne {
-					// $if method.args.len == 1
-					// TODO better checks here, will be done in comp. for PR
-					if cond.left !is ast.SelectorExpr || cond.right !is ast.IntegerLiteral {
-						c.error('invalid `\$if` condition', cond.pos)
+					if cond.left is ast.SelectorExpr && cond.right is ast.IntegerLiteral {
+						// $if method.args.len == 1
+					} else if cond.left is ast.Ident {
+						// $if version == 2
+						left_type := c.expr(cond.left)
+						right_type := c.expr(cond.right)
+						expr := c.find_definition(cond.left) or {
+							c.error(err, cond.left.pos)
+							return false
+						}
+						if !c.check_types(right_type, left_type) {
+							left_name := c.table.type_to_str(left_type)
+							right_name := c.table.type_to_str(right_type)
+							c.error('mismatched types `$left_name` and `$right_name`', cond.pos)
+						}
+						// :)
+						// until `v.eval` is stable, I can't think of a better way to do this
+						different := expr.str() != cond.right.str()
+						return if cond.op == .eq { different } else { !different }
+					} else {
+						c.error('invalid `\$if` condition: ${typeof(cond.left)}', cond.pos)
 					}
 				}
 				else {
@@ -4116,10 +4136,25 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					'no_bounds_checking' { return cond.name !in c.pref.compile_defines_all }
 					else { return false }
 				}
-			} else {
-				if cond.name !in c.pref.compile_defines_all {
-					c.error('unknown \$if value', pos)
+			} else if cond.name !in c.pref.compile_defines_all {
+				// `$if some_var {}`
+				typ := c.expr(cond)
+				scope := c.file.scope.innermost(pos.pos)
+				obj := scope.find(cond.name) or {
+					c.error('unknown var: `$cond.name`', pos)
+					return false
 				}
+				expr := c.find_obj_definition(obj) or {
+					c.error(err, cond.pos)
+					return false
+				}
+				if !c.check_types(typ, table.bool_type) {
+					type_name := c.table.type_to_str(typ)
+					c.error('non-bool type `$type_name` used as \$if condition', cond.pos)
+				}
+				// :)
+				// until `v.eval` is stable, I can't think of a better way to do this
+				return !(expr as ast.BoolLiteral).val
 			}
 		}
 		else {
@@ -4127,6 +4162,46 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 		}
 	}
 	return false
+}
+
+fn (mut c Checker) find_definition(ident ast.Ident) ?ast.Expr {
+	match ident.kind {
+		.unresolved, .blank_ident {
+			return none
+		} .variable, .constant {
+			return c.find_obj_definition(ident.obj)
+		} .global {
+			return error('$ident.name is a global variable')
+		} .function {
+			return error('$ident.name is a function')
+		}
+	}
+}
+
+fn (mut c Checker) find_obj_definition(obj ast.ScopeObject) ?ast.Expr {
+	// TODO: remove once we have better type inference
+	mut name := ''
+	match obj {
+		ast.Var, ast.ConstField, ast.GlobalField { name = obj.name }
+	}
+	mut expr := ast.Expr{}
+	if obj is ast.Var {
+		if obj.is_mut {
+			return error('`$name` is mut and may have changed since its definition')
+		}
+		expr = obj.expr
+	} else if obj is ast.ConstField {
+		expr = obj.expr
+	} else {
+		return error('`$name` is a global variable and is unknown at compile time')
+	}
+	if expr is ast.Ident {
+		return c.find_definition(expr as ast.Ident) // TODO: smartcast
+	}
+	if !expr.is_lit() {
+		return error('definition of `$name` is unknown at compile time')
+	}
+	return expr
 }
 
 fn (c &Checker) has_return(stmts []ast.Stmt) ?bool {
