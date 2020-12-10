@@ -5601,9 +5601,6 @@ fn (mut g Gen) interface_table() string {
 			continue
 		}
 		inter_info := ityp.info as table.Interface
-		if inter_info.types.len == 0 {
-			continue
-		}
 		// interface_name is for example Speaker
 		interface_name := c_name(ityp.name)
 		// generate a struct that references interface methods
@@ -5632,7 +5629,15 @@ fn (mut g Gen) interface_table() string {
 		// generate an array of the interface methods for the structs using the interface
 		// as well as case functions from the struct to the interface
 		mut methods_struct := strings.new_builder(100)
-		methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$inter_info.types.len] = {')
+		//
+		mut staticprefix := 'static'
+		iname_table_length := inter_info.types.len
+		if iname_table_length == 0 {
+			// msvc can not process `static struct x[0] = {};`
+			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
+		} else {
+			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+		}
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "$interface_name"')
 		mut methods_wrapper := strings.new_builder(100)
@@ -5644,6 +5649,10 @@ fn (mut g Gen) interface_table() string {
 			// cctype is the Cleaned Concrete Type name, *without ptr*,
 			// i.e. cctype is always just Cat, not Cat_ptr:
 			cctype := g.cc_type(st)
+			$if debug_interface_table ? {
+				eprintln('>> interface name: $ityp.name | concrete type: $st.debug() | st symname: ' +
+					g.table.get_type_symbol(st).name)
+			}
 			// Speaker_Cat_index = 0
 			interface_index_name := '_${interface_name}_${cctype}_index'
 			if already_generated_mwrappers[interface_index_name] > 0 {
@@ -5714,7 +5723,11 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 			sb.writeln('int $interface_index_name = $iin_idx;')
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
-		methods_struct.writeln('};')
+		if iname_table_length == 0 {
+			methods_struct.writeln('')
+		} else {
+			methods_struct.writeln('};')
+		}
 		// add line return after interface index declarations
 		sb.writeln('')
 		sb.writeln(methods_wrapper.str())

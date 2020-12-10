@@ -28,4 +28,7 @@ fn test_ptr_arithmetic_over_byteptr() {
 	assert q == byteptr(9)
 	s := unsafe { q - 1 }
 	assert s == byteptr(8)
+
+	unsafe {q++ q++ q--}
+	assert q == byteptr(10)
 }

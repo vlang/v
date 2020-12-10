@@ -164,6 +164,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	mut rec_name := ''
 	mut is_method := false
 	mut receiver_pos := token.Position{}
+	mut rec_type_pos := token.Position{}
 	mut rec_type := table.void_type
 	mut rec_mut := false
 	mut params := []table.Param{}
@@ -194,7 +195,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// }
 		// TODO: talk to alex, should mut be parsed with the type like this?
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
+		rec_type_pos = p.tok.position()
 		rec_type = p.parse_type_with_mut(rec_mut)
+		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
 			return ast.FnDecl{}
@@ -273,7 +276,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
 		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
-			p.error('cannot define new methods on non-local type $type_sym.name')
+			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
+				rec_type_pos)
 			return ast.FnDecl{}
 		}
 		// p.warn('reg method $type_sym.name . $name ()')
@@ -346,6 +350,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		receiver_pos: receiver_pos
 		is_method: is_method
+		method_type_pos: rec_type_pos
 		method_idx: type_sym_method_idx
 		rec_mut: rec_mut
 		language: language
@@ -426,6 +431,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		// p.warn('types only')
 		mut arg_no := 1
 		for p.tok.kind != .rpar {
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.tok.position())
+				return []table.Param{}, false, false
+			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -438,6 +447,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut arg_type := p.parse_type()
+			if arg_type == 0 {
+				// error is added in parse_type
+				return []table.Param{}, false, false
+			}
 			if is_mut {
 				if !arg_type.has_flag(.generic) {
 					if is_shared {
@@ -466,6 +479,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			if is_variadic {
 				arg_type = arg_type.set_flag(.variadic)
 			}
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				return []table.Param{}, false, false
+			}
 			if p.tok.kind == .comma {
 				if is_variadic {
 					p.error_with_pos('cannot use ...(variadic) with non-final parameter no $arg_no',
@@ -488,6 +505,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		}
 	} else {
 		for p.tok.kind != .rpar {
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.tok.position())
+				return []table.Param{}, false, false
+			}
 			is_shared := p.tok.kind == .key_shared
 			is_atomic := p.tok.kind == .key_atomic
 			mut is_mut := p.tok.kind == .key_mut || is_shared || is_atomic
@@ -517,6 +538,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			}
 			pos := p.tok.position()
 			mut typ := p.parse_type()
+			if typ == 0 {
+				// error is added in parse_type
+				return []table.Param{}, false, false
+			}
 			if is_mut {
 				if !typ.has_flag(.generic) {
 					if is_shared {
@@ -555,6 +580,10 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 						arg_pos[i])
 					return []table.Param{}, false, false
 				}
+			}
+			if p.tok.kind == .eof {
+				p.error_with_pos('expecting `)`', p.prev_tok.position())
+				return []table.Param{}, false, false
 			}
 			if p.tok.kind != .rpar {
 				p.check(.comma)

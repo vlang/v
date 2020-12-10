@@ -254,7 +254,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 			}
 			if name == '' {
 				// This means the developer is using some wrong syntax like `x: int` instead of `x int`
-				p.error('bad type syntax')
+				p.error('expecting type declaration')
 				return 0
 			}
 			match name {

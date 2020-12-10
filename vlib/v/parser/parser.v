@@ -66,12 +66,10 @@ mut:
 
 // for tests
 pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
-	pref := &pref.Preferences{}
-	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
-		scanner: s
+		scanner: scanner.new_scanner(text, .skip_comments, &pref.Preferences{})
 		table: table
-		pref: pref
+		pref: &pref.Preferences{}
 		scope: scope
 		global_scope: &ast.Scope{
 			start_pos: 0
@@ -84,9 +82,8 @@ pub fn parse_stmt(text string, table &table.Table, scope &ast.Scope) ast.Stmt {
 }
 
 pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, scope &ast.Scope, global_scope &ast.Scope) ast.File {
-	s := scanner.new_scanner(text, .skip_comments, pref)
 	mut p := Parser{
-		scanner: s
+		scanner: scanner.new_scanner(text, .skip_comments, pref)
 		table: table
 		pref: pref
 		scope: scope
@@ -98,9 +95,8 @@ pub fn parse_comptime(text string, table &table.Table, pref &pref.Preferences, s
 }
 
 pub fn parse_text(text string, path string, table &table.Table, comments_mode scanner.CommentsMode, pref &pref.Preferences, global_scope &ast.Scope) ast.File {
-	s := scanner.new_scanner(text, comments_mode, pref)
 	mut p := Parser{
-		scanner: s
+		scanner: scanner.new_scanner(text, comments_mode, pref)
 		comments_mode: comments_mode
 		table: table
 		pref: pref
@@ -120,12 +116,12 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	p.file_backend_mode = .v
 	if path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
 		p.file_backend_mode = .c
-	}
-	if path.ends_with('.js.v') || path.ends_with('.js.vv') || path.ends_with('.js.vsh') {
+	} else if path.ends_with('.js.v') || path.ends_with('.js.vv') || path.ends_with('.js.vsh') {
 		p.file_backend_mode = .js
+	} else {
+		p.file_backend_mode = .v
 	}
 }
 
@@ -407,11 +403,10 @@ fn (mut p Parser) check(expected token.Kind) {
 	if p.tok.kind != expected {
 		if p.tok.kind == .name {
 			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
-			return
 		} else {
 			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
-			return
 		}
+		return
 	}
 	p.next()
 }
