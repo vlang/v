@@ -87,7 +87,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
 
-	s.sslctx = C.SSL_CTX_new(C.TLS_method())
+	s.sslctx = C.SSL_CTX_new(C.SSLv23_client_method())
 	if s.sslctx == 0 {
 		return error("Couldn't get ssl context")
 	}
