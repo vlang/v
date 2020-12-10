@@ -408,6 +408,7 @@ fn (mut g JsGen) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			// skip JS has no typedecl
 		}
+		ast.Error {}
 	}
 }
 
@@ -559,6 +560,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
+		ast.Error {}
 	}
 }
 

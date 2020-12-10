@@ -2529,6 +2529,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		ast.EnumDecl {
 			c.enum_decl(node)
 		}
+		ast.Error {
+			c.error(node.message, node.pos)
+		}
 		ast.ExprStmt {
 			node.typ = c.expr(node.expr)
 			c.expected_type = table.void_type
@@ -2920,6 +2923,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 		}
 		ast.EnumVal {
 			return c.enum_val(mut node)
+		}
+		ast.Error {
+			c.error(node.message, node.pos)
 		}
 		ast.FloatLiteral {
 			return table.any_flt_type

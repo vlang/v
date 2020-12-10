@@ -1131,6 +1131,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		ast.TypeDecl {
 			g.writeln('// TypeDecl')
 		}
+		ast.Error {}
 	}
 	if !g.skip_stmt_pos { // && g.stmt_path_pos.len > 0 {
 		g.stmt_path_pos.delete_last()
@@ -2683,6 +2684,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
+		ast.Error {}
 	}
 }
 

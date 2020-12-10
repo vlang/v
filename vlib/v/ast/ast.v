@@ -14,16 +14,22 @@ pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTe
 	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
 	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
+	StructInit | Type | TypeOf | UnsafeExpr | Error
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
 	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
-	StructDecl | TypeDecl
+	StructDecl | TypeDecl | Error
 
 // NB: when you add a new Expr or Stmt type with a .pos field, remember to update
 // the .position() token.Position methods too.
 pub type ScopeObject = ConstField | GlobalField | Var
+
+pub struct Error {
+pub:
+	message string
+	pos     token.Position
+}
 
 pub struct Type {
 pub:
@@ -1096,6 +1102,9 @@ pub fn (expr Expr) position() token.Position {
 		CTempVar {
 			return token.Position{}
 		}
+		Error {
+			return expr.pos
+		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.
@@ -1155,6 +1164,9 @@ pub fn (stmt Stmt) position() token.Position {
 		TypeDecl { match stmt {
 				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
 			} }
+		Error {
+			return stmt.pos
+		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.
