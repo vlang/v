@@ -608,3 +608,4 @@ jobs:
       run: |
         ./v test-parser examples/hello_world.v
         ./v test-parser examples/hanoi.v
+        ./v test-parser examples/fibonacci.v

@@ -13,7 +13,7 @@ fn main() {
 	args := os.args[1..self_idx]
 	jargs := args.join(' ')
 	obinary := cmdline.option(args, '-o', '')
-	sargs := if obinary != '' { jargs } else { '$jargs -o v2 ' }
+	sargs := if obinary != '' { jargs } else { '$jargs -o v2' }
 	cmd := '$vexe $sargs cmd/v'
 	options := if args.len > 0 { '($sargs)' } else { '' }
 	println('V self compiling ${options}...')
