@@ -93,23 +93,23 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 		return error("Couldn't get ssl context")
 	}
 
-	C.SSL_CTX_set_verify_depth(s.sslctx, 4)
-	flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
-	C.SSL_CTX_set_options(s.sslctx, flags)
-	mut res := C.SSL_CTX_load_verify_locations(s.sslctx, 'random-org-chain.pem', 0)
+	// C.SSL_CTX_set_verify_depth(s.sslctx, 4)
+	// flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
+	// C.SSL_CTX_set_options(s.sslctx, flags)
+	// mut res := C.SSL_CTX_load_verify_locations(s.sslctx, 'random-org-chain.pem', 0)
 	
 	s.ssl = C.SSL_new(s.sslctx)
 	if s.ssl == 0 {
 		return error("Couldn't create OpenSSL instance.")
 	}
 
-	preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
-	res = C.SSL_set_cipher_list(s.ssl, preferred_ciphers.str)
-	if res != 1 {
-		println('http: openssl: cipher failed')
-	}
+	// preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
+	// mut res := C.SSL_set_cipher_list(s.ssl, preferred_ciphers.str)
+	// if res != 1 {
+	// 	println('http: openssl: cipher failed')
+	// }
 	
-	res = C.SSL_set_tlsext_host_name(s.ssl, hostname.str)
+	mut res := C.SSL_set_tlsext_host_name(s.ssl, hostname.str)
 	if res != 1 {
 		return error('cannot set host name')
 	}
