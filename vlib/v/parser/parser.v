@@ -1132,7 +1132,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			if p.tok.lit in p.imports {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
-				if p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital() {
+				if p.peek_tok.kind == .dot && p.peek_tok2.kind != .eof && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true
 				}
 			}
@@ -1143,7 +1143,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	lit0_is_capital := p.tok.lit[0].is_capital()
+	lit0_is_capital := if p.tok.kind != .eof { p.tok.lit[0].is_capital() } else { false }
 	// use heuristics to detect `func<T>()` from `var < expr`
 	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
