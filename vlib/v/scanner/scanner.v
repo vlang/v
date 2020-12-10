@@ -798,7 +798,7 @@ fn (mut s Scanner) text_scan() token.Token {
 			`.` {
 				if nextc == `.` {
 					s.pos++
-					if s.pos < s.text.len - 1 && s.text[s.pos + 1] == `.` {
+					if s.pos + 1 < s.text.len && s.text[s.pos + 1] == `.` {
 						s.pos++
 						return s.new_token(.ellipsis, '', 3)
 					}
