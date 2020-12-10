@@ -417,7 +417,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	a3.len += size
 }
 
-// reverse_in_place reverses elements of the original array.
+// reverse_in_place reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
 	if a.len < 2 {
 		return
