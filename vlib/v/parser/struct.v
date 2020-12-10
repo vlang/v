@@ -194,6 +194,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				typ = p.parse_type()
+				if typ.idx() == 0 {
+					// error is set in parse_type
+					return ast.StructDecl{}
+				}
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
