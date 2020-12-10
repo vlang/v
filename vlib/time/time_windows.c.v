@@ -71,7 +71,7 @@ fn init_win_time_start() u64 {
 	return s
 }
 
-// sys_mono_now returns the os time
+// sys_mono_now returns the system time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail

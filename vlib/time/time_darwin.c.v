@@ -38,7 +38,6 @@ fn init_time_base() C.mach_timebase_info_data_t {
 	}
 }
 
-// sys_mono_now_darwin returns the os time on darwin systems
 fn sys_mono_now_darwin() u64 {
 	tm := C.mach_absolute_time()
 	if time_base.denom == 0 {

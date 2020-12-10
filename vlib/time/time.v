@@ -37,7 +37,7 @@ const (
 	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thusday', 'Friday', 'Saturday', 'Sunday']
 )
 
-// Time holds various time units for a point time
+// Time contains various time units for a point in time
 pub struct Time {
 pub:
 	year        int
@@ -74,7 +74,7 @@ pub enum FormatDate {
 	yyyymmdd
 }
 
-// FormatDelimiter enumerates different time/date delemiters
+// FormatDelimiter enumerates different time/date delimiters
 pub enum FormatDelimiter {
 	dot
 	hyphen
