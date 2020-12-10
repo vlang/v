@@ -93,6 +93,11 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 		return error("Couldn't get ssl context")
 	}
 
+	// TODO: Fix option to enable/disable checks for valid
+	//		 certificates to allow both secure and self signed
+	//		 for now the checks are not done at all to comply 
+	// 		 to current autobahn tests
+
 	// C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 	// flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
 	// C.SSL_CTX_set_options(s.sslctx, flags)
