@@ -596,8 +596,8 @@ jobs:
             name: client wss
             path: ${{github.workspace}}/reports_wss/clients/index.html
 
-  parser-silent-hello-world:
-    name: Parser silent mode - examples/hello_world.v
+  parser-silent:
+    name: Parser silent mode
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -607,3 +607,4 @@ jobs:
     - name: Run test-parser
       run: |
         ./v test-parser examples/hello_world.v
+        ./v test-parser examples/hanoi.v
