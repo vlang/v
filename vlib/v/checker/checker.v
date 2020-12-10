@@ -1235,11 +1235,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		min_required_args := method.params.len - if method.is_variadic && method.params.len >
 			1 { 2 } else { 1 }
 		if call_expr.args.len < min_required_args {
-			c.error('too few arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $min_required_args)',
+			c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 				call_expr.pos)
 		} else if !method.is_variadic && call_expr.args.len > nr_args {
-			c.error('too many arguments in call to `${left_type_sym.name}.$method_name` ($call_expr.args.len instead of $nr_args)',
-				call_expr.pos)
+			unexpected_arguments := call_expr.args[min_required_args..]
+			unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
+			c.error('expected $nr_args arguments, but got $call_expr.args.len', unexpected_arguments_pos)
 			return method.return_type
 		}
 		// if method_name == 'clone' {
@@ -1511,11 +1512,13 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	min_required_args := if f.is_variadic { f.params.len - 1 } else { f.params.len }
 	if call_expr.args.len < min_required_args {
-		c.error('too few arguments in call to `$fn_name` ($call_expr.args.len instead of $min_required_args)',
+		c.error('expected $min_required_args arguments, but got $call_expr.args.len',
 			call_expr.pos)
 	} else if !f.is_variadic && call_expr.args.len > f.params.len {
-		c.error('too many arguments in call to `$fn_name` ($call_expr.args.len instead of $f.params.len)',
-			call_expr.pos)
+		unexpected_arguments := call_expr.args[min_required_args..]
+		unexpected_arguments_pos := unexpected_arguments[0].pos.extend(unexpected_arguments.last().pos)
+		c.error('expected $min_required_args arguments, but got $call_expr.args.len',
+			unexpected_arguments_pos)
 		return f.return_type
 	}
 	// println can print anything

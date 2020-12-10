@@ -119,14 +119,16 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			p.next()
 		}
 		mut comments := p.eat_comments()
+		arg_start_pos := p.tok.position()
 		e := p.expr(0)
+		pos := arg_start_pos.extend(p.prev_tok.position())
 		comments << p.eat_comments()
 		args << ast.CallArg{
 			is_mut: is_mut
 			share: table.sharetype_from_flags(is_shared, is_atomic)
 			expr: e
 			comments: comments
-			pos: p.tok.position()
+			pos: pos
 		}
 		if p.tok.kind != .rpar {
 			p.check(.comma)
