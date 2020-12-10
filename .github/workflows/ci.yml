@@ -609,3 +609,4 @@ jobs:
         ./v test-parser examples/hello_world.v
         ./v test-parser examples/hanoi.v
         ./v test-parser examples/fibonacci.v
+        ./v test-parser examples/cli.v

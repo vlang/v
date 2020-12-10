@@ -319,7 +319,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
+	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
 		mut expr := ast.Expr{}
 		mut field_pos := token.Position{}

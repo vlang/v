@@ -162,7 +162,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.check(.lcbr)
 	}
 	mut branches := []ast.MatchBranch{}
-	for {
+	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.position()
 		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}

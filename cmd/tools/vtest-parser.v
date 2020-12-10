@@ -140,13 +140,6 @@ fn yellow(msg string) string {
 	return term.yellow(msg)
 }
 
-fn italic(msg string) string {
-	if !support_color {
-		return msg
-	}
-	return term.italic(msg)
-}
-
 fn (mut context Context) log(msg string) {
 	if context.is_verbose {
 		label := yellow('info')
@@ -219,7 +212,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			col := last_line.len
 			err := if is_panic { red('parser failure: panic') } else { red('parser failure: crash, ${ecode_details[res.exit_code.str()]}') }
 			path_to_line := bold('$path:$line:$col:')
-			err_line := italic(last_line.trim_left('\t'))
+			err_line := last_line.trim_left('\t')
 			println('$path_to_line $err')
 			println('\t$line | $err_line')
 			println('')
