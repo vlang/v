@@ -97,17 +97,17 @@ if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 echo.
 echo Cleanup vc
 echo  ^> Purge TCC binaries
-call :buildcmd "rmdir /s /q "%tcc_dir%"" "  "
+rmdir /s /q "%tcc_dir%">>"!log_file!" 2>NUL
 echo  ^> Purge vc repository
-call :buildcmd "rmdir /s /q "%vc_dir%"" "  "
+rmdir /s /q "%vc_dir%">>"!log_file!" 2>NUL
 exit /b 0
 
 :clean
 echo Cleanup build artifacts
 echo  ^> Purge debug symbols
-call :buildcmd "del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so" "  "
+del *.pdb *.lib *.bak *.out *.ilk *.exp *.obj *.o *.a *.so>>"!log_file!" 2>NUL
 echo  ^> Delete old V executable
-call :buildcmd "del v_old.exe v*.exe" "  "
+del v_old.exe v*.exe>>"!log_file!" 2>NUL
 exit /b 0
 
 :help
@@ -127,14 +127,14 @@ if !flag_local! NEQ 1 (
     pushd "%vc_dir%" 2>NUL && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!
-        call :buildcmd "cd "%vc_dir%"" "  "
-        call :buildcmd "git pull --quiet" "  "
-        call :buildcmd "cd .." "  "
+        cd "%vc_dir%">>"!log_file!" 2>NUL
+        git pull --quiet>>"!log_file!" 2>NUL
+        cd ..>>"!log_file!" 2>NUL
         popd
     ) || (
         echo Cloning vc...
         echo  ^> Cloning from remote !vc_url!
-        call :buildcmd "git clone --depth 1 --quiet "%vc_url%"" "  "
+        git clone --depth 1 --quiet %vc_url%>>"!log_file!" 2>NUL
     )
     echo.
 )
@@ -151,15 +151,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with Clang
-call :buildcmd "clang -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+clang -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_file!" 2>NUL
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of Clang installed is too old
-	call :buildcmd "clang --version" "  " 1
+	clang --version>>"!log_file!"
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc clang self" "  "
+v.exe -cc clang self>>"!log_file!" 2>NUL
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -172,15 +172,15 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 echo  ^> Attempting to build v_win.c with GCC
-call :buildcmd "gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c" "  "
+gcc -std=c99 -municode -w -o v.exe .\vc\v_win.c>>"!log_File!" 2>NUL
 if %ERRORLEVEL% NEQ 0 (
 	REM In most cases, compile errors happen because the version of GCC installed is too old
-	call :buildcmd "gcc --version" "  " 1
+	gcc --version>>"!log_File!"
 	goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe self" "  "
+v.exe -cc gcc self>>"!log_file!" 2>NUL
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -212,15 +212,15 @@ if exist "%InstallDir%\Common7\Tools\vsdevcmd.bat" (
 set ObjFile=.v.c.obj
 
 echo  ^> Attempting to build v_win.c with MSVC
-call :buildcmd "cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no" "  "
+cl.exe /volatile:ms /Fo%ObjFile% /O2 /MD /D_VBOOTSTRAP vc\v_win.c user32.lib kernel32.lib advapi32.lib shell32.lib /link /nologo /out:v.exe /incremental:no>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 (
     REM In some cases, compile errors happen because of the MSVC compiler version
-	call :buildcmd "cl.exe 1>NUL" "  " 1
+    cl.exe 1>NUL 2>"!log_file!"
     goto :compile_error
 )
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc msvc self" "  "
+v.exe -cc msvc self>>"!log_file!" 2>NUL
 del %ObjFile%>>"!log_file!" 2>>&1
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
@@ -228,11 +228,11 @@ goto :success
 :tcc_strap
 if [!compiler!] == [] set /a invalid_cc=1
 echo  ^> Attempting to build v_win.c with TCC
-call :buildcmd ""!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c" "  "
+"!tcc_exe!" -std=c99 -municode -lws2_32 -lshell32 -ladvapi32 -bt10 -w -o v.exe vc\v_win.c>>"!log_file!" 2>NUL
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 
 echo  ^> Compiling with .\v.exe self
-call :buildcmd "v.exe -cc "!tcc_exe!" self" "  "
+v.exe -cc "!tcc_exe!" self>>"!log_file!"
 if %ERRORLEVEL% NEQ 0 goto :compile_error
 goto :success
 
@@ -240,18 +240,18 @@ goto :success
 pushd %tcc_dir% 2>NUL && (
     echo Updating TCC
     echo  ^> Syncing TCC from !tcc_url!
-    call :buildcmd "git pull --quiet" "  "
+    git pull --quiet>>"!log_file!" 2>NUL
     popd
 ) || (
     echo Bootstraping TCC...
     echo  ^> TCC not found
     echo  ^> Downloading TCC from !tcc_url!
-    call :buildcmd "git clone --depth 1 --quiet --single-branch --branch "!tcc_branch!" "!tcc_url!" "%tcc_dir%"" "  "
+    git clone --depth 1 --quiet --single-branch --branch !tcc_branch! !tcc_url! "%tcc_dir%">>"!log_file!" 2>NUL
 )
-for /f "usebackq delims=" %%i in (`dir %tcc_dir% /b /a /s tcc.exe`) do (
+for /f "usebackq delims=" %%i in (`dir "%tcc_dir%" /b /a /s tcc.exe`) do (
     set "attrib=%%~ai"
     set "dattrib=%attrib:~0,1%"
-    if /I not "%dattrib%" == "d" set "tcc_exe=%%i"
+    if /I not "%dattrib%" == "d" set "tcc_exe=%%~sfi"
 )
 if [!tcc_exe!] == [] echo  ^> TCC not found, even after cloning& goto :error
 echo.
@@ -289,12 +289,14 @@ echo | set /p="V version: "
 goto :eof
 
 :buildcmd
+echo %1 [%2] [%3]
 if !flag_verbose! EQU 1 (
     echo [Debug] %~1>>"!log_file!"
     echo %~2 %~1
 )
 if not [%~3] == [] echo.& %~1
-%~1>>"!log_file!" 2>>&1
+echo Test
+%1>>"!log_file!" 2>>&1
 exit /b %ERRORLEVEL%
 
 :usage
