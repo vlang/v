@@ -719,7 +719,11 @@ fn (mut s Scanner) text_scan() token.Token {
 				// s = `hello $name !`
 				// s = `hello ${name} !`
 				if s.is_enclosed_inter {
-					s.pos++
+					if s.pos < s.text.len - 1 {
+						s.pos++
+					} else {
+						s.error('unfinished string literal')
+					}
 					if s.text[s.pos] == s.quote {
 						s.is_inside_string = false
 						s.is_enclosed_inter = false
