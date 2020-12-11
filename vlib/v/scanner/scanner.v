@@ -890,10 +890,10 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.ne, '', 2)
-				} else if nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
+				} else if s.text.len > s.pos + 3 && nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_in, '', 3)
-				} else if nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
+				} else if s.text.len > s.pos + 3 && nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_is, '', 3)
 				} else {

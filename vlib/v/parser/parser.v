@@ -2101,7 +2101,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 	mut fields := []string{}
 	mut vals := []ast.Expr{}
 	p.check(.pipe)
-	for {
+	for p.tok.kind != .eof {
 		fields << p.check_name()
 		p.check(.colon)
 		expr := p.expr(0)
