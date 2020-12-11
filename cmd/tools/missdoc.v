@@ -1,9 +1,23 @@
 // Copyright (c) 2020 Lars Pontoppidan. All rights reserved.
 import os
+import flag
+
+const (
+	tool_name        = os.file_name(os.executable())
+	tool_version     = '0.0.2'
+	tool_description = 'Prints all V functions in .v files under PATH/, that do not yet have documentation comments.'
+)
 
 struct UndocumentedFN {
 	line      int
 	signature string
+	tags      []string
+}
+
+struct Options {
+	show_help    bool
+	collect_tags bool
+	deprecated   bool
 }
 
 fn collect(path string, mut l []string, f fn (string, mut []string)) {
@@ -22,7 +36,7 @@ fn collect(path string, mut l []string, f fn (string, mut []string)) {
 	return
 }
 
-fn report_undocumented_functions_in_path(path string) {
+fn report_undocumented_functions_in_path(opt Options, path string) {
 	mut files := []string{}
 	collect_fn := fn (path string, mut l []string) {
 		if os.file_ext(path) == '.v' {
@@ -33,6 +47,7 @@ fn report_undocumented_functions_in_path(path string) {
 	for f in files {
 		contents := os.read_file(f) or { panic(err) }
 		lines := contents.split('\n')
+		// Skip test files
 		if f.ends_with('_test.v') {
 			continue
 		}
@@ -44,21 +59,26 @@ fn report_undocumented_functions_in_path(path string) {
 				if i > 0 && lines.len > 0 {
 					mut line_above := lines[i - 1]
 					if !line_above.starts_with('//') {
+						mut tags := []string{}
 						mut grab := true
+						if line_above.starts_with('[') { // One or more tags
+							tags << collect_tags(line_above)
+						}
 						for j := i - 2; j >= 0; j-- {
 							prev_line := lines[j]
-							if prev_line.contains('}') {
+							if prev_line.contains('}') { // We've looked back to the above scope, stop here
 								break
 							} else if prev_line.starts_with('[') {
+								tags << collect_tags(prev_line)
 								continue
-							} else if prev_line.starts_with('//') {
+							} else if prev_line.starts_with('//') { // Single-line comment
 								grab = false
 								break
 							}
 						}
 						if grab {
 							clean_line := line.all_before_last(' {')
-							info << UndocumentedFN{i + 1, clean_line}
+							info << UndocumentedFN{i + 1, clean_line, tags}
 						}
 					}
 				}
@@ -66,18 +86,46 @@ fn report_undocumented_functions_in_path(path string) {
 		}
 		if info.len > 0 {
 			for undocumented_fn in info {
-				println('$f:$undocumented_fn.line:0:$undocumented_fn.signature')
+				tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 { '$undocumented_fn.tags' } else { '' }
+				if opt.deprecated {
+					println('$f:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+				} else {
+					if 'deprecated' !in undocumented_fn.tags {
+						println('$f:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+					}
+				}
 			}
 		}
 	}
 }
 
+fn collect_tags(line string) []string {
+	mut cleaned := line.all_before('/')
+	cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
+	return cleaned.split(',')
+}
+
 fn main() {
 	if os.args.len == 1 {
-		println('Usage: missdoc PATH \nPrints all V functions in .v files under PATH/, that do not yet have documentation comments.')
+		println('Usage: $tool_name PATH \n$tool_description\n$tool_name -h for more help...')
 		exit(1)
 	}
+	mut fp := flag.new_flag_parser(os.args[1..])
+	fp.application(tool_name)
+	fp.version(tool_version)
+	fp.description(tool_description)
+	fp.arguments_description('PATH [PATH]...')
+	// Collect tool options
+	opt := Options{
+		show_help: fp.bool('help', `h`, false, 'Show this help text.')
+		deprecated: fp.bool('deprecated', `d`, false, 'Include deprecated functions in output.')
+		collect_tags: fp.bool('tags', `t`, false, 'Also print function tags if any is found.')
+	}
+	if opt.show_help {
+		println(fp.usage())
+		exit(0)
+	}
 	for path in os.args[1..] {
-		report_undocumented_functions_in_path(path)
+		report_undocumented_functions_in_path(opt, path)
 	}
 }
