@@ -1122,6 +1122,13 @@ pub fn (expr Expr) is_expr() bool {
 	return true
 }
 
+pub fn (expr Expr) is_lit() bool {
+	return match expr {
+		BoolLiteral, StringLiteral, IntegerLiteral { true }
+		else { false }
+	}
+}
+
 // check if stmt can be an expression in C
 pub fn (stmt Stmt) check_c_expr() ? {
 	match stmt {

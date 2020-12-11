@@ -1,0 +1,13 @@
+vlib/v/checker/tests/unknown_comptime_expr.vv:5:6: error: `foo` is mut and may have changed since its definition
+    3 | fn main() {
+    4 |     mut foo := 0
+    5 |     $if foo == 0 {}
+      |         ~~~
+    6 | 
+    7 |     bar := unknown_at_ct()
+vlib/v/checker/tests/unknown_comptime_expr.vv:8:6: error: definition of `bar` is unknown at compile time
+    6 | 
+    7 |     bar := unknown_at_ct()
+    8 |     $if bar == 0 {}
+      |         ~~~
+    9 | }

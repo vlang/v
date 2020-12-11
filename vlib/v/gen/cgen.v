@@ -5163,7 +5163,7 @@ fn op_to_fn_name(name string) string {
 	}
 }
 
-fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
+fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -5285,11 +5285,10 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
-			verror('bad os ifdef name "$name"') // should never happen, caught in the checker
+			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
-	// verror('bad os ifdef name "$name"')
-	return ''
+	return none
 }
 
 [inline]
