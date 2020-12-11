@@ -93,12 +93,12 @@ fn test_parse_iso8601() {
 }
 
 fn test_parse_iso8601_local() {
-	format_utc := '2020-06-05T15:38:06.015959'
-	t_utc := time.parse_iso8601(format_utc) or {
+	format := '2020-06-05T15:38:06.015959'
+	t := time.parse_iso8601(format) or {
 		assert false
 		return
 	}
-	assert t_utc.year == 2020
-	assert t_utc.month == 6
-	assert t_utc.day == 5
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 5
 }
