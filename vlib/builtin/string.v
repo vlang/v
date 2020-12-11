@@ -1449,7 +1449,7 @@ pub fn (s string) after(dot string) string {
 	return s.all_after_last(dot)
 }
 
-// after returns the contents after the first occurence of `dot` character in the string.
+// after_char returns the contents after the first occurence of `dot` character in the string.
 // Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
 pub fn (s string) after_char(dot byte) string {
 	mut pos := 0
