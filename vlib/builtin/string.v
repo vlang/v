@@ -180,6 +180,10 @@ fn (a string) clone_static() string {
 }
 
 pub fn (a string) clone() string {
+	if a == '' {
+		// TODO perf? an extra check in each clone() is not nice
+		return ''
+	}
 	mut b := string{
 		str: unsafe {malloc(a.len + 1)}
 		len: a.len
