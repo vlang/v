@@ -259,7 +259,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.end_comments, {})
+			f.comments(node.comments, {})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
