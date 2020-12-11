@@ -91,11 +91,8 @@ pub fn parse_iso8601(s string) ?Time {
 		second: second
 		microsecond: mic_second
 	})
-	if is_utc {
-		return t
-	}
 	if is_local_time {
-		return to_local_time(t)
+		return t // Time already local time
 	}
 	mut unix_time := t.unix
 	mut unix_offset := int(0)
