@@ -10,6 +10,7 @@ particularly useful for checking that errors are printed.
 
 Tip: use `v -cc tcc` when compiling tests for speed.
 
+
 ## `v test-compiler`
 
 This builds and tests:
