@@ -1448,11 +1448,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 // `.green`
 // `pref.BuildMode.default_mode`
 fn (mut p Parser) enum_val() ast.EnumVal {
+	start_pos := p.tok.position()
 	p.check(.dot)
 	val := p.check_name()
 	return ast.EnumVal{
 		val: val
-		pos: p.tok.position()
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }
 
