@@ -763,8 +763,11 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.comma, '', 1)
 			}
 			`@` {
-				s.pos++
-				name := s.ident_name()
+				mut name := ''
+				if nextc != `\0` {
+					s.pos++
+					name = s.ident_name()
+				}
 				if s.is_fmt {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
