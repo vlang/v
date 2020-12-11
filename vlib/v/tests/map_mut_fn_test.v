@@ -4,11 +4,11 @@ fn print_all(mut m map[string]string) {
 		println(v)
 		m[k] = 'foo'
 	}
-    assert m['test'] == 'foo'
+	assert m['test'] == 'foo'
 }
 
 fn test_map_mutable_arg() {
-	mut m := map[string]string
+	mut m := map[string]string{}
 	m['test'] = 'test'
 
 	for k, v in m {
