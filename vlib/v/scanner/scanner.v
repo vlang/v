@@ -1002,7 +1002,7 @@ fn (mut s Scanner) ident_string() string {
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c`
 	if is_quote {
-		if s.is_inside_string {
+		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
 			s.inter_quote = q
 		} else {
 			s.quote = q
