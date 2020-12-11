@@ -281,7 +281,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// Do not allow to modify / add methods to types from other modules
 		// arrays/maps dont belong to a module only their element types do
 		// we could also check if kind is .array,  .array_fixed, .map instead of mod.len
-		if type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v {
+		mut is_non_local := type_sym.mod.len > 0 && type_sym.mod != p.mod && type_sym.language == .v
+		// check maps & arrays, must be defined in same module as the elem type
+		if !is_non_local && type_sym.kind in [.array, .map] {
+			elem_type_sym := p.table.get_type_symbol(p.table.value_type(rec_type))
+			is_non_local = elem_type_sym.mod.len > 0 &&
+				elem_type_sym.mod != p.mod && elem_type_sym.language == .v
+		}
+		if is_non_local {
 			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
 				rec_type_pos)
 			return ast.FnDecl{}

@@ -1,4 +1,4 @@
-pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
+pub fn reduce(a []int, iter fn (int, int) int, accum_start int) int {
 	iter(accum_start)
 }
 
