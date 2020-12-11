@@ -1,0 +1,12 @@
+vlib/v/checker/tests/division_by_cast_zero_float_err.vv:2:23: error: division by zero
+    1 | fn main() {
+    2 |     println(f32(1.0)/f32(0.0))
+      |                          ~~~
+    3 |     println(f64(1.0)/f64(0.0))
+    4 | }
+vlib/v/checker/tests/division_by_cast_zero_float_err.vv:3:23: error: division by zero
+    1 | fn main() {
+    2 |     println(f32(1.0)/f32(0.0))
+    3 |     println(f64(1.0)/f64(0.0))
+      |                          ~~~
+    4 | }

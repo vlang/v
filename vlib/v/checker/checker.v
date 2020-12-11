@@ -609,6 +609,27 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 	return struct_init.typ
 }
 
+fn (mut c Checker) check_div_mod_by_zero(expr ast.Expr, op_kind token.Kind) {
+	match mut expr {
+		ast.FloatLiteral {
+			if expr.val.f64() == 0.0 {
+				oper := if op_kind == .div { 'division' } else { 'modulo' }
+				c.error('$oper by zero', expr.pos)
+			}
+		}
+		ast.IntegerLiteral {
+			if expr.val.int() == 0 {
+				oper := if op_kind == .div { 'division' } else { 'modulo' }
+				c.error('$oper by zero', expr.pos)
+			}
+		}
+		ast.CastExpr {
+			c.check_div_mod_by_zero(expr.expr, op_kind)
+		}
+		else {}
+	}
+}
+
 pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	// println('checker: infix expr(op $infix_expr.op.str())')
 	former_expected_type := c.expected_type
@@ -757,21 +778,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					}
 				}
 				if infix_expr.op in [.div, .mod] {
-					match mut infix_expr.right {
-						ast.FloatLiteral {
-							if infix_expr.right.val.f64() == 0.0 {
-								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_expr.right.pos)
-							}
-						}
-						ast.IntegerLiteral {
-							if infix_expr.right.val.int() == 0 {
-								oper := if infix_expr.op == .div { 'division' } else { 'modulo' }
-								c.error('$oper by zero', infix_expr.right.pos)
-							}
-						}
-						else {}
-					}
+					c.check_div_mod_by_zero(infix_expr.right, infix_expr.op)
 				}
 				return_type = promoted_type
 			}
