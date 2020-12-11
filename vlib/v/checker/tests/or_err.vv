@@ -10,4 +10,15 @@ _ = f() or {
 _ = f() or {
 	`.`
 }
-
+_ = f() or {
+	assert true
+}
+_ = f() or {
+	assert false
+}
+_ = f() or {
+	panic(err)
+}
+_ = f() or {
+  return
+}

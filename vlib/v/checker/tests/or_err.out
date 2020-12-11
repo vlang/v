@@ -11,4 +11,11 @@ vlib/v/checker/tests/or_err.vv:11:2: error: wrong return type `rune` in the `or 
    11 |     `.`
       |     ~~~
    12 | }
-   13 |
+   13 | _ = f() or {
+vlib/v/checker/tests/or_err.vv:13:9: error: last statement in the `or {}` block should be an expression of type `&int` or exit parent scope
+   11 |     `.`
+   12 | }
+   13 | _ = f() or {
+      |         ~~~~
+   14 |     assert true
+   15 | }

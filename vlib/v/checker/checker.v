@@ -1740,10 +1740,20 @@ pub fn (mut c Checker) check_or_expr(or_expr ast.OrExpr, ret_type table.Type, ex
 			}
 			ast.Return {}
 			else {
-				expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
-				c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
-					or_expr.pos)
-				return
+				mut is_assert_false := false
+				if last_stmt is ast.AssertStmt {
+					if last_stmt.expr is ast.BoolLiteral {
+						if last_stmt.expr.val == false {
+							is_assert_false = true
+						}
+					}
+				}
+				if !is_assert_false {
+					expected_type_name := c.table.type_to_str(ret_type.clear_flag(.optional))
+					c.error('last statement in the `or {}` block should be an expression of type `$expected_type_name` or exit parent scope',
+						or_expr.pos)
+					return
+				}
 			}
 		}
 	} else {
