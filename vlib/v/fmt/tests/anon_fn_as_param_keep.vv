@@ -1,4 +1,4 @@
-struct Row{
+struct Row {
 	id int
 }
 
