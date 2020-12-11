@@ -1383,9 +1383,21 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
+	mut single_line_stmts := true
+	for branch in it.branches {
+		if branch.stmts.len == 1 {
+			stmt := f.stmt_str(branch.stmts[0])
+			// long stmts should be in extra line
+			// it won't be wrapped even if the condition fills the whole line
+			length_ok := stmt.len < 16
+			if !stmt.contains('\n') && length_ok { continue }
+		}
+		single_line_stmts = false
+		break
+	}
+	single_line := (it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
 		it.branches[1].stmts.len == 1 &&
-		(it.is_expr || f.is_assign)
+		(it.is_expr || f.is_assign)) || single_line_stmts
 	f.single_line_if = single_line
 	for i, branch in it.branches {
 		if i == 0 {
@@ -1412,7 +1424,11 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		} else {
 			f.writeln('')
 		}
-		f.stmts(branch.stmts)
+		if single_line {
+			f.write(f.stmt_str(branch.stmts[0]))
+		} else {
+			f.stmts(branch.stmts)
+		}
 		if single_line {
 			f.write(' ')
 		}

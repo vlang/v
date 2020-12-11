@@ -1,0 +1,21 @@
+fn main() {
+	mut foo := 'foo'
+	mut bar := 'bar'
+	if true {
+		if foo == 'foo' {
+			foo = 'foo2'
+			bar = 'bar2'
+		}
+	}
+	for i in 0 .. 10 {
+		if i == x { continue }
+		// do somthing..
+	}
+	if true {
+		for {
+			println('')
+		}
+	} else {
+		println('')
+	}
+}
