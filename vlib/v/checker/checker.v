@@ -2615,7 +2615,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
-			c.loop_label = prev_loop_label            
+			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
 		ast.ForStmt {
@@ -2630,7 +2630,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// how does this work currenly?
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
-			c.loop_label = prev_loop_label            
+			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
 		ast.GlobalDecl {
