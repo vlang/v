@@ -3874,7 +3874,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				expr_type := c.expr(infix.left)
 				if left_sym.kind == .interface_ {
 					c.type_implements(right_expr.typ, expr_type, branch.pos)
-				} else if !c.check_types(expr_type, right_expr.typ) {
+				} else if !c.check_types(right_expr.typ, expr_type) {
 					expect_str := c.table.type_to_str(right_expr.typ)
 					expr_str := c.table.type_to_str(expr_type)
 					c.error('cannot use type `$expect_str` as type `$expr_str`', branch.pos)
