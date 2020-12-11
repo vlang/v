@@ -289,6 +289,7 @@ pub:
 	lvalue  string // the stringified *actual value* of the left side of a failed assertion
 	rvalue  string // the stringified *actual value* of the right side of a failed assertion
 }
+
 fn __print_assert_failure(i &VAssertMetaInfo) {
 	eprintln('${i.fpath}:${i.line_nr+1}: FAIL: fn ${i.fn_name}: assert ${i.src}')
 	if i.op.len > 0 && i.op != 'call' {
