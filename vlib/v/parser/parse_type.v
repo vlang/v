@@ -21,6 +21,10 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 	// array
 	p.check(.rsbr)
 	elem_type := p.parse_type()
+	if elem_type.idx() == 0 {
+		// error is set in parse_type
+		return 0
+	}
 	mut nr_dims := 1
 	// detect attr
 	not_attr := p.peek_tok.kind != .name && p.peek_tok2.kind !in [.semicolon, .rsbr]
@@ -165,6 +169,10 @@ pub fn (mut p Parser) parse_type() table.Type {
 	if p.tok.kind != .lcbr {
 		pos := p.tok.position()
 		typ = p.parse_any_type(language, nr_muls > 0, true)
+		if typ.idx() == 0 {
+			// error is set in parse_type
+			return 0
+		}
 		if typ == table.void_type {
 			p.error_with_pos('use `?` instead of `?void`', pos)
 			return 0

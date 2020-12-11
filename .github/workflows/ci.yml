@@ -610,3 +610,4 @@ jobs:
         ./v test-parser examples/hanoi.v
         ./v test-parser examples/fibonacci.v
         ./v test-parser examples/cli.v
+        ./v test-parser examples/json.v

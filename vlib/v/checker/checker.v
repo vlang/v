@@ -264,7 +264,7 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 }
 
 fn (mut c Checker) check_valid_snake_case(name string, identifier string, pos token.Position) {
-	if !c.pref.is_vweb && (name[0] == `_` || name.contains('._')) {
+	if !c.pref.is_vweb && name.len > 0 && (name[0] == `_` || name.contains('._')) {
 		c.error('$identifier `$name` cannot start with `_`', pos)
 	}
 	if !c.pref.experimental && !c.pref.translated && util.contains_capital(name) {
@@ -280,7 +280,7 @@ fn stripped_name(name string) string {
 
 fn (mut c Checker) check_valid_pascal_case(name string, identifier string, pos token.Position) {
 	sname := stripped_name(name)
-	if !sname[0].is_capital() && !c.pref.translated {
+	if sname.len > 0 && !sname[0].is_capital() && !c.pref.translated {
 		c.error('$identifier `$name` must begin with capital letter', pos)
 	}
 }
@@ -1391,7 +1391,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	// println(fn_name)
 	// }
 	if fn_name == 'json.encode' {
-	} else if fn_name == 'json.decode' {
+	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
 			typ := typeof(expr)

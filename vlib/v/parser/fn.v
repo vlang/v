@@ -199,6 +199,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// or should it be a property of the arg, like this ptr/mut becomes indistinguishable
 		rec_type_pos = p.tok.position()
 		rec_type = p.parse_type_with_mut(rec_mut)
+		if rec_type.idx() == 0 {
+			// error is set in parse_type
+			return ast.FnDecl{}
+		}
 		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
