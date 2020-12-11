@@ -7,7 +7,7 @@ pub struct StopWatchOptions {
 	auto_start bool = true
 }
 
-// StopWatch is used to measure elapsed time
+// StopWatch is used to measure elapsed time.
 pub struct StopWatch {
 mut:
 	elapsed u64
@@ -16,7 +16,7 @@ pub mut:
 	end     u64
 }
 
-// new_stopwatch returns a new stopwatch with StopWatchOptions
+// new_stopwatch returns a new stopwatch with StopWatchOptions.
 pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	mut initial := u64(0)
 	if opts.auto_start {
@@ -42,12 +42,12 @@ pub fn (mut t StopWatch) restart() {
 	t.elapsed = 0
 }
 
-// stop stops the timer, even if the time is running
+// stop stops the timer, regardless of running state.
 pub fn (mut t StopWatch) stop() {
 	t.end = sys_mono_now()
 }
 
-// pause pauses the timer
+// pause pauses the timer.
 pub fn (mut t StopWatch) pause() {
 	if t.start > 0 {
 		if t.end == 0 {
@@ -59,7 +59,7 @@ pub fn (mut t StopWatch) pause() {
 	t.start = 0
 }
 
-// elapsed returns the Duration since the last start call
+// elapsed returns the Duration since the last start call.
 pub fn (t StopWatch) elapsed() Duration {
 	if t.start > 0 {
 		if t.end == 0 {

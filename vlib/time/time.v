@@ -37,7 +37,7 @@ const (
 	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thusday', 'Friday', 'Saturday', 'Sunday']
 )
 
-// Time contains various time units for a point in time
+// Time contains various time units for a point in time.
 pub struct Time {
 pub:
 	year        int
@@ -50,7 +50,7 @@ pub:
 	unix        u64
 }
 
-// FormatTime enumerates different time formats
+// FormatDelimiter contains different time formats.
 pub enum FormatTime {
 	hhmm12
 	hhmm24
@@ -61,7 +61,7 @@ pub enum FormatTime {
 	no_time
 }
 
-// FormatDate enumerates different date formats
+// FormatDelimiter contains different date formats.
 pub enum FormatDate {
 	ddmmyy
 	ddmmyyyy
@@ -74,7 +74,7 @@ pub enum FormatDate {
 	yyyymmdd
 }
 
-// FormatDelimiter enumerates different time/date delimiters
+// FormatDelimiter contains different time/date delimiteres.
 pub enum FormatDelimiter {
 	dot
 	hyphen
@@ -83,7 +83,7 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-// C.timeval represents a C time value
+// C.timeval represents a C time value.
 pub struct C.timeval {
 	tv_sec  u64
 	tv_usec u64
@@ -114,7 +114,7 @@ pub fn now() Time {
 	return convert_ctime(now, 0)
 }
 
-// utc returns the current time in utc
+// utc returns the current UTC time.
 pub fn utc() Time {
 	$if macos {
 		return darwin_utc()
@@ -193,8 +193,8 @@ fn since(t Time) int {
 	return 0
 }
 
-// relative returns a string representation of difference between time
-// and current time.
+// relative returns a string representation of the difference between t
+// and the current time.
 pub fn (t Time) relative() string {
 	znow := now()
 	secs := znow.unix - t.unix
@@ -366,7 +366,7 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-// convert_ctime converts a C time to V time
+// convert_ctime converts a C time to V time.
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900
@@ -380,7 +380,7 @@ fn convert_ctime(t C.tm, microsecond int) Time {
 	}
 }
 
-// A lot of these are taken from the Go library
+// A lot of these are taken from the Go library.
 pub type Duration = i64
 
 pub const (
