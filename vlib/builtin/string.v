@@ -305,7 +305,7 @@ fn (a RepIndex) < (b RepIndex) bool {
 }
 */
 // replace_each replaces all occurences of the string pairs given in `vals`.
-// Thus `'ABCD'.replace_each(['B','C/','C','D','D','C'])` will result in the string "AC/DC".
+// Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 pub fn (s string) replace_each(vals []string) string {
 	if s.len == 0 || vals.len == 0 {
 		return s
