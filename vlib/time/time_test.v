@@ -153,6 +153,17 @@ fn test_weekday_str() {
 	}
 }
 
+fn test_add() {
+	d_seconds := 3
+	d_microseconds := 13
+	duration := time.Duration(d_seconds * time.second + d_microseconds * time.microsecond)
+	t1 := time_to_test
+	t2 := time_to_test.add(duration)
+	assert t2.second == t1.second + d_seconds
+	assert t2.microsecond == t1.microsecond + d_microseconds
+	assert t2.unix == t1.unix + u64(d_seconds)
+}
+
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
