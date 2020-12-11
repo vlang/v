@@ -10,15 +10,6 @@ particularly useful for checking that errors are printed.
 
 Tip: use `v -cc tcc` when compiling tests for speed.
 
-## Run only single test file
-
-In order to test only one file, use `v test` command
-Example :
-`v test vlib/v/tests/map_mut_fn_test.v`
-
-And if you want to run a test file with println outputs just use `v` command:
-`v vlib/v/tests/map_mut_fn_test.v`
-
 
 ## `v test-compiler`
 
