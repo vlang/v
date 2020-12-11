@@ -259,6 +259,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
+			f.comments(node.end_comments, {})
 			for i, left in node.left {
 				if left is ast.Ident {
 					var_info := left.var_info()
@@ -281,7 +282,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
-			f.comments(node.comments, has_nl: false, inline: true, level: .keep)
+			f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
 			if !f.single_line_if {
 				f.writeln('')
 			}
