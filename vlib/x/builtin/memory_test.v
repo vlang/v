@@ -42,3 +42,11 @@ fn test_memcpy() {
 	}
 	assert c_3a.eq(c_3b)
 }
+
+fn test_memcmp() {
+	i_a := 1
+	i_b := 1
+	assert builtin.memcmp(i_a, i_b, sizeof(int)) == 0
+	i_c := 2
+	assert builtin.memcmp(i_a, i_c, sizeof(int)) == -1
+}
