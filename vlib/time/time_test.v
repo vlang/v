@@ -162,6 +162,10 @@ fn test_add() {
 	assert t2.second == t1.second + d_seconds
 	assert t2.microsecond == t1.microsecond + d_microseconds
 	assert t2.unix == t1.unix + u64(d_seconds)
+	t3 := time_to_test.add(-duration)
+	assert t3.second == t1.second - d_seconds
+	assert t3.microsecond == t1.microsecond - d_microseconds
+	assert t3.unix == t1.unix - u64(d_seconds)
 }
 
 fn test_add_days() {

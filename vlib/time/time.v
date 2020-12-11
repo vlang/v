@@ -173,8 +173,8 @@ pub fn (t Time) unix_time_milli() u64 {
 
 // add returns a new time that duration is added
 pub fn (t Time) add(d Duration) Time {
-	microseconds := t.microsecond + d.microseconds()
-	unix := i64(t.unix) + microseconds / (1000 * 1000)
+	microseconds := i64(t.unix) * 1000 * 1000 + t.microsecond + d.microseconds()
+	unix := microseconds / (1000 * 1000)
 	micro := microseconds % (1000 * 1000)
 	return unix2(int(unix), int(micro))
 }
