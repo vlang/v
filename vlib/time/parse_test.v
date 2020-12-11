@@ -53,7 +53,6 @@ fn test_parse_iso8601() {
 	// Because there is a small difference between time.now() - time.utc and actual offset,
 	// round to the nearest hour.
 	offset := time.Duration(i64(math.round((time.now() - time.utc()).hours())) * time.hour)
-	println(offset.hours())
 	formats := [
 		'2020-06-05T15:38:06Z',
 		'2020-06-05T15:38:06.015959Z',
@@ -69,7 +68,10 @@ fn test_parse_iso8601() {
 		[2020, 6, 5, 17, 38, 6, 15959],
 	]
 	for i, format in formats {
-		t := time.parse_iso8601(format) or { panic(err) }
+		t := time.parse_iso8601(format) or {
+			assert false
+			continue
+		}
 		data := times[i]
 		t2 := time.new_time(
 			year: data[0]
@@ -92,7 +94,10 @@ fn test_parse_iso8601() {
 
 fn test_parse_iso8601_local() {
 	format_utc := '2020-06-05T15:38:06.015959'
-	t_utc := time.parse_iso8601(format_utc) or { panic(err) }
+	t_utc := time.parse_iso8601(format_utc) or {
+		assert false
+		return
+	}
 	assert t_utc.year == 2020
 	assert t_utc.month == 6
 	assert t_utc.day == 5
