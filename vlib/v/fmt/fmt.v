@@ -282,6 +282,7 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 					f.write(', ')
 				}
 			}
+			f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
 			if !f.single_line_if {
 				f.writeln('')
 			}
