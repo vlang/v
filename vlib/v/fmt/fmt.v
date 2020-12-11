@@ -1397,8 +1397,7 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	prev_line_len := f.line_len
 	start_pos := f.out.len
 
-// TODO: try to find a solution without goto
-start:
+	RETRY: for {
 	for i, branch in it.branches {
 		if i == 0 {
 			// first `if`
@@ -1432,7 +1431,7 @@ start:
 				f.out.go_back_to(start_pos)
 				f.empty_line = was_empty_line
 				f.line_len = prev_line_len
-				goto start
+				continue RETRY
 			}
 			if line.len + f.line_len + 2 <= max_len.last() {
 				f.write(line)
@@ -1442,7 +1441,7 @@ start:
 				f.out.go_back_to(start_pos)
 				f.empty_line = was_empty_line
 				f.line_len = prev_line_len
-				goto start
+				continue RETRY
 			}
 		}
 		if single_line {
@@ -1455,6 +1454,8 @@ start:
 			f.write(' ')
 		}
 	}
+	break RETRY
+	}    
 	f.write('}')
 	f.single_line_if = false
 	if it.post_comments.len > 0 {
