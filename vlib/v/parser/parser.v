@@ -1890,6 +1890,7 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 	}
 	p.check(.key_enum)
 	end_pos := p.tok.position()
+	name_pos := p.tok.position()
 	enum_name := p.check_name()
 	if enum_name.len == 1 {
 		p.error_with_pos('single letter capital names are reserved for generic template types.',
@@ -1948,7 +1949,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 //
 ')
 	}
-	p.table.register_type_symbol(table.TypeSymbol{
+	idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .enum_
 		name: name
 		cname: util.no_dots(name)
@@ -1959,6 +1960,10 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 			is_multi_allowed: is_multi_allowed
 		}
 	})
+	if idx == -1 {
+		p.error_with_pos('cannot register enum `$name`, another type with this name exists',
+			name_pos)
+	}
 	return ast.EnumDecl{
 		name: name
 		is_pub: is_pub
