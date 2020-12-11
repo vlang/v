@@ -86,13 +86,14 @@ fn (mut ws Client) shutdown_socket() ? {
 
 // dial_socket connects tcp socket and initializes default configurations
 fn (mut ws Client) dial_socket() ?net.TcpConn {
-	mut t := net.dial_tcp('$ws.uri.hostname:$ws.uri.port') ?
+	tcp_address := '$ws.uri.hostname:$ws.uri.port'
+	mut t := net.dial_tcp(tcp_address) ?
 	optval := int(1)
 	t.sock.set_option_int(.keep_alive, optval) ?
-	t.set_read_timeout(10 * time.millisecond)
-	t.set_write_timeout(10 * time.millisecond)
+	t.set_read_timeout(30 * time.second)
+	t.set_write_timeout(30 * time.second)
 	if ws.is_ssl {
-		ws.ssl_conn.connect(mut t) ?
+		ws.ssl_conn.connect(mut t, ws.uri.hostname) ?
 	}
 	return t
 }
