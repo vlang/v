@@ -822,6 +822,7 @@ pub fn (s string) contains(substr string) bool {
 	return true
 }
 
+// contains returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
 		if c.str() in s {
