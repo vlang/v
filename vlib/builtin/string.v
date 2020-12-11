@@ -508,9 +508,9 @@ fn (s string) add(a string) string {
 }
 
 // split splits the string to an array by `delim`.
-// Example: `'A B C'.split(' ') == ['A','B','C']`.
+// Example: assert 'A B C'.split(' ') == ['A','B','C']
 // If `delim` is empty the string is split by it's characters.
-// Example: `'DEF'.split('') == ['D','E','F']`.
+// Example: assert 'DEF'.split('') == ['D','E','F']
 pub fn (s string) split(delim string) []string {
 	return s.split_nth(delim, 0)
 }
@@ -587,7 +587,7 @@ pub fn (s string) split_into_lines() []string {
 }
 
 // left returns the `n`th leftmost characters of the string.
-// Example: `'hello'.left(2) == 'he'`
+// Example: assert 'hello'.left(2) == 'he'
 fn (s string) left(n int) string {
 	if n >= s.len {
 		return s
@@ -596,7 +596,7 @@ fn (s string) left(n int) string {
 }
 
 // right returns the `n`th rightmost characters of the string.
-// Example: `'hello'.right(2) == 'lo'`
+// Example: assert 'hello'.right(2) == 'lo'
 fn (s string) right(n int) string {
 	if n >= s.len {
 		return ''
@@ -611,7 +611,7 @@ fn (s string) substr2(start int, _end int, end_max bool) string {
 }
 
 // substr returns the string between index positions `start` and `end`.
-// Example: `'ABCD'.substr(1,3) == 'BC'`.
+// Example: assert 'ABCD'.substr(1,3) == 'BC'
 pub fn (s string) substr(start int, end int) string {
 	$if !no_bounds_checking ? {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
@@ -770,7 +770,7 @@ pub fn (s string) index_after(p string, start int) int {
 }
 
 // index_byte returns the index of byte `c` if found in the string.
-// It returns -1 if the byte can not be found.
+// index_byte returns -1 if the byte can not be found.
 pub fn (s string) index_byte(c byte) int {
 	for i in 0 .. s.len {
 		if unsafe {s.str[i]} == c {
@@ -780,8 +780,8 @@ pub fn (s string) index_byte(c byte) int {
 	return -1
 }
 
-// index_byte returns the index of the last occurence of byte `c` if found in the string.
-// It returns -1 if the byte is not found.
+// last_index_byte returns the index of the last occurence of byte `c` if found in the string.
+// last_index_byte returns -1 if the byte is not found.
 pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
 		if unsafe {s.str[i] == c} {
@@ -822,7 +822,7 @@ pub fn (s string) contains(substr string) bool {
 	return true
 }
 
-// contains returns `true` if the string contains any chars in `chars`.
+// contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
 		if c.str() in s {
@@ -884,7 +884,7 @@ pub fn (s string) to_lower() string {
 }
 
 // is_lower returns `true` if all characters in the string is lowercase.
-// Example: `assert 'hello developer'.is_lower() == true`
+// Example: assert 'hello developer'.is_lower() == true
 pub fn (s string) is_lower() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
@@ -895,7 +895,7 @@ pub fn (s string) is_lower() bool {
 }
 
 // to_upper returns the string in all uppercase characters.
-// Example: `assert 'Hello V'.to_upper() == 'HELLO V'`
+// Example: assert 'Hello V'.to_upper() == 'HELLO V'
 pub fn (s string) to_upper() string {
 	unsafe {
 		mut b := malloc(s.len + 1)
@@ -907,7 +907,7 @@ pub fn (s string) to_upper() string {
 }
 
 // is_upper returns `true` if all characters in the string is uppercase.
-// Example: `assert 'HELLO V'.is_upper() == true`
+// Example: assert 'HELLO V'.is_upper() == true
 pub fn (s string) is_upper() bool {
 	for i in 0 .. s.len {
 		if s[i] >= `a` && s[i] <= `z` {
@@ -918,7 +918,7 @@ pub fn (s string) is_upper() bool {
 }
 
 // capitalize returns the string with the first character capitalized.
-// Example: `assert 'hello'.capitalize() == 'Hello'`
+// Example: assert 'hello'.capitalize() == 'Hello'
 pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
@@ -929,8 +929,8 @@ pub fn (s string) capitalize() string {
 	// return cap
 }
 
-// is_capital returns `true` if all characters in the string is capital letters.
-// Example: `assert 'Hello'.is_capital() == true`
+// is_capital returns `true` if the first character in the string is a capital letter.
+// Example: assert 'Hello'.is_capital() == true
 pub fn (s string) is_capital() bool {
 	if s.len == 0 || !(s[0] >= `A` && s[0] <= `Z`) {
 		return false
@@ -944,7 +944,7 @@ pub fn (s string) is_capital() bool {
 }
 
 // title returns the string with each word capitalized.
-// Example: `assert 'hello v developer'.title() == 'Hello V Developer'`
+// Example: assert 'hello v developer'.title() == 'Hello V Developer'
 pub fn (s string) title() string {
 	words := s.split(' ')
 	mut tit := []string{}
@@ -956,7 +956,7 @@ pub fn (s string) title() string {
 }
 
 // is_title returns true if all words of the string is capitalized.
-// Example: `assert 'Hello V Developer'.is_title() == true`
+// Example: assert 'Hello V Developer'.is_title() == true
 pub fn (s string) is_title() bool {
 	words := s.split(' ')
 	for word in words {
@@ -968,7 +968,7 @@ pub fn (s string) is_title() bool {
 }
 
 // find_between returns the string found between `start` string and `end` string.
-// Example: `assert 'hey [man] how you doin'.find_between('[', ']') == 'man'`
+// Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
 	start_pos := s.index(start) or { return '' }
 	// First get everything to the right of 'start'
@@ -1000,7 +1000,7 @@ pub fn (a []string) to_c() voidptr {
 */
 // is_space returns `true` if the byte is a white space character.
 // The following list is considered white space characters: ` `, `\n`, `\t`, `\v`, `\f`, `\r`, 0x85, 0xa0
-// Example: `assert byte(` `).is_space() == true`
+// Example: assert byte(` `).is_space() == true
 pub fn (c byte) is_space() bool {
 	// 0x0085 is NEXT LINE (NEL)
 	// 0x00a0 is NO-BREAK SPACE
@@ -1008,13 +1008,13 @@ pub fn (c byte) is_space() bool {
 }
 
 // trim_space strips any of ` `, `\n`, `\t`, `\v`, `\f`, `\r` from the start and end of the string.
-// Example: `assert ' Hello V '.trim_space() == 'Hello V'`
+// Example: assert ' Hello V '.trim_space() == 'Hello V'
 pub fn (s string) trim_space() string {
 	return s.trim(' \n\t\v\f\r')
 }
 
 // trim strips any of the characters given in `cutset` from the start and end of the string.
-// Example: `assert ' ffHello V ffff'.trim(' f') == 'Hello V'`
+// Example: assert ' ffHello V ffff'.trim(' f') == 'Hello V'
 pub fn (s string) trim(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
@@ -1041,7 +1041,7 @@ pub fn (s string) trim(cutset string) string {
 }
 
 // trim_left strips any of the characters given in `cutset` from the left of the string.
-// Example: `assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'`
+// Example: assert 'd Hello V developer'.trim_left(' d') == 'Hello V developer'
 pub fn (s string) trim_left(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
@@ -1055,7 +1055,7 @@ pub fn (s string) trim_left(cutset string) string {
 }
 
 // trim_right strips any of the characters given in `cutset` from the right of the string.
-// Example: `assert ' Hello V d'.trim_right(' d') == ' Hello V'`
+// Example: assert ' Hello V d'.trim_right(' d') == ' Hello V'
 pub fn (s string) trim_right(cutset string) string {
 	if s.len < 1 || cutset.len < 1 {
 		return s
@@ -1073,7 +1073,7 @@ pub fn (s string) trim_right(cutset string) string {
 }
 
 // trim_prefix strips `str` from the start of the string.
-// Example: `assert 'WorldHello V'.trim_prefix('World') == 'Hello V'`
+// Example: assert 'WorldHello V'.trim_prefix('World') == 'Hello V'
 pub fn (s string) trim_prefix(str string) string {
 	if s.starts_with(str) {
 		return s[str.len..]
@@ -1082,7 +1082,7 @@ pub fn (s string) trim_prefix(str string) string {
 }
 
 // trim_suffix strips `str` from the end of the string.
-// Example: `assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'`
+// Example: assert 'Hello VWorld'.trim_suffix('World') == 'Hello V'
 pub fn (s string) trim_suffix(str string) string {
 	if s.ends_with(str) {
 		return s[..s.len - str.len]
@@ -1303,7 +1303,7 @@ pub fn (u ustring) count(substr ustring) int {
 }
 
 // substr returns the string between index positions `_start` and `_end`.
-// Example: `'ABCD'.substr(1,3) == 'BC'`.
+// Example: assert 'ABCD'.substr(1,3) == 'BC'
 pub fn (u ustring) substr(_start int, _end int) string {
 	$if !no_bounds_checking ? {
 		if _start > _end || _start > u.len || _end > u.len || _start < 0 || _end < 0 {
@@ -1396,41 +1396,41 @@ pub fn (s &string) free() {
 }
 
 // all_before returns the contents before `dot` in the string.
-// Example: `assert '23:34:45.234'.all_before('.') == '23:34:45'`
+// Example: assert '23:34:45.234'.all_before('.') == '23:34:45'
 pub fn (s string) all_before(dot string) string {
 	pos := s.index(dot) or { return s }
 	return s.left(pos)
 }
 
 // all_before_last returns the contents before the last occurence of `dot` in the string.
-// Example: `assert '23:34:45.234'.all_before_last(':') == '23:34'`
+// Example: assert '23:34:45.234'.all_before_last(':') == '23:34'
 pub fn (s string) all_before_last(dot string) string {
 	pos := s.last_index(dot) or { return s }
 	return s.left(pos)
 }
 
 // all_after returns the contents after `dot` in the string.
-// Example: `assert '23:34:45.234'.all_after('.') == '234'`
+// Example: assert '23:34:45.234'.all_after('.') == '234'
 pub fn (s string) all_after(dot string) string {
 	pos := s.index(dot) or { return s }
 	return s.right(pos + dot.len)
 }
 
 // all_after_last returns the contents after the last occurence of `dot` in the string.
-// Example: `assert '23:34:45.234'.all_after_last(':') == '45.234'`
+// Example: assert '23:34:45.234'.all_after_last(':') == '45.234'
 pub fn (s string) all_after_last(dot string) string {
 	pos := s.last_index(dot) or { return s }
 	return s.right(pos + dot.len)
 }
 
 // after returns the contents after the last occurence of `dot` in the string.
-// Example: `assert '23:34:45.234'.after(':') == '45.234'`
+// Example: assert '23:34:45.234'.after(':') == '45.234'
 pub fn (s string) after(dot string) string {
 	return s.all_after_last(dot)
 }
 
 // after returns the contents after the first occurence of `dot` character in the string.
-// Example: `assert '23:34:45.234'.after_char(`:`) == '34:45.234'`
+// Example: assert '23:34:45.234'.after_char(`:`) == '34:45.234'
 pub fn (s string) after_char(dot byte) string {
 	mut pos := 0
 	for i, c in s {
@@ -1449,7 +1449,7 @@ pub fn (s string) after_char(dot byte) string {
 // return join_strings(s.slice_fast(a, b))
 // }
 // join joins a string array into a string using `del` delimiter.
-// Example: `assert ['Hello','V'].join(' ') == 'Hello V'`
+// Example: assert ['Hello','V'].join(' ') == 'Hello V'
 pub fn (a []string) join(del string) string {
 	if a.len == 0 {
 		return ''
@@ -1493,8 +1493,8 @@ pub fn (s []string) join_lines() string {
 	return s.join('\n')
 }
 
-// reverse will return a new reversed string.
-// Example: `assert 'Hello V'.reverse() == 'V olleH'`
+// reverse returns a reversed string.
+// Example: assert 'Hello V'.reverse() == 'V olleH'
 pub fn (s string) reverse() string {
 	if s.len == 0 || s.len == 1 {
 		return s
@@ -1575,7 +1575,7 @@ pub fn (s string) repeat(count int) string {
 }
 
 // fields returns a string array of the string split by `\t` and ` `
-// Example: `assert '\t\tv = v'.fields() == ['', '', 'v', '=', 'v']`
+// Example: assert '\t\tv = v'.fields() == ['', '', 'v', '=', 'v']
 pub fn (s string) fields() []string {
 	// TODO do this in a better way
 	return s.replace('\t', ' ').split(' ')
