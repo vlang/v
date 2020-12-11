@@ -592,6 +592,9 @@ pub fn (s string) substr(start int, end int) string {
 		}
 	}
 	len := end - start
+	if len == s.len {
+		return s.clone()
+	}
 	mut res := string{
 		str: malloc(len + 1)
 		len: len
