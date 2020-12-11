@@ -1155,6 +1155,7 @@ pub fn (s ustring) str() string {
 	return s.s
 }
 
+// ustring converts the string to a unicode string.
 pub fn (s string) ustring() ustring {
 	mut res := ustring{
 		s: s // runes will have at least s.len elements, save reallocations
@@ -1314,6 +1315,8 @@ pub fn (u ustring) substr(_start int, _end int) string {
 	return u.s.substr(u.runes[_start], end)
 }
 
+// left returns the `n`th leftmost characters of the ustring.
+// Example: assert 'hello'.left(2) == 'he'
 pub fn (u ustring) left(pos int) string {
 	if pos >= u.len {
 		return u.s
@@ -1321,6 +1324,8 @@ pub fn (u ustring) left(pos int) string {
 	return u.substr(0, pos)
 }
 
+// right returns the `n`th rightmost characters of the ustring.
+// Example: assert 'hello'.right(2) == 'lo'
 pub fn (u ustring) right(pos int) string {
 	if pos >= u.len {
 		return ''
@@ -1328,6 +1333,8 @@ pub fn (u ustring) right(pos int) string {
 	return u.substr(pos, u.len)
 }
 
+// at returns the byte at index `idx`.
+// Example: assert 'ABC'.at(1) == byte(`B`)
 fn (s string) at(idx int) byte {
 	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= s.len {
@@ -1339,6 +1346,8 @@ fn (s string) at(idx int) byte {
 	}
 }
 
+// at returns the string at index `idx`.
+// Example: assert 'ABC'.at(1) == 'B'
 pub fn (u ustring) at(idx int) string {
 	$if !no_bounds_checking ? {
 		if idx < 0 || idx >= u.len {
@@ -1348,6 +1357,7 @@ pub fn (u ustring) at(idx int) string {
 	return u.substr(idx, idx + 1)
 }
 
+// free allows for manually freeing the memory occupied by the unicode string.
 [unsafe]
 fn (u &ustring) free() {
 	$if prealloc {
@@ -1359,22 +1369,32 @@ fn (u &ustring) free() {
 	}
 }
 
+// is_digit returns `true` if the byte is in range 0-9 and `false` otherwise.
+// Example: assert byte(`9`) == true
 pub fn (c byte) is_digit() bool {
 	return c >= `0` && c <= `9`
 }
 
+// is_hex_digit returns `true` if the byte is either in range 0-9, a-f or A-F and `false` otherwise.
+// Example: assert byte(`F`) == true
 pub fn (c byte) is_hex_digit() bool {
 	return c.is_digit() || (c >= `a` && c <= `f`) || (c >= `A` && c <= `F`)
 }
 
+// is_oct_digit returns `true` if the byte is in range 0-7 and `false` otherwise.
+// Example: assert byte(`7`) == true
 pub fn (c byte) is_oct_digit() bool {
 	return c >= `0` && c <= `7`
 }
 
+// is_bin_digit returns `true` if the byte is a binary digit (0 or 1) and `false` otherwise.
+// Example: assert byte(`0`) == true
 pub fn (c byte) is_bin_digit() bool {
 	return c == `0` || c == `1`
 }
 
+// is_letter returns `true` if the byte is in range a-z or A-Z and `false` otherwise.
+// Example: assert byte(`V`) == true
 pub fn (c byte) is_letter() bool {
 	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
 }
