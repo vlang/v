@@ -943,7 +943,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 2
 					mut nest_count := 1
 					// Skip comment
-					for nest_count > 0 {
+					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
 						if s.pos >= s.text.len {
 							s.line_nr--
