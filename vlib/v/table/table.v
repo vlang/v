@@ -340,29 +340,6 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
-// this will override or register builtin type
-// allows prexisitng types added in register_builtins
-// to be overriden with their real type info
-[inline]
-pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
-	existing_idx := t.type_idxs[typ.name]
-	if existing_idx > 0 {
-		if existing_idx >= string_type_idx {
-			if existing_idx == string_type_idx {
-				existing_type := t.types[existing_idx]
-				t.types[existing_idx] = {
-					typ |
-					kind: existing_type.kind
-				}
-			} else {
-				t.types[existing_idx] = typ
-			}
-		}
-		return existing_idx
-	}
-	return t.register_type_symbol(typ)
-}
-
 [inline]
 pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
@@ -380,10 +357,21 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				return existing_idx
 			}
 			else {
-				if ex_type.kind == typ.kind {
+				// builtin
+				// this will override the already registered builtin types
+				// with the actual v struct declaration in the source
+				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+					if existing_idx == string_type_idx {
+						// existing_type := t.types[existing_idx]
+						t.types[existing_idx] = {
+							typ |
+							kind: ex_type.kind
+						}
+					} else {
+						t.types[existing_idx] = typ
+					}
 					return existing_idx
 				}
-				// panic('cannot register type `$typ.name`, another type with this name exists')
 				return -1
 			}
 		}
@@ -608,6 +596,11 @@ pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, ha
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
 	cname := if f.name.len == 0 { 'anon_fn_${t.fn_type_signature(f)}' } else { util.no_dots(f.name.clone()) }
 	anon := f.name.len == 0 || is_anon
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 && t.types[existing_idx].kind != .placeholder {
+		return existing_idx
+	}
 	return t.register_type_symbol(
 		kind: .function
 		name: name

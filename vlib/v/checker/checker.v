@@ -3603,15 +3603,20 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 					}
 					agg_name.write(')')
 					name := agg_name.str()
-					expr_type = c.table.register_type_symbol(table.TypeSymbol{
-						name: name
-						cname: agg_cname.str()
-						kind: .aggregate
-						mod: c.mod
-						info: table.Aggregate{
-							types: expr_types.map(it.typ)
-						}
-					})
+					existing_idx := c.table.type_idxs[name]
+					if existing_idx > 0 {
+						expr_type = existing_idx
+					} else {
+						expr_type = c.table.register_type_symbol(table.TypeSymbol{
+							name: name
+							cname: agg_cname.str()
+							kind: .aggregate
+							mod: c.mod
+							info: table.Aggregate{
+								types: expr_types.map(it.typ)
+							}
+						})
+					}
 				} else {
 					expr_type = expr_types[0].typ
 				}

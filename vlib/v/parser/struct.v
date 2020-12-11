@@ -277,15 +277,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_public: is_pub
 	}
 	mut ret := 0
-	if p.builtin_mod && t.name in table.builtin_type_names {
-		// this allows overiding the builtins type
-		// with the real struct type info parsed from builtin
-		ret = p.table.register_builtin_type_symbol(t)
-	} else {
-		// println('reg type symbol $name mod=$p.mod')
-		ret = p.table.register_type_symbol(t)
-	}
-	if ret == -1 {
+	// println('reg type symbol $name mod=$p.mod')
+	ret = p.table.register_type_symbol(t)
+	// allow duplicate c struct declarations
+	if ret == -1 && language != .c {
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
