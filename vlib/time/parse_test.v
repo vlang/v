@@ -101,4 +101,8 @@ fn test_parse_iso8601_local() {
 	assert t.year == 2020
 	assert t.month == 6
 	assert t.day == 5
+	assert t.hour == 15
+	assert t.minute == 38
+	assert t.second == 6
+	assert t.microsecond == 15959
 }
