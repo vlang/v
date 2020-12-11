@@ -63,10 +63,7 @@ fn report_undocumented_functions_in_path(opt Options, path string) {
 					if !line_above.starts_with('//') {
 						mut tags := []string{}
 						mut grab := true
-						if line_above.starts_with('[') { // One or more tags
-							tags << collect_tags(line_above)
-						}
-						for j := i - 2; j >= 0; j-- {
+						for j := i - 1; j >= 0; j-- {
 							prev_line := lines[j]
 							if prev_line.contains('}') { // We've looked back to the above scope, stop here
 								break
