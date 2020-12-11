@@ -1,4 +1,5 @@
 import time
+import math
 
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
@@ -48,61 +49,51 @@ fn test_parse_rfc2822_invalid() {
 	assert false
 }
 
-fn test_iso8601_parse_utc() {
+fn test_parse_iso8601() {
+	// Because there is a small difference between time.now() - time.utc and actual offset,
+	// round to the nearest hour.
+	offset := time.Duration(i64(math.round((time.now() - time.utc()).hours())) * time.hour)
+	println(offset.hours())
 	formats := [
-		'2020-06-05T15:38:06.015959Z',
 		'2020-06-05T15:38:06Z',
+		'2020-06-05T15:38:06.015959Z',
+		'2020-06-05T15:38:06.015959+00:00',
+		'2020-06-05T15:38:06.015959+02:00',
+		'2020-06-05T15:38:06.015959-02:00',
 	]
 	times := [
-		[2020, 6, 5, 15, 38, 6, 15959],
 		[2020, 6, 5, 15, 38, 6, 0],
+		[2020, 6, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 15, 38, 6, 15959],
+		[2020, 6, 5, 13, 38, 6, 15959],
+		[2020, 6, 5, 17, 38, 6, 15959],
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or { panic(err) }
-		tt := times[i]
-		assert t.year == tt[0]
-		assert t.month == tt[1]
-		assert t.day == tt[2]
-		assert t.hour == tt[3]
-		assert t.minute == tt[4]
-		assert t.second == tt[5]
-		assert t.microsecond == tt[6]
+		data := times[i]
+		t2 := time.new_time(
+			year: data[0]
+			month: data[1]
+			day: data[2]
+			hour: data[3]
+			minute: data[4]
+			second: data[5]
+			microsecond: data[6]
+		).add(offset)
+		assert t.year == t2.year
+		assert t.month == t2.month
+		assert t.day == t2.day
+		assert t.hour == t2.hour
+		assert t.minute == t2.minute
+		assert t.second == t2.second
+		assert t.microsecond == t2.microsecond
 	}
 }
 
-fn test_iso8601_parse_local() {
+fn test_parse_iso8601_local() {
 	format_utc := '2020-06-05T15:38:06.015959'
-	t_utc := time.parse_iso8601(format_utc) or {
-		panic(err)
-	}
+	t_utc := time.parse_iso8601(format_utc) or { panic(err) }
 	assert t_utc.year == 2020
 	assert t_utc.month == 6
 	assert t_utc.day == 5
-}
-
-fn test_iso8601_parse_utc_diff() {
-	format_utc := '2020-06-05T15:38:06.015959+00:00'
-	format_cest := '2020-06-05T15:38:06.015959+02:00'
-	t_utc := time.parse_iso8601(format_utc) or {
-		panic(err)
-	}
-	t_cest := time.parse_iso8601(format_cest) or {
-		panic(err)
-	}
-	assert t_utc.year == 2020
-	assert t_cest.year == 2020
-	assert t_utc.month == 6
-	assert t_cest.month == 6
-	assert t_utc.day == 5
-	assert t_cest.day == 5
-	// if it was formatted in utc it should be
-	// two hours before if it was formatted in
-	// cest time
-	assert t_utc.hour == (t_cest.hour + 2)
-	assert t_utc.minute == 38
-	assert t_cest.minute == 38
-	assert t_utc.second == 6
-	assert t_cest.second == 6
-	assert t_utc.microsecond == 15959
-	assert t_cest.microsecond == 15959
 }
