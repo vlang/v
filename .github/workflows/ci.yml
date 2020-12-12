@@ -369,7 +369,7 @@ jobs:
         gcc --version
         .\make.bat -gcc
     - name: Test new v.c
-      run: .\v.exe -cc gcc -cg self
+      run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
     - name: Install dependencies
       run: |
         .\v.exe setup-freetype
