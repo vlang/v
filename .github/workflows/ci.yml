@@ -159,8 +159,8 @@ jobs:
     - name: Run sanitizers
       run: ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
       run: ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
-      # run: ./v -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
-      # run: ./v -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
+#      run: ./v -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
+#      run: ./v -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
     - name: v self with -usecache
       run: ./v -o v2 -usecache cmd/v
     - name: Test symlink
@@ -227,8 +227,8 @@ jobs:
     - name: Run sanitizers
       run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
       run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
-      # run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
-      # run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
+#      run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
+#      run: ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
