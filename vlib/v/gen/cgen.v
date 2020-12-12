@@ -3129,6 +3129,7 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' : ')
 				} else {
 					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
 					g.writeln('else {')
 				}
 			} else {
@@ -3137,12 +3138,14 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 						g.write(' : ')
 					} else {
 						g.writeln('')
+						g.write_v_source_line_info(branch.pos)
 						g.write('else ')
 					}
 				}
 				if is_expr {
 					g.write('(')
 				} else {
+					g.write_v_source_line_info(branch.pos)
 					g.write('if (')
 				}
 				g.write(cond_var)
