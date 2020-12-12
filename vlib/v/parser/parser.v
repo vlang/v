@@ -1021,14 +1021,10 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 			}
 			scope: p.scope
 		}
-	} else {
-		p.error('unexpected token `$p.tok.lit`')
-		return ast.Ident{
-			scope: 0
-		}
 	}
+	p.error('unexpected token `$p.tok.lit`')
 	return ast.Ident{
-		scope: 0
+		scope: p.scope
 	}
 }
 
