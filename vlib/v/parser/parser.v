@@ -521,6 +521,7 @@ pub fn (mut p Parser) top_stmt() ast.Stmt {
 						stmts: stmts
 						file: p.file_name
 						return_type: table.void_type
+						scope: p.scope
 					}
 				} else if p.pref.is_fmt {
 					return p.stmt(false)
@@ -1022,9 +1023,13 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 		}
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
-		return ast.Ident{}
+		return ast.Ident{
+			scope: 0
+		}
 	}
-	return ast.Ident{}
+	return ast.Ident{
+		scope: 0
+	}
 }
 
 pub fn (mut p Parser) name_expr() ast.Expr {
@@ -2100,7 +2105,9 @@ fn (mut p Parser) assoc() ast.Assoc {
 	pos := p.tok.position()
 	mut v := p.scope.find_var(var_name) or {
 		p.error('unknown variable `$var_name`')
-		return ast.Assoc{}
+		return ast.Assoc{
+			scope: 0
+		}
 	}
 	v.is_used = true
 	// println('assoc var $name typ=$var.typ')

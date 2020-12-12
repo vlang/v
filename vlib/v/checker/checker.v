@@ -147,6 +147,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 				mod: 'main'
 				file: first_main_file.path
 				return_type: table.void_type
+				scope: &ast.Scope{
+					parent: 0
+				}
 			}
 			has_main_fn = true
 		}
