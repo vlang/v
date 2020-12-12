@@ -48,6 +48,10 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	}
 	p.check(.lsbr)
 	key_type := p.parse_type()
+	if key_type.idx() == 0 {
+		// error is reported in parse_type
+		return 0
+	}
 	// key_type_sym := p.get_type_symbol(key_type)
 	// if key_type_sym.kind != .string {
 	if key_type.idx() != table.string_type_idx {
@@ -56,6 +60,10 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	}
 	p.check(.rsbr)
 	value_type := p.parse_type()
+	if value_type.idx() == 0 {
+		// error is reported in parse_type
+		return 0
+	}
 	idx := p.table.find_or_register_map(key_type, value_type)
 	return table.new_type(idx)
 }
@@ -78,6 +86,9 @@ pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	mut mr_types := []table.Type{}
 	for p.tok.kind != .eof {
 		mr_type := p.parse_type()
+		if mr_type.idx() == 0 {
+			break
+		}
 		mr_types << mr_type
 		if p.tok.kind == .comma {
 			p.next()
