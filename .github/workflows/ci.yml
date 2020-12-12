@@ -217,6 +217,8 @@ jobs:
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
+    - name: Valgrind
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
