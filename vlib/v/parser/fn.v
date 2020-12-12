@@ -101,6 +101,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			kind: or_kind
 			pos: or_pos
 		}
+		scope: p.scope
 	}
 }
 
@@ -201,12 +202,16 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_type = p.parse_type_with_mut(rec_mut)
 		if rec_type.idx() == 0 {
 			// error is set in parse_type
-			return ast.FnDecl{}
+			return ast.FnDecl{
+				scope: 0
+			}
 		}
 		rec_type_pos = rec_type_pos.extend(p.prev_tok.position())
 		if is_amp && rec_mut {
 			p.error('use `(mut f Foo)` or `(f &Foo)` instead of `(mut f &Foo)`')
-			return ast.FnDecl{}
+			return ast.FnDecl{
+				scope: 0
+			}
 		}
 		if is_shared {
 			rec_type = rec_type.set_flag(.shared_f)
@@ -228,13 +233,17 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
 			p.error('function names cannot contain uppercase letters, use snake_case instead')
-			return ast.FnDecl{}
+			return ast.FnDecl{
+				scope: 0
+			}
 		}
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
 			p.error('duplicate method `$name`')
-			return ast.FnDecl{}
+			return ast.FnDecl{
+				scope: 0
+			}
 		}
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
@@ -255,7 +264,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		for param in params {
 			if p.scope.known_var(param.name) {
 				p.error_with_pos('redefinition of parameter `$param.name`', param.pos)
-				return ast.FnDecl{}
+				return ast.FnDecl{
+					scope: 0
+				}
 			}
 			p.scope.register(ast.Var{
 				name: param.name
@@ -291,7 +302,9 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		if is_non_local {
 			p.error_with_pos('cannot define new methods on non-local type $type_sym.name',
 				rec_type_pos)
-			return ast.FnDecl{}
+			return ast.FnDecl{
+				scope: 0
+			}
 		}
 		// p.warn('reg method $type_sym.name . $name ()')
 		type_sym_method_idx = type_sym.register_method(table.Fn{
@@ -341,12 +354,13 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
 	}
-	p.close_scope()
 	if !no_body && are_args_type_only {
 		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
-		return ast.FnDecl{}
+		return ast.FnDecl{
+			scope: 0
+		}
 	}
-	return ast.FnDecl{
+	fn_decl := ast.FnDecl{
 		name: name
 		mod: p.mod
 		stmts: stmts
@@ -373,7 +387,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
+		scope: p.scope
 	}
+	p.close_scope()
+	return fn_decl
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
@@ -425,6 +442,7 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			no_body: no_body
 			pos: pos
 			file: p.file_name
+			scope: p.scope
 		}
 		typ: typ
 	}

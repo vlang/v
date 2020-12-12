@@ -18,6 +18,7 @@ fn (mut p Parser) lock_expr() ast.LockExpr {
 			name: p.tok.lit
 			is_mut: true
 			info: ast.IdentVar{}
+			scope: p.scope
 		}
 		p.next()
 		if p.tok.kind == .lcbr {

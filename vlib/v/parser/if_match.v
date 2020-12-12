@@ -43,9 +43,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
 				body_pos := p.tok.position()
+				p.open_scope()
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
-					p.open_scope()
 					p.scope.register(ast.Var{
 						name: 'errcode'
 						typ: table.int_type
@@ -60,18 +60,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 					})
 				}
 				branches << ast.IfBranch{
-					stmts: if prev_guard {
-						p.parse_block_no_scope(false)
-					} else {
-						p.parse_block()
-					}
+					stmts: p.parse_block_no_scope(false)
 					pos: start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
+					scope: p.scope
 				}
-				if prev_guard {
-					p.close_scope()
-				}
+				p.close_scope()
 				comments = []
 				break
 			}
@@ -116,16 +111,19 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
 		p.inside_if = false
-		stmts := p.parse_block()
-		if is_guard {
-			p.close_scope()
-		}
+		p.open_scope()
+		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
+			scope: p.scope
+		}
+		p.close_scope()
+		if is_guard {
+			p.close_scope()
 		}
 		comments = p.eat_comments()
 		if is_comptime {
@@ -226,6 +224,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		// p.warn('match block')
 		p.inside_match_body = true
 		stmts := p.parse_block_no_scope(false)
+		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
 		pos := token.Position{
@@ -242,6 +241,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			comments: comments
 			is_else: is_else
 			post_comments: post_comments
+			scope: branch_scope
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

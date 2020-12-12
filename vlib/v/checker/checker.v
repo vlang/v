@@ -147,6 +147,9 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 				mod: 'main'
 				file: first_main_file.path
 				return_type: table.void_type
+				scope: &ast.Scope{
+					parent: 0
+				}
 			}
 			has_main_fn = true
 		}
@@ -1141,15 +1144,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		is_sort := method_name == 'sort'
 		if is_filter_map || is_sort {
 			array_info := left_type_sym.info as table.Array
-			args_pos := call_expr.pos.pos + call_expr.name.len
-			mut scope := c.file.scope.innermost(args_pos)
 			if is_filter_map {
 				// position of `it` doesn't matter
-				scope_register_it(mut scope, call_expr.pos, array_info.elem_type)
+				scope_register_it(mut call_expr.scope, call_expr.pos, array_info.elem_type)
 			} else if is_sort {
 				c.fail_if_immutable(call_expr.left)
 				// position of `a` and `b` doesn't matter, they're the same
-				scope_register_ab(mut scope, call_expr.pos, array_info.elem_type)
+				scope_register_ab(mut call_expr.scope, call_expr.pos, array_info.elem_type)
 				// Verify `.sort(a < b)`
 				if call_expr.args.len > 0 {
 					if call_expr.args[0].expr !is ast.InfixExpr {
@@ -1450,8 +1451,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	}
 	// check for arg (var) of fn type
 	if !found {
-		scope := c.file.scope.innermost(call_expr.pos.pos)
-		if v := scope.find_var(fn_name) {
+		if v := call_expr.scope.find_var(fn_name) {
 			if v.typ != 0 {
 				vts := c.table.get_type_symbol(v.typ)
 				if vts.kind == .function {
@@ -1468,8 +1468,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		return table.void_type
 	}
 	if !found_in_args {
-		scope := c.file.scope.innermost(call_expr.pos.pos)
-		if _ := scope.find_var(fn_name) {
+		if _ := call_expr.scope.find_var(fn_name) {
 			c.error('ambiguous call to: `$fn_name`, may refer to fn `$fn_name` or variable `$fn_name`',
 				call_expr.pos)
 		}
@@ -1825,8 +1824,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		field_sym := c.table.get_type_symbol(field.typ)
 		if field_sym.kind == .sum_type {
 			if !prevent_sum_type_unwrapping_once {
-				scope := c.file.scope.innermost(selector_expr.pos.pos)
-				if scope_field := scope.find_struct_field(utyp, field_name) {
+				if scope_field := selector_expr.scope.find_struct_field(utyp, field_name) {
 					return scope_field.sum_type_casts.last()
 				}
 			}
@@ -2052,38 +2050,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 		}
 		return
 	}
-	// Check `x := &y` and `mut x := <-ch`
-	if right_first is ast.PrefixExpr {
-		node := right_first
-		left_first := assign_stmt.left[0]
-		if left_first is ast.Ident {
-			assigned_var := left_first
-			if node.right is ast.Ident {
-				scope := c.file.scope.innermost(node.pos.pos)
-				if v := scope.find_var(node.right.name) {
-					right_type0 = v.typ
-					if node.op == .amp {
-						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
-							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
-								node.pos)
-						}
-					}
-				}
-			}
-			if node.op == .arrow {
-				if assigned_var.is_mut {
-					right_sym := c.table.get_type_symbol(right_type0)
-					if right_sym.kind == .chan {
-						chan_info := right_sym.chan_info()
-						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
-							c.error('cannot have a mutable reference to object from `$right_sym.name`',
-								node.pos)
-						}
-					}
-				}
-			}
-		}
-	}
 	//
 	is_decl := assign_stmt.op == .decl_assign
 	for i, left in assign_stmt.left {
@@ -2284,6 +2250,40 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 		}
 	}
+	// this needs to run after the assign stmt left exprs have been run through checker so that ident.obj is set
+	// Check `x := &y` and `mut x := <-ch`
+	if right_first is ast.PrefixExpr {
+		node := right_first
+		left_first := assign_stmt.left[0]
+		if left_first is ast.Ident {
+			assigned_var := left_first
+			c.expr(node.right)
+			if node.right is ast.Ident {
+				if node.right.obj is ast.Var {
+					v := node.right.obj
+					right_type0 = v.typ
+					if node.op == .amp {
+						if !v.is_mut && assigned_var.is_mut && !c.inside_unsafe {
+							c.error('`$node.right.name` is immutable, cannot have a mutable reference to it',
+								node.pos)
+						}
+					}
+				}
+			}
+			if node.op == .arrow {
+				if assigned_var.is_mut {
+					right_sym := c.table.get_type_symbol(right_type0)
+					if right_sym.kind == .chan {
+						chan_info := right_sym.chan_info()
+						if chan_info.elem_type.is_ptr() && !chan_info.is_mut {
+							c.error('cannot have a mutable reference to object from `$right_sym.name`',
+								node.pos)
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
@@ -2422,25 +2422,18 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 		// [50]byte
 		mut fixed_size := 1
 		init_expr := array_init.exprs[0]
+		c.expr(init_expr)
 		match init_expr {
 			ast.IntegerLiteral {
 				fixed_size = init_expr.val.int()
 			}
 			ast.Ident {
-				// if obj := c.file.global_scope.find_const(init_expr.name) {
-				// if  obj := scope.find(init_expr.name) {
-				// scope := c.file.scope.innermost(array_init.pos.pos)
-				// eprintln('scope: ${scope.str()}')
-				// scope.find(init_expr.name) or {
-				// c.error('undefined ident: `$init_expr.name`', array_init.pos)
-				// }
-				mut full_const_name := init_expr.mod + '.' + init_expr.name
-				if obj := c.file.global_scope.find_const(full_const_name) {
-					if cint := const_int_value(obj) {
+				if init_expr.obj is ast.ConstField {
+					if cint := const_int_value(init_expr.obj) {
 						fixed_size = cint
 					}
 				} else {
-					c.error('non existent integer const $full_const_name while initializing the size of a static array',
+					c.error('non existent integer const $init_expr.name while initializing the size of a static array',
 						array_init.pos)
 				}
 			}
@@ -2584,7 +2577,6 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 					c.error('range type can not be string', node.cond.position())
 				}
 			} else {
-				mut scope := c.file.scope.innermost(node.pos.pos)
 				sym := c.table.get_type_symbol(typ)
 				if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 					c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
@@ -2596,7 +2588,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 						else { table.int_type }
 					}
 					node.key_type = key_type
-					scope.update_var_type(node.key_var, key_type)
+					node.scope.update_var_type(node.key_var, key_type)
 				}
 				mut value_type := c.table.value_type(typ)
 				if value_type == table.void_type || typ.has_flag(.optional) {
@@ -2611,7 +2603,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				node.cond_type = typ
 				node.kind = sym.kind
 				node.val_type = value_type
-				scope.update_var_type(node.val_var, value_type)
+				node.scope.update_var_type(node.val_var, value_type)
 			}
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
@@ -2873,8 +2865,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ.to_ptr()
 		}
 		ast.Assoc {
-			scope := c.file.scope.innermost(node.pos.pos)
-			v := scope.find_var(node.var_name) or { panic(err) }
+			v := node.scope.find_var(node.var_name) or { panic(err) }
 			for i, _ in node.fields {
 				c.expr(node.exprs[i])
 			}
@@ -3270,8 +3261,7 @@ pub fn (mut c Checker) ident(mut ident ast.Ident) table.Type {
 		if ident.tok_kind == .assign && ident.is_mut {
 			c.error('`mut` not allowed with `=` (use `:=` to declare a variable)', ident.pos)
 		}
-		start_scope := c.file.scope.innermost(ident.pos.pos)
-		if obj := start_scope.find(ident.name) {
+		if obj := ident.scope.find(ident.name) {
 			match mut obj {
 				ast.GlobalField {
 					ident.kind = .global
@@ -3509,7 +3499,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
 	cond_type_sym := c.table.get_type_symbol(node.cond_type)
-	for branch in node.branches {
+	for branch_i, _ in node.branches {
+		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.Type{}
 		for expr in branch.exprs {
 			mut key := ''
@@ -3623,7 +3614,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 				} else {
 					expr_type = expr_types[0].typ
 				}
-				mut scope := c.file.scope.innermost(branch.pos.pos)
 				match mut node.cond {
 					ast.SelectorExpr {
 						mut is_mut := false
@@ -3632,18 +3622,19 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						if field := c.table.struct_find_field(expr_sym, node.cond.field_name) {
 							if field.is_mut {
 								root_ident := node.cond.root_ident()
-								if v := scope.find_var(root_ident.name) {
+								if v := branch.scope.find_var(root_ident.name) {
 									is_mut = v.is_mut
 								}
 							}
 						}
-						if field := scope.find_struct_field(node.cond.expr_type, node.cond.field_name) {
+						if field := branch.scope.find_struct_field(node.cond.expr_type,
+							node.cond.field_name) {
 							sum_type_casts << field.sum_type_casts
 						}
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if !is_mut || node.cond.is_mut {
 							sum_type_casts << expr_type
-							scope.register_struct_field(ast.ScopeStructField{
+							branch.scope.register_struct_field(ast.ScopeStructField{
 								struct_type: node.cond.expr_type
 								name: node.cond.field_name
 								typ: node.cond_type
@@ -3656,7 +3647,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						mut is_mut := false
 						mut sum_type_casts := []table.Type{}
 						mut is_already_casted := false
-						if v := scope.find_var(node.cond.name) {
+						if node.cond.obj is ast.Var {
+							v := node.cond.obj as ast.Var
 							is_mut = v.is_mut
 							sum_type_casts << v.sum_type_casts
 							is_already_casted = v.pos.pos == node.cond.pos.pos
@@ -3664,7 +3656,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 						// smartcast either if the value is immutable or if the mut argument is explicitly given
 						if (!is_mut || node.cond.is_mut) && !is_already_casted {
 							sum_type_casts << expr_type
-							scope.register(ast.Var{
+							branch.scope.register(ast.Var{
 								name: node.cond.name
 								typ: node.cond_type
 								pos: node.cond.pos
@@ -3891,10 +3883,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						// TODO: merge this code with match_expr because it has the same logic implemented
 						if left_sym.kind in [.interface_, .sum_type] {
 							mut is_mut := false
-							mut scope := c.file.scope.innermost(branch.body_pos.pos)
 							if mut infix.left is ast.Ident {
 								mut sum_type_casts := []table.Type{}
-								if v := scope.find_var(infix.left.name) {
+								if v := branch.scope.find_var(infix.left.name) {
 									is_mut = v.is_mut
 									sum_type_casts << v.sum_type_casts
 								}
@@ -3902,7 +3893,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 									// smartcast either if the value is immutable or if the mut argument is explicitly given
 									if !is_mut || infix.left.is_mut {
 										sum_type_casts << right_expr.typ
-										scope.register(ast.Var{
+										branch.scope.register(ast.Var{
 											name: infix.left.name
 											typ: infix.left_type
 											sum_type_casts: sum_type_casts
@@ -3912,7 +3903,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 										})
 									}
 								} else if left_sym.kind == .interface_ {
-									scope.register(ast.Var{
+									branch.scope.register(ast.Var{
 										name: infix.left.name
 										typ: right_expr.typ.to_ptr()
 										sum_type_casts: sum_type_casts
@@ -3929,19 +3920,19 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								if field := c.table.struct_find_field(expr_sym, infix.left.field_name) {
 									if field.is_mut {
 										root_ident := infix.left.root_ident()
-										if v := scope.find_var(root_ident.name) {
-											is_mut = v.is_mut
+										if root_ident.obj is ast.Var {
+											is_mut = root_ident.obj.is_mut
 										}
 									}
 								}
-								if field := scope.find_struct_field(infix.left.expr_type,
+								if field := branch.scope.find_struct_field(infix.left.expr_type,
 									infix.left.field_name) {
 									sum_type_casts << field.sum_type_casts
 								}
 								// smartcast either if the value is immutable or if the mut argument is explicitly given
 								if (!is_mut || infix.left.is_mut) && left_sym.kind == .sum_type {
 									sum_type_casts << right_expr.typ
-									scope.register_struct_field(ast.ScopeStructField{
+									branch.scope.register_struct_field(ast.ScopeStructField{
 										struct_type: infix.left.expr_type
 										name: infix.left.field_name
 										typ: infix.left_type
@@ -4159,12 +4150,12 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 			} else if cond.name !in c.pref.compile_defines_all {
 				// `$if some_var {}`
 				typ := c.expr(cond)
-				scope := c.file.scope.innermost(pos.pos)
-				obj := scope.find(cond.name) or {
+				if cond.obj !is ast.Var &&
+					cond.obj !is ast.ConstField && cond.obj !is ast.GlobalField {
 					c.error('unknown var: `$cond.name`', pos)
 					return false
 				}
-				expr := c.find_obj_definition(obj) or {
+				expr := c.find_obj_definition(cond.obj) or {
 					c.error(err, cond.pos)
 					return false
 				}
@@ -4285,8 +4276,8 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	if !c.inside_unsafe && (typ.is_ptr() || typ.is_pointer()) {
 		mut is_ok := false
 		if mut node.left is ast.Ident {
-			scope := c.file.scope.innermost(node.left.pos.pos)
-			if v := scope.find_var(node.left.name) {
+			if node.left.obj is ast.Var {
+				v := node.left.obj as ast.Var
 				// `mut param []T` function parameter
 				is_ok = v.is_mut && v.is_arg && !typ.deref().is_ptr()
 			}

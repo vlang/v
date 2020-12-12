@@ -112,6 +112,7 @@ pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
 	typ        table.Type // type of the entire thing (`Foo.bar`)
 	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
+	scope      &Scope
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -287,6 +288,7 @@ pub mut:
 	return_type     table.Type
 	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
 	source_file     &File = 0
+	scope           &Scope
 }
 
 // break, continue
@@ -317,6 +319,7 @@ pub mut:
 	generic_type       table.Type // TODO array, to support multiple types
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
+	scope              &Scope
 }
 
 /*
@@ -460,6 +463,7 @@ pub:
 	pos      token.Position
 	mut_pos  token.Position
 pub mut:
+	scope    &Scope
 	obj      ScopeObject
 	mod      string
 	name     string
@@ -548,6 +552,7 @@ pub:
 pub mut:
 	stmts     []Stmt
 	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
+	scope     &Scope
 }
 
 pub struct UnsafeExpr {
@@ -590,6 +595,8 @@ pub:
 	comments      []Comment // comment above `xxx {`
 	is_else       bool
 	post_comments []Comment
+pub mut:
+	scope         &Scope
 }
 
 pub struct SelectExpr {
@@ -637,6 +644,7 @@ pub:
 	pos    token.Position
 pub mut:
 	label  string // `label: for {`
+	scope  &Scope
 }
 
 pub struct ForInStmt {
@@ -656,6 +664,7 @@ pub mut:
 	cond_type  table.Type
 	kind       table.Kind // array/map/string
 	label      string // `label: for {`
+	scope      &Scope
 }
 
 pub struct ForCStmt {
@@ -670,6 +679,7 @@ pub:
 	pos      token.Position
 pub mut:
 	label    string // `label: for {`
+	scope    &Scope
 }
 
 // #include etc
@@ -942,6 +952,7 @@ pub:
 	pos      token.Position
 pub mut:
 	typ      table.Type
+	scope    &Scope
 }
 
 pub struct SizeOf {

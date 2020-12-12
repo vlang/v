@@ -1735,7 +1735,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		val := assign_stmt.right[i]
 		mut is_call := false
 		mut blank_assign := false
-		mut ident := ast.Ident{}
+		mut ident := ast.Ident{
+			scope: 0
+		}
 		if left is ast.Ident {
 			ident = left
 			// id_info := ident.var_info()
