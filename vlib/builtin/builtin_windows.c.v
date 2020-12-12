@@ -234,7 +234,7 @@ fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
 			mut ptr := &voidptr(0)
-			*ptr = 0
+			*ptr = voidptr(0)
 		}
 	} $else {
 		if C.IsDebuggerPresent() {
