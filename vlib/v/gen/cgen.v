@@ -5071,12 +5071,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.writeln('\tstring err = ${cvar_name}.v_error;')
 			g.writeln('\tint errcode = ${cvar_name}.ecode;')
 		}
-
 		g.inside_or_block = true
 		defer {
 			g.inside_or_block = false
 		}
-
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
 			1] as ast.ExprStmt).typ != table.void_type {
