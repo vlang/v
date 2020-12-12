@@ -86,6 +86,9 @@ pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	mut mr_types := []table.Type{}
 	for p.tok.kind != .eof {
 		mr_type := p.parse_type()
+		if mr_type.idx() == 0 {
+			break
+		}
 		mr_types << mr_type
 		if p.tok.kind == .comma {
 			p.next()
