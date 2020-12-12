@@ -380,7 +380,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 	bs_cname += '_T_'
 	mut generic_types := []table.Type{}
 	mut is_instance := false
-	for {
+	for p.tok.kind != .eof {
 		gt := p.parse_type()
 		if !gt.has_flag(.generic) {
 			is_instance = true
