@@ -1127,7 +1127,7 @@ pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(max_path_len)
 	mut ret := charptr(0)
 	$if windows {
-		ret = charptr(C._fullpath(charptr(fullpath), fpath.str, max_path_len))
+		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
 		if ret == 0 {
 			return fpath
 		}
