@@ -102,7 +102,7 @@ mut:
 	deletes     u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
-	is_deleted  &byte
+	all_deleted &byte
 	data        byteptr // array of interleaved key data and value data
 }
 
@@ -118,7 +118,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		cap: cap
 		len: 0
 		deletes: 0
-		is_deleted: 0
+		all_deleted: 0
 		data: malloc(cap * slot_bytes) 
 	}
 }
@@ -136,7 +136,7 @@ fn (d &DenseArray) value(i int) voidptr {
 
 [inline]
 fn (d &DenseArray) has_index(i int) bool {
-	return d.deletes == 0 || unsafe {d.is_deleted[i]} == 0
+	return d.deletes == 0 || unsafe {d.all_deleted[i]} == 0
 }
 
 // Push element to array and return index
@@ -148,15 +148,15 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 		unsafe {
 			d.data = v_realloc(d.data, d.slot_bytes * d.cap)
 			if d.deletes != 0 {
-				d.is_deleted = v_realloc(d.is_deleted, d.cap)
-				C.memset(d.is_deleted + d.len, 0, d.cap - d.len)
+				d.all_deleted = v_realloc(d.all_deleted, d.cap)
+				C.memset(d.all_deleted + d.len, 0, d.cap - d.len)
 			}
 		}
 	}
 	push_index := d.len
 	unsafe {
 		if d.deletes != 0 {
-			d.is_deleted[push_index] = 0
+			d.all_deleted[push_index] = 0
 		}
 		ptr := d.key(push_index)
 		C.memcpy(ptr, key, d.key_bytes)
@@ -185,7 +185,7 @@ fn (mut d DenseArray) zeros_to_end() {
 	free(tmp_buf)
 	d.deletes = 0
 	// TODO: reallocate instead as more deletes are likely
-	free(d.is_deleted)
+	free(d.all_deleted)
 	d.len = count
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
@@ -480,11 +480,11 @@ pub fn (mut m map) delete(key string) {
 			}
 			m.len--
 			if m.key_values.deletes == 0 {
-				m.key_values.is_deleted = C.calloc(1, m.cap) // sets to 0
+				m.key_values.all_deleted = C.calloc(1, m.cap) // sets to 0
 			}
 			m.key_values.deletes++
 			unsafe {
-				m.key_values.is_deleted[kv_index] = 1
+				m.key_values.all_deleted[kv_index] = 1
 				m.metas[index] = 0
 				// Mark key as deleted
 				(*pkey).free()
@@ -537,12 +537,12 @@ pub fn (d DenseArray) clone() DenseArray {
 		cap: d.cap
 		len: d.len
 		deletes: d.deletes
-		is_deleted: 0
+		all_deleted: 0
 		data: 0
 	}
 	unsafe {
 		if d.deletes != 0 {
-			res.is_deleted = memdup(d.is_deleted, d.cap)
+			res.all_deleted = memdup(d.all_deleted, d.cap)
 		}
 		res.data = memdup(d.data, d.cap * d.slot_bytes)
 	}
@@ -587,7 +587,7 @@ pub fn (m &map) free() {
 				(*pkey).free()
 			}
 		}
-		unsafe {free(m.key_values.is_deleted)}
+		unsafe {free(m.key_values.all_deleted)}
 	}
 	unsafe {free(m.key_values.data)}
 }
