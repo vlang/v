@@ -612,3 +612,5 @@ jobs:
         ./v test-parser examples/cli.v
         ./v test-parser examples/json.v
         ./v test-parser examples/vmod.v
+        ./v test-parser examples/regex_example.v
+        ./v test-parser examples/2048/2048.v
