@@ -233,6 +233,9 @@ fn (mut s Scanner) ident_hex_number() string {
 	mut first_wrong_digit_pos := 0
 	mut first_wrong_digit := `\0`
 	start_pos := s.pos
+	if s.pos + 2 >= s.text.len {
+		return '0x'
+	}
 	s.pos += 2 // skip '0x'
 	if s.text[s.pos] == num_sep {
 		s.error('separator `_` is only valid between digits in a numeric literal')
