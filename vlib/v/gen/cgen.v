@@ -3098,7 +3098,7 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	cond_var := g.new_tmp_var()
 	g.write('${g.typ(node.cond_type)} $cond_var = ')
 	g.expr(node.cond)
-	g.writeln(';')
+	g.writeln('; ')
 	g.write(cur_line)
 	if is_expr {
 		// brackets needed otherwise '?' will apply to everything on the left
@@ -3128,14 +3128,16 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					// TODO too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
-					g.writeln(' else {')
+					g.writeln('')
+					g.writeln('else {')
 				}
 			} else {
 				if j > 0 || sumtype_index > 0 {
 					if is_expr {
 						g.write(' : ')
 					} else {
-						g.write(' else ')
+						g.writeln('')
+						g.write('else ')
 					}
 				}
 				if is_expr {
@@ -3184,7 +3186,9 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					// TODO too many branches. maybe separate ?: matches
 					g.write(' : ')
 				} else {
-					g.writeln(' else {')
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.writeln('else {')
 				}
 			}
 		} else {
@@ -3192,12 +3196,15 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 				if is_expr {
 					g.write(' : ')
 				} else {
-					g.write(' else ')
+					g.writeln('')
+					g.write_v_source_line_info(branch.pos)
+					g.write('else ')
 				}
 			}
 			if is_expr {
 				g.write('(')
 			} else {
+				g.write_v_source_line_info(branch.pos)
 				g.write('if (')
 			}
 			for i, expr in branch.exprs {
