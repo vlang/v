@@ -106,3 +106,23 @@ fn test_parse_iso8601_local() {
 	assert t.second == 6
 	assert t.microsecond == 15959
 }
+
+fn test_parse_iso8601_invalid() {
+	formats := [
+		'',
+		'2020-06-05X15:38:06.015959Z',
+		'2020-06-05T15:38:06.015959X',
+		'2020-06-05T15:38:06.015959+0000',
+		'2020-06-05T',
+		'2020-06-05Z',
+		'2020-06-05+00:00',
+		'15:38:06',
+	]
+	for format in formats {
+		time.parse_iso8601(format) or {
+			assert true
+			continue
+		}
+		assert false
+	}
+}
