@@ -622,3 +622,32 @@ jobs:
         ./v test-parser examples/vmod.v
         ./v test-parser examples/regex_example.v
         ./v test-parser examples/2048/2048.v
+
+  parser-silent-fuzzing:
+    name: Parser silent mode fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build local v
+      run: make -j4
+    - name: Install zzuf
+      run: sudo apt install zzuf -quiet -y
+    - name: Run test-parser
+      run: |
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
+        ./v test-parser examples/hello_world_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
+        ./v test-parser examples/hanoi_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
+        ./v test-parser examples/fibonacci.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
+        ./v test-parser examples/cli_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
+        ./v test-parser examples/json.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
+        ./v test-parser examples/vmod.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
+        ./v test-parser examples/regex_example_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+        ./v test-parser examples/2048/2048_fuzz.v
