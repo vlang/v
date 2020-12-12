@@ -2605,8 +2605,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 				return
 			}
 			mut sum_type_deref_field := ''
-			if field := g.table.struct_find_field(sym, node.field_name) {
-				field_sym := g.table.get_type_symbol(field.typ)
+			if f := g.table.struct_find_field(sym, node.field_name) {
+				field_sym := g.table.get_type_symbol(f.typ)
 				if field_sym.kind == .sum_type {
 					if !prevent_sum_type_unwrapping_once {
 						// check first if field is sum type because scope searching is expensive
@@ -4425,14 +4425,15 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	g.definitions.writeln('\tif (a.len != b.len) {')
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
-	g.definitions.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+	i := g.new_tmp_var()
+	g.definitions.writeln('\tfor (int $i = 0; $i < a.len; ++$i) {')
 	// compare every pair of elements of the two arrays
 	match elem_sym.kind {
-		.string { g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_typ*)((byte*)b.data+(i*b.element_size))))) {') }
-		.struct_ { g.definitions.writeln('\t\tif (memcmp((byte*)a.data+(i*a.element_size), (byte*)b.data+(i*b.element_size), a.element_size)) {') }
-		.array { g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[i], (($elem_typ*)b.data)[i])) {') }
-		.function { g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {') }
-		else { g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+(i*b.element_size)))) {') }
+		.string { g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+($i*a.element_size))), *(($ptr_typ*)((byte*)b.data+($i*b.element_size))))) {') }
+		.struct_ { g.definitions.writeln('\t\tif (memcmp((byte*)a.data+($i*a.element_size), (byte*)b.data+($i*b.element_size), a.element_size)) {') }
+		.array { g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[$i], (($elem_typ*)b.data)[$i])) {') }
+		.function { g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+($i*a.element_size))) != *((voidptr*)((byte*)b.data+($i*b.element_size)))) {') }
+		else { g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+($i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+($i*b.element_size)))) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
@@ -4461,17 +4462,18 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
 	g.definitions.writeln('\tarray_string _keys = map_keys(&a);')
-	g.definitions.writeln('\tfor (int i = 0; i < _keys.len; ++i) {')
-	g.definitions.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[i]);')
+	i := g.new_tmp_var()
+	g.definitions.writeln('\tfor (int $i = 0; $i < _keys.len; ++$i) {')
+	g.definitions.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[$i]);')
 	if value_sym.kind == .function {
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
 		g.definitions.write('\t\t$ret_styp (*v) (')
 		arg_len := func.func.params.len
-		for i, arg in func.func.params {
+		for j, arg in func.func.params {
 			arg_styp := g.typ(arg.typ)
 			g.definitions.write('$arg_styp $arg.name')
-			if i < arg_len - 1 {
+			if j < arg_len - 1 {
 				g.definitions.write(', ')
 			}
 		}
@@ -4920,8 +4922,9 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	g.writeln(';')
 	g.write('int ${tmp}_len = ${tmp}_orig.len;')
 	g.writeln('$styp $tmp = __new_array(0, ${tmp}_len, sizeof($elem_type_str));')
-	g.writeln('for (int i = 0; i < ${tmp}_len; ++i) {')
-	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[i];')
+	i := g.new_tmp_var()
+	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
+	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
 	g.write('if (')
 	expr := node.args[0].expr
 	match expr {
@@ -5054,10 +5057,6 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	is_none_ok := mr_styp == 'void'
-	g.inside_or_block = true
-	defer {
-		g.inside_or_block = false
-	}
 	g.writeln(';') // or')
 	if is_none_ok {
 		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
@@ -5065,8 +5064,17 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		g.writeln('if (!${cvar_name}.ok) {')
 	}
 	if or_block.kind == .block {
-		g.writeln('\tstring err = ${cvar_name}.v_error;')
-		g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		if g.inside_or_block {
+			g.writeln('\terr = ${cvar_name}.v_error;')
+			g.writeln('\terrcode = ${cvar_name}.ecode;')
+		} else {
+			g.writeln('\tstring err = ${cvar_name}.v_error;')
+			g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		}
+		g.inside_or_block = true
+		defer {
+			g.inside_or_block = false
+		}
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
 			1] as ast.ExprStmt).typ != table.void_type {

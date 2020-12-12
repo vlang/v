@@ -925,7 +925,7 @@ pub fn executable() string {
 		if is_set != 0 { // it's a windows symlink
 			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
 			file := C.CreateFile(result, 0x80000000, 1, 0, 3, 0x80, 0)
-			if file != -1 {
+			if file != voidptr(-1) {
 				final_path := &u16(vcalloc(size))
 				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
 				final_len := C.GetFinalPathNameByHandleW(file, final_path, size, 0)
@@ -1127,7 +1127,7 @@ pub fn real_path(fpath string) string {
 	mut fullpath := vcalloc(max_path_len)
 	mut ret := charptr(0)
 	$if windows {
-		ret = charptr(C._fullpath(fullpath, fpath.str, max_path_len))
+		ret = charptr(C._fullpath(charptr(fullpath), charptr(fpath.str), max_path_len))
 		if ret == 0 {
 			return fpath
 		}
