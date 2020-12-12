@@ -156,12 +156,6 @@ jobs:
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-    - name: Run sanitizers
-      run: |
-        ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
-        ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
-#        ./v -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
-#        ./v -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
     - name: v self with -usecache
       run: ./v -o v2 -usecache cmd/v
     - name: Test symlink
@@ -225,12 +219,6 @@ jobs:
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
     - name: Valgrind
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
-    - name: Run sanitizers
-      run: |
-        ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
-        ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
-#        ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
-#        ./v -cc gcc -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
