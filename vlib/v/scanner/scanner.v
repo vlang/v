@@ -763,8 +763,11 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.new_token(.comma, '', 1)
 			}
 			`@` {
-				s.pos++
-				name := s.ident_name()
+				mut name := ''
+				if nextc != `\0` {
+					s.pos++
+					name = s.ident_name()
+				}
 				if s.is_fmt {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
@@ -887,10 +890,12 @@ fn (mut s Scanner) text_scan() token.Token {
 				if nextc == `=` {
 					s.pos++
 					return s.new_token(.ne, '', 2)
-				} else if nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
+				} else if s.text.len > s.pos + 3 &&
+					nextc == `i` && s.text[s.pos + 2] == `n` && s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_in, '', 3)
-				} else if nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
+				} else if s.text.len > s.pos + 3 &&
+					nextc == `i` && s.text[s.pos + 2] == `s` && s.text[s.pos + 3].is_space() {
 					s.pos += 2
 					return s.new_token(.not_is, '', 3)
 				} else {
@@ -940,7 +945,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					start := s.pos + 2
 					mut nest_count := 1
 					// Skip comment
-					for nest_count > 0 {
+					for nest_count > 0 && s.pos < s.text.len - 1 {
 						s.pos++
 						if s.pos >= s.text.len {
 							s.line_nr--
@@ -1002,7 +1007,7 @@ fn (mut s Scanner) ident_string() string {
 	is_raw := is_quote && s.pos > 0 && s.text[s.pos - 1] == `r`
 	is_cstr := is_quote && s.pos > 0 && s.text[s.pos - 1] == `c`
 	if is_quote {
-		if s.is_inside_string {
+		if s.is_inside_string || s.is_enclosed_inter || s.is_inter_start {
 			s.inter_quote = q
 		} else {
 			s.quote = q

@@ -707,6 +707,7 @@ pub:
 	op            token.Kind
 	pos           token.Position
 	comments      []Comment
+	end_comments  []Comment
 pub mut:
 	left          []Expr
 	left_types    []table.Type

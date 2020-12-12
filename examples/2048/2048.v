@@ -47,7 +47,7 @@ struct Theme {
 }
 
 const (
-	themes                = [
+	themes = [
 		&Theme{
 			bg_color: gx.rgb(250, 248, 239)
 			padding_color: gx.rgb(143, 130, 119)

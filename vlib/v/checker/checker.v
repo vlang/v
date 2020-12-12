@@ -2544,16 +2544,18 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 		}
 		ast.ForCStmt {
 			c.in_for_count++
+			prev_loop_label := c.loop_label
 			c.stmt(node.init)
 			c.expr(node.cond)
 			c.stmt(node.inc)
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
-			c.loop_label = ''
+			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
 		ast.ForInStmt {
 			c.in_for_count++
+			prev_loop_label := c.loop_label
 			typ := c.expr(node.cond)
 			typ_idx := typ.idx()
 			if node.key_var.len > 0 && node.key_var != '_' {
@@ -2605,11 +2607,12 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			}
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
-			c.loop_label = ''
+			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
 		ast.ForStmt {
 			c.in_for_count++
+			prev_loop_label := c.loop_label
 			c.expected_type = table.bool_type
 			typ := c.expr(node.cond)
 			if !node.is_inf && typ.idx() != table.bool_type_idx && !c.pref.translated {
@@ -2619,7 +2622,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			// how does this work currenly?
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
-			c.loop_label = ''
+			c.loop_label = prev_loop_label
 			c.in_for_count--
 		}
 		ast.GlobalDecl {

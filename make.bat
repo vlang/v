@@ -136,10 +136,10 @@ if %ERRORLEVEL% NEQ 0 echo Invalid subcommand: !subcmd!
 exit /b %ERRORLEVEL%
 
 :build
-call :download_tcc
-if %ERRORLEVEL% NEQ 0 goto :error
-del "!log_file!">NUL 2>&1
 if !flag_local! NEQ 1 (
+    call :download_tcc
+    if %ERRORLEVEL% NEQ 0 goto :error
+    del "!log_file!">NUL 2>&1
     pushd "%vc_dir%" 2>NUL && (
         echo Updating vc...
         echo  ^> Sync with remote !vc_url!

@@ -1147,7 +1147,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	lit0_is_capital := if p.tok.kind != .eof { p.tok.lit[0].is_capital() } else { false }
+	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 { p.tok.lit[0].is_capital() } else { false }
 	// use heuristics to detect `func<T>()` from `var < expr`
 	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
@@ -1459,11 +1459,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 // `.green`
 // `pref.BuildMode.default_mode`
 fn (mut p Parser) enum_val() ast.EnumVal {
+	start_pos := p.tok.position()
 	p.check(.dot)
 	val := p.check_name()
 	return ast.EnumVal{
 		val: val
-		pos: p.tok.position()
+		pos: start_pos.extend(p.prev_tok.position())
 	}
 }
 
@@ -2114,7 +2115,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 	mut fields := []string{}
 	mut vals := []ast.Expr{}
 	p.check(.pipe)
-	for {
+	for p.tok.kind != .eof {
 		fields << p.check_name()
 		p.check(.colon)
 		expr := p.expr(0)

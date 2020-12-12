@@ -14,6 +14,10 @@ pub fn (mut p Parser) parse_array_type() table.Type {
 		p.next()
 		p.check(.rsbr)
 		elem_type := p.parse_type()
+		if elem_type.idx() == 0 {
+			// error is handled by parse_type
+			return 0
+		}
 		// sym := p.table.get_type_symbol(elem_type)
 		idx := p.table.find_or_register_array_fixed(elem_type, size, 1)
 		return table.new_type(idx)
@@ -72,7 +76,7 @@ pub fn (mut p Parser) parse_chan_type() table.Type {
 pub fn (mut p Parser) parse_multi_return_type() table.Type {
 	p.check(.lpar)
 	mut mr_types := []table.Type{}
-	for {
+	for p.tok.kind != .eof {
 		mr_type := p.parse_type()
 		mr_types << mr_type
 		if p.tok.kind == .comma {
@@ -219,7 +223,7 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 		p.check(.dot)
 		// prefix with full module
 		name = '${p.imports[name]}.$p.tok.lit'
-		if !p.tok.lit[0].is_capital() {
+		if p.tok.lit.len > 0 && !p.tok.lit[0].is_capital() {
 			p.error('imported types must start with a capital letter')
 			return 0
 		}
