@@ -150,13 +150,10 @@ jobs:
         brew uninstall --ignore-dependencies libpq ## libpq is a dependency of PHP
         brew install postgresql
         brew install glfw
-        brew install valgrind
         ## brew install sdl2 sdl2_ttf sdl2_mixer sdl2_image
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
-    - name: Valgrind
-      run: valgrind ./v -o v.c cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: v self with -usecache
@@ -221,7 +218,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
     - name: Valgrind
-      run: valgrind ./v -o v.c cmd/v
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
