@@ -1,4 +1,4 @@
-vlib/v/parser/tests/c_struct_no_embed.vv:7:1: error: bad type syntax
+vlib/v/parser/tests/c_struct_no_embed.vv:7:1: error: expecting type declaration
     5 | struct C.Unknown {
     6 |     Foo
     7 | }

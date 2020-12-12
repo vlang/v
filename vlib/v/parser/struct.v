@@ -194,6 +194,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				typ = p.parse_type()
+				if typ.idx() == 0 {
+					// error is set in parse_type
+					return ast.StructDecl{}
+				}
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
@@ -273,15 +277,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_public: is_pub
 	}
 	mut ret := 0
-	if p.builtin_mod && t.name in table.builtin_type_names {
-		// this allows overiding the builtins type
-		// with the real struct type info parsed from builtin
-		ret = p.table.register_builtin_type_symbol(t)
-	} else {
-		// println('reg type symbol $name mod=$p.mod')
-		ret = p.table.register_type_symbol(t)
-	}
-	if ret == -1 {
+	// println('reg type symbol $name mod=$p.mod')
+	ret = p.table.register_type_symbol(t)
+	// allow duplicate c struct declarations
+	if ret == -1 && language != .c {
 		p.error_with_pos('cannot register struct `$name`, another type with this name exists',
 			name_pos)
 		return ast.StructDecl{}
@@ -319,7 +318,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
-	for p.tok.kind != .rcbr && p.tok.kind != .rpar {
+	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
 		mut expr := ast.Expr{}
 		mut field_pos := token.Position{}
@@ -440,6 +439,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 			return_type: table.void_type
 			is_pub: true
 			pos: method_start_pos.extend(p.prev_tok.position())
+			scope: p.scope
 		}
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()

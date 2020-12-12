@@ -1,0 +1,14 @@
+type Stmt = Decl | Expr
+
+struct Decl {}
+struct Expr {}
+
+struct File {
+	decl Decl
+}
+
+fn main() {
+	stmt := Stmt(Decl{})
+	mut decl := Decl{}
+	decl = stmt
+}

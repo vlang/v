@@ -1,0 +1,6 @@
+fn test(b bool) {
+}
+
+fn main() {
+    test(true, false, 1)
+}

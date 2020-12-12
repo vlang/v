@@ -1,4 +1,8 @@
-pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
+struct Row {
+	id int
+}
+
+pub fn (a []Row) reduce(iter fn (int, int) int, accum_start int) int {
 	iter(accum_start)
 }
 

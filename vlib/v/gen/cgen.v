@@ -1235,16 +1235,17 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		idx := g.new_tmp_var()
 		atmp := g.new_tmp_var()
 		atmp_styp := g.typ(it.cond_type)
+		arw_or_pt := if it.cond_type.nr_muls() > 0 { '->' } else { '.' }
 		g.write('$atmp_styp $atmp = ')
 		g.expr(it.cond)
 		g.writeln(';')
-		g.writeln('for (int $idx = 0; $idx < ${atmp}.key_values.len; ++$idx) {')
+		g.writeln('for (int $idx = 0; $idx < $atmp${arw_or_pt}key_values.len; ++$idx) {')
 		// TODO: don't have this check when the map has no deleted elements
-		g.writeln('\tif (!DenseArray_has_index(&${atmp}.key_values, $idx)) {continue;}')
+		g.writeln('\tif (!DenseArray_has_index(&$atmp${arw_or_pt}key_values, $idx)) {continue;}')
 		if it.key_var != '_' {
 			key_styp := g.typ(it.key_type)
 			key := c_name(it.key_var)
-			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&${atmp}.key_values, $idx);')
+			g.writeln('\t$key_styp $key = /*key*/ *($key_styp*)DenseArray_key(&$atmp${arw_or_pt}key_values, $idx);')
 			// TODO: analyze whether it.key_type has a .clone() method and call .clone() for all types:
 			if it.key_type == table.string_type {
 				g.writeln('\t$key = string_clone($key);')
@@ -1260,7 +1261,7 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				val_styp := g.typ(it.val_type)
 				g.write('\t$val_styp ${c_name(it.val_var)} = (*($val_styp*)')
 			}
-			g.writeln('DenseArray_value(&${atmp}.key_values, $idx));')
+			g.writeln('DenseArray_value(&$atmp${arw_or_pt}key_values, $idx));')
 		}
 		g.stmts(it.stmts)
 		if it.key_type == table.string_type && !g.is_builtin_mod {
@@ -1734,14 +1735,18 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		val := assign_stmt.right[i]
 		mut is_call := false
 		mut blank_assign := false
-		mut ident := ast.Ident{}
+		mut ident := ast.Ident{
+			scope: 0
+		}
 		if left is ast.Ident {
 			ident = left
 			// id_info := ident.var_info()
 			// var_type = id_info.typ
 			blank_assign = left.kind == .blank_ident
-			if left.info is ast.IdentVar {
-				share := (left.info as ast.IdentVar).share
+			// TODO: temporary, remove this
+			left_info := left.info
+			if left_info is ast.IdentVar {
+				share := left_info.share
 				if share == .shared_t {
 					var_type = var_type.set_flag(.shared_f)
 				}
@@ -3413,19 +3418,20 @@ fn (mut g Gen) ident(node ast.Ident) {
 		g.write('_const_')
 	}
 	mut name := c_name(node.name)
-	if node.info is ast.IdentVar {
-		ident_var := node.info as ast.IdentVar
+	// TODO: temporary, remove this
+	node_info := node.info
+	if node_info is ast.IdentVar {
 		// x ?int
 		// `x = 10` => `x.data = 10` (g.right_is_opt == false)
 		// `x = new_opt()` => `x = new_opt()` (g.right_is_opt == true)
 		// `println(x)` => `println(*(int*)x.data)`
-		if ident_var.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
+		if node_info.is_optional && !(g.is_assign_lhs && g.right_is_opt) {
 			g.write('/*opt*/')
-			styp := g.base_type(ident_var.typ)
+			styp := g.base_type(node_info.typ)
 			g.write('(*($styp*)${name}.data)')
 			return
 		}
-		if !g.is_assign_lhs && ident_var.share == .shared_t {
+		if !g.is_assign_lhs && node_info.share == .shared_t {
 			g.write('${name}.val')
 			return
 		}
@@ -5160,7 +5166,7 @@ fn op_to_fn_name(name string) string {
 	}
 }
 
-fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
+fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) ?string {
 	match name {
 		// platforms/os-es:
 		'windows' {
@@ -5282,11 +5288,10 @@ fn (mut g Gen) comp_if_to_ifdef(name string, is_comptime_optional bool) string {
 				(g.pref.compile_defines_all.len > 0 && name in g.pref.compile_defines_all) {
 				return 'CUSTOM_DEFINE_$name'
 			}
-			verror('bad os ifdef name "$name"') // should never happen, caught in the checker
+			return error('bad os ifdef name "$name"') // should never happen, caught in the checker
 		}
 	}
-	// verror('bad os ifdef name "$name"')
-	return ''
+	return none
 }
 
 [inline]

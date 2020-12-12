@@ -112,6 +112,17 @@ pub mut:
 	expr_type  table.Type // type of `Foo` in `Foo.bar`
 	typ        table.Type // type of the entire thing (`Foo.bar`)
 	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
+	scope      &Scope
+}
+
+// root_ident returns the origin ident where the selector started.
+pub fn (e &SelectorExpr) root_ident() Ident {
+	mut root := e.expr
+	for root is SelectorExpr {
+		selector_expr := root as SelectorExpr
+		root = selector_expr.expr
+	}
+	return root as Ident
 }
 
 // module declaration
@@ -249,33 +260,35 @@ pub mut:
 
 pub struct FnDecl {
 pub:
-	name          string
-	mod           string
-	params        []table.Param
-	is_deprecated bool
-	is_pub        bool
-	is_variadic   bool
-	is_anon       bool
-	receiver      Field
-	receiver_pos  token.Position
-	is_method     bool
-	method_idx    int
-	rec_mut       bool // is receiver mutable
-	rec_share     table.ShareType
-	language      table.Language
-	no_body       bool // just a definition `fn C.malloc()`
-	is_builtin    bool // this function is defined in builtin/strconv
-	pos           token.Position
-	body_pos      token.Position
-	file          string
-	is_generic    bool
-	is_direct_arr bool // direct array access
-	attrs         []table.Attr
+	name            string
+	mod             string
+	params          []table.Param
+	is_deprecated   bool
+	is_pub          bool
+	is_variadic     bool
+	is_anon         bool
+	receiver        Field
+	receiver_pos    token.Position
+	is_method       bool
+	method_type_pos token.Position
+	method_idx      int
+	rec_mut         bool // is receiver mutable
+	rec_share       table.ShareType
+	language        table.Language
+	no_body         bool // just a definition `fn C.malloc()`
+	is_builtin      bool // this function is defined in builtin/strconv
+	pos             token.Position
+	body_pos        token.Position
+	file            string
+	is_generic      bool
+	is_direct_arr   bool // direct array access
+	attrs           []table.Attr
 pub mut:
-	stmts         []Stmt
-	return_type   table.Type
-	comments      []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	source_file   &File = 0
+	stmts           []Stmt
+	return_type     table.Type
+	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
+	source_file     &File = 0
+	scope           &Scope
 }
 
 // break, continue
@@ -306,6 +319,7 @@ pub mut:
 	generic_type       table.Type // TODO array, to support multiple types
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
+	scope              &Scope
 }
 
 /*
@@ -449,6 +463,7 @@ pub:
 	pos      token.Position
 	mut_pos  token.Position
 pub mut:
+	scope    &Scope
 	obj      ScopeObject
 	mod      string
 	name     string
@@ -537,6 +552,7 @@ pub:
 pub mut:
 	stmts     []Stmt
 	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
+	scope     &Scope
 }
 
 pub struct UnsafeExpr {
@@ -579,6 +595,8 @@ pub:
 	comments      []Comment // comment above `xxx {`
 	is_else       bool
 	post_comments []Comment
+pub mut:
+	scope         &Scope
 }
 
 pub struct SelectExpr {
@@ -626,6 +644,7 @@ pub:
 	pos    token.Position
 pub mut:
 	label  string // `label: for {`
+	scope  &Scope
 }
 
 pub struct ForInStmt {
@@ -645,6 +664,7 @@ pub mut:
 	cond_type  table.Type
 	kind       table.Kind // array/map/string
 	label      string // `label: for {`
+	scope      &Scope
 }
 
 pub struct ForCStmt {
@@ -659,6 +679,7 @@ pub:
 	pos      token.Position
 pub mut:
 	label    string // `label: for {`
+	scope    &Scope
 }
 
 // #include etc
@@ -686,6 +707,7 @@ pub:
 	op            token.Kind
 	pos           token.Position
 	comments      []Comment
+	end_comments  []Comment
 pub mut:
 	left          []Expr
 	left_types    []table.Type
@@ -930,6 +952,7 @@ pub:
 	pos      token.Position
 pub mut:
 	typ      table.Type
+	scope    &Scope
 }
 
 pub struct SizeOf {
@@ -1109,6 +1132,13 @@ pub fn (expr Expr) is_expr() bool {
 		else {}
 	}
 	return true
+}
+
+pub fn (expr Expr) is_lit() bool {
+	return match expr {
+		BoolLiteral, StringLiteral, IntegerLiteral { true }
+		else { false }
+	}
 }
 
 // check if stmt can be an expression in C

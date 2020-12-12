@@ -651,11 +651,8 @@ pub fn dir(path string) string {
 	if path == '' {
 		return '.'
 	}
-	mut pos := path.last_index(path_separator) or {
+	pos := path.last_index(path_separator) or {
 		return '.'
-	}
-	if path.ends_with(path_separator) {
-		pos--
 	}
 	return path[..pos]
 }

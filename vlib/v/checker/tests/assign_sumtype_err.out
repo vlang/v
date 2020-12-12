@@ -1,0 +1,6 @@
+vlib/v/checker/tests/assign_sumtype_err.vv:13:9: error: cannot assign to `decl`: expected `Decl`, not `Stmt`
+   11 |     stmt := Stmt(Decl{})
+   12 |     mut decl := Decl{}
+   13 |     decl = stmt
+      |            ~~~~
+   14 | }

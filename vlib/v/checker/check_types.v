@@ -102,7 +102,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	if c.check_sumtype_compatibility(got, expected) {
+	if c.table.sumtype_has_variant(expected, got) {
 		return true
 	}
 	// fn type
@@ -283,9 +283,14 @@ pub fn (mut c Checker) check_expected(got table.Type, expected table.Type) ? {
 	if c.check_types(got, expected) {
 		return
 	}
+	return error(c.expected_msg(got, expected))
+}
+
+[inline]
+fn (c &Checker) expected_msg(got table.Type, expected table.Type) string {
 	exps := c.table.type_to_str(expected)
 	gots := c.table.type_to_str(got)
-	return error('expected `$exps`, not `$gots`')
+	return 'expected `$exps`, not `$gots`'
 }
 
 pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
@@ -384,10 +389,6 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 		}
 	}
 	return table.string_type
-}
-
-pub fn (c &Checker) check_sumtype_compatibility(a table.Type, b table.Type) bool {
-	return c.table.sumtype_has_variant(a, b) || c.table.sumtype_has_variant(b, a)
 }
 
 pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {

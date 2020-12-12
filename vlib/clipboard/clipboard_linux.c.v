@@ -425,9 +425,7 @@ fn (cb &Clipboard) get_supported_targets() []C.Atom {
 }
 
 fn new_atom(value int) &C.Atom {
-	mut atom := &C.Atom{}
-	atom = value
-	return atom
+	return unsafe {&C.Atom(value)}
 }
 
 fn create_xwindow(display &C.Display) C.Window {

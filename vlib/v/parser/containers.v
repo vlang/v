@@ -38,7 +38,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	} else {
 		// [1,2,3] or [const]byte
-		for i := 0; p.tok.kind != .rsbr; i++ {
+		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
 			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {

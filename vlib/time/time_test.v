@@ -153,6 +153,21 @@ fn test_weekday_str() {
 	}
 }
 
+fn test_add() {
+	d_seconds := 3
+	d_microseconds := 13
+	duration := time.Duration(d_seconds * time.second + d_microseconds * time.microsecond)
+	t1 := time_to_test
+	t2 := time_to_test.add(duration)
+	assert t2.second == t1.second + d_seconds
+	assert t2.microsecond == t1.microsecond + d_microseconds
+	assert t2.unix == t1.unix + u64(d_seconds)
+	t3 := time_to_test.add(-duration)
+	assert t3.second == t1.second - d_seconds
+	assert t3.microsecond == t1.microsecond - d_microseconds
+	assert t3.unix == t1.unix - u64(d_seconds)
+}
+
 fn test_add_days() {
 	num_of_days := 3
 	t := time_to_test.add_days(num_of_days)
@@ -162,6 +177,20 @@ fn test_add_days() {
 
 fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
+}
+
+fn test_subtract() {
+	d_seconds := 3
+	d_microseconds := 13
+	duration := d_seconds * time.second + d_microseconds * time.microsecond
+	t1 := time_to_test
+	t2 := time.unix2(int(t1.unix) + d_seconds, t1.microsecond + d_microseconds)
+	d1 := t2 - t1
+	d2 := t1 - t2
+	assert d1 > 0
+	assert d1 == duration
+	assert d2 < 0
+	assert d2 == -duration
 }
 
 // not optimal test but will find obvious bugs

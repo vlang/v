@@ -95,6 +95,14 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: Fixed tests
       run: ./v -silent test-fixed
+    - name: Test time functions in a timezone UTC-12
+      run: TZ=Etc/GMT+12 ./v test vlib/time/
+    - name: Test time functions in a timezone UTC-3
+      run: TZ=Etc/GMT+3 ./v test vlib/time/
+    - name: Test time functions in a timezone UTC+3
+      run: TZ=Etc/GMT-3 ./v test vlib/time/
+    - name: Test time functions in a timezone UTC+12
+      run: TZ=Etc/GMT-12 ./v test vlib/time/
     - name: Test building v tools
       run: ./v -silent build-tools
     - name: v doctor
@@ -596,8 +604,8 @@ jobs:
             name: client wss
             path: ${{github.workspace}}/reports_wss/clients/index.html
 
-  parser-silent-hello-world:
-    name: Parser silent mode - examples/hello_world.v
+  parser-silent:
+    name: Parser silent mode
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -607,3 +615,39 @@ jobs:
     - name: Run test-parser
       run: |
         ./v test-parser examples/hello_world.v
+        ./v test-parser examples/hanoi.v
+        ./v test-parser examples/fibonacci.v
+        ./v test-parser examples/cli.v
+        ./v test-parser examples/json.v
+        ./v test-parser examples/vmod.v
+        ./v test-parser examples/regex_example.v
+        ./v test-parser examples/2048/2048.v
+
+  parser-silent-fuzzing:
+    name: Parser silent mode fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build local v
+      run: make -j4
+    - name: Install zzuf
+      run: sudo apt install -qq zzuf
+    - name: Run test-parser
+      run: |
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
+        ./v test-parser examples/hello_world_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
+        ./v test-parser examples/hanoi_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
+        ./v test-parser examples/fibonacci.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
+        ./v test-parser examples/cli_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
+        ./v test-parser examples/json.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
+        ./v test-parser examples/vmod.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
+        ./v test-parser examples/regex_example_fuzz.v
+        zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+        ./v test-parser examples/2048/2048_fuzz.v

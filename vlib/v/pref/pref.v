@@ -225,7 +225,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.build_options << arg
 			}
 			'-prof', '-profile' {
-				res.profile_file = cmdline.option(current_args, '-profile', '-')
+				res.profile_file = cmdline.option(current_args, arg, '-')
 				res.is_prof = true
 				res.build_options << '$arg $res.profile_file'
 				i++

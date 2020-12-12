@@ -14,3 +14,8 @@ fn JS.f(a &Foo) // TODO: Should this be allowed?
 fn C.g(string, ...int)
 fn C.h(&int)
 fn JS.i(...string)
+
+fn test_null() {
+	np := C.NULL
+	assert typeof(np).name == 'voidptr'
+}

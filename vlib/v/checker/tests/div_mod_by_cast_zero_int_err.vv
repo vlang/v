@@ -1,0 +1,10 @@
+fn main() {
+	println(u64(1)/u64(0))
+	println(u64(1)%u64(0))
+
+	println(u32(1)/u32(0x0))
+	println(u32(1)%u32(0x0))
+
+	println(u16(1)/u16(0b0))
+	println(u16(1)%u16(0b0))
+}

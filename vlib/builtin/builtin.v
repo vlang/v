@@ -26,6 +26,7 @@ fn on_panic(f fn(int)int) {
 }
 */
 
+// print_backtrace shows a backtrace of the current call stack on stdout
 pub fn print_backtrace() {
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
@@ -35,7 +36,7 @@ pub fn print_backtrace() {
 	print_backtrace_skipping_top_frames(2)
 }
 
-// replaces panic when -debug arg is passed
+// panic_debug - private function that V uses for panics, -cg/-g is passed
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
@@ -51,27 +52,44 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	}
-	// recent versions of tcc print better backtraces automatically
-	$if !tinyc {
+	if !should_use_native_backtraces() {
 		print_backtrace_skipping_top_frames(1)
 	}
-	break_if_debugger_attached()
+	$if panics_break_into_debugger ? {
+		break_if_debugger_attached()
+	}
 	C.exit(1)
 }
 
+// panic prints a nice error message, then exits the process with exit code of 1.
+// It also shows a backtrace on most platforms.
 pub fn panic(s string) {
 	eprintln('V panic: $s')
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	}
-	// recent versions of tcc print better backtraces automatically
-	$if !tinyc {
-		print_backtrace()
+	if !should_use_native_backtraces() {
+		print_backtrace_skipping_top_frames(1)
 	}
-	break_if_debugger_attached()
+	$if panics_break_into_debugger ? {
+		break_if_debugger_attached()
+	}
 	C.exit(1)
 }
 
+fn should_use_native_backtraces() bool {
+	mut res := false
+	$if panics_break_into_debugger ? {
+		$if tinyc {
+			// recent versions of tcc print nicer backtraces automatically
+			res = true
+		}
+	}
+	return res
+}
+
+
+// eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
 	// eprintln is used in panics, so it should not fail at all
 	if s.str == 0 {
@@ -84,9 +102,10 @@ pub fn eprintln(s string) {
 	C.fflush(C.stderr)
 }
 
+// eprint prints a message to stderr. Both stderr and stdout are flushed.
 pub fn eprint(s string) {
 	if s.str == 0 {
-		eprintln('eprint(NIL)')
+		eprint('eprint(NIL)')
 	}
 	C.fflush(C.stdout)
 	C.fflush(C.stderr)
@@ -94,6 +113,7 @@ pub fn eprint(s string) {
 	C.fflush(C.stderr)
 }
 
+// print prints a message to stdout
 pub fn print(s string) {
 	C.write(1, s.str, s.len)
 }
