@@ -308,6 +308,7 @@ jobs:
       run: |
         ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
         ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
+        ./v -o v2 cmd/v -cflags -fsanitize=address && ./v2 -o v.c cmd/v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
