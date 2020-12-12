@@ -3565,6 +3565,10 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 			}
 			c.expected_type = node.cond_type
 			expr_type := c.expr(expr)
+			if expr_type.idx() == 0 {
+				// parser failed, stop checking
+				return
+			}
 			if cond_type_sym.kind == .interface_ {
 				// TODO
 				// This generates a memory issue with TCC
