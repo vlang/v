@@ -37,6 +37,9 @@ pub fn print_backtrace() {
 }
 
 // panic_debug - private function that V uses for panics, -cg/-g is passed
+// recent versions of tcc print nicer backtraces automatically
+// NB: the duplication here is because tcc_backtrace should be called directly
+// inside the panic functions.
 fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	// NB: the order here is important for a stabler test output
 	// module is less likely to change than function, etc...
@@ -52,9 +55,15 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	}
-	if !should_use_native_backtraces() {
-		print_backtrace_skipping_top_frames(1)
+	$if tinyc {
+		$if panics_break_into_debugger ? {
+			break_if_debugger_attached()
+		} $else {
+			C.tcc_backtrace('Backtrace')
+		}
+		C.exit(1)
 	}
+	print_backtrace_skipping_top_frames(1)
 	$if panics_break_into_debugger ? {
 		break_if_debugger_attached()
 	}
@@ -68,26 +77,20 @@ pub fn panic(s string) {
 	$if exit_after_panic_message ? {
 		C.exit(1)
 	}
-	if !should_use_native_backtraces() {
-		print_backtrace_skipping_top_frames(1)
+	$if tinyc {
+		$if panics_break_into_debugger ? {
+			break_if_debugger_attached()
+		} $else {
+			C.tcc_backtrace('Backtrace')
+		}
+		C.exit(1)
 	}
+	print_backtrace_skipping_top_frames(1)
 	$if panics_break_into_debugger ? {
 		break_if_debugger_attached()
 	}
 	C.exit(1)
 }
-
-fn should_use_native_backtraces() bool {
-	mut res := false
-	$if panics_break_into_debugger ? {
-		$if tinyc {
-			// recent versions of tcc print nicer backtraces automatically
-			res = true
-		}
-	}
-	return res
-}
-
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 pub fn eprintln(s string) {
