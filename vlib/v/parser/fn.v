@@ -101,6 +101,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			kind: or_kind
 			pos: or_pos
 		}
+		scope: p.scope
 	}
 }
 
@@ -341,12 +342,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(true)
 	}
-	p.close_scope()
 	if !no_body && are_args_type_only {
 		p.error_with_pos('functions with type only args can not have bodies', body_start_pos)
 		return ast.FnDecl{}
 	}
-	return ast.FnDecl{
+	fn_decl := ast.FnDecl{
 		name: name
 		mod: p.mod
 		stmts: stmts
@@ -373,7 +373,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
 		attrs: p.attrs
+		scope: p.scope
 	}
+	p.close_scope()
+	return fn_decl
 }
 
 fn (mut p Parser) anon_fn() ast.AnonFn {

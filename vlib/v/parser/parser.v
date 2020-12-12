@@ -995,6 +995,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 					is_mut: false
 					is_static: false
 				}
+				scope: p.scope
 			}
 		}
 		if p.inside_match_body && name == 'it' {
@@ -1017,6 +1018,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 				is_static: is_static
 				share: table.sharetype_from_flags(is_shared, is_atomic)
 			}
+			scope: p.scope
 		}
 	} else {
 		p.error('unexpected token `$p.tok.lit`')
@@ -1230,9 +1232,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 			return ast.SelectorExpr{
 				expr: ast.Ident{
 					name: name
+					scope: p.scope
 				}
 				field_name: field
 				pos: pos
+				scope: p.scope
 			}
 		}
 		// `Color.green`
@@ -1413,6 +1417,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				kind: or_kind
 				pos: or_pos
 			}
+			scope: p.scope
 		}
 		if is_filter || field_name == 'sort' {
 			p.close_scope()
@@ -1436,6 +1441,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		pos: name_pos
 		is_mut: is_mut
 		mut_pos: mut_pos
+		scope: p.scope
 	}
 	mut node := ast.Expr{}
 	node = sel_expr
@@ -2118,6 +2124,7 @@ fn (mut p Parser) assoc() ast.Assoc {
 		fields: fields
 		exprs: vals
 		pos: pos
+		scope: p.scope
 	}
 }
 
