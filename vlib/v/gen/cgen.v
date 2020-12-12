@@ -5057,10 +5057,6 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	cvar_name := c_name(var_name)
 	mr_styp := g.base_type(return_type)
 	is_none_ok := mr_styp == 'void'
-	g.inside_or_block = true
-	defer {
-		g.inside_or_block = false
-	}
 	g.writeln(';') // or')
 	if is_none_ok {
 		g.writeln('if (!${cvar_name}.ok && !${cvar_name}.is_none) {')
@@ -5068,8 +5064,19 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 		g.writeln('if (!${cvar_name}.ok) {')
 	}
 	if or_block.kind == .block {
-		g.writeln('\tstring err = ${cvar_name}.v_error;')
-		g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		if g.inside_or_block {
+			g.writeln('\terr = ${cvar_name}.v_error;')
+			g.writeln('\terrcode = ${cvar_name}.ecode;')
+		} else {
+			g.writeln('\tstring err = ${cvar_name}.v_error;')
+			g.writeln('\tint errcode = ${cvar_name}.ecode;')
+		}
+
+		g.inside_or_block = true
+		defer {
+			g.inside_or_block = false
+		}
+
 		stmts := or_block.stmts
 		if stmts.len > 0 && stmts[or_block.stmts.len - 1] is ast.ExprStmt && (stmts[stmts.len -
 			1] as ast.ExprStmt).typ != table.void_type {
