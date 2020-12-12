@@ -440,8 +440,10 @@ fn test_join() {
 fn test_dir() {
 	$if windows {
 		assert os.dir('C:\\a\\b\\c') == 'C:\\a\\b'
+		assert os.dir('C:\\a\\b\\') == 'C:\\a\\b'
 	} $else {
 		assert os.dir('/var/tmp/foo') == '/var/tmp'
+		assert os.dir('/var/tmp/') == '/var/tmp'
 	}
 	assert os.dir('os') == '.'
 }
