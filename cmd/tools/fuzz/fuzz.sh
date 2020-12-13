@@ -11,6 +11,7 @@ while true
 do
   for ((i=1;i<=cores;++i))
   do
+    sleep 0.001
     ./cmd/tools/fuzz/map_fuzz &
   done
   wait
