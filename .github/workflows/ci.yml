@@ -219,6 +219,12 @@ jobs:
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
     - name: Valgrind
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=thread
+        ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
