@@ -49,8 +49,9 @@ fn test_parse_rfc2822_invalid() {
 }
 
 fn test_parse_iso8601() {
-	// Because there is a small difference between time.now() - time.utc and actual offset,
-	// round to the nearest hour.
+	// Because the offset between local time and UTC is not constant in regions
+	// that use daylight saving times we need to calculate separete offsets for
+	// summer and winter
 	offset_summer := time.Duration(time.new_time(year: 2020, month: 6, day: 5, hour: 15).to_local_time() -
 		time.new_time(year: 2020, month: 6, day: 5, hour: 15))
 	offset_winter := time.Duration(time.new_time(year: 2020, month: 11, day: 5, hour: 15).to_local_time() -
@@ -72,7 +73,6 @@ fn test_parse_iso8601() {
 		[2020, 11, 5, 15, 38, 6, 15959],
 	]
 	for i, format in formats {
-		println(i)
 		t := time.parse_iso8601(format) or {
 			assert false
 			continue
