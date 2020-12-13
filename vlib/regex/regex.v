@@ -314,7 +314,7 @@ pub mut:
 	group_max_nested  int  = 3         // max nested group
 	group_max         int  = 8         // max allowed number of different groups
 
-	group_csave_flag  bool             // flag to enable continuos saving
+	group_csave_flag  bool             // flag to enable continuous saving
 	group_csave       []int = []int{}  // groups continuous save list
 
 	group_map         map[string]int   // groups names map
@@ -1483,7 +1483,7 @@ Groups saving utilities
 
 */
 [inline]
-fn (mut re RE) group_continuos_save(g_index int) {
+fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
 		// continuous save, save until we have space
 		
@@ -1507,7 +1507,7 @@ fn (mut re RE) group_continuos_save(g_index int) {
 		
 		// otherwise append a new group to the list
 
-		// incrment counter
+		// increment counter
 		re.group_csave[0]++
 		// save the record
 		re.group_csave << (g_index >> 1)        // group id
@@ -1720,7 +1720,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						}
 
 						// continuous save, save until we have space
-						re.group_continuos_save(g_index)
+						re.group_continuous_save(g_index)
 						
  					}
 
@@ -1905,7 +1905,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						//println("GROUP ${re.prog[pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}]")
 
 						// continuous save, save until we have space
-						re.group_continuos_save(g_index)
+						re.group_continuous_save(g_index)
 					}
 
 					re.prog[pc].group_rep++ // increase repetitions

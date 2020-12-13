@@ -257,7 +257,7 @@ fn example2() {
 	query := r'.*:(\s*\d+[\s,]*)+'
 	mut re := new() or { panic(err) }
 	// re.debug = 2
-	re.group_csave_flag = true  // enable continuos capture
+	re.group_csave_flag = true  // enable continuous capture
 	re.compile_opt(query) or {
 		println(err)
 		return
@@ -330,7 +330,7 @@ fn main() {
 	query := r'(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+'
 	mut re := new()
 	re.debug = 2
-	// must provide an array of the right size if want the continuos saving of the groups
+	// must provide an array of the right size if want the continuous saving of the groups
 	re.group_csave = [-1].repeat(3 * 20 + 1)
 	re.compile_opt(query) or {
 		println(err)
