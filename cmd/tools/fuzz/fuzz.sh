@@ -11,7 +11,7 @@ while true
 do
   for ((i=1;i<=cores;++i))
   do
-    ./fuzz &
+    ./cmd/tools/fuzz/map_fuzz &
   done
   wait
 done
