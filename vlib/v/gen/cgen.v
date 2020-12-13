@@ -755,13 +755,17 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 		g.write('(')
 	}
 	for i, stmt in stmts {
-		if i == stmts.len - 1 && tmp_var != '' {
+		is_last := i == stmts.len - 1
+		if is_last && tmp_var != '' {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			g.stmt_path_pos << g.out.len
 			g.skip_stmt_pos = true
 			g.write('$tmp_var = /* if expr set */ ')
 		}
 		g.stmt(stmt)
+		if stmt is ast.ExprStmt && (stmt as ast.ExprStmt).expr is ast.IfExpr {
+			g.writeln(';\n')
+		}
 		g.skip_stmt_pos = false
 		if g.inside_ternary > 0 && i < stmts.len - 1 {
 			g.write(',')
@@ -3481,23 +3485,13 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.comp_if(node)
 		return
 	}
-	// For simpe if expressions we can use C's `?:`
-	// `if x > 0 { 1 } else { 2 }` => `(x > 0) ? (1) : (2)`
-	// For if expressions with multiple statements or another if expression inside, it's much
-	// easier to use a temp var, than do C tricks with commas, introduce special vars etc
-	// (as it used to be done).
-	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
-	first_branch := node.branches[0]
-	needs_tmp_var := node.is_expr && (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
-		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))
-	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
+	tmp := if node.is_expr { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
-	if needs_tmp_var {
+	if node.is_expr {
 		styp := g.typ(node.typ)
-		// g.insert_before_stmt('$styp $tmp;')
 		cur_line = g.go_before_stmt(0).trim_prefix('\t')
 		g.empty_line = true
-		g.writeln('$styp $tmp; /* if prepend */')
+		g.write('$styp $tmp; /* if prepend */ ')
 	}
 	mut is_guard := false
 	mut guard_idx := 0
@@ -3565,7 +3559,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 				g.writeln('\t$it_type* $infix.left.name = _sc_tmp_$branch.pos.pos;')
 			}
 		}
-		if needs_tmp_var {
+		if node.is_expr {
 			g.stmts_with_tmp_var(branch.stmts, tmp)
 		} else {
 			g.stmts(branch.stmts)
@@ -3575,7 +3569,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		g.write('}')
 	}
 	g.writeln('}')
-	if needs_tmp_var {
+	if node.is_expr {
+		g.stmt_path_pos << g.out.len
 		g.write('$cur_line$tmp')
 	}
 }
