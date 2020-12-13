@@ -759,7 +759,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 			// Handle if expressions, set the value of the last expression to the temp var.
 			g.stmt_path_pos << g.out.len
 			g.skip_stmt_pos = true
-			g.writeln('$tmp_var = /* if expr set */')
+			g.write('$tmp_var = /* if expr set */ ')
 		}
 		g.stmt(stmt)
 		g.skip_stmt_pos = false
@@ -1410,11 +1410,9 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 			a.expr.right = g.new_ctemp_var_then_gen(a.expr.right, a.expr.right_type)
 		}
 	}
-	g.inside_ternary++
 	g.write('if (')
 	g.expr(a.expr)
 	g.write(')')
-	g.decrement_inside_ternary()
 	if g.is_test {
 		g.writeln('{')
 		g.writeln('\tg_test_oks++;')
@@ -3080,18 +3078,15 @@ fn (mut g Gen) lock_expr(node ast.LockExpr) {
 fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	// println('match expr typ=$it.expr_type')
 	// TODO
+	// checks if condition is nil ref
 	if node.cond_type == 0 {
 		g.writeln('// match 0')
 		return
 	}
-	is_expr := (node.is_expr && node.return_type != table.void_type) || g.inside_ternary > 0
-	if is_expr {
-		g.inside_ternary++
-		// g.write('/* EM ret type=${g.typ(node.return_type)}		expected_type=${g.typ(node.expected_type)}  */')
-	}
+	is_expr := node.is_expr && node.return_type != table.void_type
 	cur_line := if is_expr {
 		g.empty_line = true
-		g.go_before_stmt(0)
+		g.go_before_stmt(0).trim_prefix('\t')
 	} else {
 		''
 	}
@@ -3099,50 +3094,41 @@ fn (mut g Gen) match_expr(node ast.MatchExpr) {
 	g.write('${g.typ(node.cond_type)} $cond_var = ')
 	g.expr(node.cond)
 	g.writeln(';')
-	g.write(cur_line)
-	if is_expr {
-		// brackets needed otherwise '?' will apply to everything on the left
-		g.write('(')
-	}
+	mut tmp := ''
 	if node.is_sum_type {
-		g.match_expr_sumtype(node, is_expr, cond_var)
+		tmp = g.match_expr_sumtype(node, is_expr, cond_var)
 	} else {
-		g.match_expr_classic(node, is_expr, cond_var)
+		tmp = g.match_expr_classic(node, is_expr, cond_var)
 	}
 	if is_expr {
-		g.write(')')
-		g.decrement_inside_ternary()
+		g.write('$cur_line$tmp')
 	}
 }
 
-fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string) {
+fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var string) string {
+	mut tmp := ''
+	if is_expr {
+		tmp = g.new_tmp_var()
+		g.write('${g.typ(node.return_type)} $tmp; ')
+	}
 	for j, branch in node.branches {
 		mut sumtype_index := 0
+		is_last := j == node.branches.len - 1
 		// iterates through all types in sumtype branches
 		for {
 			g.aggregate_type_idx = sumtype_index
-			is_last := j == node.branches.len - 1
 			sym := g.table.get_type_symbol(node.cond_type)
-			if branch.is_else || (node.is_expr && is_last) {
-				if is_expr {
-					// TODO too many branches. maybe separate ?: matches
-					g.write(' : ')
+			if branch.is_else {
+				if node.branches.len == 1 {
+					g.write('if (true) {')
 				} else {
 					g.writeln(' else {')
 				}
 			} else {
 				if j > 0 || sumtype_index > 0 {
-					if is_expr {
-						g.write(' : ')
-					} else {
-						g.write(' else ')
-					}
+					g.write(' else ')
 				}
-				if is_expr {
-					g.write('(')
-				} else {
-					g.write('if (')
-				}
+				g.write('if (')
 				g.write(cond_var)
 				// branch_sym := g.table.get_type_symbol(branch.typ)
 				if sym.kind == .sum_type {
@@ -3154,15 +3140,19 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write('._interface_idx == ')
 				}
 				g.expr(branch.exprs[sumtype_index])
-				if is_expr {
-					g.write(') ? ')
-				} else {
-					g.writeln(') {')
-				}
+				g.writeln(') {')
 			}
-			g.stmts(branch.stmts)
-			if g.inside_ternary == 0 {
+			if is_expr {
+				g.stmts_with_tmp_var(branch.stmts, tmp)
+			} else {
+				g.stmts(branch.stmts)
+			}
+			if is_expr {
+				g.write('} ')
+			} else if !is_last {
 				g.write('}')
+			} else {
+				g.writeln('}')
 			}
 			sumtype_index++
 			if branch.exprs.len == 0 || sumtype_index == branch.exprs.len {
@@ -3172,34 +3162,29 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 		// reset global field for next use
 		g.aggregate_type_idx = 0
 	}
+	return tmp
 }
 
-fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string) {
+fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var string) string {
+	mut tmp := ''
+	if is_expr {
+		tmp = g.new_tmp_var()
+		g.write('${g.typ(node.return_type)} $tmp; ')
+	}
 	type_sym := g.table.get_type_symbol(node.cond_type)
 	for j, branch in node.branches {
 		is_last := j == node.branches.len - 1
-		if branch.is_else || (node.is_expr && is_last) {
-			if node.branches.len > 1 {
-				if is_expr {
-					// TODO too many branches. maybe separate ?: matches
-					g.write(' : ')
-				} else {
-					g.writeln(' else {')
-				}
+		if branch.is_else {
+			if node.branches.len == 1 {
+				g.write('if (true) {')
+			} else {
+				g.writeln(' else {')
 			}
 		} else {
 			if j > 0 {
-				if is_expr {
-					g.write(' : ')
-				} else {
-					g.write(' else ')
-				}
+				g.write('else ')
 			}
-			if is_expr {
-				g.write('(')
-			} else {
-				g.write('if (')
-			}
+			g.write('if (')
 			for i, expr in branch.exprs {
 				if i > 0 {
 					g.write(' || ')
@@ -3240,17 +3225,22 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.expr(expr)
 				}
 			}
-			if is_expr {
-				g.write(') ? ')
-			} else {
-				g.writeln(') {')
-			}
+			g.writeln(') {')
 		}
-		g.stmts(branch.stmts)
-		if g.inside_ternary == 0 && node.branches.len > 1 {
+		if is_expr {
+			g.stmts_with_tmp_var(branch.stmts, tmp)
+		} else {
+			g.stmts(branch.stmts)
+		}
+		if is_expr {
+			g.write('} ')
+		} else if !is_last {
 			g.write('}')
+		} else {
+			g.writeln('}')
 		}
 	}
+	return tmp
 }
 
 fn (mut g Gen) select_expr(node ast.SelectExpr) {
@@ -3495,22 +3485,15 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	// (as it used to be done).
 	// Always use this in -autofree, since ?: can have tmp expressions that have to be freed.
 	first_branch := node.branches[0]
-	needs_tmp_var := node.is_expr &&
-		(g.pref.autofree || (g.pref.experimental &&
-		(first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
-		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))))
-	/*
-	needs_tmp_var := node.is_expr &&
-		(g.pref.autofree || g.pref.experimental) &&
-		(node.branches[0].stmts.len > 1 || node.branches[0].stmts[0] is ast.IfExpr)
-	*/
+	needs_tmp_var := node.is_expr && (first_branch.stmts.len > 1 || (first_branch.stmts[0] is ast.ExprStmt &&
+		(first_branch.stmts[0] as ast.ExprStmt).expr is ast.IfExpr))
 	tmp := if needs_tmp_var { g.new_tmp_var() } else { '' }
 	mut cur_line := ''
 	if needs_tmp_var {
-		g.write('/*experimental if expr*/')
 		styp := g.typ(node.typ)
 		// g.insert_before_stmt('$styp $tmp;')
-		cur_line = g.go_before_stmt(0)
+		cur_line = g.go_before_stmt(0).trim_prefix('\t')
+		g.empty_line = true
 		g.writeln('$styp $tmp; /* if prepend */')
 	} else if node.is_expr || g.inside_ternary != 0 {
 		g.inside_ternary++
@@ -3610,8 +3593,7 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	}
 	g.writeln('}')
 	if needs_tmp_var {
-		// g.writeln('$cur_line $tmp; /*Z*/')
-		g.write('$cur_line $tmp /*Z*/')
+		g.write('$cur_line$tmp')
 	}
 }
 

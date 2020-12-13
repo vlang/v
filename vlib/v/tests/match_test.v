@@ -11,19 +11,20 @@ pub fn (c Color) str() string {
 fn test_match_integers() {
 	mut a := 3
 	mut b := 0
-	match a
-	2 {
-		println('two')
-	}
-	3 {
-		println('three')
-		b = 3
-	}
-	4 {
-		println('four')
-	}
-	else {
-		println('???')
+	match a {
+		2 {
+			println('two')
+		}
+		3 {
+			println('three')
+			b = 3
+		}
+		4 {
+			println('four')
+		}
+		else {
+			println('???')
+		}
 	}
 	assert b == 3
 	assert match 2 {

@@ -640,12 +640,18 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		c.expected_type = former_expected_type
 	}
 	c.expected_type = table.void_type
-	left_type := c.expr(infix_expr.left)
-	// left_type = c.unwrap_genric(c.expr(infix_expr.left))
+	mut right_type := table.void_type
+	mut left_type := table.void_type
+	if infix_expr.left is ast.MatchExpr {
+		right_type = c.expr(infix_expr.right)
+		c.expected_type = right_type
+		left_type = c.expr(infix_expr.left)
+	} else {
+		left_type = c.expr(infix_expr.left)
+		c.expected_type = left_type
+		right_type = c.expr(infix_expr.right)
+	}
 	infix_expr.left_type = left_type
-	c.expected_type = left_type
-	right_type := c.expr(infix_expr.right)
-	// right_type = c.unwrap_genric(c.expr(infix_expr.right))
 	infix_expr.right_type = right_type
 	mut right := c.table.get_type_symbol(right_type)
 	mut left := c.table.get_type_symbol(left_type)
@@ -2492,6 +2498,9 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 	match mut node {
 		ast.AssertStmt {
 			cur_exp_typ := c.expected_type
+			if node.expr is ast.MatchExpr {
+				c.expected_type = table.bool_type
+			}
 			assert_type := c.expr(node.expr)
 			if assert_type != table.bool_type_idx {
 				atype_name := c.table.get_type_symbol(assert_type).name
