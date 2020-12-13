@@ -154,6 +154,10 @@ jobs:
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=undefined
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: v self with -usecache
@@ -449,6 +453,10 @@ jobs:
       run: |
         gcc --version
         .\make.bat -gcc
+    - name: Run sanitizers
+      run: |
+        .\v.exe -o v2 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 .\v2.exe -o v.c cmd/v
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
     - name: Install dependencies
