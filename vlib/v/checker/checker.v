@@ -1086,9 +1086,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
 			} else if is_map &&
-				(arg_expr.decl.return_type != elem_typ || arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
-					arg_expr.decl.pos)
+				(arg_expr.decl.return_type == table.void_type || arg_expr.decl.params[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`', arg_expr.decl.pos)
 			} else if !is_map &&
 				(arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
@@ -1103,8 +1102,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 				}
 				if func.params.len > 1 {
 					c.error('function needs exactly 1 argument', call_expr.pos)
-				} else if is_map && (func.return_type != elem_typ || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
+				} else if is_map &&
+					(func.return_type == table.void_type || func.params[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
 						arg_expr.pos)
 				} else if !is_map &&
 					(func.return_type != table.bool_type || func.params[0].typ != elem_typ) {
