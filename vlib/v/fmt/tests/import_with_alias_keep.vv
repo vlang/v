@@ -1,6 +1,10 @@
 import os
 import time as t
 
+struct Foo {
+	bar t.Time
+}
+
 fn main() {
 	println('start')
 	t.sleep_ms(500)
