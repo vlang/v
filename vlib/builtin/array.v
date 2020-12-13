@@ -5,14 +5,14 @@ module builtin
 
 import strings
 
-// array is a builtin struct used for denoting array types in V
+// array is a struct used for denoting array types in V
 pub struct array {
 pub:
-	element_size int // size in bytes of one element in the array
+	element_size int // size in bytes of one element in the array.
 pub mut:
-	data         voidptr // data of the array
-	len          int // length of the array
-	cap          int // capacity of the array
+	data         voidptr
+	len          int // length of the array.
+	cap          int // capacity of the array.
 }
 
 // array.data uses a void pointer, which allows implementing arrays without generics and without generating
