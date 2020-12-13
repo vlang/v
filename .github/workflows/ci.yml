@@ -235,8 +235,8 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: -usecache
       run: |
-		./v -o v2 -usecache cmd/v
-		./v -usecache examples/tetris/tetris.v
+        ./v -o v2 -usecache cmd/v
+        ./v -usecache examples/tetris/tetris.v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
