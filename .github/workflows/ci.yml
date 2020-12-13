@@ -308,12 +308,9 @@ jobs:
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
     - name: Run sanitizers
       run: |
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
-        ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
-        ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
-        ./v -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v -o v2 cmd/v -cflags -fsanitize=undefined && ./v2 -o v.c cmd/v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
