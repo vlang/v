@@ -1,9 +1,9 @@
 import rand
 import time
 
-fn generate_strings(str_len int, arr_len int, ) []string {
+fn generate_strings(str_len int, arr_len int) []string {
 	mut arr := []string{len: arr_len}
-	for i in 0..arr_len {
+	for i in 0 .. arr_len {
 		arr[i] = rand.string(str_len)
 	}
 	return arr
@@ -16,14 +16,14 @@ fn fuzz1() {
 	arr := generate_strings(len, amount)
 	arr2 := generate_strings(len, amount2)
 	mut m := map[string]int{}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		m[arr[i]] = i
 		assert i == m[arr[i]]
 	}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		assert i == m[arr[i]]
 	}
-	for i in 0..amount2 {
+	for i in 0 .. amount2 {
 		assert 0 == m[arr2[i]]
 	}
 	unsafe {
@@ -78,10 +78,10 @@ fn fuzz4() {
 	len := 25 - rand.intn(10)
 	arr := generate_strings(len, amount)
 	mut m := map[string]int{}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		m[arr[i]] = i
 	}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		m.delete(arr[i])
 		assert m[arr[i]] == 0
 	}
@@ -96,11 +96,11 @@ fn fuzz5() {
 	amount := rand.intn(500000) + 1
 	arr := generate_strings(20, amount)
 	mut m := map[string]int{}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		m[arr[i]] = i
 		assert (arr[i] in m) == true
 	}
-	for i in 0..amount {
+	for i in 0 .. amount {
 		m.delete(arr[i])
 		assert (arr[i] !in m) == true
 		assert m.len == amount - i - 1
