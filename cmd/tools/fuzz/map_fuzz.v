@@ -131,7 +131,7 @@ fn fuzz6() {
 	}
 }
 
-fn test_fuzz() {
+fn main() {
 	seed := u32(time.ticks())
 	println('seed: $seed.hex()')
 	rand.seed([seed, seed])
