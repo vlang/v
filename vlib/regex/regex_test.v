@@ -112,6 +112,13 @@ match_test_suite = [
 	TestItem{"poth", r".(oth)|(eth)$",0,4},
 	TestItem{"poth", r"^.(oth)|(eth)$",0,4},
 	TestItem{"poth", r"^\w+$",0,4},
+
+	// test dot_char
+	TestItem{"8-11 l: qllllqllklhlvtl", r"^(\d+)-(\d+) ([a-z]): (.*)$",0,23},
+	TestItem{"accccb deer", r"^a(.*)b d(.+)r",0,11},
+	TestItem{"accccb deer", r"^a(.*)b d(.+)",0,11},
+	TestItem{"accccb deer", r"^(.*)$",0,11},
+	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,0},
 ]
 )
 
@@ -167,7 +174,7 @@ struct TestItemCGroup {
 	q string
 	s int
 	e int
-	cg []int
+	cg []int // [number of items (3*# item), id_group_0, start_0, end_0, id_group_1, start1, start2,... ]
 	cgn map[string]int
 }
 const (
@@ -181,7 +188,7 @@ cgroups_test_suite = [
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
-		[2, 0, 0, 4, 1, 7, 10],
+		[8, 0, 0, 4, 1, 7, 12, 1, 11, 17, 1, 16, 23, 1, 22, 29, 1, 28, 38, 1, 37, 43, 1, 42, 46],
 		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
@@ -247,7 +254,7 @@ fn test_regex(){
 		// check cgroups
 		if to.cgn.len > 0 {
 			if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
-				println("Capturing group len error! ${re.group_csave[0]}")
+				println("Capturing group len error! found: ${re.group_csave[0]} true ground: ${to.cg[0]}")
 				assert false
 				continue
 			}
@@ -256,6 +263,7 @@ fn test_regex(){
 			mut ln := re.group_csave[0]*3
 			for ln > 0 {
 				if re.group_csave[ln] != to.cg[ln] {
+					println("Capturing group failed on $ln item!")
 					assert false
 				}
 				ln--
