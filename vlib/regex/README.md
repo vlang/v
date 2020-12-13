@@ -257,7 +257,7 @@ fn example2() {
 	query := r'.*:(\s*\d+[\s,]*)+'
 	mut re := new() or { panic(err) }
 	// re.debug = 2
-	re.group_csave = [-1].repeat(3 * 20 + 1) // we expect max 20 records
+	re.group_csave_flag = true  // enable continuos capture
 	re.compile_opt(query) or {
 		println(err)
 		return
