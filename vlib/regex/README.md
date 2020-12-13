@@ -236,8 +236,8 @@ this is possible initializing the saving array field in `RE` struct: `group_csav
 This feature allow to collect data in a  continuous way.
 
 In the example we pass a text followed by a integer list that we want collect.
-To achieve this task we can use the continuous saving of the group
-that save each captured group in a array that we set with: `re.group_csave = [-1].repeat(3*20+1)`.
+To achieve this task we can use the continuous saving of the group 
+enabling the right flag: `re.group_csave_flag = true`.
 
 The array will be filled with the following logic:
 
