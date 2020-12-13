@@ -408,7 +408,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 		}
 	} else {
 		a3.ensure_cap(a3.len + size)
-		if !isnil(a3.data) && !isnil (val) {
+		if !isnil(a3.data) && !isnil(val) {
 			unsafe {C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size)}
 		}
 	}
