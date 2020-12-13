@@ -5,7 +5,7 @@ const (
 )
 
 fn unique_strings(arr_len int, str_len int) []string {
-	mut arr := []string{}
+	mut arr := []string{cap: arr_len}
 	for arr.len < arr_len {
 		str := rand.string(str_len)
 		if str !in arr {

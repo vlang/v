@@ -536,14 +536,15 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 	}
 	if files.len > 0 {
 		for file in files {
-			if os.is_dir(file) {
-				ctx.scan_static_directory(directory_path + '/' + file, mount_path + '/' + file)
+			full_path := directory_path + '/' + file
+			if os.is_dir(full_path) {
+				ctx.scan_static_directory(full_path, mount_path + '/' + file)
 			} else if file.contains('.') && !file.starts_with('.') && !file.ends_with('.') {
 				ext := os.file_ext(file)
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
 				if ext in mime_types {
-					ctx.serve_static(mount_path + '/' + file, directory_path + '/' + file,
+					ctx.serve_static(mount_path + '/' + file, full_path,
 						mime_types[ext])
 				}
 			}

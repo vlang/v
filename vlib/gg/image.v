@@ -31,9 +31,7 @@ pub fn (mut ctx Context) create_image(file string) Image {
 	if !C.sg_isvalid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
 		// ctx.image_queue << file
-		stb_img := stbi.load(file) or {
-			return Image{}
-		}
+		stb_img := stbi.load(file) or { return Image{} }
 		img := Image{
 			width: stb_img.width
 			height: stb_img.height
@@ -59,9 +57,7 @@ fn create_image(file string) Image {
 		println('gg.create_image(): file not found: $file')
 		return Image{} // none
 	}
-	stb_img := stbi.load(file) or {
-		return Image{}
-	}
+	stb_img := stbi.load(file) or { return Image{} }
 	mut img := Image{
 		width: stb_img.width
 		height: stb_img.height
@@ -75,10 +71,8 @@ fn create_image(file string) Image {
 	return img
 }
 
-pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
-	stb_img := stbi.load_from_memory(buf, bufsize) or {
-		return Image{}
-	}
+pub fn (mut ctx Context) create_image_from_memory(buf byteptr, bufsize int) Image {
+	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
 	mut img := Image{
 		width: stb_img.width
 		height: stb_img.height
@@ -86,12 +80,14 @@ pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
 		ok: stb_img.ok
 		data: stb_img.data
 		ext: stb_img.ext
+		id: ctx.image_cache.len
 	}
+	ctx.image_cache << img
 	return img
 }
 
-pub fn create_image_from_byte_array(b []byte) Image {
-	return create_image_from_memory(b.data, b.len)
+pub fn (mut ctx Context) create_image_from_byte_array(b []byte) Image {
+	return ctx.create_image_from_memory(b.data, b.len)
 }
 
 pub fn (mut img Image) init_sokol_image() &Image {

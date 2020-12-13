@@ -247,7 +247,9 @@ fn (mut v Builder) cc() {
 		// TODO : try and remove the below workaround options when the corresponding
 		// warnings are totally fixed/removed
 		mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
-			'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
+			'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label', '-Wshadow',
+			'-Wno-unused',
+		]
 		if v.pref.os == .ios {
 			args << '-framework Foundation'
 			args << '-framework UIKit'

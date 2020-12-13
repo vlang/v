@@ -676,6 +676,23 @@ fn test_anon_fn_arg_map() {
 	assert a == [2,3,4]
 }
 
+fn test_anon_fn_arg_different_type_map() {
+	i_to_str := fn (i int) string {
+		return i.str()
+	}
+	a := [1, 2, 3].map(i_to_str)
+
+	assert a == ['1', '2', '3']
+}
+
+fn test_anon_fn_inline_different_type_map() {
+	a := [1, 2, 3].map(fn (i int) string {
+		return i.str()
+	})
+
+	assert a == ['1', '2', '3']
+}
+
 fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1,2,3]

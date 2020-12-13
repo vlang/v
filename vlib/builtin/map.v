@@ -100,7 +100,10 @@ mut:
 	cap         int
 	len         int
 	deletes     u32 // count
-	data        byteptr // array of interspersed key data and value data
+	// array allocated (with `cap` bytes) on first deletion
+	// has non-zero element when key deleted
+	all_deleted &byte
+	data        byteptr // array of interleaved key data and value data
 }
 
 [inline]
@@ -115,7 +118,8 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		cap: cap
 		len: 0
 		deletes: 0
-		data: malloc(cap * slot_bytes)
+		all_deleted: 0
+		data: malloc(cap * slot_bytes) 
 	}
 }
 
@@ -132,9 +136,7 @@ fn (d &DenseArray) value(i int) voidptr {
 
 [inline]
 fn (d &DenseArray) has_index(i int) bool {
-	// assume string keys for now
-	pkey := unsafe {&string(d.key(i))}
-	return pkey.str != 0
+	return d.deletes == 0 || unsafe {d.all_deleted[i]} == 0
 }
 
 // Push element to array and return index
@@ -145,10 +147,17 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 		d.cap += d.cap >> 3
 		unsafe {
 			d.data = v_realloc(d.data, d.slot_bytes * d.cap)
+			if d.deletes != 0 {
+				d.all_deleted = v_realloc(d.all_deleted, d.cap)
+				C.memset(d.all_deleted + d.len, 0, d.cap - d.len)
+			}
 		}
 	}
 	push_index := d.len
 	unsafe {
+		if d.deletes != 0 {
+			d.all_deleted[push_index] = 0
+		}
 		ptr := d.key(push_index)
 		C.memcpy(ptr, key, d.key_bytes)
 		C.memcpy(byteptr(ptr) + d.key_bytes, value, d.value_bytes)
@@ -175,6 +184,8 @@ fn (mut d DenseArray) zeros_to_end() {
 	}
 	free(tmp_buf)
 	d.deletes = 0
+	// TODO: reallocate instead as more deletes are likely
+	free(d.all_deleted)
 	d.len = count
 	d.cap = if count < 8 { 8 } else { count }
 	unsafe {
@@ -468,12 +479,14 @@ pub fn (mut m map) delete(key string) {
 				index += 2
 			}
 			m.len--
-			unsafe {
-				m.metas[index] = 0
+			if m.key_values.deletes == 0 {
+				m.key_values.all_deleted = C.calloc(1, m.cap) // sets to 0
 			}
 			m.key_values.deletes++
-			// Mark key as deleted
 			unsafe {
+				m.key_values.all_deleted[kv_index] = 1
+				m.metas[index] = 0
+				// Mark key as deleted
 				(*pkey).free()
 				C.memset(pkey, 0, sizeof(string))
 			}
@@ -484,7 +497,6 @@ pub fn (mut m map) delete(key string) {
 			if m.key_values.deletes >= (m.key_values.len >> 1) {
 				m.key_values.zeros_to_end()
 				m.rehash()
-				m.key_values.deletes = 0
 			}
 			return
 		}
@@ -525,7 +537,14 @@ pub fn (d DenseArray) clone() DenseArray {
 		cap: d.cap
 		len: d.len
 		deletes: d.deletes
-		data: unsafe {memdup(d.data, d.cap * d.slot_bytes)}
+		all_deleted: 0
+		data: 0
+	}
+	unsafe {
+		if d.deletes != 0 {
+			res.all_deleted = memdup(d.all_deleted, d.cap)
+		}
+		res.data = memdup(d.data, d.cap * d.slot_bytes)
 	}
 	// FIXME clone each key
 	return res
@@ -568,6 +587,7 @@ pub fn (m &map) free() {
 				(*pkey).free()
 			}
 		}
+		unsafe {free(m.key_values.all_deleted)}
 	}
 	unsafe {free(m.key_values.data)}
 }

@@ -217,6 +217,8 @@ jobs:
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
+    - name: Valgrind
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
@@ -231,8 +233,10 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: v self with -usecache
-      run: ./v -o v2 -usecache cmd/v
+    - name: -usecache
+      run: |
+        ./v -o v2 -usecache cmd/v
+        ./v -usecache examples/tetris/tetris.v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -280,6 +284,73 @@ jobs:
 #      with:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  ubuntu-clang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Valgrind
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
+        ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
+    - name: Fixed tests
+      run: |
+        ./v -silent test-fixed
+    - name: Fixed tests (-prod)
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
+    - name: Build examples
+      run: ./v build-examples
+    - name: Build examples with -autofree
+      run: |
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+    - name: Build modules
+      run: |
+        ./v build-module vlib/os
+        ./v build-module vlib/builtin
+        ./v build-module vlib/strconv
+        ./v build-module vlib/time
+        ./v build-module vlib/term
+        ./v build-module vlib/math
+        ./v build-module vlib/strings
+        ./v build-module vlib/v/token
+        ./v build-module vlib/v/ast
+        ./v build-module vlib/v/parser
+        ./v build-module vlib/v/gen
+        ./v build-module vlib/v/depgraph
+        ./v build-module vlib/os/cmdline
+    - name: x64 machine code generation
+      run: |
+        exit
+        ./v -o vprod -prod cmd/v
+        cd cmd/tools
+        echo "Generating a 1m line V file..."
+        ../../vprod gen1m.v
+        ./gen1m > 1m.v
+        echo "Building it..."
+        ../../vprod -backend x64 -o 1m 1m.v
+        echo "Running it..."
+        ls
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
