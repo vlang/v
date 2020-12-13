@@ -1291,13 +1291,13 @@ pub fn (mut f Fmt) short_module(name string) string {
 	if vals.len < 2 {
 		return name
 	}
-	mname := vals[vals.len - 2]
+	mname, tprefix := f.get_modname_prefix(vals[vals.len - 2])
 	symname := vals[vals.len - 1]
 	aname := f.mod2alias[mname]
 	if aname == '' {
 		return symname
 	}
-	return '${aname}.$symname'
+	return '$tprefix${aname}.$symname'
 }
 
 pub fn (mut f Fmt) lock_expr(lex ast.LockExpr) {
@@ -1973,4 +1973,15 @@ fn (mut f Fmt) is_external_name(name string) bool {
 		return true
 	}
 	return false
+}
+
+fn (f Fmt) get_modname_prefix(mname string) (string, string) {
+	// ./tests/proto_module_importing_vproto_keep.vv to know, why here is checked for ']' and '&'
+	if !mname.contains(']') && !mname.contains('&') {
+		return mname, ''
+	}
+	after_rbc := mname.all_after_last(']')
+	after_ref := mname.all_after_last('&')
+	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
+	return modname, mname.trim_suffix(modname)
 }

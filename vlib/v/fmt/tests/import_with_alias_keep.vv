@@ -2,7 +2,10 @@ import os
 import time as t
 
 struct Foo {
-	bar t.Time
+	bar     t.Time
+	bars    []t.Time
+	barref  &t.Time
+	barrefs []&t.Time
 }
 
 fn main() {
