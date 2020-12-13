@@ -453,10 +453,6 @@ jobs:
       run: |
         gcc --version
         .\make.bat -gcc
-    - name: Run sanitizers
-      run: |
-        .\v.exe -o v2 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
-        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 .\v2.exe -o v.c cmd/v
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && gcc -Werror -municode -w v.c
     - name: Install dependencies
