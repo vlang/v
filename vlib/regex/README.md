@@ -250,7 +250,7 @@ The array will be filled with the following logic:
 The regex save until finish or found that the array have no space.
 If the space ends no error is raised, further records will not be saved.
 
-```v oksyntax
+```v ignore
 fn example2() {
 	test_regex()
 	text := 'tst: 01,23,45 ,56, 78'
