@@ -38,14 +38,8 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	if isnil(s) {
-		return none
-	}
 	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
-			if isnil(name.str) {
-				return none
-			}
 			return sc.objects[name]
 		}
 		if isnil(sc.parent) {
