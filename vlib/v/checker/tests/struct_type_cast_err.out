@@ -1,0 +1,77 @@
+vlib/v/checker/tests/struct_type_cast_err.vv:5:10: error: cannot cast `struct` to `string`
+    3 | fn main() {
+    4 |     foo := Foo{}
+    5 |     _ := string(foo)
+      |          ~~~~~~~~~~~
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:6:10: error: cannot cast `struct` to `int`
+    4 |     foo := Foo{}
+    5 |     _ := string(foo)
+    6 |     _ := int(foo)
+      |          ~~~~~~~~
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:7:10: error: cannot cast `struct` to `u64`
+    5 |     _ := string(foo)
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+      |          ~~~~~~~~
+    8 |     _ := u32(foo)
+    9 |     _ := u8(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:8:10: error: cannot cast `struct` to `u32`
+    6 |     _ := int(foo)
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+      |          ~~~~~~~~
+    9 |     _ := u8(foo)
+   10 |     _ := rune(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:9:10: error: unknown function: u8
+    7 |     _ := u64(foo)
+    8 |     _ := u32(foo)
+    9 |     _ := u8(foo)
+      |          ~~~~~~~
+   10 |     _ := rune(foo)
+   11 |     _ := byte(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:10:10: error: cannot cast `struct` to `rune`
+    8 |     _ := u32(foo)
+    9 |     _ := u8(foo)
+   10 |     _ := rune(foo)
+      |          ~~~~~~~~~
+   11 |     _ := byte(foo)
+   12 |     _ := i8(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:11:10: error: cannot cast type `Foo` to `byte`
+    9 |     _ := u8(foo)
+   10 |     _ := rune(foo)
+   11 |     _ := byte(foo)
+      |          ~~~~~~~~~
+   12 |     _ := i8(foo)
+   13 |     _ := i32(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:12:10: error: cannot cast `struct` to `i8`
+   10 |     _ := rune(foo)
+   11 |     _ := byte(foo)
+   12 |     _ := i8(foo)
+      |          ~~~~~~~
+   13 |     _ := i32(foo)
+   14 |     _ := i64(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:13:10: error: unknown function: i32
+   11 |     _ := byte(foo)
+   12 |     _ := i8(foo)
+   13 |     _ := i32(foo)
+      |          ~~~~~~~~
+   14 |     _ := i64(foo)
+   15 |     _ := int(foo)
+vlib/v/checker/tests/struct_type_cast_err.vv:14:10: error: cannot cast `struct` to `i64`
+   12 |     _ := i8(foo)
+   13 |     _ := i32(foo)
+   14 |     _ := i64(foo)
+      |          ~~~~~~~~
+   15 |     _ := int(foo)
+   16 | }
+vlib/v/checker/tests/struct_type_cast_err.vv:15:10: error: cannot cast `struct` to `int`
+   13 |     _ := i32(foo)
+   14 |     _ := i64(foo)
+   15 |     _ := int(foo)
+      |          ~~~~~~~~
+   16 | }
+   17 |

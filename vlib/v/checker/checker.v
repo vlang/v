@@ -3168,6 +3168,9 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.none_type {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
+	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() {
+		type_name := c.table.type_to_str(node.typ)
+		c.error('cannot cast `struct` to `$type_name`', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)
