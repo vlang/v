@@ -10,11 +10,32 @@ module builtin
 pub fn memcpy(mut dest voidptr, src voidptr, len u32) voidptr {
 	mut d := byteptr(dest)
 	s := byteptr(src)
-	mut l := len
-	for l > 0 {
-		l--
+	for l := u32(0); l < len; l++ {
 		unsafe {
 			d[l] = s[l]
+		}
+	}
+	return dest
+}
+
+[direct_array_access]
+[unsafe]
+pub fn memmove(mut dest voidptr, src voidptr, len u32) voidptr {
+	mut d := byteptr(dest)
+	s := byteptr(src)
+	if d < s {
+		for l := u32(0); l < len; l++ {
+			unsafe {
+				d[l] = s[l]
+			}
+		}
+	} else {
+		mut l := len
+		for l > 0 {
+			l--
+			unsafe {
+				d[l] = s[l]
+			}
 		}
 	}
 	return dest
