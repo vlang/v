@@ -1858,15 +1858,13 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
 		f.indent++
-		single_line_short_args := use_short_args && it.fields.len < 4
-		if use_short_args && !single_line_short_args {
-			f.writeln('')
-		}
+		mut field_start_positions := []int{}
 		for i, field in it.fields {
+			field_start_positions << f.out.len
 			f.write('$field.name: ')
 			f.prefix_expr_cast_expr(field.expr)
 			f.comments(field.comments, inline: true, has_nl: false, level: .indent)
-			if single_line_short_args {
+			if use_short_args {
 				if i < it.fields.len - 1 {
 					f.write(', ')
 				}
@@ -1874,6 +1872,18 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.writeln('')
 			}
 			f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
+		}
+		if use_short_args {
+			if f.line_len > max_len[4] {
+				mut fields := []string{}
+				for pos in field_start_positions.reverse() {
+					fields << f.out.cut_last(f.out.len - pos).trim_suffix(', ')
+				}
+				f.writeln('')
+				for field in fields.reverse() {
+					f.writeln(field)
+				}
+			}
 		}
 		f.indent--
 		if !use_short_args {
