@@ -1446,30 +1446,33 @@ fn (mut g Gen) gen_assert_metainfo(a ast.AssertStmt) string {
 	line_nr := a.pos.line_nr
 	src := cestring(a.expr.str())
 	metaname := 'v_assert_meta_info_$g.new_tmp_var()'
-	g.writeln('\tVAssertMetaInfo $metaname;')
-	g.writeln('\tmemset(&$metaname, 0, sizeof(VAssertMetaInfo));')
-	g.writeln('\t${metaname}.fpath = ${ctoslit(mod_path)};')
-	g.writeln('\t${metaname}.line_nr = $line_nr;')
-	g.writeln('\t${metaname}.fn_name = ${ctoslit(fn_name)};')
-	g.writeln('\t${metaname}.src = ${cnewlines(ctoslit(src))};')
+	g.indent++
+	g.writeln('VAssertMetaInfo $metaname;')
+	g.writeln('memset(&$metaname, 0, sizeof(VAssertMetaInfo));')
+	g.writeln('${metaname}.fpath = ${ctoslit(mod_path)};')
+	g.writeln('${metaname}.line_nr = $line_nr;')
+	g.writeln('${metaname}.fn_name = ${ctoslit(fn_name)};')
+	g.writeln('${metaname}.src = ${cnewlines(ctoslit(src))};')
 	match mut a.expr {
 		ast.InfixExpr {
-			g.writeln('\t${metaname}.op = ${ctoslit(a.expr.op.str())};')
-			g.writeln('\t${metaname}.llabel = ${cnewlines(ctoslit(a.expr.left.str()))};')
-			g.writeln('\t${metaname}.rlabel = ${cnewlines(ctoslit(a.expr.right.str()))};')
-			g.write('\t${metaname}.lvalue = ')
+			g.writeln('${metaname}.op = ${ctoslit(a.expr.op.str())};')
+			g.writeln('${metaname}.llabel = ${cnewlines(ctoslit(a.expr.left.str()))};')
+			g.writeln('${metaname}.rlabel = ${cnewlines(ctoslit(a.expr.right.str()))};')
+			g.stmt_path_pos << g.out.len
+			g.write('${metaname}.lvalue = ')
 			g.gen_assert_single_expr(a.expr.left, a.expr.left_type)
 			g.writeln(';')
-			//
-			g.write('\t${metaname}.rvalue = ')
+			g.stmt_path_pos << g.out.len
+			g.write('${metaname}.rvalue = ')
 			g.gen_assert_single_expr(a.expr.right, a.expr.right_type)
 			g.writeln(';')
 		}
 		ast.CallExpr {
-			g.writeln('\t${metaname}.op = _SLIT("call");')
+			g.writeln('${metaname}.op = _SLIT("call");')
 		}
 		else {}
 	}
+	g.indent--
 	return metaname
 }
 
@@ -3495,26 +3498,6 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 		cur_line = g.go_before_stmt(0).trim_prefix('\t')
 		g.empty_line = true
 		g.writeln('$styp $tmp; /* if prepend */')
-	} else if node.is_expr || g.inside_ternary != 0 {
-		g.inside_ternary++
-		// g.inside_if_expr = true
-		g.write('(')
-		for i, branch in node.branches {
-			if i > 0 {
-				g.write(' : ')
-			}
-			if i < node.branches.len - 1 || !node.has_else {
-				g.expr(branch.cond)
-				g.write(' ? ')
-			}
-			g.stmts(branch.stmts)
-		}
-		if node.branches.len == 1 {
-			g.write(': 0')
-		}
-		g.write(')')
-		g.decrement_inside_ternary()
-		return
 	}
 	mut is_guard := false
 	mut guard_idx := 0
