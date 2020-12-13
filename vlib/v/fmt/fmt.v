@@ -616,7 +616,9 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			max = comments_len + field.name.len
 		}
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
-		ft = f.short_module(ft)
+		if !ft.starts_with('C.') && !ft.starts_with('JS.') {
+			ft = f.short_module(ft)
+		}
 		field_types << ft
 		if ft.len > max_type {
 			max_type = ft.len
