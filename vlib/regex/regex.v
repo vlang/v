@@ -314,8 +314,8 @@ pub mut:
 	group_max_nested  int  = 3         // max nested group
 	group_max         int  = 8         // max allowed number of different groups
 
-	group_csave       []int = []int{}  // groups continuous save array
-	group_csave_index int = -1         // groups continuous save index
+	group_csave_flag  bool             // flag to enable continuous saving
+	group_csave       []int = []int{}  // groups continuous save list
 
 	group_map         map[string]int   // groups names map
 
@@ -344,10 +344,7 @@ fn (mut re RE) reset(){
 	re.state_stack_index = -1
 
 	// reset group_csave
-	if re.group_csave.len > 0 {
-		re.group_csave_index = 1
-		re.group_csave[0]    = 0 // reset the capture count
-	}
+	re.group_csave = []int{}
 }
 
 // reset for search mode fail
@@ -1482,6 +1479,45 @@ pub fn (re RE) get_query() string {
 
 /*
 
+Groups saving utilities
+
+*/
+[inline]
+fn (mut re RE) group_continuous_save(g_index int) {
+	if re.group_csave_flag == true {
+		// continuous save, save until we have space
+		
+		// init the first element as counter
+		if re.group_csave.len == 0 {
+			re.group_csave << 0
+		}
+
+		gi    := g_index >> 1
+		start := re.groups[g_index]
+		end   := re.groups[g_index+1]
+
+		// check if we are simply increasing the size ot the found group
+		if re.group_csave.len >=4 &&
+			gi == re.group_csave[re.group_csave.len - 3] &&
+			start == re.group_csave[re.group_csave.len - 2]
+		{
+			re.group_csave[re.group_csave.len - 1] = end
+			return
+		}
+		
+		// otherwise append a new group to the list
+
+		// increment counter
+		re.group_csave[0]++
+		// save the record
+		re.group_csave << (g_index >> 1)        // group id
+		re.group_csave << re.groups[g_index]    // start
+		re.group_csave << re.groups[g_index+1]  // end
+	}
+}
+						
+/*
+
 Matching
 
 */
@@ -1684,18 +1720,8 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						}
 
 						// continuous save, save until we have space
-						if re.group_csave_index > 0 {
-							// check if we have space to save the record
-							if (re.group_csave_index + 3) < re.group_csave.len {
-								// incrment counter
-								re.group_csave[0]++
-								// save the record
-								re.group_csave[re.group_csave_index++] = g_index >> 1          // group id
-								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
-								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
-							}
-						}
-
+						re.group_continuous_save(g_index)
+						
  					}
 
 					group_index--
@@ -1879,17 +1905,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						//println("GROUP ${re.prog[pc].group_id} END [${re.groups[g_index]}, ${re.groups[g_index+1]}]")
 
 						// continuous save, save until we have space
-						if re.group_csave_index > 0 {
-							// check if we have space to save the record
-							if (re.group_csave_index + 3) < re.group_csave.len {
-								// incrment counter
-								re.group_csave[0]++
-								// save the record
-								re.group_csave[re.group_csave_index++] = g_index >> 1          // group id
-								re.group_csave[re.group_csave_index++] = re.groups[g_index]    // start
-								re.group_csave[re.group_csave_index++] = re.groups[g_index+1]  // end
-							}
-						}
+						re.group_continuous_save(g_index)
 					}
 
 					re.prog[pc].group_rep++ // increase repetitions

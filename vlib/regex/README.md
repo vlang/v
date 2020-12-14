@@ -236,8 +236,8 @@ this is possible initializing the saving array field in `RE` struct: `group_csav
 This feature allow to collect data in a  continuous way.
 
 In the example we pass a text followed by a integer list that we want collect.
-To achieve this task we can use the continuous saving of the group
-that save each captured group in a array that we set with: `re.group_csave = [-1].repeat(3*20+1)`.
+To achieve this task we can use the continuous saving of the group 
+enabling the right flag: `re.group_csave_flag = true`.
 
 The array will be filled with the following logic:
 
@@ -250,14 +250,14 @@ The array will be filled with the following logic:
 The regex save until finish or found that the array have no space.
 If the space ends no error is raised, further records will not be saved.
 
-```v oksyntax
+```v ignore
 fn example2() {
 	test_regex()
 	text := 'tst: 01,23,45 ,56, 78'
 	query := r'.*:(\s*\d+[\s,]*)+'
 	mut re := new() or { panic(err) }
 	// re.debug = 2
-	re.group_csave = [-1].repeat(3 * 20 + 1) // we expect max 20 records
+	re.group_csave_flag = true  // enable continuous capture
 	re.compile_opt(query) or {
 		println(err)
 		return
@@ -330,7 +330,7 @@ fn main() {
 	query := r'(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+'
 	mut re := new()
 	re.debug = 2
-	// must provide an array of the right size if want the continuos saving of the groups
+	// must provide an array of the right size if want the continuous saving of the groups
 	re.group_csave = [-1].repeat(3 * 20 + 1)
 	re.compile_opt(query) or {
 		println(err)

@@ -230,7 +230,8 @@ fn test_regex(){
 		}
 
 		if to.cgn.len > 0 {
-			re.group_csave = [-1].repeat(3*20+1)
+			re.group_csave_flag = true
+			//re.group_csave = [-1].repeat(3*20+1)
 			if debug { println("continuous save")}
 		} else {
 			if debug { println("NO continuous save")}
