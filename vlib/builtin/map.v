@@ -250,7 +250,8 @@ fn (m &map) keys_eq(a voidptr, b voidptr) bool {
 }
 
 [inline]
-fn (m &map) key_to_index(key string) (u32, u32) {
+fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
+	key := *&string(pkey)
 	hash := hash.wyhash_c(key.str, u64(key.len), 0)
 	index := hash & m.cap
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
@@ -321,7 +322,7 @@ fn (mut m map) set(k string, value voidptr) {
 	if load_factor > max_load_factor {
 		m.expand()
 	}
-	mut index, mut meta := m.key_to_index(key)
+	mut index, mut meta := m.key_to_index(&key)
 	index, meta = m.meta_less(index, meta)
 	// While we might have a match
 	for meta == unsafe {m.metas[index]} {
@@ -373,8 +374,8 @@ fn (mut m map) rehash() {
 		if !m.key_values.has_index(i) {
 			continue
 		}
-		pkey := unsafe {&string(m.key_values.key(i))}
-		mut index, mut meta := m.key_to_index(*pkey)
+		pkey := unsafe {m.key_values.key(i)}
+		mut index, mut meta := m.key_to_index(pkey)
 		index, meta = m.meta_less(index, meta)
 		m.meta_greater(index, meta, u32(i))
 	}
@@ -408,7 +409,7 @@ fn (mut m map) cached_rehash(old_cap u32) {
 // If the key exists, its respective value is returned.
 fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 	for {
-		mut index, mut meta := m.key_to_index(key)
+		mut index, mut meta := m.key_to_index(&key)
 		for {
 			if meta == unsafe {m.metas[index]} {
 				kv_index := int(unsafe {m.metas[index + 1]})
@@ -434,7 +435,7 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
 fn (m map) get(key string, zero voidptr) voidptr {
-	mut index, mut meta := m.key_to_index(key)
+	mut index, mut meta := m.key_to_index(&key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
@@ -454,7 +455,7 @@ fn (m map) get(key string, zero voidptr) voidptr {
 
 // Checks whether a particular key exists in the map.
 fn (m map) exists(key string) bool {
-	mut index, mut meta := m.key_to_index(key)
+	mut index, mut meta := m.key_to_index(&key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
@@ -474,7 +475,7 @@ fn (m map) exists(key string) bool {
 
 // Removes the mapping of a particular key from the map.
 pub fn (mut m map) delete(key string) {
-	mut index, mut meta := m.key_to_index(key)
+	mut index, mut meta := m.key_to_index(&key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
 	for meta == unsafe {m.metas[index]} {
