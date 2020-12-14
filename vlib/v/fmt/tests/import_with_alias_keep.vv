@@ -1,6 +1,15 @@
 import os
 import time as t
 
+struct Foo {
+	bar     t.Time
+	bars    []t.Time
+	barref  &t.Time
+	barrefs []&t.Time
+	c_type  C.some_struct
+	js_type JS.other_struct
+}
+
 fn main() {
 	println('start')
 	t.sleep_ms(500)
