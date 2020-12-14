@@ -338,7 +338,7 @@ fn (mut m map) set(k string, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.push(key, value)
+	kv_index := m.key_values.push(&key, value)
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
 }
