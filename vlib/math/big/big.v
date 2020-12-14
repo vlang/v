@@ -9,6 +9,7 @@ struct C.bn {
 	array [32]u32
 }
 
+// Big unsigned integer number.
 type Number = C.bn
 
 fn C.bignum_init(n &Number)
@@ -58,8 +59,10 @@ fn C.bignum_cmp(a &Number, b &Number) int
 
 fn C.bignum_is_zero(a &Number) int
 
+// n++
 fn C.bignum_inc(n &Number)
 
+// n--
 fn C.bignum_dec(n &Number)
 
 // c = a ^ b
@@ -89,6 +92,7 @@ pub fn from_u64(u u64) Number {
 	return n
 }
 
+// Converts a hex string to big.Number.
 pub fn from_string(s string) Number {
 	n := Number{}
 	C.bignum_from_string(&n, s.str, s.len)
@@ -100,12 +104,24 @@ pub fn (n Number) int() int {
 	return r
 }
 
+const (
+	ten = from_int(10)
+)
+
+// Decimal representation for the big unsigned integer number n.
 pub fn (n Number) str() string {
-	// TODO: return a decimal representation of the bignumber n.
-	// A decimal representation will be easier to use in the repl
-	// but will be slower to calculate. Also, it is not implemented
-	// in the bn library.
-	return 'Number (in hex): ' + n.hexstr()
+	if n.is_zero() {
+		return '0'
+	}
+	mut digits := []byte{}
+	mut x := n.clone()
+	div := Number{}
+	for !x.is_zero() {
+		mod := divmod(&x, &ten, &div)
+		digits << byte(mod.int()) + `0`
+		x = div
+	}
+	return digits.reverse().bytestr()
 }
 
 pub fn (n Number) hexstr() string {

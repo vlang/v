@@ -77,6 +77,18 @@ fn test_mod() {
 	assert (big.from_u64(7) % big.from_u64(5)).int() == 2
 }
 
+fn test_str() {
+	assert big.from_u64(255).str() == '255'
+	assert big.from_u64(127).str() == '127'
+	assert big.from_u64(1024).str() == '1024'
+	assert big.from_u64(4294967295).str() == '4294967295'
+	assert big.from_u64(4398046511104).str() == '4398046511104'
+	assert big.from_int(4294967295).str() == '18446744073709551615'
+	assert big.from_int(-1).str() == '18446744073709551615'
+	assert big.from_string('e'.repeat(80)).str() ==
+		'1993587900192849410235353592424915306962524220866209251950572167300738410728597846688097947807470'
+}
+
 fn test_factorial() {
 	f5 := big.factorial(big.from_u64(5))
 	assert f5.hexstr() == '78'
