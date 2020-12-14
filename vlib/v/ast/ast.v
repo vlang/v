@@ -521,13 +521,12 @@ pub mut:
 
 pub struct IndexExpr {
 pub:
-	pos        token.Position
-	left       Expr
-	index      Expr // [0], RangeExpr [start..end] or map[key]
+	pos       token.Position
+	left      Expr
+	index     Expr // [0], RangeExpr [start..end] or map[key]
 pub mut:
-	left_type  table.Type // array, map, fixed array
-	is_setter  bool
-	is_fn_call bool
+	left_type table.Type // array, map, fixed array
+	is_setter bool
 }
 
 pub struct IfExpr {
