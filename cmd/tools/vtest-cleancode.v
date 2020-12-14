@@ -21,6 +21,7 @@ const (
 		'cmd/tools/vdoc.v'
 		'cmd/v/v.v',
 		'vlib/builtin/array.v',
+		'vlib/builtin/map.v',
 		'vlib/os/file.v',
 		'vlib/math/bits/bits.v',
 		'vlib/time/time.v',

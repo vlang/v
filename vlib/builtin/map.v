@@ -119,7 +119,7 @@ fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 		len: 0
 		deletes: 0
 		all_deleted: 0
-		data: malloc(cap * slot_bytes) 
+		data: malloc(cap * slot_bytes)
 	}
 }
 
