@@ -64,18 +64,16 @@ fn (mut a App) collect_info() {
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
 			// WSL 2 is a hypervisor
-			if 'microsoft' in a.cmd({
-				command: 'cat /proc/sys/kernel/osrelease'
-			}) {
+			// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
+			if 'microsoft' in wsl_check {
 				os_details += ' (WSL 2)'
 			} else {
 				os_details += ' (VM)'
 			}
 		}
-		// WSL 1 is NOT a hypervisor 
-		if 'Microsoft' in a.cmd({
-				command: 'cat /proc/sys/kernel/osrelease'
-		}) {
+		// WSL 1 is NOT a hypervisor
+		// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions 
+		if 'Microsoft' in wsl_check {
 				os_details += ' (WSL)'
 		}
 		// From https://unix.stackexchange.com/a/14346
