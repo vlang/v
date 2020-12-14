@@ -156,6 +156,10 @@ jobs:
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=undefined
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: v self with -usecache
@@ -221,6 +225,12 @@ jobs:
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
     - name: Valgrind
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=thread
+        ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
@@ -310,8 +320,12 @@ jobs:
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
     - name: Run sanitizers
       run: |
-        ./v -o v2 cmd/v -cflags -fsanitize=memory && ./v2 -o v.c cmd/v
-        ./v -o v2 cmd/v -cflags -fsanitize=thread && ./v2 -o v.c cmd/v
+        ./v -o v2 cmd/v -cflags -fsanitize=memory
+        ./v -o v3 cmd/v -cflags -fsanitize=thread
+        ./v -o v4 cmd/v -cflags -fsanitize=undefined
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
