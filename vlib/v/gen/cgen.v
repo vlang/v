@@ -530,7 +530,7 @@ fn (g &Gen) cc_type2(t table.Type) string {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
 				gts := g.table.get_type_symbol(if gt.has_flag(.generic) { g.unwrap_generic(gt) } else { gt })
-				sgtyps += '_$gts.name'
+				sgtyps += '_$gts.cname'
 			}
 			styp += sgtyps
 		}
