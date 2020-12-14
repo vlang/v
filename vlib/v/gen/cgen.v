@@ -20,7 +20,7 @@ const (
 	// same order as in token.Kind
 	cmp_str    = ['eq', 'ne', 'gt', 'lt', 'ge', 'le']
 	// when operands are switched
-	cmp_rev    = ['eq', 'ne', 'le', 'ge', 'lt', 'gt']
+	cmp_rev    = ['eq', 'ne', 'lt', 'gt', 'le', 'ge']
 )
 
 struct Gen {
