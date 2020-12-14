@@ -139,6 +139,14 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe {d.all_deleted[i]} == 0
 }
 
+[inline]
+fn (mut d DenseArray) clone_key(dest voidptr, pkey voidptr) {
+	unsafe {
+		s := (*&string(pkey)).clone()
+		C.memcpy(dest, &s, d.key_bytes)
+	}
+}
+
 // Push element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
@@ -159,7 +167,7 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 			d.all_deleted[push_index] = 0
 		}
 		ptr := d.key(push_index)
-		C.memcpy(ptr, key, d.key_bytes)
+		d.clone_key(ptr, key)
 		C.memcpy(byteptr(ptr) + d.key_bytes, value, d.value_bytes)
 	}
 	d.len++
@@ -317,18 +325,17 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
 fn (mut m map) set(k string, value voidptr) {
-	key := k.clone()
 	load_factor := f32(m.len << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
 	}
-	mut index, mut meta := m.key_to_index(&key)
+	mut index, mut meta := m.key_to_index(&k)
 	index, meta = m.meta_less(index, meta)
 	// While we might have a match
 	for meta == unsafe {m.metas[index]} {
 		kv_index := int(unsafe {m.metas[index + 1]})
 		pkey := unsafe {m.key_values.key(kv_index)}
-		if m.keys_eq(&key, pkey) {
+		if m.keys_eq(&k, pkey) {
 			unsafe {
 				pval := byteptr(pkey) + m.key_bytes
 				C.memcpy(pval, value, m.value_bytes)
@@ -338,7 +345,7 @@ fn (mut m map) set(k string, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.push(&key, value)
+	kv_index := m.key_values.push(&k, value)
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
 }
