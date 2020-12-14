@@ -64,7 +64,7 @@ fn (mut a App) collect_info() {
 		info := a.cpu_info()
 		if 'hypervisor' in info['flags'] {
 			if 'microsoft' in wsl_check {
-			// WSL 2 is a hypervisor and Full Linux Kernal
+			// WSL 2 is a Managed VM and Full Linux Kernel
 			// See https://docs.microsoft.com/en-us/windows/wsl/compare-versions
 				os_details += ' (WSL 2)'
 			} else {
