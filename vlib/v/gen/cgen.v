@@ -116,7 +116,7 @@ mut:
 	called_fn_name                   string
 	cur_mod                          ast.Module
 	is_js_call                       bool // for handling a special type arg #1 `json.decode(User, ...)`
-	is_fn_index_call				 bool
+	is_fn_index_call                 bool
 	// nr_vars_to_free       int
 	// doing_autofree_tmp    bool
 	inside_lambda                    bool
