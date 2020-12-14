@@ -103,6 +103,8 @@ jobs:
       run: TZ=Etc/GMT-3 ./v test vlib/time/
     - name: Test time functions in a timezone UTC+12
       run: TZ=Etc/GMT-12 ./v test vlib/time/
+    - name: Test time functions in a timezone using daylight saving (Europe/Paris)
+      run: TZ=Europe/Paris ./v test vlib/time/
     - name: Test building v tools
       run: ./v -silent build-tools
     - name: v doctor
