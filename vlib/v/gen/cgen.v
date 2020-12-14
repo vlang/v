@@ -3766,19 +3766,10 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('(($array_ptr_type_str)')
 					} else if g.is_fn_index_call {
 						if elem_typ.info is table.FnType {
-							ret_styp := g.typ(elem_typ.info.func.return_type)
-							g.write('(($ret_styp (*) (')
-							arg_len := elem_typ.info.func.params.len
-							for i, arg in elem_typ.info.func.params {
-								arg_styp := g.typ(arg.typ)
-								g.write('$arg_styp $arg.name')
-								if i < arg_len - 1 {
-									g.write(', ')
-								}
-							}
-							g.write('))')
+							g.write('((')
+							g.write_fn_ptr_decl(&elem_typ.info, '')
+							g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						}
-						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 					} else {
 						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
