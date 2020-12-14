@@ -93,7 +93,13 @@ pub fn from_u64(u u64) Number {
 }
 
 // Converts a hex string to big.Number.
-pub fn from_string(s string) Number {
+pub fn from_string(input string) Number {
+	mut s := input.trim_prefix('0x')
+	if s.len == 0 {
+		s = '0'
+	}
+	padding := '0'.repeat((8 - s.len % 8) % 8)
+	s = padding + s
 	n := Number{}
 	C.bignum_from_string(&n, s.str, s.len)
 	return n

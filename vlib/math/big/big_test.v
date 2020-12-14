@@ -77,6 +77,19 @@ fn test_mod() {
 	assert (big.from_u64(7) % big.from_u64(5)).int() == 2
 }
 
+fn test_from_str() {
+	assert big.from_string('').hexstr() == '0'
+	assert big.from_string('1').hexstr() == '1'
+	assert big.from_string('0').hexstr() == '0'
+	assert big.from_string('0x123').hexstr() == '123'
+	for i in 1 .. 33 {
+		input := 'e'.repeat(i)
+		out := big.from_string(input).hexstr()
+		assert input == out
+	}
+	assert big.from_string('0').hexstr() == '0'
+}
+
 fn test_str() {
 	assert big.from_u64(255).str() == '255'
 	assert big.from_u64(127).str() == '127'
