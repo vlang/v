@@ -1204,16 +1204,19 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
 		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
-		if s == '' {
-			s = '//'
-		} else {
-			s = '// ' + s
+		mut out_s := '//'
+		if s != '' {
+			match s[0] {
+				`a`...`z`, `A`...`Z`, `0`...`9` { out_s += ' ' }
+				else {}
+			}
+			out_s += s
 		}
 		if !is_separate_line && f.indent > 0 {
 			f.remove_new_line() // delete the generated \n
 			f.write(' ')
 		}
-		f.write(s)
+		f.write(out_s)
 		return
 	}
 	lines := node.text.split_into_lines()
