@@ -387,7 +387,7 @@ pub fn (mut p Parser) parse_generic_struct_inst_type(name string) table.Type {
 		}
 		gts := p.table.get_type_symbol(gt)
 		bs_name += gts.name
-		bs_cname += gts.name
+		bs_cname += gts.cname
 		generic_types << gt
 		if p.tok.kind != .comma {
 			break
