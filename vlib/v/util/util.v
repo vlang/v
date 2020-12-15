@@ -15,6 +15,7 @@ pub const (
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
+	bundle_modules       = ['sokol', 'gx', 'gg', 'fontstash']
 )
 
 pub const (
@@ -407,4 +408,8 @@ pub fn recompile_file(vexe string, file string) {
 		eprintln('could not recompile $file')
 		exit(2)
 	}
+}
+
+pub fn should_bundle_module(mod string) bool {
+	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
 }
