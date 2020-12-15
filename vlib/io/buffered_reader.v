@@ -48,9 +48,11 @@ fn (mut r BufferedReader) fill_buffer() ? {
 	// from the upstream reader so that we dont have to keep
 	// trying to call this
 	r.offset = 0
-	r.len = r.reader.read(mut r.buf) or {
+	new_len := r.reader.read(mut r.buf) or {
+		eprintln('>> BufferedReader.reader.read err: $err')
 		0
 	}
+	r.len = new_len
 }
 
 // read_line reads a line from the buffered reader
@@ -93,3 +95,4 @@ pub fn (mut r BufferedReader) read_line() ?string {
 		r.offset = i
 	}
 }
+ 

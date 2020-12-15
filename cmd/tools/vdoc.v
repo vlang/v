@@ -175,6 +175,8 @@ fn (mut cfg DocConfig) serve_html() {
 			server.close() or { }
 			panic(err)
 		}
+		conn.set_read_timeout(5 * time.second)
+		conn.set_write_timeout(5 * time.second)
 		handle_http_connection(mut conn, server_context)
 		conn.close() or { eprintln('error closing the connection: $err') }
 	}
