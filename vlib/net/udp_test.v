@@ -1,5 +1,4 @@
 import net
-import time
 
 fn echo_server(_c net.UdpConn) {
 	mut c := _c
