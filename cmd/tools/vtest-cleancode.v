@@ -22,7 +22,7 @@ const (
 		'cmd/v/v.v',
 		'vlib/builtin/array.v',
 		'vlib/builtin/map.v',
-		'vlib/os/file.v',
+		'vlib/os/file.c.v',
 		'vlib/math/bits/bits.v',
 		'vlib/time/time.v',
 		'vlib/term/colors.v',
