@@ -54,20 +54,25 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 	eprintln('=========================================')
 	$if exit_after_panic_message ? {
 		C.exit(1)
-	}
-	$if tinyc {
-		$if panics_break_into_debugger ? {
-			break_if_debugger_attached()
+	} $else {
+		$if no_backtrace ? {
+			C.exit(1)
 		} $else {
-			C.tcc_backtrace('Backtrace')
+			$if tinyc {
+				$if panics_break_into_debugger ? {
+					break_if_debugger_attached()
+				} $else {
+					C.tcc_backtrace('Backtrace')
+				}
+				C.exit(1)
+			}
+			print_backtrace_skipping_top_frames(1)
+			$if panics_break_into_debugger ? {
+				break_if_debugger_attached()
+			}
+			C.exit(1)
 		}
-		C.exit(1)
 	}
-	print_backtrace_skipping_top_frames(1)
-	$if panics_break_into_debugger ? {
-		break_if_debugger_attached()
-	}
-	C.exit(1)
 }
 
 // panic prints a nice error message, then exits the process with exit code of 1.
@@ -76,20 +81,25 @@ pub fn panic(s string) {
 	eprintln('V panic: $s')
 	$if exit_after_panic_message ? {
 		C.exit(1)
-	}
-	$if tinyc {
-		$if panics_break_into_debugger ? {
-			break_if_debugger_attached()
+	} $else {
+		$if no_backtrace ? {
+			C.exit(1)
 		} $else {
-			C.tcc_backtrace('Backtrace')
+			$if tinyc {
+				$if panics_break_into_debugger ? {
+					break_if_debugger_attached()
+				} $else {
+					C.tcc_backtrace('Backtrace')
+				}
+				C.exit(1)
+			}
+			print_backtrace_skipping_top_frames(1)
+			$if panics_break_into_debugger ? {
+				break_if_debugger_attached()
+			}
+			C.exit(1)
 		}
-		C.exit(1)
 	}
-	print_backtrace_skipping_top_frames(1)
-	$if panics_break_into_debugger ? {
-		break_if_debugger_attached()
-	}
-	C.exit(1)
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
