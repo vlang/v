@@ -267,15 +267,17 @@ fn (mut v Builder) cc() {
 		// linux_host := os.user_os() == 'linux'
 		v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
 		if v.pref.is_shared {
+			mut shared_postfix := '.so'
+			$if macos {
+				shared_postfix = '.dylib'
+			} $else $if windows {
+				shared_postfix = '.dll'
+			}
+			if !v.pref.out_name.ends_with(shared_postfix) {
+				v.pref.out_name += shared_postfix
+			}
 			linker_flags << '-shared'
 			args << '-fPIC' // -Wl,-z,defs'
-			$if macos {
-				v.pref.out_name += '.dylib'
-			} $else $if windows {
-				v.pref.out_name += '.dll'
-			} $else {
-				v.pref.out_name += '.so'
-			}
 		}
 		if v.pref.is_bare {
 			args << '-fno-stack-protector'

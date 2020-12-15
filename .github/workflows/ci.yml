@@ -516,22 +516,13 @@ jobs:
   windows-tcc:
     runs-on: windows-2019
     timeout-minutes: 30
-    # We are simulating a user with no cc installed.
-    # This way, v's cc detection on Windows is also tested.
-    # env:
-    #   VFLAGS: -cc tcc
+    env:
+         VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
-    - name: Build
-      # We need to move gcc and msvc, so that V can't find an existing C compiler and downloads tcc
+    - name: Build with make.bat -tcc
       run: |
-        'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
-        'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
-        move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
-        .\make.bat
+        .\make.bat -tcc
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
     - name: Install dependencies
