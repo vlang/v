@@ -547,7 +547,7 @@ pub fn (m &map) keys() []string {
 }
 
 [unsafe]
-pub fn (d DenseArray) clone() DenseArray {
+pub fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
 		value_bytes: d.value_bytes
