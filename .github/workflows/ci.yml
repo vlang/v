@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc -cflags -bt10
+      VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
