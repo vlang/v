@@ -393,7 +393,7 @@ const(
 	]
 
 	// these chars are escape if preceded by a \
-	bsls_escape_list = [`\\`, `|`, `.`, `*`, `+`, `-`, `{`, `}`, `[`, `]`]
+	bsls_escape_list = [`\\`, `|`, `.`, `*`, `+`, `-`, `{`, `}`, `[`, `]`, `(`, `)`]
 )
 
 enum BSLS_parse_state {
