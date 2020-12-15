@@ -24,8 +24,8 @@ const (
 
 const (
 	// save importing math mod just for these
-	max_u32 = u32(4294967295)
-	max_u64 = u64(18446744073709551615)
+	max_u32 = 4294967295
+	max_u64 = 18446744073709551615
 )
 
 // --- LeadingZeros ---
