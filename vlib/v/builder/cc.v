@@ -558,8 +558,8 @@ fn (mut v Builder) cc() {
 					}
 					exit(101)
 				}
-				eprintln('recompilation with tcc failed; retrying with cc ...')
 				v.pref.ccompiler = pref.default_c_compiler()
+				eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
 				continue
 			}
 			if res.exit_code == 127 {
