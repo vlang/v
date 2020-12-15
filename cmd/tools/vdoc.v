@@ -972,7 +972,7 @@ fn main() {
 				i++
 			}
 			'-p' {
-				s_port := cmdline.option(current_args, '-o', '')
+				s_port := cmdline.option(current_args, '-p', '')
 				s_port_int := s_port.int()
 				if s_port.len == 0 {
 					eprintln('vdoc: No port number specified on "-p".')
@@ -983,6 +983,7 @@ fn main() {
 					exit(1)
 				}
 				cfg.server_port = s_port_int
+				i++
 			}
 			'-s' {
 				cfg.inline_assets = true
