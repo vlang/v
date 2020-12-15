@@ -7,6 +7,7 @@ import os
 import time
 import v.cflag
 import v.pref
+import v.util
 import term
 
 const (
@@ -373,6 +374,9 @@ fn (mut v Builder) cc() {
 				for imp_stmt in ast_file.imports {
 					imp := imp_stmt.mod
 					if imp in built_modules {
+						continue
+					}
+					if util.should_bundle_module(imp) {
 						continue
 					}
 					// not working
