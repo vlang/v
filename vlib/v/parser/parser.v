@@ -2015,7 +2015,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
-	type_alias_pos := p.tok.position()    
+	type_alias_pos := p.tok.position()
 	if p.tok.kind == .pipe {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
