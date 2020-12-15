@@ -3765,14 +3765,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					if needs_clone {
 						g.write('/*2*/string_clone(')
 					}
-					if is_direct_array_access {
-						g.write('(($array_ptr_type_str)')
-					} else if g.is_fn_index_call {
+					if g.is_fn_index_call {
 						if elem_typ.info is table.FnType {
 							g.write('((')
 							g.write_fn_ptr_decl(&elem_typ.info, '')
 							g.write(')(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						}
+					} else if is_direct_array_access {
+						g.write('(($array_ptr_type_str)')
 					} else {
 						g.write('(*($array_ptr_type_str)/*ee elem_typ */array_get(')
 						if left_is_ptr && !node.left_type.has_flag(.shared_f) {
@@ -3857,7 +3857,13 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					g.write(', &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
-					if elem_typ.kind == .function {
+					if g.is_fn_index_call {
+						if elem_typ.info is table.FnType {
+							g.write('((')
+							g.write_fn_ptr_decl(&elem_typ.info, '')
+							g.write(')(*(voidptr*)map_get(')
+						}
+					} else if elem_typ.kind == .function {
 						g.write('(*(voidptr*)map_get(')
 					} else {
 						g.write('(*($elem_type_str*)map_get(')
@@ -3875,7 +3881,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					}
 					g.write(', ')
 					g.expr(node.index)
-					if elem_typ.kind == .function {
+					if g.is_fn_index_call {
+						g.write(', &(voidptr[]){ $zero })))')
+					} else if elem_typ.kind == .function {
 						g.write(', &(voidptr[]){ $zero }))')
 					} else {
 						g.write(', &($elem_type_str[]){ $zero }))')
