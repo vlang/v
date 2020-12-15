@@ -140,7 +140,7 @@ fn (d &DenseArray) has_index(i int) bool {
 }
 
 [inline]
-fn (mut d DenseArray) clone_key(dest voidptr, pkey voidptr) {
+fn (d &DenseArray) clone_key(dest voidptr, pkey voidptr) {
 	unsafe {
 		s := (*&string(pkey)).clone()
 		C.memcpy(dest, &s, d.key_bytes)
@@ -529,8 +529,10 @@ pub fn (m &map) keys() []string {
 	mut j := 0
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
-			pkey := unsafe {&string(m.key_values.key(i))}
-			keys[j] = pkey.clone()
+			unsafe {
+				pkey := m.key_values.key(i)
+				m.key_values.clone_key(&keys[j], pkey)
+			}
 			j++
 		}
 		return keys
@@ -539,8 +541,10 @@ pub fn (m &map) keys() []string {
 		if !m.key_values.has_index(i) {
 			continue
 		}
-		pkey := unsafe {&string(m.key_values.key(i))}
-		keys[j] = pkey.clone()
+		unsafe {
+			pkey := m.key_values.key(i)
+			m.key_values.clone_key(&keys[j], pkey)
+		}
 		j++
 	}
 	return keys
