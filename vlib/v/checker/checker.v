@@ -1431,6 +1431,20 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			f = f1
 		}
 	}
+	if !found && call_expr.left is ast.IndexExpr {
+		c.expr(call_expr.left)
+		expr := call_expr.left as ast.IndexExpr
+		sym := c.table.get_type_symbol(expr.left_type)
+		if sym.kind == .array {
+			info := sym.info as table.Array
+			elem_typ := c.table.get_type_symbol(info.elem_type)
+			if elem_typ.info is table.FnType {
+				return elem_typ.info.func.return_type
+			}
+		}
+		found = true
+		return table.string_type
+	}
 	// already prefixed (mod.fn) or C/builtin/main
 	if !found {
 		if f1 := c.table.find_fn(fn_name) {

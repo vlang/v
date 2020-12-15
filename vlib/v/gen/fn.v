@@ -254,6 +254,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.left is ast.AnonFn {
 		g.expr(node.left)
 	}
+	if node.left is ast.IndexExpr && node.name == '' {
+		g.is_fn_index_call = true
+		g.expr(node.left)
+		g.is_fn_index_call = false
+	}
 	if node.should_be_skipped {
 		return
 	}
