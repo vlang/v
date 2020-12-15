@@ -49,7 +49,9 @@ fn (mut r BufferedReader) fill_buffer() ? {
 	// trying to call this
 	r.offset = 0
 	new_len := r.reader.read(mut r.buf) or {
-		eprintln('>> BufferedReader.reader.read err: $err')
+		if errcode != 0 || err.len != 0 {
+			eprintln('>> BufferedReader.reader.read err: $err | errcode: $errcode')
+		}        
 		0
 	}
 	r.len = new_len

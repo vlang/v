@@ -14,13 +14,9 @@ fn setup() (net.TcpListener, net.TcpConn, net.TcpConn) {
 	mut client := net.dial_tcp('127.0.0.1:$server_port') or {
 		panic(err)
 	}
-	client.set_read_timeout(3 * time.second)
-	client.set_write_timeout(3 * time.second)
 	mut socket := server.accept() or {
 		panic(err)
 	}
-	socket.set_read_timeout(3 * time.second)
-	socket.set_write_timeout(3 * time.second)
 	$if debug_peer_ip ? {
 		ip := con.peer_ip() or {
 			'$err'
