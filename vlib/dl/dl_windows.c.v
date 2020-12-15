@@ -3,7 +3,6 @@ module dl
 pub const (
 	rtld_now = 0
 	rtld_lazy = 0
-	dl_ext   = '.dll'
 )
 
 fn C.LoadLibrary(libfilename C.LPCWSTR) voidptr

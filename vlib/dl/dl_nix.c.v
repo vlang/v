@@ -4,7 +4,6 @@ module dl
 pub const (
 	rtld_now  = C.RTLD_NOW
 	rtld_lazy = C.RTLD_LAZY
-	dl_ext    = get_shared_library_extension()
 )
 
 fn C.dlopen(filename charptr, flags int) voidptr
@@ -26,15 +25,4 @@ pub fn close(handle voidptr) bool {
 // sym returns an address of a symbol in a given shared object.
 pub fn sym(handle voidptr, symbol string) voidptr {
 	return C.dlsym(handle, symbol.str)
-}
-
-pub fn get_shared_library_extension() string {
-	mut res := '.so'
-	$if macos {
-		res = '.dylib'
-	}
-	$if windows {
-		res = '.dll'
-	}
-	return res
 }
