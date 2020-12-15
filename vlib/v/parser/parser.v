@@ -116,9 +116,10 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	if path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
+	if path.ends_with('_c.v') || path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
 		p.file_backend_mode = .c
-	} else if path.ends_with('.js.v') || path.ends_with('.js.vv') || path.ends_with('.js.vsh') {
+	} else if path.ends_with('_js.v') || path.ends_with('.js.v') || path.ends_with('.js.vv') ||
+		path.ends_with('.js.vsh') {
 		p.file_backend_mode = .js
 	} else {
 		p.file_backend_mode = .v
