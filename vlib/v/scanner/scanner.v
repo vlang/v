@@ -926,7 +926,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					if s.should_parse_comment() {
 						s.line_comment = s.text[start + 1..comment_line_end]
-						mut comment := s.line_comment.trim_space()
+						mut comment := s.line_comment
 						// Find out if this comment is on its own line (for vfmt)
 						mut is_separate_line_comment := true
 						for j := start - 2; j >= 0 && s.text[j] != `\n`; j-- {
