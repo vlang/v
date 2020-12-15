@@ -2,7 +2,7 @@ module dl
 
 pub const (
 	version = 1
-	dl_ext    = get_shared_library_extension()
+	dl_ext  = get_shared_library_extension()
 )
 
 pub fn get_shared_library_extension() string {

@@ -1,7 +1,7 @@
 module dl
 
 pub const (
-	rtld_now = 0
+	rtld_now  = 0
 	rtld_lazy = 0
 )
 
