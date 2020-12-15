@@ -526,14 +526,14 @@ pub fn (mut m map) delete(key string) {
 // Returns all keys in the map.
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
-	mut j := 0
+	mut item := unsafe {byteptr(keys.data)}
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
 				pkey := m.key_values.key(i)
-				m.key_values.clone_key(&keys[j], pkey)
+				m.key_values.clone_key(item, pkey)
+				item += m.key_bytes
 			}
-			j++
 		}
 		return keys
 	}
@@ -543,9 +543,9 @@ pub fn (m &map) keys() []string {
 		}
 		unsafe {
 			pkey := m.key_values.key(i)
-			m.key_values.clone_key(&keys[j], pkey)
+			m.key_values.clone_key(item, pkey)
+			item += m.key_bytes
 		}
-		j++
 	}
 	return keys
 }
