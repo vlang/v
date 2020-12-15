@@ -1989,7 +1989,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		p.next()
 	}
 	p.check(.key_type)
-	end_pos := p.tok.position()
+	mut end_pos := p.tok.position()
 	decl_pos := start_pos.extend(end_pos)
 	name := p.check_name()
 	if name.len == 1 && name[0].is_capital() {
@@ -2061,10 +2061,11 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments: comments
 		}
 	}
-	// type MyType int
+	// type MyType = int
 	parent_type := first_type
 	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
+	end_pos = p.tok.position()
 	mut language := table.Language.v
 	if parent_name.len > 2 && parent_name.starts_with('C.') {
 		language = table.Language.c
@@ -2087,6 +2088,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_public: is_pub
 	})
 	comments = p.eat_line_end_comments()
+	if prepend_mod_name != name {
+		p.error_with_pos('invalid recursion type $name', decl_pos.extend(end_pos))
+		return ast.AliasTypeDecl{}
+	}
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
