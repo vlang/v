@@ -2015,6 +2015,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
+	type_alias_pos := p.tok.position()
 	if p.tok.kind == .pipe {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
@@ -2061,7 +2062,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments: comments
 		}
 	}
-	// type MyType int
+	// type MyType = int
 	parent_type := first_type
 	parent_name := p.table.get_type_symbol(parent_type).name
 	pid := parent_type.idx()
@@ -2087,6 +2088,10 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_public: is_pub
 	})
 	comments = p.eat_line_end_comments()
+	if prepend_mod_name == parent_name {
+		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
+		return ast.AliasTypeDecl{}
+	}
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub
