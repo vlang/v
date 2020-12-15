@@ -396,15 +396,13 @@ fn (mut p Parser) check(expected token.Kind) {
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
-	if p.tok.kind != expected {
-		if p.tok.kind == .name {
-			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
-		} else {
-			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
-		}
-		return
+	if p.tok.kind == expected {
+		p.next()
+	} else if p.tok.kind == .name {
+		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+	} else {
+		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
-	p.next()
 }
 
 // JS functions can have multiple dots in their name:
