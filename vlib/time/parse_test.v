@@ -62,7 +62,7 @@ fn test_parse_iso8601() {
 		'2020-06-05T15:38:06.015959+00:00',
 		'2020-06-05T15:38:06.015959+02:00',
 		'2020-06-05T15:38:06.015959-02:00',
-		'2020-11-05T15:38:06.015959Z'
+		'2020-11-05T15:38:06.015959Z',
 	]
 	times := [
 		[2020, 6, 5, 15, 38, 6, 0],
@@ -130,4 +130,19 @@ fn test_parse_iso8601_invalid() {
 		}
 		assert false
 	}
+}
+
+fn test_parse_iso8601_date_only() {
+	format := '2020-06-05'
+	t := time.parse_iso8601(format) or {
+		assert false
+		return
+	}
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 5
+	assert t.hour == 0
+	assert t.minute == 0
+	assert t.second == 0
+	assert t.microsecond == 0
 }

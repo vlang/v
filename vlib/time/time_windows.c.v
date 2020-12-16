@@ -120,7 +120,6 @@ pub fn (t Time) to_local_time() Time {
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precice methods can be implemented in the future
-[inline]
 fn win_now() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
@@ -144,7 +143,6 @@ fn win_now() Time {
 // win_utc calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
 // other more precice methods can be implemented in the future
-[inline]
 fn win_utc() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
