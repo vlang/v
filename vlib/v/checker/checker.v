@@ -3117,9 +3117,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
-	node.expr_type = c.expr(node.expr)
+	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
-	to_type_sym := c.table.get_type_symbol(node.typ)
+	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
@@ -3189,6 +3189,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		[.sum_type, .interface_] && !c.is_builtin_mod {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `struct` to `$type_name`', node.pos)
+	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
+		// variadic case can happen when arrays are converted into variadic
+		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
+		c.error('cannot type cast $msg', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)

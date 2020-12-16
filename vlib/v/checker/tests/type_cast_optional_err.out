@@ -1,0 +1,5 @@
+vlib/v/checker/tests/type_cast_optional_err.vv:2:13: error: cannot type cast an optional
+    1 | fn main() {
+    2 |     println(int('hi'.last_index('i')))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 | }
