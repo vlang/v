@@ -18,7 +18,7 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
-		'cmd/tools/vdoc.v'
+		'cmd/tools/vdoc.v',
 		'cmd/v/v.v',
 		'vlib/builtin/array.v',
 		'vlib/builtin/map.v',
@@ -58,6 +58,19 @@ const (
 		'vlib/v/vet/',
 		'vlib/v/vmod/',
 		'vlib/gg/gg.v',
+		'vlib/os/const.v',
+		'vlib/os/const_windows.c.v',
+		'vlib/os/environment.c.v',
+		'vlib/os/environment_test.v',
+		'vlib/os/inode.c.v',
+		'vlib/os/inode_test.v',
+		'vlib/os/os.v',
+		'vlib/os/os_c.v',
+		'vlib/os/os_darwin.c.v',
+		'vlib/os/os_linux.c.v',
+		'vlib/os/os_nix.c.v',
+		'vlib/os/os_test.v',
+		'vlib/os/os_windows.c.v',
 	]
 )
 

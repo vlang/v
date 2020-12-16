@@ -202,7 +202,6 @@ pub fn fileno(cfile voidptr) int {
 	}
 }
 
-
 // open_append opens `path` file for appending.
 pub fn open_append(path string) ?File {
 	mut file := File{}

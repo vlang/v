@@ -11,8 +11,8 @@ pub:
 }
 
 pub const (
-	args         = []string{}
-	max_path_len = 4096
+	args          = []string{}
+	max_path_len  = 4096
 	wd_at_startup = getwd()
 )
 
