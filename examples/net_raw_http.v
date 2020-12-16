@@ -8,7 +8,7 @@ fn main() {
 	// Simple http HEAD request for a file
 	conn.write_str('HEAD /index.html HTTP/1.0\r\n\r\n')?
 	// Read all the data that is waiting
-	result := io.read_all(conn)?
+	result := io.read_all(reader: conn)?
 	// Cast to string and print result
 	println(result.bytestr())
 }

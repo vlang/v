@@ -398,7 +398,7 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	mut client := net.dial_tcp(host)?
 	// TODO this really needs to be exposed somehow
 	client.write(s.bytes())?
-	mut bytes := io.read_all(client)?
+	mut bytes := io.read_all(reader: client)?
 	client.close()
 	return parse_response(bytes.bytestr())
 }

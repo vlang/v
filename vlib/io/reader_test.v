@@ -20,7 +20,7 @@ fn test_read_all() {
 	buf := Buf{
 		bytes: '123'.repeat(10).bytes()
 	}
-	res := read_all(buf) or {
+	res := read_all(reader: buf) or {
 		assert false
 		''.bytes()
 	}
@@ -31,7 +31,7 @@ fn test_read_all_huge() {
 	buf := Buf{
 		bytes: '123'.repeat(100000).bytes()
 	}
-	res := read_all(buf) or {
+	res := read_all(reader: buf) or {
 		assert false
 		''.bytes()
 	}
@@ -75,7 +75,7 @@ fn test_stringreader() {
 	if _ := r.read_line() {
 		assert false
 	}
-	leftover := read_all(r) or {
+	leftover := read_all(reader: r) or {
 		assert false
 		panic('bad')
 	}
@@ -102,7 +102,7 @@ fn test_stringreader2() {
 	if _ := r.read_line() {
 		assert false
 	}
-	leftover := read_all(io.make_reader(r)) or {
+	leftover := read_all(reader: io.make_reader(r)) or {
 		assert false
 		panic('bad')
 	}

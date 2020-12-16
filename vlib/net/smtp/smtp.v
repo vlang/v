@@ -95,7 +95,7 @@ pub fn (mut c Client) quit() ? {
 
 // expect_reply checks if the SMTP server replied with the expected reply code
 fn (c Client) expect_reply(expected ReplyCode) ? {
-	bytes := io.read_all(c.conn)?
+	bytes := io.read_all(reader: c.conn)?
 
 	str := bytes.bytestr().trim_space()
 	$if smtp_debug? {

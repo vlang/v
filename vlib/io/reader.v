@@ -22,12 +22,15 @@ const (
 	read_all_grow_len = 1024
 )
 
+// ReadAllConfig allows options to be passed for the behaviour
+// of read_all
 pub struct ReadAllConfig {
 	reader Reader
-	read_to_end_of_stream bool = false
+	read_to_end_of_stream bool
 }
 
-// read_all reads all bytes from a reader until an end of stream 
+// read_all reads all bytes from a reader until either a 0 length read
+// or if read_to_end_of_stream is true then the end of the stream (`none`)
 pub fn read_all(config ReadAllConfig) ?[]byte {
 	r := config.reader
 	read_till_eof := config.read_to_end_of_stream
