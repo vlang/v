@@ -86,6 +86,7 @@ fn test_interface_struct_from_array() {
 }
 
 /*
+// TODO: fix this too; currently with V 0.1.30 7426544 produces: `V panic: as cast: cannot cast 200 to 197`
 fn test_interface_struct_from_mut_array() {
 	mut bazs := [
 		Baz{
