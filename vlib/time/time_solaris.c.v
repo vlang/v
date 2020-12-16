@@ -3,7 +3,6 @@ module time
 // solaris_now returns the local time with high precision for most os:es
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
-[inline]
 fn solaris_now() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
@@ -14,7 +13,6 @@ fn solaris_now() Time {
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 
-[inline]
 fn solaris_utc() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part

@@ -49,7 +49,6 @@ const (
 	err_invalid_8601 = error('Invalid 8601 Format')
 )
 
-[inline]
 fn parse_iso8601_date(s string) ?(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, byte(0)
 	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy)}
@@ -59,7 +58,6 @@ fn parse_iso8601_date(s string) ?(int, int, int) {
 	return year, month, day
 }
 
-[inline]
 fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	hour := 0
 	minute := 0
