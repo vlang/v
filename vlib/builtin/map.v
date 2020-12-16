@@ -139,6 +139,14 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe {d.all_deleted[i]} == 0
 }
 
+[inline]
+fn (d &DenseArray) clone_key(dest voidptr, pkey voidptr) {
+	unsafe {
+		s := (*&string(pkey)).clone()
+		C.memcpy(dest, &s, d.key_bytes)
+	}
+}
+
 // Push element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
@@ -159,7 +167,7 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 			d.all_deleted[push_index] = 0
 		}
 		ptr := d.key(push_index)
-		C.memcpy(ptr, key, d.key_bytes)
+		d.clone_key(ptr, key)
 		C.memcpy(byteptr(ptr) + d.key_bytes, value, d.value_bytes)
 	}
 	d.len++
@@ -316,8 +324,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 // Insert new element to the map. The element is inserted if its key is
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
-fn (mut m map) set(k string, value voidptr) {
-	key := k.clone()
+fn (mut m map) set(key string, value voidptr) {
 	load_factor := f32(m.len << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
@@ -519,12 +526,14 @@ pub fn (mut m map) delete(key string) {
 // Returns all keys in the map.
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
-	mut j := 0
+	mut item := unsafe {byteptr(keys.data)}
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
-			pkey := unsafe {&string(m.key_values.key(i))}
-			keys[j] = pkey.clone()
-			j++
+			unsafe {
+				pkey := m.key_values.key(i)
+				m.key_values.clone_key(item, pkey)
+				item += m.key_bytes
+			}
 		}
 		return keys
 	}
@@ -532,15 +541,17 @@ pub fn (m &map) keys() []string {
 		if !m.key_values.has_index(i) {
 			continue
 		}
-		pkey := unsafe {&string(m.key_values.key(i))}
-		keys[j] = pkey.clone()
-		j++
+		unsafe {
+			pkey := m.key_values.key(i)
+			m.key_values.clone_key(item, pkey)
+			item += m.key_bytes
+		}
 	}
 	return keys
 }
 
 [unsafe]
-pub fn (d DenseArray) clone() DenseArray {
+pub fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
 		value_bytes: d.value_bytes
