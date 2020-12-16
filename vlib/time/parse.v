@@ -51,7 +51,7 @@ const (
 
 [inline]
 fn parse_iso8601_date(s string) ?(int, int, int) {
-	year, month, day, dummy := 0, 0, 0, ` `
+	year, month, day, dummy := 0, 0, 0, byte(0)
 	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy)}
 	if count != 3 {
 		return err_invalid_8601
