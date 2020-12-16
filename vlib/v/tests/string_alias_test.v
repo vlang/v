@@ -9,9 +9,9 @@ fn test_alias_right_eq() {
 }
 
 fn test_alias_left_ne() {
-	assert StrAlias('test') != 'test'
+	assert StrAlias('test') != 'test2'
 }
 
 fn test_alias_right_ne() {
-	assert 'test' != StrAlias('test')
+	assert 'test' != StrAlias('test2')
 }
