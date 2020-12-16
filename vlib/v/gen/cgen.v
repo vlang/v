@@ -1813,6 +1813,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 		right_sym := g.table.get_type_symbol(val_type)
 		g.is_assign_lhs = true
+		if is_interface && right_sym.kind == .interface_ {
+			is_interface = false
+		}
 		if val_type.has_flag(.optional) {
 			g.right_is_opt = true
 		}
