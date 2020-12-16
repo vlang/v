@@ -534,7 +534,7 @@ The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-The user can explicitly specify the for the first element: `[byte(16), 32, 64, 128]`.
+The user can explicitly specify the type for the first element: `[byte(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
