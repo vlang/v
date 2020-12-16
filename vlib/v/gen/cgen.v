@@ -2776,7 +2776,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
 	unaliased_right := if right_sym.kind == .alias { (right_sym.info as table.Alias).parent_type } else { node.right_type }
-	if left_type == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
+	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
 				'ustring_add('
@@ -2809,7 +2809,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
-	} else if left_type == table.string_type_idx && node.op !in [.key_in, .not_in] {
+	} else if unaliased_left == table.string_type_idx && node.op !in [.key_in, .not_in] {
 		// `str == ''` -> `str.len == 0` optimization
 		if node.op in [.eq, .ne] &&
 			node.right is ast.StringLiteral && (node.right as ast.StringLiteral).val == '' {
