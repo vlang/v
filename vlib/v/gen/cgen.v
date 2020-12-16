@@ -1734,6 +1734,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 	}
 	// `a := 1` | `a,b := 1,2`
 	for i, left in assign_stmt.left {
+		mut is_interface := false
 		mut var_type := assign_stmt.left_types[i]
 		mut val_type := assign_stmt.right_types[i]
 		val := assign_stmt.right[i]
@@ -1741,6 +1742,19 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		mut blank_assign := false
 		mut ident := ast.Ident{
 			scope: 0
+		}
+		left_sym := g.table.get_type_symbol(var_type)
+		if left_sym.kind == .interface_ {
+			if left is ast.SelectorExpr {
+				ident = left.root_ident()
+				if ident.obj is ast.Var {
+					idobj := ident.obj as ast.Var
+					root_type_sym := g.table.get_type_symbol(idobj.typ)
+					if root_type_sym.kind == .struct_ {
+						is_interface = true
+					}
+				}
+			}
 		}
 		if left is ast.Ident {
 			ident = left
@@ -1799,6 +1813,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 		}
 		right_sym := g.table.get_type_symbol(val_type)
 		g.is_assign_lhs = true
+		if is_interface && right_sym.kind == .interface_ {
+			is_interface = false
+		}
 		if val_type.has_flag(.optional) {
 			g.right_is_opt = true
 		}
@@ -1939,7 +1956,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if assign_stmt.has_cross_var {
 						g.gen_cross_tmp_variable(assign_stmt.left, val)
 					} else {
+						if is_interface {
+							g.interface_call(val_type, var_type)
+						}
 						g.expr_with_cast(val, val_type, var_type)
+						if is_interface {
+							g.write(')')
+						}
 					}
 				}
 			}
@@ -4340,8 +4363,11 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					continue
 				}
 				g.write('.$field_name = ')
+				expected_field_type_sym := g.table.get_type_symbol(sfield.expected_type)
 				field_type_sym := g.table.get_type_symbol(sfield.typ)
 				mut cloned := false
+				is_interface := expected_field_type_sym.kind == .interface_ &&
+					field_type_sym.kind != .interface_
 				if g.autofree && !sfield.typ.is_ptr() && field_type_sym.kind in [.array, .string] {
 					g.write('/*clone1*/')
 					if g.gen_clone_assignment(sfield.expr, field_type_sym, false) {
@@ -4349,11 +4375,17 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 					}
 				}
 				if !cloned {
+					if is_interface {
+						g.interface_call(sfield.typ, sfield.expected_type)
+					}
 					if sfield.expected_type.is_ptr() && !(sfield.typ.is_ptr() || sfield.typ.is_pointer()) &&
 						!sfield.typ.is_number() {
 						g.write('/* autoref */&')
 					}
 					g.expr_with_cast(sfield.expr, sfield.typ, sfield.expected_type)
+					if is_interface {
+						g.write(')')
+					}
 				}
 				if is_multiline {
 					g.writeln(',')
@@ -5706,6 +5738,8 @@ fn (mut g Gen) interface_table() string {
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
+			sb.writeln('_Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+			sb.writeln('_Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
 			cast_functions.writeln('
 _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return (_Interface) {

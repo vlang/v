@@ -566,10 +566,13 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					}
 				}
 				inited_fields << field_name
+				field_type_sym := c.table.get_type_symbol(info_field.typ)
 				c.expected_type = info_field.typ
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
-				if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
+				if field_type_sym.kind == .interface_ {
+					c.type_implements(expr_type, info_field.typ, field.pos)
+				} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 					c.check_expected(expr_type, info_field.typ) or {
 						c.error('cannot assign to field `$info_field.name`: $err', field.pos)
 					}
@@ -2263,7 +2266,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder {
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
