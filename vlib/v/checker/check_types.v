@@ -331,6 +331,9 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 				return `s`
 			}
 		}
+		if sym.kind == .function {
+			return `s`
+		}
 		if ftyp in [table.string_type, table.bool_type] ||
 			sym.kind in
 			[.enum_, .array, .array_fixed, .struct_, .map, .multi_return, .sum_type, .none_] || ftyp.has_flag(.optional) ||

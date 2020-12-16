@@ -40,6 +40,9 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 			table.Enum {
 				g.gen_str_for_enum(sym.info, styp, str_fn_name)
 			}
+			table.FnType {
+				g.gen_str_for_fn_type(sym.info, styp, str_fn_name)
+			}
 			table.Struct {
 				g.gen_str_for_struct(sym.info, styp, str_fn_name)
 			}
@@ -524,6 +527,26 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown sum type value");')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) fn_decl_str(info table.FnType) string {
+	mut fn_str := 'fn ('
+	for i, arg in info.func.params {
+		if i > 0 {
+			fn_str += ', '
+		}
+		fn_str += util.strip_main_name(g.table.get_type_name(arg.typ))
+	}
+	fn_str += ')'
+	if info.func.return_type != table.void_type {
+		fn_str += ' ${util.strip_main_name(g.table.get_type_name(info.func.return_type))}'
+	}
+	return fn_str
+}
+
+fn (mut g Gen) gen_str_for_fn_type(info table.FnType, styp string, str_fn_name string) {
+	g.type_definitions.writeln('static string ${str_fn_name}(); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}() { return _SLIT("${g.fn_decl_str(info)}");}')
 }
 
 [inline]
