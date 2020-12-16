@@ -2081,7 +2081,8 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		is_public: is_pub
 	})
 	if idx == -1 {
-		p.error_with_pos('cannot register alias `$name`, another type with this name exists', decl_pos.extend(type_alias_pos))
+		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
+			decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
 	if idx == pidx {
