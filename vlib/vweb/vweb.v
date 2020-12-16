@@ -285,7 +285,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			//}
 
 			// read body
-			read_body := io.read_all(reader) or { []byte{} }
+			read_body := io.read_all(reader: reader) or { []byte{} }
 			body += read_body.bytestr()
 
 			break

@@ -4,12 +4,11 @@ module io
 pub interface ReaderWriter {
 	// from Reader
 	read(mut buf []byte) ?int
-
-	// from Writer
+		// from Writer
 	write(buf []byte) ?int
 }
 
-// ReaderWriterImpl is a ReaderWriter that can be made from 
+// ReaderWriterImpl is a ReaderWriter that can be made from
 // a seperate reader and writer (see fn make_readerwriter)
 struct ReaderWriterImpl {
 	r Reader
@@ -27,7 +26,10 @@ pub fn (mut r ReaderWriterImpl) write(buf []byte) ?int {
 // make_readerwriter takes a rstream and a wstream and makes
 // an rwstream with them
 pub fn make_readerwriter(r Reader, w Writer) ReaderWriterImpl {
-	return {r: r, w: w}
+	return {
+		r: r
+		w: w
+	}
 }
 
 struct Zzz_CoerceInterfaceTableGeneration {

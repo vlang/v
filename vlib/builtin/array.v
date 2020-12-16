@@ -649,9 +649,15 @@ pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
-// grow grows the array's capacity by `amount` elements.
-pub fn (mut a array) grow(amount int) {
+// grow_cap grows the array's capacity by `amount` elements.
+pub fn (mut a array) grow_cap(amount int) {
+	a.ensure_cap(a.cap + amount)
+}
+
+// grow_len ensures that an array has a.len + amount of length
+pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
+	a.len += amount
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.

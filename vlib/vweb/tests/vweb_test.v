@@ -259,7 +259,7 @@ $config.content'
 		eprintln('sending:\n$message')
 	}
 	client.write(message.bytes()) ?
-	read := io.read_all(client) ?
+	read := io.read_all(reader: client) ?
 	$if debug_net_socket_client ? {
 		eprintln('received:\n$read')
 	}
