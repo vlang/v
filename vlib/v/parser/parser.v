@@ -2064,34 +2064,31 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	}
 	// type MyType = int
 	parent_type := first_type
-	parent_name := p.table.get_type_symbol(parent_type).name
-	pid := parent_type.idx()
-	mut language := table.Language.v
-	if parent_name.len > 2 && parent_name.starts_with('C.') {
-		language = table.Language.c
-		p.check_for_impure_v(language, decl_pos)
-	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
-		language = table.Language.js
-		p.check_for_impure_v(language, decl_pos)
-	}
+	parent_sym := p.table.get_type_symbol(parent_type)
+	pidx := parent_type.idx()
+	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)
-	p.table.register_type_symbol(table.TypeSymbol{
+	idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name
 		cname: util.no_dots(prepend_mod_name)
 		mod: p.mod
-		parent_idx: pid
+		parent_idx: pidx
 		info: table.Alias{
 			parent_type: parent_type
-			language: language
+			language: parent_sym.language
 		}
 		is_public: is_pub
 	})
-	comments = p.eat_line_end_comments()
-	if prepend_mod_name == parent_name {
+	if idx == -1 {
+		p.error_with_pos('cannot register alias `$name`, another type with this name exists', decl_pos.extend(type_alias_pos))
+		return ast.AliasTypeDecl{}
+	}
+	if idx == pidx {
 		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
 		return ast.AliasTypeDecl{}
 	}
+	comments = p.eat_line_end_comments()
 	return ast.AliasTypeDecl{
 		name: name
 		is_pub: is_pub

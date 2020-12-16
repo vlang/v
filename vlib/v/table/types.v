@@ -309,11 +309,11 @@ pub const (
 	none_type_idx    = 17
 	string_type_idx  = 18
 	ustring_type_idx = 19
-	array_type_idx   = 20
-	map_type_idx     = 21
-	chan_type_idx    = 22
-	sizet_type_idx   = 23
-	rune_type_idx    = 24
+	rune_type_idx    = 20
+	array_type_idx   = 21
+	map_type_idx     = 22
+	chan_type_idx    = 23
+	sizet_type_idx   = 24
 	any_type_idx     = 25
 	any_flt_type_idx = 26
 	any_int_type_idx = 27
@@ -353,10 +353,10 @@ pub const (
 	none_type    = new_type(none_type_idx)
 	string_type  = new_type(string_type_idx)
 	ustring_type = new_type(ustring_type_idx)
+	rune_type    = new_type(rune_type_idx)
 	array_type   = new_type(array_type_idx)
 	map_type     = new_type(map_type_idx)
 	chan_type    = new_type(chan_type_idx)
-	rune_type    = new_type(rune_type_idx)
 	any_type     = new_type(any_type_idx)
 	any_flt_type = new_type(any_flt_type_idx)
 	any_int_type = new_type(any_int_type_idx)
@@ -517,11 +517,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .none_, name: 'none', cname: 'none', mod: 'builtin')
 	t.register_type_symbol(kind: .string, name: 'string', cname: 'string', mod: 'builtin')
 	t.register_type_symbol(kind: .ustring, name: 'ustring', cname: 'ustring', mod: 'builtin')
+	t.register_type_symbol(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
 	t.register_type_symbol(kind: .array, name: 'array', cname: 'array', mod: 'builtin')
 	t.register_type_symbol(kind: .map, name: 'map', cname: 'map', mod: 'builtin')
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
-	t.register_type_symbol(kind: .rune, name: 'rune', cname: 'rune', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
 	t.register_type_symbol(
 		kind: .any_float
