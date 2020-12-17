@@ -16,7 +16,8 @@ import flag
 fn main() {
 	mut fp := flag.new_flag_parser(os.args)
 	fp.application('flag_example_tool')
-	fp.version('v0.0.0')
+	fp.version('v0.0.1')
+	fp.limit_free_args(0, 0) // comment this, if you expect arbitrary texts after the options
 	fp.description('This tool is only designed to show how the flag lib is working')
 	fp.skip_executable()
 	an_int := fp.int('an_int', 0, 0o123, 'some int to define 0o123 is its default value')
