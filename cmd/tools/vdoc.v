@@ -35,7 +35,7 @@ enum HighlightTokenTyp {
 }
 
 const (
-	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js']
+	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	res_path        = os.resource_abs_path('vdoc-resources')
 	vexe            = pref.vexe_path()
@@ -487,12 +487,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n	<style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
-			'</style>'
-	} else {
-		'\n	<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />'
-	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
+			'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
+				'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		} else {
+			'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
+				cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] + '"></script>'
+		}
+	).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
@@ -649,6 +650,7 @@ fn (mut cfg DocConfig) render_static() {
 		'doc_css':       cfg.get_resource(css_js_assets[0], true)
 		'normalize_css': cfg.get_resource(css_js_assets[1], true)
 		'doc_js':        cfg.get_resource(css_js_assets[2], !cfg.serve_http)
+		'dark_mode_js':  cfg.get_resource(css_js_assets[3], !cfg.serve_http)
 		'light_icon':    cfg.get_resource('light.svg', true)
 		'dark_icon':     cfg.get_resource('dark.svg', true)
 		'menu_icon':     cfg.get_resource('menu.svg', true)
