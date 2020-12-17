@@ -38,6 +38,7 @@ const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	res_path        = os.resource_abs_path('vdoc-resources')
+	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	html_content    = '
@@ -49,6 +50,13 @@ const (
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>{{ title }} | vdoc</title>
 		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+		<link rel="manifest" href="site.webmanifest">
+		<link rel="mask-icon" href="safari-pinned-tab.svg" color="#5bbad5">
+		<meta name="msapplication-TileColor" content="#da532c">
+		<meta name="theme-color" content="#ffffff">
 		{{ head_assets }}
 	</head>
 	<body>
@@ -811,6 +819,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 		cfg.render_static()
 		cfg.render_parallel()
+		// move favicons to target directory
+		println('Copying favicons...')
+		favicons := os.ls(favicons_path) or { panic(err) }
+		for favicon in favicons {
+			favicon_path := os.join_path(favicons_path, favicon)
+			destination_path := os.join_path(cfg.output_path, favicon)
+			os.cp(favicon_path, destination_path)
+		}
 	}
 }
 
