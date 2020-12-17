@@ -7,7 +7,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about half an hour,
+V is a very simple language. Going through this documentation will take you about an hour,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
