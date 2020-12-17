@@ -494,7 +494,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		send_string(conn, http_404) or {}
 		return
 	}
-	println(action)
 	$for method in T.methods {
 		$if method.return_type is Result {
 			// search again for method
