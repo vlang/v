@@ -395,11 +395,12 @@ fn (mut v Builder) cc() {
 					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
 					// continue
 					// }
-					// imp_path := os.join_path('vlib', mod_path)
-					imp_path := v.find_module_path(imp, ast_file.path) or {
-						verror('cannot import module "$imp" (not found)')
-						break
-					}
+					mod_path := imp.replace('.', os.path_separator)
+					imp_path := os.join_path('vlib', mod_path)
+					//imp_path := v.find_module_path(imp, ast_file.path) or {
+					//	verror('cannot import module "$imp" (not found)')
+					//	break
+					//}
 					obj_path := v.rebuild_cached_module(vexe, imp_path)
 					libs += ' ' + obj_path
 					if obj_path.ends_with('vlib/ui.o') {
