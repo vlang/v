@@ -397,7 +397,7 @@ fn (mut v Builder) cc() {
 					// }
 					mod_path := imp.replace('.', os.path_separator)
 					imp_path := os.join_path('vlib', mod_path)
-					//imp_path := v.find_module_path(imp, ast_file.path) or {
+					// imp_path := v.find_module_path(imp, ast_file.path) or {
 					//	verror('cannot import module "$imp" (not found)')
 					//	break
 					//}
