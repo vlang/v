@@ -84,7 +84,7 @@ Anything you can do in other languages, you can do in V.
     * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
-    * [Translating C/C++ to V](#translating-cc-to-v)
+    * [Translating C to V](#translating-c-to-v)
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
@@ -3101,39 +3101,49 @@ fn main() {
 }
 ```
 
-## Translating C/C++ to V
+## Translating C to V
 
-TODO: translating C to V will be available in V 0.3. C++ to V will be available later this year.
+TODO: translating C to V will be available in V 0.3.
 
-V can translate your C/C++ code to human readable V code.
-Let's create a simple program `test.cpp` first:
+V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
-```cpp
-#include <vector>
-#include <string>
-#include <iostream>
+
+Let's create a simple program `test.c` first:
+
+```c
+#include "stdio.h"
 
 int main() {
-        std::vector<std::string> s;
-        s.push_back("V is ");
-        s.push_back("awesome");
-        std::cout << s.size() << std::endl;
+	for (int i = 0; i < 10; i++) {
+		printf("hello world\n");
+	}
         return 0;
 }
 ```
 
-Run `v translate test.cpp` and V will generate `test.v`:
+Run `v translate test.c`, and V will generate `test.v`:
 
 ```v
 fn main() {
-	mut s := []string{}
-	s << 'V is '
-	s << 'awesome'
-	println(s.len)
+	for i := 0; i < 10; i++ {
+		println('hello world')
+	}
 }
 ```
 
-An online C/C++ to V translator is coming soon.
+To generate a wrapper on top of a C library use this command:
+
+```bash
+v wrapper c_code/libsodium/src/libsodium
+```
+
+This will generate a directory `libsodium` with a V module.
+
+Example of a C2V generated libsodium wrapper:
+
+https://github.com/medvednikov/libsodium
+
+<br>
 
 When should you translate C code and when should you simply call C code from V?
 
