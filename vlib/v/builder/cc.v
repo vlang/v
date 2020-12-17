@@ -385,13 +385,6 @@ fn (mut v Builder) cc() {
 					if imp == 'webview' {
 						continue
 					}
-					// println('cache: import "$imp"')
-					mod_path := imp.replace('.', os.path_separator)
-					// TODO: to get import path all imports (even relative) we can use:
-					// import_path := v.find_module_path(imp, ast_file.path) or {
-					// verror('cannot import module "$imp" (not found)')
-					// break
-					// }
 					// The problem is cmd/v is in module main and imports
 					// the relative module named help, which is built as cmd.v.help not help
 					// currently this got this workign by building into main, see ast.FnDecl in cgen
@@ -402,7 +395,11 @@ fn (mut v Builder) cc() {
 					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
 					// continue
 					// }
-					imp_path := os.join_path('vlib', mod_path)
+					// imp_path := os.join_path('vlib', mod_path)
+					imp_path := v.find_module_path(imp, ast_file.path) or {
+						verror('cannot import module "$imp" (not found)')
+						break
+					}
 					obj_path := v.rebuild_cached_module(vexe, imp_path)
 					libs += ' ' + obj_path
 					if obj_path.ends_with('vlib/ui.o') {

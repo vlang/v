@@ -1622,7 +1622,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		// is not imported.
 		// So here we fetch the name of the module by looking at the path that's being built.
 		word := p.pref.path.after('/')
-		if full_mod == word {
+		if full_mod == word && p.pref.path.contains('vlib') {
 			full_mod = p.pref.path.after('vlib/').replace('/', '.')
 			// println('new full mod =$full_mod')
 		}

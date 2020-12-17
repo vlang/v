@@ -3,6 +3,7 @@
 // that can be found in the LICENSE file.
 module gen
 
+import os
 import strings
 import v.ast
 import v.table
@@ -138,6 +139,18 @@ const (
 
 pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string {
 	// println('start cgen2')
+	mut module_built := ''
+	if pref.build_mode == .build_module {
+		// TODO: detect this properly for all cases
+		// either get if from an earlier stage or use the lookup paths
+		if pref.path.contains('vlib' + os.path_separator) {
+			module_built = pref.path.after('vlib' + os.path_separator).replace(os.path_separator,
+				'.')
+		} else if pref.path.contains('.vmodules' + os.path_separator) {
+			module_built = pref.path.after('.vmodules' + os.path_separator).replace(os.path_separator,
+				'.')
+		}
+	}
 	mut g := Gen{
 		out: strings.new_builder(1000)
 		cheaders: strings.new_builder(8192)
@@ -164,7 +177,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		fn_decl: 0
 		autofree: true
 		indent: -1
-		module_built: pref.path.after('vlib/').replace('/', '.')
+		module_built: module_built
 	}
 	for mod in g.table.modules {
 		g.inits[mod] = strings.new_builder(100)
