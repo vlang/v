@@ -474,14 +474,17 @@ fn (m map) get_1(key voidptr, zero voidptr) voidptr {
 	return zero
 }
 
-// Checks whether a particular key exists in the map.
 fn (m map) exists(key string) bool {
-	mut index, mut meta := m.key_to_index(&key)
+	return m.exists_1(&key)
+}
+// Checks whether a particular key exists in the map.
+fn (m map) exists_1(key voidptr) bool {
+	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
 			pkey := unsafe {m.key_values.key(kv_index)}
-			if m.keys_eq(&key, pkey) {
+			if m.keys_eq(key, pkey) {
 				return true
 			}
 		}
