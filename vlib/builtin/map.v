@@ -419,17 +419,20 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	unsafe {free(old_metas)}
 }
 
+fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
+	return m.get_and_set_1(&key, zero)
+}
 // This method is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
-fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
+fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 	for {
-		mut index, mut meta := m.key_to_index(&key)
+		mut index, mut meta := m.key_to_index(key)
 		for {
 			if meta == unsafe {m.metas[index]} {
 				kv_index := int(unsafe {m.metas[index + 1]})
 				pkey := unsafe {m.key_values.key(kv_index)}
-				if m.keys_eq(&key, pkey) {
+				if m.keys_eq(key, pkey) {
 					return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 				}
 			}
@@ -440,7 +443,7 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 			}
 		}
 		// Key not found, insert key with zero-value
-		m.set(key, zero)
+		m.set_1(key, zero)
 	}
 	assert false
 	return voidptr(0)
