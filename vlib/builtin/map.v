@@ -543,9 +543,26 @@ pub fn (mut m map) delete_1(key voidptr) {
 	}
 }
 
-// Returns all keys in the map.
+// bootstrap
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
+	mut item := unsafe {byteptr(keys.data)}
+	for i := 0; i < m.key_values.len; i++ {
+		if !m.key_values.has_index(i) {
+			continue
+		}
+		unsafe {
+			pkey := m.key_values.key(i)
+			m.key_values.clone_key(item, pkey)
+			item += m.key_bytes
+		}
+	}
+	return keys
+}
+
+// Returns all keys in the map.
+pub fn (m &map) keys_1() array {
+	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe {byteptr(keys.data)}
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
