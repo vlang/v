@@ -487,13 +487,13 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-			'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
-				'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
-		} else {
-			'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
-				cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] + '"></script>'
-		}
-	).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
+		'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
+			'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
+	} else {
+		'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] +
+			'"></script>'
+	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
