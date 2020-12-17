@@ -501,14 +501,14 @@ pub fn (mut m map) delete(key string) {
 	m.delete_1(&key)
 }
 // Removes the mapping of a particular key from the map.
-pub fn (mut m map) delete(key string) {
-	mut index, mut meta := m.key_to_index(&key)
+pub fn (mut m map) delete_1(key voidptr) {
+	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
 	for meta == unsafe {m.metas[index]} {
 		kv_index := int(unsafe {m.metas[index + 1]})
 		pkey := unsafe {m.key_values.key(kv_index)}
-		if m.keys_eq(&key, pkey) {
+		if m.keys_eq(key, pkey) {
 			for (unsafe {m.metas[index + 2]} >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc
