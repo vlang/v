@@ -266,6 +266,10 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	return u32(index), u32(meta)
 }
 
+fn (m &map) free_key(pkey voidptr) {
+	(*&string(pkey)).free()
+}
+
 [inline]
 fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	mut index := _index
@@ -480,6 +484,9 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
+pub fn (mut m map) delete(key string) {
+	m.delete_1(&key)
+}
 // Removes the mapping of a particular key from the map.
 pub fn (mut m map) delete(key string) {
 	mut index, mut meta := m.key_to_index(&key)
@@ -487,7 +494,7 @@ pub fn (mut m map) delete(key string) {
 	// Perform backwards shifting
 	for meta == unsafe {m.metas[index]} {
 		kv_index := int(unsafe {m.metas[index + 1]})
-		pkey := unsafe {&string(m.key_values.key(kv_index))}
+		pkey := unsafe {m.key_values.key(kv_index)}
 		if m.keys_eq(&key, pkey) {
 			for (unsafe {m.metas[index + 2]} >> hashbits) > 1 {
 				unsafe {
@@ -504,9 +511,9 @@ pub fn (mut m map) delete(key string) {
 			unsafe {
 				m.key_values.all_deleted[kv_index] = 1
 				m.metas[index] = 0
+				m.free_key(pkey)
 				// Mark key as deleted
-				(*pkey).free()
-				C.memset(pkey, 0, sizeof(string))
+				C.memset(pkey, 0, m.key_bytes)
 			}
 			if m.key_values.len <= 32 {
 				return
@@ -596,8 +603,8 @@ pub fn (m &map) free() {
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
-				pkey := &string(m.key_values.key(i))
-				(*pkey).free()
+				pkey := m.key_values.key(i)
+				m.free_key(pkey)
 			}
 		}
 	} else {
@@ -606,8 +613,8 @@ pub fn (m &map) free() {
 				continue
 			}
 			unsafe {
-				pkey := &string(m.key_values.key(i))
-				(*pkey).free()
+				pkey := m.key_values.key(i)
+				m.free_key(pkey)
 			}
 		}
 		unsafe {free(m.key_values.all_deleted)}
