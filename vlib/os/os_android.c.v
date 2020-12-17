@@ -23,7 +23,7 @@ pub fn read_apk_asset(file string) ?[]byte {
 	if isnil(act) {
 		return error('Could not get reference to Android activity')
 	}
-	asset := C.AAssetManager_open(&C.AAsetManager(act.assetManager), file.str, C.AASSET_MODE_STREAMING)
+	asset := C.AAssetManager_open(&C.AAssetManager(act.assetManager), file.str, C.AASSET_MODE_STREAMING)
 	if isnil(asset) {
 		return error('File `$file` not found')
 	}
