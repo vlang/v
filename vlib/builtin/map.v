@@ -329,6 +329,7 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 fn (mut m map) set(key string, value voidptr) {
 	m.set_1(&key, value)
 }
+
 // Insert new element to the map. The element is inserted if its key is
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
@@ -422,6 +423,7 @@ fn (mut m map) cached_rehash(old_cap u32) {
 fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 	return m.get_and_set_1(&key, zero)
 }
+
 // This method is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
@@ -452,6 +454,7 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 fn (m map) get(key string, zero voidptr) voidptr {
 	return m.get_1(&key, zero)
 }
+
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
@@ -477,6 +480,7 @@ fn (m map) get_1(key voidptr, zero voidptr) voidptr {
 fn (m map) exists(key string) bool {
 	return m.exists_1(&key)
 }
+
 // Checks whether a particular key exists in the map.
 fn (m map) exists_1(key voidptr) bool {
 	mut index, mut meta := m.key_to_index(key)
@@ -500,6 +504,7 @@ fn (m map) exists_1(key voidptr) bool {
 pub fn (mut m map) delete(key string) {
 	m.delete_1(&key)
 }
+
 // Removes the mapping of a particular key from the map.
 pub fn (mut m map) delete_1(key voidptr) {
 	mut index, mut meta := m.key_to_index(key)
