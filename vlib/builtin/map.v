@@ -573,7 +573,7 @@ pub fn (d &DenseArray) clone() DenseArray {
 }
 
 [unsafe]
-pub fn (m map) clone() map {
+pub fn (m &map) clone() map {
 	metasize := int(sizeof(u32) * (m.cap + 2 + m.extra_metas))
 	res := map{
 		key_bytes: m.key_bytes
