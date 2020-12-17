@@ -2,7 +2,10 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module builtin
 
-type rune = int
+// This was never working correctly, the issue is now
+// fixed however the type checks in checker need to be
+// updated. if you uncomment it you will see the issue
+// type rune = int
 
 pub fn (c rune) str() string {
 	return utf32_to_str(u32(c))

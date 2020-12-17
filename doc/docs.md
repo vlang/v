@@ -7,7 +7,7 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about half an hour,
+V is a very simple language. Going through this documentation will take you about an hour,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
@@ -84,7 +84,7 @@ Anything you can do in other languages, you can do in V.
     * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
-    * [Translating C/C++ to V](#translating-cc-to-v)
+    * [Translating C to V](#translating-c-to-v)
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
@@ -534,8 +534,7 @@ The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-If V is unable to infer the type of an array,
-the user can explicitly specify it for the first element: `[byte(16), 32, 64, 128]`.
+The user can explicitly specify the type for the first element: `[byte(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
@@ -594,6 +593,13 @@ Note: The above code uses a [range `for`](#range-for) statement.
 
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
+
+Copying the data from the array is done with `.clone()`:
+
+```v nofmt
+nums := [1, 2, 3]
+nums_copy := nums.clone()
+```
 
 Arrays can be efficiently filtered and mapped with the `.filter()` and
 `.map()` methods:
@@ -3095,39 +3101,49 @@ fn main() {
 }
 ```
 
-## Translating C/C++ to V
+## Translating C to V
 
-TODO: translating C to V will be available in V 0.3. C++ to V will be available later this year.
+TODO: translating C to V will be available in V 0.3.
 
-V can translate your C/C++ code to human readable V code.
-Let's create a simple program `test.cpp` first:
+V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
-```cpp
-#include <vector>
-#include <string>
-#include <iostream>
+
+Let's create a simple program `test.c` first:
+
+```c
+#include "stdio.h"
 
 int main() {
-        std::vector<std::string> s;
-        s.push_back("V is ");
-        s.push_back("awesome");
-        std::cout << s.size() << std::endl;
+	for (int i = 0; i < 10; i++) {
+		printf("hello world\n");
+	}
         return 0;
 }
 ```
 
-Run `v translate test.cpp` and V will generate `test.v`:
+Run `v translate test.c`, and V will generate `test.v`:
 
 ```v
 fn main() {
-	mut s := []string{}
-	s << 'V is '
-	s << 'awesome'
-	println(s.len)
+	for i := 0; i < 10; i++ {
+		println('hello world')
+	}
 }
 ```
 
-An online C/C++ to V translator is coming soon.
+To generate a wrapper on top of a C library use this command:
+
+```bash
+v wrapper c_code/libsodium/src/libsodium
+```
+
+This will generate a directory `libsodium` with a V module.
+
+Example of a C2V generated libsodium wrapper:
+
+https://github.com/medvednikov/libsodium
+
+<br>
 
 When should you translate C code and when should you simply call C code from V?
 

@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-18.04
     timeout-minutes: 30
     env:
-      VFLAGS: -cc tcc -cflags -bt10
+      VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
     - name: Install dependencies
@@ -103,6 +103,8 @@ jobs:
       run: TZ=Etc/GMT-3 ./v test vlib/time/
     - name: Test time functions in a timezone UTC+12
       run: TZ=Etc/GMT-12 ./v test vlib/time/
+    - name: Test time functions in a timezone using daylight saving (Europe/Paris)
+      run: TZ=Europe/Paris ./v test vlib/time/
     - name: Test building v tools
       run: ./v -silent build-tools
     - name: v doctor
@@ -154,6 +156,10 @@ jobs:
         export LIBRARY_PATH="$LIBRARY_PATH:/usr/local/opt/openssl/lib/"
     - name: Build V
       run:  make -j4 && ./v -cg -cflags -Werror -o v cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=undefined
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
     - name: Build V using V
       run:  ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
     - name: v self with -usecache
@@ -217,6 +223,14 @@ jobs:
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4 && ./v -cc gcc -cg -cflags -Werror -o v cmd/v
+    - name: Valgrind
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=thread
+        ./v -o v3 cmd/v -cflags "-fsanitize=undefined -fno-sanitize=alignment"
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
@@ -231,8 +245,10 @@ jobs:
 #      run: ./v -freestanding -o bare vlib/os/bare/bare_example_linux.v
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
-    - name: v self with -usecache
-      run: ./v -o v2 -usecache cmd/v
+    - name: -usecache
+      run: |
+        ./v -o v2 -usecache cmd/v
+        ./v -usecache examples/tetris/tetris.v
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -280,6 +296,77 @@ jobs:
 #      with:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
+  ubuntu-clang:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Valgrind
+      run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
+    - name: Run sanitizers
+      run: |
+        ./v -o v2 cmd/v -cflags -fsanitize=memory
+        ./v -o v3 cmd/v -cflags -fsanitize=thread
+        ./v -o v4 cmd/v -cflags -fsanitize=undefined
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v2 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v3 -o v.c cmd/v
+        UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 ./v4 -o v.c cmd/v
+    - name: v self compilation
+      run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v self with -usecache
+      run: ./v -o v2 -usecache cmd/v
+    - name: Fixed tests
+      run: |
+        ./v -silent test-fixed
+    - name: Fixed tests (-prod)
+      run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
+    - name: Build examples
+      run: ./v build-examples
+    - name: Build examples with -autofree
+      run: |
+        ./v -autofree -experimental -o tetris examples/tetris/tetris.v
+    - name: Build modules
+      run: |
+        ./v build-module vlib/os
+        ./v build-module vlib/builtin
+        ./v build-module vlib/strconv
+        ./v build-module vlib/time
+        ./v build-module vlib/term
+        ./v build-module vlib/math
+        ./v build-module vlib/strings
+        ./v build-module vlib/v/token
+        ./v build-module vlib/v/ast
+        ./v build-module vlib/v/parser
+        ./v build-module vlib/v/gen
+        ./v build-module vlib/v/depgraph
+        ./v build-module vlib/os/cmdline
+    - name: x64 machine code generation
+      run: |
+        exit
+        ./v -o vprod -prod cmd/v
+        cd cmd/tools
+        echo "Generating a 1m line V file..."
+        ../../vprod gen1m.v
+        ./gen1m > 1m.v
+        echo "Building it..."
+        ../../vprod -backend x64 -o 1m 1m.v
+        echo "Running it..."
+        ls
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
@@ -429,22 +516,13 @@ jobs:
   windows-tcc:
     runs-on: windows-2019
     timeout-minutes: 30
-    # We are simulating a user with no cc installed.
-    # This way, v's cc detection on Windows is also tested.
-    # env:
-    #   VFLAGS: -cc tcc
+    env:
+         VFLAGS: -cc tcc
     steps:
     - uses: actions/checkout@v2
-    #- uses: actions/setup-node@v1
-    #  with:
-    #    node-version: 12.x
-    - name: Build
-      # We need to move gcc and msvc, so that V can't find an existing C compiler and downloads tcc
+    - name: Build with make.bat -tcc
       run: |
-        'for /f "usebackq tokens=*" %i in (`where gcc.exe`) do move /Y "%i" "%i.old"'     | cmd
-        'for /f "usebackq tokens=*" %i in (`where vswhere.exe`) do move /Y "%i" "%i.old"' | cmd
-        move "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe.old"
-        .\make.bat
+        .\make.bat -tcc
     - name: Test new v.c
       run: .\v.exe -o v.c cmd/v && .\thirdparty\tcc\tcc.exe -Werror -w -ladvapi32 -bt10 v.c
     - name: Install dependencies
@@ -629,25 +707,23 @@ jobs:
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
-    - name: Build local v
-      run: make -j4
     - name: Install zzuf
       run: sudo apt install -qq zzuf
-    - name: Run test-parser
+    - name: Build local v
+      run: make -j4
+    - name: Run test-parser over fuzzed files
       run: |
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hello_world.v > examples/hello_world_fuzz.v
-        ./v test-parser examples/hello_world_fuzz.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/hanoi.v > examples/hanoi_fuzz.v
-        ./v test-parser examples/hanoi_fuzz.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/fibonacci.v > examples/fibonacci_fuzz.v
-        ./v test-parser examples/fibonacci.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/cli.v > examples/cli_fuzz.v
-        ./v test-parser examples/cli_fuzz.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/json.v > examples/json_fuzz.v
-        ./v test-parser examples/json.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/vmod.v > examples/vmod_fuzz.v
-        ./v test-parser examples/vmod.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/regex_example.v > examples/regex_example_fuzz.v
-        ./v test-parser examples/regex_example_fuzz.v
         zzuf -R '\x00-\x20\x7f-\xff' -r0.01 < examples/2048/2048.v > examples/2048/2048_fuzz.v
+        ./v test-parser examples/hello_world_fuzz.v
+        ./v test-parser examples/hanoi_fuzz.v
+        ./v test-parser examples/cli_fuzz.v
+        ./v test-parser examples/regex_example_fuzz.v
         ./v test-parser examples/2048/2048_fuzz.v
+

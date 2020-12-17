@@ -254,6 +254,11 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	if node.left is ast.AnonFn {
 		g.expr(node.left)
 	}
+	if node.left is ast.IndexExpr && node.name == '' {
+		g.is_fn_index_call = true
+		g.expr(node.left)
+		g.is_fn_index_call = false
+	}
 	if node.should_be_skipped {
 		return
 	}
@@ -377,6 +382,9 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.gen_str_for_type(node.receiver_type)
 	}
 	mut has_cast := false
+	if left_sym.kind == .map && node.name == 'clone' {
+		receiver_type_name = 'map'
+	}
 	// TODO performance, detect `array` method differently
 	if left_sym.kind == .array && node.name in
 		['repeat', 'sort_with_compare', 'free', 'push_many', 'trim', 'first', 'last', 'pop', 'clone', 'reverse', 'slice'] {

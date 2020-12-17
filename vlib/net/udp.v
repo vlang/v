@@ -2,6 +2,11 @@ module net
 
 import time
 
+const (
+	udp_default_read_timeout  = 30 * time.second
+	udp_default_write_timeout = 30 * time.second
+)
+
 pub struct UdpConn {
 	sock UdpSocket
 
@@ -33,6 +38,8 @@ pub fn dial_udp(laddr string, raddr string) ?UdpConn {
 
 	return UdpConn {
 		sock: sock
+		read_timeout: udp_default_read_timeout
+		write_timeout: udp_default_write_timeout
 	}
 }
 
@@ -176,6 +183,8 @@ pub fn listen_udp(port int) ?UdpConn {
 
 	return UdpConn {
 		sock: s
+		read_timeout: udp_default_read_timeout
+		write_timeout: udp_default_write_timeout
 	}
 }
 

@@ -288,6 +288,14 @@ fn test_struct_from_other_module() {
 	assert g.msg.name == ''
 }
 
+fn test_generic_struct_print_array_as_field() {
+    foo := Foo<[]string>{
+        data: []string{}
+    }
+	assert foo.str() == 'Foo<array, string>{\n    data: []\n}'
+
+}
+
 /*
 struct Abc{ x int y int z int }
 

@@ -5,7 +5,7 @@ const (
 )
 
 fn unique_strings(arr_len int, str_len int) []string {
-	mut arr := []string{}
+	mut arr := []string{cap: arr_len}
 	for arr.len < arr_len {
 		str := rand.string(str_len)
 		if str !in arr {
@@ -425,4 +425,18 @@ fn test_modify_map_value() {
 	m1['bar'] *= -2
 	assert m1['foo'] == 8
 	assert m1['bar'] == 14
+}
+
+fn test_map_clone() {
+	mut nums := {
+		'foo': 1,
+		'bar': 2
+	}
+	mut nums2 := nums.clone()
+	nums2['foo']++
+	nums2['bar'] *= 4
+	assert nums['foo'] == 1
+	assert nums['bar'] == 2
+	assert nums2['foo'] == 2
+	assert nums2['bar'] == 8
 }

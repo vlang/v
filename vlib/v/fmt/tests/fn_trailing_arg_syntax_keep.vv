@@ -16,12 +16,7 @@ fn main() {
 	foo_func(Baz{
 		x: 'Baz as Foo sumtype'
 	})
-	bar_func(
-		x: 'bar'
-		y: 2
-		z: 3
-		a: 4
-	)
+	bar_func(x: 'bar', y: 2, z: 3, a: 4)
 	func_from_other_file(val: 'something')
 }
 

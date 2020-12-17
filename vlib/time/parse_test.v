@@ -1,5 +1,4 @@
 import time
-import math
 
 fn test_parse() {
 	s := '2018-01-27 12:48:34'
@@ -50,15 +49,20 @@ fn test_parse_rfc2822_invalid() {
 }
 
 fn test_parse_iso8601() {
-	// Because there is a small difference between time.now() - time.utc and actual offset,
-	// round to the nearest hour.
-	offset := time.Duration(i64(math.round((time.now() - time.utc()).hours())) * time.hour)
+	// Because the offset between local time and UTC is not constant in regions
+	// that use daylight saving times we need to calculate separete offsets for
+	// summer and winter
+	offset_summer := time.Duration(time.new_time(year: 2020, month: 6, day: 5, hour: 15).to_local_time() -
+		time.new_time(year: 2020, month: 6, day: 5, hour: 15))
+	offset_winter := time.Duration(time.new_time(year: 2020, month: 11, day: 5, hour: 15).to_local_time() -
+		time.new_time(year: 2020, month: 11, day: 5, hour: 15))
 	formats := [
 		'2020-06-05T15:38:06Z',
 		'2020-06-05T15:38:06.015959Z',
 		'2020-06-05T15:38:06.015959+00:00',
 		'2020-06-05T15:38:06.015959+02:00',
 		'2020-06-05T15:38:06.015959-02:00',
+		'2020-11-05T15:38:06.015959Z',
 	]
 	times := [
 		[2020, 6, 5, 15, 38, 6, 0],
@@ -66,6 +70,7 @@ fn test_parse_iso8601() {
 		[2020, 6, 5, 15, 38, 6, 15959],
 		[2020, 6, 5, 13, 38, 6, 15959],
 		[2020, 6, 5, 17, 38, 6, 15959],
+		[2020, 11, 5, 15, 38, 6, 15959],
 	]
 	for i, format in formats {
 		t := time.parse_iso8601(format) or {
@@ -81,7 +86,7 @@ fn test_parse_iso8601() {
 			minute: data[4]
 			second: data[5]
 			microsecond: data[6]
-		).add(offset)
+		).add(if i <= 4 { offset_summer } else { offset_winter })
 		assert t.year == t2.year
 		assert t.month == t2.month
 		assert t.day == t2.day
@@ -125,4 +130,19 @@ fn test_parse_iso8601_invalid() {
 		}
 		assert false
 	}
+}
+
+fn test_parse_iso8601_date_only() {
+	format := '2020-06-05'
+	t := time.parse_iso8601(format) or {
+		assert false
+		return
+	}
+	assert t.year == 2020
+	assert t.month == 6
+	assert t.day == 5
+	assert t.hour == 0
+	assert t.minute == 0
+	assert t.second == 0
+	assert t.microsecond == 0
 }

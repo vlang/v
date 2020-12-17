@@ -24,7 +24,7 @@ fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
 }
 
-fn to_local_time(t Time) Time {
+pub fn (t Time) to_local_time() Time {
 	loc_tm := C.tm{}
 	C.localtime_r(time_t(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)
@@ -67,7 +67,6 @@ fn vpc_now() u64 {
 // linux_now returns the local time with high precision for most os:es
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
-[inline]
 fn linux_now() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
@@ -78,7 +77,6 @@ fn linux_now() Time {
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 
-[inline]
 fn linux_utc() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part

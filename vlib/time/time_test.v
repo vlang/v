@@ -25,9 +25,7 @@ fn test_is_leap_year() {
 }
 
 fn check_days_in_month(month int, year int, expected int) bool {
-	res := time.days_in_month(month, year) or {
-		return false
-	}
+	res := time.days_in_month(month, year) or { return false }
 	return res == expected
 }
 

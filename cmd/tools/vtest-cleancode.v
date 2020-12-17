@@ -18,10 +18,10 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
-		'cmd/tools/vdoc.v'
+		'cmd/tools/vdoc.v',
 		'cmd/v/v.v',
 		'vlib/builtin/array.v',
-		'vlib/os/file.v',
+		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
 		'vlib/time/time.v',
 		'vlib/term/colors.v',
@@ -57,6 +57,8 @@ const (
 		'vlib/v/vet/',
 		'vlib/v/vmod/',
 		'vlib/gg/gg.v',
+		'vlib/os/',
+		'vlib/time/',
 	]
 )
 

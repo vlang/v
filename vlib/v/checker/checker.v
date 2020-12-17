@@ -566,10 +566,13 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					}
 				}
 				inited_fields << field_name
+				field_type_sym := c.table.get_type_symbol(info_field.typ)
 				c.expected_type = info_field.typ
 				expr_type := c.expr(field.expr)
 				expr_type_sym := c.table.get_type_symbol(expr_type)
-				if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
+				if field_type_sym.kind == .interface_ {
+					c.type_implements(expr_type, info_field.typ, field.pos)
+				} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 					c.check_expected(expr_type, info_field.typ) or {
 						c.error('cannot assign to field `$info_field.name`: $err', field.pos)
 					}
@@ -1086,9 +1089,8 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 			if arg_expr.decl.params.len > 1 {
 				c.error('function needs exactly 1 argument', arg_expr.decl.pos)
 			} else if is_map &&
-				(arg_expr.decl.return_type != elem_typ || arg_expr.decl.params[0].typ != elem_typ) {
-				c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
-					arg_expr.decl.pos)
+				(arg_expr.decl.return_type == table.void_type || arg_expr.decl.params[0].typ != elem_typ) {
+				c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`', arg_expr.decl.pos)
 			} else if !is_map &&
 				(arg_expr.decl.return_type != table.bool_type || arg_expr.decl.params[0].typ != elem_typ) {
 				c.error('type mismatch, should use `fn(a $elem_sym.name) bool {...}`',
@@ -1103,8 +1105,9 @@ fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_e
 				}
 				if func.params.len > 1 {
 					c.error('function needs exactly 1 argument', call_expr.pos)
-				} else if is_map && (func.return_type != elem_typ || func.params[0].typ != elem_typ) {
-					c.error('type mismatch, should use `fn(a $elem_sym.name) $elem_sym.name {...}`',
+				} else if is_map &&
+					(func.return_type == table.void_type || func.params[0].typ != elem_typ) {
+					c.error('type mismatch, should use `fn(a $elem_sym.name) T {...}`',
 						arg_expr.pos)
 				} else if !is_map &&
 					(func.return_type != table.bool_type || func.params[0].typ != elem_typ) {
@@ -1430,6 +1433,20 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			found = true
 			f = f1
 		}
+	}
+	if !found && call_expr.left is ast.IndexExpr {
+		c.expr(call_expr.left)
+		expr := call_expr.left as ast.IndexExpr
+		sym := c.table.get_type_symbol(expr.left_type)
+		if sym.kind == .array {
+			info := sym.info as table.Array
+			elem_typ := c.table.get_type_symbol(info.elem_type)
+			if elem_typ.info is table.FnType {
+				return elem_typ.info.func.return_type
+			}
+		}
+		found = true
+		return table.string_type
 	}
 	// already prefixed (mod.fn) or C/builtin/main
 	if !found {
@@ -2249,7 +2266,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			else {}
 		}
-		if !is_blank_ident && right_sym.kind != .placeholder {
+		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
@@ -3100,9 +3117,9 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 }
 
 pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
-	node.expr_type = c.expr(node.expr)
+	node.expr_type = c.expr(node.expr) // type to be casted
 	from_type_sym := c.table.get_type_symbol(node.expr_type)
-	to_type_sym := c.table.get_type_symbol(node.typ)
+	to_type_sym := c.table.get_type_symbol(node.typ) // type to be used as cast
 	expr_is_ptr := node.expr_type.is_ptr() || node.expr_type.idx() in table.pointer_type_idxs
 	if expr_is_ptr && to_type_sym.kind == .string && !node.in_prexpr {
 		if node.has_arg {
@@ -3168,6 +3185,14 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	} else if node.expr_type == table.none_type {
 		type_name := c.table.type_to_str(node.typ)
 		c.error('cannot cast `none` to `$type_name`', node.pos)
+	} else if from_type_sym.kind == .struct_ && !node.expr_type.is_ptr() && to_type_sym.kind !in
+		[.sum_type, .interface_] && !c.is_builtin_mod {
+		type_name := c.table.type_to_str(node.typ)
+		c.error('cannot cast `struct` to `$type_name`', node.pos)
+	} else if node.expr_type.has_flag(.optional) || node.expr_type.has_flag(.variadic) {
+		// variadic case can happen when arrays are converted into variadic
+		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
+		c.error('cannot type cast $msg', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)

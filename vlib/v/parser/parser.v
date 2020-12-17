@@ -116,9 +116,10 @@ pub fn (mut p Parser) set_path(path string) {
 	p.file_name = path
 	p.file_base = os.base(path)
 	p.file_name_dir = os.dir(path)
-	if path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
+	if path.ends_with('_c.v') || path.ends_with('.c.v') || path.ends_with('.c.vv') || path.ends_with('.c.vsh') {
 		p.file_backend_mode = .c
-	} else if path.ends_with('.js.v') || path.ends_with('.js.vv') || path.ends_with('.js.vsh') {
+	} else if path.ends_with('_js.v') || path.ends_with('.js.v') || path.ends_with('.js.vv') ||
+		path.ends_with('.js.vsh') {
 		p.file_backend_mode = .js
 	} else {
 		p.file_backend_mode = .v
@@ -396,15 +397,13 @@ fn (mut p Parser) check(expected token.Kind) {
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
-	if p.tok.kind != expected {
-		if p.tok.kind == .name {
-			p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
-		} else {
-			p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
-		}
-		return
+	if p.tok.kind == expected {
+		p.next()
+	} else if p.tok.kind == .name {
+		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+	} else {
+		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
-	p.next()
 }
 
 // JS functions can have multiple dots in their name:
@@ -1623,7 +1622,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		// is not imported.
 		// So here we fetch the name of the module by looking at the path that's being built.
 		word := p.pref.path.after('/')
-		if full_mod == word {
+		if full_mod == word && p.pref.path.contains('vlib') {
 			full_mod = p.pref.path.after('vlib/').replace('/', '.')
 			// println('new full mod =$full_mod')
 		}
@@ -2016,6 +2015,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 		}
 	}
 	first_type := p.parse_type() // need to parse the first type before we can check if it's `type A = X | Y`
+	type_alias_pos := p.tok.position()
 	if p.tok.kind == .pipe {
 		mut type_end_pos := p.prev_tok.position()
 		type_pos = type_pos.extend(type_end_pos)
@@ -2062,31 +2062,33 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 			comments: comments
 		}
 	}
-	// type MyType int
+	// type MyType = int
 	parent_type := first_type
-	parent_name := p.table.get_type_symbol(parent_type).name
-	pid := parent_type.idx()
-	mut language := table.Language.v
-	if parent_name.len > 2 && parent_name.starts_with('C.') {
-		language = table.Language.c
-		p.check_for_impure_v(language, decl_pos)
-	} else if parent_name.len > 2 && parent_name.starts_with('JS.') {
-		language = table.Language.js
-		p.check_for_impure_v(language, decl_pos)
-	}
+	parent_sym := p.table.get_type_symbol(parent_type)
+	pidx := parent_type.idx()
+	p.check_for_impure_v(parent_sym.language, decl_pos)
 	prepend_mod_name := p.prepend_mod(name)
-	p.table.register_type_symbol(table.TypeSymbol{
+	idx := p.table.register_type_symbol(table.TypeSymbol{
 		kind: .alias
 		name: prepend_mod_name
 		cname: util.no_dots(prepend_mod_name)
 		mod: p.mod
-		parent_idx: pid
+		parent_idx: pidx
 		info: table.Alias{
 			parent_type: parent_type
-			language: language
+			language: parent_sym.language
 		}
 		is_public: is_pub
 	})
+	if idx == -1 {
+		p.error_with_pos('cannot register alias `$name`, another type with this name exists',
+			decl_pos.extend(type_alias_pos))
+		return ast.AliasTypeDecl{}
+	}
+	if idx == pidx {
+		p.error_with_pos('a type alias can not refer to itself: $name', decl_pos.extend(type_alias_pos))
+		return ast.AliasTypeDecl{}
+	}
 	comments = p.eat_line_end_comments()
 	return ast.AliasTypeDecl{
 		name: name

@@ -6,7 +6,6 @@ module http
 import net.urllib
 import net.http.chunked
 import net
-import time
 import io
 
 const (
@@ -398,9 +397,8 @@ fn (req &Request) http_do(host string, method Method, path string) ?Response {
 	s := req.build_request_headers(method, host_name, path)
 	mut client := net.dial_tcp(host)?
 	// TODO this really needs to be exposed somehow
-	client.set_read_timeout(time.second * 30)
 	client.write(s.bytes())?
-	mut bytes := io.read_all(client)?
+	mut bytes := io.read_all(reader: client)?
 	client.close()
 	return parse_response(bytes.bytestr())
 }

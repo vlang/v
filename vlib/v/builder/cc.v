@@ -7,6 +7,7 @@ import os
 import time
 import v.cflag
 import v.pref
+import v.util
 import term
 
 const (
@@ -247,7 +248,9 @@ fn (mut v Builder) cc() {
 		// TODO : try and remove the below workaround options when the corresponding
 		// warnings are totally fixed/removed
 		mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
-			'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label']
+			'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label', '-Wshadow',
+			'-Wno-unused',
+		]
 		if v.pref.os == .ios {
 			args << '-framework Foundation'
 			args << '-framework UIKit'
@@ -264,15 +267,17 @@ fn (mut v Builder) cc() {
 		// linux_host := os.user_os() == 'linux'
 		v.log('cc() isprod=$v.pref.is_prod outname=$v.pref.out_name')
 		if v.pref.is_shared {
+			mut shared_postfix := '.so'
+			$if macos {
+				shared_postfix = '.dylib'
+			} $else $if windows {
+				shared_postfix = '.dll'
+			}
+			if !v.pref.out_name.ends_with(shared_postfix) {
+				v.pref.out_name += shared_postfix
+			}
 			linker_flags << '-shared'
 			args << '-fPIC' // -Wl,-z,defs'
-			$if macos {
-				v.pref.out_name += '.dylib'
-			} $else $if windows {
-				v.pref.out_name += '.dll'
-			} $else {
-				v.pref.out_name += '.so'
-			}
 		}
 		if v.pref.is_bare {
 			args << '-fno-stack-protector'
@@ -373,17 +378,13 @@ fn (mut v Builder) cc() {
 					if imp in built_modules {
 						continue
 					}
+					if util.should_bundle_module(imp) {
+						continue
+					}
 					// not working
 					if imp == 'webview' {
 						continue
 					}
-					// println('cache: import "$imp"')
-					mod_path := imp.replace('.', os.path_separator)
-					// TODO: to get import path all imports (even relative) we can use:
-					// import_path := v.find_module_path(imp, ast_file.path) or {
-					// verror('cannot import module "$imp" (not found)')
-					// break
-					// }
 					// The problem is cmd/v is in module main and imports
 					// the relative module named help, which is built as cmd.v.help not help
 					// currently this got this workign by building into main, see ast.FnDecl in cgen
@@ -394,7 +395,12 @@ fn (mut v Builder) cc() {
 					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
 					// continue
 					// }
+					mod_path := imp.replace('.', os.path_separator)
 					imp_path := os.join_path('vlib', mod_path)
+					// imp_path := v.find_module_path(imp, ast_file.path) or {
+					//	verror('cannot import module "$imp" (not found)')
+					//	break
+					//}
 					obj_path := v.rebuild_cached_module(vexe, imp_path)
 					libs += ' ' + obj_path
 					if obj_path.ends_with('vlib/ui.o') {
@@ -556,8 +562,8 @@ fn (mut v Builder) cc() {
 					}
 					exit(101)
 				}
-				eprintln('recompilation with tcc failed; retrying with cc ...')
 				v.pref.ccompiler = pref.default_c_compiler()
+				eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
 				continue
 			}
 			if res.exit_code == 127 {

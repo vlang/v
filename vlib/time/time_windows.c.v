@@ -94,7 +94,7 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
-fn to_local_time(t Time) Time {
+pub fn (t Time) to_local_time() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
 		month: u16(t.month)
@@ -121,7 +121,6 @@ fn to_local_time(t Time) Time {
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precice methods can be implemented in the future
-[inline]
 fn win_now() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
@@ -145,7 +144,6 @@ fn win_now() Time {
 // win_utc calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
 // other more precice methods can be implemented in the future
-[inline]
 fn win_utc() Time {
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)

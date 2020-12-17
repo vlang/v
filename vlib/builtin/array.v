@@ -5,16 +5,18 @@ module builtin
 
 import strings
 
+// array is a struct used for denoting array types in V
 pub struct array {
 pub:
-	element_size int
+	element_size int // size in bytes of one element in the array.
 pub mut:
-	data         voidptr // Using a void pointer allows to implement arrays without generics and without generating
-	// extra code for every type.
-	len          int
-	cap          int
+	data         voidptr
+	len          int // length of the array.
+	cap          int // capacity of the array.
 }
 
+// array.data uses a void pointer, which allows implementing arrays without generics and without generating
+// extra code for every type.
 // Internal function, used by V (`nums := []int`)
 fn __new_array(mylen int, cap int, elm_size int) array {
 	cap_ := if cap < mylen { mylen } else { cap }
@@ -338,7 +340,9 @@ pub fn (a &array) clone() array {
 			unsafe {arr.set_unsafe(i, &ar_clone)}
 		}
 	} else {
-		unsafe {C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)}
+		if !isnil(a.data) {
+			unsafe {C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)}
+		}
 	}
 	return arr
 }
@@ -396,7 +400,7 @@ fn (mut a array) push(val voidptr) {
 // `val` is array.data
 // TODO make private, right now it's used by strings.Builder
 pub fn (mut a3 array) push_many(val voidptr, size int) {
-	if a3.data == val {
+	if a3.data == val && !isnil(a3.data) {
 		// handle `arr << arr`
 		copy := a3.clone()
 		a3.ensure_cap(a3.len + size)
@@ -406,11 +410,14 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 		}
 	} else {
 		a3.ensure_cap(a3.len + size)
-		unsafe {C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size)}
+		if !isnil(a3.data) && !isnil(val) {
+			unsafe {C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size)}
+		}
 	}
 	a3.len += size
 }
 
+// reverse_in_place reverses existing array data, modifying original array.
 pub fn (mut a array) reverse_in_place() {
 	if a.len < 2 {
 		return
@@ -576,8 +583,8 @@ pub fn (mut a []int) sort() {
 	a.sort_with_compare(compare_ints)
 }
 
-// index returns the index of the first element equal to the given value,
-// or -1 if the value is not found in the array.
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
 pub fn (a []string) index(v string) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -587,8 +594,8 @@ pub fn (a []string) index(v string) int {
 	return -1
 }
 
-// index returns the index of the first element equal to the given value,
-// or -1 if the value is not found in the array.
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
 pub fn (a []int) index(v int) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -598,8 +605,8 @@ pub fn (a []int) index(v int) int {
 	return -1
 }
 
-// index returns the index of the first element equal to the given value,
-// or -1 if the value is not found in the array.
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
 pub fn (a []byte) index(v byte) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -609,6 +616,8 @@ pub fn (a []byte) index(v byte) int {
 	return -1
 }
 
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
 pub fn (a []rune) index(v rune) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
@@ -618,8 +627,8 @@ pub fn (a []rune) index(v rune) int {
 	return -1
 }
 
-// index returns the index of the first element equal to the given value,
-// or -1 if the value is not found in the array.
+// index returns the first index at which a given element can be found in the array
+// or -1 if the value is not found.
 // TODO is `char` type yet in the language?
 pub fn (a []char) index(v char) int {
 	for i in 0 .. a.len {
@@ -640,9 +649,15 @@ pub fn (a []int) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
-// grow grows the array's capacity by `amount` elements.
-pub fn (mut a array) grow(amount int) {
+// grow_cap grows the array's capacity by `amount` elements.
+pub fn (mut a array) grow_cap(amount int) {
+	a.ensure_cap(a.cap + amount)
+}
+
+// grow_len ensures that an array has a.len + amount of length
+pub fn (mut a array) grow_len(amount int) {
 	a.ensure_cap(a.len + amount)
+	a.len += amount
 }
 
 // array_eq<T> checks if two arrays contain all the same elements in the same order.
@@ -677,6 +692,8 @@ pub fn (a []f32) eq(a2 []f32) bool {
 	return array_eq(a, a2)
 }
 */
+// eq checks if the arrays have the same elements or not.
+// TODO: make it work with all types.
 pub fn (a1 []string) eq(a2 []string) bool {
 	// return array_eq(a, a2)
 	if a1.len != a2.len {

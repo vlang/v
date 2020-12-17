@@ -1,11 +1,9 @@
 module dl
 
 #include <dlfcn.h>
-
 pub const (
-	rtld_now = C.RTLD_NOW
+	rtld_now  = C.RTLD_NOW
 	rtld_lazy = C.RTLD_LAZY
-	dl_ext = '.so'
 )
 
 fn C.dlopen(filename charptr, flags int) voidptr

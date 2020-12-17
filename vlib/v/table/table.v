@@ -678,8 +678,9 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-// Once we have a module format we can read from module file instead
-// this is not optimal
+// TODO: Once we have a module format we can read from module file instead
+// this is not optimal. it depends on the full import being in table.imports
+// already, we can instead lookup the module path and then work it out
 pub fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		// if m.contains('gen') { println('qm=$m') }

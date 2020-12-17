@@ -4,11 +4,12 @@
 module os
 
 fn C.getenv(charptr) &char
+
 // C.GetEnvironmentStringsW & C.FreeEnvironmentStringsW are defined only on windows
 fn C.GetEnvironmentStringsW() &u16
 
-
 fn C.FreeEnvironmentStringsW(&u16) int
+
 // `getenv` returns the value of the environment variable named by the key.
 pub fn getenv(key string) string {
 	$if windows {
@@ -33,12 +34,12 @@ pub fn setenv(name string, value string, overwrite bool) int {
 		format := '$name=$value'
 		if overwrite {
 			unsafe {
-				return C._putenv(format.str)
+				return C._putenv(charptr(format.str))
 			}
 		} else {
 			if getenv(name).len == 0 {
 				unsafe {
-					return C._putenv(format.str)
+					return C._putenv(charptr(format.str))
 				}
 			}
 		}
@@ -53,8 +54,8 @@ pub fn setenv(name string, value string, overwrite bool) int {
 // os.unsetenv clears an environment variable with `name`.
 pub fn unsetenv(name string) int {
 	$if windows {
-		format := '${name}='
-		return C._putenv(format.str)
+		format := '$name='
+		return C._putenv(charptr(format.str))
 	} $else {
 		return C.unsetenv(charptr(name.str))
 	}
@@ -64,7 +65,7 @@ pub fn unsetenv(name string) int {
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // os.environ returns a map of all the current environment variables
 pub fn environ() map[string]string {
-	mut res := map[string]string
+	mut res := map[string]string{}
 	$if windows {
 		mut estrings := C.GetEnvironmentStringsW()
 		mut eline := ''
@@ -74,8 +75,7 @@ pub fn environ() map[string]string {
 			if eq_index > 0 {
 				res[eline[0..eq_index]] = eline[eq_index + 1..]
 			}
-			unsafe 
-			{
+			unsafe {
 				c = c + eline.len + 1
 			}
 		}

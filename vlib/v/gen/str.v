@@ -177,7 +177,10 @@ fn (mut g Gen) string_inter_literal_sb_optimized(call_expr ast.CallExpr) {
 		typ := node.expr_types[i]
 		g.write(g.typ(typ))
 		g.write('_str(')
-		g.expr(node.exprs[i])
+		sym := g.table.get_type_symbol(typ)
+		if sym.kind != .function {
+			g.expr(node.exprs[i])
+		}
 		g.writeln('));')
 	}
 	g.writeln('')
@@ -366,7 +369,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 	} else {
 		str_fn_name := g.gen_str_for_type(typ)
 		g.write('${str_fn_name}(')
-		g.expr(expr)
+		if sym.kind != .function {
+			g.expr(expr)
+		}
 		g.write(')')
 	}
 }
