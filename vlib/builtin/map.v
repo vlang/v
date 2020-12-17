@@ -449,16 +449,19 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 	return voidptr(0)
 }
 
+fn (m map) get(key string, zero voidptr) voidptr {
+	return m.get_1(&key, zero)
+}
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
-fn (m map) get(key string, zero voidptr) voidptr {
-	mut index, mut meta := m.key_to_index(&key)
+fn (m map) get_1(key voidptr, zero voidptr) voidptr {
+	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
 			pkey := unsafe {m.key_values.key(kv_index)}
-			if m.keys_eq(&key, pkey) {
+			if m.keys_eq(key, pkey) {
 				return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 			}
 		}
