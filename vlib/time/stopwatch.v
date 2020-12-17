@@ -16,7 +16,7 @@ pub mut:
 	end     u64
 }
 
-// new_stopwatch returns a new stopwatch with StopWatchOptions.
+// new_stopwatch initializes a new StopWatch with the current time as start.
 pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	mut initial := u64(0)
 	if opts.auto_start {
@@ -29,25 +29,25 @@ pub fn new_stopwatch(opts StopWatchOptions) StopWatch {
 	}
 }
 
-// start the stopwatch. If the timer was paused, restarts counting.
+// start starts the stopwatch. If the timer was paused, restarts counting.
 pub fn (mut t StopWatch) start() {
 	t.start = sys_mono_now()
 	t.end = 0
 }
 
-// restart the stopwatch. If the timer was paused, restarts counting.
+// restart restarts the stopwatch. If the timer was paused, restarts counting.
 pub fn (mut t StopWatch) restart() {
 	t.start = sys_mono_now()
 	t.end = 0
 	t.elapsed = 0
 }
 
-// stop stops the timer, regardless of running state.
+// stop stops the timer, by setting the end time to the current time.
 pub fn (mut t StopWatch) stop() {
 	t.end = sys_mono_now()
 }
 
-// pause pauses the timer.
+// pause resets the `start` time and adds the current elapsed time to `elapsed`.
 pub fn (mut t StopWatch) pause() {
 	if t.start > 0 {
 		if t.end == 0 {

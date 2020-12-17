@@ -161,7 +161,7 @@ pub fn (t Time) get_fmt_str(fmt_dlmtr FormatDelimiter, fmt_time FormatTime, fmt_
 	}
 }
 
-// This is just a TEMPORARY function for cookies and their expire dates.
+// This is just a TEMPORARY function for cookies and their expiration dates.
 pub fn (t Time) utc_string() string {
 	day_str := t.weekday_str()
 	month_str := t.smonth()

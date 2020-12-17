@@ -373,7 +373,6 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-
 // Time subtract using operator overloading
 pub fn (lhs Time) -(rhs Time) Duration {
 	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
