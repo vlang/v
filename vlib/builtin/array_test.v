@@ -1181,3 +1181,23 @@ fn test_voidptr_vbytes() {
 		println(bytes)
 	}
 }
+
+fn test_multi_array_prepend() {
+	mut a := [][]int{}
+	a.prepend([1, 2, 3])
+	assert a == [[1, 2, 3]]
+
+	mut b := [][]int{}
+	b.prepend([[1, 2, 3]])
+	assert b == [[1, 2, 3]]
+}
+
+fn test_multi_array_insert() {
+	mut a := [][]int{}
+	a.insert(0, [1, 2, 3])
+	assert a == [[1, 2, 3]]
+
+	mut b := [][]int{}
+	b.insert(0, [[1, 2, 3]])
+	assert b == [[1, 2, 3]]
+}
