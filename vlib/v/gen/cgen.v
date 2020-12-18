@@ -1719,9 +1719,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							g.write('$styp _var_$left.pos.pos = *($styp*)map_get_1(')
 						}
 						if !left.left_type.is_ptr() {
-							g.write('&')
+							g.write('ADDR(map, ')
+							g.expr(left.left)
+							g.write(')')
+						} else {
+							g.expr(left.left)
 						}
-						g.expr(left.left)
 						g.write(', &(string[]){')
 						g.expr(left.index)
 						g.write('}')
@@ -3896,9 +3899,12 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('(*($elem_type_str*)map_get_1(')
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
-						g.write('&')
+						g.write('ADDR(map, ')
+						g.expr(node.left)
+					} else {
+						g.write('(')
+						g.expr(node.left)
 					}
-					g.expr(node.left)
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -3906,7 +3912,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', &(string[]){')
+					g.write('), &(string[]){')
 					g.expr(node.index)
 					g.write('}')
 					if g.is_fn_index_call {
