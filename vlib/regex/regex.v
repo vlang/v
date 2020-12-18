@@ -334,7 +334,11 @@ fn (mut re RE) reset(){
 		re.prog[i].rep       = 0 // clear repetition of the token
 		i++
 	}
-	re.groups = [-1].repeat(re.group_count*2)
+
+	// init groups array
+	if re.group_count > 0 {
+		re.groups = []int{len: re.group_count*2, init: -1}
+	}
 
 	// reset group_csave
 	re.group_csave = []int{}
@@ -900,8 +904,8 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 	// group management variables
 	mut group_count           := -1
-	mut group_stack           := [0 ].repeat(re.group_max_nested)
-	mut group_stack_txt_index := [-1].repeat(re.group_max_nested)
+	mut group_stack           := []int{len: re.group_max_nested, init: 0}
+	mut group_stack_txt_index := []int{len: re.group_max_nested, init: -1}
 	mut group_stack_index     := -1
 
 	re.query = in_txt      // save the query string
@@ -1566,8 +1570,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	mut state_list := []StateObj{}
 
-	//mut group_stack      := [-1].repeat(re.group_max)
-	//mut group_data       := [-1].repeat(re.group_max)
 	mut group_stack := []int{len: re.group_max, init: -1}
 	mut group_data  := []int{len: re.group_max, init: -1}
 
@@ -2382,8 +2384,8 @@ Public functions
 [deprecated]
 pub fn regex(in_query string) (RE,int,int){
 	mut re := RE{}
-	re.prog = [Token{}].repeat(in_query.len+1)
-	re.cc = [CharClass{}].repeat(in_query.len+1)
+	re.prog = []Token    {len: in_query.len+1}
+	re.cc   = []CharClass{len: in_query.len+1}
 	re.group_max_nested = 8
 
 	re_err,err_pos := re.compile(in_query)
@@ -2403,8 +2405,8 @@ pub fn new_regex_by_size(mult int) RE {
 }
 fn impl_new_regex_by_size(mult int) RE {
 	mut re := RE{}
-	re.prog = [Token{}].repeat(max_code_len*mult)       // max program length, default 256 istructions
-	re.cc = [CharClass{}].repeat(max_code_len*mult)     // char class list
+	re.prog = []Token    {len: max_code_len*mult}       // max program length, default 256 istructions
+	re.cc   = []CharClass{len: max_code_len*mult}       // char class list
 	re.group_max_nested = 3*mult                        // max nested group
 
 	return re

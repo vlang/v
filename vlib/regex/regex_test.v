@@ -128,6 +128,16 @@ match_test_suite = [
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
 	TestItem{"[ an s. s! ](wiki:something)", r"\[.*\]\( *(\w*:*\w+) *\)",0,28},
 	
+	// Crazywulf tests (?:^|[()])(\d+)(*)(\d+)(?:$|[()])
+    TestItem{"1*1", r"(\d+)([*])(\d+)",0,3},
+    TestItem{"+1*1", r"^(\d+)([*])(\d+)",-1,0},
+    TestItem{"*1*1", r"(?:^|[*])(\d+)([*])(\d+)",0,4},
+    TestItem{"*1*1", r"(?:^|[*()])(\d+)([*])(\d+)",0,4},
+    TestItem{")1*1", r"(?:^|[*()])(\d+)([*])(\d+)",0,4},
+    TestItem{"(1*1", r"(?:^|[*()])(\d+)([*])(\d+)",0,4},
+    TestItem{"*1*1(", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",0,5},
+    TestItem{" 1*1(", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",-1,0},
+    TestItem{"1*1 ", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",-1,0},
 ]
 )
 
@@ -223,7 +233,7 @@ cgroups_test_suite = [
 )
 
 const (
-	debug = false // true for debug println 
+	debug = true // true for debug println 
 )
 
 fn test_regex(){
