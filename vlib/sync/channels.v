@@ -304,18 +304,16 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					C.memcpy(wr_ptr, src, ch.objsize)
 				}
 				C.atomic_store_u16(status_adr, u16(BufferElemStat.written))
-				old_read_avail := C.atomic_fetch_add_u32(&ch.read_avail, 1)
+				C.atomic_fetch_add_u32(&ch.read_avail, 1)
 				ch.readsem.post()
-				if old_read_avail == 0 {
-					mut null16 := u16(0)
-					for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
-						null16 = u16(0)
-					}
-					if ch.read_subscriber != voidptr(0) {
-						ch.read_subscriber.sem.post()
-					}
-					C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
+				mut null16 := u16(0)
+				for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+					null16 = u16(0)
 				}
+				if ch.read_subscriber != voidptr(0) {
+					ch.read_subscriber.sem.post()
+				}
+				C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 				return .success
 			} else {
 				if no_block {
@@ -421,18 +419,16 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					C.memcpy(dest, rd_ptr, ch.objsize)
 				}
 				C.atomic_store_u16(status_adr, u16(BufferElemStat.unused))
-				old_write_free := C.atomic_fetch_add_u32(&ch.write_free, 1)
+				C.atomic_fetch_add_u32(&ch.write_free, 1)
 				ch.writesem.post()
-				if old_write_free == 0 {
-					mut null16 := u16(0)
-					for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
-						null16 = u16(0)
-					}
-					if ch.write_subscriber != voidptr(0) {
-						ch.write_subscriber.sem.post()
-					}
-					C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
+				mut null16 := u16(0)
+				for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+					null16 = u16(0)
 				}
+				if ch.write_subscriber != voidptr(0) {
+					ch.write_subscriber.sem.post()
+				}
+				C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 				return .success
 			}
 		}
