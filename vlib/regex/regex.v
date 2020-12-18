@@ -1,6 +1,6 @@
 /*
 
-regex 0.9h
+regex 1.0 alpha
 
 Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -280,7 +280,6 @@ pub const (
 	f_bin = 0x00000200  // work only on bytes, ignore utf-8
 
 	// behaviour modifier flags
-	//f_or  = 0x00010000  // the OR work with concatenation like PCRE
 	f_src = 0x00020000  // search mode enabled
 )
 
@@ -727,7 +726,6 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 		// single value {4}
 		if status == .min_parse && ch == `}` {
 			q_max = q_min
-
 			status = .greedy
 			continue
 		}
@@ -735,7 +733,6 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 		// end without max
 		if status == .comma_checked && ch == `}` {
 			q_max = max_quantifier
-
 			status = .greedy
 			continue
 		}
@@ -991,7 +988,6 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 			pc = pc + 1
 			continue
-
 		}
 
 		// ist_group_end
@@ -1679,7 +1675,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		//******************************************
 		
 		if ist == ist_prog_end {
-			//println("HERE")
+			//println("HERE we end!")
 			break
 		}
 
@@ -1721,9 +1717,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 						// continuous save, save until we have space
 						re.group_continuous_save(g_index)
-						
  					}
-
 					state.group_index--
 				}
 			}
@@ -1970,7 +1964,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						//println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
 					}
 
-					// char class IST 
+					// char char_class 
 					else if re.prog[chk_pc].ist == ist_char_class_pos || re.prog[chk_pc].ist == ist_char_class_neg {
 						mut cc_neg := false
 						if re.prog[chk_pc].ist == ist_char_class_neg {
@@ -1995,7 +1989,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true {
-//				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max {
 					//println("save the state!!")
 					state_list << StateObj {
 						group_index: state.group_index

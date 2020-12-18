@@ -233,7 +233,7 @@ cgroups_test_suite = [
 )
 
 const (
-	debug = true // true for debug println 
+	debug = false // true for debug println 
 )
 
 fn test_regex(){
