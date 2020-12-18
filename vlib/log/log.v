@@ -41,7 +41,7 @@ mut:
 	level            Level
 	output_label     string
 	ofile            os.File
-	output_to_file   bool // if false output via std -out/err
+	output_to_file   bool // if true output to file else use stdout/stderr.
 pub mut:
 	output_file_name string // log output to this file
 }
