@@ -5423,7 +5423,6 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 		}
 		return def_val
 	}
-
 	// if typ.ends_with('Fn') { // TODO
 	// return '0'
 	// }
