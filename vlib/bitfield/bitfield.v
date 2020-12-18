@@ -24,8 +24,8 @@ const (
 	slot_size = 32
 )
 
-// public functions
-// from_bytes() converts a byte array into a bitfield.
+// from_bytes converts a byte array into a bitfield.
+// [0x0F, 0x01] => 0000 1111 0000 0001
 pub fn from_bytes(input []byte) BitField {
 	mut output := new(input.len * 8)
 	for i, b in input {
@@ -55,6 +55,16 @@ pub fn from_bytes(input []byte) BitField {
 			ob |= 0b10000000
 		}
 		output.field[i / 4] |= u32(ob) << ((i % 4) * 8)
+	}
+	return output
+}
+
+// from_bytes_lowest_bits_first converts a byte array into a bitfield
+// [0x0F, 0x01] => 1111 0000 1000 0000
+pub fn from_bytes_lowest_bits_first(input []byte) BitField {
+	mut output := new(input.len * 8)
+	for i, b in input {
+		output.field[i / 4] |= u32(b) << ((i % 4) * 8)
 	}
 	return output
 }

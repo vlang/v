@@ -126,6 +126,14 @@ fn test_bf_from_bytes() {
 	assert newoutput == output
 }
 
+fn test_bf_from_bytes_lowest_bits_first() {
+	input := [byte(0x01), 0xF0]
+	output := bitfield.from_bytes_lowest_bits_first(input).str()
+	assert output == '10000000' + '00001111'
+	newoutput := bitfield.from_str(output).str()
+	assert newoutput == output
+}
+
 fn test_bf_from_str() {
 	len := 80
 	mut input := ''
