@@ -262,59 +262,54 @@ The regex save until finish or found that the array have no space.
 If the space ends no error is raised, further records will not be saved.
 
 ```v ignore
-fn example2() {
-	test_regex()
-	text := 'tst: 01,23,45 ,56, 78'
-	query := r'.*:(\s*\d+[\s,]*)+'
-	mut re := new() or { panic(err) }
-	// re.debug = 2
-	re.group_csave_flag = true  // enable continuous capture
-	re.compile_opt(query) or {
-		println(err)
-		return
-	}
-	q_str := re.get_query()
-	println('Query: $q_str')
-	start, end := re.match_string(text)
-	if start < 0 {
-		println('ERROR : ${re.get_parse_error_string(start)}, $start')
-	} else {
-		println('found in [$start, $end] => [${text[start..end]}]')
-	}
-	// groups capture
-	mut gi := 0
-	for gi < re.groups.len {
-		if re.groups[gi] >= 0 {
-			println('${gi / 2} ${re.groups[gi]},${re.groups[gi + 1]} :[${text[re.groups[gi]..re.groups[gi +
-				1]]}]')
-		}
-		gi += 2
-	}
-	// continuous saving
-	gi = 0
-	println('num: ${re.group_csave[0]}')
-	for gi < re.group_csave[0] {
-		id := re.group_csave[1 + gi * 3]
-		st := re.group_csave[1 + gi * 3 + 1]
-		en := re.group_csave[1 + gi * 3 + 2]
-		println('cg id: $id [$st, $en] => [${text[st..en]}]')
-		gi++
-	}
+import regex
+fn main(){
+    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
+    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
+
+    mut re := regex.regex_opt(query) or { panic(err) }
+    //println(re.get_code())   // uncomment to see the print of the regex execution code
+    re.debug=2  // enable maximum log
+    println("String: ${txt}")
+    println("Query : ${re.get_query()}")
+    re.debug=0  // disable log
+    re.group_csave_flag = true
+    start, end := re.match_string(txt)
+    if start >= 0 {
+        println("Match ($start, $end) => [${txt[start..end]}]")
+    } else {
+        println("No Match")
+    }
+
+    if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
+        println("cg: $re.group_csave")
+        mut cs_i := 1
+        for cs_i < re.group_csave[0]*3 {
+            g_id := re.group_csave[cs_i]
+            st   := re.group_csave[cs_i+1]
+            en   := re.group_csave[cs_i+2]
+            println("cg[$g_id] $st $en:[${txt[st..en]}]")
+            cs_i += 3
+        }
+    }
 }
 ```
 
 The output will be:
 
 ```
-Query: .*:(\s*\d+[\s,]*)+
-found in [0, 21] => [tst: 01,23,45 ,56, 78]
-0 19,21 :[78]
-num: 5
-cg id: 0 [4, 8] => [ 01,]
-cg id: 0 [8, 11] => [23,]
-cg id: 0 [11, 15] => [45 ,]
-cg id: 0 [15, 19] => [56, ]
-cg id: 0 [19, 21] => [78]
+String: http://www.ciao.mondo/hello/pippo12_/pera.html
+Query : #0(?P<format>https?)|{8,14}#0(?P<format>ftps?)://#1(?P<token>[\w_]+.)+
+Match (0, 46) => [http://www.ciao.mondo/hello/pippo12_/pera.html]
+cg: [8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46]
+cg[0] 0 4:[http]
+cg[1] 7 11:[www.]
+cg[1] 11 16:[ciao.]
+cg[1] 16 22:[mondo/]
+cg[1] 22 28:[hello/]
+cg[1] 28 37:[pippo12_/]
+cg[1] 37 42:[pera.]
+cg[1] 42 46:[html]
 ```
 
 ### Named capturing groups
@@ -334,85 +329,38 @@ example:
 
 ```v ignore
 import regex
+fn main(){
+    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
+    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
 
-fn main() {
-	test_regex()
-	text := 'http://www.ciao.mondo/hello/pippo12_/pera.html'
-	query := r'(?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+'
-	mut re := new()
-	re.debug = 2
-	// must provide an array of the right size if want the continuous saving of the groups
-	re.group_csave = [-1].repeat(3 * 20 + 1)
-	re.compile_opt(query) or {
-		println(err)
-		return
-	}
-	q_str := re.get_query()
-	println('O.Query: $query')
-	println('Query  : $q_str')
-	re.debug = 0
-	start, end := re.match_string(text)
-	if start < 0 {
-		err_str := re.get_parse_error_string(start)
-		println('ERROR : $err_str, $start')
-	} else {
-		text1 := text[start..end]
-		println('found in [$start, $end] => [$text1]')
-	}
-	// groups
-	mut gi := 0
-	for gi < re.groups.len {
-		if re.groups[gi] >= 0 {
-			println('${gi / 2} ${re.groups[gi]},${re.groups[gi + 1]} :[${text[re.groups[gi]..re.groups[gi +
-				1]]}]')
-		}
-		gi += 2
-	}
-	// continuous saving
-	gi = 0
-	println('num of group item saved: ${re.group_csave[0]}')
-	for gi < re.group_csave[0] {
-		id := re.group_csave[1 + gi * 3]
-		st := re.group_csave[1 + gi * 3 + 1]
-		en := re.group_csave[1 + gi * 3 + 2]
-		println('cg id: $id [$st, $en] => [${text[st..en]}]')
-		gi++
-	}
-	println('raw array: ${re.group_csave[0..gi * 3 + 2 - 1]}')
-	// named capturing groups
-	println('named capturing groups:')
-	for g_name in re.group_map.keys() {
-		s, e := re.get_group_bounds_by_name(g_name)
-		if s >= 0 && e > s {
-			println("'$g_name':[$s, $e] => '${text[s..e]}'")
-		} else {
-			println("Group [$g_name] doesn't exist.")
-		}
-	}
+    mut re := regex.regex_opt(query) or { panic(err) }
+    //println(re.get_code())   // uncomment to see the print of the regex execution code
+    re.debug=2  // enable maximum log
+    println("String: ${txt}")
+    println("Query : ${re.get_query()}")
+    re.debug=0  // disable log
+    start, end := re.match_string(txt)
+    if start >= 0 {
+        println("Match ($start, $end) => [${txt[start..end]}]")
+    } else {
+        println("No Match")
+    }
+
+    for name in re.group_map.keys() {
+        println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+        bounds: ${re.get_group_bounds_by_name(name)}")
+    }
 }
 ```
 
 Output:
 
 ```
-O.Query: (?P<format>https?)|(?:ftps?)://(?P<token>[\w_]+.)+
-Query  : #0(?P<format>https?)|{8,14}(?:ftps?)://#1(?P<token>[\w_]+.)+
-found in [0, 46] => [http://www.ciao.mondo/hello/pippo12_/pera.html]
-0 0,4 :[http]
-1 42,46 :[html]
-num of group item saved: 8
-cg id: 0 [0, 4] => [http]
-cg id: 1 [7, 11] => [www.]
-cg id: 1 [11, 16] => [ciao.]
-cg id: 1 [16, 22] => [mondo/]
-cg id: 1 [22, 28] => [hello/]
-cg id: 1 [28, 37] => [pippo12_/]
-cg id: 1 [37, 42] => [pera.]
-cg id: 1 [42, 46] => [html]
-raw array: [8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46]
-named capturing groups:
-'format':[0, 4] => 'http'
-'token':[42, 46] => 'html'
+String: http://www.ciao.mondo/hello/pippo12_/pera.html
+Query : #0(?P<format>https?)|{8,14}#0(?P<format>ftps?)://#1(?P<token>[\w_]+.)+
+Match (0, 46) => [http://www.ciao.mondo/hello/pippo12_/pera.html]
+group:'format' 	=> [http] bounds: (0, 4)
+group:'token' 	=> [html] bounds: (42, 46)
 ```
 
 In order to simplify the use of the named groups it possible to use names map in the `re`
@@ -550,6 +498,48 @@ pub fn (re mut RE) find_all(in_txt string) []int
 pub fn (re mut RE) replace(in_txt string, repl string) string
 ```
 
+## Find and Replace
+
+For complex find and replace operations it is available the function `replace_by_fn` .
+The`replace_by_fn` use a custom replace function making possible customizations. 
+**The custom function is called for every non overlapped find.**
+The custom function must be of the type:
+```v ignore
+fn (re RE, in_txt string, start int, end int) string
+```
+
+The following example will clarify the use:
+
+```v ignore
+import regex
+// customized replace functions
+// it will be called on each non overlapped find
+fn my_repl(re regex.RE, in_txt string, start int, end int) string {
+    g0 := re.get_group_by_id(in_txt, 0)
+    g1 := re.get_group_by_id(in_txt, 1)
+    g2 := re.get_group_by_id(in_txt, 2)
+    return "*$g0*$g1*$g2*"    
+}
+
+fn main(){
+    txt   := "today [John] is gone to his house with (Jack) and [Marie]."
+    query := r"(.)(\A\w+)(.)"
+
+    mut re := regex.regex_opt(query) or { panic(err) }
+   
+    result := re.replace_by_fn(txt, my_repl)
+    println(result)
+}
+```
+
+Output:
+
+```
+today *[*John*]* is gone to his house with *(*Jack*)* and *[*Marie*]*.
+```
+
+
+
 ## Debugging
 
 This module has few small utilities to help the writing of regex expressions.
@@ -576,11 +566,20 @@ The result will be something like this:
 
 ```
 ========================================
-v RegEx compiler v 0.9c output:
-PC:  0 ist: 7fffffff [a]      query_ch {  1,  1}
-PC:  1 ist: 7fffffff [b]      query_ch {  1,MAX}
-PC:  2 ist: 88000000 PROG_END {  0,  0}
+v RegEx compiler v 1.0 alpha output:
+PC:  0 ist: 92000000 (        GROUP_START #:0 {  1,  1}
+PC:  1 ist: 98000000 .        DOT_CHAR nx chk: 4 {  1,  1}
+PC:  2 ist: 94000000 )        GROUP_END   #:0 {  1,  1}
+PC:  3 ist: 92000000 (        GROUP_START #:1 {  1,  1}
+PC:  4 ist: 90000000 [\A]     BSLS {  1,  1}
+PC:  5 ist: 90000000 [\w]     BSLS {  1,MAX}
+PC:  6 ist: 94000000 )        GROUP_END   #:1 {  1,  1}
+PC:  7 ist: 92000000 (        GROUP_START #:2 {  1,  1}
+PC:  8 ist: 98000000 .        DOT_CHAR nx chk: -1 last! {  1,  1}
+PC:  9 ist: 94000000 )        GROUP_END   #:2 {  1,  1}
+PC: 10 ist: 88000000 PROG_END {  0,  0}
 ========================================
+
 ```
 
 `PC`:`int` is the program counter or step of execution, each single step is a token.
@@ -674,54 +673,29 @@ re.log_func = custom_print
 
 Here there is a simple code to perform some basically match of strings
 
-```v oksyntax
-struct TestObj {
-	source string // source string to parse
-	query  string // regex query string
-	s      int // expected match start index
-	e      int // expected match end index
-}
+```v ignore
+import regex
 
-const (
-	tests = [
-		TestObj{'this is a good.', r'this (\w+) a', 0, 9},
-		TestObj{'this,these,those. over', r'(th[eio]se?[,. ])+', 0, 17},
-		TestObj{'test1@post.pip.com, pera', r'[\w]+@([\w]+\.)+\w+', 0, 18},
-		TestObj{'cpapaz ole. pippo,', r'.*c.+ole.*pi', 0, 14},
-		TestObj{'adce aabe', r'(a(ab)+)|(a(dc)+)e', 0, 4},
-	]
-)
+fn main(){
+    txt   := "http://www.ciao.mondo/hello/pippo12_/pera.html"
+    query := r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+"
 
-fn example() {
-	for c, tst in tests {
-		mut re := regex.new()
-		re.compile_opt(tst.query) or {
-			println(err)
-			continue
-		}
-		// print the query parsed with the groups ids
-		re.debug = 1 // set debug on at minimum level
-		println('#${c:2d} query parsed: $re.get_query()')
-		re.debug = 0
-		// do the match
-		start, end := re.match_string(tst.source)
-		if start >= 0 && end > start {
-			println('#${c:2d} found in: [$start, $end] => [${tst.source[start..end]}]')
-		}
-		// print the groups
-		mut gi := 0
-		for gi < re.groups.len {
-			if re.groups[gi] >= 0 {
-				println('group ${gi / 2:2d} :[${tst.source[re.groups[gi]..re.groups[gi + 1]]}]')
-			}
-			gi += 2
-		}
-		println('')
-	}
-}
-
-fn main() {
-	example()
+    mut re := regex.regex_opt(query) or { panic(err) }
+   
+    start, end := re.match_string(txt)
+    if start >= 0 {
+        println("Match ($start, $end) => [${txt[start..end]}]")
+        for g_index := 0; g_index < re.group_count ; g_index++ {
+            println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+            bounds: ${re.get_group_bounds_by_id(g_index)}")  
+        }
+        for name in re.group_map.keys() {
+            println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+            bounds: ${re.get_group_bounds_by_name(name)}")
+        }
+    } else {
+        println("No Match")
+    }
 }
 ```
 
