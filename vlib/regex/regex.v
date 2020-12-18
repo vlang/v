@@ -1,6 +1,6 @@
 /*
 
-regex 0.9h
+regex 1.0 alpha
 
 Copyright (c) 2019-2020 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
@@ -280,7 +280,6 @@ pub const (
 	f_bin = 0x00000200  // work only on bytes, ignore utf-8
 
 	// behaviour modifier flags
-	//f_or  = 0x00010000  // the OR work with concatenation like PCRE
 	f_src = 0x00020000  // search mode enabled
 )
 
@@ -334,7 +333,11 @@ fn (mut re RE) reset(){
 		re.prog[i].rep       = 0 // clear repetition of the token
 		i++
 	}
-	re.groups = [-1].repeat(re.group_count*2)
+
+	// init groups array
+	if re.group_count > 0 {
+		re.groups = []int{len: re.group_count*2, init: -1}
+	}
 
 	// reset group_csave
 	re.group_csave = []int{}
@@ -723,7 +726,6 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 		// single value {4}
 		if status == .min_parse && ch == `}` {
 			q_max = q_min
-
 			status = .greedy
 			continue
 		}
@@ -731,7 +733,6 @@ fn (re RE) parse_quantifier(in_txt string, in_i int) (int, int, int, bool) {
 		// end without max
 		if status == .comma_checked && ch == `}` {
 			q_max = max_quantifier
-
 			status = .greedy
 			continue
 		}
@@ -900,8 +901,8 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 	// group management variables
 	mut group_count           := -1
-	mut group_stack           := [0 ].repeat(re.group_max_nested)
-	mut group_stack_txt_index := [-1].repeat(re.group_max_nested)
+	mut group_stack           := []int{len: re.group_max_nested, init: 0}
+	mut group_stack_txt_index := []int{len: re.group_max_nested, init: -1}
 	mut group_stack_index     := -1
 
 	re.query = in_txt      // save the query string
@@ -987,7 +988,6 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 			pc = pc + 1
 			continue
-
 		}
 
 		// ist_group_end
@@ -1566,8 +1566,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 	mut state_list := []StateObj{}
 
-	//mut group_stack      := [-1].repeat(re.group_max)
-	//mut group_data       := [-1].repeat(re.group_max)
 	mut group_stack := []int{len: re.group_max, init: -1}
 	mut group_data  := []int{len: re.group_max, init: -1}
 
@@ -1677,7 +1675,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		//******************************************
 		
 		if ist == ist_prog_end {
-			//println("HERE")
+			//println("HERE we end!")
 			break
 		}
 
@@ -1719,9 +1717,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 						// continuous save, save until we have space
 						re.group_continuous_save(g_index)
-						
  					}
-
 					state.group_index--
 				}
 			}
@@ -1968,7 +1964,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						//println("Check [ist_simple_char] [${re.prog[chk_pc].ch}]==[${ch_t:c}] => $next_check_flag")
 					}
 
-					// char class IST 
+					// char char_class 
 					else if re.prog[chk_pc].ist == ist_char_class_pos || re.prog[chk_pc].ist == ist_char_class_neg {
 						mut cc_neg := false
 						if re.prog[chk_pc].ist == ist_char_class_neg {
@@ -1993,7 +1989,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true {
-//				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max {
 					//println("save the state!!")
 					state_list << StateObj {
 						group_index: state.group_index
@@ -2382,8 +2377,8 @@ Public functions
 [deprecated]
 pub fn regex(in_query string) (RE,int,int){
 	mut re := RE{}
-	re.prog = [Token{}].repeat(in_query.len+1)
-	re.cc = [CharClass{}].repeat(in_query.len+1)
+	re.prog = []Token    {len: in_query.len+1}
+	re.cc   = []CharClass{len: in_query.len+1}
 	re.group_max_nested = 8
 
 	re_err,err_pos := re.compile(in_query)
@@ -2403,8 +2398,8 @@ pub fn new_regex_by_size(mult int) RE {
 }
 fn impl_new_regex_by_size(mult int) RE {
 	mut re := RE{}
-	re.prog = [Token{}].repeat(max_code_len*mult)       // max program length, default 256 istructions
-	re.cc = [CharClass{}].repeat(max_code_len*mult)     // char class list
+	re.prog = []Token    {len: max_code_len*mult}       // max program length, default 256 istructions
+	re.cc   = []CharClass{len: max_code_len*mult}       // char class list
 	re.group_max_nested = 3*mult                        // max nested group
 
 	return re
