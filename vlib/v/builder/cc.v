@@ -4,7 +4,6 @@
 module builder
 
 import os
-import time
 import v.cflag
 import v.pref
 import v.util
@@ -531,7 +530,8 @@ fn (mut v Builder) cc() {
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
-		ticks := time.ticks()
+		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
+		v.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
 			// C compilation failed.
 			// If we are on Windows, try msvc
@@ -547,8 +547,7 @@ fn (mut v Builder) cc() {
 			verror(err)
 			return
 		}
-		diff := time.ticks() - ticks
-		v.timing_message('C ${ccompiler:3}', diff)
+		v.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(res)
 		}
@@ -579,7 +578,7 @@ fn (mut v Builder) cc() {
 		}
 		// Print the C command
 		if v.pref.is_verbose {
-			println('$ccompiler took $diff ms')
+			println('$ccompiler')
 			println('=========\n')
 		}
 		break
