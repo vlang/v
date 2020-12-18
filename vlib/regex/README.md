@@ -382,7 +382,7 @@ fn main() {
 	// named capturing groups
 	println('named capturing groups:')
 	for g_name in re.group_map.keys() {
-		s, e := re.get_group_by_name(g_name)
+		s, e := re.get_group_bounds_by_name(g_name)
 		if s >= 0 && e > s {
 			println("'$g_name':[$s, $e] => '${text[s..e]}'")
 		} else {
