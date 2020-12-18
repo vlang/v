@@ -564,6 +564,9 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 							field.pos)
 						continue
 					}
+					if info_field.typ.is_ptr() && !info_field.attrs.contains('required') {
+						c.error('reference field `${type_sym.name}.$field.name` requires `[required]` attribute', field.pos)
+					} 
 				}
 				inited_fields << field_name
 				field_type_sym := c.table.get_type_symbol(info_field.typ)
