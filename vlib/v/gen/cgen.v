@@ -3895,7 +3895,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 					} else {
 						g.write('(*($elem_type_str*)map_get_1(')
 					}
-					if !node.left_type.is_ptr() && !node.left_type.has_flag(.shared_f) {
+					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
 					}
 					g.expr(node.left)
