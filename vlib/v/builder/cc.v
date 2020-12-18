@@ -126,11 +126,6 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 }
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
-	// TODO: move this check somewhere else, this is really not the best place for it :/
-	// strconv is already imported inside builtin, so skip generating its object file
-	if imp_path in ['vlib/strconv', 'vlib/strings'] {
-		return ''
-	}
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
 		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
 		// do run `v build-module x` always in main vfolder; x can be a relative path
@@ -375,6 +370,12 @@ fn (mut v Builder) cc() {
 			for ast_file in v.parsed_files {
 				for imp_stmt in ast_file.imports {
 					imp := imp_stmt.mod
+					// strconv is already imported inside builtin, so skip generating its object file
+					// TODO: incase we have other modules with the same name, make sure they are vlib
+					// is this even doign anything?
+					if imp in ['strconv', 'strings'] {
+						continue
+					}
 					if imp in built_modules {
 						continue
 					}
@@ -395,12 +396,12 @@ fn (mut v Builder) cc() {
 					// if os.is_dir(af_base_dir + os.path_separator + mod_path) {
 					// continue
 					// }
-					mod_path := imp.replace('.', os.path_separator)
-					imp_path := os.join_path('vlib', mod_path)
-					// imp_path := v.find_module_path(imp, ast_file.path) or {
-					//	verror('cannot import module "$imp" (not found)')
-					//	break
-					//}
+					// mod_path := imp.replace('.', os.path_separator)
+					// imp_path := os.join_path('vlib', mod_path)
+					imp_path := v.find_module_path(imp, ast_file.path) or {
+						verror('cannot import module "$imp" (not found)')
+						break
+					}
 					obj_path := v.rebuild_cached_module(vexe, imp_path)
 					libs += ' ' + obj_path
 					if obj_path.ends_with('vlib/ui.o') {

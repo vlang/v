@@ -941,6 +941,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				// println('!!! $node.name mod=$node.mod, built=$g.module_built')
 				// }
 				// TODO true for not just "builtin"
+				// TODO: clean this up
 				mod := if g.is_builtin_mod { 'builtin' } else { node.name.all_before_last('.') }
 				if (mod != g.module_built &&
 					node.mod != g.module_built.after('/')) ||
