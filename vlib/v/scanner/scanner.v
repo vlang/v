@@ -46,7 +46,7 @@ pub mut:
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
 	tidx                        int
 	eofs                        int
-	pref                        &pref.Preferences
+	pref                        &pref.Preferences [required]
 	vet_errors                  []string
 	errors                      []errors.Error
 	warnings                    []errors.Warning

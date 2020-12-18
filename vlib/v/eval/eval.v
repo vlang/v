@@ -14,7 +14,7 @@ pub struct Eval {
 mut:
 	checker checker.Checker
 	vars    map[string]Var
-	table   &table.Table
+	table   &table.Table [required]
 }
 
 pub struct Var {

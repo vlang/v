@@ -24,14 +24,14 @@ const (
 pub struct SortedMap {
 	value_bytes int
 mut:
-	root &mapnode
+	root &mapnode [required]
 pub mut:
 	len int
 }
 
 struct mapnode {
 mut:
-	children &voidptr
+	children &voidptr [required]
 	len      int
 	keys     [11]string  // TODO: Should use `max_len`
 	values   [11]voidptr // TODO: Should use `max_len`

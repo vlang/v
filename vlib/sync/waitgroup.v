@@ -14,8 +14,8 @@ module sync
 struct WaitGroup {
 mut:
 	task_count       int // current task count
-	task_count_mutex &Mutex = &Mutex(0) // This mutex protects the task_count count in add()
-	wait_blocker     &Waiter = &Waiter(0) // This blocks the wait() until released by add()
+	task_count_mutex &Mutex [required] = &Mutex(0) // This mutex protects the task_count count in add()
+	wait_blocker     &Waiter [required] = &Waiter(0) // This blocks the wait() until released by add()
 }
 
 pub fn new_waitgroup() &WaitGroup {

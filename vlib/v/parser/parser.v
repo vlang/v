@@ -21,7 +21,7 @@ mut:
 	file_name         string // "/home/user/hello.v"
 	file_name_dir     string // "/home/user"
 	file_backend_mode table.Language // .c for .c.v|.c.vv|.c.vsh files; .js for .js.v files, .v otherwise.
-	scanner           &scanner.Scanner
+	scanner           &scanner.Scanner [required]
 	comments_mode     scanner.CommentsMode = .skip_comments
 	// see comment in parse_file
 	tok               token.Token
@@ -29,7 +29,7 @@ mut:
 	peek_tok          token.Token
 	peek_tok2         token.Token
 	peek_tok3         token.Token
-	table             &table.Table
+	table             &table.Table [required]
 	language          table.Language
 	inside_if         bool
 	inside_if_expr    bool
@@ -42,8 +42,8 @@ mut:
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt
 	expr_mod          string // for constructing full type names in parse_type()
-	scope             &ast.Scope
-	global_scope      &ast.Scope
+	scope             &ast.Scope [required]
+	global_scope      &ast.Scope [required]
 	imports           map[string]string // alias => mod_name
 	ast_imports       []ast.Import // mod_names
 	used_imports      []string // alias
@@ -221,6 +221,7 @@ pub fn (mut p Parser) parse() ast.File {
 	p.scope.end_pos = p.tok.pos
 	//
 	return ast.File{
+		generic_fns : []&ast.FnDecl{}
 		path: p.file_name
 		mod: module_decl
 		imports: p.ast_imports

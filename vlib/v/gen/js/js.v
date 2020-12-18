@@ -32,13 +32,13 @@ mut:
 }
 
 struct JsGen {
-	table             &table.Table
-	pref              &pref.Preferences
+	table             &table.Table [required]
+	pref              &pref.Preferences [required]
 mut:
 	definitions       	strings.Builder
-	ns                	&Namespace
+	ns                	&Namespace [required]
 	namespaces        	map[string]&Namespace
-	doc               	&JsDoc
+	doc               	&JsDoc [required]
 	enable_doc        	bool
 	file              	ast.File
 	tmp_count         	int

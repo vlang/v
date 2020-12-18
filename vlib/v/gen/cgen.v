@@ -25,10 +25,10 @@ const (
 )
 
 struct Gen {
-	pref                             &pref.Preferences
+	pref                             &pref.Preferences [required]
 	module_built                     string
 mut:
-	table                            &table.Table
+	table                            &table.Table [required]
 	out                              strings.Builder
 	cheaders                         strings.Builder
 	includes                         strings.Builder // all C #includes required by V modules
@@ -52,7 +52,7 @@ mut:
 	enum_typedefs                    strings.Builder // enum types
 	sql_buf                          strings.Builder // for writing exprs to args via `sqlite3_bind_int()` etc
 	file                             ast.File
-	fn_decl                          &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
+	fn_decl                          &ast.FnDecl [required] // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name                   string
 	tmp_count                        int // counter for unique tmp vars (_tmp1, tmp2 etc)
 	tmp_count2                       int // a separate tmp var counter for autofree fn calls

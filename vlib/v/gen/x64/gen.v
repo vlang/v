@@ -14,9 +14,9 @@ import v.table
 
 pub struct Gen {
 	out_name             string
-	pref                 &pref.Preferences // Preferences shared from V struct
+	pref                 &pref.Preferences [required] // Preferences shared from V struct
 mut:
-	table                &table.Table
+	table                &table.Table [required]
 	buf                  []byte
 	sect_header_name_pos int
 	offset               i64

@@ -102,7 +102,7 @@ mut:
 	deletes     u32 // count
 	// array allocated (with `cap` bytes) on first deletion
 	// has non-zero element when key deleted
-	all_deleted &byte
+	all_deleted &byte [required]
 	data        byteptr // array of interleaved key data and value data
 }
 
@@ -218,7 +218,7 @@ mut:
 	// Pointer to meta-data:
 	// - Odd indices store kv_index.
 	// - Even indices store probe_count and hashbits.
-	metas           &u32
+	metas           &u32 [required]
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
 	extra_metas     u32

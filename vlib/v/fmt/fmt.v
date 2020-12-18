@@ -19,7 +19,7 @@ const (
 
 pub struct Fmt {
 pub mut:
-	table             &table.Table
+	table             &table.Table [required]
 	out_imports       strings.Builder
 	out               strings.Builder
 	out_save          strings.Builder

@@ -94,8 +94,8 @@ mut: // atomic
 	buf_elem_write_idx u32
 	buf_elem_read_idx  u32
 	// for select
-	write_subscriber   &Subscription
-	read_subscriber    &Subscription
+	write_subscriber   &Subscription [required]
+	read_subscriber    &Subscription [required]
 	write_sub_mtx      u16
 	read_sub_mtx       u16
 	closed             u16
