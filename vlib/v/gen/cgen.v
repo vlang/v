@@ -4549,14 +4549,14 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 				g.definitions.write(', ')
 			}
 		}
-		g.definitions.writeln(') = (*(voidptr*)map_get(a, k, &(voidptr[]){ 0 }));')
+		g.definitions.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
 	} else {
-		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
+		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){_SLIT("")})), v)) {') }
-		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
-		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
+		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
+		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
+		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
