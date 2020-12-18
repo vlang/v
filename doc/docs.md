@@ -2854,11 +2854,12 @@ For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
-Ordinary zero terminated C strings can be converted to V strings with `string(cstring)`
-or `string(cstring, len)`.
+Ordinary zero terminated C strings can be converted to V strings with
+`unsafe { charptr(cstring).vstring() }` or if you know their length already with
+`unsafe { charptr(cstring).vstring_with_len(len) }`.
 
-NB: Each `string(...)` function does NOT create a copy of the `cstring`,
-so you should NOT free it after calling `string()`.
+NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
+so you should NOT free it after calling the method `.vstring()`.
 If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 

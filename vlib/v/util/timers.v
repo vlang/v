@@ -7,7 +7,7 @@ import time
 
 [ref_only]
 pub struct Timers {
-mut:
+pub mut:
 	swatches     map[string]time.StopWatch
 	should_print bool
 }

@@ -267,6 +267,10 @@ fn (mut q Queue) run() {
 }
 */
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
+	mut timers := util.new_timers(false)
+	$if time_parsing ? {
+		timers.should_print = true
+	}
 	// println('nr_cpus= $nr_cpus')
 	$if macos {
 		/*
@@ -300,7 +304,9 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	mut files := []ast.File{}
 	for path in paths {
 		// println('parse_files $path')
+		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref, global_scope)
+		timers.show('parse_file $path')
 	}
 	return files
 }
