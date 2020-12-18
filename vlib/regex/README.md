@@ -226,7 +226,7 @@ fn convert_html_rgb(in_col string) u32 {
 }
 ```
 
-Another utility functions are `get_group_by_id` and `get_group_bounds_by_id` 
+Others utility functions are `get_group_by_id` and `get_group_bounds_by_id` 
 that get  directly the string of a group using its `id`:
 
 ```v ignore
@@ -392,7 +392,7 @@ fn convert_html_rgb_n(in_col string) u32 {
 }
 ```
 
-Another utility functions are `get_group_by_name` and `get_group_bounds_by_name`
+Others utility functions are `get_group_by_name` and `get_group_bounds_by_name`
 that get  directly the string of a group using its `name`:
 
 ```v ignore
