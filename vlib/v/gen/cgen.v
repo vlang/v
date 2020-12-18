@@ -5405,8 +5405,25 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	// User struct defined in another module.
 	// if typ.contains('__') {
 	if sym.kind == .struct_ {
-		return '{0}'
+		type_name := g.typ(typ)
+		mut def_val := '($type_name){'
+		info := sym.info as table.Struct
+		mut has_array_map := false
+		for field in info.fields {
+			field_sym := g.table.get_type_symbol(field.typ)
+			if field_sym.kind in [.array, .map] {
+				def_val += '.$field.name=${g.type_default(field.typ)},'
+				has_array_map = true
+			}
+		}
+		if has_array_map {
+			def_val += '}'
+		} else {
+			def_val += '0}'
+		}
+		return def_val
 	}
+
 	// if typ.ends_with('Fn') { // TODO
 	// return '0'
 	// }

@@ -440,3 +440,16 @@ fn test_map_clone() {
 	assert nums2['foo'] == 2
 	assert nums2['bar'] == 8
 }
+
+struct MValue {
+    name string
+    misc map[string]string
+}
+
+fn test_map_default_zero() {
+    m := map[string]MValue{}
+    v := m['unknown']
+    x := v.misc['x']
+    println(x)
+	assert x == ''
+}
