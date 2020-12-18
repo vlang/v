@@ -458,7 +458,7 @@ fn (m map) get(key string, zero voidptr) voidptr {
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
-fn (m map) get_1(key voidptr, zero voidptr) voidptr {
+fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {
@@ -482,7 +482,7 @@ fn (m map) exists(key string) bool {
 }
 
 // Checks whether a particular key exists in the map.
-fn (m map) exists_1(key voidptr) bool {
+fn (m &map) exists_1(key voidptr) bool {
 	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {

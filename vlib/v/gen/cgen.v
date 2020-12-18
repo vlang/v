@@ -1714,16 +1714,20 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 							left_type := assign_stmt.left_types[i]
 							left_sym := g.table.get_type_symbol(left_type)
 							g.write_fn_ptr_decl(left_sym.info as table.FnType, '_var_$left.pos.pos')
-							g.write(' = *(voidptr*)map_get(')
+							g.write(' = *(voidptr*)map_get_1(')
 						} else {
-							g.write('$styp _var_$left.pos.pos = *($styp*)map_get(')
+							g.write('$styp _var_$left.pos.pos = *($styp*)map_get_1(')
 						}
-						if left.left_type.is_ptr() {
-							g.write('*')
+						if !left.left_type.is_ptr() {
+							g.write('ADDR(map, ')
+							g.expr(left.left)
+							g.write(')')
+						} else {
+							g.expr(left.left)
 						}
-						g.expr(left.left)
-						g.write(', ')
+						g.write(', &(string[]){')
 						g.expr(left.index)
+						g.write('}')
 						if val_typ.kind == .function {
 							g.writeln(', &(voidptr[]){ $zero });')
 						} else {
@@ -3843,9 +3847,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				if g.is_assign_lhs && !g.is_array_set && !get_and_set_types {
 					if g.assign_op == .assign || info.value_type == table.string_type {
 						g.is_array_set = true
-						g.write('map_set(')
+						g.write('map_set_1(')
 					} else {
-						g.write('*(($elem_type_str*)map_get_and_set(')
+						g.write('*(($elem_type_str*)map_get_and_set_1(')
 					}
 					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
 						g.write('&')
@@ -3858,8 +3862,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', ')
+					g.write(', &(string[]){')
 					g.expr(node.index)
+					g.write('}')
 					if elem_typ.kind == .function {
 						g.write(', &(voidptr[]) { ')
 					} else {
@@ -3872,31 +3877,34 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				} else if (g.inside_map_postfix || g.inside_map_infix) ||
 					(g.is_assign_lhs && !g.is_array_set && get_and_set_types) {
 					zero := g.type_default(info.value_type)
-					g.write('(*($elem_type_str*)map_get_and_set(')
+					g.write('(*($elem_type_str*)map_get_and_set_1(')
 					if !left_is_ptr {
 						g.write('&')
 					}
 					g.expr(node.left)
-					g.write(', ')
+					g.write(', &(string[]){')
 					g.expr(node.index)
-					g.write(', &($elem_type_str[]){ $zero }))')
+					g.write('}, &($elem_type_str[]){ $zero }))')
 				} else {
 					zero := g.type_default(info.value_type)
 					if g.is_fn_index_call {
 						if elem_typ.info is table.FnType {
 							g.write('((')
 							g.write_fn_ptr_decl(&elem_typ.info, '')
-							g.write(')(*(voidptr*)map_get(')
+							g.write(')(*(voidptr*)map_get_1(')
 						}
 					} else if elem_typ.kind == .function {
-						g.write('(*(voidptr*)map_get(')
+						g.write('(*(voidptr*)map_get_1(')
 					} else {
-						g.write('(*($elem_type_str*)map_get(')
+						g.write('(*($elem_type_str*)map_get_1(')
 					}
-					if node.left_type.is_ptr() && !node.left_type.has_flag(.shared_f) {
-						g.write('*')
+					if !left_is_ptr || node.left_type.has_flag(.shared_f) {
+						g.write('ADDR(map, ')
+						g.expr(node.left)
+					} else {
+						g.write('(')
+						g.expr(node.left)
 					}
-					g.expr(node.left)
 					if node.left_type.has_flag(.shared_f) {
 						if left_is_ptr {
 							g.write('->val')
@@ -3904,8 +3912,9 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', ')
+					g.write('), &(string[]){')
 					g.expr(node.index)
+					g.write('}')
 					if g.is_fn_index_call {
 						g.write(', &(voidptr[]){ $zero })))')
 					} else if elem_typ.kind == .function {
@@ -4546,14 +4555,14 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 				g.definitions.write(', ')
 			}
 		}
-		g.definitions.writeln(') = (*(voidptr*)map_get(a, k, &(voidptr[]){ 0 }));')
+		g.definitions.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
 	} else {
-		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get(a, k, &($value_typ[]){ 0 }));')
+		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*($value_typ*)map_get(b, k, &($value_typ[]){_SLIT("")})), v)) {') }
-		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get(b, k, &(voidptr[]){ 0 })) != v) {') }
-		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get(b, k, &($value_typ[]){ 0 })) != v) {') }
+		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
+		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
+		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
 	}
 	g.definitions.writeln('\t\t\treturn false;')
 	g.definitions.writeln('\t\t}')
