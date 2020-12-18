@@ -105,12 +105,14 @@ pub fn new(size int) BitField {
 	return output
 }
 
-/*
-pub fn del(instance *BitField) {
-	free(instance.field)
-	free(instance)
+// frees the memory allocated for the bitfield instance
+[unsafe]
+pub fn (instance &BitField) free() {
+	unsafe {
+		instance.field.free()
+	}
 }
-*/
+
 // get_bit returns the value (0 or 1) of bit number 'bit_nr' (count from 0).
 pub fn (instance BitField) get_bit(bitnr int) int {
 	if bitnr >= instance.size {
@@ -449,6 +451,7 @@ pub fn (instance BitField) rotate(offset int) BitField {
 }
 
 // Internal functions
+// clear_tail clears the extra bits that are not part of the bitfield, but yet are allocated
 fn (mut instance BitField) clear_tail() {
 	tail := instance.size % slot_size
 	if tail != 0 {
@@ -460,14 +463,17 @@ fn (mut instance BitField) clear_tail() {
 	}
 }
 
+// bitmask is the bitmask needed to access a particular bit at offset bitnr
 fn bitmask(bitnr int) u32 {
 	return u32(u32(1) << u32(bitnr % slot_size))
 }
 
+// bitslot is the slot index (i.e. the integer) where a particular bit is located
 fn bitslot(size int) int {
 	return size / slot_size
 }
 
+// min returns the minimum of 2 integers; it is here to avoid importing math just for that
 fn min(input1 int, input2 int) int {
 	if input1 < input2 {
 		return input1
@@ -476,6 +482,7 @@ fn min(input1 int, input2 int) int {
 	}
 }
 
+// zbitnslots returns the minimum number of whole integers, needed to represent a bitfield of size length
 fn zbitnslots(length int) int {
 	return (length - 1) / slot_size + 1
 }
