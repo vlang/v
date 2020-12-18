@@ -242,10 +242,10 @@ fn (mut v Builder) cc() {
 		// TODO : try and remove the below workaround options when the corresponding
 		// warnings are totally fixed/removed
 		mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces',
-			'-Walloc-zero', '-Warith-conversion', '-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond',
-			'-Wformat=2', '-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar',
-			'-Wnested-externs', '-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default',
-			'-Wswitch-enum', '-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
+			'-Walloc-zero', '-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
+			'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
+			'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
+			'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
 		if v.pref.os == .ios {
 			args << '-framework Foundation'
 			args << '-framework UIKit'
