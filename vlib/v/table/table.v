@@ -120,7 +120,9 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		}
 	}
 	sig += ')'
-	if f.return_type != void_type {
+	if f.return_type == ovoid_type {
+		sig += ' ?'
+	} else if f.return_type != void_type {
 		return_type_sym := t.get_type_symbol(f.return_type)
 		sig += ' $return_type_sym.name'
 	}
