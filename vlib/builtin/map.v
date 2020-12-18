@@ -139,18 +139,10 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
-[inline]
-fn (d &DenseArray) clone_key(dest voidptr, pkey voidptr) {
-	unsafe {
-		s := (*&string(pkey)).clone()
-		C.memcpy(dest, &s, d.key_bytes)
-	}
-}
-
-// Push element to array and return index
+// Make space to append an element to array and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
-fn (mut d DenseArray) push(key voidptr, value voidptr) int {
+fn (mut d DenseArray) push() int {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
@@ -166,9 +158,6 @@ fn (mut d DenseArray) push(key voidptr, value voidptr) int {
 		if d.deletes != 0 {
 			d.all_deleted[push_index] = 0
 		}
-		ptr := d.key(push_index)
-		d.clone_key(ptr, key)
-		C.memcpy(byteptr(ptr) + d.key_bytes, value, d.value_bytes)
 	}
 	d.len++
 	return push_index
@@ -291,7 +280,24 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	return u32(index), u32(meta)
 }
 
+[inline]
+fn (m &map) clone_key(dest voidptr, pkey voidptr) {
+	if !m.has_string_keys {
+		unsafe {
+			C.memcpy(dest, pkey, m.key_bytes)
+		}
+		return
+	}
+	unsafe {
+		s := (*&string(pkey)).clone()
+		C.memcpy(dest, &s, m.key_bytes)
+	}
+}
+
 fn (m &map) free_key(pkey voidptr) {
+	if !m.has_string_keys {
+		return
+	}
 	(*&string(pkey)).free()
 }
 
@@ -379,7 +385,12 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.push(key, value)
+	kv_index := m.key_values.push()
+	unsafe {
+		pkey := m.key_values.key(kv_index)
+		m.clone_key(pkey, key)
+		C.memcpy(byteptr(pkey) + m.key_bytes, value, m.value_bytes)
+	}
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
 }
@@ -590,7 +601,7 @@ pub fn (m &map) keys() []string {
 		}
 		unsafe {
 			pkey := m.key_values.key(i)
-			m.key_values.clone_key(item, pkey)
+			m.clone_key(item, pkey)
 			item += m.key_bytes
 		}
 	}
@@ -605,7 +616,7 @@ pub fn (m &map) keys_1() array {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
 				pkey := m.key_values.key(i)
-				m.key_values.clone_key(item, pkey)
+				m.clone_key(item, pkey)
 				item += m.key_bytes
 			}
 		}
@@ -617,7 +628,7 @@ pub fn (m &map) keys_1() array {
 		}
 		unsafe {
 			pkey := m.key_values.key(i)
-			m.key_values.clone_key(item, pkey)
+			m.clone_key(item, pkey)
 			item += m.key_bytes
 		}
 	}
