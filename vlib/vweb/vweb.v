@@ -13,6 +13,7 @@ import time
 
 pub const (
 	methods_with_form       = [http.Method.post, .put, .patch]
+	methods_without_first   = ['ost', 'ut', 'et', 'atch', 'ptions', 'elete', 'ead'] // needed for method checking as method parameter
 	header_server           = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close           = '$header_server$header_connection_close\r\n'
@@ -399,6 +400,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			} else {
 				// Get methods
 				// Get is default
+				mut req_method_str := '$req.method'
 				if req.method == .post {
 					if 'post' in attrs {
 						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
@@ -426,10 +428,19 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				} else {
 					route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
 				}
+				mut req_method := []string{}
 				if route_words_a.len > 0 {
 					for route_words in route_words_a {
+						if route_words[0] in methods_without_first && route_words.len == 1 {
+							req_method << route_words[0]
+						}
 						if url_words.len == route_words.len ||
 							(url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
+							if req_method.len > 0 {
+								if req_method_str.to_lower()[1..] !in req_method {
+									continue
+								}
+							}
 							// match `/:user/:repo/tree` to `/vlang/v/tree`
 							mut matching := false
 							mut unknown := false
@@ -471,6 +482,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 								action = method.name
 								vars = variables
 							}
+							req_method = []string{}
 						}
 					}
 				}
