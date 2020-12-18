@@ -263,7 +263,8 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	cJSON_ArrayForEach(jsval, root)
 	{
 		$s
-		map_set(&res, tos2( (byteptr) jsval->string ) , &val );
+		string key = tos2( (byteptr) jsval->string );
+		map_set_1(&res, &key, &val);
 	}
 '
 }
@@ -286,7 +287,7 @@ fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
 	array_$styp $keys_tmp = map_keys(&val);
 	for (int i = 0; i < ${keys_tmp}.len; ++i) {
 		$key
-		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get(val, key, &($styp_v[]) { $zero } ) ) );
+		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get_1(&val, &key, &($styp_v[]) { $zero } ) ) );
 	}
 	array_free(&$keys_tmp);
 '
