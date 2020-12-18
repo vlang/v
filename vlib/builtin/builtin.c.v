@@ -1,13 +1,15 @@
 module builtin
 
-type FnExitCb = fn()
+type FnExitCb = fn ()
+
 fn C.atexit(f FnExitCb) int
 
+// exit terminates execution immediately and returns exit `code` to the shell.
 pub fn exit(code int) {
 	C.exit(code)
 }
 
-// panic_debug - private function that V uses for panics, -cg/-g is passed
+// panic_debug private function that V uses for panics, -cg/-g is passed
 // recent versions of tcc print nicer backtraces automatically
 // NB: the duplication here is because tcc_backtrace should be called directly
 // inside the panic functions.
@@ -97,17 +99,20 @@ pub fn eprint(s string) {
 	C.fflush(C.stderr)
 }
 
-// print prints a message to stdout
+// print prints a message to stdout. Unlike `println` stdout is not automatically flushed.
+// A call to `flush()` will flush the output buffer to stdout.
 pub fn print(s string) {
 	C.write(1, s.str, s.len)
 }
 
-//#include "@VROOT/vlib/darwin/darwin.m"
-//fn C.nsstring2(s string) voidptr
-//fn C.NSLog(x voidptr)
-//#include <asl.h>
-// fn C.asl_log(voidptr, voidptr, int, charptr)
-
+/*
+#include "@VROOT/vlib/darwin/darwin.m"
+fn C.nsstring2(s string) voidptr
+fn C.NSLog(x voidptr)
+#include <asl.h>
+fn C.asl_log(voidptr, voidptr, int, charptr)
+*/
+// println prints a message with a line end, to stdout. stdout is flushed.
 pub fn println(s string) {
 	$if windows {
 		print(s)
@@ -132,13 +137,16 @@ pub fn println(s string) {
 	}
 }
 
+// malloc dynamically allocates a `n` bytes block of memory on the heap.
+// malloc returns a `byteptr` pointing to the memory address of the allocated space.
+// unlike the `calloc` family of functions - malloc will not zero the memory block.
 [unsafe]
 pub fn malloc(n int) byteptr {
 	if n <= 0 {
 		panic('malloc(<=0)')
 	}
 	$if prealloc {
-		//println('p')
+		// println('p')
 		res := g_m2_ptr
 		unsafe {
 			g_m2_ptr += n
@@ -153,7 +161,7 @@ pub fn malloc(n int) byteptr {
 		return ptr
 	}
 	/*
-TODO
+	TODO
 #ifdef VPLAY
 	if n > 10000 {
 		panic('allocating more than 10 KB is not allowed in the playground')
@@ -164,18 +172,21 @@ TODO
 	println('\n\n\nmalloc($n) total=$total_m')
 	print_backtrace()
 #endif
-*/
+	*/
 }
 
-//#include <malloc/malloc.h>
-//fn malloc_size(b byteptr) int
-
+/*
+#include <malloc/malloc.h>
+fn malloc_size(b byteptr) int
+*/
+// v_realloc resizes the memory block `b` with `n` bytes.
+// The `b byteptr` must be a pointer to an existing memory block previously allocated with `malloc`, `v_calloc` or `vcalloc`.
 [unsafe]
 pub fn v_realloc(b byteptr, n int) byteptr {
 	$if prealloc {
 		unsafe {
 			new_ptr := malloc(n)
-			size := 0 //malloc_size(b)
+			size := 0 // malloc_size(b)
 			C.memcpy(new_ptr, b, size)
 			return new_ptr
 		}
@@ -188,11 +199,16 @@ pub fn v_realloc(b byteptr, n int) byteptr {
 	}
 }
 
+// v_calloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
+// v_calloc returns a `byteptr` pointing to the memory address of the allocated space.
 [unsafe]
 pub fn v_calloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
+// vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
+// vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
+// Unlike `v_calloc` vcalloc checks for negative values given in `n`.
 [unsafe]
 pub fn vcalloc(n int) byteptr {
 	if n < 0 {
@@ -203,6 +219,7 @@ pub fn vcalloc(n int) byteptr {
 	return C.calloc(1, n)
 }
 
+// free allows for manually freeing memory allocated at the address `ptr`.
 [unsafe]
 pub fn free(ptr voidptr) {
 	$if prealloc {
@@ -211,6 +228,9 @@ pub fn free(ptr voidptr) {
 	C.free(ptr)
 }
 
+// memdup dynamically allocates a `sz` bytes block of memory on the heap
+// memdup then copies the contents of `src` into the allocated space and
+// returns a pointer to the newly allocated space.
 pub fn memdup(src voidptr, sz int) voidptr {
 	if sz == 0 {
 		return vcalloc(1)
@@ -221,6 +241,7 @@ pub fn memdup(src voidptr, sz int) voidptr {
 	}
 }
 
+// v_ptr_free is used internally to manually free up memory allocated at the address `ptr`.
 fn v_ptr_free(ptr voidptr) {
 	$if prealloc {
 		return
@@ -228,6 +249,7 @@ fn v_ptr_free(ptr voidptr) {
 	C.free(ptr)
 }
 
+// is_atty returns 1 if the `fd` file descriptor is open and refers to a terminal
 pub fn is_atty(fd int) int {
 	$if windows {
 		mut mode := u32(0)
