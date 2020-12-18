@@ -1,4 +1,4 @@
-# V RegEx (Regular expression) 0.9h
+# V RegEx (Regular expression) 1.0 alpha
 
 [TOC]
 
@@ -226,7 +226,18 @@ fn convert_html_rgb(in_col string) u32 {
 }
 ```
 
+Another utility functions are `get_group_by_id` and `get_group_bounds_by_id` 
+that get  directly the string of a group using its `id`:
 
+```v ignore
+txt := "my used string...."
+for g_index := 0; g_index < re.group_count ; g_index++ {
+	println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+    	bounds: ${re.get_group_bounds_by_id(g_index)}") 
+}
+```
+
+more helper functions are listed in the **Groups query functions** section.
 
 ### Groups Continuous saving
 
@@ -371,7 +382,7 @@ fn main() {
 	// named capturing groups
 	println('named capturing groups:')
 	for g_name in re.group_map.keys() {
-		s, e := re.get_group(g_name)
+		s, e := re.get_group_by_name(g_name)
 		if s >= 0 && e > s {
 			println("'$g_name':[$s, $e] => '${text[s..e]}'")
 		} else {
@@ -405,7 +416,7 @@ named capturing groups:
 ```
 
 In order to simplify the use of the named groups it possible to use names map in the `re`
-struct using the function `re.get_group`.
+struct using the function `re.get_group_by_name`.
 
 Here a more complex example of use:
 
@@ -420,11 +431,11 @@ fn convert_html_rgb_n(in_col string) u32 {
 	println('start: $start, end: $end')
 	mut res := u32(0)
 	if start >= 0 {
-		red_s, red_e := re.get_group('red')
+		red_s, red_e := re.get_group_by_name('red')
 		r := ('0x' + in_col[red_s..red_e]).int() << col_mul
-		green_s, green_e := re.get_group('green')
+		green_s, green_e := re.get_group_by_name('green')
 		g := ('0x' + in_col[green_s..green_e]).int() << col_mul
-		blue_s, blue_e := re.get_group('blue')
+		blue_s, blue_e := re.get_group_by_name('blue')
 		b := ('0x' + in_col[blue_s..blue_e]).int() << col_mul
 		println('r: $r g: $g b: $b')
 		res = u32(r) << 16 | u32(g) << 8 | u32(b)
@@ -433,7 +444,45 @@ fn convert_html_rgb_n(in_col string) u32 {
 }
 ```
 
+Another utility functions are `get_group_by_name` and `get_group_bounds_by_name`
+that get  directly the string of a group using its `name`:
 
+```v ignore
+txt := "my used string...."
+for name in re.group_map.keys() {
+	println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+    bounds: ${re.get_group_bounds_by_name(name)}")
+}
+```
+
+
+
+### Groups query functions
+
+These functions are helpers to query the captured groups
+
+```v ignore
+// get_group_bounds_by_name get a group boundaries by its name
+pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) 
+
+// get_group_by_name get a group boundaries by its name
+pub fn (re RE) get_group_by_name(group_name string) string
+
+// get_group_by_id get a group boundaries by its id
+pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int)
+
+// get_group_by_id get a group string by its id
+pub fn (re RE) get_group_by_id(in_txt string, group_id int) string
+
+struct Re_group {
+pub:
+	start int = -1
+	end   int = -1
+}
+
+// get_group_list return a list of Re_group for the found groups
+pub fn (re RE) get_group_list() []Re_group
+```
 
 ## Flags
 

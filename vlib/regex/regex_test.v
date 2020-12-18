@@ -21,6 +21,10 @@ match_test_suite = [
 	TestItem{"b",r"b|a",0,1},
 	TestItem{"c",r"b|a",-1,0},
 
+	// test base
+	TestItem{"[ciao]",r"(.)ciao(.)",0,6},
+	TestItem{"[ciao] da me",r"(.)ciao(.)",0,6},
+
 	// positive
 	TestItem{"this is a good.",r"this",0,4},
 	TestItem{"this is a good.",r"good",10,14},
@@ -193,7 +197,8 @@ cgroups_test_suite = [
 	TestItemCGroup{
 		"http://www.ciao.mondo/hello/pippo12_/pera.html",
 		r"(?P<format>https?)|(?P<format>ftps?)://(?P<token>[\w_]+.)+",0,46,
-		[8, 0, 0, 4, 1, 7, 12, 1, 11, 17, 1, 16, 23, 1, 22, 29, 1, 28, 38, 1, 37, 43, 1, 42, 46],
+		[8, 0, 0, 4, 1, 7, 11, 1, 11, 16, 1, 16, 22, 1, 22, 28, 1, 28, 37, 1, 37, 42, 1, 42, 46]
+		//[8, 0, 0, 4, 1, 7, 10, 1, 11, 15, 1, 16, 21, 1, 22, 27, 1, 28, 36, 1, 37, 41, 1, 42, 46],		
 		{'format':int(0),'token':1}
 	},
 	TestItemCGroup{
