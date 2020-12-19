@@ -2001,6 +2001,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						last_dot_pc: state.pc
 					}
 					m_state = .ist_quant_n
+					//println("dot_char stack len: $state_list.len")
 					continue
 				}
 
@@ -2581,7 +2582,7 @@ pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
 pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int) {
 	if group_id < (re.groups.len >> 1) {
 		index := group_id << 1
-		return re.groups[index], re.groups[index]
+		return re.groups[index], re.groups[index + 1]
 	}
 	return -1, -1
 }
