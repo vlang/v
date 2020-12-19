@@ -85,6 +85,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut end_line := -1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
@@ -252,6 +253,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			p.attrs = []
 		}
 		p.top_level_statement_end()
+		end_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
 	if language == .c {
@@ -290,7 +292,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: start_pos.extend(name_pos)
+		pos: start_pos.extend2(name_pos, end_line)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
