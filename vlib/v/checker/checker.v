@@ -66,7 +66,7 @@ mut:
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
-	timers                           &util.Timers
+	timers                           &util.Timers = util.new_timers(false)
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {

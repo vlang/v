@@ -129,7 +129,7 @@ mut:
 	aggregate_type_idx               int
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
-	timers                           &util.Timers
+	timers                           &util.Timers = util.new_timers(false)
 }
 
 const (
@@ -182,12 +182,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		module_built: module_built
 		timers: util.new_timers(timers_should_print)
 	}
+	g.timers.start('cgen init')
 	for mod in g.table.modules {
 		g.inits[mod] = strings.new_builder(100)
 		g.cleanups[mod] = strings.new_builder(100)
 	}
-	g.timers.start('cgen common')
 	g.init()
+	g.timers.show('cgen init')
 	//
 	mut tests_inited := false
 	mut autofree_used := false
@@ -220,6 +221,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		g.stmts(file.stmts)
 		g.timers.show('cgen_file $file.path')
 	}
+	g.timers.start('cgen common')
 	if autofree_used {
 		g.autofree = true // so that void _vcleanup is generated
 	}

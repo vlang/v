@@ -37,8 +37,8 @@ pub fn (mut t Timers) measure(name string) i64 {
 
 pub fn (mut t Timers) message(name string) string {
 	ms := f64(t.measure(name)) / 1000.0
-	value := bold('${ms:.3f}')
-	formatted_message := '$name: $value ms'
+	value := bold('${ms:-8.3f}')
+	formatted_message := '$value ms $name'
 	return formatted_message
 }
 
