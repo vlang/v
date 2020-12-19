@@ -382,7 +382,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_mut: rec_mut
 		language: language
 		no_body: no_body
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend(end_pos, end_pos.line_nr)
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts

@@ -458,12 +458,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		)
 	}
 	p.top_level_statement_end()
+	last_line := p.tok.line_nr
 	p.check(.rcbr)
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
 		is_pub: is_pub
-		pos: start_pos
+		pos: start_pos.extend_with_last_line(token.Position{}, last_line)
 		pre_comments: pre_comments
 	}
 }
