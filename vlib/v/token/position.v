@@ -7,8 +7,9 @@ pub struct Position {
 pub:
 	len     int // length of the literal in the source
 	line_nr int // the line number in the source where the token occured
-	last_line int // the line number where the ast object ends
 	pos     int // the position of the token in scanner text
+pub mut:
+	last_line int // the line number where the ast object ends
 }
 
 pub fn (pos Position) str() string {

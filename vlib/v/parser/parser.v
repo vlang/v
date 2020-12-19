@@ -712,7 +712,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
-				pos: spos.extend(p.tok.position(), p.tok.line_nr)
+				pos: spos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
 			}
 		}
 		.key_go {
