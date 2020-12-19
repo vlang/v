@@ -600,8 +600,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			stmts := p.parse_block()
+			pos.last_line = p.prev_tok.line_nr
 			return ast.Block{
 				stmts: stmts
 				pos: pos
@@ -2232,7 +2233,7 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
@@ -2245,6 +2246,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
+		pos.last_line = p.tok.line_nr
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2281,6 +2283,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)
 	}
+	pos.last_line = p.tok.line_nr
 	p.next()
 	return ast.Block{
 		stmts: stmts
