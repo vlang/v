@@ -37,6 +37,17 @@ const (
 )
 
 fn main() {
+	mut timers_should_print := false
+	$if time_v ? {
+		timers_should_print = true
+	}
+	mut timers := util.new_timers(timers_should_print)
+	timers.start('v total')
+	defer {
+		timers.show('v total')
+	}
+	timers.start('v start')
+	timers.show('v start')
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {

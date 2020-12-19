@@ -26,7 +26,7 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
-	timers              &util.Timers
+	timers              &util.Timers = util.new_timers(false)
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
