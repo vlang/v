@@ -26,6 +26,7 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
+	timers              &util.Timers
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -61,6 +62,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			100
 		}
 		cached_msvc: msvc
+		timers: util.new_timers(pref.show_timings || pref.is_verbose)
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
@@ -356,12 +358,10 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	value := util.bold('$ms')
-	formatted_message := '$msg: $value ms'
-	if b.pref.show_timings {
-		println(formatted_message)
-	} else {
-		b.info(formatted_message)
-	}
+pub fn (mut b Builder) timing_start(label string) {
+	b.timers.start(label)
+}
+
+pub fn (mut b Builder) timing_measure(label string) {
+	b.timers.show(label)
 }

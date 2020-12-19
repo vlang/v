@@ -1,7 +1,6 @@
 module builder
 
 import os
-import time
 import v.pref
 import v.cflag
 
@@ -296,14 +295,13 @@ pub fn (mut v Builder) cc_msvc() {
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
-	ticks := time.ticks()
+	v.timing_start('C msvc')
 	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
 	}
-	diff := time.ticks() - ticks
-	v.timing_message('C msvc', diff)
+	v.timing_measure('C msvc')
 	if v.pref.show_c_output {
 		v.show_c_compiler_output(res)
 	} else {

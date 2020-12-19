@@ -7,7 +7,7 @@ pub fn (mut re RE) compile_opt(pattern string) ? {
 	
 	if re_err != compile_ok {
 		mut err_msg := strings.new_builder(300)
-		err_msg.write("query: $pattern\n")
+		err_msg.write("\nquery: $pattern\n")
 		line := "-".repeat(err_pos)
 		err_msg.write("err  : ${line}^\n")
 		err_str := re.get_parse_error_string(re_err)

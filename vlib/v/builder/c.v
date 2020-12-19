@@ -1,34 +1,29 @@
 module builder
 
-import time
 import os
 import v.parser
 import v.pref
 import v.gen
 
 pub fn (mut b Builder) gen_c(v_files []string) string {
-	t0 := time.ticks()
+	b.timing_start('PARSE')
 	b.parsed_files = parser.parse_files(v_files, b.table, b.pref, b.global_scope)
 	b.parse_imports()
-	t1 := time.ticks()
-	parse_time := t1 - t0
-	b.timing_message('PARSE', parse_time)
+	b.timing_measure('PARSE')
 	if b.pref.only_check_syntax {
 		return ''
 	}
 	//
+	b.timing_start('CHECK')
 	b.generic_struct_insts_to_concrete()
 	b.checker.check_files(b.parsed_files)
-	t2 := time.ticks()
-	check_time := t2 - t1
-	b.timing_message('CHECK', check_time)
+	b.timing_measure('CHECK')
+	//
 	b.print_warnings_and_errors()
-	// println('starting cgen...')
 	// TODO: move gen.cgen() to c.gen()
+	b.timing_start('C GEN')
 	res := gen.cgen(b.parsed_files, b.table, b.pref)
-	t3 := time.ticks()
-	gen_time := t3 - t2
-	b.timing_message('C GEN', gen_time)
+	b.timing_measure('C GEN')
 	// println('cgen done')
 	// println(res)
 	return res

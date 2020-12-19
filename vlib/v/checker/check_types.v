@@ -74,10 +74,12 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		(exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
 		return true
 	}
-	// TODO
-	// if got_type_sym.kind == .array && exp_type_sym.kind == .array {
-	// return true
-	// }
+	// array fn
+	if got_type_sym.kind == .array && exp_type_sym.kind == .array {
+		if c.table.type_to_str(got) == c.table.type_to_str(expected) {
+			return true
+		}
+	}
 	if got_type_sym.kind == .array_fixed && exp_type_sym.kind == .byteptr {
 		info := got_type_sym.info as table.ArrayFixed
 		if info.elem_type.idx() == table.byte_type_idx {

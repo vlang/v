@@ -2720,7 +2720,7 @@ fn C.sqlite3_close(&C.sqlite3) int
 
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
-// ... you can also just define the type of parameter & leave out the C. prefix
+// ... you can also just define the type of parameter and leave out the C. prefix
 fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
 
 fn C.sqlite3_step(&sqlite3_stmt)
@@ -2732,8 +2732,10 @@ fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg vo
 fn C.sqlite3_free(voidptr)
 
 fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
-	for i in 0 .. howmany {
-		print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+	unsafe {
+		for i in 0 .. howmany {
+			print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+		}
 	}
 	println('|')
 	return 0
@@ -2744,9 +2746,10 @@ fn main() {
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open('users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
-	// you can also use `.str byteptr` field to convert a V string to a C char pointer
 	query := 'select count(*) from users'
 	stmt := &C.sqlite3_stmt(0)
+	// NB: you can also use the `.str` field of a V string,
+	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, query.str, -1, &stmt, 0)
 	C.sqlite3_step(stmt)
 	nr_users := C.sqlite3_column_int(stmt, 0)
@@ -2854,11 +2857,12 @@ For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
-Ordinary zero terminated C strings can be converted to V strings with `string(cstring)`
-or `string(cstring, len)`.
+Ordinary zero terminated C strings can be converted to V strings with
+`unsafe { charptr(cstring).vstring() }` or if you know their length already with
+`unsafe { charptr(cstring).vstring_with_len(len) }`.
 
-NB: Each `string(...)` function does NOT create a copy of the `cstring`,
-so you should NOT free it after calling `string()`.
+NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
+so you should NOT free it after calling the method `.vstring()`.
 If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 

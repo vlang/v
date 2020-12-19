@@ -4,7 +4,6 @@
 module builder
 
 import os
-import time
 import v.cflag
 import v.pref
 import v.util
@@ -242,10 +241,11 @@ fn (mut v Builder) cc() {
 		// '-Werror',
 		// TODO : try and remove the below workaround options when the corresponding
 		// warnings are totally fixed/removed
-		mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused-variable', '-Wno-unused-parameter',
-			'-Wno-unused-result', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-unused-label', '-Wshadow',
-			'-Wno-unused',
-		]
+		mut args := [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces',
+			'-Walloc-zero', '-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
+			'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
+			'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
+			'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
 		if v.pref.os == .ios {
 			args << '-framework Foundation'
 			args << '-framework UIKit'
@@ -531,7 +531,8 @@ fn (mut v Builder) cc() {
 		tried_compilation_commands << cmd
 		v.show_cc(cmd, response_file, response_file_content)
 		// Run
-		ticks := time.ticks()
+		ccompiler_label := 'C ${os.file_name(ccompiler):3}'
+		v.timing_start(ccompiler_label)
 		res := os.exec(cmd) or {
 			// C compilation failed.
 			// If we are on Windows, try msvc
@@ -547,8 +548,7 @@ fn (mut v Builder) cc() {
 			verror(err)
 			return
 		}
-		diff := time.ticks() - ticks
-		v.timing_message('C ${ccompiler:3}', diff)
+		v.timing_measure(ccompiler_label)
 		if v.pref.show_c_output {
 			v.show_c_compiler_output(res)
 		}
@@ -579,7 +579,7 @@ fn (mut v Builder) cc() {
 		}
 		// Print the C command
 		if v.pref.is_verbose {
-			println('$ccompiler took $diff ms')
+			println('$ccompiler')
 			println('=========\n')
 		}
 		break

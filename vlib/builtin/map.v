@@ -266,6 +266,10 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	return u32(index), u32(meta)
 }
 
+fn (m &map) free_key(pkey voidptr) {
+	(*&string(pkey)).free()
+}
+
 [inline]
 fn (m &map) meta_less(_index u32, _metas u32) (u32, u32) {
 	mut index := _index
@@ -321,21 +325,26 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 	}
 }
 
+// bootstrap
+fn (mut m map) set(key string, value voidptr) {
+	m.set_1(&key, value)
+}
+
 // Insert new element to the map. The element is inserted if its key is
 // not equivalent to the key of any other element already in the container.
 // If the key already exists, its value is changed to the value of the new element.
-fn (mut m map) set(key string, value voidptr) {
+fn (mut m map) set_1(key voidptr, value voidptr) {
 	load_factor := f32(m.len << 1) / f32(m.cap)
 	if load_factor > max_load_factor {
 		m.expand()
 	}
-	mut index, mut meta := m.key_to_index(&key)
+	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// While we might have a match
 	for meta == unsafe {m.metas[index]} {
 		kv_index := int(unsafe {m.metas[index + 1]})
 		pkey := unsafe {m.key_values.key(kv_index)}
-		if m.keys_eq(&key, pkey) {
+		if m.keys_eq(key, pkey) {
 			unsafe {
 				pval := byteptr(pkey) + m.key_bytes
 				C.memcpy(pval, value, m.value_bytes)
@@ -345,7 +354,7 @@ fn (mut m map) set(key string, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.push(&key, value)
+	kv_index := m.key_values.push(key, value)
 	m.meta_greater(index, meta, u32(kv_index))
 	m.len++
 }
@@ -411,17 +420,21 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	unsafe {free(old_metas)}
 }
 
+fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
+	return m.get_and_set_1(&key, zero)
+}
+
 // This method is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
-fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
+fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 	for {
-		mut index, mut meta := m.key_to_index(&key)
+		mut index, mut meta := m.key_to_index(key)
 		for {
 			if meta == unsafe {m.metas[index]} {
 				kv_index := int(unsafe {m.metas[index + 1]})
 				pkey := unsafe {m.key_values.key(kv_index)}
-				if m.keys_eq(&key, pkey) {
+				if m.keys_eq(key, pkey) {
 					return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 				}
 			}
@@ -432,22 +445,26 @@ fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
 			}
 		}
 		// Key not found, insert key with zero-value
-		m.set(key, zero)
+		m.set_1(key, zero)
 	}
 	assert false
 	return voidptr(0)
 }
 
+fn (m map) get(key string, zero voidptr) voidptr {
+	return m.get_1(&key, zero)
+}
+
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
-fn (m map) get(key string, zero voidptr) voidptr {
-	mut index, mut meta := m.key_to_index(&key)
+fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
+	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
 			pkey := unsafe {m.key_values.key(kv_index)}
-			if m.keys_eq(&key, pkey) {
+			if m.keys_eq(key, pkey) {
 				return unsafe {byteptr(pkey) + m.key_values.key_bytes}
 			}
 		}
@@ -460,14 +477,18 @@ fn (m map) get(key string, zero voidptr) voidptr {
 	return zero
 }
 
-// Checks whether a particular key exists in the map.
 fn (m map) exists(key string) bool {
-	mut index, mut meta := m.key_to_index(&key)
+	return m.exists_1(&key)
+}
+
+// Checks whether a particular key exists in the map.
+fn (m &map) exists_1(key voidptr) bool {
+	mut index, mut meta := m.key_to_index(key)
 	for {
 		if meta == unsafe {m.metas[index]} {
 			kv_index := int(unsafe {m.metas[index + 1]})
 			pkey := unsafe {m.key_values.key(kv_index)}
-			if m.keys_eq(&key, pkey) {
+			if m.keys_eq(key, pkey) {
 				return true
 			}
 		}
@@ -480,15 +501,19 @@ fn (m map) exists(key string) bool {
 	return false
 }
 
-// Removes the mapping of a particular key from the map.
 pub fn (mut m map) delete(key string) {
-	mut index, mut meta := m.key_to_index(&key)
+	m.delete_1(&key)
+}
+
+// Removes the mapping of a particular key from the map.
+pub fn (mut m map) delete_1(key voidptr) {
+	mut index, mut meta := m.key_to_index(key)
 	index, meta = m.meta_less(index, meta)
 	// Perform backwards shifting
 	for meta == unsafe {m.metas[index]} {
 		kv_index := int(unsafe {m.metas[index + 1]})
-		pkey := unsafe {&string(m.key_values.key(kv_index))}
-		if m.keys_eq(&key, pkey) {
+		pkey := unsafe {m.key_values.key(kv_index)}
+		if m.keys_eq(key, pkey) {
 			for (unsafe {m.metas[index + 2]} >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc
@@ -504,9 +529,9 @@ pub fn (mut m map) delete(key string) {
 			unsafe {
 				m.key_values.all_deleted[kv_index] = 1
 				m.metas[index] = 0
+				m.free_key(pkey)
 				// Mark key as deleted
-				(*pkey).free()
-				C.memset(pkey, 0, sizeof(string))
+				C.memset(pkey, 0, m.key_bytes)
 			}
 			if m.key_values.len <= 32 {
 				return
@@ -523,9 +548,26 @@ pub fn (mut m map) delete(key string) {
 	}
 }
 
-// Returns all keys in the map.
+// bootstrap
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
+	mut item := unsafe {byteptr(keys.data)}
+	for i := 0; i < m.key_values.len; i++ {
+		if !m.key_values.has_index(i) {
+			continue
+		}
+		unsafe {
+			pkey := m.key_values.key(i)
+			m.key_values.clone_key(item, pkey)
+			item += m.key_bytes
+		}
+	}
+	return keys
+}
+
+// Returns all keys in the map.
+pub fn (m &map) keys_1() array {
+	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe {byteptr(keys.data)}
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
@@ -596,8 +638,8 @@ pub fn (m &map) free() {
 	if m.key_values.deletes == 0 {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
-				pkey := &string(m.key_values.key(i))
-				(*pkey).free()
+				pkey := m.key_values.key(i)
+				m.free_key(pkey)
 			}
 		}
 	} else {
@@ -606,8 +648,8 @@ pub fn (m &map) free() {
 				continue
 			}
 			unsafe {
-				pkey := &string(m.key_values.key(i))
-				(*pkey).free()
+				pkey := m.key_values.key(i)
+				m.free_key(pkey)
 			}
 		}
 		unsafe {free(m.key_values.all_deleted)}

@@ -335,6 +335,7 @@ pub const (
 
 pub const (
 	void_type    = new_type(void_type_idx)
+	ovoid_type   = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
 	voidptr_type = new_type(voidptr_type_idx)
 	byteptr_type = new_type(byteptr_type_idx)
 	charptr_type = new_type(charptr_type_idx)
