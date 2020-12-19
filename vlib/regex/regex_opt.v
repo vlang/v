@@ -17,18 +17,29 @@ pub fn (mut re RE) compile_opt(pattern string) ? {
 }
 
 // new_regex create a RE of small size, usually sufficient for ordinary use
+[deprecated]
 pub fn new() RE {
 	return impl_new_regex_by_size(1)
 }
 
 // new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
+[deprecated]
 pub fn new_by_size(mult int) RE {
 	return impl_new_regex_by_size(mult)
 }
 
 // regex_opt create new RE object from RE pattern string
 pub fn regex_opt(pattern string) ?RE {
-	mut re := new()
-	re.compile_opt(pattern)?
-	return re
+	// init regex
+    mut re := regex.RE{}
+    re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern
+    re.cc   = []CharClass{len: pattern.len}     // can not be more char class the the length of the pattern
+    re.group_csave_flag = false                 // enable continuos group saving
+    re.group_max_nested = 128                   // set max 128 group nested
+    re.group_max        = pattern.len >> 1      // we can't have more groups than the half of the pattern legth
+
+    // compile the pattern
+    re.compile_opt(pattern)?
+
+    return re
 }

@@ -471,10 +471,23 @@ pub fn regex_opt(in_query string) ?RE
 // new_regex create a REgex of small size, usually sufficient for ordinary use
 pub fn new() RE
 
-// new_regex_by_size create a REgex of large size, mult specify the scale factor of the memory that will be allocated
-pub fn new_by_size(mult int) RE
 ```
-After a base initializer is used, the regex expression must be compiled with:
+#### **Custom initialization**
+For some particular need it is possible initialize a fully customized regex:
+```v ignore
+// init custom regex
+mut re := regex.RE{}
+re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern
+re.cc   = []CharClass{len: pattern.len}     // can not be more char class the the length of the pattern
+
+re.group_csave_flag = false          // true enable continuos group saving if needed
+re.group_max_nested = 128            // set max 128 group nested possible
+re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern legth
+```
+### Compiling
+
+After an initializer is used, the regex expression must be compiled with:
+
 ```v ignore
 // compile compiles the REgex returning an error if the compilation fails
 pub fn (re mut RE) compile_opt(in_txt string) ?
@@ -500,11 +513,38 @@ pub fn (re mut RE) replace(in_txt string, repl string) string
 
 ## Find and Replace
 
+There are the following find  and replace functions:
+
+#### Find functions
+
+```v ignore
+// find try to find the first match in the input string, return start and end index if found else start is -1
+pub fn (re mut RE) find(in_txt string) (int,int)
+
+// find_all find all the "non overlapping" occurrences of the matching pattern
+// return a list of start end indexes like: [3,4,6,8] 
+// the matches are [3,4] and [6,8]
+pub fn (re mut RE) find_all(in_txt string) []int
+```
+
+#### Replace functions
+
+```v ignore
+// replace return a string where the matches are replaced with the replace string, only non overlapped matches are used
+pub fn (re mut RE) replace(in_txt string, repl string) string
+```
+
+#### Custom replace function
+
 For complex find and replace operations it is available the function `replace_by_fn` .
 The`replace_by_fn` use a custom replace function making possible customizations. 
 **The custom function is called for every non overlapped find.**
 The custom function must be of the type:
+
 ```v ignore
+// re RE struct
+// in_txt all the text passed to the regex expression
+// the match is: in_txt[start..end]
 fn (re RE, in_txt string, start int, end int) string
 ```
 
@@ -671,7 +711,7 @@ re.log_func = custom_print
 
 ## Example code
 
-Here there is a simple code to perform some basically match of strings
+Here an example that perform some basically match of strings
 
 ```v ignore
 import regex
@@ -698,5 +738,63 @@ fn main(){
     }
 }
 ```
+Here an example of total customization of the regex environment creation:
+```v ignore
+import regex
+
+fn main(){
+    txt   := "today John is gone to his house with Jack and Marie."
+    query := r"(?:(?P<word>\A\w+)|(?:\a\w+)[\s.]?)+"
+
+    // init regex
+    mut re := regex.RE{}
+    re.prog = []regex.Token    {len: query.len + 1} // max program length, can not be longer then the query
+    re.cc   = []regex.CharClass{len: query.len}     // can not be more char class the the length of the query
+    re.prog = []regex.Token    {len: query.len+1}
+    re.group_csave_flag = true         // enable continuos group saving
+    re.group_max_nested = 128          // set max 128 group nested
+    re.group_max        = query.len>>1 // we can't have more groups than the half of the query legth 
+    
+    // compile the query
+    re.compile_opt(query) or { panic(err) }
+
+    start, end := re.match_string(txt)
+    if start >= 0 {
+        println("Match ($start, $end) => [${txt[start..end]}]")
+    } else {
+        println("No Match")
+    }
+
+    // show results for continuos group saving
+    if re.group_csave_flag == true && start >= 0 && re.group_csave.len > 0{
+        println("cg: $re.group_csave")
+        mut cs_i := 1
+        for cs_i < re.group_csave[0]*3 {
+            g_id := re.group_csave[cs_i]
+            st   := re.group_csave[cs_i+1]
+            en   := re.group_csave[cs_i+2]
+            println("cg[$g_id] $st $en:[${txt[st..en]}]")
+            cs_i += 3
+        }
+    }
+
+    // show results for captured groups
+    if start >= 0 {
+        println("Match ($start, $end) => [${txt[start..end]}]")
+        for g_index := 0; g_index < re.group_count ; g_index++ {
+            println("#${g_index} [${re.get_group_by_id(txt, g_index)}] \
+            bounds: ${re.get_group_bounds_by_id(g_index)}")  
+        }
+        for name in re.group_map.keys() {
+            println("group:'$name' \t=> [${re.get_group_by_name(txt, name)}] \
+            bounds: ${re.get_group_bounds_by_name(name)}")
+        }
+    } else {
+        println("No Match")
+    }
+}
+```
+
+
 
 more example code is available in the test code for the `regex` module `vlib\regex\regex_test.v`.

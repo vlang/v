@@ -266,11 +266,11 @@ fn (mut tok Token) reset() {
 	tok.rep = 0
 }
 
-/*
-
-Regex struct
-
-*/
+/******************************************************************************
+*
+* Regex struct
+*
+******************************************************************************/
 pub const (
 	f_nl  = 0x00000001  // end the match when find a new line symbol
 	f_ms  = 0x00000002  // match true only if the match is at the start of the string
@@ -354,11 +354,11 @@ fn (mut re RE) reset_src(){
 	}
 }
 
-/*
-
-Backslashes chars
-
-*/
+/******************************************************************************
+*
+* Backslashes chars
+*
+******************************************************************************/
 struct BslsStruct {
 	ch rune                   // meta char
 	validator FnValidator    // validator function pointer
@@ -430,11 +430,11 @@ fn (re RE) parse_bsls(in_txt string, in_i int) (int,int){
 	return err_syntax_error, i
 }
 
-/*
-
-Char class
-
-*/
+/******************************************************************************
+*
+* Char class
+*
+******************************************************************************/
 const(
 	cc_null = 0    // empty cc token
 	cc_char = 1    // simple char: a
@@ -653,11 +653,11 @@ fn (mut re RE) parse_char_class(in_txt string, in_i int) (int, int, rune) {
 	return err_syntax_error,0,u32(0)
 }
 
-/*
-
-Re Compiler
-
-*/
+/******************************************************************************
+*
+* Re Compiler
+*
+******************************************************************************/
 //
 // Quantifier
 //
@@ -1462,11 +1462,11 @@ pub fn (re RE) get_query() string {
 	return res.str()
 }
 
-/*
-
-Groups saving utilities
-
-*/
+/******************************************************************************
+*
+* Groups saving utilities
+*
+******************************************************************************/
 [inline]
 fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
@@ -1500,12 +1500,12 @@ fn (mut re RE) group_continuous_save(g_index int) {
 		re.group_csave << re.groups[g_index+1]  // end
 	}
 }
-						
-/*
 
-Matching
-
-*/
+/******************************************************************************
+*
+* Matching
+*
+******************************************************************************/					
 enum Match_state{
 	start = 0
 	stop
@@ -2001,6 +2001,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						last_dot_pc: state.pc
 					}
 					m_state = .ist_quant_n
+					//println("dot_char stack len: $state_list.len")
 					continue
 				}
 
@@ -2363,47 +2364,11 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	return no_match_found, 0
 }
 
-/*
-
-Public functions
-
-*/
-
-//
-// Inits
-//
-
-// regex create a regex object from the query string
-[deprecated]
-pub fn regex(in_query string) (RE,int,int){
-	mut re := RE{}
-	re.prog = []Token    {len: in_query.len+1}
-	re.cc   = []CharClass{len: in_query.len+1}
-	re.group_max_nested = 8
-
-	re_err,err_pos := re.compile(in_query)
-	return re, re_err, err_pos
-}
-
-// new_regex create a RE of small size, usually sufficient for ordinary use
-[deprecated]
-pub fn new_regex() RE {
-	return impl_new_regex_by_size(1)
-}
-
-// new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
-[deprecated]
-pub fn new_regex_by_size(mult int) RE {
-	return impl_new_regex_by_size(mult)
-}
-fn impl_new_regex_by_size(mult int) RE {
-	mut re := RE{}
-	re.prog = []Token    {len: max_code_len*mult}       // max program length, default 256 istructions
-	re.cc   = []CharClass{len: max_code_len*mult}       // char class list
-	re.group_max_nested = 3*mult                        // max nested group
-
-	return re
-}
+/******************************************************************************
+*
+* Public functions
+*
+******************************************************************************/	
 
 //
 // Matchers
@@ -2535,85 +2500,6 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 
 	}
 	res += in_txt[s1..]
-	return res
-}
-
-/*
-
-Utilities
-
-*/
-
-// get_group_bounds_by_name get a group boundaries by its name
-pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) {
-	if group_name in re.group_map {
-		tmp_index := re.group_map[group_name]-1
-		start     := re.groups[tmp_index * 2]
-		end       := re.groups[tmp_index * 2 + 1]
-		return start,end
-	}
-	return -1, -1
-}
-
-// get_group_by_name get a group boundaries by its name
-pub fn (re RE) get_group_by_name(in_txt string, group_name string) string {
-	if group_name in re.group_map {
-		tmp_index := re.group_map[group_name]-1
-		start     := re.groups[tmp_index * 2]
-		end       := re.groups[tmp_index * 2 + 1]
-		return in_txt[start..end]
-	}
-	return ""
-}
-
-// get_group_by_id get a group string by its id
-pub fn (re RE) get_group_by_id(in_txt string, group_id int) string {
-	if group_id < (re.groups.len >> 1) {
-		index := group_id << 1
-		start := re.groups[index]
-		end   := re.groups[index + 1]
-		return in_txt[start..end]
-	}
-	return ""
-}
-
-// get_group_by_id get a group boundaries by its id
-pub fn (re RE) get_group_bounds_by_id(group_id int) (int,int) {
-	if group_id < (re.groups.len >> 1) {
-		index := group_id << 1
-		return re.groups[index], re.groups[index]
-	}
-	return -1, -1
-}
-
-pub
-struct Re_group {
-pub:
-	start int = -1
-	end   int = -1
-}
-
-// get_group_list return a list of Re_group for the found groups
-pub fn (re RE) get_group_list() []Re_group {
-	mut res := []Re_group{len: re.groups.len >> 1}
-	mut gi := 0
-	//println("len: ${re.groups.len} groups: ${re.groups}")
-	for gi < re.groups.len {
-		if re.groups[gi] >= 0 {
-			txt_st := re.groups[gi]
-            txt_en := re.groups[gi+1]
-
-            //println("#${gi/2} start: ${re.groups[gi]} end: ${re.groups[gi + 1]} ")
-            if txt_st >= 0 && txt_en > txt_st {
-				tmp := Re_group{ start: re.groups[gi], end: re.groups[gi + 1]}
-				//println(tmp)
-				res[gi >> 1] = tmp
-			} else {
-				res[gi >> 1] = Re_group{}
-			}
-		}
-		gi += 2
-	}
 	return res
 }
 
