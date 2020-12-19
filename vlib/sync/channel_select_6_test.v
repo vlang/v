@@ -1,8 +1,7 @@
 fn do_rec(chi chan int, chf chan f64, sumchi chan i64, sumchf chan f64) {
 	mut sum := i64(0)
 	mut sumf := 0.0
-	for j in 0 .. 20000 {
-		println('iteration $j')
+	for _ in 0 .. 20000 {
 		select {
 			i := <-chi {
 				sum += i
@@ -19,14 +18,12 @@ fn do_rec(chi chan int, chf chan f64, sumchi chan i64, sumchf chan f64) {
 fn do_send_int(ch chan int) {
 	for i in 0 .. 10000 {
 		ch <- i
-		println('sent int $i')
 	}
 }
 
 fn do_send_f64(ch chan f64) {
 	for i in 0 .. 10000 {
 		ch <- f64(i)
-		println('sent f64 $i')
 	}
 }
 
