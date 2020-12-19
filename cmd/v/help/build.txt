@@ -118,6 +118,12 @@ The build flags are shared by the build and run commands:
          CHECK: 62ms
          C GEN: 103ms
          C tcc: 95ms
+         
+      Related to -show-timings, is the ability to compile a special instrumented 
+      v compiler with this command: 
+      `v -d time_parsing -d time_checking -d time_cgening -d time_v self`
+      The instrumented version will print detailed timing stats while processing
+      each .v file.
 
    -w
       Hide all warnings.

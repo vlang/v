@@ -66,13 +66,16 @@ mut:
 	vweb_gen_types                   []table.Type // vweb route checks
 	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
+	timers                           &util.Timers
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
+	timers_should_print := $if time_checking ? { true } $else { false }
 	return Checker{
 		table: table
 		pref: pref
 		cur_fn: 0
+		timers: util.new_timers(timers_should_print)
 	}
 }
 
@@ -130,6 +133,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
 		file := unsafe {&ast_files[i]}
+		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
 			files_from_main_module << file
@@ -138,6 +142,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 				has_main_fn = true
 			}
 		}
+		c.timers.show('checker_check $file.path')
 	}
 	if has_main_mod_file && !has_main_fn && files_from_main_module.len > 0 {
 		if c.pref.is_script && !c.pref.is_test {
@@ -154,6 +159,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			has_main_fn = true
 		}
 	}
+	c.timers.start('checker_post_process_generic_fns')
 	// post process generic functions. must be done after all files have been
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
@@ -165,7 +171,12 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 			c.post_process_generic_fns()
 		}
 	}
+	c.timers.show('checker_post_process_generic_fns')
+	//
+	c.timers.start('checker_verify_all_vweb_routes')
 	c.verify_all_vweb_routes()
+	c.timers.show('checker_verify_all_vweb_routes')
+	//
 	// Make sure fn main is defined in non lib builds
 	if c.pref.build_mode == .build_module || c.pref.is_test {
 		return
