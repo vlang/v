@@ -2007,7 +2007,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
 		fields: fields
-		pos: start_pos.extend_with_last_line(end_pos, end_pos.line_nr)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
