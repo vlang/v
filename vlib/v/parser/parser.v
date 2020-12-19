@@ -712,7 +712,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
-				pos: spos.extend_with_last_line(p.tok.position(), p.tok.line_nr)
+				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
 		.key_go {
@@ -2246,7 +2246,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
-		pos.last_line = p.tok.line_nr
+		pos.last_line = p.tok.line_nr - 1
 		p.next()
 		return ast.Block{
 			is_unsafe: true
