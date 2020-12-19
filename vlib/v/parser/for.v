@@ -8,7 +8,7 @@ import v.table
 
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.open_scope()
 	p.inside_for = true
 	if p.tok.kind == .key_match {
@@ -20,6 +20,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	if p.tok.kind == .lcbr {
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr
 		for_stmt := ast.ForStmt{
 			stmts: stmts
 			pos: pos
@@ -63,6 +64,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr
 		for_c_stmt := ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
@@ -151,6 +153,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		}
 		p.inside_for = false
 		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr
 		// println('nr stmts=$stmts.len')
 		for_in_stmt := ast.ForInStmt{
 			stmts: stmts

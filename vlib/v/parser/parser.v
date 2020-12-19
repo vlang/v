@@ -712,7 +712,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
-				pos: spos.extend(p.tok.position())
+				pos: spos.extend(p.tok.position(), p.tok.line_nr)
 			}
 		}
 		.key_go {
@@ -2007,7 +2007,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
 		fields: fields
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, end_pos.line_nr)
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
