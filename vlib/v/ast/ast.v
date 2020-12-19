@@ -524,6 +524,7 @@ pub:
 	pos       token.Position
 	left      Expr
 	index     Expr // [0], RangeExpr [start..end] or map[key]
+	or_expr   OrExpr
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool

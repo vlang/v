@@ -35,7 +35,6 @@ V supports the following commands:
    list              List all installed modules.
    outdated          Show installed modules that need updates.
 * Others:
-   build             Build V code in the provided path (the default, so you can skip the word `build`).
    translate         Translate C code to V (coming soon in 0.3).
    tracev            Produce a tracing version of the v compiler.
                      Use `tracev yourfile.v` when the compiler panics.

@@ -395,7 +395,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build', 'build-module'] {
+				if command !in ['', 'build-module'] {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
@@ -415,13 +415,6 @@ pub fn parse_args(args []string) (&Preferences, string) {
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
-	} else if command == 'build' {
-		if command_pos + 2 != args.len {
-			eprintln('`v build` requires exactly one argument - either a single .v file, or a single folder/ containing several .v files')
-			exit(1)
-		}
-		res.path = args[command_pos + 1]
-		must_exist(res.path)
 	} else if command == 'run' {
 		res.is_run = true
 		if command_pos + 2 > args.len {

@@ -404,9 +404,9 @@ fn test_mut_map_with_relation_op_in_fn() {
 
 fn test_map_str_after_delete() {
 	mut m := {
-		'first': 1
+		'first':  1
 		'second': 2
-		'third': 3
+		'third':  3
 	}
 	osm := '$m'
 	m.delete('second')
@@ -429,7 +429,7 @@ fn test_modify_map_value() {
 
 fn test_map_clone() {
 	mut nums := {
-		'foo': 1,
+		'foo': 1
 		'bar': 2
 	}
 	mut nums2 := nums.clone()
@@ -442,14 +442,23 @@ fn test_map_clone() {
 }
 
 struct MValue {
-    name string
-    misc map[string]string
+	name string
+	misc map[string]string
 }
 
 fn test_map_default_zero() {
-    m := map[string]MValue{}
-    v := m['unknown']
-    x := v.misc['x']
-    println(x)
+	m := map[string]MValue{}
+	v := m['unknown']
+	x := v.misc['x']
+	println(x)
 	assert x == ''
+}
+
+fn test_map_or() {
+	m := {
+		'first':  1
+		'second': 2
+		'third':  3
+	}
+	// num := m['first'] or { return }
 }

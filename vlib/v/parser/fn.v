@@ -54,7 +54,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next()
 	}
 	pos := first_pos.extend(last_pos)
-	mut or_stmts := []ast.Stmt{}
+	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.position()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
