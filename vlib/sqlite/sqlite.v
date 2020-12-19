@@ -89,8 +89,7 @@ pub fn (mut db DB) close() ?bool {
 	return true // successfully closed
 }
 
-// We want this function so that we can't just change the value all
-// willy-nilly, there need to be rules
+// is_open returns whether the database is open or not.
 pub fn (db DB) is_open() bool {
 	return db.is_open
 }
