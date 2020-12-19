@@ -371,6 +371,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 		p.is_amp = true
 	}
 	if op == .arrow {
+		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
 	// if op == .mul && !p.inside_unsafe {
@@ -411,6 +412,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			p.next()
 			or_kind = .propagate
 		}
+		p.or_is_handled = false
 	}
 	return ast.PrefixExpr{
 		op: op
