@@ -2481,11 +2481,23 @@ option to see more details about the individual tests run.
 
 ## Memory management
 
-(Work in progress)
+V avoids doing unnecessary allocations in the first place by using value types,
+string buffers, promoting a simple abstraction-free code style.
 
-V doesn't use garbage collection or reference counting. The compiler cleans everything up
-during compilation. If your V program compiles, it's guaranteed that it's going
-to be leak free. For example:
+Most objects (~90-100%) are freed by V's autofree engine: the compiler inserts
+necessary free calls automatically during compilation. Remaining small percentage
+of objects is freed via reference counting.
+
+The developer doesn't need to change anything in their code. "It just works", like in
+Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
+each object.
+
+For developers willing to have more low level control, autofree can be disabled with
+`-noautofree`.
+
+Note: right now autofree is hidden behind the -autofree flag. It will be enabled by default in V 0.3.
+
+For example:
 
 ```v
 import strings
