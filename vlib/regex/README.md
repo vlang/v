@@ -413,7 +413,7 @@ These functions are helpers to query the captured groups
 // get_group_bounds_by_name get a group boundaries by its name
 pub fn (re RE) get_group_bounds_by_name(group_name string) (int, int) 
 
-// get_group_by_name get a group boundaries by its name
+// get_group_by_name get a group string by its name
 pub fn (re RE) get_group_by_name(group_name string) string
 
 // get_group_by_id get a group boundaries by its id

@@ -542,6 +542,7 @@ pub fn cc_from_string(cc_str string) CompilerType {
 
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
+	prefs.build_options << '-d $define'
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define
