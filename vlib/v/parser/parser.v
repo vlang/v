@@ -38,6 +38,7 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
+	or_is_handled     bool // ignore `or` in this expression
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt
@@ -1327,7 +1328,7 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
 	// a[i] or { ... }
-	if p.tok.kind == .key_orelse {
+	if p.tok.kind == .key_orelse && !p.or_is_handled {
 		was_inside_or_expr := p.inside_or_expr
 		mut or_pos := p.tok.position()
 		p.next()
