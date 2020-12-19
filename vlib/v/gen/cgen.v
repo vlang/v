@@ -2637,6 +2637,12 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 			}
 			sym := g.table.get_type_symbol(node.expr_type)
+			// if node expr is a root ident and an optional
+			mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
+			if is_optional {
+				opt_base_typ := g.base_type(node.expr_type)
+				g.writeln('(*($opt_base_typ*)')
+			}
 			if sym.kind == .array_fixed {
 				assert node.field_name == 'len'
 				info := sym.info as table.ArrayFixed
@@ -2678,6 +2684,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 			}
 			g.expr(node.expr)
+			if is_optional {
+				g.write('.data)')
+			}
 			// struct embedding
 			if sym.kind == .struct_ {
 				sym_info := sym.info as table.Struct
