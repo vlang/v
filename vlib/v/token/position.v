@@ -9,7 +9,7 @@ pub:
 	line_nr int // the line number in the source where the token occured
 	pos     int // the position of the token in scanner text
 pub mut:
-	last_line int // the line number where the ast object ends
+	last_line int // the line number where the ast object ends (used by vfmt)
 }
 
 pub fn (pos Position) str() string {

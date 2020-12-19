@@ -379,7 +379,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
-	start_pos := p.tok.position()
+	mut start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -458,13 +458,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		)
 	}
 	p.top_level_statement_end()
-	last_line := p.tok.line_nr
 	p.check(.rcbr)
+	start_pos.last_line = p.prev_tok.line_nr
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods
 		is_pub: is_pub
-		pos: start_pos.extend_with_last_line(token.Position{}, last_line)
+		pos: start_pos
 		pre_comments: pre_comments
 	}
 }
