@@ -501,6 +501,17 @@ fn (m map) exists_1(key voidptr) bool {
 	return false
 }
 
+[inline]
+fn (mut d DenseArray) delete(i int) {
+	if d.deletes == 0 {
+		d.all_deleted = vcalloc(d.cap) // sets to 0
+	}
+	d.deletes++
+	unsafe {
+		d.all_deleted[i] = 1
+	}
+}
+
 pub fn (mut m map) delete(key string) {
 	m.delete_1(&key)
 }
@@ -522,12 +533,8 @@ pub fn (mut m map) delete_1(key voidptr) {
 				index += 2
 			}
 			m.len--
-			if m.key_values.deletes == 0 {
-				m.key_values.all_deleted = C.calloc(1, m.cap) // sets to 0
-			}
-			m.key_values.deletes++
+			m.key_values.delete(kv_index)
 			unsafe {
-				m.key_values.all_deleted[kv_index] = 1
 				m.metas[index] = 0
 				m.free_key(pkey)
 				// Mark key as deleted
