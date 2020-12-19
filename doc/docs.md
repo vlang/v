@@ -2495,7 +2495,8 @@ each object.
 For developers willing to have more low level control, autofree can be disabled with
 `-noautofree`.
 
-Note: right now autofree is hidden behind the -autofree flag. It will be enabled by default in V 0.3.
+Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
+default in V 0.3.
 
 For example:
 
