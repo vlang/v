@@ -5041,7 +5041,7 @@ fn (mut g Gen) gen_array_insert(node ast.CallExpr) {
 	left_info := left_sym.info as table.Array
 	elem_type_str := g.typ(left_info.elem_type)
 	arg2_sym := g.table.get_type_symbol(node.args[1].typ)
-	is_arg2_array := arg2_sym.kind == .array
+	is_arg2_array := arg2_sym.kind == .array && node.args[1].typ == node.left_type
 	if is_arg2_array {
 		g.write('array_insert_many(&')
 	} else {
@@ -5075,7 +5075,7 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 	left_info := left_sym.info as table.Array
 	elem_type_str := g.typ(left_info.elem_type)
 	arg_sym := g.table.get_type_symbol(node.args[0].typ)
-	is_arg_array := arg_sym.kind == .array
+	is_arg_array := arg_sym.kind == .array && node.args[0].typ == node.left_type
 	if is_arg_array {
 		g.write('array_prepend_many(&')
 	} else {
