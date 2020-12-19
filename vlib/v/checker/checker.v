@@ -70,7 +70,10 @@ mut:
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
-	timers_should_print := $if time_checking ? { true } $else { false }
+	mut timers_should_print := false
+	$if time_checking ? {
+		timers_should_print = true
+	}
 	return Checker{
 		table: table
 		pref: pref

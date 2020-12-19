@@ -152,7 +152,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 				'.')
 		}
 	}
-	timers_should_print := $if time_cgening ? { true } $else { false }
+	mut timers_should_print := false
+	$if time_cgening ? {
+		timers_should_print = true
+	}
 	mut g := Gen{
 		out: strings.new_builder(1000)
 		cheaders: strings.new_builder(8192)
