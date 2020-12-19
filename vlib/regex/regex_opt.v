@@ -29,6 +29,7 @@ pub fn new_by_size(mult int) RE {
 // regex_opt create new RE object from RE pattern string
 pub fn regex_opt(pattern string) ?RE {
 	mut re := new()
+	re.prog = []Token{len: pattern.len+1}
 	re.compile_opt(pattern)?
 	return re
 }
