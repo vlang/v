@@ -591,7 +591,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					continue
 				}
 				if field.typ.is_ptr() && !c.pref.translated {
-					c.warn('reference field `${type_sym.name}.$field.name` must be initialized',
+					c.error('reference field `${type_sym.name}.$field.name` must be initialized',
 						struct_init.pos)
 				}
 				// Check for `[required]` struct attr

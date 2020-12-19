@@ -1326,10 +1326,34 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// [expr]
 	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
+	// a[i] or { ... }
+	if p.tok.kind == .key_orelse {
+		was_inside_or_expr := p.inside_or_expr
+		mut or_pos := p.tok.position()
+		p.next()
+		p.open_scope()
+		or_stmts := p.parse_block_no_scope(false)
+		or_pos = or_pos.extend(p.prev_tok.position())
+		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+		return ast.IndexExpr{
+			left: left
+			index: expr
+			pos: pos
+			or_expr: ast.OrExpr{
+				kind: .block
+				stmts: or_stmts
+				pos: or_pos
+			}
+		}
+	}
 	return ast.IndexExpr{
 		left: left
 		index: expr
 		pos: pos
+		or_expr: ast.OrExpr{
+			kind: .absent
+		}
 	}
 }
 
