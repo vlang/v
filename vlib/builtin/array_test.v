@@ -359,6 +359,7 @@ fn test_clone() {
 	assert nums.slice(1, 3).str() == '[2, 3]'
 }
 
+/*
 fn test_copy() {
 	a := [1, 2, 3]
 	b := a
@@ -366,7 +367,7 @@ fn test_copy() {
 	assert b[1] == 2
 	assert b[2] == 3
 }
-
+*/
 fn test_mutli_array_clone() {
 	// 2d array_int
 	mut a2_1 := [[1, 2, 3], [4, 5, 6]]
@@ -683,7 +684,7 @@ fn test_array_str() {
 	numbers := [1, 2, 3]
 	assert numbers == [1, 2, 3]
 	numbers2 := [numbers, [4, 5, 6]] // dup str() bug
-	_ = numbers2
+	println(numbers2)
 	assert true
 	assert numbers.str() == '[1, 2, 3]'
 	// QTODO

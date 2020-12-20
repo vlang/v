@@ -93,6 +93,9 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		'$p.lookup_path',
 	])
 	// eprintln('prefs.cache_manager: $p')
+	//
+	// enable use_cache by default
+	// p.use_cache = os.user_os() != 'windows'
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {

@@ -5,8 +5,8 @@ import os.cmdline
 import testing
 
 fn main() {
-	args := os.args
-	if args.last() == 'test' {
+	args := os.args.clone()
+	if os.args.last() == 'test' {
 		println('Usage:')
 		println('   A)')
 		println('      v test folder/ : run all v tests in the given folder.')
