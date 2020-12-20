@@ -1967,10 +1967,12 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
 							if val.has_default {
-								g.write('{$val.default_expr')
+								g.write('{')
+								g.expr(val.default_expr)
 								info := right_sym.info as table.ArrayFixed
 								for _ in 1 .. info.size {
-									g.write(', $val.default_expr')
+									g.write(', ')
+									g.expr(val.default_expr)
 								}
 								g.write('}')
 							} else {
