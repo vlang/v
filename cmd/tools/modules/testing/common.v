@@ -296,7 +296,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
-	mut skipped := oskipped
+	mut skipped := oskipped.clone()
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
 			// $if !linux {
