@@ -295,7 +295,7 @@ fn shift_cursor(xpos int, yoffset int) {
 }
 
 fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count int, inp []int) []int {
-	mut out := inp
+	mut out := inp.clone()
 	mut x := x_in
 	mut y := y_in
 	out[0] = x
@@ -447,10 +447,7 @@ fn (mut r Readline) switch_overwrite() {
 }
 
 fn (mut r Readline) clear_screen() {
-	term.set_cursor_position({
-		x: 1
-		y: 1
-	})
+	term.set_cursor_position(x: 1, y: 1)
 	term.erase_clear()
 	r.refresh_line()
 }

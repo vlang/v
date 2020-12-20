@@ -113,7 +113,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
-	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
+	if it.no_body ||
+		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')

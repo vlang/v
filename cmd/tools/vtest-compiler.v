@@ -6,8 +6,7 @@ import benchmark
 import v.pref
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	v_test_compiler(args_string.all_before('test-compiler'))
 }
 

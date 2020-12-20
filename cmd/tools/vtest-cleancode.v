@@ -59,12 +59,12 @@ const (
 		'vlib/gg/gg.v',
 		'vlib/os/',
 		'vlib/time/',
+		'vlib/builtin/array_test.v',
 	]
 )
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	pass_args := args_string.all_before('test-cleancode')
 	v_test_vetting(pass_args)
 }

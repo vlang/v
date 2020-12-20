@@ -72,12 +72,3 @@ fn test_unsafe_if_stmt() {
 	x := unsafe_if_stmt()
 	assert x == 4
 }
-
-fn test_map_address_index() {
-	mut m := {
-		'one': 1
-	}
-	mut one := unsafe {&m['one']}
-	(*one)++
-	println(*one)
-}

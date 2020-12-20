@@ -42,7 +42,7 @@ fn main() {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	args := os.args
+	args := os.args.clone()
 	args_string := args[1..].join(' ')
 	cmd_prefix := args_string.all_before('test-fixed')
 	title := 'testing all fixed tests'

@@ -2209,6 +2209,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
+		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign] &&
+			right_sym.kind == .array && left is ast.Ident && right is ast.Ident {
+			// Do not allow `a = b`, only `a = b.clone()`
+			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
+				assign_stmt.pos)
+		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
 		if left_is_ptr {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
@@ -2321,6 +2327,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 		}
 	}
+	// right_sym := c.table.get_type_symbol(right_type_unwrapped)
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
@@ -3003,67 +3010,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.postfix_expr(mut node)
 		}
 		ast.PrefixExpr {
-			right_type := c.expr(node.right)
-			node.right_type = right_type
-			// TODO: testing ref/deref strategy
-			if node.op == .amp && !right_type.is_ptr() {
-				if node.right is ast.IntegerLiteral {
-					c.error('cannot take the address of an int', node.pos)
-				}
-				if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
-					c.error('cannot take the address of a string', node.pos)
-				}
-				if mut node.right is ast.IndexExpr {
-					typ_sym := c.table.get_type_symbol(node.right.left_type)
-					mut is_mut := false
-					if mut node.right.left is ast.Ident {
-						ident := node.right.left
-						// TODO: temporary, remove this
-						ident_obj := ident.obj
-						if ident_obj is ast.Var {
-							is_mut = ident_obj.is_mut
-						}
-					}
-					if !c.inside_unsafe && is_mut {
-						if typ_sym.kind == .map {
-							c.error('cannot take the address of mutable map values outside unsafe blocks',
-								node.right.pos)
-						}
-						if typ_sym.kind == .array {
-							c.error('cannot take the address of mutable array elements outside unsafe blocks',
-								node.right.pos)
-						}
-					}
-				}
-				return right_type.to_ptr()
-			} else if node.op == .amp && node.right !is ast.CastExpr {
-				return right_type.to_ptr()
-			}
-			if node.op == .mul {
-				if right_type.is_ptr() {
-					return right_type.deref()
-				}
-				if !right_type.is_pointer() {
-					s := c.table.type_to_str(right_type)
-					c.error('invalid indirect of `$s`', node.pos)
-				}
-			}
-			if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
-				c.error('operator ~ only defined on int types', node.pos)
-			}
-			if node.op == .not && right_type != table.bool_type_idx && !c.pref.translated {
-				c.error('! operator can only be used with bool types', node.pos)
-			}
-			if node.op == .arrow {
-				right := c.table.get_type_symbol(right_type)
-				if right.kind == .chan {
-					c.stmts(node.or_block.stmts)
-					return right.chan_info().elem_type
-				} else {
-					c.error('<- operator can only be used with `chan` types', node.pos)
-				}
-			}
-			return right_type
+			return c.prefix_expr(mut node)
 		}
 		ast.None {
 			return table.none_type
@@ -4293,6 +4240,69 @@ pub fn (mut c Checker) postfix_expr(mut node ast.PostfixExpr) table.Type {
 		c.warn('pointer arithmetic is only allowed in `unsafe` blocks', node.pos)
 	}
 	return typ
+}
+
+pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
+	right_type := c.expr(node.right)
+	node.right_type = right_type
+	// TODO: testing ref/deref strategy
+	if node.op == .amp && !right_type.is_ptr() {
+		if node.right is ast.IntegerLiteral {
+			c.error('cannot take the address of an int', node.pos)
+		}
+		if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
+			c.error('cannot take the address of a string', node.pos)
+		}
+		if mut node.right is ast.IndexExpr {
+			typ_sym := c.table.get_type_symbol(node.right.left_type)
+			mut is_mut := false
+			if mut node.right.left is ast.Ident {
+				ident := node.right.left
+				// TODO: temporary, remove this
+				ident_obj := ident.obj
+				if ident_obj is ast.Var {
+					is_mut = ident_obj.is_mut
+				}
+			}
+			if typ_sym.kind == .map {
+				c.error('cannot take the address of map values', node.right.pos)
+			}
+			if !c.inside_unsafe {
+				if typ_sym.kind == .array && is_mut {
+					c.error('cannot take the address of mutable array elements outside unsafe blocks',
+						node.right.pos)
+				}
+			}
+		}
+		return right_type.to_ptr()
+	} else if node.op == .amp && node.right !is ast.CastExpr {
+		return right_type.to_ptr()
+	}
+	if node.op == .mul {
+		if right_type.is_ptr() {
+			return right_type.deref()
+		}
+		if !right_type.is_pointer() {
+			s := c.table.type_to_str(right_type)
+			c.error('invalid indirect of `$s`', node.pos)
+		}
+	}
+	if node.op == .bit_not && !right_type.is_int() && !c.pref.translated {
+		c.error('operator ~ only defined on int types', node.pos)
+	}
+	if node.op == .not && right_type != table.bool_type_idx && !c.pref.translated {
+		c.error('! operator can only be used with bool types', node.pos)
+	}
+	if node.op == .arrow {
+		right := c.table.get_type_symbol(right_type)
+		if right.kind == .chan {
+			c.stmts(node.or_block.stmts)
+			return right.chan_info().elem_type
+		} else {
+			c.error('<- operator can only be used with `chan` types', node.pos)
+		}
+	}
+	return right_type
 }
 
 fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.Type, pos token.Position) {
