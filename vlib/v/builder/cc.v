@@ -836,7 +836,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 	os.chdir(os.dir(pref.vexe_path()))
 	//
 	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
-	// eprintln('>>> cmd: $cmd')
+	$if trace_thirdparty_obj_files ? {
+		println('>>> build_thirdparty_obj_files cmd: $cmd')
+	}
 	res := os.exec(cmd) or {
 		eprintln('exec failed for thirdparty object build cmd:\n$cmd')
 		verror(err)

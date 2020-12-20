@@ -139,6 +139,10 @@ fn (mut b Builder) run_compiled_executable_and_exit() {
 }
 
 fn (mut v Builder) cleanup_run_executable_after_exit(exefile string) {
+	if v.pref.reuse_tmpc {
+		v.pref.vrun_elog('keeping executable: $exefile , because -keepc was passed')
+		return
+	}
 	if os.is_file(exefile) {
 		v.pref.vrun_elog('remove run executable: $exefile')
 		os.rm(exefile)
