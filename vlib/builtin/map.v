@@ -635,6 +635,7 @@ pub fn (m &map) keys_1() array {
 	return keys
 }
 
+// warning: only copies keys, does not clone
 [unsafe]
 pub fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
@@ -653,7 +654,6 @@ pub fn (d &DenseArray) clone() DenseArray {
 		}
 		res.data = memdup(d.data, d.cap * d.slot_bytes)
 	}
-	// FIXME clone each key
 	return res
 }
 
@@ -672,6 +672,16 @@ pub fn (m &map) clone() map {
 		len: m.len
 	}
 	unsafe { C.memcpy(res.metas, m.metas, metasize) }
+	if !m.has_string_keys {
+		return res
+	}
+	// clone keys
+	for i in 0 .. m.key_values.len {
+		if !m.key_values.has_index(i) {
+			continue
+		}
+		m.clone_key(res.key_values.key(i), m.key_values.key(i))
+	}
 	return res
 }
 
