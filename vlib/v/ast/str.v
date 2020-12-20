@@ -50,6 +50,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		name = 'JS.$name'
 	}
 	f.write('fn $receiver$name')
+	if name in '+-*/%' {
+		f.write(' ')
+	}
 	if node.is_generic {
 		f.write('<T>')
 	}
