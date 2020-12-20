@@ -24,4 +24,5 @@ fn test_crypto_aes() {
 	mode.encrypt_blocks(mut ciphertext, cipher_clone)
 	assert ciphertext.hex() ==
 		'c210459b514668ddc44674885e4979215265a6c44431a248421254ef357a8c2a308a8bddf5623af9df91737562041cf1'
+	println('ok')
 }
