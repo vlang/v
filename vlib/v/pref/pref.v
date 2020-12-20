@@ -237,6 +237,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_prod = true
 				res.build_options << arg
 			}
+			'-sanitize' {
+				res.sanitize = true
+				res.build_options << arg
+			}
 			'-simulator' {
 				res.is_ios_simulator = true
 			}

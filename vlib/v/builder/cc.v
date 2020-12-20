@@ -160,20 +160,23 @@ fn (mut v Builder) show_cc(cmd string, response_file string, response_file_conte
 struct CcompilerOptions {
 mut:
 	guessed_compiler string
-	shared_postfix   string
-	env_cflags       string
-	env_ldflags      string
+	shared_postfix   string // .so, .dll
 	//
-	args             []string
-	o_args           []string
-	post_args        []string
-	linker_flags     []string
 	//
 	debug_mode       bool
 	is_cc_tcc        bool
 	is_cc_gcc        bool
 	is_cc_msvc       bool
 	is_cc_clang      bool
+	//
+	env_cflags       string // prepended *before* everything else
+	env_ldflags      string // appended *after* everything else
+	//
+	args             []string // ordinary C options like `-O2`
+	wargs            []string // for `-Wxyz` *exclusively*
+	o_args           []string // for `-o target`
+	post_args        []string // options that should go after .o_args
+	linker_flags     []string // `-lm`
 }
 
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
@@ -186,11 +189,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	// '-Werror',
 	// TODO : try and remove the below workaround options when the corresponding
 	// warnings are totally fixed/removed
-	ccoptions.args = [v.pref.cflags, '-std=gnu99', '-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces',
-		'-Walloc-zero', '-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2',
-		'-Winit-self', '-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs',
-		'-Wnull-dereference', '-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum',
-		'-Wno-unused-parameter', '-Wno-unknown-warning-option', '-Wno-format-nonliteral']
+	ccoptions.args = [v.pref.cflags, '-std=gnu99']
+	ccoptions.wargs = ['-Wall', '-Wextra', '-Wno-unused', '-Wno-missing-braces', '-Walloc-zero',
+		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2', '-Winit-self',
+		'-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs', '-Wnull-dereference',
+		'-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter',
+		'-Wno-unknown-warning-option', '-Wno-format-nonliteral']
 	if v.pref.os == .ios {
 		ccoptions.args << '-framework Foundation'
 		ccoptions.args << '-framework UIKit'
@@ -284,7 +288,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
-		ccoptions.args << '-Werror=implicit-function-declaration'
+		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
 		if v.pref.os == .linux || os.user_os() == 'linux' {
@@ -317,7 +321,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	cflags := v.get_os_cflags()
 	// add .o files
-	ccoptions.post_args << cflags.c_options_only_object_files()
+	ccoptions.o_args << cflags.c_options_only_object_files()
 	// add all flags (-I -l -L etc) not .o files
 	ccoptions.post_args << cflags.c_options_without_object_files()
 	// TODO: why is this duplicated from above?
@@ -365,9 +369,12 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	ccoptions.env_cflags = os.getenv('CFLAGS')
 	ccoptions.env_ldflags = os.getenv('LDFLAGS')
 	$if trace_ccoptions ? {
-		println('>>> ccoptions: $ccoptions')
+		println('>>> setup_ccompiler_options ccompiler: $ccompiler')
+		println('>>> setup_ccompiler_options ccoptions: $ccoptions')
 	}
 	v.ccoptions = ccoptions
+	// setup the cache too, so that different compilers/options do not interfere:
+	v.pref.cache_manager.set_temporary_options(ccoptions.thirdparty_object_args([ccoptions.guessed_compiler]))
 }
 
 fn (ccoptions CcompilerOptions) all_args() []string {
@@ -377,6 +384,15 @@ fn (ccoptions CcompilerOptions) all_args() []string {
 	all << ccoptions.o_args
 	all << ccoptions.post_args
 	all << ccoptions.linker_flags
+	all << ccoptions.env_ldflags
+	return all
+}
+
+fn (ccoptions CcompilerOptions) thirdparty_object_args(middle []string) []string {
+	mut all := []string{}
+	all << ccoptions.env_cflags
+	all << ccoptions.args
+	all << middle
 	all << ccoptions.env_ldflags
 	return all
 }
@@ -853,6 +869,9 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 			v.pref.ccompiler = mingw_cc
 		}
 	}
+	cfile := '${obj_path[..obj_path.len - 2]}.c'
+	btarget := moduleflags.c_options_before_target()
+	atarget := moduleflags.c_options_after_target()
 	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
 	if os.exists(opath) {
 		return
@@ -866,16 +885,14 @@ fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CF
 		return
 	}
 	println('$obj_path not found, building it in $opath ...')
-	cfile := '${obj_path[..obj_path.len - 2]}.c'
-	btarget := moduleflags.c_options_before_target()
-	atarget := moduleflags.c_options_after_target()
-	cppoptions := if v.pref.ccompiler.contains('++') { ' -fpermissive -w ' } else { '' }
 	//
 	// prepare for tcc, it needs relative paths to thirdparty/tcc to work:
 	current_folder := os.getwd()
 	os.chdir(os.dir(pref.vexe_path()))
 	//
-	cmd := '$v.pref.ccompiler $cppoptions $v.pref.third_party_option $btarget -o "$opath" -c "$cfile" $atarget'
+	cc_options := v.ccoptions.thirdparty_object_args([v.pref.third_party_option, btarget, '-o',
+		'"$opath"', '-c', '"$cfile"', atarget]).join(' ')
+	cmd := '$v.pref.ccompiler $cc_options'
 	$if trace_thirdparty_obj_files ? {
 		println('>>> build_thirdparty_obj_files cmd: $cmd')
 	}
