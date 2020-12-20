@@ -59,6 +59,7 @@ const (
 		'vlib/gg/gg.v',
 		'vlib/os/',
 		'vlib/time/',
+		'v/vlib/builtin/array_test.v',
 	]
 )
 
