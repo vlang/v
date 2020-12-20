@@ -1825,9 +1825,9 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			}
 
 			// manage here dot char
-			//println("Here we are, with stop: state buffer: [${state_list.len}]")
 
 			if state_list.len > 0 {
+				println("Here we are, with stop: state buffer: [${state_list.len}]")
 				state = state_list.pop()
 
 				state.match_flag = true
@@ -1898,6 +1898,10 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 						re.groups[g_index+1] = state.i
 
+						if g_index > 0 && re.groups[g_index] <= re.groups[g_index-1] {
+							re.groups[g_index] = re.groups[g_index-1] 
+						}
+
 						if re.groups[g_index+1] >= in_txt_len {
 							//println("clamp group!")
 							re.groups[g_index+1] = in_txt_len-1
@@ -1946,6 +1950,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// if we are done with max go on dot char are dedicated case!!
 				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max 
 				{
+					state_list.pop()
 					m_state = .ist_next
 					continue
 				}
@@ -1986,7 +1991,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					}
 
 				}
-
+				
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true {
 					//println("save the state!!")
