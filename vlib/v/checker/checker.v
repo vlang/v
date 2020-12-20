@@ -345,7 +345,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				}
 				mut sym := c.table.get_type_symbol(variant.typ)
 				if sym.name in found_sym_names {
-					c.error('sum type cannot hold the type `$sym.name` multiple times', node.pos)
+					c.error('sum type cannot hold the type `$sym.name` more than once', variant.pos)
 				} else if sym.kind == .placeholder {
 					c.error("type `$sym.name` doesn't exist", node.pos)
 				} else if sym.kind == .interface_ {
