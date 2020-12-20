@@ -480,7 +480,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							} else if matching && unknown {
 								// router words with paramter like `/:test/site`
 								action = method.name
-								vars = variables
+								vars = variables.clone()
 							}
 							req_method = []string{}
 						}

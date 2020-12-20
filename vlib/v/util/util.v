@@ -15,7 +15,7 @@ pub const (
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
-	bundle_modules       = ['sokol', 'gx', 'gg', 'fontstash']
+	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'ui']
 )
 
 pub const (

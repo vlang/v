@@ -31,14 +31,14 @@ pub fn (mut t Timers) measure(name string) i64 {
 		eprintln('>   Available timers:')
 		eprintln('>   $timer_keys')
 	}
-	ms := t.swatches[name].elapsed().milliseconds()
+	ms := t.swatches[name].elapsed().microseconds()
 	return ms
 }
 
 pub fn (mut t Timers) message(name string) string {
-	ms := t.measure(name)
-	value := bold('$ms')
-	formatted_message := '$name: $value ms'
+	ms := f64(t.measure(name)) / 1000.0
+	value := bold('${ms:-8.3f}')
+	formatted_message := '$value ms $name'
 	return formatted_message
 }
 

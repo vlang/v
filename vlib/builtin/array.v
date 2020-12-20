@@ -91,15 +91,18 @@ fn (mut a array) ensure_cap(required int) {
 	if required <= a.cap {
 		return
 	}
-	mut cap := if a.cap == 0 { 2 } else { a.cap * 2 }
+	mut cap := if a.cap > 0 { a.cap } else { 2 }
 	for required > cap {
 		cap *= 2
 	}
-	if a.cap == 0 {
-		a.data = vcalloc(cap * a.element_size)
+	new_size := cap * a.element_size
+	mut new_data := byteptr(0)
+	if a.cap > 0 {
+		new_data = v_realloc(a.data, new_size)
 	} else {
-		a.data = v_realloc(a.data, cap * a.element_size)
+		new_data = vcalloc(new_size)
 	}
+	a.data = new_data
 	a.cap = cap
 }
 

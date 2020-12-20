@@ -511,20 +511,18 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut subscr := []Subscription{len: channels.len}
 	sem := new_semaphore()
 	for i, ch in channels {
+		subscr[i].sem = sem
 		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].sem = sem
 			subscr[i].prev = &ch.write_subscriber
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				unsafe {
-					subscr[i].nxt.prev = &subscr[i]
-				}
+				subscr[i].nxt.prev = &subscr[i].nxt
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
@@ -532,13 +530,12 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].sem = sem
 			subscr[i].prev = &ch.read_subscriber
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				unsafe { subscr[i].nxt.prev = &subscr[i] }
+				subscr[i].nxt.prev = &subscr[i].nxt
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
@@ -577,7 +574,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 		}
 		if timeout == 0 {
 			goto restore
-		} else if timeout > 0 {
+		}
+		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
 				goto restore
@@ -594,8 +592,11 @@ restore:
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = subscr[i].nxt
+			unsafe {
+				*subscr[i].prev = subscr[i].nxt
+			}
 			if subscr[i].nxt != 0 {
+				subscr[i].nxt.prev = subscr[i].prev
 				// just in case we have missed a semaphore during restore
 				subscr[i].nxt.sem.post()
 			}
@@ -605,8 +606,11 @@ restore:
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = subscr[i].nxt
+			unsafe {
+				*subscr[i].prev = subscr[i].nxt
+			}
 			if subscr[i].nxt != 0 {
+				subscr[i].nxt.prev = subscr[i].prev
 				subscr[i].nxt.sem.post()
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))

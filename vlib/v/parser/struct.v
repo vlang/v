@@ -98,7 +98,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 			}
 			if p.tok.kind == .rcbr {
-				end_comments = comments
+				end_comments = comments.clone()
 				break
 			}
 			if p.tok.kind == .key_pub {
