@@ -361,7 +361,10 @@ fn test_clone() {
 
 fn test_copy() {
 	a := [1, 2, 3]
-	b := [3, 4, 5]
+	b := a
+	assert b[0] == 1
+	assert b[1] == 2
+	assert b[2] == 3
 }
 
 fn test_mutli_array_clone() {

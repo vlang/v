@@ -2209,6 +2209,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
+		if left_sym.kind == .array &&
+			assign_stmt.op == .assign && right_sym.kind == .array && left is ast.Ident && right is ast.Ident {
+			// Do not allow `a = b`, only `a = b.clone()`
+			c.warn('use `array2 = array1.clone()` instead of `array1 = array2`', assign_stmt.pos)
+		}
 		left_is_ptr := left_type.is_ptr() || left_sym.is_pointer()
 		if left_is_ptr {
 			if !c.inside_unsafe && assign_stmt.op !in [.assign, .decl_assign] {
@@ -2321,6 +2326,7 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 		}
 	}
+	// right_sym := c.table.get_type_symbol(right_type_unwrapped)
 }
 
 fn scope_register_it(mut s ast.Scope, pos token.Position, typ table.Type) {
