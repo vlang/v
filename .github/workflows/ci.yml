@@ -563,14 +563,19 @@ jobs:
         gcc  -g -std=gnu11 -w -o v_from_vc /tmp/v.c  -lm -lpthread
         ls -lart v_from_vc
         ./v_from_vc version
+    - name: turn off the wine crash dialog
+      run: winetricks nocrashdialog
     - name: v_win.c can be compiled and run
       run: |
         ./v -os windows -o /tmp/v_win.c cmd/v
         x86_64-w64-mingw32-gcc  /tmp/v_win.c -std=c99 -w -municode -o v_from_vc.exe
         ls -lart v_from_vc.exe
-        winetricks nocrashdialog
         wine v_from_vc.exe version
-
+    - name: hello_world.v can be cross compiled to hello_world.exe
+      run: |
+        ./v -os windows examples/hello_world.v
+        ls -lart examples/hello_world.exe
+        wine examples/hello_world.exe
 
   ubuntu-c-plus-plus:
     runs-on: ubuntu-18.04

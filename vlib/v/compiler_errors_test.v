@@ -47,10 +47,14 @@ fn test_all() {
 	mut tasks := []TaskDescription{}
 	tasks.add(vexe, parser_dir, '-prod', '.out', parser_tests, false)
 	tasks.add(vexe, checker_dir, '-prod', '.out', checker_tests, false)
-	tasks.add(vexe, checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'], false)
-	tasks.add(vexe, checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'], false)
-	tasks.add(vexe, checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'], false)
-	tasks.add(vexe, checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'], false)
+	tasks.add(vexe, checker_dir, '-d mysymbol run', '.mysymbol.run.out', ['custom_comptime_define_error.vv'],
+		false)
+	tasks.add(vexe, checker_dir, '-d mydebug run', '.mydebug.run.out', ['custom_comptime_define_if_flag.vv'],
+		false)
+	tasks.add(vexe, checker_dir, '-d nodebug run', '.nodebug.run.out', ['custom_comptime_define_if_flag.vv'],
+		false)
+	tasks.add(vexe, checker_dir, '--enable-globals run', '.run.out', ['globals_error.vv'],
+		false)
 	tasks.add(vexe, global_dir, '--enable-globals', '.out', global_tests, false)
 	tasks.add(vexe, module_dir, '-prod run', '.out', module_tests, true)
 	tasks.add(vexe, run_dir, 'run', '.run.out', run_tests, false)
@@ -58,9 +62,7 @@ fn test_all() {
 }
 
 fn (mut tasks []TaskDescription) add(vexe string, dir string, voptions string, result_extension string, tests []string, is_module bool) {
-	paths := vtest.filter_vtest_only(tests, {
-		basepath: dir
-	})
+	paths := vtest.filter_vtest_only(tests, basepath: dir)
 	for path in paths {
 		tasks << TaskDescription{
 			vexe: vexe
@@ -73,7 +75,6 @@ fn (mut tasks []TaskDescription) add(vexe string, dir string, voptions string, r
 	}
 }
 
-
 fn bstep_message(mut bench benchmark.Benchmark, label string, msg string, sduration time.Duration) string {
 	return bench.step_message_with_label_and_duration(label, msg, sduration)
 }
@@ -85,7 +86,7 @@ fn (mut tasks []TaskDescription) run() {
 	bench.set_total_expected_steps(tasks.len)
 	mut work := sync.new_channel<TaskDescription>(tasks.len)
 	mut results := sync.new_channel<TaskDescription>(tasks.len)
-	mut m_skip_files := skip_files
+	mut m_skip_files := skip_files.clone()
 	$if noskip ? {
 		m_skip_files = []
 	}
@@ -161,9 +162,7 @@ fn (mut task TaskDescription) execute() {
 	}
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
-	res := os.exec(cli_cmd) or {
-		panic(err)
-	}
+	res := os.exec(cli_cmd) or { panic(err) }
 	mut expected := os.read_file(program.replace('.vv', '') + task.result_extension) or {
 		panic(err)
 	}
@@ -189,19 +188,15 @@ fn clean_line_endings(s string) string {
 }
 
 fn diff_content(s1 string, s2 string) {
-	diff_cmd := util.find_working_diff_command() or {
-		return
-	}
+	diff_cmd := util.find_working_diff_command() or { return }
 	println('diff: ')
 	println(util.color_compare_strings(diff_cmd, s1, s2))
 	println('============\n')
 }
 
 fn get_tests_in_dir(dir string, is_module bool) []string {
-	files := os.ls(dir) or {
-		panic(err)
-	}
-	mut tests := files
+	files := os.ls(dir) or { panic(err) }
+	mut tests := files.clone()
 	if !is_module {
 		tests = files.filter(it.ends_with('.vv'))
 	} else {

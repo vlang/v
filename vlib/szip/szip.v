@@ -209,8 +209,7 @@ pub fn (mut zentry Zip) write_entry(data []byte) ? {
 	if (data[0] & 0xff) == -1 {
 		return error('szip: cannot write entry')
 	}
-	buf := data // alias of data
-	res := C.zip_entry_write(zentry, buf.data, buf.len)
+	res := C.zip_entry_write(zentry, data.data, data.len)
 	if res != 0 {
 		return error('szip: failed to write entry')
 	}

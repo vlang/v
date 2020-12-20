@@ -72,6 +72,10 @@ fn main() {
 		// println('prefs= ')
 		// println(prefs) // QTODO
 	}
+	if prefs.use_cache && os.user_os() == 'windows' {
+		eprintln('-usecache is currently disabled on windows')
+		exit(1)
+	}
 	if command == 'test-vet' {
 		println('Please use `v test-cleancode` instead.')
 		return
