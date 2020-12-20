@@ -466,7 +466,7 @@ fn (mut v Builder) cc() {
 			args << '-w'
 		}
 		// TODO: why is this duplicated from above?
-		if v.pref.use_cache {
+		if v.pref.use_cache && v.pref.build_mode != .build_module {
 			// vexe := pref.vexe_path()
 			// cached_modules := ['builtin', 'os', 'math', 'strconv', 'strings', 'hash'],  // , 'strconv.ftoa']
 			// for cfile in cached_modules {
