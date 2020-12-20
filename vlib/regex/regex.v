@@ -1827,7 +1827,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// manage here dot char
 
 			if state_list.len > 0 {
-				println("Here we are, with stop: state buffer: [${state_list.len}]")
+				//println("Here we are, with stop: state buffer: [${state_list.len}]")
 				state = state_list.pop()
 
 				state.match_flag = true
