@@ -227,9 +227,13 @@ pub mut:
 	len             int
 }
 
+// bootstrap
 fn new_map_1(value_bytes int) map {
+	return new_map(int(sizeof(string)), value_bytes)
+}
+
+fn new_map(key_bytes int, value_bytes int) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	key_bytes := int(sizeof(string))
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -244,9 +248,20 @@ fn new_map_1(value_bytes int) map {
 }
 
 fn new_map_init(n int, value_bytes int, keys &string, values voidptr) map {
-	mut out := new_map_1(value_bytes)
-	for i in 0 .. n {
-		unsafe {out.set(keys[i], byteptr(values) + i * value_bytes)}
+	return new_map_init_1(n, int(sizeof(string)), value_bytes, keys, values)
+}
+
+fn new_map_init_1(n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+	mut out := new_map(key_bytes, value_bytes)
+	// TODO pre-allocate n slots
+	mut pkey := byteptr(keys)
+	mut pval := byteptr(values)
+	for _ in 0 .. n {
+		unsafe {
+			out.set_1(pkey, pval)
+			pkey += key_bytes
+			pval += value_bytes
+		}
 	}
 	return out
 }
