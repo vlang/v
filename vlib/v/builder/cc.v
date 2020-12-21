@@ -507,12 +507,6 @@ fn (mut v Builder) cc() {
 		// try to compile with the choosen compiler
 		// if compilation fails, retry again with another
 		mut ccompiler := v.pref.ccompiler
-		$if windows {
-			if ccompiler == 'msvc' {
-				v.cc_msvc()
-				return
-			}
-		}
 		if v.pref.os == .ios {
 			ios_sdk := if v.pref.is_ios_simulator { 'iphonesimulator' } else { 'iphoneos' }
 			ios_sdk_path_res := os.exec('xcrun --sdk $ios_sdk --show-sdk-path') or {
@@ -577,6 +571,14 @@ fn (mut v Builder) cc() {
 			}
 			v.ccoptions.post_args << libs
 		}
+		//
+		$if windows {
+			if ccompiler == 'msvc' {
+				v.cc_msvc()
+				return
+			}
+		}
+		//
 		all_args := v.ccoptions.all_args()
 		str_args := all_args.join(' ')
 		// write args to response file
