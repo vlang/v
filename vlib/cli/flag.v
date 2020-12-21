@@ -37,9 +37,7 @@ pub fn (flags []Flag) get_bool(name string) ?bool {
 }
 
 pub fn (flags []Flag) get_bool_or(name string, or_value bool) bool {
-	value := flags.get_bool(name) or {
-		return or_value
-	}
+	value := flags.get_bool(name) or { return or_value }
 	return value
 }
 
@@ -56,9 +54,7 @@ pub fn (flags []Flag) get_int(name string) ?int {
 }
 
 pub fn (flags []Flag) get_int_or(name string, or_value int) int {
-	value := flags.get_int(name) or {
-		return or_value
-	}
+	value := flags.get_int(name) or { return or_value }
 	return value
 }
 
@@ -75,9 +71,7 @@ pub fn (flags []Flag) get_float(name string) ?f64 {
 }
 
 pub fn (flags []Flag) get_float_or(name string, or_value f64) f64 {
-	value := flags.get_float(name) or {
-		return or_value
-	}
+	value := flags.get_float(name) or { return or_value }
 	return value
 }
 
@@ -94,9 +88,7 @@ pub fn (flags []Flag) get_string(name string) ?string {
 }
 
 pub fn (flags []Flag) get_string_or(name string, or_value string) string {
-	value := flags.get_string(name) or {
-		return or_value
-	}
+	value := flags.get_string(name) or { return or_value }
 	return value
 }
 
