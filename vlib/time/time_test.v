@@ -177,20 +177,6 @@ fn test_str() {
 	assert '1980-07-11 21:23:42' == time_to_test.str()
 }
 
-fn test_subtract() {
-	d_seconds := 3
-	d_microseconds := 13
-	duration := d_seconds * time.second + d_microseconds * time.microsecond
-	t1 := time_to_test
-	t2 := time.unix2(int(t1.unix) + d_seconds, t1.microsecond + d_microseconds)
-	d1 := t2 - t1
-	d2 := t1 - t2
-	assert d1 > 0
-	assert d1 == duration
-	assert d2 < 0
-	assert d2 == -duration
-}
-
 // not optimal test but will find obvious bugs
 fn test_now() {
 	now := time.now()
