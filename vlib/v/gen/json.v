@@ -258,7 +258,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_map_${styp}_$styp_v *)&err;
 	}
-	res = new_map_1(sizeof($styp_v));
+	res = new_map(sizeof($styp), sizeof($styp_v));
 	cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{

@@ -460,5 +460,6 @@ fn test_map_or() {
 		'second': 2
 		'third':  3
 	}
+	_ = m
 	// num := m['first'] or { return }
 }
