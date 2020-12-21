@@ -1842,6 +1842,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			else {}
 		}
 		right_sym := g.table.get_type_symbol(val_type)
+		is_fixed_array_copy := right_sym.kind == .array_fixed && val is ast.Ident
 		g.is_assign_lhs = true
 		if is_interface && right_sym.kind == .interface_ {
 			is_interface = false
@@ -1857,7 +1858,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.expr(val)
 				g.writeln(';}')
 			}
-		} else if right_sym.kind == .array_fixed && assign_stmt.op == .assign {
+		} else if is_fixed_array_init && assign_stmt.op == .assign {
 			right := val as ast.ArrayInit
 			if right.has_val {
 				for j, expr in right.exprs {
@@ -1925,7 +1926,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if left is ast.Ident || left is ast.SelectorExpr {
 					g.prevent_sum_type_unwrapping_once = true
 				}
-				g.expr(left)
+				if !is_fixed_array_copy || is_decl {
+					g.expr(left)
+				}
 			}
 			if is_inside_ternary && is_decl {
 				g.write(';\n$cur_line')
@@ -1934,7 +1937,11 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.is_assign_lhs = false
 			g.is_assign_rhs = true
-			if !g.is_array_set && !str_add {
+			if is_fixed_array_copy {
+				if is_decl {
+					g.writeln(';')
+				}
+			} else if !g.is_array_set && !str_add {
 				g.write(' $op ')
 			} else if str_add {
 				g.write(', ')
@@ -1963,7 +1970,16 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 			}
 			g.is_shared = var_type.has_flag(.shared_f)
 			if !cloned {
-				if is_decl {
+				if is_fixed_array_copy {
+					i_var := g.new_tmp_var()
+					fixed_array := right_sym.info as table.ArrayFixed
+					g.write('for(int $i_var=0; $i_var<$fixed_array.size; $i_var++) {')
+					g.expr(left)
+					g.write('[$i_var] = ')
+					g.expr(val)
+					g.write('[$i_var];')
+					g.writeln('}')
+				} else if is_decl {
 					if is_fixed_array_init && !has_val {
 						if val is ast.ArrayInit {
 							if val.has_default {
