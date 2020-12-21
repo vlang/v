@@ -189,7 +189,13 @@ jobs:
       run: |
         ./v doctor
     - name: Cross-compilation to Linux
-      run: ./v -os linux cmd/v
+      run: |
+        ./v -os linux cmd/v
+        ./v -os linux examples/2048/2048.v
+    - name: Cross-compilation to Windows
+      run: |
+        ./v -os windows cmd/v
+        ./v -os windows examples/2048/2048.v
 #    - name: Test vsh
 #      run:  ./v examples/v_script.vsh
     - name: Test ved
