@@ -93,6 +93,9 @@ jobs:
 #        ./v -silent test-compiler
     - name: v self compilation
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
+    - name: v doctor
+      run: |
+        ./v doctor
     - name: Fixed tests
       run: ./v -silent test-fixed
     - name: Test time functions in a timezone UTC-12
@@ -105,13 +108,12 @@ jobs:
       run: TZ=Etc/GMT-12 ./v test vlib/time/
     - name: Test time functions in a timezone using daylight saving (Europe/Paris)
       run: TZ=Europe/Paris ./v test vlib/time/
+    - name: Build examples
+      run: ./v build-examples
     - name: Test building v tools
       run: ./v -silent build-tools
-    - name: v doctor
-      run: |
-        ./v doctor
     - name: Test v binaries
-      run: ./v -silent build-vbinaries
+      run: ./v build-vbinaries
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
@@ -176,7 +178,7 @@ jobs:
 #    - name: Test v->c
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+#      run: ./v build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
     - name: Fixed tests
@@ -241,7 +243,7 @@ jobs:
 #    - name: Test V
 #      run: ./v -silent test-compiler
 #    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+#      run: ./v build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 #    - name: Build Vorum
@@ -432,7 +434,7 @@ jobs:
 #     - name: Build v
 #       run: echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
 # #    - name: Test v binaries
-# #      run: ./v -silent build-vbinaries
+# #      run: ./v build-vbinaries
 # ##    - name: Test v->js
 # ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
 #     - name: quick debug
@@ -479,7 +481,7 @@ jobs:
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
 #    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+#      run: ./v build-vbinaries
 #    - name: v2 self compilation
 #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
@@ -504,13 +506,15 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: v doctor
+      run: |
+        ./v doctor
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
         ./v -silent test-fixed
-    - name: v doctor
-      run: |
-        ./v doctor
+    - name: Build examples
+      run: ./v build-examples
 #    - name: Test
 #      run: |
 #        .\v.exe -silent test-compiler
@@ -518,7 +522,7 @@ jobs:
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
 #    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+#      run: ./v build-vbinaries
 
   windows-tcc:
     runs-on: windows-2019
@@ -547,7 +551,7 @@ jobs:
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
 #    - name: Test v binaries
-#      run: ./v -silent build-vbinaries
+#      run: ./v build-vbinaries
 #    - name: v2 self compilation
 #      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
