@@ -68,6 +68,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
+	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
@@ -96,6 +97,21 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	//
 	// enable use_cache by default
 	// p.use_cache = os.user_os() != 'windows'
+}
+
+fn (mut p Preferences) find_cc_if_cross_compiling() {
+	if p.os == .windows {
+		$if !windows {
+			// Cross compiling to Windows
+			p.ccompiler = 'x86_64-w64-mingw32-gcc'
+		}
+	}
+	if p.os == .linux {
+		$if !linux {
+			// Cross compiling to Linux
+			p.ccompiler = 'clang'
+		}
+	}
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {

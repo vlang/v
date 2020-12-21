@@ -10,13 +10,6 @@ import v.table
 import v.token
 import vweb.tmpl
 
-// #flag darwin -I.
-const (
-	supported_platforms  = ['windows', 'macos', 'darwin', 'linux', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'js', 'solaris', 'haiku', 'linux_or_macos']
-	supported_ccompilers = ['tinyc', 'clang', 'mingw', 'msvc', 'gcc']
-)
-
 // // #include, #flag, #v
 fn (mut p Parser) hash() ast.HashStmt {
 	mut pos := p.prev_tok.position()

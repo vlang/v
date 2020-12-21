@@ -703,6 +703,9 @@ fn (mut v Builder) cc() {
 }
 
 fn (mut b Builder) cc_linux_cross() {
+	b.setup_ccompiler_options(b.pref.ccompiler)
+	b.build_thirdparty_obj_files()
+	b.setup_output_name()
 	parent_dir := os.vmodules_dir()
 	if !os.exists(parent_dir) {
 		os.mkdir(parent_dir)
@@ -763,6 +766,9 @@ fn (mut b Builder) cc_linux_cross() {
 
 fn (mut c Builder) cc_windows_cross() {
 	println('Cross compiling for Windows...')
+	c.setup_ccompiler_options(c.pref.ccompiler)
+	c.build_thirdparty_obj_files()
+	c.setup_output_name()
 	if !c.pref.out_name.ends_with('.exe') {
 		c.pref.out_name += '.exe'
 	}
@@ -865,12 +871,6 @@ fn (mut v Builder) build_thirdparty_obj_files() {
 
 fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
-	if v.pref.os == .windows {
-		// Cross compiling for Windows
-		$if !windows {
-			v.pref.ccompiler = mingw_cc
-		}
-	}
 	cfile := '${obj_path[..obj_path.len - 2]}.c'
 	btarget := moduleflags.c_options_before_target()
 	atarget := moduleflags.c_options_after_target()
