@@ -7,7 +7,7 @@ fn test_sqlite() {
 	mut db := sqlite.connect(':memory:') or {
 		panic(err)
 	}
-	assert db.is_open()
+	assert db.is_open
 	db.exec('drop table if exists users')
 	db.exec("create table users (id integer primary key, name text default '');")
 	db.exec("insert into users (name) values ('Sam')")
@@ -29,5 +29,5 @@ fn test_sqlite() {
 	db.close() or {
 		panic(err)
 	}
-	assert !db.is_open()
+	assert !db.is_open
 }
