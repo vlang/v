@@ -4,8 +4,8 @@
 module strings
 
 pub struct Builder {
-	// TODO
 pub mut:
+	// TODO
 	buf          []byte
 	str_calls    int
 	len          int
@@ -14,7 +14,7 @@ pub mut:
 
 pub fn new_builder(initial_size int) Builder {
 	return Builder{
-		//buf: make(0, initial_size)
+		// buf: make(0, initial_size)
 		buf: []byte{cap: initial_size}
 		str_calls: 0
 		len: 0
@@ -46,20 +46,20 @@ pub fn (mut b Builder) write(s string) {
 }
 
 pub fn (mut b Builder) go_back(n int) {
-	b.buf.trim(b.buf.len-n)
+	b.buf.trim(b.buf.len - n)
 	b.len -= n
 }
 
 fn bytes2string(b []byte) string {
 	mut copy := b.clone()
 	copy << byte(`\0`)
-	res := tos(copy.data, copy.len-1)
+	res := tos(copy.data, copy.len - 1)
 	return res
 }
 
 pub fn (mut b Builder) cut_last(n int) string {
-	res := bytes2string( b.buf[b.len-n..] )
-	b.buf.trim(b.buf.len-n)
+	res := bytes2string(b.buf[b.len - n..])
+	b.buf.trim(b.buf.len - n)
 	b.len -= n
 	return res
 }
@@ -72,7 +72,6 @@ pub fn (mut b Builder) cut_to(pos int) string {
 	return res
 }
 */
-
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.buf.trim(pos)
 	b.len = pos
@@ -95,7 +94,7 @@ pub fn (b &Builder) last_n(n int) string {
 	if n > b.len {
 		return ''
 	}
-	return bytes2string( b.buf[b.len-n..] )
+	return bytes2string(b.buf[b.len - n..])
 }
 
 // buf == 'hello world'
@@ -104,7 +103,7 @@ pub fn (b &Builder) after(n int) string {
 	if n >= b.len {
 		return ''
 	}
-	return bytes2string( b.buf[n..] )
+	return bytes2string(b.buf[n..])
 }
 
 // NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),
@@ -112,23 +111,20 @@ pub fn (b &Builder) after(n int) string {
 pub fn (mut b Builder) str() string {
 	b.str_calls++
 	if b.str_calls > 1 {
-		panic('builder.str() should be called just once.\n' +
-			'If you want to reuse a builder, call b.free() first.')
+		panic('builder.str() should be called just once.\n' + 'If you want to reuse a builder, call b.free() first.')
 	}
 	b.buf << `\0`
 	s := tos(b.buf.data, b.len)
 	bis := b.initial_size
-	//free(b.buf.data)
+	// free(b.buf.data)
 	b.buf = []byte{cap: bis}
 	b.len = 0
 	return s
 }
 
 pub fn (mut b Builder) free() {
-	unsafe{
-		free(b.buf.data)
-	}
-	//b.buf = []byte{cap: b.initial_size}
+	unsafe {free(b.buf.data)}
+	// b.buf = []byte{cap: b.initial_size}
 	b.len = 0
 	b.str_calls = 0
 }
