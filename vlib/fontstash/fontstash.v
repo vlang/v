@@ -1,10 +1,8 @@
 module fontstash
 
 #flag -I @VROOT/thirdparty/fontstash
-
 #define FONTSTASH_IMPLEMENTATION
 #include "fontstash.h"
-
 pub const (
 	// TODO: fontstash.used_import is used to keep v from warning about unused imports
 	used_import = 1
@@ -22,7 +20,7 @@ pub fn delete_internal(s &C.FONScontext) {
 }
 
 [inline]
-pub fn (s &C.FONScontext) set_error_callback(callback fn(uptr voidptr, error int, val int), uptr voidptr) {
+pub fn (s &C.FONScontext) set_error_callback(callback fn (voidptr, int, int), uptr voidptr) {
 	C.fonsSetErrorCallback(s, callback, uptr)
 }
 
@@ -156,4 +154,3 @@ pub fn (s &C.FONScontext) validate_texture(dirty &int) int {
 pub fn (s &C.FONScontext) draw_debug(x f32, y f32) {
 	C.fonsDrawDebug(s, x, y)
 }
-
