@@ -3,15 +3,19 @@
 // that can be found in the LICENSE file.
 module strings
 
+// strings.Builder is used to efficiently append many strings to a large 
+// dynamically growing buffer, then use the resulting large string. Using
+// a string builder is much better for performance/memory usage than doing
+// constantly string concatenation.
 pub struct Builder {
 pub mut:
-	// TODO
 	buf          []byte
 	str_calls    int
 	len          int
 	initial_size int = 1
 }
 
+// new_builder returns a new string builder, with an initial capacity of `initial_size`
 pub fn new_builder(initial_size int) Builder {
 	return Builder{
 		// buf: make(0, initial_size)
@@ -22,16 +26,19 @@ pub fn new_builder(initial_size int) Builder {
 	}
 }
 
+// write_bytes appends `bytes` to the accumulated buffer
 pub fn (mut b Builder) write_bytes(bytes byteptr, howmany int) {
 	b.buf.push_many(bytes, howmany)
 	b.len += howmany
 }
 
+// write_b appends a single `data` byte to the accumulated buffer
 pub fn (mut b Builder) write_b(data byte) {
 	b.buf << data
 	b.len++
 }
 
+// write appends the string `s` to the buffer
 [inline]
 pub fn (mut b Builder) write(s string) {
 	if s == '' {
@@ -45,6 +52,7 @@ pub fn (mut b Builder) write(s string) {
 	b.len += s.len
 }
 
+// go_back discards the last `n` bytes from the buffer
 pub fn (mut b Builder) go_back(n int) {
 	b.buf.trim(b.buf.len - n)
 	b.len -= n
@@ -57,6 +65,7 @@ fn bytes2string(b []byte) string {
 	return res
 }
 
+// cut_last cuts the last `n` bytes from the buffer and returns them
 pub fn (mut b Builder) cut_last(n int) string {
 	res := bytes2string(b.buf[b.len - n..])
 	b.buf.trim(b.buf.len - n)
@@ -72,11 +81,15 @@ pub fn (mut b Builder) cut_to(pos int) string {
 	return res
 }
 */
+
+// go_back_to resets the buffer to the given position `pos`
+// NB: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
 	b.buf.trim(pos)
 	b.len = pos
 }
 
+// writeln appends the string `s`, and then a newline character.
 [inline]
 pub fn (mut b Builder) writeln(s string) {
 	// for c in s {
@@ -106,6 +119,7 @@ pub fn (b &Builder) after(n int) string {
 	return bytes2string(b.buf[n..])
 }
 
+// str returns all of the accumulated content of the buffer.
 // NB: in order to avoid memleaks and additional memory copies, after a call to b.str(),
 // the builder b will be empty. The returned string *owns* the accumulated data so far.
 pub fn (mut b Builder) str() string {
@@ -122,6 +136,7 @@ pub fn (mut b Builder) str() string {
 	return s
 }
 
+// manually free the contents of the buffer
 pub fn (mut b Builder) free() {
 	unsafe {free(b.buf.data)}
 	// b.buf = []byte{cap: b.initial_size}
