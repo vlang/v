@@ -4433,9 +4433,14 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		return typ.set_nr_muls(0)
 	} else { // [1]
 		index_type := c.expr(node.index)
-		c.check_index_type(typ_sym, index_type, node.pos)
-		if typ_sym.kind == .map && index_type.idx() != table.string_type_idx {
-			c.error('non-string map index (map type `$typ_sym.name`)', node.pos)
+		if typ_sym.kind == .map {
+			info := typ_sym.info as table.Map
+			if !c.check_types(index_type, info.key_type) {
+				err := c.expected_msg(index_type, info.key_type)
+				c.error('invalid key: $err', node.pos)
+			}
+		} else {
+			c.check_index_type(typ_sym, index_type, node.pos)
 		}
 		value_type := c.table.value_type(typ)
 		if value_type != table.void_type {

@@ -52,10 +52,10 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	// key_type_sym := p.get_type_symbol(key_type)
-	// if key_type_sym.kind != .string {
-	if key_type.idx() != table.string_type_idx {
-		p.error('maps can only have string keys for now')
+	if !(key_type == table.string_type_idx || (key_type.is_int() && !key_type.is_ptr()) ||
+		key_type.is_pointer()) {
+		s := p.table.type_to_str(key_type)
+		p.error('maps cannot have `$s` keys yet')
 		return 0
 	}
 	p.check(.rsbr)
