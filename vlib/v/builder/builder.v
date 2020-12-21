@@ -27,6 +27,7 @@ pub mut:
 	cached_msvc         MsvcResult
 	table               &table.Table
 	timers              &util.Timers = util.new_timers(false)
+	ccoptions           CcompilerOptions
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {

@@ -85,7 +85,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.cache_manager = vcache.new_cache_manager([
 		@VHASH,
 		/* ensure that different v versions use separate build artefacts */
-		'$p.backend | $p.os | $p.ccompiler',
+		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
 		'$p.compile_defines_all',
