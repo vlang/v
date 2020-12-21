@@ -355,13 +355,6 @@ pub fn (t Time) str() string {
 	return t.format_ss()
 }
 
-// Time subtract using eperator overloading
-pub fn (lhs Time) -(rhs Time) Duration {
-	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
-	rhs_micro := rhs.unix * 1000 * 1000 + u64(rhs.microsecond)
-	return (i64(lhs_micro) - i64(rhs_micro)) * microsecond
-}
-
 fn convert_ctime(t C.tm, microsecond int) Time {
 	return Time{
 		year: t.tm_year + 1900

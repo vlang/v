@@ -367,3 +367,25 @@ fn test_time2_copied_from_time1_should_be_equal() {
 	t2 := new_time(t1)
 	assert t2.eq(t1)
 }
+
+fn test_subtract() {
+	d_seconds := 3
+	d_microseconds := 13
+	duration := d_seconds * second + d_microseconds * microsecond
+	t1 := new_time(Time{
+		year: 2000
+		month: 5
+		day: 10
+		hour: 22
+		minute: 11
+		second: 3
+		microsecond: 100
+	})
+	t2 := unix2(int(t1.unix) + d_seconds, t1.microsecond + d_microseconds)
+	d1 := t2 - t1
+	d2 := t1 - t2
+	assert d1 > 0
+	assert d1 == duration
+	assert d2 < 0
+	assert d2 == -duration
+}
