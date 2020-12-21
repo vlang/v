@@ -1,6 +1,6 @@
 module strconv
-/*
 
+/*
 atof util
 
 Copyright (c) 2019 Dario Deledda. All rights reserved.
@@ -20,33 +20,31 @@ Original license: MIT
 
 96 bit operation utilities
 Note: when u128 will be available these function can be refactored
-
 */
-
 // right logical shift 96 bit
-fn lsr96(s2 u32, s1 u32, s0 u32) (u32,u32,u32) {
+fn lsr96(s2 u32, s1 u32, s0 u32) (u32, u32, u32) {
 	mut r0 := u32(0)
 	mut r1 := u32(0)
 	mut r2 := u32(0)
-	r0 = (s0>>1) | ((s1 & u32(1))<<31)
-	r1 = (s1>>1) | ((s2 & u32(1))<<31)
-	r2 = s2>>1
-	return r2,r1,r0
+	r0 = (s0 >> 1) | ((s1 & u32(1)) << 31)
+	r1 = (s1 >> 1) | ((s2 & u32(1)) << 31)
+	r2 = s2 >> 1
+	return r2, r1, r0
 }
 
 // left logical shift 96 bit
-fn lsl96(s2 u32, s1 u32, s0 u32) (u32,u32,u32) {
+fn lsl96(s2 u32, s1 u32, s0 u32) (u32, u32, u32) {
 	mut r0 := u32(0)
 	mut r1 := u32(0)
 	mut r2 := u32(0)
-	r2 = (s2<<1) | ((s1 & (u32(1)<<31))>>31)
-	r1 = (s1<<1) | ((s0 & (u32(1)<<31))>>31)
-	r0 = s0<<1
-	return r2,r1,r0
+	r2 = (s2 << 1) | ((s1 & (u32(1) << 31)) >> 31)
+	r1 = (s1 << 1) | ((s0 & (u32(1) << 31)) >> 31)
+	r0 = s0 << 1
+	return r2, r1, r0
 }
 
 // sum on 96 bit
-fn add96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32,u32,u32) {
+fn add96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 	mut w := u64(0)
 	mut r0 := u32(0)
 	mut r1 := u32(0)
@@ -59,11 +57,11 @@ fn add96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32,u32,u32) {
 	w >>= 32
 	w += u64(s2) + u64(d2)
 	r2 = u32(w)
-	return r2,r1,r0
+	return r2, r1, r0
 }
 
 // subtraction on 96 bit
-fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32,u32,u32) {
+fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32, u32, u32) {
 	mut w := u64(0)
 	mut r0 := u32(0)
 	mut r1 := u32(0)
@@ -76,63 +74,53 @@ fn sub96(s2 u32, s1 u32, s0 u32, d2 u32, d1 u32, d0 u32) (u32,u32,u32) {
 	w >>= 32
 	w += u64(s2) - u64(d2)
 	r2 = u32(w)
-	return r2,r1,r0
+	return r2, r1, r0
 }
 
-/*
-
-Constants
-
-*/
-
-
+// Constants
 const (
-//
-// f64 constants
-//
-	digits = 18
-	double_plus_zero = u64(0x0000000000000000)
-	double_minus_zero = u64(0x8000000000000000)
-	double_plus_infinity = u64(0x7FF0000000000000)
+	//
+	// f64 constants
+	//
+	digits                = 18
+	double_plus_zero      = u64(0x0000000000000000)
+	double_minus_zero     = u64(0x8000000000000000)
+	double_plus_infinity  = u64(0x7FF0000000000000)
 	double_minus_infinity = u64(0xFFF0000000000000)
 	//
 	// parser state machine states
 	//
-	fsm_a = 0
-	fsm_b = 1
-	fsm_c = 2
-	fsm_d = 3
-	fsm_e = 4
-	fsm_f = 5
-	fsm_g = 6
-	fsm_h = 7
-	fsm_i = 8
-	fsm_stop = 9
+	fsm_a                 = 0
+	fsm_b                 = 1
+	fsm_c                 = 2
+	fsm_d                 = 3
+	fsm_e                 = 4
+	fsm_f                 = 5
+	fsm_g                 = 6
+	fsm_h                 = 7
+	fsm_i                 = 8
+	fsm_stop              = 9
 	//
 	// Possible parser return values.
 	//
-	parser_ok = 0 // parser finished OK
-	parser_pzero = 1 // no digits or number is smaller than +-2^-1022
-	parser_mzero = 2 // number is negative, module smaller
-	parser_pinf = 3 // number is higher than +HUGE_VAL
-	parser_minf = 4 // number is lower than -HUGE_VAL
+	parser_ok             = 0 // parser finished OK
+	parser_pzero          = 1 // no digits or number is smaller than +-2^-1022
+	parser_mzero          = 2 // number is negative, module smaller
+	parser_pinf           = 3 // number is higher than +HUGE_VAL
+	parser_minf           = 4 // number is lower than -HUGE_VAL
 	//
 	// char constants
 	// Note: Modify these if working with non-ASCII encoding
 	//
-	c_dpoint = `.`
-	c_plus = `+`
-	c_minus = `-`
-	c_zero = `0`
-	c_nine = `9`
-	c_ten = u32(10)
+	c_dpoint              = `.`
+	c_plus                = `+`
+	c_minus               = `-`
+	c_zero                = `0`
+	c_nine                = `9`
+	c_ten                 = u32(10)
 )
-/*
 
-Utility
-
-*/
-
+// Utility
 // NOTE: Modify these if working with non-ASCII encoding
 fn is_digit(x byte) bool {
 	return (x >= c_zero && x <= c_nine) == true
@@ -146,21 +134,13 @@ fn is_exp(x byte) bool {
 	return (x == `E` || x == `e`) == true
 }
 
+// Support struct
 /*
-
-Support struct
-
-*/
-
-/*
-
 String parser
 NOTE: #TOFIX need one char after the last char of the number
-
 */
-
 // parser return a support struct with all the parsing information for the converter
-fn parser(s string) (int,PrepNumber) {
+fn parser(s string) (int, PrepNumber) {
 	mut state := fsm_a
 	mut digx := 0
 	mut c := byte(` `) // initial value for kicking off the state machine
@@ -168,8 +148,7 @@ fn parser(s string) (int,PrepNumber) {
 	mut expneg := false
 	mut expexp := 0
 	mut i := 0
-	mut pn := PrepNumber{
-	}
+	mut pn := PrepNumber{}
 	for state != fsm_stop {
 		match state {
 			// skip starting spaces
@@ -177,8 +156,7 @@ fn parser(s string) (int,PrepNumber) {
 				if is_space(c) == true {
 					c = s[i]
 					i++
-				}
-				else {
+				} else {
 					state = fsm_b
 				}
 			}
@@ -188,17 +166,13 @@ fn parser(s string) (int,PrepNumber) {
 				if c == c_plus {
 					c = s[i]
 					i++
-				}
-				else if c == c_minus {
+				} else if c == c_minus {
 					pn.negative = true
 					c = s[i]
 					i++
-				}
-				else if is_digit(c) {
-				}
-				else if c == c_dpoint {
-				}
-				else {
+				} else if is_digit(c) {
+				} else if c == c_dpoint {
+				} else {
 					state = fsm_stop
 				}
 			}
@@ -206,12 +180,10 @@ fn parser(s string) (int,PrepNumber) {
 			fsm_c {
 				if c == c_zero {
 					c = s[i++]
-				}
-				else if c == c_dpoint {
+				} else if c == c_dpoint {
 					c = s[i++]
 					state = fsm_d
-				}
-				else {
+				} else {
 					state = fsm_e
 				}
 			}
@@ -222,8 +194,7 @@ fn parser(s string) (int,PrepNumber) {
 					if pn.exponent > -2147483647 {
 						pn.exponent--
 					}
-				}
-				else {
+				} else {
 					state = fsm_f
 				}
 			}
@@ -234,17 +205,14 @@ fn parser(s string) (int,PrepNumber) {
 						pn.mantissa *= 10
 						pn.mantissa += u64(c - c_zero)
 						digx++
-					}
-					else if pn.exponent < 2147483647 {
+					} else if pn.exponent < 2147483647 {
 						pn.exponent++
 					}
 					c = s[i++]
-				}
-				else if c == c_dpoint {
+				} else if c == c_dpoint {
 					c = s[i++]
 					state = fsm_f
-				}
-				else {
+				} else {
 					state = fsm_f
 				}
 			}
@@ -258,12 +226,10 @@ fn parser(s string) (int,PrepNumber) {
 						digx++
 					}
 					c = s[i++]
-				}
-				else if is_exp(c) {
+				} else if is_exp(c) {
 					c = s[i++]
 					state = fsm_g
-				}
-				else {
+				} else {
 					state = fsm_g
 				}
 			}
@@ -271,8 +237,7 @@ fn parser(s string) (int,PrepNumber) {
 			fsm_g {
 				if c == c_plus {
 					c = s[i++]
-				}
-				else if c == c_minus {
+				} else if c == c_minus {
 					expneg = true
 					c = s[i++]
 				}
@@ -282,8 +247,7 @@ fn parser(s string) (int,PrepNumber) {
 			fsm_h {
 				if c == c_zero {
 					c = s[i++]
-				}
-				else {
+				} else {
 					state = fsm_i
 				}
 			}
@@ -295,13 +259,12 @@ fn parser(s string) (int,PrepNumber) {
 						expexp += int(c - c_zero)
 					}
 					c = s[i++]
-				}
-				else {
+				} else {
 					state = fsm_stop
 				}
 			}
-			else {
-			}}
+			else {}
+		}
 		// C.printf("len: %d i: %d str: %s \n",s.len,i,s[..i])
 		if i >= s.len {
 			state = fsm_stop
@@ -314,36 +277,26 @@ fn parser(s string) (int,PrepNumber) {
 	if pn.mantissa == 0 {
 		if pn.negative {
 			result = parser_mzero
-		}
-		else {
+		} else {
 			result = parser_pzero
 		}
-	}
-	else if pn.exponent > 309 {
+	} else if pn.exponent > 309 {
 		if pn.negative {
 			result = parser_minf
-		}
-		else {
+		} else {
 			result = parser_pinf
 		}
-	}
-	else if pn.exponent < -328 {
+	} else if pn.exponent < -328 {
 		if pn.negative {
 			result = parser_mzero
-		}
-		else {
+		} else {
 			result = parser_pzero
 		}
 	}
-	return result,pn
+	return result, pn
 }
 
-/*
-
-Converter to the bit form of the f64 number
-
-*/
-
+// Converter to the bit form of the f64 number
 // converter return a u64 with the bit image of the f64 number
 fn converter(mut pn PrepNumber) u64 {
 	mut binexp := 92
@@ -356,21 +309,21 @@ fn converter(mut pn PrepNumber) u64 {
 	mut r2 := u32(0) // 96-bit precision integer
 	mut r1 := u32(0)
 	mut r0 := u32(0)
-	mask28 := u32(u64(0xF)<<28)
+	mask28 := u32(u64(0xF) << 28)
 	mut result := u64(0)
 	// working on 3 u32 to have 96 bit precision
 	s0 = u32(pn.mantissa & u64(0x00000000FFFFFFFF))
-	s1 = u32(pn.mantissa>>32)
+	s1 = u32(pn.mantissa >> 32)
 	s2 = u32(0)
 	// so we take the decimal exponent off
 	for pn.exponent > 0 {
-		q2,q1,q0 = lsl96(s2, s1, s0) // q = s * 2
-		r2,r1,r0 = lsl96(q2, q1, q0) // r = s * 4 <=> q * 2
-		s2,s1,s0 = lsl96(r2, r1, r0) // s = s * 8 <=> r * 2
-		s2,s1,s0 = add96(s2, s1, s0, q2, q1, q0) // s = (s * 8) + (s * 2) <=> s*10
+		q2, q1, q0 = lsl96(s2, s1, s0) // q = s * 2
+		r2, r1, r0 = lsl96(q2, q1, q0) // r = s * 4 <=> q * 2
+		s2, s1, s0 = lsl96(r2, r1, r0) // s = s * 8 <=> r * 2
+		s2, s1, s0 = add96(s2, s1, s0, q2, q1, q0) // s = (s * 8) + (s * 2) <=> s*10
 		pn.exponent--
 		for (s2 & mask28) != 0 {
-			q2,q1,q0 = lsr96(s2, s1, s0)
+			q2, q1, q0 = lsr96(s2, s1, s0)
 			binexp++
 			s2 = q2
 			s1 = q1
@@ -378,8 +331,8 @@ fn converter(mut pn PrepNumber) u64 {
 		}
 	}
 	for pn.exponent < 0 {
-		for !((s2 & (u32(1)<<31)) != 0) {
-			q2,q1,q0 = lsl96(s2, s1, s0)
+		for !((s2 & (u32(1) << 31)) != 0) {
+			q2, q1, q0 = lsl96(s2, s1, s0)
 			binexp--
 			s2 = q2
 			s1 = q1
@@ -387,15 +340,15 @@ fn converter(mut pn PrepNumber) u64 {
 		}
 		q2 = s2 / c_ten
 		r1 = s2 % c_ten
-		r2 = (s1>>8) | (r1<<24)
+		r2 = (s1 >> 8) | (r1 << 24)
 		q1 = r2 / c_ten
 		r1 = r2 % c_ten
-		r2 = ((s1 & u32(0xFF))<<16) | (s0>>16) | (r1<<24)
+		r2 = ((s1 & u32(0xFF)) << 16) | (s0 >> 16) | (r1 << 24)
 		r0 = r2 / c_ten
 		r1 = r2 % c_ten
-		q1 = (q1<<8) | ((r0 & u32(0x00FF0000))>>16)
-		q0 = r0<<16
-		r2 = (s0 & u32(0xFFFF)) | (r1<<16)
+		q1 = (q1 << 8) | ((r0 & u32(0x00FF0000)) >> 16)
+		q0 = r0 << 16
+		r2 = (s0 & u32(0xFFFF)) | (r1 << 16)
 		q0 |= r2 / c_ten
 		s2 = q2
 		s1 = q1
@@ -406,7 +359,7 @@ fn converter(mut pn PrepNumber) u64 {
 	// normalization, the 28 bit in s2 must the leftest one in the variable
 	if s2 != 0 || s1 != 0 || s0 != 0 {
 		for (s2 & mask28) == 0 {
-			q2,q1,q0 = lsl96(s2, s1, s0)
+			q2, q1, q0 = lsl96(s2, s1, s0)
 			binexp--
 			s2 = q2
 			s1 = q1
@@ -425,48 +378,47 @@ fn converter(mut pn PrepNumber) u64 {
 	*		If bit 53 is 0, round down
 	*		If bit 53 is 1, round up
 	*/
-	/* test case 1 complete
+	/*
+	test case 1 complete
 	s2=0x1FFFFFFF
 	s1=0xFFFFFF80
 	s0=0x0
 	*/
-
-	/* test case 1 check_round_bit
+	/*
+	test case 1 check_round_bit
 	s2=0x18888888
 	s1=0x88888880
 	s0=0x0
 	*/
-
-	/* test case  check_round_bit + normalization
+	/*
+	test case  check_round_bit + normalization
 	s2=0x18888888
 	s1=0x88888F80
 	s0=0x0
 	*/
-
 	// C.printf("mantissa before rounding: %08x%08x%08x binexp: %d \n", s2,s1,s0,binexp)
 	// s1 => 0xFFFFFFxx only F are rapresented
 	nbit := 7
-	check_round_bit := u32(1)<<u32(nbit)
-	check_round_mask := u32(0xFFFFFFFF)<<u32(nbit)
+	check_round_bit := u32(1) << u32(nbit)
+	check_round_mask := u32(0xFFFFFFFF) << u32(nbit)
 	if (s1 & check_round_bit) != 0 {
 		// C.printf("need round!! cehck mask: %08x\n", s1 & ~check_round_mask )
 		if (s1 & ~check_round_mask) != 0 {
 			// C.printf("Add 1!\n")
-			s2,s1,s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
-		}
-		else {
+			s2, s1, s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
+		} else {
 			// C.printf("All 0!\n")
-			if (s1 & (check_round_bit<<u32(1))) != 0 {
+			if (s1 & (check_round_bit << u32(1))) != 0 {
 				// C.printf("Add 1 form -1 bit control!\n")
-				s2,s1,s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
+				s2, s1, s0 = add96(s2, s1, s0, 0, check_round_bit, 0)
 			}
 		}
 		s1 = s1 & check_round_mask
 		s0 = u32(0)
 		// recheck normalization
-		if s2 & (mask28<<u32(1)) != 0 {
+		if s2 & (mask28 << u32(1)) != 0 {
 			// C.printf("Renormalize!!")
-			q2,q1,q0 = lsr96(s2, s1, s0)
+			q2, q1, q0 = lsr96(s2, s1, s0)
 			binexp--
 			s2 = q2
 			s1 = q1
@@ -482,63 +434,42 @@ fn converter(mut pn PrepNumber) u64 {
 	if binexp > 2046 {
 		if pn.negative {
 			result = double_minus_infinity
-		}
-		else {
+		} else {
 			result = double_plus_infinity
 		}
-	}
-	else if binexp < 1 {
+	} else if binexp < 1 {
 		if pn.negative {
 			result = double_minus_zero
-		}
-		else {
+		} else {
 			result = double_plus_zero
 		}
-	}
-	else if s2 != 0 {
+	} else if s2 != 0 {
 		mut q := u64(0)
-		binexs2 := u64(binexp)<<52
-		q = (u64(s2 & ~mask28)<<24) | ((u64(s1) + u64(128))>>8) | binexs2
+		binexs2 := u64(binexp) << 52
+		q = (u64(s2 & ~mask28) << 24) | ((u64(s1) + u64(128)) >> 8) | binexs2
 		if pn.negative {
-			q |= (u64(1)<<63)
+			q |= (u64(1) << 63)
 		}
 		result = q
 	}
 	return result
 }
 
-/*
-
-Public functions
-
-*/
-
+// Public functions
 // atof64 return a f64 from a string doing a parsing operation
 pub fn atof64(s string) f64 {
-	mut pn := PrepNumber{
-	}
+	mut pn := PrepNumber{}
 	mut res_parsing := 0
-	mut res  := Float64u{}
-
-	res_parsing,pn = parser(s + ' ') // TODO: need an extra char for now
+	mut res := Float64u{}
+	res_parsing, pn = parser(s + ' ') // TODO: need an extra char for now
 	// println(pn)
 	match res_parsing {
-		parser_ok {
-			res.u = converter(mut pn)
-		}
-		parser_pzero {
-			res.u = double_plus_zero
-		}
-		parser_mzero {
-			res.u = double_minus_zero
-		}
-		parser_pinf {
-			res.u = double_plus_infinity
-		}
-		parser_minf {
-			res.u = double_minus_infinity
-		}
-		else {
-		}}
+		parser_ok { res.u = converter(mut pn) }
+		parser_pzero { res.u = double_plus_zero }
+		parser_mzero { res.u = double_minus_zero }
+		parser_pinf { res.u = double_plus_infinity }
+		parser_minf { res.u = double_minus_infinity }
+		else {}
+	}
 	return res.f
 }

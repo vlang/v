@@ -31,31 +31,24 @@ fn test_common_parse_uint2() {
 	mut result, mut error := strconv.common_parse_uint2('1', 10, 8)
 	assert result == 1
 	assert error == 0
-
 	result, error = strconv.common_parse_uint2('123', 10, 8)
 	assert result == 123
 	assert error == 0
-
 	result, error = strconv.common_parse_uint2('123', 10, 65)
 	assert result == 0
 	assert error == -2
-
 	result, error = strconv.common_parse_uint2('123', 10, -1)
 	assert result == 0
 	assert error == -2
-
 	result, error = strconv.common_parse_uint2('', 10, 8)
 	assert result == 0
 	assert error == 1
-
 	result, error = strconv.common_parse_uint2('1a', 10, 8)
 	assert result == 1
 	assert error == 2
-
 	result, error = strconv.common_parse_uint2('12a', 10, 8)
 	assert result == 12
 	assert error == 3
-
 	result, error = strconv.common_parse_uint2('123a', 10, 8)
 	assert result == 123
 	assert error == 4
