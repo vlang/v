@@ -108,8 +108,8 @@ pub fn (d Duration) timespec() C.timespec {
 	d_nsec := d % second
 	ts.tv_sec += d_sec
 	ts.tv_nsec += d_nsec
-	if ts.tv_nsec > second {
-		ts.tv_nsec -= second
+	if ts.tv_nsec > i64(second) {
+		ts.tv_nsec -= i64(second)
 		ts.tv_sec++
 	}
 	return ts
