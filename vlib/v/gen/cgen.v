@@ -965,7 +965,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 				if g.is_builtin_mod && g.module_built == 'builtin' && node.mod == 'builtin' {
 					skip = false
 				}
-				if !skip {
+				if !skip && g.pref.is_verbose {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
