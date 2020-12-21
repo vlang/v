@@ -20,9 +20,10 @@ struct C.sqlite3_stmt {
 
 //
 pub struct DB {
+pub:
+	is_open bool
 mut:
 	conn    &C.sqlite3
-	is_open bool
 }
 
 pub fn (db DB) str() string {
@@ -87,11 +88,6 @@ pub fn (mut db DB) close() ?bool {
 		return error('sqlite db error: failed to close with code: $code')
 	}
 	return true // successfully closed
-}
-
-// is_open returns whether the database is open or not.
-pub fn (db DB) is_open() bool {
-	return db.is_open
 }
 
 // Only for V ORM
