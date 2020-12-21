@@ -47,7 +47,7 @@ fn a_times_transp(mut v []f64, u []f64) {
 fn main() {
 	mut n := 0
 	if os.args.len == 2 {
-		n = strconv.atoi(os.args[1])
+		n = strconv.atoi(os.args[1]) or { 0 }
 	} else {
 		n = 0
 	}
