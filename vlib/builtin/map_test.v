@@ -463,3 +463,25 @@ fn test_map_or() {
 	_ = m
 	// num := m['first'] or { return }
 }
+
+fn test_int_keys() {
+	mut m := map[int]int
+	m[3] = 9
+	m[4] = 16
+	assert m.len == 2
+	assert m[3] == 9
+	assert m[4] == 16
+	m[5] += 24
+	m[5]++
+	assert m[5] == 25
+
+	mc := m.clone()
+	assert mc.len == 3
+	mut all := []int{}
+	for k, v in mc {
+		assert m[k] == v
+		all << k
+		all << v
+	}
+	assert all == [3,9,4,16,5,25]
+}
