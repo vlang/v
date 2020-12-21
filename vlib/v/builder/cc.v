@@ -807,12 +807,6 @@ fn (mut v Builder) build_thirdparty_obj_files() {
 
 fn (mut v Builder) build_thirdparty_obj_file(path string, moduleflags []cflag.CFlag) {
 	obj_path := os.real_path(path)
-	if v.pref.os == .windows {
-		// Cross compiling for Windows
-		$if !windows {
-			v.pref.ccompiler = mingw_cc
-		}
-	}
 	opath := v.pref.cache_manager.postfix_with_key2cpath('.o', obj_path)
 	if os.exists(opath) {
 		return
