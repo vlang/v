@@ -69,112 +69,121 @@ fn test_140710_232() {
 }
 
 fn test_pi_1_digit() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-2).equals(fractions.fraction(22, 7))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-2)
+		.equals(fractions.fraction(22,7))
 }
 
 fn test_pi_2_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-3).equals(fractions.fraction(22, 7))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-3)
+		.equals(fractions.fraction(22, 7))
 }
 
 fn test_pi_3_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-4).equals(fractions.fraction(333, 106))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-4)
+		.equals(fractions.fraction(333, 106))
 }
 
 fn test_pi_4_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-5).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-5)
+		.equals(fractions.fraction(355, 113))
 }
 
 fn test_pi_5_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-6).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-6)
+		.equals(fractions.fraction(355, 113))
 }
 
 fn test_pi_6_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-7).equals(fractions.fraction(355, 113))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-7)
+		.equals(fractions.fraction(355, 113))
 }
 
 fn test_pi_7_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-8).equals(fractions.fraction(103993,
-		33102))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-8)
+		.equals(fractions.fraction(103993, 33102))
 }
 
 fn test_pi_8_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-9).equals(fractions.fraction(103993,
-		33102))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-9)
+		.equals(fractions.fraction(103993, 33102))
 }
 
 fn test_pi_9_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-10).equals(fractions.fraction(104348,
-		33215))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-10)
+		.equals(fractions.fraction(104348, 33215))
 }
 
 fn test_pi_10_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-11).equals(fractions.fraction(312689,
-		99532))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-11)
+		.equals(fractions.fraction(312689, 99532))
 }
 
 fn test_pi_11_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-12).equals(fractions.fraction(1146408,
-		364913))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-12)
+		.equals(fractions.fraction(1146408, 364913))
 }
 
 fn test_pi_12_digits() {
-	assert fractions.approximate_with_eps(math.pi, 5.0e-13).equals(fractions.fraction(4272943,
-		1360120))
+	assert fractions.approximate_with_eps(math.pi, 5.0e-13)
+		.equals(fractions.fraction(4272943, 1360120))
 }
 
 fn test_phi_1_digit() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-2).equals(fractions.fraction(5, 3))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-2)
+		.equals(fractions.fraction(5, 3))
 }
 
 fn test_phi_2_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-3).equals(fractions.fraction(21, 13))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-3)
+		.equals(fractions.fraction(21, 13))
 }
 
 fn test_phi_3_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-4).equals(fractions.fraction(55, 34))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-4)
+		.equals(fractions.fraction(55, 34))
 }
 
 fn test_phi_4_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-5).equals(fractions.fraction(233,
-		144))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-5)
+		.equals(fractions.fraction(233, 144))
 }
 
 fn test_phi_5_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-6).equals(fractions.fraction(610,
-		377))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-6)
+		.equals(fractions.fraction(610, 377))
 }
 
 fn test_phi_6_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-7).equals(fractions.fraction(1597,
-		987))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-7)
+		.equals(fractions.fraction(1597, 987))
 }
 
 fn test_phi_7_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-8).equals(fractions.fraction(6765,
-		4181))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-8)
+		.equals(fractions.fraction(6765, 4181))
 }
 
 fn test_phi_8_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-9).equals(fractions.fraction(17711,
-		10946))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-9)
+		.equals(fractions.fraction(17711, 10946))
 }
 
 fn test_phi_9_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-10).equals(fractions.fraction(75025,
-		46368))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-10)
+		.equals(fractions.fraction(75025, 46368))
 }
 
 fn test_phi_10_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-11).equals(fractions.fraction(196418,
-		121393))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-11)
+		.equals(fractions.fraction(196418, 121393))
 }
 
 fn test_phi_11_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-12).equals(fractions.fraction(514229,
-		317811))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-12)
+		.equals(fractions.fraction(514229, 317811))
 }
 
 fn test_phi_12_digits() {
-	assert fractions.approximate_with_eps(math.phi, 5.0e-13).equals(fractions.fraction(2178309,
-		1346269))
+	assert fractions.approximate_with_eps(math.phi, 5.0e-13)
+		.equals(fractions.fraction(2178309, 1346269))
 }

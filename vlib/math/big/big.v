@@ -143,31 +143,31 @@ pub fn (n Number) hexstr() string {
 
 // //////////////////////////////////////////////////////////
 // overloaded ops for the numbers:
-pub fn (a Number) +(b Number) Number {
+pub fn (a Number) + (b Number) Number {
 	c := Number{}
 	C.bignum_add(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) -(b Number) Number {
+pub fn (a Number) - (b Number) Number {
 	c := Number{}
 	C.bignum_sub(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) *(b Number) Number {
+pub fn (a Number) * (b Number) Number {
 	c := Number{}
 	C.bignum_mul(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) /(b Number) Number {
+pub fn (a Number) / (b Number) Number {
 	c := Number{}
 	C.bignum_div(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) %(b Number) Number {
+pub fn (a Number) % (b Number) Number {
 	c := Number{}
 	C.bignum_mod(&a, &b, &c)
 	return c

@@ -82,12 +82,12 @@ fn general_addition_result(f1 Fraction, f2 Fraction, addition bool) Fraction {
 }
 
 // Fraction add using operator overloading
-pub fn (f1 Fraction) +(f2 Fraction) Fraction {
+pub fn (f1 Fraction) + (f2 Fraction) Fraction {
 	return general_addition_result(f1.reduce(), f2.reduce(), true)
 }
 
 // Fraction subtract using operator overloading
-pub fn (f1 Fraction) -(f2 Fraction) Fraction {
+pub fn (f1 Fraction) - (f2 Fraction) Fraction {
 	return general_addition_result(f1.reduce(), f2.reduce(), false)
 }
 
@@ -122,12 +122,12 @@ fn general_multiplication_result(f1 Fraction, f2 Fraction, multiplication bool) 
 }
 
 // Fraction multiply using operator overloading
-pub fn (f1 Fraction) *(f2 Fraction) Fraction {
+pub fn (f1 Fraction) * (f2 Fraction) Fraction {
 	return general_multiplication_result(f1.reduce(), f2.reduce(), true)
 }
 
 // Fraction divide using operator overloading
-pub fn (f1 Fraction) /(f2 Fraction) Fraction {
+pub fn (f1 Fraction) / (f2 Fraction) Fraction {
 	if f2.n == 0 {
 		panic('Cannot divive by zero')
 	}

@@ -1,7 +1,7 @@
 module math
 
 fn tst_res(str1 string, str2 string) bool {
-	if (math.abs(str1.f64() - str2.f64())) < 1e-5 {
+	if (abs(str1.f64() - str2.f64())) < 1e-5 {
 		return true
 	}
 	return false
@@ -26,10 +26,8 @@ fn test_digits() {
 	assert digits_in_10th_base[0] == 5
 	assert digits_in_10th_base[1] == 2
 	assert digits_in_10th_base[2] == 1
-
 	digits_in_16th_base := digits(15, 16)
 	assert digits_in_16th_base[0] == 15
-
 	negative_digits := digits(-4, 2)
 	assert negative_digits[2] == -1
 }
@@ -48,9 +46,9 @@ fn test_gamma() {
 	sval := '2.453737'
 	assert tst_res(log_gamma(4.5).str(), sval)
 	assert tst_res(log(gamma(4.5)).str(), sval)
-	//assert log_gamma(4.5).str() == sval
-	//assert log(gamma(4.5)).str() == sval
-	assert abs( log_gamma(4.5) - log(gamma(4.5)) ) < 0.000001
+	// assert log_gamma(4.5).str() == sval
+	// assert log(gamma(4.5)).str() == sval
+	assert abs(log_gamma(4.5) - log(gamma(4.5))) < 0.000001
 	// assert log_gamma(4.5) == log(gamma(4.5)) /* <-- fails on alpine/musl
 }
 

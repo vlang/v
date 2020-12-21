@@ -4,16 +4,17 @@
 module math
 
 const (
-	uvnan = u64(0x7FF8000000000001)
-	uvinf = u64(0x7FF0000000000000)
-	uvneginf = u64(0xFFF0000000000000)
-	uvone = u64(0x3FF0000000000000)
-	mask = 0x7FF
-	shift = 64 - 11 - 1
-	bias = 1023
-	sign_mask = (u64(1)<<63)
-	frac_mask = ((u64(1)<<u64(shift)) - u64(1))
+	uvnan     = u64(0x7FF8000000000001)
+	uvinf     = u64(0x7FF0000000000000)
+	uvneginf  = u64(0xFFF0000000000000)
+	uvone     = u64(0x3FF0000000000000)
+	mask      = 0x7FF
+	shift     = 64 - 11 - 1
+	bias      = 1023
+	sign_mask = (u64(1) << 63)
+	frac_mask = ((u64(1) << u64(shift)) - u64(1))
 )
+
 // inf returns positive infinity if sign >= 0, negative infinity if sign < 0.
 pub fn inf(sign int) f64 {
 	v := if sign >= 0 { uvinf } else { uvneginf }
@@ -56,4 +57,3 @@ pub fn is_inf(f f64, sign int) bool {
 // }
 // return x, 0
 // }
-
