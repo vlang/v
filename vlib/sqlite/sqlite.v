@@ -20,7 +20,7 @@ struct C.sqlite3_stmt {
 
 //
 pub struct DB {
-pub:
+pub mut:
 	is_open bool
 mut:
 	conn    &C.sqlite3
