@@ -58,6 +58,7 @@ const (
 		'vlib/v/vmod/',
 		'vlib/gg/gg.v',
 		'vlib/os/',
+		'vlib/strings/',
 		'vlib/time/',
 		'vlib/builtin/array_test.v',
 	]
