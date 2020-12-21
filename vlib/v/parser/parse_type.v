@@ -55,8 +55,11 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 	if !(key_type == table.string_type_idx || (key_type.is_int() && !key_type.is_ptr()) ||
 		key_type.is_pointer()) {
 		s := p.table.type_to_str(key_type)
-		p.error('maps cannot have `$s` keys yet')
+		p.error_with_pos('maps do not support `$s` keys for now', p.tok.position())
 		return 0
+	}
+	if key_type != table.string_type_idx {
+		p.warn_with_pos('non-string keys are work in progress', p.tok.position())
 	}
 	p.check(.rsbr)
 	value_type := p.parse_type()
