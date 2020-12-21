@@ -21,6 +21,7 @@ const (
 		'cmd/tools/vdoc.v',
 		'cmd/v/v.v',
 		'vlib/builtin/array.v',
+		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
 		'vlib/time/time.v',
@@ -56,12 +57,13 @@ const (
 		'vlib/v/util/',
 		'vlib/v/vet/',
 		'vlib/v/vmod/',
+		'vlib/cli/',
+		'vlib/flag/',
 		'vlib/gg/gg.v',
 		'vlib/os/',
 		'vlib/semver/',
 		'vlib/strings/',
 		'vlib/time/',
-		'vlib/builtin/array_test.v',
 	]
 )
 
