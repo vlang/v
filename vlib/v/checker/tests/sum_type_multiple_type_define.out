@@ -1,0 +1,5 @@
+vlib/v/checker/tests/sum_type_multiple_type_define.vv:3:22: error: sum type FooType cannot hold the type `Foo` more than once
+    1 | struct Foo {}
+    2 |
+    3 | type FooType = Foo | Foo
+      |                      ~~~
