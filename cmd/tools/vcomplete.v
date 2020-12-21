@@ -192,6 +192,8 @@ const (
 	]
 )
 
+// auto_complete prints auto completion results back to the calling shell's completion system.
+// auto_complete acts as communication bridge between the calling shell and V's completions.
 fn auto_complete(args []string) {
 	if args.len <= 1 || args[0] != 'complete' {
 		if args.len == 1 {
@@ -291,6 +293,17 @@ compdef _v v
 	exit(0)
 }
 
+// append_separator_if_dir is a utility function.that returns the input `path` appended an
+// OS dependant path separator if the `path` is a directory.
+fn append_separator_if_dir(path string) string {
+	return if os.is_dir(path) && !path.ends_with(os.path_separator) {
+		path + os.path_separator
+	} else {
+		path
+	}
+}
+
+// auto_complete_request retuns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
 	// returns the completion input as a string (['v','run'] vs. ['v run']).
@@ -340,9 +353,7 @@ fn auto_complete_request(args []string) []string {
 						if flag == part {
 							if flag == '-cc' { // 'v -cc <tab>' -> list of available compilers.
 								for compiler in auto_complete_compilers {
-									path := os.find_abs_path_of_executable(compiler) or {
-										''
-									}
+									path := os.find_abs_path_of_executable(compiler) or { '' }
 									if path != '' {
 										list << compiler
 									}
@@ -385,15 +396,13 @@ fn auto_complete_request(args []string) []string {
 				ls_path = os.dir(part)
 				path_complete = true
 			}
-			entries := os.ls(ls_path) or {
-				return list
-			}
+			entries := os.ls(ls_path) or { return list }
 			last := part.all_after_last(os.path_separator)
 			if path_complete {
 				path := part.all_before_last(os.path_separator)
 				for entry in entries {
 					if entry.starts_with(last) {
-						list << os.join_path(path, entry)
+						list << append_separator_if_dir(os.join_path(path, entry))
 					}
 				}
 				// If only one possible file - send full path to completion system.
@@ -404,10 +413,10 @@ fn auto_complete_request(args []string) []string {
 			} else {
 				for entry in entries {
 					if collect_all {
-						list << entry
+						list << append_separator_if_dir(entry)
 					} else {
 						if entry.starts_with(last) {
-							list << entry
+							list << append_separator_if_dir(entry)
 						}
 					}
 				}
