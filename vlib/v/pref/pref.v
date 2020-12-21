@@ -237,6 +237,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_prod = true
 				res.build_options << arg
 			}
+			'-sanitize' {
+				res.sanitize = true
+				res.build_options << arg
+			}
 			'-simulator' {
 				res.is_ios_simulator = true
 			}
@@ -409,6 +413,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 		}
 	}
+	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)

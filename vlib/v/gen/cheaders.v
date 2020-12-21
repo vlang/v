@@ -272,22 +272,7 @@ static void* g_live_info = NULL;
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map_exists(m, val)
-
-// these macros have corresponding implementations in builtin/int.v with different signedness
-#define array_i8_contains(a, b) array_byte_contains(a, (byte)(b))
-#define array_i16_contains(a, b) array_u16_contains(a, (u16)(b))
-#define array_u32_contains(a, b) array_int_contains(a, (int)(b))
-#define array_i64_contains(a, b) array_u64_contains(a, (u64)(b))
-#define array_rune_contains(a, b) array_int_contains(a, (int)(b))
-#define array_f32_contains(a, b) array_int_contains(a, *(int*)&((f32[]){(b)}))
-#define array_f64_contains(a, b) array_u64_contains(a, *(u64*)&((f64[]){(b)}))
-#ifdef TARGET_IS_64BIT
-#define array_voidptr_contains(a, b) array_u64_contains(a, (u64)(b))
-#else
-#define array_voidptr_contains(a, b) array_int_contains(a, (int)(b))
-#endif
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }

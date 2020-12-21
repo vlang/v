@@ -370,6 +370,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_prepend(node)
 				return
 			}
+			'contains' {
+				g.gen_array_contains(node)
+				return
+			}
 			else {}
 		}
 	}

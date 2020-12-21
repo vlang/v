@@ -475,6 +475,7 @@ pub fn new() RE
 #### **Custom initialization**
 For some particular need it is possible initialize a fully customized regex:
 ```v ignore
+pattern = r"ab(.*)(ac)"
 // init custom regex
 mut re := regex.RE{}
 re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern

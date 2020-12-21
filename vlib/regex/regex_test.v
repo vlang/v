@@ -138,6 +138,9 @@ match_test_suite = [
     TestItem{"*1*1(", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",0,5},
     TestItem{" 1*1(", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",-1,0},
     TestItem{"1*1 ", r"(?:^|[*()])(\d+)([*])(\d+)(?:$|[*()])",-1,0},
+
+    // particular groups
+    TestItem{"ababababac", r"ab(.*)(ac)",0,10},
 ]
 )
 
@@ -227,6 +230,12 @@ cgroups_test_suite = [
 		"acc +13",
 		r"(\w+)\s(.)([0-9]+)",0,7,
 		[0, 3, 4, 5, 5, 7],
+		map[string]int{}
+	},
+	TestItemCGroup{
+		"ababababac",
+		r"ab(.*)(ac)",0,10,
+		[2, 8, 8, 10],
 		map[string]int{}
 	},
 ]
