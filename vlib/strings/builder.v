@@ -111,7 +111,7 @@ pub fn (b &Builder) after(n int) string {
 pub fn (mut b Builder) str() string {
 	b.str_calls++
 	if b.str_calls > 1 {
-		panic('builder.str() should be called just once.\n' + 'If you want to reuse a builder, call b.free() first.')
+		panic('builder.str() should be called just once.\nIf you want to reuse a builder, call b.free() first.')
 	}
 	b.buf << `\0`
 	s := tos(b.buf.data, b.len)
