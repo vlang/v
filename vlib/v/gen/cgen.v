@@ -2982,20 +2982,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 					return
 				}
 			}
-			if left_sym.kind == .function {
-				g.write('_IN(voidptr, ')
-			} else {
-				elem_type := right_sym.array_info().elem_type
-				styp := g.typ(g.table.mktyp(elem_type))
-				g.write('_IN($styp, ')
-			}
-			g.expr(node.left)
-			g.write(', ')
+			fn_name := g.gen_array_contains_method(node.right_type)
+			g.write('(${fn_name}(')
 			if node.right_type.is_ptr() {
 				g.write('*')
 			}
 			g.expr(node.right)
-			g.write(')')
+			g.write(',')
+			g.expr(node.left)
+			g.write('))')
+			return
 		} else if right_sym.kind == .map {
 			g.write('_IN_MAP(')
 			g.expr(node.left)
@@ -5132,6 +5128,61 @@ fn (mut g Gen) gen_array_prepend(node ast.CallExpr) {
 		g.expr(node.args[0].expr)
 		g.write('})')
 	}
+}
+
+fn (mut g Gen) gen_array_contains_method(left_type table.Type) string {
+	mut left_sym := g.table.get_type_symbol(left_type)
+	mut left_type_str := g.typ(left_type).replace('*', '')
+	left_info := left_sym.info as table.Array
+	mut elem_type_str := g.typ(left_info.elem_type)
+	elem_sym := g.table.get_type_symbol(left_info.elem_type)
+	if elem_sym.kind == .function {
+		left_type_str = 'array_voidptr'
+		elem_type_str = 'voidptr'
+	}
+	fn_name := '${left_type_str}_contains'
+	if !left_sym.has_method('contains') {
+		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+		g.auto_str_funcs.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+		g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+		if elem_sym.kind == .string {
+			g.auto_str_funcs.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+		} else if elem_sym.kind == .array {
+			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
+			g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+		} else if elem_sym.kind == .function {
+			g.auto_str_funcs.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+		} else {
+			g.auto_str_funcs.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+		}
+		g.auto_str_funcs.writeln('\t\t\treturn true;')
+		g.auto_str_funcs.writeln('\t\t}')
+		g.auto_str_funcs.writeln('\t}')
+		g.auto_str_funcs.writeln('\treturn false;')
+		g.auto_str_funcs.writeln('}')
+		left_sym.register_method(&table.Fn{
+			name: 'contains'
+			params: [table.Param{
+				typ: left_type
+			}, table.Param{
+				typ: left_info.elem_type
+			}]
+		})
+	}
+	return fn_name
+}
+
+// `nums.contains(2)`
+fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
+	fn_name := g.gen_array_contains_method(node.left_type)
+	g.write('${fn_name}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
+	g.expr(node.left)
+	g.write(',')
+	g.expr(node.args[0].expr)
+	g.write(')')
 }
 
 [inline]
