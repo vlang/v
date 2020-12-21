@@ -81,7 +81,6 @@ pub fn (mut b Builder) cut_to(pos int) string {
 	return res
 }
 */
-
 // go_back_to resets the buffer to the given position `pos`
 // NB: pos should be < than the existing buffer length.
 pub fn (mut b Builder) go_back_to(pos int) {
