@@ -27,10 +27,11 @@ import hash
 // │     └── 7674f983ab9c487b0d7c1a0ad73840a5.c
 pub struct CacheManager {
 pub:
-	basepath string
+	basepath       string
+	original_vopts string
 pub mut:
-	vopts    string
-	k2cpath  map[string]string // key -> filesystem cache path for the object
+	vopts          string
+	k2cpath        map[string]string // key -> filesystem cache path for the object
 }
 
 pub fn new_cache_manager(opts []string) CacheManager {
@@ -47,10 +48,19 @@ pub fn new_cache_manager(opts []string) CacheManager {
 		'.strip_margin()
 		os.write_file(os.join_path(vcache_basepath, 'README.md'), readme_content)
 	}
+	original_vopts := opts.join('|')
 	return CacheManager{
 		basepath: vcache_basepath
-		vopts: opts.join('|')
+		vopts: original_vopts
+		original_vopts: original_vopts
 	}
+}
+
+// set_temporary_options can be used to add temporary options to the hash salt
+// NB: these can be changed easily with another .set_temporary_options call
+// without affecting the .original_vopts
+pub fn (mut cm CacheManager) set_temporary_options(new_opts []string) {
+	cm.vopts = cm.original_vopts + '#' + new_opts.join('|')
 }
 
 pub fn (mut cm CacheManager) key2cpath(key string) string {
