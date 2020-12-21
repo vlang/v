@@ -3074,11 +3074,11 @@ fn (a Vec) str() string {
 	return '{$a.x, $a.y}'
 }
 
-fn (a Vec) +(b Vec) Vec {
+fn (a Vec) + (b Vec) Vec {
 	return Vec{a.x + b.x, a.y + b.y}
 }
 
-fn (a Vec) -(b Vec) Vec {
+fn (a Vec) - (b Vec) Vec {
 	return Vec{a.x - b.x, a.y - b.y}
 }
 
