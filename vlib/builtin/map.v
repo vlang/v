@@ -670,6 +670,7 @@ pub fn (m &map) clone() map {
 		metas: &u32(malloc(metasize))
 		extra_metas: m.extra_metas
 		len: m.len
+		has_string_keys: m.has_string_keys
 	}
 	unsafe { C.memcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {
