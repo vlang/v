@@ -20,8 +20,10 @@ struct C.sqlite3_stmt {
 
 //
 pub struct DB {
+pub mut:
+	is_open bool
 mut:
-	conn &C.sqlite3
+	conn    &C.sqlite3
 }
 
 pub fn (db DB) str() string {
@@ -63,7 +65,7 @@ fn C.sqlite3_errstr(int) charptr
 
 fn C.sqlite3_free(voidptr)
 
-// Opens the connection with a database.
+// connect Opens the connection with a database.
 pub fn connect(path string) ?DB {
 	db := &C.sqlite3(0)
 	if C.sqlite3_open(path.str, &db) != 0 {
@@ -71,7 +73,21 @@ pub fn connect(path string) ?DB {
 	}
 	return DB{
 		conn: db
+		is_open: true
 	}
+}
+
+// close Closes the DB.
+// TODO: For all functions, determine whether the connection is
+// closed first, and determine what to do if it is
+pub fn (mut db DB) close() ?bool {
+	code := C.sqlite3_close(db.conn)
+	if code == 0 {
+		db.is_open = false
+	} else {
+		return error('sqlite db error: failed to close with code: $code')
+	}
+	return true // successfully closed
 }
 
 // Only for V ORM
