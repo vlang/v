@@ -1,4 +1,4 @@
-import big
+import math.big
 
 fn test_new_big() {
 	n := big.new()
