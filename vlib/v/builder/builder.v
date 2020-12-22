@@ -331,7 +331,7 @@ fn (b &Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := stmt.stringify(b.table, 'main')
+							fheader := stmt.stringify(b.table, 'main', map[string]string{})
 							redefines << FunctionRedefinition{
 								fpath: file.path
 								fline: stmt.pos.line_nr

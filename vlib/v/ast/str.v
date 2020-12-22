@@ -19,7 +19,7 @@ pub fn (node &FnDecl) modname() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
+pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')

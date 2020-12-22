@@ -705,7 +705,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
-		f.write(method.stringify(f.table, f.cur_mod).after('fn '))
+		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
@@ -1251,7 +1251,7 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	// println('$it.name find_comment($it.pos.line_nr)')
 	// f.find_comment(it.pos.line_nr)
 	f.attrs(node.attrs)
-	f.write(node.stringify(f.table, f.cur_mod)) // `Expr` instead of `ast.Expr` in mod ast
+	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		if !node.no_body {
 			f.writeln(' {')
