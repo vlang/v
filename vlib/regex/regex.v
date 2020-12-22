@@ -311,10 +311,15 @@ pub mut:
 	group_max_nested  int  = 3         // max nested group
 	group_max         int  = 8         // max allowed number of different groups
 
+	state_list        []StateObj
+
 	group_csave_flag  bool             // flag to enable continuous saving
-	group_csave       []int = []int{}  // groups continuous save list
+	group_csave       []int //= []int{}  // groups continuous save list
 
 	group_map         map[string]int   // groups names map
+
+	group_stack       []int 
+	group_data        []int
 
 	// flags
 	flag              int              // flag for optional parameters
@@ -1574,10 +1579,10 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut ist   := rune(0)              // actual instruction
 	mut l_ist := rune(0)              // last matched instruction
 
-	mut state_list := []StateObj{}
+	//mut state_list := []StateObj{}
 
-	mut group_stack := []int{len: re.group_max, init: -1}
-	mut group_data  := []int{len: re.group_max, init: -1}
+	//mut group_stack := []int{len: re.group_max, init: -1}
+	//mut group_data  := []int{len: re.group_max, init: -1}
 
 	//mut group_index := -1           // group id used to know how many groups are open
 
@@ -1699,13 +1704,13 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				//println("End text with open groups!")
 				// close the groups
 				for state.group_index >= 0 {
-					tmp_pc := group_data[state.group_index]
+					tmp_pc := re.group_data[state.group_index]
 					re.prog[tmp_pc].group_rep++
 					//println("Closing group $state.group_index {${re.prog[tmp_pc].rep_min},${re.prog[tmp_pc].rep_max}}:${re.prog[tmp_pc].group_rep}")
 
 					if re.prog[tmp_pc].group_rep >= re.prog[tmp_pc].rep_min && re.prog[tmp_pc].group_id >= 0{
-						start_i   := group_stack[state.group_index]
-	 					group_stack[state.group_index]=-1
+						start_i   := re.group_stack[state.group_index]
+	 					re.group_stack[state.group_index]=-1
 
 	 					// save group results
 						g_index := re.prog[tmp_pc].group_id*2
@@ -1836,9 +1841,9 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			// manage here dot char
 
-			if state_list.len > 0 {
-				//println("Here we are, with stop: state buffer: [${state_list.len}]")
-				state = state_list.pop()
+			if re.state_list.len > 0 {
+				//println("Here we are, with stop: state buffer: [${re.state_list.len}]")
+				state = re.state_list.pop()
 
 				state.match_flag = true
 				l_ist = u32(ist_dot_char)
@@ -1877,8 +1882,8 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			// check GROUP start, no quantifier is checkd for this token!!
 			else if ist == ist_group_start {
 				state.group_index++
-				group_data[state.group_index]  = re.prog[state.pc].goto_pc   // save where is ist_group_end, we will use it for escape
-				group_stack[state.group_index] = state.i                     // index where we start to manage
+				re.group_data[state.group_index]  = re.prog[state.pc].goto_pc   // save where is ist_group_end, we will use it for escape
+				re.group_stack[state.group_index] = state.i                     // index where we start to manage
 				//println("group_index $state.group_index rep ${re.prog[re.prog[state.pc].goto_pc].group_rep}")
 
 				m_state = .ist_next
@@ -1894,8 +1899,8 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 					//println("g.id: ${re.prog[state.pc].group_id} group_index: ${state.group_index}")
 					if state.group_index >= 0 && re.prog[state.pc].group_id >= 0 {
-	 					start_i   := group_stack[state.group_index]
-	 					//group_stack[state.group_index]=-1
+	 					start_i   := re.group_stack[state.group_index]
+	 					//re.group_stack[state.group_index]=-1
 
 	 					// save group results
 						g_index := re.prog[state.pc].group_id*2
@@ -1960,7 +1965,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// if we are done with max go on dot char are dedicated case!!
 				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max 
 				{
-					state_list.pop()
+					re.state_list.pop()
 					m_state = .ist_next
 					continue
 				}
@@ -2005,7 +2010,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true {
 					//println("save the state!!")
-					state_list << StateObj {
+					re.state_list << StateObj {
 						group_index: state.group_index
 						match_flag:  state.match_flag
 						match_index: state.match_index
@@ -2016,7 +2021,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						last_dot_pc: state.pc
 					}
 					m_state = .ist_quant_n
-					//println("dot_char stack len: $state_list.len")
+					//println("dot_char stack len: ${re.state_list.len}")
 					continue
 				}
 
@@ -2136,7 +2141,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				continue
 			}
 
-			tmp_pc := group_data[state.group_index]    // PC to the end of the group token
+			tmp_pc := re.group_data[state.group_index]    // PC to the end of the group token
 			rep    := re.prog[tmp_pc].group_rep  // use a temp variable
 			re.prog[tmp_pc].group_rep = 0        // clear the repetitions
 
@@ -2145,7 +2150,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			if rep >= re.prog[tmp_pc].rep_min {
 				//println("ist_quant_ng GROUP CLOSED OK group_index: $state.group_index")
 
-				state.i = group_stack[state.group_index]
+				state.i = re.group_stack[state.group_index]
 				state.pc = tmp_pc
 				state.group_index--
 				m_state = .ist_next
@@ -2154,7 +2159,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			else if re.prog[tmp_pc].next_is_or {
 				//println("ist_quant_ng OR Negative branch")
 
-				state.i = group_stack[state.group_index]
+				state.i = re.group_stack[state.group_index]
 				state.pc = re.prog[tmp_pc+1].rep_min -1
 				state.group_index--
 				m_state = .ist_next
@@ -2207,7 +2212,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 			//println(".ist_quant_pg")
 			mut tmp_pc := state.pc
 			if state.group_index >= 0 {
-				tmp_pc = group_data[state.group_index]
+				tmp_pc = re.group_data[state.group_index]
 			}
 
 			rep := re.prog[tmp_pc].group_rep
@@ -2372,7 +2377,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 
 			//println("Skip last group")
 			return state.first_match,state.i
-			//return state.first_match,group_stack[state.group_index--]
+			//return state.first_match,re.group_stack[state.group_index--]
 		}
 	}
 	//println("no_match_found, natural end")
@@ -2417,6 +2422,7 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 
 // find try to find the first match in the input string
 [direct_array_access]
+[inline]
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
 	
@@ -2436,6 +2442,7 @@ pub fn (mut re RE) find(in_txt string) (int,int) {
 
 // find all the non overlapping occurrences of the match pattern
 [direct_array_access]
+[inline]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}

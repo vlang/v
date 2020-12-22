@@ -16,13 +16,19 @@ module regex
 ******************************************************************************/
 // regex create a regex object from the query string
 [deprecated]
-pub fn regex(in_query string) (RE,int,int){
-	mut re := RE{}
-	re.prog = []Token    {len: in_query.len+1}
-	re.cc   = []CharClass{len: in_query.len+1}
-	re.group_max_nested = 8
+pub fn regex(pattern string) (RE,int,int){
+	// init regex
+    mut re := regex.RE{}
+    re.prog = []Token    {len: pattern.len + 1} // max program length, can not be longer then the pattern
+    re.cc   = []CharClass{len: pattern.len}     // can not be more char class the the length of the pattern
+    re.group_csave_flag = false                 // enable continuos group saving
+    re.group_max_nested = 128                   // set max 128 group nested
+    re.group_max        = pattern.len >> 1      // we can't have more groups than the half of the pattern legth
 
-	re_err,err_pos := re.compile(in_query)
+    re.group_stack = []int{len: re.group_max, init: -1}
+	re.group_data  = []int{len: re.group_max, init: -1}
+
+	re_err,err_pos := re.compile(pattern)
 	return re, re_err, err_pos
 }
 
@@ -38,10 +44,16 @@ pub fn new_regex_by_size(mult int) RE {
 	return impl_new_regex_by_size(mult)
 }
 fn impl_new_regex_by_size(mult int) RE {
-	mut re := RE{}
-	re.prog = []Token    {len: max_code_len*mult}       // max program length, default 256 istructions
-	re.cc   = []CharClass{len: max_code_len*mult}       // char class list
-	re.group_max_nested = 3*mult                        // max nested group
+	// init regex
+    mut re := regex.RE{}
+    re.prog = []Token    {len: max_code_len*mult} // max program length, can not be longer then the pattern
+    re.cc   = []CharClass{len: max_code_len*mult} // can not be more char class the the length of the pattern
+    re.group_csave_flag = false                   // enable continuos group saving
+    re.group_max_nested = 3*mult                  // set max 128 group nested
+    re.group_max        = max_code_len*mult >> 1  // we can't have more groups than the half of the pattern legth
+
+    re.group_stack = []int{len: re.group_max, init: -1}
+	re.group_data  = []int{len: re.group_max, init: -1}
 
 	return re
 }
