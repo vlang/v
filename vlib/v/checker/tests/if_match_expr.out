@@ -16,7 +16,7 @@ vlib/v/checker/tests/if_match_expr.vv:10:2: error: `if` expression branch has un
     8 |     for {break}
     9 |     {}
    10 |     match true {true {} else {}} // statement not expression
-      |     ~~~~~
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    11 |     _ = match true {true {1} else {-1}} // OK
    12 |     match true {true {1} else {-1}} // result
 vlib/v/checker/tests/if_match_expr.vv:17:3: error: `match` expression branch has unsupported statement (`v.ast.IfExpr`)
@@ -37,6 +37,6 @@ vlib/v/checker/tests/if_match_expr.vv:23:3: error: `match` expression branch has
    21 |     else {
    22 |         assert true
    23 |         match true {true {} else {}} // statement not expression
-      |         ~~~~~
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    24 |         _ = match true {true {1} else {-1}} // OK
    25 |         match true {true {1} else {-1}} // result
