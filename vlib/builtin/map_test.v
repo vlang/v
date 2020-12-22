@@ -485,6 +485,8 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
+	m2 := {3:9 4:16 5:25}
+	assert m2.len == 3
 	mc := m.clone()
 	assert mc.len == 3
 	mut all := []int{}

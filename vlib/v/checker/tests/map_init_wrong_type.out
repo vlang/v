@@ -3,4 +3,18 @@ vlib/v/checker/tests/map_init_wrong_type.vv:3:10: error: cannot assign to `a`: e
     2 |    mut a := map[string]f32{}
     3 |    a = { 'x': 12.3 }
       |          ~~~
-    4 | }
+    4 |    _ = {2:0 3:0 "hi":0}
+    5 |    _ = {2:0 3:`@` 4:0}
+vlib/v/checker/tests/map_init_wrong_type.vv:4:17: error: map init: cannot use `string` as `int` for map key
+    2 |    mut a := map[string]f32{}
+    3 |    a = { 'x': 12.3 }
+    4 |    _ = {2:0 3:0 "hi":0}
+      |                 ~~~~
+    5 |    _ = {2:0 3:`@` 4:0}
+    6 | }
+vlib/v/checker/tests/map_init_wrong_type.vv:5:15: error: map init: cannot use `rune` as `int` for map value
+    3 |    a = { 'x': 12.3 }
+    4 |    _ = {2:0 3:0 "hi":0}
+    5 |    _ = {2:0 3:`@` 4:0}
+      |               ~~~
+    6 | }

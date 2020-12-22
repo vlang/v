@@ -4564,6 +4564,26 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	}
 }
 
+pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
+	key_i := node.keys[i]
+	if key_i is ast.StringLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	}
+	else if key_i is ast.IntegerLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.IntegerLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
@@ -4583,14 +4603,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `{'age': 20}`
 	key0_type := c.table.mktyp(c.expr(node.keys[0]))
 	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	mut same_key_type := true
 	for i, key in node.keys {
-		key_i := key as ast.StringLiteral
-		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key.position())
-			}
-		}
 		if i == 0 {
 			continue
 		}
@@ -4601,13 +4615,19 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 			key0_type_sym := c.table.get_type_symbol(key0_type)
 			key_type_sym := c.table.get_type_symbol(key_type)
 			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
-				node.pos)
+				key.position())
+			same_key_type = false
 		}
 		if !c.check_types(val_type, val0_type) {
 			val0_type_sym := c.table.get_type_symbol(val0_type)
 			val_type_sym := c.table.get_type_symbol(val_type)
 			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
-				node.pos)
+				val.position())
+		}
+	}
+	if same_key_type {
+		for i in 1 .. node.keys.len {
+			c.check_dup_keys(node, i)
 		}
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
