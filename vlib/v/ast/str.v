@@ -84,6 +84,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 			}
 		}
 		s = util.no_cur_mod(s, cur_mod)
+		for mod, alias in m2a {
+			s = s.replace(mod, alias)
+		}
 		if should_add_type {
 			if !is_type_only {
 				f.write(' ')
@@ -99,9 +102,11 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	}
 	f.write(')')
 	if node.return_type != table.void_type {
-		// typ := t.type_to_str(node.typ)
-		// if typ.starts_with('
-		f.write(' ' + util.no_cur_mod(t.type_to_str(node.return_type), cur_mod))
+		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
+		for mod, alias in m2a {
+			rs = rs.replace(mod, alias)
+		}
+		f.write(' ' + rs)
 	}
 	return f.str()
 }
