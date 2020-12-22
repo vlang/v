@@ -294,13 +294,7 @@ jobs:
         echo "Building it..."
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
-        ls
-    - name: v up
-      run: |
-        git reset --hard HEAD~5
-        ./v up
-        ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
-
+        ls    
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
@@ -753,3 +747,24 @@ jobs:
         ./v test-parser examples/regex_example_fuzz.v
         ./v test-parser examples/2048/2048_fuzz.v
 
+  v-up-works-on-ubuntu:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc tcc
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        fetch-depth: 10
+    - name: Build local v
+      run: make -j4
+    - name: v up
+      run: |
+        ./v cmd/tools/oldv.v
+        ./cmd/tools/oldv HEAD^^^^^
+        cd /tmp/v_at_HEAD_____/
+        ./v version
+        ./v up
+        ./v version
+        ./v  -o v2 cmd/v
+        ./v2 -o v3 cmd/v
