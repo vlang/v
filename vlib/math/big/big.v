@@ -6,6 +6,7 @@ module big
 #include "bn.h"
 [typedef]
 struct C.bn {
+mut:
 	array [32]u32
 }
 
@@ -102,6 +103,18 @@ pub fn from_string(input string) Number {
 	s = padding + s
 	n := Number{}
 	C.bignum_from_string(&n, s.str, s.len)
+	return n
+}
+
+pub fn from_string2(input string) Number {
+	mut n := Number{}
+	C.bignum_init(&n)
+	if input.len == 0 {
+		return from_int(0)
+	}
+	for i, c in input {
+		n.array[i] = u32(c - `0`)
+	}
 	return n
 }
 

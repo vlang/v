@@ -78,6 +78,10 @@ fn test_mod() {
 }
 
 fn test_from_str() {
+	x := big.from_string2('23')
+	println('kek')
+	println(x.str())
+	exit(0)
 	assert big.from_string('').hexstr() == '0'
 	assert big.from_string('1').hexstr() == '1'
 	assert big.from_string('0').hexstr() == '0'
