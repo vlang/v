@@ -1,3 +1,5 @@
+fn (v JS.String) toString() JS.String
+
 fn JS.Math.abs(f64) f64
 
 fn main() {

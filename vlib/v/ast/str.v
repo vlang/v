@@ -44,10 +44,12 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		*/
 	}
 	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
-	if node.language == .c {
-		name = 'C.$name'
-	} else if node.language == .js {
-		name = 'JS.$name'
+	if !node.is_method {
+		if node.language == .c {
+			name = 'C.$name'
+		} else if node.language == .js {
+			name = 'JS.$name'
+		}
 	}
 	f.write('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%'] {
