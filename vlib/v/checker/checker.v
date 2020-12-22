@@ -338,16 +338,21 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 		}
 		ast.SumTypeDecl {
 			c.check_valid_pascal_case(node.name, 'sum type', node.pos)
+			mut names_used := []string{}
 			for variant in node.variants {
 				if variant.typ.is_ptr() {
 					c.error('sum type cannot hold a reference type', variant.pos)
 				}
 				mut sym := c.table.get_type_symbol(variant.typ)
-				if sym.kind == .placeholder {
+				if sym.name in names_used {
+					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
+						variant.pos)
+				} else if sym.kind == .placeholder {
 					c.error("type `$sym.name` doesn't exist", node.pos)
 				} else if sym.kind == .interface_ {
 					c.error('sum type cannot hold an interface', node.pos)
 				}
+				names_used << sym.name
 			}
 		}
 	}
@@ -1155,7 +1160,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
-		method_name in ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort'] {
+		method_name in
+		['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains'] {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -1204,6 +1210,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// call_expr.return_type = call_expr.receiver_type
 		} else if method_name == 'sort' {
 			call_expr.return_type = table.void_type
+		} else if method_name == 'contains' {
+			call_expr.return_type = table.bool_type
 		}
 		return call_expr.return_type
 	} else if left_type_sym.kind == .map && method_name == 'clone' {

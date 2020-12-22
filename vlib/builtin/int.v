@@ -34,9 +34,7 @@ pub fn (nn int) str1() string {
 	return tos(buf + max - len, len)
 }
 */
-
 // ----- value to string functions -----
-
 /*
 // old function for reference
 pub fn ptr_str(ptr voidptr) string {
@@ -45,14 +43,13 @@ pub fn ptr_str(ptr voidptr) string {
 	return tos(buf, vstrlen(buf))
 }
 */
-
 pub fn ptr_str(ptr voidptr) string {
 	buf1 := u64(ptr).hex()
 	return buf1
 }
 
-const(
-	digit_pairs = "00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999"
+const (
+	digit_pairs = '00102030405060708090011121314151617181910212223242526272829203132333435363738393041424344454647484940515253545556575859506162636465666768696071727374757677787970818283848586878889809192939495969798999'
 )
 
 // This implementation is the quickest with gcc -O2
@@ -64,13 +61,11 @@ pub fn (nn int) str_l(max int) string {
 		return '0'
 	}
 	mut buf := malloc(max + 1)
-
 	mut is_neg := false
 	if n < 0 {
 		n = -n
 		is_neg = true
 	}
-
 	mut index := max
 	unsafe {
 		buf[index--] = `\0`
@@ -85,12 +80,10 @@ pub fn (nn int) str_l(max int) string {
 		}
 	}
 	index++
-
 	// remove head zero
 	if d < 20 {
 		index++
 	}
-
 	// Prepend - if it's negative
 	if is_neg {
 		index--
@@ -98,12 +91,11 @@ pub fn (nn int) str_l(max int) string {
 			buf[index] = `-`
 		}
 	}
-
 	unsafe {
-		C.memmove(buf,buf+index, (max-index)+1 )
-		return tos(buf, (max-index))
+		C.memmove(buf, buf + index, (max - index) + 1)
+		return tos(buf, (max - index))
 	}
-	//return tos(buf + index, (max-index))
+	// return tos(buf + index, (max-index))
 }
 
 pub fn (n i8) str() string {
@@ -130,7 +122,6 @@ pub fn (nn u32) str() string {
 	}
 	max := 12
 	mut buf := malloc(max + 1)
-
 	mut index := max
 	unsafe {
 		buf[index--] = `\0`
@@ -145,17 +136,15 @@ pub fn (nn u32) str() string {
 		}
 	}
 	index++
-
 	// remove head zero
 	if d < u32(20) {
 		index++
 	}
-
 	unsafe {
-		C.memmove(buf,buf+index, (max-index)+1 )
-		return tos(buf, (max-index))
+		C.memmove(buf, buf + index, (max - index) + 1)
+		return tos(buf, (max - index))
 	}
-	//return tos(buf + index, (max-index))
+	// return tos(buf + index, (max-index))
 }
 
 [inline]
@@ -171,13 +160,11 @@ pub fn (nn i64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-
 	mut is_neg := false
 	if n < 0 {
 		n = -n
 		is_neg = true
 	}
-
 	mut index := max
 	unsafe {
 		buf[index--] = `\0`
@@ -192,12 +179,10 @@ pub fn (nn i64) str() string {
 		}
 	}
 	index++
-
 	// remove head zero
 	if d < i64(20) {
 		index++
 	}
-
 	// Prepend - if it's negative
 	if is_neg {
 		index--
@@ -205,12 +190,11 @@ pub fn (nn i64) str() string {
 			buf[index] = `-`
 		}
 	}
-
 	unsafe {
-		C.memmove(buf,buf+index, (max-index)+1 )
-		return tos(buf, (max-index))
+		C.memmove(buf, buf + index, (max - index) + 1)
+		return tos(buf, (max - index))
 	}
-	//return tos(buf + index, (max-index))
+	// return tos(buf + index, (max-index))
 }
 
 pub fn (nn u64) str() string {
@@ -221,7 +205,6 @@ pub fn (nn u64) str() string {
 	}
 	max := 20
 	mut buf := vcalloc(max + 1)
-
 	mut index := max
 	unsafe {
 		buf[index--] = `\0`
@@ -236,17 +219,15 @@ pub fn (nn u64) str() string {
 		}
 	}
 	index++
-
 	// remove head zero
 	if d < 20 {
 		index++
 	}
-
 	unsafe {
-		C.memmove(buf,buf+index, (max-index)+1 )
-		return tos(buf, (max-index))
+		C.memmove(buf, buf + index, (max - index) + 1)
+		return tos(buf, (max - index))
 	}
-	//return tos(buf + index, (max-index))
+	// return tos(buf + index, (max-index))
 }
 
 pub fn (b bool) str() string {
@@ -257,7 +238,6 @@ pub fn (b bool) str() string {
 }
 
 // ----- value to hex string functions -----
-
 /*
 //old function for reference
 pub fn (n int) hex1() string {
@@ -267,14 +247,13 @@ pub fn (n int) hex1() string {
 	return tos(hex, count)
 }
 */
-
 [inline]
 fn u64_to_hex(nn u64, len byte) string {
 	mut n := nn
 	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
-	for i=len-1; i>=0; i-- {
+	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
 		x := if d < 10 { d + `0` } else { d + 87 }
 		buf[i] = x
@@ -292,7 +271,7 @@ fn u64_to_hex_no_leading_zeros(nn u64, len byte) string {
 	mut buf := [256]byte{}
 	buf[len] = `\0`
 	mut i := 0
-	for i=len-1; i>=0; i-- {
+	for i = len - 1; i >= 0; i-- {
 		d := byte(n & 0xF)
 		x := if d < 10 { d + `0` } else { d + 87 }
 		buf[i] = x
@@ -384,7 +363,7 @@ pub fn (nn u64) hex_full() string {
 // pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (b byte) str() string {
 	// TODO
-	//return int(b).str_l(7)
+	// return int(b).str_l(7)
 	mut str := string{
 		str: malloc(2)
 		len: 1
@@ -393,7 +372,7 @@ pub fn (b byte) str() string {
 		str.str[0] = b
 		str.str[1] = `\0`
 	}
-	//println(str)
+	// println(str)
 	return str
 }
 
@@ -411,44 +390,4 @@ pub fn (b byte) str_escaped() string {
 		else { '0x' + b.hex() }
 	}
 	return str
-}
-
-// TODO generic
-pub fn (a []byte) contains(val byte) bool {
-	for aa in a {
-		if aa == val {
-			return true
-		}
-	}
-	return false
-}
-
-// TODO generic
-pub fn (a []u16) contains(val u16) bool {
-	for aa in a {
-		if aa == val {
-			return true
-		}
-	}
-	return false
-}
-
-// TODO generic
-fn (ar []int) contains(val int) bool {
-	for s in ar {
-		if s == val {
-			return true
-		}
-	}
-	return false
-}
-
-// TODO generic
-pub fn (a []u64) contains(val u64) bool {
-	for aa in a {
-		if aa == val {
-			return true
-		}
-	}
-	return false
 }

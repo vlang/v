@@ -1,5 +1,5 @@
 import math
-import pcg32
+import rand.pcg32
 import rand.util
 
 const (

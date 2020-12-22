@@ -311,15 +311,6 @@ pub fn (t Kind) is_assign() bool {
 	return t in assign_tokens
 }
 
-fn (t []Kind) contains(val Kind) bool {
-	for tt in t {
-		if tt == val {
-			return true
-		}
-	}
-	return false
-}
-
 pub fn (t Kind) str() string {
 	return token_str[int(t)]
 }

@@ -85,6 +85,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut is_field_mut := false
 	mut is_field_pub := false
 	mut is_field_global := false
+	mut last_line := -1
 	mut end_comments := []ast.Comment{}
 	if !no_body {
 		p.check(.lcbr)
@@ -252,6 +253,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			p.attrs = []
 		}
 		p.top_level_statement_end()
+		last_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
 	if language == .c {
@@ -290,7 +292,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		name: name
 		is_pub: is_pub
 		fields: ast_fields
-		pos: start_pos.extend(name_pos)
+		pos: start_pos.extend_with_last_line(name_pos, last_line)
 		mut_pos: mut_pos
 		pub_pos: pub_pos
 		pub_mut_pos: pub_mut_pos
@@ -377,7 +379,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 
 fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	p.top_level_statement_start()
-	start_pos := p.tok.position()
+	mut start_pos := p.tok.position()
 	is_pub := p.tok.kind == .key_pub
 	if is_pub {
 		p.next()
@@ -457,6 +459,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
+	start_pos.last_line = p.prev_tok.line_nr
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods

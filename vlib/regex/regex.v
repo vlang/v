@@ -2422,7 +2422,6 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 
 // find try to find the first match in the input string
 [direct_array_access]
-[inline]
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
 	
@@ -2442,7 +2441,6 @@ pub fn (mut re RE) find(in_txt string) (int,int) {
 
 // find all the non overlapping occurrences of the match pattern
 [direct_array_access]
-[inline]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}

@@ -187,9 +187,7 @@ fn (mut fs FlagParser) parse_bool_value(longhand string, shorthand byte) ?string
 // In the situation that the flag was not provided, it returns null.
 pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool {
 	fs.add_flag(name, abbr, usage, '<bool>')
-	parsed := fs.parse_bool_value(name, abbr) or {
-		return error("parameter '$name' not provided")
-	}
+	parsed := fs.parse_bool_value(name, abbr) or { return error("parameter '$name' not provided") }
 	return parsed == 'true'
 }
 
@@ -201,9 +199,7 @@ pub fn (mut fs FlagParser) bool_opt(name string, abbr byte, usage string) ?bool 
 // version with abbr
 // TODO error handling for invalid string to bool conversion
 pub fn (mut fs FlagParser) bool(name string, abbr byte, bdefault bool, usage string) bool {
-	value := fs.bool_opt(name, abbr, usage) or {
-		return bdefault
-	}
+	value := fs.bool_opt(name, abbr, usage) or { return bdefault }
 	return value
 }
 
@@ -238,9 +234,7 @@ pub fn (mut fs FlagParser) int_opt(name string, abbr byte, usage string) ?int {
 // version with abbr
 // TODO error handling for invalid string to int conversion
 pub fn (mut fs FlagParser) int(name string, abbr byte, idefault int, usage string) int {
-	value := fs.int_opt(name, abbr, usage) or {
-		return idefault
-	}
+	value := fs.int_opt(name, abbr, usage) or { return idefault }
 	return value
 }
 
@@ -275,9 +269,7 @@ pub fn (mut fs FlagParser) float_opt(name string, abbr byte, usage string) ?f64 
 // version with abbr
 // TODO error handling for invalid string to float conversion
 pub fn (mut fs FlagParser) float(name string, abbr byte, fdefault f64, usage string) f64 {
-	value := fs.float_opt(name, abbr, usage) or {
-		return fdefault
-	}
+	value := fs.float_opt(name, abbr, usage) or { return fdefault }
 	return value
 }
 
@@ -306,9 +298,7 @@ pub fn (mut fs FlagParser) string_opt(name string, abbr byte, usage string) ?str
 // the default value is returned
 // version with abbr
 pub fn (mut fs FlagParser) string(name string, abbr byte, sdefault string, usage string) string {
-	value := fs.string_opt(name, abbr, usage) or {
-		return sdefault
-	}
+	value := fs.string_opt(name, abbr, usage) or { return sdefault }
 	return value
 }
 

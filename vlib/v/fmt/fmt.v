@@ -1502,6 +1502,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write_language_prefix(node.language)
 		if node.left is ast.AnonFn {
 			f.fn_decl(node.left.decl)
+		} else if node.language != .v {
+			f.write('${node.name.after_char(`.`)}')
 		} else {
 			mut name := f.short_module(node.name)
 			f.mark_module_as_used(name)

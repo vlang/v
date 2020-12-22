@@ -1174,3 +1174,24 @@ fn test_multi_array_insert() {
 	b.insert(0, [[1, 2, 3]])
 	assert b == [[1, 2, 3]]
 }
+
+fn test_multi_array_in() {
+	a := [[1]]
+	println([1] in a)
+	assert [1] in a
+}
+
+fn test_any_type_array_contains() {
+	a := [true, false]
+	assert a.contains(true)
+	assert true in a
+	assert a.contains(false)
+	assert false in a
+	b := [i64(2), 3, 4]
+	assert b.contains(i64(3))
+	assert 5 !in b
+	c := [[1], [2]]
+	assert c.contains([1])
+	assert [2] in c
+	assert [3] !in c
+}

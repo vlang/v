@@ -6,6 +6,6 @@ mut:
 	y int
 }
 
-pub fn (a Point) +(b Point) int {
+pub fn (a Point) + (b Point) int {
 	return a.x + b.x
 }
