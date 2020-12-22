@@ -24,7 +24,6 @@ const (
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
-		'vlib/time/time.v',
 		'vlib/term/colors.v',
 		'vlib/term/term.v',
 		'vlib/v/ast/',
