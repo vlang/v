@@ -1,6 +1,7 @@
 ## V 0.1.30
 *28 Nov 2020*
 (V 0.2 RC)
+- Builtin compile-time JSON serializer now supports `time.Time`
 TODO
 
 ## V 0.1.27
