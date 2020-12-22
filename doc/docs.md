@@ -129,9 +129,9 @@ See `v help` for all supported commands.
 
 From the example above, you can see that functions are declared with the `fn` keyword.
 The return type is specified after the function name.
-In this case `main` doesn't return anything, so there is now return type.
+In this case `main` doesn't return anything, so there is no return type.
 
-As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
+As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
 `println` is one of the few built-in functions.
 It prints the value passed to it to standard output.
