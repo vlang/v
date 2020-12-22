@@ -9,7 +9,7 @@ import v.pref
 import v.vmod
 
 pub const (
-	v_version = '0.1.30'
+	v_version = '0.2'
 )
 
 // math.bits is needed by strconv.ftoa
