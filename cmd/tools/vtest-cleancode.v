@@ -60,6 +60,7 @@ const (
 		'vlib/cli/',
 		'vlib/flag/',
 		'vlib/gg/gg.v',
+		'vlib/math/big/',
 		'vlib/os/',
 		'vlib/semver/',
 		'vlib/strings/',

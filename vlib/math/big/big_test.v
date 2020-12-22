@@ -78,13 +78,24 @@ fn test_mod() {
 }
 
 fn test_from_str() {
-	assert big.from_string('').hexstr() == '0'
-	assert big.from_string('1').hexstr() == '1'
-	assert big.from_string('0').hexstr() == '0'
-	assert big.from_string('0x123').hexstr() == '123'
+	assert big.from_string('9870123').str() == '9870123'
+	assert big.from_string('').str() == '0'
+	assert big.from_string('0').str() == '0'
+	assert big.from_string('1').str() == '1'
+	for i := 1; i < 307; i += 61 {
+		input := '9'.repeat(i)
+		out := big.from_string(input).str()
+		// eprintln('>> i: $i input: $input.str()')
+		// eprintln('>> i: $i   out: $out.str()')
+		assert input == out
+	}
+}
+
+fn test_from_hex_str() {
+	assert big.from_hex_string('0x123').hexstr() == '123'
 	for i in 1 .. 33 {
 		input := 'e'.repeat(i)
-		out := big.from_string(input).hexstr()
+		out := big.from_hex_string(input).hexstr()
 		assert input == out
 	}
 	assert big.from_string('0').hexstr() == '0'
@@ -98,7 +109,7 @@ fn test_str() {
 	assert big.from_u64(4398046511104).str() == '4398046511104'
 	assert big.from_int(4294967295).str() == '18446744073709551615'
 	assert big.from_int(-1).str() == '18446744073709551615'
-	assert big.from_string('e'.repeat(80)).str() ==
+	assert big.from_hex_string('e'.repeat(80)).str() ==
 		'1993587900192849410235353592424915306962524220866209251950572167300738410728597846688097947807470'
 }
 
