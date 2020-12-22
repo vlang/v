@@ -63,7 +63,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error		  bool
+	name_error        bool
 }
 
 // for tests
