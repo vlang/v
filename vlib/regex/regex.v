@@ -88,6 +88,7 @@ fn utf8util_char_len(b byte) int {
 
 // get_char get a char from position i and return an u32 with the unicode code
 [inline]
+[direct_array_access]
 fn (re RE) get_char(in_txt string, i int) (u32,int) {
 	ini := unsafe {in_txt.str[i]}
 	// ascii 8 bit
@@ -107,6 +108,7 @@ fn (re RE) get_char(in_txt string, i int) (u32,int) {
 
 // get_charb get a char from position i and return an u32 with the unicode code
 [inline]
+[direct_array_access]
 fn (re RE) get_charb(in_txt byteptr, i int) (u32,int) {
 	// ascii 8 bit
 	if (re.flag & f_bin) !=0 ||	unsafe {in_txt[i]} & 0x80 == 0 {
@@ -297,6 +299,7 @@ pub
 struct RE {
 pub mut:
 	prog []Token
+	prog_len         int       // regex program len
 
 	// char classes storage
 	cc []CharClass             // char class list
@@ -323,12 +326,13 @@ pub mut:
 }
 
 // Reset RE object
-//[inline]
+[inline]
+[direct_array_access]
 fn (mut re RE) reset(){
 	re.cc_index = 0
 
 	mut i := 0
-	for i < re.prog.len {
+	for i < re.prog_len {
 		re.prog[i].group_rep = 0 // clear repetition of the group
 		re.prog[i].rep       = 0 // clear repetition of the token
 		i++
@@ -340,14 +344,18 @@ fn (mut re RE) reset(){
 	}
 
 	// reset group_csave
-	re.group_csave = []int{}
+	if re.group_csave_flag == true {
+		re.group_csave.clear() // = []int{}
+	}
 }
 
 // reset for search mode fail
 // gcc bug, dont use [inline] or go 5 time slower
+//[inline]
+[direct_array_access]
 fn (mut re RE) reset_src(){
 	mut i := 0
-	for i < re.prog.len {
+	for i < re.prog_len {
 		re.prog[i].group_rep = 0 // clear repetition of the group
 		re.prog[i].rep       = 0 // clear repetition of the token
 		i++
@@ -1155,6 +1163,7 @@ fn (mut re RE) impl_compile(in_txt string) (int,int) {
 
 	// add end of the program
 	re.prog[pc].ist = ist_prog_end
+	re.prog_len = pc
 
 	// check for unbalanced groups
 	if group_stack_index != -1 {
@@ -1467,7 +1476,7 @@ pub fn (re RE) get_query() string {
 * Groups saving utilities
 *
 ******************************************************************************/
-[inline]
+[direct_array_access]
 fn (mut re RE) group_continuous_save(g_index int) {
 	if re.group_csave_flag == true {
 		// continuous save, save until we have space
@@ -1550,6 +1559,7 @@ pub mut:
 	last_dot_pc int = -1      // last dot chat pc
 }
 
+[direct_array_access]
 pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	// result status
 	mut result   := no_match_found    // function return     
@@ -1771,7 +1781,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 
 		// ist_next, next instruction reseting its state
-		if m_state == .ist_next {
+		else if m_state == .ist_next {
 			state.pc = state.pc + 1
 			re.prog[state.pc].reset()
 			// check if we are in the program bounds
@@ -1784,7 +1794,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 
 		// ist_next_ks, next instruction keeping its state
-		if m_state == .ist_next_ks {
+		else if m_state == .ist_next_ks {
 			state.pc = state.pc + 1
 			// check if we are in the program bounds
 			if state.pc < 0 || state.pc > re.prog.len {
@@ -1805,7 +1815,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 
 		// check if stop
-		if m_state == .stop {
+		else if m_state == .stop {
 
 			// we are in search mode, don't exit until the end
 			if ((re.flag & f_src) != 0) && (ist != ist_prog_end) {
@@ -1849,7 +1859,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		}
 
 		// ist_load
-		if m_state == .ist_load {
+		else if m_state == .ist_load {
 
 			// program end
 			if ist == ist_prog_end {
@@ -2116,7 +2126,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		* Quantifier management
 		***********************************/
 		// ist_quant_ng => quantifier negative test on group
-		if m_state == .ist_quant_ng {
+		else if m_state == .ist_quant_ng {
 
 			// we are finished here
 			if state.group_index < 0 {
@@ -2378,7 +2388,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 //
 // Matchers
 //
-
+[direct_array_access]
 pub fn (mut re RE) match_string(in_txt string) (int,int) {
 
 	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
@@ -2406,6 +2416,7 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 //
 
 // find try to find the first match in the input string
+[direct_array_access]
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
 	
@@ -2424,6 +2435,7 @@ pub fn (mut re RE) find(in_txt string) (int,int) {
 }
 
 // find all the non overlapping occurrences of the match pattern
+[direct_array_access]
 pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}
