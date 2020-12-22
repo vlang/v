@@ -707,11 +707,10 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.write('pub ')
 	}
 	name := node.name.after('.')
-	if node.methods.len == 0 && node.pos.line_nr == node.pos.last_line {
-		f.writeln('interface $name {}\n')
-		return
+	f.write('interface $name {')
+	if node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
 	}
-	f.writeln('interface $name {')
 	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
