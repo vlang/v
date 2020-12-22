@@ -70,7 +70,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 }
 
 ['/:user/:repo/settings']
-pub fn (mut app App) user_repo_settings(username, repository string) vweb.Result {
+pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
 	if username !in known_users {
 		return app.vweb.not_found()
 	}

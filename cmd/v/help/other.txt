@@ -7,8 +7,12 @@ but which are used less frequently by users:
    build-examples    Test if all examples can be built.
    build-tools       Test if all tools can be built.
    build-vbinaries   Test if V can be built with different configuration.
-   test-fmt          Test if all files in the current directory is formatted properly.
+   test-fmt          Test if all files in the current directory are formatted properly.
    test-compiler     Test if V is working properly by running all tests, including the compiler ones.
                      NB: this can take a minute or two to run
+   test-parser       Test that the V parser works with the given files, as if
+                     they were typed by a human programmer, one character at a time.
+                     NB: *very slow* for longer files (tens of seconds for 1KB .v file).
+                     Mainly useful as a parser bug finder for the V Language Server project.
 
    setup-freetype    Setup thirdparty freetype on Windows.

@@ -1,0 +1,5 @@
+vlib/v/checker/tests/ptr_assign.vv:3:5: error: cannot assign to `p`: expected `&int`, not `any_int`
+    1 | mut v := 43
+    2 | mut p := &v
+    3 | p = 4
+      |     ^

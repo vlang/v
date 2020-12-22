@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 f32/f64 ftoa functions
@@ -17,7 +19,6 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 */
-module strconv
 
 [inline]
 pub fn ftoa_64(f f64) string {

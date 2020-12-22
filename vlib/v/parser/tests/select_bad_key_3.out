@@ -1,0 +1,7 @@
+vlib/v/parser/tests/select_bad_key_3.vv:7:3: error: select key: send expression (`ch <- x`) expected
+    5 |             println(b)
+    6 |         }
+    7 |         println(7) {
+      |         ~~~~~~~~~~
+    8 |             println("shouldn't get here")
+    9 |         }

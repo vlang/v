@@ -1,5 +1,5 @@
 fn fun() int {
-	return /* comment zero */ 0
+	return /* comment zero */ 0 // another comment
 }
 
 fn mr_fun() (int, int) {
@@ -10,6 +10,8 @@ fn main() {
 	a := /* this is a comment */ 1
 	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one
+	e := c
+	// more comments = more good
 	println(/* before arg comment */ 'this is a test' /* after arg comment */)
 	if /* before if expr */ true /* after if expr */  {
 		println('if')
@@ -22,4 +24,5 @@ fn main() {
 	else /* after else */ {
 		println('else')
 	}
+  return // empty return
 }

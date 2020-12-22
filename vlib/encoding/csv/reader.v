@@ -28,6 +28,7 @@ pub mut:
 	row_pos           int
 }
 
+// new_reader initializes a Reader with string data to parse
 pub fn new_reader(data string) &Reader {
 	return &Reader{
 		delimiter: `,`,
@@ -36,11 +37,10 @@ pub fn new_reader(data string) &Reader {
 	}
 }
 
-// read() reads one row from the csv file
+// read reads a row from the CSV data.
+// If successful, the result holds an array of each column's data.
 pub fn (mut r Reader) read() ?[]string {
-	l := r.read_record() or {
-		return error(err)
-	}
+	l := r.read_record()?
 	return l
 }
 
@@ -106,9 +106,7 @@ fn (mut r Reader) read_record() ?[]string {
 
 	for {
 		if need_read {
-			l := r.read_line() or {
-				return error(err)
-			}
+			l := r.read_line()?
 			if l.len <= 0 {
 				if keep_raw { line += '\n'}
 				continue

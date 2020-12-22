@@ -2,10 +2,7 @@ module os
 
 import strings
 
-#flag -lws2_32
-#include <winsock2.h>
 #include <process.h>
-
 pub const (
 	path_separator = '\\'
 	path_delimiter = ';'
@@ -13,74 +10,74 @@ pub const (
 
 // Ref - https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 // A handle to an object.
-pub type HANDLE voidptr
+pub type HANDLE = voidptr
 
 // win: FILETIME
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
 struct Filetime {
-  dw_low_date_time u32
-  dw_high_date_time u32
+	dw_low_date_time  u32
+	dw_high_date_time u32
 }
 
 // win: WIN32_FIND_DATA
 // https://docs.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataw
 struct Win32finddata {
 mut:
-    dw_file_attributes u32
-    ft_creation_time Filetime
-  	ft_last_access_time Filetime
-  	ft_last_write_time Filetime
-	n_file_size_high u32
-	n_file_size_low u32
-	dw_reserved0 u32
-	dw_reserved1 u32
-	c_file_name [260]u16 // max_path_len = 260
+	dw_file_attributes    u32
+	ft_creation_time      Filetime
+	ft_last_access_time   Filetime
+	ft_last_write_time    Filetime
+	n_file_size_high      u32
+	n_file_size_low       u32
+	dw_reserved0          u32
+	dw_reserved1          u32
+	c_file_name           [260]u16 // max_path_len = 260
 	c_alternate_file_name [14]u16 // 14
-  	dw_file_type u32
-  	dw_creator_type u32
-  	w_finder_flags u16
+	dw_file_type          u32
+	dw_creator_type       u32
+	w_finder_flags        u16
 }
 
 struct ProcessInformation {
 mut:
-	h_process voidptr
-	h_thread voidptr
+	h_process     voidptr
+	h_thread      voidptr
 	dw_process_id u32
-	dw_thread_id u32
+	dw_thread_id  u32
 }
 
 struct StartupInfo {
 mut:
-	cb u32
-	lp_reserved &u16
-	lp_desktop &u16
-	lp_title &u16
-	dw_x u32
-	dw_y u32
-	dw_x_size u32
-	dw_y_size u32
-	dw_x_count_chars u32
-	dw_y_count_chars u32
+	cb                 u32
+	lp_reserved        &u16
+	lp_desktop         &u16
+	lp_title           &u16
+	dw_x               u32
+	dw_y               u32
+	dw_x_size          u32
+	dw_y_size          u32
+	dw_x_count_chars   u32
+	dw_y_count_chars   u32
 	dw_fill_attributes u32
-	dw_flags u32
-	w_show_window u16
-	cb_reserved2 u16
-	lp_reserved2 byteptr
-	h_std_input voidptr
-	h_std_output voidptr
-	h_std_error voidptr
+	dw_flags           u32
+	w_show_window      u16
+	cb_reserved2       u16
+	lp_reserved2       byteptr
+	h_std_input        voidptr
+	h_std_output       voidptr
+	h_std_error        voidptr
 }
 
 struct SecurityAttributes {
 mut:
-	n_length u32
+	n_length               u32
 	lp_security_descriptor voidptr
-	b_inherit_handle bool
+	b_inherit_handle       bool
 }
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string{}
-	for i in 0..argc {
+	for i in 0 .. argc {
 		args << string_from_wide(unsafe {&u16(argv[i])})
 	}
 	return args
@@ -92,7 +89,7 @@ pub fn ls(path string) ?[]string {
 	// We can also check if the handle is valid. but using is_dir instead
 	// h_find_dir := C.FindFirstFile(path.str, &find_file_data)
 	// if (invalid_handle_value == h_find_dir) {
-	//     return dir_files
+	// return dir_files
 	// }
 	// C.FindClose(h_find_dir)
 	if !is_dir(path) {
@@ -131,12 +128,12 @@ pub fn is_dir(path string) bool {
 	return false
 }
 */
-
-
 // mkdir creates a new directory with the specified path.
 pub fn mkdir(path string) ?bool {
-	if path == '.' { return true }
-	apath := os.real_path( path )
+	if path == '.' {
+		return true
+	}
+	apath := real_path(path)
 	if !C.CreateDirectory(apath.to_wide(), 0) {
 		return error('mkdir failed for "$apath", because CreateDirectory returned ' + get_error_msg(int(C.GetLastError())))
 	}
@@ -146,12 +143,9 @@ pub fn mkdir(path string) ?bool {
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
-    cfile := vfopen(path, 'rb')
-    if cfile == voidptr(0) {
-	    return HANDLE(invalid_handle_value)
-    }
-    handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
-    return handle
+	cfile := vfopen(path, 'rb') or { return HANDLE(invalid_handle_value) }
+	handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
+	return handle
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamea
@@ -174,57 +168,54 @@ pub fn get_module_filename(handle HANDLE) ?string {
 			}
 		}
 	}
-    panic('this should be unreachable') // TODO remove unreachable after loop
+	panic('this should be unreachable') // TODO remove unreachable after loop
 }
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-formatmessagea#parameters
 const (
-    format_message_allocate_buffer = 0x00000100
-    format_message_argument_array  = 0x00002000
-    format_message_from_hmodule    = 0x00000800
-    format_message_from_string     = 0x00000400
-    format_message_from_system     = 0x00001000
-    format_message_ignore_inserts  = 0x00000200
+	format_message_allocate_buffer = 0x00000100
+	format_message_argument_array  = 0x00002000
+	format_message_from_hmodule    = 0x00000800
+	format_message_from_string     = 0x00000400
+	format_message_from_system     = 0x00001000
+	format_message_ignore_inserts  = 0x00000200
 )
 
 // Ref - winnt.h
 const (
-    sublang_neutral = 0x00
-    sublang_default = 0x01
-    lang_neutral    = (sublang_neutral)
+	sublang_neutral = 0x00
+	sublang_default = 0x01
+	lang_neutral    = (sublang_neutral)
 )
 
 // Ref - https://docs.microsoft.com/en-us/windows/win32/debug/system-error-codes--12000-15999-
 const (
-    max_error_code  = 15841 // ERROR_API_UNAVAILABLE
+	max_error_code = 15841 // ERROR_API_UNAVAILABLE
 )
 
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
 fn ptr_win_get_error_msg(code u32) voidptr {
-    mut buf := voidptr(0)
-    // Check for code overflow
-    if code > u32(max_error_code) {
-        return buf
-    }
-    C.FormatMessage(
-		format_message_allocate_buffer
-		| format_message_from_system
-		| format_message_ignore_inserts,
-        0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
-    return buf
+	mut buf := voidptr(0)
+	// Check for code overflow
+	if code > u32(max_error_code) {
+		return buf
+	}
+	C.FormatMessage(format_message_allocate_buffer | format_message_from_system | format_message_ignore_inserts,
+		0, code, C.MAKELANGID(lang_neutral, sublang_default), voidptr(&buf), 0, 0)
+	return buf
 }
 
 // get_error_msg return error code representation in string.
 pub fn get_error_msg(code int) string {
-    if code < 0 { // skip negative
-        return ''
-    }
-    ptr_text := ptr_win_get_error_msg(u32(code))
-    if ptr_text == 0 { // compare with null
-        return ''
-    }
-    return string_from_wide(ptr_text)
+	if code < 0 { // skip negative
+		return ''
+	}
+	ptr_text := ptr_win_get_error_msg(u32(code))
+	if ptr_text == 0 { // compare with null
+		return ''
+	}
+	return string_from_wide(ptr_text)
 }
 
 // exec starts the specified command, waits for it to complete, and returns its output.
@@ -235,24 +226,23 @@ pub fn exec(cmd string) ?Result {
 	mut child_stdin := &u32(0)
 	mut child_stdout_read := &u32(0)
 	mut child_stdout_write := &u32(0)
-	mut sa := SecurityAttributes {}
+	mut sa := SecurityAttributes{}
 	sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 	sa.b_inherit_handle = true
-
-	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read),
-		voidptr(&child_stdout_write), voidptr(&sa), 0)
+	create_pipe_ok := C.CreatePipe(voidptr(&child_stdout_read), voidptr(&child_stdout_write),
+		voidptr(&sa), 0)
 	if !create_pipe_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
 		return error_with_code('exec failed (CreatePipe): $error_msg', error_num)
 	}
-	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
+	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT,
+		0)
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
 		return error_with_code('exec failed (SetHandleInformation): $error_msg', error_num)
 	}
-
 	proc_info := ProcessInformation{}
 	start_info := StartupInfo{
 		lp_reserved: 0
@@ -266,11 +256,13 @@ pub fn exec(cmd string) ?Result {
 	}
 	command_line := [32768]u16{}
 	C.ExpandEnvironmentStringsW(cmd.to_wide(), voidptr(&command_line), 32768)
-	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info), voidptr(&proc_info))
+	create_process_ok := C.CreateProcessW(0, command_line, 0, 0, C.TRUE, 0, 0, 0, voidptr(&start_info),
+		voidptr(&proc_info))
 	if !create_process_ok {
 		error_num := int(C.GetLastError())
 		error_msg := get_error_msg(error_num)
-		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd', error_num)
+		return error_with_code('exec failed (CreateProcess) with code $error_num: $error_msg cmd: $cmd',
+			error_num)
 	}
 	C.CloseHandle(child_stdin)
 	C.CloseHandle(child_stdout_write)
@@ -278,7 +270,8 @@ pub fn exec(cmd string) ?Result {
 	mut bytes_read := u32(0)
 	mut read_data := strings.new_builder(1024)
 	for {
-		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read), 0)
+		readfile_result := C.ReadFile(child_stdout_read, buf, 1000, voidptr(&bytes_read),
+			0)
 		read_data.write_bytes(buf, int(bytes_read))
 		if readfile_result == false || int(bytes_read) == 0 {
 			break
@@ -291,20 +284,29 @@ pub fn exec(cmd string) ?Result {
 	C.GetExitCodeProcess(proc_info.h_process, voidptr(&exit_code))
 	C.CloseHandle(proc_info.h_process)
 	C.CloseHandle(proc_info.h_thread)
-	return Result {
+	return Result{
 		output: soutput
 		exit_code: int(exit_code)
 	}
 }
 
+// See https://docs.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
 fn C.CreateSymbolicLinkW(&u16, &u16, u32) int
 
-pub fn symlink(origin, target string) ?bool {
-	flags := if os.is_dir(origin) { 1 } else { 0 }
-	if C.CreateSymbolicLinkW(origin.to_wide(), target.to_wide(), u32(flags)) != 0 {
-		return true
+pub fn symlink(symlink_path string, target_path string) ?bool {
+	mut flags := 0
+	if is_dir(symlink_path) {
+		flags |= 1
 	}
-	return error(get_error_msg(int(C.GetLastError())))
+	flags |= 2 // SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE
+	res := C.CreateSymbolicLinkW(symlink_path.to_wide(), target_path.to_wide(), flags)
+	if res == 0 {
+		return error(get_error_msg(int(C.GetLastError())))
+	}
+	if !exists(symlink_path) {
+		return error('C.CreateSymbolicLinkW reported success, but symlink still does not exist')
+	}
+	return true
 }
 
 pub fn (mut f File) close() {
@@ -319,11 +321,10 @@ pub fn (mut f File) close() {
 pub struct ExceptionRecord {
 pub:
 	// status_ constants
-	code u32
-	flags u32
-
-	record &ExceptionRecord
-	address voidptr
+	code        u32
+	flags       u32
+	record      &ExceptionRecord
+	address     voidptr
 	param_count u32
 	// params []voidptr
 }
@@ -335,25 +336,22 @@ pub struct ContextRecord {
 pub struct ExceptionPointers {
 pub:
 	exception_record &ExceptionRecord
-	context_record &ContextRecord
+	context_record   &ContextRecord
 }
 
-pub type VectoredExceptionHandler fn(&ExceptionPointers)u32
+pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 
 // This is defined in builtin because we use vectored exception handling
 // for our unhandled exception handler on windows
-
 // As a result this definition is commented out to prevent
 // duplicate definitions from displeasing the compiler
 // fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
-
 pub fn add_vectored_exception_handler(first bool, handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(u32(first), handler)
+	C.AddVectoredExceptionHandler(u32(first), C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
 // this is defined in builtin_windows.c.v in builtin
 // fn C.IsDebuggerPresent() bool
-
 pub fn debugger_present() bool {
 	return C.IsDebuggerPresent()
 }
@@ -370,25 +368,25 @@ pub fn uname() Uname {
 	}
 }
 
-
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
-	if !os.exists(folder) {
+	if !exists(folder) {
 		return error('`$folder` does not exist')
 	}
-	if !os.is_dir(folder) {
+	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
-	mut f := os.open_file(tmp_perm_check, 'w+', 0o700) or {
+	tmp_perm_check := join_path(folder, 'tmp_perm_check_pid_' + getpid().str())
+	mut f := open_file(tmp_perm_check, 'w+', 0o700) or {
 		return error('cannot write to folder $folder: $err')
 	}
 	f.close()
-	os.rm(tmp_perm_check)
+	rm(tmp_perm_check)
 	return true
 }
 
 fn C._getpid() int
+
 [inline]
 pub fn getpid() int {
 	return C._getpid()

@@ -1,0 +1,15 @@
+fn main() {
+  mut a := 2
+  for match a {
+		2 {
+			println('a == 2')
+			a = 0
+		}
+		0 {
+			println('a == 0')	
+		}
+		else {
+			println('unexpected branch')
+		}
+	}
+}

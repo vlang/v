@@ -6,6 +6,7 @@ module table
 import os
 import v.cflag
 import v.token
+import v.util
 
 pub struct Table {
 pub mut:
@@ -18,35 +19,57 @@ pub mut:
 	redefined_fns []string
 	fn_gen_types  map[string][]Type // for generic functions
 	cmod_prefix   string // needed for table.type_to_str(Type) while vfmt; contains `os.`
+	is_fmt        bool
 }
 
 pub struct Fn {
 pub:
-	args                    []Arg
-	return_type             Type
-	return_type_source_name string
-	is_variadic             bool
-	language                Language
-	is_generic              bool
-	is_pub                  bool
-	is_deprecated           bool
-	is_unsafe               bool
-	is_placeholder          bool
-	mod                     string
-	ctdefine                string // compile time define. myflag, when [if myflag] tag
-	attrs                   []Attr
+	params         []Param
+	return_type    Type
+	is_variadic    bool
+	language       Language
+	is_generic     bool
+	is_pub         bool
+	is_deprecated  bool
+	is_unsafe      bool
+	is_placeholder bool
+	mod            string
+	ctdefine       string // compile time define. myflag, when [if myflag] tag
+	attrs          []Attr
 pub mut:
-	name                    string
+	name           string
+	source_fn      voidptr // set in the checker, while processing fn declarations
 }
 
-pub struct Arg {
+fn (f &Fn) method_equals(o &Fn) bool {
+	return f.params[1..].equals(o.params[1..]) && f.return_type == o.return_type && f.is_variadic ==
+		o.is_variadic && f.language == o.language && f.is_generic == o.is_generic && f.is_pub == o.is_pub &&
+		f.mod == o.mod && f.name == o.name
+}
+
+pub struct Param {
 pub:
-	pos              token.Position
-	name             string
-	is_mut           bool
-	typ              Type
-	type_source_name string
-	is_hidden        bool // interface first arg
+	pos       token.Position
+	name      string
+	is_mut    bool
+	typ       Type
+	is_hidden bool // interface first arg
+}
+
+fn (p &Param) equals(o &Param) bool {
+	return p.name == o.name && p.is_mut == o.is_mut && p.typ == o.typ && p.is_hidden == o.is_hidden
+}
+
+fn (p []Param) equals(o []Param) bool {
+	if p.len != o.len {
+		return false
+	}
+	for i in 0 .. p.len {
+		if !p[i].equals(o[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 pub struct Var {
@@ -60,13 +83,14 @@ mut:
 pub fn new_table() &Table {
 	mut t := &Table{}
 	t.register_builtin_type_symbols()
+	t.is_fmt = true
 	return t
 }
 
 // used to compare fn's & for naming anon fn's
-pub fn (f &Fn) signature() string {
+pub fn (t &Table) fn_type_signature(f &Fn) string {
 	mut sig := ''
-	for i, arg in f.args {
+	for i, arg in f.params {
 		// TODO: for now ignore mut/pts in sig for now
 		typ := arg.typ.set_nr_muls(0)
 		// if arg.is_mut {
@@ -74,7 +98,7 @@ pub fn (f &Fn) signature() string {
 		// }
 		// sig += '$arg.typ'
 		sig += '$typ'
-		if i < f.args.len - 1 {
+		if i < f.params.len - 1 {
 			sig += '_'
 		}
 	}
@@ -83,18 +107,25 @@ pub fn (f &Fn) signature() string {
 }
 
 // source_signature generates the signature of a function which looks like in the V source
-pub fn (f &Fn) source_signature() string {
+pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 	mut sig := '('
-	for i, arg in f.args {
+	for i, arg in f.params {
 		if arg.is_mut {
 			sig += 'mut '
 		}
-		sig += '$arg.type_source_name'
-		if i < f.args.len - 1 {
+		arg_type_sym := t.get_type_symbol(arg.typ)
+		sig += '$arg_type_sym.name'
+		if i < f.params.len - 1 {
 			sig += ', '
 		}
 	}
-	sig += ') $f.return_type_source_name'
+	sig += ')'
+	if f.return_type == ovoid_type {
+		sig += ' ?'
+	} else if f.return_type != void_type {
+		return_type_sym := t.get_type_symbol(f.return_type)
+		sig += ' $return_type_sym.name'
+	}
 	return sig
 }
 
@@ -102,11 +133,11 @@ pub fn (f &Fn) is_same_method_as(func &Fn) bool {
 	if f.return_type != func.return_type {
 		return false
 	}
-	if f.args.len != func.args.len {
+	if f.params.len != func.params.len {
 		return false
 	}
-	for i in 1 .. f.args.len {
-		if f.args[i].typ != func.args[i].typ {
+	for i in 1 .. f.params.len {
+		if f.params[i].typ != func.params[i].typ {
 			return false
 		}
 	}
@@ -123,9 +154,7 @@ pub fn (t &Table) find_fn(name string) ?Fn {
 }
 
 pub fn (t &Table) known_fn(name string) bool {
-	t.find_fn(name) or {
-		return false
-	}
+	t.find_fn(name) or { return false }
 	return true
 }
 
@@ -134,9 +163,38 @@ pub fn (mut t Table) register_fn(new_fn Fn) {
 	t.fns[new_fn.name] = new_fn
 }
 
-pub fn (mut t TypeSymbol) register_method(new_fn Fn) {
+pub fn (mut t TypeSymbol) register_method(new_fn Fn) int {
+	// returns a method index, stored in the ast.FnDecl
+	// for faster lookup in the checker's fn_decl method
 	// println('reg me $new_fn.name nr_args=$new_fn.args.len')
 	t.methods << new_fn
+	return t.methods.len - 1
+}
+
+pub fn (t &Table) register_aggregate_method(mut sym TypeSymbol, name string) ?Fn {
+	if sym.kind != .aggregate {
+		panic('Unexpected type symbol: $sym.kind')
+	}
+	agg_info := sym.info as Aggregate
+	// an aggregate always has at least 2 types
+	mut found_once := false
+	mut new_fn := Fn{}
+	for typ in agg_info.types {
+		ts := t.get_type_symbol(typ)
+		if type_method := ts.find_method(name) {
+			if !found_once {
+				found_once = true
+				new_fn = type_method
+			} else if !new_fn.method_equals(type_method) {
+				return error('method `${t.type_to_str(typ)}.$name` signature is different')
+			}
+		} else {
+			return error('unknown method: `${t.type_to_str(typ)}.$name`')
+		}
+	}
+	// register the method in the aggregate, so lookup is faster next time
+	sym.register_method(new_fn)
+	return new_fn
 }
 
 pub fn (t &Table) type_has_method(s &TypeSymbol, name string) bool {
@@ -155,12 +213,41 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if method := ts.find_method(name) {
 			return method
 		}
+		if ts.kind == .aggregate {
+			method := t.register_aggregate_method(mut ts, name) ?
+			return method
+		}
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		ts = unsafe {&t.types[ts.parent_idx]}
 	}
 	return none
+}
+
+fn (t &Table) register_aggregate_field(mut sym TypeSymbol, name string) ?Field {
+	if sym.kind != .aggregate {
+		panic('Unexpected type symbol: $sym.kind')
+	}
+	mut agg_info := sym.info as Aggregate
+	// an aggregate always has at least 2 types
+	mut found_once := false
+	mut new_field := Field{}
+	for typ in agg_info.types {
+		ts := t.get_type_symbol(typ)
+		if type_field := t.struct_find_field(ts, name) {
+			if !found_once {
+				found_once = true
+				new_field = type_field
+			} else if !new_field.equals(type_field) {
+				return error('field `${t.type_to_str(typ)}.$name` type is different')
+			}
+		} else {
+			return error('type `${t.type_to_str(typ)}` has no field or method `$name`')
+		}
+	}
+	agg_info.fields << new_field
+	return new_field
 }
 
 pub fn (t &Table) struct_has_field(s &TypeSymbol, name string) bool {
@@ -176,16 +263,21 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 	// println('struct_find_field($s.name, $name) types.len=$t.types.len s.parent_idx=$s.parent_idx')
 	mut ts := s
 	for {
-		if ts.info is Struct {
-			struct_info := ts.info as Struct
-			if field := struct_info.find_field(name) {
+		if mut ts.info is Struct {
+			if field := ts.info.find_field(name) {
 				return field
 			}
+		} else if mut ts.info is Aggregate {
+			if field := ts.info.find_field(name) {
+				return field
+			}
+			field := t.register_aggregate_field(mut ts, name) or { return error(err) }
+			return field
 		}
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = &t.types[ts.parent_idx]
+		ts = unsafe {&t.types[ts.parent_idx]}
 	}
 	return none
 }
@@ -209,10 +301,11 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return &t.types[idx]
+		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
-	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
+	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
+')
 }
 
 // get_final_type_symbol follows aliases until it gets to a "real" Type
@@ -225,10 +318,10 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return &t.types[idx]
+		return unsafe {&t.types[idx]}
 	}
 	// this should never happen
-	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen')
+	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
 }
 
 [inline]
@@ -249,29 +342,6 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
-// this will override or register builtin type
-// allows prexisitng types added in register_builtins
-// to be overriden with their real type info
-[inline]
-pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
-	existing_idx := t.type_idxs[typ.name]
-	if existing_idx > 0 {
-		if existing_idx >= string_type_idx {
-			if existing_idx == string_type_idx {
-				existing_type := t.types[existing_idx]
-				t.types[existing_idx] = {
-					typ |
-					kind: existing_type.kind
-				}
-			} else {
-				t.types[existing_idx] = typ
-			}
-		}
-		return existing_idx
-	}
-	return t.register_type_symbol(typ)
-}
-
 [inline]
 pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
@@ -289,10 +359,21 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				return existing_idx
 			}
 			else {
-				if ex_type.kind == typ.kind {
+				// builtin
+				// this will override the already registered builtin types
+				// with the actual v struct declaration in the source
+				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+					if existing_idx == string_type_idx {
+						// existing_type := t.types[existing_idx]
+						t.types[existing_idx] = {
+							typ |
+							kind: ex_type.kind
+						}
+					} else {
+						t.types[existing_idx] = typ
+					}
 					return existing_idx
 				}
-				// panic('cannot register type `$typ.name`, another type with this name exists')
 				return -1
 			}
 		}
@@ -304,94 +385,101 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 }
 
 pub fn (t &Table) known_type(name string) bool {
-	t.find_type(name) or {
-		return false
-	}
+	t.find_type(name) or { return false }
 	return true
-}
-
-[inline]
-pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
-	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_$elem_type_sym.name' + if elem_type.is_ptr() {
-		'_ptr'.repeat(elem_type.nr_muls())
-	} else {
-		''
-	} + if nr_dims > 1 {
-		'_${nr_dims}d'
-	} else {
-		''
-	}
 }
 
 // array_source_name generates the original name for the v source.
 // e. g. []int
 [inline]
-pub fn (t &Table) array_source_name(elem_type Type) string {
+pub fn (t &Table) array_name(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	ptr := if elem_type.is_ptr() { '&' } else { '' }
-	return '[]$ptr$elem_type_sym.source_name'
+	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
+	dims := '[]'.repeat(nr_dims)
+	return '$dims$ptr$elem_type_sym.name'
 }
 
 [inline]
-pub fn (t &Table) array_fixed_name(elem_type Type, size, nr_dims int) string {
+pub fn (t &Table) array_cname(elem_type Type, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	return 'array_fixed_${elem_type_sym.name}_$size' + if elem_type.is_ptr() {
-		'_ptr'
-	} else {
-		''
-	} + if nr_dims > 1 {
-		'_${nr_dims}d'
-	} else {
-		''
+	mut res := ''
+	if elem_type.is_ptr() {
+		res = '_ptr'.repeat(elem_type.nr_muls())
 	}
+	if nr_dims > 1 {
+		res += '_${nr_dims}d'
+	}
+	return 'array_$elem_type_sym.cname' + res
 }
 
 // array_fixed_source_name generates the original name for the v source.
 // e. g. [16][8]int
 [inline]
-pub fn (t &Table) array_fixed_source_name(elem_type Type, size int) string {
+pub fn (t &Table) array_fixed_name(elem_type Type, size int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	ptr := if elem_type.is_ptr() { '&' } else { '' }
-	return '[$size]$ptr$elem_type_sym.source_name'
+	ptr := if elem_type.is_ptr() { '&'.repeat(elem_type.nr_muls()) } else { '' }
+	return '[$size]$ptr$elem_type_sym.name'
 }
 
 [inline]
-pub fn (t &Table) chan_name(elem_type Type) string {
+pub fn (t &Table) array_fixed_cname(elem_type Type, size int, nr_dims int) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	suffix := if elem_type.is_ptr() { '_ptr' } else { '' }
-	return 'chan_$elem_type_sym.name' + suffix
+	mut res := ''
+	if elem_type.is_ptr() {
+		res = '_ptr'
+	}
+	if nr_dims > 1 {
+		res += '_${nr_dims}d'
+	}
+	return 'array_fixed_${elem_type_sym.cname}_$size' + res
 }
 
 [inline]
-pub fn (t &Table) chan_source_name(elem_type Type) string {
+pub fn (t &Table) chan_name(elem_type Type, is_mut bool) string {
 	elem_type_sym := t.get_type_symbol(elem_type)
-	ptr := if elem_type.is_ptr() { '&' } else { '' }
-	return 'chan $ptr$elem_type_sym.source_name'
+	mut ptr := ''
+	if is_mut {
+		ptr = 'mut '
+	} else if elem_type.is_ptr() {
+		ptr = '&'
+	}
+	return 'chan $ptr$elem_type_sym.name'
 }
 
 [inline]
-pub fn (t &Table) map_name(key_type, value_type Type) string {
-	key_type_sym := t.get_type_symbol(key_type)
-	value_type_sym := t.get_type_symbol(value_type)
-	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
-	return 'map_${key_type_sym.name}_$value_type_sym.name' + suffix
-	// return 'map_${value_type_sym.name}' + suffix
+pub fn (t &Table) chan_cname(elem_type Type, is_mut bool) string {
+	elem_type_sym := t.get_type_symbol(elem_type)
+	mut suffix := ''
+	if is_mut {
+		suffix = '_mut'
+	} else if elem_type.is_ptr() {
+		suffix = '_ptr'
+	}
+	return 'chan_$elem_type_sym.cname' + suffix
 }
 
 // map_source_name generates the original name for the v source.
 // e. g. map[string]int
 [inline]
-pub fn (t &Table) map_source_name(key_type, value_type Type) string {
+pub fn (t &Table) map_name(key_type Type, value_type Type) string {
 	key_type_sym := t.get_type_symbol(key_type)
 	value_type_sym := t.get_type_symbol(value_type)
 	ptr := if value_type.is_ptr() { '&' } else { '' }
-	return 'map[${key_type_sym.source_name}]$ptr$value_type_sym.source_name'
+	return 'map[$key_type_sym.name]$ptr$value_type_sym.name'
 }
 
-pub fn (mut t Table) find_or_register_chan(elem_type Type) int {
-	name := t.chan_name(elem_type)
-	source_name := t.chan_source_name(elem_type)
+[inline]
+pub fn (t &Table) map_cname(key_type Type, value_type Type) string {
+	key_type_sym := t.get_type_symbol(key_type)
+	value_type_sym := t.get_type_symbol(value_type)
+	suffix := if value_type.is_ptr() { '_ptr' } else { '' }
+	return 'map_${key_type_sym.cname}_$value_type_sym.cname' + suffix
+	// return 'map_${value_type_sym.name}' + suffix
+}
+
+pub fn (mut t Table) find_or_register_chan(elem_type Type, is_mut bool) int {
+	name := t.chan_name(elem_type, is_mut)
+	cname := t.chan_cname(elem_type, is_mut)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -402,17 +490,18 @@ pub fn (mut t Table) find_or_register_chan(elem_type Type) int {
 		parent_idx: chan_type_idx
 		kind: .chan
 		name: name
-		source_name: source_name
+		cname: cname
 		info: Chan{
 			elem_type: elem_type
+			is_mut: is_mut
 		}
 	}
 	return t.register_type_symbol(chan_typ)
 }
 
-pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
+pub fn (mut t Table) find_or_register_map(key_type Type, value_type Type) int {
 	name := t.map_name(key_type, value_type)
-	source_name := t.map_source_name(key_type, value_type)
+	cname := t.map_cname(key_type, value_type)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -423,7 +512,7 @@ pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
 		parent_idx: map_type_idx
 		kind: .map
 		name: name
-		source_name: source_name
+		cname: cname
 		info: Map{
 			key_type: key_type
 			value_type: value_type
@@ -432,9 +521,9 @@ pub fn (mut t Table) find_or_register_map(key_type, value_type Type) int {
 	return t.register_type_symbol(map_typ)
 }
 
-pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod string) int {
+pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int) int {
 	name := t.array_name(elem_type, nr_dims)
-	source_name := t.array_source_name(elem_type)
+	cname := t.array_cname(elem_type, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -445,19 +534,18 @@ pub fn (mut t Table) find_or_register_array(elem_type Type, nr_dims int, mod str
 		parent_idx: array_type_idx
 		kind: .array
 		name: name
-		source_name: source_name
+		cname: cname
 		info: Array{
 			elem_type: elem_type
 			nr_dims: nr_dims
 		}
-		mod: mod
 	}
 	return t.register_type_symbol(array_type)
 }
 
-pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims int) int {
-	name := t.array_fixed_name(elem_type, size, nr_dims)
-	source_name := t.array_fixed_source_name(elem_type, size)
+pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size int, nr_dims int) int {
+	name := t.array_fixed_name(elem_type, size)
+	cname := t.array_fixed_cname(elem_type, size, nr_dims)
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -467,7 +555,7 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims 
 	array_fixed_type := TypeSymbol{
 		kind: .array_fixed
 		name: name
-		source_name: source_name
+		cname: cname
 		info: ArrayFixed{
 			elem_type: elem_type
 			size: size
@@ -478,17 +566,17 @@ pub fn (mut t Table) find_or_register_array_fixed(elem_type Type, size, nr_dims 
 }
 
 pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
-	mut name := 'multi_return'
-	mut source_name := '('
+	mut name := '('
+	mut cname := 'multi_return'
 	for i, mr_typ in mr_typs {
 		mr_type_sym := t.get_type_symbol(mr_typ)
-		name += '_$mr_type_sym.name'
-		source_name += mr_type_sym.source_name
+		name += mr_type_sym.name
+		cname += '_$mr_type_sym.cname'
 		if i < mr_typs.len - 1 {
-			source_name += ', '
+			name += ', '
 		}
 	}
-	source_name += ')'
+	name += ')'
 	// existing
 	existing_idx := t.type_idxs[name]
 	if existing_idx > 0 {
@@ -498,7 +586,7 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	mr_type := TypeSymbol{
 		kind: .multi_return
 		name: name
-		source_name: source_name
+		cname: cname
 		info: MultiReturn{
 			types: mr_typs
 		}
@@ -506,28 +594,39 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 	return t.register_type_symbol(mr_type)
 }
 
-pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon, has_decl bool) int {
-	name := if f.name.len == 0 { 'anon_fn_$f.signature()' } else { f.name.clone() }
-	source_name := if f.name.len == 0 { 'fn $f.source_signature()' } else { f.name.clone() }
+pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
+	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
+	cname := if f.name.len == 0 { 'anon_fn_${t.fn_type_signature(f)}' } else { util.no_dots(f.name.clone()) }
 	anon := f.name.len == 0 || is_anon
-	return t.register_type_symbol(TypeSymbol{
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 && t.types[existing_idx].kind != .placeholder {
+		return existing_idx
+	}
+	return t.register_type_symbol(
 		kind: .function
 		name: name
-		source_name: source_name
+		cname: cname
 		mod: mod
 		info: FnType{
 			is_anon: anon
 			has_decl: has_decl
 			func: f
 		}
-	})
+	)
 }
 
-pub fn (mut t Table) add_placeholder_type(name string) int {
+pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
+	mut modname := ''
+	if name.contains('.') {
+		modname = name.all_before_last('.')
+	}
 	ph_type := TypeSymbol{
 		kind: .placeholder
 		name: name
-		source_name: name
+		cname: util.no_dots(name)
+		language: language
+		mod: modname
 	}
 	// println('added placeholder: $name - $ph_type.idx')
 	return t.register_type_symbol(ph_type)
@@ -581,9 +680,10 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-// Once we have a module format we can read from module file instead
-// this is not optimal
-pub fn (table &Table) qualify_module(mod, file_path string) string {
+// TODO: Once we have a module format we can read from module file instead
+// this is not optimal. it depends on the full import being in table.imports
+// already, we can instead lookup the module path and then work it out
+pub fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		// if m.contains('gen') { println('qm=$m') }
 		if m.contains('.') && m.contains(mod) {
@@ -610,15 +710,12 @@ pub fn (mut table Table) register_fn_gen_type(fn_name string, typ Type) {
 
 // TODO: there is a bug when casting sumtype the other way if its pointer
 // so until fixed at least show v (not C) error `x(variant) =  y(SumType*)`
-pub fn (table &Table) sumtype_has_variant(parent, variant Type) bool {
+pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 	parent_sym := table.get_type_symbol(parent)
 	if parent_sym.kind == .sum_type {
 		parent_info := parent_sym.info as SumType
 		for v in parent_info.variants {
 			if v.idx() == variant.idx() {
-				return true
-			}
-			if table.sumtype_has_variant(v, variant) {
 				return true
 			}
 		}

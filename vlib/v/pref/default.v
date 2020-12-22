@@ -4,14 +4,11 @@
 module pref
 
 import os
+import v.vcache
 
 pub const (
-	default_module_path = mpath()
+	default_module_path = os.vmodules_dir()
 )
-
-fn mpath() string {
-	return os.home_dir() + '.vmodules'
-}
 
 pub fn new_preferences() Preferences {
 	mut p := Preferences{}
@@ -19,7 +16,7 @@ pub fn new_preferences() Preferences {
 	return p
 }
 
-pub fn (mut p Preferences) fill_with_defaults() {
+fn (mut p Preferences) expand_lookup_paths() {
 	if p.vroot == '' {
 		// Location of all vlib files
 		p.vroot = os.dir(vexe_path())
@@ -28,9 +25,19 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.lookup_path.len == 0 {
 		p.lookup_path = ['@vlib', '@vmodules']
 	}
-	for i, path in p.lookup_path {
-		p.lookup_path[i] = path.replace('@vlib', vlib_path).replace('@vmodules', default_module_path)
+	mut expanded_paths := []string{}
+	for path in p.lookup_path {
+		match path {
+			'@vlib' { expanded_paths << vlib_path }
+			'@vmodules' { expanded_paths << os.vmodules_paths() }
+			else { expanded_paths << path }
+		}
 	}
+	p.lookup_path = expanded_paths
+}
+
+pub fn (mut p Preferences) fill_with_defaults() {
+	p.expand_lookup_paths()
 	rpath := os.real_path(p.path)
 	if p.out_name == '' {
 		filename := os.file_name(rpath).trim_space()
@@ -56,9 +63,13 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		// No OS specifed? Use current system
 		p.os = get_host_os()
 	}
+	//
+	p.try_to_use_tcc_by_default()
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
+	p.find_cc_if_cross_compiling()
+	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
 	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
@@ -70,9 +81,70 @@ pub fn (mut p Preferences) fill_with_defaults() {
 			}
 		}
 	}
+	// Prepare the cache manager. All options that can affect the generated cached .c files
+	// should go into res.cache_manager.vopts, which is used as a salt for the cache hash.
+	p.cache_manager = vcache.new_cache_manager([
+		@VHASH,
+		/* ensure that different v versions use separate build artefacts */
+		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
+		p.cflags.trim_space(),
+		p.third_party_option.trim_space(),
+		'$p.compile_defines_all',
+		'$p.compile_defines',
+		'$p.lookup_path',
+	])
+	// eprintln('prefs.cache_manager: $p')
+	//
+	// enable use_cache by default
+	// p.use_cache = os.user_os() != 'windows'
 }
 
-fn default_c_compiler() string {
+fn (mut p Preferences) find_cc_if_cross_compiling() {
+	if p.os == .windows {
+		$if !windows {
+			// Cross compiling to Windows
+			p.ccompiler = 'x86_64-w64-mingw32-gcc'
+		}
+	}
+	if p.os == .linux {
+		$if !linux {
+			// Cross compiling to Linux
+			p.ccompiler = 'clang'
+		}
+	}
+}
+
+fn (mut p Preferences) try_to_use_tcc_by_default() {
+	if p.ccompiler == 'tcc' {
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+	if p.ccompiler == '' {
+		// tcc is known to fail several tests on macos, so do not
+		// try to use it by default, only when it is explicitly set
+		$if macos {
+			return
+		}
+		// use an optimizing compiler (i.e. gcc or clang) on -prod mode
+		if p.is_prod {
+			return
+		}
+		p.ccompiler = default_tcc_compiler()
+		return
+	}
+}
+
+pub fn default_tcc_compiler() string {
+	vexe := vexe_path()
+	vroot := os.dir(vexe)
+	vtccexe := os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.exists(vtccexe) {
+		return vtccexe
+	}
+	return ''
+}
+
+pub fn default_c_compiler() string {
 	// fast_clang := '/usr/local/Cellar/llvm/8.0.0/bin/clang'
 	// if os.exists(fast_clang) {
 	// return fast_clang

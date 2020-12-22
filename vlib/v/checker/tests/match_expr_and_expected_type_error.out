@@ -1,13 +1,14 @@
-vlib/v/checker/tests/match_expr_and_expected_type_error.vv:2:1: error: cannot use type `byte` as type `string`
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:3:3: error: cannot match `string` with `rune` condition
     1 | ch := `a`
     2 | match ch {
-      | ~~~~~~~~~~
     3 |   'a' {}
+      |   ~~~
     4 |   else {}
-vlib/v/checker/tests/match_expr_and_expected_type_error.vv:8:1: error: cannot use type `int` as type `string`
-    6 | 
-    7 | char := 123
-    8 | match char {
-      | ~~~~~~~~~~~~
+    5 | }
+vlib/v/checker/tests/match_expr_and_expected_type_error.vv:9:3: error: cannot match `string` with `int` condition
+    7 | i := 123
+    8 | match i {
     9 |   'a' {}
+      |   ~~~
    10 |   else {}
+   11 | }

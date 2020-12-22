@@ -1,0 +1,12 @@
+type Expr = IfExpr | CallExpr | MatchExpr
+struct MatchExpr {}
+struct IfExpr {}
+struct CallExpr {}
+
+type Stmt = Expr | AnotherThing
+struct AnotherThing {}
+
+fn main() {
+    mut w := Stmt{}
+	w = IfExpr{}
+}

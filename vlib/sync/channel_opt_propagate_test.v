@@ -5,7 +5,7 @@ const (
 )
 
 fn get_val_from_chan(ch chan i64) ?i64 {
-	r := <-ch?
+	r := <-ch ?
 	return r
 }
 
@@ -33,7 +33,7 @@ fn test_channel_array_mut() {
 		chs[0] <- t
 		t = <-chs[1]
 	}
-	(&sync.Channel(chs[0])).close()
+	chs[0].close()
 	sem.wait()
 	assert t == 100 + num_iterations
 }

@@ -26,7 +26,6 @@ pub fn (app &App) index_html() vweb.Result {
 	return $vweb.html()
 }
 */
-
 pub fn (app &App) index() vweb.Result {
 	articles := app.find_all_articles()
 	return $vweb.html()
@@ -53,7 +52,7 @@ pub fn (mut app App) new_article() vweb.Result {
 		app.vweb.text('Empty text/title')
 		return vweb.Result{}
 	}
-	article := Article {
+	article := Article{
 		title: title
 		text: text
 	}

@@ -42,7 +42,7 @@ fn print_help_for_command(help_cmd Command) ? {
 			}
 			if !found {
 				args := help_cmd.args.join(' ')
-				print('Invalid command: $args')
+				println('Invalid command: $args')
 				return
 			}
 		}
@@ -63,15 +63,16 @@ fn (cmd Command) help_message() string {
 	if cmd.commands.len > 0 {
 		help += ' [commands]'
 	}
-	for i in 0 .. cmd.required_args {
-		help += ' <arg$i>'
-	}
 	if cmd.usage.len > 0 {
 		help += ' $cmd.usage'
+	} else {
+		for i in 0 .. cmd.required_args {
+			help += ' <arg$i>'
+		}
 	}
-	help += '\n\n'
+	help += '\n'
 	if cmd.description != '' {
-		help += '$cmd.description\n\n'
+		help += '\n$cmd.description\n'
 	}
 	mut abbrev_len := 0
 	mut name_len := min_description_indent_len
@@ -92,7 +93,7 @@ fn (cmd Command) help_message() string {
 		}
 	}
 	if cmd.flags.len > 0 {
-		help += 'Flags:\n'
+		help += '\nFlags:\n'
 		for flag in cmd.flags {
 			mut flag_name := ''
 			if flag.abbrev != '' && cmd.flags.have_abbrev() {
@@ -113,17 +114,15 @@ fn (cmd Command) help_message() string {
 			help += '$base_indent$flag_name$description_indent' + pretty_description(flag.description +
 				required, base_indent_len + name_len) + '\n'
 		}
-		help += '\n'
 	}
 	if cmd.commands.len > 0 {
-		help += 'Commands:\n'
+		help += '\nCommands:\n'
 		for command in cmd.commands {
 			base_indent := ' '.repeat(base_indent_len)
 			description_indent := ' '.repeat(name_len - command.name.len)
 			help += '$base_indent$command.name$description_indent' + pretty_description(command.description, name_len) +
 				'\n'
 		}
-		help += '\n'
 	}
 	return help
 }
@@ -166,7 +165,7 @@ fn pretty_description(s string, indent_len int) string {
 	return acc.str()
 }
 
-fn max(a, b int) int {
+fn max(a int, b int) int {
 	res := if a > b { a } else { b }
 	return res
 }

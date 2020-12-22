@@ -8,11 +8,12 @@ import v.table
 pub struct Scope {
 pub mut:
 	// mut:
-	objects   map[string]ScopeObject
-	parent    &Scope
-	children  []&Scope
-	start_pos int
-	end_pos   int
+	objects       map[string]ScopeObject
+	struct_fields []ScopeStructField
+	parent        &Scope
+	children      []&Scope
+	start_pos     int
+	end_pos       int
 }
 
 pub fn new_scope(parent &Scope, start_pos int) &Scope {
@@ -37,10 +38,23 @@ pub fn (s &Scope) find_with_scope(name string) ?(ScopeObject, &Scope) {
 }
 
 pub fn (s &Scope) find(name string) ?ScopeObject {
-	for sc := s; true; sc = sc.parent
-	 {
+	for sc := s; true; sc = sc.parent {
 		if name in sc.objects {
 			return sc.objects[name]
+		}
+		if isnil(sc.parent) {
+			break
+		}
+	}
+	return none
+}
+
+pub fn (s &Scope) find_struct_field(struct_type table.Type, field_name string) ?ScopeStructField {
+	for sc := s; true; sc = sc.parent {
+		for field in sc.struct_fields {
+			if field.struct_type == struct_type && field.name == field_name {
+				return field
+			}
 		}
 		if isnil(sc.parent) {
 			break
@@ -60,7 +74,7 @@ pub fn (s &Scope) is_known(name string) bool {
 pub fn (s &Scope) find_var(name string) ?&Var {
 	if obj := s.find(name) {
 		match obj {
-			Var { return obj }
+			Var { return &obj }
 			else {}
 		}
 	}
@@ -70,7 +84,7 @@ pub fn (s &Scope) find_var(name string) ?&Var {
 pub fn (s &Scope) find_const(name string) ?&ConstField {
 	if obj := s.find(name) {
 		match obj {
-			ConstField { return obj }
+			ConstField { return &obj }
 			else {}
 		}
 	}
@@ -85,18 +99,36 @@ pub fn (s &Scope) known_var(name string) bool {
 }
 
 pub fn (mut s Scope) update_var_type(name string, typ table.Type) {
-	match mut s.objects[name] {
+	s.end_pos = s.end_pos // TODO mut bug
+	mut obj := s.objects[name]
+	match mut obj {
 		Var {
-			if it.typ == typ {
+			if obj.typ == typ {
 				return
 			}
-			it.typ = typ
+			obj.typ = typ
 		}
 		else {}
 	}
 }
 
-pub fn (mut s Scope) register(name string, obj ScopeObject) {
+pub fn (mut s Scope) register_struct_field(field ScopeStructField) {
+	for f in s.struct_fields {
+		if f.struct_type == field.struct_type && f.name == field.name {
+			return
+		}
+	}
+	s.struct_fields << field
+}
+
+pub fn (mut s Scope) register(obj ScopeObject) {
+	name := if obj is ConstField {
+		obj.name
+	} else if obj is GlobalField {
+		obj.name
+	} else {
+		(obj as Var).name
+	}
 	if name == '_' {
 		return
 	}
@@ -149,7 +181,7 @@ fn (s &Scope) contains(pos int) bool {
 	return pos >= s.start_pos && pos <= s.end_pos
 }
 
-pub fn (sc &Scope) show(depth, max_depth int) string {
+pub fn (sc &Scope) show(depth int, max_depth int) string {
 	mut out := ''
 	mut indent := ''
 	for _ in 0 .. depth * 4 {
@@ -162,6 +194,9 @@ pub fn (sc &Scope) show(depth, max_depth int) string {
 			Var { out += '$indent  * var: $obj.name - $obj.typ\n' }
 			else {}
 		}
+	}
+	for field in sc.struct_fields {
+		out += '$indent  * struct_field: $field.struct_type $field.name - $field.typ\n'
 	}
 	if max_depth == 0 || depth < max_depth - 1 {
 		for i, _ in sc.children {

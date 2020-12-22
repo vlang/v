@@ -1,7 +1,7 @@
 fn main() {
 	println('fn print(a int) {}')
-	//println('fn println(a string) {}')
-	for i in 0..100000 {
+	// println('fn println(a string) {}')
+	for i in 0 .. 100000 {
 		println('
 fn foo${i}() {
 	x := $i
@@ -13,7 +13,6 @@ fn foo${i}() {
 }
 ')
 	}
-	//println('fn main() {foo1()} ')
+	// println('fn main() {foo1()} ')
 	println('fn main() { println("1m DONE") } ')
-
 }

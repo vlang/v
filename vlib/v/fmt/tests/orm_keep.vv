@@ -14,7 +14,7 @@ fn find_all_customers(db sqlite.DB) []Customer {
 }
 
 fn main() {
-	db := sqlite.connect('customers.db')?
+	db := sqlite.connect('customers.db') ?
 	// select count(*) from Customer
 	nr_customers := sql db {
 		select count from Customer
@@ -41,5 +41,13 @@ fn main() {
 	}
 	sql db {
 		insert new_customer into Customer
+	}
+	// delete a row
+	sql db {
+		delete from Customer where nr_orders == 10 && name == 'Bob'
+	}
+	sql db {
+		update Customer set name = 'Queen Elizabeth II', age = 150, nr_orders = 42, country = 'Great Britain'
+		where id == 5
 	}
 }

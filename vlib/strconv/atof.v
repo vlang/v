@@ -1,3 +1,4 @@
+module strconv
 /*
 
 atof util
@@ -16,17 +17,6 @@ The code is inspired by:
 Grzegorz Kraszewski krashan@teleinfo.pb.edu.pl
 URL: http://krashan.ppa.pl/articles/stringtofloat/
 Original license: MIT
-
-*/
-module strconv
-
-union Float64u {
-mut:
-	f f64
-	u u64
-}
-
-/*
 
 96 bit operation utilities
 Note: when u128 will be available these function can be refactored
@@ -162,13 +152,6 @@ Support struct
 
 */
 
-// The structure is filled by parser, then given to converter.
-pub struct PrepNumber {
-pub mut:
-	negative bool // 0 if positive number, 1 if negative
-	exponent int // power of 10 exponent
-	mantissa u64 // integer mantissa
-}
 /*
 
 String parser
@@ -180,7 +163,7 @@ NOTE: #TOFIX need one char after the last char of the number
 fn parser(s string) (int,PrepNumber) {
 	mut state := fsm_a
 	mut digx := 0
-	mut c := ` ` // initial value for kicking off the state machine
+	mut c := byte(` `) // initial value for kicking off the state machine
 	mut result := parser_ok
 	mut expneg := false
 	mut expexp := 0
@@ -192,7 +175,8 @@ fn parser(s string) (int,PrepNumber) {
 			// skip starting spaces
 			fsm_a {
 				if is_space(c) == true {
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else {
 					state = fsm_b
@@ -202,12 +186,13 @@ fn parser(s string) (int,PrepNumber) {
 			fsm_b {
 				state = fsm_c
 				if c == c_plus {
-					c = s[i++]
-					//i++
+					c = s[i]
+					i++
 				}
 				else if c == c_minus {
 					pn.negative = true
-					c = s[i++]
+					c = s[i]
+					i++
 				}
 				else if is_digit(c) {
 				}
@@ -371,7 +356,7 @@ fn converter(mut pn PrepNumber) u64 {
 	mut r2 := u32(0) // 96-bit precision integer
 	mut r1 := u32(0)
 	mut r0 := u32(0)
-	mask28 := u32(0xF<<28)
+	mask28 := u32(u64(0xF)<<28)
 	mut result := u64(0)
 	// working on 3 u32 to have 96 bit precision
 	s0 = u32(pn.mantissa & u64(0x00000000FFFFFFFF))

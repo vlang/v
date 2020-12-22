@@ -7,3 +7,10 @@ reserved_types = {
          'i128': true
 }
 )
+
+numbers := {
+  'one':  1
+  'two':     2
+  'sevenhundredseventyseven': 777
+'fivethousandthreehundredtwentyseven': 5327
+}

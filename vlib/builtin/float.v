@@ -91,7 +91,7 @@ fn f64_abs(a f64) f64 {
 
 
 [inline]
-pub fn f32_max(a, b f32) f32 {
+pub fn f32_max(a f32, b f32) f32 {
 	return if a > b {
 		a
 	} else {
@@ -100,7 +100,7 @@ pub fn f32_max(a, b f32) f32 {
 }
 
 [inline]
-pub fn f32_min(a, b f32) f32 {
+pub fn f32_min(a f32, b f32) f32 {
 	return if a < b {
 		a
 	} else {
@@ -109,7 +109,7 @@ pub fn f32_min(a, b f32) f32 {
 }
 
 [inline]
-pub fn f64_max(a, b f64) f64 {
+pub fn f64_max(a f64, b f64) f64 {
 	return if a > b {
 		a
 	} else {
@@ -118,7 +118,7 @@ pub fn f64_max(a, b f64) f64 {
 }
 
 [inline]
-fn f64_min(a, b f64) f64 {
+fn f64_min(a f64, b f64) f64 {
 	return if a < b {
 		a
 	} else {

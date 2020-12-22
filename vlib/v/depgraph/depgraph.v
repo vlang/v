@@ -35,8 +35,8 @@ pub fn (mut o OrderedDepMap) add(name string, deps []string) {
 	for dep in deps {
 		if dep !in d {
 			d << dep
+		} else {
 		}
-		else{}
 	}
 	o.set(name, d)
 }
@@ -135,7 +135,7 @@ pub fn (graph &DepGraph) display() string {
 }
 
 pub fn (graph &DepGraph) display_cycles() string {
-	mut node_names := map[string]DepGraphNode
+	mut node_names := map[string]DepGraphNode{}
 	for node in graph.nodes {
 		node_names[node.name] = node
 	}

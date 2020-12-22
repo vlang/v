@@ -17,7 +17,7 @@ fn (table &Table) has_cflag(flag cflag.CFlag) bool {
 
 // parse the flags to (table.cflags) []CFlag
 // Note: clean up big time (joe-c)
-pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?bool {
+pub fn (mut table Table) parse_cflag(cflg string, mod string, ctimedefines []string) ?bool {
 	allowed_flags := ['framework', 'library', 'Wa', 'Wl', 'Wp', 'I', 'l', 'L']
 	flag_orig := cflg.trim_space()
 	mut flag := flag_orig
@@ -31,9 +31,7 @@ pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 		if !flag.starts_with(os_override) {
 			continue
 		}
-		pos := flag.index(' ') or {
-			return none
-		}
+		pos := flag.index(' ') or { return none }
 		fos = flag[..pos].trim_space()
 		flag = flag[pos..].trim_space()
 	}
@@ -50,9 +48,7 @@ pub fn (mut table Table) parse_cflag(cflg, mod string, ctimedefines []string) ?b
 				}
 			}
 		}
-		mut index := flag.index(' -') or {
-			-1
-		}
+		mut index := flag.index(' -') or { -1 }
 		for index > -1 {
 			mut has_next := false
 			for f in allowed_flags {

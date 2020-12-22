@@ -61,6 +61,16 @@ pub fn rmrf(path string) {
 	}
 }
 
+pub fn exec(cmd string) ?os.Result {
+	verbose_trace(@FN, cmd)
+	x := os.exec(cmd) or {
+		verbose_trace(@FN, '## failed.')
+		return error(err)
+	}
+	verbose_trace_exec_result(x)
+	return x
+}
+
 pub fn run(cmd string) string {
 	verbose_trace(@FN, cmd)
 	x := os.exec(cmd) or {

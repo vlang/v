@@ -219,3 +219,36 @@ fn test_in_array_init() {
 	assert 1 !in []int{}
 	assert [1] in [[1], [2]]
 }
+
+fn test_in_expression_numeric() {
+	b := [byte(2), 4, 7]
+	b2 := [i8(3), -4, 9]
+	s := [u16(6), 1, 0]
+	s2 := [i16(34), -17, 45]
+	i := [5, 7, 9]
+	i2 := [u32(65), 12, 9]
+	l := [u64(54), 23, 1]
+	l2 := [i64(-45), 8, 2]
+	f := [f32(12.5), 0, -17.25]
+	f2 := [1.0625, 3, 17.125]
+	assert byte(4) in b
+	assert 3 !in b
+	assert -4 in b2
+	assert i8(5) !in b2
+	assert 1 in s
+	assert u16(3) !in s
+	assert 45 in s2
+	assert i16(0) !in s2
+	assert 7 in i
+	assert 8 !in i
+	assert 12 in i2
+	assert u32(13) !in i2
+	assert u64(1) in l
+	assert 2 !in l
+	assert -45 in l2
+	assert i64(-17) !in l2
+	assert -17.25 in f
+	assert f32(1) !in f
+	assert 1.0625 in f2
+	assert 3.5 !in f2
+}

@@ -58,13 +58,11 @@ fn parse_valid_flag(mut t table.Table, flag string) {
 }
 
 fn assert_parse_invalid_flag(mut t table.Table, flag string) {
-	t.parse_cflag(flag, module_name, cdefines) or {
-		return
-	}
+	t.parse_cflag(flag, module_name, cdefines) or { return }
 	assert false
 }
 
-fn make_flag(os, name, value string) cflag.CFlag {
+fn make_flag(os string, name string, value string) cflag.CFlag {
 	return cflag.CFlag{
 		mod: module_name
 		os: os

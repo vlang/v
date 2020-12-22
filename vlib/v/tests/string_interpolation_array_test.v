@@ -20,11 +20,11 @@ fn test_array_of_structs_interpolation() {
 		Man{'Bilbo Baggins', 111, ['exploring', 'hiding']},
 	]
 	s := '$people' // the compiler should generate code for both a) and b)
-	assert s.contains('Man {')
+	assert s.contains('Man{')
 	assert s.contains("name: 'Superman'")
 	assert s.contains('age: 30')
 	assert s.contains("'being nice'")
-	assert s.contains('}, Man {')
+	assert s.contains('}, Man{')
 	assert s.contains("name: 'Bilbo Baggins'")
 	assert s.contains('age: 111')
 	assert s.contains("interests: ['exploring', 'hiding']")

@@ -1,7 +1,7 @@
 module openssl
 
 import net.openssl
-import x.net
+import net
 import time
 
 // const (
@@ -34,7 +34,7 @@ pub fn (mut s SSLConn) shutdown() ? {
 	if s.ssl != 0 {
 		mut res := 0
 		for {
-			res = int(C.SSL_shutdown(s.ssl))
+			res = C.SSL_shutdown(s.ssl)
 			if res < 0 {
 				err_res := openssl.ssl_error(res, s.ssl) or {
 					break // We break to free rest of resources
@@ -56,9 +56,15 @@ pub fn (mut s SSLConn) shutdown() ? {
 					}
 					continue
 				} else {
+					C.SSL_free(s.ssl)
+					if s.sslctx != 0 {
+						C.SSL_CTX_free(s.sslctx)
+					}
 					return error('unexepedted ssl error $err_res')
 				}
-				C.SSL_free(s.ssl)
+				if s.ssl != 0 {
+					C.SSL_free(s.ssl)
+				}
 				if s.sslctx != 0 {
 					C.SSL_CTX_free(s.sslctx)
 				}
@@ -77,23 +83,46 @@ pub fn (mut s SSLConn) shutdown() ? {
 }
 
 // connect to server using open ssl
-pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn) ? {
+pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
-	// C.SSL_load_error_strings()
+
 	s.sslctx = C.SSL_CTX_new(C.SSLv23_client_method())
 	if s.sslctx == 0 {
 		return error("Couldn't get ssl context")
 	}
+
+	// TODO: Fix option to enable/disable checks for valid
+	//		 certificates to allow both secure and self signed
+	//		 for now the checks are not done at all to comply 
+	// 		 to current autobahn tests
+
+	// C.SSL_CTX_set_verify_depth(s.sslctx, 4)
+	// flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
+	// C.SSL_CTX_set_options(s.sslctx, flags)
+	// mut res := C.SSL_CTX_load_verify_locations(s.sslctx, 'random-org-chain.pem', 0)
+	
 	s.ssl = C.SSL_new(s.sslctx)
 	if s.ssl == 0 {
 		return error("Couldn't create OpenSSL instance.")
 	}
+
+	// preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
+	// mut res := C.SSL_set_cipher_list(s.ssl, preferred_ciphers.str)
+	// if res != 1 {
+	// 	println('http: openssl: cipher failed')
+	// }
+	
+	mut res := C.SSL_set_tlsext_host_name(s.ssl, hostname.str)
+	if res != 1 {
+		return error('cannot set host name')
+	}
+
 	if C.SSL_set_fd(s.ssl, tcp_conn.sock.handle) != 1 {
 		return error("Couldn't assign ssl to socket.")
 	}
 	for {
-		res := C.SSL_connect(s.ssl)
+		res = C.SSL_connect(s.ssl)
 		if res != 1 {
 			err_res := openssl.ssl_error(res, s.ssl)?
 			if err_res == .ssl_error_want_read {
@@ -144,7 +173,7 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 			} else if err_res == .ssl_error_zero_return {
 				return 0
 			}
-			return error('Could not read using SSL. ($err_res),err')
+			return error('Could not read using SSL. ($err_res)')
 		}
 		break
 	}
@@ -169,7 +198,7 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 				err_res := openssl.ssl_error(sent, s.ssl)?
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration) ?
 						if ready {
 							break
 						}
@@ -192,30 +221,6 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 	}
 }
 
-// // ssl_error returns non error ssl code or error if unrecoverable and we should panic
-// fn (mut s SSLConn) ssl_error(ret int) ?SSLError {
-// res := C.SSL_get_error(s.ssl, ret)
-// match SSLError(res) {
-// .ssl_error_syscall { return error_with_code('unrecoverable syscall ($res)', res) }
-// .ssl_error_ssl { return error_with_code('unrecoverable ssl protocol error ($res)',
-// res) }
-// else { return res }
-// }
-// }
-// enum SSLError {
-// ssl_error_none = C.SSL_ERROR_NONE
-// ssl_error_ssl = C.SSL_ERROR_SSL
-// ssl_error_want_read = C.SSL_ERROR_WANT_READ
-// ssl_error_want_write = C.SSL_ERROR_WANT_WRITE
-// ssl_error_want_x509_lookup = C.SSL_ERROR_WANT_X509_LOOKUP
-// ssl_error_syscall = C.SSL_ERROR_SYSCALL
-// ssl_error_zero_return = C.SSL_ERROR_ZERO_RETURN
-// ssl_error_want_connect = C.SSL_ERROR_WANT_CONNECT
-// ssl_error_want_accept = C.SSL_ERROR_WANT_ACCEPT
-// ssl_error_want_async = C.SSL_ERROR_WANT_ASYNC
-// ssl_error_want_async_job = C.SSL_ERROR_WANT_ASYNC_JOB
-// ssl_error_want_client_hello_cb = C.SSL_ERROR_WANT_CLIENT_HELLO_CB
-// }
 /*
 This is basically a copy of Emily socket implementation of select.
 	This have to be consolidated into common net lib features
@@ -227,17 +232,37 @@ pub struct C.fd_set {
 
 // Select waits for an io operation (specified by parameter `test`) to be available
 fn @select(handle int, test Select, timeout time.Duration) ?bool {
-	set := C.fd_set{}
-	C.FD_ZERO(&set)
-	C.FD_SET(handle, &set)
-	timeval_timeout := C.timeval{
-		tv_sec: u64(0)
-		tv_usec: u64(timeout.microseconds())
-	}
-	match test {
-		.read { net.socket_error(C.@select(handle, &set, C.NULL, C.NULL, &timeval_timeout))? }
-		.write { net.socket_error(C.@select(handle, C.NULL, &set, C.NULL, &timeval_timeout))? }
-		.except { net.socket_error(C.@select(handle, C.NULL, C.NULL, &set, &timeval_timeout))? }
-	}
-	return C.FD_ISSET(handle, &set)
+    set := C.fd_set{}
+
+    C.FD_ZERO(&set)
+    C.FD_SET(handle, &set)
+
+    seconds := timeout.milliseconds() / 1000
+    microseconds := timeout - (seconds * time.second)
+    mut tt := C.timeval{
+        tv_sec: u64(seconds)
+        tv_usec: u64(microseconds)
+    }
+
+    mut timeval_timeout := &tt
+
+    // infinite timeout is signaled by passing null as the timeout to
+    // select
+    if timeout == net.infinite_timeout {
+        timeval_timeout = &C.timeval(0)
+    }
+
+    match test {
+        .read {
+            net.socket_error(C.@select(handle+1, &set, C.NULL, C.NULL, timeval_timeout))?
+        }
+        .write {
+            net.socket_error(C.@select(handle+1, C.NULL, &set, C.NULL, timeval_timeout))?
+        }
+        .except {
+            net.socket_error(C.@select(handle+1, C.NULL, C.NULL, &set, timeval_timeout))?
+        }
+    }
+
+    return C.FD_ISSET(handle, &set)
 }

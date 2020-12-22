@@ -147,7 +147,7 @@ fn (mut g Gen) write64(n i64) {
 	g.buf << byte(n >> 56)
 }
 
-fn (mut g Gen) write64_at(n, at i64) {
+fn (mut g Gen) write64_at(n i64, at i64) {
 	// write 8 bytes
 	g.buf[at] = byte(n)
 	g.buf[at + 1] = byte(n >> 8)
@@ -469,7 +469,7 @@ pub fn (mut g Gen) gen_loop_start(from int) int {
 	return label
 }
 
-pub fn (mut g Gen) gen_loop_end(to, label int) {
+pub fn (mut g Gen) gen_loop_end(to int, label int) {
 	g.cmp(.r12, ._8, to)
 	g.jl(label)
 }
@@ -540,7 +540,7 @@ fn (mut g Gen) mov(reg Register, val int) {
 	g.println('mov $reg, $val')
 }
 
-fn (mut g Gen) mov_reg(a, b Register) {
+fn (mut g Gen) mov_reg(a Register, b Register) {
 	match a {
 		.rbp {
 			g.write8(0x48)
@@ -677,7 +677,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 	}
 }
 
-fn (mut g Gen) allocate_var(name string, size, initial_val int) {
+fn (mut g Gen) allocate_var(name string, size int, initial_val int) {
 	// `a := 3`  =>
 	// `move DWORD [rbp-0x4],0x3`
 	match size {
@@ -755,13 +755,12 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	if node.left is ast.InfixExpr {
 		verror('only simple expressions are supported right now (not more than 2 operands)')
 	}
-	match node.left {
-		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(it.name)) }
+	match mut node.left {
+		ast.Ident { g.mov_var_to_reg(.eax, g.get_var_offset(node.left.name)) }
 		else {}
 	}
-	if node.right is ast.Ident {
-		ident := node.right as ast.Ident
-		var_offset := g.get_var_offset(ident.name)
+	if mut node.right is ast.Ident {
+		var_offset := g.get_var_offset(node.right.name)
 		match node.op {
 			.plus { g.add8_var(.eax, var_offset) }
 			.mul { g.mul8_var(.eax, var_offset) }
@@ -775,10 +774,10 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 	branch := node.branches[0]
 	infix_expr := branch.cond as ast.InfixExpr
 	mut jne_addr := 0 // location of `jne *00 00 00 00*`
-	match infix_expr.left {
+	match mut infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(it.name, lit.val.int())
+			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jne_addr = g.jne()
 		}
 		else {
@@ -798,10 +797,10 @@ fn (mut g Gen) for_stmt(node ast.ForStmt) {
 	// g.mov(.eax, 0x77777777)
 	mut jump_addr := 0 // location of `jne *00 00 00 00*`
 	start := g.pos()
-	match infix_expr.left {
+	match mut infix_expr.left {
 		ast.Ident {
 			lit := infix_expr.right as ast.IntegerLiteral
-			g.cmp_var(it.name, lit.val.int())
+			g.cmp_var(infix_expr.left.name, lit.val.int())
 			jump_addr = g.jge()
 		}
 		else {
@@ -834,13 +833,13 @@ fn (mut g Gen) fn_decl(node ast.FnDecl) {
 	// if !is_main {
 	g.sub8(.rsp, 0x10)
 	// }
-	if node.args.len > 0 {
+	if node.params.len > 0 {
 		// g.mov(.r12, 0x77777777)
 	}
 	// Copy values from registers to local vars (calling convention)
 	mut offset := 0
-	for i in 0 .. node.args.len {
-		name := node.args[i].name
+	for i in 0 .. node.params.len {
+		name := node.params[i].name
 		// TODO optimize. Right now 2 mov's are used instead of 1.
 		g.allocate_var(name, 4, 0)
 		// `mov DWORD PTR [rbp-0x4],edi`

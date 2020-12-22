@@ -1,5 +1,5 @@
 import math
-import splitmix64
+import rand.splitmix64
 import rand.util
 
 const (
@@ -168,8 +168,8 @@ fn test_splitmix64_u64_in_range() {
 }
 
 fn test_splitmix64_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		mut rng := splitmix64.SplitMix64RNG{}
 		rng.seed(seed)

@@ -1,6 +1,6 @@
-vlib/v/checker/tests/struct_cast_to_struct_pub_err_b.vv:12:11: error: cannot convert struct `Abc` to struct `Xyz`
+vlib/v/checker/tests/struct_cast_to_struct_pub_err_b.vv:12:7: error: cannot convert struct `Abc` to struct `Xyz`
    10 | fn main() {
    11 |     abc := Abc{}
    12 |     _ := Xyz(abc)
-      |              ~~~
+      |          ~~~~~~~~
    13 | }

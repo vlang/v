@@ -1,7 +1,7 @@
-vlib/v/checker/tests/wrong_propagate_ret_type.vv:6:7: error: to propagate the optional call, `opt_call` must itself return an optional
+vlib/v/checker/tests/wrong_propagate_ret_type.vv:6:17: error: to propagate the optional call, `opt_call` must return an optional
     4 |
     5 | fn opt_call() int {
     6 |     a := ret_none()?
-      |          ~~~~~~~~~~
+      |                    ^
     7 |     return a
     8 | }

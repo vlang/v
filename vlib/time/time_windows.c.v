@@ -5,7 +5,6 @@ module time
 
 #include <time.h>
 // #include <sysinfoapi.h>
-
 struct C.tm {
 	tm_year int
 	tm_mon  int
@@ -15,29 +14,33 @@ struct C.tm {
 	tm_sec  int
 }
 
-struct C._FILETIME
+struct C._FILETIME {
+}
 
 struct SystemTime {
-  year 			u16
-  month 		u16
-  day_of_week 	u16
-  day  			u16
-  hour 			u16
-  minute 		u16
-  second 		u16
-  millisecond 	u16
+	year        u16
+	month       u16
+	day_of_week u16
+	day         u16
+	hour        u16
+	minute      u16
+	second      u16
+	millisecond u16
 }
 
 fn C.GetSystemTimeAsFileTime(lpSystemTimeAsFileTime C._FILETIME)
+
 fn C.FileTimeToSystemTime()
+
 fn C.SystemTimeToTzSpecificLocalTime()
-fn C.localtime_s(t &C.time_t, tm &C.tm )
+
+fn C.localtime_s(t &C.time_t, tm &C.tm)
 
 const (
 	// start_time is needed on Darwin and Windows because of potential overflows
-	start_time 		 	= init_win_time_start()
-	freq_time  		 	= init_win_time_freq()
-	start_local_time 	= local_as_unix_time()
+	start_time       = init_win_time_start()
+	freq_time        = init_win_time_freq()
+	start_local_time = local_as_unix_time()
 )
 
 // in most systems, these are __quad_t, which is an i64
@@ -45,7 +48,6 @@ struct C.timespec {
 	tv_sec  i64
 	tv_nsec i64
 }
-
 
 fn C._mkgmtime(&C.tm) time_t
 
@@ -72,7 +74,7 @@ fn init_win_time_start() u64 {
 pub fn sys_mono_now() u64 {
 	tm := u64(0)
 	C.QueryPerformanceCounter(&tm) // XP or later never fail
-	return (tm - start_time) * 1_000_000_000 / freq_time
+	return (tm - start_time) * 1000000000 / freq_time
 }
 
 // NB: vpc_now is used by `v -profile` .
@@ -88,11 +90,10 @@ fn vpc_now() u64 {
 fn local_as_unix_time() int {
 	t := C.time(0)
 	tm := C.localtime(&t)
-
 	return make_unix_time(tm)
 }
 
-fn to_local_time(t Time) Time {
+pub fn (t Time) to_local_time() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
 		month: u16(t.month)
@@ -103,17 +104,15 @@ fn to_local_time(t Time) Time {
 	}
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
-
-	t_local := Time {
-			year: st_local.year
-			month: st_local.month
-			day: st_local.day
-			hour: st_local.hour
-			minute: st_local.minute
-			second: st_local.second
-			// These are the same
-			microsecond: t.microsecond
-			unix: t.unix
+	t_local := Time{
+		year: st_local.year
+		month: st_local.month
+		day: st_local.day
+		hour: st_local.hour
+		minute: st_local.minute
+		second: st_local.second // These are the same
+		microsecond: t.microsecond
+		unix: t.unix
 	}
 	return t_local
 }
@@ -121,55 +120,44 @@ fn to_local_time(t Time) Time {
 // win_now calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used and converted to local time. It can resolve time
 // down to millisecond. Other more precice methods can be implemented in the future
-[inline]
 fn win_now() Time {
-
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
-
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
-
 	st_local := SystemTime{}
 	C.SystemTimeToTzSpecificLocalTime(voidptr(0), &st_utc, &st_local)
-
-	t := Time {
+	t := Time{
 		year: st_local.year
 		month: st_local.month
 		day: st_local.day
 		hour: st_local.hour
 		minute: st_local.minute
 		second: st_local.second
-		microsecond: st_local.millisecond*1000
+		microsecond: st_local.millisecond * 1000
 		unix: u64(st_local.unix_time())
 	}
-
 	return t
 }
 
 // win_utc calculates current time using winapi to get higher resolution on windows
 // GetSystemTimeAsFileTime is used. It can resolve time down to millisecond
 // other more precice methods can be implemented in the future
-[inline]
 fn win_utc() Time {
-
 	ft_utc := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_utc)
-
 	st_utc := SystemTime{}
 	C.FileTimeToSystemTime(&ft_utc, &st_utc)
-
-	t := Time {
+	t := Time{
 		year: st_utc.year
 		month: st_utc.month
 		day: st_utc.day
 		hour: st_utc.hour
 		minute: st_utc.minute
 		second: st_utc.second
-		microsecond: st_utc.millisecond*1000
+		microsecond: st_utc.millisecond * 1000
 		unix: u64(st_utc.unix_time())
 	}
-
 	return t
 }
 
@@ -214,7 +202,6 @@ pub fn linux_utc() Time {
 pub fn solaris_utc() Time {
 	return Time{}
 }
-
 
 // dummy to compile with all compilers
 pub struct C.timeval {

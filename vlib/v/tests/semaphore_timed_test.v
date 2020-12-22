@@ -18,10 +18,11 @@ fn test_semaphore() {
 	// wait for the 2 coroutines to finish using the semaphore
 	stopwatch := time.new_stopwatch({})
 	mut elapsed := stopwatch.elapsed()
-	if !sem.timed_wait(50 * time.millisecond) {
+	if !sem.timed_wait(200 * time.millisecond) {
 		// we should come here due to timeout
 		elapsed = stopwatch.elapsed()
 	}
-	println('elapsed: ${f64(elapsed)/time.second}s')
-	assert elapsed >= 48* time.millisecond
+	elapsed_ms := f64(elapsed)/time.millisecond
+	println('elapsed: ${elapsed_ms:.1f}ms')
+	assert elapsed_ms >= 195.0
 }

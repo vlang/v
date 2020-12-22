@@ -2,14 +2,17 @@ CC ?= cc
 CFLAGS ?=
 LDFLAGS ?=
 TMPDIR ?= /tmp
+VROOT  ?= .
 VC     ?= ./vc
+V      ?= ./v
+VCREPO ?= https://github.com/vlang/vc
+TCCREPO ?= https://github.com/vlang/tccbin
 
 VCFILE := v.c
-TMPTCC := /var/tmp/tcc
-VCREPO := https://github.com/vlang/vc
-TCCREPO := https://github.com/vlang/tccbin
+TMPTCC := $(VROOT)/thirdparty/tcc
+TCCBRANCH := thirdparty-unknown-unknown
 GITCLEANPULL := git clean -xf && git pull --quiet
-GITFASTCLONE := git clone --depth 1 --quiet
+GITFASTCLONE := git clone --depth 1 --quiet --single-branch
 
 #### Platform detections and overrides:
 _SYS := $(shell uname 2>/dev/null || echo Unknown)
@@ -18,14 +21,17 @@ _SYS := $(patsubst MINGW%,MinGW,$(_SYS))
 
 ifneq ($(filter $(_SYS),MSYS MinGW),)
 WIN32 := 1
+V:=./v.exe
 endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
+TCCBRANCH := thirdparty-linux-amd64
 endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
+TCCBRANCH := thirdparty-macos-amd64
 endif
 
 ifeq ($(_SYS),FreeBSD)
@@ -35,32 +41,33 @@ endif
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
+TCCBRANCH := thirdparty-linux-arm64
 endif
 #####
 
 ifdef WIN32
-TCCREPO := https://github.com/vlang/tccbin_win
+TCCBRANCH := thirdparty-windows-amd64
 VCFILE := v_win.c
 endif
 
 all: latest_vc latest_tcc
 ifdef WIN32
-	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o v.exe $(VC)/$(VCFILE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -g -std=c99 -municode -w -o $(V) $(VC)/$(VCFILE) $(LDFLAGS)
 ifdef prod
-	./v.exe -prod self
+	$(V) -prod self
 else
-	./v.exe self
+	$(V) self
 endif
 else
-	$(CC) $(CFLAGS) -g -std=gnu11 -w -o v $(VC)/$(VCFILE) $(LDFLAGS) -lm -lpthread
+	$(CC) $(CFLAGS) -g -std=gnu99 -w -o $(V) $(VC)/$(VCFILE) -lm -lpthread $(LDFLAGS)
 ifdef ANDROID
 	chmod 755 v
 endif
 
 ifdef prod
-	./v -prod self
+	$(V) -prod self
 else
-	./v self
+	$(V) self
 endif
 
 ifndef ANDROID
@@ -68,7 +75,7 @@ ifndef ANDROID
 endif
 endif
 	@echo "V has been successfully built"
-	@./v -version
+	@$(V) -version
 
 #clean: clean_tmp
 #git clean -xf
@@ -89,41 +96,35 @@ fresh_vc:
 
 latest_tcc: $(TMPTCC)/.git/config
 ifndef ANDROID
-ifndef MAC
 ifndef local
 	cd $(TMPTCC) && $(GITCLEANPULL)
 else
 	@echo "Using local tcc"
-endif    
 endif
 endif
 
 fresh_tcc:
 ifndef ANDROID
-ifndef MAC
 	rm -rf $(TMPTCC)
-	$(GITFASTCLONE) $(TCCREPO) $(TMPTCC)
-endif
+	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
 endif
 
 $(TMPTCC)/.git/config:
-ifndef MAC
 	$(MAKE) fresh_tcc
-endif
 
 $(VC)/.git/config:
 	$(MAKE) fresh_vc
 
 selfcompile:
-	./v -cg -o v cmd/v
+	$(V) -cg -o v cmd/v
 
 selfcompile-static:
-	./v -cg -cflags '--static' -o v-static cmd/v
+	$(V) -cg -cflags '--static' -o v-static cmd/v
 
 modules: module_builtin module_strings module_strconv
 module_builtin:
-	#./v build module vlib/builtin > /dev/null
+	#$(V) build module vlib/builtin > /dev/null
 module_strings:
-	#./v build module vlib/strings > /dev/null
+	#$(V) build module vlib/strings > /dev/null
 module_strconv:
-	#./v build module vlib/strconv > /dev/null
+	#$(V) build module vlib/strconv > /dev/null

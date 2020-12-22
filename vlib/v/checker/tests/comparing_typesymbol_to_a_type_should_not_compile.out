@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comparing_typesymbol_to_a_type_should_not_compile.vv:12:12: error: possible type mismatch of compared values of `==` operation
+   10 |     x := ityp == table.string_type
+   11 |     // the next line should produce at least a warning, or even an error, without an explicit cast:
+   12 |     z := isym == table.string_type
+      |               ~~
+   13 |     println(typeof(isym))
+   14 |     println(typeof(table.string_type))

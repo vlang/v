@@ -1,7 +1,10 @@
 module gfx
 
+import sokol.c
+
 pub const (
 	version = 1
+	used_import = c.used_import
 )
 
 // setup and misc functions

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/filter_on_non_arr_err.vv:2:14: error: unknown method: `string.filter`.
+Did you mean `after`?
+    1 | fn main() {
+    2 |     _ := 'test'.filter(it == `t`)
+      |                 ~~~~~~~~~~~~~~~~~
+    3 | }

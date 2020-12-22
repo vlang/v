@@ -8,65 +8,137 @@ import sync
 import v.pref
 import v.util.vtest
 
-pub struct TestMessageHandler {
-mut:
-	messages []string
-pub mut:
-	message_idx int
-	mtx &sync.Mutex
-}
-
 pub struct TestSession {
 pub mut:
 	files         []string
 	skip_files    []string
 	vexe          string
 	vroot         string
+	vtmp_dir      string
 	vargs         string
 	failed        bool
 	benchmark     benchmark.Benchmark
-	show_ok_tests bool
-	message_handler &TestMessageHandler
+	rm_binaries   bool = true
+	silent_mode   bool
+	progress_mode bool
+	root_relative bool // used by CI runs, so that the output is stable everywhere
+	nmessages     chan LogMessage // many publishers, single consumer/printer
+	nmessage_idx  int // currently printed message index
+	nprint_ended  chan int // read to block till printing ends, 1:1
 }
 
-pub fn (mut mh TestMessageHandler) append_message(msg string) {
-	mh.mtx.m_lock()
-	mh.messages << msg
-	mh.mtx.unlock()
+enum MessageKind {
+	ok
+	fail
+	skip
+	sentinel
+}
+
+struct LogMessage {
+	message string
+	kind    MessageKind
+}
+
+pub fn (mut ts TestSession) append_message(kind MessageKind, msg string) {
+	ts.nmessages <- LogMessage{
+		message: msg
+		kind: kind
+	}
+}
+
+pub fn (mut ts TestSession) print_messages() {
+	empty := term.header(' ', ' ')
+	mut print_msg_time := time.new_stopwatch({})
+	for {
+		// get a message from the channel of messages to be printed:
+		mut rmessage := <-ts.nmessages
+		if rmessage.kind == .sentinel {
+			// a sentinel for stopping the printing thread
+			if !ts.silent_mode && ts.progress_mode {
+				eprintln('')
+			}
+			ts.nprint_ended <- 0
+			return
+		}
+		ts.nmessage_idx++
+		msg := rmessage.message.replace_each([
+			'TMP1',
+			'${ts.nmessage_idx:1d}',
+			'TMP2',
+			'${ts.nmessage_idx:2d}',
+			'TMP3',
+			'${ts.nmessage_idx:3d}',
+			'TMP4',
+			'${ts.nmessage_idx:4d}',
+		])
+		is_ok := rmessage.kind == .ok
+		//
+		time_passed := print_msg_time.elapsed().seconds()
+		if time_passed > 10 && ts.silent_mode && is_ok {
+			// Even if OK tests are suppressed,
+			// show *at least* 1 result every 10 seconds,
+			// otherwise the CI can seem stuck ...
+			eprintln(msg)
+			print_msg_time.restart()
+			continue
+		}
+		if ts.progress_mode {
+			// progress mode, the last line is rewritten many times:
+			if is_ok && !ts.silent_mode {
+				print('\r$empty\r$msg')
+			} else {
+				// the last \n is needed, so SKIP/FAIL messages
+				// will not get overwritten by the OK ones
+				eprint('\r$empty\r$msg\n')
+			}
+			continue
+		}
+		if !ts.silent_mode || !is_ok {
+			// normal expanded mode, or failures in -silent mode
+			eprintln(msg)
+			continue
+		}
+	}
 }
 
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
 	skip_files << '_non_existing_'
 	$if solaris {
-		skip_files << "examples/gg/gg2.v"
-		skip_files << "examples/pico/pico.v"
-		skip_files << "examples/sokol/fonts.v"
-		skip_files << "examples/sokol/drawing.v"
+		skip_files << 'examples/gg/gg2.v'
+		skip_files << 'examples/pico/pico.v'
+		skip_files << 'examples/sokol/fonts.v'
+		skip_files << 'examples/sokol/drawing.v'
 	}
-	vargs := _vargs.replace('-silent', '')
+	$if windows {
+		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+	}
+	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
+	new_vtmp_dir := setup_new_vtmp_folder()
 	return TestSession{
 		vexe: vexe
 		vroot: os.dir(vexe)
 		skip_files: skip_files
 		vargs: vargs
-		show_ok_tests: !_vargs.contains('-silent')
-		message_handler: &TestMessageHandler(0)
+		vtmp_dir: new_vtmp_dir
+		silent_mode: _vargs.contains('-silent')
+		progress_mode: _vargs.contains('-progress')
 	}
 }
 
 pub fn (mut ts TestSession) init() {
+	ts.files.sort()
 	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
 pub fn (mut ts TestSession) test() {
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
-	now := time.sys_mono_now()
-	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
-	os.mkdir_all(new_vtmp_dir)
-	os.setenv('VTMP', new_vtmp_dir, true)
+	current_wd := os.getwd()
+	if current_wd == os.wd_at_startup && current_wd == ts.vroot {
+		ts.root_relative = true
+	}
 	//
 	ts.init()
 	mut remaining_files := []string{}
@@ -98,43 +170,29 @@ pub fn (mut ts TestSession) test() {
 	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor({
-		callback: worker_trunner
-	})
+	mut pool_of_test_runners := sync.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
-	ts.message_handler = &TestMessageHandler{
-		mtx: sync.new_mutex()
-	}
+	ts.nmessages = chan LogMessage{cap: 10000}
+	ts.nprint_ended = chan int{cap: 0}
+	ts.nmessage_idx = 0
+	go ts.print_messages()
 	pool_of_test_runners.set_shared_context(ts)
 	pool_of_test_runners.work_on_pointers(remaining_files.pointers())
 	ts.benchmark.stop()
+	ts.append_message(.sentinel, '') // send the sentinel
+	_ := <-ts.nprint_ended // wait for the stop of the printing thread
 	eprintln(term.h_divider('-'))
 	// cleanup generated .tmp.c files after successfull tests:
 	if ts.benchmark.nfail == 0 {
-		os.rmdir_all(new_vtmp_dir)
-	}
-}
-
-pub fn (mut m TestMessageHandler) display_message() {
-	m.mtx.m_lock()
-	defer {
-		m.messages.clear()
-		m.mtx.unlock()
-	}
-	for msg in m.messages {
-		m.message_idx++
-		eprintln(msg.
-			replace("TMP1", "${m.message_idx:1d}").
-			replace("TMP2", "${m.message_idx:2d}").
-			replace("TMP3", "${m.message_idx:3d}")
-		)
+		if ts.rm_binaries {
+			os.rmdir_all(ts.vtmp_dir)
+		}
 	}
 }
 
 fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	mut ts := &TestSession(p.get_shared_context())
-	defer { ts.message_handler.display_message() }
-	tmpd := os.temp_dir()
+	tmpd := ts.vtmp_dir
 	show_stats := '-stats' in ts.vargs.split(' ')
 	// tls_bench is used to format the step messages/timings
 	mut tls_bench := &benchmark.Benchmark(p.get_thread_context(idx))
@@ -145,74 +203,76 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	tls_bench.no_cstep = true
 	dot_relative_file := p.get_string_item(idx)
-	relative_file := dot_relative_file.replace(ts.vroot + os.path_separator, '').replace('./', '')
+	mut relative_file := dot_relative_file.replace('./', '')
+	if ts.root_relative {
+		relative_file = relative_file.replace(ts.vroot + os.path_separator, '')
+	}
 	file := os.real_path(relative_file)
 	// Ensure that the generated binaries will be stored in the temporary folder.
 	// Remove them after a test passes/fails.
 	fname := os.file_name(file)
-	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v', '') }
+	generated_binary_fname := if os.user_os() == 'windows' { fname.replace('.v', '.exe') } else { fname.replace('.v',
+			'') }
 	generated_binary_fpath := os.join_path(tmpd, generated_binary_fname)
 	if os.exists(generated_binary_fpath) {
-		os.rm(generated_binary_fpath)
+		if ts.rm_binaries {
+			os.rm(generated_binary_fpath)
+		}
 	}
 	mut cmd_options := [ts.vargs]
 	if !ts.vargs.contains('fmt') {
 		cmd_options << ' -o "$generated_binary_fpath"'
 	}
-	cmd := '"${ts.vexe}" ' + cmd_options.join(' ') + ' "${file}"'
-	// eprintln('>>> v cmd: $cmd')
+	cmd := '"$ts.vexe" ' + cmd_options.join(' ') + ' "$file"'
 	ts.benchmark.step()
 	tls_bench.step()
 	if relative_file.replace('\\', '/') in ts.skip_files {
-	   ts.benchmark.skip()
-	   tls_bench.skip()
-	   ts.message_handler.append_message(tls_bench.step_message_skip(relative_file))
-	   return sync.no_result
+		ts.benchmark.skip()
+		tls_bench.skip()
+		ts.append_message(.skip, tls_bench.step_message_skip(relative_file))
+		return sync.no_result
 	}
 	if show_stats {
-		ts.message_handler.append_message(term.h_divider('-'))
+		ts.append_message(.ok, term.h_divider('-'))
 		status := os.system(cmd)
 		if status == 0 {
 			ts.benchmark.ok()
 			tls_bench.ok()
-		}
-		else {
+		} else {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
 			return sync.no_result
 		}
-	}
-	else {
+	} else {
 		r := os.exec(cmd) or {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.append_message(tls_bench.step_message_fail(relative_file))
+			ts.append_message(.fail, tls_bench.step_message_fail(relative_file))
 			return sync.no_result
 		}
 		if r.exit_code != 0 {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.message_handler.append_message(tls_bench.step_message_fail('${relative_file}\n$r.output\n'))
-		}
-		else {
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
-			if ts.show_ok_tests {
-				ts.message_handler.append_message(tls_bench.step_message_ok(relative_file))
-			}
+			ts.append_message(.ok, tls_bench.step_message_ok(relative_file))
 		}
 	}
 	if os.exists(generated_binary_fpath) {
-		os.rm(generated_binary_fpath)
+		if ts.rm_binaries {
+			os.rm(generated_binary_fpath)
+		}
 	}
 	return sync.no_result
 }
 
 pub fn vlib_should_be_present(parent_dir string) {
-	vlib_dir := os.join_path(parent_dir,'vlib')
+	vlib_dir := os.join_path(parent_dir, 'vlib')
 	if !os.is_dir(vlib_dir) {
 		eprintln('$vlib_dir is missing, it must be next to the V executable')
 		exit(1)
@@ -223,31 +283,29 @@ pub fn v_build_failing(zargs string, folder string) bool {
 	return v_build_failing_skipped(zargs, folder, [])
 }
 
-pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
-	main_label := 'Building $folder ...'
-	finish_label := 'building $folder'
+pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
 	vlib_should_be_present(parent_dir)
 	vargs := zargs.replace(vexe, '')
 	eheader(main_label)
-	eprintln('v compiler args: "$vargs"')
+	if vargs.len > 0 {
+		eprintln('v compiler args: "$vargs"')
+	}
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
-	mut skipped := oskipped
+	mut skipped := oskipped.clone()
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
-			//$if !linux {
-				// run pg example only on linux
-				if f.contains('/pg/') {
-					continue
-				}
-			//}
-
+			// $if !linux {
+			// run pg example only on linux
+			if f.contains('/pg/') {
+				continue
+			}
+			// }
 			if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
 				continue
-
 			}
 			$if windows {
 				// skip pico example on windows
@@ -259,7 +317,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 			maxc := if c.len > 300 { 300 } else { c.len }
 			start := c[0..maxc]
 			if start.contains('module ') && !start.contains('module main') {
-				skipped_f := f.replace(os.join_path(parent_dir,''), '')
+				skipped_f := f.replace(os.join_path(parent_dir, ''), '')
 				skipped << skipped_f
 			}
 			mains << f
@@ -267,15 +325,20 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 	}
 	session.files << mains
 	session.skip_files << skipped
+	return session
+}
+
+pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) bool {
+	main_label := 'Building $folder ...'
+	finish_label := 'building $folder'
+	mut session := prepare_test_session(zargs, folder, oskipped, main_label)
 	session.test()
 	eprintln(session.benchmark.total_message(finish_label))
 	return session.failed
 }
 
 pub fn build_v_cmd_failed(cmd string) bool {
-	res := os.exec(cmd) or {
-		return true
-	}
+	res := os.exec(cmd) or { return true }
 	if res.exit_code != 0 {
 		eprintln('')
 		eprintln(res.output)
@@ -289,27 +352,23 @@ pub fn building_any_v_binaries_failed() bool {
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
-	testing.vlib_should_be_present(parent_dir)
+	vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir)
 	mut failed := false
-	v_build_commands := ['$vexe -o v_g             -g  cmd/v',
-	'$vexe -o v_prod_g  -prod -g  cmd/v',
-	'$vexe -o v_cg            -cg cmd/v',
-	'$vexe -o v_prod_cg -prod -cg cmd/v',
-	'$vexe -o v_prod    -prod     cmd/v',
-	]
+	v_build_commands := ['$vexe -o v_g             -g  cmd/v', '$vexe -o v_prod_g  -prod -g  cmd/v',
+		'$vexe -o v_cg            -cg cmd/v', '$vexe -o v_prod_cg -prod -cg cmd/v', '$vexe -o v_prod    -prod     cmd/v']
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
 		if build_v_cmd_failed(cmd) {
 			bmark.fail()
 			failed = true
-			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
+			eprintln(bmark.step_message_fail('command: $cmd . See details above ^^^^^^^'))
 			eprintln('')
 			continue
 		}
 		bmark.ok()
-		eprintln(bmark.step_message_ok('command: ${cmd}'))
+		eprintln(bmark.step_message_ok('command: $cmd'))
 	}
 	bmark.stop()
 	eprintln(term.h_divider('-'))
@@ -323,4 +382,12 @@ pub fn eheader(msg string) {
 
 pub fn header(msg string) {
 	println(term.header(msg, '-'))
+}
+
+pub fn setup_new_vtmp_folder() string {
+	now := time.sys_mono_now()
+	new_vtmp_dir := os.join_path(os.temp_dir(), 'v', 'test_session_$now')
+	os.mkdir_all(new_vtmp_dir)
+	os.setenv('VTMP', new_vtmp_dir, true)
+	return new_vtmp_dir
 }

@@ -17,7 +17,7 @@ fn (mut g Gen) profile_fn(fn_decl ast.FnDecl) {
 	if fn_name.starts_with('time.vpc_now') {
 		g.defer_profile_code = ''
 	} else {
-		measure_fn_name := if g.pref.os == .mac { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
+		measure_fn_name := if g.pref.os == .macos { 'time__vpc_now_darwin' } else { 'time__vpc_now' }
 		fn_profile_counter_name := 'vpc_$g.last_fn_c_name'
 		fn_profile_counter_name_calls := '${fn_profile_counter_name}_calls'
 		g.writeln('')

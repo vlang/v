@@ -4,8 +4,8 @@ match ch {
   else {}
 }
 
-char := 123
-match char {
+i := 123
+match i {
   'a' {}
   else {}
 }

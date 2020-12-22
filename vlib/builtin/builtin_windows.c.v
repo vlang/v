@@ -59,11 +59,25 @@ const (
 	symopt_debug = 0x80000000
 )
 
+// g_original_codepage - used to restore the original windows console code page when exiting
+__global ( g_original_codepage = u32(0) )
+// utf8 to stdout needs C.SetConsoleOutputCP(C.CP_UTF8)
+fn C.GetConsoleOutputCP() u32
+fn C.SetConsoleOutputCP(wCodePageID u32) bool
+fn restore_codepage() {
+	C.SetConsoleOutputCP( g_original_codepage )
+}
+
 fn builtin_init() {
+	g_original_codepage = C.GetConsoleOutputCP()
+	C.SetConsoleOutputCP(C.CP_UTF8)
+	C.atexit(restore_codepage)
 	if is_atty(1) > 0 {
 		C.SetConsoleMode(C.GetStdHandle(C.STD_OUTPUT_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
+		C.SetConsoleMode(C.GetStdHandle(C.STD_ERROR_HANDLE), C.ENABLE_PROCESSED_OUTPUT | 0x0004) // enable_virtual_terminal_processing
 		unsafe {
 			C.setbuf(C.stdout, 0)
+			C.setbuf(C.stderr, 0)
 		}
 	}
 	add_unhandled_exception_handler()
@@ -185,15 +199,15 @@ pub:
 	context_record &ContextRecord
 }
 
-type VectoredExceptionHandler fn(&ExceptionPointers)u32
+type VectoredExceptionHandler = fn(&ExceptionPointers)int
 
-fn C.AddVectoredExceptionHandler(u32, VectoredExceptionHandler)
+fn C.AddVectoredExceptionHandler(int, C.PVECTORED_EXCEPTION_HANDLER)
 fn add_vectored_exception_handler(handler VectoredExceptionHandler) {
-	C.AddVectoredExceptionHandler(1, handler)
+	C.AddVectoredExceptionHandler(1, C.PVECTORED_EXCEPTION_HANDLER(handler))
 }
 
 [windows_stdcall]
-fn unhandled_exception_handler(e &ExceptionPointers) u32 {
+fn unhandled_exception_handler(e &ExceptionPointers) int {
 	match e.exception_record.code {
 		// These are 'used' by the backtrace printer
 		// so we dont want to catch them...
@@ -210,7 +224,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) u32 {
 }
 
 fn add_unhandled_exception_handler() {
-	add_vectored_exception_handler(unhandled_exception_handler)
+	add_vectored_exception_handler(VectoredExceptionHandler(voidptr(unhandled_exception_handler)))
 }
 
 fn C.IsDebuggerPresent() bool
@@ -220,7 +234,7 @@ fn break_if_debugger_attached() {
 	$if tinyc {
 		unsafe {
 			mut ptr := &voidptr(0)
-			*ptr = 0
+			*ptr = voidptr(0)
 		}
 	} $else {
 		if C.IsDebuggerPresent() {

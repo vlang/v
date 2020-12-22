@@ -6,7 +6,6 @@ fn test_hash_crc32() {
 	assert sum1 == u32(1212124400)
 	assert sum1.hex() == '483f8cf0'
 
-	
 	c := crc32.new(int(crc32.ieee))
 	b2 := 'testing crc32 again'.bytes()
 	sum2 := c.checksum(b2)

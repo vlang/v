@@ -18,6 +18,9 @@ fn test_str_methods() {
 	assert i16(-1).str() == '-1'
 	assert int(1).str() == '1'
 	assert int(-1).str() == '-1'
+	assert int(2147483647).str() == '2147483647'
+	assert int(2147483648).str() == '-2147483648'
+	assert int(-2147483648).str() == '-2147483648'
 	assert i64(1).str() == '1'
 	assert i64(-1).str() == '-1'
 	// assert byte(1).str() == '1'
@@ -88,7 +91,7 @@ fn test_cmp() {
 	assert 1 ⩾ 0
 }
 */
-type MyInt int
+type MyInt = int
 
 fn test_int_alias() {
 	i := MyInt(2)
@@ -165,7 +168,7 @@ fn test_num_separator() {
 	// f32 or f64
 	assert 312_2.55 == 3122.55
 	assert 312_2.55 == 3122.55
-	
+
 }
 
 fn test_int_decl() {
@@ -179,10 +182,7 @@ fn test_int_decl() {
 	assert typeof(x3) == 'int'
 	assert typeof(x4) == 'int'
 	assert typeof(x5) == 'int'
-	// integers are always 'int' by default
-	x6 := 989898932113111
 	x7 := u64(-321314588900011)
-	assert typeof(x6) == 'int'
 	assert typeof(x7) == 'u64'
 }
 

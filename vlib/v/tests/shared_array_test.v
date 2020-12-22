@@ -1,4 +1,3 @@
-import sync
 import time
 
 fn incr(shared foo []int, index int) {

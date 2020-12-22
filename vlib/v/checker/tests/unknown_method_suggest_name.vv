@@ -4,13 +4,13 @@ struct Point {
 	x   int
 	y   int
 	z   int
-	ccc crc32.Crc33
 }
 
 struct Vector {
 	x int
 	y int
 	z int
+	ccc crc32.Crc33
 }
 
 fn (p Point) translate(v Vector) Point {
@@ -23,7 +23,7 @@ fn (p Point) identity() Point {
 
 fn main() {
 	p := Point{1, 2, 3}
-	v := Vector{5, 5, 10}
+	v := Vector{x: 5, y: 5, z: 10}
 	z := p.tranzlate(v)
 	println('p: $p')
 	println('v: $v')

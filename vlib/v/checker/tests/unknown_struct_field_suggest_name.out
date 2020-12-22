@@ -1,0 +1,8 @@
+vlib/v/checker/tests/unknown_struct_field_suggest_name.vv:11:16: error: type `Points` has no field or method `xxxa`.
+Did you mean `xxxx`?
+    9 |     p := Points{[1], [2], [3]}
+   10 |     println('p: $p')
+   11 |     for x in p.xxxa {
+      |                ~~~~
+   12 |         println('x: $x')
+   13 |     }

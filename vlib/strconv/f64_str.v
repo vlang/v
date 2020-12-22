@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 f32 to string
@@ -17,27 +19,6 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 */
-module strconv
-
-struct Uint128 {
-mut:
-	lo u64 = u64(0)
-	hi u64 = u64(0)
-}
-
-// dec64 is a floating decimal type representing m * 10^e.
-struct Dec64 {
-mut:
-	m u64 = 0
-	e int = 0
-}
-
-// support union for convert f64 to u64
-union Uf64 {
-mut:
-	f f64 = 0
-	u u64
-}
 
 // pow of ten table used by n_digit reduction
 const(
@@ -190,7 +171,9 @@ fn (d Dec64) get_string_64(neg bool, i_n_digit int, i_pad_digit int) string {
 		x++
 	}
 	*/
-	return tos(byteptr(&buf[0]), i)
+	return unsafe {
+		tos(byteptr(&buf[0]), i)
+	}
 }
 
 fn f64_to_decimal_exact_int(i_mant u64, exp u64) (Dec64, bool) {
@@ -274,7 +257,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 		e10 = int(q) + e2
 		i := -e2 - int(q)
 		k := pow5_bits(i) - pow5_num_bits_64
-		mut j := int(q) - k
+		j := int(q) - k
 		mul := pow5_split_64[i]
 		vr = mul_shift_64(u64(4) * m2                    , mul, j)
 		vp = mul_shift_64(u64(4) * m2 + u64(2)           , mul, j)

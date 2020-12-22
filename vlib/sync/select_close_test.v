@@ -85,8 +85,8 @@ fn test_select() {
 		}
 	}
 	// Use Gauß' formula for the first 2 contributions
+	// the 3rd contribution is `byte` and must be seen modulo 256
 	expected_sum :=  2 * (300 * (300 - 1) / 2) +
-		// the 3rd contribution is `byte` and must be seen modulo 256
 		256 * (256 - 1) / 2 +
 		44 * (44 - 1) / 2
 	assert sum == expected_sum

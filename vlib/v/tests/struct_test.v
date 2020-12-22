@@ -205,7 +205,7 @@ pub mut:
 }
 
 fn fooo() {
-	a := AttrTest{1, 2, 3, 4, 5, 6}
+	_ := AttrTest{1, 2, 3, 4, 5, 6}
 }
 
 /*
@@ -252,10 +252,10 @@ fn test_struct_literal_args() {
 	foo_config(10, {})
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
-	
+
 	bar_config({}, 10)
 	bar_config({def:4}, 4)
-	
+
 	foo_user({
 		name: 'Peter'
 	})
@@ -275,7 +275,7 @@ struct Country {
 }
 
 fn test_levels() {
-	c := Country{
+	_ := Country{
 		name: 'UK'
 		capital: {
 			name: 'London'
@@ -349,3 +349,20 @@ fn test_fields_anon_fn_with_optional_void_return_type() {
 	}
 }
 
+struct Commands {
+    show []fn() string
+}
+
+fn a() string {
+    return 'HELLOW'
+}
+
+fn b() string {
+    return 'WOLLEH'
+}
+
+fn test_fields_array_of_fn() {
+    commands := Commands{show: [a, b]}
+    println(commands.show)
+	assert '$commands.show' == '[fn () string, fn () string]'
+}

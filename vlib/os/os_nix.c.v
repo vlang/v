@@ -28,7 +28,7 @@ mut:
 
 fn C.uname(name voidptr) int
 
-fn C.symlink(arg_1, arg_2 charptr) int
+fn C.symlink(charptr, charptr) int
 
 pub fn uname() Uname {
 	mut u := Uname{}
@@ -52,9 +52,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe {
-			args << byteptr(argv[i]).vstring()
-		}
+		unsafe {args << byteptr(argv[i]).vstring()}
 	}
 	return args
 }
@@ -110,6 +108,9 @@ pub fn mkdir(path string) ?bool {
 	}
 	*/
 	apath := real_path(path)
+	// defer {
+	// apath.free()
+	//}
 	/*
 	$if linux {
 		$if !android {
@@ -121,10 +122,7 @@ pub fn mkdir(path string) ?bool {
 		}
 	}
 	*/
-	r := unsafe {
-		C.mkdir(charptr(apath.str), 511)
-	}
-	
+	r := unsafe {C.mkdir(charptr(apath.str), 511)}
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
@@ -159,7 +157,54 @@ pub fn exec(cmd string) ?Result {
 	}
 }
 
-pub fn symlink(origin, target string) ?bool {
+pub struct Command {
+mut:
+	f               voidptr
+pub mut:
+	eof             bool
+pub:
+	path            string
+	redirect_stdout bool
+}
+
+// pub fn command(cmd Command) Command {
+//}
+pub fn (mut c Command) start() ? {
+	pcmd := '$c.path 2>&1'
+	c.f = vpopen(pcmd)
+	if isnil(c.f) {
+		return error('exec("$c.path") failed')
+	}
+}
+
+pub fn (mut c Command) read_line() string {
+	buf := [4096]byte{}
+	mut res := strings.new_builder(1024)
+	unsafe {
+		for C.fgets(charptr(buf), 4096, c.f) != 0 {
+			bufbp := byteptr(buf)
+			len := vstrlen(bufbp)
+			for i in 0 .. len {
+				if int(bufbp[i]) == `\n` {
+					res.write_bytes(bufbp, i)
+					return res.str()
+				}
+			}
+			res.write_bytes(bufbp, len)
+		}
+	}
+	c.eof = true
+	return res.str()
+}
+
+pub fn (c &Command) close() ? {
+	exit_code := vpclose(c.f)
+	if exit_code == 127 {
+		return error_with_code('error', 127)
+	}
+}
+
+pub fn symlink(origin string, target string) ?bool {
 	res := C.symlink(charptr(origin.str), charptr(target.str))
 	if res == 0 {
 		return true
@@ -194,23 +239,24 @@ pub fn debugger_present() bool {
 }
 
 fn C.mkstemp(stemplate byteptr) int
+
 // `is_writable_folder` - `folder` exists and is writable to the process
 pub fn is_writable_folder(folder string) ?bool {
-	if !os.exists(folder) {
+	if !exists(folder) {
 		return error('`$folder` does not exist')
 	}
-	if !os.is_dir(folder) {
+	if !is_dir(folder) {
 		return error('`folder` is not a folder')
 	}
-	tmp_perm_check := os.join_path(folder, 'XXXXXX')
+	tmp_perm_check := join_path(folder, 'XXXXXX')
 	unsafe {
-		x := C.mkstemp(tmp_perm_check.str)
+		x := C.mkstemp(charptr(tmp_perm_check.str))
 		if -1 == x {
 			return error('folder `$folder` is not writable')
 		}
 		C.close(x)
 	}
-	os.rm(tmp_perm_check)
+	rm(tmp_perm_check)
 	return true
 }
 

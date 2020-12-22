@@ -1,7 +1,15 @@
+## V 0.1.30
+*28 Nov 2020*
+(V 0.2 RC)
+- Builtin compile-time JSON serializer now supports `time.Time`.
+- `array.contains(element)` is now generic.
+TODO
+
 ## V 0.1.27
 *5 May 2020*
 
-- vfmt has been re-written from scratch using the new AST parser. It's much faster, cleaner, and can format
+- vfmt has been re-written from scratch using the new AST parser.
+    It's much faster, cleaner, and can format
 files with compilation errors.
 - `strconv`, `sprintf`, and `printf` in native V, without any libc calls.
 - Interfaces are now a lot more stable and have all expected features.
@@ -10,13 +18,13 @@ files with compilation errors.
 - New `[]int{cap:cap, len:len}` syntax for initializing array length and capacity.
 - New `is` keyword for checking the type of sum types and interfaces.
 - `as` can now be used to cast interfaces and sum types.
-- Profiling with `-profile`. Prints a nice table with detailed information about every single function call:
-number of calls, average time per call, total time per function.
+- Profiling with `-profile`. Prints a nice table with details about every single function call:
+    number of calls, average time per call, total time per function
 - `import(xxx)` syntax has been removed in favor of `import xxx` for simplicity and greppability.
 - Lots of fixes and improvements in the type checker.
 - `time.StopWatch`
 - `dl` module for dynamic loading.
-- Automatic `str()` method generation for every single type, including all arrays and fixed size arrays.
+- Automatic `str()` method generation for every single type, including all arrays.
 - Short struct initialization syntax for imitating named function args: `foo(bar:0, baz:1)`.
 - New operator `!in`.
 - Performance improvements in critical parts of the builtin data structures (array, map).
@@ -37,13 +45,15 @@ number of calls, average time per call, total time per function.
 ## V 0.1.25
 *1 Apr 2020*
 
-- The entire compiler has been re-written with an AST parser. The code is now a lot cleaner and more maintainable. ~15k lines of old compiler code were removed.
+- The entire compiler has been re-written with an AST parser.
+    The code is now a lot cleaner and more maintainable.
+    ~15k lines of old compiler code were removed.
 
 ## V 0.1.24
 *31 Dec 2019*
 
-- A new parser/generator built on top of an AST that simplifies code greatly and allows to implement new
-  backends much faster.
+- A new parser/generator built on top of an AST that simplifies code greatly
+    and allows to implement new backends much faster.
 - Sum types (`type Expr = IfExpr | MatchExpr | IntegerLiteral`).
 - B-tree map (sped up the V compiler by ~10%).
 - `v fmt -w`.
@@ -54,7 +64,7 @@ number of calls, average time per call, total time per function.
 - os: `is_link()`, `is_dir()`, `exists()`.
 - Ranging through fixed size arrays.
 - Lots of fixes in ORM and vweb.
-- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md).
+- The first tutorial: [building a simple web application with vweb](https://github.com/vlang/v/blob/master/tutorials/building-a-simple-web-blog-with-vweb.md)
 - Match expressions now must be exhaustive.
 - freestanding: `malloc()`/`free()`.
 - `++` is now required instead of `+= 1` for consistency.
@@ -76,13 +86,14 @@ number of calls, average time per call, total time per function.
 ## V 0.1.23
 *30 Nov 2019*
 
-- [Direct x64 machine code generation](https://github.com/vlang/v/issues/2849). Hello world being built in 3 milliseconds.
-- Bare metal support via the `-freestanding` flag, allowing to build programs without linking to libc.
+- [Direct x64 machine code generation](https://github.com/vlang/v/issues/2849).
+    Hello world being built in 3 milliseconds.
+- Bare metal support via the `-freestanding` flag, to build programs without linking to libc.
 - Prebuilt V packages for Linux, macOS, and Windows.
 - `string.index()` now returns `?int` instead of `int/-1`.
 - Lots of fixes in Generics.
 - vweb framework for developing web applications is back.
-- Vorum, the forum/blogging software written in V/vweb, can now be compiled and has been added to CI.
+- Vorum, the forum/blogging software written in vweb, can now be compiled and has been added to CI.
 - REPL, `v up` have been split up into separate applications to keep the core V compiler small.
 - V now enforces short enum syntax (`.green` instead of `Color.green`) when it's enough.
 - V UI for macOS.
@@ -90,7 +101,8 @@ number of calls, average time per call, total time per function.
 - `os.cp()` for copying files and directores.
 - Additional compile-time flags: `$if clang, msvc, mingw, x32, x64, big_endian, little_endian {`.
 - All C functions now have to be declared, all missing C functions have been defined.
-- Global variables (only with the `--enable-globals` flag) for low level applications like kernels and drivers.
+- Global variables (only with the `--enable-globals` flag)
+    for low level applications like kernels and drivers.
 - Nothing can be cast to bool (previously code like `if bool(1) {` worked).
 - `<<` and `>>` now work with all integer types.
 - V detects Cygwin and shows an error (V supports Windows natively).
@@ -116,7 +128,7 @@ number of calls, average time per call, total time per function.
 - `malloc/free` on bare metal.
 - `utf8` helper functions (`to_lower()`, `to_upper()`, etc).
 - Optimization of `for c in str {`.
-- `string/array.left/right/slice/substr` were removed (`[a..b]` slicing syntax should be used instead).
+- `string/array.left/right/slice/substr` were removed (use `[a..b]` slicing syntax instead).
 
 
 
@@ -128,8 +140,7 @@ number of calls, average time per call, total time per function.
 - Optimized `array.filter()` and `array.map()`.
 - `sqlite` module.
 - Cached modules for faster compilation.
-- Dramatic compilation optimizations: [V now compiles itself in
-0.10 - 0.30 seconds](https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds).
+- Dramatic compilation optimizations: [V now compiles itself in 0.10 - 0.30 seconds](https://github.com/vlang/v/wiki/The-V-language-now-compiles-itself-in-0.09-seconds)
 - V scripts (simpler and cross-platform alternative to Bash).
 - Infinite multi-dimensional arrays (`[][][]int`).
 - `unsafe`.
@@ -296,7 +307,7 @@ this backend.
 ## V 0.1.15
 *15 Jul 2019*
 - FreeBSD, OpenBSD, NetBSD, DragonFly support.
-- Hot code reloading now works with graphical applications: [bounce.v](https://github.com/vlang/v/blob/master/examples/hot_code_reloading/bounce.v).
+- Hot reloading now works with graphical applications: [bounce.v](examples/hot_reload/bounce.v)
 - VROOT was removed, the installation process is now much simpler.
 - `defer` statement.
 - map.v was re-written. It's now much faster.
@@ -310,7 +321,7 @@ this backend.
 ## V 0.1.14
 *12 Jul 2019*
 - `gg` module Windows support, V Tetris runs on Windows.
-- `glad` and `cJSON` are now compiled only once, this makes compilation of programs using `gg` and `json` a bit faster.
+- Compile `glad` and `cJSON` only once. Programs using `gg` or `json` compile a bit faster.
 - `v.c` has been cleaned up and minimized (~16k => ~10k lines of code).
 - `type` aliases can now have methods.
 - Const overflow check during compilation (`byte(1000)` will no longer compile).
@@ -332,8 +343,10 @@ this backend.
 ## V 0.1.12
 *4 Jul 2019*
 - V can finally compile itself on Windows (https://github.com/vlang/v#mingw-w64).
-- `os` module now uses optionals in all functions that return `File`. Lots of  bugs with optionals fixed.
-- `println` was optimized. It no longer results in allocations. Now it also works correctly with all integer types.
+- `os` module now uses optionals in all functions that return `File`.
+- Lots of bugs with optionals were fixed.
+- `println` was optimized. It no longer results in allocations.
+    Now it also works correctly with all integer types.
 - Lots of `vfmt` fixes, it will be enabled tomorrow.
 - New `strings` module.
 - Lots of other fixes and improvements, thanks to all the contributors.

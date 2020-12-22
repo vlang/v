@@ -57,7 +57,7 @@ mut:
 	thread_contexts []voidptr
 }
 
-pub type ThreadCB fn(p &PoolProcessor, idx int, task_id int)voidptr
+pub type ThreadCB = fn (p &PoolProcessor, idx int, task_id int) voidptr
 
 pub struct PoolProcessorConfig {
 	maxjobs  int

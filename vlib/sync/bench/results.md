@@ -18,12 +18,12 @@ nobj .... number of objects to pass thru the channel
 
 10000000 Objects transfered, results in Objects/µs
 
-| nsend | nrec | buflen | **V (gcc -O2)** | **V (clang)** | **V (tcc)** | **Go (glang)** | **Go (gccgo -O2)** |
+| nsend | nrec | buflen | **V (gcc -O2)** | **V (clang)** | **V (tcc)** | **Go (golang)** | **Go (gccgo -O2)** |
 | :---: | :---:| :---:  |      :---:      |    :---:      |    :---:    |     :---:      |      :---:         |
-|   1   |   1  |    0   |      0.95       |    0.72       |    0.66     |      4.65      |       0.56         |
-|   1   |   1  |   100  |      3.26       |    2.51       |    2.24     |     18.90      |       6.08         |
-|   4   |   4  |    0   |      0.25       |    0.26       |    0.24     |      1.84      |       0.84         |
-|   4   |   4  |   100  |      3.11       |    2.78       |    2.63     |      7.43      |       3.71         |
+|   1   |   1  |    0   |      1.97       |    1.63       |    2.08     |      4.65      |       0.56         |
+|   1   |   1  |   100  |      3.05       |    2.29       |    1.93     |     18.90      |       6.08         |
+|   4   |   4  |    0   |      0.87       |    0.90       |    0.99     |      1.84      |       0.84         |
+|   4   |   4  |   100  |      3.35       |    3.07       |    2.92     |      7.43      |       3.71         |
 
 ## AMD Ryzen 7 3800X, Windows 10 2004 x64
 
@@ -38,7 +38,7 @@ nobj .... number of objects to pass thru the channel
 
 10000000 Objects transfered, results in Objects/µs
 
-| nsend | nrec | buflen | **V (gcc -O2)** | **Go (glang)** |
+| nsend | nrec | buflen | **V (gcc -O2)** | **Go (golang)** |
 | :---: | :---:| :---:  |      :---:      |     :---:      |
 |   1   |   1  |    0   |      0.37       |     0.21       |
 |   1   |   1  |   100  |      1.03       |     0.74       |

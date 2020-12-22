@@ -56,6 +56,7 @@ fns.txt
 *.swp
 *.swo
 *.swn
+.env
 
 # ignore debugger files
 cachegrind.out.*
@@ -71,3 +72,7 @@ thumbs.db
 /.bin
 
 _docs
+
+# ignore vs databases
+*.suo
+*.VC.db

@@ -3,7 +3,7 @@ module vtest
 import os
 
 pub struct FilterVTestConfig {
-	basepath    string = ''
+	basepath    string
 	fix_slashes bool = true
 }
 

@@ -1,0 +1,9 @@
+fn unknown_at_ct() int { return 0 }
+
+fn main() {
+	mut foo := 0
+	$if foo == 0 {}
+
+	bar := unknown_at_ct()
+	$if bar == 0 {}
+}

@@ -4,11 +4,25 @@ import benchmark
 import v.util
 import v.util.vtest
 
+//
+// NB: skip_compile_files can be used for totally skipping .v files temporarily.
+// .v files in skip_valgrind_files will be compiled, but will not be run under
+// valgrind. This ensures that at least the generated code does not have C syntax
+// errors.
+// Use: `./v -d noskipcompile vlib/v/tests/valgrind/valgrind_test.v` to ignore the
+// skip_compile_files list.
+// Use: `./v -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore skip_valgrind_files
+// Use: `./v -d noskipcompile -d noskip vlib/v/tests/valgrind/valgrind_test.v` to ignore both
+//
 const (
+	skip_compile_files  = [
+		'vlib/v/tests/valgrind/option_reassigned.v',
+	]
 	skip_valgrind_files = [
 		'vlib/v/tests/valgrind/struct_field.v',
 		'vlib/v/tests/valgrind/fn_returning_string_param.v',
 		'vlib/v/tests/valgrind/fn_with_return_should_free_local_vars.v',
+		'vlib/v/tests/valgrind/option_simple.v',
 	]
 )
 
@@ -43,22 +57,22 @@ fn test_all() {
 	os.mkdir_all(wrkdir)
 	os.chdir(wrkdir)
 	//
-	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')), {
+	tests := vtest.filter_vtest_only(files.filter(it.ends_with('.v') && !it.ends_with('_test.v')),
+		{
 		basepath: valgrind_test_path
 	})
 	bench.set_total_expected_steps(tests.len)
 	for test in tests {
 		bench.step()
-		exe_filename := '$wrkdir/x'
-		//
-		if test in skip_valgrind_files {
-			$if !noskip ? {
+		if test in skip_compile_files {
+			$if !noskipcompile ? {
 				bench.skip()
 				eprintln(bench.step_message_skip(test))
 				continue
 			}
 		}
 		//
+		exe_filename := '$wrkdir/x'
 		full_path_to_source_file := os.join_path(vroot, test)
 		compile_cmd := '$vexe -o $exe_filename -cg -cflags "-w" -autofree "$full_path_to_source_file"'
 		vprintln('compile cmd: ${util.bold(compile_cmd)}')
@@ -72,6 +86,13 @@ fn test_all() {
 			eprintln(bench.step_message_fail('file: $test could not be compiled.'))
 			eprintln(res.output)
 			continue
+		}
+		if test in skip_valgrind_files {
+			$if !noskip ? {
+				bench.skip()
+				eprintln(bench.step_message_skip(test))
+				continue
+			}
 		}
 		valgrind_cmd := 'valgrind --error-exitcode=1 --leak-check=full $exe_filename'
 		vprintln('valgrind cmd: ${util.bold(valgrind_cmd)}')

@@ -5,6 +5,7 @@ on:
 jobs:
   ubuntu:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
     - name: Install dependencies
       run: |
@@ -23,6 +24,7 @@ jobs:
 
   macos:
     runs-on: macOS-latest
+    timeout-minutes: 5
     steps:
     - name: Install dependencies
       run: |
@@ -41,6 +43,7 @@ jobs:
 
   windows:
     runs-on: windows-latest
+    timeout-minutes: 5
     steps:
     - name: Download V
       run: |

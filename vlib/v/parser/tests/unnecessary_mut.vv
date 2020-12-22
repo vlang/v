@@ -1,0 +1,6 @@
+fn main() {
+	mut x := 0
+	if mut x == 0 {
+		println(true)
+	}
+}

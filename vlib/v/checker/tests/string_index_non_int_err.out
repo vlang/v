@@ -1,0 +1,20 @@
+vlib/v/checker/tests/string_index_non_int_err.vv:3:14: error: non-integer string index `string`
+    1 | fn main() {
+    2 |     v := 'foo'
+    3 |     println(v['f'])
+      |              ~~~~~
+    4 |     println(v[true])
+    5 |     println(v[[23]])
+vlib/v/checker/tests/string_index_non_int_err.vv:4:14: error: non-integer string index `bool`
+    2 |     v := 'foo'
+    3 |     println(v['f'])
+    4 |     println(v[true])
+      |              ~~~~~~
+    5 |     println(v[[23]])
+    6 | }
+vlib/v/checker/tests/string_index_non_int_err.vv:5:14: error: non-integer string index `[]int`
+    3 |     println(v['f'])
+    4 |     println(v[true])
+    5 |     println(v[[23]])
+      |              ~~~~~~
+    6 | }

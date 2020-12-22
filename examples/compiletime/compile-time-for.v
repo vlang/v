@@ -1,45 +1,32 @@
-module main
+struct App {}
 
-struct App {
-	test string [test]
-mut:
-	a    string
-}
+fn (mut app App) method_one() {}
+fn (mut app App) method_two() int {	return 0 }
+fn (mut app App) method_three(s string) string { return s }
 
 fn main() {
-	println('All functions')
 	$for method in App.methods {
-		$if method.@type is int {
-			println('hi')
+		$if method.typ is fn(string) string {
+			println('$method.name IS `fn(string) string`')
+		} $else {
+			println('$method.name is NOT `fn(string) string`')
 		}
-		println('$method.name.len')
-		println('$method.name.str')
-		println('Method: $method.name')
-		println('Attributes: $method.attrs')
-		println('Return type: $method.ret_type')
-	}
-	println('All integer functions')
-	$for method in App.methods {
-		println('Method: $method.name')
-		println('Attributes: $method.attrs')
-	}
-	$for field in App.fields {
-		$if field.@type is string {
-			println(field)
+		$if method.return_type !is int {
+			println('$method.name does NOT return `int`')
+		} $else {
+			println('$method.name DOES return `int`')
 		}
+		$if method.args[0].typ !is string {
+			println("${method.name}'s first arg is NOT `string`")
+		} $else {
+			println("${method.name}'s first arg IS `string`")
+		}
+		// TODO: Double inversion, should this even be allowed?
+		$if method.typ is fn() {
+			println('$method.name IS a void method')
+		} $else {
+			println('$method.name is NOT a void method')
+		}
+		println('')
 	}
-}
-
-fn (mut app App) method_one() {
-}
-
-fn (mut app App) method_two() {
-}
-
-fn (mut app App) method_three() int {
-	return 0
-}
-
-fn (mut app App) method_four() int {
-	return 1
 }

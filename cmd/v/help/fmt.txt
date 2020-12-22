@@ -4,8 +4,8 @@ Usage:
 Formats the given V source files, then prints their formatted source to stdout.
 
 Options:
-  -c      Check if file is already formatted.
-          If it is not, print filepath, and exit with code 2.
+  -c      Check if a file is already formatted. If not, print the filepath and exit with code 2.
+          Compared to -verify it is quicker but has a small trade-off in precision.
 
   -diff   Display the differences between the formatted source(s) and the original source(s).
           This will attempt to find a working `diff` command automatically unless you
@@ -29,4 +29,3 @@ Environment Variables:
   VDIFF_OPTIONS   A set of command-line options to be sent immediately after the
                   `diff` command. e.g.
                   VDIFF_OPTIONS="-W 80 -y" v fmt -diff path/to/file.v /tmp/v/vfmt_file.v
-

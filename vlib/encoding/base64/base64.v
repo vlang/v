@@ -48,6 +48,26 @@ pub fn encode(data string) string {
 	return tos(buffer, encode_in_buffer(data, buffer))
 }
 
+// decode decodes base64url string to string
+pub fn decode_url(data string) string {
+	mut result := data.replace('-', '+') // 62nd char of encoding
+	result = data.replace('_', '/') // 63rd char of encoding
+	match result.len % 4 { // Pad with trailing '='s
+		2 { result += "==" }  // 2 pad chars
+		3 { result += "=" }   // 1 pad char
+		else { }              // no padding
+	}
+	return base64.decode(data)
+}
+
+// encode encodes given string to base64url string
+pub fn encode_url(data string) string {
+	mut result := base64.encode(data)
+	// 62nd char of encoding, 63rd char of encoding, remove any trailing '='s
+	result = result.replace_each(['+', '-', '/', '_', '=', ''])
+	return result
+}
+
 /*
 decode_in_buffer - expects a string reference, and a buffer in which to store its decoded version.
 @param data - a reference/pointer to the input string that will be decoded.

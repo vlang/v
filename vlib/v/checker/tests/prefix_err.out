@@ -1,4 +1,4 @@
-vlib/v/checker/tests/prefix_err.vv:2:5: error: prefix operator `*` not defined for type `int`
+vlib/v/checker/tests/prefix_err.vv:2:5: error: invalid indirect of `int`
     1 | a := 1
     2 | _ = *a
       |     ^

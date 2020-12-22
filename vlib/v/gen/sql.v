@@ -25,7 +25,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 	g.write('${dbtype}__DB $db_name = ')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, _SLIT("')
 	if node.kind == .insert {
 		g.write('INSERT INTO `${util.strip_mod_name(node.table_name)}` (')
 	} else if node.kind == .update {
@@ -38,7 +38,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			if field.name == 'id' {
 				continue
 			}
-			g.write('`${field.name}`')
+			g.write('`$field.name`')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -48,7 +48,7 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			if field.name == 'id' {
 				continue
 			}
-			g.write('?${i+0}')
+			g.write('?${i + 0}')
 			if i < node.fields.len - 1 {
 				g.write(', ')
 			}
@@ -78,9 +78,9 @@ fn (mut g Gen) sql_stmt(node ast.SqlStmt) {
 			}
 			x := '${node.object_var_name}.$field.name'
 			if field.typ == table.string_type {
-				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i+0}, ${x}.str, ${x}.len, 0);')
+				g.writeln('sqlite3_bind_text($g.sql_stmt_name, ${i + 0}, ${x}.str, ${x}.len, 0);')
 			} else {
-				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i+0}, $x); // stmt')
+				g.writeln('sqlite3_bind_int($g.sql_stmt_name, ${i + 0}, $x); // stmt')
 			}
 		}
 	}
@@ -114,7 +114,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	} else {
 		// `select id, name, country from User`
 		for i, field in node.fields {
-			sql_query += '`${field.name}`'
+			sql_query += '`$field.name`'
 			if i < node.fields.len - 1 {
 				sql_query += ', '
 			}
@@ -124,7 +124,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	if node.has_where {
 		sql_query += ' WHERE '
 	}
-	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
+	// g.write('${dbtype}__DB_q_int(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
 	g.sql_stmt_name = g.new_tmp_var()
 	db_name := g.new_tmp_var()
 	g.writeln('\n\t// sql select')
@@ -132,8 +132,8 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 	g.write('${dbtype}__DB $db_name = ') // $node.db_var_name;')
 	g.expr(node.db_expr)
 	g.writeln(';')
-	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, tos_lit("$sql_query')
-	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, tos_lit("')
+	// g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt(*(${dbtype}__DB*)${node.db_var_name}.data, _SLIT("$sql_query')
+	g.write('sqlite3_stmt* $g.sql_stmt_name = ${dbtype}__DB_init_stmt($db_name, _SLIT("')
 	g.write(sql_query)
 	if node.has_where && node.where_expr is ast.InfixExpr {
 		g.expr_to_sql(node.where_expr)
@@ -188,7 +188,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			info := sym.info as table.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
-				if i != info.fields.len-1 {
+				if i != info.fields.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -203,7 +203,7 @@ fn (mut g Gen) sql_select_expr(node ast.SqlExpr) {
 			info := sym.info as table.Struct
 			for i, field in info.fields {
 				g.zero_struct_field(field)
-				if i != info.fields.len-1 {
+				if i != info.fields.len - 1 {
 					g.write(', ')
 				}
 			}
@@ -246,7 +246,7 @@ fn (mut g Gen) sql_bind_int(val string) {
 	g.sql_buf.writeln('sqlite3_bind_int($g.sql_stmt_name, $g.sql_i, $val);')
 }
 
-fn (mut g Gen) sql_bind_string(val, len string) {
+fn (mut g Gen) sql_bind_string(val string, len string) {
 	g.sql_buf.writeln('sqlite3_bind_text($g.sql_stmt_name, $g.sql_i, $val, $len, 0);')
 }
 
@@ -275,22 +275,22 @@ fn (mut g Gen) expr_to_sql(expr ast.Expr) {
 				else {}
 			}
 			g.sql_side = .right
-			g.expr_to_sql(it.right)
+			g.expr_to_sql(expr.right)
 		}
 		ast.StringLiteral {
 			// g.write("'$it.val'")
 			g.inc_sql_i()
-			g.sql_bind_string('"$it.val"', it.val.len.str())
+			g.sql_bind_string('"$expr.val"', expr.val.len.str())
 		}
 		ast.IntegerLiteral {
 			g.inc_sql_i()
-			g.sql_bind_int(it.val)
+			g.sql_bind_int(expr.val)
 		}
 		ast.BoolLiteral {
 			// true/false literals were added to Sqlite 3.23 (2018-04-02)
 			// but lots of apps/distros use older sqlite (e.g. Ubuntu 18.04 LTS )
 			g.inc_sql_i()
-			g.sql_bind_int(if it.val {
+			g.sql_bind_int(if expr.val {
 				'1'
 			} else {
 				'0'

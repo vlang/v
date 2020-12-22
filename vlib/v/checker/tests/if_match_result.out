@@ -1,0 +1,34 @@
+vlib/v/checker/tests/if_match_result.vv:2:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    1 | // missing results
+    2 | _ = match 4 {
+      |   ^
+    3 |     1 {}
+    4 |     else {}
+vlib/v/checker/tests/if_match_result.vv:6:5: error: `if` expression requires an expression as the last statement of every branch
+    4 |     else {}
+    5 | }
+    6 | _ = if true {
+      |     ~~~~~~~
+    7 | } else {
+    8 | }
+vlib/v/checker/tests/if_match_result.vv:7:3: error: `if` expression requires an expression as the last statement of every branch
+    5 | }
+    6 | _ = if true {
+    7 | } else {
+      |   ~~~~
+    8 | }
+    9 |
+vlib/v/checker/tests/if_match_result.vv:11:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+    9 |
+   10 | // void results
+   11 | _ = match 4 {
+      |   ^
+   12 |     1 {println('')}
+   13 |     else {exit(0)}
+vlib/v/checker/tests/if_match_result.vv:15:3: error: assignment mismatch: 1 variable(s) 0 value(s)
+   13 |     else {exit(0)}
+   14 | }
+   15 | _ = if true {
+      |   ^
+   16 |     println('')
+   17 | } else {

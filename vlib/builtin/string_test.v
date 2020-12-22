@@ -99,6 +99,19 @@ fn test_sort() {
 	assert vals[3] == 'arr'
 }
 
+fn test_sort_reverse() {
+	mut vals := [
+		'arr', 'an', 'a', 'any'
+	]
+	len := vals.len
+	vals.sort(b>a)
+	assert len == vals.len
+	assert vals[3] == 'a'
+	assert vals[2] == 'an'
+	assert vals[1] == 'any'
+	assert vals[0] == 'arr'
+}
+
 fn test_split_nth() {
 	a := "1,2,3"
 	assert (a.split(',').len == 3)
@@ -125,8 +138,8 @@ fn test_split_nth() {
 	assert (d.split_nth(',', -1).len == 2)
 	assert (d.split_nth(',', 3).len == 2)
 	e := ",,,0,,,,,a,,b,"
-	// assert (e.split(',,').len == 5)
-	// assert (e.split_nth(',,', 3).len == 2)
+	assert (e.split(',,').len == 5)
+	assert (e.split_nth(',,', 3).len == 3)
 	assert (e.split_nth(',', -1).len == 12)
 	assert (e.split_nth(',', 3).len == 3)
 }
@@ -200,6 +213,12 @@ fn test_split() {
 	assert a[4] == 'o'
 	assert a[5] == 'm'
 	assert a[6] == 'e'
+	// /////////
+	s = 'wavy turquoise bags'
+	vals = s.split(' bags')
+	assert vals.len == 2
+	assert vals[0] == 'wavy turquoise'
+	assert vals[1] == ''
 }
 
 fn test_trim_space() {
@@ -228,6 +247,8 @@ two ',
 four!']
 	s = strings.join(' ')
 	assert s.contains('one') && s.contains('two ') && s.contains('four')
+	empty :=  []string{len:0}
+	assert empty.join('A') == ''
 }
 
 fn test_clone() {
@@ -285,6 +306,11 @@ fn test_replace_each() {
 		'[b]', '<b>',
 		'[/b]', '</b>',
 	]) == '<b>cool</b>'
+	t := 'aaaaaaaa'
+	y := t.replace_each([
+		'aa', 'b'
+	])
+	assert y == 'bbbb'
 }
 
 fn test_itoa() {
@@ -504,8 +530,16 @@ fn test_bytes_to_string() {
 	}
 	assert unsafe { buf.vstring() } == 'hello'
 	assert unsafe { buf.vstring_with_len(2) } == 'he'
-	bytes := [`h`, `e`, `l`, `l`, `o`]
+	bytes := [byte(`h`), `e`, `l`, `l`, `o`]
 	assert bytes.bytestr() == 'hello'
+}
+
+fn test_charptr() {
+	foo := charptr('VLANG'.str)
+	println(typeof(foo))
+	assert typeof(foo) == 'charptr'
+	assert unsafe { foo.vstring() } == 'VLANG'
+	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
 }
 
 fn test_count() {
@@ -720,6 +754,16 @@ fn test_raw() {
 	println(lines)
 	assert lines.len == 1
 	println('raw string: "$raw"')
+
+	raw2 := r'Hello V\0'
+	assert raw2[7] == `\\`
+	assert raw2[8] == `0`
+
+	raw3 := r'Hello V\x00'
+	assert raw3[7] == `\\`
+	assert raw3[8] == `x`
+	assert raw3[9] == `0`
+	assert raw3[10] == `0`
 }
 
 fn test_raw_with_quotes() {
@@ -730,9 +774,9 @@ fn test_raw_with_quotes() {
 }
 
 fn test_escape() {
-	// TODO
-	//a := 10
-	//println("\"$a")
+	a := 10
+	println("\"$a")
+	assert "\"$a" == "\"10"
 }
 
 fn test_atoi() {
@@ -778,38 +822,8 @@ fn test_double_quote_inter() {
 	assert '${a} ${b}' == "1 2"
 }
 
-fn test_string_map() {
-	$if windows {
-		return // TODO
-	}
-	original := 'Hello'
-	println('original.len = $original.len')
-	a := original.map(fn (b byte) byte {
-		return b + 1
-	})
-	expected := 'Ifmmp'
-	println('a[0] = ' + a[0].str())
-	println('a[1] = ' + a[1].str())
-	println('a[2] = ' + a[2].str())
-	println('a[3] = ' + a[3].str())
-	println('a[4] = ' + a[4].str())
-	println('a.len = $a.len')
-	assert a.len == expected.len
-	assert a == expected
-
-	assert 'foo'.map(foo) == r'\ee'
-}
-
 fn foo(b byte) byte {
 	return b - 10
-}
-
-fn test_string_filter() {
-	foo := 'V is awesome!!!!'.filter(fn (b byte) bool {
-		return b != `!`
-	})
-	assert foo == 'V is awesome'
-	assert 'Alexander'.filter(filter) == 'Alexnder'
 }
 
 fn filter(b byte) bool {
@@ -847,7 +861,7 @@ fn test_string_literal_with_backslash(){
 }
 
 /*
-type MyString string
+type MyString = string
 
 fn test_string_alias() {
 	s := MyString('hi')
@@ -877,7 +891,7 @@ fn test_sorter() {
 			i: 102
 		}
 	]
-	cmp := fn (a, b &Ka) int {
+	cmp := fn (a &Ka, b &Ka) int {
 		return compare_strings(a.s, b.s)
 	}
 	arr.sort_with_compare(cmp)

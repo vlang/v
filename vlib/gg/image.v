@@ -2,17 +2,17 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module gg
 
-//import gx
+// import gx
+// import sokol.sapp
+// import sokol.gfx
 import os
 import sokol
-//import sokol.sapp
 import sokol.sgl
-//import sokol.gfx
 import stbi
 
 pub struct Image {
 pub mut:
-	id int
+	id          int
 	width       int
 	height      int
 	nr_channels int
@@ -21,7 +21,7 @@ pub mut:
 	ext         string
 	simg_ok     bool
 	simg        C.sg_image
-	path string
+	path        string
 }
 
 fn C.sg_isvalid() bool
@@ -30,7 +30,7 @@ fn C.sg_isvalid() bool
 pub fn (mut ctx Context) create_image(file string) Image {
 	if !C.sg_isvalid() {
 		// Sokol is not initialized yet, add stbi object to a queue/cache
-		//ctx.image_queue << file
+		// ctx.image_queue << file
 		stb_img := stbi.load(file) or { return Image{} }
 		img := Image{
 			width: stb_img.width
@@ -71,7 +71,7 @@ fn create_image(file string) Image {
 	return img
 }
 
-pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
+pub fn (mut ctx Context) create_image_from_memory(buf byteptr, bufsize int) Image {
 	stb_img := stbi.load_from_memory(buf, bufsize) or { return Image{} }
 	mut img := Image{
 		width: stb_img.width
@@ -80,16 +80,18 @@ pub fn create_image_from_memory(buf byteptr, bufsize int) Image {
 		ok: stb_img.ok
 		data: stb_img.data
 		ext: stb_img.ext
+		id: ctx.image_cache.len
 	}
+	ctx.image_cache << img
 	return img
 }
 
-pub fn create_image_from_byte_array(b []byte) Image {
-	return create_image_from_memory(b.data, b.len)
+pub fn (mut ctx Context) create_image_from_byte_array(b []byte) Image {
+	return ctx.create_image_from_memory(b.data, b.len)
 }
 
 pub fn (mut img Image) init_sokol_image() &Image {
-	//println('\n init sokol image $img.path ok=$img.simg_ok')
+	// println('\n init sokol image $img.path ok=$img.simg_ok')
 	mut img_desc := C.sg_image_desc{
 		width: img.width
 		height: img.height
@@ -109,7 +111,7 @@ pub fn (mut img Image) init_sokol_image() &Image {
 	return img
 }
 
-pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
+pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Image) {
 	if img_.id >= ctx.image_cache.len {
 		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
 		return
@@ -132,17 +134,47 @@ pub fn (ctx &Context) draw_image(x, y, width, height f32, img_ &Image) {
 	sgl.texture(img.simg)
 	sgl.begin_quads()
 	sgl.c4b(255, 255, 255, 255)
-	sgl.v2f_t2f(x0, y0,	  u0, v0)
-	sgl.v2f_t2f(x1, y0,	  u1, v0)
-	sgl.v2f_t2f(x1, y1,	  u1, v1)
-	sgl.v2f_t2f(x0, y1,	  u0, v1)
+	sgl.v2f_t2f(x0, y0, u0, v0)
+	sgl.v2f_t2f(x1, y0, u1, v0)
+	sgl.v2f_t2f(x1, y1, u1, v1)
+	sgl.v2f_t2f(x0, y1, u0, v1)
 	sgl.end()
 	sgl.disable_texture()
 }
 
-pub fn (ctx &Context) draw_image_by_id(x, y, width, height f32, id int) {
-	img := ctx.image_cache[id]
-	ctx.draw_image(x,y,width,height,img)
+// TODO remove copy pasta, merge the functions
+pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
+	if img_.id >= ctx.image_cache.len {
+		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+		return
+	}
+	img := ctx.image_cache[img_.id] // fetch the image from cache
+	if !img.simg_ok {
+		return
+	}
+	u0 := f32(0.0)
+	v0 := f32(0.0)
+	u1 := f32(1.0)
+	v1 := f32(1.0)
+	x0 := f32(x) * ctx.scale
+	y0 := f32(y) * ctx.scale
+	x1 := f32(x + width) * ctx.scale
+	y1 := f32(y + height) * ctx.scale
+	//
+	sgl.load_pipeline(ctx.timage_pip)
+	sgl.enable_texture()
+	sgl.texture(img.simg)
+	sgl.begin_quads()
+	sgl.c4b(255, 255, 255, 255)
+	sgl.v2f_t2f(x0, y0, u1, v0)
+	sgl.v2f_t2f(x1, y0, u0, v0)
+	sgl.v2f_t2f(x1, y1, u0, v1)
+	sgl.v2f_t2f(x0, y1, u1, v1)
+	sgl.end()
+	sgl.disable_texture()
 }
 
-
+pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
+	img := ctx.image_cache[id]
+	ctx.draw_image(x, y, width, height, img)
+}

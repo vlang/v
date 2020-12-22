@@ -9,24 +9,24 @@ import crypto.sha512
 import cli { Command }
 
 struct TestAliasInStruct {
-	time t.Time
+	time Time
 }
 
 fn test_import() {
 	info := l.Level.info
 	assert info == .info
-	assert term.white('INFO') == white('INFO')
+	assert white('INFO') == white('INFO')
 	assert os.o_rdonly == os.o_rdonly
 	assert t.month_days[0] == t.month_days[0]
 	assert sha256.size == sha256.size
 	assert math.pi == math.pi
 	assert sha512.size == sha512.size
-	assert md5.sum('module'.bytes()).hex() == sum('module'.bytes()).hex()
-	assert t.utc().unix_time() == utc().unix_time()
+	assert sum('module'.bytes()).hex() == sum('module'.bytes()).hex()
+	assert utc().unix_time() == utc().unix_time()
 }
 
 fn test_imports_array_as_fn_arg() {
-	mut cmd := Command {
+	mut cmd := Command{
 		name: 'module test'
 	}
 	c1 := Command{}
@@ -38,7 +38,7 @@ fn test_imports_array_as_fn_arg() {
 
 fn test_alias_in_struct_field() {
 	a := TestAliasInStruct{
-		time: t.Time{
+		time: Time{
 			year: 2020
 		}
 	}

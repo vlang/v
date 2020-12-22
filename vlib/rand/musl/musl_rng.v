@@ -102,7 +102,7 @@ pub fn (mut rng MuslRNG) u64n(max u64) u64 {
 
 // rn.u32_in_range(min, max) - return a pseudorandom 32 bit unsigned u32 in [min, max)
 [inline]
-pub fn (mut rng MuslRNG) u32_in_range(min, max u64) u64 {
+pub fn (mut rng MuslRNG) u32_in_range(min u64, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -112,7 +112,7 @@ pub fn (mut rng MuslRNG) u32_in_range(min, max u64) u64 {
 
 // rn.u64_in_range(min, max) - return a pseudorandom 64 bit unsigned u64 in [min, max)
 [inline]
-pub fn (mut rng MuslRNG) u64_in_range(min, max u64) u64 {
+pub fn (mut rng MuslRNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -166,7 +166,7 @@ pub fn (mut rng MuslRNG) i64n(max i64) i64 {
 
 // rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
 [inline]
-pub fn (mut rng MuslRNG) int_in_range(min, max int) int {
+pub fn (mut rng MuslRNG) int_in_range(min int, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min.')
 		exit(1)
@@ -176,7 +176,7 @@ pub fn (mut rng MuslRNG) int_in_range(min, max int) int {
 
 // rng.i64_in_range(min, max) - return a 64bit positive i64 in [0, max)
 [inline]
-pub fn (mut rng MuslRNG) i64_in_range(min, max i64) i64 {
+pub fn (mut rng MuslRNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min.')
 		exit(1)
@@ -218,7 +218,7 @@ pub fn (mut rng MuslRNG) f64n(max f64) f64 {
 
 // rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
 [inline]
-pub fn (mut rng MuslRNG) f32_in_range(min, max f32) f32 {
+pub fn (mut rng MuslRNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -228,7 +228,7 @@ pub fn (mut rng MuslRNG) f32_in_range(min, max f32) f32 {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng MuslRNG) f64_in_range(min, max f64) f64 {
+pub fn (mut rng MuslRNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)

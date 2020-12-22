@@ -194,3 +194,50 @@ fn test_array_init_direct_call() {
 	assert []int{len: 2, init: 0}.len == 2
 	assert []int{len: 3, init: 1}.map(it*2) == [2,2,2]
 }
+
+// test array init with sumtype
+type Alphabet = Abc | Xyz
+struct Abc {
+	val int
+}
+struct Xyz {
+	val int
+}
+fn test_array_init_with_sumtype () {
+	a := [Alphabet(Abc{1}), Xyz{2}]
+	a0 := a[0]
+	a1 := a[1]
+	match a0 {
+		Abc {
+			assert a0.val == 1
+		}
+		else {
+			assert false
+		}
+	}
+	match a1 {
+		Xyz {
+			assert a1.val == 2
+		}
+		else {
+			assert false
+		}
+	}
+}
+
+fn test_array_init_inferred_from_optional() {
+	a := read() or { [] }
+	x := 1
+	b := read() or { match x {
+		1 {
+			[]
+		}
+		else {
+			[]
+		}
+	}}
+}
+
+fn read() ?[]string {
+	return error('failed')
+}

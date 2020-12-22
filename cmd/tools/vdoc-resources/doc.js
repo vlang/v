@@ -64,7 +64,6 @@ function setupMobileToggle() {
 }
 
 function setupDarkMode() {
-    var html = document.getElementsByTagName('html')[0];
     var darkModeToggle = document.getElementById('dark-mode-toggle');
     darkModeToggle.addEventListener('click', function() {
         html.classList.toggle('dark');
@@ -72,10 +71,6 @@ function setupDarkMode() {
         localStorage.setItem('dark-mode', isDarkModeEnabled);
         darkModeToggle.setAttribute('aria-checked', isDarkModeEnabled)
     });
-    if (localStorage.getItem('dark-mode') === 'true') {
-        html.classList.add('dark');
-    }
-
     // Check if css var() is supported and enable dark mode toggle
     if (window.CSS && CSS.supports('color', 'var(--fake-var)')) {
         darkModeToggle.style.visibility = 'unset';

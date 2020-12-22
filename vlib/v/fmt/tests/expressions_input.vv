@@ -16,7 +16,7 @@ fn string_inter_lit(mut c checker.Checker, mut node ast.StringInterLiteral) tabl
 				c.error('unknown format specifier `${fmt:c}`',
 					node.fmt_poss[i])
 		}
-			if node.precisions[i] != 0 &&
+			if node.precisions[i] != 987698 &&
 				!typ.is_float() {
 				c.error('precision specification only valid for float types',
 					node.fmt_poss[i])

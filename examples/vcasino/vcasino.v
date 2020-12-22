@@ -89,7 +89,7 @@ fn get_bet(money int) int {
 	return bet
 }
 
-fn run_wheel(bet_nbr, _bet int) int {
+fn run_wheel(bet_nbr int, _bet int) int {
 	mut bet := _bet
 	winning_nbr := rand.intn(50)
 	print('Roulette Wheel spinning... and stops on the number $winning_nbr which is a ')

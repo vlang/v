@@ -1,0 +1,7 @@
+type Foo = string | int
+
+fn main() {
+	a := []Foo{len:10}
+	println(a)
+
+}

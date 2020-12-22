@@ -1,0 +1,7 @@
+vlib/v/parser/tests/select_bad_key_1.vv:39:8: error: select key: receive expression expected
+   37 | fn f3_bad(ch1 chan St) {
+   38 |     select {
+   39 |         b := 17 {
+      |              ~~
+   40 |             println(b)
+   41 |         }

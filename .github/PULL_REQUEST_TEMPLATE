@@ -30,6 +30,7 @@ Before submitting a PR, please:
 ./v -o v cmd/v
 ./v -o v cmd/v
 ```
+See also `TESTS.md`.
 
 I try to process PRs as soon as possible. They should be handled within 24 hours.
 

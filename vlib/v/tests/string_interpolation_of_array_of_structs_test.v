@@ -2,8 +2,8 @@ module main
 
 struct Anything {
 mut:
-	name  string = ''
-	keepo int = 0
+	name  string
+	keepo int
 }
 
 fn (a Anything) str() string {
@@ -34,8 +34,8 @@ fn test_array_of_ptrs_to_structs_can_be_printed() {
 // (note the str method defined on (a &T), instead on (a T))
 struct PstrAnything {
 mut:
-	name  string = ''
-	keepo int = 0
+	name  string
+	keepo int
 }
 
 fn (a &PstrAnything) str() string {
@@ -64,7 +64,7 @@ fn test_array_of_ptrs_to_structs_can_be_printed_when_structs_have_str_with_ptr()
 
 //
 fn test_stack_array_of_structs_can_be_printed_when_structs_have_ordinary_str() {
-	mut t := [3]Anything
+	mut t := [3]Anything{}
 	t[0] = Anything{
 		name: '012'
 	}
@@ -86,7 +86,7 @@ fn test_stack_array_of_structs_can_be_printed_when_structs_have_ordinary_str() {
 
 fn test_stack_array_of_structs_can_be_printed_when_structs_have_str_with_ptr() {
 	// this generates a C error
-	mut pt := [3]PstrAnything
+	mut pt := [3]PstrAnything{}
 	pt[0] = PstrAnything{
 		name: 'P012'
 	}

@@ -13,7 +13,7 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
    Matthe Bellew's simplification, Isaku Wada's real version.
 
    Copyright (C) 1997 - 2002, Makoto Matsumoto and Takuji Nishimura,
-   All rights reserved.                          
+   All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -26,8 +26,8 @@ C++ functions for MT19937, with initialization improved 2002/2/10.
         notice, this list of conditions and the following disclaimer in the
         documentation and/or other materials provided with the distribution.
 
-     3. The names of its contributors may not be used to endorse or promote 
-        products derived from this software without specific prior written 
+     3. The names of its contributors may not be used to endorse or promote
+        products derived from this software without specific prior written
         permission.
 
    THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -61,8 +61,8 @@ pub struct MT19937RNG {
 mut:
 	state    []u64 = calculate_state(util.time_seed_array(2), mut []u64{len: nn})
 	mti      int = nn
-	next_rnd u32 = 0
-	has_next bool = false
+	next_rnd u32
+	has_next bool
 }
 
 fn calculate_state(seed_data []u32, mut state []u64) []u64 {
@@ -210,7 +210,7 @@ pub fn (mut rng MT19937RNG) u64n(max u64) u64 {
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng MT19937RNG) u32_in_range(min, max u32) u32 {
+pub fn (mut rng MT19937RNG) u32_in_range(min u32, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -220,7 +220,7 @@ pub fn (mut rng MT19937RNG) u32_in_range(min, max u32) u32 {
 
 // rng.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng MT19937RNG) u64_in_range(min, max u64) u64 {
+pub fn (mut rng MT19937RNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -250,7 +250,7 @@ pub fn (mut rng MT19937RNG) i64n(max i64) i64 {
 
 // rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
 [inline]
-pub fn (mut rng MT19937RNG) int_in_range(min, max int) int {
+pub fn (mut rng MT19937RNG) int_in_range(min int, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min.')
 		exit(1)
@@ -260,7 +260,7 @@ pub fn (mut rng MT19937RNG) int_in_range(min, max int) int {
 
 // rng.i64_in_range(min, max) - return a 64bit positive i64 in [0, max)
 [inline]
-pub fn (mut rng MT19937RNG) i64_in_range(min, max i64) i64 {
+pub fn (mut rng MT19937RNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min.')
 		exit(1)
@@ -302,7 +302,7 @@ pub fn (mut rng MT19937RNG) f64n(max f64) f64 {
 
 // rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
 [inline]
-pub fn (mut rng MT19937RNG) f32_in_range(min, max f32) f32 {
+pub fn (mut rng MT19937RNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -312,7 +312,7 @@ pub fn (mut rng MT19937RNG) f32_in_range(min, max f32) f32 {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng MT19937RNG) f64_in_range(min, max f64) f64 {
+pub fn (mut rng MT19937RNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)

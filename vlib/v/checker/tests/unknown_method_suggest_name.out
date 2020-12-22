@@ -1,15 +1,15 @@
-vlib/v/checker/tests/unknown_method_suggest_name.vv:7:2: error: unknown type `hash.crc32.Crc33`.
+vlib/v/checker/tests/unknown_method_suggest_name.vv:13:12: error: unknown type `hash.crc32.Crc33`.
 Did you mean `crc32.Crc32`?
-    5 |     y   int
-    6 |     z   int
-    7 |     ccc crc32.Crc33
-      |     ~~~~~~~~~~~~~~~
-    8 | }
-    9 |
+   11 |     y int
+   12 |     z int
+   13 |     ccc crc32.Crc33
+      |               ~~~~~
+   14 | }
+   15 |
 vlib/v/checker/tests/unknown_method_suggest_name.vv:27:9: error: unknown method: `Point.tranzlate`.
 Did you mean `translate`?
    25 |     p := Point{1, 2, 3}
-   26 |     v := Vector{5, 5, 10}
+   26 |     v := Vector{x: 5, y: 5, z: 10}
    27 |     z := p.tranzlate(v)
       |            ~~~~~~~~~~~~
    28 |     println('p: $p')

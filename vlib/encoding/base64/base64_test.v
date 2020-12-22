@@ -31,12 +31,12 @@ const (
 		TestPair{'asure.', 'YXN1cmUu'},
 		TestPair{'sure.', 'c3VyZS4='},
 	]
-	
+
 	man_pair = TestPair{
 		'Man is distinguished, not only by his reason, but by this singular passion from other animals, which is a lust of the mind, that by a perseverance of delight in the continued and indefatigable generation of knowledge, exceeds the short vehemence of any carnal pleasure.',
 		'TWFuIGlzIGRpc3Rpbmd1aXNoZWQsIG5vdCBvbmx5IGJ5IGhpcyByZWFzb24sIGJ1dCBieSB0aGlzIHNpbmd1bGFyIHBhc3Npb24gZnJvbSBvdGhlciBhbmltYWxzLCB3aGljaCBpcyBhIGx1c3Qgb2YgdGhlIG1pbmQsIHRoYXQgYnkgYSBwZXJzZXZlcmFuY2Ugb2YgZGVsaWdodCBpbiB0aGUgY29udGludWVkIGFuZCBpbmRlZmF0aWdhYmxlIGdlbmVyYXRpb24gb2Yga25vd2xlZGdlLCBleGNlZWRzIHRoZSBzaG9ydCB2ZWhlbWVuY2Ugb2YgYW55IGNhcm5hbCBwbGVhc3VyZS4='
 	}
-		
+
 )
 
 fn test_decode() {
@@ -66,4 +66,14 @@ fn test_encode() {
 			assert false
 		}
 	}
+}
+
+fn test_encode_url() {
+	test := base64.encode_url('Hello Base64Url encoding!')
+	assert test == 'SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ'
+}
+
+fn test_decode_url() {
+	test := base64.decode_url("SGVsbG8gQmFzZTY0VXJsIGVuY29kaW5nIQ")
+	assert test == 'Hello Base64Url encoding!'
 }

@@ -9,7 +9,7 @@ import rand.util
 pub struct SplitMix64RNG {
 mut:
 	state     u64 = util.time_seed_64()
-	has_extra bool = false
+	has_extra bool
 	extra     u32
 }
 
@@ -88,7 +88,7 @@ pub fn (mut rng SplitMix64RNG) u64n(bound u64) u64 {
 
 // rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) u32_in_range(min, max u32) u32 {
+pub fn (mut rng SplitMix64RNG) u32_in_range(min u32, max u32) u32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -98,7 +98,7 @@ pub fn (mut rng SplitMix64RNG) u32_in_range(min, max u32) u32 {
 
 // rng.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) u64_in_range(min, max u64) u64 {
+pub fn (mut rng SplitMix64RNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -152,7 +152,7 @@ pub fn (mut rng SplitMix64RNG) i64n(max i64) i64 {
 
 // rng.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) int_in_range(min, max int) int {
+pub fn (mut rng SplitMix64RNG) int_in_range(min int, max int) int {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -163,7 +163,7 @@ pub fn (mut rng SplitMix64RNG) int_in_range(min, max int) int {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) i64_in_range(min, max i64) i64 {
+pub fn (mut rng SplitMix64RNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -205,7 +205,7 @@ pub fn (mut rng SplitMix64RNG) f64n(max f64) f64 {
 
 // rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f32_in_range(min, max f32) f32 {
+pub fn (mut rng SplitMix64RNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)
@@ -215,7 +215,7 @@ pub fn (mut rng SplitMix64RNG) f32_in_range(min, max f32) f32 {
 
 // rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
 [inline]
-pub fn (mut rng SplitMix64RNG) f64_in_range(min, max f64) f64 {
+pub fn (mut rng SplitMix64RNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {
 		eprintln('max must be greater than min')
 		exit(1)

@@ -1,5 +1,7 @@
 struct User {
 	name string // name
+	// middle comment
+	age  int
 	// last comment
 	// last comment2
 }
@@ -15,4 +17,22 @@ fn main() {
 	// else
 	// else {
 	// }
+	_ := User{
+		name: 'Henry' // comment after name
+		// on the next line
+		age: 42
+		// after age line
+		// after line2
+	}
+	_ := User{
+		// Just a comment
+	}
+	a := 123 // comment after assign
+	b := 'foo' // also comment after assign
+	c := true
+	// Between two assigns
+	d := false
+	//////
+	// /
+	// 123
 }

@@ -19,7 +19,7 @@ fn main() {
 	}
 	mut m := map[string]int
 	for word in extract_words(contents) {
-		m[word] = m[word] + 1 // TODO m[key]++
+		m[word]++
 	}
 	// Sort the keys
 	mut keys := m.keys()

@@ -34,11 +34,7 @@ const (
 )
 
 pub fn (mut g Gen) generate_elf_header() {
-	g.buf << [byte(mag0),
-		mag1,
-		mag2,
-		mag3
-	]
+	g.buf << [byte(mag0), mag1, mag2, mag3]
 	g.buf << elfclass64 // file class
 	g.buf << elfdata2lsb // data encoding
 	g.buf << ev_current // file version
@@ -103,9 +99,7 @@ pub fn (mut g Gen) generate_elf_footer() {
 	// -5 is for "e8 00 00 00 00"
 	g.write32_at(g.code_start_pos + 1, int(g.main_fn_addr - g.code_start_pos) - 5)
 	// Create the binary
-	mut f := os.create(g.out_name) or {
-		panic(err)
-	}
+	mut f := os.create(g.out_name) or { panic(err) }
 	os.chmod(g.out_name, 0o775) // make it an executable
 	f.write_bytes(g.buf.data, g.buf.len)
 	f.close()

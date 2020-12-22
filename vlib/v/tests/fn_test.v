@@ -26,7 +26,7 @@ fn myfn4(string)
 
 fn foobar()
 
-fn slopediv(num, den u32) int
+fn slopediv(num u32, den u32) int
 
 type F1 = fn ()
 

@@ -12,7 +12,7 @@ pub enum Reporter {
 pub struct Error {
 pub:
 	message   string
-	details string
+	details   string
 	file_path string
 	pos       token.Position
 	backtrace string

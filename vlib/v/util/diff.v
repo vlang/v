@@ -12,10 +12,8 @@ pub fn find_working_diff_command() ?string {
 	if env_difftool.len > 0 {
 		known_diff_tools << env_difftool
 	}
-	known_diff_tools << [
-		'colordiff', 'gdiff', 'diff', 'colordiff.exe',
-		'diff.exe', 'opendiff', 'code', 'code.cmd'
-	]
+	known_diff_tools <<
+		['colordiff', 'gdiff', 'diff', 'colordiff.exe', 'diff.exe', 'opendiff', 'code', 'code.cmd']
 	// NOTE: code.cmd is the Windows variant of the `code` cli tool
 	for diffcmd in known_diff_tools {
 		if diffcmd == 'opendiff' { // opendiff has no `--version` option
@@ -24,9 +22,7 @@ pub fn find_working_diff_command() ?string {
 			}
 			continue
 		}
-		p := os.exec('$diffcmd --version') or {
-			continue
-		}
+		p := os.exec('$diffcmd --version') or { continue }
 		if p.exit_code == 127 && diffcmd == env_difftool {
 			// user setup is wonky, fix it
 			return error('could not find specified VDIFF_TOOL $diffcmd')
@@ -45,9 +41,7 @@ pub fn find_working_diff_command() ?string {
 
 // determine if the FileMerge opendiff tool is available
 fn opendiff_exists() bool {
-	o := os.exec('opendiff') or {
-		return false
-	}
+	o := os.exec('opendiff') or { return false }
 	if o.exit_code == 1 { // failed (expected), but found (i.e. not 127)
 		if o.output.contains('too few arguments') { // got some exptected output
 			return true
@@ -56,19 +50,16 @@ fn opendiff_exists() bool {
 	return false
 }
 
-pub fn color_compare_files(diff_cmd, file1, file2 string) string {
+pub fn color_compare_files(diff_cmd string, file1 string, file2 string) string {
 	if diff_cmd != '' {
-		full_cmd := '$diff_cmd --minimal --text --unified=2 ' +
-			' --show-function-line="fn " "$file1" "$file2" '
-		x := os.exec(full_cmd) or {
-			return 'comparison command: `$full_cmd` failed'
-		}
+		full_cmd := '$diff_cmd --minimal --text --unified=2  --show-function-line="fn " "$file1" "$file2" '
+		x := os.exec(full_cmd) or { return 'comparison command: `$full_cmd` failed' }
 		return x.output.trim_right('\r\n')
 	}
 	return ''
 }
 
-pub fn color_compare_strings(diff_cmd, expected, found string) string {
+pub fn color_compare_strings(diff_cmd string, expected string, found string) string {
 	cdir := os.cache_dir()
 	ctime := time.sys_mono_now()
 	e_file := os.join_path(cdir, '${ctime}.expected.txt')

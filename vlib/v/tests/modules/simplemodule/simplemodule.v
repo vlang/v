@@ -7,3 +7,7 @@ pub fn iadd(x int, y int) int {
 pub fn imul(x int, y int) int {
 	return x * y
 }
+
+pub struct ThisIsGeneric<T> {
+	msg T
+} 

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/or_err.vv:4:10: error: last statement in the `or {}` block should be an expression of type `&int` or exit parent scope
+    2 |     return none
+    3 | }
+    4 | a := f() or {
+      |          ~~~~
+    5 |     {}
+    6 | }
+vlib/v/checker/tests/or_err.vv:11:2: error: wrong return type `rune` in the `or {}` block, expected `&int`
+    9 | }
+   10 | _ = f() or {
+   11 |     `.`
+      |     ~~~
+   12 | }
+   13 |

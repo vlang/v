@@ -117,8 +117,7 @@ fn main() {
 	mut expr_count := 0
 	for {
 		expr_count++
-		print('[$expr_count] ')
-		expr := os.get_line().trim_space()
+		expr := os.input('[$expr_count] ').trim_space()
 		if expr in ['exit', 'EXIT'] {
 			break
 		}

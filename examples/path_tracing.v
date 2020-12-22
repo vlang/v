@@ -107,10 +107,10 @@ fn (image Image) save_as_ppm(file_name string) {
 	f_out.writeln('${image.width} ${image.height}')
 	f_out.writeln('255')
 	for i in 0..npixels {
-		c_r := to_int(image.data[i].x)
-		c_g := to_int(image.data[i].y)
-		c_b := to_int(image.data[i].z)
-		f_out.write('$c_r $c_g $c_b ')
+		c_r := to_int(unsafe{image.data[i]}.x)
+		c_g := to_int(unsafe{image.data[i]}.y)
+		c_b := to_int(unsafe{image.data[i]}.z)
+		f_out.write_str('$c_r $c_g $c_b ')
 	}
 	f_out.close()
 }
@@ -225,7 +225,7 @@ fn intersect(r Ray, spheres &Sphere, nspheres int) (bool, f64, int){
 	mut t  := inf
 	mut id := 0
 	for i:=nspheres-1; i >= 0; i-- {
-		d = spheres[i].intersect(r)
+		d = unsafe{spheres[i]}.intersect(r)
 		if d > 0 && d < t {
 			t = d
 			id = i
@@ -271,10 +271,8 @@ const (
 fn radiance(r Ray, depthi int, scene_id int) Vec {
 	if depthi > 1024 {
 		eprintln('depthi: $depthi')
-		return Vec{} 
+		return Vec{}
 	}
-	sin_tab := &f64( tabs.sin_tab )
-	cos_tab := &f64( tabs.cos_tab )
 	mut depth   := depthi      // actual depth in the reflection tree
 	mut t       := 0.0         // distance to intersection
 	mut id      := 0           // id of intersected object
@@ -341,7 +339,7 @@ fn radiance(r Ray, depthi int, scene_id int) Vec {
 		//d := (u.mult_s(math.cos(r1) * r2s) + v.mult_s(math.sin(r1) * r2s) + w.mult_s(1.0 - r2)).norm()
 
 		// tabbed speed-up
-		d := (u.mult_s(cos_tab[r1] * r2s) + v.mult_s(sin_tab[r1] * r2s) + w.mult_s(math.sqrt(f64(1.0) - r2))).norm()
+		d := (u.mult_s(tabs.cos_tab[r1] * r2s) + v.mult_s(tabs.sin_tab[r1] * r2s) + w.mult_s(math.sqrt(f64(1.0) - r2))).norm()
 
 		return obj.e + f * radiance(Ray{x, d}, depth, scene_id)
 	} else {
@@ -416,7 +414,7 @@ fn ray_trace(w int, h int, samps int, file_name string, scene_id int) Image {
 		for x in 0..w {
 
 			i := (h - y - 1) * w + x
-			mut ivec := &image.data[i]
+			mut ivec := unsafe{&image.data[i]}
 			// we use sx and sy to perform a square subsampling of 4 samples
 			for sy := 0; sy < 2; sy ++ {
 				for sx := 0; sx < 2; sx ++ {

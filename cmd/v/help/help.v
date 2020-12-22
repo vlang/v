@@ -15,12 +15,12 @@ pub fn print_and_exit(topic string) {
 		if (b >= `a` && b <= `z`) || b == `-` || (b >= `0` && b <= `9`) {
 			continue
 		}
-		println(unknown_topic)
+		eprintln(unknown_topic)
 		exit(1)
 	}
 	target_topic := os.join_path(vroot, 'cmd', 'v', 'help', '${topic}.txt')
 	content := os.read_file(target_topic) or {
-		println(unknown_topic)
+		eprintln(unknown_topic)
 		exit(1)
 	}
 	println(content)

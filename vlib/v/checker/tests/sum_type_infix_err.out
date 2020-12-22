@@ -1,0 +1,14 @@
+vlib/v/checker/tests/sum_type_infix_err.vv:5:9: error: cannot use operator `+` with `Abc`
+    3 | fn main() {
+    4 |     x := Abc(0)
+    5 |     _ := x + Abc(5)
+      |            ^
+    6 |     _ := 'test' + x
+    7 |     _ = unsafe{&x + 5}
+vlib/v/checker/tests/sum_type_infix_err.vv:6:14: error: cannot use operator `+` with `Abc`
+    4 |     x := Abc(0)
+    5 |     _ := x + Abc(5)
+    6 |     _ := 'test' + x
+      |                 ^
+    7 |     _ = unsafe{&x + 5}
+    8 | }

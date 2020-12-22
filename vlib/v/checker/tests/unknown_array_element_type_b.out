@@ -1,6 +1,6 @@
-vlib/v/checker/tests/unknown_array_element_type_b.vv:2:2: error: unknown type `abc`
+vlib/v/checker/tests/unknown_array_element_type_b.vv:2:6: error: unknown type `abc`
     1 | struct Aaa {
     2 |     a []abc
-      |     ~~~~~~~
+      |         ~~~
     3 | }
     4 |

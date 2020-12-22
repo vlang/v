@@ -118,7 +118,7 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	if r.live_lib != 0 {
 		dl.close( r.live_lib )
-		r.live_lib = 0
+		r.live_lib = C.NULL
 	}
 	r.live_lib = dl.open(new_lib_path, dl.rtld_lazy)
 	if r.live_lib == 0 {

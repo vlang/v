@@ -8,7 +8,7 @@
 [Docs](https://github.com/vlang/v/blob/master/doc/docs.md) |
 [Changelog](https://github.com/vlang/v/blob/master/CHANGELOG.md) |
 [Speed](https://fast.vlang.io/) |
-[Contributing](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
+[Contributing & compiler design](https://github.com/vlang/v/blob/master/CONTRIBUTING.md)
 
 </div>
 <div align="center">
@@ -24,9 +24,10 @@
 ## Key Features of V
 
 - Simplicity: the language can be learned in less than an hour
-- Fast compilation: ≈80k loc/s with a Clang backend, ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)*
+- Fast compilation: ≈80k loc/s with a Clang backend,
+    ≈1 million loc/s with x64 and tcc backends *(Intel i5-7500, SSD, no optimization)*
 - Easy to develop: V compiles itself in less than a second
-- Performance: within 3% of C
+- Performance: as fast as C (V's main backend compiles to human readable C)
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
@@ -80,7 +81,8 @@ v up
 
 ### C compiler
 
-It's recommended to use Clang or GCC or Visual Studio. If you are doing development, you most likely already have one of those installed.
+It's recommended to use Clang or GCC or Visual Studio.
+If you are doing development, you most likely already have one of those installed.
 
 Otherwise, follow these instructions:
 
@@ -88,7 +90,9 @@ Otherwise, follow these instructions:
 
 - [Installing a C compiler on Windows](https://github.com/vlang/v/wiki/Installing-a-C-compiler-on-Windows)
 
-However, if none is found when running `make` on Linux or Windows, TCC would be downloaded and set as an alternative C backend. It's very lightweight (several MB) so this shouldn't take too long.
+However, if none is found when running `make` on Linux or Windows,
+TCC would be downloaded and set as an alternative C backend.
+It's very lightweight (several MB) so this shouldn't take too long.
 
 ### Symlinking
 
@@ -194,6 +198,20 @@ Fedora:
 sudo dnf install openssl-devel
 ```
 
+## V sync
+V's `sync` module and channel implementation uses libatomic.
+It is most likely already installed on your system, but if not,
+you can install it, by doing the following:
+```bash
+MacOS: already installed
+
+Debian/Ubuntu:
+sudo apt install libatomic1
+
+Fedora/CentOS/RH:
+sudo dnf install libatomic-static
+```
+
 ## V UI
 
 <a href="https://github.com/vlang/ui">
@@ -209,9 +227,9 @@ https://github.com/vlang/ui
 
 ```v
 fn main() {
-        for i in 0..3 {
-                println('Hello from V.js')
-        }
+	for i in 0 .. 3 {
+		println('Hello from V.js')
+	}
 }
 ```
 
@@ -238,7 +256,7 @@ Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting
 
 [WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
 [DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
-[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2Fvlang%2Fpledges&label=Patreon
+[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpledges
 [SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
 [TwitterBadge]: https://twitter.com/v_language
 

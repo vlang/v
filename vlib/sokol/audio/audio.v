@@ -6,11 +6,10 @@ module audio
 #flag linux -lasound
 #flag darwin -framework AudioToolbox
 #flag windows -lole32
-
 //
-pub type FNStreamingCB = fn (buffer &f32, num_frames, num_channels int)
+pub type FNStreamingCB = fn (buffer &f32, num_frames int, num_channels int)
 
-pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames, num_channels int, user_data voidptr)
+pub type FnStreamingCBWithUserData = fn (buffer &f32, num_frames int, num_channels int, user_data voidptr)
 
 pub fn (x FNStreamingCB) str() string {
 	return '&FNStreamingCB{ ${ptr_str(x)} }'
@@ -104,7 +103,7 @@ pub fn push(frames &f32, num_frames int) int {
 
 //
 [inline]
-pub fn fclamp(x, flo, fhi f32) f32 {
+pub fn fclamp(x f32, flo f32, fhi f32) f32 {
 	if x > fhi {
 		return fhi
 	}
@@ -114,14 +113,14 @@ pub fn fclamp(x, flo, fhi f32) f32 {
 	return x
 }
 
-pub fn min(x, y int) int {
+pub fn min(x int, y int) int {
 	if x < y {
 		return x
 	}
 	return y
 }
 
-pub fn max(x, y int) int {
+pub fn max(x int, y int) int {
 	if x < y {
 		return y
 	}

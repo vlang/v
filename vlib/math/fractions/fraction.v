@@ -25,7 +25,7 @@ pub:
 // to ensure that the denominator is non-zero. It automatically converts
 // the negative denominator to positive and adjusts the numerator.
 // NOTE: Fractions created are not reduced by default.
-pub fn fraction(n, d i64) Fraction {
+pub fn fraction(n i64, d i64) Fraction {
 	if d == 0 {
 		panic('Denominator cannot be zero')
 	}
@@ -54,7 +54,7 @@ pub fn (f Fraction) str() string {
 //
 // Returns a correctly reduced result for both addition and subtraction
 // NOTE: requires reduced inputs
-fn general_addition_result(f1, f2 Fraction, addition bool) Fraction {
+fn general_addition_result(f1 Fraction, f2 Fraction, addition bool) Fraction {
 	d1 := math.gcd(f1.d, f2.d)
 	// d1 happends to be 1 around 600/(pi)^2 or 61 percent of the time (Theorem 4.5.2D)
 	if d1 == 1 {
@@ -93,7 +93,7 @@ pub fn (f1 Fraction) -(f2 Fraction) Fraction {
 
 // Returns a correctly reduced result for both multiplication and division
 // NOTE: requires reduced inputs
-fn general_multiplication_result(f1, f2 Fraction, multiplication bool) Fraction {
+fn general_multiplication_result(f1 Fraction, f2 Fraction, multiplication bool) Fraction {
 	// * Theorem: If f1 and f2 are reduced i.e. gcd(f1.n, f1.d) ==  1 and gcd(f2.n, f2.d) == 1,
 	// then gcd(f1.n * f2.n, f1.d * f2.d) == gcd(f1.n, f2.d) * gcd(f1.d, f2.n)
 	// * Knuth poses this an exercise for 4.5.1. - Exercise 2
@@ -216,7 +216,8 @@ fn abs(num i64) i64 {
 	}
 }
 
-fn cmp_i64s(a, b i64) int {
+// cmp_i64s compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
+fn cmp_i64s(a i64, b i64) int {
 	if a == b {
 		return 0
 	} else if a > b {
@@ -226,7 +227,8 @@ fn cmp_i64s(a, b i64) int {
 	}
 }
 
-fn cmp_f64s(a, b f64) int {
+// cmp_f64s compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
+fn cmp_f64s(a f64, b f64) int {
 	// V uses epsilon comparison internally
 	if a == b {
 		return 0
@@ -239,11 +241,12 @@ fn cmp_f64s(a, b f64) int {
 
 // Two integers are safe to multiply when their bit lengths
 // sum up to less than 64 (conservative estimate).
-fn safe_to_multiply(a, b i64) bool {
+fn safe_to_multiply(a i64, b i64) bool {
 	return (bits.len_64(u64(abs(a))) + bits.len_64(u64(abs(b)))) < 64
 }
 
-fn cmp(f1, f2 Fraction) int {
+// cmp compares the two arguments, returns 0 when equal, 1 when the first is bigger, -1 otherwise
+fn cmp(f1 Fraction, f2 Fraction) int {
 	if safe_to_multiply(f1.n, f2.d) && safe_to_multiply(f2.n, f1.d) {
 		return cmp_i64s(f1.n * f2.d, f2.n * f1.d)
 	} else {

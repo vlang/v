@@ -57,7 +57,7 @@ fn test_format(){
 	assert tmp_str == temp_s
 
 	sc5 := "[%.3f] [%0.3f] [%0.3F] [%0.3f] [%0.3F]"
-	temp_s = strconv.v_sprintf(sc5, f0, f1, f1, f2, f3, f3)
+	temp_s = strconv.v_sprintf(sc5, f0, f1, f1, f2, f3)
 	tmp_str = "[0.312] [200000.000] [200000.000] [-1234300000.000] [0.001]"
 	//C.printf(sc5.str, f0, f1, f1, f2, f3, f3)
 	//println("\n$temp_s")

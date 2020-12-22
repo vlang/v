@@ -7,10 +7,6 @@ For help regarding building an executable, see `v help build`.
 
 These build flags are enabled on `build` and `run` as long as the backend is set to `c`:
 
-   -arch <architecture>
-      Change the architecture that V will tell the C compiler to build.
-      List of supported architectures: `x86` and `x64` (default).
-
    -cc <compiler>
       Change the C compiler V invokes to the specified compiler.
       The C compiler is required to support C99.
@@ -23,7 +19,7 @@ These build flags are enabled on `build` and `run` as long as the backend is set
 
    -printfn <fn_name>
       Prints the content of the generated C function named fn_name. You can repeat that many times.
-      This is useful when you just want to quickly tweak the generated C code, 
+      This is useful when you just want to quickly tweak the generated C code,
       without opening the generated .c file in an text editor.
 
    -cg
@@ -41,10 +37,6 @@ These build flags are enabled on `build` and `run` as long as the backend is set
    -live
       Build the executable with live capabilities (`[live]`).
 
-   -manual-free
-      Enable manually freeing on all V code. This will cause memory leaks in vlib.
-      Currently enabled until a stable auto-free system is in place.
-
    -os <os>, -target-os <os>
       Change the target OS that V tries to compile for.
       By default, the target OS is the host system.
@@ -52,17 +44,26 @@ These build flags are enabled on `build` and `run` as long as the backend is set
       List of OS supported by V: `linux`, `windows`, `ios`, `mac`, `freebsd`, `openbsd`,
                                  `netbsd`, `dragonfly`, `solaris`, `android` and `haiku`.
 
+   -m32, -m64
+      Specify whether 32-bit or 64-bit machine code is generated.
+
    -sanitize
       Pass flags related to sanitization to the C compiler.
 
    -shared
       Tell V to compile a shared object instead of an executable.
       The resulting file extension will be `.dll` on Windows and `.so` on Unix systems
-      
+
    -no-prelude
-      Prevents V from generating a prelude in generated .c files, useful for freestanding targets 
+      Prevents V from generating a prelude in generated .c files, useful for freestanding targets
       where eg. you replace C standard library with your own, or some definitions/headers break something.
 
    -custom-prelude <path>
-      Useful for similar use-case as above option, except it replaces V-generated prelude with 
+      Useful for similar use-case as above option, except it replaces V-generated prelude with
       your custom one loaded from specified <path>.
+
+   -showcc
+      Prints the C command that is used to build the program.
+
+   -keepc
+      Do not remove the temporary .tmp.c and .tmp.c.rsp files. Also do not use a random prefix for them, so they would be fixed and predictable.

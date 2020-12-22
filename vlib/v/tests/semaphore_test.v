@@ -1,10 +1,10 @@
 import sync
 
 const (
-	signals_per_thread = 100_000
+	signals_per_thread = 100000
 )
 
-fn send_signals(sem, sem_end sync.Semaphore) {
+fn send_signals(sem sync.Semaphore, sem_end sync.Semaphore) {
 	for _ in 0 .. signals_per_thread {
 		sem.post()
 	}

@@ -62,14 +62,19 @@
     callback function running in a separate thread, for such cases Sokol Audio
     provides the push-model as a convenience.
 
-    SOKOL AUDIO AND SOLOUD
-    ======================
+    SOKOL AUDIO, SOLOUD AND MINIAUDIO
+    =================================
     The WASAPI, ALSA, OpenSLES and CoreAudio backend code has been taken from the
     SoLoud library (with some modifications, so any bugs in there are most
     likely my fault). If you need a more fully-featured audio solution, check
     out SoLoud, it's excellent:
 
         https://github.com/jarikomppa/soloud
+
+    Another alternative which feature-wise is somewhere inbetween SoLoud and
+    sokol-audio might be MiniAudio:
+
+        https://github.com/mackron/miniaudio
 
     GLOSSARY
     ========
@@ -480,8 +485,16 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
     #endif
     #include <windows.h>
     #include <synchapi.h>
-    #pragma comment (lib, "kernel32.lib")
-    #pragma comment (lib, "ole32.lib")
+    #if (defined(WINAPI_FAMILY_PARTITION) && !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
+        #define SOKOL_WIN32_NO_MMDEVICE
+        #pragma comment (lib, "WindowsApp.lib")
+    #else
+        #pragma comment (lib, "kernel32.lib")
+        #pragma comment (lib, "ole32.lib")
+        #if defined(SOKOL_WIN32_NO_MMDEVICE)
+            #pragma comment (lib, "mmdevapi.lib")
+        #endif
+    #endif
 #endif
 
 #if defined(SOKOL_DUMMY_BACKEND)
@@ -509,6 +522,8 @@ inline void saudio_setup(const saudio_desc& desc) { return saudio_setup(&desc); 
     static const IID _saudio_IID_IMMDeviceEnumerator = { 0xa95664d2, 0x9614, 0x4f35, { 0xa7, 0x46, 0xde, 0x8d, 0xb6, 0x36, 0x17, 0xe6 } };
     static const CLSID _saudio_CLSID_IMMDeviceEnumerator = { 0xbcde0395, 0xe52f, 0x467c, { 0x8e, 0x3d, 0xc4, 0x57, 0x92, 0x91, 0x69, 0x2e } };
     static const IID _saudio_IID_IAudioRenderClient = { 0xf294acfc, 0x3146, 0x4483,{ 0xa7, 0xbf, 0xad, 0xdc, 0xa7, 0xc2, 0x60, 0xe2 } };
+    static const IID _saudio_IID_Devinterface_Audio_Render = { 0xe6327cad, 0xdcec, 0x4949, {0xae, 0x8a, 0x99, 0x1e, 0x97, 0x6a, 0x79, 0xd2 } };
+    static const IID _saudio_IID_IActivateAudioInterface_Completion_Handler = { 0x94ea2b94, 0xe9cc, 0x49e0, {0xc0, 0xff, 0xee, 0x64, 0xca, 0x8f, 0x5b, 0x90} };
     #if defined(__cplusplus)
     #define _SOKOL_AUDIO_WIN32COM_ID(x) (x)
     #else
@@ -634,8 +649,15 @@ typedef struct {
 } _saudio_wasapi_thread_data_t;
 
 typedef struct {
+#if defined(SOKOL_WIN32_NO_MMDEVICE)
+    LPOLESTR interface_activation_audio_interface_uid_string;
+    IActivateAudioInterfaceAsyncOperation* interface_activation_operation;
+    BOOL interface_activation_success;
+    HANDLE interface_activation_mutex;
+#else
     IMMDeviceEnumerator* device_enumerator;
     IMMDevice* device;
+#endif
     IAudioClient* audio_client;
     IAudioRenderClient* render_client;
     int si16_bytes_per_frame;
@@ -1099,6 +1121,48 @@ _SOKOL_PRIVATE void _saudio_backend_shutdown(void) {
 /*=== WASAPI BACKEND IMPLEMENTATION ==========================================*/
 #elif defined(_WIN32)
 
+#if defined(SOKOL_WIN32_NO_MMDEVICE)
+/* Minimal implementation of an IActivateAudioInterfaceCompletionHandler COM object in plain C.
+   Meant to be a static singleton (always one reference when add/remove reference)
+   and implements IUnknown and IActivateAudioInterfaceCompletionHandler when queryinterface'd
+
+   Do not know why but IActivateAudioInterfaceCompletionHandler's GUID is not the one system queries for,
+   so I'm advertising the one actually requested.
+*/
+_SOKOL_PRIVATE HRESULT STDMETHODCALLTYPE _saudio_interface_completion_handler_queryinterface(IActivateAudioInterfaceCompletionHandler* instance, REFIID riid, void** ppvObject) {
+    if (!ppvObject) {
+        return E_POINTER;
+    }
+
+    if (IsEqualIID(riid, _SOKOL_AUDIO_WIN32COM_ID(_saudio_IID_IActivateAudioInterface_Completion_Handler)) || IsEqualIID(riid, _SOKOL_AUDIO_WIN32COM_ID(IID_IUnknown)))
+    {
+        *ppvObject = (void*)instance;
+        return S_OK;
+    }
+
+    *ppvObject = NULL;
+    return E_NOINTERFACE;
+}
+
+_SOKOL_PRIVATE ULONG STDMETHODCALLTYPE _saudio_interface_completion_handler_addref_release(IActivateAudioInterfaceCompletionHandler* instance) {
+    _SOKOL_UNUSED(instance);
+    return 1;
+}
+
+_SOKOL_PRIVATE HRESULT STDMETHODCALLTYPE _saudio_backend_activate_audio_interface_cb(IActivateAudioInterfaceCompletionHandler* instance, IActivateAudioInterfaceAsyncOperation* activateOperation) {
+    _SOKOL_UNUSED(instance);
+    WaitForSingleObject(_saudio.backend.interface_activation_mutex, INFINITE);
+    _saudio.backend.interface_activation_success = TRUE;
+    HRESULT activation_result;
+    if (FAILED(activateOperation->lpVtbl->GetActivateResult(activateOperation, &activation_result, (IUnknown**)(&_saudio.backend.audio_client))) || FAILED(activation_result)) {
+        _saudio.backend.interface_activation_success = FALSE;
+    }
+
+    ReleaseMutex(_saudio.backend.interface_activation_mutex);
+    return S_OK;
+}
+#endif
+
 /* fill intermediate buffer with new data and reset buffer_pos */
 _SOKOL_PRIVATE void _saudio_wasapi_fill_buffer(void) {
     if (_saudio_has_callback()) {
@@ -1172,6 +1236,16 @@ _SOKOL_PRIVATE void _saudio_wasapi_release(void) {
         IAudioClient_Release(_saudio.backend.audio_client);
         _saudio.backend.audio_client = 0;
     }
+#if defined(SOKOL_WIN32_NO_MMDEVICE)
+    if (_saudio.backend.interface_activation_audio_interface_uid_string) {
+        CoTaskMemFree(_saudio.backend.interface_activation_audio_interface_uid_string);
+        _saudio.backend.interface_activation_audio_interface_uid_string = 0;
+    }
+    if (_saudio.backend.interface_activation_operation) {
+        IActivateAudioInterfaceAsyncOperation_Release(_saudio.backend.interface_activation_operation);
+        _saudio.backend.interface_activation_operation = 0;
+    }
+#else
     if (_saudio.backend.device) {
         IMMDevice_Release(_saudio.backend.device);
         _saudio.backend.device = 0;
@@ -1180,6 +1254,7 @@ _SOKOL_PRIVATE void _saudio_wasapi_release(void) {
         IMMDeviceEnumerator_Release(_saudio.backend.device_enumerator);
         _saudio.backend.device_enumerator = 0;
     }
+#endif
     if (0 != _saudio.backend.thread.buffer_end_event) {
         CloseHandle(_saudio.backend.thread.buffer_end_event);
         _saudio.backend.thread.buffer_end_event = 0;
@@ -1188,15 +1263,57 @@ _SOKOL_PRIVATE void _saudio_wasapi_release(void) {
 
 _SOKOL_PRIVATE bool _saudio_backend_init(void) {
     REFERENCE_TIME dur;
-    if (FAILED(CoInitializeEx(0, COINIT_MULTITHREADED))) {
-        SOKOL_LOG("sokol_audio wasapi: CoInitializeEx failed");
-        return false;
-    }
+    /* UWP Threads are CoInitialized by default with a different threading model, and this call fails
+    See https://github.com/Microsoft/cppwinrt/issues/6#issuecomment-253930637 */
+#if (defined(WINAPI_FAMILY_PARTITION) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
+    /* CoInitializeEx could have been called elsewhere already, in which
+        case the function returns with S_FALSE (thus it doesn't make much
+        sense to check the result)
+    */
+    HRESULT hr = CoInitializeEx(0, COINIT_MULTITHREADED);
+    _SOKOL_UNUSED(hr);
+#endif
     _saudio.backend.thread.buffer_end_event = CreateEvent(0, FALSE, FALSE, 0);
     if (0 == _saudio.backend.thread.buffer_end_event) {
         SOKOL_LOG("sokol_audio wasapi: failed to create buffer_end_event");
         goto error;
     }
+#if defined(SOKOL_WIN32_NO_MMDEVICE)
+    _saudio.backend.interface_activation_mutex = CreateMutexA(NULL, FALSE, "interface_activation_mutex");
+    if (_saudio.backend.interface_activation_mutex == NULL) {
+        SOKOL_LOG("sokol_audio wasapi: failed to create interface activation mutex");
+        goto error;
+    }
+    if (FAILED(StringFromIID(_SOKOL_AUDIO_WIN32COM_ID(_saudio_IID_Devinterface_Audio_Render), &_saudio.backend.interface_activation_audio_interface_uid_string))) {
+        SOKOL_LOG("sokol_audio wasapi: failed to get default audio device ID string");
+        goto error;
+    }
+
+    /* static instance of the fake COM object */
+    static IActivateAudioInterfaceCompletionHandlerVtbl completion_handler_interface_vtable = {
+        _saudio_interface_completion_handler_queryinterface,
+        _saudio_interface_completion_handler_addref_release,
+        _saudio_interface_completion_handler_addref_release,
+        _saudio_backend_activate_audio_interface_cb
+    };
+    static IActivateAudioInterfaceCompletionHandler completion_handler_interface = { &completion_handler_interface_vtable };
+
+    if (FAILED(ActivateAudioInterfaceAsync(_saudio.backend.interface_activation_audio_interface_uid_string, _SOKOL_AUDIO_WIN32COM_ID(_saudio_IID_IAudioClient), NULL, &completion_handler_interface, &_saudio.backend.interface_activation_operation))) {
+        SOKOL_LOG("sokol_audio wasapi: failed to get default audio device ID string");
+        goto error;
+    }
+    while (!(_saudio.backend.audio_client)) {
+        if (WaitForSingleObject(_saudio.backend.interface_activation_mutex, 10) != WAIT_TIMEOUT) {
+            ReleaseMutex(_saudio.backend.interface_activation_mutex);
+        }
+    }
+
+    if (!(_saudio.backend.interface_activation_success)) {
+        SOKOL_LOG("sokol_audio wasapi: interface activation failed. Unable to get audio client");
+        goto error;
+    }
+
+#else
     if (FAILED(CoCreateInstance(_SOKOL_AUDIO_WIN32COM_ID(_saudio_CLSID_IMMDeviceEnumerator),
         0, CLSCTX_ALL,
         _SOKOL_AUDIO_WIN32COM_ID(_saudio_IID_IMMDeviceEnumerator),
@@ -1220,6 +1337,7 @@ _SOKOL_PRIVATE bool _saudio_backend_init(void) {
         SOKOL_LOG("sokol_audio wasapi: device activate failed");
         goto error;
     }
+#endif
     WAVEFORMATEX fmt;
     memset(&fmt, 0, sizeof(fmt));
     fmt.nChannels = (WORD) _saudio.num_channels;
@@ -1286,7 +1404,10 @@ _SOKOL_PRIVATE void _saudio_backend_shutdown(void) {
         IAudioClient_Stop(_saudio.backend.audio_client);
     }
     _saudio_wasapi_release();
+
+#if (defined(WINAPI_FAMILY_PARTITION) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
     CoUninitialize();
+#endif
 }
 
 /*=== EMSCRIPTEN BACKEND IMPLEMENTATION ======================================*/

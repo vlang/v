@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 f32/f64 to string utilities
@@ -17,7 +19,6 @@ inspired by the Go version here:
 https://github.com/cespare/ryu/tree/ba56a33f39e3bbbfa409095d0f9ae168a595feea
 
 */
-module strconv
 
 import math.bits
 
@@ -290,7 +291,7 @@ pub fn f64_to_str_l(f f64) string {
 	}
 
 	// allocate exp+32 chars for the return string
-	mut res := [`0`].repeat(exp+32) // TODO: Slow!! is there other possibilities to allocate this?
+	mut res := []byte{len: exp+32, init: 0}
 	mut r_i := 0  // result string buffer index
 
 	//println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
@@ -335,5 +336,5 @@ pub fn f64_to_str_l(f f64) string {
 		}
 	}
 	res[r_i] = 0
-	return tos(&res[0],r_i)
+	return tos(res.data,r_i)
 }

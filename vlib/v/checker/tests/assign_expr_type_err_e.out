@@ -1,4 +1,4 @@
-vlib/v/checker/tests/assign_expr_type_err_e.vv:3:2: error: operator -= not defined on left operand type `string`
+vlib/v/checker/tests/assign_expr_type_err_e.vv:3:2: error: operator `-=` not defined on left operand type `string`
     1 | fn main() {
     2 |     mut foo := 'hello'
     3 |     foo -= `a`

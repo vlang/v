@@ -3,6 +3,8 @@
 // that can be found in the LICENSE file.
 module parser
 
+import v.ast
+
 // return true if file being parsed imports `mod`
 pub fn (p &Parser) known_import(mod string) bool {
 	return mod in p.imports
@@ -27,6 +29,20 @@ fn (mut p Parser) register_used_import(alias string) {
 	if !p.is_used_import(alias) {
 		p.used_imports << alias
 	}
+}
+
+fn (mut p Parser) register_auto_import(alias string) {
+	if alias !in p.imports {
+		p.imports[alias] = alias
+		p.table.imports << alias
+		node := ast.Import{
+			pos: p.tok.position()
+			mod: alias
+			alias: alias
+		}
+		p.ast_imports << node
+	}
+	p.register_used_import(alias)
 }
 
 fn (mut p Parser) check_unused_imports() {

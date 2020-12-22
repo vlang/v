@@ -1,0 +1,6 @@
+vlib/v/checker/tests/static_vars_in_translated_mode.vv:2:13: error: static variables are supported only in -translated mode
+    1 | fn counter() int {
+    2 |     mut static icounter := 0
+      |                ~~~~~~~~
+    3 |     icounter++
+    4 |     return icounter

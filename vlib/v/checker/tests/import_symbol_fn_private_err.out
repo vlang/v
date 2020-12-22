@@ -1,0 +1,11 @@
+vlib/v/checker/tests/import_symbol_fn_private_err.vv:1:20: error: module `time` function `since()` is private
+    1 | import time { now, since }
+      |                    ~~~~~
+    2 | fn main() {
+    3 |   since(now())
+vlib/v/checker/tests/import_symbol_fn_private_err.vv:3:3: error: function `time.since` is private, so you can not import it in module `main`
+    1 | import time { now, since }
+    2 | fn main() {
+    3 |   since(now())
+      |   ~~~~~~~~~~~~
+    4 | }

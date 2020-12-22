@@ -15,11 +15,6 @@
 // try running with and without the `-prod` flag
 module hash
 
-//#flag -I @VROOT/thirdparty/wyhash
-//#include "wyhash.h"
-fn C.wyhash(byteptr, u64, u64) u64
-
-
 const (
 	wyp0 = u64(0xa0761d6478bd642f)
 	wyp1 = u64(0xe7037ed1a0b428db)
@@ -27,11 +22,6 @@ const (
 	wyp3 = u64(0x589965cc75374cc3)
 	wyp4 = u64(0x1d8e4e27c47d124f)
 )
-
-[inline]
-pub fn wyhash_c(key byteptr, len, seed u64) u64 {
-	return C.wyhash(key, len, seed)
-}
 
 [inline]
 pub fn sum64_string(key string, seed u64) u64 {
@@ -44,7 +34,7 @@ pub fn sum64(key []byte, seed u64) u64 {
 }
 
 [inline]
-fn wyhash64(key byteptr, len, seed_ u64) u64 {
+fn wyhash64(key byteptr, len u64, seed_ u64) u64 {
 	if len == 0 {
 		return 0
 	}
@@ -96,7 +86,7 @@ fn wyrotr(v u64, k u32) u64 {
 }
 
 [inline]
-pub fn wymum(a, b u64) u64 {
+pub fn wymum(a u64, b u64) u64 {
 	/*
 	mut r := u128(a)
 	r = r*b

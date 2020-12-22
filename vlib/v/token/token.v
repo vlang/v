@@ -43,12 +43,12 @@ pub enum Kind {
 	amp
 	hash
 	dollar
+	at // @
 	str_dollar
 	left_shift
 	right_shift
 	not_in // !in
 	not_is // !is
-	// at // @
 	assign // =
 	decl_assign // :=
 	plus_assign // +=
@@ -60,15 +60,13 @@ pub enum Kind {
 	or_assign
 	and_assign
 	right_shift_assign
-	left_shift_assign
-	// {}  () []
+	left_shift_assign // {}  () []
 	lcbr
 	rcbr
 	lpar
 	rpar
 	lsbr
-	rsbr
-	// == != <= < >= >
+	rsbr // == != <= < >= >
 	eq
 	ne
 	gt
@@ -79,8 +77,7 @@ pub enum Kind {
 	nl
 	dot
 	dotdot
-	ellipsis
-	// keywords
+	ellipsis // keywords
 	keyword_beg
 	key_as
 	key_asm
@@ -91,7 +88,6 @@ pub enum Kind {
 	key_continue
 	key_defer
 	key_else
-	key_embed
 	key_enum
 	key_false
 	key_for
@@ -103,8 +99,7 @@ pub enum Kind {
 	key_import
 	key_in
 	key_interface
-	key_is
-	// key_it
+	key_is // key_it
 	key_match
 	key_module
 	key_mut
@@ -132,15 +127,49 @@ pub enum Kind {
 }
 
 const (
-	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign,
-	.div_assign, .xor_assign, .mod_assign, .or_assign, .and_assign,
-	.right_shift_assign, .left_shift_assign]
-	nr_tokens = int(Kind._end_)
+	assign_tokens = [Kind.assign, .plus_assign, .minus_assign, .mult_assign, .div_assign, .xor_assign,
+		.mod_assign, .or_assign, .and_assign, .right_shift_assign, .left_shift_assign]
+	nr_tokens     = int(Kind._end_)
 )
+
+// @FN => will be substituted with the name of the current V function
+// @MOD => will be substituted with the name of the current V module
+// @STRUCT => will be substituted with the name of the current V struct
+// @VEXE => will be substituted with the path to the V compiler
+// @FILE => will be substituted with the path of the V source file
+// @LINE => will be substituted with the V line number where it appears (as a string).
+// @COLUMN => will be substituted with the column where it appears (as a string).
+// @VHASH  => will be substituted with the shortened commit hash of the V compiler (as a string).
+// @VMOD_FILE => will be substituted with the contents of the nearest v.mod file (as a string).
+// This allows things like this:
+// println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
+// ... which is useful while debugging/tracing
+//
+// @VROOT is special and handled in places like '#include ...'
+// @<type> is allowed for keyword variable names. E.g. 'type'
+pub enum AtKind {
+	unknown
+	fn_name
+	mod_name
+	struct_name
+	vexe_path
+	file_path
+	line_nr
+	column_nr
+	vhash
+	vmod_file
+}
+
+const (
+	valid_at_tokens = ['@FN', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH',
+		'@VMOD_FILE',
+	]
+)
+
 // build_keys genereates a map with keywords' string values:
 // Keywords['return'] == .key_return
 fn build_keys() map[string]Kind {
-	mut res := map[string]Kind
+	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
 		res[key] = t
@@ -150,7 +179,7 @@ fn build_keys() map[string]Kind {
 
 // TODO remove once we have `enum Kind { name('name') if('if') ... }`
 fn build_token_str() []string {
-	mut s := []string{len:(nr_tokens)}
+	mut s := []string{len: nr_tokens}
 	s[Kind.unknown] = 'unknown'
 	s[Kind.eof] = 'eof'
 	s[Kind.name] = 'name'
@@ -178,7 +207,6 @@ fn build_token_str() []string {
 	s[Kind.comma] = ','
 	s[Kind.not_in] = '!in'
 	s[Kind.not_is] = '!is'
-	// s[Kind.at] = '@'
 	s[Kind.semicolon] = ';'
 	s[Kind.colon] = ':'
 	s[Kind.arrow] = '<-'
@@ -212,6 +240,7 @@ fn build_token_str() []string {
 	s[Kind.comment] = '// comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
+	s[Kind.at] = '@'
 	s[Kind.str_dollar] = '$2'
 	s[Kind.key_assert] = 'assert'
 	s[Kind.key_struct] = 'struct'
@@ -239,7 +268,6 @@ fn build_token_str() []string {
 	s[Kind.key_continue] = 'continue'
 	s[Kind.key_break] = 'break'
 	s[Kind.key_import] = 'import'
-	s[Kind.key_embed] = 'embed'
 	s[Kind.key_unsafe] = 'unsafe'
 	s[Kind.key_typeof] = 'typeof'
 	s[Kind.key_enum] = 'enum'
@@ -263,12 +291,11 @@ fn build_token_str() []string {
 
 const (
 	token_str = build_token_str()
-	keywords = build_keys()
+	keywords  = build_keys()
 )
 
 pub fn key_to_token(key string) Kind {
-	a := Kind(keywords[key])
-	return a
+	return Kind(keywords[key])
 }
 
 pub fn is_key(key string) bool {
@@ -276,20 +303,12 @@ pub fn is_key(key string) bool {
 }
 
 pub fn is_decl(t Kind) bool {
-	return t in [.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub, .eof]
+	return t in
+		[.key_enum, .key_interface, .key_fn, .key_struct, .key_type, .key_const, .key_pub, .eof]
 }
 
 pub fn (t Kind) is_assign() bool {
 	return t in assign_tokens
-}
-
-fn (t []Kind) contains(val Kind) bool {
-	for tt in t {
-		if tt == val {
-			return true
-		}
-	}
-	return false
 }
 
 pub fn (t Kind) str() string {
@@ -307,7 +326,6 @@ pub const (
 	highest_prec = 8
 )
 */
-
 pub enum Precedence {
 	lowest
 	cond // OR or AND
@@ -325,13 +343,13 @@ pub enum Precedence {
 }
 
 pub fn build_precedences() []Precedence {
-	mut p := []Precedence{len:int(Kind._end_), cap:int(Kind._end_)}
-
+	mut p := []Precedence{len: int(Kind._end_)}
 	p[Kind.lsbr] = .index
 	p[Kind.dot] = .call
-	// `++` | `--`
+	// `++` | `--` | `?`
 	p[Kind.inc] = .postfix
 	p[Kind.dec] = .postfix
+	p[Kind.question] = .postfix
 	// `*` |  `/` | `%` | `<<` | `>>` | `&`
 	p[Kind.mul] = .product
 	p[Kind.div] = .product
@@ -365,7 +383,6 @@ pub fn build_precedences() []Precedence {
 	p[Kind.right_shift_assign] = .assign
 	p[Kind.mult_assign] = .assign
 	p[Kind.xor_assign] = .assign
-
 	p[Kind.key_in] = .in_as
 	p[Kind.not_in] = .in_as
 	p[Kind.key_as] = .in_as
@@ -373,7 +390,6 @@ pub fn build_precedences() []Precedence {
 	p[Kind.not_is] = .in_as
 	p[Kind.logical_or] = .cond
 	p[Kind.and] = .cond
-
 	return p
 }
 
@@ -393,25 +409,25 @@ pub fn (tok Token) is_scalar() bool {
 
 // is_unary returns true if the token can be in a unary expression
 pub fn (tok Token) is_unary() bool {
-	return tok.kind in [
-	// `+` | `-` | `!` | `~` | `*` | `&`
-	.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
+	return tok.kind in
+		[
+		/* `+` | `-` | `!` | `~` | `*` | `&` */.plus, .minus, .not, .bit_not, .mul, .amp, .arrow]
 }
 
 pub fn (tok Kind) is_relational() bool {
 	return tok in [
-	// `<` | `<=` | `>` | `>=`
-	.lt, .le, .gt, .ge, .eq, .ne]
+		/* `<` | `<=` | `>` | `>=` */.lt, .le, .gt, .ge, .eq, .ne]
 }
 
 pub fn (k Kind) is_start_of_type() bool {
 	return k in [.name, .lpar, .amp, .lsbr, .question]
 }
 
+pub fn (kind Kind) is_prefix() bool {
+	return kind in [.minus, .amp, .mul, .not, .bit_not]
+}
+
 pub fn (kind Kind) is_infix() bool {
-	return kind in [.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in,
-	//
-	.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is,
-	//
-	.and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
+	return kind in
+		[.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, /*  */.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is, /*  */.and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
 }

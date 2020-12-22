@@ -8,11 +8,11 @@ const (
 )
 
 [inline]
-fn sintone(periods, frame, num_frames int) f32 {
+fn sintone(periods int, frame int, num_frames int) f32 {
 	return math.sinf(f32(periods) * (2 * math.pi) * f32(frame) / f32(num_frames))
 }
 
-fn my_audio_stream_callback(buffer &f32, num_frames, num_channels int) {
+fn my_audio_stream_callback(buffer &f32, num_frames int, num_channels int) {
 	ms := sw.elapsed().milliseconds() - sw_start_ms
 	unsafe {
 		mut soundbuffer := buffer

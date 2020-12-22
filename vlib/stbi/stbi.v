@@ -57,7 +57,7 @@ pub fn load_from_memory(buf byteptr, bufsize int) ?Image {
 }
 
 
-pub fn (img Image) free() {
+pub fn (img &Image) free() {
 	C.stbi_image_free(img.data)
 }
 

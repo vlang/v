@@ -1,0 +1,35 @@
+fn if_no_returns() int {
+	if true {
+		println('no return in then')
+	} else {
+		println('no return in else')
+	}
+	println('hello')
+}
+
+fn if_no_return_in_else() int {
+	if true {
+		return 123
+	} else {
+		println('no return in else')
+	}
+	println('hello')
+}
+
+fn if_returns_in_both_branches() int {
+	// The if here always returns, so the function
+	// returns too:
+	if true {
+		return 123
+	} else {
+		return 456
+	}
+	// TODO: should produce a warning/error about a statement after a return.
+	println('hello')
+}
+
+fn main() {
+	println(if_no_returns())
+	println(if_no_return_in_else())
+	println(if_returns_in_both_branches())
+}

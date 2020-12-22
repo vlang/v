@@ -1,3 +1,5 @@
+module strconv
+
 /*
 
 atof util
@@ -15,14 +17,6 @@ Know limitation:
 
 
 */
-
-module strconv
-
-union Float64u {
-mut:
-	f f64
-	u u64
-}
 
 // atof_quick return a f64 number from a string in a quick way
 pub fn atof_quick(s string) f64 {

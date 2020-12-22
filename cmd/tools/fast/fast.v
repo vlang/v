@@ -1,7 +1,6 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 import os
 import time
 
@@ -15,26 +14,25 @@ fn main() {
 	println('fast.html generator\n')
 	// Fetch the last commit's hash
 	println('Fetching updates...')
-	ret := os.system('git pull --rebase')
+	ret := os.system('$vdir/v up')
 	if ret != 0 {
-		println('failed to git pull')
+		println('failed to update V')
 		return
 	}
 	mut commit_hash := exec('git rev-parse HEAD')
 	commit_hash = commit_hash[..8]
 	if os.exists('last_commit.txt') {
-		last_commit := os.read_file('last_commit.txt')?
+		last_commit := os.read_file('last_commit.txt') ?
 		if last_commit.trim_space() == commit_hash.trim_space() {
 			println('No new commits to benchmark. Commit $commit_hash has already been processed.')
 			return
 		}
 		commit_hash = last_commit.trim_space()
 	}
-
 	if !os.exists('table.html') {
-		os.create('table.html')?
+		os.create('table.html') ?
 	}
-	mut table := os.read_file('table.html')?
+	mut table := os.read_file('table.html') ?
 	/*
 	// Do nothing if it's already been processed.
 	if table.contains(commit_hash) {
@@ -67,14 +65,13 @@ fn main() {
 		diff2 := measure('$vdir/vprod -cc clang -o v2 $vdir/cmd/v', 'v2')
 		diff3 := measure('$vdir/vprod -x64 $vdir/cmd/tools/1mil.v', 'x64 1mil')
 		diff4 := measure('$vdir/vprod -cc clang $vdir/examples/hello_world.v', 'hello.v')
-		//println('Building V took ${diff}ms')
+		// println('Building V took ${diff}ms')
 		commit_date := exec('git log -n1 --pretty="format:%at" $commit')
 		date := time.unix(commit_date.int())
-		mut out := os.create('table.html')?
+		mut out := os.create('table.html') ?
 		// Place the new row on top
-		table =
-	'<tr>
-		<td>${date.format()}</td>
+		table = '<tr>
+		<td>$date.format()</td>
 		<td><a target=_blank href="https://github.com/vlang/v/commit/$commit">$commit</a></td>
 		<td>$message</td>
 		<td>${diff1}ms</td>
@@ -82,36 +79,50 @@ fn main() {
 		<td>${diff3}ms</td>
 		<td>${diff4}ms</td>
 	</tr>\n' +
-		table.trim_space()
+			table.trim_space()
 		out.writeln(table)
 		out.close()
 		// Regenerate index.html
-		header := os.read_file('header.html')?
-		footer := os.read_file('footer.html')?
-		mut res := os.create('index.html')?
+		header := os.read_file('header.html') ?
+		footer := os.read_file('footer.html') ?
+		mut res := os.create('index.html') ?
 		res.writeln(header)
 		res.writeln(table)
 		res.writeln(footer)
 		res.close()
 	}
 	exec('git checkout master')
-	os.write_file('last_commit.txt', commits[commits.len-1])?
+	os.write_file('last_commit.txt', commits[commits.len - 1]) ?
 }
 
 fn exec(s string) string {
-	e := os.exec(s) or { panic(err) }
+	e := os.exec(s) or {
+		panic(err)
+	}
 	return e.output.trim_right('\r\n')
 }
 
 // returns milliseconds
-fn measure(cmd, description string) int {
+fn measure(cmd string, description string) int {
 	println('  Measuring $description')
 	println('  Warming up...')
-	for _ in 0..3 {
+	for _ in 0 .. 3 {
 		exec(cmd)
 	}
 	println('  Building...')
-	sw := time.new_stopwatch({})
-	exec(cmd)
-	return int(sw.elapsed().milliseconds())
+	mut runs := []int{}
+	for r in 0 .. 5 {
+		println('  Sample ${r+1}/5')
+		sw := time.new_stopwatch({})
+		exec(cmd)
+		runs << int(sw.elapsed().milliseconds())
+	}
+	// discard lowest and highest time
+	runs.sort()
+	runs = runs[1..4]
+	mut sum := 0
+	for run in runs {
+		sum += run
+	}
+	return int(sum / 3)
 }

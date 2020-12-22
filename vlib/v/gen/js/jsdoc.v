@@ -58,12 +58,12 @@ fn (mut d JsDoc) gen_fn(it ast.FnDecl) {
 	if it.is_deprecated {
 		d.writeln(' * @deprecated')
 	}
-	for i, arg in it.args {
+	for i, arg in it.params {
 		if (it.is_method || it.receiver.typ == 0) && i == 0 {
 			continue
 		}
 		arg_type_name := d.gen.typ(arg.typ)
-		is_varg := i == it.args.len - 1 && it.is_variadic
+		is_varg := i == it.params.len - 1 && it.is_variadic
 		name := d.gen.js_name(arg.name)
 		if is_varg {
 			d.writeln(' * @param {...$arg_type_name} $name')
@@ -82,7 +82,7 @@ fn (mut d JsDoc) gen_interface(it ast.InterfaceDecl) {
 	d.writeln(' * @typedef $name')
 	for method in it.methods {
 		// Skip receiver
-		typ := d.gen.fn_typ(method.args[1..], method.return_type)
+		typ := d.gen.fn_typ(method.params[1..], method.return_type)
 		method_name := d.gen.js_name(method.name)
 		d.writeln(' * @property {$typ} $method_name')
 	}

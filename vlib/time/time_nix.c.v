@@ -4,34 +4,33 @@
 module time
 
 #include <time.h>
-
 struct C.tm {
-	tm_sec  int
-	tm_min  int
-	tm_hour int
-	tm_mday int
-	tm_mon  int
-	tm_year int
-	tm_wday int
-	tm_yday int
+	tm_sec   int
+	tm_min   int
+	tm_hour  int
+	tm_mday  int
+	tm_mon   int
+	tm_year  int
+	tm_wday  int
+	tm_yday  int
 	tm_isdst int
 }
 
 fn C.timegm(&tm) time_t
-fn C.localtime_r(t &C.time_t, tm &C.tm )
+
+fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
 }
 
-fn to_local_time(t Time) Time {
+pub fn (t Time) to_local_time() Time {
 	loc_tm := C.tm{}
 	C.localtime_r(time_t(&t.unix), &loc_tm)
-
 	return convert_ctime(loc_tm, t.microsecond)
 }
 
-type time_t voidptr
+type time_t = voidptr
 
 // in most systems, these are __quad_t, which is an i64
 struct C.timespec {
@@ -49,7 +48,7 @@ pub fn sys_mono_now() u64 {
 	} $else {
 		ts := C.timespec{}
 		C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-		return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
+		return u64(ts.tv_sec) * 1000000000 + u64(ts.tv_nsec)
 	}
 }
 
@@ -59,10 +58,31 @@ pub fn sys_mono_now() u64 {
 fn vpc_now() u64 {
 	ts := C.timespec{}
 	C.clock_gettime(C.CLOCK_MONOTONIC, &ts)
-	return u64(ts.tv_sec) * 1_000_000_000 + u64(ts.tv_nsec)
+	return u64(ts.tv_sec) * 1000000000 + u64(ts.tv_nsec)
 }
 
+// The linux_* functions are placed here, since they're used on Android as well
+// TODO: should `$if linux {}` be parsed on Android as well? (Android runs under the Linux kernel)
+// linux_now returns the local time with high precision for most os:es
+// this should be implemented properly with support for leap seconds.
+// It uses the realtime clock to get and converts it to local time
+fn linux_now() Time {
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+	loc_tm := C.tm{}
+	C.localtime_r(&ts.tv_sec, &loc_tm)
+	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
+}
 
+fn linux_utc() Time {
+	// get the high precision time as UTC realtime clock
+	// and use the nanoseconds part
+	mut ts := C.timespec{}
+	C.clock_gettime(C.CLOCK_REALTIME, &ts)
+	return unix2(int(ts.tv_sec), int(ts.tv_nsec / 1000))
+}
 
 // dummy to compile with all compilers
 pub fn win_now() Time {
@@ -88,8 +108,8 @@ pub fn (d Duration) timespec() C.timespec {
 	d_nsec := d % second
 	ts.tv_sec += d_sec
 	ts.tv_nsec += d_nsec
-	if ts.tv_nsec > second {
-		ts.tv_nsec -= second
+	if ts.tv_nsec > i64(second) {
+		ts.tv_nsec -= i64(second)
 		ts.tv_sec++
 	}
 	return ts
@@ -98,7 +118,7 @@ pub fn (d Duration) timespec() C.timespec {
 // return timespec of 1970/1/1
 pub fn zero_timespec() C.timespec {
 	ts := C.timespec{
-		tv_sec:  0
+		tv_sec: 0
 		tv_nsec: 0
 	}
 	return ts

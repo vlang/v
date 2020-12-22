@@ -12,6 +12,7 @@ fn main() {
 	mut greet_cmd := Command{
 		name: 'greet'
 		description: 'Prints greeting in different languages.'
+		usage: '<name>'
 		required_args: 1
 		pre_execute: greet_pre_func
 		execute: greet_func
@@ -44,18 +45,18 @@ fn greet_func(cmd Command) {
 	name := cmd.args[0]
 	for _ in 0 .. times {
 		match language {
-			'english' {
+			'english', 'en' {
 				println('Welcome $name')
 			}
-			'german' {
+			'german', 'de' {
 				println('Willkommen $name')
 			}
-			'dutch' {
+			'dutch', 'nl' {
 				println('Welkom $name')
 			}
 			else {
 				println('Unsupported language')
-				println('Supported are `englisch`, `german` and `dutch`.')
+				println('Supported languages are `english`, `german` and `dutch`.')
 				break
 			}
 		}

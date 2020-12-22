@@ -1,5 +1,5 @@
 import math
-import sys
+import rand.sys
 
 const (
 	range_limit = 40
@@ -237,8 +237,8 @@ fn test_sys_rng_i64_in_range() {
 }
 
 fn test_sys_rng_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		seed_data := [seed]
 		mut rng := sys.SysRNG{}

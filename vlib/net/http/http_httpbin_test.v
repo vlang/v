@@ -8,7 +8,7 @@ struct HttpbinResponseBody {
 	files   map[string]string
 	form    map[string]string
 	headers map[string]string
-	json    ?map[string]string
+	json    map[string]string
 	origin  string
 	url     string
 }
@@ -22,14 +22,10 @@ fn http_fetch_mock(_methods []string, _config FetchConfig) ?[]Response {
 	// Note: httpbin doesn't support head
 	for method in methods {
 		lmethod := method.to_lower()
-		config.method = method
-		res := fetch(url + lmethod, config) or {
-			return error(err)
-		}
+		config.method = method_from_str(method)
+		res := fetch(url + lmethod, config)?
 		// TODO
-		// body := json.decode(HttpbinResponseBody,res.text) or {
-		// return error(err)
-		// }
+		// body := json.decode(HttpbinResponseBody,res.text)?
 		result << res
 	}
 	return result

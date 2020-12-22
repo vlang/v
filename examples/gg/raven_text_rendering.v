@@ -5,13 +5,13 @@ import gx
 import os
 
 const (
-	win_width = 600
+	win_width  = 600
 	win_height = 700
-	bg_color = gx.white
+	bg_color   = gx.white
 )
 
 const (
-text = '
+	text  = '
 Once upon a midnight dreary, while I pondered, weak and weary,
 Over many a quaint and curious volume of forgotten lore—
     While I nodded, nearly napping, suddenly there came a tapping,
@@ -54,9 +54,8 @@ Soon again I heard a tapping somewhat louder than before.
 Let my heart be still a moment and this mystery explore;—
             ’Tis the wind and nothing more!”
 '
-lines = text.split('\n')
+	lines = text.split('\n')
 )
-
 
 struct App {
 mut:
@@ -64,7 +63,9 @@ mut:
 }
 
 fn main() {
-	mut app := &App{}
+	mut app := &App{
+		gg: 0
+	}
 	app.gg = gg.new_context({
 		width: win_width
 		height: win_height
@@ -74,8 +75,7 @@ fn main() {
 		user_data: app
 		bg_color: bg_color
 		frame_fn: frame
-		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
-		//window_user_ptr: ctx
+		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf') // window_user_ptr: ctx
 	})
 	app.gg.run()
 }
@@ -89,4 +89,3 @@ fn frame(mut app App) {
 	}
 	app.gg.end()
 }
-

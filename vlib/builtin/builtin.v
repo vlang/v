@@ -3,12 +3,10 @@
 // that can be found in the LICENSE file.
 module builtin
 
-__global g_m2_buf byteptr
-__global g_m2_ptr byteptr
-
-pub fn exit(code int) {
-	C.exit(code)
-}
+__global (
+	g_m2_buf byteptr
+	g_m2_ptr byteptr
+)
 
 // isnil returns true if an object is nil (only for C objects).
 pub fn isnil(v voidptr) bool {
@@ -21,6 +19,7 @@ fn on_panic(f fn(int)int) {
 }
 */
 
+// print_backtrace shows a backtrace of the current call stack on stdout
 pub fn print_backtrace() {
 	// at the time of backtrace_symbols_fd call, the C stack would look something like this:
 	// 1 frame for print_backtrace_skipping_top_frames
@@ -30,234 +29,12 @@ pub fn print_backtrace() {
 	print_backtrace_skipping_top_frames(2)
 }
 
-// replaces panic when -debug arg is passed
-fn panic_debug(line_no int, file, mod, fn_name, s string) {
-	// NB: the order here is important for a stabler test output
-	// module is less likely to change than function, etc...
-	// During edits, the line number will change most frequently,
-	// so it is last
-	eprintln('================ V panic ================')
-	eprintln('   module: $mod')
-	eprintln(' function: ${fn_name}()')
-	eprintln('  message: $s')
-	eprintln('     file: $file')
-	eprintln('     line: ' + line_no.str())
-	eprintln('=========================================')
-	// recent versions of tcc print better backtraces automatically
-	$if !tinyc {
-		print_backtrace_skipping_top_frames(1)
-	}
-	break_if_debugger_attached()
-	C.exit(1)
-}
-
-pub fn panic(s string) {
-	eprintln('V panic: $s')
-	// recent versions of tcc print better backtraces automatically
-	$if !tinyc {
-		print_backtrace()
-	}
-	break_if_debugger_attached()
-	C.exit(1)
-}
-
-pub fn eprintln(s string) {
-	// eprintln is used in panics, so it should not fail at all
-	if s.str == 0 {
-		eprintln('eprintln(NIL)')
-	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s\n', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	// TODO issues with stderr and cross compiling for Linux
-	println(s)
-}
-
-pub fn eprint(s string) {
-	if s.str == 0 {
-		eprintln('eprint(NIL)')
-	}
-	$if !windows {
-		C.fflush(C.stdout)
-		C.fflush(C.stderr)
-		C.fprintf(C.stderr, '%.*s', s.len, s.str)
-		C.fflush(C.stderr)
-		return
-	}
-	print(s)
-}
-
-pub fn print(s string) {
-	$if windows {
-		output_handle := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
-		mut bytes_written := 0
-		if is_atty(1) > 0 {
-			wide_str := s.to_wide()
-			wide_len := C.wcslen(wide_str)
-			C.WriteConsole(output_handle, wide_str, wide_len, &bytes_written, 0)
-			unsafe {
-				free(wide_str)
-			}
-		} else {
-			C.WriteFile(output_handle, s.str, s.len, &bytes_written, 0)
-		}
-	} $else {
-		C.printf('%.*s', s.len, s.str)
-	}
-}
-
-const (
-	new_line_character = '\n'
+__global (
+	total_m    = i64(0)
+	nr_mallocs = int(0)
 )
 
-//#include "@VROOT/vlib/darwin/darwin.m"
-//fn C.nsstring2(s string) voidptr
-//fn C.NSLog(x voidptr)
-//#include <asl.h>
-
-fn C.asl_log(voidptr, voidptr, int, charptr)
-
-pub fn println(s string) {
-	$if windows {
-		print(s)
-		print(new_line_character)
-	} $else {
-		// For debugging .app applications (no way to read stdout) so that it's printed to macOS Console
-		/*
-		$if macos {
-			C.asl_log(0, 0, C.ASL_LEVEL_ERR, s.str)
-		}
-		*/
-		//  TODO: a syscall sys_write on linux works, except for the v repl.
-		//  Probably it is a stdio buffering issue. Needs more testing...
-		//	$if linux {
-		//		$if !android {
-		//			snl := s + '\n'
-		//			C.syscall(/* sys_write */ 1, /* stdout_value */ 1, snl.str, s.len+1)
-		//			return
-		//		}
-		//	}
-		C.printf('%.*s\n', s.len, s.str)
-	}
-}
-
-__global total_m i64=0
-__global nr_mallocs int=0
-
-fn looo(){} // TODO remove, [ pratt
-
-[unsafe]
-pub fn malloc(n int) byteptr {
-	if n <= 0 {
-		panic('malloc(<=0)')
-	}
-	$if prealloc {
-		//println('p')
-		res := g_m2_ptr
-		unsafe {
-			g_m2_ptr += n
-		}
-		nr_mallocs++
-		return res
-	} $else {
-		ptr := unsafe {C.malloc(n)}
-		if ptr == 0 {
-			panic('malloc($n) failed')
-		}
-		return ptr
-	}
-	/*
-TODO
-#ifdef VPLAY
-	if n > 10000 {
-		panic('allocating more than 10 KB is not allowed in the playground')
-	}
-#endif
-#ifdef DEBUG_ALLOC
-	total_m += n
-	println('\n\n\nmalloc($n) total=$total_m')
-	print_backtrace()
-#endif
-*/
-}
-
-//#include <malloc/malloc.h>
-//fn malloc_size(b byteptr) int
-
-[unsafe]
-pub fn v_realloc(b byteptr, n u32) byteptr {
-	$if prealloc {
-		unsafe {
-			new_ptr := malloc(int(n))
-			size := 0 //malloc_size(b)
-			C.memcpy(new_ptr, b, size)
-			return new_ptr
-		}
-	} $else {
-		ptr := unsafe {C.realloc(b, n)}
-		if ptr == 0 {
-			panic('realloc($n) failed')
-		}
-		return ptr
-	}
-}
-
-[unsafe]
-pub fn v_calloc(n int) byteptr {
-	return C.calloc(1, n)
-}
-
-[unsafe]
-pub fn vcalloc(n int) byteptr {
-	if n < 0 {
-		panic('calloc(<=0)')
-	} else if n == 0 {
-		return byteptr(0)
-	}
-	return C.calloc(1, n)
-}
-
-[unsafe]
-pub fn free(ptr voidptr) {
-	$if prealloc {
-		return
-	}
-	C.free(ptr)
-}
-
-pub fn memdup(src voidptr, sz int) voidptr {
-	if sz == 0 {
-		return vcalloc(1)
-	}
-	unsafe {
-		mem := malloc(sz)
-		return C.memcpy(mem, src, sz)
-	}
-}
-
-fn v_ptr_free(ptr voidptr) {
-	$if prealloc {
-		return
-	}
-	C.free(ptr)
-}
-
-pub fn is_atty(fd int) int {
-	$if windows {
-		mut mode := u32(0)
-		osfh := voidptr(C._get_osfhandle(fd))
-		C.GetConsoleMode(osfh, voidptr(&mode))
-		return int(mode)
-	} $else {
-		return C.isatty(fd)
-	}
-}
-
-fn __as_cast(obj voidptr, obj_type, expected_type int) voidptr {
+fn __as_cast(obj voidptr, obj_type int, expected_type int) voidptr {
 	if obj_type != expected_type {
 		panic('as cast: cannot cast $obj_type to $expected_type')
 	}
@@ -291,26 +68,25 @@ fn __print_assert_failure(i &VAssertMetaInfo) {
 	}
 }
 
-pub struct MethodAttr {
+pub struct MethodArgs {
 pub:
-	value string
-	method string
+	typ int
 }
 
 pub struct FunctionData {
 pub:
-	name string
-	attrs []string
-	ret_type string
-	@type int
+	name        string
+	attrs       []string
+	args        []MethodArgs
+	return_type int
+	typ         int
 }
 
 pub struct FieldData {
 pub:
-	name string
-	attrs []string
-	typ string
+	name   string
+	attrs  []string
 	is_pub bool
 	is_mut bool
-	@type int
+	typ    int
 }

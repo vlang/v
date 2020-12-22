@@ -109,7 +109,7 @@ fn (mut mcache ModFileCacher) traverse(mfolder string) ([]string, ModFileAndFold
 		if mcache.check_for_stop(cfolder, files) {
 			break
 		}
-		cfolder = os.base_dir(cfolder)
+		cfolder = os.dir(cfolder)
 		folders_so_far << cfolder
 		levels++
 	}
@@ -130,10 +130,7 @@ fn (mut mcache ModFileCacher) mark_folders_as_vmod_free(folders_so_far []string)
 	// No need to check these folders anymore,
 	// because their parents do not contain v.mod files
 	for f in folders_so_far {
-		mcache.add(f, ModFileAndFolder{
-			vmod_file: ''
-			vmod_folder: f
-		})
+		mcache.add(f, vmod_file: '', vmod_folder: f)
 	}
 }
 
@@ -157,7 +154,7 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	mut files := []string{}
 	if os.exists(cfolder) && os.is_dir(cfolder) {
 		if listing := os.ls(cfolder) {
-			files = listing
+			files = listing.clone()
 		}
 	}
 	mcache.folder_files[cfolder] = files

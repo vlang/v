@@ -26,9 +26,3 @@ vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:12:9: error:
       |         ^
    13 |     _ := q
    14 |     _ := v
-vlib/v/checker/tests/unsafe_pointer_arithmetic_should_be_checked.vv:24:7: error: method `S1.f` must be called from an `unsafe` block
-   22 | fn test_funcs() {
-   23 |     s := S1{}
-   24 |     s.f()
-      |       ~~~
-   25 | }

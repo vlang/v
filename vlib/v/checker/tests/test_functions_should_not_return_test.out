@@ -1,0 +1,13 @@
+vlib/v/checker/tests/test_functions_should_not_return_test.vv:9:1: error: test functions should not return anything
+    7 | 
+    8 | // should be disallowed:
+    9 | fn test_returning_int() int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 | 
+   11 | }
+vlib/v/checker/tests/test_functions_should_not_return_test.vv:14:1: error: test functions should not return anything
+   12 | 
+   13 | // should be disallowed:
+   14 | fn test_returning_opt() ? {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 | }

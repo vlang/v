@@ -3,28 +3,29 @@
 // that can be found in the LICENSE file.
 module term
 
-pub fn format(msg, open, close string) string {
+pub fn format(msg string, open string, close string) string {
 	return '\x1b[' + open + 'm' + msg + '\x1b[' + close + 'm'
 }
 
-pub fn format_rgb(r, g, b int, msg, open, close string) string {
-	return '\x1b[' + open + ';2;' + r.str() + ';' + g.str() + ';' + b.str() + 'm' + msg + '\x1b[' + close + 'm'
+pub fn format_rgb(r int, g int, b int, msg string, open string, close string) string {
+	return '\x1b[' + open + ';2;' + r.str() + ';' + g.str() + ';' + b.str() + 'm' + msg + '\x1b[' +
+		close + 'm'
 }
 
-pub fn rgb(r, g, b int, msg string) string {
+pub fn rgb(r int, g int, b int, msg string) string {
 	return format_rgb(r, g, b, msg, '38', '39')
 }
 
-pub fn bg_rgb(r, g, b int, msg string) string {
+pub fn bg_rgb(r int, g int, b int, msg string) string {
 	return format_rgb(r, g, b, msg, '48', '49')
 }
 
 pub fn hex(hex int, msg string) string {
-	return format_rgb(hex>>16, hex>>8 & 0xFF, hex & 0xFF, msg, '38', '39')
+	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '38', '39')
 }
 
 pub fn bg_hex(hex int, msg string) string {
-	return format_rgb(hex>>16, hex>>8 & 0xFF, hex & 0xFF, msg, '48', '49')
+	return format_rgb(hex >> 16, hex >> 8 & 0xFF, hex & 0xFF, msg, '48', '49')
 }
 
 pub fn bg_black(msg string) string {
@@ -190,4 +191,3 @@ pub fn yellow(msg string) string {
 pub fn bright_yellow(msg string) string {
 	return format(msg, '93', '39')
 }
-

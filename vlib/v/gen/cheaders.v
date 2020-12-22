@@ -28,7 +28,7 @@ const (
 #define __NOINLINE __attribute__((noinline))
 #define __IRQHANDLER __attribute__((interrupt))
 
-#if defined(__x86_64__) 
+#if defined(__x86_64__)
 #define __V_amd64  1
 #endif
 #if defined(__aarch64__) || defined(__arm64__)
@@ -38,7 +38,7 @@ const (
 // Using just __GNUC__ for detecting gcc, is not reliable because other compilers define it too:
 #ifdef __GNUC__
 	#define __V_GCC__
-#endif    
+#endif
 #ifdef __TINYC__
 	#undef __V_GCC__
 #endif
@@ -67,6 +67,10 @@ const (
 	#undef TCCSKIP
 	#define TCCSKIP(x)
 	// #include <byteswap.h>
+	#ifndef _WIN32
+		#include <execinfo.h>
+		int tcc_backtrace(const char *fmt, ...);
+	#endif
 #endif
 
 // for __offset_of
@@ -95,11 +99,34 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #include <stdio.h>  // TODO remove all these includes, define all function signatures and types manually
 #include <stdlib.h>
 
+#if defined(_WIN32) || defined(__CYGWIN__)
+	#define VV_EXPORTED_SYMBOL extern __declspec(dllexport)
+	#define VV_LOCAL_SYMBOL static
+#else
+	// 4 < gcc < 5 is used by some older Ubuntu LTS and Centos versions,
+	// and does not support __has_attribute(visibility) ...
+	#ifndef __has_attribute
+		#define __has_attribute(x) 0  // Compatibility with non-clang compilers.
+	#endif
+	#if (defined(__GNUC__) && (__GNUC__ >= 4)) || (defined(__clang__) && __has_attribute(visibility))
+		#define VV_EXPORTED_SYMBOL extern __attribute__ ((visibility ("default")))
+		#define VV_LOCAL_SYMBOL  __attribute__ ((visibility ("hidden")))
+	#else
+		#define VV_EXPORTED_SYMBOL extern
+		#define VV_LOCAL_SYMBOL static
+	#endif
+#endif
+
 #ifdef __cplusplus
 	#include <utility>
 	#define _MOV std::move
 #else
 	#define _MOV
+#endif
+
+#if defined(__TINYC__) && defined(__has_include)
+// tcc does not support has_include properly yet, turn it off completely
+#undef __has_include
 #endif
 
 #ifndef _WIN32
@@ -187,8 +214,12 @@ $c_common_macros
 	#endif
 	#define _WIN32_WINNT 0x0600
 	#define WIN32_LEAN_AND_MEAN
+	#ifndef _UNICODE
 	#define _UNICODE
+	#endif
+	#ifndef UNICODE
 	#define UNICODE
+	#endif
 	#include <windows.h>
 
 	#include <io.h> // _waccess
@@ -232,13 +263,15 @@ $c_common_macros
 #endif
 
 // g_live_info is used by live.info()
-void* g_live_info = NULL;
+static void* g_live_info = NULL;
 
 //============================== HELPER C MACROS =============================*/
 //#define tos4(s, slen) ((string){.str=(s), .len=(slen)})
-#define _SLIT(s) ((string){.str=(byteptr)(s), .len=(strlen(s))})
+// `"" s` is used to enforce a string literal argument
+#define _SLIT(s) ((string){.str=(byteptr)("" s), .len=(sizeof(s)-1), .is_lit=1})
+// take the address of an rvalue
+#define ADDR(type, expr) (&((type[]){expr}[0]))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _IN(typ, val, arr) array_##typ##_contains(arr, val)
 #define _IN_MAP(val, m) map_exists(m, val)
 
 // unsigned/signed comparisons
@@ -389,6 +422,12 @@ void _vcleanup();
 		return ((r&0x1fffff)+((r>>21)&0x1fffff)+((r>>42)&0x1fffff))*_wynorm-3.0;
 	}
 #endif
+
+voidptr memdup(voidptr src, int sz);
+static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
+	free(ptr);
+	return memdup(src, sz);
+}
 '
 	c_builtin_types = '
 //================================== builtin types ================================*/
@@ -407,20 +446,7 @@ typedef double any_float;
 typedef unsigned char* byteptr;
 typedef void* voidptr;
 typedef char* charptr;
-typedef struct array array;
-typedef struct map map;
-typedef array array_string;
-typedef array array_int;
-typedef array array_byte;
-typedef array array_f32;
-typedef array array_f64;
-typedef array array_u16;
-typedef array array_u32;
-typedef array array_u64;
-typedef map map_int;
-typedef map map_string;
 typedef byte array_fixed_byte_300 [300];
-typedef byte array_fixed_byte_400 [400];
 
 typedef struct sync__Channel* chan;
 

@@ -5,13 +5,13 @@ module http
 
 import net.urllib
 import net.http.chunked
-import strings
 import net
+import io
 
 const (
 	max_redirects        = 4
 	content_type_default = 'text/plain'
-	bufsize = 1536
+	bufsize              = 1536
 )
 
 pub struct Request {
@@ -35,7 +35,7 @@ pub mut:
 	headers    map[string]string
 	cookies    map[string]string
 	user_agent string = 'v.http'
-	verbose    bool = false
+	verbose    bool
 }
 
 pub struct Response {
@@ -47,9 +47,9 @@ pub:
 	status_code int
 }
 
-pub fn new_request(method Method, url_, data string) ?Request {
+pub fn new_request(method Method, url_ string, data string) ?Request {
 	url := if method == .get { url_ + '?' + data } else { url_ }
-	//println('new req() method=$method url="$url" dta="$data"')
+	// println('new req() method=$method url="$url" dta="$data"')
 	return Request{
 		method: method
 		url: url
@@ -62,62 +62,38 @@ pub fn new_request(method Method, url_, data string) ?Request {
 	}
 }
 
-fn (methods []Method) contains(m Method) bool {
-	for method in methods {
-		if method == m {
-			return true
-		}
-	}
-	return false
-}
-
 pub fn get(url string) ?Response {
 	return fetch_with_method(.get, url, FetchConfig{})
 }
 
-pub fn post(url, data string) ?Response {
-	return fetch_with_method(.post, url, {
-		data: data
-		headers: {
+pub fn post(url string, data string) ?Response {
+	return fetch_with_method(.post, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
-pub fn post_json(url, data string) ?Response {
-	return fetch_with_method(.post, url, {
-		data: data
-		headers: {
+pub fn post_json(url string, data string) ?Response {
+	return fetch_with_method(.post, url, data: data, headers: {
 			'Content-Type': 'application/json'
-		}
-	})
+		})
 }
 
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, {
-		headers: {
+	return fetch_with_method(.post, url, headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
-		}
-		data: url_encode_form_data(data)
-	})
+		}, data: url_encode_form_data(data))
 }
 
-pub fn put(url, data string) ?Response {
-	return fetch_with_method(.put, url, {
-		data: data
-		headers: {
+pub fn put(url string, data string) ?Response {
+	return fetch_with_method(.put, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
-pub fn patch(url, data string) ?Response {
-	return fetch_with_method(.patch, url, {
-		data: data
-		headers: {
+pub fn patch(url string, data string) ?Response {
+	return fetch_with_method(.patch, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
 pub fn head(url string) ?Response {
@@ -132,9 +108,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 	if _url == '' {
 		return error('http.fetch: empty url')
 	}
-	url := build_url_from_fetch(_url, config) or {
-		return error('http.fetch: invalid url ${_url}')
-	}
+	url := build_url_from_fetch(_url, config) or { return error('http.fetch: invalid url $_url') }
 	data := config.data
 	req := Request{
 		method: config.method
@@ -147,18 +121,12 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 		user_ptr: 0
 		verbose: config.verbose
 	}
-	res := req.do() or {
-		return error(err)
-	}
+	res := req.do() ?
 	return res
 }
 
 pub fn get_text(url string) string {
-	resp := fetch(url, {
-		method: .get
-	}) or {
-		return ''
-	}
+	resp := fetch(url, method: .get) or { return '' }
 	return resp.text
 }
 
@@ -179,16 +147,14 @@ fn fetch_with_method(method Method, url string, _config FetchConfig) ?Response {
 }
 
 fn build_url_from_fetch(_url string, config FetchConfig) ?string {
-	mut url := urllib.parse(_url) or {
-		return error(err)
-	}
+	mut url := urllib.parse(_url) ?
 	params := config.params
 	if params.keys().len == 0 {
 		return url.str()
 	}
 	mut pieces := []string{}
 	for key in params.keys() {
-		pieces << '${key}=${params[key]}'
+		pieces << '$key=${params[key]}'
 	}
 	mut query := pieces.join('&')
 	if url.raw_query.len > 1 {
@@ -199,19 +165,15 @@ fn build_url_from_fetch(_url string, config FetchConfig) ?string {
 }
 
 fn (mut req Request) free() {
-	unsafe {
-		req.headers.free()
-	}
+	unsafe {req.headers.free()}
 }
 
 fn (mut resp Response) free() {
-	unsafe {
-		resp.headers.free()
-	}
+	unsafe {resp.headers.free()}
 }
 
 // add_header adds the key and value of an HTTP request header
-pub fn (mut req Request) add_header(key, val string) {
+pub fn (mut req Request) add_header(key string, val string) {
 	req.headers[key] = val
 }
 
@@ -232,9 +194,7 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	mut url := urllib.parse(req.url) or {
-		return error('http.Request.do: invalid url ${req.url}')
-	}
+	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url $req.url') }
 	mut rurl := url
 	mut resp := Response{}
 	mut no_redirects := 0
@@ -242,9 +202,7 @@ pub fn (req &Request) do() ?Response {
 		if no_redirects == max_redirects {
 			return error('http.request.do: maximum number of redirects reached ($max_redirects)')
 		}
-		qresp := req.method_and_url_to_response(req.method, rurl) or {
-			return error(err)
-		}
+		qresp := req.method_and_url_to_response(req.method, rurl) ?
 		resp = qresp
 		if resp.status_code !in [301, 302, 303, 307, 308] {
 			break
@@ -270,7 +228,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	host_name := url.hostname()
 	scheme := url.scheme
 	p := url.path.trim_left('/')
-	path := if url.query().len > 0 { '/$p?${url.query().encode()}' } else { '/$p' }
+	path := if url.query().len > 0 { '/$p?$url.query().encode()' } else { '/$p' }
 	mut nport := url.port().int()
 	if nport == 0 {
 		if scheme == 'http' {
@@ -283,15 +241,11 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 	// println('fetch $method, $scheme, $host_name, $nport, $path ')
 	if scheme == 'https' {
 		// println('ssl_do( $nport, $method, $host_name, $path )')
-		res := req.ssl_do(nport, method, host_name, path) or {
-			return error(err)
-		}
+		res := req.ssl_do(nport, method, host_name, path) ?
 		return res
 	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do(nport, method, host_name, path) or {
-			return error(err)
-		}
+		res := req.http_do('$host_name:$nport', method, path) ?
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
@@ -326,13 +280,10 @@ fn parse_response(resp string) Response {
 			break
 		}
 		i++
-		pos := h.index(':') or {
-			continue
-		}
+		pos := h.index(':') or { continue }
 		// if h.contains('Content-Type') {
 		// continue
 		// }
-
 		mut key := h[..pos]
 		lkey := key.to_lower()
 		val := h[pos + 2..]
@@ -356,7 +307,7 @@ fn parse_response(resp string) Response {
 	}
 }
 
-fn (req &Request) build_request_headers(method Method, host_name, path string) string {
+fn (req &Request) build_request_headers(method Method, host_name string, path string) string {
 	ua := req.user_agent
 	mut uheaders := []string{}
 	if 'Host' !in req.headers {
@@ -366,17 +317,16 @@ fn (req &Request) build_request_headers(method Method, host_name, path string) s
 		uheaders << 'User-Agent: $ua\r\n'
 	}
 	if req.data.len > 0 && 'Content-Length' !in req.headers {
-		uheaders << 'Content-Length: ${req.data.len}\r\n'
+		uheaders << 'Content-Length: $req.data.len\r\n'
 	}
 	for key, val in req.headers {
 		if key == 'Cookie' {
 			continue
 		}
-		uheaders << '${key}: ${val}\r\n'
+		uheaders << '$key: $val\r\n'
 	}
 	uheaders << req.build_request_cookies_header()
-	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' +
-		req.data
+	return '$method $path HTTP/1.1\r\n' + uheaders.join('') + 'Connection: close\r\n\r\n' + req.data
 }
 
 fn (req &Request) build_request_cookies_header() string {
@@ -409,28 +359,15 @@ pub fn escape(s string) string {
 	panic('http.escape() was replaced with http.escape_url()')
 }
 
-fn (req &Request) http_do(port int, method Method, host_name, path string) ?Response {
-	rbuffer := [bufsize]byte{}
-	mut sb := strings.new_builder(100)
+fn (req &Request) http_do(host string, method Method, path string) ?Response {
+	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
-	client := net.dial(host_name, port) or {
-		return error(err)
-	}
-	client.send(s.str, s.len) or {
-	}
-	for {
-		readbytes := client.crecv(rbuffer, bufsize)
-		if readbytes < 0 {
-			return error('http.request.http_do: error reading response. readbytes=$readbytes')
-		}
-		if readbytes == 0 {
-			break
-		}
-		sb.write(tos(rbuffer, readbytes))
-	}
-	client.close() or {
-	}
-	return parse_response(sb.str())
+	mut client := net.dial_tcp(host) ?
+	// TODO this really needs to be exposed somehow
+	client.write(s.bytes()) ?
+	mut bytes := io.read_all(reader: client) ?
+	client.close()
+	return parse_response(bytes.bytestr())
 }
 
 pub fn (req &Request) referer() string {

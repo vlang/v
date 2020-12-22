@@ -6,10 +6,10 @@ module table
 // e.g. `[unsafe]`
 pub struct Attr {
 pub:
-	name        string // [name]
-	is_string   bool // ['name']
-	is_ctdefine bool // [if name]
-	arg         string // [name: arg]
+	name          string // [name]
+	is_string     bool // ['name']
+	is_ctdefine   bool // [if name]
+	arg           string // [name: arg]
 	is_string_arg bool // [name: 'arg']
 }
 
@@ -21,8 +21,7 @@ pub fn (attr Attr) str() string {
 	}
 	if attr.is_string {
 		s += "'$attr.name'"
-	}
-	else {
+	} else {
 		s += attr.name
 		if attr.arg.len > 0 {
 			s += ': '
@@ -31,8 +30,7 @@ pub fn (attr Attr) str() string {
 				// FIXME: other escapes e.g. \r\n
 				a = a.replace("'", "\\'")
 				s += "'$a'"
-			}
-			else {
+			} else {
 				s += attr.arg
 			}
 		}

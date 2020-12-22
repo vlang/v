@@ -52,6 +52,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 			p.check_name() // `by`
 		} else {
 			p.error_with_pos('use `order by` in ORM queries', order_pos)
+			return ast.Expr{}
 		}
 		has_order = true
 		order_expr = p.expr(0)
@@ -76,7 +77,7 @@ fn (mut p Parser) sql_expr() ast.Expr {
 	}
 	if !query_one && !is_count {
 		// return an array
-		typ = table.new_type(p.table.find_or_register_array(table_type, 1, p.mod))
+		typ = table.new_type(p.table.find_or_register_array(table_type, 1))
 	} else if !is_count {
 		// return a single object
 		// TODO optional
@@ -139,6 +140,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			}
 			else {
 				p.error('can only insert variables')
+				return ast.SqlStmt{}
 			}
 		}
 	}
@@ -147,9 +149,11 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	mut update_exprs := []ast.Expr{cap: 5}
 	if kind == .insert && n != 'into' {
 		p.error('expecting `into`')
+		return ast.SqlStmt{}
 	} else if kind == .update {
 		if n != 'set' {
 			p.error('expecting `set`')
+			return ast.SqlStmt{}
 		}
 		for {
 			column := p.check_name()
@@ -164,6 +168,7 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 		}
 	} else if kind == .delete && n != 'from' {
 		p.error('expecting `from`')
+		return ast.SqlStmt{}
 	}
 	mut table_type := table.Type(0)
 	mut where_expr := ast.Expr{}
@@ -179,13 +184,13 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 			idx := p.table.find_type_idx(p.prepend_mod(table_name))
 			table_type = table.new_type(idx)
 		}
-		p.check_sql_keyword('where')
+		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	} else if kind == .delete {
 		table_type = p.parse_type()
 		sym := p.table.get_type_symbol(table_type)
 		table_name = sym.name
-		p.check_sql_keyword('where')
+		p.check_sql_keyword('where') or { return ast.SqlStmt{} }
 		where_expr = p.expr(0)
 	}
 	p.check(.rcbr)
@@ -202,8 +207,10 @@ fn (mut p Parser) sql_stmt() ast.SqlStmt {
 	}
 }
 
-fn (mut p Parser) check_sql_keyword(name string) {
+fn (mut p Parser) check_sql_keyword(name string) ?bool {
 	if p.check_name() != name {
 		p.error('orm: expecting `$name`')
+		return none
 	}
+	return true
 }

@@ -11,7 +11,7 @@ const (
 fn test_shadow() {
 	mut animal := Animal{}
 	animal = cat
-	match animal {
+	match mut animal {
 		Cat {
 			assert animal.name == cat.name
 		}
@@ -24,9 +24,9 @@ fn test_shadow() {
 fn test_as() {
 	mut animal := Animal{}
 	animal = dog
-	match animal as animal_kind {
+	match mut animal {
 		Dog {
-			assert animal_kind.name == dog.name
+			assert animal.name == dog.name
 		}
 		else{
 			assert false

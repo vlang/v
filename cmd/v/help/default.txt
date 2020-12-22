@@ -6,7 +6,7 @@ Usage:
 Examples:
    v hello.v                 Compile the file `hello.v` and output it as `hello` or `hello.exe`.
    v run hello.v             Same as above but also run the produced executable immediately after compilation.
-   v -cg run hello.v  Same as above, but make debugging easier (in case your program crashes).
+   v -cg run hello.v         Same as above, but make debugging easier (in case your program crashes).
    v -o h.c hello.v          Translate `hello.v` to `h.c`. Do not compile further.
 
 V supports the following commands:
@@ -35,7 +35,6 @@ V supports the following commands:
    list              List all installed modules.
    outdated          Show installed modules that need updates.
 * Others:
-   build             Build V code in the provided path (the default, so you can skip the word `build`).
    translate         Translate C code to V (coming soon in 0.3).
    tracev            Produce a tracing version of the v compiler.
                      Use `tracev yourfile.v` when the compiler panics.

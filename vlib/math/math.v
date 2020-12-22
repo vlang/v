@@ -9,10 +9,8 @@ module math
 // backend specific functions.
 // If using System/Backend dependent functions, put them in their respective
 // .c.v or .js.v or other files
-
 // Below are functions that are not wrappers for built-in system functions, but
 // native V functions. They are still sorted alphabetically
-
 // Faster approximate sin() and cos() implemented from lolremez
 pub fn aprox_sin(a f64) f64 {
 	a0 := 1.91059300966915117e-31
@@ -40,7 +38,7 @@ pub fn aprox_cos(a f64) f64 {
 }
 
 // copysign returns a value with the magnitude of x and the sign of y
-pub fn copysign(x, y f64) f64 {
+pub fn copysign(x f64, y f64) f64 {
 	return f64_from_bits((f64_bits(x) & ~sign_mask) | (f64_bits(y) & sign_mask))
 }
 
@@ -50,7 +48,7 @@ pub fn degrees(radians f64) f64 {
 }
 
 // digits returns an array of the digits of n in the given base.
-pub fn digits(_n, base int) []int {
+pub fn digits(_n int, base int) []int {
 	if base < 2 {
 		panic('digits: Cannot find digits of n with base $base')
 	}
@@ -76,7 +74,7 @@ pub fn fabs(x f64) f64 {
 }
 
 // gcd calculates greatest common (positive) divisor (or zero if a and b are both zero).
-pub fn gcd(a_, b_ i64) i64 {
+pub fn gcd(a_ i64, b_ i64) i64 {
 	mut a := a_
 	mut b := b_
 	if a < 0 {
@@ -96,7 +94,7 @@ pub fn gcd(a_, b_ i64) i64 {
 }
 
 // lcm calculates least common (non-negative) multiple.
-pub fn lcm(a, b i64) i64 {
+pub fn lcm(a i64, b i64) i64 {
 	if a == 0 {
 		return a
 	}
@@ -108,7 +106,7 @@ pub fn lcm(a, b i64) i64 {
 }
 
 // max returns the maximum value of the two provided.
-pub fn max(a, b f64) f64 {
+pub fn max(a f64, b f64) f64 {
 	if a > b {
 		return a
 	}
@@ -116,7 +114,7 @@ pub fn max(a, b f64) f64 {
 }
 
 // min returns the minimum value of the two provided.
-pub fn min(a, b f64) f64 {
+pub fn min(a f64, b f64) f64 {
 	if a < b {
 		return a
 	}

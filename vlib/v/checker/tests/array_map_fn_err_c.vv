@@ -1,0 +1,5 @@
+fn do_nothing(a string) {}
+fn main() {
+	a := [1,2,3,4].map(do_nothing)
+	println(a)
+}

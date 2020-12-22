@@ -1,5 +1,5 @@
-import musl
 import math
+import rand.musl
 import rand.util
 
 const (
@@ -168,8 +168,8 @@ fn test_musl_u64_in_range() {
 }
 
 fn test_musl_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		mut rng := musl.MuslRNG{}
 		rng.seed(seed)

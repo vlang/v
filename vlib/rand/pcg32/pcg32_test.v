@@ -1,5 +1,5 @@
 import math
-import pcg32
+import rand.pcg32
 import rand.util
 
 const (
@@ -169,8 +169,8 @@ fn test_pcg32_u64_in_range() {
 }
 
 fn test_pcg32_int31() {
-	max_u31 := 0x7FFFFFFF
-	sign_mask := 0x80000000
+	max_u31 := int(0x7FFFFFFF)
+	sign_mask := int(0x80000000)
 	for seed in seeds {
 		mut rng := pcg32.PCG32RNG{}
 		rng.seed(seed)

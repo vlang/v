@@ -1,12 +1,12 @@
 import vmod
+import os
 
 fn test_from_file() {
-	data := vmod.from_file('./v.mod') or {
-		panic(err)
-	}
+	os.chdir(os.dir(os.getenv('VEXE')))
+	data := vmod.from_file('./v.mod') or { panic(err) }
 	assert data.name == 'V'
 	assert data.description == 'The V programming language.'
-	assert data.version == '0.1.29'
+	assert data.version == '0.1.30'
 	assert data.dependencies.len == 0
 }
 
@@ -39,4 +39,11 @@ fn test_decode() {
 		assert err == 'vmod: no content.'
 		exit(0)
 	}
+}
+
+fn test_decode_with_comptime_vmod_file() {
+	mod := vmod.decode(@VMOD_FILE) or { panic('Error decoding v.mod') }
+	assert mod.name == 'V'
+	assert mod.repo_url == 'https://github.com/vlang/v'
+	assert mod.license == 'MIT'
 }

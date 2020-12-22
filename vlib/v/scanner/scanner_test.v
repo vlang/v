@@ -59,14 +59,12 @@ fn test_float_without_fraction() {
 	assert result[0] == .name
 	assert result[1] == .decl_assign
 	assert result[2] == .number
-
 	result = scan_kinds('return 3., 4.')
 	assert result.len == 4
 	assert result[0] == .key_return
 	assert result[1] == .number
 	assert result[2] == .comma
 	assert result[3] == .number
-
 	result = scan_kinds('fun(5.)')
 	assert result.len == 4
 	assert result[0] == .name
@@ -137,4 +135,9 @@ fn test_ref_ref_array_ref_ref_foo() {
 	assert result[4] == .amp
 	assert result[5] == .amp
 	assert result[6] == .name
+}
+
+fn test_escape_string() {
+	assert '\x61' == 'a'
+	assert '\x62' == 'b'
 }

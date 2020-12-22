@@ -148,15 +148,17 @@ fn (mut cmd Command) parse_flags() {
 		}
 		mut found := false
 		for i in 0 .. cmd.flags.len {
-			mut flag := &cmd.flags[i]
-			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
-				found = true
-				flag.found = true
-				cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
-					println('Failed to parse flag `${cmd.args[0]}`: $err')
-					exit(1)
+			unsafe {
+				mut flag := &cmd.flags[i]
+				if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
+					found = true
+					flag.found = true
+					cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
+						println('Failed to parse flag `${cmd.args[0]}`: $err')
+						exit(1)
+					}
+					break
 				}
-				break
 			}
 		}
 		if !found {
@@ -183,43 +185,43 @@ fn (mut cmd Command) parse_commands() {
 			}
 		}
 	}
-	// if no further command was found, execute current command
-	if int(cmd.execute) == 0 {
+	if cmd.is_root() && int(cmd.execute) == 0 {
 		if !cmd.disable_help {
 			cmd.execute_help()
+			return
 		}
-	} else {
-		if cmd.required_args > 0 {
-			if cmd.required_args > cmd.args.len {
-				println('Command `$cmd.name` needs at least $cmd.required_args arguments')
-				exit(1)
-			}
-		}
-		cmd.check_required_flags()
-		if int(cmd.pre_execute) > 0 {
-			cmd.pre_execute(*cmd) or {
-				println('cli preexecution error: $err')
-				exit(1)
-			}
-		}
-		cmd.execute(*cmd) or {
-			println('cli execution error: $err')
+	}
+	// if no further command was found, execute current command
+	if cmd.required_args > 0 {
+		if cmd.required_args > cmd.args.len {
+			eprintln('Command `$cmd.name` needs at least $cmd.required_args arguments')
 			exit(1)
 		}
-		if int(cmd.post_execute) > 0 {
-			cmd.post_execute(*cmd) or {
-				println('cli postexecution error: $err')
-				exit(1)
-			}
+	}
+	cmd.check_required_flags()
+	if int(cmd.pre_execute) > 0 {
+		cmd.pre_execute(*cmd) or {
+			eprintln('cli preexecution error: $err')
+			exit(1)
+		}
+	}
+	if int(cmd.execute) > 0 {
+		cmd.execute(*cmd) or {
+			eprintln('cli execution error: $err')
+			exit(1)
+		}
+	}
+	if int(cmd.post_execute) > 0 {
+		cmd.post_execute(*cmd) or {
+			eprintln('cli postexecution error: $err')
+			exit(1)
 		}
 	}
 }
 
 fn (cmd Command) check_help_flag() {
 	if !cmd.disable_help && cmd.flags.contains('help') {
-		help_flag := cmd.flags.get_bool('help') or {
-			return
-		} // ignore error and handle command normally
+		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			cmd.execute_help()
 			exit(0)
@@ -229,13 +231,9 @@ fn (cmd Command) check_help_flag() {
 
 fn (cmd Command) check_version_flag() {
 	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
-		version_flag := cmd.flags.get_bool('version') or {
-			return
-		} // ignore error and handle command normally
+		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
-			version_cmd := cmd.commands.get('version') or {
-				return
-			} // ignore error and handle command normally
+			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
 			version_cmd.execute(version_cmd)
 			exit(0)
 		}
@@ -254,9 +252,7 @@ fn (cmd Command) check_required_flags() {
 
 fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
-		help_cmd := cmd.commands.get('help') or {
-			return
-		} // ignore error and handle command normally
+		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		help_cmd.execute(help_cmd)
 	} else {
 		print(cmd.help_message())
@@ -269,7 +265,7 @@ fn (cmds []Command) get(name string) ?Command {
 			return cmd
 		}
 	}
-	return error('Command `$name` not found')
+	return error('Command `$name` not found in $cmds')
 }
 
 fn (cmds []Command) contains(name string) bool {

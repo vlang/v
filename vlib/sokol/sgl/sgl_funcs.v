@@ -30,10 +30,10 @@ fn C.sgl_matrix_mode_modelview()
 fn C.sgl_matrix_mode_projection()
 fn C.sgl_matrix_mode_texture()
 fn C.sgl_load_identity()
-fn C.sgl_load_matrix(m []f32) // should be [16]f32
-fn C.sgl_load_transpose_matrix(m []f32) // should be [16]f32
-fn C.sgl_mult_matrix(m []f32)
-fn C.sgl_mult_transpose_matrix(m []f32) // should be [16]f32
+fn C.sgl_load_matrix(m [16]f32)
+fn C.sgl_load_transpose_matrix(m [16]f32)
+fn C.sgl_mult_matrix(m [16]f32)
+fn C.sgl_mult_transpose_matrix(m [16]f32)
 fn C.sgl_rotate(angle_rad f32, x f32, y f32, z f32)
 fn C.sgl_scale(x f32, y f32, z f32)
 fn C.sgl_translate(x f32, y f32, z f32)

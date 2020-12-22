@@ -45,6 +45,10 @@ mut:
 	val int
 }
 
+fn (n Num) add(i int) int {
+	return n.val + i
+}
+
 fn test_defer_early_exit() {
 	mut sum := Num{0}
 	for i in 0 .. 10 {
@@ -58,4 +62,24 @@ fn test_defer_option() {
 	mut ok := Num{0}
 	set_num_opt(mut ok) or {}
 	assert ok.val == 1
+}
+
+fn test_defer_with_anon_fn() {
+	mut f := &Num{val: 110}
+	defer {
+		assert f.add(1) == 111
+	}
+	go fn () {
+		defer {
+			println('deferred 1')
+		}
+	}()
+	x := fn () {
+		defer {
+			println('defered 2')
+		}
+		return
+	}
+	x()
+	return
 }

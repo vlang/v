@@ -5,7 +5,6 @@ module parser
 
 import v.ast
 import v.table
-import v.token
 
 fn (mut p Parser) array_init() ast.ArrayInit {
 	first_pos := p.tok.position()
@@ -16,12 +15,14 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	mut elem_type := table.void_type
 	mut elem_type_pos := first_pos
 	mut exprs := []ast.Expr{}
+	mut ecmnts := [][]ast.Comment{}
 	mut is_fixed := false
 	mut has_val := false
 	mut has_type := false
 	mut has_default := false
 	mut default_expr := ast.Expr{}
 	if p.tok.kind == .rsbr {
+		last_pos = p.tok.position()
 		// []typ => `[]` and `typ` must be on the same line
 		line_nr := p.tok.line_nr
 		p.next()
@@ -29,17 +30,17 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		if p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			elem_type_pos = p.tok.position()
 			elem_type = p.parse_type()
-			sym := p.table.get_type_symbol(elem_type)
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1, sym.mod)
+			idx := p.table.find_or_register_array(elem_type, 1)
 			array_type = table.new_type(idx)
 			has_type = true
 		}
 	} else {
 		// [1,2,3] or [const]byte
-		for i := 0; p.tok.kind != .rsbr; i++ {
+		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
+			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {
 				p.next()
 			}
@@ -64,6 +65,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					n := p.check_name()
 					if n != 'init' {
 						p.error_with_pos('expected `init:`, not `$n`', pos)
+						return ast.ArrayInit{}
 					}
 					p.check(.colon)
 					has_default = true
@@ -72,7 +74,8 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				last_pos = p.tok.position()
 				p.check(.rcbr)
 			} else {
-				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`', last_pos)
+				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
+					last_pos)
 			}
 		} else {
 			if p.tok.kind == .not {
@@ -115,6 +118,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				}
 				else {
 					p.error('wrong field `$key`, expecting `len`, `cap`, or `init`')
+					return ast.ArrayInit{}
 				}
 			}
 			if p.tok.kind != .rcbr {
@@ -123,11 +127,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		p.check(.rcbr)
 	}
-	pos := token.Position{
-		line_nr: first_pos.line_nr
-		pos: first_pos.pos
-		len: last_pos.pos - first_pos.pos + last_pos.len
-	}
+	pos := first_pos.extend(last_pos)
 	return ast.ArrayInit{
 		is_fixed: is_fixed
 		has_val: has_val
@@ -135,6 +135,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		elem_type: elem_type
 		typ: array_type
 		exprs: exprs
+		ecmnts: ecmnts
 		pos: pos
 		elem_type_pos: elem_type_pos
 		has_len: has_len
