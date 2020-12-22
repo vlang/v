@@ -1,5 +1,5 @@
-import mt19937
 import math
+import rand.mt19937
 import rand.util
 
 const (
