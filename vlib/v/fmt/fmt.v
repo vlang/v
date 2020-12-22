@@ -297,8 +297,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			if node.is_unsafe {
 				f.write('unsafe ')
 			}
-			f.writeln('{')
-			f.stmts(node.stmts)
+			f.write('{')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.BranchStmt {
@@ -306,36 +309,26 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 		}
 		ast.CompFor {
 			typ := f.no_cur_mod(f.table.type_to_str(node.typ))
-			f.writeln('\$for $node.val_var in ${typ}.$node.kind.str() {')
-			f.stmts(node.stmts)
+			f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
 		ast.DeferStmt {
-			f.writeln('defer {')
-			f.stmts(node.stmts)
+			f.write('defer {')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.EnumDecl {
-			f.attrs(node.attrs)
-			if node.is_pub {
-				f.write('pub ')
-			}
-			name := node.name.after('.')
-			f.writeln('enum $name {')
-			f.comments(node.comments, inline: true, level: .indent)
-			for field in node.fields {
-				f.write('\t$field.name')
-				if field.has_expr {
-					f.write(' = ')
-					f.expr(field.expr)
-				}
-				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
-				f.writeln('')
-			}
-			f.writeln('}\n')
+			f.enum_decl(node)
 		}
 		ast.ExprStmt {
 			f.comments(node.comments, {})
@@ -362,8 +355,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.write('; ')
 			f.stmt(node.inc)
 			f.remove_new_line()
-			f.writeln(' {')
-			f.stmts(node.stmts)
+			f.write(' {')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.ForInStmt {
@@ -389,8 +385,11 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 				f.write(' .. ')
 				f.expr(node.high)
 			}
-			f.writeln(' {')
-			f.stmts(node.stmts)
+			f.write(' {')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.ForStmt {
@@ -400,11 +399,14 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.write('for ')
 			f.expr(node.cond)
 			if node.is_inf {
-				f.writeln('{')
+				f.write('{')
 			} else {
-				f.writeln(' {')
+				f.write(' {')
 			}
-			f.stmts(node.stmts)
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.writeln('}')
 		}
 		ast.GlobalDecl {
@@ -597,6 +599,10 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		f.write(gtypes)
 		f.write('>')
 	}
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln(' {}\n')
+		return
+	}
 	f.writeln(' {')
 	mut max := 0
 	mut max_type := 0
@@ -701,12 +707,39 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.write('pub ')
 	}
 	name := node.name.after('.')
-	f.writeln('interface $name {')
+	f.write('interface $name {')
+	if node.methods.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+	}
 	f.comments_after_last_field(node.pre_comments)
 	for method in node.methods {
 		f.write('\t')
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
+		f.writeln('')
+	}
+	f.writeln('}\n')
+}
+
+pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
+	f.attrs(node.attrs)
+	if node.is_pub {
+		f.write('pub ')
+	}
+	name := node.name.after('.')
+	if node.fields.len == 0 && node.pos.line_nr == node.pos.last_line {
+		f.writeln('enum $name {}\n')
+		return
+	}
+	f.writeln('enum $name {')
+	f.comments(node.comments, inline: true, level: .indent)
+	for field in node.fields {
+		f.write('\t$field.name')
+		if field.has_expr {
+			f.write(' = ')
+			f.expr(field.expr)
+		}
+		f.comments(field.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
 	}
 	f.writeln('}\n')
@@ -1254,8 +1287,11 @@ pub fn (mut f Fmt) fn_decl(node ast.FnDecl) {
 	f.write(node.stringify(f.table, f.cur_mod, f.mod2alias)) // `Expr` instead of `ast.Expr` in mod ast
 	if node.language == .v {
 		if !node.no_body {
-			f.writeln(' {')
-			f.stmts(node.stmts)
+			f.write(' {')
+			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+				f.writeln('')
+				f.stmts(node.stmts)
+			}
 			f.write('}')
 		}
 		if !node.is_anon {
@@ -1907,6 +1943,10 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	if it.is_pub {
 		f.write('pub ')
+	}
+	if it.fields.len == 0 && it.pos.line_nr == it.pos.last_line {
+		f.writeln('const ()\n')
+		return
 	}
 	f.writeln('const (')
 	mut max := 0

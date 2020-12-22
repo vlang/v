@@ -2,8 +2,7 @@ struct Foo {
 	x int
 }
 
-struct Test {
-}
+struct Test {}
 
 struct Bar {
 	Foo
