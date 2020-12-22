@@ -977,17 +977,6 @@ pub fn (s string) find_between(start string, end string) string {
 	return val.left(end_pos)
 }
 
-// contains returns `true` if `val` string is found in the array.
-// TODO generic
-fn (ar []string) contains(val string) bool {
-	for s in ar {
-		if s == val {
-			return true
-		}
-	}
-	return false
-}
-
 /*
 pub fn (a []string) to_c() voidptr {
 	mut res := malloc(sizeof(byteptr) * a.len)
