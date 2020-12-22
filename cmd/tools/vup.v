@@ -68,7 +68,7 @@ fn (app App) recompile_v() {
 			println(self_result.output.trim_space())
 			return
 		} else if app.is_verbose {
-			println('`$vself` failed, running `$make`...')
+			println('`$vself` failed, running `make`...')
 			println(self_result.output.trim_space())
 		}
 	}
