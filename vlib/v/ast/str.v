@@ -43,7 +43,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	mut name := if node.is_anon { '' } else { node.name.after('.') }
+	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
 	if node.language == .c {
 		name = 'C.$name'
 	} else if node.language == .js {
