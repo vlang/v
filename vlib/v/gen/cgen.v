@@ -90,6 +90,7 @@ mut:
 	threaded_fns                     []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions             []string // array equality functions that have been defined
 	map_fn_definitions               []string // map equality functions that have been defined
+	struct_fn_definitions            []string // struct equality functions that have been defined
 	is_json_fn                       bool // inside json.encode()
 	json_types                       []string // to avoid json gen duplicates
 	pcs                              []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -4519,6 +4520,49 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 }
 
+fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
+	left_sym := g.table.get_type_symbol(left)
+	info := left_sym.struct_info()
+	typ_name := g.typ(left)
+	ptr_typ := typ_name.trim('*')
+	if ptr_typ in g.struct_fn_definitions {
+		return ptr_typ
+	}
+	g.struct_fn_definitions << ptr_typ
+	g.definitions.writeln('bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
+	for field in info.fields {
+		sym := g.table.get_type_symbol(field.typ)
+		match sym.kind {
+			.string {
+				g.definitions.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+			}
+			.struct_ {
+				eq_fn := g.gen_struct_equality_fn(field.typ)
+				g.definitions.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
+			}
+			.array {
+				eq_fn := g.gen_array_equality_fn(field.typ)
+				g.definitions.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
+			}
+			.map {
+				eq_fn := g.gen_map_equality_fn(field.typ)
+				g.definitions.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
+			}
+			.function {
+				g.definitions.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
+			}
+			else {
+				g.definitions.writeln('\tif (a.$field.name != b.$field.name)) {')
+			}
+		}
+		g.definitions.writeln('\t\treturn false;')
+		g.definitions.writeln('\t}')
+	}
+	g.definitions.writeln('\treturn true;')
+	g.definitions.writeln('}')
+	return ptr_typ
+}
+
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
 	typ_name := g.typ(left)
@@ -5145,15 +5189,28 @@ fn (mut g Gen) gen_array_contains_method(left_type table.Type) string {
 		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
 		g.auto_str_funcs.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
 		g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
-		if elem_sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
-		} else if elem_sym.kind == .array {
-			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
-			g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
-		} else if elem_sym.kind == .function {
-			g.auto_str_funcs.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
-		} else {
-			g.auto_str_funcs.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+		match elem_sym.kind {
+			.string {
+				g.auto_str_funcs.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+			}
+			.array {
+				ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
+				g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.function {
+				g.auto_str_funcs.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+			}
+			.map {
+				ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
+				g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_map_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.struct_ {
+				ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
+				g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_struct_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			else {
+				g.auto_str_funcs.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+			}
 		}
 		g.auto_str_funcs.writeln('\t\t\treturn true;')
 		g.auto_str_funcs.writeln('\t\t}')
