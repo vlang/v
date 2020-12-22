@@ -7,7 +7,7 @@ It will be enabled by default in 0.3
 - Struct embedding.
 - IO streams.
 - A powerful websocket module that conforms to RFC 6455 and passes the Autobahn test suite (498 client tests and 249 server tests).
-- The `net` module is now asynchronous and uses an API very similar to Go's `net`.
+- The `net` module is now non blocking and is more feature complete providing similar API to Go.
 - V's graphics module now uses Metal/DirectX/OpenGL instead of just OpenGL.
 - V can now run in the browser via WASM and execute V code by translating it to JavaScript:
 https://v-wasm.now.sh
