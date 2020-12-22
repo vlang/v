@@ -4523,8 +4523,7 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
 	info := left_sym.struct_info()
-	typ_name := g.typ(left)
-	ptr_typ := typ_name.trim('*')
+	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.struct_fn_definitions {
 		return ptr_typ
 	}
@@ -4602,8 +4601,7 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 
 fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
-	typ_name := g.typ(left)
-	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..].trim('*')
+	ptr_typ := g.typ(left).trim('*')
 	value_sym := g.table.get_type_symbol(left_sym.map_info().value_type)
 	value_typ := g.typ(left_sym.map_info().value_type)
 	if value_sym.kind == .map {
@@ -4614,7 +4612,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.map_fn_definitions << ptr_typ
-	g.definitions.writeln('bool ${ptr_typ}_map_eq(map_$ptr_typ a, map_$ptr_typ b) {')
+	g.definitions.writeln('bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b) {')
 	g.definitions.writeln('\tif (a.len != b.len) {')
 	g.definitions.writeln('\t\treturn false;')
 	g.definitions.writeln('\t}')
