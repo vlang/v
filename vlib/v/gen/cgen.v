@@ -144,12 +144,12 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if pref.build_mode == .build_module {
 		// TODO: detect this properly for all cases
 		// either get if from an earlier stage or use the lookup paths
-		if pref.path.contains('vlib' + os.path_separator) {
-			module_built = pref.path.after('vlib' + os.path_separator).replace(os.path_separator,
-				'.')
-		} else if pref.path.contains('.vmodules' + os.path_separator) {
-			module_built = pref.path.after('.vmodules' + os.path_separator).replace(os.path_separator,
-				'.')
+		for dir_name in ['vlib', '.vmodules', 'modules'] {
+			if pref.path.contains(dir_name + os.path_separator) {
+				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
+					'.')
+				break
+			}
 		}
 	}
 	mut timers_should_print := false
