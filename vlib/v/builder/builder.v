@@ -241,6 +241,17 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
+	// go up through parents looking for modules a folder.
+	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
+	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
+		parts := fpath.split(os.path_separator)
+		for i := parts.len - 2; i >= 0; i-- {
+			if parts[i] == 'modules' {
+				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+				break
+			}
+		}
+	}
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
