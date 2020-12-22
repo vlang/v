@@ -93,15 +93,6 @@ pub fn (t Type) share() ShareType {
 	return sharetype_from_flags(t.has_flag(.shared_f), t.has_flag(.atomic_f))
 }
 
-pub fn (types []Type) contains(typ Type) bool {
-	for t in types {
-		if int(typ) == int(t) {
-			return true
-		}
-	}
-	return false
-}
-
 // return TypeSymbol idx for `t`
 [inline]
 pub fn (t Type) idx() int {
