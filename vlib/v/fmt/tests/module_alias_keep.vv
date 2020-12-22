@@ -1,0 +1,17 @@
+import time
+import semver as sv
+
+fn foo(f time.Time) time.Time {
+	f2 := time.Time{}
+	return f
+}
+
+fn bar(b sv.Version) sv.Version {
+	b2 := sv.Version{}
+	return b
+}
+
+fn bar_multi_return(b sv.Version) (sv.Version, int) {
+	b2 := sv.Version{}
+	return b, 0
+}

@@ -111,7 +111,7 @@ jobs:
     - name: Build examples
       run: ./v build-examples
     - name: Test building v tools
-      run: ./v -silent build-tools
+      run: ./v build-tools
     - name: Test v binaries
       run: ./v build-vbinaries
 
