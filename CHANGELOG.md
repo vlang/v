@@ -1,7 +1,8 @@
 ## V 0.1.30
 *28 Nov 2020*
 (V 0.2 RC)
-- Builtin compile-time JSON serializer now supports `time.Time`
+- Builtin compile-time JSON serializer now supports `time.Time`.
+- `array.contains(element)` is now generic.
 TODO
 
 ## V 0.1.27
