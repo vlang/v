@@ -40,7 +40,7 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
-fn (mut g Gen) gen_c_main_header() {
+fn (mut g Gen) gen_c_main_function_header() {
 	if g.pref.os == .windows {
 		if g.is_gui_app() {
 			// GUI application
@@ -52,6 +52,10 @@ fn (mut g Gen) gen_c_main_header() {
 	} else {
 		g.writeln('int main(int ___argc, char** ___argv){')
 	}
+}
+
+fn (mut g Gen) gen_c_main_header() {
+	g.gen_c_main_function_header()
 	if g.pref.os == .windows && g.is_gui_app() {
 		g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
 		g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
@@ -140,11 +144,7 @@ pub fn (mut g Gen) write_tests_main() {
 	g.definitions.writeln('int g_test_fails = 0;')
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 	main_fn_start_pos := g.out.len
-	$if windows {
-		g.writeln('int wmain() {')
-	} $else {
-		g.writeln('int main() {')
-	}
+	g.gen_c_main_function_header()
 	g.writeln('\t_vinit();')
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
