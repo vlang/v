@@ -1170,10 +1170,7 @@ fn (mut s Scanner) ident_char() string {
 [inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
-	if start_pos < 0 || start_pos >= s.text.len {
-		return false
-	}
-	if end_pos < 0 || end_pos > s.text.len {
+	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
 		return false
 	}
 	for pos in start_pos .. end_pos {
@@ -1273,8 +1270,7 @@ pub fn (mut s Scanner) error(msg string) {
 }
 
 fn (mut s Scanner) vet_error(msg string) {
-	eline := '$s.file_path:$s.line_nr: $msg'
-	s.vet_errors << eline
+	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
 }
 
 pub fn verror(s string) {
