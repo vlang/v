@@ -7,6 +7,7 @@ It will be enabled by default in 0.3
 - Struct embedding.
 - IO streams.
 - A powerful websocket module that conforms to RFC 6455 and passes the Autobahn test suite (498 client tests and 249 server tests).
+- The `net` module is now asynchronous and uses an API very similar to Go's `net`.
 - V's graphics module now uses Metal/DirectX/OpenGL instead of just OpenGL.
 - V can now run in the browser via WASM and execute V code by translating it to JavaScript:
 https://v-wasm.now.sh
@@ -43,6 +44,7 @@ each program. Will be enabled by default in 0.2.1.
 - Mutability bug fixes
 - Taking the address of a map value is no longer allowed, like in Go.
 - Matrix multiplication.
+- A new `#pkgconfig` flag to provide platform independent way to get compilation flags for C libraries/packages.
 - Explicit parentheses requirement in complex boolean expressions.
 - `println` was made even smarter, and can now handle complex types.
 - Precompiled text templates can now be used outside of vweb via `$tmpl()`.
@@ -53,6 +55,7 @@ each program. Will be enabled by default in 0.2.1.
 - Binary enum flags.
 - `[export]` attribute to change exported function name (for example for calling from a C library).
 - `unsafe` fixes and improvements.
+- Improvements to rand: `rand.ulid()`, `rand.uuid()`, a unified customizable PRNG API.
 - Hundreds of other fixes, features, and tests (from now on the changelog will be updated
 right away as the feature/bug fix lands).
 
