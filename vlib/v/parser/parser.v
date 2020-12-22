@@ -605,8 +605,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			stmts := p.parse_block()
+			pos.last_line = p.prev_tok.line_nr
 			return ast.Block{
 				stmts: stmts
 				pos: pos
@@ -716,7 +717,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
-				pos: spos.extend(p.tok.position())
+				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
 		.key_go {
@@ -2012,7 +2013,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
 		fields: fields
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
@@ -2238,7 +2239,7 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
@@ -2251,6 +2252,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
+		pos.last_line = p.tok.line_nr - 1
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2287,6 +2289,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)
 	}
+	pos.last_line = p.tok.line_nr
 	p.next()
 	return ast.Block{
 		stmts: stmts
