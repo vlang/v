@@ -295,6 +295,12 @@ jobs:
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
+    - name: v up
+      run: |
+        git reset --hard HEAD~5
+        ./v up
+        ./v -o v2 cmd/v && ./v2 -o v3 cmd/v
+
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
