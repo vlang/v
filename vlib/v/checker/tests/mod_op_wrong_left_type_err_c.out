@@ -1,6 +1,0 @@
-vlib/v/checker/tests/mod_op_wrong_left_type_err_c.vv:4:10: error: mismatched types `Aaa` and `any_int`
-    2 | fn main() {
-    3 |     a := Aaa{}
-    4 |     println(a % 1)
-      |             ^
-    5 | }
