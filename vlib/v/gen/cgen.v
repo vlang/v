@@ -4376,6 +4376,20 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
+		for embed in info.embeds {
+			embed_sym := g.table.get_type_symbol(embed)
+			embed_name := embed_sym.embed_name()
+			if embed_name !in inited_fields {
+				default := g.type_default(embed)
+				g.write('.$embed_name = $default')
+			}
+			if is_multiline {
+				g.writeln(',')
+			} else {
+				g.write(',')
+			}
+			initialized = true
+		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for field in info.fields {
