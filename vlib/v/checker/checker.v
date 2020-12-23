@@ -568,7 +568,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 					expr_type_sym := c.table.get_type_symbol(expr_type)
 					if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, embed_type) or {
-							c.error('cannot assign to field `$info_field.name`: $err', field.pos)
+							c.error('cannot assign to field `$info_field.name`: $err',
+								field.pos)
 						}
 					}
 					struct_init.fields[i].typ = expr_type
@@ -583,7 +584,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						c.type_implements(expr_type, info_field.typ, field.pos)
 					} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
 						c.check_expected(expr_type, info_field.typ) or {
-							c.error('cannot assign to field `$info_field.name`: $err', field.pos)
+							c.error('cannot assign to field `$info_field.name`: $err',
+								field.pos)
 						}
 					}
 					if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&

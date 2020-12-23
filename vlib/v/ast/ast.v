@@ -103,17 +103,17 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos        token.Position
-	expr       Expr // expr.field_name
-	field_name string
-	is_mut     bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
-	mut_pos    token.Position
+	pos             token.Position
+	expr            Expr // expr.field_name
+	field_name      string
+	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
+	mut_pos         token.Position
 pub mut:
-	expr_type  table.Type // type of `Foo` in `Foo.bar`
-	typ        table.Type // type of the entire thing (`Foo.bar`)
-	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
-	scope      &Scope
-	from_embed_type    table.Type // holds the type of the embed that the method is called from
+	expr_type       table.Type // type of `Foo` in `Foo.bar`
+	typ             table.Type // type of the entire thing (`Foo.bar`)
+	name_type       table.Type // T in `T.name` or typeof in `typeof(expr).name`
+	scope           &Scope
+	from_embed_type table.Type // holds the type of the embed that the method is called from
 }
 
 // root_ident returns the origin ident where the selector started.

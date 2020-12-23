@@ -1209,7 +1209,7 @@ mut:
 
 struct Button {
 	Widget
-	title  string
+	title string
 }
 
 mut button := Button{
