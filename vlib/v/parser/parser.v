@@ -14,6 +14,10 @@ import os
 import runtime
 import time
 
+const (
+	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'error', 'panic', 'exit']
+)
+
 pub struct Parser {
 	pref              &pref.Preferences
 mut:
