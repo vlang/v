@@ -144,29 +144,6 @@ match_test_suite = [
 ]
 )
 
-struct TestItemFa {
-	src string
-	q string
-	r []int
-}
-
-const (
-match_test_suite_fa = [
-	// find_all tests
-	TestItemFa{
-		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
-		r"p[iplut]+o",
-		[5, 10, 31, 36, 51, 56]
-	},
-	TestItemFa{
-		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
-		r"(pi?(ba)+o)",
-		[5, 10, 31, 39, 54, 65]
-	},
-
-]
-)
-
 struct TestItemRe {
 	src string
 	q string
@@ -261,6 +238,24 @@ find_all_test_suite = [
 		r"\a+",
 		[0, 4, 10, 14, 20, 24, 29, 31, 36, 38],
 		['abcd', 'efgh', 'ghkl', 'ab', 'df']
+	},
+	Test_find_all{
+		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
+		r"p[iplut]+o",
+		[5, 10, 31, 36, 51, 56],
+		['pippo', 'pluto', 'pippo']
+	},
+	Test_find_all{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		[5, 10, 31, 39, 54, 65],
+		['pibao', 'pbababao', 'pibabababao']
+	},
+	Test_find_all{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		[0, 5, 24, 32],
+		['Today', 'tomorrow']
 	}
 ]
 )
@@ -270,33 +265,6 @@ const (
 )
 
 fn test_regex(){
-	// check find_all
-	for c,to in find_all_test_suite {
-		// debug print
-		if debug { println("#$c [$to.src] q[$to.q] ($to.res, $to.res_str)") }
-
-		mut re := regex.regex_opt(to.q) or {
-			eprintln('err: $err')
-			assert false
-			continue
-		}
-
-		re.reset()
-		res := re.find_all(to.src)
-		if res != to.res {
-			eprintln('err: find_all !!')
-			if debug { println("#$c exp: $to.res calculated: $res") }
-			assert false
-		}
-
-		res_str := re.find_all_str(to.src)
-		if res_str != to.res_str {
-			eprintln('err: find_all_str !!')
-			if debug { println("#$c exp: $to.res_str calculated: $res_str") }
-			assert false
-		}
-	}
-
 	// check capturing groups
 	for c,to in cgroups_test_suite {
 		// debug print
@@ -374,9 +342,9 @@ fn test_regex(){
 	}
 
 	// check find_all
-	for c,to in match_test_suite_fa{
+	for c,to in find_all_test_suite {
 		// debug print
-		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
+		if debug { println("#$c [$to.src] q[$to.q] ($to.res, $to.res_str)") }
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -384,21 +352,20 @@ fn test_regex(){
 			continue
 		}
 
+		re.reset()
 		res := re.find_all(to.src)
-		if res.len != to.r.len {
-			eprintln("ERROR: find_all, array of different size.")
+		if res != to.res {
+			eprintln('err: find_all !!')
+			if debug { println("#$c exp: $to.res calculated: $res") }
 			assert false
-			continue
 		}
 
-		for c1,i in res {
-			if i != to.r[c1] {
-				eprintln("ERROR: find_all, different indexes.")
-				assert false
-				continue
-			}
+		res_str := re.find_all_str(to.src)
+		if res_str != to.res_str {
+			eprintln('err: find_all_str !!')
+			if debug { println("#$c exp: $to.res_str calculated: $res_str") }
+			assert false
 		}
-
 	}
 
 	// check replace
