@@ -1384,7 +1384,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			// note: corret receiver type is automatically set here on struct embed calls
+			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
