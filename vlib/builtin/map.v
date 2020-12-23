@@ -283,9 +283,7 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 [inline]
 fn (m &map) clone_key(dest voidptr, pkey voidptr) {
 	if !m.has_string_keys {
-		unsafe {
-			C.memcpy(dest, pkey, m.key_bytes)
-		}
+		unsafe {C.memcpy(dest, pkey, m.key_bytes)}
 		return
 	}
 	unsafe {
