@@ -64,6 +64,7 @@ function setupMobileToggle() {
 }
 
 function setupDarkMode() {
+    var html = document.getElementsByTagName('html')[0];
     var darkModeToggle = document.getElementById('dark-mode-toggle');
     darkModeToggle.addEventListener('click', function() {
         html.classList.toggle('dark');
