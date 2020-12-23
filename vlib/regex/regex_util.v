@@ -136,3 +136,140 @@ pub fn (re RE) get_group_list() []Re_group {
 	return res
 }
 
+/******************************************************************************
+*
+* Finders
+*
+******************************************************************************/
+// find try to find the first match in the input string
+[direct_array_access]
+pub fn (mut re RE) find(in_txt string) (int,int) {
+	old_flag := re.flag
+	
+	re.flag |= f_src  // enable search mode
+	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
+	//print("Find [$start,$end] '${in_txt[start..end]}'")
+	if end > in_txt.len {
+		end = in_txt.len
+	}
+	re.flag = old_flag
+
+	if start >= 0 && end > start {
+		return start, end
+	}
+	return no_match_found, 0
+}
+
+// find_all find all the non overlapping occurrences of the match pattern
+[direct_array_access]
+pub fn (mut re RE) find_all(in_txt string) []int {
+	mut i := 0
+	mut res := []int{}
+	mut ls := -1
+	for i < in_txt.len {
+		s,e := re.find(in_txt[i..])
+		if s >= 0 && e > s && i+s > ls {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
+			res << i+s
+			res << i+e
+			ls = i+s
+			i = i+e
+			continue
+		} else {
+			i++
+		}
+
+	}
+	return res
+}
+
+// find_all_str find all the non overlapping occurrences of the match pattern, return a string list
+[direct_array_access]
+pub fn (mut re RE) find_all_str(in_txt string) []string {
+	mut i := 0
+	mut res := []string{}
+	mut ls := -1
+	for i < in_txt.len {
+		s,e := re.find(in_txt[i..])
+		if s >= 0 && e > s && i+s > ls {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
+			res << in_txt[i+s..i+e]
+			ls = i+s
+			i = i+e
+			continue
+		} else {
+			i++
+		}
+
+	}
+	return res
+}
+/******************************************************************************
+*
+* Replacers
+*
+******************************************************************************/
+// replace return a string where the matches are replaced with the replace string
+pub fn (mut re RE) replace(in_txt string, repl string) string {
+	pos := re.find_all(in_txt)
+	if pos.len > 0 {
+		mut res := ""
+		mut i := 0
+
+		mut s1 := 0
+		mut e1 := in_txt.len
+
+		for i < pos.len {
+			e1 = pos[i]
+			res += in_txt[s1..e1] + repl
+			s1 = pos[i+1]
+			i += 2
+		}
+
+		res += in_txt[s1..]
+		return res
+	}
+	return in_txt
+}
+
+// type of function used for custom replace
+// in_txt  source text
+// start   index of the start of the match in in_txt
+// end     index of the end   of the match in in_txt
+// the match is in in_txt[start..end]
+pub type FnReplace = fn (re RE, in_txt string, start int, end int) string 
+
+// replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
+pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
+	mut i   := 0
+	mut res := ""
+	mut ls  := -1
+	mut s1  := 0
+	
+	for i < in_txt.len {
+		s,e := re.find(in_txt[i..])
+		if s >= 0 && e > s && i+s > ls {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
+			start := i + s
+			end   := i + e
+			// update grups index diplacement
+			mut gi := 0
+			for gi < re.groups.len {
+				re.groups[gi] += i
+				gi++
+			}
+			repl  := repl_fn(re, in_txt, start, end)
+
+			res += in_txt[s1..start] + repl
+			s1 = end 
+
+			ls = i + s
+			i  = i + e
+			continue
+		} else {
+			i++
+		}
+	}
+	res += in_txt[s1..]
+	return res
+}

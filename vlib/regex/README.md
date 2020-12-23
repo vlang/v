@@ -519,13 +519,19 @@ There are the following find  and replace functions:
 #### Find functions
 
 ```v ignore
-// find try to find the first match in the input string, return start and end index if found else start is -1
+// find try to find the first match in the input string
+// return start and end index if found else start is -1
 pub fn (re mut RE) find(in_txt string) (int,int)
 
 // find_all find all the "non overlapping" occurrences of the matching pattern
 // return a list of start end indexes like: [3,4,6,8] 
 // the matches are [3,4] and [6,8]
 pub fn (re mut RE) find_all(in_txt string) []int
+
+// find_all find all the "non overlapping" occurrences of the matching pattern
+// return a list of strings
+// the result is like ["first match","secon match"]
+pub fn (mut re RE) find_all_str(in_txt string) []string
 ```
 
 #### Replace functions
@@ -543,10 +549,12 @@ The`replace_by_fn` use a custom replace function making possible customizations.
 The custom function must be of the type:
 
 ```v ignore
-// re RE struct
-// in_txt all the text passed to the regex expression
-// the match is: in_txt[start..end]
-fn (re RE, in_txt string, start int, end int) string
+// type of function used for custom replace
+// in_txt  source text
+// start   index of the start of the match in in_txt
+// end     index of the end   of the match in in_txt
+// --- the match is in in_txt[start..end] ---
+fn (re RE, in_txt string, start int, end int) string 
 ```
 
 The following example will clarify the use:
