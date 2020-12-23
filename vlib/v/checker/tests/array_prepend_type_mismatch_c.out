@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_prepend_type_mismatch_c.vv:3:12: error: type mismatch, should use `f64[]`
-    1 | fn main() {
-    2 |     mut a := [1.1, 2.2]
-    3 |     a.prepend([2, 3])
-      |               ~~~~~~
-    4 |     println(a)
-    5 | }

@@ -1,5 +1,0 @@
-fn main() {
-	mut a := [1, 2]
-	a.insert(1, 'abc')
-	println(a)
-}

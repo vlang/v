@@ -1228,24 +1228,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
-		array_info := left_type_sym.info as table.Array
-		elem_sym := c.table.get_type_symbol(array_info.elem_type)
+		info := left_type_sym.info as table.Array
 		arg_expr := if method_name == 'insert' { call_expr.args[1].expr } else { call_expr.args[0].expr }
-		arg_sym := c.table.get_type_symbol(c.expr(arg_expr))
-		if arg_sym.kind == .array {
-			info := arg_sym.info as table.Array
-			sym := c.table.get_type_symbol(info.elem_type)
-			if sym.kind != elem_sym.kind &&
-				((elem_sym.kind == .int && sym.kind != .any_int) ||
-				(elem_sym.kind == .f64 && sym.kind != .any_float)) {
-				c.error('type mismatch, should use `$elem_sym.name[]`', arg_expr.position())
-			}
-		} else {
-			if arg_sym.kind != elem_sym.kind &&
-				((elem_sym.kind == .int && arg_sym.kind != .any_int) ||
-				(elem_sym.kind == .f64 && arg_sym.kind != .any_float)) {
-				c.error('type mismatch, should use `$elem_sym.name`', arg_expr.position())
-			}
+		arg_type := c.expr(arg_expr)
+		arg_sym := c.table.get_type_symbol(arg_type)
+		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
+			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
 	}
 	if method := c.table.type_find_method(left_type_sym, method_name) {
