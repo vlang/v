@@ -60,20 +60,20 @@ else
 ifneq ($(filter x86%,$(TCCARCH)),)
 	TCCARCH := i386
 else
-ifeq ($(_ARCH),arm64)
-	TCCARCH := arm64
-else
-ifeq ($(_ARCH),aarch64)
+ifeq ($(TCCARCH),aarch64)
 	TCCARCH := arm64
 else
 ifneq ($(filter arm%,$(TCCARCH)),)
 	TCCARCH := arm
-endif
+# otherwise, just use the arch name
 endif
 endif
 endif
 endif
 
+# note that a branch may not exist yet for the user's system configuration,
+# in that case they'll get an error from git while cloning it.
+# TODO: print a pretty error ourselves in that case, and ask the user to open a feature request
 TCCBRANCH := thirdparty-$(TCCOS)-$(TCCARCH)
 
 all: latest_vc latest_tcc
