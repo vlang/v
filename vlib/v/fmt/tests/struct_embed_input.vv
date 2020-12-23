@@ -5,8 +5,8 @@ struct Foo {
 struct Test {}
 
 struct Bar {
+	Foo Test
 	y    int
-	Foo
 	z    string
-	Test
+	
 }

@@ -453,6 +453,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		g.expr(node.left)
+		if node.from_embed_type != 0 {
+			embed_name := typ_sym.embed_name()
+			g.write('.$embed_name')
+		}
 	}
 	if has_cast {
 		g.write(')')

@@ -606,6 +606,7 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
+	embeds        []Type
 	fields        []Field
 	is_typedef    bool // C. [typedef]
 	is_union      bool
@@ -663,8 +664,6 @@ pub mut:
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
-	is_embed         bool
-	embed_alias_for  string // name of the struct which contains this field name
 }
 
 fn (f &Field) equals(o &Field) bool {
@@ -848,6 +847,17 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
+}
+
+pub fn (t &TypeSymbol) embed_name() string {
+	// main.Abc<int> => Abc<int>
+	mut embed_name := t.name.split('.')[1]
+	// remove generic part from name
+	// Abc<int> => Abc
+	if '<' in embed_name {
+		embed_name = embed_name.split('<')[0]
+	}
+	return embed_name
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {

@@ -27,7 +27,7 @@ fn test_default_value() {
 	b := Bar{Foo: Foo{}}
 	assert b.y == 5
 }
-/*
+/* TODO
 fn test_initialize() {
 	b := Bar{x: 1, y: 2}
 	assert b.x == 1
@@ -59,5 +59,4 @@ fn test_generic_embed() {
 	b := BarGenericContainer{}
 	assert b.BarGeneric.foo == 0
 	assert b.foo == 0
-	println('ok')
 }

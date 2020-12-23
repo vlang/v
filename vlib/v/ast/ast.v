@@ -113,6 +113,7 @@ pub mut:
 	typ        table.Type // type of the entire thing (`Foo.bar`)
 	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
 	scope      &Scope
+	from_embed_type    table.Type // holds the type of the embed that the method is called from
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -144,7 +145,6 @@ pub:
 	has_default_expr bool
 	attrs            []table.Attr
 	is_public        bool
-	is_embed         bool
 pub mut:
 	name             string
 	typ              table.Type
@@ -192,8 +192,15 @@ pub:
 	is_union     bool
 	attrs        []table.Attr
 	end_comments []Comment
+	embeds       []Embed
 pub mut:
 	fields       []StructField
+}
+
+pub struct Embed {
+pub:
+	typ table.Type
+	pos token.Position
 }
 
 pub struct StructEmbedding {
@@ -225,6 +232,18 @@ pub mut:
 	expected_type table.Type
 }
 
+pub struct StructInitEmbed {
+pub:
+	expr          Expr
+	pos           token.Position
+	comments      []Comment
+	next_comments []Comment
+pub mut:
+	name          string
+	typ           table.Type
+	expected_type table.Type
+}
+
 pub struct StructInit {
 pub:
 	pos          token.Position
@@ -233,6 +252,7 @@ pub:
 pub mut:
 	typ          table.Type
 	fields       []StructInitField
+	embeds       []StructInitEmbed
 }
 
 // import statement
@@ -320,6 +340,7 @@ pub mut:
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
+	from_embed_type    table.Type // holds the type of the embed that the method is called from
 }
 
 /*

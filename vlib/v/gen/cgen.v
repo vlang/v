@@ -2718,14 +2718,11 @@ fn (mut g Gen) expr(node ast.Expr) {
 				g.write('.data)')
 			}
 			// struct embedding
-			if sym.kind == .struct_ {
-				sym_info := sym.info as table.Struct
-				x := sym_info.fields.filter(it.name == node.field_name)
-				if x.len > 0 {
-					field := x[0]
-					if field.embed_alias_for != '' {
-						g.write('.$field.embed_alias_for')
-					}
+			if sym.info is table.Struct {
+				if node.from_embed_type != 0 {
+					embed_sym := g.table.get_type_symbol(node.from_embed_type)
+					embed_name := embed_sym.embed_name()
+					g.write('.$embed_name')
 				}
 			}
 			if node.expr_type.is_ptr() || sym.kind == .chan {
@@ -4340,16 +4337,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
-		if mut sym.info is table.Struct {
-			equal_fields := sym.info.fields.filter(it.name == field.name)
-			if equal_fields.len == 0 {
-				continue
-			}
-			tfield := equal_fields[0]
-			if tfield.embed_alias_for.len != 0 {
-				continue
-			}
-		}
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
 			g.write('.$field_name = ')
@@ -4395,10 +4382,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if mut sym.info is table.Struct {
 				equal_fields := sym.info.fields.filter(it.name == field.name)
 				if equal_fields.len == 0 {
-					continue
-				}
-				tfield := equal_fields[0]
-				if tfield.embed_alias_for.len != 0 {
 					continue
 				}
 			}
@@ -4735,8 +4718,14 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				} else {
 					g.type_definitions.writeln('struct $name {')
 				}
-				if typ.info.fields.len > 0 {
-					for field in typ.info.fields.filter(it.embed_alias_for == '') {
+				if typ.info.fields.len > 0 || typ.info.embeds.len > 0 {
+					for embed in typ.info.embeds {
+						type_name := g.typ(embed)
+						embed_sym := g.table.get_type_symbol(embed)
+						field_name := embed_sym.embed_name()
+						g.type_definitions.writeln('\t$type_name $field_name;')
+					}
+					for field in typ.info.fields {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to
@@ -4830,6 +4819,14 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				// if info.is_interface {
 				// continue
 				// }
+				for embed in t.info.embeds {
+					dep := g.table.get_type_symbol(embed).name
+					// skip if not in types list or already in deps
+					if dep !in type_names || dep in field_deps {
+						continue
+					}
+					field_deps << dep
+				}
 				for field in t.info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps
