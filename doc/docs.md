@@ -1781,12 +1781,25 @@ mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
 println(color) // "green"
+// enum starts by default at 0
+println(color == 1) // true
 
 match color {
     .red { println('the color was red') }
     .green { println('the color was green') }
     .blue { println('the color was blue') }
 }
+
+
+// It's possible to override enum values
+enum Size {
+	small = -1
+	medium = 0
+	large = 1
+}
+
+mut s := Size.small
+println(s == -1) // true
 ```
 
 Enum match must be exhaustive or have an `else` branch.
