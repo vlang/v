@@ -135,7 +135,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	mut has_main_fn := false
 	mut files_from_main_module := []&ast.File{}
 	for i in 0 .. ast_files.len {
-		file := unsafe {&ast_files[i]}
+		file := unsafe { &ast_files[i] }
 		c.timers.start('checker_check $file.path')
 		c.check(file)
 		if file.mod.name == 'main' {
@@ -167,7 +167,7 @@ pub fn (mut c Checker) check_files(ast_files []ast.File) {
 	// checked, to eunsure all generic calls are processed as this information
 	// is needed when the generic type is auto inferred from the call argument
 	for i in 0 .. ast_files.len {
-		file := unsafe {&ast_files[i]}
+		file := unsafe { &ast_files[i] }
 		if file.generic_fns.len > 0 {
 			c.file = file
 			c.mod = file.mod.name

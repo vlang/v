@@ -608,7 +608,7 @@ typedef struct {
 	for typ in g.table.types {
 		match typ.kind {
 			.alias {
-				parent := unsafe {&g.table.types[typ.parent_idx]}
+				parent := unsafe { &g.table.types[typ.parent_idx] }
 				is_c_parent := parent.name.len > 2 && parent.name[0] == `C` && parent.name[1] == `.`
 				parent_styp := if is_c_parent { 'struct ' + parent.cname[3..] } else { parent.cname }
 				g.type_definitions.writeln('typedef $parent_styp $typ.cname;')
