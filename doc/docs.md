@@ -964,7 +964,7 @@ for key, value in m {
 }                              //         two -> 2
 ```
 
-Either key or value can be ignored by using a single underscore as the identifer.
+Either key or value can be ignored by using a single underscore as the identifier.
 ```v nofmt
 m := {'one':1, 'two':2}
 
@@ -3001,7 +3001,7 @@ but may impact the size of your executable.
 the compiler will translate array operations directly into C array operations -
 omiting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
-the boundries will be checked by the user.
+the boundaries will be checked by the user.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly
