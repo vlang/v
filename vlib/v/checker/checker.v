@@ -984,7 +984,23 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
-					field_info := struct_info.find_field(expr.field_name) or {
+					mut has_field := true
+					mut field_info := struct_info.find_field(expr.field_name) or {
+						has_field = false
+						table.Field{}
+					}
+					if !has_field {
+						for embed in struct_info.embeds {
+							embed_sym := c.table.get_type_symbol(embed)
+							embed_struct_info := embed_sym.info as table.Struct
+							if embed_field_info := embed_struct_info.find_field(expr.field_name) {
+								has_field = true
+								field_info = embed_field_info
+								break
+							}
+						}
+					}
+					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos

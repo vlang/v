@@ -59,3 +59,18 @@ fn test_generic_embed() {
 	assert b.BarGeneric.foo == 0
 	assert b.foo == 0
 }
+
+struct Upper {
+mut:
+	x int
+}
+
+struct UpperHolder {
+	Upper
+}
+
+fn test_assign() {
+	mut h := UpperHolder{}
+	h.x = 5
+	assert h.x == 5
+}
