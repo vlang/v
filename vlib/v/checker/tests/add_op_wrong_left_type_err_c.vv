@@ -1,4 +1,0 @@
-fn main() {
-	a := map[string]int
-    println(a + 10)
-}
