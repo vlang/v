@@ -267,6 +267,9 @@ body {
 	padding: 1rem;
 	overflow: hidden;
 }
+.doc-content img {
+	width: 100%;
+}
 .doc-content p {
 	line-height: 1.4;
 }
