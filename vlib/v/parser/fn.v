@@ -229,10 +229,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	if p.tok.kind == .name {
+		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
-			p.error('function names cannot contain uppercase letters, use snake_case instead')
+			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
+				pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -240,7 +242,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error('duplicate method `$name`')
+			p.error_with_pos('duplicate method `$name`', pos)
+			return ast.FnDecl{
+				scope: 0
+			}
+		}
+		// cannot redefine buildin function
+		if !is_method && p.mod != 'builtin' && name in builtin_functions {
+			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -552,7 +561,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
 					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
-						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w file.v` to automatically fix your code.')
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.position()

@@ -465,7 +465,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
-	start_pos.last_line = p.prev_tok.line_nr
+	start_pos.last_line = p.prev_tok.line_nr - 1
 	return ast.InterfaceDecl{
 		name: interface_name
 		methods: methods

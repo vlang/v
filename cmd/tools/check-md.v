@@ -70,6 +70,9 @@ fn md_file_paths() []string {
 		if file.starts_with('./thirdparty') {
 			continue
 		}
+		if file.contains('CHANGELOG') {
+			continue
+		}
 		files_to_check << file
 	}
 	return files_to_check

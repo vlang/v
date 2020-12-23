@@ -36,9 +36,7 @@ fn main() {
 		app.backup('cmd/tools/vup.exe')
 	}
 	app.recompile_v()
-	os.exec('"$app.vexe" cmd/tools/vup.v') or {
-		panic(err)
-	}
+	os.exec('"$app.vexe" cmd/tools/vup.v') or { panic(err) }
 	app.show_current_v_version()
 }
 
@@ -66,9 +64,12 @@ fn (app App) recompile_v() {
 		println('> recompiling v itself with `$vself` ...')
 	}
 	if self_result := os.exec(vself) {
-		println(self_result.output.trim_space())
 		if self_result.exit_code == 0 {
+			println(self_result.output.trim_space())
 			return
+		} else if app.is_verbose {
+			println('`$vself` failed, running `make`...')
+			println(self_result.output.trim_space())
 		}
 	}
 	app.make(vself)
@@ -79,11 +80,10 @@ fn (app App) make(vself string) {
 	$if windows {
 		make = 'make.bat'
 	}
-	println('`$vself` failed, running `$make`...')
-	make_result := os.exec(make) or {
-		panic(err)
+	make_result := os.exec(make) or { panic(err) }
+	if app.is_verbose {
+		println(make_result.output)
 	}
-	println(make_result.output)
 }
 
 fn (app App) show_current_v_version() {
@@ -111,9 +111,7 @@ fn (app App) backup(file string) {
 }
 
 fn (app App) git_command(command string) {
-	git_result := os.exec('git $command') or {
-		panic(err)
-	}
+	git_result := os.exec('git $command') or { panic(err) }
 	if git_result.exit_code != 0 {
 		if git_result.output.contains('Permission denied') {
 			eprintln('No access to `$app.vroot`: Permission denied')

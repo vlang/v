@@ -1,0 +1,41 @@
+vlib/v/checker/tests/add_op_wrong_type_err.vv:3:13: error: mismatched types `Aaa` and `any_int`
+    1 | struct Aaa{}
+    2 | fn main() {
+    3 |     println(Aaa{} + 10)
+      |             ~~~~~
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:4:18: error: mismatched types `any_int` and `Aaa`
+    2 | fn main() {
+    3 |     println(Aaa{} + 10)
+    4 |     println(10 + Aaa{})
+      |                  ~~~~~
+    5 |     println([1,2,3] + 10)
+    6 |     println(10 + [1,2,3])
+vlib/v/checker/tests/add_op_wrong_type_err.vv:5:13: error: mismatched types `[]int` and `any_int`
+    3 |     println(Aaa{} + 10)
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
+      |             ~~~~~~~
+    6 |     println(10 + [1,2,3])
+    7 |     a := map[string]int
+vlib/v/checker/tests/add_op_wrong_type_err.vv:6:18: error: mismatched types `any_int` and `[]int`
+    4 |     println(10 + Aaa{})
+    5 |     println([1,2,3] + 10)
+    6 |     println(10 + [1,2,3])
+      |                  ~~~~~~~
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+vlib/v/checker/tests/add_op_wrong_type_err.vv:8:13: error: mismatched types `map[string]int` and `any_int`
+    6 |     println(10 + [1,2,3])
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+      |             ^
+    9 |     println(10 + a)
+   10 | }
+vlib/v/checker/tests/add_op_wrong_type_err.vv:9:18: error: mismatched types `any_int` and `map[string]int`
+    7 |     a := map[string]int
+    8 |     println(a + 10)
+    9 |     println(10 + a)
+      |                  ^
+   10 | }

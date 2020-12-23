@@ -129,9 +129,9 @@ See `v help` for all supported commands.
 
 From the example above, you can see that functions are declared with the `fn` keyword.
 The return type is specified after the function name.
-In this case `main` doesn't return anything, so the return type can be omitted.
+In this case `main` doesn't return anything, so there is no return type.
 
-As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
+As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
 `println` is one of the few built-in functions.
 It prints the value passed to it to standard output.
@@ -1509,8 +1509,7 @@ fn main() {
 ## References
 
 ```v
-struct Foo {
-}
+struct Foo {}
 
 fn (foo Foo) bar_method() {
 	// ...
@@ -1730,8 +1729,7 @@ struct Dog {
 	breed string
 }
 
-struct Cat {
-}
+struct Cat {}
 
 fn (d Dog) speak() string {
 	return 'woof'
@@ -1800,14 +1798,11 @@ A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1824,14 +1819,11 @@ To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1883,14 +1875,11 @@ complex expression than just a variable name.
 You can also use `match` to determine the variant:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 

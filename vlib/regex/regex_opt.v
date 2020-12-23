@@ -38,6 +38,9 @@ pub fn regex_opt(pattern string) ?RE {
     re.group_max_nested = 128                   // set max 128 group nested
     re.group_max        = pattern.len >> 1      // we can't have more groups than the half of the pattern legth
 
+    re.group_stack = []int{len: re.group_max, init: -1}
+	re.group_data  = []int{len: re.group_max, init: -1}
+
     // compile the pattern
     re.compile_opt(pattern)?
 

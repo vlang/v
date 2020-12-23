@@ -10,7 +10,8 @@ TCCREPO ?= https://github.com/vlang/tccbin
 
 VCFILE := v.c
 TMPTCC := $(VROOT)/thirdparty/tcc
-TCCBRANCH := thirdparty-unknown-unknown
+TCCOS := unknown
+TCCARCH := unknown
 GITCLEANPULL := git clean -xf && git pull --quiet
 GITFASTCLONE := git clone --depth 1 --quiet --single-branch
 
@@ -26,29 +27,54 @@ endif
 
 ifeq ($(_SYS),Linux)
 LINUX := 1
-TCCBRANCH := thirdparty-linux-amd64
+TCCOS := linux
 endif
 
 ifeq ($(_SYS),Darwin)
 MAC := 1
-TCCBRANCH := thirdparty-macos-amd64
+TCCOS := macos
 endif
 
 ifeq ($(_SYS),FreeBSD)
+TCCOS := freebsd
 LDFLAGS += -lexecinfo
 endif
 
 ifdef ANDROID_ROOT
 ANDROID := 1
 undefine LINUX
-TCCBRANCH := thirdparty-linux-arm64
+TCCOS := android
 endif
 #####
 
 ifdef WIN32
-TCCBRANCH := thirdparty-windows-amd64
+TCCOS := windows
 VCFILE := v_win.c
 endif
+
+TCCARCH := $(shell uname -m 2>/dev/null || echo unknown)
+
+ifeq ($(TCCARCH),x86_64)
+	TCCARCH := amd64
+else
+ifneq ($(filter x86%,$(TCCARCH)),)
+	TCCARCH := i386
+else
+ifeq ($(TCCARCH),aarch64)
+	TCCARCH := arm64
+else
+ifneq ($(filter arm%,$(TCCARCH)),)
+	TCCARCH := arm
+# otherwise, just use the arch name
+endif
+endif
+endif
+endif
+
+# note that a branch may not exist yet for the user's system configuration,
+# in that case they'll get an error from git while cloning it.
+# TODO: print a pretty error ourselves in that case, and ask the user to open a feature request
+TCCBRANCH := thirdparty-$(TCCOS)-$(TCCARCH)
 
 all: latest_vc latest_tcc
 ifdef WIN32
@@ -104,10 +130,8 @@ endif
 endif
 
 fresh_tcc:
-ifndef ANDROID
 	rm -rf $(TMPTCC)
 	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
-endif
 
 $(TMPTCC)/.git/config:
 	$(MAKE) fresh_tcc

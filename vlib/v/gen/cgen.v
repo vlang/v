@@ -90,6 +90,8 @@ mut:
 	threaded_fns                     []string // for generating unique wrapper types and fns for `go xxx()`
 	array_fn_definitions             []string // array equality functions that have been defined
 	map_fn_definitions               []string // map equality functions that have been defined
+	struct_fn_definitions            []string // struct equality functions that have been defined
+	auto_fn_definitions              []string // auto generated functions defination list
 	is_json_fn                       bool // inside json.encode()
 	json_types                       []string // to avoid json gen duplicates
 	pcs                              []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
@@ -315,6 +317,11 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		b.writeln('\n// V auto str functions:')
 		b.write(g.auto_str_funcs.str())
 		// }
+	}
+	if g.auto_fn_definitions.len > 0 {
+		for fn_def in g.auto_fn_definitions {
+			b.writeln(fn_def)
+		}
 	}
 	b.writeln('\n// V out')
 	b.write(g.out.str())
@@ -2989,7 +2996,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.write('*')
 			}
 			g.expr(node.right)
-			g.write(',')
+			g.write(', ')
 			g.expr(node.left)
 			g.write('))')
 			return
@@ -4523,6 +4530,51 @@ fn (mut g Gen) assoc(node ast.Assoc) {
 	}
 }
 
+fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
+	left_sym := g.table.get_type_symbol(left)
+	info := left_sym.struct_info()
+	ptr_typ := g.typ(left).trim('*')
+	if ptr_typ in g.struct_fn_definitions {
+		return ptr_typ
+	}
+	g.struct_fn_definitions << ptr_typ
+	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b); // auto')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
+	for field in info.fields {
+		sym := g.table.get_type_symbol(field.typ)
+		match sym.kind {
+			.string {
+				fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+			}
+			.struct_ {
+				eq_fn := g.gen_struct_equality_fn(field.typ)
+				fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
+			}
+			.array {
+				eq_fn := g.gen_array_equality_fn(field.typ)
+				fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
+			}
+			.map {
+				eq_fn := g.gen_map_equality_fn(field.typ)
+				fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
+			}
+			.function {
+				fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
+			}
+			else {
+				fn_builder.writeln('\tif (a.$field.name != b.$field.name)) {')
+			}
+		}
+		fn_builder.writeln('\t\treturn false;')
+		fn_builder.writeln('\t}')
+	}
+	fn_builder.writeln('\treturn true;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
+	return ptr_typ
+}
+
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
 	typ_name := g.typ(left)
@@ -4538,32 +4590,34 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.array_fn_definitions << ptr_typ
-	g.definitions.writeln('bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b) {')
-	g.definitions.writeln('\tif (a.len != b.len) {')
-	g.definitions.writeln('\t\treturn false;')
-	g.definitions.writeln('\t}')
+	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b); // auto')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b) {')
+	fn_builder.writeln('\tif (a.len != b.len) {')
+	fn_builder.writeln('\t\treturn false;')
+	fn_builder.writeln('\t}')
 	i := g.new_tmp_var()
-	g.definitions.writeln('\tfor (int $i = 0; $i < a.len; ++$i) {')
+	fn_builder.writeln('\tfor (int $i = 0; $i < a.len; ++$i) {')
 	// compare every pair of elements of the two arrays
 	match elem_sym.kind {
-		.string { g.definitions.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+($i*a.element_size))), *(($ptr_typ*)((byte*)b.data+($i*b.element_size))))) {') }
-		.struct_ { g.definitions.writeln('\t\tif (memcmp((byte*)a.data+($i*a.element_size), (byte*)b.data+($i*b.element_size), a.element_size)) {') }
-		.array { g.definitions.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[$i], (($elem_typ*)b.data)[$i])) {') }
-		.function { g.definitions.writeln('\t\tif (*((voidptr*)((byte*)a.data+($i*a.element_size))) != *((voidptr*)((byte*)b.data+($i*b.element_size)))) {') }
-		else { g.definitions.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+($i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+($i*b.element_size)))) {') }
+		.string { fn_builder.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+($i*a.element_size))), *(($ptr_typ*)((byte*)b.data+($i*b.element_size))))) {') }
+		.struct_ { fn_builder.writeln('\t\tif (memcmp((byte*)a.data+($i*a.element_size), (byte*)b.data+($i*b.element_size), a.element_size)) {') }
+		.array { fn_builder.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[$i], (($elem_typ*)b.data)[$i])) {') }
+		.function { fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+($i*a.element_size))) != *((voidptr*)((byte*)b.data+($i*b.element_size)))) {') }
+		else { fn_builder.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+($i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+($i*b.element_size)))) {') }
 	}
-	g.definitions.writeln('\t\t\treturn false;')
-	g.definitions.writeln('\t\t}')
-	g.definitions.writeln('\t}')
-	g.definitions.writeln('\treturn true;')
-	g.definitions.writeln('}')
+	fn_builder.writeln('\t\t\treturn false;')
+	fn_builder.writeln('\t\t}')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn true;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
 	return ptr_typ
 }
 
 fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
-	typ_name := g.typ(left)
-	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..].trim('*')
+	ptr_typ := g.typ(left).trim('*')
 	value_sym := g.table.get_type_symbol(left_sym.map_info().value_type)
 	value_typ := g.typ(left_sym.map_info().value_type)
 	if value_sym.kind == .map {
@@ -4574,40 +4628,43 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.map_fn_definitions << ptr_typ
-	g.definitions.writeln('bool ${ptr_typ}_map_eq(map_$ptr_typ a, map_$ptr_typ b) {')
-	g.definitions.writeln('\tif (a.len != b.len) {')
-	g.definitions.writeln('\t\treturn false;')
-	g.definitions.writeln('\t}')
-	g.definitions.writeln('\tarray_string _keys = map_keys(&a);')
+	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
+	mut fn_builder := strings.new_builder(512)
+	fn_builder.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b) {')
+	fn_builder.writeln('\tif (a.len != b.len) {')
+	fn_builder.writeln('\t\treturn false;')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\tarray_string _keys = map_keys(&a);')
 	i := g.new_tmp_var()
-	g.definitions.writeln('\tfor (int $i = 0; $i < _keys.len; ++$i) {')
-	g.definitions.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[$i]);')
+	fn_builder.writeln('\tfor (int $i = 0; $i < _keys.len; ++$i) {')
+	fn_builder.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[$i]);')
 	if value_sym.kind == .function {
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
-		g.definitions.write('\t\t$ret_styp (*v) (')
+		fn_builder.write('\t\t$ret_styp (*v) (')
 		arg_len := func.func.params.len
 		for j, arg in func.func.params {
 			arg_styp := g.typ(arg.typ)
-			g.definitions.write('$arg_styp $arg.name')
+			fn_builder.write('$arg_styp $arg.name')
 			if j < arg_len - 1 {
-				g.definitions.write(', ')
+				fn_builder.write(', ')
 			}
 		}
-		g.definitions.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
+		fn_builder.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
 	} else {
-		g.definitions.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
+		fn_builder.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { g.definitions.writeln('\t\tif (!map_exists(b, k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
-		.function { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
-		else { g.definitions.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
+		.string { fn_builder.writeln('\t\tif (!map_exists(b, k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
+		.function { fn_builder.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
+		else { fn_builder.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
 	}
-	g.definitions.writeln('\t\t\treturn false;')
-	g.definitions.writeln('\t\t}')
-	g.definitions.writeln('\t}')
-	g.definitions.writeln('\treturn true;')
-	g.definitions.writeln('}')
+	fn_builder.writeln('\t\t\treturn false;')
+	fn_builder.writeln('\t\t}')
+	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn true;')
+	fn_builder.writeln('}')
+	g.auto_fn_definitions << fn_builder.str()
 	return ptr_typ
 }
 
@@ -5155,23 +5212,38 @@ fn (mut g Gen) gen_array_contains_method(left_type table.Type) string {
 	fn_name := '${left_type_str}_contains'
 	if !left_sym.has_method('contains') {
 		g.type_definitions.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v); // auto')
-		g.auto_str_funcs.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
-		g.auto_str_funcs.writeln('\tfor (int i = 0; i < a.len; ++i) {')
-		if elem_sym.kind == .string {
-			g.auto_str_funcs.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
-		} else if elem_sym.kind == .array {
-			ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
-			g.auto_str_funcs.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
-		} else if elem_sym.kind == .function {
-			g.auto_str_funcs.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
-		} else {
-			g.auto_str_funcs.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+		mut fn_builder := strings.new_builder(512)
+		fn_builder.writeln('static bool ${fn_name}($left_type_str a, $elem_type_str v) {')
+		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+		match elem_sym.kind {
+			.string {
+				fn_builder.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+			}
+			.array {
+				ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.function {
+				fn_builder.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+			}
+			.map {
+				ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.struct_ {
+				ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			else {
+				fn_builder.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+			}
 		}
-		g.auto_str_funcs.writeln('\t\t\treturn true;')
-		g.auto_str_funcs.writeln('\t\t}')
-		g.auto_str_funcs.writeln('\t}')
-		g.auto_str_funcs.writeln('\treturn false;')
-		g.auto_str_funcs.writeln('}')
+		fn_builder.writeln('\t\t\treturn true;')
+		fn_builder.writeln('\t\t}')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('\treturn false;')
+		fn_builder.writeln('}')
+		g.auto_fn_definitions << fn_builder.str()
 		left_sym.register_method(&table.Fn{
 			name: 'contains'
 			params: [table.Param{
@@ -5192,7 +5264,7 @@ fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 		g.write('*')
 	}
 	g.expr(node.left)
-	g.write(',')
+	g.write(', ')
 	g.expr(node.args[0].expr)
 	g.write(')')
 }
