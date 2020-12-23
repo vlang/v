@@ -1,0 +1,6 @@
+vlib/v/parser/tests/duplicate_field_embed_err.vv:8:2: error: duplicate field `ModFileAndFolder`
+    6 | struct Bar {
+    7 |     ModFileAndFolder
+    8 |     vmod.ModFileAndFolder
+      |     ~~~~~~~~~~~~~~~~~~~~~
+    9 | }

@@ -79,6 +79,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 	mut fields := []table.Field{}
 	mut embed_types := []table.Type{}
 	mut embeds := []ast.Embed{}
+	mut embed_field_names := []string{}
 	mut mut_pos := -1
 	mut pub_pos := -1
 	mut pub_mut_pos := -1
@@ -156,7 +157,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			}
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
-				p.peek_tok.kind == .dot) && language == .v && fields.len == 0
+				p.peek_tok.kind == .dot) && language == .v && ast_fields.len == 0
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -172,11 +173,17 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				type_pos = type_pos.extend(p.prev_tok.position())
+				sym := p.table.get_type_symbol(typ)
 				if typ in embed_types {
-					sym := p.table.get_type_symbol(typ)
 					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
 					return ast.StructDecl{}
 				}
+				field_name = sym.embed_name()
+				if field_name in embed_field_names {
+					p.error_with_pos('duplicate field `$field_name`', type_pos)
+					return ast.StructDecl{}
+				}
+				embed_field_names << field_name
 				embed_types << typ
 				embeds << ast.Embed{
 					typ: typ
@@ -234,16 +241,17 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					attrs: p.attrs
 					is_public: is_field_pub
 				}
-				fields << table.Field{
-					name: field_name
-					typ: typ
-					default_expr: ast.ex2fe(default_expr)
-					has_default_expr: has_default_expr
-					is_pub: is_field_pub
-					is_mut: is_field_mut
-					is_global: is_field_global
-					attrs: p.attrs
-				}
+			}
+			// save embeds as table fields too, it will be used in generation phase
+			fields << table.Field{
+				name: field_name
+				typ: typ
+				default_expr: ast.ex2fe(default_expr)
+				has_default_expr: has_default_expr
+				is_pub: is_field_pub
+				is_mut: is_field_mut
+				is_global: is_field_global
+				attrs: p.attrs
 			}
 			p.attrs = []
 		}

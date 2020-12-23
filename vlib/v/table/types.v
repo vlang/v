@@ -851,7 +851,7 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 
 pub fn (t &TypeSymbol) embed_name() string {
 	// main.Abc<int> => Abc<int>
-	mut embed_name := t.name.split('.')[1]
+	mut embed_name := t.name.split('.').last()
 	// remove generic part from name
 	// Abc<int> => Abc
 	if '<' in embed_name {

@@ -571,6 +571,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 							c.error('cannot assign to field `$info_field.name`: $err', field.pos)
 						}
 					}
+					struct_init.fields[i].typ = expr_type
+					struct_init.fields[i].expected_type = embed_type
 				} else {
 					inited_fields << field_name
 					field_type_sym := c.table.get_type_symbol(info_field.typ)
@@ -1257,7 +1259,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				has_method = true
 				call_expr.from_embed_type = embed_of_found_methods[0]
 			} else if found_methods.len > 1 {
-				// TODO: error
+				c.error('ambiguous method `$method_name`', call_expr.pos)
 			}
 		}
 		if left_type_sym.kind == .aggregate {
@@ -1901,7 +1903,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 					has_field = true
 					selector_expr.from_embed_type = embed_of_found_fields[0]
 				} else if found_fields.len > 1 {
-					// TODO: error
+					c.error('ambiguous field `$field_name`', selector_expr.pos)
 				}
 			}
 			if sym.kind == .aggregate {

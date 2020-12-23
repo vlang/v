@@ -7,7 +7,6 @@ struct Foo {
 
 fn (f Foo) foo() {}
 
-
 struct Bar {
 	Foo
 }
@@ -15,7 +14,7 @@ struct Bar {
 fn test_embed() {
 	b := Bar{}
 	assert b.x == 0
-	//b.foo() // TODO methods
+	b.foo()
 }
 
 fn test_embed_direct_access() {
