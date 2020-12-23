@@ -5257,6 +5257,76 @@ fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 	g.write(')')
 }
 
+fn (mut g Gen) gen_array_index_method(left_type table.Type) string {
+	mut left_sym := g.table.get_type_symbol(left_type)
+	mut left_type_str := g.typ(left_type).replace('*', '')
+	left_info := left_sym.info as table.Array
+	mut elem_type_str := g.typ(left_info.elem_type)
+	elem_sym := g.table.get_type_symbol(left_info.elem_type)
+	if elem_sym.kind == .function {
+		left_type_str = 'array_voidptr'
+		elem_type_str = 'voidptr'
+	}
+	fn_name := '${left_type_str}_index'
+	if !left_sym.has_method('index') {
+		g.type_definitions.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v); // auto')
+		mut fn_builder := strings.new_builder(512)
+		fn_builder.writeln('static int ${fn_name}($left_type_str a, $elem_type_str v) {')
+		fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
+		match elem_sym.kind {
+			.string {
+				fn_builder.writeln('\t\tif (string_eq((*(string*)array_get(a, i)), v)) {')
+			}
+			.array {
+				ptr_typ := g.gen_array_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_arr_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.function {
+				fn_builder.writeln('\t\tif ((*(voidptr*)array_get(a, i)) == v) {')
+			}
+			.map {
+				ptr_typ := g.gen_map_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_map_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			.struct_ {
+				ptr_typ := g.gen_struct_equality_fn(left_info.elem_type)
+				fn_builder.writeln('\t\tif (${ptr_typ}_struct_eq(*($elem_type_str*)array_get(a, i), v)) {')
+			}
+			else {
+				fn_builder.writeln('\t\tif ((*($elem_type_str*)array_get(a, i)) == v) {')
+			}
+		}
+		fn_builder.writeln('\t\t\treturn i;')
+		fn_builder.writeln('\t\t}')
+		fn_builder.writeln('\t}')
+		fn_builder.writeln('\treturn -1;')
+		fn_builder.writeln('}')
+		g.auto_fn_definitions << fn_builder.str()
+		left_sym.register_method(&table.Fn{
+			name: 'index'
+			params: [table.Param{
+				typ: left_type
+			}, table.Param{
+				typ: left_info.elem_type
+			}]
+		})
+	}
+	return fn_name
+}
+
+// `nums.index(2)`
+fn (mut g Gen) gen_array_index(node ast.CallExpr) {
+	fn_name := g.gen_array_index_method(node.left_type)
+	g.write('${fn_name}(')
+	if node.left_type.is_ptr() {
+		g.write('*')
+	}
+	g.expr(node.left)
+	g.write(', ')
+	g.expr(node.args[0].expr)
+	g.write(')')
+}
+
 [inline]
 fn (g &Gen) nth_stmt_pos(n int) int {
 	return g.stmt_path_pos[g.stmt_path_pos.len - (1 + n)]

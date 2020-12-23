@@ -1161,7 +1161,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
 		method_name in
-		['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains'] {
+		['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains', 'index'] {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -1212,6 +1212,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.void_type
 		} else if method_name == 'contains' {
 			call_expr.return_type = table.bool_type
+		} else if method_name == 'index' {
+			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
 	} else if left_type_sym.kind == .map && method_name == 'clone' {

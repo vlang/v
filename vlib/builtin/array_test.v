@@ -1226,3 +1226,28 @@ fn test_struct_array_of_multi_type_in() {
 	println(ivan in people)
 	assert ivan in people
 }
+
+fn test_struct_array_of_multi_type_index() {
+	ivan := Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}
+	people := [Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}, Person{
+		name: 'bob'
+		nums: [2]
+		kv: {
+			'bbb': '222'
+		}
+	}]
+	println(people.index(ivan))
+	assert people.index(ivan) == 0
+}
