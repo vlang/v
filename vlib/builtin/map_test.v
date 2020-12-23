@@ -485,3 +485,13 @@ fn test_int_keys() {
 	}
 	assert all == [3,9,4,16,5,25]
 }
+
+fn test_voidptr_keys() {
+	mut m := map[voidptr]string
+	v := 5
+	m[&v] = 'var'
+	m[&m] = 'map'
+	assert m[&v] == 'var'
+	assert m[&m] == 'map'
+	assert m.len == 2
+}
