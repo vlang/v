@@ -473,7 +473,7 @@ pub fn new() RE
 
 ```
 #### **Custom initialization**
-For some particular need it is possible initialize a fully customized regex:
+For some particular needs it is possible initialize a fully manually customized regex:
 ```v ignore
 pattern = r"ab(.*)(ac)"
 // init custom regex
@@ -484,6 +484,8 @@ re.cc   = []CharClass{len: pattern.len}     // can not be more char class the th
 re.group_csave_flag = false          // true enable continuos group saving if needed
 re.group_max_nested = 128            // set max 128 group nested possible
 re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern legth
+re.group_stack = []int{len: re.group_max, init: -1}
+re.group_data  = []int{len: re.group_max, init: -1}
 ```
 ### Compiling
 
@@ -494,22 +496,14 @@ After an initializer is used, the regex expression must be compiled with:
 pub fn (re mut RE) compile_opt(in_txt string) ?
 ```
 
-### Operative Functions
+### Matching Functions
 
-These are the operative functions
+These are the matching functions
 
 ```v ignore
 // match_string try to match the input string, return start and end index if found else start is -1
 pub fn (re mut RE) match_string(in_txt string) (int,int)
 
-// find try to find the first match in the input string, return start and end index if found else start is -1
-pub fn (re mut RE) find(in_txt string) (int,int)
-
-// find_all find all the "non overlapping" occurrences of the matching pattern, return a list of start end indexes
-pub fn (re mut RE) find_all(in_txt string) []int
-
-// replace return a string where the matches are replaced with the replace string, only non overlapped matches are used
-pub fn (re mut RE) replace(in_txt string, repl string) string
 ```
 
 ## Find and Replace
