@@ -374,6 +374,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_contains(node)
 				return
 			}
+			'index' {
+				g.gen_array_index(node)
+				return
+			}
 			else {}
 		}
 	}
