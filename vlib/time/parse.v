@@ -39,8 +39,8 @@ pub fn parse_rfc2822(s string) ?Time {
 	unsafe {
 		tmstr = malloc(s.len * 2)
 	}
-	count := unsafe {C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str,
-		mm, fields[1].str, fields[4].str)}
+	count := unsafe { C.snprintf(charptr(tmstr), (s.len * 2), '%s-%02d-%s %s', fields[3].str,
+		mm, fields[1].str, fields[4].str) }
 	return parse(tos(tmstr, count))
 }
 
@@ -51,7 +51,7 @@ const (
 
 fn parse_iso8601_date(s string) ?(int, int, int) {
 	year, month, day, dummy := 0, 0, 0, byte(0)
-	count := unsafe {C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy)}
+	count := unsafe { C.sscanf(charptr(s.str), '%4d-%2d-%2d%c', &year, &month, &day, &dummy) }
 	if count != 3 {
 		return err_invalid_8601
 	}
@@ -66,12 +66,12 @@ fn parse_iso8601_time(s string) ?(int, int, int, int, i64, bool) {
 	plus_min_z := `a`
 	offset_hour := 0
 	offset_minute := 0
-	mut count := unsafe {C.sscanf(charptr(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour, &minute,
-		&second, &microsecond, charptr(&plus_min_z), &offset_hour, &offset_minute)}
+	mut count := unsafe { C.sscanf(charptr(s.str), '%2d:%2d:%2d.%6d%c%2d:%2d', &hour,
+		&minute, &second, &microsecond, charptr(&plus_min_z), &offset_hour, &offset_minute) }
 	// Missread microsecond ([Sec Hour Minute].len == 3 < 4)
 	if count < 4 {
-		count = unsafe {C.sscanf(charptr(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour, &minute,
-			&second, charptr(&plus_min_z), &offset_hour, &offset_minute)}
+		count = unsafe { C.sscanf(charptr(s.str), '%2d:%2d:%2d%c%2d:%2d', &hour, &minute,
+			&second, charptr(&plus_min_z), &offset_hour, &offset_minute) }
 		count++ // Increment count because skipped microsecond
 	}
 	if count < 4 {

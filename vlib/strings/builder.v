@@ -137,7 +137,7 @@ pub fn (mut b Builder) str() string {
 
 // manually free the contents of the buffer
 pub fn (mut b Builder) free() {
-	unsafe {free(b.buf.data)}
+	unsafe { free(b.buf.data) }
 	// b.buf = []byte{cap: b.initial_size}
 	b.len = 0
 	b.str_calls = 0

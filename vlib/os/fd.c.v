@@ -14,7 +14,7 @@ pub fn fd_write(fd int, s string) {
 			return
 		}
 		remaining = remaining - written
-		sp = unsafe {sp + written}
+		sp = unsafe { sp + written }
 	}
 }
 
