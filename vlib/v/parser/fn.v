@@ -249,7 +249,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		}
 		// cannot use buildin function name
 		if !is_method && p.mod != 'builtin' && name in ['print', 'println', 'panic', 'exit'] {
-			p.error_with_pos('cannot use builtin function name', pos)
+			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}

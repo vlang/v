@@ -1,4 +1,4 @@
-vlib/v/parser/tests/fn_use_builtin_err.vv:1:4: error: cannot use builtin function name
+vlib/v/parser/tests/fn_use_builtin_err.vv:1:4: error: cannot redefine builtin function `print`
     1 | fn print(strings ...string) {
       |    ~~~~~
     2 |     for s in strings {
