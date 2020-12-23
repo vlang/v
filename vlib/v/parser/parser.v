@@ -15,7 +15,7 @@ import runtime
 import time
 
 const (
-	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'error', 'panic', 'exit']
+	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
 )
 
 pub struct Parser {
