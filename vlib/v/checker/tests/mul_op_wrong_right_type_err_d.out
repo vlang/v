@@ -1,7 +1,0 @@
-vlib/v/checker/tests/mul_op_wrong_right_type_err_d.vv:6:12: error: infix expr: cannot use `math.complex.Complex` (right expression) as `any_float` 
-    4 | fn main() {
-    5 |     c1 := cmplx.complex(1,-2)
-    6 |     c2 := 2.0 * c1
-      |               ^
-    7 |     println(c2)
-    8 | }
