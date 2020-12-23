@@ -2657,90 +2657,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
-			prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
-			g.prevent_sum_type_unwrapping_once = false
-			if node.name_type > 0 {
-				g.type_name(node.name_type)
-				return
-			}
-			if node.expr_type == 0 {
-				g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
-			}
-			sym := g.table.get_type_symbol(node.expr_type)
-			// if node expr is a root ident and an optional
-			mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
-			if is_optional {
-				opt_base_typ := g.base_type(node.expr_type)
-				g.writeln('(*($opt_base_typ*)')
-			}
-			if sym.kind == .array_fixed {
-				assert node.field_name == 'len'
-				info := sym.info as table.ArrayFixed
-				g.write('$info.size')
-				return
-			}
-			if sym.kind == .chan && node.field_name == 'len' {
-				g.write('sync__Channel_len(')
-				g.expr(node.expr)
-				g.write(')')
-				return
-			}
-			mut sum_type_deref_field := ''
-			if f := g.table.struct_find_field(sym, node.field_name) {
-				field_sym := g.table.get_type_symbol(f.typ)
-				if field_sym.kind == .sum_type {
-					if !prevent_sum_type_unwrapping_once {
-						// check first if field is sum type because scope searching is expensive
-						scope := g.file.scope.innermost(node.pos.pos)
-						if field := scope.find_struct_field(node.expr_type, node.field_name) {
-							// union sum type deref
-							for i, typ in field.sum_type_casts {
-								g.write('(*')
-								cast_sym := g.table.get_type_symbol(typ)
-								if i != 0 {
-									dot := if field.typ.is_ptr() { '->' } else { '.' }
-									sum_type_deref_field += ')$dot'
-								}
-								if mut cast_sym.info is table.Aggregate {
-									agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
-									sum_type_deref_field += '_$agg_sym.cname'
-									// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
-								} else {
-									sum_type_deref_field += '_$cast_sym.cname'
-								}
-							}
-						}
-					}
-				}
-			}
-			g.expr(node.expr)
-			if is_optional {
-				g.write('.data)')
-			}
-			// struct embedding
-			if sym.info is table.Struct {
-				if node.from_embed_type != 0 {
-					embed_sym := g.table.get_type_symbol(node.from_embed_type)
-					embed_name := embed_sym.embed_name()
-					g.write('.$embed_name')
-				}
-			}
-			if node.expr_type.is_ptr() || sym.kind == .chan {
-				g.write('->')
-			} else {
-				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
-				g.write('.')
-			}
-			if node.expr_type.has_flag(.shared_f) {
-				g.write('val.')
-			}
-			if node.expr_type == 0 {
-				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
-			}
-			g.write(c_name(node.field_name))
-			if sum_type_deref_field != '' {
-				g.write('.$sum_type_deref_field)')
-			}
+			g.selector_expr(node)
 		}
 		ast.Type {
 			// match sum Type
@@ -2800,6 +2717,93 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		g.write('_SLIT("...${util.strip_main_name(sym.name)}")')
 	} else {
 		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
+	}
+}
+
+fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
+	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+	g.prevent_sum_type_unwrapping_once = false
+	if node.name_type > 0 {
+		g.type_name(node.name_type)
+		return
+	}
+	if node.expr_type == 0 {
+		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
+	}
+	sym := g.table.get_type_symbol(node.expr_type)
+	// if node expr is a root ident and an optional
+	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
+	if is_optional {
+		opt_base_typ := g.base_type(node.expr_type)
+		g.writeln('(*($opt_base_typ*)')
+	}
+	if sym.kind == .array_fixed {
+		assert node.field_name == 'len'
+		info := sym.info as table.ArrayFixed
+		g.write('$info.size')
+		return
+	}
+	if sym.kind == .chan && node.field_name == 'len' {
+		g.write('sync__Channel_len(')
+		g.expr(node.expr)
+		g.write(')')
+		return
+	}
+	mut sum_type_deref_field := ''
+	if f := g.table.struct_find_field(sym, node.field_name) {
+		field_sym := g.table.get_type_symbol(f.typ)
+		if field_sym.kind == .sum_type {
+			if !prevent_sum_type_unwrapping_once {
+				// check first if field is sum type because scope searching is expensive
+				scope := g.file.scope.innermost(node.pos.pos)
+				if field := scope.find_struct_field(node.expr_type, node.field_name) {
+					// union sum type deref
+					for i, typ in field.sum_type_casts {
+						g.write('(*')
+						cast_sym := g.table.get_type_symbol(typ)
+						if i != 0 {
+							dot := if field.typ.is_ptr() { '->' } else { '.' }
+							sum_type_deref_field += ')$dot'
+						}
+						if mut cast_sym.info is table.Aggregate {
+							agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
+							sum_type_deref_field += '_$agg_sym.cname'
+							// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
+						} else {
+							sum_type_deref_field += '_$cast_sym.cname'
+						}
+					}
+				}
+			}
+		}
+	}
+	g.expr(node.expr)
+	if is_optional {
+		g.write('.data)')
+	}
+	// struct embedding
+	if sym.info is table.Struct {
+		if node.from_embed_type != 0 {
+			embed_sym := g.table.get_type_symbol(node.from_embed_type)
+			embed_name := embed_sym.embed_name()
+			g.write('.$embed_name')
+		}
+	}
+	if node.expr_type.is_ptr() || sym.kind == .chan {
+		g.write('->')
+	} else {
+		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
+		g.write('.')
+	}
+	if node.expr_type.has_flag(.shared_f) {
+		g.write('val.')
+	}
+	if node.expr_type == 0 {
+		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
+	}
+	g.write(c_name(node.field_name))
+	if sum_type_deref_field != '' {
+		g.write('.$sum_type_deref_field)')
 	}
 }
 
