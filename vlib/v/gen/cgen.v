@@ -2664,93 +2664,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.struct_init(node)
 		}
 		ast.SelectorExpr {
-			prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
-			g.prevent_sum_type_unwrapping_once = false
-			if node.name_type > 0 {
-				g.type_name(node.name_type)
-				return
-			}
-			if node.expr_type == 0 {
-				g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
-			}
-			sym := g.table.get_type_symbol(node.expr_type)
-			// if node expr is a root ident and an optional
-			mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
-			if is_optional {
-				opt_base_typ := g.base_type(node.expr_type)
-				g.writeln('(*($opt_base_typ*)')
-			}
-			if sym.kind == .array_fixed {
-				assert node.field_name == 'len'
-				info := sym.info as table.ArrayFixed
-				g.write('$info.size')
-				return
-			}
-			if sym.kind == .chan && node.field_name == 'len' {
-				g.write('sync__Channel_len(')
-				g.expr(node.expr)
-				g.write(')')
-				return
-			}
-			mut sum_type_deref_field := ''
-			if f := g.table.struct_find_field(sym, node.field_name) {
-				field_sym := g.table.get_type_symbol(f.typ)
-				if field_sym.kind == .sum_type {
-					if !prevent_sum_type_unwrapping_once {
-						// check first if field is sum type because scope searching is expensive
-						scope := g.file.scope.innermost(node.pos.pos)
-						if field := scope.find_struct_field(node.expr_type, node.field_name) {
-							// union sum type deref
-							for i, typ in field.sum_type_casts {
-								g.write('(*')
-								cast_sym := g.table.get_type_symbol(typ)
-								if i != 0 {
-									dot := if field.typ.is_ptr() { '->' } else { '.' }
-									sum_type_deref_field += ')$dot'
-								}
-								if mut cast_sym.info is table.Aggregate {
-									agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
-									sum_type_deref_field += '_$agg_sym.cname'
-									// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
-								} else {
-									sum_type_deref_field += '_$cast_sym.cname'
-								}
-							}
-						}
-					}
-				}
-			}
-			g.expr(node.expr)
-			if is_optional {
-				g.write('.data)')
-			}
-			// struct embedding
-			if sym.kind == .struct_ {
-				sym_info := sym.info as table.Struct
-				x := sym_info.fields.filter(it.name == node.field_name)
-				if x.len > 0 {
-					field := x[0]
-					if field.embed_alias_for != '' {
-						g.write('.$field.embed_alias_for')
-					}
-				}
-			}
-			if node.expr_type.is_ptr() || sym.kind == .chan {
-				g.write('->')
-			} else {
-				// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
-				g.write('.')
-			}
-			if node.expr_type.has_flag(.shared_f) {
-				g.write('val.')
-			}
-			if node.expr_type == 0 {
-				verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
-			}
-			g.write(c_name(node.field_name))
-			if sum_type_deref_field != '' {
-				g.write('.$sum_type_deref_field)')
-			}
+			g.selector_expr(node)
 		}
 		ast.Type {
 			// match sum Type
@@ -2810,6 +2724,93 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		g.write('_SLIT("...${util.strip_main_name(sym.name)}")')
 	} else {
 		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
+	}
+}
+
+fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
+	prevent_sum_type_unwrapping_once := g.prevent_sum_type_unwrapping_once
+	g.prevent_sum_type_unwrapping_once = false
+	if node.name_type > 0 {
+		g.type_name(node.name_type)
+		return
+	}
+	if node.expr_type == 0 {
+		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
+	}
+	sym := g.table.get_type_symbol(node.expr_type)
+	// if node expr is a root ident and an optional
+	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
+	if is_optional {
+		opt_base_typ := g.base_type(node.expr_type)
+		g.writeln('(*($opt_base_typ*)')
+	}
+	if sym.kind == .array_fixed {
+		assert node.field_name == 'len'
+		info := sym.info as table.ArrayFixed
+		g.write('$info.size')
+		return
+	}
+	if sym.kind == .chan && node.field_name == 'len' {
+		g.write('sync__Channel_len(')
+		g.expr(node.expr)
+		g.write(')')
+		return
+	}
+	mut sum_type_deref_field := ''
+	if f := g.table.struct_find_field(sym, node.field_name) {
+		field_sym := g.table.get_type_symbol(f.typ)
+		if field_sym.kind == .sum_type {
+			if !prevent_sum_type_unwrapping_once {
+				// check first if field is sum type because scope searching is expensive
+				scope := g.file.scope.innermost(node.pos.pos)
+				if field := scope.find_struct_field(node.expr_type, node.field_name) {
+					// union sum type deref
+					for i, typ in field.sum_type_casts {
+						g.write('(*')
+						cast_sym := g.table.get_type_symbol(typ)
+						if i != 0 {
+							dot := if field.typ.is_ptr() { '->' } else { '.' }
+							sum_type_deref_field += ')$dot'
+						}
+						if mut cast_sym.info is table.Aggregate {
+							agg_sym := g.table.get_type_symbol(cast_sym.info.types[g.aggregate_type_idx])
+							sum_type_deref_field += '_$agg_sym.cname'
+							// sum_type_deref_field += '_${cast_sym.info.types[g.aggregate_type_idx]}'
+						} else {
+							sum_type_deref_field += '_$cast_sym.cname'
+						}
+					}
+				}
+			}
+		}
+	}
+	g.expr(node.expr)
+	if is_optional {
+		g.write('.data)')
+	}
+	// struct embedding
+	if sym.info is table.Struct {
+		if node.from_embed_type != 0 {
+			embed_sym := g.table.get_type_symbol(node.from_embed_type)
+			embed_name := embed_sym.embed_name()
+			g.write('.$embed_name')
+		}
+	}
+	if node.expr_type.is_ptr() || sym.kind == .chan {
+		g.write('->')
+	} else {
+		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
+		g.write('.')
+	}
+	if node.expr_type.has_flag(.shared_f) {
+		g.write('val.')
+	}
+	if node.expr_type == 0 {
+		verror('cgen: SelectorExpr | expr_type: 0 | it.expr: `$node.expr` | field: `$node.field_name` | file: $g.file.path | line: $node.pos.line_nr')
+	}
+	g.write(c_name(node.field_name))
+	if sum_type_deref_field != '' {
+		g.write('.$sum_type_deref_field)')
 	}
 }
 
@@ -4347,16 +4348,6 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 	mut initialized := false
 	for i, field in struct_init.fields {
 		inited_fields[field.name] = i
-		if mut sym.info is table.Struct {
-			equal_fields := sym.info.fields.filter(it.name == field.name)
-			if equal_fields.len == 0 {
-				continue
-			}
-			tfield := equal_fields[0]
-			if tfield.embed_alias_for.len != 0 {
-				continue
-			}
-		}
 		if sym.kind != .struct_ {
 			field_name := c_name(field.name)
 			g.write('.$field_name = ')
@@ -4396,16 +4387,29 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 		if info.is_union && struct_init.fields.len > 1 {
 			verror('union must not have more than 1 initializer')
 		}
+		for embed in info.embeds {
+			embed_sym := g.table.get_type_symbol(embed)
+			embed_name := embed_sym.embed_name()
+			if embed_name !in inited_fields {
+				default_init := ast.StructInit{
+					typ: embed
+				}
+				g.write('.$embed_name = ')
+				g.struct_init(default_init)
+				if is_multiline {
+					g.writeln(',')
+				} else {
+					g.write(',')
+				}
+				initialized = true
+			}
+		}
 		// g.zero_struct_fields(info, inited_fields)
 		// nr_fields = info.fields.len
 		for field in info.fields {
 			if mut sym.info is table.Struct {
 				equal_fields := sym.info.fields.filter(it.name == field.name)
 				if equal_fields.len == 0 {
-					continue
-				}
-				tfield := equal_fields[0]
-				if tfield.embed_alias_for.len != 0 {
 					continue
 				}
 			}
@@ -4792,8 +4796,8 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 				} else {
 					g.type_definitions.writeln('struct $name {')
 				}
-				if typ.info.fields.len > 0 {
-					for field in typ.info.fields.filter(it.embed_alias_for == '') {
+				if typ.info.fields.len > 0 || typ.info.embeds.len > 0 {
+					for field in typ.info.fields {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
 						// if this is the case then we are going to
@@ -4887,6 +4891,14 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 				// if info.is_interface {
 				// continue
 				// }
+				for embed in t.info.embeds {
+					dep := g.table.get_type_symbol(embed).name
+					// skip if not in types list or already in deps
+					if dep !in type_names || dep in field_deps {
+						continue
+					}
+					field_deps << dep
+				}
 				for field in t.info.fields {
 					dep := g.table.get_type_symbol(field.typ).name
 					// skip if not in types list or already in deps

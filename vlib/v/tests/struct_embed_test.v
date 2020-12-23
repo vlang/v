@@ -7,7 +7,6 @@ struct Foo {
 
 fn (f Foo) foo() {}
 
-
 struct Bar {
 	Foo
 }
@@ -15,7 +14,7 @@ struct Bar {
 fn test_embed() {
 	b := Bar{}
 	assert b.x == 0
-	//b.foo() // TODO methods
+	b.foo()
 }
 
 fn test_embed_direct_access() {
@@ -27,7 +26,7 @@ fn test_default_value() {
 	b := Bar{Foo: Foo{}}
 	assert b.y == 5
 }
-/*
+/* TODO
 fn test_initialize() {
 	b := Bar{x: 1, y: 2}
 	assert b.x == 1
@@ -59,5 +58,19 @@ fn test_generic_embed() {
 	b := BarGenericContainer{}
 	assert b.BarGeneric.foo == 0
 	assert b.foo == 0
-	println('ok')
+}
+
+struct Upper {
+mut:
+	x int
+}
+
+struct UpperHolder {
+	Upper
+}
+
+fn test_assign() {
+	mut h := UpperHolder{}
+	h.x = 5
+	assert h.x == 5
 }

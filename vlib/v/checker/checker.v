@@ -371,27 +371,17 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 	}
 	mut struct_sym := c.table.find_type(decl.name) or { table.TypeSymbol{} }
 	if mut struct_sym.info is table.Struct {
+		for embed in decl.embeds {
+			embed_sym := c.table.get_type_symbol(embed.typ)
+			if embed_sym.kind != .struct_ {
+				c.error('`$embed_sym.name` is not a struct', embed.pos)
+			}
+		}
 		for i, field in decl.fields {
-			if decl.language == .v && !field.is_embed {
+			if decl.language == .v {
 				c.check_valid_snake_case(field.name, 'field name', field.pos)
 			}
 			sym := c.table.get_type_symbol(field.typ)
-			if field.is_embed {
-				if mut sym.info is table.Struct {
-					for embed_field in sym.info.fields {
-						already_exists := struct_sym.info.fields.filter(it.name == embed_field.name).len >
-							0
-						if !already_exists {
-							struct_sym.info.fields << {
-								embed_field |
-								embed_alias_for: field.name
-							}
-						}
-					}
-				} else {
-					c.error('`$sym.name` is not a struct', field.pos)
-				}
-			}
 			for j in 0 .. i {
 				if field.name == decl.fields[j].name {
 					c.error('field name `$field.name` duplicate', field.pos)
@@ -528,6 +518,8 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			mut inited_fields := []string{}
 			for i, field in struct_init.fields {
 				mut info_field := table.Field{}
+				mut embed_type := table.Type(0)
+				mut is_embed := false
 				mut field_name := ''
 				if struct_init.is_short {
 					if i >= info.fields.len {
@@ -548,31 +540,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 							break
 						}
 					}
-					/*
-					if c.pref.is_verbose {
-						for f in info.fields {
-							if f.name == field_name {
-								if f.embed_alias_for.len != 0 {
-									mut has_embed_init := false
-									for embedding in struct_init.fields {
-										if embedding.name == f.embed_alias_for {
-											has_embed_init = true
-										}
-									}
-									if !has_embed_init {
-										n := {
-											f |
-											embed_alias_for: ''
-										}
-										println(field)
-										// struct_init.fields << { f | embed_alias_for: '' }
-									}
-								}
+					if !exists {
+						for embed in info.embeds {
+							embed_sym := c.table.get_type_symbol(embed)
+							if embed_sym.embed_name() == field_name {
+								exists = true
+								embed_type = embed
+								is_embed = true
 								break
 							}
 						}
 					}
-					*/
 					if !exists {
 						c.error('unknown field `$field.name` in struct literal of type `$type_sym.name`',
 							field.pos)
@@ -584,29 +562,43 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 						continue
 					}
 				}
-				inited_fields << field_name
-				field_type_sym := c.table.get_type_symbol(info_field.typ)
-				c.expected_type = info_field.typ
-				expr_type := c.expr(field.expr)
-				expr_type_sym := c.table.get_type_symbol(expr_type)
-				if field_type_sym.kind == .interface_ {
-					c.type_implements(expr_type, info_field.typ, field.pos)
-				} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
-					c.check_expected(expr_type, info_field.typ) or {
-						c.error('cannot assign to field `$info_field.name`: $err', field.pos)
+				if is_embed {
+					c.expected_type = embed_type
+					expr_type := c.expr(field.expr)
+					expr_type_sym := c.table.get_type_symbol(expr_type)
+					if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
+						c.check_expected(expr_type, embed_type) or {
+							c.error('cannot assign to field `$info_field.name`: $err',
+								field.pos)
+						}
 					}
+					struct_init.fields[i].typ = expr_type
+					struct_init.fields[i].expected_type = embed_type
+				} else {
+					inited_fields << field_name
+					field_type_sym := c.table.get_type_symbol(info_field.typ)
+					c.expected_type = info_field.typ
+					expr_type := c.expr(field.expr)
+					expr_type_sym := c.table.get_type_symbol(expr_type)
+					if field_type_sym.kind == .interface_ {
+						c.type_implements(expr_type, info_field.typ, field.pos)
+					} else if expr_type != table.void_type && expr_type_sym.kind != .placeholder {
+						c.check_expected(expr_type, info_field.typ) or {
+							c.error('cannot assign to field `$info_field.name`: $err',
+								field.pos)
+						}
+					}
+					if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
+						!expr_type.is_number() {
+						c.error('ref', field.pos)
+					}
+					struct_init.fields[i].typ = expr_type
+					struct_init.fields[i].expected_type = info_field.typ
 				}
-				if info_field.typ.is_ptr() && !expr_type.is_ptr() && !expr_type.is_pointer() &&
-					!expr_type.is_number() {
-					c.error('ref', field.pos)
-				}
-				struct_init.fields[i].typ = expr_type
-				struct_init.fields[i].expected_type = info_field.typ
 			}
 			// Check uninitialized refs
 			for field in info.fields {
-				if field.has_default_expr || field.name in inited_fields || field.embed_alias_for !=
-					'' {
+				if field.has_default_expr || field.name in inited_fields {
 					continue
 				}
 				if field.typ.is_ptr() && !c.pref.translated {
@@ -992,7 +984,23 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			match typ_sym.kind {
 				.struct_ {
 					struct_info := typ_sym.info as table.Struct
-					field_info := struct_info.find_field(expr.field_name) or {
+					mut has_field := true
+					mut field_info := struct_info.find_field(expr.field_name) or {
+						has_field = false
+						table.Field{}
+					}
+					if !has_field {
+						for embed in struct_info.embeds {
+							embed_sym := c.table.get_type_symbol(embed)
+							embed_struct_info := embed_sym.info as table.Struct
+							if embed_field_info := embed_struct_info.find_field(expr.field_name) {
+								has_field = true
+								field_info = embed_field_info
+								break
+							}
+						}
+					}
+					if !has_field {
 						type_str := c.table.type_to_str(expr.expr_type)
 						c.error('unknown field `${type_str}.$expr.field_name`', expr.pos)
 						return '', pos
@@ -1238,7 +1246,36 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			c.error('cannot $method_name `$arg_sym.name` to `$left_type_sym.name`', arg_expr.position())
 		}
 	}
-	if method := c.table.type_find_method(left_type_sym, method_name) {
+	mut method := table.Fn{}
+	mut has_method := false
+	if m := c.table.type_find_method(left_type_sym, method_name) {
+		method = m
+		has_method = true
+	} else {
+		if left_type_sym.info is table.Struct {
+			mut found_methods := []table.Fn{}
+			mut embed_of_found_methods := []table.Type{}
+			for embed in left_type_sym.info.embeds {
+				embed_sym := c.table.get_type_symbol(embed)
+				if m := c.table.type_find_method(embed_sym, method_name) {
+					found_methods << m
+					embed_of_found_methods << embed
+				}
+			}
+			if found_methods.len == 1 {
+				method = found_methods[0]
+				has_method = true
+				call_expr.from_embed_type = embed_of_found_methods[0]
+			} else if found_methods.len > 1 {
+				c.error('ambiguous method `$method_name`', call_expr.pos)
+			}
+		}
+		if left_type_sym.kind == .aggregate {
+			// the error message contains the problematic type
+			unknown_method_msg = err
+		}
+	}
+	if has_method {
 		if !method.is_pub && !c.is_builtin_mod && !c.pref.is_test && left_type_sym.mod != c.mod &&
 			left_type_sym.mod != '' { // method.mod != c.mod {
 			// If a private method is called outside of the module
@@ -1337,15 +1374,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
+			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
 		return method.return_type
-	} else {
-		if left_type_sym.kind == .aggregate {
-			// the error message contains the problematic type
-			unknown_method_msg = err
-		}
 	}
 	// TODO: str methods
 	if method_name == 'str' {
@@ -1846,7 +1879,47 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 	}
 	mut unknown_field_msg := 'type `$sym.name` has no field or method `$field_name`'
-	if field := c.table.struct_find_field(sym, field_name) {
+	mut has_field := false
+	mut field := table.Field{}
+	if field_name.len > 0 && field_name[0].is_capital() && sym.info is table.Struct {
+		// x.Foo.y => access the embedded struct
+		sym_info := sym.info as table.Struct
+		for embed in sym_info.embeds {
+			embed_sym := c.table.get_type_symbol(embed)
+			if embed_sym.embed_name() == field_name {
+				selector_expr.typ = embed
+				return embed
+			}
+		}
+	} else {
+		if f := c.table.struct_find_field(sym, field_name) {
+			has_field = true
+			field = f
+		} else {
+			if sym.info is table.Struct {
+				mut found_fields := []table.Field{}
+				mut embed_of_found_fields := []table.Type{}
+				for embed in sym.info.embeds {
+					embed_sym := c.table.get_type_symbol(embed)
+					if f := c.table.struct_find_field(embed_sym, field_name) {
+						found_fields << f
+						embed_of_found_fields << embed
+					}
+				}
+				if found_fields.len == 1 {
+					field = found_fields[0]
+					has_field = true
+					selector_expr.from_embed_type = embed_of_found_fields[0]
+				} else if found_fields.len > 1 {
+					c.error('ambiguous field `$field_name`', selector_expr.pos)
+				}
+			}
+			if sym.kind == .aggregate {
+				unknown_field_msg = err
+			}
+		}
+	}
+	if has_field {
 		if sym.mod != c.mod && !field.is_pub && sym.language != .c {
 			c.error('field `${sym.name}.$field_name` is not public', selector_expr.pos)
 		}
@@ -1860,19 +1933,14 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		}
 		selector_expr.typ = field.typ
 		return field.typ
-	} else {
-		if sym.kind == .aggregate {
-			unknown_field_msg = err
-		}
 	}
 	if sym.kind !in [.struct_, .aggregate] {
 		if sym.kind != .placeholder {
 			c.error('`$sym.name` is not a struct', selector_expr.pos)
 		}
 	} else {
-		if sym.kind == .struct_ {
-			sss := sym.info as table.Struct
-			suggestion := util.new_suggestion(field_name, sss.fields.map(it.name))
+		if sym.info is table.Struct {
+			suggestion := util.new_suggestion(field_name, sym.info.fields.map(it.name))
 			c.error(suggestion.say(unknown_field_msg), selector_expr.pos)
 		}
 		c.error(unknown_field_msg, selector_expr.pos)
