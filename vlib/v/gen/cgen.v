@@ -2995,7 +2995,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				g.write('*')
 			}
 			g.expr(node.right)
-			g.write(',')
+			g.write(', ')
 			g.expr(node.left)
 			g.write('))')
 			return
@@ -4534,7 +4534,7 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.struct_fn_definitions << ptr_typ
-	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b);')
+	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
 	for field in info.fields {
@@ -4586,9 +4586,9 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.array_fn_definitions << ptr_typ
-	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b);')
+	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b) {')
+	fn_builder.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b) {')
 	fn_builder.writeln('\tif (a.len != b.len) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
@@ -4624,9 +4624,9 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		return ptr_typ
 	}
 	g.map_fn_definitions << ptr_typ
-	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b);')
+	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b) {')
+	fn_builder.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b) {')
 	fn_builder.writeln('\tif (a.len != b.len) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
@@ -5252,7 +5252,7 @@ fn (mut g Gen) gen_array_contains(node ast.CallExpr) {
 		g.write('*')
 	}
 	g.expr(node.left)
-	g.write(',')
+	g.write(', ')
 	g.expr(node.args[0].expr)
 	g.write(')')
 }
