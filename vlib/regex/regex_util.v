@@ -166,6 +166,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}
 	mut ls := -1
+	re.reset()
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])
 		if s >= 0 && e > s && i+s > ls {
@@ -189,6 +190,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 	mut i := 0
 	mut res := []string{}
 	mut ls := -1
+	re.reset()
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])
 		if s >= 0 && e > s && i+s > ls {
