@@ -836,7 +836,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 			}
 		} else {
-			g.write('0')
+			// NB: tcc can not handle 0 here, while msvc needs it
+			g.write('EMPTY_VARG_INITIALIZATION')
 		}
 		g.write('}}')
 	}
