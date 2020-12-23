@@ -48,14 +48,14 @@ Anything you can do in other languages, you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
     * [Anonymous & high order functions](#anonymous--high-order-functions)
+    * [println and other builtin functions](#println-and-other-builtin-functions)
 * [References](#references)
-* [Modules](#modules)
 * [Constants](#constants)
+* [Modules](#modules)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -108,7 +108,6 @@ These are:
 -->
 
 ## Hello World
-
 
 ```v
 fn main() {
@@ -1506,6 +1505,53 @@ fn main() {
 }
 ```
 
+## println and other builtin functions
+
+`println` is a simple yet powerful builtin function. It can print anything:
+strings, numbers, arrays, maps, structs.
+
+```v nofmt
+struct User{ name string age int }
+println(1) // "1"
+println('hi') // "hi"
+println([1,2,3]) // "[1, 2, 3]"
+println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
+```
+
+If you want to define a custom print value for your type, simply define a
+`.str() string` method:
+
+```v
+struct Color {
+	r int
+	g int
+	b int
+}
+
+pub fn (c Color) str() string {
+	return '{$c.r, $c.g, $c.b}'
+}
+
+red := Color{
+	r: 255
+	g: 0
+	b: 0
+}
+println(red)
+```
+
+If you don't want to print a newline, use `print()` instead.
+
+The number of builtin functions is low. Other builtin functions are:
+
+
+```v ignore
+fn exit(exit_code int) // terminate the program
+fn panic(message string)
+fn print_backtrace()
+fn eprintln(s string) // same as println, but use stderr
+```
+
 ## References
 
 ```v
@@ -1616,53 +1662,6 @@ are no globals:
 
 ```v ignore
 println('Top cities: $top_cities.filter(.usa)')
-```
-
-## println and other builtin functions
-
-`println` is a simple yet powerful builtin function. It can print anything:
-strings, numbers, arrays, maps, structs.
-
-```v nofmt
-struct User{ name string age int }
-println(1) // "1"
-println('hi') // "hi"
-println([1,2,3]) // "[1, 2, 3]"
-println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
-```
-
-If you want to define a custom print value for your type, simply define a
-`.str() string` method:
-
-```v
-struct Color {
-	r int
-	g int
-	b int
-}
-
-pub fn (c Color) str() string {
-	return '{$c.r, $c.g, $c.b}'
-}
-
-red := Color{
-	r: 255
-	g: 0
-	b: 0
-}
-println(red)
-```
-
-If you don't want to print a newline, use `print()` instead.
-
-The number of builtin functions is low. Other builtin functions are:
-
-
-```v ignore
-fn exit(exit_code int) // terminate the program
-fn panic(message string)
-fn print_backtrace()
-fn eprintln(s string) // same as println, but use stderr
 ```
 
 ## Modules
