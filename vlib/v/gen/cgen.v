@@ -4740,12 +4740,6 @@ fn (mut g Gen) write_types(types []table.TypeSymbol) {
 					g.type_definitions.writeln('struct $name {')
 				}
 				if typ.info.fields.len > 0 || typ.info.embeds.len > 0 {
-					for embed in typ.info.embeds {
-						type_name := g.typ(embed)
-						embed_sym := g.table.get_type_symbol(embed)
-						field_name := embed_sym.embed_name()
-						g.type_definitions.writeln('\t$type_name $field_name;')
-					}
 					for field in typ.info.fields {
 						// Some of these structs may want to contain
 						// optionals that may not be defined at this point
