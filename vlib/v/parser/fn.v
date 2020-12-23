@@ -233,7 +233,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
-			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead', pos)
+			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
+				pos)
 			return ast.FnDecl{
 				scope: 0
 			}
