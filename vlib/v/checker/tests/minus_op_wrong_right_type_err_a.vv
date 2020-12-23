@@ -1,4 +1,0 @@
-struct Aaa{}
-fn main() {
-    println(10 - Aaa{})
-}
