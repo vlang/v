@@ -211,10 +211,32 @@ mut:
 	// Extra metas that allows for no ranging when incrementing
 	// index in the hashmap
 	extra_metas     u32
+	has_string_keys bool
+	hash_fn         fn(voidptr)u64
 pub mut:
 	// Number of key-values currently in the hashmap
 	len             int
-	has_string_keys bool
+}
+
+fn hash_string(pkey voidptr) u64 {
+	key := *&string(pkey)
+	return hash.wyhash_c(key.str, u64(key.len), 0)
+}
+
+fn hash_1(pkey voidptr) u64 {
+	return hash.wyhash_c(pkey, 1, 0)
+}
+
+fn hash_2(pkey voidptr) u64 {
+	return hash.wyhash_c(pkey, 2, 0)
+}
+
+fn hash_4(pkey voidptr) u64 {
+	return hash.wyhash_c(pkey, 4, 0)
+}
+
+fn hash_8(pkey voidptr) u64 {
+	return hash.wyhash_c(pkey, 8, 0)
 }
 
 // bootstrap
@@ -224,6 +246,16 @@ fn new_map_1(value_bytes int) map {
 
 fn new_map(key_bytes int, value_bytes int) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
+	// for now assume anything bigger than a pointer is a string
+	has_string_keys := key_bytes > sizeof(voidptr)
+	mut hash_fn := fn(voidptr)u64
+	match key_bytes {
+		1 {hash_fn = &hash_1}
+		2 {hash_fn = &hash_2}
+		4 {hash_fn = &hash_4}
+		8 {hash_fn = &hash_8}
+		else {hash_fn = &hash_string}
+	}
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -234,8 +266,8 @@ fn new_map(key_bytes int, value_bytes int) map {
 		metas: &u32(vcalloc(metasize))
 		extra_metas: extra_metas_inc
 		len: 0
-		// for now assume anything bigger than a pointer is a string
-		has_string_keys: key_bytes > sizeof(voidptr)
+		has_string_keys: has_string_keys
+		hash_fn: hash_fn
 	}
 }
 
@@ -269,12 +301,7 @@ fn (m &map) keys_eq(a voidptr, b voidptr) bool {
 
 [inline]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
-	hash := if m.has_string_keys {
-		key := *&string(pkey)
-		hash.wyhash_c(key.str, u64(key.len), 0)
-	} else {
-		hash.wyhash_c(pkey, u64(m.key_bytes), 0)
-	}
+	hash := m.hash_fn(pkey)
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
@@ -669,6 +696,7 @@ pub fn (m &map) clone() map {
 		extra_metas: m.extra_metas
 		len: m.len
 		has_string_keys: m.has_string_keys
+		hash_fn: m.hash_fn
 	}
 	unsafe { C.memcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {
