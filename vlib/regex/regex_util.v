@@ -117,6 +117,7 @@ pub fn (re RE) get_group_list() []Re_group {
 	mut res := []Re_group{len: re.groups.len >> 1}
 	mut gi := 0
 	//println("len: ${re.groups.len} groups: ${re.groups}")
+	
 	for gi < re.groups.len {
 		if re.groups[gi] >= 0 {
 			txt_st := re.groups[gi]
@@ -145,8 +146,8 @@ pub fn (re RE) get_group_list() []Re_group {
 [direct_array_access]
 pub fn (mut re RE) find(in_txt string) (int,int) {
 	old_flag := re.flag
-	
 	re.flag |= f_src  // enable search mode
+
 	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
 	//print("Find [$start,$end] '${in_txt[start..end]}'")
 	if end > in_txt.len {
@@ -166,7 +167,7 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	mut i := 0
 	mut res := []int{}
 	mut ls := -1
-	re.reset()
+
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])
 		if s >= 0 && e > s && i+s > ls {
@@ -190,7 +191,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 	mut i := 0
 	mut res := []string{}
 	mut ls := -1
-	re.reset()
+
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])
 		if s >= 0 && e > s && i+s > ls {
@@ -214,6 +215,7 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 // replace return a string where the matches are replaced with the replace string
 pub fn (mut re RE) replace(in_txt string, repl string) string {
 	pos := re.find_all(in_txt)
+
 	if pos.len > 0 {
 		mut res := ""
 		mut i := 0
@@ -247,7 +249,7 @@ pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
 	mut res := ""
 	mut ls  := -1
 	mut s1  := 0
-	
+
 	for i < in_txt.len {
 		s,e := re.find(in_txt[i..])
 		if s >= 0 && e > s && i+s > ls {
