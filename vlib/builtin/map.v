@@ -226,19 +226,19 @@ fn map_hash_string(pkey voidptr) u64 {
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
-	return hash.wyhash_c(pkey, 1, 0)
+	return hash.wyhash64_c(*&byte(pkey), 0)
 }
 
 fn map_hash_int_2(pkey voidptr) u64 {
-	return hash.wyhash_c(pkey, 2, 0)
+	return hash.wyhash64_c(*&u16(pkey), 0)
 }
 
 fn map_hash_int_4(pkey voidptr) u64 {
-	return hash.wyhash_c(pkey, 4, 0)
+	return hash.wyhash64_c(*&u32(pkey), 0)
 }
 
 fn map_hash_int_8(pkey voidptr) u64 {
-	return hash.wyhash_c(pkey, 8, 0)
+	return hash.wyhash64_c(*&u64(pkey), 0)
 }
 
 // bootstrap
