@@ -473,7 +473,7 @@ pub fn new() RE
 
 ```
 #### **Custom initialization**
-For some particular need it is possible initialize a fully customized regex:
+For some particular needs it is possible initialize a fully manually customized regex:
 ```v ignore
 pattern = r"ab(.*)(ac)"
 // init custom regex
@@ -484,6 +484,8 @@ re.cc   = []CharClass{len: pattern.len}     // can not be more char class the th
 re.group_csave_flag = false          // true enable continuos group saving if needed
 re.group_max_nested = 128            // set max 128 group nested possible
 re.group_max        = pattern.len>>1 // we can't have more groups than the half of the pattern legth
+re.group_stack = []int{len: re.group_max, init: -1}
+re.group_data  = []int{len: re.group_max, init: -1}
 ```
 ### Compiling
 
@@ -494,22 +496,14 @@ After an initializer is used, the regex expression must be compiled with:
 pub fn (re mut RE) compile_opt(in_txt string) ?
 ```
 
-### Operative Functions
+### Matching Functions
 
-These are the operative functions
+These are the matching functions
 
 ```v ignore
 // match_string try to match the input string, return start and end index if found else start is -1
 pub fn (re mut RE) match_string(in_txt string) (int,int)
 
-// find try to find the first match in the input string, return start and end index if found else start is -1
-pub fn (re mut RE) find(in_txt string) (int,int)
-
-// find_all find all the "non overlapping" occurrences of the matching pattern, return a list of start end indexes
-pub fn (re mut RE) find_all(in_txt string) []int
-
-// replace return a string where the matches are replaced with the replace string, only non overlapped matches are used
-pub fn (re mut RE) replace(in_txt string, repl string) string
 ```
 
 ## Find and Replace
@@ -519,13 +513,19 @@ There are the following find  and replace functions:
 #### Find functions
 
 ```v ignore
-// find try to find the first match in the input string, return start and end index if found else start is -1
+// find try to find the first match in the input string
+// return start and end index if found else start is -1
 pub fn (re mut RE) find(in_txt string) (int,int)
 
 // find_all find all the "non overlapping" occurrences of the matching pattern
 // return a list of start end indexes like: [3,4,6,8] 
 // the matches are [3,4] and [6,8]
 pub fn (re mut RE) find_all(in_txt string) []int
+
+// find_all find all the "non overlapping" occurrences of the matching pattern
+// return a list of strings
+// the result is like ["first match","secon match"]
+pub fn (mut re RE) find_all_str(in_txt string) []string
 ```
 
 #### Replace functions
@@ -543,10 +543,12 @@ The`replace_by_fn` use a custom replace function making possible customizations.
 The custom function must be of the type:
 
 ```v ignore
-// re RE struct
-// in_txt all the text passed to the regex expression
-// the match is: in_txt[start..end]
-fn (re RE, in_txt string, start int, end int) string
+// type of function used for custom replace
+// in_txt  source text
+// start   index of the start of the match in in_txt
+// end     index of the end   of the match in in_txt
+// --- the match is in in_txt[start..end] ---
+fn (re RE, in_txt string, start int, end int) string 
 ```
 
 The following example will clarify the use:
