@@ -190,7 +190,7 @@ fn (mut d DenseArray) zeros_to_end() {
 	}
 }
 
-type MapHashFn = fn(voidptr)u64
+type MapHashFn = fn (voidptr) u64
 
 pub struct map {
 	// Number of bytes of a key
@@ -252,11 +252,11 @@ fn new_map(key_bytes int, value_bytes int) map {
 	has_string_keys := key_bytes > sizeof(voidptr)
 	mut hash_fn := voidptr(0)
 	match key_bytes {
-		1 {hash_fn = &map_hash_int_1}
-		2 {hash_fn = &map_hash_int_2}
-		4 {hash_fn = &map_hash_int_4}
-		8 {hash_fn = &map_hash_int_8}
-		else {hash_fn = &map_hash_string}
+		1 { hash_fn = &map_hash_int_1 }
+		2 { hash_fn = &map_hash_int_2 }
+		4 { hash_fn = &map_hash_int_4 }
+		8 { hash_fn = &map_hash_int_8 }
+		else { hash_fn = &map_hash_string }
 	}
 	return map{
 		key_bytes: key_bytes
@@ -298,7 +298,7 @@ fn (m &map) keys_eq(a voidptr, b voidptr) bool {
 		return fast_string_eq(*&string(a), *&string(b))
 	}
 	// FIXME only works with integer/pointer types
-	return unsafe {C.memcmp(a, b, m.key_bytes)} == 0
+	return unsafe { C.memcmp(a, b, m.key_bytes) } == 0
 }
 
 [inline]
@@ -312,7 +312,7 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 [inline]
 fn (m &map) clone_key(dest voidptr, pkey voidptr) {
 	if !m.has_string_keys {
-		unsafe {C.memcpy(dest, pkey, m.key_bytes)}
+		unsafe { C.memcpy(dest, pkey, m.key_bytes) }
 		return
 	}
 	unsafe {
