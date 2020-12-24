@@ -622,7 +622,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			max = comments_len + field.name.len
 		}
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
-		if !ft.starts_with('C.') && !ft.starts_with('JS.') {
+		if !ft.contains('C.') && !ft.contains('JS.') {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
