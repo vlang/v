@@ -1,5 +1,12 @@
 import os
 
+struct KeepAnyLanguagePrefixVariation {
+	x  C.bar
+	y  &C.bar
+	z  []C.bar
+	z2 []&C.bar
+}
+
 fn foo(a []os.File) {
 }
 
