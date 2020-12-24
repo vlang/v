@@ -406,7 +406,6 @@ pub fn (mut d Doc) file_asts(file_asts []ast.File) ? {
 			if d.contents[name].kind != .none_ || node.kind == .none_ {
 				d.contents[name].children << node.children
 				d.contents[name].children.sort_by_name()
-				d.contents[name].children.sort_by_kind()
 			}
 		}
 	}

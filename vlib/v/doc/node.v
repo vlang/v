@@ -42,6 +42,5 @@ fn compare_nodes_by_name(a &DocNode, b &DocNode) int {
 pub fn (cnts map[string]DocNode) arr() []DocNode {
 	mut contents := cnts.keys().map(cnts[it])
 	contents.sort_by_name()
-	contents.sort_by_kind()
 	return contents
 }
