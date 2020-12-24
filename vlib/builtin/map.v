@@ -190,6 +190,8 @@ fn (mut d DenseArray) zeros_to_end() {
 	}
 }
 
+type MapHashFn = fn(voidptr)u64
+
 pub struct map {
 	// Number of bytes of a key
 	key_bytes       int
@@ -212,30 +214,30 @@ mut:
 	// index in the hashmap
 	extra_metas     u32
 	has_string_keys bool
-	hash_fn         fn(voidptr)u64
+	hash_fn         MapHashFn
 pub mut:
 	// Number of key-values currently in the hashmap
 	len             int
 }
 
-fn hash_string(pkey voidptr) u64 {
+fn map_hash_string(pkey voidptr) u64 {
 	key := *&string(pkey)
 	return hash.wyhash_c(key.str, u64(key.len), 0)
 }
 
-fn hash_1(pkey voidptr) u64 {
+fn map_hash_int_1(pkey voidptr) u64 {
 	return hash.wyhash_c(pkey, 1, 0)
 }
 
-fn hash_2(pkey voidptr) u64 {
+fn map_hash_int_2(pkey voidptr) u64 {
 	return hash.wyhash_c(pkey, 2, 0)
 }
 
-fn hash_4(pkey voidptr) u64 {
+fn map_hash_int_4(pkey voidptr) u64 {
 	return hash.wyhash_c(pkey, 4, 0)
 }
 
-fn hash_8(pkey voidptr) u64 {
+fn map_hash_int_8(pkey voidptr) u64 {
 	return hash.wyhash_c(pkey, 8, 0)
 }
 
@@ -248,13 +250,13 @@ fn new_map(key_bytes int, value_bytes int) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
-	mut hash_fn := fn(voidptr)u64
+	mut hash_fn := voidptr(0)
 	match key_bytes {
-		1 {hash_fn = &hash_1}
-		2 {hash_fn = &hash_2}
-		4 {hash_fn = &hash_4}
-		8 {hash_fn = &hash_8}
-		else {hash_fn = &hash_string}
+		1 {hash_fn = &map_hash_int_1}
+		2 {hash_fn = &map_hash_int_2}
+		4 {hash_fn = &map_hash_int_4}
+		8 {hash_fn = &map_hash_int_8}
+		else {hash_fn = &map_hash_string}
 	}
 	return map{
 		key_bytes: key_bytes
