@@ -31,6 +31,7 @@
 - Safety: no null, no globals, no undefined behavior, immutability by default
 - C to V translation
 - Hot code reloading
+- [Innovative memory management](https://vlang.io/#memory)
 - [Cross-platform UI library](https://github.com/vlang/ui)
 - Built-in graphics library
 - Easy cross compilation
