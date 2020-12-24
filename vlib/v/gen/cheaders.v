@@ -428,6 +428,8 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	free(ptr);
 	return memdup(src, sz);
 }
+
+typedef uint64_t (*MapHashFn)(void*);
 '
 	c_builtin_types               = '
 //================================== builtin types ================================*/
