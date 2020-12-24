@@ -2907,6 +2907,8 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
+### Compile time if
+
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -2953,6 +2955,37 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+### Environment specific files
+
+If a file has an environment-specific suffix, it will only be compiled for that environment.
+
+- `.js.v` => JS Backend
+- `.c.v` => C Backend
+- `.x64.v` => x64 Backend
+- `_nix.c.v` => Without windows OS
+- `_${os}.c.v` => Specific OS
+
+```main.v
+module main
+fn main() {
+    println(message)
+}
+```
+
+```main_nix.c.v
+module main
+const (
+    message = 'Hello nix'
+)
+```
+
+```main_windows.c.v
+module main
+const (
+    message = 'Hello windows'
+)
+```
 
 ## Compile time pseudo variables
 
