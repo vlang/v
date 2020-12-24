@@ -1197,7 +1197,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 			f.writeln(x)
 			f.write('*/')
 		} else {
-			f.write('/* $x */')
+			f.write('/* ${x.trim(' ')} */')
 		}
 		return
 	}
