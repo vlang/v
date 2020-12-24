@@ -172,6 +172,8 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 			}
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstring x = _STR("%g", 1, it);')
+		} else if sym.kind == .string {
+			g.auto_str_funcs.writeln('\t\tstring x = _STR("\'%.*s\\000\'", 2, it);')
 		} else {
 			// There is a custom .str() method, so use it.
 			// NB: we need to take account of whether the user has defined
