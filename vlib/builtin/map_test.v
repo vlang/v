@@ -508,6 +508,21 @@ fn test_voidptr_keys() {
 	assert m.len == 2
 }
 
+fn test_rune_keys() {
+	mut m := {`!`:2 `%`:3}
+	assert typeof(m).name == 'map[rune]int'
+	assert m[`!`] == 2
+	m[`🌎`] = 7
+	assert m.len == 3
+	
+	mut a := []rune{}
+	for k, v in m {
+		a << k
+		a << rune(v) + `0`
+	}
+	assert a == [`!`, `2`, `%`, `3`, `🌎`, `7`]
+}
+
 fn test_eq() {
 	a := {
 		'a': 1
