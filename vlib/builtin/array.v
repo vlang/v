@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module builtin
 
-import strings
-
 // array is a struct used for denoting array types in V
 pub struct array {
 pub:
@@ -465,24 +463,6 @@ pub fn (a &array) free() {
 	// return
 	// }
 	C.free(a.data)
-}
-
-// str returns a string representation of the array of strings
-// => '["a", "b", "c"]'.
-pub fn (a []string) str() string {
-	mut sb := strings.new_builder(a.len * 3)
-	sb.write('[')
-	for i in 0 .. a.len {
-		val := a[i]
-		sb.write("\'")
-		sb.write(val)
-		sb.write("\'")
-		if i < a.len - 1 {
-			sb.write(', ')
-		}
-	}
-	sb.write(']')
-	return sb.str()
 }
 
 // hex returns a string with the hexadecimal representation
