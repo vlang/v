@@ -4612,17 +4612,13 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		key_type := c.expr(key)
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
-			key0_type_sym := c.table.get_type_symbol(key0_type)
-			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
-				key.position())
+			msg := c.expected_msg(key_type, key0_type)
+			c.error('invalid map key: $msg', key.position())
 			same_key_type = false
 		}
 		if !c.check_types(val_type, val0_type) {
-			val0_type_sym := c.table.get_type_symbol(val0_type)
-			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
-				val.position())
+			msg := c.expected_msg(val_type, val0_type)
+			c.error('invalid map value: $msg', val.position())
 		}
 	}
 	if same_key_type {
