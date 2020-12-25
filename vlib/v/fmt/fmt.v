@@ -1703,6 +1703,11 @@ fn expr_is_single_line(expr ast.Expr) bool {
 				return false
 			}
 		}
+		ast.CallExpr {
+			if expr.or_block.stmts.len > 1 {
+				return false
+			}
+		}
 		else {}
 	}
 	return true
