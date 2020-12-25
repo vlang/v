@@ -6,6 +6,7 @@ module table
 import os
 import v.cflag
 import v.token
+import v.pref
 import v.util
 
 pub struct Table {
@@ -680,12 +681,12 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-pub fn (table &Table) qualify_import(mod string, file_path string) string {
+pub fn (table &Table) qualify_import(pref &pref.Preferences, mod string, file_path string) string {
 	// mod_parts := mod.split('.')
 	path_parts := file_path.split(os.path_separator)
-	mod_paths := [
-		'/Users/joe.c/dev/src/v/vlib',
-	]
+	// TODO:
+	mut mod_paths := pref.lookup_path
+	//mod_paths << os.vmodules_paths()
 	mod_path := mod.replace('.', os.path_separator)
 	for search_path in mod_paths {
 		try_path := os.join_path(search_path, mod_path)

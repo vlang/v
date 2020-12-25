@@ -1671,6 +1671,7 @@ fn (mut p Parser) module_decl() ast.Module {
 	p.builtin_mod = p.mod == 'builtin'
 	return ast.Module{
 		name: full_mod
+		alias: name
 		is_skipped: is_skipped
 		pos: module_pos
 	}
@@ -1713,7 +1714,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return ast.Import{}
 		}
 	}
-	mod_name = p.table.qualify_import(mod_name, p.file_name)
+	mod_name = p.table.qualify_import(p.pref, mod_name, p.file_name)
 	mut node := ast.Import{
 		pos: pos
 		mod: mod_name

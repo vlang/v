@@ -189,11 +189,11 @@ pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
-	f.set_current_module_name(mod.name)
+	f.set_current_module_name(mod.alias)
 	if mod.is_skipped {
 		return
 	}
-	f.writeln('module $mod.name\n')
+	f.writeln('module $mod.alias\n')
 }
 
 pub fn (mut f Fmt) imports(imports []ast.Import) {

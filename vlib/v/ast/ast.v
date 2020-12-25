@@ -129,6 +129,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
+	alias      string
 	path       string
 	expr       Expr
 	pos        token.Position
