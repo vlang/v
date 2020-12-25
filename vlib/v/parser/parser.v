@@ -2275,6 +2275,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
+				pos.last_line = p.prev_tok.line_nr - 1
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -2293,7 +2294,6 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)
 	}
-	pos.last_line = p.tok.line_nr
 	p.next()
 	return ast.Block{
 		stmts: stmts
