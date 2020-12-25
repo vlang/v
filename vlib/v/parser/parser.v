@@ -1965,7 +1965,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-			comments: p.eat_comments()
+			comments: p.eat_line_end_comments()
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()

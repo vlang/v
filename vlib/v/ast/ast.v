@@ -760,11 +760,12 @@ pub mut:
 
 pub struct EnumField {
 pub:
-	name     string
-	pos      token.Position
-	comments []Comment
-	expr     Expr
-	has_expr bool
+	name          string
+	pos           token.Position
+	comments      []Comment
+	next_comments []Comment
+	expr          Expr
+	has_expr      bool
 }
 
 pub struct EnumDecl {
