@@ -8,7 +8,9 @@ const (
 	skip_test_files     = [
 		'vlib/net/http/http_httpbin_test.v',
 	]
-	skip_on_musl        = []string{}
+	skip_on_musl        = [
+		'vlib/v/tests/profile/profile_test.v',
+	]
 	skip_on_ubuntu_musl = [
 		// 'vlib/v/gen/js/jsgen_test.v',
 		'vlib/net/http/cookie_test.v',
