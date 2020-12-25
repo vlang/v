@@ -1698,6 +1698,11 @@ fn expr_is_single_line(expr ast.Expr) bool {
 		ast.IfExpr { return false }
 		ast.Comment { return false }
 		ast.MatchExpr { return false }
+		ast.StructInit {
+			if expr.fields.len > 0 {
+				return false
+			}
+		}
 		else {}
 	}
 	return true

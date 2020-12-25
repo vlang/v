@@ -15,4 +15,14 @@ fn main() {
 			}
 		}
 	}
+	match 'a' {
+		'b' { SpamStruct{} }
+	}
+	match 'a' {
+		'b' {
+			SpamStruct{
+				x: 42
+			}
+		}
+	}
 }
