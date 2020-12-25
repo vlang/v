@@ -1111,9 +1111,19 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(')')
 		}
 		ast.UnsafeExpr {
-			f.write('unsafe { ')
+			single_line := node.pos.line_nr == node.pos.last_line
+			s := if single_line { ' ' } else { '\n' }
+			f.write('unsafe {$s')
+			if !single_line {
+				f.indent++
+				f.empty_line = true
+			}
 			f.expr(node.expr)
-			f.write(' }')
+			if !single_line {
+				f.indent--
+				f.empty_line = false
+			}
+			f.write('$s}')
 		}
 	}
 }
