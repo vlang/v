@@ -267,6 +267,10 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.write(g.typedefs2.str())
 	b.writeln('\n// V cheaders:')
 	b.write(g.cheaders.str())
+	if g.pcs_declarations.len > 0 {
+		b.writeln('\n// V profile counters:')
+		b.write(g.pcs_declarations.str())
+	}
 	b.writeln('\n// V includes:')
 	b.write(g.includes.str())
 	b.writeln('\n// Enum definitions:')
@@ -279,10 +283,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	b.write(g.json_forward_decls.str())
 	b.writeln('\n// V definitions:')
 	b.write(g.definitions.str())
-	if g.pcs_declarations.len > 0 {
-		b.writeln('\n// V profile counters:')
-		b.write(g.pcs_declarations.str())
-	}
 	interface_table := g.interface_table()
 	if interface_table.len > 0 {
 		b.writeln('\n// V interface table:')
