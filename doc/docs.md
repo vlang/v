@@ -2960,32 +2960,47 @@ Full list of builtin options:
 
 If a file has an environment-specific suffix, it will only be compiled for that environment.
 
-- `.js.v` => JS Backend
-- `.c.v` => C Backend
-- `.x64.v` => x64 Backend
-- `_nix.c.v` => Without windows OS
-- `_${os}.c.v` => Specific OS
+- `.js.v` => will be used only by the JS backend. These files can contain JS. code.
+- `.c.v` => will be used only by the C backend. These files can contain C. code.
+- `.x64.v` => will be used only by V's x64 backend.
+- `_nix.c.v` => will be used only on Unix systems (non Windows).
+- `_${os}.c.v` => will be used only on the specific `os` system. 
+For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
+- `_default.c.v` => will be used only if there is NOT a more specific platform file. 
+For example, if you have both `file_linux.c.v` and `file_default.c.v`, 
+and you are compiling for linux, then only `file_linux.c.v` will be used, 
+and `file_default.c.v` will be ignored.
 
-```main.v
+Here is a more complete example:
+main.v:
+```v ignore
 module main
-fn main() {
-    println(message)
-}
+fn main() { println(message) }
 ```
 
-```main_nix.c.v
+main_default.c.v:
+```v ignore
 module main
-const (
-    message = 'Hello nix'
-)
+const ( message = 'Hello world' )
 ```
 
-```main_windows.c.v
+main_linux.c.v:
+```v ignore
 module main
-const (
-    message = 'Hello windows'
-)
+const ( message = 'Hello linux' )
 ```
+
+main_windows.c.v:
+```v ignore
+module main
+const ( message = 'Hello windows' )
+```
+
+With the example above:
+- when you compile for windows, you will get 'Hello windows'
+- when you compile for linux, you will get 'Hello linux'
+- when you compile for any other platform, you will get the 
+non specific 'Hello world' message.
 
 ## Compile time pseudo variables
 
