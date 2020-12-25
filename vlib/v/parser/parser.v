@@ -1147,7 +1147,7 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
 				if p.peek_tok.kind == .dot &&
-					p.peek_tok2.kind != .eof && p.peek_tok2.lit[0].is_capital() {
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true
 				}
 			}
