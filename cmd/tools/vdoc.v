@@ -49,7 +49,9 @@ const (
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>{{ title }} | vdoc</title>
+		<link rel="preconnect" href="https://fonts.gstatic.com">
 		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
 		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
@@ -377,9 +379,9 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { dd.parent_name + '.' +
-			dd.name } else { dd.name }
-	node_id := slug(sym_name)
+	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '($dd.parent_name) $dd.name' } else { dd.name }
+	tag := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '${dd.parent_name}.$dd.name' } else { dd.name }
+	node_id := slug(tag)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
