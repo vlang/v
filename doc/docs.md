@@ -1091,7 +1091,7 @@ s := match number {
 }
 ```
 
-A match expression returns the final expression from each branch.
+A match expression returns the value of the final expression from the matching branch.
 
 ```v
 enum Color {
