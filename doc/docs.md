@@ -747,11 +747,12 @@ However, you _can_ redeclare a type.
 
 ```v
 import time
+import math
 
 type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
-	return 1 + t.year % 100
+	return int(1.0 + math.trunc(f64(t.year) * 0.009999794661191))
 }
 
 fn main() {
@@ -1091,7 +1092,7 @@ s := match number {
 }
 ```
 
-A match expression returns the final expression from each branch.
+A match expression returns the value of the final expression from the matching branch.
 
 ```v
 enum Color {
