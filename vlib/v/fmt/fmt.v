@@ -1696,8 +1696,25 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
-		ast.IfExpr { return false }
-		ast.Comment { return false }
+		ast.IfExpr {
+			return false
+		}
+		ast.Comment {
+			return false
+		}
+		ast.MatchExpr {
+			return false
+		}
+		ast.StructInit {
+			if expr.fields.len > 0 || expr.pre_comments.len > 0 {
+				return false
+			}
+		}
+		ast.CallExpr {
+			if expr.or_block.stmts.len > 1 {
+				return false
+			}
+		}
 		else {}
 	}
 	return true

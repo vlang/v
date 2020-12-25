@@ -1,0 +1,52 @@
+fn main() {
+	// Nested match
+	match 100 {
+		0...1 {
+			println('0 to 1')
+		}
+		else {
+			match 200 {
+				0...1 { println('0 to 1') }
+				else { println('unknown value') }
+			}
+		}
+	}
+	// StructInit
+	match 'a' {
+		'b' { SpamStruct{} }
+	}
+	match 'a' {
+		'b' {
+			SpamStruct{
+				x: 42
+			}
+		}
+	}
+	match 'a' {
+		'b' {
+			SpamStruct{
+				// only a comment
+			}
+		}
+	}
+	// CallExpr with or block
+	match 'a' {
+		'b' { foo() or { panic(err) } }
+	}
+	match 'a' {
+		'b' {
+			foo() or {
+				// do stuff
+				panic(err)
+			}
+		}
+	}
+	match 'a' {
+		'b' {
+			foo() or {
+				another_stmt()
+				panic(err)
+			}
+		}
+	}
+}
