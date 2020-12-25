@@ -103,7 +103,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.key_unsafe {
 			// unsafe {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			p.next()
 			if p.inside_unsafe {
 				p.error_with_pos('already inside `unsafe` block', pos)
@@ -111,11 +111,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
+			e := p.expr(0)
+			p.check(.rcbr)
+			pos.last_line = p.prev_tok.line_nr - 1
 			node = ast.UnsafeExpr{
-				expr: p.expr(0)
+				expr: e
 				pos: pos
 			}
-			p.check(.rcbr)
 			p.inside_unsafe = false
 		}
 		.key_lock, .key_rlock {
