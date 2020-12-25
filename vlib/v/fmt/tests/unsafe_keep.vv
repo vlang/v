@@ -1,0 +1,17 @@
+fn main() {
+	unsafe {
+		println('hi')
+		println('hi2')
+	}
+	unsafe {
+		println('qwer')
+	}
+	unsafe { 6 }
+	x := unsafe {
+		5
+	}
+	y := unsafe { 7 }
+	unsafe {}
+	unsafe {
+	}
+}
