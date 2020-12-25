@@ -28,6 +28,18 @@ pub enum SymbolKind {
 	struct_field
 }
 
+pub fn (sk SymbolKind) str() string {
+	return match sk {
+		.const_group { 'Constants' }
+		.function, .method { 'fn' }
+		.interface_ { 'interface' }
+		.typedef { 'type' }
+		.enum_ { 'enum' }
+		.struct_ { 'struct' }
+		else { '' }
+	}
+} 
+
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
 pub mut:
