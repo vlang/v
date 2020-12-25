@@ -253,7 +253,7 @@ Global (module level) variables are not allowed. There's no global state in V
 (see [Pure functions by default](#pure-functions-by-default) for details).
 
 For consistency across different code bases, all variable and function names
-must use the `snake_case` style, as opposed to type names, which must use `PascalCase`.
+must use the `snake_case` style, as opposed to type and enum names, which must use `PascalCase`.
 
 ### Mutable variables
 
