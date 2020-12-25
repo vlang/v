@@ -96,7 +96,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	// eprintln('prefs.cache_manager: $p')
 	//
 	// enable use_cache by default
-	// p.use_cache = os.user_os() != 'windows'
+	p.use_cache = os.user_os() != 'windows'
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
