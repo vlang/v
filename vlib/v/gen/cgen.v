@@ -4460,6 +4460,9 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 				// TODO handle/require optionals in inits
 				continue
 			}
+			if field.typ in info.embeds {
+				continue
+			}
 			g.zero_struct_field(field)
 			if is_multiline {
 				g.writeln(',')

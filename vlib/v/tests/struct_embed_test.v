@@ -26,6 +26,11 @@ fn test_default_value() {
 	b := Bar{Foo: Foo{}}
 	assert b.y == 5
 }
+
+fn test_default_value_without_init() {
+	b := Bar{}
+	assert b.y == 5
+}
 /* TODO
 fn test_initialize() {
 	b := Bar{x: 1, y: 2}
