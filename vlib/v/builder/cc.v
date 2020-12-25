@@ -527,6 +527,16 @@ fn (mut v Builder) cc() {
 			builtin_obj_path := v.rebuild_cached_module(vexe, 'vlib/builtin')
 			libs += ' ' + builtin_obj_path
 			for ast_file in v.parsed_files {
+				is_test := ast_file.path.ends_with('_test.v')
+				if is_test && ast_file.mod.name != 'main' {
+					imp_path := v.find_module_path(ast_file.mod.name, ast_file.path) or {
+						verror('cannot import module "$ast_file.mod.name" (not found)')
+						break
+					}
+					obj_path := v.rebuild_cached_module(vexe, imp_path)
+					libs += ' ' + obj_path
+					built_modules << ast_file.mod.name
+				}
 				for imp_stmt in ast_file.imports {
 					imp := imp_stmt.mod
 					// strconv is already imported inside builtin, so skip generating its object file

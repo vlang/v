@@ -1652,6 +1652,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		module_pos = module_pos.extend(pos)
 	}
 	mut full_mod := p.table.qualify_module(name, p.file_name)
+	/*
 	if p.pref.build_mode == .build_module && !full_mod.contains('.') {
 		// A hack to make building vlib modules work
 		// `v build-module v.gen` will result in `full_mod = "gen"`, not "v.gen",
@@ -1665,6 +1666,7 @@ fn (mut p Parser) module_decl() ast.Module {
 		}
 		// println('file_name=$p.file_name path=$p.pref.path')
 	}
+	*/
 	p.mod = full_mod
 	p.builtin_mod = p.mod == 'builtin'
 	return ast.Module{
@@ -1711,6 +1713,7 @@ fn (mut p Parser) import_stmt() ast.Import {
 			return ast.Import{}
 		}
 	}
+	mod_name = p.table.qualify_import(mod_name, p.file_name)
 	mut node := ast.Import{
 		pos: pos
 		mod: mod_name

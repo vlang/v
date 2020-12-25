@@ -15,8 +15,8 @@ module openssl
 #flag darwin -I/usr/local/opt/openssl/include
 #flag darwin -L/usr/local/opt/openssl/lib
 // Brew arm64
-#flag -I /opt/homebrew/Cellar/openssl@1.1/1.1.1h/include
-#flag -L /opt/homebrew/Cellar/openssl@1.1/1.1.1h/lib
+#flag -I /opt/homebrew/Cellar/openssl@1.1/1.1.1i/include
+#flag -L /opt/homebrew/Cellar/openssl@1.1/1.1.1i/lib
 //
 #include <openssl/rand.h> # Please install OpenSSL development headers
 #include <openssl/ssl.h>

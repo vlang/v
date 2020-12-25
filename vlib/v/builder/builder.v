@@ -108,10 +108,25 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				verror('cannot import module "$mod" (not found)')
+				verror(' @@ ($ast_file.path) cannot import module "$mod" (not found)')
 				break
 			}
-			v_files := b.v_files_from_dir(import_path)
+			mut v_files := b.v_files_from_dir(import_path)
+			mut v_files2 := []string{}
+			for f1 in v_files {
+				mut found := false
+				for f2 in b.parsed_files {
+					if os.real_path(f2.path) == f1 {
+						found = true
+						println('### DUPLICATE: $f1')
+						break
+					}
+				}
+				if !found {
+					v_files2 << f1
+				}
+			}
+			v_files = v_files2.clone()
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
 				verror('cannot import module "$mod" (no .v files in "$import_path")')
@@ -121,7 +136,7 @@ pub fn (mut b Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					// verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files
@@ -188,6 +203,9 @@ pub fn (b &Builder) import_graph() &depgraph.DepGraph {
 			}
 		}
 		for m in p.imports {
+			if m.mod == p.mod.name {
+				continue
+			}
 			deps << m.mod
 		}
 		graph.add(p.mod.name, deps)
@@ -252,6 +270,31 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 			}
 		}
 	}
+	// add parent folder for relative imports
+	/*
+	path_parts := fpath.split(os.path_separator)
+	if path_parts.len > 2 {
+		fpath_parent := path_parts[..path_parts.len-3].join(os.path_separator)
+		//println('FPATH PARENT: $fpath_parent FPATH: $fpath')
+		module_lookup_paths << fpath_parent
+	}
+	*/
+	// mod_parts := mod.split('.')
+	/*
+	path_parts := fpath.split(os.path_separator)
+	for i:=path_parts.len-2; i>0; i-- {
+		p1 := path_parts[0..i].join(os.path_separator)
+		try_path := os.join_path(p1, mod_path)
+		println('### TRY: $mod - $try_path')
+		if b.pref.is_verbose {
+			println('  >> trying to find $mod in $try_path ..')
+		}
+		if os.is_dir(try_path) {
+			println('### FOUND: $mod - $try_path')
+			return try_path
+		}
+	}
+	*/
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {

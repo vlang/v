@@ -144,12 +144,15 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	if pref.build_mode == .build_module {
 		// TODO: detect this properly for all cases
 		// either get if from an earlier stage or use the lookup paths
-		for dir_name in ['vlib', '.vmodules', 'modules'] {
-			if pref.path.contains(dir_name + os.path_separator) {
+		for dir_name in ['modules', 'vlib', '.vmodules'] {
+			if pref.path.contains(os.path_separator + dir_name + os.path_separator) {
 				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
 					'.')
 				break
 			}
+		}
+		if module_built == '' {
+			module_built = pref.path.all_after_last(os.path_separator).trim_right(os.path_separator)
 		}
 	}
 	mut timers_should_print := false
@@ -972,7 +975,8 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 			if g.pref.use_cache && g.pref.build_mode != .build_module {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
-				if node.mod != 'main' && node.mod != 'help' && !should_bundle_module {
+				if node.mod != 'main' &&
+					node.mod != 'help' && !should_bundle_module && !g.file.path.ends_with('_test.v') && !node.is_generic {
 					skip = true
 				}
 			}
@@ -4218,7 +4222,9 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
-					g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+					// if g.pref.build_mode != .build_module {
+					g.definitions.writeln('static $styp _const_$name = $val; // fixed array const')
+					// }
 				} else {
 					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
@@ -5859,17 +5865,17 @@ fn (mut g Gen) interface_table() string {
 			already_generated_mwrappers[interface_index_name] = current_iinidx
 			current_iinidx++
 			// eprintln('>>> current_iinidx: ${current_iinidx-iinidx_minimum_base} | interface_index_name: $interface_index_name')
-			sb.writeln('_Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
-			sb.writeln('_Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
+			sb.writeln('$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x);')
+			sb.writeln('$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x);')
 			cast_functions.writeln('
-_Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
+$staticprefix _Interface I_${cctype}_to_Interface_${interface_name}($cctype* x) {
 	return (_Interface) {
 		._object = (void*) (x),
 		._interface_idx = $interface_index_name
 	};
 }
 
-_Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
+$staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 	// TODO Remove memdup
 	return (_Interface*) memdup(&(_Interface) {
 		._object = (void*) (x),
@@ -5920,7 +5926,7 @@ _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype* x) {
 			}
 			methods_struct.writeln('\t},')
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
-			sb.writeln('int $interface_index_name = $iin_idx;')
+			sb.writeln('static int $interface_index_name = $iin_idx;')
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		if iname_table_length == 0 {

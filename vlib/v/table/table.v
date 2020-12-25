@@ -680,10 +680,61 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
+pub fn (table &Table) qualify_import(mod string, file_path string) string {
+	// mod_parts := mod.split('.')
+	path_parts := file_path.split(os.path_separator)
+	mod_paths := [
+		'/Users/joe.c/dev/src/v/vlib',
+	]
+	mod_path := mod.replace('.', os.path_separator)
+	for search_path in mod_paths {
+		try_path := os.join_path(search_path, mod_path)
+		if os.is_dir(try_path) {
+			// if mod.contains('submodule') {
+			// 	println(' RETURNING $mod - $file_path')
+			// }
+			return mod
+		}
+	}
+	for i := path_parts.len - 1; i >= 0; i-- {
+		// ls := os.ls(path_parts[0..i].join(os.path_separator)) or { []string{} }
+		// if mod.contains('submodule') {
+		// 	println(' * $mod: checking path: ' + path_parts[0..i].join(os.path_separator))
+		// }
+		try_path := os.join_path(path_parts[0..i].join(os.path_separator), mod_path)
+		if os.is_dir(try_path) {
+			try_path_parts := try_path.split(os.path_separator)
+			for j := i; j >= 0; j-- {
+				path_part := path_parts[j]
+				if path_part in ['vlib', '.vmodules', 'modules'] {
+					x := try_path_parts[j + 1..].join('.')
+					// if mod.contains('submodule') {
+					// 	println(' # FOUND FULL IMPORT: $mod | $x | $try_path')
+					// }
+					return x
+				}
+			}
+		}
+		/*
+		mod_part := mod_parts[mod_parts.len-1]
+		if mod_part in ls {
+			f1 := path_parts[0..i].join(os.path_separator) + os.path_separator + mod_part + os.path_separator + 'dummy.v'
+			m := qualify_module(mod_part, f1)
+			if mod.ends_with('mod1') || mod.ends_with('submodule') {
+				println(' # FOUND FULL IMPORT: $mod - $m - $f1')
+			}
+			return m
+		}
+		*/
+	}
+	return mod
+}
+
 // TODO: Once we have a module format we can read from module file instead
 // this is not optimal. it depends on the full import being in table.imports
 // already, we can instead lookup the module path and then work it out
 pub fn (table &Table) qualify_module(mod string, file_path string) string {
+	/*
 	for m in table.imports {
 		// if m.contains('gen') { println('qm=$m') }
 		if m.contains('.') && m.contains(mod) {
@@ -692,6 +743,63 @@ pub fn (table &Table) qualify_module(mod string, file_path string) string {
 			if mod == m_parts[m_parts.len - 1] && file_path.contains(m_path) {
 				return m
 			}
+		}
+	}
+	*/
+	// move to something like this eventually (add all mod paths)
+	// except we need to fix problems with naming first
+	// fns/methods/types havent been prefixed with the
+	// full module in all cases due the code used above
+	// relying on imports
+	if mod == 'main' {
+		return mod
+	}
+	vmod_folders := ['vlib', '.vmodules', 'modules']
+	// look through parents, if folder with module name exists
+	// but its parent is one of the vmod folders or does not have a
+	// mod.v then that will be the module name
+	parts := file_path.split(os.path_separator)
+	for i := parts.len - 2; i >= 0; i-- {
+		part := parts[i]
+		// if part == mod {
+		// 	// go up through parents looking for either one of the v module directories
+		// 	// or a missing v.mod. if we are in tests we need to make an exception
+		// 	mut start := i
+		// 	for j := i-1; j>=1; j-- {
+		// 		part2 := parts[j]
+		// 		// ls := os.ls(parts[0..j-1].join('.')) or { []string{} }
+		// 		// if 'v.mod' in ls {
+		// 		// 	println(' @@@ VMOD')
+		// 		// 	for k := j-1; k>=0; k-- {
+		// 		// 		ls2 := os.ls(parts[0..k].join('.')) or { []string{} }
+		// 		// 		if 'v.mod' !in ls2 {
+		// 		// 			println(' * breaking on no mod: $k')
+		// 		// 			start = k
+		// 		// 			goto done
+		// 		// 		}
+		// 		// 	}
+		// 		// }
+		// 		// if part2 == 'tests' {
+		// 		// 	// println(' * $mod: breaking on tests: $j')
+		// 		// 	start=j+2
+		// 		// 	goto done
+		// 		// }
+		// 		if part2 in vmod_folders {
+		// 			start=j+1
+		// 			break
+		// 		}
+		// 	}
+		// 	done:
+		// 	m := parts[start..parts.len-1].join('.')
+		// 	println(' A ## ($start) $mod - $m')
+		// 	return m
+		// }
+		if part in vmod_folders {
+			full_mod := parts[i + 1..parts.len - 1].join('.')
+			// if full_mod.contains('mod1') || full_mod.contains('submodule') {
+			// 	println(' B ## () $mod - $full_mod')
+			// }
+			return full_mod
 		}
 	}
 	return mod
