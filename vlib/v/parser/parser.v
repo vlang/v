@@ -629,48 +629,46 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_mut, .key_shared, .key_atomic, .key_static, .mul {
-			if p.tok.kind == .name {
-				if p.tok.lit == 'sql' {
-					return p.sql_stmt()
-				}
-				if p.peek_tok.kind == .colon {
-					// `label:`
-					spos := p.tok.position()
-					name := p.check_name()
-					p.next()
-					if p.tok.kind == .key_for {
-						mut stmt := p.stmt(is_top_level)
-						match mut stmt {
-							ast.ForStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForInStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForCStmt {
-								stmt.label = name
-								return stmt
-							}
-							else {
-								assert false
-							}
+		.name {
+			if p.tok.lit == 'sql' {
+				return p.sql_stmt()
+			}
+			if p.peek_tok.kind == .colon {
+				// `label:`
+				spos := p.tok.position()
+				name := p.check_name()
+				p.next()
+				if p.tok.kind == .key_for {
+					mut stmt := p.stmt(is_top_level)
+					match mut stmt {
+						ast.ForStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForInStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForCStmt {
+							stmt.label = name
+							return stmt
+						}
+						else {
+							assert false
 						}
 					}
-					return ast.GotoLabel{
-						name: name
-						pos: spos.extend(p.tok.position())
-					}
-				} else if p.peek_tok.kind == .name {
-					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-					return ast.Stmt{}
-				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-					p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-					return ast.Stmt{}
 				}
+				return ast.GotoLabel{
+					name: name
+					pos: spos.extend(p.tok.position())
+				}
+			} else if p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				return ast.Stmt{}
+			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
+				p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				return ast.Stmt{}
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
