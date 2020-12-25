@@ -1,0 +1,18 @@
+fn main() {
+	foo := 100
+	bar := 200
+	match foo {
+		0...1 {
+			println('0 to 1')
+		}
+		2...3 {
+			println('2 to 3')
+		}
+		else {
+			match bar {
+				0...1 { println('bar: 0 to 1') }
+				else { println('bar: unknown value') }
+			}
+		}
+	}
+}

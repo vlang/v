@@ -1697,6 +1697,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
 		ast.IfExpr { return false }
 		ast.Comment { return false }
+		ast.MatchExpr { return false }
 		else {}
 	}
 	return true
