@@ -38,7 +38,7 @@ pub fn (sk SymbolKind) str() string {
 		.struct_ { 'struct' }
 		else { '' }
 	}
-} 
+}
 
 pub struct Doc {
 	prefs           &pref.Preferences = new_vdoc_preferences()
