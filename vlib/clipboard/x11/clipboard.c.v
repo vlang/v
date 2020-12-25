@@ -1,6 +1,6 @@
 // Currently there is only X11 Selections support and no way to handle Wayland
 // but since Wayland isn't extremely adopted, we are covering almost all Linux distros.
-module clipboard
+module x11
 
 import time
 import sync
@@ -132,7 +132,7 @@ struct Property{
 	data byteptr
 }
 
-fn new_clipboard() &Clipboard {
+pub fn new_clipboard() &Clipboard {
 	return new_x11_clipboard(.clipboard)
 }
 
@@ -198,7 +198,7 @@ fn (cb &Clipboard) take_ownership(){
 	C.XFlush(cb.display)
 }
 
-fn (mut cb Clipboard) set_text(text string) bool {
+pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.window == C.Window(C.None) {return false}
 	cb.mutex.m_lock()
 	cb.text = text
@@ -255,7 +255,7 @@ fn (mut cb Clipboard) start_listener(){
 		C.XNextEvent(cb.display, &event)
 		if event.@type == 0 {
 			println("error")
-           	continue
+		continue
         }
 		match event.@type {
 			C.DestroyNotify {
