@@ -751,7 +751,7 @@ import time
 type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
-	return 1 + t.year % 100
+	return 1 + (t.year - t.year % 100) / 100
 }
 
 fn main() {
