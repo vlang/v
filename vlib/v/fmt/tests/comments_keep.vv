@@ -1,3 +1,11 @@
+enum Abc {
+	a
+	b // after a value
+	c
+	// between values
+	d
+}
+
 struct User {
 	name string // name
 	// middle comment
