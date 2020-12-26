@@ -427,22 +427,14 @@ pub fn (mut g Gen) write_typeof_functions() {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('static char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
-			if g.pref.build_mode == .build_module {
-				for v in sum_info.variants {
-					subtype := g.table.get_type_symbol(v)
-					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
-				}
+			g.writeln('	switch(sidx) {')
+			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
+			for v in sum_info.variants {
+				subtype := g.table.get_type_symbol(v)
+				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
 			}
-			else {
-				g.writeln('	switch(sidx) {')
-				g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
-				for v in sum_info.variants {
-					subtype := g.table.get_type_symbol(v)
-					g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
-				}
-				g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
-				g.writeln('	}')
-			}
+			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
+			g.writeln('	}')
 			g.writeln('}')
 		}
 	}
@@ -596,7 +588,7 @@ fn (g &Gen) cc_type(t table.Type) string {
 fn (g &Gen) type_sidx(t table.Type) string {
 	if g.pref.build_mode == .build_module {
 		sym := g.table.get_type_symbol(t)
-		return '_v_type_idx_${sym.cname}()' 
+		return '_v_type_idx_${sym.cname}()'
 	}
 	return '$t.idx()'
 }
