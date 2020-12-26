@@ -399,11 +399,11 @@ pub type Duration = i64
 
 pub const (
 	nanosecond  = Duration(1)
-	microsecond = Duration(1000) * nanosecond
-	millisecond = Duration(1000) * microsecond
-	second      = Duration(1000) * millisecond
-	minute      = Duration(60) * second
-	hour        = Duration(60) * minute
+	microsecond = Duration(1000 * nanosecond)
+	millisecond = Duration(1000 * microsecond)
+	second      = Duration(1000 * millisecond)
+	minute      = Duration(60 * second)
+	hour        = Duration(60 * minute)
 	infinite    = Duration(-1)
 )
 
@@ -443,4 +443,11 @@ pub fn (d Duration) hours() f64 {
 	hr := d / hour
 	nsec := d % hour
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
+}
+
+// offset returns time zone UTC offset in seconds
+pub fn offset() int {
+	t := now()
+	local := t.local()
+	return int(local.unix - t.unix)
 }

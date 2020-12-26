@@ -78,7 +78,7 @@ mut:
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string{}
 	for i in 0 .. argc {
-		args << string_from_wide(unsafe {&u16(argv[i])})
+		args << string_from_wide(unsafe { &u16(argv[i]) })
 	}
 	return args
 }

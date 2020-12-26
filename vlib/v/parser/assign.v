@@ -106,7 +106,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error('unexpected $op.str(), expecting := or = or comma')
+				p.error_with_pos('unexpected $op.str(), expecting := or = or comma', pos)
 				return ast.Stmt{}
 			}
 			if has_cross_var {

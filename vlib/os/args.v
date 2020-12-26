@@ -11,7 +11,7 @@ pub fn args_after(cut_word string) []string {
 	}
 	mut cargs := []string{}
 	if cut_word !in args {
-		cargs = args
+		cargs = args.clone()
 	} else {
 		mut found := false
 		cargs << args[0]
@@ -37,7 +37,7 @@ pub fn args_before(cut_word string) []string {
 	}
 	mut cargs := []string{}
 	if cut_word !in args {
-		cargs = args
+		cargs = args.clone()
 	} else {
 		cargs << args[0]
 		for a in args[1..] {

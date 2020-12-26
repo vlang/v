@@ -9,13 +9,13 @@ import v.pref
 import v.vmod
 
 pub const (
-	v_version = '0.1.30'
+	v_version = '0.2'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
-	bundle_modules       = ['sokol', 'gx', 'gg', 'fontstash']
+	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'ui']
 )
 
 pub const (
@@ -28,7 +28,7 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 
@@ -94,7 +94,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 

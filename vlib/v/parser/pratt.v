@@ -22,7 +22,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
-			node = p.name_expr()
+			node = p.parse_ident(table.Language.v)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name {
@@ -103,7 +103,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.key_unsafe {
 			// unsafe {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			p.next()
 			if p.inside_unsafe {
 				p.error_with_pos('already inside `unsafe` block', pos)
@@ -111,11 +111,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
+			e := p.expr(0)
+			p.check(.rcbr)
+			pos.last_line = p.prev_tok.line_nr - 1
 			node = ast.UnsafeExpr{
-				expr: p.expr(0)
+				expr: e
 				pos: pos
 			}
-			p.check(.rcbr)
 			p.inside_unsafe = false
 		}
 		.key_lock, .key_rlock {
@@ -244,7 +246,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		else {
 			if p.tok.kind != .eof {
 				// eof should be handled where it happens
-				p.error_with_pos('invalid expression: unexpected $p.tok.kind.str() token',
+				p.error_with_pos('invalid expression: unexpected `$p.tok.kind.str()` token',
 					p.tok.position())
 				return ast.Expr{}
 			}
@@ -259,6 +261,9 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 	for precedence < p.tok.precedence() {
 		if p.tok.kind == .dot {
 			node = p.dot_expr(node)
+			if p.name_error {
+				return node
+			}
 			p.is_stmt_ident = is_stmt_ident
 		} else if p.tok.kind == .lsbr {
 			node = p.index_expr(node)
@@ -371,6 +376,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 		p.is_amp = true
 	}
 	if op == .arrow {
+		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
 	// if op == .mul && !p.inside_unsafe {
@@ -411,6 +417,7 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 			p.next()
 			or_kind = .propagate
 		}
+		p.or_is_handled = false
 	}
 	return ast.PrefixExpr{
 		op: op

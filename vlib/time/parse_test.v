@@ -52,9 +52,9 @@ fn test_parse_iso8601() {
 	// Because the offset between local time and UTC is not constant in regions
 	// that use daylight saving times we need to calculate separete offsets for
 	// summer and winter
-	offset_summer := time.Duration(time.new_time(year: 2020, month: 6, day: 5, hour: 15).to_local_time() -
+	offset_summer := time.Duration(time.new_time(year: 2020, month: 6, day: 5, hour: 15).local() -
 		time.new_time(year: 2020, month: 6, day: 5, hour: 15))
-	offset_winter := time.Duration(time.new_time(year: 2020, month: 11, day: 5, hour: 15).to_local_time() -
+	offset_winter := time.Duration(time.new_time(year: 2020, month: 11, day: 5, hour: 15).local() -
 		time.new_time(year: 2020, month: 11, day: 5, hour: 15))
 	formats := [
 		'2020-06-05T15:38:06Z',

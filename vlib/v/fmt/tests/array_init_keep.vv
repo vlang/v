@@ -15,4 +15,11 @@ fn main() {
 		*/
 		'eggs',
 	]
+	_ := []int{len: 10, cap: 10, init: 7}
+	_ := []map[string]string{len: 5, cap: 50, init: {
+		'a': 'a'
+	}}
+	_ := []map[string][]int{len: 7, cap: 100, init: {
+		'a': [1, 2]
+	}}
 }

@@ -110,6 +110,9 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/fonts.v'
 		skip_files << 'examples/sokol/drawing.v'
 	}
+	$if windows {
+		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
 	new_vtmp_dir := setup_new_vtmp_folder()
@@ -164,14 +167,10 @@ pub fn (mut ts TestSession) test() {
 		}
 		remaining_files << dot_relative_file
 	}
-	remaining_files = vtest.filter_vtest_only(remaining_files, {
-		fix_slashes: false
-	})
+	remaining_files = vtest.filter_vtest_only(remaining_files, fix_slashes: false)
 	ts.files = remaining_files
 	ts.benchmark.set_total_expected_steps(remaining_files.len)
-	mut pool_of_test_runners := sync.new_pool_processor({
-		callback: worker_trunner
-	})
+	mut pool_of_test_runners := sync.new_pool_processor(callback: worker_trunner)
 	// for handling messages across threads
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nprint_ended = chan int{cap: 0}
@@ -296,7 +295,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	mut session := new_test_session(vargs)
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
-	mut skipped := oskipped
+	mut skipped := oskipped.clone()
 	for f in files {
 		if !f.contains('modules') && !f.contains('preludes') {
 			// $if !linux {
@@ -314,9 +313,7 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 					continue
 				}
 			}
-			c := os.read_file(f) or {
-				panic(err)
-			}
+			c := os.read_file(f) or { panic(err) }
 			maxc := if c.len > 300 { 300 } else { c.len }
 			start := c[0..maxc]
 			if start.contains('module ') && !start.contains('module main') {
@@ -341,9 +338,7 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string) b
 }
 
 pub fn build_v_cmd_failed(cmd string) bool {
-	res := os.exec(cmd) or {
-		return true
-	}
+	res := os.exec(cmd) or { return true }
 	if res.exit_code != 0 {
 		eprintln('')
 		eprintln(res.output)

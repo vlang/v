@@ -44,3 +44,11 @@ pub fn (t1 Time) gt(t2 Time) bool {
 pub fn (t1 Time) ge(t2 Time) bool {
 	return t1.gt(t2) || t1.eq(t2)
 }
+
+// Time subtract using eperator overloading
+[inline]
+pub fn (lhs Time) - (rhs Time) Duration {
+	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
+	rhs_micro := rhs.unix * 1000 * 1000 + u64(rhs.microsecond)
+	return (i64(lhs_micro) - i64(rhs_micro)) * microsecond
+}

@@ -93,15 +93,6 @@ pub fn (t Type) share() ShareType {
 	return sharetype_from_flags(t.has_flag(.shared_f), t.has_flag(.atomic_f))
 }
 
-pub fn (types []Type) contains(typ Type) bool {
-	for t in types {
-		if int(typ) == int(t) {
-			return true
-		}
-	}
-	return false
-}
-
 // return TypeSymbol idx for `t`
 [inline]
 pub fn (t Type) idx() int {
@@ -335,6 +326,7 @@ pub const (
 
 pub const (
 	void_type    = new_type(void_type_idx)
+	ovoid_type   = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
 	voidptr_type = new_type(voidptr_type_idx)
 	byteptr_type = new_type(byteptr_type_idx)
 	charptr_type = new_type(charptr_type_idx)
@@ -430,7 +422,11 @@ pub enum Kind {
 }
 
 pub fn (t &TypeSymbol) str() string {
-	return t.name.replace('array_', '[]')
+	if t.kind in [.array, .array_fixed] {
+		return t.name.replace('array_', '[]')
+	} else {
+		return t.name
+	}
 }
 
 [inline]
@@ -610,6 +606,7 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
+	embeds        []Type
 	fields        []Field
 	is_typedef    bool // C. [typedef]
 	is_union      bool
@@ -667,8 +664,6 @@ pub mut:
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
-	is_embed         bool
-	embed_alias_for  string // name of the struct which contains this field name
 }
 
 fn (f &Field) equals(o &Field) bool {
@@ -852,6 +847,17 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
+}
+
+pub fn (t &TypeSymbol) embed_name() string {
+	// main.Abc<int> => Abc<int>
+	mut embed_name := t.name.split('.').last()
+	// remove generic part from name
+	// Abc<int> => Abc
+	if '<' in embed_name {
+		embed_name = embed_name.split('<')[0]
+	}
+	return embed_name
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {

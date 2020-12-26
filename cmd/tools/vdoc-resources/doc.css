@@ -109,6 +109,7 @@ body {
 	scrollbar-width: thin;
 	scrollbar-color: #a0aec0 transparent;
 	scrollbar-color: var(--menu-scrollbar-color) transparent;
+	font-family: 'Work Sans', sans-serif;
 }
 *::-webkit-scrollbar {
 	width: 8px;
@@ -124,7 +125,6 @@ body {
 }
 .doc-nav li {
 	line-height: 1.8;
-	font-weight: 300;
 }
 .doc-nav .content.show {
 	display: flex;
@@ -267,6 +267,9 @@ body {
 	padding: 1rem;
 	overflow: hidden;
 }
+.doc-content img {
+	width: 100%;
+}
 .doc-content p {
 	line-height: 1.4;
 }
@@ -297,6 +300,9 @@ body {
 }
 .doc-content > .doc-node > .title {
 	display: flex;
+	font-family: 'Work Sans', sans-serif;
+	font-weight: 500;
+	padding: 0.3rem;
 	align-items: center;
 	margin-bottom: 1rem;
 	border-bottom: 1px solid #f1f5f8;
@@ -313,8 +319,10 @@ body {
 	fill: var(--ref-symbol-hover-color);
 }
 .doc-content > .doc-node h1 {
-	font-size: 2.5rem;
-	font-weight: 400;
+	font-size: 2rem;
+}
+.doc-content > .doc-node h2 {
+	font-size: 1.3rem;
 }
 .doc-content > .doc-node .signature {
 	border-color: #a0aec0;
@@ -331,8 +339,7 @@ body {
 .doc-content > .doc-node > .title h4,
 .doc-content > .doc-node > .title h5,
 .doc-content > .doc-node > .title h6 {
-	font-weight: 400;
-	padding-top: 0.6rem 0;
+	font-weight: 500;
 	margin: 0;
 }
 .doc-content > .doc-node > .title h1 a,
@@ -379,6 +386,7 @@ body {
 	box-sizing: border-box;
 	-ms-overflow-style: none;
 	scrollbar-width: none;
+	font-family: 'Work Sans', sans-serif;
 }
 .doc-toc::-webkit-scrollbar {
 	display: none;

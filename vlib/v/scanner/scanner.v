@@ -39,8 +39,7 @@ pub mut:
 	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
 	nr_lines                    int // total number of lines in the source file that were scanned
 	is_vh                       bool // Keep newlines
-	is_fmt                      bool // Used only for skipping ${} in strings, since we need literal
-	// string values when generating formatted code.
+	is_fmt                      bool // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
@@ -174,8 +173,12 @@ fn (mut s Scanner) ident_name() string {
 	return name
 }
 
-fn filter_num_sep(txt byteptr, start int, end int) string {
+fn (s Scanner) num_lit(start int, end int) string {
+	if s.is_fmt {
+		return s.text[start..end]
+	}
 	unsafe {
+		txt := s.text.str
 		mut b := malloc(end - start + 1) // add a byte for the endstring 0
 		mut i1 := 0
 		for i := start; i < end; i++ {
@@ -223,7 +226,7 @@ fn (mut s Scanner) ident_bin_number() string {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this binary number has unsuitable digit `$first_wrong_digit.str()`')
 	}
-	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	number := s.num_lit(start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -265,7 +268,7 @@ fn (mut s Scanner) ident_hex_number() string {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this hexadecimal number has unsuitable digit `$first_wrong_digit.str()`')
 	}
-	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	number := s.num_lit(start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -304,7 +307,7 @@ fn (mut s Scanner) ident_oct_number() string {
 		s.pos = first_wrong_digit_pos // adjust error position
 		s.error('this octal number has unsuitable digit `$first_wrong_digit.str()`')
 	}
-	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	number := s.num_lit(start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -416,7 +419,7 @@ fn (mut s Scanner) ident_dec_number() string {
 			s.error('too many decimal points in number')
 		}
 	}
-	number := filter_num_sep(s.text.str, start_pos, s.pos)
+	number := s.num_lit(start_pos, s.pos)
 	s.pos--
 	return number
 }
@@ -1170,10 +1173,7 @@ fn (mut s Scanner) ident_char() string {
 [inline]
 fn (s &Scanner) expect(want string, start_pos int) bool {
 	end_pos := start_pos + want.len
-	if start_pos < 0 || start_pos >= s.text.len {
-		return false
-	}
-	if end_pos < 0 || end_pos > s.text.len {
+	if start_pos < 0 || end_pos < 0 || start_pos >= s.text.len || end_pos > s.text.len {
 		return false
 	}
 	for pos in start_pos .. end_pos {
@@ -1273,8 +1273,7 @@ pub fn (mut s Scanner) error(msg string) {
 }
 
 fn (mut s Scanner) vet_error(msg string) {
-	eline := '$s.file_path:$s.line_nr: $msg'
-	s.vet_errors << eline
+	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
 }
 
 pub fn verror(s string) {

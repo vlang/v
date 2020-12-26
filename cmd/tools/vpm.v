@@ -50,8 +50,8 @@ fn main() {
 	init_settings()
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
-	args := os.args // args are: vpm [options] SUBCOMMAND module names
-	params := cmdline.only_non_options(args[1..])
+	// args are: vpm [options] SUBCOMMAND module names
+	params := cmdline.only_non_options(os.args[1..])
 	verbose_println('cli params: $params')
 	if params.len < 1 {
 		vpm_help()
@@ -217,7 +217,7 @@ fn vpm_install(module_names []string) {
 }
 
 fn vpm_update(m []string) {
-	mut module_names := m
+	mut module_names := m.clone()
 	if settings.is_help {
 		vhelp.show_topic('update')
 		exit(0)

@@ -4,7 +4,7 @@ import os
 fn simple() {
 	nums := [1, 2, 3] // local array must be freed
 	println(nums)
-	nums_copy := nums // array assignments call .clone()
+	nums_copy := nums.clone() // array assignments call .clone()
 	println(nums_copy)
 	name := 'Peter' // string literals mustn't be freed
 	str_inter := 'hello, $name' // concatenated strings must be freed
@@ -214,7 +214,7 @@ fn return_if_expr() string {
 
 fn loop_map() {
 	m := {
-		'UK': 'London'
+		'UK':     'London'
 		'France': 'Paris'
 	}
 	// keys must be freed

@@ -6,6 +6,7 @@ module big
 #include "bn.h"
 [typedef]
 struct C.bn {
+mut:
 	array [32]u32
 }
 
@@ -74,26 +75,28 @@ fn C.bignum_isqrt(a &Number, b &Number)
 // copy src number to dst number
 fn C.bignum_assign(dst &Number, src &Number)
 
-// //////////////////////////////////////////////////////////
-// conversion actions to/from big numbers:
+// new returns a bignum, initialized to 0
 pub fn new() Number {
 	return Number{}
 }
 
+// conversion actions to/from big numbers:
+// from_int converts an ordinary int number `i` to big.Number
 pub fn from_int(i int) Number {
 	n := Number{}
 	C.bignum_from_int(&n, i)
 	return n
 }
 
+// from_u64 converts an ordinary u64 number `u` to big.Number
 pub fn from_u64(u u64) Number {
 	n := Number{}
 	C.bignum_from_int(&n, u)
 	return n
 }
 
-// Converts a hex string to big.Number.
-pub fn from_string(input string) Number {
+// from_hex_string converts a hex string to big.Number
+pub fn from_hex_string(input string) Number {
 	mut s := input.trim_prefix('0x')
 	if s.len == 0 {
 		s = '0'
@@ -105,6 +108,17 @@ pub fn from_string(input string) Number {
 	return n
 }
 
+// from_string converts a decimal string to big.Number
+pub fn from_string(input string) Number {
+	mut n := from_int(0)
+	for _, c in input {
+		d := from_int(int(c - `0`))
+		n = (n * ten) + d
+	}
+	return n
+}
+
+// .int() converts (a small) big.Number `n` to an ordinary integer.
 pub fn (n Number) int() int {
 	r := C.bignum_to_int(&n)
 	return r
@@ -114,7 +128,7 @@ const (
 	ten = from_int(10)
 )
 
-// Decimal representation for the big unsigned integer number n.
+// .str returns a decimal representation of the big unsigned integer number n.
 pub fn (n Number) str() string {
 	if n.is_zero() {
 		return '0'
@@ -130,10 +144,11 @@ pub fn (n Number) str() string {
 	return digits.reverse().bytestr()
 }
 
+// .hexstr returns a hexadecimal representation of the bignum `n`
 pub fn (n Number) hexstr() string {
 	mut buf := [8192]byte{}
+	// NB: C.bignum_to_string(), returns the HEXADECIMAL representation of the bignum n
 	C.bignum_to_string(&n, buf, 8192)
-	// NB: bignum_to_string , returns the HEXADECIMAL representation of the bignum n
 	s := tos_clone(buf)
 	if s.len == 0 {
 		return '0'
@@ -143,31 +158,31 @@ pub fn (n Number) hexstr() string {
 
 // //////////////////////////////////////////////////////////
 // overloaded ops for the numbers:
-pub fn (a Number) +(b Number) Number {
+pub fn (a Number) + (b Number) Number {
 	c := Number{}
 	C.bignum_add(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) -(b Number) Number {
+pub fn (a Number) - (b Number) Number {
 	c := Number{}
 	C.bignum_sub(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) *(b Number) Number {
+pub fn (a Number) * (b Number) Number {
 	c := Number{}
 	C.bignum_mul(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) /(b Number) Number {
+pub fn (a Number) / (b Number) Number {
 	c := Number{}
 	C.bignum_div(&a, &b, &c)
 	return c
 }
 
-pub fn (a Number) %(b Number) Number {
+pub fn (a Number) % (b Number) Number {
 	c := Number{}
 	C.bignum_mod(&a, &b, &c)
 	return c

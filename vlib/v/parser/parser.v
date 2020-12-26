@@ -14,6 +14,10 @@ import os
 import runtime
 import time
 
+const (
+	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
+)
+
 pub struct Parser {
 	pref              &pref.Preferences
 mut:
@@ -38,6 +42,7 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
+	or_is_handled     bool // ignore `or` in this expression
 	builtin_mod       bool // are we in the `builtin` module?
 	mod               string // current module name
 	attrs             []table.Attr // attributes before next decl stmt
@@ -62,6 +67,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
+	name_error        bool
 }
 
 // for tests
@@ -267,6 +273,10 @@ fn (mut q Queue) run() {
 }
 */
 pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, global_scope &ast.Scope) []ast.File {
+	mut timers := util.new_timers(false)
+	$if time_parsing ? {
+		timers.should_print = true
+	}
 	// println('nr_cpus= $nr_cpus')
 	$if macos {
 		/*
@@ -300,7 +310,9 @@ pub fn parse_files(paths []string, table &table.Table, pref &pref.Preferences, g
 	mut files := []ast.File{}
 	for path in paths {
 		// println('parse_files $path')
+		timers.start('parse_file $path')
 		files << parse_file(path, table, .skip_comments, pref, global_scope)
+		timers.show('parse_file $path')
 	}
 	return files
 }
@@ -402,6 +414,9 @@ fn (mut p Parser) check(expected token.Kind) {
 	} else if p.tok.kind == .name {
 		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
 	} else {
+		if expected == .name {
+			p.name_error = true
+		}
 		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
 }
@@ -594,8 +609,9 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 	p.is_stmt_ident = p.tok.kind == .name
 	match p.tok.kind {
 		.lcbr {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			stmts := p.parse_block()
+			pos.last_line = p.prev_tok.line_nr
 			return ast.Block{
 				stmts: stmts
 				pos: pos
@@ -613,48 +629,46 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_mut, .key_shared, .key_atomic, .key_static, .mul {
-			if p.tok.kind == .name {
-				if p.tok.lit == 'sql' {
-					return p.sql_stmt()
-				}
-				if p.peek_tok.kind == .colon {
-					// `label:`
-					spos := p.tok.position()
-					name := p.check_name()
-					p.next()
-					if p.tok.kind == .key_for {
-						mut stmt := p.stmt(is_top_level)
-						match mut stmt {
-							ast.ForStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForInStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForCStmt {
-								stmt.label = name
-								return stmt
-							}
-							else {
-								assert false
-							}
+		.name {
+			if p.tok.lit == 'sql' {
+				return p.sql_stmt()
+			}
+			if p.peek_tok.kind == .colon {
+				// `label:`
+				spos := p.tok.position()
+				name := p.check_name()
+				p.next()
+				if p.tok.kind == .key_for {
+					mut stmt := p.stmt(is_top_level)
+					match mut stmt {
+						ast.ForStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForInStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForCStmt {
+							stmt.label = name
+							return stmt
+						}
+						else {
+							assert false
 						}
 					}
-					return ast.GotoLabel{
-						name: name
-						pos: spos.extend(p.tok.position())
-					}
-				} else if p.peek_tok.kind == .name {
-					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-					return ast.Stmt{}
-				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-					p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-					return ast.Stmt{}
 				}
+				return ast.GotoLabel{
+					name: name
+					pos: spos.extend(p.tok.position())
+				}
+			} else if p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				return ast.Stmt{}
+			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
+				p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				return ast.Stmt{}
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -665,19 +679,25 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			if p.peek_tok.kind == .key_if {
-				return ast.ExprStmt{
-					expr: p.if_expr(true)
+			match p.peek_tok.kind {
+				.key_if {
+					return ast.ExprStmt{
+						expr: p.if_expr(true)
+					}
 				}
-			} else if p.peek_tok.kind == .key_for {
-				return p.comp_for()
-			} else if p.peek_tok.kind == .name {
-				return ast.ExprStmt{
-					expr: p.vweb()
+				.key_for {
+					return p.comp_for()
+				}
+				.name {
+					return ast.ExprStmt{
+						expr: p.vweb()
+					}
+				}
+				else {
+					p.error_with_pos('unexpected \$', p.tok.position())
+					return ast.Stmt{}
 				}
 			}
-			p.error_with_pos('unexpected \$', p.tok.position())
-			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -705,7 +725,7 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			stmts := p.parse_block()
 			return ast.DeferStmt{
 				stmts: stmts
-				pos: spos.extend(p.tok.position())
+				pos: spos.extend_with_last_line(p.tok.position(), p.prev_tok.line_nr)
 			}
 		}
 		.key_go {
@@ -947,14 +967,14 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	} else if tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] &&
 		left0 !is ast.CallExpr && (is_top_level || p.tok.kind != .rcbr) && left0 !is ast.PostfixExpr &&
 		!(left0 is ast.InfixExpr && (left0 as ast.InfixExpr).op in [.left_shift, .arrow]) && left0 !is
-		ast.ComptimeCall {
+		ast.ComptimeCall && left0 !is ast.SelectorExpr {
 		p.error_with_pos('expression evaluated but not used', left0.position())
 		return ast.Stmt{}
 	}
 	if left.len == 1 {
 		return ast.ExprStmt{
 			expr: left0
-			pos: tok.position()
+			pos: left0.position()
 			comments: left_comments
 			is_expr: p.inside_for
 		}
@@ -1131,8 +1151,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
 				if p.peek_tok.kind == .dot &&
-					p.peek_tok2.kind != .eof && p.peek_tok2.lit[0].is_capital() {
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true
+				} else if p.peek_tok.kind == .dot &&
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len == 0 {
+					// incomplete module selector must be handled by dot_expr instead
+					node = p.parse_ident(language)
+					return node
 				}
 			}
 			// prepend the full import
@@ -1320,10 +1345,34 @@ fn (mut p Parser) index_expr(left ast.Expr) ast.IndexExpr {
 	// [expr]
 	pos := start_pos.extend(p.tok.position())
 	p.check(.rsbr)
+	// a[i] or { ... }
+	if p.tok.kind == .key_orelse && !p.or_is_handled {
+		was_inside_or_expr := p.inside_or_expr
+		mut or_pos := p.tok.position()
+		p.next()
+		p.open_scope()
+		or_stmts := p.parse_block_no_scope(false)
+		or_pos = or_pos.extend(p.prev_tok.position())
+		p.close_scope()
+		p.inside_or_expr = was_inside_or_expr
+		return ast.IndexExpr{
+			left: left
+			index: expr
+			pos: pos
+			or_expr: ast.OrExpr{
+				kind: .block
+				stmts: or_stmts
+				pos: or_pos
+			}
+		}
+	}
 	return ast.IndexExpr{
 		left: left
 		index: expr
 		pos: pos
+		or_expr: ast.OrExpr{
+			kind: .absent
+		}
 	}
 }
 
@@ -1435,10 +1484,11 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			else {}
 		}
 	}
+	pos := if p.name_error { left.position().extend(name_pos) } else { name_pos }
 	sel_expr := ast.SelectorExpr{
 		expr: left
 		field_name: field_name
-		pos: name_pos
+		pos: pos
 		is_mut: is_mut
 		mut_pos: mut_pos
 		scope: p.scope
@@ -1790,7 +1840,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_end()
 	p.check(.rpar)
 	return ast.ConstDecl{
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
@@ -1926,7 +1976,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-			comments: p.eat_comments()
+			comments: p.eat_line_end_comments()
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -1976,7 +2027,7 @@ $pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (
 		is_flag: is_flag
 		is_multi_allowed: is_multi_allowed
 		fields: fields
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		attrs: p.attrs
 		comments: enum_decl_comments
 	}
@@ -2202,7 +2253,7 @@ pub fn (mut p Parser) mark_var_as_used(varname string) bool {
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.next()
 	if p.tok.kind != .lcbr {
 		p.error_with_pos('please use `unsafe {`', p.tok.position())
@@ -2215,6 +2266,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	}
 	if p.tok.kind == .rcbr {
 		// `unsafe {}`
+		pos.last_line = p.tok.line_nr - 1
 		p.next()
 		return ast.Block{
 			is_unsafe: true
@@ -2233,6 +2285,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
+				pos.last_line = p.prev_tok.line_nr - 1
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos

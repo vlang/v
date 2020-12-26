@@ -5,14 +5,14 @@ const (
 )
 
 fn test_sorting_simple() {
-	mut a := unsorted
+	mut a := unsorted.clone()
 	a.sort()
 	eprintln(' a: $a')
 	assert a == sorted_asc
 }
 
 fn test_sorting_with_condition_expression() {
-	mut a := unsorted
+	mut a := unsorted.clone()
 	a.sort(a > b)
 	eprintln(' a: $a')
 	assert a == sorted_desc
@@ -23,7 +23,7 @@ fn mysort(mut a []int) {
 }
 
 fn test_sorting_by_passing_a_mut_array_to_a_function() {
-	mut a := unsorted
+	mut a := unsorted.clone()
 	mysort(mut a)
 	eprintln(' a: $a')
 	assert a == sorted_asc

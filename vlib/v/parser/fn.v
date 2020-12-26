@@ -54,7 +54,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next()
 	}
 	pos := first_pos.extend(last_pos)
-	mut or_stmts := []ast.Stmt{}
+	mut or_stmts := []ast.Stmt{} // TODO remove unnecessary allocations by just using .absent
 	mut or_pos := p.tok.position()
 	if p.tok.kind == .key_orelse {
 		// `foo() or {}``
@@ -229,10 +229,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	if p.tok.kind == .name {
+		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
-			p.error('function names cannot contain uppercase letters, use snake_case instead')
+			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
+				pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -240,7 +242,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error('duplicate method `$name`')
+			p.error_with_pos('duplicate method `$name`', pos)
+			return ast.FnDecl{
+				scope: 0
+			}
+		}
+		// cannot redefine buildin function
+		if !is_method && p.mod != 'builtin' && name in builtin_functions {
+			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -248,6 +257,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
 		name = p.tok.kind.str() // op_to_fn_name()
+		if rec_type == table.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions',
+				p.tok.position())
+		}
 		p.next()
 	}
 	// <T>
@@ -382,7 +395,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		rec_mut: rec_mut
 		language: language
 		no_body: no_body
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		body_pos: body_start_pos
 		file: p.file_name
 		is_builtin: p.builtin_mod || p.mod in util.builtin_module_parts
@@ -552,7 +565,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
 					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
-						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w file.v` to automatically fix your code.')
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.position()

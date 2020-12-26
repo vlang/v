@@ -68,6 +68,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	if p.ccompiler == '' {
 		p.ccompiler = default_c_compiler()
 	}
+	p.find_cc_if_cross_compiling()
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
@@ -85,7 +86,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.cache_manager = vcache.new_cache_manager([
 		@VHASH,
 		/* ensure that different v versions use separate build artefacts */
-		'$p.backend | $p.os | $p.ccompiler',
+		'$p.backend | $p.os | $p.ccompiler | $p.is_prod | $p.sanitize',
 		p.cflags.trim_space(),
 		p.third_party_option.trim_space(),
 		'$p.compile_defines_all',
@@ -93,6 +94,24 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		'$p.lookup_path',
 	])
 	// eprintln('prefs.cache_manager: $p')
+	//
+	// enable use_cache by default
+	// p.use_cache = os.user_os() != 'windows'
+}
+
+fn (mut p Preferences) find_cc_if_cross_compiling() {
+	if p.os == .windows {
+		$if !windows {
+			// Cross compiling to Windows
+			p.ccompiler = 'x86_64-w64-mingw32-gcc'
+		}
+	}
+	if p.os == .linux {
+		$if !linux {
+			// Cross compiling to Linux
+			p.ccompiler = 'clang'
+		}
+	}
 }
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {

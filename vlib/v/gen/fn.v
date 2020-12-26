@@ -113,7 +113,8 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	arg_start_pos := g.out.len
 	fargs, fargtypes := g.fn_args(it.params, it.is_variadic)
 	arg_str := g.out.after(arg_start_pos)
-	if it.no_body || (g.pref.use_cache && it.is_builtin) || skip {
+	if it.no_body ||
+		((g.pref.use_cache && g.pref.build_mode != .build_module) && it.is_builtin) || skip {
 		// Just a function header. Builtin function bodies are defined in builtin.o
 		g.definitions.writeln(');') // // NO BODY')
 		g.writeln(');')
@@ -369,6 +370,14 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_prepend(node)
 				return
 			}
+			'contains' {
+				g.gen_array_contains(node)
+				return
+			}
+			'index' {
+				g.gen_array_index(node)
+				return
+			}
 			else {}
 		}
 	}
@@ -448,6 +457,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		g.expr(node.left)
+		if node.from_embed_type != 0 {
+			embed_name := typ_sym.embed_name()
+			g.write('.$embed_name')
+		}
 	}
 	if has_cast {
 		g.write(')')
@@ -823,7 +836,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 			}
 		} else {
-			g.write('0')
+			// NB: tcc can not handle 0 here, while msvc needs it
+			g.write('EMPTY_VARG_INITIALIZATION')
 		}
 		g.write('}}')
 	}

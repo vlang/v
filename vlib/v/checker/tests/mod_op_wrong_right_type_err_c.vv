@@ -1,5 +1,0 @@
-struct Aaa{}
-fn main() {
-	a := Aaa{}
-	println(1 % a)
-}

@@ -1,6 +1,0 @@
-vlib/v/checker/tests/mul_op_wrong_left_type_err_a.vv:3:13: error: mismatched types `Aaa` and `any_int`
-    1 | struct Aaa{}
-    2 | fn main() {
-    3 |     println(Aaa{} * 10)
-      |             ~~~~~
-    4 | }

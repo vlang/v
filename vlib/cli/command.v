@@ -149,17 +149,17 @@ fn (mut cmd Command) parse_flags() {
 		mut found := false
 		for i in 0 .. cmd.flags.len {
 			unsafe {
-			mut flag := &cmd.flags[i]
-			if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
-				found = true
-				flag.found = true
-				cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
-					println('Failed to parse flag `${cmd.args[0]}`: $err')
-					exit(1)
+				mut flag := &cmd.flags[i]
+				if flag.matches(cmd.args, cmd.flags.have_abbrev()) {
+					found = true
+					flag.found = true
+					cmd.args = flag.parse(cmd.args, cmd.flags.have_abbrev()) or {
+						println('Failed to parse flag `${cmd.args[0]}`: $err')
+						exit(1)
+					}
+					break
 				}
-				break
 			}
-		  }
 		}
 		if !found {
 			println('Command `$cmd.name` has no flag `${cmd.args[0]}`')
@@ -221,9 +221,7 @@ fn (mut cmd Command) parse_commands() {
 
 fn (cmd Command) check_help_flag() {
 	if !cmd.disable_help && cmd.flags.contains('help') {
-		help_flag := cmd.flags.get_bool('help') or {
-			return
-		} // ignore error and handle command normally
+		help_flag := cmd.flags.get_bool('help') or { return } // ignore error and handle command normally
 		if help_flag {
 			cmd.execute_help()
 			exit(0)
@@ -233,13 +231,9 @@ fn (cmd Command) check_help_flag() {
 
 fn (cmd Command) check_version_flag() {
 	if !cmd.disable_version && cmd.version != '' && cmd.flags.contains('version') {
-		version_flag := cmd.flags.get_bool('version') or {
-			return
-		} // ignore error and handle command normally
+		version_flag := cmd.flags.get_bool('version') or { return } // ignore error and handle command normally
 		if version_flag {
-			version_cmd := cmd.commands.get('version') or {
-				return
-			} // ignore error and handle command normally
+			version_cmd := cmd.commands.get('version') or { return } // ignore error and handle command normally
 			version_cmd.execute(version_cmd)
 			exit(0)
 		}
@@ -258,9 +252,7 @@ fn (cmd Command) check_required_flags() {
 
 fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
-		help_cmd := cmd.commands.get('help') or {
-			return
-		} // ignore error and handle command normally
+		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		help_cmd.execute(help_cmd)
 	} else {
 		print(cmd.help_message())

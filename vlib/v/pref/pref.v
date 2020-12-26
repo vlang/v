@@ -237,6 +237,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_prod = true
 				res.build_options << arg
 			}
+			'-sanitize' {
+				res.sanitize = true
+				res.build_options << arg
+			}
 			'-simulator' {
 				res.is_ios_simulator = true
 			}
@@ -395,7 +399,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build', 'build-module'] {
+				if command !in ['', 'build-module'] {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
@@ -409,19 +413,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 		}
 	}
+	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
-	} else if command == 'build' {
-		if command_pos + 2 != args.len {
-			eprintln('`v build` requires exactly one argument - either a single .v file, or a single folder/ containing several .v files')
-			exit(1)
-		}
-		res.path = args[command_pos + 1]
-		must_exist(res.path)
 	} else if command == 'run' {
 		res.is_run = true
 		if command_pos + 2 > args.len {
@@ -542,6 +540,7 @@ pub fn cc_from_string(cc_str string) CompilerType {
 
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
+	prefs.build_options << '-d $define'
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define

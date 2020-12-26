@@ -26,8 +26,7 @@ const (
 )
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	v_test_formatting(args_string.all_before('test-fmt'))
 }
 

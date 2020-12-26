@@ -94,7 +94,7 @@ fn local_as_unix_time() int {
 	return make_unix_time(tm)
 }
 
-pub fn (t Time) to_local_time() Time {
+pub fn (t Time) local() Time {
 	st_utc := SystemTime{
 		year: u16(t.year)
 		month: u16(t.month)

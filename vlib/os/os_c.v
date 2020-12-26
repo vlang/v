@@ -160,7 +160,7 @@ pub fn cp(src string, dst string) ? {
 			}
 		}
 		from_attr := C.stat{}
-		unsafe {C.stat(charptr(src.str), &from_attr)}
+		unsafe { C.stat(charptr(src.str), &from_attr) }
 		if C.chmod(charptr(dst.str), from_attr.st_mode) < 0 {
 			return error_with_code('failed to set permissions for $dst', int(-1))
 		}
@@ -580,7 +580,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
 			return executable_fallback()
 		}
-		return unsafe {result.vstring()}
+		return unsafe { result.vstring() }
 	}
 	$if windows {
 		max := 512
@@ -617,14 +617,14 @@ pub fn executable() string {
 			eprintln('os.executable() failed at calling proc_pidpath with pid: $pid . proc_pidpath returned $ret ')
 			return executable_fallback()
 		}
-		return unsafe {result.vstring()}
+		return unsafe { result.vstring() }
 	}
 	$if freebsd {
 		mut result := vcalloc(max_path_len)
 		mib := [1 /* CTL_KERN */, 14 /* KERN_PROC */, 12 /* KERN_PROC_PATHNAME */, -1]
 		size := max_path_len
-		unsafe {C.sysctl(mib.data, 4, result, &size, 0, 0)}
-		return unsafe {result.vstring()}
+		unsafe { C.sysctl(mib.data, 4, result, &size, 0, 0) }
+		return unsafe { result.vstring() }
 	}
 	// "Sadly there is no way to get the full path of the executed file in OpenBSD."
 	$if openbsd {
@@ -640,7 +640,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
 			return executable_fallback()
 		}
-		return unsafe {result.vstring_with_len(count)}
+		return unsafe { result.vstring_with_len(count) }
 	}
 	$if dragonfly {
 		mut result := vcalloc(max_path_len)
@@ -649,7 +649,7 @@ pub fn executable() string {
 			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
 			return executable_fallback()
 		}
-		return unsafe {result.vstring_with_len(count)}
+		return unsafe { result.vstring_with_len(count) }
 	}
 	return executable_fallback()
 }
@@ -668,7 +668,7 @@ pub fn is_dir(path string) bool {
 		return false
 	} $else {
 		statbuf := C.stat{}
-		if unsafe {C.stat(charptr(path.str), &statbuf)} != 0 {
+		if unsafe { C.stat(charptr(path.str), &statbuf) } != 0 {
 			return false
 		}
 		// ref: https://code.woboq.org/gcc/include/sys/stat.h.html
@@ -713,7 +713,7 @@ pub fn getwd() string {
 		if C.getcwd(charptr(buf), 512) == 0 {
 			return ''
 		}
-		return unsafe {buf.vstring()}
+		return unsafe { buf.vstring() }
 	}
 }
 
@@ -736,7 +736,7 @@ pub fn real_path(fpath string) string {
 			return fpath
 		}
 	}
-	res := unsafe {fullpath.vstring()}
+	res := unsafe { fullpath.vstring() }
 	return normalize_drive_letter(res)
 }
 
@@ -759,7 +759,7 @@ fn normalize_drive_letter(path string) string {
 
 // signal will assign `handler` callback to be called when `signum` signal is recieved.
 pub fn signal(signum int, handler voidptr) {
-	unsafe {C.signal(signum, handler)}
+	unsafe { C.signal(signum, handler) }
 }
 
 // fork will fork the current system process and return the pid of the fork.
@@ -791,7 +791,7 @@ pub fn wait() int {
 pub fn file_last_mod_unix(path string) int {
 	attr := C.stat{}
 	// # struct stat attr;
-	unsafe {C.stat(charptr(path.str), &attr)}
+	unsafe { C.stat(charptr(path.str), &attr) }
 	// # stat(path.str, &attr);
 	return attr.st_mtime
 	// # return attr.st_mtime ;

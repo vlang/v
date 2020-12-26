@@ -19,7 +19,7 @@ pub fn (node &FnDecl) modname() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
+pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
@@ -43,13 +43,18 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	mut name := if node.is_anon { '' } else { node.name.after('.') }
-	if node.language == .c {
-		name = 'C.$name'
-	} else if node.language == .js {
-		name = 'JS.$name'
+	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
+	if !node.is_method {
+		if node.language == .c {
+			name = 'C.$name'
+		} else if node.language == .js {
+			name = 'JS.$name'
+		}
 	}
 	f.write('fn $receiver$name')
+	if name in ['+', '-', '*', '/', '%'] {
+		f.write(' ')
+	}
 	if node.is_generic {
 		f.write('<T>')
 	}
@@ -79,6 +84,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 			}
 		}
 		s = util.no_cur_mod(s, cur_mod)
+		for mod, alias in m2a {
+			s = s.replace(mod, alias)
+		}
 		if should_add_type {
 			if !is_type_only {
 				f.write(' ')
@@ -94,9 +102,11 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	}
 	f.write(')')
 	if node.return_type != table.void_type {
-		// typ := t.type_to_str(node.typ)
-		// if typ.starts_with('
-		f.write(' ' + util.no_cur_mod(t.type_to_str(node.return_type), cur_mod))
+		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
+		for mod, alias in m2a {
+			rs = rs.replace(mod, alias)
+		}
+		f.write(' ' + rs)
 	}
 	return f.str()
 }

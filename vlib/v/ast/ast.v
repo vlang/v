@@ -103,16 +103,17 @@ pub:
 // `foo.bar`
 pub struct SelectorExpr {
 pub:
-	pos        token.Position
-	expr       Expr // expr.field_name
-	field_name string
-	is_mut     bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
-	mut_pos    token.Position
+	pos             token.Position
+	expr            Expr // expr.field_name
+	field_name      string
+	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
+	mut_pos         token.Position
 pub mut:
-	expr_type  table.Type // type of `Foo` in `Foo.bar`
-	typ        table.Type // type of the entire thing (`Foo.bar`)
-	name_type  table.Type // T in `T.name` or typeof in `typeof(expr).name`
-	scope      &Scope
+	expr_type       table.Type // type of `Foo` in `Foo.bar`
+	typ             table.Type // type of the entire thing (`Foo.bar`)
+	name_type       table.Type // T in `T.name` or typeof in `typeof(expr).name`
+	scope           &Scope
+	from_embed_type table.Type // holds the type of the embed that the method is called from
 }
 
 // root_ident returns the origin ident where the selector started.
@@ -144,7 +145,6 @@ pub:
 	has_default_expr bool
 	attrs            []table.Attr
 	is_public        bool
-	is_embed         bool
 pub mut:
 	name             string
 	typ              table.Type
@@ -192,8 +192,15 @@ pub:
 	is_union     bool
 	attrs        []table.Attr
 	end_comments []Comment
+	embeds       []Embed
 pub mut:
 	fields       []StructField
+}
+
+pub struct Embed {
+pub:
+	typ table.Type
+	pos token.Position
 }
 
 pub struct StructEmbedding {
@@ -225,6 +232,18 @@ pub mut:
 	expected_type table.Type
 }
 
+pub struct StructInitEmbed {
+pub:
+	expr          Expr
+	pos           token.Position
+	comments      []Comment
+	next_comments []Comment
+pub mut:
+	name          string
+	typ           table.Type
+	expected_type table.Type
+}
+
 pub struct StructInit {
 pub:
 	pos          token.Position
@@ -233,6 +252,7 @@ pub:
 pub mut:
 	typ          table.Type
 	fields       []StructInitField
+	embeds       []StructInitEmbed
 }
 
 // import statement
@@ -320,6 +340,7 @@ pub mut:
 	generic_list_pos   token.Position
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
+	from_embed_type    table.Type // holds the type of the embed that the method is called from
 }
 
 /*
@@ -524,6 +545,7 @@ pub:
 	pos       token.Position
 	left      Expr
 	index     Expr // [0], RangeExpr [start..end] or map[key]
+	or_expr   OrExpr
 pub mut:
 	left_type table.Type // array, map, fixed array
 	is_setter bool
@@ -738,11 +760,12 @@ pub mut:
 
 pub struct EnumField {
 pub:
-	name     string
-	pos      token.Position
-	comments []Comment
-	expr     Expr
-	has_expr bool
+	name          string
+	pos           token.Position
+	comments      []Comment
+	next_comments []Comment
+	expr          Expr
+	has_expr      bool
 }
 
 pub struct EnumDecl {
@@ -1169,11 +1192,17 @@ pub:
 
 pub fn (stmt Stmt) position() token.Position {
 	match stmt {
-		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt { return stmt.pos }
-		GoStmt { return stmt.call_expr.position() }
-		TypeDecl { match stmt {
+		AssertStmt, AssignStmt, Block, BranchStmt, CompFor, ConstDecl, DeferStmt, EnumDecl, ExprStmt, FnDecl, ForCStmt, ForInStmt, ForStmt, GotoLabel, GotoStmt, Import, Return, StructDecl, GlobalDecl, HashStmt, InterfaceDecl, Module, SqlStmt {
+			return stmt.pos
+		}
+		GoStmt {
+			return stmt.call_expr.position()
+		}
+		TypeDecl {
+			match stmt {
 				AliasTypeDecl, FnTypeDecl, SumTypeDecl { return stmt.pos }
-			} }
+			}
+		}
 		// Please, do NOT use else{} here.
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.
@@ -1187,12 +1216,12 @@ pub fn (stmt Stmt) position() token.Position {
 // field table.Field.default_expr, which should be ast.Expr
 pub fn fe2ex(x table.FExpr) Expr {
 	res := Expr{}
-	unsafe {C.memcpy(&res, &x, sizeof(Expr))}
+	unsafe { C.memcpy(&res, &x, sizeof(Expr)) }
 	return res
 }
 
 pub fn ex2fe(x Expr) table.FExpr {
 	res := table.FExpr{}
-	unsafe {C.memcpy(&res, &x, sizeof(table.FExpr))}
+	unsafe { C.memcpy(&res, &x, sizeof(table.FExpr)) }
 	return res
 }

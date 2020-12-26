@@ -10,9 +10,9 @@ fn sum_types(a []Expr) {
 }
 
 fn main() {
-	x := 0xdeadbeef
-	u := 9978654321
-	o := 0o664
+	x := 0xdead_beef
+	u := 9_978_654_321
+	o := 0o66_4
 	eprintln('  hex constant in decimal: $x')
 	eprintln('    u constant in decimal: $u')
 	eprintln('octal constant in decimal: $o')

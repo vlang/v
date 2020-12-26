@@ -38,6 +38,7 @@ const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
 	res_path        = os.resource_abs_path('vdoc-resources')
+	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
 	html_content    = '
@@ -48,7 +49,16 @@ const (
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0">
 		<title>{{ title }} | vdoc</title>
+		<link rel="preconnect" href="https://fonts.gstatic.com">
 		<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+		<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+		<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+		<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+		<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+		<link rel="manifest" href="site.webmanifest">
+		<link rel="mask-icon" href="safari-pinned-tab.svg" color="#5bbad5">
+		<meta name="msapplication-TileColor" content="#da532c">
+		<meta name="theme-color" content="#ffffff">
 		{{ head_assets }}
 	</head>
 	<body>
@@ -369,13 +379,17 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { dd.parent_name + '.' +
-			dd.name } else { dd.name }
-	node_id := slug(sym_name)
+	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '($dd.parent_name) $dd.name' } else { dd.name }
+	tag := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '${dd.parent_name}.$dd.name' } else { dd.name }
+	node_id := slug(tag)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
-		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+		if dd.kind == .const_group {
+			dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+		} else {
+			dnw.write('<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
@@ -402,16 +416,21 @@ fn (cfg DocConfig) readme_idx() int {
 	return -1
 }
 
-fn write_toc(cn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
-	toc_slug := if cn.name.len == 0 || cn.content.len == 0 { '' } else { slug(cn.name) }
-	toc.write('<li class="open"><a href="#$toc_slug">$cn.name</a>')
-	if cn.name != 'Constants' {
+fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
+	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
+	if toc_slug == '' && dn.children.len > 0 {
+		toc_slug = slug(dn.name + '.' + dn.children[0].name)
+	}
+	if dn.name != 'Constants' {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
 		toc.writeln('        <ul>')
-		for child in cn.children {
-			cname := cn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">$child.name</a></li>')
+		for child in dn.children {
+			cname := dn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
 		}
 		toc.writeln('</ul>')
+	} else {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.name</a>')
 	}
 	toc.writeln('</li>')
 }
@@ -813,6 +832,14 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 		cfg.render_static()
 		cfg.render_parallel()
+		// move favicons to target directory
+		println('Copying favicons...')
+		favicons := os.ls(favicons_path) or { panic(err) }
+		for favicon in favicons {
+			favicon_path := os.join_path(favicons_path, favicon)
+			destination_path := os.join_path(cfg.output_path, favicon)
+			os.cp(favicon_path, destination_path)
+		}
 	}
 }
 
