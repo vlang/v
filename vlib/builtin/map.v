@@ -139,10 +139,10 @@ fn (d &DenseArray) has_index(i int) bool {
 	return d.deletes == 0 || unsafe { d.all_deleted[i] } == 0
 }
 
-// Make space to append an element to array and return index
+// Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 [inline]
-fn (mut d DenseArray) push() int {
+fn (mut d DenseArray) expand() int {
 	if d.cap == d.len {
 		d.cap += d.cap >> 3
 		unsafe {
@@ -321,6 +321,7 @@ fn new_map(key_bytes int, value_bytes int) map {
 	mut key_eq_fn := MapEqFn(0)
 	mut clone_fn := MapCloneFn(0)
 	match key_bytes {
+		// assume non-string keys are bitwise comparable
 		1 {
 			hash_fn = &map_hash_int_1
 			key_eq_fn = &map_eq_int_1
@@ -361,7 +362,11 @@ fn new_map(key_bytes int, value_bytes int) map {
 		hash_fn: hash_fn
 		key_eq_fn: key_eq_fn
 		clone_fn: clone_fn
-		free_fn: if has_string_keys {&map_free_string} else {&map_free_nop}
+		free_fn: if has_string_keys {
+			&map_free_string
+		} else {
+			&map_free_nop
+		}
 	}
 }
 
@@ -476,7 +481,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 		index += 2
 		meta += probe_inc
 	}
-	kv_index := m.key_values.push()
+	kv_index := m.key_values.expand()
 	unsafe {
 		pkey := m.key_values.key(kv_index)
 		m.clone_fn(pkey, key)
