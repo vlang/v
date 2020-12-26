@@ -194,6 +194,10 @@ type MapHashFn = fn (voidptr) u64
 
 type MapEqFn = fn (voidptr, voidptr) bool
 
+type MapCloneFn = fn (voidptr, voidptr)
+
+type MapFreeFn = fn (voidptr)
+
 pub struct map {
 	// Number of bytes of a key
 	key_bytes       int
@@ -218,6 +222,8 @@ mut:
 	has_string_keys bool
 	hash_fn         MapHashFn
 	key_eq_fn       MapEqFn
+	clone_fn        MapCloneFn
+	free_fn         MapFreeFn
 pub mut:
 	// Number of key-values currently in the hashmap
 	len             int
@@ -266,6 +272,37 @@ fn map_eq_int_8(a voidptr, b voidptr) bool {
 	return *&u64(a) == *&u64(b)
 }
 
+fn map_clone_string(dest voidptr, pkey voidptr) {
+	unsafe {
+		s := *&string(pkey)
+		(*&string(dest)) = s.clone()
+	}
+}
+
+fn map_clone_int_1(dest voidptr, pkey voidptr) {
+	unsafe {
+		*&byte(dest) = *&byte(pkey)
+	}
+}
+
+fn map_clone_int_2(dest voidptr, pkey voidptr) {
+	unsafe {
+		*&u16(dest) = *&u16(pkey)
+	}
+}
+
+fn map_clone_int_4(dest voidptr, pkey voidptr) {
+	unsafe {
+		*&u32(dest) = *&u32(pkey)
+	}
+}
+
+fn map_clone_int_8(dest voidptr, pkey voidptr) {
+	unsafe {
+		*&u64(dest) = *&u64(pkey)
+	}
+}
+
 // bootstrap
 fn new_map_1(value_bytes int) map {
 	return new_map(int(sizeof(string)), value_bytes)
@@ -277,26 +314,32 @@ fn new_map(key_bytes int, value_bytes int) map {
 	has_string_keys := key_bytes > sizeof(voidptr)
 	mut hash_fn := MapHashFn(0)
 	mut key_eq_fn := MapEqFn(0)
+	mut clone_fn := MapCloneFn(0)
 	match key_bytes {
 		1 {
 			hash_fn = &map_hash_int_1
 			key_eq_fn = &map_eq_int_1
+			clone_fn = &map_clone_int_1
 		}
 		2 {
 			hash_fn = &map_hash_int_2
 			key_eq_fn = &map_eq_int_2
+			clone_fn = &map_clone_int_2
 		}
 		4 {
 			hash_fn = &map_hash_int_4
 			key_eq_fn = &map_eq_int_4
+			clone_fn = &map_clone_int_4
 		}
 		8 {
 			hash_fn = &map_hash_int_8
 			key_eq_fn = &map_eq_int_8
+			clone_fn = &map_clone_int_8
 		}
 		else {
 			hash_fn = &map_hash_string
 			key_eq_fn = &map_eq_string
+			clone_fn = &map_clone_string
 		}
 	}
 	return map{
@@ -312,6 +355,7 @@ fn new_map(key_bytes int, value_bytes int) map {
 		has_string_keys: has_string_keys
 		hash_fn: hash_fn
 		key_eq_fn: key_eq_fn
+		clone_fn: clone_fn
 	}
 }
 
@@ -340,18 +384,6 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
-}
-
-[inline]
-fn (m &map) clone_key(dest voidptr, pkey voidptr) {
-	if !m.has_string_keys {
-		unsafe { C.memcpy(dest, pkey, m.key_bytes) }
-		return
-	}
-	unsafe {
-		s := (*&string(pkey)).clone()
-		C.memcpy(dest, &s, m.key_bytes)
-	}
 }
 
 fn (m &map) free_key(pkey voidptr) {
@@ -448,7 +480,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 	kv_index := m.key_values.push()
 	unsafe {
 		pkey := m.key_values.key(kv_index)
-		m.clone_key(pkey, key)
+		m.clone_fn(pkey, key)
 		C.memcpy(byteptr(pkey) + m.key_bytes, value, m.value_bytes)
 	}
 	m.meta_greater(index, meta, u32(kv_index))
@@ -661,7 +693,7 @@ pub fn (m &map) keys() []string {
 		}
 		unsafe {
 			pkey := m.key_values.key(i)
-			m.clone_key(item, pkey)
+			m.clone_fn(item, pkey)
 			item += m.key_bytes
 		}
 	}
@@ -676,7 +708,7 @@ pub fn (m &map) keys_1() array {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
 				pkey := m.key_values.key(i)
-				m.clone_key(item, pkey)
+				m.clone_fn(item, pkey)
 				item += m.key_bytes
 			}
 		}
@@ -688,7 +720,7 @@ pub fn (m &map) keys_1() array {
 		}
 		unsafe {
 			pkey := m.key_values.key(i)
-			m.clone_key(item, pkey)
+			m.clone_fn(item, pkey)
 			item += m.key_bytes
 		}
 	}
@@ -733,6 +765,8 @@ pub fn (m &map) clone() map {
 		has_string_keys: m.has_string_keys
 		hash_fn: m.hash_fn
 		key_eq_fn: m.key_eq_fn
+		clone_fn: m.clone_fn
+		free_fn: m.free_fn
 	}
 	unsafe { C.memcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {
@@ -743,7 +777,7 @@ pub fn (m &map) clone() map {
 		if !m.key_values.has_index(i) {
 			continue
 		}
-		m.clone_key(res.key_values.key(i), m.key_values.key(i))
+		m.clone_fn(res.key_values.key(i), m.key_values.key(i))
 	}
 	return res
 }
