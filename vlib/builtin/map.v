@@ -192,6 +192,8 @@ fn (mut d DenseArray) zeros_to_end() {
 
 type MapHashFn = fn (voidptr) u64
 
+type MapEqFn = fn (voidptr, voidptr) bool
+
 pub struct map {
 	// Number of bytes of a key
 	key_bytes       int
@@ -215,6 +217,7 @@ mut:
 	extra_metas     u32
 	has_string_keys bool
 	hash_fn         MapHashFn
+	key_eq_fn       MapEqFn
 pub mut:
 	// Number of key-values currently in the hashmap
 	len             int
@@ -241,6 +244,28 @@ fn map_hash_int_8(pkey voidptr) u64 {
 	return hash.wyhash64_c(*&u64(pkey), 0)
 }
 
+fn map_eq_string(a voidptr, b voidptr) bool {
+	return fast_string_eq(*&string(a), *&string(b))
+}
+
+fn map_eq_int_1(a voidptr, b voidptr) bool {
+	return *&byte(a) == *&byte(b)
+}
+
+fn map_eq_int_2(a voidptr, b voidptr) bool {
+	return *&u16(a) == *&u16(b)
+}
+
+fn map_eq_int_4(a voidptr, b voidptr) bool {
+	println('int4')
+	return *&u32(a) == *&u32(b)
+}
+
+fn map_eq_int_8(a voidptr, b voidptr) bool {
+	println('int8')
+	return *&u64(a) == *&u64(b)
+}
+
 // bootstrap
 fn new_map_1(value_bytes int) map {
 	return new_map(int(sizeof(string)), value_bytes)
@@ -250,13 +275,29 @@ fn new_map(key_bytes int, value_bytes int) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
-	mut hash_fn := voidptr(0)
+	mut hash_fn := MapHashFn(0)
+	mut key_eq_fn := MapEqFn(0)
 	match key_bytes {
-		1 { hash_fn = &map_hash_int_1 }
-		2 { hash_fn = &map_hash_int_2 }
-		4 { hash_fn = &map_hash_int_4 }
-		8 { hash_fn = &map_hash_int_8 }
-		else { hash_fn = &map_hash_string }
+		1 {
+			hash_fn = &map_hash_int_1
+			key_eq_fn = &map_eq_int_1
+		}
+		2 {
+			hash_fn = &map_hash_int_2
+			key_eq_fn = &map_eq_int_2
+		}
+		4 {
+			hash_fn = &map_hash_int_4
+			key_eq_fn = &map_eq_int_4
+		}
+		8 {
+			hash_fn = &map_hash_int_8
+			key_eq_fn = &map_eq_int_8
+		}
+		else {
+			hash_fn = &map_hash_string
+			key_eq_fn = &map_eq_string
+		}
 	}
 	return map{
 		key_bytes: key_bytes
@@ -270,6 +311,7 @@ fn new_map(key_bytes int, value_bytes int) map {
 		len: 0
 		has_string_keys: has_string_keys
 		hash_fn: hash_fn
+		key_eq_fn: key_eq_fn
 	}
 }
 
@@ -290,15 +332,6 @@ fn new_map_init_1(n int, key_bytes int, value_bytes int, keys voidptr, values vo
 		}
 	}
 	return out
-}
-
-[inline]
-fn (m &map) keys_eq(a voidptr, b voidptr) bool {
-	if m.has_string_keys {
-		return fast_string_eq(*&string(a), *&string(b))
-	}
-	// FIXME only works with integer/pointer types
-	return unsafe { C.memcmp(a, b, m.key_bytes) } == 0
 }
 
 [inline]
@@ -402,7 +435,7 @@ fn (mut m map) set_1(key voidptr, value voidptr) {
 	for meta == unsafe { m.metas[index] } {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
-		if m.keys_eq(key, pkey) {
+		if m.key_eq_fn(key, pkey) {
 			unsafe {
 				pval := byteptr(pkey) + m.key_bytes
 				C.memcpy(pval, value, m.value_bytes)
@@ -497,7 +530,7 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 			if meta == unsafe { m.metas[index] } {
 				kv_index := int(unsafe { m.metas[index + 1] })
 				pkey := unsafe { m.key_values.key(kv_index) }
-				if m.keys_eq(key, pkey) {
+				if m.key_eq_fn(key, pkey) {
 					return unsafe { byteptr(pkey) + m.key_values.key_bytes }
 				}
 			}
@@ -527,7 +560,7 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 		if meta == unsafe { m.metas[index] } {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.keys_eq(key, pkey) {
+			if m.key_eq_fn(key, pkey) {
 				return unsafe { byteptr(pkey) + m.key_values.key_bytes }
 			}
 		}
@@ -551,7 +584,7 @@ fn (m &map) exists_1(key voidptr) bool {
 		if meta == unsafe { m.metas[index] } {
 			kv_index := int(unsafe { m.metas[index + 1] })
 			pkey := unsafe { m.key_values.key(kv_index) }
-			if m.keys_eq(key, pkey) {
+			if m.key_eq_fn(key, pkey) {
 				return true
 			}
 		}
@@ -587,7 +620,7 @@ pub fn (mut m map) delete_1(key voidptr) {
 	for meta == unsafe { m.metas[index] } {
 		kv_index := int(unsafe { m.metas[index + 1] })
 		pkey := unsafe { m.key_values.key(kv_index) }
-		if m.keys_eq(key, pkey) {
+		if m.key_eq_fn(key, pkey) {
 			for (unsafe { m.metas[index + 2] } >> hashbits) > 1 {
 				unsafe {
 					m.metas[index] = m.metas[index + 2] - probe_inc
@@ -699,6 +732,7 @@ pub fn (m &map) clone() map {
 		len: m.len
 		has_string_keys: m.has_string_keys
 		hash_fn: m.hash_fn
+		key_eq_fn: m.key_eq_fn
 	}
 	unsafe { C.memcpy(res.metas, m.metas, metasize) }
 	if !m.has_string_keys {
