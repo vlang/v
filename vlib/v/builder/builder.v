@@ -261,24 +261,22 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	module_lookup_paths << b.module_search_paths
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
-	// if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
-	// 	parts := fpath.split(os.path_separator)
-	// 	for i := parts.len - 2; i >= 0; i-- {
-	// 		if parts[i] == 'modules' {
-	// 			module_lookup_paths << parts[0..i + 1].join(os.path_separator)
-	// 			break
-	// 		}
-	// 	}
-	// }
-	// add parent folder for relative imports
-	/*
-	path_parts := fpath.split(os.path_separator)
-	if path_parts.len > 2 {
-		fpath_parent := path_parts[..path_parts.len-3].join(os.path_separator)
-		//println('FPATH PARENT: $fpath_parent FPATH: $fpath')
-		module_lookup_paths << fpath_parent
+	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
+		parts := fpath.split(os.path_separator)
+		for i := parts.len - 2; i >= 0; i-- {
+			if parts[i] == 'modules' {
+				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+				break
+			}
+		}
 	}
-	*/
+	// add parent folder for relative imports
+	// path_parts := fpath.split(os.path_separator)
+	// if path_parts.len > 2 {
+	// 	fpath_parent := path_parts[..path_parts.len-3].join(os.path_separator)
+	// 	//println('FPATH PARENT: $fpath_parent FPATH: $fpath')
+	// 	module_lookup_paths << fpath_parent
+	// }
 	// mod_parts := mod.split('.')
 	/*
 	path_parts := fpath.split(os.path_separator)
