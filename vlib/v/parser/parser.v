@@ -679,19 +679,25 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			if p.peek_tok.kind == .key_if {
-				return ast.ExprStmt{
-					expr: p.if_expr(true)
+			match p.peek_tok.kind {
+				.key_if {
+					return ast.ExprStmt{
+						expr: p.if_expr(true)
+					}
 				}
-			} else if p.peek_tok.kind == .key_for {
-				return p.comp_for()
-			} else if p.peek_tok.kind == .name {
-				return ast.ExprStmt{
-					expr: p.vweb()
+				.key_for {
+					return p.comp_for()
+				}
+				.name {
+					return ast.ExprStmt{
+						expr: p.vweb()
+					}
+				}
+				else {
+					p.error_with_pos('unexpected \$', p.tok.position())
+					return ast.Stmt{}
 				}
 			}
-			p.error_with_pos('unexpected \$', p.tok.position())
-			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
