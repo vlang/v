@@ -1840,7 +1840,9 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 		}
 		f.write(f.table.type_to_str(it.elem_type))
 		if it.has_default {
-			f.write('{init: $it.default_expr}')
+			f.write('{init: ')
+			f.expr(it.default_expr)
+			f.write('}')
 		} else {
 			f.write('{}')
 		}
