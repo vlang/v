@@ -1,19 +1,19 @@
-//import os
-//import pg
-//import term
+// import os
+// import pg
+// import term
 import sqlite
 
 struct Module {
-	id int
-	name string
+	id           int
+	name         string
 	nr_downloads int
 }
 
 struct User {
-	id int
-	age int
-	name string
-	is_customer bool
+	id             int
+	age            int
+	name           string
+	is_customer    bool
 	skipped_string string [skip]
 }
 
@@ -23,11 +23,9 @@ struct Foo {
 
 fn test_orm_sqlite() {
 	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec("drop table if exists User")
+	db.exec('drop table if exists User')
 	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
-
 	name := 'Peter'
-
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")
 	db.exec("insert into User (name, age, is_customer) values ('Kate', 30, 1)")
@@ -99,12 +97,14 @@ fn test_orm_sqlite() {
 	assert users3[0].age == 29
 	assert users3[1].age == 31
 	//
-
-	new_user := User{name:'New user' age:30}
+	new_user := User{
+		name: 'New user'
+		age: 30
+	}
 	sql db {
 		insert new_user into User
 	}
-	//db.insert<User>(user2)
+	// db.insert<User>(user2)
 	x := sql db {
 		select from User where id == 4
 	}
@@ -197,23 +197,18 @@ fn test_orm_sqlite() {
 	}
 	assert z.len == 2
 	assert z[0].id == 3
-
 	oldest := sql db {
 		select from User order by age desc limit 1
 	}
 	assert oldest.age == 34
-
 	offs := 1
-
 	second_oldest := sql db {
 		select from User order by age desc limit 1 offset offs
 	}
 	assert second_oldest.age == 31
-
 	sql db {
 		delete from User where age == 34
 	}
-
 	updated_oldest := sql db {
 		select from User order by age desc limit 1
 	}
@@ -221,7 +216,7 @@ fn test_orm_sqlite() {
 }
 
 fn test_orm_pg() {
-/*
+	/*
 	dbname := os.getenv('VDB_NAME')
 	dbuser := os.getenv('VDB_USER')
 	if dbname == '' || dbuser == '' {
@@ -243,9 +238,8 @@ fn test_orm_pg() {
 	for mod in mods {
 	println(mod)
 	}
-*/
-
-/*
+	*/
+	/*
 	mod := db.retrieve<Module>(1)
 	mod := db.select from Module where id = 1
 
@@ -259,8 +253,8 @@ fn test_orm_pg() {
 	nr_modules := db.select count from modules
 	nr_modules := db.select from modules
 	nr_modules := db[:modules].select
-*/
-/*
+	*/
+	/*
 	mod := select from db.modules where id = 1 limit 1
 	println(mod.name)
 	top_mods := select from db.modules where nr_downloads > 1000 order by nr_downloads desc limit 10
@@ -271,5 +265,5 @@ fn test_orm_pg() {
 
 	n := db.q_int('select count(*) from modules')
 	println(n)
-*/
+	*/
 }
