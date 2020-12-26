@@ -263,12 +263,10 @@ fn map_eq_int_2(a voidptr, b voidptr) bool {
 }
 
 fn map_eq_int_4(a voidptr, b voidptr) bool {
-	println('int4')
 	return *&u32(a) == *&u32(b)
 }
 
 fn map_eq_int_8(a voidptr, b voidptr) bool {
-	println('int8')
 	return *&u64(a) == *&u64(b)
 }
 
