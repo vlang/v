@@ -45,7 +45,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	}
 	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
 	mut name := if node.is_anon { '' } else { node.name }
-	if !node.is_method && node.language == .v {
+	if !node.is_anon && !node.is_method && node.language == .v {
 		name = node.name.all_after_last('.')
 	}
 	// if !node.is_method {
@@ -294,7 +294,7 @@ pub fn (a CallArg) str() string {
 	return '$a.expr.str()'
 }
 
-pub fn v.args2str(args []CallArg) string {
+pub fn args2str(args []CallArg) string {
 	mut res := []string{}
 	for a in args {
 		res << a.str()
