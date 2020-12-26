@@ -108,25 +108,25 @@ pub fn (mut b Builder) parse_imports() {
 				// break
 				// println('module_search_paths:')
 				// println(b.module_search_paths)
-				verror(' @@ ($ast_file.path) cannot import module "$mod" (not found)')
+				verror('cannot import module "$mod" (not found)')
 				break
 			}
-			mut v_files := b.v_files_from_dir(import_path)
-			mut v_files2 := []string{}
-			for f1 in v_files {
-				mut found := false
-				for f2 in b.parsed_files {
-					if os.real_path(f2.path) == f1 {
-						found = true
-						println('### DUPLICATE: $f1')
-						break
-					}
-				}
-				if !found {
-					v_files2 << f1
-				}
-			}
-			v_files = v_files2.clone()
+			v_files := b.v_files_from_dir(import_path)
+			// mut v_files2 := []string{}
+			// for f1 in v_files {
+			// 	mut found := false
+			// 	for f2 in b.parsed_files {
+			// 		if os.real_path(f2.path) == f1 {
+			// 			found = true
+			// 			println('### DUPLICATE: $f1')
+			// 			break
+			// 		}
+			// 	}
+			// 	if !found {
+			// 		v_files2 << f1
+			// 	}
+			// }
+			// v_files = v_files2.clone()
 			if v_files.len == 0 {
 				// v.parsers[i].error_with_token_index('cannot import module "$mod" (no .v files in "$import_path")', v.parsers[i].import_table.get_import_tok_idx(mod))
 				verror('cannot import module "$mod" (no .v files in "$import_path")')
@@ -136,7 +136,7 @@ pub fn (mut b Builder) parse_imports() {
 			for file in parsed_files {
 				if file.mod.name != mod {
 					// v.parsers[pidx].error_with_token_index('bad module definition: ${v.parsers[pidx].file_path} imports module "$mod" but $file is defined as module `$p_mod`', 1
-					// verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
+					verror('bad module definition: $ast_file.path imports module "$mod" but $file.path is defined as module `$file.mod.name`')
 				}
 			}
 			b.parsed_files << parsed_files
@@ -261,15 +261,15 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	module_lookup_paths << b.module_search_paths
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
-	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
-		parts := fpath.split(os.path_separator)
-		for i := parts.len - 2; i >= 0; i-- {
-			if parts[i] == 'modules' {
-				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
-				break
-			}
-		}
-	}
+	// if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
+	// 	parts := fpath.split(os.path_separator)
+	// 	for i := parts.len - 2; i >= 0; i-- {
+	// 		if parts[i] == 'modules' {
+	// 			module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+	// 			break
+	// 		}
+	// 	}
+	// }
 	// add parent folder for relative imports
 	/*
 	path_parts := fpath.split(os.path_separator)
