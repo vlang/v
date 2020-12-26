@@ -145,7 +145,8 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		// TODO: detect this properly for all cases
 		// either get if from an earlier stage or use the lookup paths
 		for dir_name in ['modules', 'vlib', '.vmodules'] {
-			if os.path_separator + dir_name + os.path_separator in pref.path || pref.path.starts_with(dir_name + os.path_separator) {
+			if os.path_separator + dir_name + os.path_separator in pref.path || pref.path.starts_with(dir_name +
+				os.path_separator) {
 				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
 					'.')
 				break
@@ -433,8 +434,7 @@ pub fn (mut g Gen) write_typeof_functions() {
 					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
 				}
 				g.writeln('\treturn "unknown ${util.strip_main_name(typ.name)}";')
-			}
-			else {
+			} else {
 				tidx := g.table.find_type_idx(typ.name)
 				g.writeln('\tswitch(sidx) {')
 				g.writeln('\t\tcase $tidx: return "${util.strip_main_name(typ.name)}";')
@@ -982,7 +982,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					println('build module `$g.module_built` fn `$node.name`')
 				}
 			}
-			if g.pref.use_cache && g.pref.build_mode != .build_module {
+			if g.pref.use_cache {
 				// We are using prebuilt modules, we do not need to generate
 				// their functions in main.c.
 				if node.mod != 'main' &&

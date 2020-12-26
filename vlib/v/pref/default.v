@@ -95,8 +95,16 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	])
 	// eprintln('prefs.cache_manager: $p')
 	//
+	if p.use_cache && p.is_shared {
+		eprintln('-usecache and -shared flags are not compatible')
+		exit(1)
+	}
+	if p.use_cache && p.build_mode == .build_module {
+		eprintln('-usecache and build-module flags are not compatible')
+		exit(1)
+	}
 	// enable use_cache by default
-	p.use_cache = os.user_os() != 'windows'
+	p.use_cache = os.user_os() != 'windows' && p.build_mode != .build_module && !p.is_shared
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
