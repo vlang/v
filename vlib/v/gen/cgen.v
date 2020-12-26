@@ -145,7 +145,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		// TODO: detect this properly for all cases
 		// either get if from an earlier stage or use the lookup paths
 		for dir_name in ['modules', 'vlib', '.vmodules'] {
-			if pref.path.contains(os.path_separator + dir_name + os.path_separator) {
+			if os.path_separator + dir_name + os.path_separator in pref.path || pref.path.starts_with(dir_name + os.path_separator) {
 				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
 					'.')
 				break
@@ -427,14 +427,22 @@ pub fn (mut g Gen) write_typeof_functions() {
 			sum_info := typ.info as table.SumType
 			tidx := g.table.find_type_idx(typ.name)
 			g.writeln('static char * v_typeof_sumtype_${tidx}(int sidx) { /* $typ.name */ ')
-			g.writeln('	switch(sidx) {')
-			g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
-			for v in sum_info.variants {
-				subtype := g.table.get_type_symbol(v)
-				g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+			if g.pref.build_mode == .build_module {
+				for v in sum_info.variants {
+					subtype := g.table.get_type_symbol(v)
+					g.writeln('\tif( sidx == _v_type_idx_${subtype.cname}() ) return "${util.strip_main_name(subtype.name)}";')
+				}
 			}
-			g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
-			g.writeln('	}')
+			else {
+				g.writeln('	switch(sidx) {')
+				g.writeln('		case $tidx: return "${util.strip_main_name(typ.name)}";')
+				for v in sum_info.variants {
+					subtype := g.table.get_type_symbol(v)
+					g.writeln('		case $v: return "${util.strip_main_name(subtype.name)}";')
+				}
+				g.writeln('		default: return "unknown ${util.strip_main_name(typ.name)}";')
+				g.writeln('	}')
+			}
 			g.writeln('}')
 		}
 	}
@@ -588,7 +596,7 @@ fn (g &Gen) cc_type(t table.Type) string {
 fn (g &Gen) type_sidx(t table.Type) string {
 	if g.pref.build_mode == .build_module {
 		sym := g.table.get_type_symbol(t)
-		return '_v_type_idx_${sym.cname}()'
+		return '_v_type_idx_${sym.cname}()' 
 	}
 	return '$t.idx()'
 }
