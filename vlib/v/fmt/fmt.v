@@ -1028,6 +1028,13 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.write(' where ')
 				f.expr(node.where_expr)
 			}
+			if node.has_order {
+				f.write(' order by ')
+				f.expr(node.order_expr)
+				if node.has_desc {
+					f.write(' desc')
+				}
+			}
 			if node.has_limit {
 				f.write(' limit ')
 				f.expr(node.limit_expr)
