@@ -22,7 +22,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
-			node = p.name_expr()
+			node = p.parse_ident(table.Language.v)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name {
