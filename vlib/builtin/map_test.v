@@ -487,6 +487,7 @@ fn test_int_keys() {
 	assert m[5] == 25
 	mc := m.clone()
 	assert mc.len == 3
+	assert mc.keys() == [3,4,5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v
