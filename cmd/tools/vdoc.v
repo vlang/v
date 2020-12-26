@@ -385,7 +385,11 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
-		dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+		if dd.kind == .const_group {
+			dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+		} else {
+			dnw.write('<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
 		}
@@ -412,19 +416,21 @@ fn (cfg DocConfig) readme_idx() int {
 	return -1
 }
 
-fn write_toc(cn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
-	mut toc_slug := if cn.name.len == 0 || cn.content.len == 0 { '' } else { slug(cn.name) }
-	if toc_slug == '' && cn.children.len > 0 {
-		toc_slug = slug(cn.name + '.' + cn.children[0].name)
+fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
+	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
+	if toc_slug == '' && dn.children.len > 0 {
+		toc_slug = slug(dn.name + '.' + dn.children[0].name)
 	}
-	toc.write('<li class="open"><a href="#$toc_slug">$cn.name</a>')
-	if cn.name != 'Constants' {
+	if dn.name != 'Constants' {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
 		toc.writeln('        <ul>')
-		for child in cn.children {
-			cname := cn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">$child.name</a></li>')
+		for child in dn.children {
+			cname := dn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
 		}
 		toc.writeln('</ul>')
+	} else {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.name</a>')
 	}
 	toc.writeln('</li>')
 }
