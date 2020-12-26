@@ -303,6 +303,13 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 	}
 }
 
+fn map_free_string(pkey voidptr) {
+	(*&string(pkey)).free()
+}
+
+fn map_free_nop(_ voidptr) {
+}
+
 // bootstrap
 fn new_map_1(value_bytes int) map {
 	return new_map(int(sizeof(string)), value_bytes)
@@ -356,6 +363,7 @@ fn new_map(key_bytes int, value_bytes int) map {
 		hash_fn: hash_fn
 		key_eq_fn: key_eq_fn
 		clone_fn: clone_fn
+		free_fn: if has_string_keys {&map_free_string} else {&map_free_nop}
 	}
 }
 
@@ -384,13 +392,6 @@ fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	index := hash & m.even_index
 	meta := ((hash >> m.shift) & hash_mask) | probe_inc
 	return u32(index), u32(meta)
-}
-
-fn (m &map) free_key(pkey voidptr) {
-	if !m.has_string_keys {
-		return
-	}
-	(*&string(pkey)).free()
 }
 
 [inline]
@@ -664,7 +665,7 @@ pub fn (mut m map) delete_1(key voidptr) {
 			m.key_values.delete(kv_index)
 			unsafe {
 				m.metas[index] = 0
-				m.free_key(pkey)
+				m.free_fn(pkey)
 				// Mark key as deleted
 				C.memset(pkey, 0, m.key_bytes)
 			}
@@ -789,7 +790,7 @@ pub fn (m &map) free() {
 		for i := 0; i < m.key_values.len; i++ {
 			unsafe {
 				pkey := m.key_values.key(i)
-				m.free_key(pkey)
+				m.free_fn(pkey)
 			}
 		}
 	} else {
@@ -799,7 +800,7 @@ pub fn (m &map) free() {
 			}
 			unsafe {
 				pkey := m.key_values.key(i)
-				m.free_key(pkey)
+				m.free_fn(pkey)
 			}
 		}
 		unsafe { free(m.key_values.all_deleted) }
