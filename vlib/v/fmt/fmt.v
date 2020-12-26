@@ -1750,36 +1750,8 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	if it.exprs.len == 0 && it.typ != 0 && it.typ != table.void_type {
 		// `x := []string`
-		typ_sym := f.table.get_type_symbol(it.typ)
-		if typ_sym.kind == .array && typ_sym.name.starts_with('array_map') {
-			ainfo := typ_sym.info as table.Array
-			map_typ_sym := f.table.get_type_symbol(ainfo.elem_type)
-			minfo := map_typ_sym.info as table.Map
-			mk := f.table.get_type_symbol(minfo.key_type).name
-			mv := f.table.get_type_symbol(minfo.value_type).name
-			for _ in 0 .. ainfo.nr_dims {
-				f.write('[]')
-			}
-			f.write('map[$mk]$mv')
-			f.write('{')
-			if it.has_len {
-				f.write('len: ')
-				f.expr(it.len_expr)
-			}
-			if it.has_cap {
-				f.write('cap: ')
-				f.expr(it.cap_expr)
-			}
-			if it.has_default {
-				f.write('init: ')
-				f.expr(it.default_expr)
-			}
-			f.write('}')
-			return
-		}
 		f.write(f.table.type_to_str_using_aliases(it.typ, f.mod2alias))
 		f.write('{')
-		// TODO copypasta
 		if it.has_len {
 			f.write('len: ')
 			f.expr(it.len_expr)
