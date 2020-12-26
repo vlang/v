@@ -4231,9 +4231,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
-					// if g.pref.build_mode != .build_module {
-					g.definitions.writeln('static $styp _const_$name = $val; // fixed array const')
-					// }
+					if !g.pref.use_cache || g.pref.build_mode == .build_module {
+						g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+					} else {
+						g.definitions.writeln('$styp _const_$name; // fixed array const')
+					}
 				} else {
 					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
@@ -5815,7 +5817,7 @@ fn (mut g Gen) interface_table() string {
 		}
 		inter_info := ityp.info as table.Interface
 		// interface_name is for example Speaker
-		interface_name := c_name(ityp.name)
+		interface_name := ityp.cname
 		// generate a struct that references interface methods
 		methods_struct_name := 'struct _${interface_name}_interface_methods'
 		mut methods_typ_def := strings.new_builder(100)
@@ -5847,9 +5849,13 @@ fn (mut g Gen) interface_table() string {
 		iname_table_length := inter_info.types.len
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[1];')
+			methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[1];')
 		} else {
-			methods_struct.writeln('$staticprefix $methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$iname_table_length] = {')
+			} else {
+				methods_struct.writeln('$methods_struct_name ${interface_name}_name_table[$iname_table_length];')
+			}
 		}
 		mut cast_functions := strings.new_builder(100)
 		cast_functions.write('// Casting functions for interface "$interface_name"')
@@ -5891,7 +5897,9 @@ $staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype
 		._interface_idx = $interface_index_name
 	}, sizeof(_Interface));
 }')
-			methods_struct.writeln('\t{')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('\t{')
+			}
 			st_sym := g.table.get_type_symbol(st)
 			mut method := table.Fn{}
 			for _, m in ityp.methods {
@@ -5931,17 +5939,27 @@ $staticprefix _Interface* I_${cctype}_to_Interface_${interface_name}_ptr($cctype
 					// .speak = Cat_speak_method_wrapper
 					method_call += '_method_wrapper'
 				}
-				methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+				if g.pref.build_mode != .build_module {
+					methods_struct.writeln('\t\t.${c_name(method.name)} = $method_call,')
+				}
 			}
-			methods_struct.writeln('\t},')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('\t},')
+			}
 			iin_idx := already_generated_mwrappers[interface_index_name] - iinidx_minimum_base
-			sb.writeln('static int $interface_index_name = $iin_idx;')
+			if g.pref.build_mode != .build_module {
+				sb.writeln('int $interface_index_name = $iin_idx;')
+			} else {
+				sb.writeln('int $interface_index_name;')
+			}
 		}
 		sb.writeln('// ^^^ number of types for interface $interface_name: ${current_iinidx - iinidx_minimum_base}')
 		if iname_table_length == 0 {
 			methods_struct.writeln('')
 		} else {
-			methods_struct.writeln('};')
+			if g.pref.build_mode != .build_module {
+				methods_struct.writeln('};')
+			}
 		}
 		// add line return after interface index declarations
 		sb.writeln('')
