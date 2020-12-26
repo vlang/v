@@ -126,7 +126,9 @@ fn (mut v Builder) post_process_c_compiler_output(res os.Result) {
 
 fn (mut v Builder) rebuild_cached_module(vexe string, imp_path string) string {
 	res := v.pref.cache_manager.exists('.o', imp_path) or {
-		println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		if v.pref.is_verbose {
+			println('Cached $imp_path .o file not found... Building .o file for $imp_path')
+		}
 		// do run `v build-module x` always in main vfolder; x can be a relative path
 		pwd := os.getwd()
 		vroot := os.dir(vexe)
@@ -411,7 +413,9 @@ fn (mut v Builder) setup_output_name() {
 	}
 	if v.pref.build_mode == .build_module {
 		v.pref.out_name = v.pref.cache_manager.postfix_with_key2cpath('.o', v.pref.path) // v.out_name
-		println('Building $v.pref.path to $v.pref.out_name ...')
+		if v.pref.is_verbose {
+			println('Building $v.pref.path to $v.pref.out_name ...')
+		}
 		v.pref.cache_manager.save('.description.txt', v.pref.path, '${v.pref.path:-30} @ $v.pref.cache_manager.vopts\n')
 		// println('v.table.imports:')
 		// println(v.table.imports)
