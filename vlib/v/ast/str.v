@@ -44,14 +44,14 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		*/
 	}
 	// mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
-	mut name := if node.is_anon { '' } else { node.name.all_after_last('.') }
-	if !node.is_method {
-		if node.language == .c {
-			name = 'C.$name'
-		} else if node.language == .js {
-			name = 'JS.$name'
-		}
-	}
+	mut name := if node.is_anon { '' } else { node.name.replace('${cur_mod}.', '') }
+	// if !node.is_method {
+	// 	if node.language == .c {
+	// 		name = 'C.$name'
+	// 	} else if node.language == .js {
+	// 		name = 'JS.$name'
+	// 	}
+	// }
 	f.write('fn $receiver$name')
 	if name in ['+', '-', '*', '/', '%'] {
 		f.write(' ')
@@ -291,7 +291,7 @@ pub fn (a CallArg) str() string {
 	return '$a.expr.str()'
 }
 
-pub fn args2str(args []CallArg) string {
+pub fn v.args2str(args []CallArg) string {
 	mut res := []string{}
 	for a in args {
 		res << a.str()
