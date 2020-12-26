@@ -32,32 +32,6 @@ pub fn regex(pattern string) (RE,int,int){
 	return re, re_err, err_pos
 }
 
-// new_regex create a RE of small size, usually sufficient for ordinary use
-[deprecated]
-pub fn new_regex() RE {
-	return impl_new_regex_by_size(1)
-}
-
-// new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
-[deprecated]
-pub fn new_regex_by_size(mult int) RE {
-	return impl_new_regex_by_size(mult)
-}
-fn impl_new_regex_by_size(mult int) RE {
-	// init regex
-    mut re := regex.RE{}
-    re.prog = []Token    {len: max_code_len*mult} // max program length, can not be longer then the pattern
-    re.cc   = []CharClass{len: max_code_len*mult} // can not be more char class the the length of the pattern
-    re.group_csave_flag = false                   // enable continuos group saving
-    re.group_max_nested = 3*mult                  // set max 128 group nested
-    re.group_max        = max_code_len*mult >> 1  // we can't have more groups than the half of the pattern legth
-
-    re.group_stack = []int{len: re.group_max, init: -1}
-	re.group_data  = []int{len: re.group_max, init: -1}
-
-	return re
-}
-
 /******************************************************************************
 *
 * Utilities
@@ -117,7 +91,7 @@ pub fn (re RE) get_group_list() []Re_group {
 	mut res := []Re_group{len: re.groups.len >> 1}
 	mut gi := 0
 	//println("len: ${re.groups.len} groups: ${re.groups}")
-	
+
 	for gi < re.groups.len {
 		if re.groups[gi] >= 0 {
 			txt_st := re.groups[gi]
@@ -169,7 +143,16 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 	mut ls := -1
 
 	for i < in_txt.len {
-		s,e := re.find(in_txt[i..])
+		//--- speed references ---
+		mut s := -1
+		mut e := -1
+		unsafe {
+			tmp_str := tos(in_txt.str+i, in_txt.len-i)
+			s,e = re.find(tmp_str)
+		}
+		//------------------------
+		//s,e := re.find(in_txt[i..])
+		//------------------------
 		if s >= 0 && e > s && i+s > ls {
 			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
 			res << i+s
@@ -193,7 +176,16 @@ pub fn (mut re RE) find_all_str(in_txt string) []string {
 	mut ls := -1
 
 	for i < in_txt.len {
-		s,e := re.find(in_txt[i..])
+		//--- speed references ---
+		mut s := -1
+		mut e := -1
+		unsafe {
+			tmp_str := tos(in_txt.str+i, in_txt.len-i)
+			s,e = re.find(tmp_str)
+		}
+		//------------------------
+		//s,e := re.find(in_txt[i..])
+		//------------------------
 		if s >= 0 && e > s && i+s > ls {
 			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
 			res << in_txt[i+s..i+e]
