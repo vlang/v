@@ -458,10 +458,10 @@ typedef struct sync__Channel* chan;
 	#endif
 #endif
 
-typedef u64 (*_MapHashFn)(voidptr);
-typedef bool (*_MapEqFn)(voidptr, voidptr);
-typedef void (*_MapCloneFn)(voidptr, voidptr);
-typedef void (*_MapFreeFn)(voidptr);
+typedef u64 (*MapHashFn)(voidptr);
+typedef bool (*MapEqFn)(voidptr, voidptr);
+typedef void (*MapCloneFn)(voidptr, voidptr);
+typedef void (*MapFreeFn)(voidptr);
 '
 	bare_c_headers                = '
 $c_common_macros
