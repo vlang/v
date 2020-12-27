@@ -196,7 +196,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		'-Wcast-qual', '-Wdate-time', '-Wduplicated-branches', '-Wduplicated-cond', '-Wformat=2', '-Winit-self',
 		'-Winvalid-pch', '-Wjump-misses-init', '-Wlogical-op', '-Wmultichar', '-Wnested-externs', '-Wnull-dereference',
 		'-Wpacked', '-Wpointer-arith', '-Wshadow', '-Wswitch-default', '-Wswitch-enum', '-Wno-unused-parameter',
-		'-Wno-unknown-warning-option', '-Wno-format-nonliteral', '-Wno-unused-command-line-argument']
+		'-Wno-unknown-warning-option', '-Wno-format-nonliteral']
 	if v.pref.os == .ios {
 		ccoptions.args << '-framework Foundation'
 		ccoptions.args << '-framework UIKit'
@@ -286,7 +286,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
 	}
-	if ccoptions.debug_mode && os.user_os() != 'windows' {
+	if ccoptions.debug_mode && os.user_os() == 'linux' {
 		ccoptions.linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
