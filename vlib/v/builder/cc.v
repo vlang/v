@@ -778,7 +778,11 @@ fn (mut c Builder) cc_windows_cross() {
 	//
 	cflags := c.get_os_cflags()
 	// -I flags
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_before_target_msvc()
+	} else {
+		cflags.c_options_before_target()
+	}
 	mut optimization_options := ''
 	mut debug_options := ''
 	if c.pref.is_prod {
@@ -804,7 +808,11 @@ fn (mut c Builder) cc_windows_cross() {
 	// add the thirdparty .o files, produced by all the #flag directives:
 	args += ' ' + cflags.c_options_only_object_files() + ' '
 	args += ' $c.out_name_c '
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_after_target_msvc()
+	} else {
+		cflags.c_options_after_target()
+	}
 	/*
 	winroot := '${pref.default_module_path}/winroot'
 	if !os.is_dir(winroot) {

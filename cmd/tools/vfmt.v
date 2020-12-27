@@ -21,10 +21,11 @@ struct FormatOptions {
 	is_diff    bool
 	is_verbose bool
 	is_all     bool
-	is_worker  bool
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
+mut:
+	is_worker  bool
 }
 
 const (
@@ -50,7 +51,7 @@ fn main() {
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
-	foptions := FormatOptions{
+	mut foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
