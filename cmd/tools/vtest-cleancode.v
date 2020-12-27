@@ -21,6 +21,7 @@ const (
 		'cmd/tools/vdoc/vdoc.v',
 		'cmd/v/v.v',
 		'vlib/arrays',
+		'vlib/benchmark',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
