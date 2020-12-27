@@ -123,6 +123,15 @@ fn main() {
 			errors++
 			continue
 		}
+		// Guard against a possibly crashing worker process.
+		if worker_result.exit_code != 0 {
+			eprintln(worker_result.output)
+			if worker_result.exit_code == 1 {
+				eprintln('vfmt error while formatting file: $file .')
+			}
+			errors++
+			continue
+		}
 		if worker_result.output.len > 0 {
 			if worker_result.output.contains(formatted_file_token) {
 				wresult := worker_result.output.split(formatted_file_token)
