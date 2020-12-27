@@ -23,7 +23,6 @@ const (
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',
-		'vlib/bultin/bare/.checks/'
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
