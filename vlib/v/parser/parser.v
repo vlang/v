@@ -1167,7 +1167,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 { p.tok.lit[0].is_capital() } else { false }
+	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
+		p.tok.lit[0].is_capital()
+	} else {
+		false
+	}
 	// use heuristics to detect `func<T>()` from `var < expr`
 	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {

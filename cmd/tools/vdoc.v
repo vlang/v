@@ -208,7 +208,11 @@ fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
 		return
 	}
 	urlpath := request_parts[1]
-	filename := if urlpath == '/' { ctx.default_filename.trim_left('/') } else { urlpath.trim_left('/') }
+	filename := if urlpath == '/' {
+		ctx.default_filename.trim_left('/')
+	} else {
+		urlpath.trim_left('/')
+	}
 	if ctx.docs[filename].len == 0 {
 		send_http_response(mut con, 404, ctx.content_type, 'file not found')
 		return
@@ -379,8 +383,16 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '($dd.parent_name) $dd.name' } else { dd.name }
-	tag := if dd.parent_name.len > 0 && dd.parent_name != 'void' { '${dd.parent_name}.$dd.name' } else { dd.name }
+	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' {
+		'($dd.parent_name) $dd.name'
+	} else {
+		dd.name
+	}
+	tag := if dd.parent_name.len > 0 && dd.parent_name != 'void' {
+		'${dd.parent_name}.$dd.name'
+	} else {
+		dd.name
+	}
 	node_id := slug(tag)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
@@ -437,7 +449,11 @@ fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 
 fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.Builder) {
 	base_dir := os.dir(os.real_path(cfg.input_path))
-	file_path_name := if cfg.is_multi { cn.file_path.replace('$base_dir/', '') } else { os.file_name(cn.file_path) }
+	file_path_name := if cfg.is_multi {
+		cn.file_path.replace('$base_dir/', '')
+	} else {
+		os.file_name(cn.file_path)
+	}
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
 		hw.write(doc_node_html(cn, src_link, false, dcs.table))
@@ -463,7 +479,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	} // write head
 	// write css
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 { os.file_name(os.real_path(cfg.input_path)) } else { dcs.head.name }
+	header_name := if cfg.is_multi && cfg.docs.len > 1 {
+		os.file_name(os.real_path(cfg.input_path))
+	} else {
+		dcs.head.name
+	}
 	// write nav1
 	if cfg.is_multi || cfg.docs.len > 1 {
 		mut submod_prefix := ''
@@ -489,7 +509,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 					modules_toc.write('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				sub_selected_classes := if cdoc.head.name == dcs.head.name { ' class="active"' } else { '' }
+				sub_selected_classes := if cdoc.head.name == dcs.head.name {
+					' class="active"'
+				} else {
+					''
+				}
 				modules_toc.write('<li$sub_selected_classes><a href="./${cdoc.head.name}.html">$submod_name</a></li>')
 				if j == submodules.len - 1 {
 					modules_toc.write('</ul>')
@@ -752,7 +776,11 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 			}
 		}
 	}
-	dirs := if cfg.is_multi { get_modules_list(cfg.input_path, []string{}) } else { [cfg.input_path] }
+	dirs := if cfg.is_multi {
+		get_modules_list(cfg.input_path, []string{})
+	} else {
+		[cfg.input_path]
+	}
 	is_local_and_single := cfg.is_local && !cfg.is_multi
 	for dirpath in dirs {
 		mut dcs := doc.Doc{}

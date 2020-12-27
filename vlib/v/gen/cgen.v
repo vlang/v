@@ -562,7 +562,11 @@ fn (g &Gen) cc_type2(t table.Type) string {
 		if sym.info.generic_types.len > 0 {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
-				gts := g.table.get_type_symbol(if gt.has_flag(.generic) { g.unwrap_generic(gt) } else { gt })
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
+					g.unwrap_generic(gt)
+				} else {
+					gt
+				})
 				sgtyps += '_$gts.cname'
 			}
 			styp += sgtyps
@@ -929,7 +933,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.enum_typedefs.write((1 << i).str())
 					cur_enum_offset = 0
 				}
-				cur_value := if cur_enum_offset > 0 { '$cur_enum_expr+$cur_enum_offset' } else { cur_enum_expr }
+				cur_value := if cur_enum_offset > 0 {
+					'$cur_enum_expr+$cur_enum_offset'
+				} else {
+					cur_enum_expr
+				}
 				g.enum_typedefs.writeln(', // $cur_value')
 				cur_enum_offset++
 			}
@@ -1237,7 +1245,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if it.val_is_mut { styp } else { styp + '*' }
-				right := if it.val_is_mut { '(($styp)$tmp${op_field}data) + $i' } else { '(($styp*)$tmp${op_field}data)[$i]' }
+				right := if it.val_is_mut {
+					'(($styp)$tmp${op_field}data) + $i'
+				} else {
+					'(($styp*)$tmp${op_field}data)[$i]'
+				}
 				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
@@ -2834,13 +2846,21 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
-	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_type } else { left_type }
+	unaliased_left := if left_sym.kind == .alias {
+		(left_sym.info as table.Alias).parent_type
+	} else {
+		left_type
+	}
 	if node.op in [.key_is, .not_is] {
 		g.is_expr(node)
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	unaliased_right := if right_sym.kind == .alias { (right_sym.info as table.Alias).parent_type } else { node.right_type }
+	unaliased_right := if right_sym.kind == .alias {
+		(right_sym.info as table.Alias).parent_type
+	} else {
+		node.right_type
+	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {

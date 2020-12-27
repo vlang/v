@@ -1752,7 +1752,11 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 		it.elem_type = info.elem_type
 	}
 	is_mut := info.is_mut
-	el_typ := if is_mut { it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1) } else { it.elem_type }
+	el_typ := if is_mut {
+		it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1)
+	} else {
+		it.elem_type
+	}
 	f.write('chan ')
 	if is_mut {
 		f.write('mut ')

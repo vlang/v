@@ -163,7 +163,11 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 fn find_msvc() ?MsvcResult {
 	$if windows {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
-		vswhere_dir := if processor_architecture == 'x86' { '%ProgramFiles%' } else { '%ProgramFiles(x86)%' }
+		vswhere_dir := if processor_architecture == 'x86' {
+			'%ProgramFiles%'
+		} else {
+			'%ProgramFiles(x86)%'
+		}
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
 		wk := find_windows_kit_root(host_arch) or { return error('Unable to find windows sdk') }
 		vs := find_vs(vswhere_dir, host_arch) or { return error('Unable to find visual studio') }

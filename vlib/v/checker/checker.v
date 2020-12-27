@@ -1239,7 +1239,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['insert', 'prepend'] {
 		info := left_type_sym.info as table.Array
-		arg_expr := if method_name == 'insert' { call_expr.args[1].expr } else { call_expr.args[0].expr }
+		arg_expr := if method_name == 'insert' {
+			call_expr.args[1].expr
+		} else {
+			call_expr.args[0].expr
+		}
 		arg_type := c.expr(arg_expr)
 		arg_sym := c.table.get_type_symbol(arg_type)
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
@@ -1615,7 +1619,11 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		}
 	}
 	for i, call_arg in call_expr.args {
-		arg := if f.is_variadic && i >= f.params.len - 1 { f.params[f.params.len - 1] } else { f.params[i] }
+		arg := if f.is_variadic && i >= f.params.len - 1 {
+			f.params[f.params.len - 1]
+		} else {
+			f.params[i]
+		}
 		c.expected_type = arg.typ
 		typ := c.expr(call_arg.expr)
 		call_expr.args[i].typ = typ
@@ -2323,7 +2331,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						right.position())
 				} else if right is ast.IntegerLiteral {
 					if right.val == '1' {
-						op := if assign_stmt.op == .plus_assign { token.Kind.inc } else { token.Kind.dec }
+						op := if assign_stmt.op == .plus_assign {
+							token.Kind.inc
+						} else {
+							token.Kind.dec
+						}
 						c.error('use `$op` instead of `$assign_stmt.op 1`', assign_stmt.pos)
 					}
 				}
@@ -2830,7 +2842,11 @@ fn (mut c Checker) hash_stmt(mut node ast.HashStmt) {
 				node.pos)
 		}
 	} else if node.kind == 'pkgconfig' {
-		args := if node.main.contains('--') { node.main.split(' ') } else { '--cflags --libs $node.main'.split(' ') }
+		args := if node.main.contains('--') {
+			node.main.split(' ')
+		} else {
+			'--cflags --libs $node.main'.split(' ')
+		}
 		mut m := pkgconfig.main(args) or {
 			c.error(err, node.pos)
 			return
@@ -3163,7 +3179,11 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 	}
 	if to_type_sym.kind == .sum_type {
 		if node.expr_type in [table.any_int_type, table.any_flt_type] {
-			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type { table.int_type } else { table.f64_type })
+			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.any_int_type {
+				table.int_type
+			} else {
+				table.f64_type
+			})
 		}
 		if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
 			c.error('cannot cast `$from_type_sym.name` to `$to_type_sym.name`', node.pos)
@@ -3835,7 +3855,11 @@ pub fn (mut c Checker) select_expr(mut node ast.SelectExpr) table.Type {
 							c.error('channel in `select` key must be predefined', expr.right.position())
 						}
 						if expr.or_block.kind != .absent {
-							err_prefix := if expr.or_block.kind == .block { 'or block' } else { 'error propagation' }
+							err_prefix := if expr.or_block.kind == .block {
+								'or block'
+							} else {
+								'error propagation'
+							}
 							c.error('$err_prefix not allowed in `select` key', expr.or_block.pos)
 						}
 					}
@@ -3942,7 +3966,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if (infix.left is ast.Ident ||
 					infix.left is ast.SelectorExpr) &&
 					infix.right is ast.Type {
-					is_variable := if mut infix.left is ast.Ident { infix.left.kind == .variable } else { true }
+					is_variable := if mut infix.left is ast.Ident {
+						infix.left.kind == .variable
+					} else {
+						true
+					}
 					// Register shadow variable or `as` variable with actual type
 					if is_variable {
 						// TODO: merge this code with match_expr because it has the same logic implemented
@@ -4378,11 +4406,19 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 	// index_type_sym.kind != .enum_) {
 	if typ_sym.kind in [.array, .array_fixed, .string, .ustring] {
 		if !(index_type.is_number() || index_type_sym.kind == .enum_) {
-			type_str := if typ_sym.kind in [.string, .ustring] { 'non-integer string index `$index_type_sym.name`' } else { 'non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)' }
+			type_str := if typ_sym.kind in [.string, .ustring] {
+				'non-integer string index `$index_type_sym.name`'
+			} else {
+				'non-integer index `$index_type_sym.name` (array type `$typ_sym.name`)'
+			}
 			c.error('$type_str', pos)
 		}
 		if index_type.has_flag(.optional) {
-			type_str := if typ_sym.kind in [.string, .ustring] { '(type `$typ_sym.name`)' } else { '(array type `$typ_sym.name`)' }
+			type_str := if typ_sym.kind in [.string, .ustring] {
+				'(type `$typ_sym.name`)'
+			} else {
+				'(array type `$typ_sym.name`)'
+			}
 			c.error('cannot use optional as index $type_str', pos)
 		}
 	}
