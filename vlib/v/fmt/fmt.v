@@ -189,7 +189,7 @@ pub fn (mut f Fmt) set_current_module_name(cmodname string) {
 }
 
 pub fn (mut f Fmt) mod(mod ast.Module) {
-	f.set_current_module_name(mod.alias)
+	f.set_current_module_name(mod.name)
 	if mod.is_skipped {
 		return
 	}
