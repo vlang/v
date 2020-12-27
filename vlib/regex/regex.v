@@ -1998,7 +1998,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				}
 				
 				// check if we must continue or pass to the next IST
-				if next_check_flag == true {
+				if next_check_flag == true && re.prog[state.pc+1].ist != ist_prog_end {
 					//println("save the state!!")
 					re.state_list << StateObj {
 						group_index: state.group_index
