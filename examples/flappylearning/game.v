@@ -1,4 +1,3 @@
-
 module main
 
 import gg
@@ -7,26 +6,24 @@ import os
 import time
 import math
 import rand
-
 import neuroevolution
 
 const (
-	win_width  = 500
-	win_height = 512
+	win_width    = 500
+	win_height   = 512
 	timer_period = 24 // ms
 )
 
 struct Bird {
 mut:
-	x f64 = 80
-	y f64 = 250
-	width f64 = 40
-	height f64 = 30
-
-	alive bool = true
-	gravity f64
+	x        f64 = 80
+	y        f64 = 250
+	width    f64 = 40
+	height   f64 = 30
+	alive    bool = true
+	gravity  f64
 	velocity f64 = 0.3
-	jump f64 = -6
+	jump     f64 = -6
 }
 
 fn (mut b Bird) flap() {
@@ -43,12 +40,8 @@ fn (b Bird) is_dead(height f64, pipes []Pipe) bool {
 		return true
 	}
 	for pipe in pipes {
-		if !(
-			b.x > pipe.x + pipe.width ||
-			b.x + b.width < pipe.x ||
-			b.y > pipe.y + pipe.height ||
-			b.y + b.height < pipe.y
-		) {
+		if !(b.x > pipe.x + pipe.width ||
+			b.x + b.width < pipe.x || b.y > pipe.y + pipe.height || b.y + b.height < pipe.y) {
 			return true
 		}
 	}
@@ -57,11 +50,11 @@ fn (b Bird) is_dead(height f64, pipes []Pipe) bool {
 
 struct Pipe {
 mut:
-	x f64 = 80
-	y f64 = 250
-	width f64 = 40
+	x      f64 = 80
+	y      f64 = 250
+	width  f64 = 40
 	height f64 = 30
-	speed f64 = 3
+	speed  f64 = 3
 }
 
 fn (mut p Pipe) update() {
@@ -74,28 +67,25 @@ fn (p Pipe) is_out() bool {
 
 struct App {
 mut:
-	gg    &gg.Context
-	background gg.Image
-	bird gg.Image
-	pipetop gg.Image
-	pipebottom gg.Image
-
-	pipes []Pipe
-	birds []Bird
-	score int
-	max_score int
-	width f64 = win_width
-	height f64 = win_height
-	spawn_interval f64 = 90
-	interval f64
-
-	nv neuroevolution.Generations
-	gen []neuroevolution.Network
-	alives int
-	generation int
-
+	gg               &gg.Context
+	background       gg.Image
+	bird             gg.Image
+	pipetop          gg.Image
+	pipebottom       gg.Image
+	pipes            []Pipe
+	birds            []Bird
+	score            int
+	max_score        int
+	width            f64 = win_width
+	height           f64 = win_height
+	spawn_interval   f64 = 90
+	interval         f64
+	nv               neuroevolution.Generations
+	gen              []neuroevolution.Network
+	alives           int
+	generation       int
 	background_speed f64 = 0.5
-	background_x f64
+	background_x     f64
 }
 
 fn (mut app App) start() {
@@ -104,7 +94,6 @@ fn (mut app App) start() {
 	app.pipes = []
 	app.birds = []
 	app.gen = app.nv.generate()
-
 	for _ in 0 .. app.gen.len {
 		app.birds << Bird{}
 	}
@@ -118,14 +107,12 @@ fn (app &App) is_it_end() bool {
 			return false
 		}
 	}
-
 	return true
 }
 
 fn (mut app App) update() {
 	app.background_x += app.background_speed
 	mut next_holl := f64(0)
-
 	if app.birds.len > 0 {
 		for i := 0; i < app.pipes.len; i += 2 {
 			if app.pipes[i].x + app.pipes[i].width > app.birds[0].x {
@@ -134,8 +121,7 @@ fn (mut app App) update() {
 			}
 		}
 	}
-
-	for mut j, bird in app.birds {
+	for j, mut bird in app.birds {
 		if bird.alive {
 			inputs := [
 				bird.y / app.height,
@@ -145,9 +131,7 @@ fn (mut app App) update() {
 			if res[0] > 0.5 {
 				bird.flap()
 			}
-
 			bird.update()
-
 			if bird.is_dead(app.height, app.pipes) {
 				bird.alive = false
 				app.alives--
@@ -156,10 +140,8 @@ fn (mut app App) update() {
 					app.start()
 				}
 			}
-
 		}
 	}
-
 	for k := 0; k < app.pipes.len; k++ {
 		app.pipes[k].update()
 		if app.pipes[k].is_out() {
@@ -167,44 +149,35 @@ fn (mut app App) update() {
 			k--
 		}
 	}
-
 	if app.interval == 0 {
 		delta_bord := f64(50)
 		pipe_holl := f64(120)
-		holl_position := math.round(rand.f64() * (app.height - delta_bord * 2.0 - pipe_holl)) + delta_bord
+		holl_position := math.round(rand.f64() *
+			(app.height - delta_bord * 2.0 - pipe_holl)) + delta_bord
 		app.pipes << Pipe{
 			x: app.width
 			y: 0
 			height: holl_position
 		}
-
 		app.pipes << Pipe{
 			x: app.width
 			y: holl_position + pipe_holl
 			height: app.height
 		}
 	}
-
 	app.interval++
-
 	if app.interval == app.spawn_interval {
 		app.interval = 0
 	}
-
 	app.score++
-	app.max_score = if app.score > app.max_score {
-		app.score
-	} else {
-		app.max_score
-	}
-
+	app.max_score = if app.score > app.max_score { app.score } else { app.max_score }
 }
 
 fn main() {
 	mut app := &App{
 		gg: 0
 	}
-	app.gg = gg.new_context({
+	app.gg = gg.new_context(
 		bg_color: gx.white
 		width: win_width
 		height: win_height
@@ -215,7 +188,7 @@ fn main() {
 		user_data: app
 		init_fn: init_images
 		font_path: os.resource_abs_path('../assets/fonts/RobotoMono-Regular.ttf')
-	})
+	)
 	app.nv = neuroevolution.Generations{
 		population: 50
 		network: [2, 2, 1]
@@ -248,26 +221,28 @@ fn frame(app &App) {
 fn (app &App) display() {
 	for i := 0; i < int(math.ceil(app.width / app.background.width) + 1.0); i++ {
 		background_x := i * app.background.width - math.floor(int(app.background_x) % int(app.background.width))
-		app.gg.draw_image(f32(background_x), 0, app.background.width, app.background.height, app.background)
+		app.gg.draw_image(f32(background_x), 0, app.background.width, app.background.height,
+			app.background)
 	}
-
 	for i, pipe in app.pipes {
 		if i % 2 == 0 {
-			app.gg.draw_image(f32(pipe.x), f32(pipe.y + pipe.height - app.pipetop.height), app.pipetop.width, app.pipetop.height, app.pipetop)
+			app.gg.draw_image(f32(pipe.x), f32(pipe.y + pipe.height - app.pipetop.height),
+				app.pipetop.width, app.pipetop.height, app.pipetop)
 		} else {
-			app.gg.draw_image(f32(pipe.x), f32(pipe.y), app.pipebottom.width, app.pipebottom.height, app.pipebottom)
+			app.gg.draw_image(f32(pipe.x), f32(pipe.y), app.pipebottom.width, app.pipebottom.height,
+				app.pipebottom)
 		}
 	}
-
 	for bird in app.birds {
 		if bird.alive {
-			app.gg.draw_image(f32(bird.x), f32(bird.y), app.bird.width, app.bird.height, app.bird)
+			app.gg.draw_image(f32(bird.x), f32(bird.y), app.bird.width, app.bird.height,
+				app.bird)
 		}
 	}
-	app.gg.draw_text_def(10 ,25, 'Score: $app.score')
-	app.gg.draw_text_def(10 ,50, 'Max Score: $app.max_score')
-	app.gg.draw_text_def(10 ,75, 'Generation: $app.generation')
-	app.gg.draw_text_def(10 ,100, 'Alive: $app.alives / $app.nv.population')
+	app.gg.draw_text_def(10, 25, 'Score: $app.score')
+	app.gg.draw_text_def(10, 50, 'Max Score: $app.max_score')
+	app.gg.draw_text_def(10, 75, 'Generation: $app.generation')
+	app.gg.draw_text_def(10, 100, 'Alive: $app.alives / $app.nv.population')
 }
 
 fn (app &App) draw() {
