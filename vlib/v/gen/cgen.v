@@ -2357,11 +2357,12 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			clone_fn = '&map_clone_string'
 			free_fn = '&map_free_string'
 		}
-		else { verror("map key type not supported")}
+		else {
+			verror('map key type not supported')
+		}
 	}
 	return hash_fn, key_eq_fn, clone_fn, free_fn
 }
-
 
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
@@ -2553,7 +2554,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			value_typ := g.table.get_type_symbol(node.value_type)
 			key_typ := g.table.get_type_symbol(node.key_type)
 			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
-
 			size := node.vals.len
 			mut shared_styp := '' // only needed for shared &[]{...}
 			mut styp := ''
