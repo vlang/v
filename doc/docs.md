@@ -73,9 +73,9 @@ Anything you can do in other languages, you can do in V.
 
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
-    * [vfmt](#vfmt)
+    * [v fmt](#v-fmt)
     * [Profiling](#profiling)
-* [Advanced](#advanced)
+* [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
