@@ -2053,7 +2053,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
-		// function type: `type mycallback fn(string, int)`
+		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
 		comments = p.eat_line_end_comments()
