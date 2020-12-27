@@ -80,8 +80,7 @@ function setupDarkMode() {
 
 function setupSearch() {
     var searchInput = document.getElementById('search');
-    var dummyResults = [{title: 'flag', badge: 'module', description: 'test desription lorem ipsum ashkjdsahflkjashfkjlsdakjf'}];
-    searchInput.addEventListener('input', function(e) {
+    var onInputChange = debounce(function(e) {
         var searchValue = e.target.value.toLowerCase();
         var menu = document.querySelector('.doc-nav > .content');
         var search = document.querySelector('.doc-nav > .search');
@@ -89,48 +88,81 @@ function setupSearch() {
             // reset to default
             menu.style.display = '';
             search.style.display = '';
-        } else {
+        } else if (searchValue.length > 2) {
+            // search for less than 3 characters can display too much results
             search.innerHTML = '';
             menu.style.display = 'none';
             search.style.display = 'block';
-            for (var i = 0; i < dummyResults.length; i++) {
-                var result = dummyResults[i];
+            // cache length for performance
+            var foundModule = false;
+            var searchModuleIndexLength = searchModuleIndex.length;
+            for (var i = 0; i < searchModuleIndexLength; i++) {
+                // no toLowerCase needed because modules are always lowercase
+                var title = searchModuleIndex[i];
+                if (title.indexOf(searchValue) === -1) {
+                    continue
+                }
+                foundModule = true;
+                // [description, link]
+                var data = searchModuleData[i];
+                var description = data[0];
+                var link = data[1];
                 search.innerHTML += '<ul>' +
                     '<li class="result">' +
-                        '<a class="link" href="">' +
+                        '<a class="link" href="' + link + '">' +
                             '<div class="definition">' +
-                                '<span class="title">' + result.title + '</span>' +
-                                '<span class="badge">' + result.badge + '</span>' +
+                                '<span class="title">' + title + '</span>' +
+                                '<span class="badge">module</span>' +
                             '</div>' +
-                            '<div class="description">' + result.description + 's</div>' +
+                            (description ? '<div class="description">' + description + '</div>' : '') +
                         '</a>' +
                     '</li>' +
-                '</ul>' +
-                '<hr class="separator">';
+                '</ul>';
+            }
+            if (foundModule) {
+                search.innerHTML += '<hr class="separator">';
+            }
+            var searchIndexLength = searchIndex.length;
+            var results = [];
+            for (var i = 0; i < searchIndexLength; i++) {
+                var title = searchIndex[i].toLowerCase();
+                if (title.indexOf(searchValue) === -1) {
+                    continue
+                }
+                // [badge, description, link]
+                var data = searchData[i];
+                var badge = data[0];
+                var description = data[1];
+                var link = data[2];
+                var fullName = data[3];
+                results.push({badge, description, link, fullName});
+            }
+            results.sort(function(a, b) {
+                if (a.fullName < b.fullName) {
+                    return -1;
+                }
+                if (a.fullName > b.fullName) {
+                    return 1;
+                }
+                return 0;
+            });
+            for (var i = 0; i < results.length; i++) {
+                var result = results[i];
+                search.innerHTML += '<ul>' +
+                    '<li class="result">' +
+                        '<a class="link" href="' + result.link + '">' +
+                            '<div class="definition">' +
+                                '<span class="title">' + result.fullName + '</span>' +
+                                '<span class="badge">' + result.badge + '</span>' +
+                            '</div>' +
+                            (result.description ? '<div class="description">' + result.description + '</div>' : '') +
+                        '</a>' +
+                    '</li>' +
+                '</ul>';
             }
         }
-        /*
-        var menuItems = document.querySelectorAll('.content > ul > li');
-        for (var i = 0; i < menuItems.length; i++) {
-            var menuItem = menuItems[i];
-            var links = menuItem.querySelectorAll('a');
-            var hasResult = false;
-            for (var li = 0; li < links.length; li++) {
-                var link = links[li];
-                if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
-                    hasResult = true;
-                }
-                if (li > 0) {
-                    if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
-                        link.style.display = '';
-                    } else {
-                        link.style.display = 'none';
-                    }
-                }
-            }
-            menuItem.style.display = !searchValue || hasResult ? '' : 'none';
-        }*/
     });
+    searchInput.addEventListener('input', onInputChange);
 }
 
 function setupCollapse() {
@@ -141,5 +173,16 @@ function setupCollapse() {
             var parent = e.target.parentElement.parentElement.parentElement;
             parent.classList.toggle('open');
         });
+    }
+}
+
+function debounce(func, timeout) {
+    var timer;
+    return (...args) => {
+        const next = () => func(...args);
+        if (timer) {
+            clearTimeout(timer);
+        }
+        timer = setTimeout(next, timeout > 0 ? timeout : 300);
     }
 }

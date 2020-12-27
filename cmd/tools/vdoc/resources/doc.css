@@ -54,13 +54,15 @@
 	--menu-background-color: #2d3748;
 	--menu-text-color: #fff;
 	--menu-indent-line-color: #4a5568;
-	--menu-indent-line-active-color: #90cdf4;
+	--menu-indent-line-active-color: #90cdf4; /*#4a5568*/
 	--menu-scrollbar-color: #4a5568;
 	--menu-toggle-icon-color: #fff;
 	--menu-search-background-color: #4a5568;
 	--menu-search-font-color: #fff;
 	--menu-search-separator-color: #4a5568;
 	--menu-search-title-text-color: #90cdf4;
+	--menu-search-badge-background-color: #4a5568;
+	--menu-search-badge-background-hover-color: #4a5568;
 	--toc-text-color: #90cdf4;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #cbd5e0;
@@ -286,19 +288,22 @@ body {
 }
 .doc-nav > .search .result > .link > .definition {
 	display: flex;
-	margin-bottom: 0.25rem;
 }
 .doc-nav > .search .result > .link > .definition > .title {
 	color: #90cdf4;
 	color: var(--menu-search-title-text-color);
 	font-size: 0.875rem;
 	font-weight: 500;
+	overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
 }
 .doc-nav > .search .result > .link > .definition > .badge {
 	font-size: 0.75rem;
 	display: inline-flex;
 	padding: 0 0.5rem;
-	background-color: #4a5568;
+	background-color: #00000044;
+	background-color: var(--menu-search-badge-background-color);
 	margin-left: auto;
 	align-items: center;
 	border-radius: 9999px;
@@ -310,6 +315,7 @@ body {
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
+	margin-top: 0.25rem;
 }
 .doc-nav > .search > hr.separator {
 	margin: 0.5rem 0;
