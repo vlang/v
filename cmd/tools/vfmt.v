@@ -123,6 +123,7 @@ fn main() {
 			errors++
 			continue
 		}
+		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
@@ -137,7 +138,9 @@ fn main() {
 				formatted_warn_errs := wresult[0]
 				formatted_file_path := wresult[1].trim_right('\n\r')
 				foptions.is_worker = true
-				foptions.post_process_file(fpath, formatted_file_path)
+				foptions.post_process_file(fpath, formatted_file_path) or {
+					errors = errors + 1
+				}
 				foptions.is_worker = false
 				if formatted_warn_errs.len > 0 {
 					eprintln(formatted_warn_errs)
@@ -152,7 +155,12 @@ fn main() {
 		if foptions.is_noerror {
 			exit(0)
 		}
-		exit(1)
+		if foptions.is_verify {
+			exit(1)
+		}
+		if foptions.is_c {
+			exit(2)
+		}
 	}
 }
 
@@ -192,7 +200,7 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: $compiler_params.is_script ')
 }
 
-fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
+fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) ? {
 	if formatted_file_path.len == 0 {
 		return
 	}
@@ -215,9 +223,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
-			if !foptions.is_worker {
-				exit(1)
-			}
+			return error('')
 		}
 		return
 	}
@@ -233,9 +239,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	if foptions.is_c {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
-			if !foptions.is_worker {
-				exit(2)
-			}
+			return error('')
 		}
 		return
 	}
