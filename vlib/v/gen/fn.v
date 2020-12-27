@@ -501,8 +501,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' { 'println' } else { 'print' }
+	is_print := name in ['print', 'println', 'eprint', 'eprintln']
+	print_method := name
 	is_json_encode := name == 'json.encode'
 	is_json_decode := name == 'json.decode'
 	g.is_json_fn = is_json_encode || is_json_decode
