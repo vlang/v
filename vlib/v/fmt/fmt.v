@@ -1446,8 +1446,8 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
-		it.branches[1].stmts.len == 1 &&
+	single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
+		branch_is_single_line(it.branches[1]) &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
 	for i, branch in it.branches {
@@ -1486,6 +1486,13 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		f.writeln('')
 		f.comments(it.post_comments, has_nl: false)
 	}
+}
+
+fn branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
 }
 
 pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
@@ -1713,7 +1720,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			return false
 		}
 		ast.StructInit {
-			if expr.fields.len > 0 || expr.pre_comments.len > 0 {
+			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
