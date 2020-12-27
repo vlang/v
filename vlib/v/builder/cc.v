@@ -293,7 +293,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
-		if v.pref.os == .linux || os.user_os() == 'linux' && v.pref.build_mode != .build_module {
+		if (v.pref.os == .linux || os.user_os() == 'linux') && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .macos || os.user_os() == 'macos' {
