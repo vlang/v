@@ -125,9 +125,15 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
-	tool_exe := if os.is_dir(tool_basename) { path_of_executable(os.join_path(tool_basename,
-			tool_name)) } else { path_of_executable(tool_basename) }
-	tool_source := if os.is_dir(tool_basename) { tool_basename } else { tool_basename + '.v' }
+	mut tool_exe := ''
+	mut tool_source := ''
+	if os.is_dir(tool_basename) {
+		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_source = os.join_path(tool_basename, tool_name + '.v')
+	} else {
+		tool_exe = path_of_executable(tool_basename)
+		tool_source = tool_basename + '.v'
+	}
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
