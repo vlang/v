@@ -6,8 +6,9 @@ module runtime
 
 import os
 
-// nr_jobs returns the same as `nr_cpus` with the difference that if an env variable `VJOBS` is sat
-// and has a value greater then 0 - `nr_jobs` will return that number instead.
+// nr_jobs returns the same as `nr_cpus` with the difference that if an
+// environment variable `VJOBS` is set, and has a value > 0,
+// then `nr_jobs` will return that number instead.
 // This is useful for runtime tweaking of e.g. threaded or concurrent code.
 pub fn nr_jobs() int {
 	mut cpus := nr_cpus()
