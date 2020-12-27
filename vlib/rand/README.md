@@ -59,3 +59,10 @@ A workaround (if you _must_ use the libc RNG) is to:
 3. Seed the second instance.
 4. Generate all values required.
 5. And so on...
+
+# Notes
+
+Please note that [math interval](https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints) notation is used throughout
+the function documentation to denote what numbers ranges include.
+An example of `[0, max)` thus denotes a range with all posible values 
+between `0` and `max` **including** 0 but **excluding** `max`.

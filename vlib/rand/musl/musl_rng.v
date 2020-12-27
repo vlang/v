@@ -6,20 +6,23 @@ module musl
 import math.bits
 import rand.util
 
-// Ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c
+// MuslRNG ported from https://git.musl-libc.org/cgit/musl/tree/src/prng/rand_r.c
 pub struct MuslRNG {
 mut:
 	state u32 = util.time_seed_32()
 }
 
+// seed sets the current random state based on `seed_data`.
+// seed expects `seed_data` to be only one `u32`.
 pub fn (mut rng MuslRNG) seed(seed_data []u32) {
 	if seed_data.len != 1 {
-		eprintln('MuslRNG needs only one unsigned 32 bit integer as a seed.')
+		eprintln('MuslRNG needs only one unsigned 32-bit integer as a seed.')
 		exit(1)
 	}
 	rng.state = seed_data[0]
 }
 
+// temper returns a tempered value based on `prev` value.
 [inline]
 fn temper(prev u32) u32 {
 	mut x := prev
@@ -30,7 +33,7 @@ fn temper(prev u32) u32 {
 	return x
 }
 
-// rng.u32() - return a pseudorandom 32 bit unsigned u32
+// u32 returns a pseudorandom 32-bit unsigned integer (`u32`).
 [inline]
 pub fn (mut rng MuslRNG) u32() u32 {
 	rng.state = rng.state * 1103515245 + 12345
@@ -39,17 +42,17 @@ pub fn (mut rng MuslRNG) u32() u32 {
 	return temper(rng.state)
 }
 
-// rng.u64() - return a pseudorandom 64 bit unsigned u64
+// u64 returns a pseudorandom 64-bit unsigned integer (`u64`).
 [inline]
 pub fn (mut rng MuslRNG) u64() u64 {
 	return u64(rng.u32()) | (u64(rng.u32()) << 32)
 }
 
-// rn.u32n(max) - return a pseudorandom 32 bit unsigned u32 in [0, max)
+// u32n returns a pseudorandom 32-bit unsigned integer `u32` in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) u32n(max u32) u32 {
 	if max == 0 {
-		eprintln('max must be positive integer')
+		eprintln('max must be positive integer.')
 		exit(1)
 	}
 	// Check SysRNG in system_rng.c.v for explanation
@@ -73,11 +76,11 @@ pub fn (mut rng MuslRNG) u32n(max u32) u32 {
 	return u32(0)
 }
 
-// rn.u64n(max) - return a pseudorandom 64 bit unsigned u64 in [0, max)
+// u64n returns a pseudorandom 64-bit unsigned integer (`u64`) in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) u64n(max u64) u64 {
 	if max == 0 {
-		eprintln('max must be positive integer')
+		eprintln('max must be positive integer.')
 		exit(1)
 	}
 	bit_len := bits.len_64(max)
@@ -100,51 +103,51 @@ pub fn (mut rng MuslRNG) u64n(max u64) u64 {
 	return u64(0)
 }
 
-// rn.u32_in_range(min, max) - return a pseudorandom 32 bit unsigned u32 in [min, max)
+// u32_in_range returns a pseudorandom 32-bit unsigned integer (`u32`) in range `[min, max)`.
 [inline]
 pub fn (mut rng MuslRNG) u32_in_range(min u64, max u64) u64 {
 	if max <= min {
-		eprintln('max must be greater than min')
+		eprintln('max must be greater than min.')
 		exit(1)
 	}
 	return min + rng.u32n(u32(max - min))
 }
 
-// rn.u64_in_range(min, max) - return a pseudorandom 64 bit unsigned u64 in [min, max)
+// u64_in_range returns a pseudorandom 64-bit unsigned integer (`u64`) in range `[min, max)`.
 [inline]
 pub fn (mut rng MuslRNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
-		eprintln('max must be greater than min')
+		eprintln('max must be greater than min.')
 		exit(1)
 	}
 	return min + rng.u64n(max - min)
 }
 
-// rng.int() - return a 32-bit signed (possibly negative) int
+// int returns a 32-bit signed (possibly negative) integer (`int`).
 [inline]
 pub fn (mut rng MuslRNG) int() int {
 	return int(rng.u32())
 }
 
-// rng.i64() - return a 64-bit signed (possibly negative) i64
+// i64 returns a 64-bit signed (possibly negative) integer (`i64`).
 [inline]
 pub fn (mut rng MuslRNG) i64() i64 {
 	return i64(rng.u64())
 }
 
-// rng.int31() - return a 31bit positive pseudorandom integer
+// int31 returns a 31-bit positive pseudorandom integer (`int`).
 [inline]
 pub fn (mut rng MuslRNG) int31() int {
 	return int(rng.u32() >> 1)
 }
 
-// rng.int63() - return a 63bit positive pseudorandom integer
+// int63 returns a 63-bit positive pseudorandom integer (`i64`).
 [inline]
 pub fn (mut rng MuslRNG) int63() i64 {
 	return i64(rng.u64() >> 1)
 }
 
-// rng.intn(max) - return a 32bit positive int in [0, max)
+// intn returns a 32-bit positive int in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) intn(max int) int {
 	if max <= 0 {
@@ -154,7 +157,7 @@ pub fn (mut rng MuslRNG) intn(max int) int {
 	return int(rng.u32n(u32(max)))
 }
 
-// rng.i64n(max) - return a 64bit positive i64 in [0, max)
+// i64n returns a 64-bit positive integer `i64` in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) i64n(max i64) i64 {
 	if max <= 0 {
@@ -164,7 +167,7 @@ pub fn (mut rng MuslRNG) i64n(max i64) i64 {
 	return i64(rng.u64n(u64(max)))
 }
 
-// rng.int_in_range(min, max) - return a 32bit positive int in [0, max)
+// int_in_range returns a 32-bit positive integer `int` in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) int_in_range(min int, max int) int {
 	if max <= min {
@@ -174,7 +177,7 @@ pub fn (mut rng MuslRNG) int_in_range(min int, max int) int {
 	return min + rng.intn(max - min)
 }
 
-// rng.i64_in_range(min, max) - return a 64bit positive i64 in [0, max)
+// i64_in_range returns a 64-bit positive integer `i64` in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
@@ -184,19 +187,19 @@ pub fn (mut rng MuslRNG) i64_in_range(min i64, max i64) i64 {
 	return min + rng.i64n(max - min)
 }
 
-// rng.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+// f32 returns a pseudorandom `f32` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng MuslRNG) f32() f32 {
 	return f32(rng.u32()) / util.max_u32_as_f32
 }
 
-// rng.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+// f64 returns a pseudorandom `f64` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng MuslRNG) f64() f64 {
 	return f64(rng.u64()) / util.max_u64_as_f64
 }
 
-// rng.f32n() returns a pseudorandom f32 value in [0, max)
+// f32n returns a pseudorandom `f32` value in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) f32n(max f32) f32 {
 	if max <= 0 {
@@ -206,7 +209,7 @@ pub fn (mut rng MuslRNG) f32n(max f32) f32 {
 	return rng.f32() * max
 }
 
-// rng.f64n() returns a pseudorandom f64 value in [0, max)
+// f64n returns a pseudorandom `f64` value in range `[0, max)`.
 [inline]
 pub fn (mut rng MuslRNG) f64n(max f64) f64 {
 	if max <= 0 {
@@ -216,21 +219,21 @@ pub fn (mut rng MuslRNG) f64n(max f64) f64 {
 	return rng.f64() * max
 }
 
-// rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
+// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
 [inline]
 pub fn (mut rng MuslRNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
-		eprintln('max must be greater than min')
+		eprintln('max must be greater than min.')
 		exit(1)
 	}
 	return min + rng.f32n(max - min)
 }
 
-// rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
 [inline]
 pub fn (mut rng MuslRNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {
-		eprintln('max must be greater than min')
+		eprintln('max must be greater than min.')
 		exit(1)
 	}
 	return min + rng.f64n(max - min)
