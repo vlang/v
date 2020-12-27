@@ -1267,6 +1267,8 @@ fn test__array_struct_contains() {
 	}
 	coords << coord_1
 	exists := coord_1 in coords
-	println(exists)
+	not_exists := coord_1 !in coords
+	println('`exists`: $exists and `not exists`: $not_exists')
 	assert exists == true
+	assert not_exists == false
 }
