@@ -77,16 +77,12 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		if to_file {
 			return out_file
 		}
-		cached := os.read_file(out_file) or {
-			return ''
-		}
+		cached := os.read_file(out_file) or { return '' }
 		return cached
 	}
 	// rebuild
 	for asset in am.get_assets(asset_type) {
-		data := os.read_file(asset.file_path) or {
-			return ''
-		}
+		data := os.read_file(asset.file_path) or { return '' }
 		out += data
 	}
 	if am.minify {
@@ -100,13 +96,9 @@ fn (am AssetManager) combine(asset_type string, to_file bool) string {
 		return out
 	}
 	if !os.is_dir(am.cache_dir) {
-		os.mkdir(am.cache_dir) or {
-			panic(err)
-		}
+		os.mkdir(am.cache_dir) or { panic(err) }
 	}
-	mut file := os.create(out_file) or {
-		panic(err)
-	}
+	mut file := os.create(out_file) or { panic(err) }
 	file.write(out.bytes())
 	file.close()
 	return out_file

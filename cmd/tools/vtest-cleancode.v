@@ -66,6 +66,7 @@ const (
 		'vlib/semver/',
 		'vlib/strings/',
 		'vlib/time/',
+		'vlib/vweb/',
 	]
 )
 
