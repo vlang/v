@@ -41,7 +41,11 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		if !generic_type.has_flag(.generic) {
-			full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+			full_generic_fn_name := if fn_name.contains('.') {
+				fn_name
+			} else {
+				p.prepend_mod(fn_name)
+			}
 			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 	}
@@ -229,10 +233,12 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	mut name := ''
 	if p.tok.kind == .name {
+		pos := p.tok.position()
 		// TODO high order fn
 		name = if language == .js { p.check_js_name() } else { p.check_name() }
 		if language == .v && !p.pref.translated && util.contains_capital(name) && p.mod != 'builtin' {
-			p.error('function names cannot contain uppercase letters, use snake_case instead')
+			p.error_with_pos('function names cannot contain uppercase letters, use snake_case instead',
+				pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -240,7 +246,14 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		type_sym := p.table.get_type_symbol(rec_type)
 		// interfaces are handled in the checker, methods can not be defined on them this way
 		if is_method && (type_sym.has_method(name) && type_sym.kind != .interface_) {
-			p.error('duplicate method `$name`')
+			p.error_with_pos('duplicate method `$name`', pos)
+			return ast.FnDecl{
+				scope: 0
+			}
+		}
+		// cannot redefine buildin function
+		if !is_method && p.mod != 'builtin' && name in builtin_functions {
+			p.error_with_pos('cannot redefine builtin function `$name`', pos)
 			return ast.FnDecl{
 				scope: 0
 			}
@@ -248,6 +261,10 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
 		name = p.tok.kind.str() // op_to_fn_name()
+		if rec_type == table.void_type {
+			p.error_with_pos('cannot use operator overloading with normal functions',
+				p.tok.position())
+		}
 		p.next()
 	}
 	// <T>
@@ -454,7 +471,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	mut args := []table.Param{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
+	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+		p.prepend_mod(p.tok.lit)
+	} else {
+		p.tok.lit
+	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
 		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
@@ -552,7 +573,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 			for p.tok.kind == .comma {
 				if !p.pref.is_fmt {
 					p.warn('`fn f(x, y Type)` syntax has been deprecated and will soon be removed. ' +
-						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w file.v` to automatically fix your code.')
+						'Use `fn f(x Type, y Type)` instead. You can run `v fmt -w "$p.scanner.file_path"` to automatically fix your code.')
 				}
 				p.next()
 				arg_pos << p.tok.position()

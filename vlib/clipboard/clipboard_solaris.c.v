@@ -1,47 +1,13 @@
 module clipboard
 
-pub struct Clipboard {
-mut:
-	text     string // text data sent or received
-	got_text bool // used to confirm that we have got the text
-	is_owner bool // to save selection owner state
-}
+import clipboard.dummy
+
+pub type Clipboard = dummy.Clipboard
 
 fn new_clipboard() &Clipboard {
-	eprintln('TODO: support clipboard on solaris')
-	return &Clipboard{}
+	return dummy.new_clipboard()
 }
 
 pub fn new_primary() &Clipboard {
-	eprintln('TODO: support clipboard on solaris')
-	return &Clipboard{}
-}
-
-fn (mut cb Clipboard) set_text(text string) bool {
-	cb.text = text
-	cb.is_owner = true
-	cb.got_text = true
-	return true
-}
-
-fn (mut cb Clipboard) get_text() string {
-	return cb.text
-}
-
-fn (mut cb Clipboard) clear() {
-	cb.text = ''
-	cb.is_owner = false
-}
-
-fn (mut cb Clipboard) free() {
-}
-
-fn (cb &Clipboard) has_ownership() bool {
-	return cb.is_owner
-}
-
-fn (cb &Clipboard) check_availability() bool {
-	// This is a dummy clipboard implementation,
-	// which can be always used, although it does not do much...
-	return true
+	return dummy.new_primary()
 }

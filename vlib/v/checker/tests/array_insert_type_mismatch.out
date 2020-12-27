@@ -1,0 +1,56 @@
+vlib/v/checker/tests/array_insert_type_mismatch.vv:3:14: error: cannot insert `any_float` to `[]int`
+    1 | fn main() {
+    2 |     mut a := [1, 2]
+    3 |     a.insert(1, 2.3)
+      |                 ~~~
+    4 |     a.insert(1, 'abc')
+    5 |     a.insert(1, [1.1, 2.2])
+vlib/v/checker/tests/array_insert_type_mismatch.vv:4:14: error: cannot insert `string` to `[]int`
+    2 |     mut a := [1, 2]
+    3 |     a.insert(1, 2.3)
+    4 |     a.insert(1, 'abc')
+      |                 ~~~~~
+    5 |     a.insert(1, [1.1, 2.2])
+    6 |     a.insert(1, ['aa', 'bb', 'cc'])
+vlib/v/checker/tests/array_insert_type_mismatch.vv:5:14: error: cannot insert `[]f64` to `[]int`
+    3 |     a.insert(1, 2.3)
+    4 |     a.insert(1, 'abc')
+    5 |     a.insert(1, [1.1, 2.2])
+      |                 ~~~~~~~~~~
+    6 |     a.insert(1, ['aa', 'bb', 'cc'])
+    7 |     a.insert(1, [[1]])
+vlib/v/checker/tests/array_insert_type_mismatch.vv:6:14: error: cannot insert `[]string` to `[]int`
+    4 |     a.insert(1, 'abc')
+    5 |     a.insert(1, [1.1, 2.2])
+    6 |     a.insert(1, ['aa', 'bb', 'cc'])
+      |                 ~~~~~~~~~~~~~~~~~~
+    7 |     a.insert(1, [[1]])
+    8 |     a.insert(1, [[['aa']]])
+vlib/v/checker/tests/array_insert_type_mismatch.vv:7:14: error: cannot insert `[][]int` to `[]int`
+    5 |     a.insert(1, [1.1, 2.2])
+    6 |     a.insert(1, ['aa', 'bb', 'cc'])
+    7 |     a.insert(1, [[1]])
+      |                 ~~~~~
+    8 |     a.insert(1, [[['aa']]])
+    9 |     println(a)
+vlib/v/checker/tests/array_insert_type_mismatch.vv:8:14: error: cannot insert `[][][]string` to `[]int`
+    6 |     a.insert(1, ['aa', 'bb', 'cc'])
+    7 |     a.insert(1, [[1]])
+    8 |     a.insert(1, [[['aa']]])
+      |                 ~~~~~~~~~~
+    9 |     println(a)
+   10 |
+vlib/v/checker/tests/array_insert_type_mismatch.vv:12:14: error: cannot insert `[][][]int` to `[][]int`
+   10 |
+   11 |     mut b := [[1, 2, 3]]
+   12 |     b.insert(0, [[[2]]])
+      |                 ~~~~~~~
+   13 |     b.insert(0, [[[['aa']]]])
+   14 |     println(b)
+vlib/v/checker/tests/array_insert_type_mismatch.vv:13:14: error: cannot insert `[][][][]string` to `[][]int`
+   11 |     mut b := [[1, 2, 3]]
+   12 |     b.insert(0, [[[2]]])
+   13 |     b.insert(0, [[[['aa']]]])
+      |                 ~~~~~~~~~~~~
+   14 |     println(b)
+   15 | }

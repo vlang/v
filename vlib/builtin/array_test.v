@@ -1195,3 +1195,80 @@ fn test_any_type_array_contains() {
 	assert [2] in c
 	assert [3] !in c
 }
+
+struct Person {
+	name string
+	nums []int
+	kv   map[string]string
+}
+
+fn test_struct_array_of_multi_type_in() {
+	ivan := Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}
+	people := [Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}, Person{
+		name: 'bob'
+		nums: [2]
+		kv: {
+			'bbb': '222'
+		}
+	}]
+	println(ivan in people)
+	assert ivan in people
+}
+
+fn test_struct_array_of_multi_type_index() {
+	ivan := Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}
+	people := [Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}, Person{
+		name: 'bob'
+		nums: [2]
+		kv: {
+			'bbb': '222'
+		}
+	}]
+	println(people.index(ivan))
+	assert people.index(ivan) == 0
+}
+
+struct Coord {
+	x int
+	y int
+	z int
+}
+
+fn test__array_struct_contains() {
+	mut coords := []Coord{}
+	coord_1 := Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	not_exists := coord_1 !in coords
+	println('`exists`: $exists and `not exists`: $not_exists')
+	assert exists == true
+	assert not_exists == false
+}

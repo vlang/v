@@ -52,7 +52,7 @@ fn init_os_args(argc int, argv &&byte) []string {
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe {args << byteptr(argv[i]).vstring()}
+		unsafe { args << byteptr(argv[i]).vstring() }
 	}
 	return args
 }
@@ -122,7 +122,7 @@ pub fn mkdir(path string) ?bool {
 		}
 	}
 	*/
-	r := unsafe {C.mkdir(charptr(apath.str), 511)}
+	r := unsafe { C.mkdir(charptr(apath.str), 511) }
 	if r == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}

@@ -14,6 +14,10 @@ import os
 import runtime
 import time
 
+const (
+	builtin_functions = ['print', 'println', 'eprint', 'eprintln', 'isnil', 'panic', 'exit']
+)
+
 pub struct Parser {
 	pref              &pref.Preferences
 mut:
@@ -625,48 +629,46 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 		.key_for {
 			return p.for_stmt()
 		}
-		.name, .key_mut, .key_shared, .key_atomic, .key_static, .mul {
-			if p.tok.kind == .name {
-				if p.tok.lit == 'sql' {
-					return p.sql_stmt()
-				}
-				if p.peek_tok.kind == .colon {
-					// `label:`
-					spos := p.tok.position()
-					name := p.check_name()
-					p.next()
-					if p.tok.kind == .key_for {
-						mut stmt := p.stmt(is_top_level)
-						match mut stmt {
-							ast.ForStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForInStmt {
-								stmt.label = name
-								return stmt
-							}
-							ast.ForCStmt {
-								stmt.label = name
-								return stmt
-							}
-							else {
-								assert false
-							}
+		.name {
+			if p.tok.lit == 'sql' {
+				return p.sql_stmt()
+			}
+			if p.peek_tok.kind == .colon {
+				// `label:`
+				spos := p.tok.position()
+				name := p.check_name()
+				p.next()
+				if p.tok.kind == .key_for {
+					mut stmt := p.stmt(is_top_level)
+					match mut stmt {
+						ast.ForStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForInStmt {
+							stmt.label = name
+							return stmt
+						}
+						ast.ForCStmt {
+							stmt.label = name
+							return stmt
+						}
+						else {
+							assert false
 						}
 					}
-					return ast.GotoLabel{
-						name: name
-						pos: spos.extend(p.tok.position())
-					}
-				} else if p.peek_tok.kind == .name {
-					p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
-					return ast.Stmt{}
-				} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
-					p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
-					p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
-					return ast.Stmt{}
 				}
+				return ast.GotoLabel{
+					name: name
+					pos: spos.extend(p.tok.position())
+				}
+			} else if p.peek_tok.kind == .name {
+				p.error_with_pos('unexpected name `$p.peek_tok.lit`', p.peek_tok.position())
+				return ast.Stmt{}
+			} else if !p.inside_if_expr && !p.inside_match_body && !p.inside_or_expr &&
+				p.peek_tok.kind in [.rcbr, .eof] && !p.mark_var_as_used(p.tok.lit) {
+				p.error_with_pos('`$p.tok.lit` evaluated but not used', p.tok.position())
+				return ast.Stmt{}
 			}
 			return p.parse_multi_expr(is_top_level)
 		}
@@ -677,19 +679,25 @@ pub fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			return p.return_stmt()
 		}
 		.dollar {
-			if p.peek_tok.kind == .key_if {
-				return ast.ExprStmt{
-					expr: p.if_expr(true)
+			match p.peek_tok.kind {
+				.key_if {
+					return ast.ExprStmt{
+						expr: p.if_expr(true)
+					}
 				}
-			} else if p.peek_tok.kind == .key_for {
-				return p.comp_for()
-			} else if p.peek_tok.kind == .name {
-				return ast.ExprStmt{
-					expr: p.vweb()
+				.key_for {
+					return p.comp_for()
+				}
+				.name {
+					return ast.ExprStmt{
+						expr: p.vweb()
+					}
+				}
+				else {
+					p.error_with_pos('unexpected \$', p.tok.position())
+					return ast.Stmt{}
 				}
 			}
-			p.error_with_pos('unexpected \$', p.tok.position())
-			return ast.Stmt{}
 		}
 		.key_continue, .key_break {
 			tok := p.tok
@@ -1143,8 +1151,13 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				// mark the imported module as used
 				p.register_used_import(p.tok.lit)
 				if p.peek_tok.kind == .dot &&
-					p.peek_tok2.kind != .eof && p.peek_tok2.lit[0].is_capital() {
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true
+				} else if p.peek_tok.kind == .dot &&
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len == 0 {
+					// incomplete module selector must be handled by dot_expr instead
+					node = p.parse_ident(language)
+					return node
 				}
 			}
 			// prepend the full import
@@ -1154,7 +1167,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 { p.tok.lit[0].is_capital() } else { false }
+	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
+		p.tok.lit[0].is_capital()
+	} else {
+		false
+	}
 	// use heuristics to detect `func<T>()` from `var < expr`
 	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
@@ -1831,7 +1848,7 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	p.top_level_statement_end()
 	p.check(.rpar)
 	return ast.ConstDecl{
-		pos: start_pos.extend(end_pos)
+		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
@@ -1967,7 +1984,8 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 			pos: pos
 			expr: expr
 			has_expr: has_expr
-			comments: p.eat_comments()
+			comments: p.eat_line_end_comments()
+			next_comments: p.eat_comments()
 		}
 	}
 	p.top_level_statement_end()
@@ -2043,7 +2061,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
-		// function type: `type mycallback fn(string, int)`
+		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
 		comments = p.eat_line_end_comments()
@@ -2275,6 +2293,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 			// `unsafe {expr}`
 			if stmt.expr.is_expr() {
 				p.next()
+				pos.last_line = p.prev_tok.line_nr - 1
 				ue := ast.UnsafeExpr{
 					expr: stmt.expr
 					pos: pos
@@ -2293,7 +2312,6 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)
 	}
-	pos.last_line = p.tok.line_nr
 	p.next()
 	return ast.Block{
 		stmts: stmts

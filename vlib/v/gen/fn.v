@@ -106,7 +106,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
-		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+		fn_header := if msvc_attrs.len > 0 {
+			'$type_name $msvc_attrs ${name}('
+		} else {
+			'$type_name ${name}('
+		}
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
@@ -373,6 +377,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 				g.gen_array_contains(node)
 				return
 			}
+			'index' {
+				g.gen_array_index(node)
+				return
+			}
 			else {}
 		}
 	}
@@ -452,6 +460,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('/*af receiver arg*/' + arg_name)
 	} else {
 		g.expr(node.left)
+		if node.from_embed_type != 0 {
+			embed_name := typ_sym.embed_name()
+			g.write('.$embed_name')
+		}
 	}
 	if has_cast {
 		g.write(')')
@@ -492,8 +504,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' { 'println' } else { 'print' }
+	is_print := name in ['print', 'println', 'eprint', 'eprintln']
+	print_method := name
 	is_json_encode := name == 'json.encode'
 	is_json_decode := name == 'json.decode'
 	g.is_json_fn = is_json_encode || is_json_decode
@@ -827,7 +839,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				}
 			}
 		} else {
-			g.write('0')
+			// NB: tcc can not handle 0 here, while msvc needs it
+			g.write('EMPTY_VARG_INITIALIZATION')
 		}
 		g.write('}}')
 	}
@@ -864,7 +877,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
 			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
-			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
+			expected_deref_type := if expected_type.is_ptr() {
+				expected_type.deref()
+			} else {
+				expected_type
+			}
 			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
 			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')

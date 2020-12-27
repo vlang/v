@@ -18,13 +18,15 @@ struct C.tm {
 
 fn C.timegm(&tm) time_t
 
+// fn C.gmtime_r(&tm, &gbuf)
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
 }
 
-pub fn (t Time) to_local_time() Time {
+// local returns t with the location set to local time.
+pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
 	C.localtime_r(time_t(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)

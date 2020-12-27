@@ -141,28 +141,6 @@ match_test_suite = [
 
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
-]
-)
-
-struct TestItemFa {
-	src string
-	q string
-	r []int
-}
-
-const (
-match_test_suite_fa = [
-	// find_all tests
-	TestItemFa{
-		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
-		r"p[iplut]+o",
-		[5, 10, 31, 36, 51, 56]
-	},
-	TestItemFa{
-		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
-		r"(pi?(ba)+o)",
-		[5, 10, 31, 39, 54, 65]
-	},
 
 ]
 )
@@ -174,7 +152,7 @@ struct TestItemRe {
 	r string
 }
 const (
-match_test_suite_re = [
+match_test_suite_replace = [
 	// replace tests
 	TestItemRe{
 		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
@@ -241,12 +219,65 @@ cgroups_test_suite = [
 ]
 )
 
+
+struct Test_find_all {
+	src string
+	q string
+	res []int // [0,4,5,6...] 
+	res_str []string // ['find0','find1'...]
+}
+const (
+find_all_test_suite = [
+	Test_find_all{
+		"abcd 1234 efgh 1234 ghkl1234 ab34546df",
+		r"\d+",
+		[5, 9, 15, 19, 24, 28, 31, 36],
+		['1234', '1234', '1234', '34546']
+	},
+	Test_find_all{
+		"abcd 1234 efgh 1234 ghkl1234 ab34546df",
+		r"\a+",
+		[0, 4, 10, 14, 20, 24, 29, 31, 36, 38],
+		['abcd', 'efgh', 'ghkl', 'ab', 'df']
+	},
+	Test_find_all{
+		"oggi pippo è andato a casa di pluto ed ha trovato pippo",
+		r"p[iplut]+o",
+		[5, 10, 31, 36, 51, 56],
+		['pippo', 'pluto', 'pippo']
+	},
+	Test_find_all{
+		"oggi pibao è andato a casa di pbababao ed ha trovato pibabababao",
+		r"(pi?(ba)+o)",
+		[5, 10, 31, 39, 54, 65],
+		['pibao', 'pbababao', 'pibabababao']
+	},
+	Test_find_all{
+		"Today is a good day and tomorrow will be for sure.",
+		r"[Tt]o\w+",
+		[0, 5, 24, 32],
+		['Today', 'tomorrow']
+	},
+	Test_find_all{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://[\w./]+",
+		[5, 44],
+		['url = https://github.com/dario/pig.html']
+	},
+	Test_find_all{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://.*"+'\n',
+		[5, 45],
+		['url = https://github.com/dario/pig.html\n']
+	}
+]
+)
+
 const (
 	debug = false // true for debug println 
 )
 
 fn test_regex(){
-
 	// check capturing groups
 	for c,to in cgroups_test_suite {
 		// debug print
@@ -275,8 +306,8 @@ fn test_regex(){
 
 		if start != to.s || end != to.e {
 			//println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
-			println("ERROR!")
-			C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
+			eprintln("ERROR!")
+			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
 		}	
@@ -284,7 +315,7 @@ fn test_regex(){
 		// check cgroups
 		if to.cgn.len > 0 {
 			if re.group_csave.len == 0 || re.group_csave[0] != to.cg[0] {
-				println("Capturing group len error! found: ${re.group_csave[0]} true ground: ${to.cg[0]}")
+				eprintln("Capturing group len error! found: ${re.group_csave[0]} true ground: ${to.cg[0]}")
 				assert false
 				continue
 			}
@@ -293,7 +324,7 @@ fn test_regex(){
 			mut ln := re.group_csave[0]*3
 			for ln > 0 {
 				if re.group_csave[ln] != to.cg[ln] {
-					println("Capturing group failed on $ln item!")
+					eprintln("Capturing group failed on $ln item!")
 					assert false
 				}
 				ln--
@@ -302,7 +333,7 @@ fn test_regex(){
 			// check named captured groups
 			for k in to.cgn.keys() {
 				if to.cgn[k] != (re.group_map[k]-1) { // we have -1 because the map not found is 0, in groups we start from 0 and we store using +1
-					println("Named capturing group error! [$k]")
+					eprintln("Named capturing group error! [$k]")
 					assert false
 					continue
 				}
@@ -314,9 +345,9 @@ fn test_regex(){
 			}
 			for ln:=0; ln < re.groups.len; ln++ {
 				if re.groups[ln] != to.cg[ln] {
-					println("Capture group doesn't match:")
-					println("true ground: [${to.cg}]")
-					println("elaborated : [${re.groups}]")
+					eprintln("Capture group doesn't match:")
+					eprintln("true ground: [${to.cg}]")
+					eprintln("elaborated : [${re.groups}]")
 					assert false
 				}
 			} 
@@ -324,9 +355,9 @@ fn test_regex(){
 	}
 
 	// check find_all
-	for c,to in match_test_suite_fa{
+	for c,to in find_all_test_suite {
 		// debug print
-		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
+		if debug { println("#$c [$to.src] q[$to.q] ($to.res, $to.res_str)") }
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')
@@ -334,25 +365,24 @@ fn test_regex(){
 			continue
 		}
 
+		re.reset()
 		res := re.find_all(to.src)
-		if res.len != to.r.len {
-			println("ERROR: find_all, array of different size.")
+		if res != to.res {
+			eprintln('err: find_all !!')
+			if debug { println("#$c exp: $to.res calculated: $res") }
 			assert false
-			continue
 		}
 
-		for c1,i in res {
-			if i != to.r[c1] {
-				println("ERROR: find_all, different indexes.")
-				assert false
-				continue
-			}
+		res_str := re.find_all_str(to.src)
+		if res_str != to.res_str {
+			eprintln('err: find_all_str !!')
+			if debug { println("#$c exp: $to.res_str calculated: $res_str") }
+			assert false
 		}
-
 	}
 
 	// check replace
-	for c,to in match_test_suite_re{
+	for c,to in match_test_suite_replace{
 		// debug print
 		if debug { println("#$c [$to.src] q[$to.q] $to.r") }
 
@@ -364,7 +394,7 @@ fn test_regex(){
 
 		res := re.replace(to.src,to.rep)
 		if res != to.r {
-			println("ERROR: replace.")
+			eprintln("ERROR: replace.")
 			assert false
 			continue
 		}
@@ -383,12 +413,12 @@ fn test_regex(){
 				continue
 			}
 			// q_str := re.get_query()
-			// println("Query: $q_str")
+			// eprintln("Query: $q_str")
 			start,end := re.find(to.src)
 
 			if start != to.s || end != to.e {
 				err_str := re.get_parse_error_string(start)
-				println("ERROR : $err_str start: ${start} end: ${end}")
+				eprintln("ERROR : $err_str start: ${start} end: ${end}")
 				assert false
 			} else {
 				//tmp_str := text[start..end]
@@ -416,8 +446,8 @@ fn test_regex(){
 		}
 
 		if start != to.s || end != to.e {
-			println("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
-			println("ERROR!")
+			eprintln("#$c [$to.src] q[$to.q] res[$tmp_str] $start, $end")
+			eprintln("ERROR!")
 			//C.printf("ERROR!! res:(%d, %d) refh:(%d, %d)\n",start, end, to.s, to.e)
 			assert false
 			continue
@@ -427,7 +457,7 @@ fn test_regex(){
 		tmp_str1 := to.src.clone()
 		start1, end1 := re.match_string(tmp_str1)
 		if start1 != start || end1 != end {
-			println("two run ERROR!!")
+			eprintln("two run ERROR!!")
 			assert false
 			continue
 		}

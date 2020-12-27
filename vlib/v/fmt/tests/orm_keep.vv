@@ -33,6 +33,12 @@ fn main() {
 	customer := sql db {
 		select from Customer where id == 1 limit 1
 	}
+	best_customer := sql db {
+		select from Customer order by nr_orders desc limit 1
+	}
+	second_best := sql db {
+		select from UCustomerser order by nr_orders desc limit 1 offset 1
+	}
 	println('$customer.id - $customer.name')
 	// insert a new customer
 	new_customer := Customer{

@@ -39,7 +39,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	}
 	if val != 0 {
 		for i in 0 .. arr.len {
-			unsafe {arr.set_unsafe(i, val)}
+			unsafe { arr.set_unsafe(i, val) }
 		}
 	}
 	return arr
@@ -55,7 +55,7 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array) a
 	}
 	for i in 0 .. arr.len {
 		val_clone := val.clone()
-		unsafe {arr.set_unsafe(i, &val_clone)}
+		unsafe { arr.set_unsafe(i, &val_clone) }
 	}
 	return arr
 }
@@ -70,7 +70,7 @@ fn new_array_from_c_array(len int, cap int, elm_size int, c_array voidptr) array
 		cap: cap_
 	}
 	// TODO Write all memory functions (like memcpy) in V
-	unsafe {C.memcpy(arr.data, c_array, len * elm_size)}
+	unsafe { C.memcpy(arr.data, c_array, len * elm_size) }
 	return arr
 }
 
@@ -125,11 +125,11 @@ pub fn (a array) repeat(count int) array {
 	for i in 0 .. count {
 		if a.len > 0 && a.element_size == size_of_array {
 			ary := array{}
-			unsafe {C.memcpy(&ary, a.data, size_of_array)}
+			unsafe { C.memcpy(&ary, a.data, size_of_array) }
 			ary_clone := ary.clone()
-			unsafe {C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size)}
+			unsafe { C.memcpy(arr.get_unsafe(i * a.len), &ary_clone, a.len * a.element_size) }
 		} else {
-			unsafe {C.memcpy(arr.get_unsafe(i * a.len), byteptr(a.data), a.len * a.element_size)}
+			unsafe { C.memcpy(arr.get_unsafe(i * a.len), byteptr(a.data), a.len * a.element_size) }
 		}
 	}
 	return arr
@@ -191,7 +191,7 @@ pub fn (mut a array) delete(i int) {
 	}
 	// NB: if a is [12,34], a.len = 2, a.delete(0)
 	// should move (2-0-1) elements = 1 element (the 34) forward
-	unsafe {C.memmove(a.get_unsafe(i), a.get_unsafe(i + 1), (a.len - i - 1) * a.element_size)}
+	unsafe { C.memmove(a.get_unsafe(i), a.get_unsafe(i + 1), (a.len - i - 1) * a.element_size) }
 	a.len--
 }
 
@@ -260,7 +260,7 @@ pub fn (mut a array) pop() voidptr {
 		}
 	}
 	new_len := a.len - 1
-	last_elem := unsafe {byteptr(a.data) + (new_len) * a.element_size}
+	last_elem := unsafe { byteptr(a.data) + (new_len) * a.element_size }
 	a.len = new_len
 	// NB: a.cap is not changed here *on purpose*, so that
 	// further << ops on that array will be more efficient.
@@ -338,13 +338,13 @@ pub fn (a &array) clone() array {
 	if a.element_size == size_of_array {
 		for i in 0 .. a.len {
 			ar := array{}
-			unsafe {C.memcpy(&ar, a.get_unsafe(i), size_of_array)}
+			unsafe { C.memcpy(&ar, a.get_unsafe(i), size_of_array) }
 			ar_clone := ar.clone()
-			unsafe {arr.set_unsafe(i, &ar_clone)}
+			unsafe { arr.set_unsafe(i, &ar_clone) }
 		}
 	} else {
 		if !isnil(a.data) {
-			unsafe {C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size)}
+			unsafe { C.memcpy(byteptr(arr.data), a.data, a.cap * a.element_size) }
 		}
 	}
 	return arr
@@ -381,7 +381,7 @@ fn (a &array) slice_clone(start int, _end int) array {
 [inline]
 [unsafe]
 fn (mut a array) set_unsafe(i int, val voidptr) {
-	unsafe {C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)}
+	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 // Private function. Used to implement assigment to the array element.
@@ -391,12 +391,12 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe {C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size)}
+	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
 }
 
 fn (mut a array) push(val voidptr) {
 	a.ensure_cap(a.len + 1)
-	unsafe {C.memmove(byteptr(a.data) + a.element_size * a.len, val, a.element_size)}
+	unsafe { C.memmove(byteptr(a.data) + a.element_size * a.len, val, a.element_size) }
 	a.len++
 }
 
@@ -414,7 +414,7 @@ pub fn (mut a3 array) push_many(val voidptr, size int) {
 	} else {
 		a3.ensure_cap(a3.len + size)
 		if !isnil(a3.data) && !isnil(val) {
-			unsafe {C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size)}
+			unsafe { C.memcpy(a3.get_unsafe(a3.len), val, a3.element_size * size) }
 		}
 	}
 	a3.len += size
@@ -449,7 +449,7 @@ pub fn (a array) reverse() array {
 		cap: a.cap
 	}
 	for i in 0 .. a.len {
-		unsafe {arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i))}
+		unsafe { arr.set_unsafe(i, a.get_unsafe(a.len - 1 - i)) }
 	}
 	return arr
 }
@@ -514,7 +514,7 @@ pub fn copy(dst []byte, src []byte) int {
 	if dst.len > 0 && src.len > 0 {
 		mut min := 0
 		min = if dst.len < src.len { dst.len } else { src.len }
-		unsafe {C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min)}
+		unsafe { C.memcpy(byteptr(dst.data), src[..min].data, dst.element_size * min) }
 		return min
 	}
 	return 0
@@ -589,51 +589,6 @@ pub fn (mut a []int) sort() {
 // index returns the first index at which a given element can be found in the array
 // or -1 if the value is not found.
 pub fn (a []string) index(v string) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-pub fn (a []int) index(v int) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-pub fn (a []byte) index(v byte) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-pub fn (a []rune) index(v rune) int {
-	for i in 0 .. a.len {
-		if a[i] == v {
-			return i
-		}
-	}
-	return -1
-}
-
-// index returns the first index at which a given element can be found in the array
-// or -1 if the value is not found.
-// TODO is `char` type yet in the language?
-pub fn (a []char) index(v char) int {
 	for i in 0 .. a.len {
 		if a[i] == v {
 			return i
@@ -757,7 +712,7 @@ pub fn compare_f32(a &f32, b &f32) int {
 pub fn (a array) pointers() []voidptr {
 	mut res := []voidptr{}
 	for i in 0 .. a.len {
-		unsafe {res << a.get_unsafe(i)}
+		unsafe { res << a.get_unsafe(i) }
 	}
 	return res
 }
@@ -777,5 +732,5 @@ pub fn (data voidptr) vbytes(len int) []byte {
 // byteptr.vbytes() - makes a V []byte structure from a C style memory buffer. NB: the data is reused, NOT copied!
 [unsafe]
 pub fn (data byteptr) vbytes(len int) []byte {
-	return unsafe {voidptr(data).vbytes(len)}
+	return unsafe { voidptr(data).vbytes(len) }
 }

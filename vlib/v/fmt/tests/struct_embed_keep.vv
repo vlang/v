@@ -1,0 +1,12 @@
+struct Foo {
+	x int
+}
+
+struct Test {}
+
+struct Bar {
+	Foo
+	Test
+	y int
+	z string
+}

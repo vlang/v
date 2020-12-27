@@ -86,9 +86,7 @@ pub fn (mut app App) json() vweb.Result {
 }
 
 pub fn (mut app App) shutdown() vweb.Result {
-	session_key := app.vweb.get_cookie('skey') or {
-		return app.vweb.not_found()
-	}
+	session_key := app.vweb.get_cookie('skey') or { return app.vweb.not_found() }
 	if session_key != 'superman' {
 		return app.vweb.not_found()
 	}

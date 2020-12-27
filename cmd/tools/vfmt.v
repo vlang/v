@@ -21,10 +21,10 @@ struct FormatOptions {
 	is_diff    bool
 	is_verbose bool
 	is_all     bool
-	is_worker  bool
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
+	is_worker  bool // true *only* in the worker processes. NB: workers can crash.
 }
 
 const (
@@ -50,7 +50,7 @@ fn main() {
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
-	foptions := FormatOptions{
+	mut foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
@@ -122,6 +122,7 @@ fn main() {
 			errors++
 			continue
 		}
+		// Guard against a possibly crashing worker process.
 		if worker_result.exit_code != 0 {
 			eprintln(worker_result.output)
 			if worker_result.exit_code == 1 {
@@ -135,7 +136,7 @@ fn main() {
 				wresult := worker_result.output.split(formatted_file_token)
 				formatted_warn_errs := wresult[0]
 				formatted_file_path := wresult[1].trim_right('\n\r')
-				foptions.post_process_file(fpath, formatted_file_path)
+				foptions.post_process_file(fpath, formatted_file_path) or { errors = errors + 1 }
 				if formatted_warn_errs.len > 0 {
 					eprintln(formatted_warn_errs)
 				}
@@ -149,7 +150,12 @@ fn main() {
 		if foptions.is_noerror {
 			exit(0)
 		}
-		exit(1)
+		if foptions.is_verify {
+			exit(1)
+		}
+		if foptions.is_c {
+			exit(2)
+		}
 	}
 }
 
@@ -189,7 +195,7 @@ fn print_compiler_options(compiler_params &pref.Preferences) {
 	eprintln('  is_script: $compiler_params.is_script ')
 }
 
-fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) {
+fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path string) ? {
 	if formatted_file_path.len == 0 {
 		return
 	}
@@ -212,7 +218,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
-			exit(1)
+			return error('')
 		}
 		return
 	}
@@ -228,7 +234,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	if foptions.is_c {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
-			exit(2)
+			return error('')
 		}
 		return
 	}
@@ -240,9 +246,7 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	}
 	if foptions.is_w {
 		if is_formatted_different {
-			os.mv_by_cp(formatted_file_path, file) or {
-				panic(err)
-			}
+			os.mv_by_cp(formatted_file_path, file) or { panic(err) }
 			eprintln('Reformatted file: $file')
 		} else {
 			eprintln('Already formatted file: $file')
@@ -272,9 +276,7 @@ fn file_to_target_os(file string) string {
 fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
 	mut mod_name := 'main'
 	mut is_module_file := false
-	flines := read_source_lines(file) or {
-		return mod_name, is_module_file
-	}
+	flines := read_source_lines(file) or { return mod_name, is_module_file }
 	for fline in flines {
 		line := fline.trim_space()
 		if line.starts_with('module ') {
@@ -289,9 +291,7 @@ fn file_to_mod_name_and_is_module_file(file string) (string, bool) {
 }
 
 fn read_source_lines(file string) ?[]string {
-	source_lines := os.read_lines(file) or {
-		return error('can not read $file')
-	}
+	source_lines := os.read_lines(file) or { return error('can not read $file') }
 	return source_lines
 }
 
@@ -302,9 +302,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	pfolder := os.real_path(os.dir(file))
 	// a .v project has many 'module main' files in one folder
 	// if there is only one .v file, then it must be a standalone
-	all_files_in_pfolder := os.ls(pfolder) or {
-		panic(err)
-	}
+	all_files_in_pfolder := os.ls(pfolder) or { panic(err) }
 	mut vfiles := []string{}
 	for f in all_files_in_pfolder {
 		vf := os.join_path(pfolder, f)
@@ -324,9 +322,7 @@ fn get_compile_name_of_potential_v_project(file string) string {
 	// a project folder, that should be compiled with `v pfolder`.
 	mut main_fns := 0
 	for f in vfiles {
-		slines := read_source_lines(f) or {
-			panic(err)
-		}
+		slines := read_source_lines(f) or { panic(err) }
 		for line in slines {
 			if line.contains('fn main()') {
 				main_fns++

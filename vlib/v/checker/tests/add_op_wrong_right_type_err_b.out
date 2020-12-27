@@ -1,5 +1,0 @@
-vlib/v/checker/tests/add_op_wrong_right_type_err_b.vv:2:18: error: mismatched types `any_int` and `[]int`
-    1 | fn main() {
-    2 |     println(10 + [1,2,3])
-      |                  ~~~~~~~
-    3 | }

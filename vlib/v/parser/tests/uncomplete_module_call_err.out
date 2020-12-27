@@ -1,0 +1,5 @@
+vlib/v/parser/tests/uncomplete_module_call_err.vv:7:1: error: unexpected `}`, expecting `name`
+    5 | fn main() {
+    6 |     os.
+    7 | }
+      | ^

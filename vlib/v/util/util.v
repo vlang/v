@@ -9,7 +9,7 @@ import v.pref
 import v.vmod
 
 pub const (
-	v_version = '0.1.30'
+	v_version = '0.2'
 )
 
 // math.bits is needed by strconv.ftoa
@@ -28,7 +28,7 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 
@@ -94,7 +94,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 
@@ -125,8 +125,15 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
-	tool_exe := path_of_executable(tool_basename)
-	tool_source := tool_basename + '.v'
+	mut tool_exe := ''
+	mut tool_source := ''
+	if os.is_dir(tool_basename) {
+		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_source = os.join_path(tool_basename, tool_name + '.v')
+	} else {
+		tool_exe = path_of_executable(tool_basename)
+		tool_source = tool_basename + '.v'
+	}
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
