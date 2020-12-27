@@ -2332,13 +2332,13 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 		if state.group_index < 0 {
 			
 			if re.prog[state.pc].ist == ist_prog_end {
-				println("program ended!!")
+				//println("program ended!!")
 				
 				if (re.flag & f_src) != 0 {
 					//println("find return")
 					return state.first_match, state.i
 				} else {
-					println("Here!!")
+					//println("Here!!")
 					return 0, state.i
 				}
 			}
