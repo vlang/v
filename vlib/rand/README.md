@@ -64,4 +64,5 @@ A workaround (if you _must_ use the libc RNG) is to:
 
 Please note that [math interval](https://en.wikipedia.org/wiki/Interval_(mathematics)#Including_or_excluding_endpoints) notation is used throughout
 the function documentation to denote what numbers ranges include.
-An example of `[0, max)` thus denotes a range with all posible values between `0` and `max` **including** 0 but **excluding** `max`.
+An example of `[0, max)` thus denotes a range with all posible values 
+between `0` and `max` **including** 0 but **excluding** `max`.
