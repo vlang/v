@@ -158,25 +158,27 @@ pub mut:
 	typ  table.Type
 }
 
+// const field in const declaration group
 pub struct ConstField {
 pub:
 	mod      string
 	name     string
-	expr     Expr
+	expr     Expr // the value expr of field,after =
 	is_pub   bool
 	pos      token.Position
 pub mut:
-	typ      table.Type
-	comments []Comment
+	typ      table.Type // type of const field,const field in V can be any type
+	comments []Comment // comments before current const field
 }
 
+// const declaration
 pub struct ConstDecl {
 pub:
 	is_pub       bool
 	pos          token.Position
 pub mut:
-	fields       []ConstField
-	end_comments []Comment
+	fields       []ConstField // all the const fields
+	end_comments []Comment // comments that after last const field
 }
 
 pub struct StructDecl {
@@ -258,26 +260,29 @@ pub mut:
 // import statement
 pub struct Import {
 pub:
+	mod   string // imported module name
+	alias string // if use import xxx as x,alias is different from mod
 	pos   token.Position
-	mod   string
-	alias string
 pub mut:
-	syms  []ImportSymbol
+	syms  []ImportSymbol // for import {symbol} syntax,Parser find symbol=>module.symbol
 }
 
+// import symbol,for import {symbol} syntax
 pub struct ImportSymbol {
 pub:
 	pos  token.Position
 	name string
 }
 
+// anonymous function
 pub struct AnonFn {
 pub:
 	decl FnDecl
 pub mut:
-	typ  table.Type
+	typ  table.Type // type of anonymous function variable,the same with decl.name,it's auto generated
 }
 
+// function or method declaration
 pub struct FnDecl {
 pub:
 	name            string
@@ -319,6 +324,7 @@ pub:
 	pos   token.Position
 }
 
+// function or method call expr
 pub struct CallExpr {
 pub:
 	pos                token.Position
@@ -349,6 +355,7 @@ pub struct AutofreeArgVar {
 	idx  int
 }
 */
+// function call argument
 pub struct CallArg {
 pub:
 	is_mut          bool
@@ -362,6 +369,7 @@ pub mut:
 	// tmp_name        string // for autofree
 }
 
+// function return statement
 pub struct Return {
 pub:
 	pos      token.Position
@@ -434,18 +442,20 @@ pub mut:
 	end_comments []Comment
 }
 
+// each V source file will generate an ast.File.
+// when V compiler runs,the Parser will generate from [ ]os.File to [ ]ast.File
 pub struct File {
 pub:
-	path             string
-	mod              Module
+	path             string // path of the source file
+	mod              Module // current module
 	global_scope     &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt
-	imports          []Import
-	imported_symbols map[string]string // 'Type' => 'module.Type'
-	errors           []errors.Error
-	warnings         []errors.Warning
+	stmts            []Stmt // all the statments in the source file
+	imports          []Import // all the imports
+	imported_symbols map[string]string // use for import {symbol},Parser find symbol=>module.symbol
+	errors           []errors.Error // all the checker errors in the file
+	warnings         []errors.Warning // all the checker warings in the file
 	generic_fns      []&FnDecl
 }
 
@@ -723,10 +733,11 @@ pub:
 	name string
 }
 */
+// variable assign statement
 pub struct AssignStmt {
 pub:
 	right         []Expr
-	op            token.Kind
+	op            token.Kind // include: =,:=,+=,-=,*=,/= and so on,all the assigns can see vlib/token/token.v
 	pos           token.Position
 	comments      []Comment
 	end_comments  []Comment
@@ -748,6 +759,7 @@ pub mut:
 	expr_type table.Type
 }
 
+// enum value,like OS.macos or .macos
 pub struct EnumVal {
 pub:
 	enum_name string
@@ -758,25 +770,27 @@ pub mut:
 	typ       table.Type
 }
 
+// enum field in enum declaration
 pub struct EnumField {
 pub:
 	name          string
 	pos           token.Position
-	comments      []Comment
-	next_comments []Comment
-	expr          Expr
-	has_expr      bool
+	comments      []Comment // comment after Enumfield in the same line
+	next_comments []Comment // comments between current EnumField and next EnumField
+	expr          Expr // the value of current EnumField
+	has_expr      bool // true, when expr is not null
 }
 
+// enum declaration
 pub struct EnumDecl {
 pub:
 	name             string
 	is_pub           bool
-	is_flag          bool // true when the enum has [flag] tag
-	is_multi_allowed bool
-	comments         []Comment // enum Abc { /* comments */ ... }
-	fields           []EnumField
-	attrs            []table.Attr
+	is_flag          bool // true when the enum has [flag] tag,for bit field enum
+	is_multi_allowed bool // true when the enum has [_allow_multiple_values] tag
+	comments         []Comment // comments before the first EnumField
+	fields           []EnumField // all the enum fields
+	attrs            []table.Attr // attributes of enum declaration
 	pos              token.Position
 }
 
