@@ -1703,7 +1703,7 @@ fn main() {
 }
 ```
 
-* Module names should be short, under 10 characters.
+* Module names should be short, under 10 characters (limited by the windows MAX_PATH since modules use directory names).
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
