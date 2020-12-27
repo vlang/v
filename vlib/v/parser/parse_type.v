@@ -121,7 +121,10 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(p.mod, func, false, false)
+	// MapFooFn typedefs are manually added in cheaders.v 
+	// because typedefs get generated after the map struct is generated
+	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
+	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
 	return table.new_type(idx)
 }
 
