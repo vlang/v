@@ -37,7 +37,7 @@ enum HighlightTokenTyp {
 const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 	allowed_formats = ['md', 'markdown', 'json', 'text', 'stdout', 'html', 'htm']
-	res_path        = os.resource_abs_path('vdoc-resources')
+	res_path        = os.resource_abs_path('resources')
 	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
