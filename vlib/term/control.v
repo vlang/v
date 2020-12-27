@@ -46,6 +46,7 @@ pub fn cursor_back(n int) {
 // type: 1 -> current cursor position to beginning of the screen
 // type: 2 -> clears entire screen
 // type: 3 -> clears entire screen and also delete scrollback buffer
+
 pub fn erase_display(t string) {
 	print('\x1b[' + t + 'J')
 }
@@ -58,8 +59,9 @@ pub fn erase_tobeg() {
 	erase_display('1')
 }
 
+// clears entire screen and returns cursor to top left-corner
 pub fn erase_clear() {
-	erase_display('2')
+	print("\033[H\033[J")
 }
 
 pub fn erase_del_clear() {

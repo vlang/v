@@ -146,7 +146,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			continue
 		}
 		if r.line == 'clear' {
-			term.erase_display('2')
+			term.erase_clear()
 			continue
 		}
 		if r.line == 'help' {
