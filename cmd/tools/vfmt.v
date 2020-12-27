@@ -21,10 +21,11 @@ struct FormatOptions {
 	is_diff    bool
 	is_verbose bool
 	is_all     bool
-	is_worker  bool
 	is_debug   bool
 	is_noerror bool
 	is_verify  bool // exit(1) if the file is not vfmt'ed
+mut:
+	is_worker  bool
 }
 
 const (
@@ -50,7 +51,7 @@ fn main() {
 	toolexe := os.executable()
 	util.set_vroot_folder(os.dir(os.dir(os.dir(toolexe))))
 	args := util.join_env_vflags_and_os_args()
-	foptions := FormatOptions{
+	mut foptions := FormatOptions{
 		is_c: '-c' in args
 		is_l: '-l' in args
 		is_w: '-w' in args
@@ -135,7 +136,9 @@ fn main() {
 				wresult := worker_result.output.split(formatted_file_token)
 				formatted_warn_errs := wresult[0]
 				formatted_file_path := wresult[1].trim_right('\n\r')
+				foptions.is_worker = true
 				foptions.post_process_file(fpath, formatted_file_path)
+				foptions.is_worker = false
 				if formatted_warn_errs.len > 0 {
 					eprintln(formatted_warn_errs)
 				}
@@ -212,7 +215,9 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 		x := util.color_compare_files(diff_cmd, file, formatted_file_path)
 		if x.len != 0 {
 			println("$file is not vfmt'ed")
-			exit(1)
+			if !foptions.is_worker {
+				exit(1)
+			}
 		}
 		return
 	}
@@ -228,7 +233,9 @@ fn (foptions &FormatOptions) post_process_file(file string, formatted_file_path 
 	if foptions.is_c {
 		if is_formatted_different {
 			eprintln('File is not formatted: $file')
-			exit(2)
+			if !foptions.is_worker {
+				exit(2)
+			}
 		}
 		return
 	}
