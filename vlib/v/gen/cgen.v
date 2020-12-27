@@ -4231,8 +4231,11 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				if field.expr.is_fixed {
 					styp := g.typ(field.expr.typ)
-					// TODO: only add in module? or main?
-					g.definitions.writeln('static $styp _const_$name; // fixed array const')
+					if g.pref.build_mode != .build_module {
+						g.definitions.writeln('$styp _const_$name = $val; // fixed array const')
+					} else {
+						g.definitions.writeln('$styp _const_$name; // fixed array const')
+					}
 				} else {
 					g.const_decl_init_later(field.mod, name, val, field.typ)
 				}
