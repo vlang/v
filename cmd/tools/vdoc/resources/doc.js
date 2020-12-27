@@ -80,8 +80,36 @@ function setupDarkMode() {
 
 function setupSearch() {
     var searchInput = document.getElementById('search');
+    var dummyResults = [{title: 'flag', badge: 'module', description: 'test desription lorem ipsum ashkjdsahflkjashfkjlsdakjf'}];
     searchInput.addEventListener('input', function(e) {
         var searchValue = e.target.value.toLowerCase();
+        var menu = document.querySelector('.doc-nav > .content');
+        var search = document.querySelector('.doc-nav > .search');
+        if (searchValue === '') {
+            // reset to default
+            menu.style.display = '';
+            search.style.display = '';
+        } else {
+            search.innerHTML = '';
+            menu.style.display = 'none';
+            search.style.display = 'block';
+            for (var i = 0; i < dummyResults.length; i++) {
+                var result = dummyResults[i];
+                search.innerHTML += '<ul>' +
+                    '<li class="result">' +
+                        '<a class="link" href="">' +
+                            '<div class="definition">' +
+                                '<span class="title">' + result.title + '</span>' +
+                                '<span class="badge">' + result.badge + '</span>' +
+                            '</div>' +
+                            '<div class="description">' + result.description + 's</div>' +
+                        '</a>' +
+                    '</li>' +
+                '</ul>' +
+                '<hr class="separator">';
+            }
+        }
+        /*
         var menuItems = document.querySelectorAll('.content > ul > li');
         for (var i = 0; i < menuItems.length; i++) {
             var menuItem = menuItems[i];
@@ -101,7 +129,7 @@ function setupSearch() {
                 }
             }
             menuItem.style.display = !searchValue || hasResult ? '' : 'none';
-        }
+        }*/
     });
 }
 

@@ -66,7 +66,7 @@ const (
 			<header class="doc-nav hidden">
 				<div class="heading-container">
 					<div class="heading">
-						<input type="text" id="search" placeholder="Search...">
+						<input type="text" id="search" placeholder="Search..." autocomplete="off">
 						<div class="module">{{ head_name }}</div>
 						<div class="toggle-version-container">
 							<span>{{ version }}</span>
@@ -75,6 +75,7 @@ const (
 						{{ menu_icon }}
 					</div>
 				</div>
+				<nav class="search"></nav>
 				<nav class="content hidden">
 					<ul>
 						{{ toc_links }}
