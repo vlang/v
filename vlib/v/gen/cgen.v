@@ -1726,7 +1726,6 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.writeln(');')
 					} else if sym.kind == .map {
 						info := sym.info as table.Map
-						skeytyp := g.typ(info.key_type)
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
 						val_typ := g.table.get_type_symbol(info.value_type)
@@ -1745,7 +1744,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						} else {
 							g.expr(left.left)
 						}
-						g.write(', &($skeytyp[]){')
+						g.write(', &(string[]){')
 						g.expr(left.index)
 						g.write('}')
 						if val_typ.kind == .function {
@@ -3885,7 +3884,6 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
-				key_type_str := g.typ(info.key_type)
 				elem_type_str := g.typ(info.value_type)
 				elem_typ := g.table.get_type_symbol(info.value_type)
 				get_and_set_types := elem_typ.kind in [.struct_, .map]
@@ -3907,7 +3905,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', &($key_type_str[]){')
+					g.write(', &(string[]){')
 					g.expr(node.index)
 					g.write('}')
 					if elem_typ.kind == .function {
@@ -3927,7 +3925,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('&')
 					}
 					g.expr(node.left)
-					g.write(', &($key_type_str[]){')
+					g.write(', &(string[]){')
 					g.expr(node.index)
 					g.write('}, &($elem_type_str[]){ $zero }))')
 				} else {
@@ -3957,7 +3955,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write('), &($key_type_str[]){')
+					g.write('), &(string[]){')
 					g.expr(node.index)
 					g.write('}')
 					if g.is_fn_index_call {
