@@ -141,6 +141,7 @@ match_test_suite = [
 
     // particular groups
     TestItem{"ababababac", r"ab(.*)(ac)",0,10},
+
 ]
 )
 
@@ -256,6 +257,18 @@ find_all_test_suite = [
 		r"[Tt]o\w+",
 		[0, 5, 24, 32],
 		['Today', 'tomorrow']
+	},
+	Test_find_all{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://[\w./]+",
+		[5, 44],
+		['url = https://github.com/dario/pig.html']
+	},
+	Test_find_all{
+		"pera\nurl = https://github.com/dario/pig.html\npippo",
+		r"url *= *https?://.*"+'\n',
+		[5, 45],
+		['url = https://github.com/dario/pig.html\n']
 	}
 ]
 )
