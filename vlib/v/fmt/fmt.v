@@ -1446,39 +1446,51 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
+	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
 		branch_is_single_line(it.branches[1]) &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
-	for i, branch in it.branches {
-		if i == 0 {
-			// first `if`
-			f.comments(branch.comments, {})
-		} else {
-			// `else`, close previous branch
-			if branch.comments.len > 0 {
-				f.writeln('}')
+	if_start := f.line_len
+	for {
+		for i, branch in it.branches {
+			if i == 0 {
+				// first `if`
 				f.comments(branch.comments, {})
 			} else {
-				f.write('} ')
+				// `else`, close previous branch
+				if branch.comments.len > 0 {
+					f.writeln('}')
+					f.comments(branch.comments, {})
+				} else {
+					f.write('} ')
+				}
+				f.write('${dollar}else ')
 			}
-			f.write('${dollar}else ')
+			if i < it.branches.len - 1 || !it.has_else {
+				f.write('${dollar}if ')
+				f.expr(branch.cond)
+				f.write(' ')
+			}
+			f.write('{')
+			if single_line {
+				f.write(' ')
+			} else {
+				f.writeln('')
+			}
+			f.stmts(branch.stmts)
+			if single_line {
+				f.write(' ')
+			}
 		}
-		if i < it.branches.len - 1 || !it.has_else {
-			f.write('${dollar}if ')
-			f.expr(branch.cond)
-			f.write(' ')
+		// When a single line if is really long, write it again as multiline
+		if single_line && f.line_len > max_len.last() {
+			single_line = false
+			f.single_line_if = false
+			f.out.go_back(f.line_len - if_start)
+			f.line_len = if_start
+			continue
 		}
-		f.write('{')
-		if single_line {
-			f.write(' ')
-		} else {
-			f.writeln('')
-		}
-		f.stmts(branch.stmts)
-		if single_line {
-			f.write(' ')
-		}
+		break
 	}
 	f.write('}')
 	f.single_line_if = false
@@ -1740,7 +1752,11 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 		it.elem_type = info.elem_type
 	}
 	is_mut := info.is_mut
-	el_typ := if is_mut { it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1) } else { it.elem_type }
+	el_typ := if is_mut {
+		it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1)
+	} else {
+		it.elem_type
+	}
 	f.write('chan ')
 	if is_mut {
 		f.write('mut ')

@@ -106,7 +106,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
-		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+		fn_header := if msvc_attrs.len > 0 {
+			'$type_name $msvc_attrs ${name}('
+		} else {
+			'$type_name ${name}('
+		}
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
@@ -874,7 +878,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
 			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
-			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
+			expected_deref_type := if expected_type.is_ptr() {
+				expected_type.deref()
+			} else {
+				expected_type
+			}
 			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
 			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')
