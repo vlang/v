@@ -51,6 +51,31 @@ pub fn (mut ctx Context) create_image(file string) Image {
 	return img
 }
 
+// TODO copypasta
+pub fn (mut ctx Context) create_image_with_size(file string, width int, height int) Image {
+	if !C.sg_isvalid() {
+		// Sokol is not initialized yet, add stbi object to a queue/cache
+		// ctx.image_queue << file
+		stb_img := stbi.load(file) or { return Image{} }
+		img := Image{
+			width: width
+			height: height
+			nr_channels: stb_img.nr_channels
+			ok: false
+			data: stb_img.data
+			ext: stb_img.ext
+			path: file
+			id: ctx.image_cache.len
+		}
+		ctx.image_cache << img
+		return img
+	}
+	mut img := create_image(file)
+	img.id = ctx.image_cache.len
+	ctx.image_cache << img
+	return img
+}
+
 // TODO remove this
 fn create_image(file string) Image {
 	if !os.exists(file) {
@@ -127,7 +152,11 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 	x0 := f32(x) * ctx.scale
 	y0 := f32(y) * ctx.scale
 	x1 := f32(x + width) * ctx.scale
-	y1 := f32(y + height) * ctx.scale
+	mut y1 := f32(y + height) * ctx.scale
+	if height == 0 {
+		scale := f32(img.width) / f32(width)
+		y1 = f32(y + int(f32(img.height) / scale)) * ctx.scale
+	}
 	//
 	sgl.load_pipeline(ctx.timage_pip)
 	sgl.enable_texture()

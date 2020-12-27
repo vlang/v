@@ -1,4 +1,3 @@
-
 module neuroevolution
 
 import rand
@@ -19,7 +18,7 @@ fn round(a int, b f64) int {
 
 struct Neuron {
 mut:
-	value f64
+	value   f64
 	weights []f64
 }
 
@@ -30,7 +29,7 @@ fn (mut n Neuron) populate(nb int) {
 }
 
 struct Layer {
-	id int
+	id      int
 mut:
 	neurons []Neuron
 }
@@ -49,12 +48,10 @@ mut:
 }
 
 fn (mut n Network) populate(network []int) {
-
 	assert network.len >= 2
 	input := network[0]
 	hiddens := network.slice(1, network.len - 1)
 	output := network[network.len - 1]
-
 	mut index := 0
 	mut previous_neurons := 0
 	mut input_layer := Layer{
@@ -62,7 +59,6 @@ fn (mut n Network) populate(network []int) {
 	}
 	input_layer.populate(input, previous_neurons)
 	n.layers << input_layer
-
 	previous_neurons = input
 	index++
 	for hidden in hiddens {
@@ -74,7 +70,6 @@ fn (mut n Network) populate(network []int) {
 		n.layers << hidden_layer
 		index++
 	}
-
 	mut output_layer := Layer{
 		id: index
 	}
@@ -83,7 +78,6 @@ fn (mut n Network) populate(network []int) {
 }
 
 fn (n Network) get_save() Save {
-
 	mut save := Save{}
 	for layer in n.layers {
 		save.neurons << layer.neurons.len
@@ -97,11 +91,9 @@ fn (n Network) get_save() Save {
 }
 
 fn (mut n Network) set_save(save Save) {
-
 	mut previous_neurons := 0
 	mut index := 0
 	mut index_weights := 0
-
 	n.layers = []
 	for save_neuron in save.neurons {
 		mut layer := Layer{
@@ -123,13 +115,10 @@ fn (mut n Network) set_save(save Save) {
 pub fn (mut n Network) compute(inputs []f64) []f64 {
 	assert n.layers.len > 0
 	assert inputs.len == n.layers[0].neurons.len
-
 	for i, input in inputs {
 		n.layers[0].neurons[i].value = input
 	}
-
 	mut prev_layer := n.layers[0]
-
 	for i in 1 .. n.layers.len {
 		for j, neuron in n.layers[i].neurons {
 			mut sum := f64(0)
@@ -140,13 +129,11 @@ pub fn (mut n Network) compute(inputs []f64) []f64 {
 		}
 		prev_layer = n.layers[i]
 	}
-
 	mut outputs := []f64{}
 	mut last_layer := n.layers[n.layers.len - 1]
 	for neuron in last_layer.neurons {
 		outputs << neuron.value
 	}
-
 	return outputs
 }
 
@@ -164,7 +151,7 @@ fn (s Save) clone() Save {
 }
 
 struct Genome {
-	score int
+	score   int
 	network Save
 }
 
@@ -174,65 +161,48 @@ mut:
 }
 
 fn (mut g Generation) add_genome(genome Genome) {
-
 	mut i := 0
-
 	for gg in g.genomes {
 		if genome.score > gg.score {
 			break
 		}
-
 		i++
 	}
-
-	g.genomes.insert(i, genome)	
+	g.genomes.insert(i, genome)
 }
 
 fn (g1 Genome) breed(g2 Genome, nb_child int) []Save {
 	mut datas := []Save{}
-
 	for _ in 0 .. nb_child {
-
 		mut data := g1.network.clone()
-
 		for i, weight in g2.network.weights {
 			if rand.f64() <= 0.5 {
 				data.weights[i] = weight
 			}
 		}
-
 		for i, _ in data.weights {
 			if rand.f64() <= 0.1 {
 				data.weights[i] += (rand.f64() * 2 - 1) * 0.5
 			}
 		}
-
 		datas << data
 	}
-
 	return datas
 }
 
 fn (g Generation) next(population int) []Save {
-
 	mut nexts := []Save{}
-
 	if population == 0 {
 		return nexts
 	}
-
 	keep := round(population, 0.2)
-
 	for i in 0 .. keep {
 		if nexts.len < population {
 			nexts << g.genomes[i].network.clone()
 		}
 	}
-
 	random := round(population, 0.2)
-
-	for _ in 0 ..  random {
-
+	for _ in 0 .. random {
 		if nexts.len < population {
 			mut n := g.genomes[0].network.clone()
 			for k, _ in n.weights {
@@ -241,7 +211,6 @@ fn (g Generation) next(population int) []Save {
 			nexts << n
 		}
 	}
-
 	mut max := 0
 	out: for {
 		for i in 0 .. max {
@@ -258,14 +227,13 @@ fn (g Generation) next(population int) []Save {
 			max = 0
 		}
 	}
-
 	return nexts
 }
 
 pub struct Generations {
 pub:
-	population int
-	network []int
+	population  int
+	network     []int
 mut:
 	generations []Generation
 }
@@ -277,7 +245,6 @@ fn (mut gs Generations) first() []Save {
 		nn.populate(gs.network)
 		out << nn.get_save()
 	}
-
 	gs.generations << Generation{}
 	return out
 }
@@ -299,24 +266,16 @@ fn (mut gs Generations) restart() {
 }
 
 pub fn (mut gs Generations) generate() []Network {
-
-	saves := if gs.generations.len == 0 {
-		gs.first()
-	} else {
-		gs.next()
-	}
-
+	saves := if gs.generations.len == 0 { gs.first() } else { gs.next() }
 	mut nns := []Network{}
 	for save in saves {
 		mut nn := Network{}
 		nn.set_save(save)
 		nns << nn
 	}
-
 	if gs.generations.len >= 2 {
 		gs.generations.delete(0)
 	}
-
 	return nns
 }
 
@@ -326,4 +285,3 @@ pub fn (mut gs Generations) network_score(network Network, score int) {
 		network: network.get_save()
 	})
 }
-
