@@ -130,9 +130,9 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		fn_builder.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { fn_builder.writeln('\t\tif (!map_exists(b, k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
-		.function { fn_builder.writeln('\t\tif (!map_exists(b, k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
-		else { fn_builder.writeln('\t\tif (!map_exists(b, k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
+		.string { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
+		.function { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
+		else { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
