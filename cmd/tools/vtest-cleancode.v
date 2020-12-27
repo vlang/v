@@ -22,6 +22,7 @@ const (
 		'cmd/v/v.v',
 		'vlib/arrays',
 		'vlib/benchmark',
+		'vlib/bitfield',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
