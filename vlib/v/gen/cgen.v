@@ -714,7 +714,12 @@ pub fn (mut g Gen) write_variadic_types() {
 		struct_name := 'varg_' + type_name.replace('*', '_ptr')
 		g.type_definitions.writeln('struct $struct_name {')
 		g.type_definitions.writeln('\tint len;')
-		g.type_definitions.writeln('\t$type_name args[$arg_len];')
+		// TODO: once new cached mod impl is done we can always use exact size
+		if g.pref.use_cache || g.pref.build_mode == .build_module {
+			g.type_definitions.writeln('\t$type_name args[32];')
+		} else {
+			g.type_definitions.writeln('\t$type_name args[$arg_len];')
+		}
 		g.type_definitions.writeln('};\n')
 		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
 	}
