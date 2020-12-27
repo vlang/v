@@ -348,6 +348,12 @@ fn new_map(key_bytes int, value_bytes int) map {
 			clone_fn = &map_clone_string
 		}
 	}
+	mut free_fn := MapFreeFn(0)
+	if has_string_keys {
+		free_fn = &map_free_string
+	} else {
+		free_fn = &map_free_nop
+	}
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -362,11 +368,7 @@ fn new_map(key_bytes int, value_bytes int) map {
 		hash_fn: hash_fn
 		key_eq_fn: key_eq_fn
 		clone_fn: clone_fn
-		free_fn: if has_string_keys {
-			&map_free_string
-		} else {
-			&map_free_nop
-		}
+		free_fn: free_fn
 	}
 }
 
