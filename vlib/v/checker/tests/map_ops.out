@@ -1,0 +1,26 @@
+vlib/v/checker/tests/map_ops.vv:2:18: warning: non-string keys are work in progress
+    1 | fn test_map() {
+    2 |     mut m := map[int]string
+      |                     ^
+    3 |     _ = m[`!`]
+    4 |     m['hi'] = 8
+vlib/v/checker/tests/map_ops.vv:3:7: error: invalid key: expected `int`, not `rune`
+    1 | fn test_map() {
+    2 |     mut m := map[int]string
+    3 |     _ = m[`!`]
+      |          ~~~~~
+    4 |     m['hi'] = 8
+    5 |     m[&m] += 4
+vlib/v/checker/tests/map_ops.vv:4:3: error: invalid key: expected `int`, not `string`
+    2 |     mut m := map[int]string
+    3 |     _ = m[`!`]
+    4 |     m['hi'] = 8
+      |      ~~~~~~
+    5 |     m[&m] += 4
+    6 | }
+vlib/v/checker/tests/map_ops.vv:5:3: error: invalid key: expected `int`, not `&map[int]string`
+    3 |     _ = m[`!`]
+    4 |     m['hi'] = 8
+    5 |     m[&m] += 4
+      |      ~~~~
+    6 | }
