@@ -419,7 +419,11 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 				sym := g.table.get_type_symbol(field.typ)
 				has_custom_str := sym.has_method('str')
 				mut field_styp := g.typ(field.typ).replace('*', '')
-				field_styp_fn_name := if has_custom_str { '${field_styp}_str' } else { fnames2strfunc[field_styp] }
+				field_styp_fn_name := if has_custom_str {
+					'${field_styp}_str'
+				} else {
+					fnames2strfunc[field_styp]
+				}
 				g.auto_str_funcs.write('indents, ')
 				func := struct_auto_str_func(sym, field.typ, field_styp_fn_name, field.name)
 				// reference types can be "nil"
@@ -529,7 +533,11 @@ fn (mut g Gen) gen_str_for_union_sum_type(info table.SumType, styp string, str_f
 			value_fmt = "'$value_fmt'"
 		}
 		typ_str := g.typ(typ)
-		mut func_name := if typ_str in gen_fn_names { gen_fn_names[typ_str] } else { g.gen_str_for_type(typ) }
+		mut func_name := if typ_str in gen_fn_names {
+			gen_fn_names[typ_str]
+		} else {
+			g.gen_str_for_type(typ)
+		}
 		sym := g.table.get_type_symbol(typ)
 		if sym.kind == .struct_ {
 			func_name = 'indent_$func_name'

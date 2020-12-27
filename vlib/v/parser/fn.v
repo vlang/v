@@ -41,7 +41,11 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
 		if !generic_type.has_flag(.generic) {
-			full_generic_fn_name := if fn_name.contains('.') { fn_name } else { p.prepend_mod(fn_name) }
+			full_generic_fn_name := if fn_name.contains('.') {
+				fn_name
+			} else {
+				p.prepend_mod(fn_name)
+			}
 			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 	}
@@ -467,7 +471,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 	mut args := []table.Param{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
-	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() { p.prepend_mod(p.tok.lit) } else { p.tok.lit }
+	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
+		p.prepend_mod(p.tok.lit)
+	} else {
+		p.tok.lit
+	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
 		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
