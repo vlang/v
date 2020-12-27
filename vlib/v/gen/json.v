@@ -250,6 +250,8 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	styp := g.typ(key_type)
 	styp_v := g.typ(value_type)
+	key_type_symbol := g.table.get_type_symbol(key_type)
+	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_type_symbol)
 	fn_name_v := js_dec_name(styp_v)
 	mut s := ''
 	if is_js_prim(styp_v) {
@@ -269,7 +271,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_map_${styp}_$styp_v *)&err;
 	}
-	res = new_map(sizeof($styp), sizeof($styp_v));
+	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{

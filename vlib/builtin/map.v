@@ -330,84 +330,8 @@ fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqF
 	}
 }
 
-// delete this
-fn new_map(key_bytes int, value_bytes int) map {
-	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
-	mut hash_fn := MapHashFn(0)
-	mut key_eq_fn := MapEqFn(0)
-	mut clone_fn := MapCloneFn(0)
-	match key_bytes {
-		// assume non-string keys are bitwise comparable
-		1 {
-			hash_fn = &map_hash_int_1
-			key_eq_fn = &map_eq_int_1
-			clone_fn = &map_clone_int_1
-		}
-		2 {
-			hash_fn = &map_hash_int_2
-			key_eq_fn = &map_eq_int_2
-			clone_fn = &map_clone_int_2
-		}
-		4 {
-			hash_fn = &map_hash_int_4
-			key_eq_fn = &map_eq_int_4
-			clone_fn = &map_clone_int_4
-		}
-		8 {
-			hash_fn = &map_hash_int_8
-			key_eq_fn = &map_eq_int_8
-			clone_fn = &map_clone_int_8
-		}
-		else {
-			hash_fn = &map_hash_string
-			key_eq_fn = &map_eq_string
-			clone_fn = &map_clone_string
-		}
-	}
-	mut free_fn := MapFreeFn(0)
-	if has_string_keys {
-		free_fn = &map_free_string
-	} else {
-		free_fn = &map_free_nop
-	}
-	return map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
-		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: new_dense_array(key_bytes, value_bytes)
-		metas: &u32(vcalloc(metasize))
-		extra_metas: extra_metas_inc
-		len: 0
-		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
-	}
-}
-
 fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_2(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
-	// TODO pre-allocate n slots
-	mut pkey := byteptr(keys)
-	mut pval := byteptr(values)
-	for _ in 0 .. n {
-		unsafe {
-			out.set_1(pkey, pval)
-			pkey += key_bytes
-			pval += value_bytes
-		}
-	}
-	return out
-}
-
-// delete this
-fn new_map_init_1(n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	mut out := new_map(key_bytes, value_bytes)
 	// TODO pre-allocate n slots
 	mut pkey := byteptr(keys)
 	mut pval := byteptr(values)
@@ -626,11 +550,6 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 		}
 	}
 	return zero
-}
-
-// delete this
-fn (m map) exists(key string) bool {
-	return m.exists_1(&key)
 }
 
 // Checks whether a particular key exists in the map.
