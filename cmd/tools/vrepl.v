@@ -97,7 +97,7 @@ fn repl_help() {
 
 fn run_repl(workdir string, vrepl_prefix string) {
 	if !is_stdin_a_pipe {
-		println(util.full_v_version(false))
+		println(util.full_v_version(true))
 		println('Use Ctrl-C or `exit` to exit, or `help` to see other available commands')
 	}
 	file := os.join_path(workdir, '.${vrepl_prefix}vrepl.v')
@@ -146,7 +146,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			continue
 		}
 		if r.line == 'clear' {
-			term.erase_display('2')
+			term.erase_clear()
 			continue
 		}
 		if r.line == 'help' {
