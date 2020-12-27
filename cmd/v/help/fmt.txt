@@ -1,7 +1,9 @@
 Usage:
   v fmt [options] path_to_source.v [path_to_other_source.v]
+  v fmt [options] path/to/dir [path/to/other_dir]
 
-Formats the given V source files, then prints their formatted source to stdout.
+Formats the given V source files or recursively format all files in the directory,
+then prints their formatted source to stdout.
 
 Options:
   -c      Check if a file is already formatted. If not, print the filepath and exit with code 2.
