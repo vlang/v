@@ -1251,3 +1251,24 @@ fn test_struct_array_of_multi_type_index() {
 	println(people.index(ivan))
 	assert people.index(ivan) == 0
 }
+
+struct Coord {
+	x int
+	y int
+	z int
+}
+
+fn test__array_struct_contains() {
+	mut coords := []Coord{}
+	coord_1 := Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	not_exists := coord_1 !in coords
+	println('`exists`: $exists and `not exists`: $not_exists')
+	assert exists == true
+	assert not_exists == false
+}

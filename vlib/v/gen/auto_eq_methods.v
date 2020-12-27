@@ -38,7 +38,7 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 				fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
 			}
 			else {
-				fn_builder.writeln('\tif (a.$field.name != b.$field.name)) {')
+				fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
 			}
 		}
 		fn_builder.writeln('\t\treturn false;')
