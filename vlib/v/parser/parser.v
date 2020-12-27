@@ -1153,6 +1153,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 				if p.peek_tok.kind == .dot &&
 					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital() {
 					is_mod_cast = true
+				} else if p.peek_tok.kind == .dot &&
+					p.peek_tok2.kind != .eof && p.peek_tok2.lit.len == 0 {
+					// incomplete module selector must be handled by dot_expr instead
+					node = p.parse_ident(language)
+					return node
 				}
 			}
 			// prepend the full import

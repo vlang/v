@@ -32,12 +32,6 @@ pub fn new() RE {
 	return re
 }
 
-// new_regex_by_size create a RE of large size, mult specify the scale factor of the memory that will be allocated
-[deprecated]
-pub fn new_by_size(mult int) RE {
-	return impl_new_regex_by_size(mult)
-}
-
 // regex_opt create new RE object from RE pattern string
 pub fn regex_opt(pattern string) ?RE {
 	// init regex

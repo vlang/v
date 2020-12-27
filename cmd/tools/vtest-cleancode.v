@@ -20,10 +20,12 @@ const (
 	vfmt_verify_list                = [
 		'cmd/tools/vdoc.v',
 		'cmd/v/v.v',
+		'vlib/arrays',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
+		'vlib/orm/',
 		'vlib/term/colors.v',
 		'vlib/term/term.v',
 		'vlib/v/ast/',

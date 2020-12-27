@@ -428,9 +428,6 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	free(ptr);
 	return memdup(src, sz);
 }
-
-typedef uint64_t (*MapHashFn)(void*);
-typedef int (*MapEqFn)(void*, void*);
 '
 	c_builtin_types               = '
 //================================== builtin types ================================*/
@@ -460,6 +457,11 @@ typedef struct sync__Channel* chan;
 		#define false 0
 	#endif
 #endif
+
+typedef u64 (*MapHashFn)(voidptr);
+typedef bool (*MapEqFn)(voidptr, voidptr);
+typedef void (*MapCloneFn)(voidptr, voidptr);
+typedef void (*MapFreeFn)(voidptr);
 '
 	bare_c_headers                = '
 $c_common_macros
