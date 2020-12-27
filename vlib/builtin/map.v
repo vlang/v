@@ -309,32 +309,6 @@ fn map_free_nop(_ voidptr) {
 }
 
 fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
-<<<<<<< HEAD
-=======
-	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
-	// for now assume anything bigger than a pointer is a string
-	has_string_keys := key_bytes > sizeof(voidptr)
-	return map{
-		key_bytes: key_bytes
-		value_bytes: value_bytes
-		even_index: init_even_index
-		cached_hashbits: max_cached_hashbits
-		shift: init_log_capicity
-		key_values: new_dense_array(key_bytes, value_bytes)
-		metas: &u32(vcalloc(metasize))
-		extra_metas: extra_metas_inc
-		len: 0
-		has_string_keys: has_string_keys
-		hash_fn: hash_fn
-		key_eq_fn: key_eq_fn
-		clone_fn: clone_fn
-		free_fn: free_fn
-	}
-}
-
-// delete this
-fn new_map(key_bytes int, value_bytes int) map {
->>>>>>> upstream/master
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
@@ -358,25 +332,6 @@ fn new_map(key_bytes int, value_bytes int) map {
 
 fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
 	mut out := new_map_2(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
-<<<<<<< HEAD
-=======
-	// TODO pre-allocate n slots
-	mut pkey := byteptr(keys)
-	mut pval := byteptr(values)
-	for _ in 0 .. n {
-		unsafe {
-			out.set_1(pkey, pval)
-			pkey += key_bytes
-			pval += value_bytes
-		}
-	}
-	return out
-}
-
-// delete this
-fn new_map_init_1(n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	mut out := new_map(key_bytes, value_bytes)
->>>>>>> upstream/master
 	// TODO pre-allocate n slots
 	mut pkey := byteptr(keys)
 	mut pval := byteptr(values)
@@ -597,14 +552,6 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 	return zero
 }
 
-<<<<<<< HEAD
-=======
-// delete this
-fn (m map) exists(key string) bool {
-	return m.exists_1(&key)
-}
-
->>>>>>> upstream/master
 // Checks whether a particular key exists in the map.
 fn (m &map) exists_1(key voidptr) bool {
 	mut index, mut meta := m.key_to_index(key)
