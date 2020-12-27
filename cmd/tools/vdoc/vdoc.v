@@ -81,14 +81,16 @@ const (
 					</ul>
 				</nav>
 			</header>
-			<div class="doc-container">
-				<div class="doc-content">
-					{{ contents }}
-					<div class="footer">
-						{{ footer_content }}
+			<div class="doc-scrollview">
+				<div class="doc-container">
+					<div class="doc-content">
+						{{ contents }}
+						<div class="footer">
+							{{ footer_content }}
+						</div>
 					</div>
+					{{ right_content }}
 				</div>
-				{{ right_content }}
 			</div>
 		</div>
 		{{ footer_assets }}
