@@ -797,7 +797,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 
 fn (t Table) shorten_user_defined_typenames(originalname string, import_aliases map[string]string) string {
 	mut res := originalname
-	if res.starts_with(t.cmod_prefix) {
+	if t.cmod_prefix.len > 0 && res.starts_with(t.cmod_prefix) {
 		// cur_mod.Type => Type
 		res = res.replace_once(t.cmod_prefix, '')
 	} else if res in import_aliases {
