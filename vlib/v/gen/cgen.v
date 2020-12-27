@@ -562,7 +562,11 @@ fn (g &Gen) cc_type2(t table.Type) string {
 		if sym.info.generic_types.len > 0 {
 			mut sgtyps := '_T'
 			for gt in sym.info.generic_types {
-				gts := g.table.get_type_symbol(if gt.has_flag(.generic) { g.unwrap_generic(gt) } else { gt })
+				gts := g.table.get_type_symbol(if gt.has_flag(.generic) {
+					g.unwrap_generic(gt)
+				} else {
+					gt
+				})
 				sgtyps += '_$gts.cname'
 			}
 			styp += sgtyps
@@ -929,7 +933,11 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 					g.enum_typedefs.write((1 << i).str())
 					cur_enum_offset = 0
 				}
-				cur_value := if cur_enum_offset > 0 { '$cur_enum_expr+$cur_enum_offset' } else { cur_enum_expr }
+				cur_value := if cur_enum_offset > 0 {
+					'$cur_enum_expr+$cur_enum_offset'
+				} else {
+					cur_enum_expr
+				}
 				g.enum_typedefs.writeln(', // $cur_value')
 				cur_enum_offset++
 			}
@@ -1237,7 +1245,11 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 				// instead of
 				// `int* val = ((int**)arr.data)[i];`
 				// right := if it.val_is_mut { styp } else { styp + '*' }
-				right := if it.val_is_mut { '(($styp)$tmp${op_field}data) + $i' } else { '(($styp*)$tmp${op_field}data)[$i]' }
+				right := if it.val_is_mut {
+					'(($styp)$tmp${op_field}data) + $i'
+				} else {
+					'(($styp*)$tmp${op_field}data)[$i]'
+				}
 				g.writeln('\t$styp ${c_name(it.val_var)} = $right;')
 			}
 		}
@@ -1726,6 +1738,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						g.writeln(');')
 					} else if sym.kind == .map {
 						info := sym.info as table.Map
+						skeytyp := g.typ(info.key_type)
 						styp := g.typ(info.value_type)
 						zero := g.type_default(info.value_type)
 						val_typ := g.table.get_type_symbol(info.value_type)
@@ -1744,7 +1757,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 						} else {
 							g.expr(left.left)
 						}
-						g.write(', &(string[]){')
+						g.write(', &($skeytyp[]){')
 						g.expr(left.index)
 						g.write('}')
 						if val_typ.kind == .function {
@@ -2834,13 +2847,21 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	}
 	left_type := g.unwrap_generic(node.left_type)
 	left_sym := g.table.get_type_symbol(left_type)
-	unaliased_left := if left_sym.kind == .alias { (left_sym.info as table.Alias).parent_type } else { left_type }
+	unaliased_left := if left_sym.kind == .alias {
+		(left_sym.info as table.Alias).parent_type
+	} else {
+		left_type
+	}
 	if node.op in [.key_is, .not_is] {
 		g.is_expr(node)
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	unaliased_right := if right_sym.kind == .alias { (right_sym.info as table.Alias).parent_type } else { node.right_type }
+	unaliased_right := if right_sym.kind == .alias {
+		(right_sym.info as table.Alias).parent_type
+	} else {
+		node.right_type
+	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
 		fn_name := match node.op {
 			.plus {
@@ -3884,6 +3905,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 				}
 			} else if sym.kind == .map {
 				info := sym.info as table.Map
+				key_type_str := g.typ(info.key_type)
 				elem_type_str := g.typ(info.value_type)
 				elem_typ := g.table.get_type_symbol(info.value_type)
 				get_and_set_types := elem_typ.kind in [.struct_, .map]
@@ -3905,7 +3927,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write(', &(string[]){')
+					g.write(', &($key_type_str[]){')
 					g.expr(node.index)
 					g.write('}')
 					if elem_typ.kind == .function {
@@ -3925,7 +3947,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 						g.write('&')
 					}
 					g.expr(node.left)
-					g.write(', &(string[]){')
+					g.write(', &($key_type_str[]){')
 					g.expr(node.index)
 					g.write('}, &($elem_type_str[]){ $zero }))')
 				} else {
@@ -3955,7 +3977,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 							g.write('.val')
 						}
 					}
-					g.write('), &(string[]){')
+					g.write('), &($key_type_str[]){')
 					g.expr(node.index)
 					g.write('}')
 					if g.is_fn_index_call {
