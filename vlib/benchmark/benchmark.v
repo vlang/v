@@ -4,26 +4,26 @@ import time
 import term
 
 pub const (
-	b_ok = term.ok_message('OK  ')
-	b_fail = term.fail_message('FAIL')
+	b_ok    = term.ok_message('OK  ')
+	b_fail  = term.fail_message('FAIL')
 	b_skip  = term.warn_message('SKIP')
 	b_spent = term.ok_message('SPENT')
 )
 
 pub struct Benchmark {
 pub mut:
-	bench_timer      time.StopWatch
-	verbose          bool
-	no_cstep         bool
-	step_timer       time.StopWatch
-	ntotal           int
-	nok              int
-	nfail            int
-	nskip            int
-	nexpected_steps  int
-	cstep            int
-	bok              string
-	bfail            string
+	bench_timer     time.StopWatch
+	verbose         bool
+	no_cstep        bool
+	step_timer      time.StopWatch
+	ntotal          int
+	nok             int
+	nfail           int
+	nskip           int
+	nexpected_steps int
+	cstep           int
+	bok             string
+	bfail           string
 }
 
 // new_benchmark returns a `Benchmark` instance on the stack.
@@ -133,25 +133,33 @@ pub fn (b &Benchmark) step_message_with_label_and_duration(label string, msg str
 	if b.nexpected_steps > 1 {
 		mut sprogress := ''
 		if b.nexpected_steps < 10 {
-			sprogress = if b.no_cstep { 'TMP1/${b.nexpected_steps:1d}' } else {
+			sprogress = if b.no_cstep {
+				'TMP1/${b.nexpected_steps:1d}'
+			} else {
 				'${b.cstep:1d}/${b.nexpected_steps:1d}'
 			}
 		} else if b.nexpected_steps >= 10 && b.nexpected_steps < 100 {
-			sprogress = if b.no_cstep { 'TMP2/${b.nexpected_steps:2d}' } else {
+			sprogress = if b.no_cstep {
+				'TMP2/${b.nexpected_steps:2d}'
+			} else {
 				'${b.cstep:2d}/${b.nexpected_steps:2d}'
 			}
 		} else if b.nexpected_steps >= 100 && b.nexpected_steps < 1000 {
-			sprogress = if b.no_cstep { 'TMP3/${b.nexpected_steps:3d}' } else {
+			sprogress = if b.no_cstep {
+				'TMP3/${b.nexpected_steps:3d}'
+			} else {
 				'${b.cstep:3d}/${b.nexpected_steps:3d}'
 			}
 		} else {
-			sprogress = if b.no_cstep { 'TMP4/${b.nexpected_steps:4d}' } else {
+			sprogress = if b.no_cstep {
+				'TMP4/${b.nexpected_steps:4d}'
+			} else {
 				'${b.cstep:4d}/${b.nexpected_steps:4d}'
 			}
 		}
-		return '${label:-5s} [${sprogress}] ${timed_line}'
+		return '${label:-5s} [$sprogress] $timed_line'
 	}
-	return '${label:-5s}${timed_line}'
+	return '${label:-5s}$timed_line'
 }
 
 // step_message_with_label returns a string describing the current step using current time as duration.
@@ -181,7 +189,9 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 
 // total_message returns a string with total summary of the benchmark run.
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '${msg}\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') + ', ' + if b.nfail > 0 { term.red('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + if b.nskip > 0 { term.bright_yellow('${b.nskip:5d}') } else { '${b.nskip:5d}' } + ', ' + '${b.ntotal:5d}'
+	mut tmsg := '$msg\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') +
+		', ' + if b.nfail > 0 { term.red('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + if b.nskip >
+		0 { term.bright_yellow('${b.nskip:5d}') } else { '${b.nskip:5d}' } + ', ' + '${b.ntotal:5d}'
 	if b.verbose {
 		tmsg = '<=== total time spent $tmsg'
 	}
@@ -203,7 +213,7 @@ pub fn (b &Benchmark) total_duration() i64 {
 // tdiff_in_ms prefixes `s` with a time difference calculation.
 fn (b &Benchmark) tdiff_in_ms(s string, tdiff i64) string {
 	if b.verbose {
-		return '${f64(tdiff)/1000.0:9.3f} ms $s'
+		return '${f64(tdiff) / 1000.0:9.3f} ms $s'
 	}
 	return s
 }
