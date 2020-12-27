@@ -286,14 +286,14 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 		ccoptions.linker_flags << '-static'
 		ccoptions.linker_flags << '-nostdlib'
 	}
-	if ccoptions.debug_mode && os.user_os() == 'linux' {
+	if ccoptions.debug_mode && os.user_os() != 'windows' && v.pref.build_mode != .build_module {
 		ccoptions.linker_flags << ' -rdynamic ' // needed for nicer symbolic backtraces
 	}
 	if ccompiler != 'msvc' && v.pref.os != .freebsd {
 		ccoptions.wargs << '-Werror=implicit-function-declaration'
 	}
 	if v.pref.is_liveshared || v.pref.is_livemain {
-		if v.pref.os == .linux || os.user_os() == 'linux' {
+		if v.pref.os == .linux || os.user_os() == 'linux' && v.pref.build_mode != .build_module {
 			ccoptions.linker_flags << '-rdynamic'
 		}
 		if v.pref.os == .macos || os.user_os() == 'macos' {
