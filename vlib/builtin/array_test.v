@@ -1272,3 +1272,16 @@ fn test__array_struct_contains() {
 	assert exists == true
 	assert not_exists == false
 }
+
+fn test__array_struct_ref_contains() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	println(exists)
+	assert exists == true
+}
