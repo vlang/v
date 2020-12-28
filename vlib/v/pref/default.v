@@ -94,17 +94,18 @@ pub fn (mut p Preferences) fill_with_defaults() {
 		'$p.lookup_path',
 	])
 	// eprintln('prefs.cache_manager: $p')
-	//
-	if p.use_cache && p.is_shared {
-		eprintln('-usecache and -shared flags are not compatible')
-		exit(1)
+	// disable use_cache for specific cases:
+	if os.user_os() == 'windows' {
+		p.use_cache = false
 	}
-	if p.use_cache && p.build_mode == .build_module {
-		eprintln('-usecache and build-module flags are not compatible')
-		exit(1)
+	if p.build_mode == .build_module {
+		// eprintln('-usecache and build-module flags are not compatible')
+		p.use_cache = false
 	}
-	// enable use_cache by default
-	p.use_cache = os.user_os() != 'windows' && p.build_mode != .build_module && !p.is_shared
+	if p.is_shared {
+		// eprintln('-usecache and -shared flags are not compatible')
+		p.use_cache = false
+	}
 }
 
 fn (mut p Preferences) find_cc_if_cross_compiling() {
