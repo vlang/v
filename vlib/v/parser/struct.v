@@ -452,8 +452,10 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
-		mcomments := p.eat_comments()
+		mcomments := p.eat_line_end_comments()
+		mnext_comments := p.eat_comments()
 		method.comments = mcomments
+		method.next_comments = mnext_comments
 		methods << method
 		// println('register method $name')
 		ts.register_method(
