@@ -878,7 +878,7 @@ pub fn execvp(cmdpath string, args []string) ? {
 	mut cargs := []charptr{}
 	cargs << cmdpath.str
 	for i in 0 .. args.len {
-		cargs << args[i].str
+		cargs << byteptr(args[i].str)
 	}
 	cargs << charptr(0)
 	res := C.execvp(charptr(cmdpath.str), cargs.data)
