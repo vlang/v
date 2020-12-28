@@ -30,8 +30,8 @@ pub:
 	resource_name string // resource that the client access
 	client_key    string // unique key of client
 pub mut:
-	server        &Server 
-	client        &Client 
+	server        &Server
+	client        &Client
 }
 
 // new_server instance a new websocket server on provided port and route

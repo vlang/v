@@ -1,5 +1,5 @@
 // websocket module implements websocket client and a websocket server
-// attribution: @thecoderr the author of original websocket client 
+// attribution: @thecoderr the author of original websocket client
 module websocket
 
 import net
@@ -123,7 +123,7 @@ pub fn (mut ws Client) listen() ? {
 		if ws.state in [.closed, .closing] {
 			return
 		}
-		ws.debug_log('got message: $msg.opcode') 
+		ws.debug_log('got message: $msg.opcode')
 		match msg.opcode {
 			.text_frame {
 				ws.debug_log('read: text')
@@ -245,7 +245,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 			unsafe {C.memcpy(&header[2], &len16, 2)}
 		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
 			len_bytes := htonl64(u64(payload_len))
-			header[1] = 127 
+			header[1] = 127
 			unsafe {C.memcpy(&header[2], len_bytes.data, 8)}
 		}
 	} else {
@@ -263,7 +263,7 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 			header[5] = masking_key[1]
 			header[6] = masking_key[2]
 			header[7] = masking_key[3]
-		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff { 
+		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
 			len64 := htonl64(u64(payload_len))
 			header[1] = (127 | 0x80)
 			unsafe {C.memcpy(&header[2], len64.data, 8)}
@@ -344,13 +344,13 @@ pub fn (mut ws Client) close(code int, message string) ? {
 
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) ? {
-	ws.debug_log('send control frame $code, frame_type: $frame_typ') 
+	ws.debug_log('send control frame $code, frame_type: $frame_typ')
 	if ws.state !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
-	mut control_frame := []byte{len: frame_len} 
+	mut control_frame := []byte{len: frame_len}
 	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
 	defer {
 		unsafe {
