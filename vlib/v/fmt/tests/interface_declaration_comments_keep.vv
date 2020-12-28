@@ -2,3 +2,30 @@ pub interface ReaderWriter {
 	read(mut buf []byte) ?int // from Reader
 	write(buf []byte) ?int // from Writer
 }
+
+interface Speaker {
+	// first
+	speak() string
+	// between
+	foo() string
+	foo2() string
+	// last
+}
+
+interface Baz {
+	// first
+	speak() string
+	// comment
+	// more between
+	foo() string
+	foo2() string
+	// last
+}
+
+interface Bar {
+	speak() string // after
+	foo() string
+	speak2() string // also after
+	// and between
+	foo2() string
+}
