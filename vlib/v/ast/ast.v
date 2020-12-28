@@ -738,7 +738,7 @@ pub:
 pub struct AssignStmt {
 pub:
 	right         []Expr
-	op            token.Kind // include: =,:=,+=,-=,*=,/= and so on,all the assigns can see vlib/token/token.v
+	op            token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
 	pos           token.Position
 	comments      []Comment
 	end_comments  []Comment
@@ -760,7 +760,7 @@ pub mut:
 	expr_type table.Type
 }
 
-// enum value,like OS.macos or .macos
+// an enum value, like OS.macos or .macos
 pub struct EnumVal {
 pub:
 	enum_name string
