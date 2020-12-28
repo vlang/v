@@ -18,28 +18,21 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
-		match sym.kind {
-			.string {
-				fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
-			}
-			.struct_ {
-				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
-			}
-			.array {
-				eq_fn := g.gen_array_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
-			}
-			.map {
-				eq_fn := g.gen_map_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
-			}
-			.function {
-				fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
-			}
-			else {
-				fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
-			}
+		if sym.kind == .string {
+			fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .struct_ && field.typ.nr_muls() == 0 {
+			eq_fn := g.gen_struct_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .array && field.typ.nr_muls() == 0 {
+			eq_fn := g.gen_array_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .map && field.typ.nr_muls() == 0 {
+			eq_fn := g.gen_map_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .function {
+			fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
+		} else {
+			fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
 		}
 		fn_builder.writeln('\t\treturn false;')
 		fn_builder.writeln('\t}')
