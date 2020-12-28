@@ -1720,7 +1720,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			}
 			continue
 		}
-		c.error("`$styp` doesn't implement method `$imethod.name`", pos)
+		c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
+			pos)
 	}
 	if mut inter_sym.info is table.Interface {
 		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
@@ -2027,6 +2028,14 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 	}
+	if exp_is_optional && return_stmt.exprs.len > 0 {
+		expr0 := return_stmt.exprs[0]
+		if expr0 is ast.CallExpr {
+			if expr0.or_block.kind == .propagate {
+				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
@@ -2284,7 +2293,8 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			continue
 		}
 		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign] &&
-			right_sym.kind == .array && left is ast.Ident && right is ast.Ident {
+			right_sym.kind == .array &&
+			(left is ast.Ident && !left.is_blank_ident()) && right is ast.Ident {
 			// Do not allow `a = b`, only `a = b.clone()`
 			c.error('use `array2 = array1.clone()` instead of `array2 = array1` (or use `unsafe`)',
 				assign_stmt.pos)
@@ -2369,6 +2379,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
 			}
+		}
+		if left_sym.kind == .interface_ {
+			c.type_implements(right_type, left_type, right.position())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker so that ident.obj is set

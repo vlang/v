@@ -272,7 +272,7 @@ static void* g_live_info = NULL;
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _IN_MAP(val, m) map_exists(m, val)
+#define _IN_MAP(val, m) map_exists_1(m, val)
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }

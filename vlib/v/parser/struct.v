@@ -229,6 +229,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
+					comments << p.eat_comments()
 				}
 				// TODO merge table and ast Fields?
 				ast_fields << ast.StructField{
@@ -344,10 +345,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			expr = p.expr(0)
 			comments = p.eat_line_end_comments()
 			last_field_pos := expr.position()
+			field_len := if last_field_pos.len > 0 { last_field_pos.pos - first_field_pos.pos +
+					last_field_pos.len } else { first_field_pos.len + 1 }
 			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
-				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
+				len: field_len
 			}
 		}
 		i++
@@ -452,16 +455,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
-		mcomments := p.eat_comments()
+		mcomments := p.eat_line_end_comments()
+		mnext_comments := p.eat_comments()
 		method.comments = mcomments
+		method.next_comments = mnext_comments
 		methods << method
 		// println('register method $name')
-		ts.register_method(
-			name: name
-			params: args
-			return_type: method.return_type
-			is_pub: true
-		)
+		ts.register_method(name: name, params: args, return_type: method.return_type, is_pub: true)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
