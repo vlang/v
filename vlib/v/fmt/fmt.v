@@ -1932,9 +1932,13 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	} else {
 		use_short_args := f.use_short_fn_args
 		f.use_short_fn_args = false
-		mut multiline_short_args := false
+		mut multiline_short_args := it.pre_comments.len > 0
 		if !use_short_args {
 			f.writeln('$name{')
+		} else {
+			if multiline_short_args {
+				f.writeln('')
+			}
 		}
 		init_start := f.out.len
 		f.indent++
