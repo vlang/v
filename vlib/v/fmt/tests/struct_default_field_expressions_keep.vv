@@ -1,8 +1,14 @@
 struct Foo {
-	i int = 1
+	i int = 1 // A comment
 }
 
 struct Bar {
 	f Foo = &Foo(0)
 	z int [skip] = -1
+}
+
+struct Baz {
+	x int = 1 // It's one
+	y string = 'one' // It's one written out
+	z bool = true // Also one
 }
