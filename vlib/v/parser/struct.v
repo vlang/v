@@ -459,12 +459,7 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		method.comments = mcomments
 		methods << method
 		// println('register method $name')
-		ts.register_method(
-			name: name
-			params: args
-			return_type: method.return_type
-			is_pub: true
-		)
+		ts.register_method(name: name, params: args, return_type: method.return_type, is_pub: true)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)
