@@ -344,11 +344,8 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			expr = p.expr(0)
 			comments = p.eat_line_end_comments()
 			last_field_pos := expr.position()
-			field_len := if last_field_pos.len > 0 {
-				last_field_pos.pos - first_field_pos.pos + last_field_pos.len
-			} else {
-				first_field_pos.len + 1
-			}
+			field_len := if last_field_pos.len > 0 { last_field_pos.pos - first_field_pos.pos +
+					last_field_pos.len } else { first_field_pos.len + 1 }
 			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
