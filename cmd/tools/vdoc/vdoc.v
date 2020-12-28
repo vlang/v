@@ -145,7 +145,7 @@ struct SearchModuleResult {
 }
 
 struct SearchResult {
-	full        string
+	prefix      string
 	badge       string
 	description string
 	link        string
@@ -743,7 +743,7 @@ fn (mut cfg DocConfig) create_search_results(mod string, dn doc.DocNode) {
 	dn_description := trim_doc_node_description(dn.comment)
 	cfg.search_index << dn.name
 	cfg.search_data << SearchResult{
-		full: '$dn.kind ${get_sym_name(dn)}'
+		prefix: '$dn.kind ($dn.parent_name)'
 		description: dn_description
 		badge: mod
 		link: cfg.get_file_name(mod) + '#' + get_node_id(dn)
@@ -787,7 +787,7 @@ fn (cfg DocConfig) render_search_index() {
 		data := cfg.search_data[i]
 		js_search_index.write('"$title",')
 		// array instead of object to reduce file size
-		js_search_data.write('["$data.badge","$data.description","$data.link","$data.full"],')
+		js_search_data.write('["$data.badge","$data.description","$data.link","$data.prefix"],')
 	}
 	js_search_index.writeln('];')
 	js_search_data.writeln('];')

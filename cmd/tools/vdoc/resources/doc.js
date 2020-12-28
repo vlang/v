@@ -134,12 +134,12 @@ function setupSearch() {
                 var badge = data[0];
                 var description = data[1];
                 var link = data[2];
-                var title = data[3];
+                var prefix = data[3];
                 results.push({
                     badge: badge,
                     description: description,
                     link: link,
-                    title: title,
+                    title: prefix + ' ' + title,
                 });
             }
             results.sort(function(a, b) {
