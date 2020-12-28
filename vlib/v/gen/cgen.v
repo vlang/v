@@ -3068,7 +3068,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 				left_type_str := g.table.type_to_str(node.left_type)
 				g.write('ADDR($left_type_str, ')
 				g.expr(node.left)
-				g.write	(')')
+				g.write(')')
 			} else {
 				g.expr(node.left)
 			}
@@ -3076,7 +3076,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			if !node.right_type.is_ptr() {
 				g.write('ADDR(map, ')
 				g.expr(node.right)
-				g.write	(')')
+				g.write(')')
 			} else {
 				g.expr(node.right)
 			}
