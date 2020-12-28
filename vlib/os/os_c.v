@@ -876,7 +876,7 @@ pub fn create(path string) ?File {
 // the child process will take control over execution.
 pub fn execvp(cmdpath string, args []string) ? {
 	mut cargs := []charptr{}
-	cargs << cmdpath.str
+	cargs << charptr(cmdpath.str)
 	for i in 0 .. args.len {
 		cargs << charptr(args[i].str)
 	}
