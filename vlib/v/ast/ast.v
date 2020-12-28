@@ -163,11 +163,11 @@ pub struct ConstField {
 pub:
 	mod      string
 	name     string
-	expr     Expr // the value expr of field,after =
+	expr     Expr // the value expr of field; everything after `=`
 	is_pub   bool
 	pos      token.Position
 pub mut:
-	typ      table.Type // type of const field,const field in V can be any type
+	typ      table.Type // the type of the const field, it can be any type in V
 	comments []Comment // comments before current const field
 }
 
@@ -177,7 +177,7 @@ pub:
 	is_pub       bool
 	pos          token.Position
 pub mut:
-	fields       []ConstField // all the const fields
+	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment // comments that after last const field
 }
 
@@ -260,11 +260,11 @@ pub mut:
 // import statement
 pub struct Import {
 pub:
-	mod   string // imported module name
-	alias string // if use import xxx as x,alias is different from mod
+	mod   string // the module name of the import
+	alias string // the `x` in `import xxx as x`
 	pos   token.Position
 pub mut:
-	syms  []ImportSymbol // for import {symbol} syntax,Parser find symbol=>module.symbol
+	syms  []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
 }
 
 // import symbol,for import {symbol} syntax
@@ -279,7 +279,7 @@ pub struct AnonFn {
 pub:
 	decl FnDecl
 pub mut:
-	typ  table.Type // type of anonymous function variable,the same with decl.name,it's auto generated
+	typ  table.Type // the type of anonymous fn. Both .typ and .decl.name are auto generated
 }
 
 // function or method declaration
@@ -355,7 +355,7 @@ pub struct AutofreeArgVar {
 	idx  int
 }
 */
-// function call argument
+// function call argument: `f(callarg)`
 pub struct CallArg {
 pub:
 	is_mut          bool
@@ -442,18 +442,19 @@ pub mut:
 	end_comments []Comment
 }
 
-// each V source file will generate an ast.File.
-// when V compiler runs,the Parser will generate from [ ]os.File to [ ]ast.File
+// Each V source file is represented by one ast.File structure.
+// When the V compiler runs, the parser will fill an []ast.File.
+// That array is then passed to V's checker.
 pub struct File {
 pub:
 	path             string // path of the source file
-	mod              Module // current module
+	mod              Module // the module of the source file (from `module xyz` at the top)
 	global_scope     &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt // all the statments in the source file
+	stmts            []Stmt // all the statements in the source file
 	imports          []Import // all the imports
-	imported_symbols map[string]string // use for import {symbol},Parser find symbol=>module.symbol
+	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error // all the checker errors in the file
 	warnings         []errors.Warning // all the checker warings in the file
 	generic_fns      []&FnDecl
@@ -777,8 +778,8 @@ pub:
 	pos           token.Position
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
-	expr          Expr // the value of current EnumField
-	has_expr      bool // true, when expr is not null
+	expr          Expr // the value of current EnumField; 123 in `ename = 123`
+	has_expr      bool // true, when .expr has a value
 }
 
 // enum declaration
