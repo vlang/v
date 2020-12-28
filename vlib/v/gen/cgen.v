@@ -3064,12 +3064,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			return
 		} else if right_sym.kind == .map {
 			g.write('_IN_MAP(')
-			g.expr(node.left)
-			g.write(', ')
-			if node.right_type.is_ptr() {
-				g.write('*')
+			if !node.left_type.is_ptr() {
+				left_type_str := g.table.type_to_str(node.left_type)
+				g.write('ADDR($left_type_str, ')
+				g.expr(node.left)
+				g.write	(')')
+			} else {
+				g.expr(node.left)
 			}
-			g.expr(node.right)
+			g.write(', ')
+			if !node.right_type.is_ptr() {
+				g.write('ADDR(map, ')
+				g.expr(node.right)
+				g.write	(')')
+			} else {
+				g.expr(node.right)
+			}
 			g.write(')')
 		} else if right_sym.kind == .string {
 			g.write('string_contains(')
