@@ -69,6 +69,7 @@ const (
 		'vlib/strings/',
 		'vlib/time/',
 		'vlib/vweb/',
+		'vlib/x/websocket/',
 	]
 )
 
