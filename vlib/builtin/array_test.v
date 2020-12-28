@@ -1258,7 +1258,7 @@ struct Coord {
 	z int
 }
 
-fn test__array_struct_contains() {
+fn test_array_struct_contains() {
 	mut coords := []Coord{}
 	coord_1 := Coord{
 		x: 1
@@ -1273,7 +1273,7 @@ fn test__array_struct_contains() {
 	assert not_exists == false
 }
 
-fn test__array_struct_ref_contains() {
+fn test_array_struct_ref_contains() {
 	mut coords := []&Coord{}
 	coord_1 := &Coord{
 		x: 1
