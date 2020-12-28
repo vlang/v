@@ -7,17 +7,17 @@ import v.pref
 const (
 	skip_with_sanitize  = [
 		'vlib/x/websocket/websocket_test.v'
-		// 'vlib/encoding/csv/reader_test.v',
-		// 'vlib/net/tcp_test.v',
-		// 'vlib/net/tcp_simple_client_server_test.v',
-		// 'vlib/net/udp_test.v',
-		// 'vlib/net/http/cookie_test.v',
-		// 'vlib/net/http/http_test.v',
-		// 'vlib/net/http/status_test.v',
-		// 'vlib/orm/orm_test.v',
-		// 'vlib/sqlite/sqlite_test.v',
-		// 'vlib/vweb/tests/vweb_test.v',
-		// 'vlib/x/websocket/websocket_test.v'
+		'vlib/encoding/csv/reader_test.v',
+		'vlib/net/tcp_test.v',
+		'vlib/net/tcp_simple_client_server_test.v',
+		'vlib/net/udp_test.v',
+		'vlib/net/http/cookie_test.v',
+		'vlib/net/http/http_test.v',
+		'vlib/net/http/status_test.v',
+		'vlib/orm/orm_test.v',
+		'vlib/sqlite/sqlite_test.v',
+		'vlib/vweb/tests/vweb_test.v',
+		'vlib/x/websocket/websocket_test.v'
 	]
 	skip_test_files     = [
 		'vlib/net/http/http_httpbin_test.v',
