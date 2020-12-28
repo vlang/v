@@ -641,7 +641,9 @@ pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
-		return typ.clear_flag(.variadic)
+		// return typ.clear_flag(.variadic)
+		array_info := typ_sym.info as Array
+		return array_info.elem_type
 	}
 	if typ_sym.kind == .array {
 		// Check index type

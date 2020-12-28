@@ -61,14 +61,14 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 		}
 	}
 	// if varg, generate str for varg
-	if typ.has_flag(.variadic) {
-		varg_already_generated_key := 'varg_$already_generated_key'
-		if varg_already_generated_key !in g.str_types {
-			g.gen_str_for_varg(styp, str_fn_name, sym_has_str_method)
-			g.str_types << varg_already_generated_key
-		}
-		return 'varg_$str_fn_name'
-	}
+	// if typ.has_flag(.variadic) {
+	// 	varg_already_generated_key := 'varg_$already_generated_key'
+	// 	if varg_already_generated_key !in g.str_types {
+	// 		g.gen_str_for_varg(styp, str_fn_name, sym_has_str_method)
+	// 		g.str_types << varg_already_generated_key
+	// 	}
+	// 	return 'varg_$str_fn_name'
+	// }
 	if typ.has_flag(.optional) {
 		option_already_generated_key := 'option_$already_generated_key'
 		if option_already_generated_key !in g.str_types {

@@ -2745,6 +2745,10 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
+		ast.ArrayDecomposition {
+			g.write('/* Array decompose */')
+			g.expr(node.expr)
+		}
 	}
 }
 
@@ -3808,13 +3812,14 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		else {
 			sym := g.table.get_type_symbol(node.left_type)
 			left_is_ptr := node.left_type.is_ptr()
-			if node.left_type.has_flag(.variadic) {
-				g.expr(node.left)
-				g.write('.args')
-				g.write('[')
-				g.expr(node.index)
-				g.write(']')
-			} else if sym.kind == .array {
+			// if node.left_type.has_flag(.variadic) {
+			// 	g.expr(node.left)
+			// 	g.write('.args')
+			// 	g.write('[')
+			// 	g.expr(node.index)
+			// 	g.write(']')
+			// } else if sym.kind == .array {
+			if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
 				elem_typ := g.table.get_type_symbol(info.elem_type)

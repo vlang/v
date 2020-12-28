@@ -221,7 +221,8 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 			if varg_type_str !in g.variadic_args {
 				g.variadic_args[varg_type_str] = 0
 			}
-			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
+			// TODO: do we need the replacement? isnt it handled in typ()
+			arg_type_name = g.typ(arg.typ).replace('*', '_ptr')
 		}
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as table.FnType
@@ -765,8 +766,11 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	expected_types := node.expected_arg_types
 	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].has_flag(.variadic)
 	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.has_flag(.variadic)
-	gen_vargs := is_variadic && !is_forwarding_varg
+	mut gen_vargs := is_variadic && !is_forwarding_varg
 	for i, arg in args {
+		// if arg is ast.ArrayDecomposition {
+		// 	gen_vargs = true
+		// }
 		if gen_vargs && i == expected_types.len - 1 {
 			break
 		}
@@ -825,25 +829,36 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	arg_nr := expected_types.len - 1
 	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
+		varg_styp := g.typ(varg_type)
 		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_nr
+		last_arg := args[args.len - 1]
 		varg_type_str := int(varg_type).str()
 		if variadic_count > g.variadic_args[varg_type_str] {
 			g.variadic_args[varg_type_str] = variadic_count
 		}
-		g.write('($struct_name){.len=$variadic_count,.args={')
-		if variadic_count > 0 {
-			for j in arg_nr .. args.len {
-				g.ref_or_deref_arg(args[j], varg_type)
-				if j < args.len - 1 {
-					g.write(', ')
-				}
-			}
+		arr_sym := g.table.get_type_symbol(varg_type)
+		arr_info := arr_sym.info as table.Array
+		elem_type := g.typ(arr_info.elem_type)
+		if last_arg.expr is ast.ArrayDecomposition {
+			g.expr(last_arg.expr)
 		} else {
-			// NB: tcc can not handle 0 here, while msvc needs it
-			g.write('EMPTY_VARG_INITIALIZATION')
+			g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
+			// g.write('($struct_name){.len=$variadic_count,.args={')
+			if variadic_count > 0 {
+				for j in arg_nr .. args.len {
+					g.ref_or_deref_arg(args[j], varg_type)
+					if j < args.len - 1 {
+						g.write(', ')
+					}
+				}
+			} else {
+				// NB: tcc can not handle 0 here, while msvc needs it
+				g.write('EMPTY_VARG_INITIALIZATION')
+			}
+			g.write('}))')
+			// g.write('}}')
 		}
-		g.write('}}')
 	}
 }
 

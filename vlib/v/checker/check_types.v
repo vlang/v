@@ -63,6 +63,16 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
+	// variadic
+	if expected.has_flag(.variadic) {
+		if got_type_sym.kind == .array && !got.has_flag(.variadic) {
+			return false
+		}
+		exp_info := exp_type_sym.info as table.Array
+		if c.check_types(got, exp_info.elem_type) {
+			return true
+		}
+	}
 	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary
