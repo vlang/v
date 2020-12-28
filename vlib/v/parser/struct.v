@@ -229,6 +229,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
+					comments << p.eat_comments()
 				}
 				// TODO merge table and ast Fields?
 				ast_fields << ast.StructField{
