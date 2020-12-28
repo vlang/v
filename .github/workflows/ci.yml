@@ -325,6 +325,8 @@ jobs:
          ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=memory)
+      run: ./v -cflags -fsanitize=memory test-fixed
     - name: Valgrind
       run: valgrind --error-exitcode=1 ./v -o v.c cmd/v
     - name: Run sanitizers
@@ -344,8 +346,6 @@ jobs:
         ./v -silent test-fixed
     - name: Fixed tests (-prod)
       run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
-    - name: Fixed tests (-fsanitize)
-      run: ./v -cflags -fsanitize=memory
     - name: Build examples
       run: ./v build-examples
     - name: Build examples with -autofree
