@@ -125,7 +125,11 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		}
 		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
-		e := p.expr(0)
+		mut e := p.expr(0)
+		if mut e is ast.StructInit {
+			e.pre_comments << comments
+			comments = []ast.Comment{}
+		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
 		comments << p.eat_comments()
 		args << ast.CallArg{

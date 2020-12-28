@@ -1932,14 +1932,18 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	} else {
 		use_short_args := f.use_short_fn_args
 		f.use_short_fn_args = false
-		mut multiline_short_args := false
+		mut multiline_short_args := it.pre_comments.len > 0
 		if !use_short_args {
 			f.writeln('$name{')
+		} else {
+			if multiline_short_args {
+				f.writeln('')
+			}
 		}
 		init_start := f.out.len
-		f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
 		f.indent++
 		short_args_loop: for {
+			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
 			for i, field in it.fields {
 				f.write('$field.name: ')
 				f.prefix_expr_cast_expr(field.expr)
