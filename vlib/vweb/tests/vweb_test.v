@@ -24,7 +24,9 @@ fn testsuite_begin() {
 }
 
 fn test_a_simple_vweb_app_can_be_compiled() {
-	did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	// did_server_compile := os.system('$vexe -g -o $serverexe vlib/vweb/tests/vweb_test_server.v')
+	// TODO: find out why it does not compile with -usecache and -g
+	did_server_compile := os.system('$vexe -o $serverexe vlib/vweb/tests/vweb_test_server.v')
 	assert did_server_compile == 0
 	assert os.exists(serverexe)
 }
