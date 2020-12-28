@@ -881,7 +881,7 @@ pub fn execvp(cmdpath string, args []string) ? {
 		cargs << args[i].str
 	}
 	cargs << charptr(0)
-	res := C.execvp(cmdpath.str, cargs.data)
+	res := C.execvp(charptr(cmdpath.str), cargs.data)
 	if res == -1 {
 		return error(posix_get_error_msg(C.errno))
 	}
