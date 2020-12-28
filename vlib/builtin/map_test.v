@@ -367,6 +367,17 @@ fn test_map_in_mut() {
 	assert m['one'] == 2
 }
 
+fn test_map_in() {
+	m := {
+		'Foo': 'bar'
+	}
+	if 'foo'.capitalize() in m {
+		println('ok')
+	} else {
+		assert false
+	}
+}
+
 fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 	if m['one'] == 1 {
 		m['three'] = 3
