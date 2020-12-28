@@ -2,9 +2,22 @@
 
 [TOC]
 
-## introduction
+## Introduction, differences with PCRE
 
-Write here the introduction... not today!! -_-
+The first thing we must point out is that the **V-Regex module is not PCRE compliant** and
+thus some behaviour will be different.
+This module is born upon the V philosophy to have one way and keep it simple.
+The main differences can be summarized in the following points:
+
+- The basic element **is the token not the sequence of symbols**, the most simple token
+is  simple char.
+
+- `|` **OR operator act on token,** for example `abc|ebc` is not `abc` OR `ebc` it 
+is evaluated like `ab` followed by `c OR e` followed by`bc`, this because the **token is
+the base element** not the sequence of symbols.
+- The **match operation stop at the end of the string** not at the new line chars.
+
+Further information can be found in the other part of this document.
 
 ## Basic assumption
 

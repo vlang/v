@@ -1960,7 +1960,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					continue
 				}
 				
-				if re.prog[state.pc].dot_check_pc >= 0 {
+				if re.prog[state.pc].dot_check_pc >= 0 && re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
 					// load the char
 					//ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
@@ -2338,6 +2338,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//println("find return")
 					return state.first_match, state.i
 				} else {
+					//println("Here!!")
 					return 0, state.i
 				}
 			}

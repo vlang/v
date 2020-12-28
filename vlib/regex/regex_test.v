@@ -123,6 +123,7 @@ match_test_suite = [
 	TestItem{"accccb deer", r"^a(.*)b d(.+)",0,11},
 	TestItem{"accccb deer", r"^(.*)$",0,11},
 	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,0},
+	TestItem{"##.#....#.##.####...#.##", r".{18}[.#]",0,19},
 
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
