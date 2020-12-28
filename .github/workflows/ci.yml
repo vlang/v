@@ -761,10 +761,10 @@ jobs:
     - name: v up
       run: |
         ./v cmd/tools/oldv.v
-        ./cmd/tools/oldv HEAD^^^^^
+        ./cmd/tools/oldv -v HEAD^^^^^
         cd /tmp/v_at_HEAD_____/
         ./v version
-        ./v up
+        ./v -v up
         ./v version
         ./v  -o v2 cmd/v
         ./v2 -o v3 cmd/v
