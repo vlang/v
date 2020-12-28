@@ -3036,23 +3036,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.eq, .ne] && left_sym.kind == .struct_ && right_sym.kind == .struct_ {
-		ptr_typ := g.gen_struct_equality_fn(left_type)
-		if node.op == .eq {
-			g.write('${ptr_typ}_struct_eq(')
-		} else if node.op == .ne {
-			g.write('!${ptr_typ}_struct_eq(')
-		}
-		if node.left_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(node.left)
-		g.write(', ')
-		if node.right_type.is_ptr() {
-			g.write('*')
-		}
-		g.expr(node.right)
-		g.write(')')
 	} else if node.op in [.key_in, .not_in] {
 		if node.op == .not_in {
 			g.write('!')
