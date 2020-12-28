@@ -53,8 +53,8 @@ pub mut:
 	scope_returns                    bool
 	mod                              string // current module name
 	is_builtin_mod                   bool // are we in `builtin`?
-	inside_unsafe                    bool
-	inside_const                     bool
+	inside_unsafe                    bool // are we inside `unsafe{}`?
+	inside_const                     bool /// are we in `const` block?
 	skip_flags                       bool // should `#flag` and `#include` be skipped
 	cur_generic_type                 table.Type
 mut:
@@ -318,6 +318,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 					node.pos)
 			} else if typ_sym.kind == .chan {
 				c.error('aliases of `chan` types are not allowed.', node.pos)
+			} else if typ_sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod {
+				c.error('cannot type alias `$typ_sym.name`', node.pos)
 			}
 		}
 		ast.FnTypeDecl {
@@ -351,6 +353,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 					c.error("type `$sym.name` doesn't exist", node.pos)
 				} else if sym.kind == .interface_ {
 					c.error('sum type cannot hold an interface', node.pos)
+				} else if sym.kind in [table.Kind.any_float, .any_int] {
+					c.error('cannot use `$sym.name` in sum type', variant.pos)
 				}
 				names_used << sym.name
 			}
