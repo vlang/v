@@ -2325,6 +2325,45 @@ fn (mut g Gen) gen_anon_fn_decl(it ast.AnonFn) {
 	g.definitions.write(fn_body)
 }
 
+fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, string) {
+	mut hash_fn := ''
+	mut key_eq_fn := ''
+	mut clone_fn := ''
+	mut free_fn := '&map_free_nop'
+	match key_typ.kind {
+		.byte, .bool, .i8, .char {
+			hash_fn = '&map_hash_int_2'
+			key_eq_fn = '&map_eq_int_2'
+			clone_fn = '&map_clone_int_2'
+		}
+		.i16, .u16 {
+			hash_fn = '&map_hash_int_2'
+			key_eq_fn = '&map_eq_int_2'
+			clone_fn = '&map_clone_int_2'
+		}
+		.int, .u32 {
+			hash_fn = '&map_hash_int_4'
+			key_eq_fn = '&map_eq_int_4'
+			clone_fn = '&map_clone_int_4'
+		}
+		.byteptr, .charptr, .voidptr, .u64, .i64 {
+			hash_fn = '&map_hash_int_8'
+			key_eq_fn = '&map_eq_int_8'
+			clone_fn = '&map_clone_int_8'
+		}
+		.string {
+			hash_fn = '&map_hash_string'
+			key_eq_fn = '&map_eq_string'
+			clone_fn = '&map_clone_string'
+			free_fn = '&map_free_string'
+		}
+		else {
+			verror('map key type not supported')
+		}
+	}
+	return hash_fn, key_eq_fn, clone_fn, free_fn
+}
+
 fn (mut g Gen) expr(node ast.Expr) {
 	// println('cgen expr() line_nr=$node.pos.line_nr')
 	// NB: please keep the type names in the match here in alphabetical order:
@@ -2513,6 +2552,8 @@ fn (mut g Gen) expr(node ast.Expr) {
 			key_typ_str := g.typ(node.key_type)
 			value_typ_str := g.typ(node.value_type)
 			value_typ := g.table.get_type_symbol(node.value_type)
+			key_typ := g.table.get_type_symbol(node.key_type)
+			hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
 			size := node.vals.len
 			mut shared_styp := '' // only needed for shared &[]{...}
 			mut styp := ''
@@ -2535,9 +2576,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			}
 			if size > 0 {
 				if value_typ.kind == .function {
-					g.write('new_map_init_1($size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
+					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof(voidptr), _MOV(($key_typ_str[$size]){')
 				} else {
-					g.write('new_map_init_1($size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
+					g.write('new_map_init_2($hash_fn, $key_eq_fn, $clone_fn, $free_fn, $size, sizeof($key_typ_str), sizeof($value_typ_str), _MOV(($key_typ_str[$size]){')
 				}
 				for expr in node.keys {
 					g.expr(expr)
@@ -2554,7 +2595,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 				}
 				g.write('}))')
 			} else {
-				g.write('new_map(sizeof($key_typ_str), sizeof($value_typ_str))')
+				g.write('new_map_2(sizeof($key_typ_str), sizeof($value_typ_str), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)')
 			}
 			if g.is_shared {
 				g.write(', .mtx = sync__new_rwmutex()}')
@@ -4060,7 +4101,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 	}
 	// regular cases
-	if fn_return_is_multi { // not_optional_none { //&& !fn_return_is_optional {
+	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) { // not_optional_none { //&& !fn_return_is_optional {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
@@ -4141,7 +4182,12 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name != 'Option' {
+		mut expr_type_is_opt := node.types[0].has_flag(.optional)
+		expr0 := node.exprs[0]
+		if expr0 is ast.CallExpr {
+			expr_type_is_opt = expr0.return_type.has_flag(.optional)
+		}
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
@@ -5130,9 +5176,9 @@ fn (mut g Gen) type_default(typ_ table.Type) string {
 	}
 	if sym.kind == .map {
 		info := sym.map_info()
-		key_type_str := g.typ(info.key_type)
-		value_type_str := g.typ(info.value_type)
-		return 'new_map(sizeof($key_type_str), sizeof($value_type_str))'
+		key_typ := g.table.get_type_symbol(info.key_type)
+		hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_typ)
+		return 'new_map_2(sizeof(${g.typ(info.key_type)}), sizeof(${g.typ(info.value_type)}), $hash_fn, $key_eq_fn, $clone_fn, $free_fn)'
 	}
 	// User struct defined in another module.
 	// if typ.contains('__') {

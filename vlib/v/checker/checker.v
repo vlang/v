@@ -1720,7 +1720,8 @@ fn (mut c Checker) type_implements(typ table.Type, inter_typ table.Type, pos tok
 			}
 			continue
 		}
-		c.error("`$styp` doesn't implement method `$imethod.name`", pos)
+		c.error("`$styp` doesn't implement method `$imethod.name` of interface `$inter_sym.name`",
+			pos)
 	}
 	if mut inter_sym.info is table.Interface {
 		if typ !in inter_sym.info.types && typ_sym.kind != .interface_ {
@@ -2025,6 +2026,14 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			pos := return_stmt.exprs[i].position()
 			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
+		}
+	}
+	if exp_is_optional && return_stmt.exprs.len > 0 {
+		expr0 := return_stmt.exprs[0]
+		if expr0 is ast.CallExpr {
+			if expr0.or_block.kind == .propagate {
+				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
+			}
 		}
 	}
 }
@@ -2369,6 +2378,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			c.check_expected(right_type_unwrapped, left_type_unwrapped) or {
 				c.error('cannot assign to `$left`: $err', right.position())
 			}
+		}
+		if left_sym.kind == .interface_ {
+			c.type_implements(right_type, left_type, right.position())
 		}
 	}
 	// this needs to run after the assign stmt left exprs have been run through checker so that ident.obj is set

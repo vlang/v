@@ -691,13 +691,6 @@ fn test_array_str() {
 	// assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
 }
 
-fn test_eq() {
-	/*
-	assert [5, 6, 7].eq([6, 7]) == false
-	assert [`a`, `b`].eq([`a`, `b`]) == true
-	*/
-}
-
 struct User {
 	age  int
 	name string
@@ -1250,4 +1243,38 @@ fn test_struct_array_of_multi_type_index() {
 	}]
 	println(people.index(ivan))
 	assert people.index(ivan) == 0
+}
+
+struct Coord {
+	x int
+	y int
+	z int
+}
+
+fn test_array_struct_contains() {
+	mut coords := []Coord{}
+	coord_1 := Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	not_exists := coord_1 !in coords
+	println('`exists`: $exists and `not exists`: $not_exists')
+	assert exists == true
+	assert not_exists == false
+}
+
+fn test_array_struct_ref_contains() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	println(exists)
+	assert exists == true
 }

@@ -7,13 +7,13 @@ import math.bits
 import rand.util
 import hash as wyhash
 
-// Redefinition of some constants that we will need for pseudorandom number generation
+// Redefinition of some constants that we will need for pseudorandom number generation.
 const (
 	wyp0 = u64(0xa0761d6478bd642f)
 	wyp1 = u64(0xe7037ed1a0b428db)
 )
 
-// RNG based on the WyHash hashing algorithm
+// WyRandRNG is a RNG based on the WyHash hashing algorithm.
 pub struct WyRandRNG {
 mut:
 	state     u64 = util.time_seed_64()
@@ -21,7 +21,7 @@ mut:
 	extra     u32
 }
 
-// seed() - Set the seed, needs only two u32s in little endian format as [lower, higher]
+// seed sets the seed, needs only two `u32`s in little-endian format as [lower, higher].
 pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	if seed_data.len != 2 {
 		eprintln('WyRandRNG needs 2 32-bit unsigned integers as the seed.')
@@ -31,7 +31,7 @@ pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	rng.has_extra = false
 }
 
-// rng.u32() updates the PRNG state and returns the next pseudorandom u32
+// u32 updates the PRNG state and returns the next pseudorandom `u32`.
 [inline]
 pub fn (mut rng WyRandRNG) u32() u32 {
 	if rng.has_extra {
@@ -46,7 +46,7 @@ pub fn (mut rng WyRandRNG) u32() u32 {
 	return lower
 }
 
-// rng.u64() updates the PRNG state and returns the next pseudorandom u64
+// u64 updates the PRNG state and returns the next pseudorandom `u64`.
 [inline]
 pub fn (mut rng WyRandRNG) u64() u64 {
 	unsafe {
@@ -58,7 +58,7 @@ pub fn (mut rng WyRandRNG) u64() u64 {
 	return 0
 }
 
-// rng.u32n(max) returns a pseudorandom u32 less than the max
+// u32n returns a pseudorandom `u32` less than `max`.
 [inline]
 pub fn (mut rng WyRandRNG) u32n(max u32) u32 {
 	if max == 0 {
@@ -86,7 +86,7 @@ pub fn (mut rng WyRandRNG) u32n(max u32) u32 {
 	return u32(0)
 }
 
-// rng.u64n(max) returns a pseudorandom u64 less than the max
+// u64n returns a pseudorandom `u64` less than `max`.
 [inline]
 pub fn (mut rng WyRandRNG) u64n(max u64) u64 {
 	if max == 0 {
@@ -113,7 +113,7 @@ pub fn (mut rng WyRandRNG) u64n(max u64) u64 {
 	return u64(0)
 }
 
-// rng.u32n(min, max) returns a pseudorandom u32 value that is guaranteed to be in [min, max)
+// u32n returns a pseudorandom `u32` value that is guaranteed to be in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) u32_in_range(min u32, max u32) u32 {
 	if max <= min {
@@ -123,7 +123,7 @@ pub fn (mut rng WyRandRNG) u32_in_range(min u32, max u32) u32 {
 	return min + rng.u32n(max - min)
 }
 
-// rng.u64n(min, max) returns a pseudorandom u64 value that is guaranteed to be in [min, max)
+// u64n returns a pseudorandom `u64` value that is guaranteed to be in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) u64_in_range(min u64, max u64) u64 {
 	if max <= min {
@@ -133,31 +133,31 @@ pub fn (mut rng WyRandRNG) u64_in_range(min u64, max u64) u64 {
 	return min + rng.u64n(max - min)
 }
 
-// rng.int() returns a pseudorandom 32-bit int (which may be negative)
+// int returns a (possibly negative) pseudorandom 32-bit `int`.
 [inline]
 pub fn (mut rng WyRandRNG) int() int {
 	return int(rng.u32())
 }
 
-// rng.i64() returns a pseudorandom 64-bit i64 (which may be negative)
+// i64 returns a (possibly negative) pseudorandom 64-bit `i64`.
 [inline]
 pub fn (mut rng WyRandRNG) i64() i64 {
 	return i64(rng.u64())
 }
 
-// rng.int31() returns a pseudorandom 31-bit int which is non-negative
+// int31 returns a positive pseudorandom 31-bit `int`.
 [inline]
 pub fn (mut rng WyRandRNG) int31() int {
 	return int(rng.u32() & util.u31_mask) // Set the 32nd bit to 0.
 }
 
-// rng.int63() returns a pseudorandom 63-bit int which is non-negative
+// int63 returns a positive pseudorandom 63-bit `i64`.
 [inline]
 pub fn (mut rng WyRandRNG) int63() i64 {
 	return i64(rng.u64() & util.u63_mask) // Set the 64th bit to 0.
 }
 
-// rng.intn(max) returns a pseudorandom int that lies in [0, max)
+// intn returns a pseudorandom `int` in range `[0, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) intn(max int) int {
 	if max <= 0 {
@@ -167,7 +167,7 @@ pub fn (mut rng WyRandRNG) intn(max int) int {
 	return int(rng.u32n(u32(max)))
 }
 
-// rng.i64n(max) returns a pseudorandom int that lies in [0, max)
+// i64n returns a pseudorandom int that lies in `[0, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) i64n(max i64) i64 {
 	if max <= 0 {
@@ -177,7 +177,7 @@ pub fn (mut rng WyRandRNG) i64n(max i64) i64 {
 	return i64(rng.u64n(u64(max)))
 }
 
-// rng.int_in_range(min, max) returns a pseudorandom int that lies in [min, max)
+// int_in_range returns a pseudorandom `int` in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) int_in_range(min int, max int) int {
 	if max <= min {
@@ -188,7 +188,7 @@ pub fn (mut rng WyRandRNG) int_in_range(min int, max int) int {
 	return min + rng.intn(max - min)
 }
 
-// rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) i64_in_range(min i64, max i64) i64 {
 	if max <= min {
@@ -198,19 +198,19 @@ pub fn (mut rng WyRandRNG) i64_in_range(min i64, max i64) i64 {
 	return min + rng.i64n(max - min)
 }
 
-// rng.f32() returns a pseudorandom f32 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+// f32 returns a pseudorandom `f32` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng WyRandRNG) f32() f32 {
 	return f32(rng.u32()) / util.max_u32_as_f32
 }
 
-// rng.f64() returns a pseudorandom f64 value between 0.0 (inclusive) and 1.0 (exclusive) i.e [0, 1)
+// f64 returns a pseudorandom `f64` value in range `[0, 1)`.
 [inline]
 pub fn (mut rng WyRandRNG) f64() f64 {
 	return f64(rng.u64()) / util.max_u64_as_f64
 }
 
-// rng.f32n() returns a pseudorandom f32 value in [0, max)
+// f32n returns a pseudorandom `f32` value in range `[0, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) f32n(max f32) f32 {
 	if max <= 0 {
@@ -220,7 +220,7 @@ pub fn (mut rng WyRandRNG) f32n(max f32) f32 {
 	return rng.f32() * max
 }
 
-// rng.f64n() returns a pseudorandom f64 value in [0, max)
+// f64n returns a pseudorandom `f64` value in range `[0, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) f64n(max f64) f64 {
 	if max <= 0 {
@@ -230,7 +230,7 @@ pub fn (mut rng WyRandRNG) f64n(max f64) f64 {
 	return rng.f64() * max
 }
 
-// rng.f32_in_range(min, max) returns a pseudorandom f32 that lies in [min, max)
+// f32_in_range returns a pseudorandom `f32` in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) f32_in_range(min f32, max f32) f32 {
 	if max <= min {
@@ -240,7 +240,7 @@ pub fn (mut rng WyRandRNG) f32_in_range(min f32, max f32) f32 {
 	return min + rng.f32n(max - min)
 }
 
-// rng.i64_in_range(min, max) returns a pseudorandom i64 that lies in [min, max)
+// i64_in_range returns a pseudorandom `i64` in range `[min, max)`.
 [inline]
 pub fn (mut rng WyRandRNG) f64_in_range(min f64, max f64) f64 {
 	if max <= min {

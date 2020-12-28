@@ -308,52 +308,10 @@ fn map_free_string(pkey voidptr) {
 fn map_free_nop(_ voidptr) {
 }
 
-// bootstrap
-fn new_map_1(value_bytes int) map {
-	return new_map(int(sizeof(string)), value_bytes)
-}
-
-fn new_map(key_bytes int, value_bytes int) map {
+fn new_map_2(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	metasize := int(sizeof(u32) * (init_capicity + extra_metas_inc))
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > sizeof(voidptr)
-	mut hash_fn := MapHashFn(0)
-	mut key_eq_fn := MapEqFn(0)
-	mut clone_fn := MapCloneFn(0)
-	match key_bytes {
-		// assume non-string keys are bitwise comparable
-		1 {
-			hash_fn = &map_hash_int_1
-			key_eq_fn = &map_eq_int_1
-			clone_fn = &map_clone_int_1
-		}
-		2 {
-			hash_fn = &map_hash_int_2
-			key_eq_fn = &map_eq_int_2
-			clone_fn = &map_clone_int_2
-		}
-		4 {
-			hash_fn = &map_hash_int_4
-			key_eq_fn = &map_eq_int_4
-			clone_fn = &map_clone_int_4
-		}
-		8 {
-			hash_fn = &map_hash_int_8
-			key_eq_fn = &map_eq_int_8
-			clone_fn = &map_clone_int_8
-		}
-		else {
-			hash_fn = &map_hash_string
-			key_eq_fn = &map_eq_string
-			clone_fn = &map_clone_string
-		}
-	}
-	mut free_fn := MapFreeFn(0)
-	if has_string_keys {
-		free_fn = &map_free_string
-	} else {
-		free_fn = &map_free_nop
-	}
 	return map{
 		key_bytes: key_bytes
 		value_bytes: value_bytes
@@ -372,12 +330,8 @@ fn new_map(key_bytes int, value_bytes int) map {
 	}
 }
 
-fn new_map_init(n int, value_bytes int, keys &string, values voidptr) map {
-	return new_map_init_1(n, int(sizeof(string)), value_bytes, keys, values)
-}
-
-fn new_map_init_1(n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
-	mut out := new_map(key_bytes, value_bytes)
+fn new_map_init_2(hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn, n int, key_bytes int, value_bytes int, keys voidptr, values voidptr) map {
+	mut out := new_map_2(key_bytes, value_bytes, hash_fn, key_eq_fn, clone_fn, free_fn)
 	// TODO pre-allocate n slots
 	mut pkey := byteptr(keys)
 	mut pval := byteptr(values)
@@ -452,11 +406,6 @@ fn (mut m map) ensure_extra_metas(probe_count u32) {
 			panic('Probe overflow')
 		}
 	}
-}
-
-// bootstrap
-fn (mut m map) set(key string, value voidptr) {
-	m.set_1(&key, value)
 }
 
 // Insert new element to the map. The element is inserted if its key is
@@ -554,10 +503,6 @@ fn (mut m map) cached_rehash(old_cap u32) {
 	unsafe { free(old_metas) }
 }
 
-fn (mut m map) get_and_set(key string, zero voidptr) voidptr {
-	return m.get_and_set_1(&key, zero)
-}
-
 // This method is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
@@ -585,10 +530,6 @@ fn (mut m map) get_and_set_1(key voidptr, zero voidptr) voidptr {
 	return voidptr(0)
 }
 
-fn (m map) get(key string, zero voidptr) voidptr {
-	return m.get_1(&key, zero)
-}
-
 // If `key` matches the key of an element in the container,
 // the method returns a reference to its mapped value.
 // If not, a zero/default value is returned.
@@ -609,10 +550,6 @@ fn (m &map) get_1(key voidptr, zero voidptr) voidptr {
 		}
 	}
 	return zero
-}
-
-fn (m map) exists(key string) bool {
-	return m.exists_1(&key)
 }
 
 // Checks whether a particular key exists in the map.
@@ -646,6 +583,7 @@ fn (mut d DenseArray) delete(i int) {
 	}
 }
 
+// delete this
 pub fn (mut m map) delete(key string) {
 	m.delete_1(&key)
 }
@@ -690,6 +628,7 @@ pub fn (mut m map) delete_1(key voidptr) {
 }
 
 // bootstrap
+// delete this
 pub fn (m &map) keys() []string {
 	mut keys := []string{len: m.len}
 	mut item := unsafe { byteptr(keys.data) }
