@@ -611,6 +611,9 @@ fn (mut v Builder) cc() {
 			v.show_c_compiler_output(res)
 		}
 		os.chdir(original_pwd)
+		$if trace_use_cache ? {
+			eprintln('>>>> v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation | cmd res.exit_code: $res.exit_code | cmd: $cmd')
+		}
 		if res.exit_code != 0 {
 			if ccompiler.contains('tcc.exe') {
 				// a TCC problem? Retry with the system cc:
@@ -621,9 +624,11 @@ fn (mut v Builder) cc() {
 					}
 					exit(101)
 				}
-				v.pref.ccompiler = pref.default_c_compiler()
-				eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
-				continue
+				if v.pref.retry_compilation {
+					v.pref.ccompiler = pref.default_c_compiler()
+					eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+					continue
+				}
 			}
 			if res.exit_code == 127 {
 				verror('C compiler error, while attempting to run: \n' +
