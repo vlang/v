@@ -715,6 +715,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
+		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	}
 	f.writeln('}\n')
 }
