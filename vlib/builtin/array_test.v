@@ -1278,3 +1278,15 @@ fn test_array_struct_ref_contains() {
 	println(exists)
 	assert exists == true
 }
+
+fn test_array_struct_ref_index() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	println(coords.index(coord_1))
+	assert coords.index(coord_1) == 0
+}
