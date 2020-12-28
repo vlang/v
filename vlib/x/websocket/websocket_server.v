@@ -20,7 +20,8 @@ pub:
 	port                    int // port used as listen to incoming connections
 	is_ssl                  bool // true if secure connection (not supported yet on server)
 pub mut:
-	ping_interval           int = 30 // interval for sending ping to clients (seconds)
+	ping_interval           int = 30
+	// interval for sending ping to clients (seconds)
 	state                   State // current state of connection
 }
 
@@ -57,9 +58,7 @@ pub fn (mut s Server) listen() ? {
 	s.set_state(.open)
 	go s.handle_ping()
 	for {
-		mut c := s.accept_new_client() or {
-			continue
-		}
+		mut c := s.accept_new_client() or { continue }
 		go s.serve_client(mut c)
 	}
 	s.logger.info('websocket server: end listen on port $s.port')
@@ -88,9 +87,7 @@ fn (mut s Server) handle_ping() {
 				}
 				if (time.now().unix - c.client.last_pong_ut) > s.ping_interval * 2 {
 					clients_to_remove << c.client.id
-					c.client.close(1000, 'no pong received') or {
-						continue
-					}
+					c.client.close(1000, 'no pong received') or { continue }
 				}
 			}
 		}
