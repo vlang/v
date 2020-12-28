@@ -17,6 +17,8 @@ const (
 		'vlib/builtin/js/jsfns_browser.js.v',
 		/* error: expr(): bad token `asm`, on `asm {}` */
 		'vlib/builtin/bare/linuxsys_bare.v',
+		/* total chaos (duplicated code several times) in array_eq_test.v */
+		'vlib/builtin/array_eq_test.v',
 		/* the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed */
 		'vlib/picoev/picoev.v',
 	]

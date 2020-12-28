@@ -691,13 +691,6 @@ fn test_array_str() {
 	// assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
 }
 
-fn test_eq() {
-	/*
-	assert [5, 6, 7].eq([6, 7]) == false
-	assert [`a`, `b`].eq([`a`, `b`]) == true
-	*/
-}
-
 struct User {
 	age  int
 	name string
