@@ -22,7 +22,7 @@ fn htonl64(payload_len u64) []byte {
 fn create_masking_key() []byte {
 	mask_bit := byte(rand.intn(255))
 	buf := []byte{len: 4, init: `0`}
-	unsafe {C.memcpy(buf.data, &mask_bit, 4)}
+	unsafe { C.memcpy(buf.data, &mask_bit, 4) }
 	return buf
 }
 

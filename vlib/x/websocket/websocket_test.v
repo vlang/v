@@ -5,9 +5,7 @@ import time
 fn test_ws() {
 	go start_server()
 	time.sleep_ms(100)
-	ws_test('ws://localhost:30000') or {
-		assert false
-	}
+	ws_test('ws://localhost:30000') or { assert false }
 }
 
 fn start_server() ? {
@@ -24,14 +22,12 @@ fn start_server() ? {
 		return true
 	}) ?
 	s.on_message(fn (mut ws websocket.Client, msg &websocket.Message) ? {
-		ws.write(msg.payload, msg.opcode) or {
-			panic(err)
-		}
+		ws.write(msg.payload, msg.opcode) or { panic(err) }
 	})
 	s.on_close(fn (mut ws websocket.Client, code int, reason string) ? {
 		// not used
 	})
-	s.listen() or {}
+	s.listen() or { }
 }
 
 // ws_test tests connect to the websocket server from websocket client
@@ -61,15 +57,11 @@ fn ws_test(uri string) ? {
 			println('Binary message: $msg')
 		}
 	})
-	ws.connect() or {
-		panic('fail to connect')
-	}
+	ws.connect() or { panic('fail to connect') }
 	go ws.listen()
 	text := ['a'].repeat(2)
 	for msg in text {
-		ws.write(msg.bytes(), .text_frame) or {
-			panic('fail to write to websocket')
-		}
+		ws.write(msg.bytes(), .text_frame) or { panic('fail to write to websocket') }
 		// sleep to give time to recieve response before send a new one
 		time.sleep_ms(100)
 	}
