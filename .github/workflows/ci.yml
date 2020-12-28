@@ -344,6 +344,8 @@ jobs:
         ./v -silent test-fixed
     - name: Fixed tests (-prod)
       run: ./v -o vprod -prod cmd/v && ./vprod -silent test-fixed
+    - name: Fixed tests (-fsanitize)
+      run: ./v -cflags -fsanitize=memory
     - name: Build examples
       run: ./v build-examples
     - name: Build examples with -autofree
