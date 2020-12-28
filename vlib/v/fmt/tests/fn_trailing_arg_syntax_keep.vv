@@ -33,6 +33,12 @@ fn main() {
 			f: 'here'
 		}
 	)
+	ui.button(
+		width: 70
+		onclick: fn (a voidptr, b voidptr) {
+			webview.new_window(url: 'https://vlang.io', title: 'The V programming language')
+		}
+	)
 }
 
 fn bar_func(bar Bar) {

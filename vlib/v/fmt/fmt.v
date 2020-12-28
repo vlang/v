@@ -1723,6 +1723,11 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
+		ast.AnonFn {
+			if !expr.decl.no_body {
+				return false
+			}
+		}
 		ast.IfExpr {
 			return false
 		}
