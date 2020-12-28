@@ -134,7 +134,7 @@ mut:
 	manifest            vmod.Manifest
 	assets              map[string]string
 	search_index        []string
-	search_data	        []SearchResult
+	search_data         []SearchResult
 	search_module_index []string // search results are split into a module part and the rest
 	search_module_data  []SearchModuleResult
 }
@@ -665,8 +665,7 @@ fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
 fn (cfg DocConfig) get_file_name(mod string) string {
 	mut name := mod
 	// since builtin is generated first, ignore it
-	if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) ||
-		mod == 'README' {
+	if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) || mod == 'README' {
 		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
 		name = os.file_name(cfg.output_path)
