@@ -13,6 +13,7 @@ module main
 
 import os
 import os.cmdline
+import time
 
 struct Context {
 mut:
@@ -31,4 +32,5 @@ fn main() {
 	if context.is_debug {
 		println('context: $context')
 	}
+	time.sleep_ms(100000)
 }
