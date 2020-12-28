@@ -93,15 +93,12 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
 	ptr_typ := g.typ(left).trim('*')
-	value_sym := g.table.get_type_symbol(left_sym.map_info().value_type)
-	value_typ := g.typ(left_sym.map_info().value_type)
-	if value_sym.kind == .map {
-		// Recursively generate map element comparison function code if array element is map type
-		g.gen_map_equality_fn(left_sym.map_info().value_type)
-	}
 	if ptr_typ in g.map_fn_definitions {
 		return ptr_typ
 	}
+	value_typ := left_sym.map_info().value_type
+	value_sym := g.table.get_type_symbol(value_typ)
+	ptr_value_typ := g.typ(value_typ)
 	g.map_fn_definitions << ptr_typ
 	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
@@ -110,9 +107,8 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\tarray_string _keys = map_keys(&a);')
-	i := g.new_tmp_var()
-	fn_builder.writeln('\tfor (int $i = 0; $i < _keys.len; ++$i) {')
-	fn_builder.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[$i]);')
+	fn_builder.writeln('\tfor (int i = 0; i < _keys.len; ++i) {')
+	fn_builder.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[i]);')
 	if value_sym.kind == .function {
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
@@ -127,12 +123,30 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 		}
 		fn_builder.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
 	} else {
-		fn_builder.writeln('\t\t$value_typ v = (*($value_typ*)map_get_1(&a, &k, &($value_typ[]){ 0 }));')
+		fn_builder.writeln('\t\t$ptr_value_typ v = (*($ptr_value_typ*)map_get_1(&a, &k, &($ptr_value_typ[]){ 0 }));')
 	}
 	match value_sym.kind {
-		.string { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {') }
-		.function { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {') }
-		else { fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($value_typ*)map_get_1(&b, &k, &($value_typ[]){ 0 })) != v) {') }
+		.string {
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {')
+		}
+		.struct_ {
+			eq_fn := g.gen_struct_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.array {
+			eq_fn := g.gen_array_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_arr_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.map {
+			eq_fn := g.gen_map_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.function {
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {')
+		}
+		else {
+			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 })) != v) {')
+		}
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
