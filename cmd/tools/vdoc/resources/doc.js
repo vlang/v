@@ -96,6 +96,8 @@ function setupSearch() {
             // cache length for performance
             var foundModule = false;
             var searchModuleIndexLength = searchModuleIndex.length;
+            var ul = document.createElement('ul');
+            search.appendChild(ul);
             for (var i = 0; i < searchModuleIndexLength; i++) {
                 // no toLowerCase needed because modules are always lowercase
                 var title = searchModuleIndex[i];
@@ -107,20 +109,18 @@ function setupSearch() {
                 var data = searchModuleData[i];
                 var description = data[0];
                 var link = data[1];
-                search.innerHTML += '<ul>' +
-                    '<li class="result">' +
-                        '<a class="link" href="' + link + '">' +
-                            '<div class="definition">' +
-                                '<span class="title">' + title + '</span>' +
-                                '<span class="badge">module</span>' +
-                            '</div>' +
-                            (description ? '<div class="description">' + description + '</div>' : '') +
-                        '</a>' +
-                    '</li>' +
-                '</ul>';
+                var el = createSearchResult({
+                    link: link,
+                    title: title,
+                    description: description,
+                    badge: 'module',
+                });
+                ul.appendChild(el);
             }
             if (foundModule) {
-                search.innerHTML += '<hr class="separator">';
+                var hr = document.createElement('hr');
+                hr.classList.add('separator');
+                search.appendChild(hr);
             }
             var searchIndexLength = searchIndex.length;
             var results = [];
@@ -134,35 +134,60 @@ function setupSearch() {
                 var badge = data[0];
                 var description = data[1];
                 var link = data[2];
-                var fullName = data[3];
-                results.push({badge, description, link, fullName});
+                var title = data[3];
+                results.push({
+                    badge: badge,
+                    description: description,
+                    link: link,
+                    title: title,
+                });
             }
             results.sort(function(a, b) {
-                if (a.fullName < b.fullName) {
+                if (a.title < b.title) {
                     return -1;
                 }
-                if (a.fullName > b.fullName) {
+                if (a.title > b.title) {
                     return 1;
                 }
                 return 0;
             });
+            var ul = document.createElement('ul');
+            search.appendChild(ul);
             for (var i = 0; i < results.length; i++) {
                 var result = results[i];
-                search.innerHTML += '<ul>' +
-                    '<li class="result">' +
-                        '<a class="link" href="' + result.link + '">' +
-                            '<div class="definition">' +
-                                '<span class="title">' + result.fullName + '</span>' +
-                                '<span class="badge">' + result.badge + '</span>' +
-                            '</div>' +
-                            (result.description ? '<div class="description">' + result.description + '</div>' : '') +
-                        '</a>' +
-                    '</li>' +
-                '</ul>';
+                var el = createSearchResult(result);
+                ul.appendChild(el);
             }
         }
     });
     searchInput.addEventListener('input', onInputChange);
+}
+
+function createSearchResult(data) {
+    var li = document.createElement('li');
+    li.classList.add('result');
+    var a = document.createElement('a');
+    a.href = data.link;
+    a.classList.add('link');
+    li.appendChild(a);
+    var defintion = document.createElement('div');
+    defintion.classList.add('definition');
+    a.appendChild(defintion);
+    if (data.description) {
+        var description = document.createElement('div');
+        description.classList.add('description');
+        description.textContent = data.description;
+        a.appendChild(description);
+    }
+    var title = document.createElement('span');
+    title.classList.add('title');
+    title.textContent = data.title;
+    defintion.appendChild(title);
+    var badge = document.createElement('badge');
+    badge.classList.add('badge');
+    badge.textContent = data.badge;
+    defintion.appendChild(badge);
+    return li;
 }
 
 function setupCollapse() {
