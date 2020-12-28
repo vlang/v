@@ -352,6 +352,7 @@ fn test_mut_arg() {
 
 fn test_clone() {
 	nums := [1, 2, 3, 4, 100]
+	_ := nums
 	nums2 := nums.clone()
 	assert nums2.len == 5
 	assert nums.str() == '[1, 2, 3, 4, 100]'
