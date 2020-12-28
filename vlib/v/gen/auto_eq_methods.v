@@ -18,28 +18,21 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
 	for field in info.fields {
 		sym := g.table.get_type_symbol(field.typ)
-		match sym.kind {
-			.string {
-				fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
-			}
-			.struct_ {
-				eq_fn := g.gen_struct_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
-			}
-			.array {
-				eq_fn := g.gen_array_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
-			}
-			.map {
-				eq_fn := g.gen_map_equality_fn(field.typ)
-				fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
-			}
-			.function {
-				fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
-			}
-			else {
-				fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
-			}
+		if sym.kind == .string {
+			fn_builder.writeln('\tif (string_ne(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .struct_ && !field.typ.is_ptr() {
+			eq_fn := g.gen_struct_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_struct_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .array && !field.typ.is_ptr() {
+			eq_fn := g.gen_array_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_arr_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .map && !field.typ.is_ptr() {
+			eq_fn := g.gen_map_equality_fn(field.typ)
+			fn_builder.writeln('\tif (!${eq_fn}_map_eq(a.$field.name, b.$field.name)) {')
+		} else if sym.kind == .function {
+			fn_builder.writeln('\tif (*((voidptr*)(a.$field.name)) != *((voidptr*)(b.$field.name))) {')
+		} else {
+			fn_builder.writeln('\tif (a.$field.name != b.$field.name) {')
 		}
 		fn_builder.writeln('\t\treturn false;')
 		fn_builder.writeln('\t}')
@@ -68,28 +61,21 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	fn_builder.writeln('\t}')
 	fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
-	match elem_sym.kind {
-		.string {
-			fn_builder.writeln('\t\tif (string_ne(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
-		}
-		.struct_ {
-			eq_fn := g.gen_struct_equality_fn(elem_typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-		}
-		.array {
-			eq_fn := g.gen_array_equality_fn(elem_typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-		}
-		.map {
-			eq_fn := g.gen_map_equality_fn(elem_typ)
-			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
-		}
-		.function {
-			fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
-		}
-		else {
-			fn_builder.writeln('\t\tif (*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size)))) {')
-		}
+	if elem_sym.kind == .string {
+		fn_builder.writeln('\t\tif (string_ne(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
+	} else if elem_sym.kind == .struct_ && !elem_typ.is_ptr() {
+		eq_fn := g.gen_struct_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+	} else if elem_sym.kind == .array && !elem_typ.is_ptr() {
+		eq_fn := g.gen_array_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+	} else if elem_sym.kind == .map && !elem_typ.is_ptr() {
+		eq_fn := g.gen_map_equality_fn(elem_typ)
+		fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+	} else if elem_sym.kind == .function {
+		fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
+	} else {
+		fn_builder.writeln('\t\tif (*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size)))) {')
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
@@ -135,28 +121,21 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	} else {
 		fn_builder.writeln('\t\t$ptr_value_typ v = (*($ptr_value_typ*)map_get_1(&a, &k, &($ptr_value_typ[]){ 0 }));')
 	}
-	match value_sym.kind {
-		.string {
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {')
-		}
-		.struct_ {
-			eq_fn := g.gen_struct_equality_fn(value_typ)
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-		}
-		.array {
-			eq_fn := g.gen_array_equality_fn(value_typ)
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_arr_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-		}
-		.map {
-			eq_fn := g.gen_map_equality_fn(value_typ)
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-		}
-		.function {
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {')
-		}
-		else {
-			fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 })) != v) {')
-		}
+	if value_sym.kind == .string {
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {')
+	} else if value_sym.kind == .struct_ && !value_typ.is_ptr() {
+		eq_fn := g.gen_struct_equality_fn(value_typ)
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+	} else if value_sym.kind == .array && !value_typ.is_ptr() {
+		eq_fn := g.gen_array_equality_fn(value_typ)
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_arr_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+	} else if value_sym.kind == .map && !value_typ.is_ptr() {
+		eq_fn := g.gen_map_equality_fn(value_typ)
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
+	} else if value_sym.kind == .function {
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {')
+	} else {
+		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 })) != v) {')
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
