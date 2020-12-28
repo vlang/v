@@ -106,7 +106,7 @@ pub fn lcm(a i64, b i64) i64 {
 }
 
 // max returns the maximum value of the two provided.
-pub fn max(a f64, b f64) f64 {
+pub fn max<T>(a T, b T) T {
 	if a > b {
 		return a
 	}
@@ -114,7 +114,7 @@ pub fn max(a f64, b f64) f64 {
 }
 
 // min returns the minimum value of the two provided.
-pub fn min(a f64, b f64) f64 {
+pub fn min<T>(a T, b T) T {
 	if a < b {
 		return a
 	}

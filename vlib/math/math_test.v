@@ -21,6 +21,22 @@ fn test_lcm() {
 	assert lcm(0, 0) == 0
 }
 
+fn test_max() {
+	assert typeof(max(int(0), int(1))) == 'int'
+	assert max(0, 1) == 1
+	assert max(1, 0) == 1
+	assert max(0.1, 0.2) == 0.2
+	assert max(0.2, 0.1) == 0.2
+}
+
+fn test_min() {
+	assert typeof(min(int(0), int(1))) == 'int'
+	assert min(0, 1) == 0
+	assert min(1, 0) == 0
+	assert min(0.1, 0.2) == 0.1
+	assert min(0.2, 0.1) == 0.1
+}
+
 fn test_digits() {
 	digits_in_10th_base := digits(125, 10)
 	assert digits_in_10th_base[0] == 5
