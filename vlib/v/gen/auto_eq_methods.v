@@ -45,34 +45,44 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 	left_sym := g.table.get_type_symbol(left)
-	typ_name := g.typ(left)
-	ptr_typ := typ_name[typ_name.index_after('_', 0) + 1..].trim('*')
-	elem_sym := g.table.get_type_symbol(left_sym.array_info().elem_type)
-	elem_typ := g.typ(left_sym.array_info().elem_type)
-	ptr_elem_typ := elem_typ[elem_typ.index_after('_', 0) + 1..]
-	if elem_sym.kind == .array {
-		// Recursively generate array element comparison function code if array element is array type
-		g.gen_array_equality_fn(left_sym.array_info().elem_type)
-	}
+	ptr_typ := g.typ(left).trim('*')
+	elem_typ := left_sym.array_info().elem_type
+	ptr_elem_typ := g.typ(elem_typ)
+	elem_sym := g.table.get_type_symbol(elem_typ)
 	if ptr_typ in g.array_fn_definitions {
 		return ptr_typ
 	}
 	g.array_fn_definitions << ptr_typ
-	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b); // auto')
+	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
-	fn_builder.writeln('static bool ${ptr_typ}_arr_eq(array_$ptr_typ a, array_$ptr_typ b) {')
+	fn_builder.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b) {')
 	fn_builder.writeln('\tif (a.len != b.len) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	i := g.new_tmp_var()
-	fn_builder.writeln('\tfor (int $i = 0; $i < a.len; ++$i) {')
+	fn_builder.writeln('\tfor (int i = 0; i < a.len; ++i) {')
 	// compare every pair of elements of the two arrays
 	match elem_sym.kind {
-		.string { fn_builder.writeln('\t\tif (string_ne(*(($ptr_typ*)((byte*)a.data+($i*a.element_size))), *(($ptr_typ*)((byte*)b.data+($i*b.element_size))))) {') }
-		.struct_ { fn_builder.writeln('\t\tif (memcmp((byte*)a.data+($i*a.element_size), (byte*)b.data+($i*b.element_size), a.element_size)) {') }
-		.array { fn_builder.writeln('\t\tif (!${ptr_elem_typ}_arr_eq((($elem_typ*)a.data)[$i], (($elem_typ*)b.data)[$i])) {') }
-		.function { fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+($i*a.element_size))) != *((voidptr*)((byte*)b.data+($i*b.element_size)))) {') }
-		else { fn_builder.writeln('\t\tif (*(($ptr_typ*)((byte*)a.data+($i*a.element_size))) != *(($ptr_typ*)((byte*)b.data+($i*b.element_size)))) {') }
+		.string {
+			fn_builder.writeln('\t\tif (string_ne(*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))), *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size))))) {')
+		}
+		.struct_ {
+			eq_fn := g.gen_struct_equality_fn(elem_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+		}
+		.array {
+			eq_fn := g.gen_array_equality_fn(elem_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+		}
+		.map {
+			eq_fn := g.gen_map_equality_fn(elem_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq((($ptr_elem_typ*)a.data)[i], (($ptr_elem_typ*)b.data)[i])) {')
+		}
+		.function {
+			fn_builder.writeln('\t\tif (*((voidptr*)((byte*)a.data+(i*a.element_size))) != *((voidptr*)((byte*)b.data+(i*b.element_size)))) {')
+		}
+		else {
+			fn_builder.writeln('\t\tif (*(($ptr_elem_typ*)((byte*)a.data+(i*a.element_size))) != *(($ptr_elem_typ*)((byte*)b.data+(i*b.element_size)))) {')
+		}
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
