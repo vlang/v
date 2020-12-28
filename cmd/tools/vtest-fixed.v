@@ -6,7 +6,7 @@ import v.pref
 
 const (
 	skip_with_sanitize  = [
-		// 'vlib/x/websocket/websocket_test.v',
+		'vlib/x/websocket/websocket_test.v'
 		// 'vlib/encoding/csv/reader_test.v',
 		// 'vlib/net/tcp_test.v',
 		// 'vlib/net/tcp_simple_client_server_test.v',
