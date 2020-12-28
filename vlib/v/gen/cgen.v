@@ -4101,7 +4101,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 	}
 	// regular cases
-	if fn_return_is_multi { // not_optional_none { //&& !fn_return_is_optional {
+	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) { // not_optional_none { //&& !fn_return_is_optional {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
@@ -4182,7 +4182,12 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name != 'Option' {
+		mut expr_type_is_opt := node.types[0].has_flag(.optional)
+		expr0 := node.exprs[0]
+		if expr0 is ast.CallExpr {
+			expr_type_is_opt = expr0.return_type.has_flag(.optional)
+		}
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option

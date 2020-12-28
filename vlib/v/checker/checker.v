@@ -2028,6 +2028,14 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 	}
+	if exp_is_optional && return_stmt.exprs.len > 0 {
+		expr0 := return_stmt.exprs[0]
+		if expr0 is ast.CallExpr {
+			if expr0.or_block.kind == .propagate {
+				c.error('`?` is not needed, use `return ${expr0.name}()`', expr0.pos)
+			}
+		}
+	}
 }
 
 pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
