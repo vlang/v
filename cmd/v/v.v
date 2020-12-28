@@ -29,6 +29,7 @@ const (
 		'test-cleancode',
 		'check-md',
 		'repl',
+		'redo',
 		'complete',
 		'build-tools',
 		'build-examples',
