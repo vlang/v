@@ -421,7 +421,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=address)
-      run: ./v -cflags -fsanitize=address test-fixed
+      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
 
   ubuntu-clang-sanitize-memory:
     runs-on: ubuntu-latest
