@@ -439,6 +439,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				tmp_exe_file_path = '${tmp_file_path}.exe'
 				output_option = '-o "$tmp_exe_file_path"'
 			}
+			// easiest way to have a is_script file since .v is not a script file
 			tmp_v_file_path := '${tmp_file_path}.vv'
 			mut lines := []string{}
 			for {
