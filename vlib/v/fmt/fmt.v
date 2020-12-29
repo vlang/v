@@ -715,6 +715,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
+		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	}
 	f.writeln('}\n')
 }
@@ -1722,6 +1723,11 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
+		ast.AnonFn {
+			if !expr.decl.no_body {
+				return false
+			}
+		}
 		ast.IfExpr {
 			return false
 		}
@@ -1931,41 +1937,42 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	} else {
 		use_short_args := f.use_short_fn_args
 		f.use_short_fn_args = false
+		mut multiline_short_args := it.pre_comments.len > 0
 		if !use_short_args {
 			f.writeln('$name{')
+		} else {
+			if multiline_short_args {
+				f.writeln('')
+			}
 		}
-		f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
+		init_start := f.out.len
 		f.indent++
-		mut short_args_multiline := false
-		mut field_start_positions := []int{}
-		for i, field in it.fields {
-			field_start_positions << f.out.len
-			f.write('$field.name: ')
-			f.prefix_expr_cast_expr(field.expr)
-			if field.expr is ast.StructInit {
-				short_args_multiline = true
-			}
-			f.comments(field.comments, inline: true, has_nl: false, level: .indent)
-			if use_short_args {
-				if i < it.fields.len - 1 {
-					f.write(', ')
+		short_args_loop: for {
+			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
+			for i, field in it.fields {
+				f.write('$field.name: ')
+				f.prefix_expr_cast_expr(field.expr)
+				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+				if use_short_args && !multiline_short_args {
+					if i < it.fields.len - 1 {
+						f.write(', ')
+					}
+				} else {
+					f.writeln('')
 				}
-			} else {
-				f.writeln('')
-			}
-			f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-		}
-		if use_short_args {
-			if f.line_len > max_len[3] || short_args_multiline {
-				mut fields := []string{}
-				for pos in field_start_positions.reverse() {
-					fields << f.out.cut_last(f.out.len - pos).trim_suffix(', ')
-				}
-				f.writeln('')
-				for field in fields.reverse() {
-					f.writeln(field)
+				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
+				if use_short_args && !multiline_short_args &&
+					(field.comments.len > 0 ||
+					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last()) {
+					multiline_short_args = true
+					f.out.go_back_to(init_start)
+					f.line_len = init_start
+					f.remove_new_line()
+					f.writeln('')
+					continue short_args_loop
 				}
 			}
+			break
 		}
 		f.indent--
 		if !use_short_args {

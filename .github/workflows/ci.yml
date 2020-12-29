@@ -1,4 +1,4 @@
-name: CI
+name: Code CI
 
 on:
   push:
@@ -376,6 +376,75 @@ jobs:
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
         ls
+
+  ubuntu-clang-sanitize-undefined:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=undefined)
+      run: ./v -cflags -fsanitize=undefined test-fixed
+    
+  ubuntu-clang-sanitize-address:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=address)
+      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
+
+  ubuntu-clang-sanitize-memory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=memory)
+      run: ./v -cflags -fsanitize=memory test-fixed
 
 #  ubuntu-autofree-selfcompile:
 #    runs-on: ubuntu-18.04
@@ -761,10 +830,24 @@ jobs:
     - name: v up
       run: |
         ./v cmd/tools/oldv.v
-        ./cmd/tools/oldv HEAD^^^^^
+        ./cmd/tools/oldv -v HEAD^^^^^
         cd /tmp/v_at_HEAD_____/
         ./v version
-        ./v up
+        ./v -v up
         ./v version
         ./v  -o v2 cmd/v
         ./v2 -o v3 cmd/v
+
+  vls-compiles:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone VLS
+      run: git clone --depth 1 https://github.com/vlang/vls
+    - name: Build VLS
+      run: cd vls; ../v cmd/vls ; cd ..
+    - name: Build VLS with -prod
+      run: cd vls; ../v -prod cmd/vls ; cd ..

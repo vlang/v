@@ -367,6 +367,17 @@ fn test_map_in_mut() {
 	assert m['one'] == 2
 }
 
+fn test_map_in() {
+	m := {
+		'Foo': 'bar'
+	}
+	if 'foo'.capitalize() in m {
+		println('ok')
+	} else {
+		assert false
+	}
+}
+
 fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 	if m['one'] == 1 {
 		m['three'] = 3
@@ -465,7 +476,7 @@ fn test_map_or() {
 }
 
 fn test_int_keys() {
-	mut m := map[int]int
+	mut m := map[int]int{}
 	m[3] = 9
 	m[4] = 16
 	assert m.len == 2
@@ -474,7 +485,6 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
-
 	mc := m.clone()
 	assert mc.len == 3
 	mut all := []int{}
@@ -483,15 +493,78 @@ fn test_int_keys() {
 		all << k
 		all << v
 	}
-	assert all == [3,9,4,16,5,25]
+	assert all == [3, 9, 4, 16, 5, 25]
 }
 
 fn test_voidptr_keys() {
-	mut m := map[voidptr]string
+	mut m := map[voidptr]string{}
 	v := 5
 	m[&v] = 'var'
 	m[&m] = 'map'
 	assert m[&v] == 'var'
 	assert m[&m] == 'map'
 	assert m.len == 2
+}
+
+fn test_eq() {
+	a := {
+		'a': 1
+		'b': 2
+	}
+	assert a == {
+		'a': 1
+		'b': 2
+	}
+	b := {
+		'a': [[1]]
+		'b': [[2]]
+	}
+	assert b == {
+		'a': [[1]]
+		'b': [[2]]
+	}
+	c := {
+		'a': {
+			'11': 1
+		}
+		'b': {
+			'22': 2
+		}
+	}
+	assert c == {
+		'a': {
+			'11': 1
+		}
+		'b': {
+			'22': 2
+		}
+	}
+	d := {
+		'a': MValue{
+			name: 'aa'
+			misc: {
+				'11': '1'
+			}
+		}
+		'b': MValue{
+			name: 'bb'
+			misc: {
+				'22': '2'
+			}
+		}
+	}
+	assert d == {
+		'a': MValue{
+			name: 'aa'
+			misc: {
+				'11': '1'
+			}
+		}
+		'b': MValue{
+			name: 'bb'
+			misc: {
+				'22': '2'
+			}
+		}
+	}
 }

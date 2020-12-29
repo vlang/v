@@ -22,6 +22,8 @@ fn C.fdopen(int, string) voidptr
 
 fn C.CopyFile(&u32, &u32, int) int
 
+fn C.execvp(file charptr, argv &charptr) int
+
 // fn C.proc_pidpath(int, byteptr, int) int
 struct C.stat {
 	st_size  int
@@ -864,5 +866,23 @@ pub fn create(path string) ?File {
 		cfile: cfile
 		fd: fd
 		is_opened: true
+	}
+}
+
+// execvp - loads and executes a new child process, in place of the current process.
+// The child process executable is located in `cmdpath`.
+// The arguments, that will be passed to it are in `args`.
+// NB: this function will NOT return when successfull, since
+// the child process will take control over execution.
+pub fn execvp(cmdpath string, args []string) ? {
+	mut cargs := []charptr{}
+	cargs << charptr(cmdpath.str)
+	for i in 0 .. args.len {
+		cargs << charptr(args[i].str)
+	}
+	cargs << charptr(0)
+	res := C.execvp(charptr(cmdpath.str), cargs.data)
+	if res == -1 {
+		return error(posix_get_error_msg(C.errno))
 	}
 }

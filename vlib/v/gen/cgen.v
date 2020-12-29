@@ -3054,6 +3054,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
+	} else if node.op in [.eq, .ne] && left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+		ptr_typ := g.gen_struct_equality_fn(left_type)
+		if node.op == .eq {
+			g.write('${ptr_typ}_struct_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_struct_eq(')
+		}
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.left)
+		g.write(', ')
+		if node.right_type.is_ptr() {
+			g.write('*')
+		}
+		g.expr(node.right)
+		g.write(')')
 	} else if node.op in [.key_in, .not_in] {
 		if node.op == .not_in {
 			g.write('!')
@@ -3082,12 +3099,22 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			return
 		} else if right_sym.kind == .map {
 			g.write('_IN_MAP(')
-			g.expr(node.left)
-			g.write(', ')
-			if node.right_type.is_ptr() {
-				g.write('*')
+			if !node.left_type.is_ptr() {
+				left_type_str := g.table.type_to_str(node.left_type)
+				g.write('ADDR($left_type_str, ')
+				g.expr(node.left)
+				g.write(')')
+			} else {
+				g.expr(node.left)
 			}
-			g.expr(node.right)
+			g.write(', ')
+			if !node.right_type.is_ptr() {
+				g.write('ADDR(map, ')
+				g.expr(node.right)
+				g.write(')')
+			} else {
+				g.expr(node.right)
+			}
 			g.write(')')
 		} else if right_sym.kind == .string {
 			g.write('string_contains(')
@@ -4119,7 +4146,7 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		}
 	}
 	// regular cases
-	if fn_return_is_multi { // not_optional_none { //&& !fn_return_is_optional {
+	if fn_return_is_multi && node.exprs.len > 0 && !g.expr_is_multi_return_call(node.exprs[0]) { // not_optional_none { //&& !fn_return_is_optional {
 		// typ_sym := g.table.get_type_symbol(g.fn_decl.return_type)
 		// mr_info := typ_sym.info as table.MultiReturn
 		mut styp := ''
@@ -4200,7 +4227,12 @@ fn (mut g Gen) return_statement(node ast.Return) {
 		// normal return
 		return_sym := g.table.get_type_symbol(node.types[0])
 		// `return opt_ok(expr)` for functions that expect an optional
-		if fn_return_is_optional && !node.types[0].has_flag(.optional) && return_sym.name != 'Option' {
+		mut expr_type_is_opt := node.types[0].has_flag(.optional)
+		expr0 := node.exprs[0]
+		if expr0 is ast.CallExpr {
+			expr_type_is_opt = expr0.return_type.has_flag(.optional)
+		}
+		if fn_return_is_optional && !expr_type_is_opt && return_sym.name != 'Option' {
 			styp := g.base_type(g.fn_decl.return_type)
 			opt_type := g.typ(g.fn_decl.return_type)
 			// Create a tmp for this option
@@ -5473,7 +5505,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
 	} else if sym.kind in
-		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type, .function] {
+		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "\'%.*s\\000\'"

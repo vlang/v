@@ -48,7 +48,6 @@ Anything you can do in other languages, you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -56,6 +55,8 @@ Anything you can do in other languages, you can do in V.
 * [References](#references)
 * [Modules](#modules)
 * [Constants](#constants)
+* [Builtin functions](#builtin-functions)
+* [Printing custom types](#printing-custom-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -1645,6 +1646,8 @@ println('hi') // "hi"
 println([1,2,3]) // "[1, 2, 3]"
 println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
+
+## Custom print of types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:

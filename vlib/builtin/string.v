@@ -1651,3 +1651,34 @@ pub fn (s string) strip_margin_custom(del byte) string {
 		return ret.vstring_with_len(count)
 	}
 }
+
+// split_by_whitespace - extract only the non whitespace tokens/words from the given string `s`.
+// example: '  sss   ssss'.split_by_whitespace() => ['sss', 'ssss']
+pub fn (s string) split_by_whitespace() []string {
+	mut res := []string{}
+	mut word_start := 0
+	mut word_end := 0
+	mut is_in_word := false
+	mut is_space := false
+	for i, c in s {
+		is_space = c in [` `, `\t`, `\n`]
+		if !is_in_word && !is_space {
+			word_start = i
+			is_in_word = true
+			continue
+		}
+		if is_space && is_in_word {
+			word_end = i
+			res << s[word_start .. word_end]
+			is_in_word = false
+			word_end = 0
+			word_start = 0
+			continue
+		}
+	}
+	if is_in_word && word_start > 0 {
+		// collect the remainder word at the end
+		res << s[word_start .. s.len]
+	}
+	return res
+}
