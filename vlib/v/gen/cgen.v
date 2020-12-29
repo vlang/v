@@ -56,7 +56,6 @@ mut:
 	last_fn_c_name                   string
 	tmp_count                        int // counter for unique tmp vars (_tmp1, tmp2 etc)
 	tmp_count2                       int // a separate tmp var counter for autofree fn calls
-	variadic_args                    map[string]int
 	is_c_call                        bool // e.g. `C.printf("v")`
 	is_assign_lhs                    bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs                    bool // inside right part of assign after `=` (val expr)
@@ -246,7 +245,6 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 			g.definitions.writeln('int _v_type_idx_${typ.cname}() { return $idx; };')
 		}
 	}
-	g.write_variadic_types()
 	// g.write_str_definitions()
 	// v files are finished, what remains is pure C code
 	g.gen_vlines_reset()
@@ -702,21 +700,6 @@ pub fn (mut g Gen) write_multi_return_types() {
 		g.write_multi_return_type_declaration(mut g.table.types[idx])
 	}
 	g.type_definitions.writeln('// END_multi_return_structs\n')
-}
-
-pub fn (mut g Gen) write_variadic_types() {
-	g.type_definitions.writeln('\n//BEGIN_variadic_structs')
-	for type_str, arg_len in g.variadic_args {
-		typ := table.Type(type_str.int())
-		type_name := g.typ(typ)
-		struct_name := 'varg_' + type_name.replace('*', '_ptr')
-		g.type_definitions.writeln('struct $struct_name {')
-		g.type_definitions.writeln('\tint len;')
-		g.type_definitions.writeln('\t$type_name args[$arg_len];')
-		g.type_definitions.writeln('};\n')
-		g.typedefs.writeln('typedef struct $struct_name $struct_name;')
-	}
-	g.type_definitions.writeln('// END_variadic_structs\n')
 }
 
 pub fn (mut g Gen) write(s string) {
@@ -1324,16 +1307,6 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.writeln('\t${it.label}__break: {}')
 		}
 		return
-	} else if it.cond_type.has_flag(.variadic) {
-		g.writeln('// FOR IN cond_type/variadic')
-		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
-		styp := g.typ(it.cond_type)
-		g.write('for (int $i = 0; $i < ')
-		g.expr(it.cond)
-		g.writeln('.len; ++$i) {')
-		g.write('\t$styp ${c_name(it.val_var)} = ')
-		g.expr(it.cond)
-		g.writeln('.args[$i];')
 	} else if it.kind == .string {
 		i := if it.key_var in ['', '_'] { g.new_tmp_var() } else { it.key_var }
 		g.write('for (int $i = 0; $i < ')
@@ -2374,6 +2347,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			fsym := g.table.get_type_symbol(node.typ)
 			g.write(fsym.name)
 		}
+		ast.ArrayDecompose {
+			g.expr(node.expr)
+		}
 		ast.ArrayInit {
 			g.array_init(node)
 		}
@@ -2775,7 +2751,8 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		info := sym.info as table.FnType
 		g.write('_SLIT("${g.fn_decl_str(info)}")')
 	} else if node.expr_type.has_flag(.variadic) {
-		g.write('_SLIT("...${util.strip_main_name(sym.name)}")')
+		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
+		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
 		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
 	}
@@ -3835,13 +3812,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 		else {
 			sym := g.table.get_type_symbol(node.left_type)
 			left_is_ptr := node.left_type.is_ptr()
-			if node.left_type.has_flag(.variadic) {
-				g.expr(node.left)
-				g.write('.args')
-				g.write('[')
-				g.expr(node.index)
-				g.write(']')
-			} else if sym.kind == .array {
+			if sym.kind == .array {
 				info := sym.info as table.Array
 				elem_type_str := g.typ(info.elem_type)
 				elem_typ := g.table.get_type_symbol(info.elem_type)

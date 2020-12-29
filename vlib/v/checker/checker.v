@@ -1333,21 +1333,16 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
-			if !c.check_types(got_arg_typ, exp_arg_typ) {
-				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
 				// str method, allow type with str method if fn arg is string
-				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+				// Passing an int or a string array produces a c error here
+				// Deleting this condition results in propper V error messages
+				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				// continue
 				// }
-				// same ancestor? let it be
-				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
-					if got_arg_sym.parent_idx != 0 {
-						continue
-					}
-				}
 				if got_arg_typ != table.void_type {
-					c.error('cannot use type `$got_arg_sym.name` as type `$exp_arg_sym.name` in argument ${i +
-						1} to `${left_type_sym.name}.$method_name`', call_expr.pos)
+					c.error('$err in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
+						call_expr.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
@@ -1660,7 +1655,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected(typ, arg.typ) or {
+		c.check_expected_call_arg(typ, arg.typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -1673,7 +1668,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.is_generic {
 				continue
 			}
-			c.error('invalid argument ${i + 1} to `$fn_name`: $err', call_arg.pos)
+			c.error('$err in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 	}
 	if f.is_generic && call_expr.generic_type == table.void_type {
@@ -2980,6 +2975,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.stmts(node.decl.stmts)
 			c.cur_fn = keep_fn
 			return node.typ
+		}
+		ast.ArrayDecompose {
+			typ := c.expr(node.expr)
+			type_sym := c.table.get_type_symbol(typ)
+			if type_sym.kind != .array {
+				c.error('expected array', node.pos)
+			}
+			array_info := type_sym.info as table.Array
+			elem_type := array_info.elem_type.set_flag(.variadic)
+			node.expr_type = typ
+			node.arg_type = elem_type
+			return elem_type
 		}
 		ast.ArrayInit {
 			return c.array_init(mut node)
