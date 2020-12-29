@@ -215,15 +215,6 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		is_varg := i == args.len - 1 && is_variadic
-		if is_varg {
-			varg_type_str := int(arg.typ).str()
-			if varg_type_str !in g.variadic_args {
-				g.variadic_args[varg_type_str] = 0
-			}
-			// TODO: do we need the replacement? isnt it handled in typ()
-			arg_type_name = g.typ(arg.typ).replace('*', '_ptr')
-		}
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as table.FnType
 			func := info.func
@@ -765,13 +756,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
 	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].has_flag(.variadic)
-	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.has_flag(.variadic)
-	mut gen_vargs := is_variadic && !is_forwarding_varg
 	for i, arg in args {
-		// if arg is ast.ArrayDecomposition {
-		// 	gen_vargs = true
-		// }
-		if gen_vargs && i == expected_types.len - 1 {
+		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
@@ -822,34 +808,32 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_interface {
 			g.write(')')
 		}
-		if i < args.len - 1 || gen_vargs {
+		if i < args.len - 1 || is_variadic {
 			g.write(', ')
 		}
 	}
 	arg_nr := expected_types.len - 1
-	if gen_vargs {
+	if is_variadic {
 		varg_type := expected_types[expected_types.len - 1]
 		variadic_count := args.len - arg_nr
-		varg_type_str := int(varg_type).str()
-		if variadic_count > g.variadic_args[varg_type_str] {
-			g.variadic_args[varg_type_str] = variadic_count
-		}
 		arr_sym := g.table.get_type_symbol(varg_type)
 		arr_info := arr_sym.info as table.Array
 		elem_type := g.typ(arr_info.elem_type)
 		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecomposition {
 			g.expr(args[args.len - 1].expr)
 		} else {
-			g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
 			if variadic_count > 0 {
+				g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
 				for j in arg_nr .. args.len {
 					g.ref_or_deref_arg(args[j], arr_info.elem_type)
 					if j < args.len - 1 {
 						g.write(', ')
 					}
 				}
+				g.write('}))')
+			} else {
+				g.write('__new_array_with_default(0, 0, sizeof($elem_type), 0)')
 			}
-			g.write('}))')
 		}
 	}
 }

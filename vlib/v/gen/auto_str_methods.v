@@ -60,15 +60,6 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 			}
 		}
 	}
-	// if varg, generate str for varg
-	// if typ.has_flag(.variadic) {
-	// 	varg_already_generated_key := 'varg_$already_generated_key'
-	// 	if varg_already_generated_key !in g.str_types {
-	// 		g.gen_str_for_varg(styp, str_fn_name, sym_has_str_method)
-	// 		g.str_types << varg_already_generated_key
-	// 	}
-	// 	return 'varg_$str_fn_name'
-	// }
 	if typ.has_flag(.optional) {
 		option_already_generated_key := 'option_$already_generated_key'
 		if option_already_generated_key !in g.str_types {
@@ -298,22 +289,6 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\t\t}')
 	g.auto_str_funcs.writeln('\t}')
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("}"));')
-	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
-	g.auto_str_funcs.writeln('}')
-}
-
-fn (mut g Gen) gen_str_for_varg(styp string, str_fn_name string, has_str_method bool) {
-	g.definitions.writeln('static string varg_${str_fn_name}(varg_$styp it); // auto')
-	g.auto_str_funcs.writeln('static string varg_${str_fn_name}(varg_$styp it) {')
-	g.auto_str_funcs.writeln('\tstrings__Builder sb = strings__new_builder(it.len);')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("["));')
-	g.auto_str_funcs.writeln('\tfor(int i=0; i<it.len; ++i) {')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${str_fn_name}(it.args[i]));')
-	g.auto_str_funcs.writeln('\t\tif (i < it.len-1) {')
-	g.auto_str_funcs.writeln('\t\t\tstrings__Builder_write(&sb, _SLIT(", "));')
-	g.auto_str_funcs.writeln('\t\t}')
-	g.auto_str_funcs.writeln('\t}')
-	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("]"));')
 	g.auto_str_funcs.writeln('\treturn strings__Builder_str(&sb);')
 	g.auto_str_funcs.writeln('}')
 }
