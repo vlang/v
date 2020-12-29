@@ -910,6 +910,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	} else if c.table.type_kind(right_type) == .sum_type {
 		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
 	}
+	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
+	left_is_optional := left_type.has_flag(.optional)
+	right_is_optional := right_type.has_flag(.optional)
+	if (left_is_optional && !right_is_optional) || (!left_is_optional && right_is_optional) {
+		c.error('unwrapped optional cannot be used in an infix expression', infix_expr.pos)
+	}
 	// Dual sides check (compatibility check)
 	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
