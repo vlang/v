@@ -819,7 +819,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		arr_sym := g.table.get_type_symbol(varg_type)
 		arr_info := arr_sym.info as table.Array
 		elem_type := g.typ(arr_info.elem_type)
-		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecomposition {
+		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecompose {
 			g.expr(args[args.len - 1].expr)
 		} else {
 			if variadic_count > 0 {

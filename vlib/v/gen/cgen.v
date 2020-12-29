@@ -2347,6 +2347,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			fsym := g.table.get_type_symbol(node.typ)
 			g.write(fsym.name)
 		}
+		ast.ArrayDecompose {
+			g.expr(node.expr)
+		}
 		ast.ArrayInit {
 			g.array_init(node)
 		}
@@ -2716,10 +2719,6 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.write(')')
 		}
 		ast.UnsafeExpr {
-			g.expr(node.expr)
-		}
-		ast.ArrayDecomposition {
-			g.write('/* Array decompose */')
 			g.expr(node.expr)
 		}
 	}

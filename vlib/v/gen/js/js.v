@@ -576,7 +576,7 @@ fn (mut g JsGen) expr(node ast.Expr) {
 		ast.UnsafeExpr {
 			g.expr(node.expr)
 		}
-		ast.ArrayDecomposition {}
+		ast.ArrayDecompose {}
 	}
 }
 

@@ -8,14 +8,10 @@ import v.token
 import v.ast
 
 pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
-	// if c.check_call_arg(got, expected) {
-	// 	return
-	// }
 	mut expected := expected_
 	// variadic
-	exp_type_sym := c.table.get_type_symbol(expected_)
-	//&& exp_type_sym.kind == .array
 	if expected.has_flag(.variadic) {
+		exp_type_sym := c.table.get_type_symbol(expected_)
 		exp_info := exp_type_sym.info as table.Array
 		expected = exp_info.elem_type
 	}

@@ -129,7 +129,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		// println(typeof(e))
 		if p.tok.kind == .ellipsis {
 			p.next()
-			e = ast.ArrayDecomposition{
+			e = ast.ArrayDecompose{
 				expr: e
 				pos: p.tok.position()
 			}

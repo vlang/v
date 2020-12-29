@@ -2969,6 +2969,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.cur_fn = keep_fn
 			return node.typ
 		}
+		ast.ArrayDecompose {
+			typ := c.expr(node.expr)
+			type_sym := c.table.get_type_symbol(typ)
+			if type_sym.kind != .array {
+				c.error('expected array', node.pos)
+			}
+			array_info := type_sym.info as table.Array
+			elem_type := array_info.elem_type.set_flag(.variadic)
+			node.expr_type = typ
+			node.arg_type = elem_type
+			return elem_type
+		}
 		ast.ArrayInit {
 			return c.array_init(mut node)
 		}
@@ -3161,19 +3173,6 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					node.pos)
 			}
 			return table.bool_type
-		}
-		ast.ArrayDecomposition {
-			// typ := c.expr(node.expr).set_flag(.variadic)
-			typ := c.expr(node.expr)
-			type_sym := c.table.get_type_symbol(typ)
-			if type_sym.kind != .array {
-				c.error('expected array', node.pos)
-			}
-			array_info := type_sym.info as table.Array
-			elem_type := array_info.elem_type.set_flag(.variadic)
-			node.expr_type = typ
-			node.arg_type = elem_type
-			return elem_type
 		}
 	}
 	return table.void_type
