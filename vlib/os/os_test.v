@@ -216,31 +216,31 @@ fn test_mv() {
 	tdir1 := os.join_path(work_dir, 'dir')
 	tdir2 := os.join_path(work_dir, 'dir2')
 	tdir3 := os.join_path(work_dir, 'dir3')
-	mkdir(tdir1)
-	mkdir(tdir2)
+	os.mkdir(tdir1)
+	os.mkdir(tdir2)
 	// Move file with no extension to dir
 	os.mv(tfile1, tdir1)
 	mut expected := os.join_path(tdir1, 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected) && !os.is_dir(expected) == true
 	// Move dir with contents to other dir
 	os.mv(tdir1, tdir2)
 	expected = os.join_path(tdir2, 'dir')
-	assert os.exists(expected) && is_dir(expected) == true
+	assert os.exists(expected) && os.is_dir(expected) == true
 	expected = os.join_path(tdir2, 'dir', 'file')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected) && !os.is_dir(expected) == true
 	// Move dir with contents to other dir (by renaming)
 	os.mv(os.join_path(tdir2, 'dir'), tdir3)
 	expected = tdir3
-	assert os.exists(expected) && is_dir(expected) == true
+	assert os.exists(expected) && os.is_dir(expected) == true
 	assert os.is_dir_empty(tdir2) == true
 	// Move file with extension to dir
 	os.mv(tfile2, tdir2)
 	expected = os.join_path(tdir2, 'file.test')
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected) && !os.is_dir(expected) == true
 	// Move file to dir (by renaming)
 	os.mv(os.join_path(tdir2, 'file.test'), tfile3)
 	expected = tfile3
-	assert os.exists(expected) && !is_dir(expected) == true
+	assert os.exists(expected) && !os.is_dir(expected) == true
 }
 
 fn test_cp_r() {

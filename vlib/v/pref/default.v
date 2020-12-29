@@ -72,7 +72,7 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	p.ccompiler_type = cc_from_string(p.ccompiler)
 	p.is_test = p.path.ends_with('_test.v')
 	p.is_vsh = p.path.ends_with('.vsh')
-	p.is_script = p.is_vsh || p.path.ends_with('.v') || p.path.ends_with('.vv')
+	p.is_script = p.is_vsh || p.is_repl || p.path.ends_with('.vv')
 	if p.third_party_option == '' {
 		p.third_party_option = p.cflags
 		$if !windows {
