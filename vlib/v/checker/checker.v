@@ -1327,31 +1327,44 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
-			got_arg_sym := c.table.get_type_symbol(got_arg_typ)
-			if 'sum' in call_expr.name {
-				got_is_varg := got_arg_typ.has_flag(.variadic)
-				exp_is_varg := exp_arg_typ.has_flag(.variadic)
-				println('# CALL: $call_expr.name: $got_arg_sym.name ($got_is_varg|$got_arg_sym.kind), $exp_arg_sym.name ($exp_arg_sym.kind|$exp_is_varg) - $call_expr.pos.line_nr')
-			}
-			if !c.check_types(got_arg_typ, exp_arg_typ) {
-				// got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+			// got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+			// if 'sum' in call_expr.name {
+			// 	got_is_varg := got_arg_typ.has_flag(.variadic)
+			// 	exp_is_varg := exp_arg_typ.has_flag(.variadic)
+			// 	println('# CALL: $call_expr.name: $got_arg_sym.name ($got_arg_sym.kind|$got_is_varg|${typeof(arg.expr)}), $exp_arg_sym.name ($exp_arg_sym.kind|$exp_is_varg) - $call_expr.pos.line_nr')
+			// }
+			// println('checking ($got_arg_sym.name - $exp_arg_sym.name)')
+			// if !c.check_call_arg(got_arg_typ, exp_arg_typ) {
+			// 	// got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+			// 	// str method, allow type with str method if fn arg is string
+			// 	// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+			// 	// continue
+			// 	// }
+			// 	if got_arg_typ != table.void_type {
+			// 		mut exp_styp := exp_arg_sym.name
+			// 		if exp_arg_typ.has_flag(.variadic) {
+			// 			exp_styp = exp_arg_sym.name.replace('[]', '...')
+			// 		}
+			// 		c.error('cannot use type `$got_arg_sym.name` as type `$exp_arg_sym.name` in argument ${i +
+			// 			1} to `${left_type_sym.name}.$method_name`', call_expr.pos)
+			// 	}
+			// }
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
 				// str method, allow type with str method if fn arg is string
-				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+				// Passing an int or a string array produces a c error here
+				// Deleting this condition results in propper V error messages
+				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				// continue
 				// }
-				// same ancestor? let it be
-				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
-					if got_arg_sym.parent_idx != 0 {
-						continue
-					}
-				}
+				// if typ_sym.kind == .void && got_arg_sym.kind == .string {
+				// 	continue
+				// }
+				// if method.is_generic {
+				// 	continue
+				// }
 				if got_arg_typ != table.void_type {
-					mut exp_styp := exp_arg_sym.name
-					if exp_arg_typ.has_flag(.variadic) {
-						exp_styp = exp_arg_sym.name.replace('[]', '...')
-					}
-					c.error('cannot use type `$got_arg_sym.name` as type `$exp_arg_sym.name` in argument ${i +
-						1} to `${left_type_sym.name}.$method_name`', call_expr.pos)
+					c.error('invalid argument ${i + 1} to `${left_type_sym.name}.$method_name`: $err',
+						call_expr.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
@@ -1664,7 +1677,9 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected(typ, arg.typ) or {
+		// arg_typ := if arg.typ.has_flag(.variadic) { c.table.value_type(arg.typ) } else { arg.typ }
+		arg_typ := arg.typ
+		c.check_expected_call_arg(typ, arg_typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -3178,14 +3193,15 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return table.bool_type
 		}
 		ast.ArrayDecomposition {
+			// typ := c.expr(node.expr).set_flag(.variadic)
 			typ := c.expr(node.expr)
 			type_sym := c.table.get_type_symbol(typ)
 			if type_sym.kind != .array {
 				c.error('expected array', node.pos)
 			}
 			array_info := type_sym.info as table.Array
-			elem_type := array_info.elem_type
-			node.expr_type = typ.set_flag(.variadic)
+			elem_type := array_info.elem_type.set_flag(.variadic)
+			node.expr_type = typ
 			node.arg_type = elem_type
 			return elem_type
 		}

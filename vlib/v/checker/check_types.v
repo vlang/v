@@ -7,6 +7,24 @@ import v.table
 import v.token
 import v.ast
 
+pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
+	// if c.check_call_arg(got, expected) {
+	// 	return
+	// }
+	mut expected := expected_
+	// variadic
+	exp_type_sym := c.table.get_type_symbol(expected_)
+	//&& exp_type_sym.kind == .array
+	if expected.has_flag(.variadic) {
+		exp_info := exp_type_sym.info as table.Array
+		expected = exp_info.elem_type.set_flag(.variadic)
+	}
+	if c.check_types(got, expected) {
+		return
+	}
+	return error(c.expected_msg(got, expected))
+}
+
 pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
@@ -63,16 +81,6 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	// # NOTE: use symbols from this point on for perf
 	got_type_sym := t.get_type_symbol(got)
 	exp_type_sym := t.get_type_symbol(expected)
-	// variadic
-	if expected.has_flag(.variadic) {
-		if got_type_sym.kind == .array && !got.has_flag(.variadic) {
-			return false
-		}
-		exp_info := exp_type_sym.info as table.Array
-		if c.check_types(got, exp_info.elem_type) {
-			return true
-		}
-	}
 	//
 	if exp_type_sym.kind == .function && got_type_sym.kind == .int {
 		// TODO temporary
