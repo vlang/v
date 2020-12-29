@@ -189,7 +189,7 @@ fn (mut f MDFile) check_examples() (int, int) {
 		}
 		fname := os.base(f.path).replace('.md', '_md')
 		uid := rand.ulid()
-		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.v')
+		vfile := os.join_path(os.temp_dir(), 'check_${fname}_example_${e.sline}__${e.eline}__${uid}.vv')
 		mut should_cleanup_vfile := true
 		// eprintln('>>> checking example $vfile ...')
 		vcontent := e.text.join('\n') + '\n'
