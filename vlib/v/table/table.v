@@ -730,7 +730,7 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		if idx == 0 {
+		if idx in [0, any_int_type_idx, any_flt_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)

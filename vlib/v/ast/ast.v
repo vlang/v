@@ -293,9 +293,9 @@ pub:
 	is_variadic     bool
 	is_anon         bool
 	receiver        Field
-	receiver_pos    token.Position // receiver's position
+	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
-	method_type_pos token.Position // `User` in `(u User)` position
+	method_type_pos token.Position // `User` in ` fn (u User)` position
 	method_idx      int
 	rec_mut         bool // is receiver mutable
 	rec_share       table.ShareType
@@ -303,7 +303,7 @@ pub:
 	no_body         bool // just a definition `fn C.malloc()`
 	is_builtin      bool // this function is defined in builtin/strconv
 	pos             token.Position // function declaration position
-	body_pos        token.Position // function body's position
+	body_pos        token.Position // function bodys position
 	file            string
 	is_generic      bool
 	is_direct_arr   bool // direct array access

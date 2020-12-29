@@ -387,12 +387,9 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
+			if sym.kind in [.placeholder, .any_int, .any_float] && decl.language != .c && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
-			}
-			if sym.kind in [.any_int, .any_float] {
-				c.error('unknown type `$sym.name`', field.type_pos)
 			}
 			if sym.kind == .array {
 				array_info := sym.array_info()
@@ -4849,7 +4846,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 	return_sym := c.table.get_type_symbol(node.return_type)
 	if node.language == .v &&
 		return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
-		c.error('unknown return type `$return_sym.name`', node.pos)
+		c.error('unknown type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
