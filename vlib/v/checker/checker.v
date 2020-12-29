@@ -310,7 +310,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind == .placeholder {
+			if typ_sym.kind in [.placeholder, .any_int, .any_float] {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
 			} else if typ_sym.kind == .alias {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
@@ -318,8 +318,6 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 					node.pos)
 			} else if typ_sym.kind == .chan {
 				c.error('aliases of `chan` types are not allowed.', node.pos)
-			} else if typ_sym.kind in [table.Kind.any_int, .any_float] {
-				c.error('cannot type alias `$typ_sym.name`', node.pos)
 			}
 		}
 		ast.FnTypeDecl {
@@ -349,12 +347,10 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				if sym.name in names_used {
 					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 						variant.pos)
-				} else if sym.kind == .placeholder {
-					c.error("type `$sym.name` doesn't exist", node.pos)
+				} else if sym.kind in [.placeholder, .any_int, .any_float] {
+					c.error("type `$sym.name` doesn't exist", variant.pos)
 				} else if sym.kind == .interface_ {
-					c.error('sum type cannot hold an interface', node.pos)
-				} else if sym.kind in [table.Kind.any_float, .any_int] {
-					c.error('cannot use `$sym.name` in sum type', variant.pos)
+					c.error('sum type cannot hold an interface', variant.pos)
 				}
 				names_used << sym.name
 			}
@@ -395,6 +391,9 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
 			}
+			if sym.kind in [.any_int, .any_float] {
+				c.error('unknown type `$sym.name`', field.type_pos)
+			}
 			if sym.kind == .array {
 				array_info := sym.array_info()
 				elem_sym := c.table.get_type_symbol(array_info.elem_type)
@@ -402,9 +401,6 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
 						field.type_pos)
 				}
-			}
-			if sym.kind in [table.Kind.any_int, .any_float] {
-				c.error('cannot use `$sym.name` type as struct field type', field.type_pos)
 			}
 			if sym.kind == .struct_ {
 				info := sym.info as table.Struct
@@ -4844,16 +4840,14 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder {
-				c.error('unknown type `$sym.name`', node.method_type_pos)
-			}
-			if sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod {
-				c.error('cannot use type `$sym.name` as parameter type', node.pos)
+			if sym.kind == .placeholder || (sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod)  {
+				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
 	}
-	if node.return_type in [table.any_flt_type, table.any_int_type] {
-		c.error('cannot use `any_int` and `any_float` as return type', node.pos)
+	return_sym := c.table.get_type_symbol(node.return_type)
+	if node.language == .v && return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
+		c.error('unknown return type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
