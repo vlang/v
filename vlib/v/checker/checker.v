@@ -4840,13 +4840,15 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder || (sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod)  {
+			if sym.kind == .placeholder ||
+				(sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod) {
 				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
 	}
 	return_sym := c.table.get_type_symbol(node.return_type)
-	if node.language == .v && return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
+	if node.language == .v &&
+		return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
 		c.error('unknown return type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
