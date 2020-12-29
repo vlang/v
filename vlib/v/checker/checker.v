@@ -4848,12 +4848,12 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('unknown type `$sym.name`', node.method_type_pos)
 			}
 			if sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod {
-				c.error('cannot use type `$sym.name`', node.method_type_pos)
+				c.error('cannot use type `$sym.name` as parameter type', node.pos)
 			}
 		}
 	}
 	if node.return_type in [table.any_flt_type, table.any_int_type] {
-		c.error('cannot `any_int` and `any_float` as return type', node.pos)
+		c.error('cannot use `any_int` and `any_float` as return type', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {

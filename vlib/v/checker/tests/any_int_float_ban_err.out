@@ -1,0 +1,39 @@
+vlib/v/checker/tests/any_int_float_ban_err.vv:1:12: error: cannot use `any_int` in sum type
+    1 | type Foo = any_int | any_float
+      |            ~~~~~~~
+    2 | type Fo2 = any_int
+    3 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: cannot type alias `any_int`
+    1 | type Foo = any_int | any_float
+    2 | type Fo2 = any_int
+      | ~~~~~~~~
+    3 | 
+    4 | struct Int {
+vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: cannot use `any_int` type as struct field type
+    3 | 
+    4 | struct Int {
+    5 |     i any_int
+      |       ~~~~~~~
+    6 |     f any_float
+    7 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: cannot use `any_float` type as struct field type
+    4 | struct Int {
+    5 |     i any_int
+    6 |     f any_float
+      |       ~~~~~~~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:9:1: error: cannot use type `any_int` as parameter type
+    7 | }
+    8 | 
+    9 | fn foo(i any_int) any_int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     return i
+   11 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: cannot use `any_int` and `any_float` as return type
+   11 | }
+   12 | 
+   13 | fn foo2() any_int {
+      | ~~~~~~~~~~~~~~~~~
+   14 |     return 1
+   15 | }
