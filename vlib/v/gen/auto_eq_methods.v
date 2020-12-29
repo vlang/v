@@ -94,7 +94,6 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	g.map_fn_definitions << ptr_typ
 	left_sym := g.table.get_type_symbol(left)
 	value_typ := left_sym.map_info().value_type
-	value_sym := g.table.get_type_symbol(value_typ)
 	ptr_value_typ := g.typ(value_typ)
 	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
@@ -106,7 +105,9 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	fn_builder.writeln('\t\tif (!DenseArray_has_index(&a.key_values, i)) continue;')
 	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&a.key_values, i);')
 	fn_builder.writeln('\t\tif (!map_exists_1(&b, k)) return false;')
-	if value_sym.kind == .function {
+	kind := g.table.type_kind(value_typ)
+	if kind == .function {
+		value_sym := g.table.get_type_symbol(value_typ)
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
 		fn_builder.write('\t\t$ret_styp (*v) (')
@@ -122,7 +123,7 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	} else {
 		fn_builder.writeln('\t\t$ptr_value_typ v = *($ptr_value_typ*)map_get_1(&a, k, &($ptr_value_typ[]){ 0 });')
 	}
-	match value_sym.kind {
+	match kind {
 		.string {
 			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get_1(&b, k, &(string[]){_SLIT("")}), v)) {')
 		}
