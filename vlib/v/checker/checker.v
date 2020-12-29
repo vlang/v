@@ -318,7 +318,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 					node.pos)
 			} else if typ_sym.kind == .chan {
 				c.error('aliases of `chan` types are not allowed.', node.pos)
-			} else if typ_sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod {
+			} else if typ_sym.kind in [table.Kind.any_int, .any_float] {
 				c.error('cannot type alias `$typ_sym.name`', node.pos)
 			}
 		}
@@ -402,6 +402,9 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error(util.new_suggestion(elem_sym.name, c.table.known_type_names()).say('unknown type `$elem_sym.name`'),
 						field.type_pos)
 				}
+			}
+			if sym.kind in [table.Kind.any_int, .any_float] {
+				c.error('cannot use `$sym.name` type as struct field type', field.type_pos)
 			}
 			if sym.kind == .struct_ {
 				info := sym.info as table.Struct
@@ -4844,7 +4847,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			if sym.kind == .placeholder {
 				c.error('unknown type `$sym.name`', node.method_type_pos)
 			}
+			if sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod {
+				c.error('cannot use type `$sym.name`', node.method_type_pos)
+			}
 		}
+	}
+	if node.return_type in [table.any_flt_type, table.any_int_type] {
+		c.error('cannot `any_int` and `any_float` as return type', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
