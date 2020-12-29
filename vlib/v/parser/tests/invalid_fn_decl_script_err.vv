@@ -1,0 +1,5 @@
+mynum := 10
+
+fn main() {
+	println(mynum)
+}

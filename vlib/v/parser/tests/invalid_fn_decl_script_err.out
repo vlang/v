@@ -1,0 +1,7 @@
+vlib/v/parser/tests/invalid_top_level_decl_err.vv:3:4: error: function declarations are not supported in script mode
+    1 | mynum := 10
+    2 |
+    3 | fn main() {
+      |    ~~~~
+    4 |     println(mynum)
+    5 | }
