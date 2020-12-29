@@ -79,6 +79,10 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 			g.write('&($elem_type_str[]){')
 			g.write('_SLIT("")')
 			g.write('})')
+		} else if it.has_len && elem_sym.kind in [.array, .map] {
+			g.write('(voidptr)&($elem_type_str[]){')
+			g.write(g.type_default(it.elem_type))
+			g.write('}[0])')
 		} else {
 			g.write('0)')
 		}
