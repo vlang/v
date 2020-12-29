@@ -851,3 +851,17 @@ jobs:
       run: cd vls; ../v cmd/vls ; cd ..
     - name: Build VLS with -prod
       run: cd vls; ../v -prod cmd/vls ; cd ..
+
+  vab-compiles:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone vab
+      run: git clone --depth 1 https://github.com/vlang/vab
+    - name: Build vab
+      run: cd vab; ../v ./vab.v ; cd ..
+    - name: Build vab with -prod
+      run: cd vab; ../v -prod ./vab.v ; cd ..
