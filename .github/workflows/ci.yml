@@ -294,7 +294,7 @@ jobs:
         echo "Building it..."
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
-        ls    
+        ls
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
@@ -399,7 +399,7 @@ jobs:
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=undefined)
       run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
-    
+
   tests-sanitize-address:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -551,8 +551,8 @@ jobs:
         #node hi.js
 #    - name: Test v binaries
 #      run: ./v build-vbinaries
-#    - name: v2 self compilation
-#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+    - name: v2 self compilation
+      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
     runs-on: windows-2019
