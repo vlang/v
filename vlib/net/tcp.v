@@ -35,7 +35,8 @@ pub fn (c TcpConn) close() ? {
 // write_ptr blocks and attempts to write all data
 pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
 	$if trace_tcp ? {
-		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len')
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			unsafe { b.vstring_with_len(len) })
 	}
 	unsafe {
 		mut ptr_base := byteptr(b)
@@ -85,6 +86,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		error_ewouldblock {
 			c.wait_for_read() ?
 			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+			$if trace_tcp ? {
+				eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			}
 			return socket_error(res)
 		}
 		else {
