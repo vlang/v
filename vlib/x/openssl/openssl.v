@@ -180,13 +180,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 	return res
 }
 
-pub fn (mut s SSLConn) read_into(mut buffer []Byte) ?int {
+pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
 	res := s.socket_read_into_ptr(byteptr(buffer.data), buffer.len)?
 	return res
 }
 
 // write number of bytes to SSL connection
-pub fn (mut s SSLConn) write(bytes []Byte) ? {
+pub fn (mut s SSLConn) write(bytes []byte) ? {
 	unsafe {
 		mut ptr_base := byteptr(bytes.data)
 		mut total_sent := 0
