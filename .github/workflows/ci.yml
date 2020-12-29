@@ -398,7 +398,7 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=undefined)
-      run: ./v -cflags -fsanitize=undefined test-fixed
+      run: ./v -cc clang -cflags "-fsanitize=undefined" self && ./v -cflags -fsanitize=undefined test-fixed
     
   ubuntu-clang-sanitize-address:
     runs-on: ubuntu-latest
