@@ -53,8 +53,8 @@ pub mut:
 	scope_returns                    bool
 	mod                              string // current module name
 	is_builtin_mod                   bool // are we in `builtin`?
-	inside_unsafe                    bool // are we inside `unsafe{}`?
-	inside_const                     bool /// are we in `const` block?
+	inside_unsafe                    bool
+	inside_const                     bool
 	skip_flags                       bool // should `#flag` and `#include` be skipped
 	cur_generic_type                 table.Type
 mut:
