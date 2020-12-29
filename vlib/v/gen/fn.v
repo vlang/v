@@ -150,7 +150,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		g.hotcode_definitions.writeln('}')
 	}
 	// Profiling mode? Start counting at the beginning of the function (save current time).
-	if g.pref.is_prof {
+	if g.pref.is_prof && g.pref.build_mode != .build_module {
 		g.profile_fn(it)
 	}
 	// we could be in an anon fn so save outer fn defer stmts
