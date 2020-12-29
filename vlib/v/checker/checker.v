@@ -2083,7 +2083,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
-	mut seen := []int{}
+	mut seen := []i64{}
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -2101,10 +2101,10 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					val := field.expr.val.i64()
 					if val < int_min || val > int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !decl.is_multi_allowed && int(val) in seen {
+					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
-					seen << int(val)
+					seen << i64(val)
 				}
 				ast.PrefixExpr {}
 				else {

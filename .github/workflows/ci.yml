@@ -377,7 +377,7 @@ jobs:
         echo "Running it..."
         ls
 
-  ubuntu-clang-sanitize-undefined:
+  tests-sanitize-undefined:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -398,9 +398,9 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=undefined)
-      run: ./v -cflags -fsanitize=undefined test-fixed
+      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
     
-  ubuntu-clang-sanitize-address:
+  tests-sanitize-address:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -423,7 +423,7 @@ jobs:
     - name: Fixed tests (-fsanitize=address)
       run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
 
-  ubuntu-clang-sanitize-memory:
+  tests-sanitize-memory:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
