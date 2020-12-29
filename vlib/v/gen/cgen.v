@@ -5483,7 +5483,7 @@ fn (g &Gen) type_to_fmt(typ table.Type) string {
 	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
 		return '%.*s\\000'
 	} else if sym.kind in
-		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type, .function] {
+		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
 		return '%.*s\\000'
 	} else if sym.kind == .string {
 		return "\'%.*s\\000\'"
