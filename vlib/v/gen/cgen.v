@@ -2779,7 +2779,8 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		info := sym.info as table.FnType
 		g.write('_SLIT("${g.fn_decl_str(info)}")')
 	} else if node.expr_type.has_flag(.variadic) {
-		g.write('_SLIT("...${util.strip_main_name(sym.name)}")')
+		varg_elem_type_sym := g.table.get_type_symbol(g.table.value_type(node.expr_type))
+		g.write('_SLIT("...${util.strip_main_name(varg_elem_type_sym.name)}")')
 	} else {
 		g.write('_SLIT("${util.strip_main_name(sym.name)}")')
 	}

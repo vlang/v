@@ -723,9 +723,13 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			if t == array_type {
 				return 'array'
 			}
-			info := sym.info as Array
-			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
-			res = '[]$elem_str'
+			if t.has_flag(.variadic) {
+				res = table.type_to_str_using_aliases(table.value_type(t), import_aliases)
+			} else {
+				info := sym.info as Array
+				elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+				res = '[]$elem_str'
+			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed

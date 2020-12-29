@@ -829,10 +829,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	arg_nr := expected_types.len - 1
 	if gen_vargs {
 		varg_type := expected_types[expected_types.len - 1]
-		varg_styp := g.typ(varg_type)
-		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_nr
-		last_arg := args[args.len - 1]
 		varg_type_str := int(varg_type).str()
 		if variadic_count > g.variadic_args[varg_type_str] {
 			g.variadic_args[varg_type_str] = variadic_count
@@ -840,24 +837,19 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		arr_sym := g.table.get_type_symbol(varg_type)
 		arr_info := arr_sym.info as table.Array
 		elem_type := g.typ(arr_info.elem_type)
-		if last_arg.expr is ast.ArrayDecomposition {
-			g.expr(last_arg.expr)
+		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecomposition {
+			g.expr(args[args.len - 1].expr)
 		} else {
 			g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
-			// g.write('($struct_name){.len=$variadic_count,.args={')
 			if variadic_count > 0 {
 				for j in arg_nr .. args.len {
-					g.ref_or_deref_arg(args[j], varg_type)
+					g.ref_or_deref_arg(args[j], arr_info.elem_type)
 					if j < args.len - 1 {
 						g.write(', ')
 					}
 				}
-			} else {
-				// NB: tcc can not handle 0 here, while msvc needs it
-				g.write('EMPTY_VARG_INITIALIZATION')
 			}
 			g.write('}))')
-			// g.write('}}')
 		}
 	}
 }

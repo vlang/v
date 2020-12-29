@@ -17,12 +17,12 @@ pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.T
 	//&& exp_type_sym.kind == .array
 	if expected.has_flag(.variadic) {
 		exp_info := exp_type_sym.info as table.Array
-		expected = exp_info.elem_type.set_flag(.variadic)
+		expected = exp_info.elem_type
 	}
 	if c.check_types(got, expected) {
 		return
 	}
-	return error(c.expected_msg(got, expected))
+	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
 }
 
 pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {

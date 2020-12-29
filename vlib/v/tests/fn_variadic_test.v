@@ -34,7 +34,7 @@ fn test_fn_variadic_generic() {
 */
 // forwarding
 fn variadic_forward_a(a ...string) string {
-	return variadic_forward_b(a)
+	return variadic_forward_b(a...)
 }
 
 fn variadic_forward_b(a ...string) string {

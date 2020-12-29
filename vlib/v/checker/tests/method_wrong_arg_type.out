@@ -1,4 +1,4 @@
-vlib/v/checker/tests/method_wrong_arg_type.vv:8:4: error: cannot use type `MyEnum` as type `string` in argument 1 to `Sss.info` 
+vlib/v/checker/tests/method_wrong_arg_type.vv:8:4: error: cannot use `MyEnum` as `string` in argument 1 to `Sss.info`
     6 |     e := MyEnum.x
     7 |     s := Sss{}
     8 |     s.info(e)
