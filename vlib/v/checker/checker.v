@@ -387,7 +387,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			if sym.kind in [.placeholder, .any_int, .any_float] && decl.language != .c && !sym.name.starts_with('C.') {
+			if sym.kind in [.placeholder, .any_int, .any_float] &&
+				decl.language != .c && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
 			}
