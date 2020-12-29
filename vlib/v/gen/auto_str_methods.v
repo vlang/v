@@ -6,6 +6,54 @@ import v.table
 import v.pref
 import v.util
 
+fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
+	mut convertor := ''
+	mut typename_ := ''
+	if sym.parent_idx in table.integer_type_idxs {
+		convertor = 'int'
+		typename_ = 'int'
+	} else if sym.parent_idx == table.f32_type_idx {
+		convertor = 'float'
+		typename_ = 'f32'
+	} else if sym.parent_idx == table.f64_type_idx {
+		convertor = 'double'
+		typename_ = 'f64'
+	} else if sym.parent_idx == table.bool_type_idx {
+		convertor = 'bool'
+		typename_ = 'bool'
+	} else {
+		verror("could not generate string method for type '$styp'")
+	}
+	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
+	if convertor == 'bool' {
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
+	} else {
+		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
+	}
+	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, _SLIT(")"));')
+	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
+	g.auto_str_funcs.writeln('\treturn tmp2;')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (g &Gen) type_to_fmt(typ table.Type) string {
+	sym := g.table.get_type_symbol(typ)
+	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
+		return '%.*s\\000'
+	} else if sym.kind in
+		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .sum_type, .function] {
+		return '%.*s\\000'
+	} else if sym.kind == .string {
+		return "\'%.*s\\000\'"
+	} else if sym.kind in [.f32, .f64] {
+		return '%g\\000' // g removes trailing zeros unlike %f
+	} else if sym.kind == .u64 {
+		return '%lld\\000'
+	}
+	return '%d\\000'
+}
+
 fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 	styp := g.typ(typ).replace('*', '')
 	mut sym := g.table.get_type_symbol(g.unwrap_generic(typ))
