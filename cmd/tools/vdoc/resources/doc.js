@@ -80,29 +80,114 @@ function setupDarkMode() {
 
 function setupSearch() {
     var searchInput = document.getElementById('search');
-    searchInput.addEventListener('input', function(e) {
+    var onInputChange = debounce(function(e) {
         var searchValue = e.target.value.toLowerCase();
-        var menuItems = document.querySelectorAll('.content > ul > li');
-        for (var i = 0; i < menuItems.length; i++) {
-            var menuItem = menuItems[i];
-            var links = menuItem.querySelectorAll('a');
-            var hasResult = false;
-            for (var li = 0; li < links.length; li++) {
-                var link = links[li];
-                if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
-                    hasResult = true;
+        var menu = document.querySelector('.doc-nav > .content');
+        var search = document.querySelector('.doc-nav > .search');
+        if (searchValue === '') {
+            // reset to default
+            menu.style.display = '';
+            search.style.display = '';
+        } else if (searchValue.length > 2) {
+            // search for less than 3 characters can display too much results
+            search.innerHTML = '';
+            menu.style.display = 'none';
+            search.style.display = 'block';
+            // cache length for performance
+            var foundModule = false;
+            var searchModuleIndexLength = searchModuleIndex.length;
+            var ul = document.createElement('ul');
+            search.appendChild(ul);
+            for (var i = 0; i < searchModuleIndexLength; i++) {
+                // no toLowerCase needed because modules are always lowercase
+                var title = searchModuleIndex[i];
+                if (title.indexOf(searchValue) === -1) {
+                    continue
                 }
-                if (li > 0) {
-                    if (!searchValue || link.text.toLowerCase().indexOf(searchValue) !== -1) {
-                        link.style.display = '';
-                    } else {
-                        link.style.display = 'none';
-                    }
-                }
+                foundModule = true;
+                // [description, link]
+                var data = searchModuleData[i];
+                var description = data[0];
+                var link = data[1];
+                var el = createSearchResult({
+                    link: link,
+                    title: title,
+                    description: description,
+                    badge: 'module',
+                });
+                ul.appendChild(el);
             }
-            menuItem.style.display = !searchValue || hasResult ? '' : 'none';
+            if (foundModule) {
+                var hr = document.createElement('hr');
+                hr.classList.add('separator');
+                search.appendChild(hr);
+            }
+            var searchIndexLength = searchIndex.length;
+            var results = [];
+            for (var i = 0; i < searchIndexLength; i++) {
+                var title = searchIndex[i].toLowerCase();
+                if (title.indexOf(searchValue) === -1) {
+                    continue
+                }
+                // [badge, description, link]
+                var data = searchData[i];
+                var badge = data[0];
+                var description = data[1];
+                var link = data[2];
+                var prefix = data[3];
+                results.push({
+                    badge: badge,
+                    description: description,
+                    link: link,
+                    title: prefix + ' ' + title,
+                });
+            }
+            results.sort(function(a, b) {
+                if (a.title < b.title) {
+                    return -1;
+                }
+                if (a.title > b.title) {
+                    return 1;
+                }
+                return 0;
+            });
+            var ul = document.createElement('ul');
+            search.appendChild(ul);
+            for (var i = 0; i < results.length; i++) {
+                var result = results[i];
+                var el = createSearchResult(result);
+                ul.appendChild(el);
+            }
         }
     });
+    searchInput.addEventListener('input', onInputChange);
+}
+
+function createSearchResult(data) {
+    var li = document.createElement('li');
+    li.classList.add('result');
+    var a = document.createElement('a');
+    a.href = data.link;
+    a.classList.add('link');
+    li.appendChild(a);
+    var defintion = document.createElement('div');
+    defintion.classList.add('definition');
+    a.appendChild(defintion);
+    if (data.description) {
+        var description = document.createElement('div');
+        description.classList.add('description');
+        description.textContent = data.description;
+        a.appendChild(description);
+    }
+    var title = document.createElement('span');
+    title.classList.add('title');
+    title.textContent = data.title;
+    defintion.appendChild(title);
+    var badge = document.createElement('badge');
+    badge.classList.add('badge');
+    badge.textContent = data.badge;
+    defintion.appendChild(badge);
+    return li;
 }
 
 function setupCollapse() {
@@ -113,5 +198,16 @@ function setupCollapse() {
             var parent = e.target.parentElement.parentElement.parentElement;
             parent.classList.toggle('open');
         });
+    }
+}
+
+function debounce(func, timeout) {
+    var timer;
+    return (...args) => {
+        const next = () => func(...args);
+        if (timer) {
+            clearTimeout(timer);
+        }
+        timer = setTimeout(next, timeout > 0 ? timeout : 300);
     }
 }
