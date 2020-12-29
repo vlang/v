@@ -31,8 +31,7 @@ pub:
 	id                string // unique id of client
 pub mut:
 	conn              net.TcpConn // underlying TCP socket connection
-	// size of nounce used for masking
-	nonce_size        int = 16
+	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool // set to true of callbacks can panic
 	state             State // current state of connection
 	logger            &log.Log // logger used to log messages

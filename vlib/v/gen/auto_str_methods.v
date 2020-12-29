@@ -55,6 +55,9 @@ fn (mut g Gen) gen_str_for_type(typ table.Type) string {
 			table.SumType {
 				g.gen_str_for_union_sum_type(sym.info, styp, str_fn_name)
 			}
+			table.Interface {
+				g.gen_str_for_interface(sym.info, styp, str_fn_name)
+			}
 			else {
 				verror("could not generate string method $str_fn_name for type '$styp'")
 			}
@@ -424,7 +427,7 @@ fn (mut g Gen) gen_str_for_struct(info table.Struct, styp string, str_fn_name st
 
 fn struct_auto_str_func(sym table.TypeSymbol, field_type table.Type, fn_name string, field_name string) string {
 	has_custom_str := sym.has_method('str')
-	if sym.kind == .enum_ {
+	if sym.kind in [.enum_, .interface_] {
 		return '${fn_name}(it.${c_name(field_name)})'
 	} else if sym.kind == .struct_ {
 		mut obj := 'it.${c_name(field_name)}'
@@ -478,6 +481,14 @@ fn (mut g Gen) gen_str_for_enum(info table.Enum, styp string, str_fn_name string
 	}
 	g.auto_str_funcs.writeln('\t\tdefault: return _SLIT("unknown enum value");')
 	g.auto_str_funcs.writeln('\t}')
+	g.auto_str_funcs.writeln('}')
+}
+
+fn (mut g Gen) gen_str_for_interface(info table.Interface, styp string, str_fn_name string) {
+	// TODO
+	g.type_definitions.writeln('static string ${str_fn_name}($styp it); // auto')
+	g.auto_str_funcs.writeln('static string ${str_fn_name}($styp it) { /* gen_str_for_interface */')
+	g.auto_str_funcs.writeln('\treturn _SLIT("$styp{ /* TODO: Interface str */ }");')
 	g.auto_str_funcs.writeln('}')
 }
 

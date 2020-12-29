@@ -352,6 +352,7 @@ fn test_mut_arg() {
 
 fn test_clone() {
 	nums := [1, 2, 3, 4, 100]
+	_ = nums
 	nums2 := nums.clone()
 	assert nums2.len == 5
 	assert nums.str() == '[1, 2, 3, 4, 100]'
@@ -1277,4 +1278,32 @@ fn test_array_struct_ref_contains() {
 	exists := coord_1 in coords
 	println(exists)
 	assert exists == true
+}
+
+fn test_array_struct_ref_index() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	println(coords.index(coord_1))
+	assert coords.index(coord_1) == 0
+}
+
+fn test_array_of_array_append() {
+	mut x := [][]int{len: 4}
+	println(x) // OK
+	x[2] << 123 // RTE
+	println(x)
+	assert '$x' == '[[], [], [123], []]'
+}
+
+fn test_array_of_map_insert() {
+	mut x := []map[string]int{len: 4}
+	println(x) // OK
+	x[2]['123'] = 123 // RTE
+	println(x)
+	assert '$x' == "[{}, {}, {'123': 123}, {}]"
 }

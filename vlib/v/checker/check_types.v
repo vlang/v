@@ -30,6 +30,11 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	exp_idx := t.unalias_num_type(expected).idx()
 	// got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
+	// exp_is_optional := expected.has_flag(.optional)
+	// got_is_optional := got.has_flag(.optional)
+	// if (exp_is_optional && !got_is_optional) || (!exp_is_optional && got_is_optional) {
+	// return false
+	//}
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
 	if got_idx == exp_idx {
