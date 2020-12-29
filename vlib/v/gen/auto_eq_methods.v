@@ -6,13 +6,13 @@ import strings
 import v.table
 
 fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
-	left_sym := g.table.get_type_symbol(left)
-	info := left_sym.struct_info()
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.struct_fn_definitions {
 		return ptr_typ
 	}
 	g.struct_fn_definitions << ptr_typ
+	left_sym := g.table.get_type_symbol(left)
+	info := left_sym.struct_info()
 	g.type_definitions.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_typ}_struct_eq($ptr_typ a, $ptr_typ b) {')
@@ -44,15 +44,15 @@ fn (mut g Gen) gen_struct_equality_fn(left table.Type) string {
 }
 
 fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
-	left_sym := g.table.get_type_symbol(left)
 	ptr_typ := g.typ(left).trim('*')
-	elem_typ := left_sym.array_info().elem_type
-	ptr_elem_typ := g.typ(elem_typ)
-	elem_sym := g.table.get_type_symbol(elem_typ)
 	if ptr_typ in g.array_fn_definitions {
 		return ptr_typ
 	}
 	g.array_fn_definitions << ptr_typ
+	left_sym := g.table.get_type_symbol(left)
+	elem_typ := left_sym.array_info().elem_type
+	ptr_elem_typ := g.typ(elem_typ)
+	elem_sym := g.table.get_type_symbol(elem_typ)
 	g.type_definitions.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_typ}_arr_eq($ptr_typ a, $ptr_typ b) {')
@@ -87,15 +87,15 @@ fn (mut g Gen) gen_array_equality_fn(left table.Type) string {
 }
 
 fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
-	left_sym := g.table.get_type_symbol(left)
 	ptr_typ := g.typ(left).trim('*')
 	if ptr_typ in g.map_fn_definitions {
 		return ptr_typ
 	}
+	g.map_fn_definitions << ptr_typ
+	left_sym := g.table.get_type_symbol(left)
 	value_typ := left_sym.map_info().value_type
 	value_sym := g.table.get_type_symbol(value_typ)
 	ptr_value_typ := g.typ(value_typ)
-	g.map_fn_definitions << ptr_typ
 	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
 	fn_builder.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b) {')
