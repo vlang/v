@@ -2332,9 +2332,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
 		.byte, .bool, .i8, .char {
-			hash_fn = '&map_hash_int_2'
-			key_eq_fn = '&map_eq_int_2'
-			clone_fn = '&map_clone_int_2'
+			hash_fn = '&map_hash_int_1'
+			key_eq_fn = '&map_eq_int_1'
+			clone_fn = '&map_clone_int_1'
 		}
 		.i16, .u16 {
 			hash_fn = '&map_hash_int_2'
