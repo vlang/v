@@ -368,13 +368,13 @@ fn (mut g Gen) gen_str_for_multi_return(info table.MultiReturn, styp string, str
 			arg_str_fn_name = styp_to_str_fn_name(field_styp)
 		}
 		if sym.kind == .struct_ && !sym_has_str_method {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${str_fn_name}(a.arg$i));')
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(a.arg$i));')
 		} else if sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("%g", 1, a.arg$i));')
 		} else if sym.kind == .string {
 			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, a.arg$i));')
 		} else if sym.kind == .function {
-			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${str_fn_name}());')
+			g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}());')
 		} else {
 			if (str_method_expects_ptr && is_arg_ptr) || (!str_method_expects_ptr && !is_arg_ptr) {
 				g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, ${arg_str_fn_name}(a.arg$i));')
