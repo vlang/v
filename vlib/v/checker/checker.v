@@ -4372,7 +4372,7 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 				c.error('cannot take the address of an int', node.pos)
 			}
 			ast.BoolLiteral {
-				c.error('cannot take the adress of a bool', node.pos)
+				c.error('cannot take the address of a bool', node.pos)
 			}
 			ast.StringLiteral, ast.StringInterLiteral {
 				c.error('cannot take the address of a string', node.pos)
