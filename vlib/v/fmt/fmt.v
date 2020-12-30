@@ -1994,7 +1994,7 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.write('const ')
 	if it.is_block {
-		f.writeln(' (')
+		f.writeln('(')
 	}
 	mut max := 0
 	for field in it.fields {
