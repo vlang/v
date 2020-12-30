@@ -78,7 +78,9 @@ fn parse_comparator_set(input string) ?ComparatorSet {
 	}
 	mut comparators := []Comparator{}
 	for raw_comp in raw_comparators {
-		c := parse_comparator(raw_comp) or { return error('Invalid comparator "$raw_comp" in input "$input"') }
+		c := parse_comparator(raw_comp) or {
+			return error('Invalid comparator "$raw_comp" in input "$input"')
+		}
 		comparators << c
 	}
 	return ComparatorSet{comparators}

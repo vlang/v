@@ -26,7 +26,9 @@ pub fn from(input string) ?Version {
 		return error('Empty input')
 	}
 	raw_version := parse(input)
-	version := raw_version.validate() or { return error('Invalid version format for input "$input"') }
+	version := raw_version.validate() or {
+		return error('Invalid version format for input "$input"')
+	}
 	return version
 }
 
