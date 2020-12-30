@@ -1,4 +1,4 @@
-import table
+import v.table
 
 fn test_idx() {
 	mut t := table.new_type(table.void_type_idx)
