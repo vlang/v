@@ -116,3 +116,22 @@ fn test_embed_mutable() {
 	mut a := field_publicity.App{}
 	a.Context = field_publicity.Context{}
 }
+
+struct Context {
+	static_files string
+}
+
+struct App {
+	Context
+}
+
+fn embed_field_access_generic<T>(mut app T) {
+	app.Context = Context{
+		static_files: app.static_files
+	}
+}
+
+fn test_embed_field_access_generic() {
+	mut app := App{}
+	embed_field_access_generic(mut app)
+}

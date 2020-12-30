@@ -2768,7 +2768,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.get_type_symbol(node.expr_type)
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
 	if is_optional {
