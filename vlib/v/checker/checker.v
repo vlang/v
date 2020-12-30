@@ -392,7 +392,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					field.type_pos)
 			}
 			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
-			// suggestionns due to f32 comparision issue. 
+			// suggestions due to f32 comparision issue. 
 			if sym.kind in [.any_int, .any_float] {
 				msg := if sym.kind == .any_int {
 					'unknown type `$sym.name`.\nDid you mean `int`?'
