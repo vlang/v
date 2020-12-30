@@ -179,7 +179,7 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 	if !os.exists(tool_exe) {
 		should_compile = true
 	} else {
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
+		if os.file_last_mod_unix(tool_exe) < os.file_last_mod_unix(vexe) {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
 			should_compile = true
@@ -192,7 +192,7 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 				should_compile = false
 			}
 		}
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(tool_source) {
+		if os.file_last_mod_unix(tool_exe) < os.file_last_mod_unix(tool_source) {
 			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
 		}
