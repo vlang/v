@@ -259,6 +259,7 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
+	module_lookup_paths << os.getwd()
 	// go up through parents looking for modules a folder.
 	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
 	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
@@ -278,21 +279,6 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 	// 	module_lookup_paths << fpath_parent
 	// }
 	// mod_parts := mod.split('.')
-	/*
-	path_parts := fpath.split(os.path_separator)
-	for i:=path_parts.len-2; i>0; i-- {
-		p1 := path_parts[0..i].join(os.path_separator)
-		try_path := os.join_path(p1, mod_path)
-		println('### TRY: $mod - $try_path')
-		if b.pref.is_verbose {
-			println('  >> trying to find $mod in $try_path ..')
-		}
-		if os.is_dir(try_path) {
-			println('### FOUND: $mod - $try_path')
-			return try_path
-		}
-	}
-	*/
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
@@ -302,6 +288,20 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 			if b.pref.is_verbose {
 				println('  << found $try_path .')
 			}
+			return try_path
+		}
+	}
+	// look up through parents
+	path_parts := fpath.split(os.path_separator)
+	for i := path_parts.len - 2; i > 0; i-- {
+		p1 := path_parts[0..i].join(os.path_separator)
+		try_path := os.join_path(p1, mod_path)
+		// println('### TRY: $mod - $try_path')
+		if b.pref.is_verbose {
+			println('  >> trying to find $mod in $try_path ..')
+		}
+		if os.is_dir(try_path) {
+			// println('### FOUND: $mod - $try_path')
 			return try_path
 		}
 	}

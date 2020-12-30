@@ -143,18 +143,13 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 	// println('start cgen2')
 	mut module_built := ''
 	if pref.build_mode == .build_module {
-		// TODO: detect this properly for all cases
-		// either get if from an earlier stage or use the lookup paths
-		for dir_name in ['modules', 'vlib', '.vmodules'] {
-			if os.path_separator + dir_name + os.path_separator in pref.path || pref.path.starts_with(dir_name +
-				os.path_separator) {
-				module_built = pref.path.after(dir_name + os.path_separator).replace(os.path_separator,
-					'.')
+		for file in files {
+			if pref.path in file.path &&
+				file.mod.alias ==
+				pref.path.all_after_last(os.path_separator).trim_right(os.path_separator) {
+				module_built = file.mod.name
 				break
 			}
-		}
-		if module_built == '' {
-			module_built = pref.path.all_after_last(os.path_separator).trim_right(os.path_separator)
 		}
 	}
 	mut timers_should_print := false
