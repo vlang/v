@@ -100,3 +100,8 @@ fn test_embed_method_receiver_ptr() {
 	b := Breakfast{}
 	assert b.test(5) == 5
 }
+
+fn test_embed_mutable() {
+	mut a := field_publicity.App{}
+	a.Context = field_publicity.Context{}
+}
