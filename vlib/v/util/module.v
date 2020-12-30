@@ -18,6 +18,5 @@ pub fn mod_path_to_full_name(mod string, path string) ?string {
 			}
 		}
 	}
-
 	return error('module not found')
 }
