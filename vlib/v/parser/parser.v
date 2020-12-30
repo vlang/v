@@ -1410,7 +1410,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	name_pos := p.tok.position()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
-	if p.prev_tok.position().line_nr == name_pos.line_nr {
+	if (p.prev_tok.position().line_nr == name_pos.line_nr) || p.peek_tok.position != .name {
 		field_name = p.check_name()
 	} else {
 		p.name_error = true
