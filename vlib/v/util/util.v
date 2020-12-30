@@ -179,7 +179,10 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 	if !os.exists(tool_exe) {
 		should_compile = true
 	} else {
-		if os.file_last_mod_unix(tool_exe) < os.file_last_mod_unix(vexe) {
+		mtime_vexe := os.file_last_mod_unix(vexe)
+		mtime_tool_exe := os.file_last_mod_unix(tool_exe)
+		mtime_tool_source := os.file_last_mod_unix(tool_source)
+		if mtime_tool_exe <= mtime_vexe {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
 			should_compile = true
@@ -192,9 +195,19 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 				should_compile = false
 			}
 		}
-		if os.file_last_mod_unix(tool_exe) < os.file_last_mod_unix(tool_source) {
+		if mtime_tool_exe < mtime_tool_source {
 			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
+		}
+		// GNU Guix and possibly other environments, have bit for bit reproducibility in mind,
+		// including filesystem attributes like modification times, so they set the modification
+		// times of executables to 0. In this case, we should not recompile even if other
+		// heuristics say that we should. Users in such environments, have to explicitly do:
+		// `v cmd/tools/vfmt.v`, and/or install v from source, and not use the system packaged
+		// one.
+		is_mtime_0 := mtime_vexe == 0 && mtime_tool_exe == 0
+		if is_mtime_0 {
+			should_compile = false
 		}
 	}
 	return should_compile
