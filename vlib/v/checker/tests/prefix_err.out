@@ -1,24 +1,50 @@
-vlib/v/checker/tests/prefix_err.vv:2:5: error: invalid indirect of `int`
-    1 | a := 1
-    2 | _ = *a
+vlib/v/checker/tests/prefix_err.vv:1:6: error: cannot take the address of a bool
+    1 | b := &true
+      |      ^
+    2 | _ := &10
+    3 | _ := &"Hi"
+vlib/v/checker/tests/prefix_err.vv:2:6: error: cannot take the address of an int
+    1 | b := &true
+    2 | _ := &10
+      |      ^
+    3 | _ := &"Hi"
+    4 | _ := &"${b}"
+vlib/v/checker/tests/prefix_err.vv:3:6: error: cannot take the address of a string
+    1 | b := &true
+    2 | _ := &10
+    3 | _ := &"Hi"
+      |      ^
+    4 | _ := &"${b}"
+    5 |
+vlib/v/checker/tests/prefix_err.vv:4:6: error: cannot take the address of a string
+    2 | _ := &10
+    3 | _ := &"Hi"
+    4 | _ := &"${b}"
+      |      ^
+    5 |
+    6 | a := 1
+vlib/v/checker/tests/prefix_err.vv:7:5: error: invalid indirect of `int`
+    5 |
+    6 | a := 1
+    7 | _ = *a
       |     ^
-    3 | a <- 4
-    4 |
-vlib/v/checker/tests/prefix_err.vv:3:1: error: cannot push on non-channel `int`
-    1 | a := 1
-    2 | _ = *a
-    3 | a <- 4
+    8 | a <- 4
+    9 |
+vlib/v/checker/tests/prefix_err.vv:8:1: error: cannot push on non-channel `int`
+    6 | a := 1
+    7 | _ = *a
+    8 | a <- 4
       | ^
-    4 |
-    5 | _ = ~true
-vlib/v/checker/tests/prefix_err.vv:5:5: error: operator ~ only defined on int types
-    3 | a <- 4
-    4 |
-    5 | _ = ~true
+    9 |
+   10 | _ = ~true
+vlib/v/checker/tests/prefix_err.vv:10:5: error: operator ~ only defined on int types
+    8 | a <- 4
+    9 |
+   10 | _ = ~true
       |     ^
-    6 | _ = !4
-vlib/v/checker/tests/prefix_err.vv:6:5: error: ! operator can only be used with bool types
-    4 |
-    5 | _ = ~true
-    6 | _ = !4
+   11 | _ = !4
+vlib/v/checker/tests/prefix_err.vv:11:5: error: ! operator can only be used with bool types
+    9 |
+   10 | _ = ~true
+   11 | _ = !4
       |     ^
