@@ -83,5 +83,20 @@ fn test_assign() {
 
 fn test_embed_is_public() {
 	a := field_publicity.App{}
-	assert a.Context.name == ''
+	assert a.Context.name == ''  
+}
+
+struct Eggs {}
+
+fn (f &Eggs) test(x int) int {
+	return x
+}
+
+struct Breakfast {
+	Eggs
+}
+
+fn test_embed_method_receiver_ptr() {
+	b := Breakfast{}
+	assert b.test(5) == 5
 }
