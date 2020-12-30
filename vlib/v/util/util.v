@@ -195,7 +195,7 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 				should_compile = false
 			}
 		}
-		if mtime_tool_exe < mtime_tool_source {
+		if mtime_tool_exe <= mtime_tool_source {
 			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
 		}
