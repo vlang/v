@@ -333,6 +333,20 @@ fn calculate_screen_position(x_in int, y_in int, screen_columns int, char_count 
 	return out
 }
 
+// get_prompt_offset computes the length of the `prompt` `string` argument.
+fn get_prompt_offset(prompt string) int {
+	mut len := 0
+	for i := 0; i < prompt.len; i++ {
+		if prompt[i] == `\e` {
+			for ; i < prompt.len && prompt[i] != `m`; i++ {
+			}
+		} else {
+			len = len + 1
+		}
+	}
+	return prompt.len - len
+}
+
 // refresh_line redraws the current line, including the prompt.
 fn (mut r Readline) refresh_line() {
 	mut end_of_input := [0, 0]
