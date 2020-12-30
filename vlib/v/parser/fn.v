@@ -424,6 +424,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
 	p.check(.key_fn)
+	if p.pref.is_script && p.tok.kind == .name {
+		p.error_with_pos('function declarations in script mode should be before all script statements',
+			p.tok.position())
+		return ast.AnonFn{}
+	}
 	p.open_scope()
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
