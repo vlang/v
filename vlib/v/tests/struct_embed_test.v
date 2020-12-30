@@ -116,3 +116,35 @@ fn test_embed_mutable() {
 	mut a := field_publicity.App{}
 	a.Context = field_publicity.Context{}
 }
+
+struct Context {
+	static_files string
+}
+
+fn (c Context) test() bool {
+	return true
+}
+
+struct App {
+	Context
+}
+
+fn embed_field_access_generic<T>(mut app T) {
+	app.Context = Context{
+		static_files: app.static_files
+	}
+}
+
+fn test_embed_field_access_generic() {
+	mut app := App{}
+	embed_field_access_generic(mut app)
+}
+
+fn embed_method_generic<T>(app T) bool {
+	return app.test()
+}
+
+fn test_embed_method_generic() {
+	mut app := App{}
+	assert embed_method_generic(app)
+}
