@@ -71,11 +71,11 @@ pub:
 	pos      token.Position
 }
 
-// 'name: $name'
+// string literal with `$xx` or `${xxx}`, e.g. 'name: $name'
 pub struct StringInterLiteral {
 pub:
-	vals       []string
-	exprs      []Expr
+	vals       []string // the string literal will be split by `$xxx` in vals array
+	exprs      []Expr // all `$xxx` in string literal
 	fwidths    []int
 	precisions []int
 	pluss      []bool
@@ -180,6 +180,7 @@ pub mut:
 	is_block     bool // const() block
 }
 
+// struct declaration
 pub struct StructDecl {
 pub:
 	pos          token.Position
@@ -190,7 +191,7 @@ pub:
 	pub_pos      int // pub:
 	pub_mut_pos  int // pub mut:
 	language     table.Language
-	is_union     bool
+	is_union     bool // if true, will generate C union, instead of struct
 	attrs        []table.Attr
 	end_comments []Comment
 	embeds       []Embed
@@ -198,6 +199,7 @@ pub mut:
 	fields       []StructField
 }
 
+// struct embed
 pub struct Embed {
 pub:
 	typ table.Type
@@ -211,12 +213,13 @@ pub:
 	pos  token.Position
 }
 
+// interface declaration
 pub struct InterfaceDecl {
 pub:
+	is_pub       bool
 	name         string
 	field_names  []string
-	is_pub       bool
-	methods      []FnDecl
+	methods      []FnDecl // methods need to be implemented
 	pos          token.Position
 	pre_comments []Comment
 }
@@ -245,6 +248,7 @@ pub mut:
 	expected_type table.Type
 }
 
+// struct initial
 pub struct StructInit {
 pub:
 	pos                  token.Position
@@ -324,7 +328,7 @@ pub mut:
 pub struct BranchStmt {
 pub:
 	kind  token.Kind
-	label string
+	label string // use in label for, `x` in `continue x` or `break x`
 	pos   token.Position
 }
 
@@ -438,6 +442,7 @@ pub mut:
 	comments []Comment
 }
 
+// global valiable declaration
 pub struct GlobalDecl {
 pub:
 	pos          token.Position
@@ -482,9 +487,10 @@ pub mut:
 
 pub type IdentInfo = IdentFn | IdentVar
 
+// kind of identifier
 pub enum IdentKind {
-	unresolved
-	blank_ident
+	unresolved // normal
+	blank_ident // underscore, `_`
 	variable
 	constant
 	global
@@ -495,7 +501,7 @@ pub enum IdentKind {
 pub struct Ident {
 pub:
 	language table.Language
-	tok_kind token.Kind
+	tok_kind token.Kind // the token kind that after identifier, `:=` in `x := 'abc' 
 	pos      token.Position
 	mut_pos  token.Position
 pub mut:
@@ -520,7 +526,7 @@ pub fn (i &Ident) var_info() IdentVar {
 	}
 }
 
-// left op right
+// left op right e.g. `1 + 2`
 // See: token.Kind.is_infix
 pub struct InfixExpr {
 pub:
@@ -547,7 +553,7 @@ pub mut:
 // See: token.Kind.is_prefix
 pub struct PrefixExpr {
 pub:
-	op         token.Kind
+	op         token.Kind // prefix operator, e.g. -, &, *, !, ~
 	right      Expr
 	pos        token.Position
 pub mut:
@@ -555,6 +561,7 @@ pub mut:
 	or_block   OrExpr
 }
 
+// index expr, can be used for array and map, e.g. `array[index]` or `map[key]`
 pub struct IndexExpr {
 pub:
 	pos       token.Position
@@ -566,9 +573,10 @@ pub mut:
 	is_setter bool
 }
 
+// if statement or expr
 pub struct IfExpr {
 pub:
-	is_comptime   bool
+	is_comptime   bool // true, if it is `$if`
 	tok_kind      token.Kind
 	left          Expr // `a` in `a := if ...`
 	pos           token.Position
@@ -609,6 +617,7 @@ pub mut:
 	typ      table.Type
 }
 
+// match statement or expr
 pub struct MatchExpr {
 pub:
 	tok_kind      token.Kind
@@ -620,7 +629,7 @@ pub mut:
 	return_type   table.Type
 	cond_type     table.Type // type of `x` in `match x {`
 	expected_type table.Type // for debugging only
-	is_sum_type   bool
+	is_sum_type   bool // true, if match sum type valiable
 }
 
 pub struct MatchBranch {
@@ -636,6 +645,7 @@ pub mut:
 	scope         &Scope
 }
 
+// concurrent select statement
 pub struct SelectExpr {
 pub:
 	branches      []SelectBranch
@@ -662,6 +672,7 @@ pub enum CompForKind {
 	fields
 }
 
+// compile time for,`$for {}`
 pub struct CompFor {
 pub:
 	val_var string
@@ -755,10 +766,11 @@ pub mut:
 	has_cross_var bool
 }
 
+// as cast statement
 pub struct AsCast {
 pub:
-	expr      Expr
-	typ       table.Type
+	expr      Expr // `x` in `x as int`
+	typ       table.Type // `int` in `x as int`
 	pos       token.Position
 pub mut:
 	expr_type table.Type
@@ -799,6 +811,7 @@ pub:
 	pos              token.Position
 }
 
+// alias type declaration
 pub struct AliasTypeDecl {
 pub:
 	name        string
@@ -808,7 +821,7 @@ pub:
 	comments    []Comment
 }
 
-// New implementation of sum types
+// sum type declaration
 pub struct SumTypeDecl {
 pub:
 	name     string
@@ -825,6 +838,7 @@ pub:
 	pos token.Position
 }
 
+// function type declaration
 pub struct FnTypeDecl {
 pub:
 	name     string
@@ -852,18 +866,21 @@ pub:
 	pos  token.Position
 }
 
+// concurrent go statement
 pub struct GoStmt {
 pub:
 	call_expr Expr
 	pos       token.Position
 }
 
+// goto label
 pub struct GotoLabel {
 pub:
 	name string
 	pos  token.Position
 }
 
+// goto statement
 pub struct GotoStmt {
 pub:
 	name string
@@ -914,9 +931,9 @@ pub mut:
 
 pub struct MapInit {
 pub:
+	keys       []Expr // save all keys, when it is map literal init
+	vals       []Expr // save all values, when it is map literal init
 	pos        token.Position
-	keys       []Expr
-	vals       []Expr
 pub mut:
 	typ        table.Type
 	key_type   table.Type
@@ -954,6 +971,7 @@ pub mut:
 	in_prexpr bool // is the parent node an ast.PrefixExpr
 }
 
+// assert statement in test
 pub struct AssertStmt {
 pub:
 	pos  token.Position
@@ -971,10 +989,16 @@ pub mut:
 	expr_type table.Type
 }
 
+pub struct None {
+pub:
+	pos token.Position
+	foo int // todo
+}
+
 pub enum OrKind {
-	absent
-	block
-	propagate
+	absent // `fn()`
+	block // `fn() or { }`
+	propagate // `fn()?`
 }
 
 // `or { ... }`
@@ -995,20 +1019,22 @@ pub:
 	pos       token.Position
 }
 */
+// create new variable by associate variable,`new_var := { var_name | key: val, key: val }`
 pub struct Assoc {
 pub:
-	var_name string
-	fields   []string
-	exprs    []Expr
+	var_name string // `var_name`
+	fields   []string // `key`
+	exprs    []Expr // `val`
 	pos      token.Position
 pub mut:
 	typ      table.Type
 	scope    &Scope
 }
 
+// the builtin sizeof function,can be used for type and variable
 pub struct SizeOf {
 pub:
-	is_type   bool
+	is_type   bool // true, if argument is a type
 	typ       table.Type
 	type_name string
 	expr      Expr
@@ -1022,6 +1048,7 @@ pub:
 	is_likely bool // false for _unlikely_
 }
 
+// the builtin typeof function
 pub struct TypeOf {
 pub:
 	expr      Expr
@@ -1078,12 +1105,6 @@ pub mut:
 	sym         table.TypeSymbol
 }
 
-pub struct None {
-pub:
-	pos token.Position
-	foo int // todo
-}
-
 /*
 pub enum SqlExprKind {
 	select_
@@ -1097,6 +1118,7 @@ pub enum SqlStmtKind {
 	delete
 }
 
+// sql statement: insert, update, delete
 pub struct SqlStmt {
 pub:
 	kind            SqlStmtKind
@@ -1112,6 +1134,7 @@ pub mut:
 	fields          []table.Field
 }
 
+// sql select statement
 pub struct SqlExpr {
 pub:
 	typ         table.Type
