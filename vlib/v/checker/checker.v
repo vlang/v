@@ -242,7 +242,8 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 				} else {
 					for attr in stmt.attrs {
 						if attr.name == 'console' {
-							c.error('only `main` can have the `[console]` attribute', stmt.pos)
+							c.error('only `main` can have the `[console]` attribute',
+								stmt.pos)
 						}
 					}
 					if stmt.is_pub && !stmt.is_method {
