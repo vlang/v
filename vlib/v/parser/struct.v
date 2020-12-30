@@ -158,7 +158,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
 				p.peek_tok.kind == .dot) &&
-				language == .v && ast_fields.len == 0
+				language == .v && ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -250,8 +250,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: is_field_pub
-				is_mut: is_field_mut
+				is_pub: if is_embed {
+					true
+				} else {
+					is_field_pub
+				}
+				is_mut: if is_embed {
+					true
+				} else {
+					is_field_mut
+				}
 				is_global: is_field_global
 				attrs: p.attrs
 			}

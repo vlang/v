@@ -1,4 +1,5 @@
 import flag
+import field_publicity
 
 struct Foo {
 	x int
@@ -80,6 +81,11 @@ fn test_assign() {
 	assert h.x == 5
 }
 
+fn test_embed_is_public() {
+	a := field_publicity.App{}
+	assert a.Context.name == ''  
+}
+
 struct Eggs {}
 
 fn (f &Eggs) test(x int) int {
@@ -93,4 +99,9 @@ struct Breakfast {
 fn test_embed_method_receiver_ptr() {
 	b := Breakfast{}
 	assert b.test(5) == 5
+}
+
+fn test_embed_mutable() {
+	mut a := field_publicity.App{}
+	a.Context = field_publicity.Context{}
 }
