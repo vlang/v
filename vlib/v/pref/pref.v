@@ -394,6 +394,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					if command == '' {
 						command = arg
 						command_pos = i
+						if command == 'run' {
+							break
+						}
 					}
 					continue
 				}

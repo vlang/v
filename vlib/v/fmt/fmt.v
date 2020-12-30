@@ -1138,6 +1138,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write('}')
 		}
+		ast.ArrayDecompose {
+			f.expr(node.expr)
+		}
 	}
 }
 
@@ -1989,7 +1992,10 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.writeln('const ()\n')
 		return
 	}
-	f.writeln('const (')
+	f.write('const ')
+	if it.is_block {
+		f.writeln('(')
+	}
 	mut max := 0
 	for field in it.fields {
 		if field.name.len > max {
@@ -2014,7 +2020,11 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
-	f.writeln(')\n')
+	if it.is_block {
+		f.writeln(')\n')
+	} else {
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) global_decl(it ast.GlobalDecl) {

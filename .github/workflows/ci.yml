@@ -294,7 +294,7 @@ jobs:
         echo "Building it..."
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
-        ls    
+        ls
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
@@ -377,7 +377,7 @@ jobs:
         echo "Running it..."
         ls
 
-  ubuntu-clang-sanitize-undefined:
+  tests-sanitize-undefined:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -398,9 +398,9 @@ jobs:
     - name: Build V
       run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
     - name: Fixed tests (-fsanitize=undefined)
-      run: ./v -cflags -fsanitize=undefined test-fixed
-    
-  ubuntu-clang-sanitize-address:
+      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
+
+  tests-sanitize-address:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -423,7 +423,7 @@ jobs:
     - name: Fixed tests (-fsanitize=address)
       run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
 
-  ubuntu-clang-sanitize-memory:
+  tests-sanitize-memory:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -549,10 +549,10 @@ jobs:
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
-#    - name: v2 self compilation
-#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+    - name: Test v binaries
+      run: ./v build-vbinaries
+    - name: v2 self compilation
+      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
     runs-on: windows-2019
@@ -851,3 +851,17 @@ jobs:
       run: cd vls; ../v cmd/vls ; cd ..
     - name: Build VLS with -prod
       run: cd vls; ../v -prod cmd/vls ; cd ..
+
+  vab-compiles:
+    runs-on: ubuntu-18.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone vab
+      run: git clone --depth 1 https://github.com/vlang/vab
+    - name: Build vab
+      run: cd vab; ../v ./vab.v ; cd ..
+    - name: Build vab with -prod
+      run: cd vab; ../v -prod ./vab.v ; cd ..

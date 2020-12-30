@@ -125,8 +125,8 @@ function setupSearch() {
             var searchIndexLength = searchIndex.length;
             var results = [];
             for (var i = 0; i < searchIndexLength; i++) {
-                var title = searchIndex[i].toLowerCase();
-                if (title.indexOf(searchValue) === -1) {
+                var title = searchIndex[i];
+                if (title.toLowerCase().indexOf(searchValue) === -1) {
                     continue
                 }
                 // [badge, description, link]
