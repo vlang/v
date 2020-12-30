@@ -86,7 +86,9 @@ fn test_embed_is_public() {
 	assert a.Context.name == ''  
 }
 
-struct Eggs {}
+struct Eggs {
+	name string
+}
 
 fn (f &Eggs) test(x int) int {
 	return x
@@ -96,9 +98,18 @@ struct Breakfast {
 	Eggs
 }
 
+fn (b &Breakfast) name() string {
+	return b.name
+}
+
 fn test_embed_method_receiver_ptr() {
 	b := Breakfast{}
 	assert b.test(5) == 5
+}
+
+fn test_embed_field_receiver_ptr() {
+	b := Breakfast{}
+	assert b.name() == ''
 }
 
 fn test_embed_mutable() {
