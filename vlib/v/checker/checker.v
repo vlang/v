@@ -1258,6 +1258,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	mut method := table.Fn{}
 	mut has_method := false
+	mut is_method_from_embed := false
 	if m := c.table.type_find_method(left_type_sym, method_name) {
 		method = m
 		has_method = true
@@ -1275,6 +1276,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if found_methods.len == 1 {
 				method = found_methods[0]
 				has_method = true
+				is_method_from_embed = true
 				call_expr.from_embed_type = embed_of_found_methods[0]
 			} else if found_methods.len > 1 {
 				c.error('ambiguous method `$method_name`', call_expr.pos)
@@ -1374,12 +1376,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.expected_arg_types << method.params[i].typ
 			}
 		}
-		if is_generic {
+		if is_method_from_embed {
+			call_expr.receiver_type = call_expr.from_embed_type.derive(method.params[0].typ)
+		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type

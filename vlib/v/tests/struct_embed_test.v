@@ -121,6 +121,10 @@ struct Context {
 	static_files string
 }
 
+fn (c Context) test() bool {
+	return true
+}
+
 struct App {
 	Context
 }
@@ -134,4 +138,13 @@ fn embed_field_access_generic<T>(mut app T) {
 fn test_embed_field_access_generic() {
 	mut app := App{}
 	embed_field_access_generic(mut app)
+}
+
+fn embed_method_generic<T>(app T) bool {
+	return app.test()
+}
+
+fn test_embed_method_generic() {
+	mut app := App{}
+	assert embed_method_generic(app)
 }
