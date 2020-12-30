@@ -179,6 +179,7 @@ pub:
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
 	end_comments []Comment // comments that after last const field
+	is_block     bool // const() block
 }
 
 pub struct StructDecl {
