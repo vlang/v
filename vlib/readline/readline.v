@@ -41,17 +41,3 @@ mut:
 	search_index      int
 	is_tty            bool
 }
-
-// get_prompt_offset computes the length of the `prompt` `string` argument.
-fn get_prompt_offset(prompt string) int {
-	mut len := 0
-	for i := 0; i < prompt.len; i++ {
-		if prompt[i] == `\e` {
-			for ; i < prompt.len && prompt[i] != `m`; i++ {
-			}
-		} else {
-			len = len + 1
-		}
-	}
-	return prompt.len - len
-}
