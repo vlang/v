@@ -387,10 +387,16 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error('field name `$field.name` duplicate', field.pos)
 				}
 			}
-			if sym.kind in [.placeholder, .any_int, .any_float] &&
+			if sym.kind == .placeholder &&
 				decl.language != .c && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
+			}
+			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
+			// suggestionns due to f32 comparision issue. 
+			if sym.kind in [.any_int, .any_float] {
+				msg := if sym.kind == .any_int {'unknown type `$sym.name`.\nDid you mean `int`?'} else {'unknown type `$sym.name`.\nDid you mean `f64`?'}
+				c.error(msg, field.type_pos)
 			}
 			if sym.kind == .array {
 				array_info := sym.array_info()

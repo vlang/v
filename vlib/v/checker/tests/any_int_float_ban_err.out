@@ -10,7 +10,7 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: type `any_int` doesn't
     3 | 
     4 | struct Int {
 vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `any_int`.
-Did you mean `any`?
+Did you mean `int`?
     3 | 
     4 | struct Int {
     5 |     i any_int
@@ -18,7 +18,7 @@ Did you mean `any`?
     6 |     f any_float
     7 | }
 vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `any_float`.
-Did you mean `any`?
+Did you mean `f64`?
     4 | struct Int {
     5 |     i any_int
     6 |     f any_float
