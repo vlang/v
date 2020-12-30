@@ -240,6 +240,11 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', stmt.pos)
 					}
 				} else {
+					for attr in stmt.attrs {
+						if attr.name == 'console' {
+							c.error('only `main` can have the `[console]` attribute', stmt.pos)
+						}
+					}
 					if stmt.is_pub && !stmt.is_method {
 						c.warn('function `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
