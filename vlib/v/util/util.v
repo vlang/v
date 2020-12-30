@@ -201,12 +201,12 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 		}
 		// GNU Guix and possibly other environments, have bit for bit reproducibility in mind,
 		// including filesystem attributes like modification times, so they set the modification
-		// times of executables to 0. In this case, we should not recompile even if other
+		// times of executables to 1. In this case, we should not recompile even if other
 		// heuristics say that we should. Users in such environments, have to explicitly do:
 		// `v cmd/tools/vfmt.v`, and/or install v from source, and not use the system packaged
 		// one.
-		is_mtime_0 := mtime_vexe == 0 && mtime_tool_exe == 0
-		if is_mtime_0 {
+		is_mtime_ancient := mtime_vexe == 1 && mtime_tool_exe == 1
+		if is_mtime_ancient {
 			should_compile = false
 		}
 	}
