@@ -4367,11 +4367,17 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		if node.right is ast.IntegerLiteral {
-			c.error('cannot take the address of an int', node.pos)
-		}
-		if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
-			c.error('cannot take the address of a string', node.pos)
+		match node.right {
+			ast.IntegerLiteral {
+				c.error('cannot take the address of an int', node.pos)
+			}
+			ast.BoolLiteral {
+				c.error('cannot take the adress of a bool', node.pos)
+			}
+			ast.StringLiteral, ast.StringInterLiteral {
+				c.error('cannot take the address of a string', node.pos)
+			}
+			else {}
 		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.get_type_symbol(node.right.left_type)
