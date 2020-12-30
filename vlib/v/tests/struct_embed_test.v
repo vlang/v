@@ -1,4 +1,5 @@
 import flag
+import field_publicity
 
 struct Foo {
 	x int
@@ -78,4 +79,9 @@ fn test_assign() {
 	mut h := UpperHolder{}
 	h.x = 5
 	assert h.x == 5
+}
+
+fn test_embed_is_public() {
+	a := field_publicity.App{}
+	assert a.Context.name == ''
 }
