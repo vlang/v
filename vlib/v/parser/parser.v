@@ -67,7 +67,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error        bool
+	name_error        bool // indicates if the token is not a name or the name is on another line
 }
 
 // for tests
@@ -406,6 +406,7 @@ fn (mut p Parser) next() {
 }
 
 fn (mut p Parser) check(expected token.Kind) {
+	p.name_error = false
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
@@ -1407,7 +1408,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		return p.comptime_method_call(left)
 	}
 	name_pos := p.tok.position()
-	field_name := p.check_name()
+	mut field_name := ''
+	// check if the name is on the same line as the dot
+	if p.prev_tok.position().line_nr == name_pos.line_nr {
+		field_name = p.check_name()
+	} else {
+		p.name_error = true
+	}
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
