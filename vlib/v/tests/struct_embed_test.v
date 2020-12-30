@@ -79,3 +79,18 @@ fn test_assign() {
 	h.x = 5
 	assert h.x == 5
 }
+
+struct Eggs {}
+
+fn (f &Eggs) test(x int) int {
+	return x
+}
+
+struct Breakfast {
+	Eggs
+}
+
+fn test_embed_method_receiver_ptr() {
+	b := Breakfast{}
+	assert b.test(5) == 5
+}
