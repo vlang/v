@@ -27,14 +27,14 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	if i.op.len > 0 && i.op != 'call' {
 		mut slvalue := '$i.lvalue'
 		mut srvalue := '$i.rvalue'
-		lpostfix := if slvalue == i.llabel { '.' } else { '<= `$i.llabel`' }
-		rpostfix := if srvalue == i.rlabel { '.' } else { '<= `$i.rlabel`' }
+		// lpostfix := if slvalue == i.llabel { '.' } else { '<= `$i.llabel`' }
+		// rpostfix := if srvalue == i.rlabel { '.' } else { '<= `$i.rlabel`' }
 		if use_color {
 			slvalue = term.bold(term.yellow(slvalue))
 			srvalue = term.bold(term.yellow(srvalue))
 		}
-		eprintln('	 left value: $slvalue $lpostfix')
-		eprintln('	right value: $srvalue $rpostfix')
+		eprintln('	 left value: $slvalue')
+		eprintln('	right value: $srvalue')
 	}
 }
 

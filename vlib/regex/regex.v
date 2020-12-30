@@ -1554,14 +1554,14 @@ fn state_str(s Match_state) string {
 
 struct StateObj {
 pub mut:
-	group_index int = -1  // group id used to know how many groups are open
-	match_flag  bool
-	match_index int = -1
-	first_match int = -1  //index of the first match
-	pc int = -1           // program counter
-	i  int = -1           // source string index
-	char_len int
-	last_dot_pc int = -1      // last dot chat pc
+	group_index int  = -1  // group id used to know how many groups are open
+	match_flag  bool       // indicate if we are in a match condition
+	match_index int  = -1  // index of the last match
+	first_match int  = -1  // index of the first match
+	pc          int  = -1  // program counter
+	i           int  = -1  // source string index
+	char_len    int        // last char legth
+	last_dot_pc int  = -1  // last dot chat pc
 }
 
 [direct_array_access]
@@ -1578,13 +1578,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 	mut state := StateObj{}           // actual state
 	mut ist   := rune(0)              // actual instruction
 	mut l_ist := rune(0)              // last matched instruction
-
-	//mut state_list := []StateObj{}
-
-	//mut group_stack := []int{len: re.group_max, init: -1}
-	//mut group_data  := []int{len: re.group_max, init: -1}
-
-	//mut group_index := -1           // group id used to know how many groups are open
 
 	mut step_count  := 0              // stats for debug
 	mut dbg_line    := 0              // count debug line printed
@@ -1900,7 +1893,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//println("g.id: ${re.prog[state.pc].group_id} group_index: ${state.group_index}")
 					if state.group_index >= 0 && re.prog[state.pc].group_id >= 0 {
 	 					start_i   := re.group_stack[state.group_index]
-	 					//re.group_stack[state.group_index]=-1
 
 	 					// save group results
 						g_index := re.prog[state.pc].group_id*2
@@ -1960,8 +1952,6 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// check next token to be false
 				mut next_check_flag := false
 				
-				//if re.prog[state.pc].rep >= re.prog[state.pc].rep_min && 
-				
 				// if we are done with max go on dot char are dedicated case!!
 				if	re.prog[state.pc].rep >= re.prog[state.pc].rep_max 
 				{
@@ -1970,7 +1960,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					continue
 				}
 				
-				if re.prog[state.pc].dot_check_pc >= 0 {
+				if re.prog[state.pc].dot_check_pc >= 0 && re.prog[state.pc].rep >= re.prog[state.pc].rep_min {
 					// load the char
 					//ch_t, _ := re.get_charb(in_txt, state.i+char_len)
 					ch_t := ch
@@ -2008,7 +1998,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				}
 				
 				// check if we must continue or pass to the next IST
-				if next_check_flag == true {
+				if next_check_flag == true && re.prog[state.pc+1].ist != ist_prog_end {
 					//println("save the state!!")
 					re.state_list << StateObj {
 						group_index: state.group_index
@@ -2348,6 +2338,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 					//println("find return")
 					return state.first_match, state.i
 				} else {
+					//println("Here!!")
 					return 0, state.i
 				}
 			}
@@ -2415,113 +2406,3 @@ pub fn (mut re RE) match_string(in_txt string) (int,int) {
 	}
 	return start, end
 }
-
-//
-// Finders
-//
-
-// find try to find the first match in the input string
-[direct_array_access]
-pub fn (mut re RE) find(in_txt string) (int,int) {
-	old_flag := re.flag
-	
-	re.flag |= f_src  // enable search mode
-	start, mut end := re.match_base(in_txt.str, in_txt.len + 1)
-	//print("Find [$start,$end] '${in_txt[start..end]}'")
-	if end > in_txt.len {
-		end = in_txt.len
-	}
-	re.flag = old_flag
-
-	if start >= 0 && end > start {
-		return start, end
-	}
-	return no_match_found, 0
-}
-
-// find all the non overlapping occurrences of the match pattern
-[direct_array_access]
-pub fn (mut re RE) find_all(in_txt string) []int {
-	mut i := 0
-	mut res := []int{}
-	mut ls := -1
-	for i < in_txt.len {
-		s,e := re.find(in_txt[i..])
-		if s >= 0 && e > s && i+s > ls {
-			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			res << i+s
-			res << i+e
-			ls = i+s
-			i = i+e
-			continue
-		} else {
-			i++
-		}
-
-	}
-	return res
-}
-
-// replace return a string where the matches are replaced with the replace string
-pub fn (mut re RE) replace(in_txt string, repl string) string {
-	pos := re.find_all(in_txt)
-	if pos.len > 0 {
-		mut res := ""
-		mut i := 0
-
-		mut s1 := 0
-		mut e1 := in_txt.len
-
-		for i < pos.len {
-			e1 = pos[i]
-			res += in_txt[s1..e1] + repl
-			s1 = pos[i+1]
-			i += 2
-		}
-
-		res += in_txt[s1..]
-		return res
-	}
-	return in_txt
-}
-
-pub type FnReplace = fn (re RE, in_txt string, start int, end int) string 
-
-// replace_by_fn return a string where the matches are replaced with the string from the repl_fn callback function
-pub fn (mut re RE) replace_by_fn(in_txt string, repl_fn FnReplace) string {
-	mut i := 0
-	mut res := ""
-	mut ls := -1
-
-	mut s1 := 0
-	//mut e1 := in_txt.len
-	
-	for i < in_txt.len {
-		s,e := re.find(in_txt[i..])
-		if s >= 0 && e > s && i+s > ls {
-			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")
-			start := i + s
-			end   := i + e
-			// update grups index diplacement
-			mut gi := 0
-			for gi < re.groups.len {
-				re.groups[gi] += i
-				gi++
-			}
-			repl  := repl_fn(re, in_txt, start, end)
-
-			res += in_txt[s1..start] + repl
-			s1 = end 
-
-			ls = i + s
-			i  = i + e
-			continue
-		} else {
-			i++
-		}
-
-	}
-	res += in_txt[s1..]
-	return res
-}
-

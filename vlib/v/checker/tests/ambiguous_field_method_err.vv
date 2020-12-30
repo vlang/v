@@ -1,0 +1,24 @@
+struct Foo {
+	name int = 5
+}
+struct Bar {
+	Foo
+	Foo2
+}
+
+struct Foo2 {
+	name string
+}
+fn (f Foo2) test() {
+	println(f)
+}
+
+fn (f Foo) test() {
+	println(f)
+}
+
+fn main() {
+	b := Bar{}
+	b.test()
+	n := b.name
+}

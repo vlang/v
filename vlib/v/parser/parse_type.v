@@ -52,11 +52,15 @@ pub fn (mut p Parser) parse_map_type() table.Type {
 		// error is reported in parse_type
 		return 0
 	}
-	// key_type_sym := p.get_type_symbol(key_type)
-	// if key_type_sym.kind != .string {
-	if key_type.idx() != table.string_type_idx {
-		p.error('maps can only have string keys for now')
+	if !(key_type in [table.string_type_idx, table.voidptr_type_idx] ||
+		(key_type.is_int() && !key_type.is_ptr())) {
+		s := p.table.type_to_str(key_type)
+		p.error_with_pos('maps only support string, integer, rune or voidptr keys for now (not `$s`)',
+			p.tok.position())
 		return 0
+	}
+	if key_type != table.string_type_idx {
+		p.warn_with_pos('non-string keys are work in progress', p.tok.position())
 	}
 	p.check(.rsbr)
 	value_type := p.parse_type()
@@ -117,7 +121,10 @@ pub fn (mut p Parser) parse_fn_type(name string) table.Type {
 		is_variadic: is_variadic
 		return_type: return_type
 	}
-	idx := p.table.find_or_register_fn_type(p.mod, func, false, false)
+	// MapFooFn typedefs are manually added in cheaders.v 
+	// because typedefs get generated after the map struct is generated
+	has_decl := p.builtin_mod && name.starts_with('Map') && name.ends_with('Fn')
+	idx := p.table.find_or_register_fn_type(p.mod, func, false, has_decl)
 	return table.new_type(idx)
 }
 

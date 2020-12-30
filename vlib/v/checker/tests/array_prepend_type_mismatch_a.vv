@@ -1,5 +1,0 @@
-fn main() {
-	mut a := [1, 2]
-	a.prepend(2.3)
-	println(a)
-}

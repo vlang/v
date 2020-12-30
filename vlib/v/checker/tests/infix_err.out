@@ -17,15 +17,22 @@ vlib/v/checker/tests/infix_err.vv:9:9: error: `+` cannot be used with `?string`
     8 | _ = f() + ''
     9 | _ = f() + f()
       |         ^
-   10 |
+   10 | 
    11 | _ = 4 + g()
 vlib/v/checker/tests/infix_err.vv:11:7: error: `+` cannot be used with `?int`
     9 | _ = f() + f()
-   10 |
+   10 | 
    11 | _ = 4 + g()
       |       ^
    12 | _ = int(0) + g() // FIXME not detected
    13 | _ = g() + int(3)
+vlib/v/checker/tests/infix_err.vv:12:12: error: unwrapped optional cannot be used in an infix expression
+   10 | 
+   11 | _ = 4 + g()
+   12 | _ = int(0) + g() // FIXME not detected
+      |            ^
+   13 | _ = g() + int(3)
+   14 | _ = g() + 3
 vlib/v/checker/tests/infix_err.vv:13:9: error: `+` cannot be used with `?int`
    11 | _ = 4 + g()
    12 | _ = int(0) + g() // FIXME not detected
@@ -38,10 +45,10 @@ vlib/v/checker/tests/infix_err.vv:14:9: error: `+` cannot be used with `?int`
    13 | _ = g() + int(3)
    14 | _ = g() + 3
       |         ^
-   15 |
+   15 | 
    16 | // binary operands
 vlib/v/checker/tests/infix_err.vv:17:5: error: left operand for `&&` is not a boolean
-   15 |
+   15 | 
    16 | // binary operands
    17 | _ = 1 && 2
       |     ^

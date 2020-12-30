@@ -12,6 +12,11 @@ fn main() {
 	d := c // and an extra one
 	e := c
 	// more comments = more good
+	arr := [
+		/*   block foo bar  */
+		//   inline foo bar
+		0,
+	]
 	println(/* before arg comment */ 'this is a test' /* after arg comment */)
 	if /* before if expr */ true /* after if expr */  {
 		println('if')

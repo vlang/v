@@ -220,7 +220,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe {&t.types[ts.parent_idx]}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }
@@ -277,7 +277,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe {&t.types[ts.parent_idx]}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }
@@ -301,7 +301,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return unsafe {&t.types[idx]}
+		return unsafe { &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
@@ -318,7 +318,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return unsafe {&t.types[idx]}
+		return unsafe { &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
@@ -596,7 +596,11 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	cname := if f.name.len == 0 { 'anon_fn_${t.fn_type_signature(f)}' } else { util.no_dots(f.name.clone()) }
+	cname := if f.name.len == 0 {
+		'anon_fn_${t.fn_type_signature(f)}'
+	} else {
+		util.no_dots(f.name.clone())
+	}
 	anon := f.name.len == 0 || is_anon
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -637,7 +641,9 @@ pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
-		return typ.clear_flag(.variadic)
+		// return typ.clear_flag(.variadic)
+		array_info := typ_sym.info as Array
+		return array_info.elem_type
 	}
 	if typ_sym.kind == .array {
 		// Check index type

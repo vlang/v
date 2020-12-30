@@ -1,5 +1,0 @@
-vlib/v/checker/tests/mod_op_wrong_right_type_err_a.vv:2:14: error: float modulo not allowed, use math.fmod() instead
-    1 | fn main() {
-    2 |     println(1 % 0.5)
-      |                 ~~~
-    3 | }

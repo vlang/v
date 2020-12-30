@@ -14,6 +14,10 @@ fn main() {
 	bar_func(x: 'some string', b: Baz{
 		x: 0
 	})
+	ui.row({
+		//stretch: true
+		margin: {top:10,left:10,right:10,bottom:10}
+	})
 }
 
 fn bar_func(bar Bar) {

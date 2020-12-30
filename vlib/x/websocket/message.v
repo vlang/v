@@ -18,8 +18,10 @@ struct Fragment {
 // Frame represents a data frame header
 struct Frame {
 mut:
-	header_len  int = 2 // length of the websocket header part
-	frame_size  int = 2	// size of total frame
+	// length of the websocket header part
+	header_len  int = 2
+	// size of total frame
+	frame_size  int = 2
 	fin         bool // true if final fragment of message
 	rsv1        bool // reserved for future use in websocket RFC
 	rsv2        bool // reserved for future use in websocket RFC
@@ -31,7 +33,7 @@ mut:
 }
 
 const (
-	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536] 
+	invalid_close_codes = [999, 1004, 1005, 1006, 1014, 1015, 1016, 1100, 2000, 2999, 5000, 65536]
 )
 
 // validate_client validates client frame rules from RFC6455
@@ -129,7 +131,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				opcode: OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
-			unsafe {frame_payload.free()}
+			unsafe { frame_payload.free() }
 			return msg
 		}
 		// if the message is fragmented we just put it on fragments
@@ -139,7 +141,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				data: frame_payload.clone()
 				opcode: frame.opcode
 			}
-			unsafe {frame_payload.free()}
+			unsafe { frame_payload.free() }
 			continue
 		}
 		if ws.fragments.len == 0 {
@@ -152,7 +154,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 				opcode: OPCode(frame.opcode)
 				payload: frame_payload.clone()
 			}
-			unsafe {frame_payload.free()}
+			unsafe { frame_payload.free() }
 			return msg
 		}
 		defer {

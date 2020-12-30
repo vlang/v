@@ -91,7 +91,6 @@ fn test_fixed_array_assignment() {
 	c = a
 	assert c[0] == a[0]
 	assert c[1] == a[1]
-
 	d := [3]int{init: 333}
 	for val in d {
 		assert val == 333

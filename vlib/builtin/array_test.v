@@ -352,6 +352,7 @@ fn test_mut_arg() {
 
 fn test_clone() {
 	nums := [1, 2, 3, 4, 100]
+	_ = nums
 	nums2 := nums.clone()
 	assert nums2.len == 5
 	assert nums.str() == '[1, 2, 3, 4, 100]'
@@ -689,13 +690,6 @@ fn test_array_str() {
 	assert numbers.str() == '[1, 2, 3]'
 	// QTODO
 	// assert numbers2.str() == '[[1, 2, 3], [4, 5, 6]]'
-}
-
-fn test_eq() {
-	/*
-	assert [5, 6, 7].eq([6, 7]) == false
-	assert [`a`, `b`].eq([`a`, `b`]) == true
-	*/
 }
 
 struct User {
@@ -1194,4 +1188,122 @@ fn test_any_type_array_contains() {
 	assert c.contains([1])
 	assert [2] in c
 	assert [3] !in c
+}
+
+struct Person {
+	name string
+	nums []int
+	kv   map[string]string
+}
+
+fn test_struct_array_of_multi_type_in() {
+	ivan := Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}
+	people := [Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}, Person{
+		name: 'bob'
+		nums: [2]
+		kv: {
+			'bbb': '222'
+		}
+	}]
+	println(ivan in people)
+	assert ivan in people
+}
+
+fn test_struct_array_of_multi_type_index() {
+	ivan := Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}
+	people := [Person{
+		name: 'ivan'
+		nums: [1, 2, 3]
+		kv: {
+			'aaa': '111'
+		}
+	}, Person{
+		name: 'bob'
+		nums: [2]
+		kv: {
+			'bbb': '222'
+		}
+	}]
+	println(people.index(ivan))
+	assert people.index(ivan) == 0
+}
+
+struct Coord {
+	x int
+	y int
+	z int
+}
+
+fn test_array_struct_contains() {
+	mut coords := []Coord{}
+	coord_1 := Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	not_exists := coord_1 !in coords
+	println('`exists`: $exists and `not exists`: $not_exists')
+	assert exists == true
+	assert not_exists == false
+}
+
+fn test_array_struct_ref_contains() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	exists := coord_1 in coords
+	println(exists)
+	assert exists == true
+}
+
+fn test_array_struct_ref_index() {
+	mut coords := []&Coord{}
+	coord_1 := &Coord{
+		x: 1
+		y: 2
+		z: -1
+	}
+	coords << coord_1
+	println(coords.index(coord_1))
+	assert coords.index(coord_1) == 0
+}
+
+fn test_array_of_array_append() {
+	mut x := [][]int{len: 4}
+	println(x) // OK
+	x[2] << 123 // RTE
+	println(x)
+	assert '$x' == '[[], [], [123], []]'
+}
+
+fn test_array_of_map_insert() {
+	mut x := []map[string]int{len: 4}
+	println(x) // OK
+	x[2]['123'] = 123 // RTE
+	println(x)
+	assert '$x' == "[{}, {}, {'123': 123}, {}]"
 }

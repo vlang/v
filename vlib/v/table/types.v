@@ -519,12 +519,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(
-		kind: .any_float
-		name: 'any_float'
-		cname: 'any_float'
-		mod: 'builtin'
-	)
+	t.register_type_symbol(kind: .any_float, name: 'any_float', cname: 'any_float', mod: 'builtin')
 	t.register_type_symbol(kind: .any_int, name: 'any_int', cname: 'any_int', mod: 'builtin')
 }
 
@@ -606,6 +601,7 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub mut:
+	embeds        []Type
 	fields        []Field
 	is_typedef    bool // C. [typedef]
 	is_union      bool
@@ -663,8 +659,6 @@ pub mut:
 	is_pub           bool
 	is_mut           bool
 	is_global        bool
-	is_embed         bool
-	embed_alias_for  string // name of the struct which contains this field name
 }
 
 fn (f &Field) equals(o &Field) bool {
@@ -724,9 +718,13 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			if t == array_type {
 				return 'array'
 			}
-			info := sym.info as Array
-			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
-			res = '[]$elem_str'
+			if t.has_flag(.variadic) {
+				res = table.type_to_str_using_aliases(table.value_type(t), import_aliases)
+			} else {
+				info := sym.info as Array
+				elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+				res = '[]$elem_str'
+			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
@@ -848,6 +846,17 @@ pub fn (t &Table) fn_signature(func &Fn, opts FnSignatureOpts) string {
 		sb.write(' ${t.type_to_str(func.return_type)}')
 	}
 	return sb.str()
+}
+
+pub fn (t &TypeSymbol) embed_name() string {
+	// main.Abc<int> => Abc<int>
+	mut embed_name := t.name.split('.').last()
+	// remove generic part from name
+	// Abc<int> => Abc
+	if '<' in embed_name {
+		embed_name = embed_name.split('<')[0]
+	}
+	return embed_name
 }
 
 pub fn (t &TypeSymbol) has_method(name string) bool {

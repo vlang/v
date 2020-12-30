@@ -6,13 +6,13 @@ vlib/v/checker/tests/match_invalid_type.vv:5:3: error: `IoS` has no variant `byt
     6 |             println('not cool')
     7 |         }
 vlib/v/checker/tests/match_invalid_type.vv:4:2: error: match must be exhaustive (add match branches for: `int`, `string` or `else {}` at the end)
-    2 |
+    2 | 
     3 | fn sum() {
     4 |     match IoS(1) {
       |     ~~~~~~~~~~~~~~
     5 |         byte {
     6 |             println('not cool')
-vlib/v/checker/tests/match_invalid_type.vv:24:3: error: `Cat` doesn't implement method `speak`
+vlib/v/checker/tests/match_invalid_type.vv:24:3: error: `Cat` doesn't implement method `speak` of interface `Animal`
    22 |     a := Animal(Dog{})
    23 |     match a {
    24 |         Cat {

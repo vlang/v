@@ -1,0 +1,21 @@
+fn main() {
+	sprogress := if b.no_cstep {
+		'TMP1/${b.nexpected_steps:1d}'
+	} else {
+		'${b.cstep:1d}/${b.nexpected_steps:1d}'
+	}
+	b := if bar {
+		// comment
+		'some str'
+	} else {
+		'other str'
+	}
+	_ := if true {
+		Foo{}
+	} else {
+		Foo{
+			x: 5
+		}
+	}
+	_ := if false { Foo{} } else { Foo{5, 6} }
+}

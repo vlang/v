@@ -224,8 +224,6 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
-		} else if typ.has_flag(.variadic) {
-			g.write('.*s')
 		} else if typ.is_float() {
 			g.write('$fmt${fspec:c}')
 		} else if typ.is_pointer() {
@@ -343,7 +341,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype table.Type) {
 			g.write('")')
 		}
 	} else if sym_has_str_method || sym.kind in
-		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type] {
+		[.array, .array_fixed, .map, .struct_, .multi_return, .sum_type, .interface_] {
 		is_ptr := typ.is_ptr()
 		str_fn_name := g.gen_str_for_type(typ)
 		if is_ptr {

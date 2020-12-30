@@ -1,7 +1,0 @@
-vlib/v/checker/tests/array_insert_type_mismatch_d.vv:3:14: error: type mismatch, should use `int[]`
-    1 | fn main() {
-    2 |     mut a := [1, 2]
-    3 |     a.insert(1, ['aa', 'bb', 'cc'])
-      |                 ~~~~~~~~~~~~~~~~~~
-    4 |     println(a)
-    5 | }

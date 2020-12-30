@@ -289,7 +289,11 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
-			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
+			kind := if b.pref.is_verbose {
+				'$err.reporter warning #$b.checker.nr_warnings:'
+			} else {
+				'warning:'
+			}
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
@@ -307,7 +311,11 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.checker.nr_errors > 0 {
 		for i, err in b.checker.errors {
-			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+			kind := if b.pref.is_verbose {
+				'$err.reporter error #$b.checker.nr_errors:'
+			} else {
+				'error:'
+			}
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {

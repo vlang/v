@@ -1,5 +1,5 @@
 // websocket module implements websocket client and a websocket server
-// attribution: @thecoderr the author of original websocket client 
+// attribution: @thecoderr the author of original websocket client
 module websocket
 
 import net
@@ -31,7 +31,7 @@ pub:
 	id                string // unique id of client
 pub mut:
 	conn              net.TcpConn // underlying TCP socket connection
-	nonce_size        int = 16	// size of nounce used for masking
+	nonce_size        int = 16 // size of nounce used for masking
 	panic_on_callback bool // set to true of callbacks can panic
 	state             State // current state of connection
 	logger            &log.Log // logger used to log messages
@@ -41,7 +41,7 @@ pub mut:
 
 // Flag represents different types of headers in websocket handshake
 enum Flag {
-	has_accept		// Webs
+	has_accept // Webs
 	has_connection
 	has_upgrade
 }
@@ -57,8 +57,8 @@ enum State {
 // Message represents a whole message combined from 1 to n frames
 pub struct Message {
 pub:
-	opcode  OPCode	// websocket frame type of this message
-	payload []byte  // payload of the message
+	opcode  OPCode // websocket frame type of this message
+	payload []byte // payload of the message
 }
 
 // OPCode represents the supported websocket frame types
@@ -123,17 +123,17 @@ pub fn (mut ws Client) listen() ? {
 		if ws.state in [.closed, .closing] {
 			return
 		}
-		ws.debug_log('got message: $msg.opcode') 
+		ws.debug_log('got message: $msg.opcode')
 		match msg.opcode {
 			.text_frame {
 				ws.debug_log('read: text')
 				ws.send_message_event(msg)
-				unsafe {msg.free()}
+				unsafe { msg.free() }
 			}
 			.binary_frame {
 				ws.debug_log('read: binary')
 				ws.send_message_event(msg)
-				unsafe {msg.free()}
+				unsafe { msg.free() }
 			}
 			.ping {
 				ws.debug_log('read: ping, sending pong')
@@ -146,7 +146,7 @@ pub fn (mut ws Client) listen() ? {
 					continue
 				}
 				if msg.payload.len > 0 {
-					unsafe {msg.free()}
+					unsafe { msg.free() }
 				}
 			}
 			.pong {
@@ -154,7 +154,7 @@ pub fn (mut ws Client) listen() ? {
 				ws.last_pong_ut = time.now().unix
 				ws.send_message_event(msg)
 				if msg.payload.len > 0 {
-					unsafe {msg.free()}
+					unsafe { msg.free() }
 				}
 			}
 			.close {
@@ -182,14 +182,14 @@ pub fn (mut ws Client) listen() ? {
 						r := reason.bytestr()
 						ws.close(code, r) ?
 					}
-					unsafe {msg.free()}
+					unsafe { msg.free() }
 				} else {
 					if ws.state !in [.closing, .closed] {
 						ws.debug_log('close with reason, no code')
 						// sending close back according to spec
 						ws.close(1000, 'normal') ?
 					}
-					unsafe {msg.free()}
+					unsafe { msg.free() }
 				}
 				return
 			}
@@ -242,11 +242,11 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := C.htons(payload_len)
 			header[1] = 126
-			unsafe {C.memcpy(&header[2], &len16, 2)}
+			unsafe { C.memcpy(&header[2], &len16, 2) }
 		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
 			len_bytes := htonl64(u64(payload_len))
-			header[1] = 127 
-			unsafe {C.memcpy(&header[2], len_bytes.data, 8)}
+			header[1] = 127
+			unsafe { C.memcpy(&header[2], len_bytes.data, 8) }
 		}
 	} else {
 		if payload_len <= 125 {
@@ -258,15 +258,15 @@ pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? 
 		} else if payload_len > 125 && payload_len <= 0xffff {
 			len16 := C.htons(payload_len)
 			header[1] = (126 | 0x80)
-			unsafe {C.memcpy(&header[2], &len16, 2)}
+			unsafe { C.memcpy(&header[2], &len16, 2) }
 			header[4] = masking_key[0]
 			header[5] = masking_key[1]
 			header[6] = masking_key[2]
 			header[7] = masking_key[3]
-		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff { 
+		} else if payload_len > 0xffff && payload_len <= 0xffffffffffffffff {
 			len64 := htonl64(u64(payload_len))
 			header[1] = (127 | 0x80)
-			unsafe {C.memcpy(&header[2], len64.data, 8)}
+			unsafe { C.memcpy(&header[2], len64.data, 8) }
 			header[10] = masking_key[0]
 			header[11] = masking_key[1]
 			header[12] = masking_key[2]
@@ -334,7 +334,7 @@ pub fn (mut ws Client) close(code int, message string) ? {
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame) ?
 		ws.send_close_event(code, message)
-		unsafe {close_frame.free()}
+		unsafe { close_frame.free() }
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', []) ?
 		ws.send_close_event(code, '')
@@ -344,13 +344,13 @@ pub fn (mut ws Client) close(code int, message string) ? {
 
 // send_control_frame sends a control frame to the server
 fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []byte) ? {
-	ws.debug_log('send control frame $code, frame_type: $frame_typ') 
+	ws.debug_log('send control frame $code, frame_type: $frame_typ')
 	if ws.state !in [.open, .closing] && ws.conn.sock.handle > 1 {
 		return error('socket is not connected')
 	}
 	header_len := if ws.is_server { 2 } else { 6 }
 	frame_len := header_len + payload.len
-	mut control_frame := []byte{len: frame_len} 
+	mut control_frame := []byte{len: frame_len}
 	mut masking_key := if !ws.is_server { create_masking_key() } else { empty_bytearr }
 	defer {
 		unsafe {
@@ -374,14 +374,14 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 		if payload.len >= 2 {
 			if !ws.is_server {
 				mut parsed_payload := []byte{len: payload.len + 1}
-				unsafe {C.memcpy(parsed_payload.data, &payload[0], payload.len)}
+				unsafe { C.memcpy(parsed_payload.data, &payload[0], payload.len) }
 				parsed_payload[payload.len] = `\0`
 				for i in 0 .. payload.len {
 					control_frame[6 + i] = (parsed_payload[i] ^ masking_key[i % 4]) & 0xff
 				}
-				unsafe {parsed_payload.free()}
+				unsafe { parsed_payload.free() }
 			} else {
-				unsafe {C.memcpy(&control_frame[2], &payload[0], payload.len)}
+				unsafe { C.memcpy(&control_frame[2], &payload[0], payload.len) }
 			}
 		}
 	} else {
@@ -393,7 +393,7 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 			}
 		} else {
 			if payload.len > 0 {
-				unsafe {C.memcpy(&control_frame[2], &payload[0], payload.len)}
+				unsafe { C.memcpy(&control_frame[2], &payload[0], payload.len) }
 			}
 		}
 	}
@@ -464,7 +464,7 @@ fn (mut ws Client) debug_log(text string) {
 
 // free handles manual free memory of Message struct
 pub fn (m &Message) free() {
-	unsafe {m.payload.free()}
+	unsafe { m.payload.free() }
 }
 
 // free handles manual free memory of Client struct

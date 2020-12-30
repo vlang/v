@@ -1,0 +1,56 @@
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:3:12: error: cannot prepend `any_float` to `[]int`
+    1 | fn main() {
+    2 |     mut a := [1, 2]
+    3 |     a.prepend(2.3)
+      |               ~~~
+    4 |     a.prepend('abc')
+    5 |     a.prepend([2.2, 3.3])
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:4:12: error: cannot prepend `string` to `[]int`
+    2 |     mut a := [1, 2]
+    3 |     a.prepend(2.3)
+    4 |     a.prepend('abc')
+      |               ~~~~~
+    5 |     a.prepend([2.2, 3.3])
+    6 |     a.prepend(['aa', 'bb', 'cc'])
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:5:12: error: cannot prepend `[]f64` to `[]int`
+    3 |     a.prepend(2.3)
+    4 |     a.prepend('abc')
+    5 |     a.prepend([2.2, 3.3])
+      |               ~~~~~~~~~~
+    6 |     a.prepend(['aa', 'bb', 'cc'])
+    7 |     a.prepend([[1]])
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:6:12: error: cannot prepend `[]string` to `[]int`
+    4 |     a.prepend('abc')
+    5 |     a.prepend([2.2, 3.3])
+    6 |     a.prepend(['aa', 'bb', 'cc'])
+      |               ~~~~~~~~~~~~~~~~~~
+    7 |     a.prepend([[1]])
+    8 |     a.prepend([[['aa']]])
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:7:12: error: cannot prepend `[][]int` to `[]int`
+    5 |     a.prepend([2.2, 3.3])
+    6 |     a.prepend(['aa', 'bb', 'cc'])
+    7 |     a.prepend([[1]])
+      |               ~~~~~
+    8 |     a.prepend([[['aa']]])
+    9 |     println(a)
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:8:12: error: cannot prepend `[][][]string` to `[]int`
+    6 |     a.prepend(['aa', 'bb', 'cc'])
+    7 |     a.prepend([[1]])
+    8 |     a.prepend([[['aa']]])
+      |               ~~~~~~~~~~
+    9 |     println(a)
+   10 |
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:12:12: error: cannot prepend `[][][]int` to `[][]int`
+   10 |
+   11 |     mut b := [[1, 2, 3]]
+   12 |     b.prepend([[[2]]])
+      |               ~~~~~~~
+   13 |     b.prepend([[[['aa']]]])
+   14 |     println(b)
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:13:12: error: cannot prepend `[][][][]string` to `[][]int`
+   11 |     mut b := [[1, 2, 3]]
+   12 |     b.prepend([[[2]]])
+   13 |     b.prepend([[[['aa']]]])
+      |               ~~~~~~~~~~~~
+   14 |     println(b)
+   15 | }

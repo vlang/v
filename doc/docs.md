@@ -48,7 +48,6 @@ Anything you can do in other languages, you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -56,6 +55,8 @@ Anything you can do in other languages, you can do in V.
 * [References](#references)
 * [Modules](#modules)
 * [Constants](#constants)
+* [Builtin functions](#builtin-functions)
+* [Printing custom types](#printing-custom-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -73,9 +74,9 @@ Anything you can do in other languages, you can do in V.
 
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
-    * [vfmt](#vfmt)
+    * [v fmt](#v-fmt)
     * [Profiling](#profiling)
-* [Advanced](#advanced)
+* [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
@@ -317,7 +318,7 @@ import gg
 
 fn draw(ctx &gg.Context) {
     gg := ctx.parent.get_ui().gg
-    gg.draw_rect(...)
+    gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -747,11 +748,12 @@ However, you _can_ redeclare a type.
 
 ```v
 import time
+import math
 
 type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
-	return 1 + t.year % 100
+	return int(1.0 + math.trunc(f64(t.year) * 0.009999794661191))
 }
 
 fn main() {
@@ -964,7 +966,7 @@ for key, value in m {
 }                              //         two -> 2
 ```
 
-Either key or value can be ignored by using a single underscore as the identifer.
+Either key or value can be ignored by using a single underscore as the identifier.
 ```v nofmt
 m := {'one':1, 'two':2}
 
@@ -1091,7 +1093,7 @@ s := match number {
 }
 ```
 
-A match expression returns the final expression from each branch.
+A match expression returns the value of the final expression from the matching branch.
 
 ```v
 enum Color {
@@ -1209,7 +1211,7 @@ mut:
 
 struct Button {
 	Widget
-	title  string
+	title string
 }
 
 mut button := Button{
@@ -1509,8 +1511,7 @@ fn main() {
 ## References
 
 ```v
-struct Foo {
-}
+struct Foo {}
 
 fn (foo Foo) bar_method() {
 	// ...
@@ -1619,9 +1620,23 @@ are no globals:
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println and other builtin functions
+## Builtin functions
 
-`println` is a simple yet powerful builtin function. It can print anything:
+Some functions are builtin like `println`. Here is the complete list:
+
+```v ignore
+fn print(s string) // print anything on sdtout
+fn println(s string) // print anything and a newline on sdtout
+
+fn eprint(s string) // same as print(), but use stderr
+fn eprintln(s string) // same as println(), but use stderr
+
+fn exit(code int) // terminate the program with a custom error code
+fn panic(s string) // print a message and backtraces on stderr, and terminate the program with error code 1
+fn print_backtrace() // print backtraces on stderr
+```
+
+`println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
 ```v nofmt
@@ -1631,6 +1646,8 @@ println('hi') // "hi"
 println([1,2,3]) // "[1, 2, 3]"
 println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
+
+## Custom print of types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:
@@ -1652,18 +1669,6 @@ red := Color{
 	b: 0
 }
 println(red)
-```
-
-If you don't want to print a newline, use `print()` instead.
-
-The number of builtin functions is low. Other builtin functions are:
-
-
-```v ignore
-fn exit(exit_code int) // terminate the program
-fn panic(message string)
-fn print_backtrace()
-fn eprintln(s string) // same as println, but use stderr
 ```
 
 ## Modules
@@ -1702,6 +1707,7 @@ fn main() {
 ```
 
 * Module names should be short, under 10 characters.
+* Module names must use `snake_case`.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
@@ -1730,8 +1736,7 @@ struct Dog {
 	breed string
 }
 
-struct Cat {
-}
+struct Cat {}
 
 fn (d Dog) speak() string {
 	return 'woof'
@@ -1800,14 +1805,11 @@ A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1824,14 +1826,11 @@ To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1883,14 +1882,11 @@ complex expression than just a variable name.
 You can also use `match` to determine the variant:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -2918,6 +2914,8 @@ use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
 
+### Compile time if
+
 ```v
 // Support for multiple conditions in one branch
 $if ios || android {
@@ -2964,6 +2962,52 @@ Full list of builtin options:
 | `android`,`mach`, `dragonfly` | `msvc`            | `little_endian`       | `no_bounds_checking`  |
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
+
+### Environment specific files
+
+If a file has an environment-specific suffix, it will only be compiled for that environment.
+
+- `.js.v` => will be used only by the JS backend. These files can contain JS. code.
+- `.c.v` => will be used only by the C backend. These files can contain C. code.
+- `.x64.v` => will be used only by V's x64 backend.
+- `_nix.c.v` => will be used only on Unix systems (non Windows).
+- `_${os}.c.v` => will be used only on the specific `os` system.
+For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
+- `_default.c.v` => will be used only if there is NOT a more specific platform file.
+For example, if you have both `file_linux.c.v` and `file_default.c.v`,
+and you are compiling for linux, then only `file_linux.c.v` will be used,
+and `file_default.c.v` will be ignored.
+
+Here is a more complete example:
+main.v:
+```v ignore
+module main
+fn main() { println(message) }
+```
+
+main_default.c.v:
+```v ignore
+module main
+const ( message = 'Hello world' )
+```
+
+main_linux.c.v:
+```v ignore
+module main
+const ( message = 'Hello linux' )
+```
+
+main_windows.c.v:
+```v ignore
+module main
+const ( message = 'Hello windows' )
+```
+
+With the example above:
+- when you compile for windows, you will get 'Hello windows'
+- when you compile for linux, you will get 'Hello linux'
+- when you compile for any other platform, you will get the
+non specific 'Hello world' message.
 
 ## Compile time pseudo variables
 
@@ -3012,7 +3056,7 @@ but may impact the size of your executable.
 the compiler will translate array operations directly into C array operations -
 omiting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
-the boundries will be checked by the user.
+the boundaries will be checked by the user.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly

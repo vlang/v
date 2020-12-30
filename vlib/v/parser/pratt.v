@@ -22,7 +22,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 	// Prefix
 	match p.tok.kind {
 		.key_mut, .key_shared, .key_atomic, .key_static {
-			node = p.name_expr()
+			node = p.parse_ident(table.Language.v)
 			p.is_stmt_ident = is_stmt_ident
 		}
 		.name {
@@ -103,7 +103,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.key_unsafe {
 			// unsafe {
-			pos := p.tok.position()
+			mut pos := p.tok.position()
 			p.next()
 			if p.inside_unsafe {
 				p.error_with_pos('already inside `unsafe` block', pos)
@@ -111,11 +111,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			}
 			p.inside_unsafe = true
 			p.check(.lcbr)
+			e := p.expr(0)
+			p.check(.rcbr)
+			pos.last_line = p.prev_tok.line_nr - 1
 			node = ast.UnsafeExpr{
-				expr: p.expr(0)
+				expr: e
 				pos: pos
 			}
-			p.check(.rcbr)
 			p.inside_unsafe = false
 		}
 		.key_lock, .key_rlock {
@@ -195,7 +197,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
+				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
@@ -381,7 +383,11 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
+	mut right := if op == .minus {
+		p.expr(token.Precedence.call)
+	} else {
+		p.expr(token.Precedence.prefix)
+	}
 	p.is_amp = false
 	if mut right is ast.CastExpr {
 		right.in_prexpr = true

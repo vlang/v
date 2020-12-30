@@ -611,6 +611,9 @@ fn (mut v Builder) cc() {
 			v.show_c_compiler_output(res)
 		}
 		os.chdir(original_pwd)
+		$if trace_use_cache ? {
+			eprintln('>>>> v.pref.use_cache: $v.pref.use_cache | v.pref.retry_compilation: $v.pref.retry_compilation | cmd res.exit_code: $res.exit_code | cmd: $cmd')
+		}
 		if res.exit_code != 0 {
 			if ccompiler.contains('tcc.exe') {
 				// a TCC problem? Retry with the system cc:
@@ -621,9 +624,11 @@ fn (mut v Builder) cc() {
 					}
 					exit(101)
 				}
-				v.pref.ccompiler = pref.default_c_compiler()
-				eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
-				continue
+				if v.pref.retry_compilation {
+					v.pref.ccompiler = pref.default_c_compiler()
+					eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+					continue
+				}
 			}
 			if res.exit_code == 127 {
 				verror('C compiler error, while attempting to run: \n' +
@@ -778,7 +783,11 @@ fn (mut c Builder) cc_windows_cross() {
 	//
 	cflags := c.get_os_cflags()
 	// -I flags
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_before_target_msvc() } else { cflags.c_options_before_target() }
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_before_target_msvc()
+	} else {
+		cflags.c_options_before_target()
+	}
 	mut optimization_options := ''
 	mut debug_options := ''
 	if c.pref.is_prod {
@@ -804,7 +813,11 @@ fn (mut c Builder) cc_windows_cross() {
 	// add the thirdparty .o files, produced by all the #flag directives:
 	args += ' ' + cflags.c_options_only_object_files() + ' '
 	args += ' $c.out_name_c '
-	args += if c.pref.ccompiler == 'msvc' { cflags.c_options_after_target_msvc() } else { cflags.c_options_after_target() }
+	args += if c.pref.ccompiler == 'msvc' {
+		cflags.c_options_after_target_msvc()
+	} else {
+		cflags.c_options_after_target()
+	}
 	/*
 	winroot := '${pref.default_module_path}/winroot'
 	if !os.is_dir(winroot) {

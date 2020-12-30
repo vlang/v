@@ -34,10 +34,10 @@ fn test_fn_variadic_generic() {
 */
 // forwarding
 fn variadic_forward_a(a ...string) string {
-	return variadic_forward_b(a)
+	return variadic_fn_a(a...)
 }
 
-fn variadic_forward_b(a ...string) string {
+fn variadic_fn_a(a ...string) string {
 	a0 := a[0]
 	a1 := a[1]
 	a2 := a[2]
@@ -62,6 +62,11 @@ fn fn_variadic_only_with_no_vargs(groups ...VaTestGroup) {
 
 fn test_variadic_only_with_no_vargs() {
 	fn_variadic_only_with_no_vargs()
+}
+
+fn test_array_decomposition_to_vargs() {
+	a := ['a', 'b', 'c']
+	assert variadic_fn_a(a...) == 'abc'
 }
 
 struct VaTestStruct {
