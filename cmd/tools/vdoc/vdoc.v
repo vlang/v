@@ -743,7 +743,11 @@ fn (mut cfg DocConfig) create_search_results(mod string, dn doc.DocNode) {
 	dn_description := trim_doc_node_description(dn.comment)
 	cfg.search_index << dn.name
 	cfg.search_data << SearchResult{
-		prefix: '$dn.kind ($dn.parent_name)'
+		prefix: if dn.parent_name != '' {
+			'$dn.kind ($dn.parent_name)'
+		} else {
+			'$dn.kind '
+		}
 		description: dn_description
 		badge: mod
 		link: cfg.get_file_name(mod) + '#' + get_node_id(dn)

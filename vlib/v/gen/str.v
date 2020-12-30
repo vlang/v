@@ -224,8 +224,6 @@ fn (mut g Gen) string_inter_literal(node ast.StringInterLiteral) {
 			} else {
 				g.write('*.*s')
 			}
-		} else if typ.has_flag(.variadic) {
-			g.write('.*s')
 		} else if typ.is_float() {
 			g.write('$fmt${fspec:c}')
 		} else if typ.is_pointer() {

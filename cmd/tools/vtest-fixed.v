@@ -5,7 +5,7 @@ import testing
 import v.pref
 
 const (
-	skip_with_fsanitize_memory  = [
+	skip_with_fsanitize_memory    = [
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/encoding/csv/reader_test.v',
 		'vlib/net/tcp_test.v',
@@ -18,9 +18,9 @@ const (
 		'vlib/sqlite/sqlite_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
-		'vlib/v/tests/unsafe_test.v'
+		'vlib/v/tests/unsafe_test.v',
 	]
-	skip_with_fsanitize_address  = [
+	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
 		'vlib/encoding/csv/reader_test.v',
 		'vlib/flag/flag_test.v',
@@ -49,19 +49,19 @@ const (
 		'vlib/v/tests/vmod_parser_test.v',
 		'vlib/v/vcache/vcache_test.v',
 		'vlib/x/json2/decoder_test.v',
-		'vlib/x/websocket/websocket_test.v'
+		'vlib/x/websocket/websocket_test.v',
 	]
-	skip_with_fsanitize_undefined  = [
-		'vlib/encoding/csv/reader_test.v'
+	skip_with_fsanitize_undefined = [
+		'vlib/encoding/csv/reader_test.v',
 	]
-	skip_test_files     = [
+	skip_test_files               = [
 		'vlib/net/http/http_httpbin_test.v',
 	]
-	skip_on_musl        = [
+	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
-	skip_on_ubuntu_musl = [
-		// 'vlib/v/gen/js/jsgen_test.v',
+	skip_on_ubuntu_musl           = [
+		/* 'vlib/v/gen/js/jsgen_test.v', */
 		'vlib/net/http/cookie_test.v',
 		'vlib/net/http/http_test.v',
 		'vlib/net/http/status_test.v',
@@ -72,19 +72,19 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
 	]
-	skip_on_linux       = []string{}
-	skip_on_non_linux   = [
+	skip_on_linux                 = []string{}
+	skip_on_non_linux             = [
 		'vlib/net/websocket/ws_test.v',
 	]
-	skip_on_windows     = [
+	skip_on_windows               = [
 		'vlib/orm/orm_test.v',
 		'vlib/net/websocket/ws_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 	]
-	skip_on_non_windows = []string{}
-	skip_on_macos       = []string{}
-	skip_on_non_macos   = []string{}
+	skip_on_non_windows           = []string{}
+	skip_on_macos                 = []string{}
+	skip_on_non_macos             = []string{}
 )
 
 // NB: musl misses openssl, thus the http tests can not be done there
@@ -113,7 +113,7 @@ fn main() {
 			sanitize_address = true
 		}
 		if '-fsanitize=undefined' in arg {
-			sanitize_address = true
+			sanitize_undefined = true
 		}
 	}
 	if sanitize_memory {
@@ -125,6 +125,7 @@ fn main() {
 	if sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
 	}
+	println(tsession.skip_files)
 	//
 	if os.getenv('V_CI_MUSL').len > 0 {
 		tsession.skip_files << skip_on_musl

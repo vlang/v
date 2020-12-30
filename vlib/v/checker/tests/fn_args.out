@@ -1,17 +1,17 @@
-vlib/v/checker/tests/fn_args.vv:6:5: error: invalid argument 1 to `ptr`: expected `byte`, not `&int`
+vlib/v/checker/tests/fn_args.vv:6:5: error: cannot use `&int` as `byte` in argument 1 to `ptr`
     4 |
     5 | v := 4
     6 | ptr(&v)
       |     ~~
     7 | arr([5]!!)
     8 | fun(fn(i &int){})
-vlib/v/checker/tests/fn_args.vv:7:5: error: invalid argument 1 to `arr`: expected `[]int`, not `[1]int`
+vlib/v/checker/tests/fn_args.vv:7:5: error: cannot use `[1]int` as `[]int` in argument 1 to `arr`
     5 | v := 4
     6 | ptr(&v)
     7 | arr([5]!!)
       |     ~~~~~
     8 | fun(fn(i &int){})
-vlib/v/checker/tests/fn_args.vv:8:5: error: invalid argument 1 to `fun`: expected `fn (int)`, not `fn (&int)`
+vlib/v/checker/tests/fn_args.vv:8:5: error: cannot use `fn (&int)` as `fn (int)` in argument 1 to `fun`
     6 | ptr(&v)
     7 | arr([5]!!)
     8 | fun(fn(i &int){})
