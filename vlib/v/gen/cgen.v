@@ -363,7 +363,6 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
-	g.write_multi_return_typedefs()
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	if g.pref.build_mode != .build_module {
@@ -371,7 +370,7 @@ pub fn (mut g Gen) init() {
 		g.write_str_fn_definitions()
 	}
 	g.write_sorted_types()
-	g.write_multi_return_structs()
+	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
 	//
 	g.stringliterals.writeln('')
@@ -671,31 +670,23 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	}
 }
 
-pub fn (mut g Gen) write_multi_return_typedefs() {
-	g.type_definitions.writeln('\n// BEGIN_multi_return_typedefs')
-	for sym in g.table.types {
-		if sym.kind != .multi_return {
-			continue
-		}
-		g.type_definitions.writeln('typedef struct $sym.cname $sym.cname;')
-	}
-	g.type_definitions.writeln('// END_multi_return_typedefs\n')
-}
-
-pub fn (mut g Gen) write_multi_return_structs() {
+pub fn (mut g Gen) write_multi_return_types() {
+	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
 	for sym in g.table.types {
 		if sym.kind != .multi_return {
 			continue
 		}
-		info := sym.info as table.MultiReturn
+		g.typedefs.writeln('typedef struct $sym.cname $sym.cname;')
 		g.type_definitions.writeln('struct $sym.cname {')
+		info := sym.info as table.MultiReturn
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
 			g.type_definitions.writeln('\t$type_name arg$i;')
 		}
 		g.type_definitions.writeln('};\n')
 	}
+	g.typedefs.writeln('// END_multi_return_typedefs\n')
 	g.type_definitions.writeln('// END_multi_return_structs\n')
 }
 
