@@ -1,4 +1,4 @@
-Usage: v [build flags] ['build'] <file.v|directory>
+Usage: v [build flags] <file.v|directory>
 
 This command compiles the given target, along with their dependencies, into an executable.
 
