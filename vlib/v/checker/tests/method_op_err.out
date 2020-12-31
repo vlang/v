@@ -1,13 +1,13 @@
-vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods must have exactly 1 argument
+vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have exactly 1 argument
     9 | }
-   10 |
+   10 | 
    11 | fn (u User) + () {
       | ~~~~~~~~~~~~~~~~
    12 | }
    13 |
-vlib/v/checker/tests/method_op_err.vv:14:1: error: operators need the same types on both sides
+vlib/v/checker/tests/method_op_err.vv:14:1: error: both sides of an operator must be the same type
    12 | }
-   13 |
+   13 | 
    14 | fn (u User) - (f Foo) User {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~
    15 |     return User{u.a - f.a, u.b-f.a}
