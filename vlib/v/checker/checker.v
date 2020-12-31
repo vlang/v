@@ -3867,7 +3867,6 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	} else {
 		match mut type_sym.info {
 			table.SumType {
-				println(type_sym.info.variants)
 				for v in type_sym.info.variants {
 					v_str := c.table.type_to_str(v)
 					if v_str !in branch_exprs {
