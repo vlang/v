@@ -512,7 +512,7 @@ fn test_rune_keys() {
 	mut m := {`!`:2 `%`:3}
 	assert typeof(m).name == 'map[rune]int'
 	assert m[`!`] == 2
-	m[`🌎`] = 7
+	m[`@`] = 7
 	assert m.len == 3
 	
 	mut a := []rune{}
@@ -520,7 +520,7 @@ fn test_rune_keys() {
 		a << k
 		a << rune(v) + `0`
 	}
-	assert a == [`!`, `2`, `%`, `3`, `🌎`, `7`]
+	assert a == [`!`, `2`, `%`, `3`, `@`, `7`]
 }
 
 fn test_eq() {
