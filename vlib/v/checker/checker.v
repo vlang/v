@@ -2031,6 +2031,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
+		if (exp_type.is_ptr() || exp_type.is_pointer()) &&
+			(!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.any_int_type {
+			pos := return_stmt.exprs[i].position()
+			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos)
+		}
 	}
 	if exp_is_optional && return_stmt.exprs.len > 0 {
 		expr0 := return_stmt.exprs[0]
