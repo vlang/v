@@ -264,3 +264,20 @@ pub fn is_writable_folder(folder string) ?bool {
 pub fn getpid() int {
 	return C.getpid()
 }
+
+// Turns the given bit on or off, depending on the `enable` parameter
+pub fn set_posix_permission_bit(path_s string, mode u32, enable bool) {
+	mut s := C.stat{}
+	mut new_mode := u32(0)
+	path := charptr(path_s.str)
+	unsafe {
+		C.stat(path, &s)
+		new_mode = s.st_mode
+	}
+	match enable {
+		true { new_mode |= mode }
+		false { new_mode &= (0o7777 - mode) }
+		else {}
+	}
+	C.chmod(path, int(new_mode))
+}

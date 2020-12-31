@@ -465,3 +465,53 @@ for !cmd.eof {
 cmd.close()
 	*/
 }
+
+fn test_set_bit() {
+	$if windows {
+		assert true
+		return
+	}
+	fpath := '/tmp/permtest'
+	create(fpath) or { panic("Couldn't create file") }
+	chmod(fpath, 0o7777)
+	c_fpath := charptr(fpath.str)
+	mut s := C.stat{}
+	unsafe {
+		C.stat(c_fpath, &s)
+	}
+	// Take the permissions part of the mode
+	mut mode := u32(s.st_mode) & 0o7777
+	assert mode == 0o7777
+	// `chmod u-r`
+	set_posix_permission_bit(fpath, os.s_irusr, false)
+	unsafe {
+		C.stat(c_fpath, &s)
+	}
+	mode = u32(s.st_mode) & 0o7777
+	assert mode == 0o7377
+	// `chmod u+r`
+	set_posix_permission_bit(fpath, os.s_irusr, true)
+	unsafe {
+		C.stat(c_fpath, &s)
+	}
+	mode = u32(s.st_mode) & 0o7777
+	assert mode == 0o7777
+	// `chmod -s -g -t`
+	set_posix_permission_bit(fpath, os.s_isuid, false)
+	set_posix_permission_bit(fpath, os.s_isgid, false)
+	set_posix_permission_bit(fpath, os.s_isvtx, false)
+	unsafe {
+		C.stat(c_fpath, &s)
+	}
+	mode = u32(s.st_mode) & 0o7777
+	assert mode == 0o0777
+	// `chmod g-w o-w`
+	set_posix_permission_bit(fpath, os.s_iwgrp, false)
+	set_posix_permission_bit(fpath, os.s_iwoth, false)
+	unsafe {
+		C.stat(c_fpath, &s)
+	}
+	mode = u32(s.st_mode) & 0o7777
+	assert mode == 0o0755
+	rm(fpath)
+}
