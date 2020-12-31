@@ -8,8 +8,8 @@ const (
 
 struct App {
 	vweb.Context
-pub mut:
-	cnt  int
+mut:
+	cnt int
 }
 
 fn main() {
@@ -31,7 +31,7 @@ pub fn (mut app App) json_endpoint() vweb.Result {
 pub fn (mut app App) index() vweb.Result {
 	app.cnt++
 	show := true
-	// app.vweb.text('Hello world from vweb')
+	// app.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
 	return $vweb.html()
@@ -42,9 +42,6 @@ pub fn (mut app App) show_text() vweb.Result {
 }
 
 pub fn (mut app App) cookie() vweb.Result {
-	app.set_cookie({
-		name: 'cookie'
-		value: 'test'
-	})
+	app.set_cookie(name: 'cookie', value: 'test')
 	return app.text('Headers: $app.headers')
 }

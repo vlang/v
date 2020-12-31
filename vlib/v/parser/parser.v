@@ -1427,6 +1427,20 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	// Method call
 	// TODO move to fn.v call_expr()
+	mut generic_type := table.void_type
+	mut generic_list_pos := p.tok.position()
+	if p.tok.kind == .lt && p.peek_tok.kind == .name && p.peek_tok2.kind == .gt {
+		// `g.foo<int>(10)`
+		p.next() // `<`
+		generic_type = p.parse_type()
+		p.check(.gt) // `>`
+		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if !generic_type.has_flag(.generic) {
+			p.table.register_fn_gen_type(field_name, generic_type)
+		}
+	}
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
@@ -1472,6 +1486,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			args: args
 			pos: pos
 			is_method: true
+			generic_type: generic_type
+			generic_list_pos: generic_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
