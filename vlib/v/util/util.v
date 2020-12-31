@@ -205,9 +205,7 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 		// recompile even if other heuristics say that we should. Users in such environments,
 		// have to explicitly do: `v cmd/tools/vfmt.v`, and/or install v from source, and not
 		// use the system packaged one, if they desire to develop v itself.
-		ancient_threshold := 1024
-		is_mtime_ancient := mtime_vexe < ancient_threshold && mtime_tool_exe < ancient_threshold
-		if is_mtime_ancient {
+		if mtime_vexe < 1024 && mtime_tool_exe < 1024 {
 			should_compile = false
 		}
 	}
