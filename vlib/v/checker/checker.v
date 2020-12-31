@@ -4874,7 +4874,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('operator methods are only allowed for struct and type alias',
 					node.pos)
 			} else {
-				if param_sym.name != receiver_sym.name {
+				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
 				}
 			}
