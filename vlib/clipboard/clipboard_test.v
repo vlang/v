@@ -15,14 +15,14 @@ fn run_test(is_primary bool) {
 }
 
 fn test_primary() {
-	$if linux {
+	$if linux || freebsd {
 		// run_test(true)
 		return
 	}
 }
 
 fn test_clipboard() {
-	$if linux {
+	$if linux || freebsd {
 		return
 	}
 	run_test(false)
