@@ -4870,9 +4870,13 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		} else {
 			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
 			param_sym := c.table.get_type_symbol(node.params[1].typ)
-			if receiver_sym.name != param_sym.name ||
-				param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
-				c.error('both sides of an operator must be the same type', node.pos)
+			if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
+				c.error('operator methods are only allowed for struct and type alias',
+					node.pos)
+			} else {
+				if param_sym.name != receiver_sym.name {
+					c.error('both sides of an operator must be the same type', node.pos)
+				}
 			}
 		}
 	}
