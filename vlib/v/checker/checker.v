@@ -4871,7 +4871,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
 			param_sym := c.table.get_type_symbol(node.params[1].typ)
 			if receiver_sym.name != param_sym.name ||
-				param_sym.kind != .struct_ || receiver_sym.kind != .struct_ {
+				param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
 				c.error('both sides of an operator must be the same type', node.pos)
 			}
 		}
