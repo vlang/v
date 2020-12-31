@@ -266,7 +266,7 @@ pub fn getpid() int {
 }
 
 // Turns the given bit on or off, depending on the `enable` parameter
-pub fn set_posix_permission_bit(path_s string, mode u32, enable bool) {
+pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	mut s := C.stat{}
 	mut new_mode := u32(0)
 	path := charptr(path_s.str)

@@ -466,7 +466,7 @@ cmd.close()
 	*/
 }
 
-fn test_set_bit() {
+fn test_posix_set_bit() {
 	$if windows {
 		assert true
 		return
@@ -483,31 +483,31 @@ fn test_set_bit() {
 	mut mode := u32(s.st_mode) & 0o7777
 	assert mode == 0o7777
 	// `chmod u-r`
-	set_posix_permission_bit(fpath, os.s_irusr, false)
+	posix_set_permission_bit(fpath, os.s_irusr, false)
 	unsafe {
 		C.stat(c_fpath, &s)
 	}
 	mode = u32(s.st_mode) & 0o7777
 	assert mode == 0o7377
 	// `chmod u+r`
-	set_posix_permission_bit(fpath, os.s_irusr, true)
+	posix_set_permission_bit(fpath, os.s_irusr, true)
 	unsafe {
 		C.stat(c_fpath, &s)
 	}
 	mode = u32(s.st_mode) & 0o7777
 	assert mode == 0o7777
 	// `chmod -s -g -t`
-	set_posix_permission_bit(fpath, os.s_isuid, false)
-	set_posix_permission_bit(fpath, os.s_isgid, false)
-	set_posix_permission_bit(fpath, os.s_isvtx, false)
+	posix_set_permission_bit(fpath, os.s_isuid, false)
+	posix_set_permission_bit(fpath, os.s_isgid, false)
+	posix_set_permission_bit(fpath, os.s_isvtx, false)
 	unsafe {
 		C.stat(c_fpath, &s)
 	}
 	mode = u32(s.st_mode) & 0o7777
 	assert mode == 0o0777
 	// `chmod g-w o-w`
-	set_posix_permission_bit(fpath, os.s_iwgrp, false)
-	set_posix_permission_bit(fpath, os.s_iwoth, false)
+	posix_set_permission_bit(fpath, os.s_iwgrp, false)
+	posix_set_permission_bit(fpath, os.s_iwoth, false)
 	unsafe {
 		C.stat(c_fpath, &s)
 	}
