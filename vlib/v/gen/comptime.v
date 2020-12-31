@@ -25,7 +25,7 @@ fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 		}
 		if is_html {
 			// return vweb html template
-			g.writeln('vweb__Context_html(&app->vweb, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
+			g.writeln('vweb__Context_html(&app->Context, _tmpl_res_$g.fn_decl.name); strings__Builder_free(&sb); string_free(&_tmpl_res_$g.fn_decl.name);')
 		} else {
 			// return $tmpl string
 			fn_name := g.fn_decl.name.replace('.', '__')

@@ -41,8 +41,6 @@ pub const (
 
 pub struct Context {
 mut:
-	static_files      map[string]string
-	static_mime_types map[string]string
 	content_type      string = 'text/plain'
 	status            string = '200 OK'
 pub:
@@ -50,6 +48,8 @@ pub:
 	conn              net.TcpConn
 	// TODO Response
 pub mut:
+	static_files      map[string]string
+	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
 	headers           string // response headers
@@ -69,7 +69,7 @@ pub struct Cookie {
 pub struct Result {
 }
 
-fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
+pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
 	}
@@ -203,7 +203,7 @@ pub fn run<T>(port int) {
 pub fn run_app<T>(mut app T, port int) {
 	println('Running a Vweb app on http://localhost:$port')
 	l := net.listen_tcp(port) or { panic('failed to listen') }
-	app.vweb = Context{}
+	app.Context = Context{}
 	app.init_once()
 	$for method in T.methods {
 		$if method.return_type is Result {
@@ -315,17 +315,17 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		// println('vweb action = "$action"')
 	}
 	// mut app := T{
-	app.vweb = Context{
+	app.Context = Context{
 		req: req
 		conn: conn
 		form: map[string]string{}
-		static_files: app.vweb.static_files
-		static_mime_types: app.vweb.static_mime_types
+		static_files: app.static_files
+		static_mime_types: app.static_mime_types
 		page_gen_start: page_gen_start
 	}
 	// }
 	if req.method in methods_with_form {
-		app.vweb.parse_form(req.data)
+		app.parse_form(req.data)
 	}
 	if vals.len < 2 {
 		$if debug {
@@ -335,18 +335,18 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// Serve a static file if it is one
 	// TODO: handle url parameters properly - for now, ignore them
-	mut static_file_name := app.vweb.req.url
+	mut static_file_name := app.req.url
 	if static_file_name.contains('?') {
 		static_file_name = static_file_name.all_before('?')
 	}
-	static_file := app.vweb.static_files[static_file_name]
-	mime_type := app.vweb.static_mime_types[static_file_name]
+	static_file := app.static_files[static_file_name]
+	mime_type := app.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
 			send_string(conn, http_404) or { }
 			return
 		}
-		app.vweb.send_response_to_client(mime_type, data)
+		app.send_response_to_client(mime_type, data)
 		data.free()
 		return
 	}
@@ -372,7 +372,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			url_words[url_words.len - 1] = url_words.last().all_before('?')
 			for data in tmp_query {
 				if data.len == 2 {
-					app.vweb.query[data[0]] = data[1]
+					app.query[data[0]] = data[1]
 				}
 			}
 		}
@@ -509,7 +509,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 }
 
-fn (mut ctx Context) parse_form(s string) {
+pub fn (mut ctx Context) parse_form(s string) {
 	if ctx.req.method !in methods_with_form {
 		return
 	}
