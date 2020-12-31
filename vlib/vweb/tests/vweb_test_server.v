@@ -9,10 +9,9 @@ const (
 )
 
 struct App {
+	vweb.Context
 	port    int
 	timeout int
-pub mut:
-	vweb    vweb.Context
 }
 
 fn exit_after_timeout(timeout_in_ms int) {
@@ -46,16 +45,16 @@ pub fn (mut app App) init_once() {
 }
 
 pub fn (mut app App) index() {
-	app.vweb.text('Welcome to VWeb')
+	app.text('Welcome to VWeb')
 }
 
 pub fn (mut app App) simple() vweb.Result {
-	app.vweb.text('A simple result')
+	app.text('A simple result')
 	return vweb.Result{}
 }
 
 pub fn (mut app App) html_page() vweb.Result {
-	app.vweb.html('<h1>ok</h1>')
+	app.html('<h1>ok</h1>')
 	return vweb.Result{}
 }
 
@@ -63,35 +62,35 @@ pub fn (mut app App) html_page() vweb.Result {
 ['/:user/settings']
 pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
-		return app.vweb.not_found()
+		return app.not_found()
 	}
-	app.vweb.html('username: $username')
+	app.html('username: $username')
 	return vweb.Result{}
 }
 
 ['/:user/:repo/settings']
 pub fn (mut app App) user_repo_settings(username string, repository string) vweb.Result {
 	if username !in known_users {
-		return app.vweb.not_found()
+		return app.not_found()
 	}
-	app.vweb.html('username: $username | repository: $repository')
+	app.html('username: $username | repository: $repository')
 	return vweb.Result{}
 }
 
 [post]
 ['/json_echo']
 pub fn (mut app App) json() vweb.Result {
-	app.vweb.set_content_type(app.vweb.req.headers['Content-Type'])
-	return app.vweb.ok(app.vweb.req.data)
+	app.set_content_type(app.req.headers['Content-Type'])
+	return app.ok(app.req.data)
 }
 
 pub fn (mut app App) shutdown() vweb.Result {
-	session_key := app.vweb.get_cookie('skey') or { return app.vweb.not_found() }
+	session_key := app.get_cookie('skey') or { return app.not_found() }
 	if session_key != 'superman' {
-		return app.vweb.not_found()
+		return app.not_found()
 	}
 	go app.gracefull_exit()
-	return app.vweb.ok('good bye')
+	return app.ok('good bye')
 }
 
 fn (mut app App) gracefull_exit() {
