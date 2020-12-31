@@ -1,0 +1,21 @@
+struct User {
+    a int
+    b int
+}
+
+struct Foo {
+    a int
+    b int
+}
+
+fn (u User) + () {
+}
+
+fn (u User) - (f Foo) User {
+    return User{u.a - f.a, u.b-f.a}
+}
+
+fn main() {
+    println(User{3, 4})
+    println(User{3, 4} - Foo{3, 3})
+}

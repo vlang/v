@@ -4864,6 +4864,18 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/'] {
+		if node.params.len != 2 {
+			c.error('operator methods should have exactly 1 argument', node.pos)
+		} else {
+			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
+			param_sym := c.table.get_type_symbol(node.params[1].typ)
+			if receiver_sym.name != param_sym.name ||
+				param_sym.kind != .struct_ || receiver_sym.kind != .struct_ {
+				c.error('both sides of an operator must be the same type', node.pos)
+			}
+		}
+	}
 	// TODO c.pref.is_vet
 	if node.language == .v && !node.is_method && node.params.len == 0 && node.name.after('.').starts_with('test_') {
 		if !c.file.path.ends_with('_test.v') {
