@@ -40,14 +40,14 @@ vlib/v/checker/tests/mul_op_wrong_type_err.vv:11:18: error: mismatched types `un
       |                  ^
    12 |     c1 := cmplx.complex(1,-2)
    13 |     c2 := c1 * 2.0
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:13:11: error: infix expr: cannot use `untyped float` (right expression) as `math.complex.Complex`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:13:11: error: infix expr: cannot use `untyped float` (right expression) as `complex.Complex`
    11 |     println(10 * a)
    12 |     c1 := cmplx.complex(1,-2)
    13 |     c2 := c1 * 2.0
       |              ^
    14 |     println(c2)
    15 |     c3 := 2.0 * c1
-vlib/v/checker/tests/mul_op_wrong_type_err.vv:15:12: error: infix expr: cannot use `math.complex.Complex` (right expression) as `untyped float`
+vlib/v/checker/tests/mul_op_wrong_type_err.vv:15:12: error: infix expr: cannot use `complex.Complex` (right expression) as `untyped float`
    13 |     c2 := c1 * 2.0
    14 |     println(c2)
    15 |     c3 := 2.0 * c1
