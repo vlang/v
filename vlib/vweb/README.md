@@ -29,7 +29,7 @@ pub fn (app mut App) index() {
 pub fn (app App) post() {
 	id := app.get_post_id()
 	post := app.retrieve_post(id) or {
-		app.vweb.redirect('/')
+		app.redirect('/')
 		return
 	}
 	comments := app.find_comments(id)
@@ -52,7 +52,7 @@ pub fn (app App) post() {
 @end
 ```
 
-`$vweb.html()` compiles an HTML template into V during compilation, 
+`$vweb.html()` compiles an HTML template into V during compilation,
 and embeds the resulting code in current action.
 
 That means that the template automatically has access to that action's entire environment.

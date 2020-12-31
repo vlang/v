@@ -3,12 +3,12 @@ vlib/v/checker/tests/vweb_routing_checks.vv:22:1: error: mismatched parameters c
    21 | ['/bar']
    22 | pub fn (mut app App) bar(a string) vweb.Result {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   23 |     app.vweb.html('works')
+   23 |     app.html('works')
    24 |     return vweb.Result{}
 vlib/v/checker/tests/vweb_routing_checks.vv:29:1: error: mismatched parameters count between vweb method `App.cow` (0) and route attribute ['/cow/:low'] (1)
    27 | // no segfault, but it shouldnt compile
    28 | ['/cow/:low']
    29 | pub fn (mut app App) cow() vweb.Result {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   30 |     app.vweb.html('works')
+   30 |     app.html('works')
    31 |     return vweb.Result{}
