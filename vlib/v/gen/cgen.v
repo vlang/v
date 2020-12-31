@@ -131,6 +131,7 @@ mut:
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
 	timers                           &util.Timers = util.new_timers(false)
+	force_main_console               bool // true when [console] used on fn main()
 }
 
 const (
