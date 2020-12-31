@@ -1,0 +1,41 @@
+vlib/v/checker/tests/any_int_float_ban_err.vv:1:12: error: type `any_int` doesn't exist
+    1 | type Foo = any_int | any_float
+      |            ~~~~~~~
+    2 | type Fo2 = any_int
+    3 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: type `any_int` doesn't exist
+    1 | type Foo = any_int | any_float
+    2 | type Fo2 = any_int
+      | ~~~~~~~~
+    3 | 
+    4 | struct Int {
+vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `any_int`.
+Did you mean `int`?
+    3 | 
+    4 | struct Int {
+    5 |     i any_int
+      |       ~~~~~~~
+    6 |     f any_float
+    7 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `any_float`.
+Did you mean `f64`?
+    4 | struct Int {
+    5 |     i any_int
+    6 |     f any_float
+      |       ~~~~~~~~~
+    7 | }
+    8 |
+vlib/v/checker/tests/any_int_float_ban_err.vv:9:1: error: unknown type `any_int`
+    7 | }
+    8 | 
+    9 | fn foo(i any_int) any_int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     return i
+   11 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: unknown type `any_int`
+   11 | }
+   12 | 
+   13 | fn foo2() any_int {
+      | ~~~~~~~~~~~~~~~~~
+   14 |     return 1
+   15 | }

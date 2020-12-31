@@ -240,6 +240,12 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', stmt.pos)
 					}
 				} else {
+					for attr in stmt.attrs {
+						if attr.name == 'console' {
+							c.error('only `main` can have the `[console]` attribute',
+								stmt.pos)
+						}
+					}
 					if stmt.is_pub && !stmt.is_method {
 						c.warn('function `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
@@ -310,7 +316,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind == .placeholder {
+			if typ_sym.kind in [.placeholder, .any_int, .any_float] {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
 			} else if typ_sym.kind == .alias {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
@@ -347,10 +353,10 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				if sym.name in names_used {
 					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 						variant.pos)
-				} else if sym.kind == .placeholder {
-					c.error("type `$sym.name` doesn't exist", node.pos)
+				} else if sym.kind in [.placeholder, .any_int, .any_float] {
+					c.error("type `$sym.name` doesn't exist", variant.pos)
 				} else if sym.kind == .interface_ {
-					c.error('sum type cannot hold an interface', node.pos)
+					c.error('sum type cannot hold an interface', variant.pos)
 				}
 				names_used << sym.name
 			}
@@ -390,6 +396,16 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
+			}
+			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
+			// suggestions due to f32 comparision issue. 
+			if sym.kind in [.any_int, .any_float] {
+				msg := if sym.kind == .any_int {
+					'unknown type `$sym.name`.\nDid you mean `int`?'
+				} else {
+					'unknown type `$sym.name`.\nDid you mean `f64`?'
+				}
+				c.error(msg, field.type_pos)
 			}
 			if sym.kind == .array {
 				array_info := sym.array_info()
@@ -1258,6 +1274,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	mut method := table.Fn{}
 	mut has_method := false
+	mut is_method_from_embed := false
 	if m := c.table.type_find_method(left_type_sym, method_name) {
 		method = m
 		has_method = true
@@ -1275,6 +1292,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if found_methods.len == 1 {
 				method = found_methods[0]
 				has_method = true
+				is_method_from_embed = true
 				call_expr.from_embed_type = embed_of_found_methods[0]
 			} else if found_methods.len > 1 {
 				c.error('ambiguous method `$method_name`', call_expr.pos)
@@ -1374,12 +1392,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.expected_arg_types << method.params[i].typ
 			}
 		}
-		if is_generic {
+		if is_method_from_embed {
+			call_expr.receiver_type = call_expr.from_embed_type.derive(method.params[0].typ)
+		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
@@ -2026,6 +2045,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			(!exp_type.is_ptr() && !exp_type.is_pointer()) {
 			pos := return_stmt.exprs[i].position()
 			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos)
+		}
+		if (exp_type.is_ptr() || exp_type.is_pointer()) &&
+			(!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.any_int_type {
+			pos := return_stmt.exprs[i].position()
+			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
 	}
@@ -4852,10 +4877,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder {
-				c.error('unknown type `$sym.name`', node.method_type_pos)
+			if sym.kind == .placeholder ||
+				(sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod) {
+				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
+	}
+	return_sym := c.table.get_type_symbol(node.return_type)
+	if node.language == .v &&
+		return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
+		c.error('unknown type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
@@ -4863,6 +4894,22 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if node.params.len != 1 {
 			c.error('.str() methods should have 0 arguments', node.pos)
+		}
+	}
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/'] {
+		if node.params.len != 2 {
+			c.error('operator methods should have exactly 1 argument', node.pos)
+		} else {
+			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
+			param_sym := c.table.get_type_symbol(node.params[1].typ)
+			if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
+				c.error('operator methods are only allowed for struct and type alias',
+					node.pos)
+			} else {
+				if node.receiver.typ != node.params[1].typ {
+					c.error('both sides of an operator must be the same type', node.pos)
+				}
+			}
 		}
 	}
 	// TODO c.pref.is_vet

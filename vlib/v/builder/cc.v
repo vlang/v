@@ -626,7 +626,9 @@ fn (mut v Builder) cc() {
 				}
 				if v.pref.retry_compilation {
 					v.pref.ccompiler = pref.default_c_compiler()
-					eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+					if v.pref.is_verbose {
+						eprintln('Compilation with tcc failed. Retrying with $v.pref.ccompiler ...')
+					}
 					continue
 				}
 			}

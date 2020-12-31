@@ -131,6 +131,7 @@ mut:
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
 	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
 	timers                           &util.Timers = util.new_timers(false)
+	force_main_console               bool // true when [console] used on fn main()
 }
 
 const (
@@ -362,6 +363,7 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
+	g.write_multi_return_typedefs()
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	if g.pref.build_mode != .build_module {
@@ -369,7 +371,7 @@ pub fn (mut g Gen) init() {
 		g.write_str_fn_definitions()
 	}
 	g.write_sorted_types()
-	g.write_multi_return_types()
+	g.write_multi_return_structs()
 	g.definitions.writeln('// end of definitions #endif')
 	//
 	g.stringliterals.writeln('')
@@ -654,13 +656,8 @@ static inline void __${typ.cname}_pushval($typ.cname ch, $el_stype val) {
 pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	info := sym.info as table.FnType
 	func := info.func
-	mut retsym := g.table.get_type_symbol(func.return_type)
-	is_multi := retsym.kind == .multi_return
 	is_fn_sig := func.name == ''
 	not_anon := !info.is_anon
-	if is_multi {
-		g.write_multi_return_type_declaration(mut retsym)
-	}
 	if !info.has_decl && (not_anon || is_fn_sig) {
 		fn_name := sym.cname
 		g.type_definitions.write('typedef ${g.typ(func.return_type)} (*$fn_name)(')
@@ -674,30 +671,30 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	}
 }
 
-pub fn (mut g Gen) write_multi_return_type_declaration(mut sym table.TypeSymbol) {
-	if sym.is_written {
-		return
-	}
-	info := sym.info as table.MultiReturn
-	g.type_definitions.writeln('typedef struct {')
-	// TODO copy pasta StructDecl
-	// for field in struct_info.fields {
-	for i, mr_typ in info.types {
-		type_name := g.typ(mr_typ)
-		g.type_definitions.writeln('\t$type_name arg$i;')
-	}
-	g.type_definitions.writeln('} $sym.cname;\n')
-	// g.typedefs.writeln('typedef struct $name $name;')
-	sym.is_written = true
-}
-
-pub fn (mut g Gen) write_multi_return_types() {
-	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
-	for idx in 0 .. g.table.types.len {
-		if g.table.types[idx].kind != .multi_return {
+pub fn (mut g Gen) write_multi_return_typedefs() {
+	g.type_definitions.writeln('\n// BEGIN_multi_return_typedefs')
+	for sym in g.table.types {
+		if sym.kind != .multi_return {
 			continue
 		}
-		g.write_multi_return_type_declaration(mut g.table.types[idx])
+		g.type_definitions.writeln('typedef struct $sym.cname $sym.cname;')
+	}
+	g.type_definitions.writeln('// END_multi_return_typedefs\n')
+}
+
+pub fn (mut g Gen) write_multi_return_structs() {
+	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
+	for sym in g.table.types {
+		if sym.kind != .multi_return {
+			continue
+		}
+		info := sym.info as table.MultiReturn
+		g.type_definitions.writeln('struct $sym.cname {')
+		for i, mr_typ in info.types {
+			type_name := g.typ(mr_typ)
+			g.type_definitions.writeln('\t$type_name arg$i;')
+		}
+		g.type_definitions.writeln('};\n')
 	}
 	g.type_definitions.writeln('// END_multi_return_structs\n')
 }
@@ -2768,7 +2765,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.get_type_symbol(node.expr_type)
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
 	if is_optional {
@@ -2824,10 +2821,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()
-			g.write('.$embed_name')
+			if node.expr_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
 		}
 	}
-	if node.expr_type.is_ptr() || sym.kind == .chan {
+	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')

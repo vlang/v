@@ -358,3 +358,47 @@ fn test_struct_with_option() {
 	assert '$w' == 'OptionWrapperInt{\n    x: Option(error: \'\')\n}'
 }
 */
+
+struct One {
+	value string = "one"
+}
+
+struct Two {
+	value string = "two"
+}
+
+fn mr_int_int() (int, int) {
+	return 111, 222
+}
+
+fn mr_one_two() (One, Two) {
+	one := One{}
+	two := Two{}
+	return one, two
+}
+
+fn mr_fn_fn() (fn(int), fn(int)) {
+	a := fn(a int) {}
+	b := fn(a int) {}
+	return a,b
+}
+
+fn test_multi_return() {
+	assert '$mr_int_int()' == '(111, 222)'
+	assert '$mr_fn_fn()' == '(fn (int), fn (int))'
+	assert '$mr_one_two()' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
+	anon_a := fn() (One, Two) {
+		one := One{}
+		two := Two{}
+		return one, two
+	}
+	assert '$anon_a()' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
+}

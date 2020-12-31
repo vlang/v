@@ -1,0 +1,15 @@
+type Foo = any_int | any_float
+type Fo2 = any_int
+
+struct Int {
+    i any_int
+    f any_float
+}
+
+fn foo(i any_int) any_int {
+    return i
+}
+
+fn foo2() any_int {
+    return 1
+} 

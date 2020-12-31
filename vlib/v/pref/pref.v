@@ -384,6 +384,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
+				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+					eprintln('Use `v $arg` instead.')
+					exit(1)
+				}
 				if arg[0] == `-` {
 					if arg[1..] in list_of_flags_with_param {
 						// skip parameter

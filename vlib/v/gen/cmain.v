@@ -43,6 +43,10 @@ fn (mut g Gen) gen_vlines_reset() {
 fn (mut g Gen) gen_c_main_function_header() {
 	if g.pref.os == .windows {
 		if g.is_gui_app() {
+			$if msvc {
+				// This is kinda bad but I dont see a way that is better
+				g.writeln('#pragma comment(linker, "/SUBSYSTEM:WINDOWS")')
+			}
 			// GUI application
 			g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
 		} else {

@@ -42,7 +42,6 @@ pub mut:
 	methods    []Fn
 	mod        string
 	is_public  bool
-	is_written bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
 	language   Language
 }
 
@@ -183,7 +182,6 @@ pub fn (ts TypeSymbol) debug() []string {
 	res << 'info: $ts.info'
 	res << 'kind: $ts.kind'
 	res << 'is_public: $ts.is_public'
-	res << 'is_written: $ts.is_written'
 	res << 'language: $ts.language'
 	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
 	return res

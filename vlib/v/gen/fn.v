@@ -436,7 +436,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		g.write('${name}(')
 	}
-	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr() || node.from_embed_type != 0) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
@@ -455,7 +455,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
-			g.write('.$embed_name')
+			if node.left_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
 		}
 	}
 	if has_cast {
@@ -885,6 +890,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 
 fn (mut g Gen) is_gui_app() bool {
 	$if windows {
+		if g.force_main_console {
+			return false
+		}
 		for cf in g.table.cflags {
 			if cf.value == 'gdi32' {
 				return true
@@ -960,6 +968,9 @@ fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 				msvc_attrs += '__stdcall '
+			}
+			'console' {
+				g.force_main_console = true
 			}
 			else {
 				// nothing but keep V happy

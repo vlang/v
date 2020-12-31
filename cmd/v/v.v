@@ -30,6 +30,7 @@ const (
 		'build-examples',
 		'build-vbinaries',
 		'setup-freetype',
+		'wipe-cache',
 		'doc',
 		'doctor',
 	]

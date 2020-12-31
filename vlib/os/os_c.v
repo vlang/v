@@ -114,7 +114,7 @@ pub fn file_size(path string) int {
 }
 
 // mv moves files or folders from `src` to `dst`.
-pub fn mv(src string, dst string) {
+pub fn mv(src string, dst string) ? {
 	mut rdst := dst
 	if is_dir(rdst) {
 		rdst = join_path(rdst.trim_right(path_separator), file_name(src.trim_right(path_separator)))
@@ -122,9 +122,15 @@ pub fn mv(src string, dst string) {
 	$if windows {
 		w_src := src.replace('/', '\\')
 		w_dst := rdst.replace('/', '\\')
-		C._wrename(w_src.to_wide(), w_dst.to_wide())
+		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
+		if ret != 0 {
+			return error_with_code('failed to rename $src to $dst', int(ret))
+		}
 	} $else {
-		C.rename(charptr(src.str), charptr(rdst.str))
+		ret := C.rename(charptr(src.str), charptr(rdst.str))
+		if ret != 0 {
+			return error_with_code('failed to rename $src to $dst', int(ret))
+		}
 	}
 }
 
