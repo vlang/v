@@ -2,62 +2,24 @@
 
 ## Overview
 
-The Vlang abstract syntax tree is implemented by sum type. the following is declaration:
+The Vlang abstract syntax tree is implemented by using sum type. 
 
-```v
-pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
-
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
-	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
-	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
-	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
-	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
-
-pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
-	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
-	GotoLabel | GotoStmt | HashStmt | Import | InterfaceDecl | Module | Return | SqlStmt |
-	StructDecl | TypeDecl
-```
-
-All the AST struct declarations can be found in V source code: [vlib/v/ast/ast.v](https://github.com/vlang/v/blob/master/vlib/v/ast/ast.v)
+All the AST struct declarations can be found in V source code: [vlib/v/ast/ast.v](https://github.com/vlang/v/blob/master/vlib/v/ast/ast.v).
 
 ## AST tool
 
-If you are new to Vlang AST, You can install the [vast tool](https://github.com/lydiandy/vast). It can generate example code to AST json file.
+If you are new to the V's AST, you can install the [vast tool](https://github.com/lydiandy/vast). 
 
-The json file can help you more understand the AST.
+It will generate example code to AST json file, which can help you understand the AST better.
 
 ```shell
 vast example.v       //generate example.json file and exit.
 
-vast -w example.v    //generate example.json and watch,if file change,regenerate.
+vast -w example.v    //generate example.json and watch, if file change, regenerate.
 
 ```
 
 ## File
-
-AST struct
-
-```v
-// Each V source file is represented by one ast.File structure.
-// When the V compiler runs, the parser will fill an []ast.File.
-// That array is then passed to V's checker.
-pub struct File {
-pub:
-	path             string // path of the source file
-	mod              Module // the module of the source file (from `module xyz` at the top)
-	global_scope     &Scope
-pub mut:
-	scope            &Scope
-	stmts            []Stmt // all the statements in the source file
-	imports          []Import // all the imports
-	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
-	errors           []errors.Error // all the checker errors in the file
-	warnings         []errors.Warning // all the checker warings in the file
-	generic_fns      []&FnDecl
-}
-```
 
 example code
 
@@ -231,53 +193,12 @@ generate AST json
 
 ##  Module
 
-### module declaration
-
 AST struct
 
-```v
-// module declaration
-pub struct Module {
-pub:
-	name       string
-	path       string
-	expr       Expr
-	pos        token.Position
-	is_skipped bool // module main can be skipped in single file programs
-}
 ```
+Module
 
-example code
-
-```v
-module main
-
-fn main() {
-	
-}
-```
-
-### module import
-
-AST struct
-
-```v
-// import statement
-pub struct Import {
-pub:
-	mod   string // the module name of the import
-	alias string // the `x` in `import xxx as x`
-	pos   token.Position
-pub mut:
-	syms  []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
-}
-
-// import symbol,for import {symbol} syntax
-pub struct ImportSymbol {
-pub:
-	pos  token.Position
-	name string
-}
+Import
 ```
 
 example code
@@ -294,29 +215,8 @@ import math { min, max }
 
 AST struct
 
-```v
-// const declaration
-pub struct ConstDecl {
-pub:
-	is_pub       bool
-	pos          token.Position
-pub mut:
-	fields       []ConstField // all the const fields in the `const (...)` block
-	end_comments []Comment // comments that after last const field
-}
-
-// const field in const declaration group
-pub struct ConstField {
-pub:
-	mod      string
-	name     string
-	expr     Expr // the value expr of field; everything after `=`
-	is_pub   bool
-	pos      token.Position
-pub mut:
-	typ      table.Type // the type of the const field, it can be any type in V
-	comments []Comment // comments before current const field
-}
+```
+Const
 ```
 
 example code
@@ -336,43 +236,12 @@ const (
 
 ## Enum
 
- AST struct
+```
+EnumDecl
 
-```v
-// enum declaration
-pub struct EnumDecl {
-pub:
-	name             string
-	is_pub           bool
-	is_flag          bool // true when the enum has [flag] tag,for bit field enum
-	is_multi_allowed bool // true when the enum has [_allow_multiple_values] tag
-	comments         []Comment // comments before the first EnumField
-	fields           []EnumField // all the enum fields
-	attrs            []table.Attr // attributes of enum declaration
-	pos              token.Position
-}
+EnumField
 
-// enum field in enum declaration
-pub struct EnumField {
-pub:
-	name          string
-	pos           token.Position
-	comments      []Comment // comment after Enumfield in the same line
-	next_comments []Comment // comments between current EnumField and next EnumField
-	expr          Expr // the value of current EnumField; 123 in `ename = 123`
-	has_expr      bool // true, when .expr has a value
-}
-
-// an enum value, like OS.macos or .macos
-pub struct EnumVal {
-pub:
-	enum_name string
-	val       string
-	mod       string // for full path `mod_Enum_val`
-	pos       token.Position
-pub mut:
-	typ       table.Type
-}
+EnumVal
 ```
 
 example code
@@ -419,23 +288,8 @@ fn main() {
 
 AST struct
 
-```v
-// variable assign statement
-pub struct AssignStmt {
-pub:
-	right         []Expr
-	op            token.Kind // include: =,:=,+=,-=,*=,/= and so on; for a list of all the assign operators, see vlib/token/token.v
-	pos           token.Position
-	comments      []Comment
-	end_comments  []Comment
-pub mut:
-	left          []Expr
-	left_types    []table.Type
-	right_types   []table.Type
-	is_static     bool // for translated code only
-	is_simple     bool // `x+=2` in `for x:=1; ; x+=2`
-	has_cross_var bool
-}
+```
+AssignStmt
 ```
 
 example code
@@ -444,7 +298,7 @@ example code
 module main
 
 fn main() {
-	// signle assign
+	// an assignment
 	a := 'abc' // comment for a
 	mut b := 1
 	// more operator
@@ -469,50 +323,12 @@ fn main() {
 
 AST struct
 
-```v
-pub struct IdentFn {
-pub mut:
-	typ table.Type
-}
+```
+Ident
 
-// TODO: (joe) remove completely, use ident.obj
-// instead which points to the scope object
-pub struct IdentVar {
-pub mut:
-	typ         table.Type
-	is_mut      bool
-	is_static   bool
-	is_optional bool
-	share       table.ShareType
-}
+IdentFn
 
-pub type IdentInfo = IdentFn | IdentVar
-
-pub enum IdentKind {
-	unresolved
-	blank_ident
-	variable
-	constant
-	global
-	function
-}
-
-// A single identifier
-pub struct Ident {
-pub:
-	language table.Language
-	tok_kind token.Kind
-	pos      token.Position
-	mut_pos  token.Position
-pub mut:
-	scope    &Scope
-	obj      ScopeObject
-	mod      string
-	name     string
-	kind     IdentKind
-	info     IdentInfo
-	is_mut   bool
-}
+IdentVar
 ```
 
 example code(todo: need more kind)
@@ -534,54 +350,19 @@ fn main() {
 AST struct
 
 ```v
-pub struct IntegerLiteral {
-pub:
-	val string
-	pos token.Position
-}
+IntegerLiteral
 
-pub struct FloatLiteral {
-pub:
-	val string
-	pos token.Position
-}
+FloatLiteral
 
-pub struct StringLiteral {
-pub:
-	val      string
-	is_raw   bool
-	language table.Language
-	pos      token.Position
-}
+StringLiteral
 
-// string literal with `$xx` or `${xxx}`, e.g. 'name: $name'
-pub struct StringInterLiteral {
-pub:
-	vals       []string // the string literal will be split by `$xxx` in vals array
-	exprs      []Expr // all `$xxx` in string literal
-	fwidths    []int
-	precisions []int
-	pluss      []bool
-	fills      []bool
-	fmt_poss   []token.Position
-	pos        token.Position
-pub mut:
-	expr_types []table.Type
-	fmts       []byte
-	need_fmts  []bool // an explicit non-default fmt required, e.g. `x`
-}
+StringLiteral
 
-pub struct CharLiteral {
-pub:
-	val string
-	pos token.Position
-}
+StringInterLiteral
 
-pub struct BoolLiteral {
-pub:
-	val bool
-	pos token.Position
-}
+CharLiteral
+
+BoolLiteral
 ```
 
 example code
@@ -608,15 +389,7 @@ fn main() {
 AST struct
 
 ```v
-// as cast statement
-pub struct AsCast {
-pub:
-	expr      Expr // `x` in `x as int`
-	typ       table.Type // `int` in `x as int`
-	pos       token.Position
-pub mut:
-	expr_type table.Type
-}
+AsCast
 ```
 
 example code
@@ -638,15 +411,7 @@ fn main() {
 AST struct
 
 ```v
-// the builtin sizeof function,can be used for type and variable
-pub struct SizeOf {
-pub:
-	is_type   bool // true, if argument is a type
-	typ       table.Type
-	type_name string
-	expr      Expr
-	pos       token.Position
-}
+SizeOf
 ```
 
 example code
@@ -676,14 +441,7 @@ fn main() {
 AST struct
 
 ```v
-//the builtin typeof function
-pub struct TypeOf {
-pub:
-	expr      Expr
-	pos       token.Position
-pub mut:
-	expr_type table.Type
-}
+TypeOf
 ```
 
 example code
@@ -720,18 +478,7 @@ fn main() {
 AST struct
 
 ```v
-pub struct CastExpr {
-pub:
-	expr      Expr // `buf` in `string(buf, n)`
-	arg       Expr // `n` in `string(buf, n)`
-	typ       table.Type // `string` TODO rename to `type_to_cast_to`
-	pos       token.Position
-pub mut:
-	typname   string
-	expr_type table.Type // `byteptr`
-	has_arg   bool
-	in_prexpr bool // is the parent node an ast.PrefixExpr
-}
+CastExpr
 ```
 
 example code ( todo: need more about string(buf,n) )
@@ -752,29 +499,7 @@ fn main() {
 AST struct
 
 ```v
-pub struct ArrayInit {
-pub:
-	pos            token.Position // `[]` in []Type{} position
-	elem_type_pos  token.Position // `Type` in []Type{} position
-	exprs          []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
-	ecmnts         [][]Comment // optional iembed comments after each expr
-	is_fixed       bool
-	has_val        bool // fixed size literal `[expr, expr]!!`
-	mod            string
-	len_expr       Expr // len: expr
-	cap_expr       Expr // cap: expr
-	default_expr   Expr // init: expr
-	has_len        bool
-	has_cap        bool
-	has_default    bool
-pub mut:
-	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
-	is_interface   bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
-	interface_type table.Type // Animal
-	elem_type      table.Type // element type
-	typ            table.Type // array type
-}
-
+ArrayInit
 ```
 
 example code
@@ -795,17 +520,7 @@ fn main() {
 AST struct
 
 ```v
-//index expr, can be used for array and map, e.g. `array[index]` or `map[key]`
-pub struct IndexExpr {
-pub:
-	pos       token.Position
-	left      Expr
-	index     Expr // [0], RangeExpr [start..end] or map[key]
-	or_expr   OrExpr
-pub mut:
-	left_type table.Type // array, map, fixed array
-	is_setter bool
-}
+IndexExpr
 ```
 
 example code
@@ -829,15 +544,7 @@ fn main() {
 AST struct
 
 ```v
-// s[10..20]
-pub struct RangeExpr {
-pub:
-	low      Expr
-	high     Expr
-	has_high bool
-	has_low  bool
-	pos      token.Position
-}
+RangeExpr
 ```
 
 example code
@@ -858,14 +565,7 @@ fn main() {
 AST struct
 
 ```v
-pub struct ArrayDecompose {
-pub:
-	expr      Expr
-	pos       token.Position
-pub mut:
-	expr_type table.Type
-	arg_type  table.Type
-}
+ArrayDecompose
 ```
 
 example code
@@ -898,16 +598,7 @@ fn variadic_fn_b(a ...string) string {
 AST struct
 
 ```v
-pub struct MapInit {
-pub:
-	keys       []Expr 	//save all keys, when it is map literal init
-	vals       []Expr 	//save all values, when it is map literal init
-	pos        token.Position
-pub mut:
-	typ        table.Type
-	key_type   table.Type
-	value_type table.Type
-}
+MapInit
 ```
 
 example code
@@ -935,16 +626,7 @@ fn main() {
 AST struct
 
 ```v
-// See: token.Kind.is_prefix
-pub struct PrefixExpr {
-pub:
-	op         token.Kind 	//prefix operator, e.g. -, &, *, !, ~
-	right      Expr
-	pos        token.Position
-pub mut:
-	right_type table.Type
-	or_block   OrExpr
-}
+PrefixExpr
 ```
 
 example code
@@ -967,19 +649,7 @@ fn main() {
 AST struct
 
 ```v
-// left op right e.g. `1 + 2`
-// See: token.Kind.is_infix
-pub struct InfixExpr {
-pub:
-	op          token.Kind
-	pos         token.Position
-pub mut:
-	left        Expr
-	right       Expr
-	left_type   table.Type
-	right_type  table.Type
-	auto_locked string
-}
+InfixExpr
 ```
 
 example code
@@ -1005,15 +675,7 @@ fn main() {
 AST struct
 
 ```v
-// ++, --
-pub struct PostfixExpr {
-pub:
-	op          token.Kind
-	expr        Expr
-	pos         token.Position
-pub mut:
-	auto_locked string
-}
+PostfixExpr
 ```
 
 example code
@@ -1034,21 +696,7 @@ fn main() {
 AST struct
 
 ```v
-// `foo.bar`
-pub struct SelectorExpr {
-pub:
-	pos             token.Position
-	expr            Expr // expr.field_name
-	field_name      string
-	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
-	mut_pos         token.Position
-pub mut:
-	expr_type       table.Type // type of `Foo` in `Foo.bar`
-	typ             table.Type // type of the entire thing (`Foo.bar`)
-	name_type       table.Type // T in `T.name` or typeof in `typeof(expr).name`
-	scope           &Scope
-	from_embed_type table.Type // holds the type of the embed that the method is called from
-}
+SelectorExpr
 ```
 
 example code
@@ -1083,12 +731,7 @@ fn main() {
 AST struct
 
 ```v
-// `(3+4)`
-pub struct ParExpr {
-pub:
-	expr Expr
-	pos  token.Position
-}
+ParExpr
 ```
 
 example code
@@ -1108,13 +751,7 @@ fn main() {
 AST struct
 
 ```v
-pub struct ConcatExpr {
-pub:
-	vals        []Expr
-	pos         token.Position
-pub mut:
-	return_type table.Type
-}
+ConcatExpr
 ```
 
 example code
@@ -1127,138 +764,20 @@ example code
 	}
 ```
 
-## Function/Method
+## Function
 
-### Function declaration
-
-AST struct
-
-```v
-//function or method declaration
-pub struct FnDecl {
-pub:
-	name            string
-	mod             string
-	params          []table.Param
-	is_deprecated   bool
-	is_pub          bool
-	is_variadic     bool
-	is_anon         bool
-	receiver        Field
-	receiver_pos    token.Position
-	is_method       bool
-	method_type_pos token.Position
-	method_idx      int
-	rec_mut         bool // is receiver mutable
-	rec_share       table.ShareType
-	language        table.Language
-	no_body         bool // just a definition `fn C.malloc()`
-	is_builtin      bool // this function is defined in builtin/strconv
-	pos             token.Position
-	body_pos        token.Position
-	file            string
-	is_generic      bool
-	is_direct_arr   bool // direct array access
-	attrs           []table.Attr
-pub mut:
-	stmts           []Stmt
-	return_type     table.Type
-	comments        []Comment // comments *after* the header, but *before* `{`; used for InterfaceDecl
-	source_file     &File = 0
-	scope           &Scope
-}
-
-//function or method call
-pub struct CallExpr {
-pub:
-	pos                token.Position
-	left               Expr // `user` in `user.register()`
-	mod                string
-pub mut:
-	name               string // left.name()
-	is_method          bool
-	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	args               []CallArg
-	expected_arg_types []table.Type
-	language           table.Language
-	or_block           OrExpr
-	left_type          table.Type // type of `user`
-	receiver_type      table.Type // User
-	return_type        table.Type
-	should_be_skipped  bool
-	generic_type       table.Type // TODO array, to support multiple types
-	generic_list_pos   token.Position
-	free_receiver      bool // true if the receiver expression needs to be freed
-	scope              &Scope
-	from_embed_type    table.Type // holds the type of the embed that the method is called from
-}
-```
-
-### Function call
+### FnDecl
 
 AST struct
 
 ```v
-// function or method call expr
-pub struct CallExpr {
-pub:
-	pos                token.Position
-	left               Expr // `user` in `user.register()`
-	mod                string
-pub mut:
-	name               string // left.name()
-	is_method          bool
-	is_field           bool // temp hack, remove ASAP when re-impl CallExpr / Selector (joe)
-	args               []CallArg
-	expected_arg_types []table.Type
-	language           table.Language
-	or_block           OrExpr
-	left_type          table.Type // type of `user`
-	receiver_type      table.Type // User
-	return_type        table.Type
-	should_be_skipped  bool
-	generic_type       table.Type // TODO array, to support multiple types
-	generic_list_pos   token.Position
-	free_receiver      bool // true if the receiver expression needs to be freed
-	scope              &Scope
-	from_embed_type    table.Type // holds the type of the embed that the method is called from
+FnDecl
 
-```
+CallExpr
 
-### CallArg
+CallArg
 
-AST struct
-
-```v
-// function call argument: `f(callarg)`
-pub struct CallArg {
-pub:
-	is_mut          bool
-	share           table.ShareType
-	expr            Expr
-	comments        []Comment
-pub mut:
-	typ             table.Type
-	is_tmp_autofree bool // this tells cgen that a tmp variable has to be used for the arg expression in order to free it after the call
-	pos             token.Position
-	// tmp_name        string // for autofree
-}
-```
-
-### Return
-
-AST struct
-
-```v
-// function return statement
-pub struct Return {
-pub:
-	pos      token.Position
-	exprs    []Expr
-	comments []Comment
-pub mut:
-	types    []table.Type
-}
+Return
 ```
 
 example code
@@ -1298,18 +817,12 @@ fn add_generic<T>(x T, y T) T {
 }
 ```
 
-### Anonymous function
+### AnonFn
 
 AST struct
 
 ```v
-//anonymous function
-pub struct AnonFn {
-pub:
-	decl FnDecl
-pub mut:
-	typ  table.Type
-}
+AnonFn
 ```
 
 example code
@@ -1330,16 +843,7 @@ fn main() {
 AST struct
 
 ```v
-// TODO: handle this differently
-// v1 excludes non current os ifdefs so
-// the defer's never get added in the first place
-pub struct DeferStmt {
-pub:
-	stmts []Stmt
-	pos   token.Position
-pub mut:
-	ifdef string
-}
+DeferStmt
 ```
 
 example code
@@ -1374,57 +878,11 @@ fn defer_fn2() {
 AST struct
 
 ```v
-// struct declaration
-pub struct StructDecl {
-pub:
-	pos          token.Position
-	name         string
-	gen_types    []table.Type
-	is_pub       bool
-	mut_pos      int // mut:
-	pub_pos      int // pub:
-	pub_mut_pos  int // pub mut:
-	language     table.Language
-	is_union     bool // if true,will generate C union,instead of struct
-	attrs        []table.Attr
-	end_comments []Comment
-	embeds       []Embed
-pub mut:
-	fields       []StructField
-}
-```
+StructDecl
 
-### StructField
+StructField
 
-AST struct
-
-```v
-pub struct StructField {
-pub:
-	pos              token.Position
-	type_pos         token.Position
-	comments         []Comment
-	default_expr     Expr
-	has_default_expr bool
-	attrs            []table.Attr
-	is_public        bool
-pub mut:
-	name             string
-	typ              table.Type
-}
-```
-
-### Embed
-
-AST struct
-
-```v
-// struct embed
-pub struct Embed {
-pub:
-	typ table.Type
-	pos token.Position
-}
+Embed
 ```
 
 example code
@@ -1497,49 +955,11 @@ fn main() {
 AST struct
 
 ```v
-// struct initial
-pub struct StructInit {
-pub:
-	pos          token.Position
-	is_short     bool
-	pre_comments []Comment
-pub mut:
-	typ          table.Type
-	fields       []StructInitField
-	embeds       []StructInitEmbed
-}
-```
+StructInit
 
-### StructInitField
+StructInitField
 
-```v
-pub struct StructInitField {
-pub:
-	expr          Expr
-	pos           token.Position
-	comments      []Comment
-	next_comments []Comment
-pub mut:
-	name          string
-	typ           table.Type
-	expected_type table.Type
-}
-```
-
-### StructInitEmbed
-
-```v
-pub struct StructInitEmbed {
-pub:
-	expr          Expr
-	pos           token.Position
-	comments      []Comment
-	next_comments []Comment
-pub mut:
-	name          string
-	typ           table.Type
-	expected_type table.Type
-}
+StructInitEmbed
 ```
 
 example code 
@@ -1568,17 +988,7 @@ fn main(){
 AST struct
 
 ```v
-// create new variable by associate variable,`new_var := { var_name | key: val, key: val }`
-pub struct Assoc {
-pub:
-	var_name string // `var_name`
-	fields   []string // `key`
-	exprs    []Expr // `val`
-	pos      token.Position
-pub mut:
-	typ      table.Type
-	scope    &Scope
-}
+Assoc
 ```
 
 example code
@@ -1610,21 +1020,10 @@ fn main() {
 
 ## Interface
 
-### InterfaceDecl
-
 AST struct
 
 ```v
-// interface declaration
-pub struct InterfaceDecl {
-pub:
-	is_pub       bool
-	name         string
-	field_names  []string
-	methods      []FnDecl // methods need to be implemented
-	pos          token.Position
-	pre_comments []Comment
-}
+InterfaceDecl
 ```
 
 example code
@@ -1640,7 +1039,7 @@ interface Speaker { //comment 1
 
 ## Type
 
-### Alias Type 
+### Alias Type
 
 AST struct
 
@@ -1673,15 +1072,7 @@ type Person = Human
 AST struct
 
 ```v
-// function type declaration
-pub struct FnTypeDecl {
-pub:
-	name     string
-	is_pub   bool
-	typ      table.Type
-	pos      token.Position
-	comments []Comment
-}
+FnTypeDecl
 ```
 
 example code
@@ -1697,22 +1088,7 @@ type Mid_fn = fn (int, string) int /*comment 1*/ //comment 2
 AST struct
 
 ```v
-// sum type declaration
-pub struct SumTypeDecl {
-pub:
-	name     string
-	is_pub   bool
-	pos      token.Position
-	comments []Comment
-pub mut:
-	variants []SumTypeVariant
-}
-
-pub struct SumTypeVariant {
-pub:
-	typ table.Type
-	pos token.Position
-}
+SumTypeDecl
 ```
 
 example code
@@ -1728,8 +1104,6 @@ struct User {
 type MySumtype = User | int | string //comment 1
 ```
 
-
-
 ## FlowControl
 
 ### Block
@@ -1737,13 +1111,7 @@ type MySumtype = User | int | string //comment 1
 AST struct
 
 ```v
-// `{stmts}` or `unsafe {stmts}`
-pub struct Block {
-pub:
-	stmts     []Stmt
-	is_unsafe bool
-	pos       token.Position
-}
+Block
 ```
 
 example code
@@ -1766,43 +1134,12 @@ fn my_fn() {
 
 ### if
 
-#### IfExpr
-
 AST struct
 
 ```v
-// if statement or expr
-pub struct IfExpr {
-pub:
-	is_comptime   bool // true, if it is `$if`
-	tok_kind      token.Kind
-	left          Expr // `a` in `a := if ...`
-	pos           token.Position
-	post_comments []Comment
-pub mut:
-	branches      []IfBranch // includes all `else if` branches
-	is_expr       bool
-	typ           table.Type
-	has_else      bool
-}
-```
+IfExpr
 
-#### IfBranch
-
-AST struct
-
-```v
-pub struct IfBranch {
-pub:
-	cond      Expr
-	pos       token.Position
-	body_pos  token.Position
-	comments  []Comment
-pub mut:
-	stmts     []Stmt
-	smartcast bool // true when cond is `x is SumType`, set in checker.if_expr // no longer needed with union sum types TODO: remove
-	scope     &Scope
-}
+IfBranch
 ```
 
 example code
@@ -1832,68 +1169,14 @@ fn main() {
 }
 ```
 
-#### IfGuardExpr
-
-AST struct
-
-```v
-// `if [x := opt()] {`
-pub struct IfGuardExpr {
-pub:
-	var_name  string
-	expr      Expr
-	pos       token.Position
-pub mut:
-	expr_type table.Type
-}
-```
-
-example code(todo)
-
-```v
-
-```
-
 ### match
 
-#### MatchExpr
-
 AST struct
 
 ```v
-// match statement or expr
-pub struct MatchExpr {
-pub:
-	tok_kind      token.Kind
-	cond          Expr
-	branches      []MatchBranch
-	pos           token.Position
-pub mut:
-	is_expr       bool // returns a value
-	return_type   table.Type
-	cond_type     table.Type // type of `x` in `match x {`
-	expected_type table.Type // for debugging only
-	is_sum_type   bool // true, if match sum type valiable
-}
-```
+MatchExpr
 
-#### MatchBranch
-
-AST struct
-
-```v
-pub struct MatchBranch {
-pub:
-	exprs         []Expr // left side
-	ecmnts        [][]Comment // inline comments for each left side expr
-	stmts         []Stmt // right side
-	pos           token.Position
-	comments      []Comment // comment above `xxx {`
-	is_else       bool
-	post_comments []Comment
-pub mut:
-	scope         &Scope
-}
+MatchBranch
 ```
 
 example code
@@ -1934,29 +1217,18 @@ pub fn (ms MySum) str() string {
 }
 ```
 
-
-
 ### for
-
-#### ForCStmt
 
 AST struct
 
 ```v
-pub struct ForCStmt {
-pub:
-	init     Stmt // i := 0;
-	has_init bool
-	cond     Expr // i < 10;
-	has_cond bool
-	inc      Stmt // i++; i += 2
-	has_inc  bool
-	stmts    []Stmt
-	pos      token.Position
-pub mut:
-	label    string // `label: for {`
-	scope    &Scope
-}
+ForCStmt
+
+ForInStmt
+
+ForStmt
+
+BranchStmt
 ```
 
 example code
@@ -1972,32 +1244,6 @@ fn main() {
 		}
 		println(i)
 	}
-}
-```
-
-#### ForInStmt
-
-AST struct
-
-```v
-pub struct ForInStmt {
-pub:
-	key_var    string
-	val_var    string
-	cond       Expr
-	is_range   bool
-	high       Expr // `10` in `for i in 0..10 {`
-	stmts      []Stmt
-	pos        token.Position
-	val_is_mut bool // `for mut val in vals {` means that modifying `val` will modify the array
-	// and the array cannot be indexed inside the loop
-pub mut:
-	key_type   table.Type
-	val_type   table.Type
-	cond_type  table.Type
-	kind       table.Kind // array/map/string
-	label      string // `label: for {`
-	scope      &Scope
 }
 ```
 
@@ -2032,23 +1278,6 @@ fn main() {
 }
 ```
 
-#### ForStmt
-
-AST struct
-
-```v
-pub struct ForStmt {
-pub:
-	cond   Expr
-	stmts  []Stmt
-	is_inf bool // `for {}`
-	pos    token.Position
-pub mut:
-	label  string // `label: for {`
-	scope  &Scope
-}
-```
-
 example code
 
 ```v
@@ -2076,46 +1305,14 @@ fn main() {
 }
 ```
 
-#### BranchStmt
-
-AST struct
-
-```V
-// break, continue
-pub struct BranchStmt {
-pub:
-	kind  token.Kind
-	label string // use in label for, `x` in `continue x` or `break x`
-	pos   token.Position
-}
-```
-
 ### goto
 
-#### GotoLabel
-
 AST struct
 
 ```v
-// goto label
-pub struct GotoLabel {
-pub:
-	name string
-	pos  token.Position
-}
-```
+GotoLabel
 
-#### GotoStmt
-
-AST struct
-
-```v
-// goto statement
-pub struct GotoStmt {
-pub:
-	name string
-	pos  token.Position
-}
+GotoStmt
 ```
 
 example code
@@ -2134,36 +1331,12 @@ fn main() {
 
 ## Error handle
 
-### OrExpr
-
 AST struct
 
 ```v
-pub enum OrKind {
-	absent // `fn()`
-	block // `fn() or { }`
-	propagate // `fn()?`
-}
+OrExpr
 
-// `or { ... }`
-pub struct OrExpr {
-pub:
-	stmts []Stmt
-	kind  OrKind
-	pos   token.Position
-}
-```
-
-### None
-
-AST struct
-
-```v
-pub struct None {
-pub:
-	pos token.Position
-	foo int // todo
-}
+None
 ```
 
 example code
@@ -2205,29 +1378,9 @@ fn main() {
 AST struct
 
 ```v
-// concurrent channel initial
-pub struct ChanInit {
-pub:
-	pos       token.Position
-	cap_expr  Expr
-	has_cap   bool
-pub mut:
-	typ       table.Type
-	elem_type table.Type
-}
-```
+ChanInit
 
-### GoStmt
-
-AST struct
-
-```v
-// concurrent go statement
-pub struct GoStmt {
-pub:
-	call_expr Expr
-	pos       token.Position
-}
+GoStmt
 ```
 
 example code
@@ -2261,33 +1414,9 @@ fn main() {
 AST struct
 
 ```v
-//concurrent select statement
-pub struct SelectExpr {
-pub:
-	branches      []SelectBranch
-	pos           token.Position
-	has_exception bool
-pub mut:
-	is_expr       bool // returns a value
-	expected_type table.Type // for debugging only
-}
-```
+SelectExpr
 
-### SelectBranch
-
-AST struct
-
-```v
-pub struct SelectBranch {
-pub:
-	stmt          Stmt // `a := <-ch` or `ch <- a`
-	stmts         []Stmt // right side
-	pos           token.Position
-	comment       Comment // comment above `select {`
-	is_else       bool
-	is_timeout    bool
-	post_comments []Comment
-}
+SelectBranch
 ```
 
 example code
@@ -2332,16 +1461,7 @@ fn send(ch1 chan int, ch2 chan int) {
 AST struct
 
 ```v
-pub struct LockExpr {
-pub:
-	stmts    []Stmt
-	is_rlock bool
-	pos      token.Position
-pub mut:
-	lockeds  []Ident // `x`, `y` in `lock x, y {`
-	is_expr  bool
-	typ      table.Type
-}
+LockExpr
 ```
 
 example code(todo)
@@ -2352,16 +1472,10 @@ example code(todo)
 
 ## Unsafe
 
-### UnsafeExpr
-
 AST struct
 
 ```v
-pub struct UnsafeExpr {
-pub:
-	expr Expr
-	pos  token.Position
-}
+UnsafeExpr
 ```
 
 example code
@@ -2378,55 +1492,12 @@ fn main() {
 
 ## SQL
 
-### SqlStmt
-
 AST struct
 
 ```v
-// sql statement: insert, update, delete
-pub struct SqlStmt {
-pub:
-	kind            SqlStmtKind
-	db_expr         Expr // `db` in `sql db {`
-	object_var_name string // `user`
-	table_type      table.Type
-	pos             token.Position
-	where_expr      Expr
-	updated_columns []string // for `update set x=y`
-	update_exprs    []Expr // for `update`
-pub mut:
-	table_name      string
-	fields          []table.Field
-}
-```
+SqlStmt
 
-### SqlExpr
-
-AST struct
-
-```v
-// sql select statement
-pub struct SqlExpr {
-pub:
-	typ         table.Type
-	is_count    bool
-	db_expr     Expr // `db` in `sql db {`
-	where_expr  Expr
-	has_where   bool
-	has_offset  bool
-	offset_expr Expr
-	has_order   bool
-	order_expr  Expr
-	has_desc    bool
-	is_array    bool
-	table_type  table.Type
-	pos         token.Position
-	has_limit   bool
-	limit_expr  Expr
-pub mut:
-	table_name  string
-	fields      []table.Field
-}
+SqlExpr
 ```
 
 example code
@@ -2500,13 +1571,7 @@ fn main() {
 AST struct
 
 ```v
-//assert statement in test
-pub struct AssertStmt {
-pub:
-	pos  token.Position
-pub mut:
-	expr Expr
-}
+AssertStmt
 ```
 
 example code
@@ -2525,17 +1590,9 @@ fn test_abc() {
 AST struct
 
 ```v
-//compile time for,`$for {}`
-pub struct CompFor {
-pub:
-	val_var string
-	stmts   []Stmt
-	kind    CompForKind
-	pos     token.Position
-pub mut:
-	// expr    Expr
-	typ     table.Type
-}
+CompFor
+
+ComptimeCall
 ```
 
 example code
@@ -2576,29 +1633,6 @@ fn main() {
 
 ```
 
-### ComptimeCall
-
-AST struct
-
-```v
-pub struct ComptimeCall {
-pub:
-	method_name string
-	left        Expr
-	is_vweb     bool
-	vweb_tmpl   File
-	args_var    string
-pub mut:
-	sym         table.TypeSymbol
-}
-```
-
-example code(todo)
-
-```v
-
-```
-
 ## C Integration
 
 ### GlobalDecl
@@ -2606,25 +1640,9 @@ example code(todo)
 AST struct
 
 ```v
-pub struct GlobalField {
-pub:
-	name     string
-	expr     Expr
-	has_expr bool
-	pos      token.Position
-pub mut:
-	typ      table.Type
-	comments []Comment
-}
+GlobalDecl
 
-// global valiable declaration
-pub struct GlobalDecl {
-pub:
-	pos          token.Position
-pub mut:
-	fields       []GlobalField
-	end_comments []Comment
-}
+GlobalField
 ```
 
 example code
@@ -2654,17 +1672,7 @@ fn main() {
 AST struct
 
 ```v
-// #include etc
-pub struct HashStmt {
-pub:
-	mod  string
-	pos  token.Position
-pub mut:
-	val  string // example: 'include <openssl/rand.h> # please install openssl // comment'
-	kind string // : 'include'
-	main string // : '<openssl/rand.h>'
-	msg  string // : 'please install openssl'
-}
+HashStmt
 ```
 
 example code
@@ -2688,12 +1696,7 @@ fn main() {
 AST struct
 
 ```v
-pub struct Likely {
-pub:
-	expr      Expr
-	pos       token.Position
-	is_likely bool // false for _unlikely_
-}
+Likely
 ```
 
 example code
@@ -2721,14 +1724,7 @@ fn main() {
 AST struct
 
 ```v
-// CTempVar is used in cgen only, to hold nodes for temporary variables
-pub struct CTempVar {
-pub:
-	name   string // the name of the C temporary variable; used by g.expr(x)
-	orig   Expr // the original expression, which produced the C temp variable; used by x.str()
-	typ    table.Type // the type of the original expression
-	is_ptr bool // whether the type is a pointer
-}
+CTempVar
 ```
 
 example code(todo)
@@ -2737,22 +1733,12 @@ example code(todo)
 
 ```
 
-
-
 ## Comment
-
-### Comment
 
 AST struct
 
 ```v
-pub struct Comment {
-pub:
-	text     string
-	is_multi bool
-	line_nr  int
-	pos      token.Position
-}
+Comment
 ```
 
 example code
@@ -2777,27 +1763,7 @@ fn main() {
 AST struct
 
 ```v
-// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
-pub struct AtExpr {
-pub:
-	name string
-	pos  token.Position
-	kind token.AtKind
-pub mut:
-	val  string
-}
-pub enum AtKind {
-	unknown
-	fn_name
-	mod_name
-	struct_name
-	vexe_path
-	file_path
-	line_nr
-	column_nr
-	vhash
-	vmod_file
-}
+AtExpr
 ```
 
 example code
@@ -2815,23 +1781,5 @@ fn main() {
 	println(@COLUMN)
 	println(@VHASH)
 	println(@VMOD_FILE)
-}
-```
-
-```v
-module main
-
-fn main() {
-	x := 1
-	if _likely_(x == 1) {
-		println('a')
-	} else {
-		println('b')
-	}
-	if _unlikely_(x == 1) {
-		println('a')
-	} else {
-		println('b')
-	}
 }
 ```

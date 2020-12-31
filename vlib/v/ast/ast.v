@@ -169,7 +169,6 @@ pub mut:
 	comments []Comment  // comments before current const field
 }
 
-// const declaration
 pub struct ConstDecl {
 pub:
 	is_pub       bool
@@ -180,7 +179,6 @@ pub mut:
 	is_block     bool // const() block
 }
 
-// struct declaration
 pub struct StructDecl {
 pub:
 	pos          token.Position
@@ -213,7 +211,6 @@ pub:
 	pos  token.Position
 }
 
-// interface declaration
 pub struct InterfaceDecl {
 pub:
 	is_pub       bool
@@ -873,14 +870,12 @@ pub:
 	pos       token.Position
 }
 
-// goto label
 pub struct GotoLabel {
 pub:
 	name string
 	pos  token.Position
 }
 
-// goto statement
 pub struct GotoStmt {
 pub:
 	name string
@@ -919,6 +914,7 @@ pub mut:
 	arg_type  table.Type
 }
 
+// concurrent channel initialization
 pub struct ChanInit {
 pub:
 	pos       token.Position
