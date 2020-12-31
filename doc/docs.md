@@ -56,7 +56,7 @@ Anything you can do in other languages, you can do in V.
 * [Modules](#modules)
 * [Constants](#constants)
 * [Builtin functions](#builtin-functions)
-* [Printing custom types](#printing-custom-types)
+* [Printing custom types](#custom-print-of-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
