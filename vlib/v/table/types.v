@@ -558,10 +558,10 @@ pub fn (k Kind) str() string {
 		.u16 { 'u16' }
 		.u32 { 'u32' }
 		.u64 { 'u64' }
-		.any_int { 'any_int' }
+		.any_int { 'untyped int' }
 		.f32 { 'f32' }
 		.f64 { 'f64' }
-		.any_float { 'any_float' }
+		.any_float { 'untyped float' }
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
@@ -699,6 +699,7 @@ pub:
 	variants []Type
 }
 
+[inline]
 pub fn (table &Table) type_to_str(t Type) string {
 	return table.type_to_str_using_aliases(t, map[string]string{})
 }
