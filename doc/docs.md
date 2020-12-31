@@ -407,7 +407,7 @@ assert 'aloha!'[0] == `a`
 Both single and double quotes can be used to denote strings. For consistency,
 `vfmt` converts double quotes to single quotes unless the string contains a single quote character.
 
-For raw strings, prepend `r`. Raw strings are not escaped:
+For raw strings, prepend `r`. Raw strings cannot be escaped:
 
 ```v nofmt
 s := r'hello\nworld'
@@ -439,8 +439,8 @@ println('[${int(x):-10}]') // pad with spaces on the right
 ### String operators
 
 ```v nofmt
-name := 'Bob'
-bobby := name + 'by' // + is used to concatenate strings
+nickname := 'Bob'
+name := nickname + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
 
 mut s := 'hello '
@@ -583,8 +583,8 @@ arr := []int{len: 5, init: -1}
 // `[-1, -1, -1, -1, -1]`
 ```
 
-Setting the capacity improves performance of insertions,
-as it reduces the number of reallocations needed:
+Setting the capacity improves performance of insertions since it will preallocate some memory   
+and it will reduce the number of reallocations needed:
 
 ```v nofmt
 mut numbers := []int{ cap: 1000 }
@@ -789,9 +789,8 @@ if a < b {
 }
 ```
 
-`if` statements are pretty straightforward and similar to most other languages.
-Unlike other C-like languages,
-there are no parentheses surrounding the condition and the braces are always required.
+`if` statements are pretty straightforward and similar to most other languages.   
+Unlike C or other C-like languages, there are no parentheses surrounding the condition and the braces are always required.
 
 `if` can be used as an expression:
 
@@ -818,7 +817,7 @@ type Alphabet = Abc | Xyz
 x := Alphabet(Abc{'test'}) // sum type
 if x is Abc {
     // x is automatically casted to Abc and can be used here
-    println(x)
+    println(x)		// 'test'
 }
 if x !is Abc {
     println('Not Abc')
