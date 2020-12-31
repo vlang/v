@@ -1435,7 +1435,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		}
 	}
 	if p.tok.kind == .lpar {
-		p.check(.lpar)
+		p.next()
 		args := p.call_args()
 		if is_filter && args.len != 1 {
 			p.error('needs exactly 1 argument')
