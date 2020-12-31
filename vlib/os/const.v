@@ -21,7 +21,6 @@ const (
 	s_ixoth = 0o0001 // Execute by others
 )
 */
-
 const (
 	std_input_handle  = -10
 	std_output_handle = -11
