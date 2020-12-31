@@ -351,9 +351,6 @@ if !invalid_cc! EQU 1 (
     echo.
 )
 
-del v_old.exe>>"!log_file!" 2>NUL
-del "!log_file!" 2>NUL
-
 :version
 echo.
 echo | set /p="V version: "
