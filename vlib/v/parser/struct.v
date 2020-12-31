@@ -375,11 +375,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	node := ast.StructInit{
 		typ: typ
 		fields: fields
-		pos: token.Position{
-			line_nr: first_pos.line_nr
-			pos: first_pos.pos
-			len: last_pos.pos - first_pos.pos + last_pos.len
-		}
+		pos: first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 		is_short: no_keys
 		pre_comments: pre_comments
 	}
