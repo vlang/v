@@ -2301,7 +2301,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
-		.byte, .bool, .i8, .char {
+		.byte, .i8, .char {
 			hash_fn = '&map_hash_int_1'
 			key_eq_fn = '&map_eq_int_1'
 			clone_fn = '&map_clone_int_1'
@@ -2316,7 +2316,15 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
 		}
-		.byteptr, .charptr, .voidptr, .u64, .i64 {
+		.voidptr {
+			ts := if g.pref.m64 {
+				&g.table.types[table.u64_type_idx]
+			} else {
+				&g.table.types[table.u32_type_idx]
+			}
+			return g.map_fn_ptrs(ts)
+		}
+		.u64, .i64 {
 			hash_fn = '&map_hash_int_8'
 			key_eq_fn = '&map_eq_int_8'
 			clone_fn = '&map_clone_int_8'
