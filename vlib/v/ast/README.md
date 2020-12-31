@@ -13,9 +13,9 @@ If you are new to the V's AST, you can install the [vast tool](https://github.co
 It will generate example code to AST json file, which can help you understand the AST better.
 
 ```shell
-vast example.v       //generate example.json file and exit.
+vast example.v       //generate example.json.
 
-vast -w example.v    //generate example.json and watch, if file change, regenerate.
+vast -w example.v    //generate example.json and watch example.v.
 
 ```
 
