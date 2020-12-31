@@ -250,8 +250,8 @@ example code
 module main
 
 [attr1]
-['attr2=123']
-  enum Color { // enum comment 1
+['attr2:123']
+enum Color { // enum comment 1
 	// black comment 1
 	// black comment 2
 	black = 2 // black comment 3
@@ -607,10 +607,10 @@ example code
 module main
 
 fn main() {
-	mut m := map[string]string{}
+	mut m := map[string]string{} //map declaration
 	m['name'] = 'tom'
 	m['age'] = '33'
-	//map literal init
+	//map literal declaration and init
 	m2 := {
 		'one':   1
 		'two':   2
@@ -757,11 +757,11 @@ ConcatExpr
 example code
 
 ```v
-	a, b, c := match false {
-		true { 1, 2, 3 }
-		false { 4, 5, 6 }
-		else { 7, 8, 9 }
-	}
+a, b, c := match false {
+	true { 1, 2, 3 }
+	false { 4, 5, 6 }
+	else { 7, 8, 9 }
+}
 ```
 
 ## Function
@@ -1745,7 +1745,6 @@ example code
 
 ```v
 module main
-
 /*
 multi line comment
 multi line comment
