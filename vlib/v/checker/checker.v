@@ -1289,28 +1289,32 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		method = m
 		has_method = true
 	} else {
-		if left_type_sym.info is table.Struct {
-			mut found_methods := []table.Fn{}
-			mut embed_of_found_methods := []table.Type{}
-			for embed in left_type_sym.info.embeds {
-				embed_sym := c.table.get_type_symbol(embed)
-				if m := c.table.type_find_method(embed_sym, method_name) {
-					found_methods << m
-					embed_of_found_methods << embed
-				}
-			}
-			if found_methods.len == 1 {
-				method = found_methods[0]
-				has_method = true
-				is_method_from_embed = true
-				call_expr.from_embed_type = embed_of_found_methods[0]
-			} else if found_methods.len > 1 {
-				c.error('ambiguous method `$method_name`', call_expr.pos)
-			}
-		}
 		if left_type_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err
+		}
+	}
+	// check even if method is found, we could be overriding a method (TODO: should this be allowed?)
+	// can this logic be moved to table.type_find_method() so it can be used from anywhere
+	// TODO: should overriden methods use embed type name to access it's methods?
+	// eg go does: `fn (mut app App) text() vweb.Result { return app.Context.text() }`
+	if left_type_sym.info is table.Struct {
+		mut found_methods := []table.Fn{}
+		mut embed_of_found_methods := []table.Type{}
+		for embed in left_type_sym.info.embeds {
+			embed_sym := c.table.get_type_symbol(embed)
+			if m := c.table.type_find_method(embed_sym, method_name) {
+				found_methods << m
+				embed_of_found_methods << embed
+			}
+		}
+		if found_methods.len == 1 {
+			method = found_methods[0]
+			has_method = true
+			is_method_from_embed = true
+			call_expr.from_embed_type = embed_of_found_methods[0]
+		} else if found_methods.len > 1 {
+			c.error('ambiguous method `$method_name`', call_expr.pos)
 		}
 	}
 	if has_method {
