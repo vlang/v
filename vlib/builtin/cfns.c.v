@@ -235,7 +235,7 @@ fn C.WideCharToMultiByte() int
 
 fn C._wstat()
 
-fn C._wrename()
+fn C._wrename() int
 
 fn C._wfopen() voidptr
 
