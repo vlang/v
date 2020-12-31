@@ -853,6 +853,44 @@ fn main() {
 }
 ```
 
+### ArrayDecompose
+
+AST struct
+
+```v
+pub struct ArrayDecompose {
+pub:
+	expr      Expr
+	pos       token.Position
+pub mut:
+	expr_type table.Type
+	arg_type  table.Type
+}
+```
+
+example code
+
+```v
+module main
+
+fn main() {
+	a := ['a', 'b', 'c'] 
+	println(variadic_fn_a(a...)) //ArrayDecompose
+}
+
+fn variadic_fn_a(a ...string) string {
+	return variadic_fn_b(a...) //ArrayDecompose
+}
+
+fn variadic_fn_b(a ...string) string {
+	a0 := a[0]
+	a1 := a[1]
+	a2 := a[2]
+	return '$a0$a1$a2'
+}
+
+```
+
 ## Map
 
 ### MapInit
@@ -2326,10 +2364,16 @@ pub:
 }
 ```
 
-example code(todo)
+example code
 
 ```v
+module main
 
+fn main() {
+	a := ['a', 'b', 'c']
+	p := unsafe { &a[2] } // unsafe expr
+	println(p)
+}
 ```
 
 ## SQL
