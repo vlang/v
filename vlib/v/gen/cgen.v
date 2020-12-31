@@ -3159,7 +3159,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// Check if aliased type is a struct
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
-		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c || d) {
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt] && ((a && b) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
@@ -5006,6 +5006,8 @@ fn op_to_fn_name(name string) string {
 		'*' { '_op_mul' }
 		'/' { '_op_div' }
 		'%' { '_op_mod' }
+		'<' { '_op_lt' }
+		'>' {'_op_gt'}
 		else { 'bad op $name' }
 	}
 }

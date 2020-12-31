@@ -15,16 +15,24 @@ fn (a Vec) -(b Vec) Vec {
 	return Vec{a.x - b.x, a.y - b.y}
 }
 
-fn (a Vec) *(b Vec) Vec {
+fn (a Vec) * (b Vec) Vec {
 	return Vec{a.x * b.x, a.y * b.y}
 }
 
-fn (a Vec) /(b Vec) Vec {
+fn (a Vec) / (b Vec) Vec {
 	return Vec{a.x / b.x, a.y / b.y}
 }
 
-fn (a Vec) %(b Vec) Vec {
+fn (a Vec) % (b Vec) Vec {
 	return Vec{a.x % b.x, a.y % b.y}
+}
+
+fn (a Vec) > (b Vec) bool {
+	return a.x > b.x && a.y > b.y
+}
+
+fn (a Vec) < (b Vec) bool {
+	return a.x < b.x && a.y < b.y
 }
 
 fn test_operator_overloading_with_string_interpolation() {
@@ -50,6 +58,8 @@ fn test_operator_overloading_with_string_interpolation() {
 	g := a % b
 	assert a.x % b.x == g.x
 	assert a.y % b.y == g.y
+	assert b > a == true
+	assert a < b == true
 
 	assert c.str() == '{6, 8}'
 	assert d.str() == '{-2, -2}'

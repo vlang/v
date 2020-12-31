@@ -47,7 +47,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	//
 	mut name := it.name
-	if name[0] in [`+`, `-`, `*`, `/`, `%`] {
+	if name[0] in [`+`, `-`, `*`, `/`, `%`, `<`, `>`] {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
