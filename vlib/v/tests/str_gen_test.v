@@ -391,4 +391,14 @@ fn test_multi_return() {
 }, Two{
     value: 'two'
 })"
+	anon_a := fn() (One, Two) {
+		one := One{}
+		two := Two{}
+		return one, two
+	}
+	assert '$anon_a()' == "(One{
+    value: 'one'
+}, Two{
+    value: 'two'
+})"
 }
