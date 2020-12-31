@@ -317,7 +317,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
 			if typ_sym.kind in [.placeholder, .any_int, .any_float] {
-				c.error("type `${c.table.type_to_str(node.parent_type)}` doesn't exist", node.pos)
+				c.error("type `${c.table.type_to_str(node.parent_type)}` doesn't exist",
+					node.pos)
 			} else if typ_sym.kind == .alias {
 				parent_type := (typ_sym.info as table.Alias).parent_type
 				c.error('type `${c.table.type_to_str(node.parent_type)}` is an alias, use the original alias type `${c.table.type_to_str(parent_type)}` instead',
@@ -333,7 +334,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 			fn_info := fn_typ_info.func
 			ret_sym := c.table.get_type_symbol(fn_info.return_type)
 			if ret_sym.kind == .placeholder {
-				c.error("type `${c.table.type_to_str(fn_info.return_type)}` doesn't exist", node.pos)
+				c.error("type `${c.table.type_to_str(fn_info.return_type)}` doesn't exist",
+					node.pos)
 			}
 			for arg in fn_info.params {
 				arg_sym := c.table.get_type_symbol(arg.typ)
@@ -354,7 +356,8 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 					c.error('sum type $node.name cannot hold the type `${c.table.type_to_str(variant.typ)}` more than once',
 						variant.pos)
 				} else if sym.kind in [.placeholder, .any_int, .any_float] {
-					c.error("type `${c.table.type_to_str(variant.typ)}` doesn't exist", variant.pos)
+					c.error("type `${c.table.type_to_str(variant.typ)}` doesn't exist",
+						variant.pos)
 				} else if sym.kind == .interface_ {
 					c.error('sum type cannot hold an interface', variant.pos)
 				}
@@ -432,7 +435,8 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					c.error('unknown type `${c.table.type_to_str(info.key_type)}`', field.type_pos)
 				}
 				if value_sym.kind == .placeholder {
-					c.error('unknown type `${c.table.type_to_str(info.value_type)}`', field.type_pos)
+					c.error('unknown type `${c.table.type_to_str(info.value_type)}`',
+						field.type_pos)
 				}
 			}
 			if field.has_default_expr {
@@ -490,12 +494,14 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 			struct_init.pos)
 	}
 	if type_sym.kind == .interface_ {
-		c.error('cannot instantiate interface `${c.table.type_to_str(struct_init.typ)}`', struct_init.pos)
+		c.error('cannot instantiate interface `${c.table.type_to_str(struct_init.typ)}`',
+			struct_init.pos)
 	}
 	if type_sym.kind == .alias {
 		info := type_sym.info as table.Alias
 		if info.parent_type.is_number() {
-			c.error('cannot instantiate number type alias `${c.table.type_to_str(struct_init.typ)}`', struct_init.pos)
+			c.error('cannot instantiate number type alias `${c.table.type_to_str(struct_init.typ)}`',
+				struct_init.pos)
 			return table.void_type
 		}
 	}
@@ -514,11 +520,13 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 				info_t := type_sym.info as table.Alias
 				sym := c.table.get_type_symbol(info_t.parent_type)
 				if sym.kind == .placeholder { // pending import symbol did not resolve
-					c.error('unknown struct: `${c.table.type_to_str(struct_init.typ)}`', struct_init.pos)
+					c.error('unknown struct: `${c.table.type_to_str(struct_init.typ)}`',
+						struct_init.pos)
 					return table.void_type
 				}
 				if sym.kind != .struct_ {
-					c.error('alias type name: ${c.table.type_to_str(info_t.parent_type)} is not struct type', struct_init.pos)
+					c.error('alias type name: ${c.table.type_to_str(info_t.parent_type)} is not struct type',
+						struct_init.pos)
 				}
 				info = sym.info as table.Struct
 			} else {
@@ -863,7 +871,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 			type_expr := infix_expr.right as ast.Type
 			typ_sym := c.table.get_type_symbol(type_expr.typ)
 			if typ_sym.kind == .placeholder {
-				c.error('$infix_expr.op.str(): type `${c.table.type_to_str(type_expr.typ)}` does not exist', type_expr.pos)
+				c.error('$infix_expr.op.str(): type `${c.table.type_to_str(type_expr.typ)}` does not exist',
+					type_expr.pos)
 			}
 			if left.kind !in [.interface_, .sum_type] {
 				c.error('`$infix_expr.op.str()` can only be used with interfaces and sum types',
@@ -924,9 +933,11 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
 	if c.table.type_kind(left_type) == .sum_type {
-		c.error('cannot use operator `$infix_expr.op` with `${c.table.type_to_str(left_type)}`', infix_expr.pos)
+		c.error('cannot use operator `$infix_expr.op` with `${c.table.type_to_str(left_type)}`',
+			infix_expr.pos)
 	} else if c.table.type_kind(right_type) == .sum_type {
-		c.error('cannot use operator `$infix_expr.op` with `${c.table.type_to_str(right_type)}`', infix_expr.pos)
+		c.error('cannot use operator `$infix_expr.op` with `${c.table.type_to_str(right_type)}`',
+			infix_expr.pos)
 	}
 	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
 	left_is_optional := left_type.has_flag(.optional)
@@ -1045,11 +1056,13 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					// TODO Remove `crypto.rand` when possible (see vlib/crypto/rand/rand.v,
 					// if `c_array_to_bytes_tmp` doesn't exist, then it's safe to remove it)
 					if c.file.mod.name !in ['builtin', 'crypto.rand'] {
-						c.error('`${c.table.type_to_str(expr.expr_type)}` can not be modified', expr.pos)
+						c.error('`${c.table.type_to_str(expr.expr_type)}` can not be modified',
+							expr.pos)
 					}
 				}
 				else {
-					c.error('unexpected symbol `${c.table.type_to_str(expr.expr_type)}`', expr.pos)
+					c.error('unexpected symbol `${c.table.type_to_str(expr.expr_type)}`',
+						expr.pos)
 				}
 			}
 		}
@@ -1271,7 +1284,8 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		arg_type := c.expr(arg_expr)
 		if !c.check_types(arg_type, info.elem_type) && !c.check_types(left_type, arg_type) {
-			c.error('cannot $method_name `${c.table.type_to_str(arg_type)}` to `${c.table.type_to_str(left_utype)}`', arg_expr.position())
+			c.error('cannot $method_name `${c.table.type_to_str(arg_type)}` to `${c.table.type_to_str(left_utype)}`',
+				arg_expr.position())
 		}
 	}
 	mut method := table.Fn{}
@@ -3027,7 +3041,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					c.error('unknown type `${c.table.type_to_str(node.typ)}`', node.pos)
 				}
 				if !c.table.sumtype_has_variant(node.expr_type, node.typ) {
-					c.error('cannot cast `${c.table.type_to_str(node.expr_type)}` to `${c.table.type_to_str(node.typ)}`', node.pos)
+					c.error('cannot cast `${c.table.type_to_str(node.expr_type)}` to `${c.table.type_to_str(node.typ)}`',
+						node.pos)
 					// c.error('only $info.variants can be casted to `$typ`', node.pos)
 				}
 			} else {
@@ -3237,7 +3252,8 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 			})
 		}
 		if !c.table.sumtype_has_variant(node.typ, node.expr_type) {
-			c.error('cannot cast `${c.table.type_to_str(node.expr_type)}` to `${c.table.type_to_str(node.typ)}`', node.pos)
+			c.error('cannot cast `${c.table.type_to_str(node.expr_type)}` to `${c.table.type_to_str(node.typ)}`',
+				node.pos)
 		}
 	} else if mut to_type_sym.info is table.Alias {
 		if !c.check_types(node.expr_type, to_type_sym.info.parent_type) {
@@ -3993,7 +4009,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 				if cond_type.idx() !in [table.bool_type_idx, table.void_type_idx] && !c.pref.translated {
 					// void types are skipped, because they mean the var was initialized incorrectly
 					// (via missing function etc)
-					c.error('non-bool type `${c.table.type_to_str(cond_type)}` used as if condition', branch.pos)
+					c.error('non-bool type `${c.table.type_to_str(cond_type)}` used as if condition',
+						branch.pos)
 				}
 			}
 		}
@@ -4581,7 +4598,8 @@ pub fn (mut c Checker) enum_val(mut node ast.EnumVal) table.Type {
 	// rintln('checker: x = $info.x enum val $c.expected_type $typ_sym.name')
 	// println(info.vals)
 	if node.val !in info.vals {
-		c.error('enum `${c.table.type_to_str(typ)}` does not have a value `$node.val`', node.pos)
+		c.error('enum `${c.table.type_to_str(typ)}` does not have a value `$node.val`',
+			node.pos)
 	}
 	node.typ = typ
 	return typ

@@ -175,7 +175,8 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 			// allow `bool << 2` in translated C code
 			return table.int_type
 		}
-		c.error('invalid operation: shift of type `${c.table.type_to_str(left_type)}`', left_pos)
+		c.error('invalid operation: shift of type `${c.table.type_to_str(left_type)}`',
+			left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
 		c.error('cannot shift non-integer type `${c.table.type_to_str(right_type)}` into type `${c.table.type_to_str(left_type)}`',
