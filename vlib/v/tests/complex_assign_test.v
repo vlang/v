@@ -21,7 +21,6 @@ fn test_assign_multi_expr_func() {
 	g, h := match true {
 		true { multireturner(0, 'good') }
 		false { multireturner(100, 'bad') }
-		else { multireturner(200, 'bad') }
 	}
 	assert g == 1
 	assert h == 'good'
@@ -36,7 +35,6 @@ fn test_assign_multi_expr() {
 	a,b,c := match false {
 		true { 1,2,3 }
 		false { 4,5,6 }
-		else { 7,8,9 }
 	}
 	assert a == 4
 	assert b == 5

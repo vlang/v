@@ -3813,27 +3813,38 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// by listing all variants or values
 	mut is_exhaustive := true
 	mut unhandled := []string{}
-	match mut type_sym.info {
-		table.SumType {
-			for v in type_sym.info.variants {
-				v_str := c.table.type_to_str(v)
-				if v_str !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`$v_str`'
-				}
+	if type_sym.name == 'bool' {
+		variants := ['true', 'false']
+		for v in variants {
+			if v !in branch_exprs {
+				is_exhaustive = false
+				unhandled << '`$v`'
 			}
 		}
-		//
-		table.Enum {
-			for v in type_sym.info.vals {
-				if v !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`.$v`'
+	} else {
+		match mut type_sym.info {
+			table.SumType {
+				println(type_sym.info.variants)
+				for v in type_sym.info.variants {
+					v_str := c.table.type_to_str(v)
+					if v_str !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`$v_str`'
+					}
 				}
 			}
-		}
-		else {
-			is_exhaustive = false
+			//
+			table.Enum {
+				for v in type_sym.info.vals {
+					if v !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`.$v`'
+					}
+				}
+			}
+			else {
+				is_exhaustive = false
+			}
 		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
