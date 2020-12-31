@@ -514,63 +514,62 @@ pub fn (mut g Gen) gen_exit() {
 }
 
 fn (mut g Gen) mov(reg Register, val int) {
-    if val == 0 {
-        // Optimise to xor reg, reg when val is 0
-    	match reg {
-    		.eax, .rax {
-    			g.write8(0x31)
-    			g.write8(0xc0)
-    		}
-    		.edi, .rdi {
-    			g.write8(0x31)
-    			g.write8(0xff)
-    		}
-    		.edx {
-    			g.write8(0x31)
-    			g.write8(0xd2)
-    		}
-    		.rsi {
-    			g.write8(0x48)
-    			g.write8(0x31)
-                g.write8(0xf6)
-            }
-            .r12 {
-    			g.write8(0x4d)
-    			g.write8(0x31)
-    			g.write8(0xe4)
-    		}
-    		else {
-    			panic('unhandled mov $reg')
-    		}
-    	}
-    	g.println('xor $reg, $reg')
-
-    } else {
-    	match reg {
-    		.eax, .rax {
-    			g.write8(0xb8)
-    		}
-    		.edi, .rdi {
-    			g.write8(0xbf)
-    		}
-    		.edx {
-    			g.write8(0xba)
-    		}
-    		.rsi {
-    			g.write8(0x48)
-    			g.write8(0xbe)
-    		}
-    		.r12 {
-    			g.write8(0x41)
-    			g.write8(0xbc) // r11 is 0xbb etc
-    		}
-    		else {
-    			panic('unhandled mov $reg')
-    		}
-    	}
-    	g.write32(val)
-    	g.println('mov $reg, $val')
-    }
+	if val == 0 {
+		// Optimise to xor reg, reg when val is 0
+		match reg {
+			.eax, .rax {
+				g.write8(0x31)
+				g.write8(0xc0)
+			}
+			.edi, .rdi {
+				g.write8(0x31)
+				g.write8(0xff)
+			}
+			.edx {
+				g.write8(0x31)
+				g.write8(0xd2)
+			}
+			.rsi {
+				g.write8(0x48)
+				g.write8(0x31)
+				g.write8(0xf6)
+			}
+			.r12 {
+				g.write8(0x4d)
+				g.write8(0x31)
+				g.write8(0xe4)
+			}
+			else {
+				panic('unhandled mov $reg')
+			}
+		}
+		g.println('xor $reg, $reg')
+	} else {
+		match reg {
+			.eax, .rax {
+				g.write8(0xb8)
+			}
+			.edi, .rdi {
+				g.write8(0xbf)
+			}
+			.edx {
+				g.write8(0xba)
+			}
+			.rsi {
+				g.write8(0x48)
+				g.write8(0xbe)
+			}
+			.r12 {
+				g.write8(0x41)
+				g.write8(0xbc) // r11 is 0xbb etc
+			}
+			else {
+				panic('unhandled mov $reg')
+			}
+		}
+		g.write32(val)
+		g.println('mov $reg, $val')
+	}
 }
 
 fn (mut g Gen) mov_reg(a Register, b Register) {
