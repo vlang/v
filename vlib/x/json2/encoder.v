@@ -79,12 +79,6 @@ pub fn (f Any) str() string {
 				str_f64
 			}
 		}
-		any_int {
-			return f.str()
-		}
-		any_float {
-			return f.str()
-		}
 		bool {
 			return f.str()
 		}
