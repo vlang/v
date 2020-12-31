@@ -1799,11 +1799,16 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	end_pos := p.tok.position()
 	const_pos := p.tok.position()
 	p.check(.key_const)
+	is_block := p.tok.kind == .lpar
+	/*
 	if p.tok.kind != .lpar {
 		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
 		return ast.ConstDecl{}
 	}
-	p.next() // (
+	*/
+	if is_block {
+		p.next() // (
+	}
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
@@ -1840,14 +1845,20 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.global_scope.register(field)
 		comments = []
+		if !is_block {
+			break
+		}
 	}
 	p.top_level_statement_end()
-	p.check(.rpar)
+	if is_block {
+		p.check(.rpar)
+	}
 	return ast.ConstDecl{
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
+		is_block: is_block
 	}
 }
 

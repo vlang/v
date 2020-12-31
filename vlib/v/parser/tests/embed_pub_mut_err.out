@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_pub_mut_err.vv:6:1: error: expecting type declaration
+    4 | pub mut:
+    5 |     Context
+    6 | }
+      | ^
+    7 |
+    8 | fn main() {

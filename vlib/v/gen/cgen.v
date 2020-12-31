@@ -2305,9 +2305,9 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
 		.byte, .bool, .i8, .char {
-			hash_fn = '&map_hash_int_2'
-			key_eq_fn = '&map_eq_int_2'
-			clone_fn = '&map_clone_int_2'
+			hash_fn = '&map_hash_int_1'
+			key_eq_fn = '&map_eq_int_1'
+			clone_fn = '&map_clone_int_1'
 		}
 		.i16, .u16 {
 			hash_fn = '&map_hash_int_2'
@@ -2768,7 +2768,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.get_type_symbol(node.expr_type)
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
 	if is_optional {
@@ -2824,10 +2824,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()
-			g.write('.$embed_name')
+			if node.expr_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
 		}
 	}
-	if node.expr_type.is_ptr() || sym.kind == .chan {
+	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
@@ -5416,54 +5421,6 @@ fn (mut g Gen) is_expr(node ast.InfixExpr) {
 		g.write('typ $eq ')
 	}
 	g.expr(node.right)
-}
-
-fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
-	mut convertor := ''
-	mut typename_ := ''
-	if sym.parent_idx in table.integer_type_idxs {
-		convertor = 'int'
-		typename_ = 'int'
-	} else if sym.parent_idx == table.f32_type_idx {
-		convertor = 'float'
-		typename_ = 'f32'
-	} else if sym.parent_idx == table.f64_type_idx {
-		convertor = 'double'
-		typename_ = 'f64'
-	} else if sym.parent_idx == table.bool_type_idx {
-		convertor = 'bool'
-		typename_ = 'bool'
-	} else {
-		verror("could not generate string method for type '$styp'")
-	}
-	g.type_definitions.writeln('string ${str_fn_name}($styp it); // auto')
-	g.auto_str_funcs.writeln('string ${str_fn_name}($styp it) {')
-	if convertor == 'bool' {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), ($convertor)it ? _SLIT("true") : _SLIT("false"));')
-	} else {
-		g.auto_str_funcs.writeln('\tstring tmp1 = string_add(_SLIT("${styp}("), tos3(${typename_}_str(($convertor)it).str));')
-	}
-	g.auto_str_funcs.writeln('\tstring tmp2 = string_add(tmp1, _SLIT(")"));')
-	g.auto_str_funcs.writeln('\tstring_free(&tmp1);')
-	g.auto_str_funcs.writeln('\treturn tmp2;')
-	g.auto_str_funcs.writeln('}')
-}
-
-fn (g &Gen) type_to_fmt(typ table.Type) string {
-	sym := g.table.get_type_symbol(typ)
-	if typ.is_ptr() && (typ.is_int() || typ.is_float()) {
-		return '%.*s\\000'
-	} else if sym.kind in
-		[.struct_, .array, .array_fixed, .map, .bool, .enum_, .interface_, .sum_type, .function] {
-		return '%.*s\\000'
-	} else if sym.kind == .string {
-		return "\'%.*s\\000\'"
-	} else if sym.kind in [.f32, .f64] {
-		return '%g\\000' // g removes trailing zeros unlike %f
-	} else if sym.kind == .u64 {
-		return '%lld\\000'
-	}
-	return '%d\\000'
 }
 
 // Generates interface table and interface indexes

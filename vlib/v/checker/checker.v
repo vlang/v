@@ -1258,6 +1258,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	mut method := table.Fn{}
 	mut has_method := false
+	mut is_method_from_embed := false
 	if m := c.table.type_find_method(left_type_sym, method_name) {
 		method = m
 		has_method = true
@@ -1275,6 +1276,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if found_methods.len == 1 {
 				method = found_methods[0]
 				has_method = true
+				is_method_from_embed = true
 				call_expr.from_embed_type = embed_of_found_methods[0]
 			} else if found_methods.len > 1 {
 				c.error('ambiguous method `$method_name`', call_expr.pos)
@@ -1374,12 +1376,13 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.expected_arg_types << method.params[i].typ
 			}
 		}
-		if is_generic {
+		if is_method_from_embed {
+			call_expr.receiver_type = call_expr.from_embed_type.derive(method.params[0].typ)
+		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
@@ -2083,7 +2086,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
-	mut seen := []int{}
+	mut seen := []i64{}
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -2101,10 +2104,10 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					val := field.expr.val.i64()
 					if val < int_min || val > int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !decl.is_multi_allowed && int(val) in seen {
+					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
-					seen << int(val)
+					seen << i64(val)
 				}
 				ast.PrefixExpr {}
 				else {
@@ -4367,11 +4370,12 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		if node.right is ast.IntegerLiteral {
-			c.error('cannot take the address of an int', node.pos)
-		}
-		if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
-			c.error('cannot take the address of a string', node.pos)
+		match node.right {
+			ast.IntegerLiteral { c.error('cannot take the address of an int', node.pos) }
+			ast.BoolLiteral { c.error('cannot take the address of a bool', node.pos) }
+			ast.StringLiteral, ast.StringInterLiteral { c.error('cannot take the address of a string',
+					node.pos) }
+			else {}
 		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.get_type_symbol(node.right.left_type)

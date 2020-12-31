@@ -210,6 +210,12 @@ fn sum(a ...int) int {
 println(sum())    // Output: 0
 println(sum(1))   //         1
 println(sum(2,3)) //         5
+
+// using array decomposition
+a := [2,3,4]
+println(sum(a...))  // <-- using postfix ... here. output: 9
+b := [5, 6, 7]
+println(sum(b...)) // output: 18
 ```
 
 ## Symbol visibility
@@ -318,7 +324,7 @@ import gg
 
 fn draw(ctx &gg.Context) {
     gg := ctx.parent.get_ui().gg
-    gg.draw_rect(...)
+    gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -2971,11 +2977,11 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
 - `.x64.v` => will be used only by V's x64 backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
-- `_${os}.c.v` => will be used only on the specific `os` system. 
+- `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
-- `_default.c.v` => will be used only if there is NOT a more specific platform file. 
-For example, if you have both `file_linux.c.v` and `file_default.c.v`, 
-and you are compiling for linux, then only `file_linux.c.v` will be used, 
+- `_default.c.v` => will be used only if there is NOT a more specific platform file.
+For example, if you have both `file_linux.c.v` and `file_default.c.v`,
+and you are compiling for linux, then only `file_linux.c.v` will be used,
 and `file_default.c.v` will be ignored.
 
 Here is a more complete example:
@@ -3006,7 +3012,7 @@ const ( message = 'Hello windows' )
 With the example above:
 - when you compile for windows, you will get 'Hello windows'
 - when you compile for linux, you will get 'Hello linux'
-- when you compile for any other platform, you will get the 
+- when you compile for any other platform, you will get the
 non specific 'Hello world' message.
 
 ## Compile time pseudo variables
