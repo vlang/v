@@ -263,9 +263,12 @@ fn (mut app App) key_down(key sapp.KeyCode) {
 		.escape {
 			exit(0)
 		}
+		._0 {
+			app.timer_period_ms = 0
+		}
 		.space {
 			if app.timer_period_ms == 24 {
-				app.timer_period_ms = 3
+				app.timer_period_ms = 4
 			} else {
 				app.timer_period_ms = 24
 			}
