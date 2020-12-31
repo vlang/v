@@ -62,8 +62,7 @@ module main
 import vweb
 
 struct App {
-pub mut:
-	vweb vweb.Context
+	vweb.Context
 }
 
 fn main() {
@@ -71,7 +70,7 @@ fn main() {
 }
 
 pub fn (mut app App) index() vweb.Result {
-	app.vweb.text('Hello, world from vweb!')
+	app.text('Hello, world from vweb!')
 	return vweb.Result{}
 }
 
@@ -98,7 +97,9 @@ Vweb helpfully provided a link, open http://localhost:8081/ in your browser:
 
 The `App` struct is an entry point of our web application. If you have experience
 with an MVC web framework, you can think of it as a controller. (Vweb is
-not an MVC framework however.)
+not an MVC framework however.) It embeds the vweb Context object, that's why we get access
+to methods like `.text()`.
+
 
 As you can see, there are no routing rules. The `index()` action handles the `/` request by default.
 Vweb often uses convention over configuration and adding a new action requires
@@ -109,7 +110,7 @@ import vweb
 import time
 
 fn (mut app App) time() vweb.Result {
-	app.vweb.text(time.now().format())
+	app.text(time.now().format())
 	return vweb.Result{}
 }
 ```
@@ -319,7 +320,7 @@ bad queries will always be handled by the developer:
 
 ```v oksyntax
 article := app.retrieve_article(10) or {
-	app.vweb.text('Article not found')
+	app.text('Article not found')
 	return
 }
 ```
@@ -348,10 +349,10 @@ Create `new.html`:
 import vweb
 
 pub fn (mut app App) new_article() vweb.Result {
-	title := app.vweb.form['title']
-	text := app.vweb.form['text']
+	title := app.form['title']
+	text := app.form['text']
 	if title == '' || text == '' {
-		app.vweb.text('Empty text/title')
+		app.text('Empty text/title')
 		return vweb.Result{}
 	}
 	article := Article{
@@ -362,7 +363,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	app.vweb.redirect('/')
+	app.redirect('/')
 	return vweb.Result{}
 }
 ```
@@ -390,7 +391,7 @@ import json
 
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	app.vweb.json(json.encode(articles))
+	app.json(json.encode(articles))
 	return vweb.Result{}
 }
 ```
