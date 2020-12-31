@@ -7,8 +7,8 @@ const (
 )
 
 struct App {
+	vweb.Context
 pub mut:
-	vweb vweb.Context // TODO embed
 	cnt  int
 }
 
@@ -18,14 +18,14 @@ fn main() {
 }
 
 pub fn (mut app App) init_once() {
-	app.vweb.handle_static('.')
+	app.handle_static('.')
 }
 
 pub fn (mut app App) init() {
 }
 
 pub fn (mut app App) json_endpoint() vweb.Result {
-	return app.vweb.json('{"a": 3}')
+	return app.json('{"a": 3}')
 }
 
 pub fn (mut app App) index() vweb.Result {
@@ -37,14 +37,14 @@ pub fn (mut app App) index() vweb.Result {
 	return $vweb.html()
 }
 
-pub fn (mut app App) text() vweb.Result {
-	return app.vweb.text('Hello world from vweb')
+pub fn (mut app App) show_text() vweb.Result {
+	return app.text('Hello world from vweb')
 }
 
 pub fn (mut app App) cookie() vweb.Result {
-	app.vweb.set_cookie({
+	app.set_cookie({
 		name: 'cookie'
 		value: 'test'
 	})
-	return app.vweb.text('Headers: $app.vweb.headers')
+	return app.text('Headers: $app.headers')
 }
