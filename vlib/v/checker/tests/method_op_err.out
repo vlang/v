@@ -1,0 +1,20 @@
+vlib/v/checker/tests/method_op_err.vv:11:1: error: operator methods should have exactly 1 argument
+    9 | }
+   10 | 
+   11 | fn (u User) + () {
+      | ~~~~~~~~~~~~~~~~
+   12 | }
+   13 |
+vlib/v/checker/tests/method_op_err.vv:14:1: error: both sides of an operator must be the same type
+   12 | }
+   13 | 
+   14 | fn (u User) - (f Foo) User {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     return User{u.a - f.a, u.b-f.a}
+   16 | }
+vlib/v/checker/tests/method_op_err.vv:20:24: error: infix expr: cannot use `Foo` (right expression) as `User`
+   18 | fn main() {
+   19 |     println(User{3, 4})
+   20 |     println(User{3, 4} - Foo{3, 3})
+      |                        ^
+   21 | }
