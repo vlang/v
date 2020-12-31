@@ -52,7 +52,7 @@ pub mut:
 // so that the user can set callbacks, read meta information, etc.
 pub fn info() &LiveReloadInfo {
 	if C.g_live_info != 0 {
-		return C.g_live_info
+		return &LiveReloadInfo(C.g_live_info)
 	}
 	// When the current program is not compiled with -live, simply
 	// return a new empty struct LiveReloadInfo in order to prevent
