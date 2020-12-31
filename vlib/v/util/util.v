@@ -164,7 +164,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if is_verbose {
 		println('launch_tool running tool command: $tool_command ...')
 	}
-	exit(os.system(tool_command))
+	os.execvp(tool_exe, args)
 }
 
 // NB: should_recompile_tool/2 compares unix timestamps that have 1 second resolution

@@ -2776,7 +2776,7 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 	if node.expr_type == 0 {
 		g.checker_bug('unexpected SelectorExpr.expr_type = 0', node.pos)
 	}
-	sym := g.table.get_type_symbol(node.expr_type)
+	sym := g.table.get_type_symbol(g.unwrap_generic(node.expr_type))
 	// if node expr is a root ident and an optional
 	mut is_optional := node.expr is ast.Ident && node.expr_type.has_flag(.optional)
 	if is_optional {
@@ -2832,10 +2832,15 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		if node.from_embed_type != 0 {
 			embed_sym := g.table.get_type_symbol(node.from_embed_type)
 			embed_name := embed_sym.embed_name()
-			g.write('.$embed_name')
+			if node.expr_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
 		}
 	}
-	if node.expr_type.is_ptr() || sym.kind == .chan {
+	if (node.expr_type.is_ptr() || sym.kind == .chan) && node.from_embed_type == 0 {
 		g.write('->')
 	} else {
 		// g.write('. /*typ=  $it.expr_type */') // ${g.typ(it.expr_type)} /')
