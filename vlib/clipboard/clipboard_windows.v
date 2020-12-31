@@ -117,7 +117,7 @@ fn to_wide(text string) &HGLOBAL {
         locked[len_required - 1] = u16(0)
         GlobalUnlock(buf)
     }
-    return buf
+    return &buf
 }
 
 fn (cb mut Clipboard) set_text(text string) bool {
