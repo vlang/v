@@ -4573,8 +4573,7 @@ pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
 				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
 			}
 		}
-	}
-	else if key_i is ast.IntegerLiteral {
+	} else if key_i is ast.IntegerLiteral {
 		for j in 0 .. i {
 			key_j := node.keys[j] as ast.IntegerLiteral
 			if key_i.val == key_j.val {
