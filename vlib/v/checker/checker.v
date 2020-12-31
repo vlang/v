@@ -1171,6 +1171,16 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
 		return table.string_type
 	}
+	if call_expr.generic_type.has_flag(.generic) {
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(call_expr.name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
@@ -1333,6 +1343,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
+			if method.is_generic {
+				continue
+			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
@@ -1383,6 +1396,36 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
+		if method.is_generic && call_expr.generic_type == table.void_type {
+			// no type arguments given in call, attempt implicit instantiation
+			c.infer_fn_types(method, mut call_expr)
+		}
+		if call_expr.generic_type != table.void_type && method.return_type != 0 { // table.t_type {
+			// Handle `foo<T>() T` => `foo<int>() int` => return int
+			return_sym := c.table.get_type_symbol(method.return_type)
+			if return_sym.name == 'T' {
+				mut typ := call_expr.generic_type
+				typ = typ.set_nr_muls(method.return_type.nr_muls())
+				if method.return_type.has_flag(.optional) {
+					typ = typ.set_flag(.optional)
+				}
+				call_expr.return_type = typ
+				return typ
+			} else if return_sym.kind == .array {
+				elem_info := return_sym.info as table.Array
+				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
+				if elem_sym.name == 'T' {
+					idx := c.table.find_or_register_array(call_expr.generic_type, 1)
+					return table.new_type(idx)
+				}
+			}
+		}
+		if call_expr.generic_type.is_full() && !method.is_generic {
+			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		}
+		if method.is_generic {
+			return call_expr.return_type
+		}
 		return method.return_type
 	}
 	// TODO: str methods

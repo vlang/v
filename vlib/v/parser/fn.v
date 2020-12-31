@@ -50,7 +50,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		}
 	}
 	p.check(.lpar)
-	mut args := p.call_args()
+	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
 	// ! in mutable methods

@@ -424,6 +424,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
+	if node.generic_type != table.void_type && node.generic_type != 0 {
+		// Using _T_ to differentiate between get<string> and get_string
+		// `foo<int>()` => `foo_T_int()`
+		name += '_T_' + g.typ(node.generic_type)
+	}
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	//
