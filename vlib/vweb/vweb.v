@@ -454,34 +454,33 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							if route_words.len == 0 && url_words.len == 0 {
 								// index route
 								matching = true
-							} else {
-								for i in 0 .. route_words.len {
-									if url_words.len == i {
-										variables << ''
-										matching = true
-										unknown = true
-										break
-									}
-									if url_words[i] == route_words[i] {
-										// no parameter
-										matching = true
-										continue
-									} else if route_words[i].starts_with(':') {
-										// is parameter
-										if i < route_words.len && !route_words[i].ends_with('...') {
-											// normal parameter
-											variables << url_words[i]
-										} else {
-											// array parameter only in the end
-											variables << url_words[i..].join('/')
-										}
-										matching = true
-										unknown = true
-										continue
+							}
+							for i in 0 .. route_words.len {
+								if url_words.len == i {
+									variables << ''
+									matching = true
+									unknown = true
+									break
+								}
+								if url_words[i] == route_words[i] {
+									// no parameter
+									matching = true
+									continue
+								} else if route_words[i].starts_with(':') {
+									// is parameter
+									if i < route_words.len && !route_words[i].ends_with('...') {
+										// normal parameter
+										variables << url_words[i]
 									} else {
-										matching = false
-										break
+										// array parameter only in the end
+										variables << url_words[i..].join('/')
 									}
+									matching = true
+									unknown = true
+									continue
+								} else {
+									matching = false
+									break
 								}
 							}
 							if matching && !unknown {
