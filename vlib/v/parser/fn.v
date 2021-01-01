@@ -451,7 +451,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
 	if no_body && p.tok.line_nr == p.prev_tok.line_nr {
-		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`', p.tok.position())
+		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
+			p.tok.position())
 	}
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(false)
