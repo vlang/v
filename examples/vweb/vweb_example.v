@@ -21,9 +21,6 @@ pub fn (mut app App) init_once() {
 	app.handle_static('.')
 }
 
-pub fn (mut app App) init() {
-}
-
 pub fn (mut app App) json_endpoint() vweb.Result {
 	return app.json('{"a": 3}')
 }

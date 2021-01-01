@@ -114,6 +114,11 @@ jobs:
       run: ./v build-tools
     - name: Test v binaries
       run: ./v build-vbinaries
+    - name: Test v tutorials
+      run: |
+        cd tutorials/code/blog
+        v .
+
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
