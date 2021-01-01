@@ -379,7 +379,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			attrs := method.attrs
 			route_words_a = [][]string{}
 			if attrs.len == 0 {
-				if url_words.len == 1 {
+				if url_words.len > 0 {
 					// No routing for this method. If it matches, call it and finish matching
 					// since such methods have a priority.
 					// For example URL `/register` matches route `/:user`, but `fn register()`

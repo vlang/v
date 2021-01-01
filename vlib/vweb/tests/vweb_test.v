@@ -53,7 +53,7 @@ fn assert_common_headers(received string) {
 }
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
-	received := simple_tcp_client({}) or {
+	received := simple_tcp_client(path: '/') or {
 		assert err == ''
 		return
 	}
