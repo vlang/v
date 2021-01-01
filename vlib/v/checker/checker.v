@@ -1288,6 +1288,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if m := c.table.type_find_method(left_type_sym, method_name) {
 		method = m
 		has_method = true
+	} else {
 		// can this logic be moved to table.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is table.Struct {
 			mut found_methods := []table.Fn{}
@@ -1308,7 +1309,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.error('ambiguous method `$method_name`', call_expr.pos)
 			}
 		}
-	} else {
 		if left_type_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err
