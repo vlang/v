@@ -10,7 +10,8 @@ otherwise this (see [if](##if) for this syntax):
 ```html
 @if bool_val {
     <span>This is shown if bool_val is true</span>
-}
+@end
+}@end
 ```
 would result in:
 ```html
@@ -31,7 +32,8 @@ and the `{}` block where you can write html which will be rendered if the condit
 ```html
 @if bool_val {
     <span>This is shown if bool_val is true</span>
-}
+@end
+}@end
 ```
 One-liner:
 ```html
@@ -58,7 +60,8 @@ and the `{}` block where you can write html which will be rendered for each loop
 ```html
 @for i, val in my_vals {
     <span>$i - $val</span>
-}
+@end
+}@end
 ```
 One-liner:
 ```html
@@ -84,7 +87,8 @@ You can also write (and all other for condition syntaxes that are allowed in V):
 ```html
 @for i = 0; i < 5; i++ {
     <span>$i</span>
-}
+@end
+}@end
 ```
 
 ## include
