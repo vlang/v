@@ -58,6 +58,12 @@ pub mut:
 	form_error        string
 }
 
+// declaring init_once in your App struct is optional
+pub fn (ctx Context) init_once() {}
+
+// declaring init in your App struct is optional
+pub fn (ctx Context) init() {}
+
 pub struct Cookie {
 	name      string
 	value     string
