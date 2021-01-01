@@ -12,5 +12,5 @@ pub fn random(n int) string {
 }
 */
 pub fn filter_html(html string) string {
-	return html.replace('&', '&amp').replace('<', '&lt').replace('>', '&gt')
+	return html.replace_each(['&', '&amp', '<', '&lt', '>', '&gt'])
 }

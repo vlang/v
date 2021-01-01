@@ -146,7 +146,7 @@ _ = footer
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
 			vars := get_variable_names(line)
-			line = line.replace('@', '$').replace("'", '"')
+			line = line.replace_each(['@', '$', "'", '"'])
 			mut idx := 0
 			for var in vars {
 				s.write(line[idx..var.index])
