@@ -25,6 +25,9 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 // the .position() token.Position methods too.
 pub type ScopeObject = ConstField | GlobalField | Var
 
+pub type Node = ConstField | EnumField | Expr | Field | GlobalField | IfBranch | MatchBranch |
+	ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
+
 pub struct Type {
 pub:
 	typ table.Type
@@ -1254,6 +1257,174 @@ pub fn (stmt Stmt) position() token.Position {
 		// This match is exhaustive *on purpose*, to help force
 		// maintaining/implementing proper .pos fields.
 	}
+}
+
+pub fn (node Node) position() token.Position {
+	match node {
+		Stmt {
+			pos := node.position()
+			match node {
+				Module { return {
+						pos |
+						len: pos.len + node.name.len
+					} }
+				Import { return {
+						pos |
+						pos: pos.pos - 7
+						len: pos.len + node.mod.len + node.alias.len + 7
+					} }
+				else { return pos }
+			}
+		}
+		Expr {
+			return node.position()
+		}
+		StructField {
+			return node.pos.extend(node.type_pos)
+		}
+		MatchBranch, SelectBranch, Field, EnumField, ConstField, StructInitField, GlobalField, table.Param {
+			return node.pos
+		}
+		IfBranch {
+			return node.pos.extend(node.body_pos)
+		}
+		ScopeObject {
+			match node {
+				ConstField, GlobalField, Var { return node.pos }
+			}
+		}
+	}
+}
+
+pub fn (node Node) children() []Node {
+	mut children := []Node{}
+	if node is Expr {
+		match node {
+			StringInterLiteral, Assoc, ArrayInit {
+				return node.exprs.map(Node(it))
+			}
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf {
+				children << node.expr
+			}
+			LockExpr, OrExpr {
+				return node.stmts.map(Node(it))
+			}
+			StructInit {
+				return node.fields.map(Node(it))
+			}
+			AnonFn {
+				children << Stmt(node.decl)
+			}
+			CallExpr {
+				children << node.left
+				children << Expr(node.or_block)
+			}
+			InfixExpr {
+				children << node.left
+				children << node.right
+			}
+			PrefixExpr {
+				children << node.right
+			}
+			IndexExpr {
+				children << node.left
+				children << node.index
+			}
+			IfExpr {
+				children << node.left
+				children << node.branches.map(Node(it))
+			}
+			MatchExpr {
+				children << node.cond
+				children << node.branches.map(Node(it))
+			}
+			SelectExpr {
+				return node.branches.map(Node(it))
+			}
+			ChanInit {
+				children << node.cap_expr
+			}
+			MapInit {
+				children << node.keys.map(Node(it))
+				children << node.vals.map(Node(it))
+			}
+			RangeExpr {
+				children << node.low
+				children << node.high
+			}
+			CastExpr {
+				children << node.expr
+				children << node.arg
+			}
+			ConcatExpr {
+				return node.vals.map(Node(it))
+			}
+			else {}
+		}
+	} else if node is Stmt {
+		match node {
+			Block, DeferStmt, ForCStmt, ForInStmt, ForStmt, CompFor {
+				return node.stmts.map(Node(it))
+			}
+			ExprStmt, AssertStmt {
+				children << node.expr
+			}
+			InterfaceDecl {
+				return node.methods.map(Node(Stmt(it)))
+			}
+			AssignStmt {
+				children << node.left.map(Node(it))
+				children << node.right.map(Node(it))
+			}
+			Return {
+				return node.exprs.map(Node(it))
+			}
+			// NB: these four decl nodes cannot be merged as one branch
+			StructDecl {
+				return node.fields.map(Node(it))
+			}
+			GlobalDecl {
+				return node.fields.map(Node(it))
+			}
+			ConstDecl {
+				return node.fields.map(Node(it))
+			}
+			EnumDecl {
+				return node.fields.map(Node(it))
+			}
+			FnDecl {
+				if node.is_method {
+					children << Node(node.receiver)
+				}
+				children << node.params.map(Node(it))
+				children << node.stmts.map(Node(it))
+			}
+			else {}
+		}
+	} else if node is ScopeObject {
+		match node {
+			GlobalField, ConstField, Var { children << node.expr }
+		}
+	} else {
+		match node {
+			GlobalField, ConstField, EnumField, StructInitField {
+				children << node.expr
+			}
+			SelectBranch {
+				children << node.stmt
+				children << node.stmts.map(Node(it))
+			}
+			IfBranch {
+				return node.stmts.map(Node(it))
+			}
+			MatchBranch {
+				children << node.stmts.map(Node(it))
+				children << node.exprs.map(Node(it))
+			}
+			else {}
+		}
+	}
+	return children
 }
 
 // TODO: remove this fugly hack :-|
