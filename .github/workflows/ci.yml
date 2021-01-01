@@ -117,7 +117,7 @@ jobs:
     - name: Test v tutorials
       run: |
         cd tutorials/code/blog
-        v .
+        ../../../v .
 
 
   # Alpine docker pre-built container

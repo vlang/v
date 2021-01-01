@@ -150,7 +150,6 @@ pub fn (db DB) exec(query string) ([]Row, int) {
 		}
 		rows << row
 	}
-
 	C.sqlite3_finalize(stmt)
 	return rows, res
 }
