@@ -52,6 +52,7 @@ pub fn compile_template(html_ string, fn_name string) string {
 	mut lines := html.split_into_lines()
 	lstartlength := lines.len * 30
 	mut s := strings.new_builder(1000)
+
 	// base := path.all_after_last('/').replace('.html', '')
 	s.writeln("
 import strings
@@ -67,6 +68,7 @@ _ = footer
 	s.write(str_start)
 	mut state := State.html
 	mut in_span := false
+	mut a := 0
 	// for _line in lines {
 	for i := 0; i < lines.len; i++ {
 		mut line := lines[i].trim_space()
@@ -149,10 +151,19 @@ _ = footer
 			line = line.replace_each(['@', '$', "'", '"'])
 			mut idx := 0
 			for var in vars {
+				a++
 				s.write(line[idx..var.index])
-				s.write("' + ")
-				s.write("if typeof($var.lit) == 'vweb.RawText' { strings.filter_html('$$var.lit') } else { '$$var.lit' }")
-				s.write(" + '")
+				s.writeln(str_end)
+				s.writeln("if typeof($var.lit) == 'vweb.RawText' {")
+				s.write(str_start)
+				s.write("\${strings.filter_html('$$var.lit')}")
+				s.writeln(str_end)
+				s.writeln('} else {')
+				s.write(str_start)
+				s.write('$$var.lit')
+				s.writeln(str_end)
+				s.writeln('}')
+				s.writeln(str_start)
 				idx = var.index + var.len
 			}
 			s.writeln(line[idx..])
@@ -162,6 +173,7 @@ _ = footer
 	s.writeln('_tmpl_res_$fn_name := sb.str() ')
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
+	s.writeln('//Vars: $a')
 	return s.str()
 }
 
