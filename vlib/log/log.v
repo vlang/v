@@ -143,7 +143,7 @@ pub fn (mut l Log) warn(s string) {
 
 // info logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.info` category.
 pub fn (mut l Log) info(s string) {
-	if l.level < Level.info {
+	if l.level < .info {
 		return
 	}
 	l.send_output(s, .info)
@@ -151,7 +151,7 @@ pub fn (mut l Log) info(s string) {
 
 // debug logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.debug` category.
 pub fn (mut l Log) debug(s string) {
-	if l.level < Level.debug {
+	if l.level < .debug {
 		return
 	}
 	l.send_output(s, .debug)
