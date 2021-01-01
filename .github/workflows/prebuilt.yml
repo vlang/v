@@ -4,7 +4,7 @@ on:
     types: [edited, published]
 jobs:
   ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 5
     steps:
     - name: Install dependencies
