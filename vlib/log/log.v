@@ -135,7 +135,7 @@ pub fn (mut l Log) error(s string) {
 
 // warn logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.warn` category.
 pub fn (mut l Log) warn(s string) {
-	if int(l.level) < info(Level.warn) {
+	if int(l.level) < int(Level.warn) {
 		return
 	}
 	l.send_output(s, .warn)
