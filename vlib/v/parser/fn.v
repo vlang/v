@@ -442,16 +442,17 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_arg: true
 		})
 	}
+	same_line := p.tok.line_nr == p.prev_tok.line_nr
 	mut return_type := table.void_type
 	// lpar: multiple return types
 	if p.tok.can_start_type(table.builtin_type_names) || p.tok.kind == .lpar {
 		return_type = p.parse_type()
-	} else if p.tok.kind == .name {
+	} else if p.tok.kind == .name && same_line {
 		p.error_with_pos('invalid return type `$p.tok.lit` for anonymous function', p.tok.position())
 	}
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
-	if no_body && p.tok.line_nr == p.prev_tok.line_nr {
+	if no_body && same_line {
 		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
 			p.tok.position())
 	}
