@@ -155,12 +155,8 @@ pub fn (mut p Parser) parse_language() table.Language {
 
 pub fn (p &Parser) is_first_type_token(tok &token.Token) bool {
 	match tok.kind {
-		.name {
-			return tok.lit[0].is_capital() || tok.lit in table.builtin_type_names
-		}
-		.amp, .lsbr, .question {
-			return true
-		}
+		.name { return tok.lit[0].is_capital() || tok.lit in table.builtin_type_names }
+		.amp, .lsbr, .question { return true }
 		else {}
 	}
 	return false
