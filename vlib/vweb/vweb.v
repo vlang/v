@@ -384,7 +384,8 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					// since such methods have a priority.
 					// For example URL `/register` matches route `/:user`, but `fn register()`
 					// should be called first.
-					if (req.method == .get && url_words[0] == method.name) ||
+					if (req.method == .get &&
+						url_words[0] == method.name) ||
 						(req.method == .post && url_words[0] + '_post' == method.name) {
 						$if debug {
 							println('easy match method=$method.name')
