@@ -193,7 +193,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.lcbr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
-			if p.tok.kind == .string {
+			if p.tok.kind in [.chartoken, .number, .string] {
 				node = p.map_init()
 			} else {
 				// it should be a struct
