@@ -295,7 +295,6 @@ pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
 	match enable {
 		true { new_mode |= mode }
 		false { new_mode &= (0o7777 - mode) }
-		else {}
 	}
 	C.chmod(path, int(new_mode))
 }
