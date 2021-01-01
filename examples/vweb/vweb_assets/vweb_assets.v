@@ -41,9 +41,9 @@ pub fn (mut app App) index() {
 }
 
 fn (mut app App) text() vweb.Result {
-	return app.text('Hello, world from vweb!')
+	return app.Context.text('Hello, world from vweb!')
 }
 
 fn (mut app App) time() vweb.Result {
-	return app.text(time.now().format())
+	return app.Context.text(time.now().format())
 }
