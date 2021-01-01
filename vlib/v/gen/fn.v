@@ -448,7 +448,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			g.write('&')
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
+		node.from_embed_type == 0 {
 		g.write('/*rec*/*')
 	}
 	if node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
