@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         compiler: [gcc]
@@ -100,7 +100,7 @@ jobs:
   release:
     name: Create Github Release
     needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
     - name: Get short tag name
       uses: jungwinter/split@v1
@@ -121,7 +121,7 @@ jobs:
 
   publish:
     needs: [release]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         version: [linux, macos, windows]

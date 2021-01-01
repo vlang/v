@@ -2302,7 +2302,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32 {
+		.int, .u32, .rune {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -3153,13 +3153,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(')')
 	} else {
-		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
+		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
+			left_sym.kind != .enum_
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
-		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c || d) {
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt] && ((a && b) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
@@ -5006,6 +5007,8 @@ fn op_to_fn_name(name string) string {
 		'*' { '_op_mul' }
 		'/' { '_op_div' }
 		'%' { '_op_mod' }
+		'<' { '_op_lt' }
+		'>' { '_op_gt' }
 		else { 'bad op $name' }
 	}
 }
