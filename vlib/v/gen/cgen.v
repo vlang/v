@@ -2452,7 +2452,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
-				g.write("'$node.val'")
+				g.write("L'$node.val'")
 			}
 		}
 		ast.AtExpr {
