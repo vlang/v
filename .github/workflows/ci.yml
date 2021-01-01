@@ -83,7 +83,7 @@ jobs:
            ## The following is needed for examples/wkhtmltopdf.v
            wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
            sudo apt-get install xfonts-75dpi
-           dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
+           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
     - name: Build v
       run: |
         echo $VFLAGS
