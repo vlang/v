@@ -437,6 +437,7 @@ pub fn (kind Kind) is_infix() bool {
 pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
 	match tok.kind {
 		.name { return tok.lit[0].is_capital() || tok.lit in builtin_type_names }
+		// Note: return type (T1, T2) should be handled elsewhere
 		.amp, .key_fn, .lsbr, .question { return true }
 		else {}
 	}

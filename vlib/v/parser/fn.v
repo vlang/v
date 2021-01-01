@@ -443,7 +443,8 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 		})
 	}
 	mut return_type := table.void_type
-	if p.tok.can_start_type(table.builtin_type_names) {
+	// lpar: multiple return types
+	if p.tok.can_start_type(table.builtin_type_names) || p.tok.kind == .lpar {
 		return_type = p.parse_type()
 	} else if p.tok.kind == .name {
 		p.error_with_pos('invalid return type `$p.tok.lit` for anonymous function', p.tok.position())
