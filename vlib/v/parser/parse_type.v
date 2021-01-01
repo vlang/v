@@ -4,7 +4,6 @@
 module parser
 
 import v.table
-import v.token
 import v.util
 
 pub fn (mut p Parser) parse_array_type() table.Type {
@@ -151,15 +150,6 @@ pub fn (mut p Parser) parse_language() table.Language {
 		p.check(.dot)
 	}
 	return language
-}
-
-pub fn (p &Parser) is_first_type_token(tok &token.Token) bool {
-	match tok.kind {
-		.name { return tok.lit[0].is_capital() || tok.lit in table.builtin_type_names }
-		.amp, .lsbr, .question { return true }
-		else {}
-	}
-	return false
 }
 
 pub fn (mut p Parser) parse_type() table.Type {

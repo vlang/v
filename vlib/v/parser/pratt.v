@@ -142,7 +142,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			if !p.is_first_type_token(p.tok) {
+			if !p.tok.can_start_type(table.builtin_type_names) {
 				if p.tok.kind == .name {
 					p.mark_var_as_used(p.tok.lit)
 				}
