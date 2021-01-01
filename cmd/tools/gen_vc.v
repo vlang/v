@@ -48,7 +48,8 @@ const (
 	too_short_file_limit = 5000
 	// create a .c file for these os's
 	vc_build_oses        = [
-		'nix', // all nix based os
+		'nix',
+		/* all nix based os */
 		'windows',
 	]
 )
@@ -87,8 +88,8 @@ mut:
 
 // webhook server
 struct WebhookServer {
-pub mut:
-	vweb   vweb.Context
+	vweb.Context
+mut:
 	gen_vc &GenVC
 }
 
@@ -171,10 +172,10 @@ pub fn (mut ws WebhookServer) genhook() {
 	ws.gen_vc.generate()
 	// error in generate
 	if ws.gen_vc.gen_error {
-		ws.vweb.json('{status: "failed"}')
+		ws.json('{status: "failed"}')
 		return
 	}
-	ws.vweb.json('{status: "ok"}')
+	ws.json('{status: "ok"}')
 }
 
 pub fn (ws &WebhookServer) reset() {
@@ -209,9 +210,7 @@ fn (mut gen_vc GenVC) generate() {
 	// check if gen_vc dir exists
 	if !os.is_dir(gen_vc.options.work_dir) {
 		// try create
-		os.mkdir(gen_vc.options.work_dir) or {
-			panic(err)
-		}
+		os.mkdir(gen_vc.options.work_dir) or { panic(err) }
 		// still dosen't exist... we have a problem
 		if !os.is_dir(gen_vc.options.work_dir) {
 			gen_vc.logger.error('error creating directory: $gen_vc.options.work_dir')
@@ -247,12 +246,8 @@ fn (mut gen_vc GenVC) generate() {
 	ts_v := git_log_v.find_between('Date:', '\n').trim_space()
 	ts_vc := git_log_vc.find_between('Date:', '\n').trim_space()
 	// parse time as string to time.Time
-	last_commit_time_v := time.parse(ts_v) or {
-		panic(err)
-	}
-	last_commit_time_vc := time.parse(ts_vc) or {
-		panic(err)
-	}
+	last_commit_time_v := time.parse(ts_v) or { panic(err) }
+	last_commit_time_vc := time.parse(ts_vc) or { panic(err) }
 	// git dates are in users local timezone and v time.parse does not parse
 	// timezones at the moment, so for now get unix timestamp from output also
 	t_unix_v := git_log_v.find_between('Date Unix:', '\n').trim_space().int()

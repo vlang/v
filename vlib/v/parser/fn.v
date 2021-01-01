@@ -50,7 +50,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		}
 	}
 	p.check(.lpar)
-	mut args := p.call_args()
+	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
 	// ! in mutable methods
@@ -270,7 +270,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt] && p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',

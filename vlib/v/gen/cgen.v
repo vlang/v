@@ -363,7 +363,6 @@ pub fn (mut g Gen) init() {
 		g.cheaders.writeln('#include <spawn.h>')
 	}
 	g.write_builtin_types()
-	g.write_multi_return_typedefs()
 	g.write_typedef_types()
 	g.write_typeof_functions()
 	if g.pref.build_mode != .build_module {
@@ -371,7 +370,7 @@ pub fn (mut g Gen) init() {
 		g.write_str_fn_definitions()
 	}
 	g.write_sorted_types()
-	g.write_multi_return_structs()
+	g.write_multi_return_types()
 	g.definitions.writeln('// end of definitions #endif')
 	//
 	g.stringliterals.writeln('')
@@ -671,31 +670,23 @@ pub fn (mut g Gen) write_fn_typesymbol_declaration(sym table.TypeSymbol) {
 	}
 }
 
-pub fn (mut g Gen) write_multi_return_typedefs() {
-	g.type_definitions.writeln('\n// BEGIN_multi_return_typedefs')
-	for sym in g.table.types {
-		if sym.kind != .multi_return {
-			continue
-		}
-		g.type_definitions.writeln('typedef struct $sym.cname $sym.cname;')
-	}
-	g.type_definitions.writeln('// END_multi_return_typedefs\n')
-}
-
-pub fn (mut g Gen) write_multi_return_structs() {
+pub fn (mut g Gen) write_multi_return_types() {
+	g.typedefs.writeln('\n// BEGIN_multi_return_typedefs')
 	g.type_definitions.writeln('\n// BEGIN_multi_return_structs')
 	for sym in g.table.types {
 		if sym.kind != .multi_return {
 			continue
 		}
-		info := sym.info as table.MultiReturn
+		g.typedefs.writeln('typedef struct $sym.cname $sym.cname;')
 		g.type_definitions.writeln('struct $sym.cname {')
+		info := sym.info as table.MultiReturn
 		for i, mr_typ in info.types {
 			type_name := g.typ(mr_typ)
 			g.type_definitions.writeln('\t$type_name arg$i;')
 		}
 		g.type_definitions.writeln('};\n')
 	}
+	g.typedefs.writeln('// END_multi_return_typedefs\n')
 	g.type_definitions.writeln('// END_multi_return_structs\n')
 }
 
@@ -2311,7 +2302,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_2'
 			clone_fn = '&map_clone_int_2'
 		}
-		.int, .u32 {
+		.int, .u32, .rune {
 			hash_fn = '&map_hash_int_4'
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
@@ -2461,7 +2452,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 			if node.val == r'\`' {
 				g.write("'`'")
 			} else {
-				g.write("'$node.val'")
+				g.write("L'$node.val'")
 			}
 		}
 		ast.AtExpr {
@@ -3162,13 +3153,14 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.expr(node.left)
 		g.write(')')
 	} else {
-		a := left_sym.name[0].is_capital() || left_sym.name.contains('.')
+		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
+			left_sym.kind != .enum_
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
-		if node.op in [.plus, .minus, .mul, .div, .mod] && ((a && b) || c || d) {
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt] && ((a && b) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
@@ -5015,6 +5007,8 @@ fn op_to_fn_name(name string) string {
 		'*' { '_op_mul' }
 		'/' { '_op_div' }
 		'%' { '_op_mod' }
+		'<' { '_op_lt' }
+		'>' { '_op_gt' }
 		else { 'bad op $name' }
 	}
 }

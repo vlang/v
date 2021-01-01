@@ -1187,6 +1187,16 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
 		return table.string_type
 	}
+	if call_expr.generic_type.has_flag(.generic) {
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(call_expr.name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
@@ -1279,6 +1289,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		method = m
 		has_method = true
 	} else {
+		// can this logic be moved to table.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is table.Struct {
 			mut found_methods := []table.Fn{}
 			mut embed_of_found_methods := []table.Type{}
@@ -1351,6 +1362,9 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
+			if method.is_generic {
+				continue
+			}
 			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
 				// str method, allow type with str method if fn arg is string
 				// Passing an int or a string array produces a c error here
@@ -1402,6 +1416,36 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
+		if method.is_generic && call_expr.generic_type == table.void_type {
+			// no type arguments given in call, attempt implicit instantiation
+			c.infer_fn_types(method, mut call_expr)
+		}
+		if call_expr.generic_type != table.void_type && method.return_type != 0 { // table.t_type {
+			// Handle `foo<T>() T` => `foo<int>() int` => return int
+			return_sym := c.table.get_type_symbol(method.return_type)
+			if return_sym.name == 'T' {
+				mut typ := call_expr.generic_type
+				typ = typ.set_nr_muls(method.return_type.nr_muls())
+				if method.return_type.has_flag(.optional) {
+					typ = typ.set_flag(.optional)
+				}
+				call_expr.return_type = typ
+				return typ
+			} else if return_sym.kind == .array {
+				elem_info := return_sym.info as table.Array
+				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
+				if elem_sym.name == 'T' {
+					idx := c.table.find_or_register_array(call_expr.generic_type, 1)
+					return table.new_type(idx)
+				}
+			}
+		}
+		if call_expr.generic_type.is_full() && !method.is_generic {
+			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		}
+		if method.is_generic {
+			return call_expr.return_type
+		}
 		return method.return_type
 	}
 	// TODO: str methods
@@ -3626,11 +3670,10 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	return ret_type
 }
 
-fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol) {
+fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
-	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.Type{}
@@ -3813,27 +3856,37 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// by listing all variants or values
 	mut is_exhaustive := true
 	mut unhandled := []string{}
-	match mut type_sym.info {
-		table.SumType {
-			for v in type_sym.info.variants {
-				v_str := c.table.type_to_str(v)
-				if v_str !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`$v_str`'
-				}
+	if node.cond_type == table.bool_type {
+		variants := ['true', 'false']
+		for v in variants {
+			if v !in branch_exprs {
+				is_exhaustive = false
+				unhandled << '`$v`'
 			}
 		}
-		//
-		table.Enum {
-			for v in type_sym.info.vals {
-				if v !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`.$v`'
+	} else {
+		match mut cond_type_sym.info {
+			table.SumType {
+				for v in cond_type_sym.info.variants {
+					v_str := c.table.type_to_str(v)
+					if v_str !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`$v_str`'
+					}
 				}
 			}
-		}
-		else {
-			is_exhaustive = false
+			//
+			table.Enum {
+				for v in cond_type_sym.info.vals {
+					if v !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`.$v`'
+					}
+				}
+			}
+			else {
+				is_exhaustive = false
+			}
 		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
@@ -4603,6 +4656,25 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	}
 }
 
+pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
+	key_i := node.keys[i]
+	if key_i is ast.StringLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	} else if key_i is ast.IntegerLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.IntegerLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
@@ -4622,14 +4694,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `{'age': 20}`
 	key0_type := c.table.mktyp(c.expr(node.keys[0]))
 	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	mut same_key_type := true
 	for i, key in node.keys {
-		key_i := key as ast.StringLiteral
-		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key.position())
-			}
-		}
 		if i == 0 {
 			continue
 		}
@@ -4637,16 +4703,18 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		key_type := c.expr(key)
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
-			key0_type_sym := c.table.get_type_symbol(key0_type)
-			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
-				node.pos)
+			msg := c.expected_msg(key_type, key0_type)
+			c.error('invalid map key: $msg', key.position())
+			same_key_type = false
 		}
 		if !c.check_types(val_type, val0_type) {
-			val0_type_sym := c.table.get_type_symbol(val0_type)
-			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
-				node.pos)
+			msg := c.expected_msg(val_type, val0_type)
+			c.error('invalid map value: $msg', val.position())
+		}
+	}
+	if same_key_type {
+		for i in 1 .. node.keys.len {
+			c.check_dup_keys(node, i)
 		}
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
@@ -4896,7 +4964,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/'] {
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '>'] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -4908,6 +4976,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
+				} else if node.name in ['<', '>'] && node.return_type != table.bool_type {
+					c.error('operator comparison methods should return `bool`', node.pos)
 				}
 			}
 		}

@@ -1,5 +1,6 @@
 ## V 0.2.2
 *Not yet released*
+- `vweb` now uses struct embedding: `app.vweb.text('hello') => app.text('hello')`.
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
 
 ## V 0.2.1

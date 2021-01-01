@@ -285,6 +285,8 @@ pub fn replace_op(s string) string {
 		`*` { '_mult' }
 		`/` { '_div' }
 		`%` { '_mod' }
+		`<` { '_lt' }
+		`>` { '_gt' }
 		else { '' }
 	}
 	return s[..s.len - 1] + suffix

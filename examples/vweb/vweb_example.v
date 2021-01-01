@@ -7,9 +7,9 @@ const (
 )
 
 struct App {
-pub mut:
-	vweb vweb.Context // TODO embed
-	cnt  int
+	vweb.Context
+mut:
+	cnt int
 }
 
 fn main() {
@@ -18,33 +18,30 @@ fn main() {
 }
 
 pub fn (mut app App) init_once() {
-	app.vweb.handle_static('.')
+	app.handle_static('.')
 }
 
 pub fn (mut app App) init() {
 }
 
 pub fn (mut app App) json_endpoint() vweb.Result {
-	return app.vweb.json('{"a": 3}')
+	return app.json('{"a": 3}')
 }
 
 pub fn (mut app App) index() vweb.Result {
 	app.cnt++
 	show := true
-	// app.vweb.text('Hello world from vweb')
+	// app.text('Hello world from vweb')
 	hello := 'Hello world from vweb'
 	numbers := [1, 2, 3]
 	return $vweb.html()
 }
 
-pub fn (mut app App) text() vweb.Result {
-	return app.vweb.text('Hello world from vweb')
+pub fn (mut app App) show_text() vweb.Result {
+	return app.text('Hello world from vweb')
 }
 
 pub fn (mut app App) cookie() vweb.Result {
-	app.vweb.set_cookie({
-		name: 'cookie'
-		value: 'test'
-	})
-	return app.vweb.text('Headers: $app.vweb.headers')
+	app.set_cookie(name: 'cookie', value: 'test')
+	return app.text('Headers: $app.headers')
 }
