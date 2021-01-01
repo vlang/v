@@ -1,0 +1,8 @@
+struct Msg {
+	name string
+	text string
+}
+ms := &Msg{}
+
+fn (m &Msg) one() { 
+}
