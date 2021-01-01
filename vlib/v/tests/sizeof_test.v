@@ -10,6 +10,8 @@ fn test_math_sizeof() {
 }
 
 fn test_sizeof() {
-	assert sizeof(`€`) == 2
+	// depends on compiler
+	assert sizeof(`€`) in [u32(2), 4]
+	// depends on -m32/64
 	assert sizeof(S1) in [u32(4), 8]
 }
