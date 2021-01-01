@@ -82,7 +82,7 @@ jobs:
            ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
            ## The following is needed for examples/wkhtmltopdf.v
            wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
-           sudo apt-get install xfonts-75dpi
+           sudo apt-get install xfonts-75dpi xfonts-base
            sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
     - name: Build v
       run: |
