@@ -1127,6 +1127,18 @@ pub fn (expr Expr) is_blank_ident() bool {
 	}
 }
 
+[inline]
+pub fn (expr Expr) full_position() token.Position {
+	match expr {
+		PrefixExpr {
+			return expr.pos.extend(expr.right.full_position())
+		}
+		else {
+			return expr.position()
+		}
+	}
+}
+
 pub fn (expr Expr) position() token.Position {
 	// all uncommented have to be implemented
 	match expr {
@@ -1134,10 +1146,7 @@ pub fn (expr Expr) position() token.Position {
 		AnonFn {
 			return expr.decl.pos
 		}
-		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
-			return expr.pos
-		}
-		ArrayDecompose {
+		ArrayDecompose, ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
 			return expr.pos
 		}
 		IfGuardExpr {

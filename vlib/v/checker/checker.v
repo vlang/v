@@ -2070,14 +2070,14 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 		got_typ := c.unwrap_generic(got_types[i])
 		if got_typ.has_flag(.optional) &&
 			(!exp_type.has_flag(.optional) || c.table.type_to_str(got_typ) != c.table.type_to_str(exp_type)) {
-			pos := return_stmt.exprs[i].position()
+			pos := return_stmt.exprs[i].full_position()
 			c.error('cannot use `${c.table.type_to_str(got_typ)}` as type `${c.table.type_to_str(exp_type)}` in return argument',
 				pos)
 		}
 		if !c.check_types(got_typ, exp_type) || got_typ.nr_muls() > exp_type.nr_muls() {
 			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
-			pos := return_stmt.exprs[i].position()
+			pos := return_stmt.exprs[i].full_position()
 			if exp_typ_sym.kind == .interface_ {
 				c.type_implements(got_typ, exp_type, return_stmt.pos)
 				continue
