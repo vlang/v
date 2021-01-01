@@ -117,7 +117,7 @@ fn (mut l Log) send_output(s &string, level Level) {
 
 // fatal logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.fatal` category.
 pub fn (mut l Log) fatal(s string) {
-	if int(l.level) < int(Level.fatal) {
+	if l.level < .fatal {
 		return
 	}
 	l.send_output(s, .fatal)
@@ -127,7 +127,7 @@ pub fn (mut l Log) fatal(s string) {
 
 // error logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.error` category.
 pub fn (mut l Log) error(s string) {
-	if int(l.level) < int(Level.error) {
+	if l.level < .error {
 		return
 	}
 	l.send_output(s, .error)
@@ -135,7 +135,7 @@ pub fn (mut l Log) error(s string) {
 
 // warn logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.warn` category.
 pub fn (mut l Log) warn(s string) {
-	if int(l.level) < int(Level.warn) {
+	if l.level < .warn {
 		return
 	}
 	l.send_output(s, .warn)
@@ -143,7 +143,7 @@ pub fn (mut l Log) warn(s string) {
 
 // info logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.info` category.
 pub fn (mut l Log) info(s string) {
-	if int(l.level) < int(Level.info) {
+	if l.level < Level.info {
 		return
 	}
 	l.send_output(s, .info)
@@ -151,7 +151,7 @@ pub fn (mut l Log) info(s string) {
 
 // debug logs line `s` via `send_output` if `Log.level` is greater than or equal to the `Level.debug` category.
 pub fn (mut l Log) debug(s string) {
-	if int(l.level) < int(Level.debug) {
+	if l.level < Level.debug {
 		return
 	}
 	l.send_output(s, .debug)

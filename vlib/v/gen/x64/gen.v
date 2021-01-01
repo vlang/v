@@ -371,7 +371,7 @@ pub fn (mut g Gen) ret() {
 }
 
 pub fn (mut g Gen) push(reg Register) {
-	if int(reg) < int(Register.r8) {
+	if reg < .r8 {
 		g.write8(0x50 + reg)
 	} else {
 		g.write8(0x41)
