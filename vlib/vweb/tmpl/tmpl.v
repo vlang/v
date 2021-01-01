@@ -17,6 +17,12 @@ pub fn compile_file(path string, fn_name string) string {
 	return compile_template(html, fn_name)
 }
 
+struct Var {
+	lit   string
+	index int
+	len   int
+}
+
 enum State {
 	html
 	css // <style>
@@ -63,7 +69,7 @@ _ = footer
 	mut in_span := false
 	// for _line in lines {
 	for i := 0; i < lines.len; i++ {
-		line := lines[i].trim_space()
+		mut line := lines[i].trim_space()
 		if line == '<style>' {
 			state = .css
 		} else if line == '</style>' {
@@ -139,7 +145,17 @@ _ = footer
 		} else {
 			// HTML, may include `@var`
 			// escaped by cgen, unless it's a `vweb.RawHtml` string
-			s.writeln(line.replace('@', '$').replace("'", '"'))
+			vars := get_variable_names(line)
+			line = line.replace('@', '$').replace("'", '"')
+			mut idx := 0
+			for var in vars {
+				s.write(line[idx..var.index])
+				s.write("' + ")
+				s.write("if typeof($var.lit) == 'vweb.RawText' { strings.filter_html('$$var.lit') } else { '$$var.lit' }")
+				s.write(" + '")
+				idx = var.index + var.len
+			}
+			s.writeln(line[idx..])
 		}
 	}
 	s.writeln(str_end)
@@ -147,4 +163,41 @@ _ = footer
 	s.writeln('}')
 	s.writeln('// === end of vweb html template ===')
 	return s.str()
+}
+
+fn get_variable_names(s string) []Var {
+	mut variables := []Var{}
+	mut index := 0
+	for index < s.len {
+		mut char := s[index]
+		if char != `@` {
+			index++
+			continue
+		}
+		i := index
+		index++
+		char = s[index]
+		mut var := []byte{}
+		mut skip := false
+		for (char >= `a` && char <= `z`) ||
+			(char >= `A` && char <= `Z`) || (char >= `0` && char <= `9`) || char in '_'.bytes() {
+			var << char
+			index++
+			if index >= s.len {
+				break
+			}
+			char = s[index]
+			if char == `.` {
+				skip = true
+			}
+		}
+		if !skip {
+			len := index - i
+			if var.len > 0 {
+				variables << Var{string(var), i, len}
+			}
+		}
+		index++
+	}
+	return variables
 }

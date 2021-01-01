@@ -11,3 +11,6 @@ pub fn random(n int) string {
 	return tos(buf)
 }
 */
+pub fn filter_html(html string) string {
+	return html.replace('&', '&amp').replace('<', '&lt').replace('>', '&gt')
+}

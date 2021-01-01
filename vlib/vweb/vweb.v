@@ -632,6 +632,8 @@ fn filter(s string) string {
 
 pub type RawHtml = string
 
+pub type RawText = string
+
 fn send_string(conn net.TcpConn, s string) ? {
 	conn.write(s.bytes()) ?
 }
