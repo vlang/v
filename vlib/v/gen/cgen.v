@@ -5007,7 +5007,7 @@ fn op_to_fn_name(name string) string {
 		'/' { '_op_div' }
 		'%' { '_op_mod' }
 		'<' { '_op_lt' }
-		'>' {'_op_gt'}
+		'>' { '_op_gt' }
 		else { 'bad op $name' }
 	}
 }

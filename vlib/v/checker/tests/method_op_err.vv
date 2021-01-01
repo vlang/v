@@ -15,6 +15,10 @@ fn (u User) - (f Foo) User {
     return User{u.a - f.a, u.b-f.a}
 }
 
+fn (u User) > (u1 User) User {
+    return User{}
+}
+
 fn main() {
     println(User{3, 4})
     println(User{3, 4} - Foo{3, 3})

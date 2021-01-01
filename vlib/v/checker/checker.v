@@ -4955,6 +4955,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
+				} else if node.name in ['<', '>'] && node.return_type != table.bool_type {
+					c.error('operator comparison methods should return `bool`', node.pos)
 				}
 			}
 		}
