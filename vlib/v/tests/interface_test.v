@@ -188,6 +188,52 @@ fn test_register() {
 interface Speaker2 {
 	name() string
 	speak()
+	return_speaker() Speaker2
+	return_speaker2() ?Speaker2
+}
+
+struct Boss {
+mut:
+	name string
+}
+
+fn (b Boss) name() string {
+	return b.name
+}
+
+fn (b Boss) speak() {
+	println("i'm $b.name")
+}
+
+fn (b Boss) return_speaker() Speaker2 {
+	return b
+}
+
+fn (mut b Boss) return_speaker2() ?Speaker2 {
+	if b.name == 'richard' {
+		return none
+	}
+	b.name = 'boss'
+	return &b
+}
+
+fn return_speaker2(sp Speaker2) Speaker2 {
+	s := sp.return_speaker()
+	s2 := sp.return_speaker2() or {
+		return sp
+	}
+	s.speak()
+	s2.speak()
+	return s2
+}
+
+fn test_interface_returning_interface() {
+	mut b := Boss{'bob'}
+	assert b.name == 'bob'
+	s2 := return_speaker2(b)
+	if s2 is Boss {
+		assert s2.name == 'boss'
+	}
 }
 
 struct Foo {
