@@ -20,20 +20,20 @@ pub const (
 	http_404                = 'HTTP/1.1 404 Not Found\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n${headers_close}404 Not Found'
 	http_500                = 'HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n${headers_close}500 Internal Server Error'
 	mime_types              = {
-		'.css': 'text/css; charset=utf-8'
-		'.gif': 'image/gif'
-		'.htm': 'text/html; charset=utf-8'
+		'.css':  'text/css; charset=utf-8'
+		'.gif':  'image/gif'
+		'.htm':  'text/html; charset=utf-8'
 		'.html': 'text/html; charset=utf-8'
-		'.jpg': 'image/jpeg'
-		'.js': 'application/javascript'
+		'.jpg':  'image/jpeg'
+		'.js':   'application/javascript'
 		'.json': 'application/json'
-		'.md': 'text/markdown; charset=utf-8'
-		'.pdf': 'application/pdf'
-		'.png': 'image/png'
-		'.svg': 'image/svg+xml'
-		'.txt': 'text/plain; charset=utf-8'
+		'.md':   'text/markdown; charset=utf-8'
+		'.pdf':  'application/pdf'
+		'.png':  'image/png'
+		'.svg':  'image/svg+xml'
+		'.txt':  'text/plain; charset=utf-8'
 		'.wasm': 'application/wasm'
-		'.xml': 'text/xml; charset=utf-8'
+		'.xml':  'text/xml; charset=utf-8'
 	}
 	max_http_post_size      = 1024 * 1024
 	default_port            = 8080
@@ -41,15 +41,15 @@ pub const (
 
 pub struct Context {
 mut:
-	static_files      map[string]string
-	static_mime_types map[string]string
 	content_type      string = 'text/plain'
 	status            string = '200 OK'
 pub:
-	req http.Request
-	conn net.TcpConn
+	req               http.Request
+	conn              net.TcpConn
 	// TODO Response
 pub mut:
+	static_files      map[string]string
+	static_mime_types map[string]string
 	form              map[string]string
 	query             map[string]string
 	headers           string // response headers
@@ -57,6 +57,12 @@ pub mut:
 	page_gen_start    i64
 	form_error        string
 }
+
+// declaring init_once in your App struct is optional
+pub fn (ctx Context) init_once() {}
+
+// declaring init in your App struct is optional
+pub fn (ctx Context) init() {}
 
 pub struct Cookie {
 	name      string
@@ -69,7 +75,7 @@ pub struct Cookie {
 pub struct Result {
 }
 
-fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
+pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bool {
 	if ctx.done {
 		return false
 	}
@@ -117,7 +123,9 @@ pub fn (mut ctx Context) redirect(url string) Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: ${url}${ctx.headers}\r\n${headers_close}') or { return Result{} }
+	send_string(ctx.conn, 'HTTP/1.1 302 Found\r\nLocation: $url$ctx.headers\r\n$headers_close') or {
+		return Result{}
+	}
 	return Result{}
 }
 
@@ -126,8 +134,8 @@ pub fn (mut ctx Context) not_found() Result {
 		return Result{}
 	}
 	ctx.done = true
-	send_string(ctx.conn, http_404) or {}
-	return vweb.Result{}
+	send_string(ctx.conn, http_404) or { }
+	return Result{}
 }
 
 pub fn (mut ctx Context) set_cookie(cookie Cookie) {
@@ -201,7 +209,7 @@ pub fn run<T>(port int) {
 pub fn run_app<T>(mut app T, port int) {
 	println('Running a Vweb app on http://localhost:$port')
 	l := net.listen_tcp(port) or { panic('failed to listen') }
-	app.vweb = Context{}
+	app.Context = Context{}
 	app.init_once()
 	$for method in T.methods {
 		$if method.return_type is Result {
@@ -212,11 +220,11 @@ pub fn run_app<T>(mut app T, port int) {
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
 		handle_conn<T>(mut conn, mut app)
-		//app.vweb.page_gen_time = time.ticks() - t
-		//eprintln('handle conn() took ${time.ticks()-t}ms')
-		//message := readall(conn)
-		//println(message)
-/*
+		// app.vweb.page_gen_time = time.ticks() - t
+		// eprintln('handle conn() took ${time.ticks()-t}ms')
+		// message := readall(conn)
+		// println(message)
+		/*
 		if message.len > max_http_post_size {
 			println('message.len = $message.len > max_http_post_size')
 			conn.send_string(http_500) or {}
@@ -238,13 +246,13 @@ pub fn run_app<T>(mut app T, port int) {
 
 fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	conn.set_read_timeout(1 * time.second)
-	defer { conn.close() or {} }
-	//fn handle_conn<T>(conn net.Socket, app_ T) T {
-	//mut app := app_
-	//first_line := strip(lines[0])
-	
+	defer {
+		conn.close() or { }
+	}
+	// fn handle_conn<T>(conn net.Socket, app_ T) T {
+	// mut app := app_
+	// first_line := strip(lines[0])
 	mut reader := io.new_buffered_reader(reader: io.make_reader(conn))
-	
 	page_gen_start := time.ticks()
 	first_line := reader.read_line() or {
 		println('Failed first_line')
@@ -259,36 +267,34 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	vals := first_line.split(' ')
 	if vals.len < 2 {
 		println('no vals for http')
-		send_string(conn, http_500) or {}
+		send_string(conn, http_500) or { }
 		return
 	}
 	mut headers := []string{}
 	mut body := ''
 	mut in_headers := true
 	mut len := 0
-	//for line in lines[1..] {
-	for _ in 0..100 {
-		//println(j)
-		line := reader.read_line() or { 
-			println('Failed read_line')
+	// for line in lines[1..] {
+	for lindex in 0 .. 100 {
+		// println(j)
+		line := reader.read_line() or {
+			println('Failed read_line $lindex')
 			break
 		}
 		sline := strip(line)
 		if sline == '' {
-			//if in_headers {
-				// End of headers, no body => exit
-				if len == 0 {
-					break
-				}
+			// if in_headers {
+			// End of headers, no body => exit
+			if len == 0 {
+				break
+			}
 			//} //else {
-				// End of body
-				//break
+			// End of body
+			// break
 			//}
-
 			// read body
 			read_body := io.read_all(reader: reader) or { []byte{} }
 			body += read_body.bytestr()
-
 			break
 		}
 		if in_headers {
@@ -315,17 +321,17 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		// println('vweb action = "$action"')
 	}
 	// mut app := T{
-	app.vweb = Context{
+	app.Context = Context{
 		req: req
 		conn: conn
 		form: map[string]string{}
-		static_files: app.vweb.static_files
-		static_mime_types: app.vweb.static_mime_types
+		static_files: app.static_files
+		static_mime_types: app.static_mime_types
 		page_gen_start: page_gen_start
 	}
 	// }
 	if req.method in methods_with_form {
-		app.vweb.parse_form(req.data)
+		app.parse_form(req.data)
 	}
 	if vals.len < 2 {
 		$if debug {
@@ -335,18 +341,18 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	// Serve a static file if it is one
 	// TODO: handle url parameters properly - for now, ignore them
-	mut static_file_name := app.vweb.req.url
+	mut static_file_name := app.req.url
 	if static_file_name.contains('?') {
 		static_file_name = static_file_name.all_before('?')
 	}
-	static_file := app.vweb.static_files[static_file_name]
-	mime_type := app.vweb.static_mime_types[static_file_name]
+	static_file := app.static_files[static_file_name]
+	mime_type := app.static_mime_types[static_file_name]
 	if static_file != '' && mime_type != '' {
 		data := os.read_file(static_file) or {
-			send_string(conn, http_404) or {}
+			send_string(conn, http_404) or { }
 			return
 		}
-		app.vweb.send_response_to_client(mime_type, data)
+		app.send_response_to_client(mime_type, data)
 		data.free()
 		return
 	}
@@ -372,7 +378,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			url_words[url_words.len - 1] = url_words.last().all_before('?')
 			for data in tmp_query {
 				if data.len == 2 {
-					app.vweb.query[data[0]] = data[1]
+					app.query[data[0]] = data[1]
 				}
 			}
 		}
@@ -383,14 +389,44 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		$if method.return_type is Result {
 			attrs := method.attrs
 			route_words_a = [][]string{}
-			if attrs.len == 0 {
+			// Get methods
+			// Get is default
+			mut req_method_str := '$req.method'
+			if req.method == .post {
+				if 'post' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
+				}
+			} else if req.method == .put {
+				if 'put' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
+				}
+			} else if req.method == .patch {
+				if 'patch' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
+				}
+			} else if req.method == .delete {
+				if 'delete' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
+				}
+			} else if req.method == .head {
+				if 'head' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
+				}
+			} else if req.method == .options {
+				if 'options' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
+				}
+			} else {
+				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
+			}
+			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0 ) {
 				// No routing for this method. If it matches, call it and finish matching
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
 				// should be called first.
-				if (req.method == .get &&
+				if (req_method_str == '' &&
 					url_words[0] == method.name && url_words.len == 1) ||
-					(req.method == .post && url_words[0] + '_post' == method.name) {
+					(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1) {
 					$if debug {
 						println('easy match method=$method.name')
 					}
@@ -398,36 +434,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					return
 				}
 			} else {
-				// Get methods
-				// Get is default
-				mut req_method_str := '$req.method'
-				if req.method == .post {
-					if 'post' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-					}
-				} else if req.method == .put {
-					if 'put' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-					}
-				} else if req.method == .patch {
-					if 'patch' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-					}
-				} else if req.method == .delete {
-					if 'delete' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
-					}
-				} else if req.method == .head {
-					if 'head' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
-					}
-				} else if req.method == .options {
-					if 'options' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
-					}
-				} else {
-					route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-				}
 				mut req_method := []string{}
 				if route_words_a.len > 0 {
 					for route_words in route_words_a {
@@ -491,7 +497,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 	if action == '' {
 		// site not found
-		send_string(conn, http_404) or {}
+		send_string(conn, http_404) or { }
 		return
 	}
 	$for method in T.methods {
@@ -509,7 +515,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	}
 }
 
-fn (mut ctx Context) parse_form(s string) {
+pub fn (mut ctx Context) parse_form(s string) {
 	if ctx.req.method !in methods_with_form {
 		return
 	}
@@ -526,12 +532,8 @@ fn (mut ctx Context) parse_form(s string) {
 		if keyval.len != 2 {
 			continue
 		}
-		key := urllib.query_unescape(keyval[0]) or {
-			continue
-		}
-		val := urllib.query_unescape(keyval[1]) or {
-			continue
-		}
+		key := urllib.query_unescape(keyval[0]) or { continue }
+		val := urllib.query_unescape(keyval[1]) or { continue }
 		$if debug {
 			println('http form "$key" => "$val"')
 		}
@@ -543,9 +545,7 @@ fn (mut ctx Context) parse_form(s string) {
 }
 
 fn (mut ctx Context) scan_static_directory(directory_path string, mount_path string) {
-	files := os.ls(directory_path) or {
-		panic(err)
-	}
+	files := os.ls(directory_path) or { panic(err) }
 	if files.len > 0 {
 		for file in files {
 			full_path := directory_path + '/' + file
@@ -556,8 +556,7 @@ fn (mut ctx Context) scan_static_directory(directory_path string, mount_path str
 				// Rudimentary guard against adding files not in mime_types.
 				// Use serve_static directly to add non-standard mime types.
 				if ext in mime_types {
-					ctx.serve_static(mount_path + '/' + file, full_path,
-						mime_types[ext])
+					ctx.serve_static(mount_path + '/' + file, full_path, mime_types[ext])
 				}
 			}
 		}
@@ -639,7 +638,6 @@ fn filter(s string) string {
 
 pub type RawHtml = string
 
-
 fn send_string(conn net.TcpConn, s string) ? {
-	conn.write(s.bytes())?
+	conn.write(s.bytes()) ?
 }

@@ -7,6 +7,20 @@ import v.table
 import v.token
 import v.ast
 
+pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
+	mut expected := expected_
+	// variadic
+	if expected.has_flag(.variadic) {
+		exp_type_sym := c.table.get_type_symbol(expected_)
+		exp_info := exp_type_sym.info as table.Array
+		expected = exp_info.elem_type
+	}
+	if c.check_types(got, expected) {
+		return
+	}
+	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
+}
+
 pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
@@ -16,6 +30,11 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	exp_idx := t.unalias_num_type(expected).idx()
 	// got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
+	// exp_is_optional := expected.has_flag(.optional)
+	// got_is_optional := got.has_flag(.optional)
+	// if (exp_is_optional && !got_is_optional) || (!exp_is_optional && got_is_optional) {
+	// return false
+	//}
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
 	if got_idx == exp_idx {
@@ -400,7 +419,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
 	for i, param in f.params {
-		arg := call_expr.args[i]
+		arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
 		if param.typ.has_flag(.generic) {
 			typ = arg.typ
 			break

@@ -142,9 +142,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			is_known_var := p.mark_var_as_used(p.tok.lit)
-			if is_known_var {
-				expr := p.parse_ident(table.Language.v)
+			if !p.tok.can_start_type(table.builtin_type_names) {
+				if p.tok.kind == .name {
+					p.mark_var_as_used(p.tok.lit)
+				}
+				expr := p.expr(0)
 				node = ast.SizeOf{
 					is_type: false
 					expr: expr
@@ -191,13 +193,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.lcbr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
-			if p.tok.kind == .string {
+			if p.tok.kind in [.chartoken, .number, .string] {
 				node = p.map_init()
 			} else {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
+				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()
@@ -383,7 +385,11 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// p.warn('unsafe')
 	// }
 	p.next()
-	mut right := if op == .minus { p.expr(token.Precedence.call) } else { p.expr(token.Precedence.prefix) }
+	mut right := if op == .minus {
+		p.expr(token.Precedence.call)
+	} else {
+		p.expr(token.Precedence.prefix)
+	}
 	p.is_amp = false
 	if mut right is ast.CastExpr {
 		right.in_prexpr = true

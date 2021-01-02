@@ -11,7 +11,7 @@ import v.util
 import v.pref
 
 // `Any` is a sum type that lists the possible types to be decoded and used.
-pub type Any = string | int | i64 | f32 | f64 | any_int | any_float | bool | Null | []Any | map[string]Any
+pub type Any = string | int | i64 | f32 | f64 | bool | Null | []Any | map[string]Any
 
 // `Null` struct is a simple representation of the `null` value in JSON.
 pub struct Null {

@@ -79,7 +79,7 @@ pub mut:
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
 	use_cache           bool // = true
-	no_cache            bool
+	retry_compilation   bool = true
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
 	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
@@ -220,6 +220,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_bare = true
 				res.build_options << arg
 			}
+			'-no-retry-compilation' {
+				res.retry_compilation = false
+			}
 			'-no-preludes' {
 				res.no_preludes = true
 				res.build_options << arg
@@ -276,7 +279,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.use_cache = true
 			}
 			'-nocache' {
-				res.no_cache = true
+				res.use_cache = false
 			}
 			'-prealloc' {
 				res.prealloc = true
@@ -381,6 +384,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
+				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+					eprintln('Use `v $arg` instead.')
+					exit(1)
+				}
 				if arg[0] == `-` {
 					if arg[1..] in list_of_flags_with_param {
 						// skip parameter
@@ -391,6 +398,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					if command == '' {
 						command = arg
 						command_pos = i
+						if command == 'run' {
+							break
+						}
 					}
 					continue
 				}

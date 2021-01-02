@@ -148,7 +148,11 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.parent_name = 'Constants'
 			if d.extract_vars {
 				for field in stmt.fields {
-					ret_type := if field.typ == 0 { d.expr_typ_to_string(field.expr) } else { d.type_to_str(field.typ) }
+					ret_type := if field.typ == 0 {
+						d.expr_typ_to_string(field.expr)
+					} else {
+						d.type_to_str(field.typ)
+					}
 					node.children << DocNode{
 						name: field.name.all_after(d.orig_mod_name + '.')
 						kind: .constant
@@ -180,7 +184,11 @@ pub fn (mut d Doc) stmt(stmt ast.Stmt, filename string) ?DocNode {
 			node.kind = .struct_
 			if d.extract_vars {
 				for field in stmt.fields {
-					ret_type := if field.typ == 0 && field.has_default_expr { d.expr_typ_to_string(field.default_expr) } else { d.type_to_str(field.typ) }
+					ret_type := if field.typ == 0 && field.has_default_expr {
+						d.expr_typ_to_string(field.default_expr)
+					} else {
+						d.type_to_str(field.typ)
+					}
 					node.children << DocNode{
 						name: field.name
 						kind: .struct_field
@@ -287,7 +295,11 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			continue
 		}
 		if node.parent_name !in contents {
-			parent_node_kind := if node.parent_name == 'Constants' { SymbolKind.const_group } else { SymbolKind.typedef }
+			parent_node_kind := if node.parent_name == 'Constants' {
+				SymbolKind.const_group
+			} else {
+				SymbolKind.typedef
+			}
 			contents[node.parent_name] = DocNode{
 				name: node.parent_name
 				kind: parent_node_kind
@@ -349,7 +361,11 @@ pub fn (mut d Doc) file_ast_with_pos(file_ast ast.File, pos int) map[string]DocN
 // process based on a file path provided.
 pub fn (mut d Doc) generate() ? {
 	// get all files
-	d.base_path = if os.is_dir(d.base_path) { d.base_path } else { os.real_path(os.dir(d.base_path)) }
+	d.base_path = if os.is_dir(d.base_path) {
+		d.base_path
+	} else {
+		os.real_path(os.dir(d.base_path))
+	}
 	d.is_vlib = 'vlib' !in d.base_path
 	project_files := os.ls(d.base_path) or { return error_with_code(err, 0) }
 	v_files := d.prefs.should_compile_filtered_files(d.base_path, project_files)

@@ -42,7 +42,6 @@ pub mut:
 	methods    []Fn
 	mod        string
 	is_public  bool
-	is_written bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
 	language   Language
 }
 
@@ -183,7 +182,6 @@ pub fn (ts TypeSymbol) debug() []string {
 	res << 'info: $ts.info'
 	res << 'kind: $ts.kind'
 	res << 'is_public: $ts.is_public'
-	res << 'is_written: $ts.is_written'
 	res << 'language: $ts.language'
 	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
 	return res
@@ -519,12 +517,7 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(
-		kind: .any_float
-		name: 'any_float'
-		cname: 'any_float'
-		mod: 'builtin'
-	)
+	t.register_type_symbol(kind: .any_float, name: 'any_float', cname: 'any_float', mod: 'builtin')
 	t.register_type_symbol(kind: .any_int, name: 'any_int', cname: 'any_int', mod: 'builtin')
 }
 
@@ -723,9 +716,13 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			if t == array_type {
 				return 'array'
 			}
-			info := sym.info as Array
-			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
-			res = '[]$elem_str'
+			if t.has_flag(.variadic) {
+				res = table.type_to_str_using_aliases(table.value_type(t), import_aliases)
+			} else {
+				info := sym.info as Array
+				elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+				res = '[]$elem_str'
+			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
@@ -747,11 +744,17 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			}
 		}
 		.function {
+			info := sym.info as FnType
 			if !table.is_fmt {
-				info := sym.info as FnType
 				res = table.fn_signature(info.func, type_only: true)
 			} else {
-				res = table.shorten_user_defined_typenames(res, import_aliases)
+				if res.starts_with('fn (') {
+					// fn foo ()
+					res = table.fn_signature(info.func, type_only: true)
+				} else {
+					// FnFoo
+					res = table.shorten_user_defined_typenames(res, import_aliases)
+				}
 			}
 		}
 		.map {

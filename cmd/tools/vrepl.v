@@ -11,6 +11,7 @@ import v.util
 
 struct Repl {
 mut:
+	readline       readline.Readline
 	indent         int // indentation level
 	in_func        bool // are we inside a new custom user function
 	line           string // the current line entered by the user
@@ -27,8 +28,9 @@ const (
 	is_stdin_a_pipe = (is_atty(0) == 0)
 )
 
-fn new_repl() &Repl {
-	return &Repl{
+fn new_repl() Repl {
+	return Repl{
+		readline: readline.Readline{}
 		modules: ['os', 'time', 'math']
 	}
 }
@@ -131,9 +133,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 		} else {
 			prompt = '... '
 		}
-		oline := r.get_one_line(prompt) or {
-			break
-		}
+		oline := r.get_one_line(prompt) or { break }
 		line := oline.trim_space()
 		if line == '' && oline.ends_with('\n') {
 			continue
@@ -146,7 +146,7 @@ fn run_repl(workdir string, vrepl_prefix string) {
 			continue
 		}
 		if r.line == 'clear' {
-			term.erase_display('2')
+			term.erase_clear()
 			continue
 		}
 		if r.line == 'help' {
@@ -314,9 +314,7 @@ fn print_output(s os.Result) {
 		} else if line.contains('.vrepl.v:') {
 			// Ensure that .vrepl.v: is at the start, ignore the path
 			// This is needed to have stable .repl tests.
-			idx := line.index('.vrepl.v:') or {
-				return
-			}
+			idx := line.index('.vrepl.v:') or { return }
 			println(line[idx..])
 		} else {
 			println(line)
@@ -347,7 +345,6 @@ fn rerror(s string) {
 }
 
 fn (mut r Repl) get_one_line(prompt string) ?string {
-	mut readline := readline.Readline{}
 	if is_stdin_a_pipe {
 		iline := os.get_raw_line()
 		if iline.len == 0 {
@@ -355,8 +352,6 @@ fn (mut r Repl) get_one_line(prompt string) ?string {
 		}
 		return iline
 	}
-	rline := readline.read_line(prompt) or {
-		return none
-	}
+	rline := r.readline.read_line(prompt) or { return none }
 	return rline
 }

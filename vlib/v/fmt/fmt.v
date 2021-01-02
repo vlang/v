@@ -622,7 +622,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			max = comments_len + field.name.len
 		}
 		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
-		if !ft.contains('C.') && !ft.contains('JS.') {
+		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
@@ -715,6 +715,7 @@ pub fn (mut f Fmt) interface_decl(node ast.InterfaceDecl) {
 		f.write(method.stringify(f.table, f.cur_mod, f.mod2alias).after('fn '))
 		f.comments(method.comments, inline: true, has_nl: false, level: .indent)
 		f.writeln('')
+		f.comments(method.next_comments, inline: false, has_nl: true, level: .indent)
 	}
 	f.writeln('}\n')
 }
@@ -1137,6 +1138,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			}
 			f.write('}')
 		}
+		ast.ArrayDecompose {
+			f.expr(node.expr)
+		}
 	}
 }
 
@@ -1446,39 +1450,51 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 	dollar := if it.is_comptime { '$' } else { '' }
-	single_line := it.branches.len == 2 && it.has_else && it.branches[0].stmts.len == 1 &&
-		it.branches[1].stmts.len == 1 &&
+	mut single_line := it.branches.len == 2 && it.has_else && branch_is_single_line(it.branches[0]) &&
+		branch_is_single_line(it.branches[1]) &&
 		(it.is_expr || f.is_assign)
 	f.single_line_if = single_line
-	for i, branch in it.branches {
-		if i == 0 {
-			// first `if`
-			f.comments(branch.comments, {})
-		} else {
-			// `else`, close previous branch
-			if branch.comments.len > 0 {
-				f.writeln('}')
+	if_start := f.line_len
+	for {
+		for i, branch in it.branches {
+			if i == 0 {
+				// first `if`
 				f.comments(branch.comments, {})
 			} else {
-				f.write('} ')
+				// `else`, close previous branch
+				if branch.comments.len > 0 {
+					f.writeln('}')
+					f.comments(branch.comments, {})
+				} else {
+					f.write('} ')
+				}
+				f.write('${dollar}else ')
 			}
-			f.write('${dollar}else ')
+			if i < it.branches.len - 1 || !it.has_else {
+				f.write('${dollar}if ')
+				f.expr(branch.cond)
+				f.write(' ')
+			}
+			f.write('{')
+			if single_line {
+				f.write(' ')
+			} else {
+				f.writeln('')
+			}
+			f.stmts(branch.stmts)
+			if single_line {
+				f.write(' ')
+			}
 		}
-		if i < it.branches.len - 1 || !it.has_else {
-			f.write('${dollar}if ')
-			f.expr(branch.cond)
-			f.write(' ')
+		// When a single line if is really long, write it again as multiline
+		if single_line && f.line_len > max_len.last() {
+			single_line = false
+			f.single_line_if = false
+			f.out.go_back(f.line_len - if_start)
+			f.line_len = if_start
+			continue
 		}
-		f.write('{')
-		if single_line {
-			f.write(' ')
-		} else {
-			f.writeln('')
-		}
-		f.stmts(branch.stmts)
-		if single_line {
-			f.write(' ')
-		}
+		break
 	}
 	f.write('}')
 	f.single_line_if = false
@@ -1486,6 +1502,13 @@ pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
 		f.writeln('')
 		f.comments(it.post_comments, has_nl: false)
 	}
+}
+
+fn branch_is_single_line(b ast.IfBranch) bool {
+	if b.stmts.len == 1 && b.comments.len == 0 && stmt_is_single_line(b.stmts[0]) {
+		return true
+	}
+	return false
 }
 
 pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
@@ -1703,6 +1726,11 @@ fn stmt_is_single_line(stmt ast.Stmt) bool {
 
 fn expr_is_single_line(expr ast.Expr) bool {
 	match expr {
+		ast.AnonFn {
+			if !expr.decl.no_body {
+				return false
+			}
+		}
 		ast.IfExpr {
 			return false
 		}
@@ -1713,7 +1741,7 @@ fn expr_is_single_line(expr ast.Expr) bool {
 			return false
 		}
 		ast.StructInit {
-			if expr.fields.len > 0 || expr.pre_comments.len > 0 {
+			if !expr.is_short && (expr.fields.len > 0 || expr.pre_comments.len > 0) {
 				return false
 			}
 		}
@@ -1733,7 +1761,11 @@ pub fn (mut f Fmt) chan_init(mut it ast.ChanInit) {
 		it.elem_type = info.elem_type
 	}
 	is_mut := info.is_mut
-	el_typ := if is_mut { it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1) } else { it.elem_type }
+	el_typ := if is_mut {
+		it.elem_type.set_nr_muls(it.elem_type.nr_muls() - 1)
+	} else {
+		it.elem_type
+	}
 	f.write('chan ')
 	if is_mut {
 		f.write('mut ')
@@ -1908,41 +1940,42 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	} else {
 		use_short_args := f.use_short_fn_args
 		f.use_short_fn_args = false
+		mut multiline_short_args := it.pre_comments.len > 0
 		if !use_short_args {
 			f.writeln('$name{')
+		} else {
+			if multiline_short_args {
+				f.writeln('')
+			}
 		}
-		f.comments(it.pre_comments, inline: true, has_nl: true, level: .indent)
+		init_start := f.out.len
 		f.indent++
-		mut short_args_multiline := false
-		mut field_start_positions := []int{}
-		for i, field in it.fields {
-			field_start_positions << f.out.len
-			f.write('$field.name: ')
-			f.prefix_expr_cast_expr(field.expr)
-			if field.expr is ast.StructInit {
-				short_args_multiline = true
-			}
-			f.comments(field.comments, inline: true, has_nl: false, level: .indent)
-			if use_short_args {
-				if i < it.fields.len - 1 {
-					f.write(', ')
+		short_args_loop: for {
+			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
+			for i, field in it.fields {
+				f.write('$field.name: ')
+				f.prefix_expr_cast_expr(field.expr)
+				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
+				if use_short_args && !multiline_short_args {
+					if i < it.fields.len - 1 {
+						f.write(', ')
+					}
+				} else {
+					f.writeln('')
 				}
-			} else {
-				f.writeln('')
-			}
-			f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-		}
-		if use_short_args {
-			if f.line_len > max_len[3] || short_args_multiline {
-				mut fields := []string{}
-				for pos in field_start_positions.reverse() {
-					fields << f.out.cut_last(f.out.len - pos).trim_suffix(', ')
-				}
-				f.writeln('')
-				for field in fields.reverse() {
-					f.writeln(field)
+				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
+				if use_short_args && !multiline_short_args &&
+					(field.comments.len > 0 ||
+					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last()) {
+					multiline_short_args = true
+					f.out.go_back_to(init_start)
+					f.line_len = init_start
+					f.remove_new_line()
+					f.writeln('')
+					continue short_args_loop
 				}
 			}
+			break
 		}
 		f.indent--
 		if !use_short_args {
@@ -1959,7 +1992,10 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 		f.writeln('const ()\n')
 		return
 	}
-	f.writeln('const (')
+	f.write('const ')
+	if it.is_block {
+		f.writeln('(')
+	}
 	mut max := 0
 	for field in it.fields {
 		if field.name.len > max {
@@ -1984,7 +2020,11 @@ pub fn (mut f Fmt) const_decl(it ast.ConstDecl) {
 	}
 	f.comments_after_last_field(it.end_comments)
 	f.indent--
-	f.writeln(')\n')
+	if it.is_block {
+		f.writeln(')\n')
+	} else {
+		f.writeln('')
+	}
 }
 
 fn (mut f Fmt) global_decl(it ast.GlobalDecl) {

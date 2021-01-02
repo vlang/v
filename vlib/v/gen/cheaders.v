@@ -52,10 +52,8 @@ const (
 #endif
 
 #ifdef __TINYC__
-	#undef EMPTY_VARG_INITIALIZATION
 	#undef EMPTY_STRUCT_DECLARATION
 	#undef EMPTY_STRUCT_INITIALIZATION
-	#define EMPTY_VARG_INITIALIZATION
 	#define EMPTY_STRUCT_DECLARATION char _dummy
 	#define EMPTY_STRUCT_INITIALIZATION 0
 	#undef EMPTY_ARRAY_OF_ELEMS
@@ -272,7 +270,7 @@ static void* g_live_info = NULL;
 // take the address of an rvalue
 #define ADDR(type, expr) (&((type[]){expr}[0]))
 #define _PUSH_MANY(arr, val, tmp, tmp_typ) {tmp_typ tmp = (val); array_push_many(arr, tmp.data, tmp.len);}
-#define _IN_MAP(val, m) map_exists(m, val)
+#define _IN_MAP(val, m) map_exists_1(m, val)
 
 // unsigned/signed comparisons
 static inline bool _us32_gt(uint32_t a, int32_t b) { return a > INT32_MAX || (int32_t)a > b; }
@@ -428,9 +426,6 @@ static voidptr memfreedup(voidptr ptr, voidptr src, int sz) {
 	free(ptr);
 	return memdup(src, sz);
 }
-
-typedef uint64_t (*MapHashFn)(void*);
-typedef int (*MapEqFn)(void*, void*);
 '
 	c_builtin_types               = '
 //================================== builtin types ================================*/
@@ -460,6 +455,11 @@ typedef struct sync__Channel* chan;
 		#define false 0
 	#endif
 #endif
+
+typedef u64 (*MapHashFn)(voidptr);
+typedef bool (*MapEqFn)(voidptr, voidptr);
+typedef void (*MapCloneFn)(voidptr, voidptr);
+typedef void (*MapFreeFn)(voidptr);
 '
 	bare_c_headers                = '
 $c_common_macros

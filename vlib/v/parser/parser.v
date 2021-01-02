@@ -67,7 +67,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error        bool
+	name_error        bool // indicates if the token is not a name or the name is on another line
 }
 
 // for tests
@@ -364,15 +364,15 @@ pub fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	p.check(.lcbr)
 	mut stmts := []ast.Stmt{}
 	if p.tok.kind != .rcbr {
-		mut c := 0
+		mut count := 0
 		for p.tok.kind !in [.eof, .rcbr] {
 			stmts << p.stmt(is_top_level)
-			c++
-			if c % 100000 == 0 {
-				eprintln('parsed $c statements so far from fn $p.cur_fn_name ...')
+			count++
+			if count % 100000 == 0 {
+				eprintln('parsed $count statements so far from fn $p.cur_fn_name ...')
 			}
-			if c > 1000000 {
-				p.error_with_pos('parsed over $c statements from fn $p.cur_fn_name, the parser is probably stuck',
+			if count > 1000000 {
+				p.error_with_pos('parsed over $count statements from fn $p.cur_fn_name, the parser is probably stuck',
 					p.tok.position())
 				return []
 			}
@@ -406,6 +406,7 @@ fn (mut p Parser) next() {
 }
 
 fn (mut p Parser) check(expected token.Kind) {
+	p.name_error = false
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
@@ -1167,7 +1168,11 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 		p.check(.dot)
 		p.expr_mod = mod
 	}
-	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 { p.tok.lit[0].is_capital() } else { false }
+	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
+		p.tok.lit[0].is_capital()
+	} else {
+		false
+	}
 	// use heuristics to detect `func<T>()` from `var < expr`
 	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
 		.name {
@@ -1403,7 +1408,13 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		return p.comptime_method_call(left)
 	}
 	name_pos := p.tok.position()
-	field_name := p.check_name()
+	mut field_name := ''
+	// check if the name is on the same line as the dot
+	if (p.prev_tok.position().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+		field_name = p.check_name()
+	} else {
+		p.name_error = true
+	}
 	is_filter := field_name in ['filter', 'map']
 	if is_filter {
 		p.open_scope()
@@ -1416,6 +1427,20 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	// Method call
 	// TODO move to fn.v call_expr()
+	mut generic_type := table.void_type
+	mut generic_list_pos := p.tok.position()
+	if p.tok.kind == .lt && p.peek_tok.kind == .name && p.peek_tok2.kind == .gt {
+		// `g.foo<int>(10)`
+		p.next() // `<`
+		generic_type = p.parse_type()
+		p.check(.gt) // `>`
+		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if !generic_type.has_flag(.generic) {
+			p.table.register_fn_gen_type(field_name, generic_type)
+		}
+	}
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
@@ -1461,6 +1486,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			args: args
 			pos: pos
 			is_method: true
+			generic_type: generic_type
+			generic_list_pos: generic_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
@@ -1795,11 +1822,16 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	end_pos := p.tok.position()
 	const_pos := p.tok.position()
 	p.check(.key_const)
+	is_block := p.tok.kind == .lpar
+	/*
 	if p.tok.kind != .lpar {
 		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
 		return ast.ConstDecl{}
 	}
-	p.next() // (
+	*/
+	if is_block {
+		p.next() // (
+	}
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
@@ -1836,14 +1868,20 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.global_scope.register(field)
 		comments = []
+		if !is_block {
+			break
+		}
 	}
 	p.top_level_statement_end()
-	p.check(.rpar)
+	if is_block {
+		p.check(.rpar)
+	}
 	return ast.ConstDecl{
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
+		is_block: is_block
 	}
 }
 
@@ -2053,7 +2091,7 @@ fn (mut p Parser) type_decl() ast.TypeDecl {
 	mut type_pos := p.tok.position()
 	mut comments := []ast.Comment{}
 	if p.tok.kind == .key_fn {
-		// function type: `type mycallback fn(string, int)`
+		// function type: `type mycallback = fn(string, int)`
 		fn_name := p.prepend_mod(name)
 		fn_type := p.parse_fn_type(fn_name)
 		comments = p.eat_line_end_comments()

@@ -9,7 +9,7 @@ import v.pref
 import v.vmod
 
 pub const (
-	v_version = '0.2'
+	v_version = '0.2.1'
 )
 
 // math.bits is needed by strconv.ftoa
@@ -125,8 +125,15 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
-	tool_exe := path_of_executable(tool_basename)
-	tool_source := tool_basename + '.v'
+	mut tool_exe := ''
+	mut tool_source := ''
+	if os.is_dir(tool_basename) {
+		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_source = os.join_path(tool_basename, tool_name + '.v')
+	} else {
+		tool_exe = path_of_executable(tool_basename)
+		tool_source = tool_basename + '.v'
+	}
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
@@ -157,7 +164,7 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	if is_verbose {
 		println('launch_tool running tool command: $tool_command ...')
 	}
-	exit(os.system(tool_command))
+	os.system(tool_command)
 }
 
 // NB: should_recompile_tool/2 compares unix timestamps that have 1 second resolution
@@ -172,7 +179,10 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 	if !os.exists(tool_exe) {
 		should_compile = true
 	} else {
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
+		mtime_vexe := os.file_last_mod_unix(vexe)
+		mtime_tool_exe := os.file_last_mod_unix(tool_exe)
+		mtime_tool_source := os.file_last_mod_unix(tool_source)
+		if mtime_tool_exe <= mtime_vexe {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
 			should_compile = true
@@ -185,9 +195,18 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 				should_compile = false
 			}
 		}
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(tool_source) {
+		if mtime_tool_exe <= mtime_tool_source {
 			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
+		}
+		// GNU Guix and possibly other environments, have bit for bit reproducibility in mind,
+		// including filesystem attributes like modification times, so they set the modification
+		// times of executables to a small number like 0, 1 etc. In this case, we should not
+		// recompile even if other heuristics say that we should. Users in such environments,
+		// have to explicitly do: `v cmd/tools/vfmt.v`, and/or install v from source, and not
+		// use the system packaged one, if they desire to develop v itself.
+		if mtime_vexe < 1024 && mtime_tool_exe < 1024 {
+			should_compile = false
 		}
 	}
 	return should_compile
@@ -266,6 +285,8 @@ pub fn replace_op(s string) string {
 		`*` { '_mult' }
 		`/` { '_div' }
 		`%` { '_mod' }
+		`<` { '_lt' }
+		`>` { '_gt' }
 		else { '' }
 	}
 	return s[..s.len - 1] + suffix

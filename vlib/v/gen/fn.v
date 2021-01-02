@@ -47,7 +47,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	//
 	mut name := it.name
-	if name[0] in [`+`, `-`, `*`, `/`, `%`] {
+	if name[0] in [`+`, `-`, `*`, `/`, `%`, `<`, `>`] {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
@@ -106,7 +106,11 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 				g.definitions.write('VV_LOCAL_SYMBOL ')
 			}
 		}
-		fn_header := if msvc_attrs.len > 0 { '$type_name $msvc_attrs ${name}(' } else { '$type_name ${name}(' }
+		fn_header := if msvc_attrs.len > 0 {
+			'$type_name $msvc_attrs ${name}('
+		} else {
+			'$type_name ${name}('
+		}
 		g.definitions.write(fn_header)
 		g.write(fn_header)
 	}
@@ -211,14 +215,6 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 		typ := g.unwrap_generic(arg.typ)
 		arg_type_sym := g.table.get_type_symbol(typ)
 		mut arg_type_name := g.typ(typ) // util.no_dots(arg_type_sym.name)
-		is_varg := i == args.len - 1 && is_variadic
-		if is_varg {
-			varg_type_str := int(arg.typ).str()
-			if varg_type_str !in g.variadic_args {
-				g.variadic_args[varg_type_str] = 0
-			}
-			arg_type_name = 'varg_' + g.typ(arg.typ).replace('*', '_ptr')
-		}
 		if arg_type_sym.kind == .function {
 			info := arg_type_sym.info as table.FnType
 			func := info.func
@@ -428,6 +424,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	}
+	if node.generic_type != table.void_type && node.generic_type != 0 {
+		// Using _T_ to differentiate between get<string> and get_string
+		// `foo<int>()` => `foo_T_int()`
+		name += '_T_' + g.typ(node.generic_type)
+	}
 	// TODO2
 	// g.generate_tmp_autofree_arg_vars(node, name)
 	//
@@ -440,14 +441,15 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	} else {
 		g.write('${name}(')
 	}
-	if node.receiver_type.is_ptr() && !node.left_type.is_ptr() {
+	if node.receiver_type.is_ptr() && (!node.left_type.is_ptr() || node.from_embed_type != 0) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO same logic in call_args()
 		if !is_range_slice {
 			g.write('&')
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
+		node.from_embed_type == 0 {
 		g.write('/*rec*/*')
 	}
 	if node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {
@@ -459,7 +461,12 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.expr(node.left)
 		if node.from_embed_type != 0 {
 			embed_name := typ_sym.embed_name()
-			g.write('.$embed_name')
+			if node.left_type.is_ptr() {
+				g.write('->')
+			} else {
+				g.write('.')
+			}
+			g.write(embed_name)
 		}
 	}
 	if has_cast {
@@ -501,8 +508,8 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		}
 	}
 	mut name := node.name
-	is_print := name == 'println' || name == 'print'
-	print_method := if name == 'println' { 'println' } else { 'print' }
+	is_print := name in ['print', 'println', 'eprint', 'eprintln']
+	print_method := name
 	is_json_encode := name == 'json.encode'
 	is_json_decode := name == 'json.decode'
 	g.is_json_fn = is_json_encode || is_json_decode
@@ -760,10 +767,8 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 	args := if g.is_js_call { node.args[1..] } else { node.args }
 	expected_types := node.expected_arg_types
 	is_variadic := expected_types.len > 0 && expected_types[expected_types.len - 1].has_flag(.variadic)
-	is_forwarding_varg := args.len > 0 && args[args.len - 1].typ.has_flag(.variadic)
-	gen_vargs := is_variadic && !is_forwarding_varg
 	for i, arg in args {
-		if gen_vargs && i == expected_types.len - 1 {
+		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
 		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
@@ -814,32 +819,33 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_interface {
 			g.write(')')
 		}
-		if i < args.len - 1 || gen_vargs {
+		if i < args.len - 1 || is_variadic {
 			g.write(', ')
 		}
 	}
 	arg_nr := expected_types.len - 1
-	if gen_vargs {
+	if is_variadic {
 		varg_type := expected_types[expected_types.len - 1]
-		struct_name := 'varg_' + g.typ(varg_type).replace('*', '_ptr')
 		variadic_count := args.len - arg_nr
-		varg_type_str := int(varg_type).str()
-		if variadic_count > g.variadic_args[varg_type_str] {
-			g.variadic_args[varg_type_str] = variadic_count
-		}
-		g.write('($struct_name){.len=$variadic_count,.args={')
-		if variadic_count > 0 {
-			for j in arg_nr .. args.len {
-				g.ref_or_deref_arg(args[j], varg_type)
-				if j < args.len - 1 {
-					g.write(', ')
-				}
-			}
+		arr_sym := g.table.get_type_symbol(varg_type)
+		arr_info := arr_sym.info as table.Array
+		elem_type := g.typ(arr_info.elem_type)
+		if args.len > 0 && args[args.len - 1].expr is ast.ArrayDecompose {
+			g.expr(args[args.len - 1].expr)
 		} else {
-			// NB: tcc can not handle 0 here, while msvc needs it
-			g.write('EMPTY_VARG_INITIALIZATION')
+			if variadic_count > 0 {
+				g.write('new_array_from_c_array($variadic_count, $variadic_count, sizeof($elem_type), _MOV(($elem_type[$variadic_count]){')
+				for j in arg_nr .. args.len {
+					g.ref_or_deref_arg(args[j], arr_info.elem_type)
+					if j < args.len - 1 {
+						g.write(', ')
+					}
+				}
+				g.write('}))')
+			} else {
+				g.write('__new_array_with_default(0, 0, sizeof($elem_type), 0)')
+			}
 		}
-		g.write('}}')
 	}
 }
 
@@ -874,7 +880,11 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 				g.checker_bug('ref_or_deref_arg arg.typ is 0', arg.pos)
 			}
 			arg_typ_sym := g.table.get_type_symbol(arg.typ)
-			expected_deref_type := if expected_type.is_ptr() { expected_type.deref() } else { expected_type }
+			expected_deref_type := if expected_type.is_ptr() {
+				expected_type.deref()
+			} else {
+				expected_type
+			}
 			is_sum_type := g.table.get_type_symbol(expected_deref_type).kind == .sum_type
 			if !((arg_typ_sym.kind == .function) || is_sum_type) {
 				g.write('(voidptr)&/*qq*/')
@@ -886,6 +896,9 @@ fn (mut g Gen) ref_or_deref_arg(arg ast.CallArg, expected_type table.Type) {
 
 fn (mut g Gen) is_gui_app() bool {
 	$if windows {
+		if g.force_main_console {
+			return false
+		}
 		for cf in g.table.cflags {
 			if cf.value == 'gdi32' {
 				return true
@@ -961,6 +974,9 @@ fn (mut g Gen) write_fn_attrs(attrs []table.Attr) string {
 				// windows attributes (msvc/mingw)
 				// prefixed by windows to indicate they're for advanced users only and not really supported by V.
 				msvc_attrs += '__stdcall '
+			}
+			'console' {
+				g.force_main_console = true
 			}
 			else {
 				// nothing but keep V happy

@@ -1,0 +1,6 @@
+import v.ast
+
+struct Data {
+	a fn (string, voidptr) bool
+	b fn (ast.Stmt, voidptr) bool
+}

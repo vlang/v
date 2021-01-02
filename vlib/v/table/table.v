@@ -596,7 +596,11 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	cname := if f.name.len == 0 { 'anon_fn_${t.fn_type_signature(f)}' } else { util.no_dots(f.name.clone()) }
+	cname := if f.name.len == 0 {
+		'anon_fn_${t.fn_type_signature(f)}'
+	} else {
+		util.no_dots(f.name.clone())
+	}
 	anon := f.name.len == 0 || is_anon
 	// existing
 	existing_idx := t.type_idxs[name]
@@ -637,7 +641,9 @@ pub fn (t &Table) value_type(typ Type) Type {
 	typ_sym := t.get_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
-		return typ.clear_flag(.variadic)
+		// return typ.clear_flag(.variadic)
+		array_info := typ_sym.info as Array
+		return array_info.elem_type
 	}
 	if typ_sym.kind == .array {
 		// Check index type
@@ -726,7 +732,8 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		if idx == 0 {
+		// Skip `any_int_type_idx` and `any_flt_type_idx` because they shouldn't be visible to the User.
+		if idx in [0, any_int_type_idx, any_flt_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)

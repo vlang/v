@@ -18,8 +18,11 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
-		'cmd/tools/vdoc.v',
+		'cmd/tools/vdoc/vdoc.v',
 		'cmd/v/v.v',
+		'vlib/arrays/',
+		'vlib/benchmark/',
+		'vlib/bitfield/',
 		'vlib/builtin/array.v',
 		'vlib/builtin/array_test.v',
 		'vlib/builtin/map.v',
@@ -65,6 +68,8 @@ const (
 		'vlib/semver/',
 		'vlib/strings/',
 		'vlib/time/',
+		'vlib/vweb/',
+		'vlib/x/websocket/',
 	]
 )
 

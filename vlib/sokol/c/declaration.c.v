@@ -36,6 +36,7 @@ pub const (
 #flag linux   -DSOKOL_NO_ENTRY
 #flag darwin  -DSOKOL_NO_ENTRY
 #flag windows -DSOKOL_NO_ENTRY
+#flag windows -DSOKOL_WIN32_FORCE_MAIN
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end

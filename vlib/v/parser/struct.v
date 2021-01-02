@@ -158,7 +158,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
 				p.peek_tok.kind == .dot) &&
-				language == .v && ast_fields.len == 0
+				language == .v && ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -229,6 +229,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 						else {}
 					}
 					has_default_expr = true
+					comments << p.eat_comments()
 				}
 				// TODO merge table and ast Fields?
 				ast_fields << ast.StructField{
@@ -249,8 +250,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: is_field_pub
-				is_mut: is_field_mut
+				is_pub: if is_embed {
+					true
+				} else {
+					is_field_pub
+				}
+				is_mut: if is_embed {
+					true
+				} else {
+					is_field_mut
+				}
 				is_global: is_field_global
 				attrs: p.attrs
 			}
@@ -298,9 +307,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos
-		pub_pos: pub_pos
-		pub_mut_pos: pub_mut_pos
+		mut_pos: mut_pos - embeds.len
+		pub_pos: pub_pos - embeds.len
+		pub_mut_pos: pub_mut_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs
@@ -344,10 +353,12 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			expr = p.expr(0)
 			comments = p.eat_line_end_comments()
 			last_field_pos := expr.position()
+			field_len := if last_field_pos.len > 0 { last_field_pos.pos - first_field_pos.pos +
+					last_field_pos.len } else { first_field_pos.len + 1 }
 			field_pos = token.Position{
 				line_nr: first_field_pos.line_nr
 				pos: first_field_pos.pos
-				len: last_field_pos.pos - first_field_pos.pos + last_field_pos.len
+				len: field_len
 			}
 		}
 		i++
@@ -452,16 +463,13 @@ fn (mut p Parser) interface_decl() ast.InterfaceDecl {
 		if p.tok.kind.is_start_of_type() && p.tok.line_nr == line_nr {
 			method.return_type = p.parse_type()
 		}
-		mcomments := p.eat_comments()
+		mcomments := p.eat_line_end_comments()
+		mnext_comments := p.eat_comments()
 		method.comments = mcomments
+		method.next_comments = mnext_comments
 		methods << method
 		// println('register method $name')
-		ts.register_method(
-			name: name
-			params: args
-			return_type: method.return_type
-			is_pub: true
-		)
+		ts.register_method(name: name, params: args, return_type: method.return_type, is_pub: true)
 	}
 	p.top_level_statement_end()
 	p.check(.rcbr)

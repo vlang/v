@@ -7,6 +7,8 @@ import sync
 import math
 
 #flag -lX11
+#flag freebsd -I/usr/local/include
+#flag freebsd -L/usr/local/lib -lX11
 #include <X11/Xlib.h>
 
 // X11

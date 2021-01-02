@@ -48,7 +48,6 @@ Anything you can do in other languages, you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -56,6 +55,8 @@ Anything you can do in other languages, you can do in V.
 * [References](#references)
 * [Modules](#modules)
 * [Constants](#constants)
+* [Builtin functions](#builtin-functions)
+* [Printing custom types](#custom-print-of-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -73,9 +74,9 @@ Anything you can do in other languages, you can do in V.
 
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
-    * [vfmt](#vfmt)
+    * [v fmt](#v-fmt)
     * [Profiling](#profiling)
-* [Advanced](#advanced)
+* [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
@@ -209,6 +210,12 @@ fn sum(a ...int) int {
 println(sum())    // Output: 0
 println(sum(1))   //         1
 println(sum(2,3)) //         5
+
+// using array decomposition
+a := [2,3,4]
+println(sum(a...))  // <-- using postfix ... here. output: 9
+b := [5, 6, 7]
+println(sum(b...)) // output: 18
 ```
 
 ## Symbol visibility
@@ -317,7 +324,7 @@ import gg
 
 fn draw(ctx &gg.Context) {
     gg := ctx.parent.get_ui().gg
-    gg.draw_rect(...)
+    gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -1619,9 +1626,23 @@ are no globals:
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println and other builtin functions
+## Builtin functions
 
-`println` is a simple yet powerful builtin function. It can print anything:
+Some functions are builtin like `println`. Here is the complete list:
+
+```v ignore
+fn print(s string) // print anything on sdtout
+fn println(s string) // print anything and a newline on sdtout
+
+fn eprint(s string) // same as print(), but use stderr
+fn eprintln(s string) // same as println(), but use stderr
+
+fn exit(code int) // terminate the program with a custom error code
+fn panic(s string) // print a message and backtraces on stderr, and terminate the program with error code 1
+fn print_backtrace() // print backtraces on stderr
+```
+
+`println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
 ```v nofmt
@@ -1631,6 +1652,8 @@ println('hi') // "hi"
 println([1,2,3]) // "[1, 2, 3]"
 println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
+
+## Custom print of types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:
@@ -1652,18 +1675,6 @@ red := Color{
 	b: 0
 }
 println(red)
-```
-
-If you don't want to print a newline, use `print()` instead.
-
-The number of builtin functions is low. Other builtin functions are:
-
-
-```v ignore
-fn exit(exit_code int) // terminate the program
-fn panic(message string)
-fn print_backtrace()
-fn eprintln(s string) // same as println, but use stderr
 ```
 
 ## Modules
@@ -1702,6 +1713,7 @@ fn main() {
 ```
 
 * Module names should be short, under 10 characters.
+* Module names must use `snake_case`.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
@@ -2965,11 +2977,11 @@ If a file has an environment-specific suffix, it will only be compiled for that 
 - `.c.v` => will be used only by the C backend. These files can contain C. code.
 - `.x64.v` => will be used only by V's x64 backend.
 - `_nix.c.v` => will be used only on Unix systems (non Windows).
-- `_${os}.c.v` => will be used only on the specific `os` system. 
+- `_${os}.c.v` => will be used only on the specific `os` system.
 For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
-- `_default.c.v` => will be used only if there is NOT a more specific platform file. 
-For example, if you have both `file_linux.c.v` and `file_default.c.v`, 
-and you are compiling for linux, then only `file_linux.c.v` will be used, 
+- `_default.c.v` => will be used only if there is NOT a more specific platform file.
+For example, if you have both `file_linux.c.v` and `file_default.c.v`,
+and you are compiling for linux, then only `file_linux.c.v` will be used,
 and `file_default.c.v` will be ignored.
 
 Here is a more complete example:
@@ -3000,7 +3012,7 @@ const ( message = 'Hello windows' )
 With the example above:
 - when you compile for windows, you will get 'Hello windows'
 - when you compile for linux, you will get 'Hello linux'
-- when you compile for any other platform, you will get the 
+- when you compile for any other platform, you will get the
 non specific 'Hello world' message.
 
 ## Compile time pseudo variables
@@ -3136,9 +3148,11 @@ operator overloading is an important feature to have in order to improve readabi
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /, %` operators.
+- It's only possible to overload `+, -, *, /, %, <, >` operators.
+- `==` and `!=` are self generated by the compiler.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
+- When using `<` and `>`, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
 
 ## Inline assembly

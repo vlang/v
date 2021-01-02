@@ -34,6 +34,10 @@ pub fn (c TcpConn) close() ? {
 
 // write_ptr blocks and attempts to write all data
 pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
+	$if trace_tcp ? {
+		eprintln('>>> TcpConn.write_ptr | c.sock.handle: $c.sock.handle | b: ${ptr_str(b)} len: $len |\n' +
+			unsafe { b.vstring_with_len(len) })
+	}
 	unsafe {
 		mut ptr_base := byteptr(b)
 		mut total_sent := 0
@@ -71,6 +75,9 @@ pub fn (c TcpConn) write_str(s string) ? {
 
 pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 	mut res := wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+	$if trace_tcp ? {
+		eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+	}
 	if res > 0 {
 		return res
 	}
@@ -79,6 +86,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		error_ewouldblock {
 			c.wait_for_read() ?
 			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+			$if trace_tcp ? {
+				eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
+			}
 			return socket_error(res)
 		}
 		else {
@@ -192,7 +202,7 @@ pub fn listen_tcp(port int) ?TcpListener {
 
 pub fn (l TcpListener) accept() ?TcpConn {
 	addr := C.sockaddr_storage{}
-	unsafe {C.memset(&addr, 0, sizeof(C.sockaddr_storage))}
+	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
 	// cast to correct type
 	sock_addr := &C.sockaddr(&addr)

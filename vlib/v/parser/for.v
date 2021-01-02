@@ -80,8 +80,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		return for_c_stmt
 	} else if p.peek_tok.kind in [.key_in, .comma] ||
 		(p.tok.kind == .key_mut && p.peek_tok2.kind in [.key_in, .comma]) {
-		// `for i in vals`, `for i in start .. end`
-		val_is_mut := p.tok.kind == .key_mut
+		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`
+		mut val_is_mut := p.tok.kind == .key_mut
 		if val_is_mut {
 			p.next()
 		}
@@ -91,6 +91,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.next()
+			if p.tok.kind == .key_mut {
+				// `for i, mut user in users {`
+				p.next()
+				val_is_mut = true
+			}
 			key_var_name = val_var_name
 			val_var_pos = p.tok.position()
 			val_var_name = p.check_name()
