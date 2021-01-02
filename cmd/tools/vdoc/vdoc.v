@@ -462,7 +462,11 @@ fn (cfg DocConfig) readme_idx() int {
 fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
-		toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		if dn.children[0].name == '' {
+			toc_slug = slug(dn.name)
+		} else {
+			toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		}
 	}
 	if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
