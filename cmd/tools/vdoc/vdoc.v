@@ -41,9 +41,8 @@ const (
 	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
-	html_content    = '
-	<!DOCTYPE html>
-	<html lang="en">
+	html_content    = '<!DOCTYPE html>
+<html lang="en">
 	<head>
 		<meta charset="UTF-8">
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
@@ -85,7 +84,7 @@ const (
 			<div class="doc-scrollview">
 				<div class="doc-container">
 					<div class="doc-content">
-						{{ contents }}
+{{ contents }}
 						<div class="footer">
 							{{ footer_content }}
 						</div>
@@ -97,8 +96,7 @@ const (
 		{{ footer_assets }}
 		<script async src="search_index.js" type="text/javascript"></script>
 	</body>
-	</html>
-	'
+</html>'
 )
 
 enum OutputType {
@@ -406,12 +404,12 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	sym_name := get_sym_name(dd)
 	node_id := get_node_id(dd)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('						<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
-			dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write('							<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write('<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+			dnw.write('							<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -421,7 +419,10 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if !head && dd.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
-	dnw.writeln('$md_content\n</section>')
+	for line_content in md_content.split('\n') {
+		dnw.write('\n							$line_content')
+	}
+	dnw.writeln('\n						</section>')
 	dnw_str := dnw.str()
 	defer {
 		dnw.free()
@@ -559,11 +560,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
-			'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		'\n		<style>' + cfg.assets['doc_css'] + '</style>\n		<style>' + cfg.assets['normalize_css'] +
+			'</style>\n		<script>' + cfg.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] +
+		'\n		<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n		<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />\n		<script src="' + cfg.assets['dark_mode_js'] +
 			'"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
