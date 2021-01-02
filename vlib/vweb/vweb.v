@@ -419,7 +419,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
 			}
-			if attrs.len == 0 || (attrs.len == 1 && attrs[0][0] != `/`) {
+			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0 ) {
 				// No routing for this method. If it matches, call it and finish matching
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
