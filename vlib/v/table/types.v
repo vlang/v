@@ -744,11 +744,17 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			}
 		}
 		.function {
+			info := sym.info as FnType
 			if !table.is_fmt {
-				info := sym.info as FnType
 				res = table.fn_signature(info.func, type_only: true)
 			} else {
-				res = table.shorten_user_defined_typenames(res, import_aliases)
+				if res.starts_with('fn (') {
+					// fn foo ()
+					res = table.fn_signature(info.func, type_only: true)
+				} else {
+					// FnFoo
+					res = table.shorten_user_defined_typenames(res, import_aliases)
+				}
 			}
 		}
 		.map {
