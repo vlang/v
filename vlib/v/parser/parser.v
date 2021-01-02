@@ -1684,27 +1684,35 @@ fn (mut p Parser) module_decl() ast.Module {
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	mut module_pos := token.Position{}
+	mut name_pos := token.Position{}
+	mut mod_node := ast.Module{}
 	if !is_skipped {
 		p.attrs = []
 		module_pos = p.tok.position()
 		p.next()
-		mut pos := p.tok.position()
+		name_pos = p.tok.position()
 		name = p.check_name()
-		if module_pos.line_nr != pos.line_nr {
-			p.error_with_pos('`module` and `$name` must be at same line', pos)
-			return ast.Module{}
+		mod_node = ast.Module{
+			pos: module_pos
 		}
-		pos = p.tok.position()
-		if module_pos.line_nr == pos.line_nr && p.tok.kind != .comment {
+		if module_pos.line_nr != name_pos.line_nr {
+			p.error_with_pos('`module` and `$name` must be at same line', name_pos)
+			return mod_node
+		}
+		// NB: this shouldn't be reassigned into name_pos
+		// as it creates a wrong position when extended
+		// to module_pos
+		n_pos := p.tok.position()
+		if module_pos.line_nr == n_pos.line_nr && p.tok.kind != .comment {
 			if p.tok.kind != .name {
-				p.error_with_pos('`module x` syntax error', pos)
-				return ast.Module{}
+				p.error_with_pos('`module x` syntax error', n_pos)
+				return mod_node
 			} else {
-				p.error_with_pos('`module x` can only declare one module', pos)
-				return ast.Module{}
+				p.error_with_pos('`module x` can only declare one module', n_pos)
+				return mod_node
 			}
 		}
-		module_pos = module_pos.extend(pos)
+		module_pos = module_pos.extend(name_pos)
 	}
 	mut full_mod := p.table.qualify_module(name, p.file_name)
 	if p.pref.build_mode == .build_module && !full_mod.contains('.') {
@@ -1735,73 +1743,105 @@ fn (mut p Parser) module_decl() ast.Module {
 			}
 		}
 	}
-	return ast.Module{
+	mod_node = ast.Module{
 		name: full_mod
 		attrs: module_attrs
 		is_skipped: is_skipped
 		pos: module_pos
+		name_pos: name_pos
 	}
+	return mod_node
 }
 
 fn (mut p Parser) import_stmt() ast.Import {
 	import_pos := p.tok.position()
 	p.check(.key_import)
-	pos := p.tok.position()
+	mut pos := p.tok.position()
+	mut import_node := ast.Import{
+		pos: import_pos.extend(pos)
+	}
 	if p.tok.kind == .lpar {
 		p.error_with_pos('`import()` has been deprecated, use `import x` instead', pos)
-		return ast.Import{}
+		return import_node
 	}
-	mut mod_name := p.check_name()
+	mut mod_name_arr := []string{}
+	mod_name_arr << p.check_name()
 	if import_pos.line_nr != pos.line_nr {
 		p.error_with_pos('`import` statements must be a single line', pos)
-		return ast.Import{}
+		return import_node
 	}
-	mut mod_alias := mod_name
+	mut mod_alias := mod_name_arr[0]
+	import_node = ast.Import{
+		pos: import_pos.extend(pos)
+		mod_pos: pos
+		alias_pos: pos
+	}
 	for p.tok.kind == .dot {
 		p.next()
-		pos_t := p.tok.position()
+		submod_pos := p.tok.position()
 		if p.tok.kind != .name {
-			p.error_with_pos('module syntax error, please use `x.y.z`', pos)
-			return ast.Import{}
+			p.error_with_pos('module syntax error, please use `x.y.z`', submod_pos)
+			return import_node
 		}
-		if import_pos.line_nr != pos_t.line_nr {
-			p.error_with_pos('`import` and `submodule` must be at same line', pos)
-			return ast.Import{}
+		if import_pos.line_nr != submod_pos.line_nr {
+			p.error_with_pos('`import` and `submodule` must be at same line', submod_pos)
+			return import_node
 		}
 		submod_name := p.check_name()
-		mod_name += '.' + submod_name
+		mod_name_arr << submod_name
 		mod_alias = submod_name
-	}
-	if p.tok.kind == .key_as {
-		p.next()
-		mod_alias = p.check_name()
-		if mod_alias == mod_name.split('.').last() {
-			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
-			return ast.Import{}
+		pos = pos.extend(submod_pos)
+		import_node = ast.Import{
+			pos: import_pos.extend(pos)
+			mod_pos: pos
+			alias_pos: submod_pos
+			mod: mod_name_arr.join('.')
+			alias: mod_alias
 		}
 	}
-	mut node := ast.Import{
-		pos: pos
-		mod: mod_name
-		alias: mod_alias
+	if mod_name_arr.len == 1 {
+		import_node = ast.Import{
+			pos: import_node.pos
+			mod_pos: import_node.mod_pos
+			alias_pos: import_node.alias_pos
+			mod: mod_name_arr[0]
+			alias: mod_alias
+		}
+	}
+	mod_name := import_node.mod
+	if p.tok.kind == .key_as {
+		p.next()
+		alias_pos := p.tok.position()
+		mod_alias = p.check_name()
+		if mod_alias == mod_name_arr.last() {
+			p.error_with_pos('import alias `$mod_name as $mod_alias` is redundant', p.prev_tok.position())
+			return import_node
+		}
+		import_node = ast.Import{
+			pos: import_node.pos.extend(alias_pos)
+			mod_pos: import_node.mod_pos
+			alias_pos: alias_pos
+			mod: import_node.mod
+			alias: mod_alias
+		}
 	}
 	if p.tok.kind == .lcbr { // import module { fn1, Type2 } syntax
-		p.import_syms(mut node)
+		p.import_syms(mut import_node)
 		p.register_used_import(mod_alias) // no `unused import` msg for parent
 	}
 	pos_t := p.tok.position()
 	if import_pos.line_nr == pos_t.line_nr {
 		if p.tok.kind !in [.lcbr, .eof, .comment] {
 			p.error_with_pos('cannot import multiple modules at a time', pos_t)
-			return ast.Import{}
+			return import_node
 		}
 	}
 	p.imports[mod_alias] = mod_name
 	// if mod_name !in p.table.imports {
 	p.table.imports << mod_name
-	p.ast_imports << node
+	p.ast_imports << import_node
 	// }
-	return node
+	return import_node
 }
 
 // import_syms parses the inner part of `import module { submod1, submod2 }`
