@@ -405,7 +405,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	sym_name := get_sym_name(dd)
 	node_id := get_node_id(dd)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('${tabs[1]}s<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
 			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
