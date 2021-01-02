@@ -47,7 +47,7 @@ mut connection := mysql.Connection{
 // Connect to server
 connection.connect() ?
 // Change the default database
-connection.select_db('users')
+connection.select_db('users') ?
 // Do a query
 get_users_query_result := connection.query("SELECT * FROM rayon") ?
 
