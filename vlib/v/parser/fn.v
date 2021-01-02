@@ -493,7 +493,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		p.tok.lit
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
+		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
