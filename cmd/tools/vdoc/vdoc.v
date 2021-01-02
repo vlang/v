@@ -420,10 +420,8 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if !head && dd.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
-	for line_content in md_content.split('\n') {
-		dnw.write('\n${tabs[2]}$line_content')
-	}
-	dnw.writeln('\n${tabs[1]}</section>')
+	// do not mess with md_content further, its formatting is important, just output it 1:1 !
+	dnw.writeln('$md_content\n</section>')
 	dnw_str := dnw.str()
 	defer {
 		dnw.free()
