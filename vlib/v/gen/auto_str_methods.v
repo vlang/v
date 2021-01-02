@@ -327,6 +327,10 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	}
 	if key_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
+	} else if key_sym.kind == .rune {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
 	}
@@ -341,6 +345,10 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
 		} else if val_sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
+		} else if val_sym.kind == .rune {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
 		}

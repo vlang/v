@@ -517,6 +517,8 @@ fn test_rune_keys() {
 	assert m[`!`] == 2
 	m[`@`] = 7
 	assert m.len == 3
+	println(m)
+	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
 	
 	mut a := []rune{}
 	for k, v in m {
@@ -591,6 +593,6 @@ fn test_eq() {
 
 fn test_non_string_key_map_str() {
 	assert {23: 4}.str() == '{23: 4}'
-	assert {`a`: 12, `b`: 13}.str() == '{a: 12, b: 13}'
+	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
 	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
 }
