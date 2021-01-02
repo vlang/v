@@ -28,8 +28,8 @@ const (
 	is_stdin_a_pipe = (is_atty(0) == 0)
 )
 
-fn new_repl() &Repl {
-	return &Repl{
+fn new_repl() Repl {
+	return Repl{
 		readline: readline.Readline{}
 		modules: ['os', 'time', 'math']
 	}
