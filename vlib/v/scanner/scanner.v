@@ -842,19 +842,6 @@ fn (mut s Scanner) text_scan() token.Token {
 					return s.new_token(.gt, '', 1)
 				}
 			}
-			0xE2 {
-				if nextc == 0x89 && s.text[s.pos + 2] == 0xA0 {
-					// case `≠`:
-					s.pos += 2
-					return s.new_token(.ne, '', 3)
-				} else if nextc == 0x89 && s.text[s.pos + 2] == 0xBD {
-					s.pos += 2
-					return s.new_token(.le, '', 3)
-				} else if nextc == 0xA9 && s.text[s.pos + 2] == 0xBE {
-					s.pos += 2
-					return s.new_token(.ge, '', 3)
-				}
-			}
 			`<` {
 				if nextc == `=` {
 					s.pos++

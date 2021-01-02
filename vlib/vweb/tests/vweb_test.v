@@ -159,7 +159,7 @@ fn test_http_client_json_post() {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
+	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
 		eprintln('json response: $x')
 	}
@@ -167,6 +167,15 @@ fn test_http_client_json_post() {
 	assert x.text == json_for_ouser
 	nuser := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser'
+	//
+	x = http.post_json('http://127.0.0.1:$sport/json', json_for_ouser) or { panic(err) }
+	$if debug_net_socket_client ? {
+		eprintln('json response: $x')
+	}
+	assert x.headers['Content-Type'] == 'application/json'
+	assert x.text == json_for_ouser
+	nuser2 := json.decode(User, x.text) or { User{} }
+	assert '$ouser' == '$nuser2'
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {

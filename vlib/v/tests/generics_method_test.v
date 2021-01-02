@@ -19,3 +19,19 @@ fn test_generic_method() {
 		y: 6
 	}
 }
+
+struct Person {
+mut:
+	name string
+}
+
+fn (mut p Person) show<T>(name string, data T) string {
+	p.name = name
+	return 'name: $p.name, data: $data'
+}
+
+fn test_generic_method_with_fixed_arg_type() {
+	mut person := Person{}
+	res := person.show('bob', 10)
+	assert res == 'name: bob, data: 10'
+}

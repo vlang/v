@@ -152,8 +152,10 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		// p.check(.str)
 		key := p.expr(0)
+		if key is ast.FloatLiteral {
+			p.error_with_pos('maps do not support floating point keys yet', key.pos)
+		}
 		keys << key
 		p.check(.colon)
 		val := p.expr(0)
