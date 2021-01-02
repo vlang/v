@@ -275,10 +275,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut in_headers := true
 	mut len := 0
 	// for line in lines[1..] {
-	for _ in 0 .. 100 {
+	for lindex in 0 .. 100 {
 		// println(j)
 		line := reader.read_line() or {
-			println('Failed read_line')
+			println('Failed read_line $lindex')
 			break
 		}
 		sline := strip(line)
@@ -419,7 +419,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
 			}
-			if attrs.len == 0 {
+			if attrs.len == 0 || (attrs.len == 1 && attrs[0][0] != `/`) {
 				// No routing for this method. If it matches, call it and finish matching
 				// since such methods have a priority.
 				// For example URL `/register` matches route `/:user`, but `fn register()`
