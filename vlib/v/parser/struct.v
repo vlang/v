@@ -307,9 +307,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos
-		pub_pos: pub_pos
-		pub_mut_pos: pub_mut_pos
+		mut_pos: mut_pos - embeds.len
+		pub_pos: pub_pos - embeds.len
+		pub_mut_pos: pub_mut_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs

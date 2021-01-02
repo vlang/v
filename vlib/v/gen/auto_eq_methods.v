@@ -94,7 +94,6 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	g.map_fn_definitions << ptr_typ
 	left_sym := g.table.get_type_symbol(left)
 	value_typ := left_sym.map_info().value_type
-	value_sym := g.table.get_type_symbol(value_typ)
 	ptr_value_typ := g.typ(value_typ)
 	g.type_definitions.writeln('static bool ${ptr_typ}_map_eq($ptr_typ a, $ptr_typ b); // auto')
 	mut fn_builder := strings.new_builder(512)
@@ -102,10 +101,13 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 	fn_builder.writeln('\tif (a.len != b.len) {')
 	fn_builder.writeln('\t\treturn false;')
 	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tarray_string _keys = map_keys(&a);')
-	fn_builder.writeln('\tfor (int i = 0; i < _keys.len; ++i) {')
-	fn_builder.writeln('\t\tstring k = string_clone( ((string*)_keys.data)[i]);')
-	if value_sym.kind == .function {
+	fn_builder.writeln('\tfor (int i = 0; i < a.key_values.len; ++i) {')
+	fn_builder.writeln('\t\tif (!DenseArray_has_index(&a.key_values, i)) continue;')
+	fn_builder.writeln('\t\tvoidptr k = DenseArray_key(&a.key_values, i);')
+	fn_builder.writeln('\t\tif (!map_exists_1(&b, k)) return false;')
+	kind := g.table.type_kind(value_typ)
+	if kind == .function {
+		value_sym := g.table.get_type_symbol(value_typ)
 		func := value_sym.info as table.FnType
 		ret_styp := g.typ(func.func.return_type)
 		fn_builder.write('\t\t$ret_styp (*v) (')
@@ -117,25 +119,32 @@ fn (mut g Gen) gen_map_equality_fn(left table.Type) string {
 				fn_builder.write(', ')
 			}
 		}
-		fn_builder.writeln(') = (*(voidptr*)map_get_1(&a, &k, &(voidptr[]){ 0 }));')
+		fn_builder.writeln(') = *(voidptr*)map_get_1(&a, k, &(voidptr[]){ 0 });')
 	} else {
-		fn_builder.writeln('\t\t$ptr_value_typ v = (*($ptr_value_typ*)map_get_1(&a, &k, &($ptr_value_typ[]){ 0 }));')
+		fn_builder.writeln('\t\t$ptr_value_typ v = *($ptr_value_typ*)map_get_1(&a, k, &($ptr_value_typ[]){ 0 });')
 	}
-	if value_sym.kind == .string {
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || string_ne((*(string*)map_get_1(&b, &k, &(string[]){_SLIT("")})), v)) {')
-	} else if value_sym.kind == .struct_ && !value_typ.is_ptr() {
-		eq_fn := g.gen_struct_equality_fn(value_typ)
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-	} else if value_sym.kind == .array && !value_typ.is_ptr() {
-		eq_fn := g.gen_array_equality_fn(value_typ)
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_arr_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-	} else if value_sym.kind == .map && !value_typ.is_ptr() {
-		eq_fn := g.gen_map_equality_fn(value_typ)
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || !${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 }), v)) {')
-	} else if value_sym.kind == .function {
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*(voidptr*)map_get_1(&b, &k, &(voidptr[]){ 0 })) != v) {')
-	} else {
-		fn_builder.writeln('\t\tif (!map_exists_1(&b, &k) || (*($ptr_value_typ*)map_get_1(&b, &k, &($ptr_value_typ[]){ 0 })) != v) {')
+	match kind {
+		.string {
+			fn_builder.writeln('\t\tif (!fast_string_eq(*(string*)map_get_1(&b, k, &(string[]){_SLIT("")}), v)) {')
+		}
+		.struct_ {
+			eq_fn := g.gen_struct_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_struct_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.array {
+			eq_fn := g.gen_array_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_arr_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.map {
+			eq_fn := g.gen_map_equality_fn(value_typ)
+			fn_builder.writeln('\t\tif (!${eq_fn}_map_eq(*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }), v)) {')
+		}
+		.function {
+			fn_builder.writeln('\t\tif (*(voidptr*)map_get_1(&b, k, &(voidptr[]){ 0 }) != v) {')
+		}
+		else {
+			fn_builder.writeln('\t\tif (*($ptr_value_typ*)map_get_1(&b, k, &($ptr_value_typ[]){ 0 }) != v) {')
+		}
 	}
 	fn_builder.writeln('\t\t\treturn false;')
 	fn_builder.writeln('\t\t}')
