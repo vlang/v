@@ -25,6 +25,7 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 // the .position() token.Position methods too.
 pub type ScopeObject = ConstField | GlobalField | Var
 
+// TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | GlobalField | IfBranch | MatchBranch |
 	ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
 
@@ -134,6 +135,7 @@ pub struct Module {
 pub:
 	name       string
 	pos        token.Position
+	name_pos   token.Position // `name` in import name
 	is_skipped bool // module main can be skipped in single file programs
 }
 
@@ -262,11 +264,13 @@ pub mut:
 // import statement
 pub struct Import {
 pub:
-	mod   string // the module name of the import
-	alias string // the `x` in `import xxx as x`
-	pos   token.Position
+	mod       string // the module name of the import
+	alias     string // the `x` in `import xxx as x`
+	pos       token.Position
+	mod_pos   token.Position
+	alias_pos token.Position
 pub mut:
-	syms  []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
+	syms      []ImportSymbol // the list of symbols in `import {symbol1, symbol2}`
 }
 
 // import symbol,for import {symbol} syntax
@@ -1242,19 +1246,13 @@ pub fn (stmt Stmt) position() token.Position {
 pub fn (node Node) position() token.Position {
 	match node {
 		Stmt {
-			pos := node.position()
-			match node {
-				Module { return {
-						pos |
-						len: pos.len + node.name.len
-					} }
-				Import { return {
-						pos |
-						pos: pos.pos - 7
-						len: pos.len + node.mod.len + node.alias.len + 7
-					} }
-				else { return pos }
+			mut pos := node.position()
+			if node is Import {
+				for sym in node.syms {
+					pos = pos.extend(sym.pos)
+				}
 			}
+			return pos
 		}
 		Expr {
 			return node.position()
