@@ -214,7 +214,7 @@ fn (mut b Boss) return_speaker2() ?Speaker2 {
 		return none
 	}
 	b.name = 'boss'
-	return &b
+	return b
 }
 
 fn return_speaker2(sp Speaker2) Speaker2 {

@@ -4188,6 +4188,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
+				// Fixes returning a mutable receiver with interface as return type
+				if node.exprs[0] is ast.Ident && !g.is_amp {
+					g.write('&')
+				}
 			}
 			for i, expr in node.exprs {
 				g.expr(expr)
