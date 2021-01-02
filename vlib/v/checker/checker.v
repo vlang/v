@@ -1289,32 +1289,29 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		method = m
 		has_method = true
 	} else {
+		// can this logic be moved to table.type_find_method() so it can be used from anywhere
+		if left_type_sym.info is table.Struct {
+			mut found_methods := []table.Fn{}
+			mut embed_of_found_methods := []table.Type{}
+			for embed in left_type_sym.info.embeds {
+				embed_sym := c.table.get_type_symbol(embed)
+				if m := c.table.type_find_method(embed_sym, method_name) {
+					found_methods << m
+					embed_of_found_methods << embed
+				}
+			}
+			if found_methods.len == 1 {
+				method = found_methods[0]
+				has_method = true
+				is_method_from_embed = true
+				call_expr.from_embed_type = embed_of_found_methods[0]
+			} else if found_methods.len > 1 {
+				c.error('ambiguous method `$method_name`', call_expr.pos)
+			}
+		}
 		if left_type_sym.kind == .aggregate {
 			// the error message contains the problematic type
 			unknown_method_msg = err
-		}
-	}
-	// check even if method is found, we could be overriding a method (TODO: should this be allowed?)
-	// can this logic be moved to table.type_find_method() so it can be used from anywhere
-	// TODO: should overriden methods use embed type name to access it's methods?
-	// eg go does: `fn (mut app App) text() vweb.Result { return app.Context.text() }`
-	if left_type_sym.info is table.Struct {
-		mut found_methods := []table.Fn{}
-		mut embed_of_found_methods := []table.Type{}
-		for embed in left_type_sym.info.embeds {
-			embed_sym := c.table.get_type_symbol(embed)
-			if m := c.table.type_find_method(embed_sym, method_name) {
-				found_methods << m
-				embed_of_found_methods << embed
-			}
-		}
-		if found_methods.len == 1 {
-			method = found_methods[0]
-			has_method = true
-			is_method_from_embed = true
-			call_expr.from_embed_type = embed_of_found_methods[0]
-		} else if found_methods.len > 1 {
-			c.error('ambiguous method `$method_name`', call_expr.pos)
 		}
 	}
 	if has_method {
@@ -3673,11 +3670,10 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	return ret_type
 }
 
-fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol) {
+fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
-	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.Type{}
@@ -3860,27 +3856,37 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// by listing all variants or values
 	mut is_exhaustive := true
 	mut unhandled := []string{}
-	match mut type_sym.info {
-		table.SumType {
-			for v in type_sym.info.variants {
-				v_str := c.table.type_to_str(v)
-				if v_str !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`$v_str`'
-				}
+	if node.cond_type == table.bool_type {
+		variants := ['true', 'false']
+		for v in variants {
+			if v !in branch_exprs {
+				is_exhaustive = false
+				unhandled << '`$v`'
 			}
 		}
-		//
-		table.Enum {
-			for v in type_sym.info.vals {
-				if v !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`.$v`'
+	} else {
+		match mut cond_type_sym.info {
+			table.SumType {
+				for v in cond_type_sym.info.variants {
+					v_str := c.table.type_to_str(v)
+					if v_str !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`$v_str`'
+					}
 				}
 			}
-		}
-		else {
-			is_exhaustive = false
+			//
+			table.Enum {
+				for v in cond_type_sym.info.vals {
+					if v !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`.$v`'
+					}
+				}
+			}
+			else {
+				is_exhaustive = false
+			}
 		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
@@ -4650,6 +4656,25 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	}
 }
 
+pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
+	key_i := node.keys[i]
+	if key_i is ast.StringLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	} else if key_i is ast.IntegerLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.IntegerLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
@@ -4669,14 +4694,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `{'age': 20}`
 	key0_type := c.table.mktyp(c.expr(node.keys[0]))
 	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	mut same_key_type := true
 	for i, key in node.keys {
-		key_i := key as ast.StringLiteral
-		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key.position())
-			}
-		}
 		if i == 0 {
 			continue
 		}
@@ -4684,16 +4703,18 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		key_type := c.expr(key)
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
-			key0_type_sym := c.table.get_type_symbol(key0_type)
-			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
-				node.pos)
+			msg := c.expected_msg(key_type, key0_type)
+			c.error('invalid map key: $msg', key.position())
+			same_key_type = false
 		}
 		if !c.check_types(val_type, val0_type) {
-			val0_type_sym := c.table.get_type_symbol(val0_type)
-			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
-				node.pos)
+			msg := c.expected_msg(val_type, val0_type)
+			c.error('invalid map value: $msg', val.position())
+		}
+	}
+	if same_key_type {
+		for i in 1 .. node.keys.len {
+			c.check_dup_keys(node, i)
 		}
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
@@ -4943,7 +4964,7 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/'] {
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '>'] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -4955,6 +4976,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
+				} else if node.name in ['<', '>'] && node.return_type != table.bool_type {
+					c.error('operator comparison methods should return `bool`', node.pos)
 				}
 			}
 		}

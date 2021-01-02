@@ -12,9 +12,16 @@ vlib/v/checker/tests/method_op_err.vv:14:1: error: both sides of an operator mus
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~
    15 |     return User{u.a - f.a, u.b-f.a}
    16 | }
-vlib/v/checker/tests/method_op_err.vv:20:24: error: infix expr: cannot use `Foo` (right expression) as `User`
-   18 | fn main() {
-   19 |     println(User{3, 4})
-   20 |     println(User{3, 4} - Foo{3, 3})
+vlib/v/checker/tests/method_op_err.vv:18:1: error: operator comparison methods should return `bool`
+   16 | }
+   17 | 
+   18 | fn (u User) > (u1 User) User {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   19 |     return User{}
+   20 | }
+vlib/v/checker/tests/method_op_err.vv:24:24: error: infix expr: cannot use `Foo` (right expression) as `User`
+   22 | fn main() {
+   23 |     println(User{3, 4})
+   24 |     println(User{3, 4} - Foo{3, 3})
       |                        ^
-   21 | }
+   25 | }

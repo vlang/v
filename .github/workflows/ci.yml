@@ -10,7 +10,7 @@ on:
 
 jobs:
   code-formatting:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -26,7 +26,7 @@ jobs:
       run: ./v -silent test-fmt
 
 #  v-fmt:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu-20.04
 #    timeout-minutes: 30
 #    steps:
 #    - uses: actions/checkout@v2
@@ -44,7 +44,7 @@ jobs:
 #      run: echo "TODO" #./v test-fmt
 
   performance-regressions:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
@@ -68,7 +68,7 @@ jobs:
       run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
 
   ubuntu-tcc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -114,11 +114,16 @@ jobs:
       run: ./v build-tools
     - name: Test v binaries
       run: ./v build-vbinaries
+    - name: Test v tutorials
+      run: |
+        cd tutorials/code/blog
+        ../../../v .
+
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
     name: alpine-musl
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     container:
       image: thevlang/vlang:alpine-build
@@ -216,7 +221,7 @@ jobs:
         ../v run examples/build_examples.vsh
 
   ubuntu:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -306,7 +311,7 @@ jobs:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
@@ -378,7 +383,7 @@ jobs:
         ls
 
   tests-sanitize-undefined:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
@@ -401,7 +406,7 @@ jobs:
       run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
 
   tests-sanitize-address:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
@@ -424,7 +429,7 @@ jobs:
       run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
 
   tests-sanitize-memory:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
@@ -447,7 +452,7 @@ jobs:
       run: ./v -cflags -fsanitize=memory test-fixed
 
 #  ubuntu-autofree-selfcompile:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu-20.04
 #    timeout-minutes: 30
 #    env:
 #      VFLAGS: -cc gcc
@@ -462,7 +467,7 @@ jobs:
   # Ubuntu docker pre-built container
   ubuntu-musl:
     name: ubuntu-musl
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     container:
       image: thevlang/vlang:ubuntu-build
@@ -484,7 +489,7 @@ jobs:
           ./v -silent test-fixed
 
 #   ubuntu-musl:
-#     runs-on: ubuntu-18.04
+#     runs-on: ubuntu-20.04
 #     timeout-minutes: 30
 #     env:
 #       VFLAGS: -cc musl-gcc
@@ -512,7 +517,7 @@ jobs:
 #       run: ./v -silent test-fixed
 
   ubuntu-llvm-mingw:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -626,7 +631,7 @@ jobs:
 
 
   compilable-v-c-and-v-win-c:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -662,7 +667,7 @@ jobs:
         ls -lart examples/2048/2048.exe
 
   ubuntu-c-plus-plus:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -684,7 +689,7 @@ jobs:
 ##      run: ./v -cc g++-9 -silent test-fixed
 
   install-modules:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -698,7 +703,7 @@ jobs:
         ./v install nedpals.args
 
   gitly-compiles:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -718,7 +723,7 @@ jobs:
 
   websocket_autobahn:
     name: Autobahn integrations tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -773,7 +778,7 @@ jobs:
 
   parser-silent:
     name: Parser silent mode
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -792,7 +797,7 @@ jobs:
 
   parser-silent-fuzzing:
     name: Parser silent mode fuzzing
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -817,7 +822,7 @@ jobs:
         ./v test-parser examples/2048/2048_fuzz.v
 
   v-up-works-on-ubuntu:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -839,7 +844,7 @@ jobs:
         ./v2 -o v3 cmd/v
 
   vls-compiles:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -853,7 +858,7 @@ jobs:
       run: cd vls; ../v -prod cmd/vls ; cd ..
 
   vab-compiles:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2

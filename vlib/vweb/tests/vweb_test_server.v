@@ -79,6 +79,13 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 
 [post]
 ['/json_echo']
+pub fn (mut app App) json_echo() vweb.Result {
+	app.set_content_type(app.req.headers['Content-Type'])
+	return app.ok(app.req.data)
+}
+
+// Make sure [post] works without the path
+[post]
 pub fn (mut app App) json() vweb.Result {
 	app.set_content_type(app.req.headers['Content-Type'])
 	return app.ok(app.req.data)

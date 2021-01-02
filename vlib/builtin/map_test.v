@@ -485,7 +485,12 @@ fn test_int_keys() {
 	m[5] += 24
 	m[5]++
 	assert m[5] == 25
+	m2 := {3:9 4:16 5:25}
+	assert m2.len == 3
+	// clone
 	mc := m.clone()
+	same := mc == m
+	assert same
 	assert mc.len == 3
 	mut all := []int{}
 	for k, v in mc {
@@ -504,6 +509,21 @@ fn test_voidptr_keys() {
 	assert m[&v] == 'var'
 	assert m[&m] == 'map'
 	assert m.len == 2
+}
+
+fn test_rune_keys() {
+	mut m := {`!`:2 `%`:3}
+	assert typeof(m).name == 'map[rune]int'
+	assert m[`!`] == 2
+	m[`@`] = 7
+	assert m.len == 3
+	
+	mut a := []rune{}
+	for k, v in m {
+		a << k
+		a << rune(v) + `0`
+	}
+	assert a == [`!`, `2`, `%`, `3`, `@`, `7`]
 }
 
 fn test_eq() {
