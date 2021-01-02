@@ -97,7 +97,7 @@ const (
 		<script async src="search_index.js" type="text/javascript"></script>
 	</body>
 </html>'
-	tabs            = '\t'
+	tabs            = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 )
 
 enum OutputType {
@@ -405,12 +405,12 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	sym_name := get_sym_name(dd)
 	node_id := get_node_id(dd)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('$tabs$tabs$tabs$tabs$tabs$tabs<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('${tabs[6]}s<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
-			dnw.write('$tabs$tabs$tabs$tabs$tabs$tabs$tabs<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[7]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write('$tabs$tabs$tabs$tabs$tabs$tabs$tabs<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[7]}<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -421,9 +421,9 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
 	for line_content in md_content.split('\n') {
-		dnw.write('\n$tabs$tabs$tabs$tabs$tabs$tabs$tabs$line_content')
+		dnw.write('\n${tabs[7]}$line_content')
 	}
-	dnw.writeln('\n$tabs$tabs$tabs$tabs$tabs$tabs</section>')
+	dnw.writeln('\n${tabs[6]}</section>')
 	dnw_str := dnw.str()
 	defer {
 		dnw.free()
@@ -561,11 +561,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n$tabs$tabs<style>' + cfg.assets['doc_css'] + '</style>\n$tabs$tabs<style>' + cfg.assets['normalize_css'] +
-			'</style>\n$tabs$tabs<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		'\n${tabs[2]}<style>' + cfg.assets['doc_css'] + '</style>\n${tabs[2]}<style>' + cfg.assets['normalize_css'] +
+			'</style>\n${tabs[2]}<script>' + cfg.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n$tabs$tabs<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n$tabs$tabs<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />\n$tabs$tabs<script src="' + cfg.assets['dark_mode_js'] + '"></script>'
+		'\n${tabs[2]}<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n${tabs[2]}<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />\n${tabs[2]}<script src="' + cfg.assets['dark_mode_js'] + '"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {
