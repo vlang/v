@@ -3157,7 +3157,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else {
 		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
-			left_sym.kind != .enum_
+			left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
@@ -3165,11 +3165,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .any_int, .int]
-		// If it's an alias then check the parent type
-		f := left_sym.kind == .alias &&
-			g.table.get_type_symbol((left_sym.info as table.Alias).parent_type).kind !in [.function, .interface_, .sum_type]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne] &&
-			((a && b && e && f) || c || d) {
+			((a && b && e) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
