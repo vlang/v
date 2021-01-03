@@ -8,6 +8,8 @@ import sync
 import v.pref
 import v.util.vtest
 
+const github_job = os.getenv('GITHUB_JOB')
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -112,6 +114,9 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	$if windows {
 		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+	}
+	if github_job != 'ubuntu-tcc' {
+		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
