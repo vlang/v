@@ -2868,6 +2868,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
+	has_eq_overloaded := !right_sym.has_method('==') && !left_sym.has_method('==')
+	has_ne_overloaded := !right_sym.has_method('!=') && !left_sym.has_method('!=')
 	unaliased_right := if right_sym.kind == .alias {
 		(right_sym.info as table.Alias).parent_type
 	} else {
@@ -3006,7 +3008,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.eq, .ne] && left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+	} else if node.op in [.eq, .ne] &&
+		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded {
 		ptr_typ := g.gen_struct_equality_fn(left_type)
 		if node.op == .eq {
 			g.write('${ptr_typ}_struct_eq(')
@@ -3160,7 +3163,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// Check if aliased type is a struct
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt] && ((a && b) || c || d) {
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne] && ((a && b) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
