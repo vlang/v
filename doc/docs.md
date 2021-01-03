@@ -15,6 +15,24 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
+## Install from source
+The major way to get the latest and greatest V, is to __install it from source__.
+It is __easy__, and it usually takes __only a few seconds__.
+
+### Linux, macOS, FreeBSD, etc:
+You need `git`, a C compiler like `gcc` or `clang`, and `make`:
+```bash
+git clone https://github.com/vlang/v && cd v && make
+```
+
+### Windows:
+You need `git`, and a C compiler like `gcc` or `msvc`:
+```bash
+git clone https://github.com/vlang/v 
+cd v
+make
+```
+
 ## Table of Contents
 
 <table>
