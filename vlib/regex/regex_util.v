@@ -116,6 +116,7 @@ pub fn (re RE) get_group_list() []Re_group {
 * Finders
 *
 ******************************************************************************/
+/*
 // find internal implementation
 [direct_array_access]
 fn (mut re RE) find_imp(in_txt string) (int,int) {
@@ -134,6 +135,7 @@ fn (mut re RE) find_imp(in_txt string) (int,int) {
 	}
 	return no_match_found, 0
 }
+*/
 
 // find try to find the first match in the input string
 [direct_array_access]
