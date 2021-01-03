@@ -1,5 +1,5 @@
 For Linux, you need to install `MySQL development` package and `pkg-config`.
-For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) , then copy the `include` and `lib` folders to `thirdparty/mysql` on V root folder.
+For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) , then copy the `include` and `lib` folders to `<V install directory>\thirdparty\mysql`.
 
 ## Basic Usage
 
@@ -28,3 +28,4 @@ get_users_query_result.free()
 // Close the connection if needed
 connection.close()
 ```
+R
