@@ -2868,8 +2868,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
-	has_eq_overloaded := !right_sym.has_method('==') && !left_sym.has_method('==')
-	has_ne_overloaded := !right_sym.has_method('!=') && !left_sym.has_method('!=')
+	has_eq_overloaded := !left_sym.has_method('==')
+	has_ne_overloaded := !left_sym.has_method('!=')
 	unaliased_right := if right_sym.kind == .alias {
 		(right_sym.info as table.Alias).parent_type
 	} else {
