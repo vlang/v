@@ -519,11 +519,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
 	t.register_type_symbol(
 		kind: .any_float
-		name: 'untyped float'
+		name: 'float literal'
 		cname: 'any_float'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(kind: .any_int, name: 'untyped int', cname: 'any_int', mod: 'builtin')
+	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
 }
 
 [inline]
@@ -704,8 +704,17 @@ pub:
 	variants []Type
 }
 
+// human readable type name
 pub fn (table &Table) type_to_str(t Type) string {
 	return table.type_to_str_using_aliases(t, map[string]string{})
+}
+
+// type name in code (for builtin)
+pub fn (table &Table) type_to_code(t Type) string {
+	match t {
+		any_int_type, any_flt_type { return table.get_type_symbol(t).kind.str() }
+		else { return table.type_to_str_using_aliases(t, map[string]string{}) }
+	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
