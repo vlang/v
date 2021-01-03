@@ -712,12 +712,8 @@ pub fn (table &Table) type_to_str(t Type) string {
 // type name in code (for builtin)
 pub fn (table &Table) type_to_code(t Type) string {
 	match t {
-		any_int_type, any_flt_type {
-			return table.get_type_symbol(t).kind.str()
-		}
-		else {
-			return table.type_to_str_using_aliases(t, map[string]string{})
-		}
+		any_int_type, any_flt_type { return table.get_type_symbol(t).kind.str() }
+		else { return table.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
 
