@@ -26,6 +26,7 @@ const (
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains', 'index']
 )
 
 pub struct Checker {
@@ -398,7 +399,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					field.type_pos)
 			}
 			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
-			// suggestions due to f32 comparision issue. 
+			// suggestions due to f32 comparision issue.
 			if sym.kind in [.any_int, .any_float] {
 				msg := if sym.kind == .any_int {
 					'unknown type `$sym.name`.\nDid you mean `int`?'
@@ -1200,8 +1201,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array &&
-		method_name in
-		['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains', 'index'] {
+		method_name in array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -4931,8 +4931,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
 		if sym.kind == .interface_ {
 			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
-		}
-		if sym.kind == .sum_type && node.name == 'type_name' {
+		} else if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+			// TODO `node.map in array_builtin_methods`
+			c.error('method overrides built-in array method', node.pos)
+		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
 		}
 		// if sym.has_method(node.name) {
