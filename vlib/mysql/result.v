@@ -9,22 +9,22 @@ pub mut:
 	vals []string
 }
 
-// fetch_row fetches the next row from the result set.
+// Fetches the next row from a result.
 pub fn (r Result) fetch_row() &byteptr {
 	return C.mysql_fetch_row(r.result)
 }
 
-// n_rows returns the number of rows in the result set.
+// Returns the number of rows from a result.
 pub fn (r Result) n_rows() u64 {
 	return C.mysql_num_rows(r.result)
 }
 
-// n_fields returns the number of columns in a result set.
+// Returns the number of columns from a result.
 pub fn (r Result) n_fields() int {
 	return C.mysql_num_fields(r.result)
 }
 
-// rows returns rows with `array` of columns.
+// Returns rows with `array` of columns.
 pub fn (r Result) rows() []Row {
 	mut rows := []Row{}
 	nr_cols := r.n_fields()
@@ -57,7 +57,9 @@ pub fn (r Result) maps() []map[string]string {
 	return array_map
 }
 
-// fields returns an array of all field structures.
+// Returns lists of field/column. 
+// The definitions apply primarily for columns of result 
+// such as those produced by `SELECT` statements.
 pub fn (r Result) fields() []Field {
 	mut fields := []Field{}
 	nr_cols := r.n_fields()
@@ -139,7 +141,7 @@ pub fn (f Field) str() string {
 '
 }
 
-// free frees memory used by a result set
+// Frees memory used by a result
 pub fn (r Result) free() {
 	C.mysql_free_result(r.result)
 }
