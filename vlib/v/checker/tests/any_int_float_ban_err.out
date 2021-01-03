@@ -39,7 +39,7 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: unknown type `any_int
       | ~~~~~~~~~~~~~~~~~
    14 |     return 1
    15 | }
-vlib/v/checker/tests/any_int_float_ban_err.vv:14:12: error: cannot use `untyped int` as type `any_int` in return argument
+vlib/v/checker/tests/any_int_float_ban_err.vv:14:12: error: cannot use `int literal` as type `any_int` in return argument
    12 | 
    13 | fn foo2() any_int {
    14 |     return 1

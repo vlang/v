@@ -519,11 +519,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
 	t.register_type_symbol(
 		kind: .any_float
-		name: 'untyped float'
+		name: 'float literal'
 		cname: 'any_float'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(kind: .any_int, name: 'untyped int', cname: 'any_int', mod: 'builtin')
+	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
 }
 
 [inline]
@@ -704,8 +704,21 @@ pub:
 	variants []Type
 }
 
+// human readable type name
 pub fn (table &Table) type_to_str(t Type) string {
 	return table.type_to_str_using_aliases(t, map[string]string{})
+}
+
+// type name in code (for builtin)
+pub fn (table &Table) type_to_code(t Type) string {
+	match t {
+		any_int_type, any_flt_type {
+			return table.get_type_symbol(t).kind.str()
+		}
+		else {
+			return table.type_to_str_using_aliases(t, map[string]string{})
+		}
+	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -713,7 +726,10 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.any_int, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_float, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+		.any_int, .any_float {
+			res = sym.str()
+		}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
