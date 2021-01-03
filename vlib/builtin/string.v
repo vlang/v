@@ -845,17 +845,9 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 	return false
 }
 
-// starts_with returns `true` if the string starts with `p`.
-pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len {
-		return false
-	}
-	for i in 0 .. p.len {
-		if unsafe {s.str[i] != p.str[i]} {
-			return false
-		}
-	}
-	return true
+// starts_with returns `true` if the string starts with `prefix`.
+pub fn (s string) starts_with(prefix string) bool {
+	return s.len >= prefix.len && s[0..prefix.len].str() == prefix
 }
 
 // ends_with returns `true` if the string ends with `p`.
