@@ -270,7 +270,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt] && p.peek_tok.kind == .lpar {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne] &&
+		p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -493,7 +494,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		p.tok.lit
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
+		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')

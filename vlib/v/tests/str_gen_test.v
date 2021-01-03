@@ -72,10 +72,10 @@ fn test_map_of_floats() {
 	assert '$aa' == "{'a': 1.1, 'b': 2.2, 'c': 3.3}"
 }
 
-fn test_map_of_bytes() {
+fn test_map_of_runes() {
 	aa := {'a': `a`, 'b': `b`, 'c': `c`}
-	assert aa.str() == "{'a': a, 'b': b, 'c': c}"
-	assert '$aa' == "{'a': a, 'b': b, 'c': c}"
+	assert aa.str() == "{'a': `a`, 'b': `b`, 'c': `c`}"
+	assert '$aa' == "{'a': `a`, 'b': `b`, 'c': `c`}"
 }
 
 fn test_map_of_bools() {

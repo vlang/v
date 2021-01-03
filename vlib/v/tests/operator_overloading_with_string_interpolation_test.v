@@ -35,6 +35,14 @@ fn (a Vec) < (b Vec) bool {
 	return a.x < b.x && a.y < b.y
 }
 
+fn (a Vec) == (b Vec) bool {
+	return a.x == b.y && a.y == b.x
+}
+
+fn (a Vec) != (b Vec) bool {
+	return !(a == b)
+}
+
 fn test_operator_overloading_with_string_interpolation() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
@@ -60,6 +68,8 @@ fn test_operator_overloading_with_string_interpolation() {
 	////// /////
 	assert b > a == true
 	assert a < b == true
+	assert (Vec{2, 3} == Vec{3, 2}) == true
+	assert (Vec{2, 3} != Vec{3, 2}) == false
 	////// /////
 	assert c.str() == '{6, 8}'
 	assert d.str() == '{-2, -2}'

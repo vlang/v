@@ -58,6 +58,12 @@ pub mut:
 	form_error        string
 }
 
+// declaring init_once in your App struct is optional
+pub fn (ctx Context) init_once() {}
+
+// declaring init in your App struct is optional
+pub fn (ctx Context) init() {}
+
 pub struct Cookie {
 	name      string
 	value     string
@@ -269,10 +275,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	mut in_headers := true
 	mut len := 0
 	// for line in lines[1..] {
-	for _ in 0 .. 100 {
+	for lindex in 0 .. 100 {
 		// println(j)
 		line := reader.read_line() or {
-			println('Failed read_line')
+			println('Failed read_line $lindex')
 			break
 		}
 		sline := strip(line)
@@ -378,6 +384,36 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		$if method.return_type is Result {
 			attrs := method.attrs
 			route_words_a = [][]string{}
+			// Get methods
+			// Get is default
+			mut req_method_str := '$req.method'
+			if req.method == .post {
+				if 'post' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
+				}
+			} else if req.method == .put {
+				if 'put' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
+				}
+			} else if req.method == .patch {
+				if 'patch' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
+				}
+			} else if req.method == .delete {
+				if 'delete' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
+				}
+			} else if req.method == .head {
+				if 'head' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
+				}
+			} else if req.method == .options {
+				if 'options' in attrs {
+					route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
+				}
+			} else {
+				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
+			}
 			if attrs.len == 0 {
 				if url_words.len > 0 {
 					// No routing for this method. If it matches, call it and finish matching
@@ -402,36 +438,6 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 					return
 				}
 			} else {
-				// Get methods
-				// Get is default
-				mut req_method_str := '$req.method'
-				if req.method == .post {
-					if 'post' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'post').map(it[1..].split('/'))
-					}
-				} else if req.method == .put {
-					if 'put' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'put').map(it[1..].split('/'))
-					}
-				} else if req.method == .patch {
-					if 'patch' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'patch').map(it[1..].split('/'))
-					}
-				} else if req.method == .delete {
-					if 'delete' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'delete').map(it[1..].split('/'))
-					}
-				} else if req.method == .head {
-					if 'head' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'head').map(it[1..].split('/'))
-					}
-				} else if req.method == .options {
-					if 'options' in attrs {
-						route_words_a = attrs.filter(it.to_lower() != 'options').map(it[1..].split('/'))
-					}
-				} else {
-					route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
-				}
 				mut req_method := []string{}
 				if route_words_a.len > 0 {
 					for route_words_ in route_words_a {

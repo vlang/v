@@ -301,6 +301,8 @@ fn (mut g Gen) gen_str_for_array_fixed(info table.ArrayFixed, styp string, str_f
 
 fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) {
 	key_sym := g.table.get_type_symbol(info.key_type)
+	key_styp := g.typ(info.key_type)
+	key_str_fn_name := key_styp.replace('*', '') + '_str'
 	if !key_sym.has_method('str') {
 		g.gen_str_for_type(info.key_type)
 	}
@@ -318,8 +320,20 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	g.auto_str_funcs.writeln('\tstrings__Builder_write(&sb, _SLIT("{"));')
 	g.auto_str_funcs.writeln('\tfor (int i = 0; i < m.key_values.len; ++i) {')
 	g.auto_str_funcs.writeln('\t\tif (!DenseArray_has_index(&m.key_values, i)) { continue; }')
-	g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
-	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
+	if key_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstring key = *(string*)DenseArray_key(&m.key_values, i);')
+	} else {
+		g.auto_str_funcs.writeln('\t\t$key_styp key = *($key_styp*)DenseArray_key(&m.key_values, i);')
+	}
+	if key_sym.kind == .string {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
+	} else if key_sym.kind == .rune {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+	} else {
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
+	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _SLIT(": "));')
 	if val_sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}());')
@@ -331,6 +345,10 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, indent_${elem_str_fn_name}(it, indent_count));')
 		} else if val_sym.kind in [.f32, .f64] {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("%g", 1, it));')
+		} else if val_sym.kind == .rune {
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
+			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
 		} else {
 			g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${elem_str_fn_name}(it));')
 		}

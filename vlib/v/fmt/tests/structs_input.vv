@@ -1,15 +1,18 @@
 struct User {
-	name string
+	name string // name
+	name2 ustring // name2
 	very_long_field bool
-	age int
+	age int // age
+	very_long_type_field1 very_looooog_type // long
+	very_long_type_field2 very_loooooooong_type // long
 }
 
 struct Foo {
-	field1 int
-	field2 string
+	field1 int // f1
+	field2 string // f2
 	pub:
-	public_field1 int
-	public_field2 f64
+	public_field1 int // f1
+	public_field2 f64 // f2
 	mut:
 	mut_field string
 	pub mut:

@@ -47,7 +47,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	//
 	mut name := it.name
-	if name[0] in [`+`, `-`, `*`, `/`, `%`, `<`, `>`] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!='] {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
@@ -408,6 +408,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if node.name in ['close', 'try_pop', 'try_push'] {
 			name = 'sync__Channel_$node.name'
 		}
+	} else if left_sym.kind == .map {
+		if node.name == 'keys' {
+			name = 'map_keys_1'
+		}
 	}
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
 	// if so, then instead of calling array_clone(&array_slice(...))
@@ -448,7 +452,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		if !is_range_slice {
 			g.write('&')
 		}
-	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' {
+	} else if !node.receiver_type.is_ptr() && node.left_type.is_ptr() && node.name != 'str' &&
+		node.from_embed_type == 0 {
 		g.write('/*rec*/*')
 	}
 	if node.free_receiver && !g.inside_lambda && !g.is_builtin_mod {

@@ -32,7 +32,7 @@ mut:
 	dw_reserved0          u32
 	dw_reserved1          u32
 	c_file_name           [260]u16 // max_path_len = 260
-	c_alternate_file_name [14]u16 // 14
+	c_alternate_file_name [14]u16  // 14
 	dw_file_type          u32
 	dw_creator_type       u32
 	w_finder_flags        u16
