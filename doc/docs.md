@@ -1253,9 +1253,9 @@ button.widget.x = 3
 
 ```v
 struct Foo {
-	n   int // n is 0 by default
+	n   int    // n is 0 by default
 	s   string // s is '' by default
-	a   []int // a is `[]int{}` by default
+	a   []int  // a is `[]int{}` by default
 	pos int = -1 // custom default value
 }
 ```
