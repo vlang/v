@@ -414,15 +414,15 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			} else {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
 			}
-			if attrs.len == 0 {
+			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0) {
 				if url_words.len > 0 {
 					// No routing for this method. If it matches, call it and finish matching
 					// since such methods have a priority.
 					// For example URL `/register` matches route `/:user`, but `fn register()`
 					// should be called first.
-					if (req.method == .get &&
-						url_words[0] == method.name) ||
-						(req.method == .post && url_words[0] + '_post' == method.name) {
+					if (req_method_str == '' &&
+						url_words[0] == method.name && url_words.len == 1) ||
+						(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1) {
 						$if debug {
 							println('easy match method=$method.name')
 						}
