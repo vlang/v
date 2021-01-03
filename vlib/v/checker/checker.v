@@ -398,7 +398,7 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 					field.type_pos)
 			}
 			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
-			// suggestions due to f32 comparision issue. 
+			// suggestions due to f32 comparision issue.
 			if sym.kind in [.any_int, .any_float] {
 				msg := if sym.kind == .any_int {
 					'unknown type `$sym.name`.\nDid you mean `int`?'
@@ -3049,7 +3049,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			typ := c.expr(node.expr)
 			type_sym := c.table.get_type_symbol(typ)
 			if type_sym.kind != .array {
-				c.error('expected array', node.pos)
+				c.error('decomposition can only be used on arrays', node.expr.position())
+				return table.void_type
 			}
 			array_info := type_sym.info as table.Array
 			elem_type := array_info.elem_type.set_flag(.variadic)
