@@ -4,7 +4,7 @@ module flag
 pub struct Flag {
 pub:
 	name     string // name as it appears on command line
-	abbr     byte // shortcut
+	abbr     byte   // shortcut
 	usage    string // help message
 	val_desc string // something like '<arg>' that appears in usage,
 	// and also the default value, when the flag is not given

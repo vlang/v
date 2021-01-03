@@ -209,7 +209,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int = 20
+	retries int    = 20
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'

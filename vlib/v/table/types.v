@@ -713,7 +713,10 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.any_int, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_float, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+		.any_int, .any_float {
+			res = sym.name
+		}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}

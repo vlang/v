@@ -11,13 +11,13 @@ import rand
 pub struct Server {
 mut:
 	clients                 map[string]&ServerClient // clients connected to this server
-	logger                  &log.Log // logger used to log
-	ls                      net.TcpListener // listener used to get incoming connection to socket
-	accept_client_callbacks []AcceptClientFn // accept client callback functions
+	logger                  &log.Log              // logger used to log
+	ls                      net.TcpListener       // listener used to get incoming connection to socket
+	accept_client_callbacks []AcceptClientFn      // accept client callback functions
 	message_callbacks       []MessageEventHandler // new message callback functions
-	close_callbacks         []CloseEventHandler // close message callback functions
+	close_callbacks         []CloseEventHandler   // close message callback functions
 pub:
-	port                    int // port used as listen to incoming connections
+	port                    int  // port used as listen to incoming connections
 	is_ssl                  bool // true if secure connection (not supported yet on server)
 pub mut:
 	ping_interval           int = 30

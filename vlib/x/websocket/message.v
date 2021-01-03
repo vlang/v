@@ -22,13 +22,13 @@ mut:
 	header_len  int = 2
 	// size of total frame
 	frame_size  int = 2
-	fin         bool // true if final fragment of message
-	rsv1        bool // reserved for future use in websocket RFC
-	rsv2        bool // reserved for future use in websocket RFC
-	rsv3        bool // reserved for future use in websocket RFC
-	opcode      OPCode // interpretation of the payload data
-	has_mask    bool // true if the payload data is masked
-	payload_len int // payload length
+	fin         bool    // true if final fragment of message
+	rsv1        bool    // reserved for future use in websocket RFC
+	rsv2        bool    // reserved for future use in websocket RFC
+	rsv3        bool    // reserved for future use in websocket RFC
+	opcode      OPCode  // interpretation of the payload data
+	has_mask    bool    // true if the payload data is masked
+	payload_len int     // payload length
 	masking_key [4]byte // all frames from client to server is masked with this key
 }
 
