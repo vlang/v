@@ -278,18 +278,27 @@ pub fn imax(a int, b int) int {
 }
 
 pub fn replace_op(s string) string {
-	last_char := s[s.len - 1]
-	suffix := match last_char {
-		`+` { '_plus' }
-		`-` { '_minus' }
-		`*` { '_mult' }
-		`/` { '_div' }
-		`%` { '_mod' }
-		`<` { '_lt' }
-		`>` { '_gt' }
-		else { '' }
+	if s.len == 1 {
+		last_char := s[s.len - 1]
+		suffix := match last_char {
+			`+` { '_plus' }
+			`-` { '_minus' }
+			`*` { '_mult' }
+			`/` { '_div' }
+			`%` { '_mod' }
+			`<` { '_lt' }
+			`>` { '_gt' }
+			else { '' }
+		}
+		return s[..s.len - 1] + suffix
+	} else {
+		suffix := match s {
+			'==' { '_eq' }
+			'!=' { '_ne' }
+			else { '' }
+		}
+		return s[..s.len - 2] + suffix
 	}
-	return s[..s.len - 1] + suffix
 }
 
 pub fn join_env_vflags_and_os_args() []string {
