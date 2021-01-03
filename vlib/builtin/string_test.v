@@ -31,6 +31,11 @@ fn test_ends_with() {
 	assert s.ends_with('Language') == true
 	assert s.ends_with('Programming Language') == true
 	assert s.ends_with('V') == false
+
+	ms := '😅Test😁Test😴'
+	assert ms.ends_with('😴') == true
+	assert ms.ends_with('😁Test😴') == true
+	assert ms.ends_with('😅Test😁') == false
 }
 
 fn test_between() {
@@ -716,6 +721,11 @@ fn test_starts_with() {
 	assert s.starts_with('V') == true
 	assert s.starts_with('V Programming') == true
 	assert s.starts_with('Language') == false
+
+	ms := '😅Test😁Test😴'
+	assert ms.starts_with('😅') == true
+	assert ms.starts_with('😅Test😁') == true
+	assert ms.starts_with('😁Test😴') == false
 }
 
 fn test_trim_prefix() {
