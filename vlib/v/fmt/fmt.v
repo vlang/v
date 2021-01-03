@@ -588,22 +588,31 @@ mut:
 	last_line     int
 }
 
-fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, line int) {
-	if list.len == 0 || line - list[list.len - 1].last_line > 1 {
+fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int, line int) {
 		list << CommentAndExprAlignInfo{
 			max_attrs_len: attrs_len
 			max_type_len: type_len
 			first_line: line
 			last_line: line
 		}
-	} else {
-		list[list.len - 1].last_line = line
+}
+
+fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, line int) {
+	if list.len == 0 {
+		list.add_new_info(attrs_len, type_len, line)
+		return
 	}
-	if attrs_len > list[list.len - 1].max_attrs_len {
-		list[list.len - 1].max_attrs_len = attrs_len
+	i := list.len - 1
+	if line - list[i].last_line > 1 {
+		list.add_new_info(attrs_len, type_len, line)
+		return
 	}
-	if type_len > list[list.len - 1].max_type_len {
-		list[list.len - 1].max_type_len = type_len
+	list[i].last_line = line
+	if attrs_len > list[i].max_attrs_len {
+		list[i].max_attrs_len = attrs_len
+	}
+	if type_len > list[i].max_type_len {
+		list[i].max_type_len = type_len
 	}
 }
 
@@ -716,8 +725,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				default_expr_align_i++
 				align = default_expr_aligns[default_expr_align_i]
 			}
-			f.write(strings.repeat(` `, align.max_attrs_len - attrs_len + align.max_type_len -
-				field_types[i].len))
+			pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
 		}
@@ -732,8 +741,8 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 						comment_align_i++
 						align = comment_aligns[comment_align_i]
 					}
-					f.write(strings.repeat(` `, align.max_attrs_len - attrs_len + align.max_type_len -
-						field_types[i].len))
+					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+					f.write(strings.repeat(` `, pad_len))
 				}
 				f.write(' ')
 			}
