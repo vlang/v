@@ -1140,6 +1140,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 		}
 		ast.ArrayDecompose {
 			f.expr(node.expr)
+			f.write('...')
 		}
 	}
 }
