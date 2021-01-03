@@ -112,6 +112,9 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/fonts.v'
 		skip_files << 'examples/sokol/drawing.v'
 	}
+	$if macos {
+		skip_files << 'examples/database/mysql.v'
+	}
 	$if windows {
 		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
 	}
