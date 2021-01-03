@@ -1,40 +1,5 @@
-## Requirements
-
-Below are the things that are needed before using this module:
-
-### Install pkg-config
-
-For windows users, you can skip it.
-
-#### Debian/Ubuntu
-
-```sh
-sudo apt-get install pkg-config
-```
-
-#### Arch
-
-```sh
-sudo pacman -S pkg-config
-```
-
-### Install MySQL development package
-
-#### Debian/Ubuntu
-
-```sh
-sudo apt-get install libmysqlclient-dev
-```
-
-#### Arch
-
-```sh
-sudo pacman -S libmysqlclient
-```
-
-#### Windows
-
-Please install [the installer](https://dev.mysql.com/downloads/installer/) , then copy the `include` and `lib` folders to `thirdparty/mysql` on V root folder.
+For Linux, you need to install `MySQL development` package and `pkg-config`.
+For Windows, install [the installer](https://dev.mysql.com/downloads/installer/) , then copy the `include` and `lib` folders to `thirdparty/mysql` on V root folder.
 
 ## Basic Usage
 
