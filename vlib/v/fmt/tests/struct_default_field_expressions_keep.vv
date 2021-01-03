@@ -3,12 +3,12 @@ struct Foo {
 }
 
 struct Bar {
-	f Foo = &Foo(0)
+	f Foo        = &Foo(0)
 	z int [skip] = -1
 }
 
 struct Baz {
-	x int = 1 // It's one
+	x int    = 1 // It's one
 	y string = 'one' // It's one written out
-	z bool = true // Also one
+	z bool   = true // Also one
 }

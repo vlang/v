@@ -26,20 +26,20 @@ pub mut:
 	indent            int
 	empty_line        bool
 	line_len          int
-	buffering         bool // expressions will be analyzed later by adjust_complete_line() before finally written
+	buffering         bool     // expressions will be analyzed later by adjust_complete_line() before finally written
 	expr_bufs         []string // and stored here in the meantime (expr_bufs.len-1 = penalties.len = precedences.len)
-	penalties         []int // how hard should it be to break line after each expression
-	precedences       []int // operator/parenthese precedences for operator at end of each expression
-	par_level         int // how many parentheses are put around the current expression
-	array_init_break  []bool // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth  int // current level of hierarchie in array init
+	penalties         []int    // how hard should it be to break line after each expression
+	precedences       []int    // operator/parenthese precedences for operator at end of each expression
+	par_level         int      // how many parentheses are put around the current expression
+	array_init_break  []bool   // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth  int      // current level of hierarchie in array init
 	single_line_if    bool
 	cur_mod           string
 	file              ast.File
 	did_imports       bool
 	is_assign         bool
 	auto_imports      []string // automatically inserted imports that the user forgot to specify
-	import_pos        int // position of the imports in the resulting string for later autoimports insertion
+	import_pos        int      // position of the imports in the resulting string for later autoimports insertion
 	used_imports      []string // to remove unused imports
 	is_debug          bool
 	mod2alias         map[string]string // for `import time as t`, will contain: 'time'=>'t'
@@ -580,6 +580,60 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
+const (
+	threshold_to_align_struct = 8
+)
+
+struct CommentAndExprAlignInfo {
+mut:
+	max_attrs_len int
+	max_type_len  int
+	first_line    int
+	last_line     int
+}
+
+fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int, line int) {
+	list << CommentAndExprAlignInfo{
+		max_attrs_len: attrs_len
+		max_type_len: type_len
+		first_line: line
+		last_line: line
+	}
+}
+
+[inline]
+fn abs(v int) int {
+	return if v >= 0 {
+		v
+	} else {
+		-v
+	}
+}
+
+fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, line int) {
+	if list.len == 0 {
+		list.add_new_info(attrs_len, type_len, line)
+		return
+	}
+	i := list.len - 1
+	if line - list[i].last_line > 1 {
+		list.add_new_info(attrs_len, type_len, line)
+		return
+	}
+	d_len := abs(list[i].max_attrs_len - attrs_len) + abs(list[i].max_type_len - type_len)
+	if !(d_len < threshold_to_align_struct) {
+		list.add_new_info(attrs_len, type_len, line)
+		return
+	}
+	list[i].last_line = line
+	if attrs_len > list[i].max_attrs_len {
+		list[i].max_attrs_len = attrs_len
+	}
+	if type_len > list[i].max_type_len {
+		list[i].max_type_len = type_len
+	}
+}
+
 pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	f.attrs(node.attrs)
 	if node.is_pub {
@@ -605,14 +659,28 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 	}
 	f.writeln(' {')
 	mut max := 0
-	mut max_type := 0
+	mut max_type_len := 0
+	mut comment_aligns := []CommentAndExprAlignInfo{}
+	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
-	for field in node.fields {
+	for i, field in node.fields {
+		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
+		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
+			ft = f.short_module(ft)
+		}
+		field_types << ft
+		if ft.len > max_type_len {
+			max_type_len = ft.len
+		}
+		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
 		for comment in field.comments {
 			if comment.pos.pos >= end_pos {
-				break
+				if comment.pos.line_nr == field.pos.line_nr {
+					comment_aligns.add_info(attrs_len, field_types[i].len, comment.pos.line_nr)
+				}
+				continue
 			}
 			if comment.pos.pos > field.pos.pos {
 				comments_len += '/* $comment.text */ '.len
@@ -621,19 +689,16 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		if comments_len + field.name.len > max {
 			max = comments_len + field.name.len
 		}
-		mut ft := f.no_cur_mod(f.table.type_to_str(field.typ))
-		if !ft.contains('C.') && !ft.contains('JS.') && !ft.contains('fn (') {
-			ft = f.short_module(ft)
-		}
-		field_types << ft
-		if ft.len > max_type {
-			max_type = ft.len
+		if field.has_default_expr {
+			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr)
 		}
 	}
 	for embed in node.embeds {
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
+	mut comment_align_i := 0
+	mut default_expr_align_i := 0
 	for i, field in node.fields {
 		if i == node.mut_pos {
 			f.writeln('mut:')
@@ -665,11 +730,21 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		}
 		f.write(strings.repeat(` `, max - field.name.len - comments_len))
 		f.write(field_types[i])
-		if field.attrs.len > 0 {
-			f.write(strings.repeat(` `, max_type - field_types[i].len))
+		after_type_pad_len := max_type_len - field_types[i].len
+		attrs_len := inline_attrs_len(field.attrs)
+		has_attrs := field.attrs.len > 0
+		if has_attrs {
+			f.write(strings.repeat(` `, after_type_pad_len))
 			f.inline_attrs(field.attrs)
 		}
 		if field.has_default_expr {
+			mut align := default_expr_aligns[default_expr_align_i]
+			if align.last_line < field.pos.line_nr {
+				default_expr_align_i++
+				align = default_expr_aligns[default_expr_align_i]
+			}
+			pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+			f.write(strings.repeat(` `, pad_len))
 			f.write(' = ')
 			f.prefix_expr_cast_expr(field.default_expr)
 		}
@@ -678,6 +753,15 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			if comments[comm_idx].pos.line_nr > field.pos.line_nr {
 				f.writeln('')
 			} else {
+				if !field.has_default_expr {
+					mut align := comment_aligns[comment_align_i]
+					if align.last_line < field.pos.line_nr {
+						comment_align_i++
+						align = comment_aligns[comment_align_i]
+					}
+					pad_len := align.max_attrs_len - attrs_len + align.max_type_len - field_types[i].len
+					f.write(strings.repeat(` `, pad_len))
+				}
 				f.write(' ')
 			}
 			f.comments(comments[comm_idx..], level: .indent)
@@ -1228,6 +1312,21 @@ fn (mut f Fmt) inline_attrs(attrs []table.Attr) {
 		f.write('$attr')
 	}
 	f.write(']')
+}
+
+fn inline_attrs_len(attrs []table.Attr) int {
+	if attrs.len == 0 {
+		return 0
+	}
+	mut n := 2 // ' ['.len
+	for i, attr in attrs {
+		if i > 0 {
+			n += 2 // '; '.len
+		}
+		n += '$attr'.len
+	}
+	n++ // ']'.len
+	return n
 }
 
 enum CommentsLevel {
