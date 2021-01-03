@@ -580,6 +580,10 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
+const (
+	threshold_to_align_struct = 8
+)
+
 struct CommentAndExprAlignInfo {
 mut:
 	max_attrs_len int
@@ -597,6 +601,11 @@ fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int
 		}
 }
 
+[inline]
+fn abs(v int) int {
+	return if v >= 0 { v } else { -v }
+}
+
 fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, line int) {
 	if list.len == 0 {
 		list.add_new_info(attrs_len, type_len, line)
@@ -607,6 +616,12 @@ fn (mut list []CommentAndExprAlignInfo) add_info(attrs_len int, type_len int, li
 		list.add_new_info(attrs_len, type_len, line)
 		return
 	}
+	d_len := abs(list[i].max_attrs_len - attrs_len) + abs(list[i].max_type_len - type_len)
+	if !(d_len < threshold_to_align_struct) {
+		list.add_new_info(attrs_len, type_len, line)
+		return
+	}
+
 	list[i].last_line = line
 	if attrs_len > list[i].max_attrs_len {
 		list[i].max_attrs_len = attrs_len

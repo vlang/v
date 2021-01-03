@@ -1,7 +1,10 @@
 struct User {
 	name string // name
+	name2 ustring // name2
 	very_long_field bool
 	age int // age
+	very_long_type_field1 very_looooog_type // long
+	very_long_type_field2 very_loooooooong_type // long
 }
 
 struct Foo {
