@@ -154,7 +154,6 @@ fn main() {
 	tsession.test()
 	eprintln(tsession.benchmark.total_message(title))
 	if tsession.benchmark.nfail > 0 {
-		eprintln('\nWARNING: failed $tsession.benchmark.nfail times.\n')
-		exit(1)
+		panic('\nWARNING: failed $tsession.benchmark.nfail times.\n')
 	}
 }
