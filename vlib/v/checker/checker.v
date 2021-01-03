@@ -1132,6 +1132,11 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
+	if call_expr.args.len != 1 {
+		c.error('expected 1 arguments, but got $call_expr.args.len', call_expr.pos)
+		// Finish early so that it doesn't fail later
+		return
+	}
 	elem_sym := c.table.get_type_symbol(elem_typ)
 	arg_expr := call_expr.args[0].expr
 	match arg_expr {
