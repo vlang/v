@@ -26,7 +26,8 @@ const (
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
-	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains', 'index']
+	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+		'contains', 'index']
 )
 
 pub struct Checker {
@@ -1205,8 +1206,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
-	if left_type_sym.kind == .array &&
-		method_name in array_builtin_methods {
+	if left_type_sym.kind == .array && method_name in array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'

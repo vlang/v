@@ -517,7 +517,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(kind: .any_float, name: 'untyped float', cname: 'any_float', mod: 'builtin')
+	t.register_type_symbol(
+		kind: .any_float
+		name: 'untyped float'
+		cname: 'any_float'
+		mod: 'builtin'
+	)
 	t.register_type_symbol(kind: .any_int, name: 'untyped int', cname: 'any_int', mod: 'builtin')
 }
 
