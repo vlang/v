@@ -28,4 +28,3 @@ get_users_query_result.free()
 // Close the connection if needed
 connection.close()
 ```
-R
