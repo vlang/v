@@ -37,9 +37,9 @@ pub mut:
 	quote                       byte // which quote is used to denote current string: ' or "
 	inter_quote                 byte
 	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                    int // total number of lines in the source file that were scanned
-	is_vh                       bool // Keep newlines
-	is_fmt                      bool // Used for v fmt.
+	nr_lines                    int   // total number of lines in the source file that were scanned
+	is_vh                       bool  // Keep newlines
+	is_fmt                      bool  // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens

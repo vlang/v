@@ -42,15 +42,15 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	or_is_handled     bool // ignore `or` in this expression
-	builtin_mod       bool // are we in the `builtin` module?
-	mod               string // current module name
+	or_is_handled     bool         // ignore `or` in this expression
+	builtin_mod       bool         // are we in the `builtin` module?
+	mod               string       // current module name
 	attrs             []table.Attr // attributes before next decl stmt
-	expr_mod          string // for constructing full type names in parse_type()
+	expr_mod          string       // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import // mod_names
+	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
