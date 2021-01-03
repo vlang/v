@@ -1416,9 +1416,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.name_error = true
 	}
 	is_filter := field_name in ['filter', 'map']
-	if is_filter {
-		p.open_scope()
-	} else if field_name == 'sort' {
+	if is_filter || field_name == 'sort' {
 		p.open_scope()
 	}
 	// ! in mutable methods
@@ -1444,10 +1442,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
-		if is_filter && args.len != 1 {
-			p.error('needs exactly 1 argument')
-			return ast.Expr{}
-		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut or_kind := ast.OrKind.absent
