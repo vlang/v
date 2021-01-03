@@ -672,7 +672,7 @@ users.sort(a.name > b.name) // reverse sort by User.name string field
 ### Maps
 
 ```v nofmt
-mut m := map[string]int // Only maps with string keys (integer, rune or voidptr are in WIP you can use it with a warning)
+mut m := map[string]int // Only maps with string keys (integer, rune or voidptr are in WIP.  You can use it with a warning)
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
