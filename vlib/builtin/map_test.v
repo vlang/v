@@ -492,6 +492,7 @@ fn test_int_keys() {
 	same := mc == m
 	assert same
 	assert mc.len == 3
+	assert mc.keys() == [3,4,5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v

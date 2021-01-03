@@ -1256,9 +1256,21 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name == 'clone' {
-		call_expr.return_type = left_type
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+		mut ret_type := table.void_type
+		match method_name {
+			'clone' {
+				ret_type = left_type
+			}
+			'keys' {
+				info := left_type_sym.info as table.Map
+				typ := c.table.find_or_register_array(info.key_type, 1)
+				ret_type = table.Type(typ)
+			}
+			else {}
+		}
 		call_expr.receiver_type = left_type.to_ptr()
+		call_expr.return_type = ret_type
 		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
 		info := left_type_sym.info as table.Array
