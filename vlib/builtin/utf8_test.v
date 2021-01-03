@@ -7,8 +7,19 @@ fn test_utf8_char_len() {
 
 fn test_utf8_wide_char() {
 	r := `✔`
-	val := r.str().str
+	s := '✔'
+	println('r: $r')
+	println('s: $s')
+	assert utf8_char_len(r) == 1
+	assert utf8_char_len(s[0]) == 3
+	rstr := r.str()
+	println('rstr: $rstr')
+	assert s == rstr
+	//
+	val := rstr.str
 	unsafe {
-		assert '${val[0]:x}${val[1]:x}${val[2]:x}${val[3]:x}' == 'e29c940'
+		assert val[0].hex() == 'e2'
+		assert val[1].hex() == '9c'
+		assert val[2].hex() == '94'
 	}
 }
