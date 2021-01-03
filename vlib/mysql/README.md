@@ -4,6 +4,8 @@ For Windows, install [the installer](https://dev.mysql.com/downloads/installer/)
 ## Basic Usage
 
 ```v
+import mysql
+
 // Create connection
 mut connection := mysql.Connection{
   username: 'root'
@@ -12,9 +14,9 @@ mut connection := mysql.Connection{
 // Connect to server
 connection.connect() ?
 // Change the default database
-connection.select_db('users') ?
+connection.select_db('db_users') ?
 // Do a query
-get_users_query_result := connection.query("SELECT * FROM rayon") ?
+get_users_query_result := connection.query("SELECT * FROM users") ?
 
 // Get the result as maps
 for user in get_users_query_result.maps() {
