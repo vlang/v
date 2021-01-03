@@ -850,17 +850,9 @@ pub fn (s string) starts_with(prefix string) bool {
 	return s.len >= prefix.len && s[0..prefix.len].str() == prefix
 }
 
-// ends_with returns `true` if the string ends with `p`.
-pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len {
-		return false
-	}
-	for i in 0 .. p.len {
-		if p[i] != s[s.len - p.len + i] {
-			return false
-		}
-	}
-	return true
+// ends_with returns `true` if the string ends with `suffix`.
+pub fn (s string) ends_with(suffix string) bool {
+	return s.len >= suffix.len && s[s.len-suffix.len..].str() == suffix
 }
 
 // to_lower returns the string in all lowercase characters.
