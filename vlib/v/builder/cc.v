@@ -182,7 +182,7 @@ mut:
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut ccoptions := CcompilerOptions{}
 	//
-	mut debug_options := '-g3'
+	mut debug_options := '-g'
 	mut optimization_options := '-O2'
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
@@ -231,7 +231,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.is_cc_clang {
 		if ccoptions.debug_mode {
-			debug_options = '-g3 -O0'
+			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3'
 		mut have_flto := true
@@ -244,7 +244,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.is_cc_gcc {
 		if ccoptions.debug_mode {
-			debug_options = '-g3 -no-pie'
+			debug_options = '-g -no-pie'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
