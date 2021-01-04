@@ -17,6 +17,8 @@ const (
 	stderr_value = 2
 )
 
+// (Must be realized in Syscall) (Must be specified)
+// ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
 pub const (
 	s_ifmt  = 0xF000 // type of file
 	s_ifdir = 0x4000 // directory
