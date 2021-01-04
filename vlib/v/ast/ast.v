@@ -26,7 +26,7 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 pub type ScopeObject = ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
-pub type Node = ConstField | EnumField | Expr | Field | GlobalField | IfBranch | MatchBranch |
+pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch | MatchBranch |
 	ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
 
 pub struct Type {
@@ -1291,6 +1291,9 @@ pub fn (node Node) position() token.Position {
 				ConstField, GlobalField, Var { return node.pos }
 			}
 		}
+		File {
+			return token.Position{}
+		}
 	}
 }
 
@@ -1412,7 +1415,7 @@ pub fn (node Node) children() []Node {
 				children << node.stmt
 				children << node.stmts.map(Node(it))
 			}
-			IfBranch {
+			IfBranch, File {
 				return node.stmts.map(Node(it))
 			}
 			MatchBranch {

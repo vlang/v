@@ -14,9 +14,9 @@ mut:
 	data voidptr
 }
 
-pub fn (i &Inspector) visit(node ast.Node) ?Visitor {
+pub fn (i Inspector) visit(node ast.Node) ?Visitor {
 	if i.inspector_callback(node, i.data) {
-		return &i
+		return Visitor(i)
 	}
 	return none
 }
