@@ -897,7 +897,7 @@ It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x is casted to MyStruct even it's mutable
+	// x is casted to MyStruct even if it's mutable
 	// without the mut keyword that wouldn't work
 	println(x)
 }
