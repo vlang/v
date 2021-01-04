@@ -89,6 +89,13 @@ pub fn (mut cmd Command) add_command(command Command) {
 	cmd.commands << subcmd
 }
 
+pub fn (mut cmd Command) setup() {
+	for mut subcmd in cmd.commands {
+		subcmd.parent = cmd
+		subcmd.setup()
+	}
+}
+
 pub fn (mut cmd Command) add_flags(flags []Flag) {
 	for flag in flags {
 		cmd.add_flag(flag)
