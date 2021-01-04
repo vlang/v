@@ -2801,22 +2801,24 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			} else {
 				sym := c.table.get_type_symbol(typ)
 				if sym.kind == .struct_ {
-						// iterators
-						next_fn := sym.find_method('next') or {
-							c.error('a struct must have a `next()` method to be an iterator', node.cond.position())
-							return
-						}
-						if !next_fn.return_type.has_flag(.optional) {
-							c.error('iterator method `next()` must return an optional', node.cond.position())
-						}
-						if next_fn.params.len != 1 /* the receiver */ {
-							c.error('iterator method `next()` must have 0 parameters', node.cond.position())
-						}
-						val_type := next_fn.return_type.clear_flag(.optional)
-						node.cond_type = typ
-						node.kind = sym.kind
-						node.val_type = val_type
-						node.scope.update_var_type(node.val_var, val_type)
+					// iterators
+					next_fn := sym.find_method('next') or {
+						c.error('a struct must have a `next()` method to be an iterator',
+							node.cond.position())
+						return
+					}
+					if !next_fn.return_type.has_flag(.optional) {
+						c.error('iterator method `next()` must return an optional', node.cond.position())
+					}
+					// the receiver
+					if next_fn.params.len != 1 {
+						c.error('iterator method `next()` must have 0 parameters', node.cond.position())
+					}
+					val_type := next_fn.return_type.clear_flag(.optional)
+					node.cond_type = typ
+					node.kind = sym.kind
+					node.val_type = val_type
+					node.scope.update_var_type(node.val_var, val_type)
 				} else {
 					if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
 						c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +

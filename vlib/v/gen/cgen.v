@@ -1307,7 +1307,10 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 	} else if it.kind == .struct_ {
 		cond_type_sym := g.table.get_type_symbol(it.cond_type)
-		next_fn := cond_type_sym.find_method('next') or { verror('next method not found') return }
+		next_fn := cond_type_sym.find_method('next') or {
+			verror('`next` method not found')
+			return
+		}
 		ret_typ := next_fn.return_type
 		g.writeln('while (1) {')
 		g.indent++
