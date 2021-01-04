@@ -247,16 +247,17 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos              token.Position
-	is_short         bool
+	pos                  token.Position
+	is_short             bool
 pub mut:
-	pre_comments     []Comment
-	typ              table.Type
-	update_expr      Expr
-	update_expr_type table.Type
-	has_update_expr  bool
-	fields           []StructInitField
-	embeds           []StructInitEmbed
+	pre_comments         []Comment
+	typ                  table.Type
+	update_expr          Expr
+	update_expr_type     table.Type
+	update_expr_comments []Comment
+	has_update_expr      bool
+	fields               []StructInitField
+	embeds               []StructInitEmbed
 }
 
 // import statement

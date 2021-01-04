@@ -336,6 +336,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	saved_is_amp := p.is_amp
 	p.is_amp = false
 	mut update_expr := ast.Expr{}
+	mut update_expr_comments := []ast.Comment{}
 	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
@@ -353,6 +354,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
 			p.check(.ellipsis)
 			update_expr = p.expr(0)
+			update_expr_comments << p.eat_line_end_comments()
 			has_update_expr = true
 		} else {
 			first_field_pos := p.tok.position()
@@ -394,6 +396,7 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		typ: typ
 		fields: fields
 		update_expr: update_expr
+		update_expr_comments: update_expr_comments
 		has_update_expr: has_update_expr
 		pos: token.Position{
 			line_nr: first_pos.line_nr
