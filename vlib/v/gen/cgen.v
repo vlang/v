@@ -1313,20 +1313,19 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 		}
 		ret_typ := next_fn.return_type
 		g.writeln('while (1) {')
-		g.indent++
 		t := g.new_tmp_var()
 		receiver_styp := g.typ(next_fn.params[0].typ)
 		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
-		g.write('${g.typ(ret_typ)} $t = ${fn_name}(')
+		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
 		if !it.cond_type.is_ptr() {
 			g.write('&')
 		}
 		g.expr(it.cond)
 		g.writeln(');')
-		g.write('if (!${t}.ok) { break; }')
+		g.writeln('\tif (!${t}.ok) { break; }')
 		val := if it.val_var in ['', '_'] { g.new_tmp_var() } else { it.val_var }
 		val_styp := g.typ(it.val_type)
-		g.writeln('$val_styp $val = *($val_styp*)${t}.data;')
+		g.writeln('\t$val_styp $val = *($val_styp*)${t}.data;')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
