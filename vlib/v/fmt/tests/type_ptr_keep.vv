@@ -1,19 +1,15 @@
 const (
 	x  = &Test{}
 	y  = []&Test{}
-	z  = &[]&Test{}
 	xx = &&Test{}
 	yy = []&&Test{}
-	zz = &&[]&&Test{}
 )
 
 fn test_type_ptr() {
 	_ := &Test{}
 	_ := []&Test{}
-	_ := &[]&Test{}
 	_ := &&Test{}
 	_ := []&&Test{}
-	_ := &&[]&&Test{}
 }
 
 struct Test {

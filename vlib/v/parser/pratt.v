@@ -127,6 +127,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
+			} else if p.is_amp && p.peek_tok.kind == .rsbr {
+				pos := p.tok.position()
+				typ := p.parse_type().to_ptr()
+				p.check(.lpar)
+				expr := p.expr(0)
+				p.check(.rpar)
+				node = ast.CastExpr{
+					typ: typ
+					expr: expr
+					pos: pos
+				}
 			} else {
 				node = p.array_init()
 			}

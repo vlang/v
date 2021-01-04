@@ -427,12 +427,23 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 		arg_sym := c.table.get_type_symbol(arg.typ)
 		param_type_sym := c.table.get_type_symbol(param.typ)
 		if arg_sym.kind == .array && param_type_sym.kind == .array {
-			param_info := param_type_sym.info as table.Array
-			if param_info.elem_type.has_flag(.generic) {
-				arg_info := arg_sym.info as table.Array
-				typ = arg_info.elem_type
-				break
+			mut arg_elem_info := arg_sym.info as table.Array
+			mut param_elem_info := param_type_sym.info as table.Array
+			mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+			mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+			for {
+				if arg_elem_sym.kind == .array &&
+					param_elem_sym.kind == .array && param_elem_sym.name != 'T' {
+					arg_elem_info = arg_elem_sym.info as table.Array
+					arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+					param_elem_info = param_elem_sym.info as table.Array
+					param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+				} else {
+					typ = arg_elem_info.elem_type
+					break
+				}
 			}
+			break
 		}
 	}
 	if typ == table.void_type {
