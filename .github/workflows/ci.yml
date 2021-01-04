@@ -100,6 +100,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: ./v -silent test-fixed
     - name: Test time functions in a timezone UTC-12
@@ -190,6 +194,10 @@ jobs:
 #      run: ./v build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
@@ -267,6 +275,10 @@ jobs:
       run: |
         ./v -o v2 -usecache cmd/v
         ./v -usecache examples/tetris/tetris.v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -348,6 +360,10 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
       run: ./v -o v2 -usecache cmd/v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -488,6 +504,10 @@ jobs:
       - name: Build V
         run: |
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
         run: |
           ./v -silent test-fixed
@@ -549,6 +569,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed
@@ -587,6 +611,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
@@ -619,6 +647,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        .\v.exe cmd/tools/test_if_v_test_system_works.v
+        .\cmd\tools\test_if_v_test_system_works.exe
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed
