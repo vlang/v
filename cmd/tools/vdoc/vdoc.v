@@ -41,9 +41,8 @@ const (
 	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
-	html_content    = '
-	<!DOCTYPE html>
-	<html lang="en">
+	html_content    = '<!DOCTYPE html>
+<html lang="en">
 	<head>
 		<meta charset="UTF-8">
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
@@ -85,7 +84,7 @@ const (
 			<div class="doc-scrollview">
 				<div class="doc-container">
 					<div class="doc-content">
-						{{ contents }}
+{{ contents }}
 						<div class="footer">
 							{{ footer_content }}
 						</div>
@@ -97,8 +96,8 @@ const (
 		{{ footer_assets }}
 		<script async src="search_index.js" type="text/javascript"></script>
 	</body>
-	</html>
-	'
+</html>'
+	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 )
 
 enum OutputType {
@@ -406,12 +405,12 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	sym_name := get_sym_name(dd)
 	node_id := get_node_id(dd)
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
-			dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write('<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -421,6 +420,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if !head && dd.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
+	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	dnw.writeln('$md_content\n</section>')
 	dnw_str := dnw.str()
 	defer {
@@ -460,7 +460,11 @@ fn (cfg DocConfig) readme_idx() int {
 fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
-		toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		if dn.children[0].name == '' {
+			toc_slug = slug(dn.name)
+		} else {
+			toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		}
 	}
 	if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
@@ -559,12 +563,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
-			'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		'\n${tabs[0]}<style>' + cfg.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + cfg.assets['normalize_css'] +
+			'</style>\n${tabs[0]}<script>' + cfg.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] +
-			'"></script>'
+		'\n${tabs[0]}<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + cfg.assets['dark_mode_js'] + '"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {

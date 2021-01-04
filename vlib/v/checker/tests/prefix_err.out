@@ -1,50 +1,57 @@
-vlib/v/checker/tests/prefix_err.vv:1:6: error: cannot take the address of a bool
+vlib/v/checker/tests/prefix_err.vv:1:6: error: cannot take the address of a bool literal
     1 | b := &true
       |      ^
     2 | _ := &10
     3 | _ := &"Hi"
-vlib/v/checker/tests/prefix_err.vv:2:6: error: cannot take the address of an int
+vlib/v/checker/tests/prefix_err.vv:2:6: error: cannot take the address of an int literal
     1 | b := &true
     2 | _ := &10
       |      ^
     3 | _ := &"Hi"
     4 | _ := &"${b}"
-vlib/v/checker/tests/prefix_err.vv:3:6: error: cannot take the address of a string
+vlib/v/checker/tests/prefix_err.vv:3:6: error: cannot take the address of a string literal
     1 | b := &true
     2 | _ := &10
     3 | _ := &"Hi"
       |      ^
     4 | _ := &"${b}"
-    5 |
-vlib/v/checker/tests/prefix_err.vv:4:6: error: cannot take the address of a string
+    5 | _ := &`c`
+vlib/v/checker/tests/prefix_err.vv:4:6: error: cannot take the address of a string literal
     2 | _ := &10
     3 | _ := &"Hi"
     4 | _ := &"${b}"
       |      ^
-    5 |
-    6 | a := 1
-vlib/v/checker/tests/prefix_err.vv:7:5: error: invalid indirect of `int`
-    5 |
-    6 | a := 1
-    7 | _ = *a
+    5 | _ := &`c`
+    6 | _ := 12.3
+vlib/v/checker/tests/prefix_err.vv:5:6: error: cannot take the address of a char literal
+    3 | _ := &"Hi"
+    4 | _ := &"${b}"
+    5 | _ := &`c`
+      |      ^
+    6 | _ := 12.3
+    7 |
+vlib/v/checker/tests/prefix_err.vv:9:5: error: invalid indirect of `int`
+    7 | 
+    8 | a := 1
+    9 | _ = *a
       |     ^
-    8 | a <- 4
-    9 |
-vlib/v/checker/tests/prefix_err.vv:8:1: error: cannot push on non-channel `int`
-    6 | a := 1
-    7 | _ = *a
-    8 | a <- 4
+   10 | a <- 4
+   11 |
+vlib/v/checker/tests/prefix_err.vv:10:1: error: cannot push on non-channel `int`
+    8 | a := 1
+    9 | _ = *a
+   10 | a <- 4
       | ^
-    9 |
-   10 | _ = ~true
-vlib/v/checker/tests/prefix_err.vv:10:5: error: operator ~ only defined on int types
-    8 | a <- 4
-    9 |
-   10 | _ = ~true
+   11 | 
+   12 | _ = ~true
+vlib/v/checker/tests/prefix_err.vv:12:5: error: operator ~ only defined on int types
+   10 | a <- 4
+   11 | 
+   12 | _ = ~true
       |     ^
-   11 | _ = !4
-vlib/v/checker/tests/prefix_err.vv:11:5: error: ! operator can only be used with bool types
-    9 |
-   10 | _ = ~true
-   11 | _ = !4
+   13 | _ = !4
+vlib/v/checker/tests/prefix_err.vv:13:5: error: ! operator can only be used with bool types
+   11 | 
+   12 | _ = ~true
+   13 | _ = !4
       |     ^

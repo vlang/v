@@ -1,18 +1,18 @@
 vlib/v/checker/tests/match_undefined_cond.vv:4:15: error: undefined ident: `Asd`
-    2 |
+    2 | 
     3 | fn main() {
     4 |     res := match Asd {
       |                  ~~~
     5 |         1 { 'foo' }
     6 |         2 { 'test' }
-vlib/v/checker/tests/match_undefined_cond.vv:5:3: error: cannot match `any_int` with `void` condition
+vlib/v/checker/tests/match_undefined_cond.vv:5:3: error: cannot match `int literal` with `void` condition
     3 | fn main() {
     4 |     res := match Asd {
     5 |         1 { 'foo' }
       |         ^
     6 |         2 { 'test' }
     7 |         else { '' }
-vlib/v/checker/tests/match_undefined_cond.vv:6:3: error: cannot match `any_int` with `void` condition
+vlib/v/checker/tests/match_undefined_cond.vv:6:3: error: cannot match `int literal` with `void` condition
     4 |     res := match Asd {
     5 |         1 { 'foo' }
     6 |         2 { 'test' }

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/if_expr_mismatch.vv:2:7: error: mismatched types `string` and `any_int` 
+vlib/v/checker/tests/if_expr_mismatch.vv:2:7: error: mismatched types `string` and `int literal`
     1 | fn main() {
     2 |     s := if true { '12' } else { 12 }
       |          ~~

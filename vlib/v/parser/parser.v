@@ -42,15 +42,15 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	or_is_handled     bool // ignore `or` in this expression
-	builtin_mod       bool // are we in the `builtin` module?
-	mod               string // current module name
+	or_is_handled     bool         // ignore `or` in this expression
+	builtin_mod       bool         // are we in the `builtin` module?
+	mod               string       // current module name
 	attrs             []table.Attr // attributes before next decl stmt
-	expr_mod          string // for constructing full type names in parse_type()
+	expr_mod          string       // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import // mod_names
+	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
@@ -1416,9 +1416,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		p.name_error = true
 	}
 	is_filter := field_name in ['filter', 'map']
-	if is_filter {
-		p.open_scope()
-	} else if field_name == 'sort' {
+	if is_filter || field_name == 'sort' {
 		p.open_scope()
 	}
 	// ! in mutable methods
@@ -1444,10 +1442,6 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
-		if is_filter && args.len != 1 {
-			p.error('needs exactly 1 argument')
-			return ast.Expr{}
-		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut or_kind := ast.OrKind.absent

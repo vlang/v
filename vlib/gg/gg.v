@@ -38,11 +38,11 @@ pub:
 	borderless_window     bool
 	always_on_top         bool
 	bg_color              gx.Color
-	init_fn               FNCb = voidptr(0)
-	frame_fn              FNCb = voidptr(0)
-	cleanup_fn            FNCb = voidptr(0)
-	fail_fn               FNFail = voidptr(0)
-	event_fn              FNEvent = voidptr(0)
+	init_fn               FNCb      = voidptr(0)
+	frame_fn              FNCb      = voidptr(0)
+	cleanup_fn            FNCb      = voidptr(0)
+	fail_fn               FNFail    = voidptr(0)
+	event_fn              FNEvent   = voidptr(0)
 	keydown_fn            FNKeyDown = voidptr(0)
 	// special case of event_fn
 	char_fn               FNChar = voidptr(0)

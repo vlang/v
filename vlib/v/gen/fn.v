@@ -47,7 +47,7 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 	}
 	//
 	mut name := it.name
-	if name[0] in [`+`, `-`, `*`, `/`, `%`, `<`, `>`] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!='] {
 		name = util.replace_op(name)
 	}
 	if it.is_method {
@@ -407,6 +407,10 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	if left_sym.kind == .chan {
 		if node.name in ['close', 'try_pop', 'try_push'] {
 			name = 'sync__Channel_$node.name'
+		}
+	} else if left_sym.kind == .map {
+		if node.name == 'keys' {
+			name = 'map_keys_1'
 		}
 	}
 	// Check if expression is: arr[a..b].clone(), arr[a..].clone()
