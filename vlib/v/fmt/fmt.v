@@ -2054,11 +2054,6 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		init_start := f.out.len
 		f.indent++
-		if it.has_update_expr {
-			f.write('...')
-			f.expr(it.update_expr)
-			f.writeln('')
-		}
 		short_args_loop: for {
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
 			if it.has_update_expr {
