@@ -1,0 +1,17 @@
+struct Foo {
+	name string
+	age  int
+}
+
+struct Foo2 {}
+
+fn main() {
+	f := Foo{
+		name: 'test'
+		age: 18
+	}
+	f2 := Foo{
+		name: 'f2'
+		...f
+	}
+}
