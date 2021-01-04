@@ -1767,8 +1767,19 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = typ
 			return typ
 		} else if return_sym.kind == .array && return_sym.name.contains('T') {
-			elem_info := return_sym.info as table.Array
-			idx := c.table.find_or_register_array(call_expr.generic_type, elem_info.nr_dims + 1)
+			mut info := return_sym.info as table.Array
+			mut sym := c.table.get_type_symbol(info.elem_type)
+			mut dims := 1
+			for {
+				if sym.kind == .array {
+					info = sym.info as table.Array
+					sym = c.table.get_type_symbol(info.elem_type)
+					dims++
+				} else {
+					break
+				}
+			}
+			idx := c.table.find_or_register_array(call_expr.generic_type, dims)
 			typ := table.new_type(idx)
 			call_expr.return_type = typ
 			return typ
