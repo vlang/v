@@ -151,7 +151,7 @@ fn (mut cb Clipboard) set_text(text string) bool {
 	} else {
 		// EmptyClipboard must be called to properly update clipboard ownership
 		C.EmptyClipboard()
-		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == C.HANDLE(C.NULL) {
+		if C.SetClipboardData(C.CF_UNICODETEXT, &buf) == C.HANDLE(C.NULL) {
 			println('SetClipboardData: Failed.')
 			C.CloseClipboard()
 			C.GlobalFree(buf)
