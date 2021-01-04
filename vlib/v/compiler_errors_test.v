@@ -8,9 +8,10 @@ import runtime
 import benchmark
 
 const (
-	skip_files = [
+	skip_files     = [
 		'vlib/v/checker/tests/custom_comptime_define_if_flag.vv',
 	]
+	should_autofix = os.getenv('VAUTOFIX') != ''
 )
 
 struct TaskDescription {
@@ -101,7 +102,7 @@ fn (mut tasks []TaskDescription) run() {
 		if tasks[i].path in m_skip_files {
 			tasks[i].is_skipped = true
 		}
-		unsafe {work.push(&tasks[i])}
+		unsafe { work.push(&tasks[i]) }
 	}
 	work.close()
 	for _ in 0 .. vjobs {
@@ -163,9 +164,8 @@ fn (mut task TaskDescription) execute() {
 	program := task.path
 	cli_cmd := '$task.vexe $task.voptions $program'
 	res := os.exec(cli_cmd) or { panic(err) }
-	mut expected := os.read_file(program.replace('.vv', '') + task.result_extension) or {
-		panic(err)
-	}
+	expected_out_path := program.replace('.vv', '') + task.result_extension
+	mut expected := os.read_file(expected_out_path) or { panic(err) }
 	task.expected = clean_line_endings(expected)
 	task.found___ = clean_line_endings(res.output)
 	$if windows {
@@ -175,6 +175,9 @@ fn (mut task TaskDescription) execute() {
 	}
 	if task.expected != task.found___ {
 		task.is_error = true
+		if should_autofix {
+			os.write_file(expected_out_path, res.output)
+		}
 	}
 }
 

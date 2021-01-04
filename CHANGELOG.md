@@ -2,6 +2,7 @@
 *Not yet released*
 - `vweb` now uses struct embedding: `app.vweb.text('hello') => app.text('hello')`.
 - Consts can now be declared outside of `const()` blocks: `const x = 0`.
+- Allow overloading of  `>`, `<`, `!=` and `==` operators.
 
 ## V 0.2.1
 - Hashmap bootstrapping fixes.

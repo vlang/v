@@ -178,7 +178,7 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 		c.error('invalid operation: shift of type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
-		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
+		c.error('cannot shift non-integer type `${c.table.get_type_symbol(right_type).name}` into type `${c.table.get_type_symbol(left_type).name}`',
 			right_pos)
 		return table.void_type
 	}

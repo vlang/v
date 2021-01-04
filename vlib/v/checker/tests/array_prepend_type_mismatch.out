@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_prepend_type_mismatch.vv:3:12: error: cannot prepend `any_float` to `[]int`
+vlib/v/checker/tests/array_prepend_type_mismatch.vv:3:12: error: cannot prepend `float literal` to `[]int`
     1 | fn main() {
     2 |     mut a := [1, 2]
     3 |     a.prepend(2.3)

@@ -646,7 +646,7 @@ pub fn (m &map) keys() []string {
 }
 
 // Returns all keys in the map.
-pub fn (m &map) keys_1() array {
+fn (m &map) keys_1() array {
 	mut keys := __new_array(m.len, 0, m.key_bytes)
 	mut item := unsafe { byteptr(keys.data) }
 	if m.key_values.deletes == 0 {
@@ -674,7 +674,7 @@ pub fn (m &map) keys_1() array {
 
 // warning: only copies keys, does not clone
 [unsafe]
-pub fn (d &DenseArray) clone() DenseArray {
+fn (d &DenseArray) clone() DenseArray {
 	res := DenseArray{
 		key_bytes: d.key_bytes
 		value_bytes: d.value_bytes

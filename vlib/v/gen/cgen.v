@@ -54,28 +54,28 @@ mut:
 	file                             ast.File
 	fn_decl                          &ast.FnDecl // pointer to the FnDecl we are currently inside otherwise 0
 	last_fn_c_name                   string
-	tmp_count                        int // counter for unique tmp vars (_tmp1, tmp2 etc)
-	tmp_count2                       int // a separate tmp var counter for autofree fn calls
+	tmp_count                        int  // counter for unique tmp vars (_tmp1, tmp2 etc)
+	tmp_count2                       int  // a separate tmp var counter for autofree fn calls
 	is_c_call                        bool // e.g. `C.printf("v")`
 	is_assign_lhs                    bool // inside left part of assign expr (for array_set(), etc)
 	is_assign_rhs                    bool // inside right part of assign after `=` (val expr)
 	is_array_set                     bool
-	is_amp                           bool // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
-	is_sql                           bool // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
-	is_shared                        bool // for initialization of hidden mutex in `[rw]shared` literals
-	is_vlines_enabled                bool // is it safe to generate #line directives when -g is passed
-	vlines_path                      string // set to the proper path for generating #line directives
+	is_amp                           bool     // for `&Foo{}` to merge PrefixExpr `&` and StructInit `Foo{}`; also for `&byte(0)` etc
+	is_sql                           bool     // Inside `sql db{}` statement, generating sql instead of C (e.g. `and` instead of `&&` etc)
+	is_shared                        bool     // for initialization of hidden mutex in `[rw]shared` literals
+	is_vlines_enabled                bool     // is it safe to generate #line directives when -g is passed
+	vlines_path                      string   // set to the proper path for generating #line directives
 	optionals                        []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals               []string // types for `x := <-ch or {...}`
-	shareds                          []int // types with hidden mutex for which decl has been emitted
-	inside_ternary                   int // ?: comma separated statements on a single line
-	inside_map_postfix               bool // inside map++/-- postfix expr
-	inside_map_infix                 bool // inside map<</+=/-= infix expr
+	shareds                          []int    // types with hidden mutex for which decl has been emitted
+	inside_ternary                   int      // ?: comma separated statements on a single line
+	inside_map_postfix               bool     // inside map++/-- postfix expr
+	inside_map_infix                 bool     // inside map<</+=/-= infix expr
 	// inside_if_expr        bool
 	ternary_names                    map[string]string
 	ternary_level_names              map[string][]string
 	stmt_path_pos                    []int // positions of each statement start, for inserting C statements before the current statement
-	skip_stmt_pos                    bool // for handling if expressions + autofree (since both prepend C statements)
+	skip_stmt_pos                    bool  // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt                     bool
 	autofree                         bool
 	indent                           int
@@ -91,7 +91,7 @@ mut:
 	map_fn_definitions               []string // map equality functions that have been defined
 	struct_fn_definitions            []string // struct equality functions that have been defined
 	auto_fn_definitions              []string // auto generated functions defination list
-	is_json_fn                       bool // inside json.encode()
+	is_json_fn                       bool     // inside json.encode()
 	json_types                       []string // to avoid json gen duplicates
 	pcs                              []ProfileCounterMeta // -prof profile counter fn_names => fn counter name
 	is_builtin_mod                   bool
@@ -129,7 +129,7 @@ mut:
 	// sum type deref needs to know which index to deref because unions take care of the correct field
 	aggregate_type_idx               int
 	returned_var_name                string // to detect that a var doesn't need to be freed since it's being returned
-	branch_parent_pos                int // used in BranchStmt (continue/break) for autofree stop position
+	branch_parent_pos                int    // used in BranchStmt (continue/break) for autofree stop position
 	timers                           &util.Timers = util.new_timers(false)
 	force_main_console               bool // true when [console] used on fn main()
 }
@@ -2868,6 +2868,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		return
 	}
 	right_sym := g.table.get_type_symbol(node.right_type)
+	has_eq_overloaded := !left_sym.has_method('==')
+	has_ne_overloaded := !left_sym.has_method('!=')
 	unaliased_right := if right_sym.kind == .alias {
 		(right_sym.info as table.Alias).parent_type
 	} else {
@@ -3006,7 +3008,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 		g.expr(node.right)
 		g.write(')')
-	} else if node.op in [.eq, .ne] && left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+	} else if node.op in [.eq, .ne] &&
+		left_sym.kind == .struct_ && right_sym.kind == .struct_ && has_eq_overloaded && has_ne_overloaded {
 		ptr_typ := g.gen_struct_equality_fn(left_type)
 		if node.op == .eq {
 			g.write('${ptr_typ}_struct_eq(')
@@ -3154,13 +3157,16 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else {
 		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
-			left_sym.kind != .enum_
+			left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt] && ((a && b) || c || d) {
+		// Do not generate operator overloading with these `right_sym.kind`.
+		e := right_sym.kind !in [.voidptr, .any_int, .int]
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne] &&
+			((a && b && e) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
 				left_type
