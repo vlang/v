@@ -1,8 +1,8 @@
-struct Msg {
-	name string
-	text string
-}
-ms := &Msg{}
+import flag
 
-fn (m &Msg) one() { 
-}
+_ = fn (name string) 
+_ = fn (name string) {}
+_ = fn (name string) flag.Flag
+_ = fn (name string) flag.Flag {return {}}
+_ = fn (name string) "hi" + name
+
