@@ -522,6 +522,7 @@ pub fn atof64(s string) f64 {
 
 	res_parsing,pn = parser(s + ' ') // TODO: need an extra char for now
 	// println(pn)
+	unsafe {
 	match res_parsing {
 		parser_ok {
 			res.u = converter(mut pn)
@@ -539,6 +540,8 @@ pub fn atof64(s string) f64 {
 			res.u = double_minus_infinity
 		}
 		else {
-		}}
+		}
+	}
 	return res.f
+	}
 }
