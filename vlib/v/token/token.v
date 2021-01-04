@@ -316,7 +316,7 @@ pub fn (t Kind) str() string {
 }
 
 pub fn (t Token) str() string {
-	return '$t.kind.str() "$t.lit"'
+	return '$t.kind.str() "$t.lit" line $t.line_nr'
 }
 
 // Representation of highest and lowest precedence
