@@ -13,11 +13,15 @@
 </div>
 <div align="center">
 
-[![Build Status][WorkflowBadge]][WorkflowUrl]
-[![Sponsor][SponsorBadge]][SponsorUrl]
-[![Patreon][PatreonBadge]][PatreonUrl]
-[![Discord][DiscordBadge]][DiscordUrl]
-[![Twitter][TwitterUrl]][TwitterBadge]
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/sponsors/medvednikov)
+[![Patreon](https://img.shields.io/badge/Patreon-F96854?style=for-the-badge&logo=patreon&logoColor=white)](https://patreon.com/vlang)
+[![Twitter](https://img.shields.io/badge/Twitter-1DA1F2?style=for-the-badge&logo=twitter&logoColor=white)](https://twitter.com/v_language)
+[![Discord](https://img.shields.io/badge/Discord-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/vlang)
+[![GitHub branch checks state](https://img.shields.io/github/checks-status/vlang/v/master?style=for-the-badge)](https://github.com/vlang/v/master)
+<!-- failed to check workflow name -->
+<!-- 
+[![Build Statu](https://img.shields.io/appveyor/build/vlang/v?style=for-the-badge)](https://github.com/vlang/v/commits/master) -->
 
 </div>
 
@@ -254,15 +258,3 @@ https://github.com/vlang/gitly
 ## Troubleshooting
 
 Please see the [Troubleshooting](https://github.com/vlang/v/wiki/Troubleshooting) section on our [wiki page](https://github.com/vlang/v/wiki)
-
-[WorkflowBadge]: https://github.com/vlang/v/workflows/CI/badge.svg
-[DiscordBadge]: https://img.shields.io/discord/592103645835821068?label=Discord&logo=discord&logoColor=white
-[PatreonBadge]: https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.vercel.app%2Fapi%3Fusername%3Dvlang%26type%3Dpledges
-[SponsorBadge]: https://camo.githubusercontent.com/da8bc40db5ed31e4b12660245535b5db67aa03ce/68747470733a2f2f696d672e736869656c64732e696f2f7374617469632f76313f6c6162656c3d53706f6e736f72266d6573736167653d254532253944254134266c6f676f3d476974487562
-[TwitterBadge]: https://twitter.com/v_language
-
-[WorkflowUrl]: https://github.com/vlang/v/commits/master
-[DiscordUrl]: https://discord.gg/vlang
-[PatreonUrl]: https://patreon.com/vlang
-[SponsorUrl]: https://github.com/sponsors/medvednikov
-[TwitterUrl]: https://img.shields.io/twitter/follow/v_language.svg?style=flatl&label=Follow&logo=twitter&logoColor=white&color=1da1f2
