@@ -75,7 +75,7 @@ pub:
 pub struct StringInterLiteral {
 pub:
 	vals       []string // the string literal will be split by `$xxx` in vals array
-	exprs      []Expr // all `$xxx` in string literal
+	exprs      []Expr   // all `$xxx` in string literal
 	fwidths    []int
 	precisions []int
 	pluss      []bool
@@ -626,7 +626,7 @@ pub mut:
 	return_type   table.Type
 	cond_type     table.Type // type of `x` in `match x {`
 	expected_type table.Type // for debugging only
-	is_sum_type   bool // true, if match sum type valiable
+	is_sum_type   bool       // true, if match sum type valiable
 }
 
 pub struct MatchBranch {
@@ -766,7 +766,7 @@ pub mut:
 // as cast statement
 pub struct AsCast {
 pub:
-	expr      Expr // `x` in `x as int`
+	expr      Expr       // `x` in `x as int`
 	typ       table.Type // `int` in `x as int`
 	pos       token.Position
 pub mut:
@@ -1018,9 +1018,9 @@ pub:
 // create new variable by associate variable,`new_var := { var_name | key: val, key: val }`
 pub struct Assoc {
 pub:
-	var_name string // `var_name`
+	var_name string   // `var_name`
 	fields   []string // `key`
-	exprs    []Expr // `val`
+	exprs    []Expr   // `val`
 	pos      token.Position
 pub mut:
 	typ      table.Type
