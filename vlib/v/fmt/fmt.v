@@ -831,10 +831,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
-	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
 		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
-			ce = fexpr.right as ast.CastExpr
+			mut ce := fexpr.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -2055,6 +2054,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		init_start := f.out.len
 		f.indent++
+		if it.has_update_expr {
+			f.write('...')
+			f.expr(it.update_expr)
+			f.writeln('')
+		}
 		short_args_loop: for {
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
 			if it.has_update_expr {

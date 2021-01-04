@@ -49,13 +49,6 @@ fn test_parse_rfc2822_invalid() {
 }
 
 fn test_parse_iso8601() {
-	// Because the offset between local time and UTC is not constant in regions
-	// that use daylight saving times we need to calculate separete offsets for
-	// summer and winter
-	offset_summer := time.Duration(time.new_time(year: 2020, month: 6, day: 5, hour: 15).local() -
-		time.new_time(year: 2020, month: 6, day: 5, hour: 15))
-	offset_winter := time.Duration(time.new_time(year: 2020, month: 11, day: 5, hour: 15).local() -
-		time.new_time(year: 2020, month: 11, day: 5, hour: 15))
 	formats := [
 		'2020-06-05T15:38:06Z',
 		'2020-06-05T15:38:06.015959Z',
@@ -77,23 +70,20 @@ fn test_parse_iso8601() {
 			assert false
 			continue
 		}
-		data := times[i]
-		t2 := time.new_time(
-			year: data[0]
-			month: data[1]
-			day: data[2]
-			hour: data[3]
-			minute: data[4]
-			second: data[5]
-			microsecond: data[6]
-		).add(if i <= 4 { offset_summer } else { offset_winter })
-		assert t.year == t2.year
-		assert t.month == t2.month
-		assert t.day == t2.day
-		assert t.hour == t2.hour
-		assert t.minute == t2.minute
-		assert t.second == t2.second
-		assert t.microsecond == t2.microsecond
+		year := times[i][0]
+		assert t.year == year
+		month := times[i][1]
+		assert t.month == month
+		day := times[i][2]
+		assert t.day == day
+		hour := times[i][3]
+		assert t.hour == hour
+		minute := times[i][4]
+		assert t.minute == minute
+		second := times[i][5]
+		assert t.second == second
+		microsecond := times[i][6]
+		assert t.microsecond == microsecond
 	}
 }
 

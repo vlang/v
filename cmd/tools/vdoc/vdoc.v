@@ -403,7 +403,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dd)
-	node_id := get_node_id(dd)
+	node_id := if head { 'head_' + get_node_id(dd) } else { get_node_id(dd) }
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
 	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {

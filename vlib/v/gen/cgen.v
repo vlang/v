@@ -1320,7 +1320,8 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to union sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
+	got_type := g.table.mktyp(got_type_raw)
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
