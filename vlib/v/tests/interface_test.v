@@ -205,7 +205,7 @@ fn (b Boss) speak() {
 	println("i'm $b.name")
 }
 
-fn (b Boss) return_speaker() Speaker2 {
+fn (b &Boss) return_speaker() Speaker2 {
 	return b
 }
 
