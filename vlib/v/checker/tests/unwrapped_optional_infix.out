@@ -1,0 +1,5 @@
+vlib/v/checker/tests/unwrapped_optional_infix.vv:5:16: error: unwrapped optional cannot be used in an infix expression
+    3 | }
+    4 | 
+    5 | println(test() == "")
+      |                ~~

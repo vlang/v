@@ -50,7 +50,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		}
 	}
 	p.check(.lpar)
-	mut args := p.call_args()
+	args := p.call_args()
 	last_pos := p.tok.position()
 	p.check(.rpar)
 	// ! in mutable methods
@@ -125,7 +125,18 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		}
 		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
-		e := p.expr(0)
+		mut e := p.expr(0)
+		if p.tok.kind == .ellipsis {
+			p.next()
+			e = ast.ArrayDecompose{
+				expr: e
+				pos: p.tok.position()
+			}
+		}
+		if mut e is ast.StructInit {
+			e.pre_comments << comments
+			comments = []ast.Comment{}
+		}
 		pos := arg_start_pos.extend(p.prev_tok.position())
 		comments << p.eat_comments()
 		args << ast.CallArg{
@@ -259,7 +270,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod] {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne] &&
+		p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -413,6 +425,11 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
 	p.check(.key_fn)
+	if p.pref.is_script && p.tok.kind == .name {
+		p.error_with_pos('function declarations in script mode should be before all script statements',
+			p.tok.position())
+		return ast.AnonFn{}
+	}
 	p.open_scope()
 	// TODO generics
 	args, _, is_variadic := p.fn_args()
@@ -477,7 +494,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		p.tok.lit
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
+		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
@@ -529,7 +547,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				arg_type = arg_type.set_flag(.variadic)
+				arg_type = table.new_type(p.table.find_or_register_array(arg_type, 1)).set_flag(.variadic)
 			}
 			if p.tok.kind == .eof {
 				p.error_with_pos('expecting `)`', p.prev_tok.position())
@@ -617,7 +635,7 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				}
 			}
 			if is_variadic {
-				typ = typ.set_flag(.variadic)
+				typ = table.new_type(p.table.find_or_register_array(typ, 1)).set_flag(.variadic)
 			}
 			for i, arg_name in arg_names {
 				args << table.Param{

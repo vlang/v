@@ -18,8 +18,10 @@ fn main() {
 	})
 	bar_func(x: 'bar', y: 2, z: 3, a: 4)
 	func_from_other_file(val: 'something')
-	// pre comment
-	bar_func(x: 'struct has a pre comment')
+	bar_func(
+		// pre comment
+		x: 'struct has a pre comment'
+	)
 	bar_func(
 		x: 'first field'
 		// comment between fields
@@ -31,6 +33,12 @@ fn main() {
 	func_from_other_file(
 		xyz: AnotherStruct{
 			f: 'here'
+		}
+	)
+	ui.button(
+		width: 70
+		onclick: fn (a voidptr, b voidptr) {
+			webview.new_window(url: 'https://vlang.io', title: 'The V programming language')
 		}
 	)
 }

@@ -42,7 +42,6 @@ pub mut:
 	methods    []Fn
 	mod        string
 	is_public  bool
-	is_written bool // set to true, when the backend definition for a symbol had been written, to avoid duplicates
 	language   Language
 }
 
@@ -183,7 +182,6 @@ pub fn (ts TypeSymbol) debug() []string {
 	res << 'info: $ts.info'
 	res << 'kind: $ts.kind'
 	res << 'is_public: $ts.is_public'
-	res << 'is_written: $ts.is_written'
 	res << 'language: $ts.language'
 	res << 'methods ($ts.methods.len): ' + ts.methods.map(it.str()).join(', ')
 	return res
@@ -519,8 +517,13 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .chan, name: 'chan', cname: 'chan', mod: 'builtin')
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
-	t.register_type_symbol(kind: .any_float, name: 'any_float', cname: 'any_float', mod: 'builtin')
-	t.register_type_symbol(kind: .any_int, name: 'any_int', cname: 'any_int', mod: 'builtin')
+	t.register_type_symbol(
+		kind: .any_float
+		name: 'float literal'
+		cname: 'any_float'
+		mod: 'builtin'
+	)
+	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
 }
 
 [inline]
@@ -701,8 +704,17 @@ pub:
 	variants []Type
 }
 
+// human readable type name
 pub fn (table &Table) type_to_str(t Type) string {
 	return table.type_to_str_using_aliases(t, map[string]string{})
+}
+
+// type name in code (for builtin)
+pub fn (table &Table) type_to_code(t Type) string {
+	match t {
+		any_int_type, any_flt_type { return table.get_type_symbol(t).kind.str() }
+		else { return table.type_to_str_using_aliases(t, map[string]string{}) }
+	}
 }
 
 // import_aliases is a map of imported symbol aliases 'module.Type' => 'Type'
@@ -710,7 +722,10 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.any_int, .i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_float, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
+		.any_int, .any_float {
+			res = sym.name
+		}
+		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
 			// primitive types
 			res = sym.kind.str()
 		}
@@ -718,9 +733,13 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			if t == array_type {
 				return 'array'
 			}
-			info := sym.info as Array
-			elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
-			res = '[]$elem_str'
+			if t.has_flag(.variadic) {
+				res = table.type_to_str_using_aliases(table.value_type(t), import_aliases)
+			} else {
+				info := sym.info as Array
+				elem_str := table.type_to_str_using_aliases(info.elem_type, import_aliases)
+				res = '[]$elem_str'
+			}
 		}
 		.array_fixed {
 			info := sym.info as ArrayFixed
@@ -742,11 +761,17 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 			}
 		}
 		.function {
+			info := sym.info as FnType
 			if !table.is_fmt {
-				info := sym.info as FnType
 				res = table.fn_signature(info.func, type_only: true)
 			} else {
-				res = table.shorten_user_defined_typenames(res, import_aliases)
+				if res.starts_with('fn (') {
+					// fn foo ()
+					res = table.fn_signature(info.func, type_only: true)
+				} else {
+					// FnFoo
+					res = table.shorten_user_defined_typenames(res, import_aliases)
+				}
 			}
 		}
 		.map {

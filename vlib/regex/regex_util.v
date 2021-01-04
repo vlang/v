@@ -116,9 +116,10 @@ pub fn (re RE) get_group_list() []Re_group {
 * Finders
 *
 ******************************************************************************/
-// find try to find the first match in the input string
+/*
+// find internal implementation
 [direct_array_access]
-pub fn (mut re RE) find(in_txt string) (int,int) {
+fn (mut re RE) find_imp(in_txt string) (int,int) {
 	old_flag := re.flag
 	re.flag |= f_src  // enable search mode
 
@@ -134,6 +135,33 @@ pub fn (mut re RE) find(in_txt string) (int,int) {
 	}
 	return no_match_found, 0
 }
+*/
+
+// find try to find the first match in the input string
+[direct_array_access]
+pub fn (mut re RE) find(in_txt string) (int,int) {
+	mut i := 0
+	for i < in_txt.len {
+		//--- speed references ---
+		mut s := -1
+		mut e := -1
+		unsafe {
+			tmp_str := tos(in_txt.str+i, in_txt.len-i)
+			s,e = re.match_string(tmp_str)
+		}
+		//------------------------
+		//s,e := re.find_imp(in_txt[i..])
+		//------------------------
+		if s >= 0 && e > s {
+			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}]")
+			return i+s, i+e
+		} else {
+			i++
+		}
+
+	}
+	return -1, -1
+}
 
 // find_all find all the non overlapping occurrences of the match pattern
 [direct_array_access]
@@ -148,10 +176,10 @@ pub fn (mut re RE) find_all(in_txt string) []int {
 		mut e := -1
 		unsafe {
 			tmp_str := tos(in_txt.str+i, in_txt.len-i)
-			s,e = re.find(tmp_str)
+			s,e = re.match_string(tmp_str)
 		}
 		//------------------------
-		//s,e := re.find(in_txt[i..])
+		//s,e := re.find_imp(in_txt[i..])
 		//------------------------
 		if s >= 0 && e > s && i+s > ls {
 			//println("find match in: ${i+s},${i+e} [${in_txt[i+s..i+e]}] ls:$ls")

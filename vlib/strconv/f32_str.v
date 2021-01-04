@@ -321,8 +321,8 @@ pub fn f32_to_decimal(mant u32, exp u32) Dec32 {
 // f32_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f32_to_str(f f32, n_digit int) string {
 	mut u1 := Uf32{}
-	u1.f = f
-	u := u1.u
+	unsafe { u1.f = f }
+	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits32+expbits32)) != 0
 	mant  := u & ((u32(1)<<mantbits32) - u32(1))
@@ -348,8 +348,8 @@ pub fn f32_to_str(f f32, n_digit int) string {
 // f32_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f32_to_str_pad(f f32, n_digit int) string {
 	mut u1 := Uf32{}
-	u1.f = f
-	u := u1.u
+	unsafe { u1.f = f }
+	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits32+expbits32)) != 0
 	mant  := u & ((u32(1)<<mantbits32) - u32(1))

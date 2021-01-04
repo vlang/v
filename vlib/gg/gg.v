@@ -38,11 +38,11 @@ pub:
 	borderless_window     bool
 	always_on_top         bool
 	bg_color              gx.Color
-	init_fn               FNCb = voidptr(0)
-	frame_fn              FNCb = voidptr(0)
-	cleanup_fn            FNCb = voidptr(0)
-	fail_fn               FNFail = voidptr(0)
-	event_fn              FNEvent = voidptr(0)
+	init_fn               FNCb      = voidptr(0)
+	frame_fn              FNCb      = voidptr(0)
+	cleanup_fn            FNCb      = voidptr(0)
+	fail_fn               FNFail    = voidptr(0)
+	event_fn              FNEvent   = voidptr(0)
 	keydown_fn            FNKeyDown = voidptr(0)
 	// special case of event_fn
 	char_fn               FNChar = voidptr(0)
@@ -54,6 +54,7 @@ pub:
 	// wait_events       bool // set this to true for UIs, to save power
 	fullscreen            bool
 	scale                 f32 = 1.0
+	sample_count          int
 	// vid needs this
 	// init_text bool
 	font_path             string
@@ -253,6 +254,7 @@ pub fn new_context(cfg Config) &Context {
 		html5_canvas_name: cfg.window_title.str
 		width: cfg.width
 		height: cfg.height
+		sample_count: cfg.sample_count
 		high_dpi: true
 		fullscreen: cfg.fullscreen
 	}

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) byte`, not `any_int`
+vlib/v/checker/tests/fn_var.vv:2:5: error: cannot assign to `f`: expected `fn (int) byte`, not `int literal`
     1 | mut f := fn(i int) byte {}
     2 | f = 4
       |     ^

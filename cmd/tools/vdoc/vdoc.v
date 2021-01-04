@@ -41,9 +41,8 @@ const (
 	favicons_path   = os.join_path(res_path, 'favicons')
 	vexe            = pref.vexe_path()
 	vroot           = os.dir(vexe)
-	html_content    = '
-	<!DOCTYPE html>
-	<html lang="en">
+	html_content    = '<!DOCTYPE html>
+<html lang="en">
 	<head>
 		<meta charset="UTF-8">
 		<meta http-equiv="x-ua-compatible" content="IE=edge" />
@@ -66,7 +65,7 @@ const (
 			<header class="doc-nav hidden">
 				<div class="heading-container">
 					<div class="heading">
-						<input type="text" id="search" placeholder="Search...">
+						<input type="text" id="search" placeholder="Search... (beta)" autocomplete="off">
 						<div class="module">{{ head_name }}</div>
 						<div class="toggle-version-container">
 							<span>{{ version }}</span>
@@ -75,6 +74,7 @@ const (
 						{{ menu_icon }}
 					</div>
 				</div>
+				<nav class="search"></nav>
 				<nav class="content hidden">
 					<ul>
 						{{ toc_links }}
@@ -84,7 +84,7 @@ const (
 			<div class="doc-scrollview">
 				<div class="doc-container">
 					<div class="doc-content">
-						{{ contents }}
+{{ contents }}
 						<div class="footer">
 							{{ footer_content }}
 						</div>
@@ -94,9 +94,10 @@ const (
 			</div>
 		</div>
 		{{ footer_assets }}
+		<script async src="search_index.js" type="text/javascript"></script>
 	</body>
-	</html>
-	'
+</html>'
+	tabs            = ['\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t']
 )
 
 enum OutputType {
@@ -110,27 +111,43 @@ enum OutputType {
 
 struct DocConfig {
 mut:
-	is_local       bool
-	local_filename string
-	local_pos      int
-	pub_only       bool = true
-	show_loc       bool // for plaintext
-	serve_http     bool // for html
-	is_multi       bool
-	is_vlib        bool
-	is_verbose     bool
-	include_readme bool
-	open_docs      bool
-	server_port    int = 8046
-	inline_assets  bool
-	no_timestamp   bool
-	output_path    string
-	input_path     string
-	symbol_name    string
-	output_type    OutputType = .unset
-	docs           []doc.Doc
-	manifest       vmod.Manifest
-	assets         map[string]string
+	is_local            bool
+	local_filename      string
+	local_pos           int
+	pub_only            bool = true
+	show_loc            bool // for plaintext
+	serve_http          bool // for html
+	is_multi            bool
+	is_vlib             bool
+	is_verbose          bool
+	include_readme      bool
+	open_docs           bool
+	server_port         int = 8046
+	inline_assets       bool
+	no_timestamp        bool
+	output_path         string
+	input_path          string
+	symbol_name         string
+	output_type         OutputType = .unset
+	docs                []doc.Doc
+	manifest            vmod.Manifest
+	assets              map[string]string
+	search_index        []string
+	search_data         []SearchResult
+	search_module_index []string // search results are split into a module part and the rest
+	search_module_data  []SearchModuleResult
+}
+
+struct SearchModuleResult {
+	description string
+	link        string
+}
+
+struct SearchResult {
+	prefix      string
+	badge       string
+	description string
+	link        string
 }
 
 struct ParallelDoc {
@@ -385,24 +402,15 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	md_content := markdown.to_html(dd.comment)
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := if dd.parent_name.len > 0 && dd.parent_name != 'void' {
-		'($dd.parent_name) $dd.name'
-	} else {
-		dd.name
-	}
-	tag := if dd.parent_name.len > 0 && dd.parent_name != 'void' {
-		'${dd.parent_name}.$dd.name'
-	} else {
-		dd.name
-	}
-	node_id := slug(tag)
+	sym_name := get_sym_name(dd)
+	node_id := if head { 'head_' + get_node_id(dd) } else { get_node_id(dd) }
 	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	dnw.writeln('<section id="$node_id" class="doc-node$node_class">')
+	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
-			dnw.write('<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
 		} else {
-			dnw.write('<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
 		}
 		if link.len != 0 {
 			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
@@ -412,12 +420,31 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	if !head && dd.content.len > 0 {
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
+	// do not mess with md_content further, its formatting is important, just output it 1:1 !
 	dnw.writeln('$md_content\n</section>')
 	dnw_str := dnw.str()
 	defer {
 		dnw.free()
 	}
 	return dnw_str
+}
+
+fn get_sym_name(dn doc.DocNode) string {
+	sym_name := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
+		'($dn.parent_name) $dn.name'
+	} else {
+		dn.name
+	}
+	return sym_name
+}
+
+fn get_node_id(dn doc.DocNode) string {
+	tag := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
+		'${dn.parent_name}.$dn.name'
+	} else {
+		dn.name
+	}
+	return slug(tag)
 }
 
 fn (cfg DocConfig) readme_idx() int {
@@ -433,7 +460,11 @@ fn (cfg DocConfig) readme_idx() int {
 fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
-		toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		if dn.children[0].name == '' {
+			toc_slug = slug(dn.name)
+		} else {
+			toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		}
 	}
 	if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
@@ -532,12 +563,11 @@ fn (cfg DocConfig) gen_html(idx int) string {
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
 		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
 		if cfg.inline_assets {
-		'\n    <style>' + cfg.assets['doc_css'] + '</style>\n    <style>' + cfg.assets['normalize_css'] +
-			'</style>\n	<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		'\n${tabs[0]}<style>' + cfg.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + cfg.assets['normalize_css'] +
+			'</style>\n${tabs[0]}<script>' + cfg.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n    <link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n	<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />\n</style>\n    <script src="' + cfg.assets['dark_mode_js'] +
-			'"></script>'
+		'\n${tabs[0]}<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
+			cfg.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + cfg.assets['dark_mode_js'] + '"></script>'
 	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
 		modules_toc_str
 	} else {
@@ -624,10 +654,21 @@ fn (cfg DocConfig) gen_footer_text(idx int) string {
 }
 
 fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
+	name := cfg.get_file_name(doc.head.name)
+	output := match cfg.output_type {
+		.html { cfg.gen_html(i) }
+		.markdown { cfg.gen_markdown(i, true) }
+		.json { cfg.gen_json(i) }
+		else { cfg.gen_plaintext(i) }
+	}
+	return name, output
+}
+
+// get_file_name returns the final file name from a module name
+fn (cfg DocConfig) get_file_name(mod string) string {
+	mut name := mod
 	// since builtin is generated first, ignore it
-	mut name := doc.head.name
-	if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
-		doc.head.name == 'README' {
+	if (cfg.is_vlib && mod == 'builtin' && !cfg.include_readme) || mod == 'README' {
 		name = 'index'
 	} else if !cfg.is_multi && !os.is_dir(cfg.output_path) {
 		name = os.file_name(cfg.output_path)
@@ -638,13 +679,7 @@ fn (cfg DocConfig) render_doc(doc doc.Doc, i int) (string, string) {
 		.json { '.json' }
 		else { '.txt' }
 	}
-	output := match cfg.output_type {
-		.html { cfg.gen_html(i) }
-		.markdown { cfg.gen_markdown(i, true) }
-		.json { cfg.gen_json(i) }
-		else { cfg.gen_plaintext(i) }
-	}
-	return name, output
+	return name
 }
 
 fn (cfg DocConfig) work_processor(mut work sync.Channel, mut wg sync.WaitGroup) {
@@ -685,6 +720,86 @@ fn (cfg DocConfig) render() map[string]string {
 	}
 	cfg.vprintln('Rendered: ' + docs.keys().str())
 	return docs
+}
+
+fn (mut cfg DocConfig) collect_search_index() {
+	if cfg.output_type != .html {
+		return
+	}
+	for doc in cfg.docs {
+		mod := doc.head.name
+		cfg.search_module_index << mod
+		cfg.search_module_data << SearchModuleResult{
+			description: trim_doc_node_description(doc.head.comment)
+			link: cfg.get_file_name(mod)
+		}
+		for _, dn in doc.contents {
+			cfg.create_search_results(mod, dn)
+		}
+	}
+}
+
+fn (mut cfg DocConfig) create_search_results(mod string, dn doc.DocNode) {
+	if dn.kind == .const_group {
+		return
+	}
+	dn_description := trim_doc_node_description(dn.comment)
+	cfg.search_index << dn.name
+	cfg.search_data << SearchResult{
+		prefix: if dn.parent_name != '' {
+			'$dn.kind ($dn.parent_name)'
+		} else {
+			'$dn.kind '
+		}
+		description: dn_description
+		badge: mod
+		link: cfg.get_file_name(mod) + '#' + get_node_id(dn)
+	}
+	for child in dn.children {
+		cfg.create_search_results(mod, child)
+	}
+}
+
+fn trim_doc_node_description(description string) string {
+	mut dn_description := description.replace_each(['\r\n', '\n', '"', '\\"'])
+	// 80 is enough to fill one line
+	if dn_description.len > 80 {
+		dn_description = dn_description[..80]
+	}
+	if '\n' in dn_description {
+		dn_description = dn_description.split('\n')[0]
+	}
+	// if \ is last character, it ends with \" which leads to a JS error
+	if dn_description.ends_with('\\') {
+		dn_description = dn_description.trim_right('\\')
+	}
+	return dn_description
+}
+
+fn (cfg DocConfig) render_search_index() {
+	mut js_search_index := strings.new_builder(200)
+	mut js_search_data := strings.new_builder(200)
+	js_search_index.write('var searchModuleIndex = [')
+	js_search_data.write('var searchModuleData = [')
+	for i, title in cfg.search_module_index {
+		data := cfg.search_module_data[i]
+		js_search_index.write('"$title",')
+		js_search_data.write('["$data.description","$data.link"],')
+	}
+	js_search_index.writeln('];')
+	js_search_index.write('var searchIndex = [')
+	js_search_data.writeln('];')
+	js_search_data.write('var searchData = [')
+	for i, title in cfg.search_index {
+		data := cfg.search_data[i]
+		js_search_index.write('"$title",')
+		// array instead of object to reduce file size
+		js_search_data.write('["$data.badge","$data.description","$data.link","$data.prefix"],')
+	}
+	js_search_index.writeln('];')
+	js_search_data.writeln('];')
+	out_file_path := os.join_path(cfg.output_path, 'search_index.js')
+	os.write_file(out_file_path, js_search_index.str() + js_search_data.str())
 }
 
 fn (mut cfg DocConfig) render_static() {
@@ -862,6 +977,9 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		}
 		cfg.render_static()
 		cfg.render_parallel()
+		println('Creating search index...')
+		cfg.collect_search_index()
+		cfg.render_search_index()
 		// move favicons to target directory
 		println('Copying favicons...')
 		favicons := os.ls(favicons_path) or { panic(err) }

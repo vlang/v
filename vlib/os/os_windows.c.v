@@ -32,7 +32,7 @@ mut:
 	dw_reserved0          u32
 	dw_reserved1          u32
 	c_file_name           [260]u16 // max_path_len = 260
-	c_alternate_file_name [14]u16 // 14
+	c_alternate_file_name [14]u16  // 14
 	dw_file_type          u32
 	dw_creator_type       u32
 	w_finder_flags        u16
@@ -390,4 +390,8 @@ fn C._getpid() int
 [inline]
 pub fn getpid() int {
 	return C._getpid()
+}
+
+pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
+	// windows has no concept of a permission mask, so do nothing
 }

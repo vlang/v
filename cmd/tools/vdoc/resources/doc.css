@@ -17,6 +17,11 @@
 	--menu-toggle-icon-hover-color: #00000044;
 	--menu-search-background-color: #00000044;
 	--menu-search-font-color: #fff;
+	--menu-search-result-background-hover-color: #00000021;
+	--menu-search-separator-color: #00000044;
+	--menu-search-title-text-color: #d5efff;
+	--menu-search-badge-background-color: #00000044;
+	--menu-search-badge-background-hover-color: #0000004d;
 	--toc-text-color: #2779bd;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #5c6e74;
@@ -49,11 +54,15 @@
 	--menu-background-color: #2d3748;
 	--menu-text-color: #fff;
 	--menu-indent-line-color: #4a5568;
-	--menu-indent-line-active-color: #90cdf4;
+	--menu-indent-line-active-color: #90cdf4; /*#4a5568*/
 	--menu-scrollbar-color: #4a5568;
 	--menu-toggle-icon-color: #fff;
 	--menu-search-background-color: #4a5568;
 	--menu-search-font-color: #fff;
+	--menu-search-separator-color: #4a5568;
+	--menu-search-title-text-color: #90cdf4;
+	--menu-search-badge-background-color: #4a5568;
+	--menu-search-badge-background-hover-color: #4a5568;
 	--toc-text-color: #90cdf4;
 	--toc-indicator-color: #4299e1;
 	--code-default-text-color: #cbd5e0;
@@ -111,7 +120,7 @@ body {
 	scrollbar-width: thin;
 	scrollbar-color: #a0aec0 transparent;
 	scrollbar-color: var(--menu-scrollbar-color) transparent;
-	font-family: 'Work Sans', sans-serif;
+	font-family: "Work Sans", sans-serif;
 }
 *::-webkit-scrollbar {
 	width: 4px;
@@ -125,7 +134,7 @@ body {
 	background-color: var(--menu-scrollbar-color);
 	border: 3px solid transparent;
 }
-.doc-nav li {
+.doc-nav .content li {
 	line-height: 1.8;
 }
 .doc-nav .content.show {
@@ -245,7 +254,7 @@ body {
 }
 .doc-nav > .content > ul > li > ul > li.active {
 	border-color: #00000066;
-	border-color: var(--menu-indent-line-active-color);
+	border-color: var(--menu-search-result-hover-background-color);
 }
 .doc-nav > .content a {
 	color: #fff;
@@ -255,6 +264,69 @@ body {
 }
 .doc-nav > .content a:hover {
 	text-decoration: underline;
+}
+.doc-nav .search {
+	display: none;
+}
+.doc-nav .search li {
+	line-height: 1.5;
+}
+.doc-nav > .search .result:hover {
+	background-color: #00000021;
+	background-color: var(--menu-search-result-background-hover-color);
+}
+.doc-nav > .search .result:hover > .link > .definition > .badge {
+	background-color: #0000004d;
+	background-color: var(--menu-search-badge-background-hover-color);
+}
+.doc-nav > .search .result > .link {
+	padding: 0.5rem 1.4rem;
+	text-decoration: none;
+	color: #fff;
+	color: var(--menu-text-color);
+	display: block;
+}
+.doc-nav > .search .result > .link > .definition {
+	display: flex;
+}
+.doc-nav > .search .result > .link > .definition > .title {
+	color: #90cdf4;
+	color: var(--menu-search-title-text-color);
+	font-size: 0.875rem;
+	font-weight: 500;
+	overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.doc-nav > .search .result > .link > .definition > .badge {
+	font-size: 0.75rem;
+	display: inline-flex;
+	padding: 0 0.5rem;
+	background-color: #00000044;
+	background-color: var(--menu-search-badge-background-color);
+	margin-left: auto;
+	align-items: center;
+	border-radius: 9999px;
+	font-weight: 500;
+}
+.doc-nav > .search .result > .link > .description {
+	font-family: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+	font-size: 0.75rem;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+	margin-top: 0.25rem;
+}
+.doc-nav > .search > hr.separator {
+	margin: 0.5rem 0;
+	border-color: #00000044;
+	border-color: var(--menu-search-separator-color);
+	box-sizing: content-box;
+	height: 0;
+	border-width: 0;
+	border-top-width: 1px;
+	border-style: solid;
+    overflow: visible;
 }
 
 /* Main content */
@@ -305,7 +377,7 @@ body {
 }
 .doc-content > .doc-node > .title {
 	display: flex;
-	font-family: 'Work Sans', sans-serif;
+	font-family: "Work Sans", sans-serif;
 	font-weight: 500;
 	padding: 0.3rem;
 	align-items: center;
@@ -391,7 +463,7 @@ body {
 	box-sizing: border-box;
 	-ms-overflow-style: none;
 	scrollbar-width: none;
-	font-family: 'Work Sans', sans-serif;
+	font-family: "Work Sans", sans-serif;
 }
 .doc-toc::-webkit-scrollbar {
 	display: none;

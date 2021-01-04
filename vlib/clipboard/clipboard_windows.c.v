@@ -2,6 +2,7 @@ module clipboard
 
 import time
 
+#include <windows.h>
 #flag -lUser32
 struct WndClassEx {
 	cb_size         u32
@@ -125,7 +126,7 @@ fn (mut cb Clipboard) free() {
 }
 
 // the string.to_wide doesn't work with SetClipboardData, don't know why
-fn to_wide(text string) &C.HGLOBAL {
+fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)

@@ -1,4 +1,4 @@
-vlib/v/checker/tests/rshift_op_wrong_right_type_err.vv:2:15: error: cannot shift non-integer type any_float into type any_int
+vlib/v/checker/tests/rshift_op_wrong_right_type_err.vv:2:15: error: cannot shift non-integer type `float literal` into type `int literal`
     1 | fn main() {
     2 |     println(1 >> 0.5)
       |                  ~~~

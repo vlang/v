@@ -42,15 +42,15 @@ mut:
 	inside_for        bool
 	inside_fn         bool
 	inside_str_interp bool
-	or_is_handled     bool // ignore `or` in this expression
-	builtin_mod       bool // are we in the `builtin` module?
-	mod               string // current module name
+	or_is_handled     bool         // ignore `or` in this expression
+	builtin_mod       bool         // are we in the `builtin` module?
+	mod               string       // current module name
 	attrs             []table.Attr // attributes before next decl stmt
-	expr_mod          string // for constructing full type names in parse_type()
+	expr_mod          string       // for constructing full type names in parse_type()
 	scope             &ast.Scope
 	global_scope      &ast.Scope
 	imports           map[string]string // alias => mod_name
-	ast_imports       []ast.Import // mod_names
+	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
@@ -67,7 +67,7 @@ mut:
 	vet_errors        []string
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
-	name_error        bool
+	name_error        bool // indicates if the token is not a name or the name is on another line
 }
 
 // for tests
@@ -406,6 +406,7 @@ fn (mut p Parser) next() {
 }
 
 fn (mut p Parser) check(expected token.Kind) {
+	p.name_error = false
 	// for p.tok.kind in [.line_comment, .mline_comment] {
 	// p.next()
 	// }
@@ -1407,11 +1408,15 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		return p.comptime_method_call(left)
 	}
 	name_pos := p.tok.position()
-	field_name := p.check_name()
+	mut field_name := ''
+	// check if the name is on the same line as the dot
+	if (p.prev_tok.position().line_nr == name_pos.line_nr) || p.tok.kind != .name {
+		field_name = p.check_name()
+	} else {
+		p.name_error = true
+	}
 	is_filter := field_name in ['filter', 'map']
-	if is_filter {
-		p.open_scope()
-	} else if field_name == 'sort' {
+	if is_filter || field_name == 'sort' {
 		p.open_scope()
 	}
 	// ! in mutable methods
@@ -1420,13 +1425,23 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	}
 	// Method call
 	// TODO move to fn.v call_expr()
+	mut generic_type := table.void_type
+	mut generic_list_pos := p.tok.position()
+	if p.tok.kind == .lt && p.peek_tok.kind == .name && p.peek_tok2.kind == .gt {
+		// `g.foo<int>(10)`
+		p.next() // `<`
+		generic_type = p.parse_type()
+		p.check(.gt) // `>`
+		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
+		// In case of `foo<T>()`
+		// T is unwrapped and registered in the checker.
+		if !generic_type.has_flag(.generic) {
+			p.table.register_fn_gen_type(field_name, generic_type)
+		}
+	}
 	if p.tok.kind == .lpar {
 		p.next()
 		args := p.call_args()
-		if is_filter && args.len != 1 {
-			p.error('needs exactly 1 argument')
-			return ast.Expr{}
-		}
 		p.check(.rpar)
 		mut or_stmts := []ast.Stmt{}
 		mut or_kind := ast.OrKind.absent
@@ -1465,6 +1480,8 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 			args: args
 			pos: pos
 			is_method: true
+			generic_type: generic_type
+			generic_list_pos: generic_list_pos
 			or_block: ast.OrExpr{
 				stmts: or_stmts
 				kind: or_kind
@@ -1799,11 +1816,16 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 	end_pos := p.tok.position()
 	const_pos := p.tok.position()
 	p.check(.key_const)
+	is_block := p.tok.kind == .lpar
+	/*
 	if p.tok.kind != .lpar {
 		p.error_with_pos('const declaration is missing parentheses `( ... )`', const_pos)
 		return ast.ConstDecl{}
 	}
-	p.next() // (
+	*/
+	if is_block {
+		p.next() // (
+	}
 	mut fields := []ast.ConstField{}
 	mut comments := []ast.Comment{}
 	for {
@@ -1840,14 +1862,20 @@ fn (mut p Parser) const_decl() ast.ConstDecl {
 		fields << field
 		p.global_scope.register(field)
 		comments = []
+		if !is_block {
+			break
+		}
 	}
 	p.top_level_statement_end()
-	p.check(.rpar)
+	if is_block {
+		p.check(.rpar)
+	}
 	return ast.ConstDecl{
 		pos: start_pos.extend_with_last_line(end_pos, p.prev_tok.line_nr)
 		fields: fields
 		is_pub: is_pub
 		end_comments: comments
+		is_block: is_block
 	}
 }
 

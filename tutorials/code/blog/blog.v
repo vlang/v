@@ -6,9 +6,9 @@ import sqlite
 import json
 
 struct App {
-pub mut:
-	vweb vweb.Context
-	db   sqlite.DB
+	vweb.Context
+mut:
+	db sqlite.DB
 }
 
 fn main() {
@@ -32,10 +32,12 @@ pub fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_once() {
-	db := sqlite.connect('blog.db') or {
-		panic(err)
-	}
-	app.db = db
+	app.db = sqlite.connect('blog.db') or { panic(err) }
+	app.db.exec('create table if not exists article (' +
+	'id integer primary key, ' + 
+	"title text default ''," +
+	"text text default ''" +
+	');')
 }
 
 pub fn (mut app App) init() {
@@ -45,29 +47,32 @@ pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
+[post]
+['/new_article']
 pub fn (mut app App) new_article() vweb.Result {
-	title := app.vweb.form['title']
-	text := app.vweb.form['text']
+	title := app.form['title']
+	text := app.form['text']
 	if title == '' || text == '' {
-		app.vweb.text('Empty text/title')
+		app.text('Empty text/title')
 		return vweb.Result{}
 	}
 	article := Article{
 		title: title
 		text: text
 	}
+	println('posting article')
 	println(article)
 	sql app.db {
 		insert article into Article
 	}
-	return app.vweb.redirect('/')
+	return app.redirect('/')
 }
 
 pub fn (mut app App) articles() {
 	articles := app.find_all_articles()
-	app.vweb.json(json.encode(articles))
+	app.json(json.encode(articles))
 }
 
 fn (mut app App) time() {
-	app.vweb.text(time.now().format())
+	app.text(time.now().format())
 }

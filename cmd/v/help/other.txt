@@ -16,3 +16,6 @@ but which are used less frequently by users:
                      Mainly useful as a parser bug finder for the V Language Server project.
 
    setup-freetype    Setup thirdparty freetype on Windows.
+   
+   wipe-cache        Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a clean build.
+   

@@ -26,6 +26,8 @@ const (
 	valid_comp_if_compilers = ['gcc', 'tinyc', 'clang', 'mingw', 'msvc', 'cplusplus']
 	valid_comp_if_platforms = ['amd64', 'aarch64', 'x64', 'x32', 'little_endian', 'big_endian']
 	valid_comp_if_other     = ['js', 'debug', 'test', 'glibc', 'prealloc', 'no_bounds_checking']
+	array_builtin_methods   = ['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort',
+		'contains', 'index']
 )
 
 pub struct Checker {
@@ -39,7 +41,7 @@ pub mut:
 	warnings                         []errors.Warning
 	error_lines                      []int // to avoid printing multiple errors for the same line
 	expected_type                    table.Type
-	expected_or_type                 table.Type // fn() or { 'this type' } eg. string. expected or block type
+	expected_or_type                 table.Type  // fn() or { 'this type' } eg. string. expected or block type
 	cur_fn                           &ast.FnDecl // current function
 	const_decl                       string
 	const_deps                       []string
@@ -47,24 +49,24 @@ pub mut:
 	global_names                     []string
 	locked_names                     []string // vars that are currently locked
 	rlocked_names                    []string // vars that are currently read-locked
-	in_for_count                     int // if checker is currently in a for loop
+	in_for_count                     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
 	returns                          bool
 	scope_returns                    bool
 	mod                              string // current module name
-	is_builtin_mod                   bool // are we in `builtin`?
+	is_builtin_mod                   bool   // are we in `builtin`?
 	inside_unsafe                    bool
 	inside_const                     bool
 	skip_flags                       bool // should `#flag` and `#include` be skipped
 	cur_generic_type                 table.Type
 mut:
-	expr_level                       int // to avoid infinite recursion segfaults due to compiler bugs
+	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables
 	cur_orm_ts                       table.TypeSymbol
 	error_details                    []string
-	vmod_file_content                string // needed for @VMOD_FILE, contents of the file, *NOT its path**
+	vmod_file_content                string       // needed for @VMOD_FILE, contents of the file, *NOT its path**
 	vweb_gen_types                   []table.Type // vweb route checks
-	prevent_sum_type_unwrapping_once bool // needed for assign new values to sum type, stopping unwrapping then
+	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
 }
@@ -240,6 +242,12 @@ fn (mut c Checker) check_file_in_main(file ast.File) bool {
 						c.error('function `main` cannot return values', stmt.pos)
 					}
 				} else {
+					for attr in stmt.attrs {
+						if attr.name == 'console' {
+							c.error('only `main` can have the `[console]` attribute',
+								stmt.pos)
+						}
+					}
 					if stmt.is_pub && !stmt.is_method {
 						c.warn('function `$stmt.name` $no_pub_in_main_warning', stmt.pos)
 					}
@@ -310,7 +318,7 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				c.check_valid_pascal_case(node.name, 'type alias', node.pos)
 			}
 			typ_sym := c.table.get_type_symbol(node.parent_type)
-			if typ_sym.kind == .placeholder {
+			if typ_sym.kind in [.placeholder, .any_int, .any_float] {
 				c.error("type `$typ_sym.name` doesn't exist", node.pos)
 			} else if typ_sym.kind == .alias {
 				orig_sym := c.table.get_type_symbol((typ_sym.info as table.Alias).parent_type)
@@ -347,10 +355,10 @@ pub fn (mut c Checker) type_decl(node ast.TypeDecl) {
 				if sym.name in names_used {
 					c.error('sum type $node.name cannot hold the type `$sym.name` more than once',
 						variant.pos)
-				} else if sym.kind == .placeholder {
-					c.error("type `$sym.name` doesn't exist", node.pos)
+				} else if sym.kind in [.placeholder, .any_int, .any_float] {
+					c.error("type `$sym.name` doesn't exist", variant.pos)
 				} else if sym.kind == .interface_ {
-					c.error('sum type cannot hold an interface', node.pos)
+					c.error('sum type cannot hold an interface', variant.pos)
 				}
 				names_used << sym.name
 			}
@@ -390,6 +398,16 @@ pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
 			if sym.kind == .placeholder && decl.language != .c && !sym.name.starts_with('C.') {
 				c.error(util.new_suggestion(sym.name, c.table.known_type_names()).say('unknown type `$sym.name`'),
 					field.type_pos)
+			}
+			// Separate error condition for `any_int` and `any_float` because `util.suggestion` may give different
+			// suggestions due to f32 comparision issue.
+			if sym.kind in [.any_int, .any_float] {
+				msg := if sym.kind == .any_int {
+					'unknown type `$sym.name`.\nDid you mean `int`?'
+				} else {
+					'unknown type `$sym.name`.\nDid you mean `f64`?'
+				}
+				c.error(msg, field.type_pos)
 			}
 			if sym.kind == .array {
 				array_info := sym.array_info()
@@ -623,6 +641,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 		else {}
 	}
+	if struct_init.has_update_expr {
+		update_type := c.expr(struct_init.update_expr)
+		struct_init.update_expr_type = update_type
+		update_sym := c.table.get_type_symbol(update_type)
+		sym := c.table.get_type_symbol(struct_init.typ)
+		if update_sym.kind != .struct_ {
+			c.error('expected struct `$sym.name`, found `$update_sym.name`', struct_init.update_expr.position())
+		} else if update_type != struct_init.typ {
+			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+		}
+	}
 	return struct_init.typ
 }
 
@@ -789,7 +818,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 							c.error('float modulo not allowed, use math.fmod() instead',
 								pos)
 						} else {
-							c.error('$side type of `$infix_expr.op.str()` cannot be non-integer type $name',
+							c.error('$side type of `$infix_expr.op.str()` cannot be non-integer type `$name`',
 								pos)
 						}
 					}
@@ -910,6 +939,12 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 	} else if c.table.type_kind(right_type) == .sum_type {
 		c.error('cannot use operator `$infix_expr.op` with `$right.name`', infix_expr.pos)
 	}
+	// TODO move this to symmetric_check? Right now it would break `return 0` for `fn()?int `
+	left_is_optional := left_type.has_flag(.optional)
+	right_is_optional := right_type.has_flag(.optional)
+	if (left_is_optional && !right_is_optional) || (!left_is_optional && right_is_optional) {
+		c.error('unwrapped optional cannot be used in an infix expression', infix_expr.pos)
+	}
 	// Dual sides check (compatibility check)
 	if !c.symmetric_check(right_type, left_type) && !c.pref.translated {
 		// for type-unresolved consts
@@ -1015,6 +1050,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
 					}
+					if struct_info.is_union && !c.inside_unsafe {
+						c.warn('accessing union fields requires `unsafe`', expr.pos)
+					}
 				}
 				.array, .string {
 					// This should only happen in `builtin`
@@ -1109,6 +1147,11 @@ pub fn (mut c Checker) call_expr(mut call_expr ast.CallExpr) table.Type {
 }
 
 fn (mut c Checker) check_map_and_filter(is_map bool, elem_typ table.Type, call_expr ast.CallExpr) {
+	if call_expr.args.len != 1 {
+		c.error('expected 1 arguments, but got $call_expr.args.len', call_expr.pos)
+		// Finish early so that it doesn't fail later
+		return
+	}
 	elem_sym := c.table.get_type_symbol(elem_typ)
 	arg_expr := call_expr.args[0].expr
 	match arg_expr {
@@ -1165,11 +1208,19 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	if left_type_sym.kind == .sum_type && method_name == 'type_name' {
 		return table.string_type
 	}
+	if call_expr.generic_type.has_flag(.generic) {
+		if c.mod != '' {
+			// Need to prepend the module when adding a generic type to a function
+			// `fn_gen_types['mymod.myfn'] == ['string', 'int']`
+			c.table.register_fn_gen_type(c.mod + '.' + call_expr.name, c.cur_generic_type)
+		} else {
+			c.table.register_fn_gen_type(call_expr.name, c.cur_generic_type)
+		}
+		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
+	}
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
-	if left_type_sym.kind == .array &&
-		method_name in
-		['filter', 'clone', 'repeat', 'reverse', 'map', 'slice', 'sort', 'contains', 'index'] {
+	if left_type_sym.kind == .array && method_name in array_builtin_methods {
 		mut elem_typ := table.void_type
 		is_filter_map := method_name in ['filter', 'map']
 		is_sort := method_name == 'sort'
@@ -1224,9 +1275,21 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			call_expr.return_type = table.int_type
 		}
 		return call_expr.return_type
-	} else if left_type_sym.kind == .map && method_name == 'clone' {
-		call_expr.return_type = left_type
+	} else if left_type_sym.kind == .map && method_name in ['clone', 'keys'] {
+		mut ret_type := table.void_type
+		match method_name {
+			'clone' {
+				ret_type = left_type
+			}
+			'keys' {
+				info := left_type_sym.info as table.Map
+				typ := c.table.find_or_register_array(info.key_type, 1)
+				ret_type = table.Type(typ)
+			}
+			else {}
+		}
 		call_expr.receiver_type = left_type.to_ptr()
+		call_expr.return_type = ret_type
 		return call_expr.return_type
 	} else if left_type_sym.kind == .array && method_name in ['first', 'last', 'pop'] {
 		info := left_type_sym.info as table.Array
@@ -1252,10 +1315,12 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	mut method := table.Fn{}
 	mut has_method := false
+	mut is_method_from_embed := false
 	if m := c.table.type_find_method(left_type_sym, method_name) {
 		method = m
 		has_method = true
 	} else {
+		// can this logic be moved to table.type_find_method() so it can be used from anywhere
 		if left_type_sym.info is table.Struct {
 			mut found_methods := []table.Fn{}
 			mut embed_of_found_methods := []table.Type{}
@@ -1269,6 +1334,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			if found_methods.len == 1 {
 				method = found_methods[0]
 				has_method = true
+				is_method_from_embed = true
 				call_expr.from_embed_type = embed_of_found_methods[0]
 			} else if found_methods.len > 1 {
 				c.error('ambiguous method `$method_name`', call_expr.pos)
@@ -1327,21 +1393,19 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				c.type_implements(got_arg_typ, exp_arg_typ, arg.expr.position())
 				continue
 			}
-			if !c.check_types(got_arg_typ, exp_arg_typ) {
-				got_arg_sym := c.table.get_type_symbol(got_arg_typ)
+			if method.is_generic {
+				continue
+			}
+			c.check_expected_call_arg(got_arg_typ, exp_arg_typ) or {
 				// str method, allow type with str method if fn arg is string
-				// if exp_arg_sym.kind == .string && got_arg_sym.has_method('str') {
+				// Passing an int or a string array produces a c error here
+				// Deleting this condition results in propper V error messages
+				// if arg_typ_sym.kind == .string && typ_sym.has_method('str') {
 				// continue
 				// }
-				// same ancestor? let it be
-				if exp_arg_sym.parent_idx == got_arg_sym.parent_idx {
-					if got_arg_sym.parent_idx != 0 {
-						continue
-					}
-				}
 				if got_arg_typ != table.void_type {
-					c.error('cannot use type `$got_arg_sym.name` as type `$exp_arg_sym.name` in argument ${i +
-						1} to `${left_type_sym.name}.$method_name`', call_expr.pos)
+					c.error('$err in argument ${i + 1} to `${left_type_sym.name}.$method_name`',
+						call_expr.pos)
 				}
 			}
 			param := if method.is_variadic && i >= method.params.len - 1 { method.params[method.params.len -
@@ -1373,15 +1437,46 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				call_expr.expected_arg_types << method.params[i].typ
 			}
 		}
-		if is_generic {
+		if is_method_from_embed {
+			call_expr.receiver_type = call_expr.from_embed_type.derive(method.params[0].typ)
+		} else if is_generic {
 			// We need the receiver to be T in cgen.
 			// TODO: cant we just set all these to the concrete type in checker? then no need in gen
 			call_expr.receiver_type = left_type.derive(method.params[0].typ).set_flag(.generic)
 		} else {
-			// note: correct receiver type is automatically set here on struct embed calls
 			call_expr.receiver_type = method.params[0].typ
 		}
 		call_expr.return_type = method.return_type
+		if method.is_generic && call_expr.generic_type == table.void_type {
+			// no type arguments given in call, attempt implicit instantiation
+			c.infer_fn_types(method, mut call_expr)
+		}
+		if call_expr.generic_type != table.void_type && method.return_type != 0 { // table.t_type {
+			// Handle `foo<T>() T` => `foo<int>() int` => return int
+			return_sym := c.table.get_type_symbol(method.return_type)
+			if return_sym.name == 'T' {
+				mut typ := call_expr.generic_type
+				typ = typ.set_nr_muls(method.return_type.nr_muls())
+				if method.return_type.has_flag(.optional) {
+					typ = typ.set_flag(.optional)
+				}
+				call_expr.return_type = typ
+				return typ
+			} else if return_sym.kind == .array {
+				elem_info := return_sym.info as table.Array
+				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
+				if elem_sym.name == 'T' {
+					idx := c.table.find_or_register_array(call_expr.generic_type, 1)
+					return table.new_type(idx)
+				}
+			}
+		}
+		if call_expr.generic_type.is_full() && !method.is_generic {
+			c.error('a non generic function called like a generic one', call_expr.generic_list_pos)
+		}
+		if method.is_generic {
+			return call_expr.return_type
+		}
 		return method.return_type
 	}
 	// TODO: str methods
@@ -1654,7 +1749,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			c.type_implements(typ, arg.typ, call_arg.expr.position())
 			continue
 		}
-		c.check_expected(typ, arg.typ) or {
+		c.check_expected_call_arg(typ, arg.typ) or {
 			// str method, allow type with str method if fn arg is string
 			// Passing an int or a string array produces a c error here
 			// Deleting this condition results in propper V error messages
@@ -1667,7 +1762,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			if f.is_generic {
 				continue
 			}
-			c.error('invalid argument ${i + 1} to `$fn_name`: $err', call_arg.pos)
+			c.error('$err in argument ${i + 1} to `$fn_name`', call_arg.pos)
 		}
 	}
 	if f.is_generic && call_expr.generic_type == table.void_type {
@@ -1685,13 +1780,23 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			call_expr.return_type = typ
 			return typ
-		} else if return_sym.kind == .array {
-			elem_info := return_sym.info as table.Array
-			elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-			if elem_sym.name == 'T' {
-				idx := c.table.find_or_register_array(call_expr.generic_type, 1)
-				return table.new_type(idx)
+		} else if return_sym.kind == .array && return_sym.name.contains('T') {
+			mut info := return_sym.info as table.Array
+			mut sym := c.table.get_type_symbol(info.elem_type)
+			mut dims := 1
+			for {
+				if sym.kind == .array {
+					info = sym.info as table.Array
+					sym = c.table.get_type_symbol(info.elem_type)
+					dims++
+				} else {
+					break
+				}
 			}
+			idx := c.table.find_or_register_array(call_expr.generic_type, dims)
+			typ := table.new_type(idx)
+			call_expr.return_type = typ
+			return typ
 		}
 	}
 	if call_expr.generic_type.is_full() && !f.is_generic {
@@ -2027,6 +2132,12 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 			c.error('fn `$c.cur_fn.name` expects you to return a non reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
 				pos)
 		}
+		if (exp_type.is_ptr() || exp_type.is_pointer()) &&
+			(!got_typ.is_ptr() && !got_typ.is_pointer()) && got_typ != table.any_int_type {
+			pos := return_stmt.exprs[i].position()
+			c.error('fn `$c.cur_fn.name` expects you to return a reference type `${c.table.type_to_str(exp_type)}`, but you are returning `${c.table.type_to_str(got_typ)}` instead',
+				pos)
+		}
 	}
 	if exp_is_optional && return_stmt.exprs.len > 0 {
 		expr0 := return_stmt.exprs[0]
@@ -2082,7 +2193,7 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
-	mut seen := []int{}
+	mut seen := []i64{}
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -2100,10 +2211,10 @@ pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 					val := field.expr.val.i64()
 					if val < int_min || val > int_max {
 						c.error('enum value `$val` overflows int', field.expr.pos)
-					} else if !decl.is_multi_allowed && int(val) in seen {
+					} else if !decl.is_multi_allowed && i64(val) in seen {
 						c.error('enum value `$val` already exists', field.expr.pos)
 					}
-					seen << int(val)
+					seen << i64(val)
 				}
 				ast.PrefixExpr {}
 				else {
@@ -2975,6 +3086,19 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			c.cur_fn = keep_fn
 			return node.typ
 		}
+		ast.ArrayDecompose {
+			typ := c.expr(node.expr)
+			type_sym := c.table.get_type_symbol(typ)
+			if type_sym.kind != .array {
+				c.error('decomposition can only be used on arrays', node.expr.position())
+				return table.void_type
+			}
+			array_info := type_sym.info as table.Array
+			elem_type := array_info.elem_type.set_flag(.variadic)
+			node.expr_type = typ
+			node.arg_type = elem_type
+			return elem_type
+		}
 		ast.ArrayInit {
 			return c.array_init(mut node)
 		}
@@ -3588,11 +3712,10 @@ pub fn (mut c Checker) match_expr(mut node ast.MatchExpr) table.Type {
 	return ret_type
 }
 
-fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol) {
+fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym table.TypeSymbol) {
 	// branch_exprs is a histogram of how many times
 	// an expr was used in the match
 	mut branch_exprs := map[string]int{}
-	cond_type_sym := c.table.get_type_symbol(node.cond_type)
 	for branch_i, _ in node.branches {
 		mut branch := node.branches[branch_i]
 		mut expr_types := []ast.Type{}
@@ -3775,27 +3898,37 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, type_sym table.TypeSymbol
 	// by listing all variants or values
 	mut is_exhaustive := true
 	mut unhandled := []string{}
-	match mut type_sym.info {
-		table.SumType {
-			for v in type_sym.info.variants {
-				v_str := c.table.type_to_str(v)
-				if v_str !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`$v_str`'
-				}
+	if node.cond_type == table.bool_type {
+		variants := ['true', 'false']
+		for v in variants {
+			if v !in branch_exprs {
+				is_exhaustive = false
+				unhandled << '`$v`'
 			}
 		}
-		//
-		table.Enum {
-			for v in type_sym.info.vals {
-				if v !in branch_exprs {
-					is_exhaustive = false
-					unhandled << '`.$v`'
+	} else {
+		match mut cond_type_sym.info {
+			table.SumType {
+				for v in cond_type_sym.info.variants {
+					v_str := c.table.type_to_str(v)
+					if v_str !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`$v_str`'
+					}
 				}
 			}
-		}
-		else {
-			is_exhaustive = false
+			//
+			table.Enum {
+				for v in cond_type_sym.info.vals {
+					if v !in branch_exprs {
+						is_exhaustive = false
+						unhandled << '`.$v`'
+					}
+				}
+			}
+			else {
+				is_exhaustive = false
+			}
 		}
 	}
 	mut else_branch := node.branches[node.branches.len - 1]
@@ -4354,11 +4487,15 @@ pub fn (mut c Checker) prefix_expr(mut node ast.PrefixExpr) table.Type {
 	node.right_type = right_type
 	// TODO: testing ref/deref strategy
 	if node.op == .amp && !right_type.is_ptr() {
-		if node.right is ast.IntegerLiteral {
-			c.error('cannot take the address of an int', node.pos)
-		}
-		if node.right is ast.StringLiteral || node.right is ast.StringInterLiteral {
-			c.error('cannot take the address of a string', node.pos)
+		match node.right {
+			ast.IntegerLiteral { c.error('cannot take the address of an int literal',
+					node.pos) }
+			ast.BoolLiteral { c.error('cannot take the address of a bool literal', node.pos) }
+			ast.StringLiteral, ast.StringInterLiteral { c.error('cannot take the address of a string literal',
+					node.pos) }
+			ast.FloatLiteral { c.error('cannot take the address of a float literal', node.pos) }
+			ast.CharLiteral { c.error('cannot take the address of a char literal', node.pos) }
+			else {}
 		}
 		if mut node.right is ast.IndexExpr {
 			typ_sym := c.table.get_type_symbol(node.right.left_type)
@@ -4564,6 +4701,25 @@ pub fn (mut c Checker) chan_init(mut node ast.ChanInit) table.Type {
 	}
 }
 
+pub fn (mut c Checker) check_dup_keys(node &ast.MapInit, i int) {
+	key_i := node.keys[i]
+	if key_i is ast.StringLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.StringLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	} else if key_i is ast.IntegerLiteral {
+		for j in 0 .. i {
+			key_j := node.keys[j] as ast.IntegerLiteral
+			if key_i.val == key_j.val {
+				c.error('duplicate key "$key_i.val" in map literal', key_i.pos)
+			}
+		}
+	}
+}
+
 pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `x := map[string]string` - set in parser
 	if node.typ != 0 {
@@ -4583,14 +4739,8 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 	// `{'age': 20}`
 	key0_type := c.table.mktyp(c.expr(node.keys[0]))
 	val0_type := c.table.mktyp(c.expr(node.vals[0]))
+	mut same_key_type := true
 	for i, key in node.keys {
-		key_i := key as ast.StringLiteral
-		for j in 0 .. i {
-			key_j := node.keys[j] as ast.StringLiteral
-			if key_i.val == key_j.val {
-				c.error('duplicate key "$key_i.val" in map literal', key.position())
-			}
-		}
 		if i == 0 {
 			continue
 		}
@@ -4598,16 +4748,18 @@ pub fn (mut c Checker) map_init(mut node ast.MapInit) table.Type {
 		key_type := c.expr(key)
 		val_type := c.expr(val)
 		if !c.check_types(key_type, key0_type) {
-			key0_type_sym := c.table.get_type_symbol(key0_type)
-			key_type_sym := c.table.get_type_symbol(key_type)
-			c.error('map init: cannot use `$key_type_sym.name` as `$key0_type_sym.name` for map key',
-				node.pos)
+			msg := c.expected_msg(key_type, key0_type)
+			c.error('invalid map key: $msg', key.position())
+			same_key_type = false
 		}
 		if !c.check_types(val_type, val0_type) {
-			val0_type_sym := c.table.get_type_symbol(val0_type)
-			val_type_sym := c.table.get_type_symbol(val_type)
-			c.error('map init: cannot use `$val_type_sym.name` as `$val0_type_sym.name` for map value',
-				node.pos)
+			msg := c.expected_msg(val_type, val0_type)
+			c.error('invalid map value: $msg', val.position())
+		}
+	}
+	if same_key_type {
+		for i in 1 .. node.keys.len {
+			c.check_dup_keys(node, i)
 		}
 	}
 	map_type := table.new_type(c.table.find_or_register_map(key0_type, val0_type))
@@ -4824,8 +4976,10 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		mut sym := c.table.get_type_symbol(node.receiver.typ)
 		if sym.kind == .interface_ {
 			c.error('interfaces cannot be used as method receiver', node.receiver_pos)
-		}
-		if sym.kind == .sum_type && node.name == 'type_name' {
+		} else if sym.kind == .array && !c.is_builtin_mod && node.name == 'map' {
+			// TODO `node.map in array_builtin_methods`
+			c.error('method overrides built-in array method', node.pos)
+		} else if sym.kind == .sum_type && node.name == 'type_name' {
 			c.error('method overrides built-in sum type method', node.pos)
 		}
 		// if sym.has_method(node.name) {
@@ -4838,10 +4992,16 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		// Make sure all types are valid
 		for arg in node.params {
 			sym := c.table.get_type_symbol(arg.typ)
-			if sym.kind == .placeholder {
-				c.error('unknown type `$sym.name`', node.method_type_pos)
+			if sym.kind == .placeholder ||
+				(sym.kind in [table.Kind.any_int, .any_float] && !c.is_builtin_mod) {
+				c.error('unknown type `$sym.name`', node.pos)
 			}
 		}
+	}
+	return_sym := c.table.get_type_symbol(node.return_type)
+	if node.language == .v &&
+		return_sym.kind in [.placeholder, .any_int, .any_float] && return_sym.language == .v {
+		c.error('unknown type `$return_sym.name`', node.pos)
 	}
 	if node.language == .v && node.is_method && node.name == 'str' {
 		if node.return_type != table.string_type {
@@ -4849,6 +5009,24 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 		}
 		if node.params.len != 1 {
 			c.error('.str() methods should have 0 arguments', node.pos)
+		}
+	}
+	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '>', '==', '!='] {
+		if node.params.len != 2 {
+			c.error('operator methods should have exactly 1 argument', node.pos)
+		} else {
+			receiver_sym := c.table.get_type_symbol(node.receiver.typ)
+			param_sym := c.table.get_type_symbol(node.params[1].typ)
+			if param_sym.kind !in [.struct_, .alias] || receiver_sym.kind !in [.struct_, .alias] {
+				c.error('operator methods are only allowed for struct and type alias',
+					node.pos)
+			} else {
+				if node.receiver.typ != node.params[1].typ {
+					c.error('both sides of an operator must be the same type', node.pos)
+				} else if node.name in ['<', '>', '==', '!='] && node.return_type != table.bool_type {
+					c.error('operator comparison methods should return `bool`', node.pos)
+				}
+			}
 		}
 	}
 	// TODO c.pref.is_vet

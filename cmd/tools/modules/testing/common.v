@@ -8,6 +8,8 @@ import sync
 import v.pref
 import v.util.vtest
 
+const github_job = os.getenv('GITHUB_JOB')
+
 pub struct TestSession {
 pub mut:
 	files         []string
@@ -23,7 +25,7 @@ pub mut:
 	progress_mode bool
 	root_relative bool // used by CI runs, so that the output is stable everywhere
 	nmessages     chan LogMessage // many publishers, single consumer/printer
-	nmessage_idx  int // currently printed message index
+	nmessage_idx  int      // currently printed message index
 	nprint_ended  chan int // read to block till printing ends, 1:1
 }
 
@@ -110,8 +112,15 @@ pub fn new_test_session(_vargs string) TestSession {
 		skip_files << 'examples/sokol/fonts.v'
 		skip_files << 'examples/sokol/drawing.v'
 	}
+	$if macos {
+		skip_files << 'examples/database/mysql.v'
+	}
 	$if windows {
+		skip_files << 'examples/database/mysql.v'
 		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+	}
+	if github_job != 'ubuntu-tcc' {
+		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()

@@ -1,5 +1,5 @@
 vlib/v/checker/tests/cannot_cast_to_struct.vv:10:7: error: cannot convert struct `Abc` to struct `Test`
-    8 |
+    8 | 
     9 | fn main() {
    10 |     _ := Test(Abc{})
       |          ~~~~~~~~~~~
@@ -12,7 +12,7 @@ vlib/v/checker/tests/cannot_cast_to_struct.vv:12:6: error: cannot cast `Alphabet
       |         ~~~~~~~~
    13 |     _ = Xyz(5)
    14 |     s := Abc{}
-vlib/v/checker/tests/cannot_cast_to_struct.vv:13:6: error: cannot cast `any_int` to struct
+vlib/v/checker/tests/cannot_cast_to_struct.vv:13:6: error: cannot cast `int literal` to struct
    11 |     sum := Alphabet(Xyz{})
    12 |     _ = Xyz(sum)
    13 |     _ = Xyz(5)

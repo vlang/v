@@ -7,6 +7,20 @@ import v.table
 import v.token
 import v.ast
 
+pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.Type) ? {
+	mut expected := expected_
+	// variadic
+	if expected.has_flag(.variadic) {
+		exp_type_sym := c.table.get_type_symbol(expected_)
+		exp_info := exp_type_sym.info as table.Array
+		expected = exp_info.elem_type
+	}
+	if c.check_types(got, expected) {
+		return
+	}
+	return error('cannot use `${c.table.type_to_str(got.clear_flag(.variadic))}` as `${c.table.type_to_str(expected.clear_flag(.variadic))}`')
+}
+
 pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
@@ -16,6 +30,11 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	exp_idx := t.unalias_num_type(expected).idx()
 	// got_is_ptr := got.is_ptr()
 	exp_is_ptr := expected.is_ptr()
+	// exp_is_optional := expected.has_flag(.optional)
+	// got_is_optional := got.has_flag(.optional)
+	// if (exp_is_optional && !got_is_optional) || (!exp_is_optional && got_is_optional) {
+	// return false
+	//}
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
 	if got_idx == exp_idx {
@@ -104,7 +123,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, got) {
+	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
 		return true
 	}
 	// fn type
@@ -159,7 +178,7 @@ fn (mut c Checker) check_shift(left_type table.Type, right_type table.Type, left
 		c.error('invalid operation: shift of type `$sym.name`', left_pos)
 		return table.void_type
 	} else if !right_type.is_int() {
-		c.error('cannot shift non-integer type ${c.table.get_type_symbol(right_type).name} into type ${c.table.get_type_symbol(left_type).name}',
+		c.error('cannot shift non-integer type `${c.table.get_type_symbol(right_type).name}` into type `${c.table.get_type_symbol(left_type).name}`',
 			right_pos)
 		return table.void_type
 	}
@@ -400,7 +419,7 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
 	for i, param in f.params {
-		arg := call_expr.args[i]
+		arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
 		if param.typ.has_flag(.generic) {
 			typ = arg.typ
 			break
@@ -408,12 +427,23 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 		arg_sym := c.table.get_type_symbol(arg.typ)
 		param_type_sym := c.table.get_type_symbol(param.typ)
 		if arg_sym.kind == .array && param_type_sym.kind == .array {
-			param_info := param_type_sym.info as table.Array
-			if param_info.elem_type.has_flag(.generic) {
-				arg_info := arg_sym.info as table.Array
-				typ = arg_info.elem_type
-				break
+			mut arg_elem_info := arg_sym.info as table.Array
+			mut param_elem_info := param_type_sym.info as table.Array
+			mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+			mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+			for {
+				if arg_elem_sym.kind == .array &&
+					param_elem_sym.kind == .array && param_elem_sym.name != 'T' {
+					arg_elem_info = arg_elem_sym.info as table.Array
+					arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+					param_elem_info = param_elem_sym.info as table.Array
+					param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+				} else {
+					typ = arg_elem_info.elem_type
+					break
+				}
 			}
+			break
 		}
 	}
 	if typ == table.void_type {

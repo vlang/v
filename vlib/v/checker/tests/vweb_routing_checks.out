@@ -1,14 +1,14 @@
-vlib/v/checker/tests/vweb_routing_checks.vv:22:1: error: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
-   20 | // segfault because path taks 0 vars and fcn takes 1 arg
-   21 | ['/bar']
-   22 | pub fn (mut app App) bar(a string) vweb.Result {
+vlib/v/checker/tests/vweb_routing_checks.vv:21:1: error: mismatched parameters count between vweb method `App.bar` (1) and route attribute ['/bar'] (0)
+   19 | // segfault because path taks 0 vars and fcn takes 1 arg
+   20 | ['/bar']
+   21 | pub fn (mut app App) bar(a string) vweb.Result {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   23 |     app.vweb.html('works')
-   24 |     return vweb.Result{}
-vlib/v/checker/tests/vweb_routing_checks.vv:29:1: error: mismatched parameters count between vweb method `App.cow` (0) and route attribute ['/cow/:low'] (1)
-   27 | // no segfault, but it shouldnt compile
-   28 | ['/cow/:low']
-   29 | pub fn (mut app App) cow() vweb.Result {
+   22 |     app.html('works')
+   23 |     return vweb.Result{}
+vlib/v/checker/tests/vweb_routing_checks.vv:28:1: error: mismatched parameters count between vweb method `App.cow` (0) and route attribute ['/cow/:low'] (1)
+   26 | // no segfault, but it shouldnt compile
+   27 | ['/cow/:low']
+   28 | pub fn (mut app App) cow() vweb.Result {
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-   30 |     app.vweb.html('works')
-   31 |     return vweb.Result{}
+   29 |     app.html('works')
+   30 |     return vweb.Result{}

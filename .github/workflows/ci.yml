@@ -1,4 +1,4 @@
-name: CI
+name: Code CI
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   code-formatting:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -26,7 +26,7 @@ jobs:
       run: ./v -silent test-fmt
 
 #  v-fmt:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu-20.04
 #    timeout-minutes: 30
 #    steps:
 #    - uses: actions/checkout@v2
@@ -44,7 +44,7 @@ jobs:
 #      run: echo "TODO" #./v test-fmt
 
   performance-regressions:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
@@ -68,7 +68,7 @@ jobs:
       run: cmd/tools/repeat --max_time 750 --series 3 --count 15 --nmaxs 5 --warmup 3 --fail_percent 10 -t '{T} -show-timings -o v.c cmd/v' ./v ./vmaster/v
 
   ubuntu-tcc:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -80,6 +80,10 @@ jobs:
            sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
            sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
            ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+           ## The following is needed for examples/wkhtmltopdf.v
+           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+           sudo apt-get install xfonts-75dpi xfonts-base
+           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
     - name: Build v
       run: |
         echo $VFLAGS
@@ -96,6 +100,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: ./v -silent test-fixed
     - name: Test time functions in a timezone UTC-12
@@ -114,11 +122,16 @@ jobs:
       run: ./v build-tools
     - name: Test v binaries
       run: ./v build-vbinaries
+    - name: Test v tutorials
+      run: |
+        cd tutorials/code/blog
+        ../../../v .
+
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
     name: alpine-musl
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     container:
       image: thevlang/vlang:alpine-build
@@ -181,6 +194,10 @@ jobs:
 #      run: ./v build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
@@ -216,7 +233,7 @@ jobs:
         ../v run examples/build_examples.vsh
 
   ubuntu:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -258,6 +275,10 @@ jobs:
       run: |
         ./v -o v2 -usecache cmd/v
         ./v -usecache examples/tetris/tetris.v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -294,7 +315,7 @@ jobs:
         echo "Building it..."
         ../../vprod -backend x64 -o 1m 1m.v
         echo "Running it..."
-        ls    
+        ls
 #    - name: SDL examples
 #      run: git clone --depth 1 https://github.com/vlang/sdl && cd sdl
 
@@ -306,7 +327,7 @@ jobs:
 #        github-token: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-clang:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc clang
@@ -339,6 +360,10 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
       run: ./v -o v2 -usecache cmd/v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -377,8 +402,77 @@ jobs:
         echo "Running it..."
         ls
 
+  tests-sanitize-undefined:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=undefined)
+      run: ./v -cc clang -cflags "-fsanitize=undefined" -o v2 cmd/v && ./v2 -cflags -fsanitize=undefined test-fixed
+
+  tests-sanitize-address:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=address)
+      run: ASAN_OPTIONS=detect_leaks=0 ./v -cflags -fsanitize=address test-fixed
+
+  tests-sanitize-memory:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: -cc clang
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-node@v1
+      with:
+        node-version: 12.x
+    - name: Install dependencies
+      run: |
+         sudo rm -f /etc/apt/sources.list.d/dotnetdev.list /etc/apt/sources.list.d/microsoft-prod.list;
+         sudo apt-get update;
+         sudo apt-get install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+         sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
+         sudo apt-get install clang
+         ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+    - name: Build V
+      run: make -j4 && ./v -cc clang -cg -cflags -Werror -o v cmd/v
+    - name: Fixed tests (-fsanitize=memory)
+      run: ./v -cflags -fsanitize=memory test-fixed
+
 #  ubuntu-autofree-selfcompile:
-#    runs-on: ubuntu-18.04
+#    runs-on: ubuntu-20.04
 #    timeout-minutes: 30
 #    env:
 #      VFLAGS: -cc gcc
@@ -393,7 +487,7 @@ jobs:
   # Ubuntu docker pre-built container
   ubuntu-musl:
     name: ubuntu-musl
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     container:
       image: thevlang/vlang:ubuntu-build
@@ -410,12 +504,16 @@ jobs:
       - name: Build V
         run: |
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
         run: |
           ./v -silent test-fixed
 
 #   ubuntu-musl:
-#     runs-on: ubuntu-18.04
+#     runs-on: ubuntu-20.04
 #     timeout-minutes: 30
 #     env:
 #       VFLAGS: -cc musl-gcc
@@ -443,7 +541,7 @@ jobs:
 #       run: ./v -silent test-fixed
 
   ubuntu-llvm-mingw:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -471,6 +569,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed
@@ -480,10 +582,10 @@ jobs:
       ## v.js dosent work on windows
         #.\v.exe -o hi.js examples/hello_v_js.v
         #node hi.js
-#    - name: Test v binaries
-#      run: ./v build-vbinaries
-#    - name: v2 self compilation
-#      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
+    - name: Test v binaries
+      run: ./v build-vbinaries
+    - name: v2 self compilation
+      run: .\v.exe -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
 
   windows-msvc:
     runs-on: windows-2019
@@ -509,6 +611,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
@@ -541,6 +647,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        .\v.exe cmd/tools/test_if_v_test_system_works.v
+        .\cmd\tools\test_if_v_test_system_works.exe
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed
@@ -557,7 +667,7 @@ jobs:
 
 
   compilable-v-c-and-v-win-c:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -593,7 +703,7 @@ jobs:
         ls -lart examples/2048/2048.exe
 
   ubuntu-c-plus-plus:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -615,7 +725,7 @@ jobs:
 ##      run: ./v -cc g++-9 -silent test-fixed
 
   install-modules:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -629,7 +739,7 @@ jobs:
         ./v install nedpals.args
 
   gitly-compiles:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -649,7 +759,7 @@ jobs:
 
   websocket_autobahn:
     name: Autobahn integrations tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -704,7 +814,7 @@ jobs:
 
   parser-silent:
     name: Parser silent mode
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -723,7 +833,7 @@ jobs:
 
   parser-silent-fuzzing:
     name: Parser silent mode fuzzing
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
@@ -748,7 +858,7 @@ jobs:
         ./v test-parser examples/2048/2048_fuzz.v
 
   v-up-works-on-ubuntu:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
       VFLAGS: -cc tcc
@@ -768,3 +878,31 @@ jobs:
         ./v version
         ./v  -o v2 cmd/v
         ./v2 -o v3 cmd/v
+
+  vls-compiles:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone VLS
+      run: git clone --depth 1 https://github.com/vlang/vls
+    - name: Build VLS
+      run: cd vls; ../v cmd/vls ; cd ..
+    - name: Build VLS with -prod
+      run: cd vls; ../v -prod cmd/vls ; cd ..
+
+  vab-compiles:
+    runs-on: ubuntu-20.04
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v2
+    - name: Build V
+      run: make -j2 && ./v -cc gcc -o v cmd/v
+    - name: Clone vab
+      run: git clone --depth 1 https://github.com/vlang/vab
+    - name: Build vab
+      run: cd vab; ../v ./vab.v ; cd ..
+    - name: Build vab with -prod
+      run: cd vab; ../v -prod ./vab.v ; cd ..

@@ -9,9 +9,9 @@ import v.errors
 
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
-pub type Expr = AnonFn | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral | CTempVar |
-	CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr | EnumVal |
-	FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
+pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
+	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr |
+	EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
 	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
 	StructInit | Type | TypeOf | UnsafeExpr
@@ -130,8 +130,6 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
-	path       string
-	expr       Expr
 	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
@@ -168,7 +166,7 @@ pub:
 	pos      token.Position
 pub mut:
 	typ      table.Type // the type of the const field, it can be any type in V
-	comments []Comment // comments before current const field
+	comments []Comment  // comments before current const field
 }
 
 // const declaration
@@ -178,7 +176,8 @@ pub:
 	pos          token.Position
 pub mut:
 	fields       []ConstField // all the const fields in the `const (...)` block
-	end_comments []Comment // comments that after last const field
+	end_comments []Comment    // comments that after last const field
+	is_block     bool // const() block
 }
 
 pub struct StructDecl {
@@ -248,13 +247,17 @@ pub mut:
 
 pub struct StructInit {
 pub:
-	pos          token.Position
-	is_short     bool
-	pre_comments []Comment
+	pos                  token.Position
+	is_short             bool
 pub mut:
-	typ          table.Type
-	fields       []StructInitField
-	embeds       []StructInitEmbed
+	pre_comments         []Comment
+	typ                  table.Type
+	update_expr          Expr
+	update_expr_type     table.Type
+	update_expr_comments []Comment
+	has_update_expr      bool
+	fields               []StructInitField
+	embeds               []StructInitEmbed
 }
 
 // import statement
@@ -293,17 +296,17 @@ pub:
 	is_variadic     bool
 	is_anon         bool
 	receiver        Field
-	receiver_pos    token.Position
+	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
-	method_type_pos token.Position
+	method_type_pos token.Position // `User` in ` fn (u User)` position
 	method_idx      int
 	rec_mut         bool // is receiver mutable
 	rec_share       table.ShareType
 	language        table.Language
 	no_body         bool // just a definition `fn C.malloc()`
 	is_builtin      bool // this function is defined in builtin/strconv
-	pos             token.Position
-	body_pos        token.Position
+	pos             token.Position // function declaration position
+	body_pos        token.Position // function bodys position
 	file            string
 	is_generic      bool
 	is_direct_arr   bool // direct array access
@@ -453,11 +456,11 @@ pub:
 	global_scope     &Scope
 pub mut:
 	scope            &Scope
-	stmts            []Stmt // all the statements in the source file
+	stmts            []Stmt   // all the statements in the source file
 	imports          []Import // all the imports
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
-	errors           []errors.Error // all the checker errors in the file
-	warnings         []errors.Warning // all the checker warings in the file
+	errors           []errors.Error    // all the checker errors in the file
+	warnings         []errors.Warning  // all the checker warings in the file
 	generic_fns      []&FnDecl
 }
 
@@ -622,9 +625,9 @@ pub mut:
 
 pub struct MatchBranch {
 pub:
-	exprs         []Expr // left side
+	exprs         []Expr      // left side
 	ecmnts        [][]Comment // inline comments for each left side expr
-	stmts         []Stmt // right side
+	stmts         []Stmt      // right side
 	pos           token.Position
 	comments      []Comment // comment above `xxx {`
 	is_else       bool
@@ -639,13 +642,13 @@ pub:
 	pos           token.Position
 	has_exception bool
 pub mut:
-	is_expr       bool // returns a value
+	is_expr       bool       // returns a value
 	expected_type table.Type // for debugging only
 }
 
 pub struct SelectBranch {
 pub:
-	stmt          Stmt // `a := <-ch` or `ch <- a`
+	stmt          Stmt   // `a := <-ch` or `ch <- a`
 	stmts         []Stmt // right side
 	pos           token.Position
 	comment       Comment // comment above `select {`
@@ -697,7 +700,7 @@ pub mut:
 	val_type   table.Type
 	cond_type  table.Type
 	kind       table.Kind // array/map/string
-	label      string // `label: for {`
+	label      string     // `label: for {`
 	scope      &Scope
 }
 
@@ -779,8 +782,8 @@ pub:
 	pos           token.Position
 	comments      []Comment // comment after Enumfield in the same line
 	next_comments []Comment // comments between current EnumField and next EnumField
-	expr          Expr // the value of current EnumField; 123 in `ename = 123`
-	has_expr      bool // true, when .expr has a value
+	expr          Expr      // the value of current EnumField; 123 in `ename = 123`
+	has_expr      bool      // true, when .expr has a value
 }
 
 // enum declaration
@@ -788,10 +791,10 @@ pub struct EnumDecl {
 pub:
 	name             string
 	is_pub           bool
-	is_flag          bool // true when the enum has [flag] tag,for bit field enum
-	is_multi_allowed bool // true when the enum has [_allow_multiple_values] tag
-	comments         []Comment // comments before the first EnumField
-	fields           []EnumField // all the enum fields
+	is_flag          bool         // true when the enum has [flag] tag,for bit field enum
+	is_multi_allowed bool         // true when the enum has [_allow_multiple_values] tag
+	comments         []Comment    // comments before the first EnumField
+	fields           []EnumField  // all the enum fields
 	attrs            []table.Attr // attributes of enum declaration
 	pos              token.Position
 }
@@ -871,7 +874,7 @@ pub struct ArrayInit {
 pub:
 	pos            token.Position // `[]` in []Type{} position
 	elem_type_pos  token.Position // `Type` in []Type{} position
-	exprs          []Expr // `[expr, expr]` or `[expr]Type{}` for fixed array
+	exprs          []Expr      // `[expr, expr]` or `[expr]Type{}` for fixed array
 	ecmnts         [][]Comment // optional iembed comments after each expr
 	is_fixed       bool
 	has_val        bool // fixed size literal `[expr, expr]!!`
@@ -884,10 +887,19 @@ pub:
 	has_default    bool
 pub mut:
 	expr_types     []table.Type // [Dog, Cat] // also used for interface_types
-	is_interface   bool // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
+	is_interface   bool       // array of interfaces e.g. `[]Animal` `[Dog{}, Cat{}]`
 	interface_type table.Type // Animal
 	elem_type      table.Type // element type
 	typ            table.Type // array type
+}
+
+pub struct ArrayDecompose {
+pub:
+	expr      Expr
+	pos       token.Position
+pub mut:
+	expr_type table.Type
+	arg_type  table.Type
 }
 
 pub struct ChanInit {
@@ -931,8 +943,8 @@ pub:
 // `string(x,y)`, while skipping the real pointer casts like `&string(x)`.
 pub struct CastExpr {
 pub:
-	expr      Expr // `buf` in `string(buf, n)`
-	arg       Expr // `n` in `string(buf, n)`
+	expr      Expr       // `buf` in `string(buf, n)`
+	arg       Expr       // `n` in `string(buf, n)`
 	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position
 pub mut:
@@ -1077,13 +1089,13 @@ pub enum SqlStmtKind {
 pub struct SqlStmt {
 pub:
 	kind            SqlStmtKind
-	db_expr         Expr // `db` in `sql db {`
+	db_expr         Expr   // `db` in `sql db {`
 	object_var_name string // `user`
 	table_type      table.Type
 	pos             token.Position
 	where_expr      Expr
 	updated_columns []string // for `update set x=y`
-	update_exprs    []Expr // for `update`
+	update_exprs    []Expr   // for `update`
 pub mut:
 	table_name      string
 	fields          []table.Field
@@ -1127,6 +1139,9 @@ pub fn (expr Expr) position() token.Position {
 			return expr.decl.pos
 		}
 		ArrayInit, AsCast, Assoc, AtExpr, BoolLiteral, CallExpr, CastExpr, ChanInit, CharLiteral, ConcatExpr, Comment, EnumVal, FloatLiteral, Ident, IfExpr, IndexExpr, IntegerLiteral, Likely, LockExpr, MapInit, MatchExpr, None, OrExpr, ParExpr, PostfixExpr, PrefixExpr, RangeExpr, SelectExpr, SelectorExpr, SizeOf, SqlExpr, StringInterLiteral, StringLiteral, StructInit, Type, TypeOf, UnsafeExpr {
+			return expr.pos
+		}
+		ArrayDecompose {
 			return expr.pos
 		}
 		IfGuardExpr {
@@ -1200,10 +1215,10 @@ pub fn (stmt Stmt) check_c_expr() ? {
 // CTempVar is used in cgen only, to hold nodes for temporary variables
 pub struct CTempVar {
 pub:
-	name   string // the name of the C temporary variable; used by g.expr(x)
-	orig   Expr // the original expression, which produced the C temp variable; used by x.str()
+	name   string     // the name of the C temporary variable; used by g.expr(x)
+	orig   Expr       // the original expression, which produced the C temp variable; used by x.str()
 	typ    table.Type // the type of the original expression
-	is_ptr bool // whether the type is a pointer
+	is_ptr bool       // whether the type is a pointer
 }
 
 pub fn (stmt Stmt) position() token.Position {

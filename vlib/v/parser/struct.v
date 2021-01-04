@@ -158,7 +158,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
 				p.peek_tok.kind == .dot) &&
-				language == .v && ast_fields.len == 0
+				language == .v && ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -250,8 +250,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				typ: typ
 				default_expr: ast.ex2fe(default_expr)
 				has_default_expr: has_default_expr
-				is_pub: is_field_pub
-				is_mut: is_field_mut
+				is_pub: if is_embed {
+					true
+				} else {
+					is_field_pub
+				}
+				is_mut: if is_embed {
+					true
+				} else {
+					is_field_mut
+				}
 				is_global: is_field_global
 				attrs: p.attrs
 			}
@@ -299,9 +307,9 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		is_pub: is_pub
 		fields: ast_fields
 		pos: start_pos.extend_with_last_line(name_pos, last_line)
-		mut_pos: mut_pos
-		pub_pos: pub_pos
-		pub_mut_pos: pub_mut_pos
+		mut_pos: mut_pos - embeds.len
+		pub_pos: pub_pos - embeds.len
+		pub_mut_pos: pub_mut_pos - embeds.len
 		language: language
 		is_union: is_union
 		attrs: attrs
@@ -323,21 +331,31 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	pre_comments := p.eat_comments()
 	mut fields := []ast.StructInitField{}
 	mut i := 0
-	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr // `Vec{a,b,c}
+	no_keys := p.peek_tok.kind != .colon && p.tok.kind != .rcbr && p.tok.kind != .ellipsis // `Vec{a,b,c}
 	// p.warn(is_short_syntax.str())
 	saved_is_amp := p.is_amp
 	p.is_amp = false
+	mut update_expr := ast.Expr{}
+	mut update_expr_comments := []ast.Comment{}
+	mut has_update_expr := false
 	for p.tok.kind !in [.rcbr, .rpar, .eof] {
 		mut field_name := ''
 		mut expr := ast.Expr{}
 		mut field_pos := token.Position{}
 		mut comments := []ast.Comment{}
 		mut nline_comments := []ast.Comment{}
+		is_update_expr := fields.len == 0 && p.tok.kind == .ellipsis
 		if no_keys {
 			// name will be set later in checker
 			expr = p.expr(0)
 			field_pos = expr.position()
 			comments = p.eat_line_end_comments()
+		} else if is_update_expr {
+			// struct updating syntax; f2 := Foo{ ...f, name: 'f2' }
+			p.check(.ellipsis)
+			update_expr = p.expr(0)
+			update_expr_comments << p.eat_line_end_comments()
+			has_update_expr = true
 		} else {
 			first_field_pos := p.tok.position()
 			field_name = p.check_name()
@@ -359,12 +377,14 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 		}
 		comments << p.eat_line_end_comments()
 		nline_comments << p.eat_comments()
-		fields << ast.StructInitField{
-			name: field_name
-			expr: expr
-			pos: field_pos
-			comments: comments
-			next_comments: nline_comments
+		if !is_update_expr {
+			fields << ast.StructInitField{
+				name: field_name
+				expr: expr
+				pos: field_pos
+				comments: comments
+				next_comments: nline_comments
+			}
 		}
 	}
 	last_pos := p.tok.position()
@@ -375,6 +395,9 @@ fn (mut p Parser) struct_init(short_syntax bool) ast.StructInit {
 	node := ast.StructInit{
 		typ: typ
 		fields: fields
+		update_expr: update_expr
+		update_expr_comments: update_expr_comments
+		has_update_expr: has_update_expr
 		pos: first_pos.extend_with_last_line(last_pos, p.prev_tok.line_nr)
 		is_short: no_keys
 		pre_comments: pre_comments

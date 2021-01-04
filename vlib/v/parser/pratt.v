@@ -127,6 +127,17 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			if p.expecting_type {
 				// parse json.decode type (`json.decode([]User, s)`)
 				node = p.name_expr()
+			} else if p.is_amp && p.peek_tok.kind == .rsbr {
+				pos := p.tok.position()
+				typ := p.parse_type().to_ptr()
+				p.check(.lpar)
+				expr := p.expr(0)
+				p.check(.rpar)
+				node = ast.CastExpr{
+					typ: typ
+					expr: expr
+					pos: pos
+				}
 			} else {
 				node = p.array_init()
 			}
@@ -142,9 +153,11 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			is_known_var := p.mark_var_as_used(p.tok.lit)
-			if is_known_var {
-				expr := p.parse_ident(table.Language.v)
+			if !p.tok.can_start_type(table.builtin_type_names) {
+				if p.tok.kind == .name {
+					p.mark_var_as_used(p.tok.lit)
+				}
+				expr := p.expr(0)
 				node = ast.SizeOf{
 					is_type: false
 					expr: expr
@@ -191,13 +204,13 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		.lcbr {
 			// Map `{"age": 20}` or `{ x | foo:bar, a:10 }`
 			p.next()
-			if p.tok.kind == .string {
+			if p.tok.kind in [.chartoken, .number, .string] {
 				node = p.map_init()
 			} else {
 				// it should be a struct
 				if p.peek_tok.kind == .pipe {
 					node = p.assoc()
-				} else if p.peek_tok.kind == .colon || p.tok.kind == .rcbr {
+				} else if p.peek_tok.kind == .colon || p.tok.kind in [.rcbr, .comment] {
 					node = p.struct_init(true) // short_syntax: true
 				} else if p.tok.kind == .name {
 					p.next()

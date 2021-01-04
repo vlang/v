@@ -43,22 +43,10 @@ fn (mut p Process) unix_spawn_process() int {
 		fd_close(pipeset[3])
 		fd_close(pipeset[5])
 	}
-	mut cargv := []charptr{}
-	mut cenvs := []charptr{}
-	cargv << charptr(p.filename.str)
-	for i in 0 .. p.args.len {
-		cargv << charptr(p.args[i].str)
+	execve(p.filename, p.args, p.env) or {
+		eprintln(err)
+		exit(1)
 	}
-	for i in 0 .. p.env.len {
-		cenvs << charptr(p.env[i].str)
-	}
-	cargv << charptr(0)
-	cenvs << charptr(0)
-	C.execve(charptr(p.filename.str), cargv.data, cenvs.data)
-	// NB: normally execve does not return at all.
-	// If it returns, then something went wrong...
-	eprintln(posix_get_error_msg(C.errno))
-	exit(1)
 	return 0
 }
 
