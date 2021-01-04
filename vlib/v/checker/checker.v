@@ -2092,7 +2092,7 @@ pub fn (mut c Checker) return_stmt(mut return_stmt ast.Return) {
 				pos)
 		}
 		if !c.check_types(got_typ, exp_type) {
-			got_typ_sym := c.table.get_type_symbol(c.table.mktyp(got_typ))
+			got_typ_sym := c.table.get_type_symbol(got_typ)
 			mut exp_typ_sym := c.table.get_type_symbol(exp_type)
 			pos := return_stmt.exprs[i].position()
 			if exp_typ_sym.kind == .interface_ {
