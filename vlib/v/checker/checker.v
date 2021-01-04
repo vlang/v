@@ -641,6 +641,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 		else {}
 	}
+	if struct_init.has_update_expr {
+		update_type := c.expr(struct_init.update_expr)
+		struct_init.update_expr_type = update_type
+		update_sym := c.table.get_type_symbol(update_type)
+		sym := c.table.get_type_symbol(struct_init.typ)
+		if update_sym.kind != .struct_ {
+			c.error('expected struct `$sym.name`, found `$update_sym.name`', struct_init.update_expr.position())
+		} else if update_type != struct_init.typ {
+			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+		}
+	}
 	return struct_init.typ
 }
 

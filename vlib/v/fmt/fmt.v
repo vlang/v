@@ -2015,7 +2015,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
-	if it.fields.len == 0 {
+	if it.fields.len == 0 && !it.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if it.pre_comments.len == 0 {
 			f.write('$name{}')
@@ -2029,6 +2029,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		// if name != '' {
 		f.write('$name{')
 		// }
+		if it.has_update_expr {
+			f.write('...')
+			f.expr(it.update_expr)
+			f.write(', ')
+		}
 		for i, field in it.fields {
 			f.prefix_expr_cast_expr(field.expr)
 			if i < it.fields.len - 1 {
@@ -2049,6 +2054,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		}
 		init_start := f.out.len
 		f.indent++
+		if it.has_update_expr {
+			f.write('...')
+			f.expr(it.update_expr)
+			f.writeln('')
+		}
 		short_args_loop: for {
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
 			for i, field in it.fields {
