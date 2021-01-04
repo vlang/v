@@ -1050,6 +1050,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
 					}
+					if struct_info.is_union && !c.inside_unsafe {
+						c.warn('accessing union fields requires `unsafe`', expr.pos)
+					}
 				}
 				.array, .string {
 					// This should only happen in `builtin`

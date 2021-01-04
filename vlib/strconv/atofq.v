@@ -37,6 +37,7 @@ pub fn atof_quick(s string) f64 {
 			i++
 		}
 	}
+	unsafe {
 	// infinite
 	if s[i] == `i` && i + 2 < s.len && s[i + 1] == `n` && s[i + 2] == `f` {
 		if sign > 0.0 {
@@ -133,6 +134,7 @@ pub fn atof_quick(s string) f64 {
 	}
 	f.f = f.f * sign
 	return f.f
+	}
 }
 
 const (
