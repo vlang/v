@@ -123,7 +123,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// sum type
-	if c.table.sumtype_has_variant(expected, got) {
+	if c.table.sumtype_has_variant(expected, c.table.mktyp(got)) {
 		return true
 	}
 	// fn type
