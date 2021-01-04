@@ -252,6 +252,9 @@ pub:
 pub mut:
 	pre_comments []Comment
 	typ          table.Type
+	update_expr  Expr
+	update_expr_type table.Type
+	has_update_expr bool
 	fields       []StructInitField
 	embeds       []StructInitEmbed
 }

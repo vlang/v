@@ -4529,7 +4529,17 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if field.typ in info.embeds {
 				continue
 			}
-			g.zero_struct_field(field)
+			if struct_init.has_update_expr {
+				g.expr(struct_init.update_expr)
+				if struct_init.update_expr_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(field.name)
+			} else {
+				g.zero_struct_field(field)
+			}
 			if is_multiline {
 				g.writeln(',')
 			} else {
