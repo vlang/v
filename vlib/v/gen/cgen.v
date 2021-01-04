@@ -3157,7 +3157,8 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else {
 		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
-			left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
+			left_sym.kind !in [.enum_, .function, .interface_, .sum_type] && left_sym.kind == .struct_ &&
+			left_sym.language != .c
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
