@@ -7,12 +7,6 @@ const (
 )
 
 const (
-	std_input_handle  = -10
-	std_output_handle = -11
-	std_error_handle  = -12
-)
-
-const (
 	handle_generic_read  = 0x80000000
 	handle_open_existing = 0x00000003
 )

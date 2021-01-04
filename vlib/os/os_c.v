@@ -472,7 +472,7 @@ pub fn get_raw_line() string {
 		unsafe {
 			max_line_chars := 256
 			buf := malloc(max_line_chars * 2)
-			h_input := C.GetStdHandle(std_input_handle)
+			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			if is_atty(0) > 0 {
 				C.ReadConsole(h_input, buf, max_line_chars * 2, C.LPDWORD(&bytes_read),
@@ -514,7 +514,7 @@ pub fn get_raw_stdin() []byte {
 		unsafe {
 			block_bytes := 512
 			mut buf := malloc(block_bytes)
-			h_input := C.GetStdHandle(std_input_handle)
+			h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
 			mut bytes_read := 0
 			mut offset := 0
 			for {
