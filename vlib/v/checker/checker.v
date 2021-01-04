@@ -2800,32 +2800,51 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			} else {
 				sym := c.table.get_type_symbol(typ)
-				if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
-					c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
-						'use `_` if you do not need the variable', node.pos)
-				}
-				if node.key_var.len > 0 {
-					key_type := match sym.kind {
-						.map { sym.map_info().key_type }
-						else { table.int_type }
+				if sym.kind == .struct_ {
+						// iterators
+						next_fn := sym.find_method('next') or {
+							c.error('a struct must have a `next()` method to be an iterator', node.cond.position())
+							return
+						}
+						if !next_fn.return_type.has_flag(.optional) {
+							c.error('iterator method `next()` must return an optional', node.cond.position())
+						}
+						if next_fn.params.len != 1 /* the receiver */ {
+							c.error('iterator method `next()` must have 0 parameters', node.cond.position())
+						}
+						val_type := next_fn.return_type.clear_flag(.optional)
+						node.cond_type = typ
+						node.kind = sym.kind
+						node.val_type = val_type
+						node.scope.update_var_type(node.val_var, val_type)
+				} else {
+					if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
+						c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
+							'use `_` if you do not need the variable', node.pos)
 					}
-					node.key_type = key_type
-					node.scope.update_var_type(node.key_var, key_type)
-				}
-				mut value_type := c.table.value_type(typ)
-				if value_type == table.void_type || typ.has_flag(.optional) {
-					if typ != table.void_type {
-						c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
-							node.cond.position())
+					if node.key_var.len > 0 {
+						key_type := match sym.kind {
+							.map { sym.map_info().key_type }
+							else { table.int_type }
+						}
+						node.key_type = key_type
+						node.scope.update_var_type(node.key_var, key_type)
 					}
+					mut value_type := c.table.value_type(typ)
+					if value_type == table.void_type || typ.has_flag(.optional) {
+						if typ != table.void_type {
+							c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
+								node.cond.position())
+						}
+					}
+					if node.val_is_mut {
+						value_type = value_type.to_ptr()
+					}
+					node.cond_type = typ
+					node.kind = sym.kind
+					node.val_type = value_type
+					node.scope.update_var_type(node.val_var, value_type)
 				}
-				if node.val_is_mut {
-					value_type = value_type.to_ptr()
-				}
-				node.cond_type = typ
-				node.kind = sym.kind
-				node.val_type = value_type
-				node.scope.update_var_type(node.val_var, value_type)
 			}
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)
