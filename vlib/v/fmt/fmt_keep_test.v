@@ -33,7 +33,7 @@ fn test_fmt() {
 	mut input_files := []string{}
 	input_files << keep_input_files
 	input_files << expected_input_files
-	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
+	input_files = vtest.filter_vtest_only(input_files, { basepath: vroot })
 	fmt_bench.set_total_expected_steps(input_files.len)
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
