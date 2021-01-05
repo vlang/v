@@ -3421,10 +3421,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
-	} else if !c.inside_unsafe && node.typ.is_ptr() && 
+	} else if !c.inside_unsafe && node.typ.is_ptr() &&
 		(node.expr_type.is_ptr() || node.expr_type == table.voidptr_type ||
-		// ignore &Type(0) for now
 		(node.expr_type.is_number() && node.expr !is ast.IntegerLiteral)) {
+		// ignore &Type(0) for now
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
 		c.warn('casting a `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
@@ -5181,7 +5181,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 			if m.return_type == typ_vweb_result {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
-					f := unsafe {&ast.FnDecl(m.source_fn)}
+					f := unsafe { &ast.FnDecl(m.source_fn) }
 					if isnil(f) {
 						continue
 					}
