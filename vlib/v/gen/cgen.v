@@ -1305,6 +1305,27 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
+	} else if it.kind == .struct_ {
+		cond_type_sym := g.table.get_type_symbol(it.cond_type)
+		next_fn := cond_type_sym.find_method('next') or {
+			verror('`next` method not found')
+			return
+		}
+		ret_typ := next_fn.return_type
+		g.writeln('while (1) {')
+		t := g.new_tmp_var()
+		receiver_styp := g.typ(next_fn.params[0].typ)
+		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
+		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
+		if !it.cond_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(it.cond)
+		g.writeln(');')
+		g.writeln('\tif (!${t}.ok) { break; }')
+		val := if it.val_var in ['', '_'] { g.new_tmp_var() } else { it.val_var }
+		val_styp := g.typ(it.val_type)
+		g.writeln('\t$val_styp $val = *($val_styp*)${t}.data;')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
