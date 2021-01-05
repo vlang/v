@@ -41,3 +41,22 @@ fn test_comptime_field_selector_write() {
 	assert res.test == '1'
 	assert res.name == '1'
 }
+
+struct Foo2 {
+	f Foo
+}
+
+fn nested_with_parentheses<T>() T {
+	mut t := T{}
+	$for f in T.fields {
+		$if f.typ is Foo {
+			t.$(f.name).test = '1'
+		}
+	}
+	return t
+}
+
+fn test_nested_with_parentheses() {
+	res := nested_with_parentheses<Foo2>()
+	assert res.f.test == '1'
+}
