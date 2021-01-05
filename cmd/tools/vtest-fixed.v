@@ -19,6 +19,7 @@ const (
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
 		'vlib/v/tests/unsafe_test.v',
+		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_with_fsanitize_address   = [
 		'vlib/encoding/base64/base64_test.v',
@@ -69,6 +70,7 @@ const (
 		'vlib/clipboard/clipboard_test.v',
 		'vlib/vweb/tests/vweb_test.v',
 		'vlib/x/websocket/websocket_test.v',
+		'vlib/net/http/http_httpbin_test.v',
 	]
 	skip_on_linux                 = []string{}
 	skip_on_non_linux             = [
