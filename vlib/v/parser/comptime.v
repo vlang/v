@@ -265,6 +265,11 @@ fn os_from_string(os string) pref.OS {
 
 fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
+	mut has_parens := false
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		has_parens = true
+	}
 	if p.peek_tok.kind == .lpar {
 		method_name := p.check_name()
 		// `app.$action()` (`action` is a string)
@@ -279,14 +284,22 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 			p.check(.key_orelse)
 			p.check(.lcbr)
 		}
+		if has_parens {
+			p.check(.rpar)
+		}
 		return ast.ComptimeCall{
+			has_parens: has_parens
 			left: left
 			method_name: method_name
 			args_var: args_var
 		}
 	}
 	expr := p.expr(0)
+	if has_parens {
+		p.check(.rpar)
+	}
 	return ast.ComptimeSelector{
+		has_parens: has_parens
 		left: left
 		field_expr: expr
 	}

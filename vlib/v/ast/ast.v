@@ -1058,6 +1058,7 @@ pub mut:
 
 pub struct ComptimeSelector {
 pub:
+	has_parens bool // if $() is used, for vfmt
 	left       Expr
 	field_expr Expr
 pub mut:
@@ -1067,6 +1068,7 @@ pub mut:
 
 pub struct ComptimeCall {
 pub:
+	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	left        Expr
 	is_vweb     bool
