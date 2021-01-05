@@ -91,7 +91,7 @@ pub:
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe {&Context(user_data)}
 	desc := sapp.create_desc()
 	/*
 	desc := C.sg_desc{
@@ -159,7 +159,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 }
 
 fn gg_frame_fn(user_data voidptr) {
-	mut ctx := &Context(user_data)
+	mut ctx := unsafe {&Context(user_data)}
 	if ctx.config.frame_fn == voidptr(0) {
 		return
 	}
@@ -181,7 +181,7 @@ pub fn (mut ctx Context) refresh_ui() {
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 	e := unsafe {&sapp.Event(ce)}
-	mut g := &Context(user_data)
+	mut g := unsafe {&Context(user_data)}
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
@@ -215,14 +215,14 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 }
 
 fn gg_cleanup_fn(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe {&Context(user_data)}
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
 }
 
 fn gg_fail_fn(msg charptr, user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe {&Context(user_data)}
 	vmsg := tos3(msg)
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)
