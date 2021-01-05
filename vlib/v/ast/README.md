@@ -2,22 +2,24 @@
 
 ## Overview
 
-The Vlang abstract syntax tree is implemented by using sum type. 
+The V language abstract syntax tree uses sum types for its nodes.
 
-All the AST struct declarations can be found in V source code: [vlib/v/ast/ast.v](https://github.com/vlang/v/blob/master/vlib/v/ast/ast.v).
+All of the AST struct declarations, can be found in V's source code file:
+[vlib/v/ast/ast.v](https://github.com/vlang/v/blob/master/vlib/v/ast/ast.v).
 
 ## AST tool
 
-If you are new to the V's AST, you can install the [vast tool](https://github.com/lydiandy/vast). 
+If you are new to V's AST, you can install [the vast tool](https://github.com/lydiandy/vast). 
 
-It will generate example code to AST json file, which can help you understand the AST better.
+It will generate a json file representing the AST of a given .v file.
+That can help you with understanding the V AST better.
 
 ```shell
-vast example.v       //generate example.json.
+vast example.v    // this will generate an `example.json` file.
 
-vast -w example.v    //generate example.json and watch example.v.
-
+vast -w example.v // same, but will watch for changes in `example.v`
 ```
+If you have passed `-w`, then vast will rewrite `example.json` on each detected change.
 
 ## File
 
@@ -987,12 +989,13 @@ fn main() {
 		'macos' { 150 }
 		else { 0 }
 	}
+	println('price: $price')
 	// multi assign 
 	a, b, c := match false {
 		true { 1, 2, 3 }
 		false { 4, 5, 6 }
-		else { 7, 8, 9 }
 	}
+	println('a, b, c: $a, $b, $c')
 }
 
 type MySum = bool | int | string
@@ -1123,9 +1126,9 @@ fn main() {
 		println('from 0')
 		panic(err)
 	}
-	v2 := my_fn(1) or { 
-		println('from 1') 
-		panic('error msg is $err')	
+	v2 := my_fn(1) or {
+		println('from 1')
+		panic('error msg is $err')
 	}
 	v3 := my_fn(2) or {
 		println('from 2')
@@ -1133,7 +1136,6 @@ fn main() {
 	}
 	v4 := my_fn(3) ? // OrKind is propagate
 }
-
 ```
 
 ## Concurrent
@@ -1144,11 +1146,9 @@ fn main() {
 example code
 
 ```v
-module main
+import sync
 
-const (
-	num_iterations = 10000
-)
+const num_iterations = 10000
 
 fn do_send(ch chan int) {
 	for i in 0 .. num_iterations {
@@ -1256,7 +1256,14 @@ struct Foo {
 fn main() {
 	db := sqlite.connect(':memory:') or { panic(err) }
 	db.exec('drop table if exists User')
-	db.exec("create table User (id integer primary key, age int default 0, name text default '', is_customer int default 0);")
+	db.exec("
+         create table User (
+             id integer primary key, 
+             age int default 0, 
+             name text default '',
+             is_customer int default 0
+         );
+    ")
 	name := 'Peter'
 	db.exec("insert into User (name, age) values ('Sam', 29)")
 	db.exec("insert into User (name, age) values ('Peter', 31)")
@@ -1289,7 +1296,6 @@ fn main() {
 		delete from User where age == 34
 	}
 }
-
 ```
 
 ## Test
@@ -1346,7 +1352,6 @@ fn main() {
 		println('method: $method.name')
 	}
 }
-
 ```
 
 ## C Integration
