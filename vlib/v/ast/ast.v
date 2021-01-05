@@ -26,8 +26,9 @@ pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDe
 pub type ScopeObject = ConstField | GlobalField | Var
 
 // TOOD: replace table.Param
-pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch | MatchBranch |
-	ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
+pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
+	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
+	
 
 pub struct Type {
 pub:
