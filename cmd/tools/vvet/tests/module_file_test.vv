@@ -1,0 +1,49 @@
+module foo
+
+struct Foo {
+	foo int
+}
+
+pub fn foo() string {
+	// Missing doc
+	return 'foo'
+}
+
+// foo does bar
+pub fn bar() string {
+	// not using convention style: '// <fn name>'
+	return 'bar'
+}
+
+// fooo does x
+pub fn fooo() string {
+	// Documented
+	return 'fooo'
+}
+
+// booo does x
+fn booo() string {
+	// Documented, but not pub
+	return 'booo'
+}
+
+fn boo() string {
+	// Missing doc
+	return 'boo'
+}
+
+pub fn (f Foo) foo() string {
+	// Missing doc
+	return f.fo()
+}
+
+fn (f Foo) fo() string {
+	// Missing doc, but not pub
+	return 'foo'
+}
+
+// wrong doc
+pub fn (f Foo) fooo() string {
+	// not using convention
+	return f.fo()
+}
