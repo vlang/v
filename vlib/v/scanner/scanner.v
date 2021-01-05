@@ -973,7 +973,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.end_of_file()
 			}
 		}
-		s.error('invalid character `$c.str()`')
+		s.error('invalid character `$c.ascii_str()`')
 		break
 	}
 	return s.end_of_file()

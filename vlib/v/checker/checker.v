@@ -1222,6 +1222,11 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
 	}
+	/*
+	if left_type == table.byte_type && method_name == 'str' {
+		c.warn('byte str', call_expr.pos)
+	}
+	*/
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in array_builtin_methods {

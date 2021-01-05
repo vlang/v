@@ -452,6 +452,19 @@ pub fn (b byte) str() string {
 	return str
 }
 
+pub fn (b byte) ascii_str() string {
+	mut str := string{
+		str: malloc(2)
+		len: 1
+	}
+	unsafe {
+		str.str[0] = b
+		str.str[1] = `\0`
+	}
+	// println(str)
+	return str
+}
+
 // str_escaped returns the contents of `byte` as an escaped `string`.
 // Example: assert byte(0).str_escaped() == r'`\0`'
 pub fn (b byte) str_escaped() string {
@@ -464,7 +477,7 @@ pub fn (b byte) str_escaped() string {
 		11 { r'`\v`' }
 		12 { r'`\f`' }
 		13 { r'`\r`' }
-		32...126 { b.str() }
+		32...126 { b.ascii_str() }
 		else { '0x' + b.hex() }
 	}
 	return str
