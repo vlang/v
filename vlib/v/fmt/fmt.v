@@ -1614,6 +1614,14 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
+fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
+	if node.generic_type != 0 && node.generic_type != table.void_type {
+		f.write('<')
+		f.write(f.table.type_to_str(node.generic_type))
+		f.write('>')
+	}
+}
+
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
@@ -1669,7 +1677,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		f.expr(node.left)
-		f.write('.' + node.name + '(')
+		f.write('.' + node.name)
+		f.write_generic_if_require(node)
+		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
 		// if is_mut {
@@ -1690,11 +1700,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 			f.write('$name')
 		}
-		if node.generic_type != 0 && node.generic_type != table.void_type {
-			f.write('<')
-			f.write(f.table.type_to_str(node.generic_type))
-			f.write('>')
-		}
+		f.write_generic_if_require(node)
 		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
