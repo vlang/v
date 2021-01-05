@@ -452,7 +452,7 @@ pub fn (b byte) str() string {
 	return str
 }
 
-// TODO make an for the docs: Example: assert byte(0).str_escaped() == `\0` // <- but this fails?
+// TODO make an actual example for the docs: Example: assert byte(0).str_escaped() == `\0` // <- but this fails?
 // str_escaped returns the contents of `byte` as an escaped `string`.
 pub fn (b byte) str_escaped() string {
 	str := match b {
