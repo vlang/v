@@ -54,9 +54,6 @@ const (
 	skip_with_fsanitize_undefined = [
 		'vlib/encoding/csv/reader_test.v',
 	]
-	skip_test_files               = [
-		'vlib/net/http/http_httpbin_test.v',
-	]
 	skip_on_musl                  = [
 		'vlib/v/tests/profile/profile_test.v',
 	]
