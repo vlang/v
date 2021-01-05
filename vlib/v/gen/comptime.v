@@ -19,7 +19,7 @@ fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
 		if node.field_expr.expr is ast.Ident {
 			if node.field_expr.expr.name == g.comp_for_field_var &&
 				node.field_expr.field_name == 'name' {
-				g.write(g.comp_for_field_val.name)
+				g.write(g.comp_for_field_value.name)
 				return
 			}
 		}
@@ -344,7 +344,7 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 			}
 			for field in fields {
 				g.comp_for_field_var = node.val_var
-				g.comp_for_field_val = field
+				g.comp_for_field_value = field
 				g.writeln('\t// field $i')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {
