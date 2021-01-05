@@ -44,13 +44,12 @@ pub fn (mut app App) init_once() {
 	eprintln('>> webserver: started on http://127.0.0.1:$app.port/ , with maximum runtime of $app.timeout milliseconds.')
 }
 
-pub fn (mut app App) index() {
-	app.text('Welcome to VWeb')
+pub fn (mut app App) index() vweb.Result {
+	return app.text('Welcome to VWeb')
 }
 
 pub fn (mut app App) simple() vweb.Result {
-	app.text('A simple result')
-	return vweb.Result{}
+	return app.text('A simple result')
 }
 
 pub fn (mut app App) html_page() vweb.Result {
