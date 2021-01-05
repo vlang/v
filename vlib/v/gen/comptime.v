@@ -231,10 +231,18 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 					g.comp_if_expr(cond.right)
 				}
 				.key_is, .not_is {
-					se := cond.left as ast.SelectorExpr
-					name := '${se.expr}.$se.field_name'
-					exp_type := g.comptime_var_type_map[name]
+					left := cond.left
+					mut name := ''
+					mut exp_type := table.Type(0)
 					got_type := (cond.right as ast.Type).typ
+					if left is ast.SelectorExpr {
+						name = '${left.expr}.$left.field_name'
+						exp_type = g.comptime_var_type_map[name]
+					} else if left is ast.Type {
+						name = left.str()
+						// this is only allowed for generics currently, otherwise blocked by checker
+						exp_type = g.unwrap_generic(left.typ)
+					}
 					g.write('$exp_type == $got_type')
 				}
 				.eq, .ne {

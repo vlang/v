@@ -27,8 +27,9 @@ pub type ScopeObject = ConstField | GlobalField | Var
 
 pub struct Type {
 pub:
-	typ table.Type
 	pos token.Position
+pub mut:
+	typ table.Type
 }
 
 // `{stmts}` or `unsafe {stmts}`
