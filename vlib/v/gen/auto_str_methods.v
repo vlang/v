@@ -332,9 +332,7 @@ fn (mut g Gen) gen_str_for_map(info table.Map, styp string, str_fn_name string) 
 	if key_sym.kind == .string {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("\'%.*s\\000\'", 2, key));')
 	} else if key_sym.kind == .rune {
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
-		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, tos3("`"));')
+		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, _STR("`%.*s\\000`", 2, ${key_str_fn_name}(key)));')
 	} else {
 		g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, ${key_str_fn_name}(key));')
 	}
