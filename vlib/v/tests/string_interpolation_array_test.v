@@ -67,9 +67,9 @@ fn test_array_of_ints_interpolation() {
 	assert '$c2' == '[11, 22, 33]'
 }
 
-fn test_array_of_bytes_interpolation() {
+fn test_array_of_runes_interpolation() {
 	aa := [`a`, `b`, `c`]
-	assert '$aa' == '[a, b, c]'
+	assert '$aa' == '[`a`, `b`, `c`]'
 }
 
 fn test_array_of_strings_interpolation() {
