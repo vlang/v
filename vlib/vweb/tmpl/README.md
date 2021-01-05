@@ -111,7 +111,8 @@ Project root
     
     
 ## js
-The js directive consists of two parts, the `@js` tag and `'<path>'` string, where you can insert your src
+The js directive consists of two parts, the `@js` tag and `'<path>'` string,
+where you can insert your src
 ```
 @js '<url>'
 ```
