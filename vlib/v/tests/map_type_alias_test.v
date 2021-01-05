@@ -1,11 +1,6 @@
 type Test = map[string]string
 
-fn (t Test) get(key string) string {
-    return t[key]
-}
-
-fn main() {
+fn test_index() {
     t := Test({'c': 'abc'})
-    r := t.get('c')
-    println(r)
+    assert t['c'] == 'abc'
 }
