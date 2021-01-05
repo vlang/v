@@ -273,6 +273,9 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	if p.peek_tok.kind == .lpar {
 		method_name := p.check_name()
 		// `app.$action()` (`action` is a string)
+		if has_parens {
+			p.check(.rpar)
+		}
 		p.check(.lpar)
 		mut args_var := ''
 		if p.tok.kind == .name {
@@ -283,9 +286,6 @@ fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 		if p.tok.kind == .key_orelse {
 			p.check(.key_orelse)
 			p.check(.lcbr)
-		}
-		if has_parens {
-			p.check(.rpar)
 		}
 		return ast.ComptimeCall{
 			has_parens: has_parens
