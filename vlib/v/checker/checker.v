@@ -4234,6 +4234,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
+			mut skip_checking := false
 			// smartcast field type on comptime if
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
@@ -4244,7 +4245,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					} else if left is ast.Type {
 						left_type := c.unwrap_generic(left.typ)
 						if left_type != got_type {
-							should_skip = true
+							skip_checking = true
 						}
 					}
 				}
@@ -4258,15 +4259,12 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
-			if !c.skip_flags || c.pref.output_cross_c {
+			if (!c.skip_flags || c.pref.output_cross_c) && !skip_checking {
 				c.stmts(branch.stmts)
-			} else {
+			} else if !skip_checking {
 				node.branches[i].stmts = []
 			}
 			c.skip_flags = cur_skip_flags
-			if c.file.path.ends_with('main.v') {
-				println(node.branches[i])
-			}
 		} else {
 			c.stmts(branch.stmts)
 		}
