@@ -980,6 +980,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			// TODO
 			return '', pos
 		}
+		ast.ComptimeSelector {
+			return '', pos
+		}
 		ast.Ident {
 			if expr.obj is ast.Var {
 				mut v := expr.obj as ast.Var
