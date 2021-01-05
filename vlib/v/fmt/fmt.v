@@ -1346,6 +1346,10 @@ struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if node.text.starts_with('#!') {
+		f.writeln(node.text)
+		return
+	}
 	if options.iembed {
 		x := node.text.trim_left('\x01')
 		if x.contains('\n') {
