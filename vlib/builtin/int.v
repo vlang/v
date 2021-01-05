@@ -452,18 +452,18 @@ pub fn (b byte) str() string {
 	return str
 }
 
-// TODO make an actual example for the docs: Example: assert byte(0).str_escaped() == `\0` // <- but this fails?
 // str_escaped returns the contents of `byte` as an escaped `string`.
+// Example: assert byte(0).str_escaped() == r'`\0`'
 pub fn (b byte) str_escaped() string {
 	str := match b {
-		0 { '`\\' + '0`' } // TODO BUG is preventing \\0 in a literal
-		7 { '`\\a`' }
-		8 { '`\\b`' }
-		9 { '`\\t`' }
-		10 { '`\\n`' }
-		11 { '`\\v`' }
-		12 { '`\\f`' }
-		13 { '`\\r`' }
+		0 { r'`\0`' }
+		7 { r'`\a`' }
+		8 { r'`\b`' }
+		9 { r'`\t`' }
+		10 { r'`\n`' }
+		11 { r'`\v`' }
+		12 { r'`\f`' }
+		13 { r'`\r`' }
 		32...126 { b.str() }
 		else { '0x' + b.hex() }
 	}
