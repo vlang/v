@@ -4237,9 +4237,11 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			// smartcast field type on comptime if
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					se := branch.cond.left as ast.SelectorExpr
-					got_type := (branch.cond.right as ast.Type).typ
-					c.comptime_fields_type[se.expr.str()] = got_type
+					se := branch.cond.left
+					if se is ast.SelectorExpr {
+						got_type := (branch.cond.right as ast.Type).typ
+						c.comptime_fields_type[se.expr.str()] = got_type
+					}
 				}
 			}
 			cur_skip_flags := c.skip_flags
