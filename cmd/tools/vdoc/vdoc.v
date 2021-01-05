@@ -403,8 +403,12 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dd)
-	node_id := get_node_id(dd)
-	hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	mut node_id := get_node_id(dd)
+	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	if head && is_module_readme(dd) {
+		node_id = 'readme_$node_id'
+		hash_link = ' <a href="#$node_id">#</a>'
+	}
 	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
 	if dd.name.len > 0 {
 		if dd.kind == .const_group {
@@ -457,7 +461,7 @@ fn (cfg DocConfig) readme_idx() int {
 	return -1
 }
 
-fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
+fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
 		if dn.children[0].name == '' {
@@ -466,7 +470,9 @@ fn write_toc(dn doc.DocNode, nodes []doc.DocNode, mut toc strings.Builder) {
 			toc_slug = slug(dn.name + '.' + dn.children[0].name)
 		}
 	}
-	if dn.name != 'Constants' {
+	if is_module_readme(dn) {
+		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
+	} else if dn.name != 'Constants' {
 		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
 		toc.writeln('        <ul>')
 		for child in dn.children {
@@ -506,9 +512,12 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	dcs_contents := dcs.contents.arr()
 	// generate toc first
 	contents.writeln(doc_node_html(dcs.head, '', true, dcs.table))
+	if is_module_readme(dcs.head) {
+		write_toc(dcs.head, mut symbols_toc)
+	}
 	for cn in dcs_contents {
 		cfg.write_content(&cn, &dcs, mut contents)
-		write_toc(cn, dcs_contents, mut symbols_toc)
+		write_toc(cn, mut symbols_toc)
 	} // write head
 	// write css
 	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
@@ -1215,4 +1224,11 @@ fn main() {
 		cfg.input_path = mod_path
 	}
 	cfg.generate_docs_from_file()
+}
+
+fn is_module_readme(dn doc.DocNode) bool {
+	if dn.comment.len > 0 && dn.content == 'module $dn.name' {
+		return true
+	}
+	return false
 }

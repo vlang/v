@@ -641,6 +641,17 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 		else {}
 	}
+	if struct_init.has_update_expr {
+		update_type := c.expr(struct_init.update_expr)
+		struct_init.update_expr_type = update_type
+		update_sym := c.table.get_type_symbol(update_type)
+		sym := c.table.get_type_symbol(struct_init.typ)
+		if update_sym.kind != .struct_ {
+			c.error('expected struct `$sym.name`, found `$update_sym.name`', struct_init.update_expr.position())
+		} else if update_type != struct_init.typ {
+			c.error('expected struct `$sym.name`, found struct `$update_sym.name`', struct_init.update_expr.position())
+		}
+	}
 	return struct_init.typ
 }
 
@@ -1038,6 +1049,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					if to_lock != '' {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
+					}
+					if struct_info.is_union && !c.inside_unsafe {
+						c.warn('accessing union fields requires `unsafe`', expr.pos)
 					}
 				}
 				.array, .string {
@@ -1766,13 +1780,23 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 			}
 			call_expr.return_type = typ
 			return typ
-		} else if return_sym.kind == .array {
-			elem_info := return_sym.info as table.Array
-			elem_sym := c.table.get_type_symbol(elem_info.elem_type)
-			if elem_sym.name == 'T' {
-				idx := c.table.find_or_register_array(call_expr.generic_type, 1)
-				return table.new_type(idx)
+		} else if return_sym.kind == .array && return_sym.name.contains('T') {
+			mut info := return_sym.info as table.Array
+			mut sym := c.table.get_type_symbol(info.elem_type)
+			mut dims := 1
+			for {
+				if sym.kind == .array {
+					info = sym.info as table.Array
+					sym = c.table.get_type_symbol(info.elem_type)
+					dims++
+				} else {
+					break
+				}
 			}
+			idx := c.table.find_or_register_array(call_expr.generic_type, dims)
+			typ := table.new_type(idx)
+			call_expr.return_type = typ
+			return typ
 		}
 	}
 	if call_expr.generic_type.is_full() && !f.is_generic {
@@ -2170,6 +2194,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	mut seen := []i64{}
+	if decl.fields.len == 0 {
+		c.error('enum cannot be empty', decl.pos)
+	}
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
@@ -2800,32 +2827,53 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 				}
 			} else {
 				sym := c.table.get_type_symbol(typ)
-				if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
-					c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
-						'use `_` if you do not need the variable', node.pos)
-				}
-				if node.key_var.len > 0 {
-					key_type := match sym.kind {
-						.map { sym.map_info().key_type }
-						else { table.int_type }
-					}
-					node.key_type = key_type
-					node.scope.update_var_type(node.key_var, key_type)
-				}
-				mut value_type := c.table.value_type(typ)
-				if value_type == table.void_type || typ.has_flag(.optional) {
-					if typ != table.void_type {
-						c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
+				if sym.kind == .struct_ {
+					// iterators
+					next_fn := sym.find_method('next') or {
+						c.error('a struct must have a `next()` method to be an iterator',
 							node.cond.position())
+						return
 					}
+					if !next_fn.return_type.has_flag(.optional) {
+						c.error('iterator method `next()` must return an optional', node.cond.position())
+					}
+					// the receiver
+					if next_fn.params.len != 1 {
+						c.error('iterator method `next()` must have 0 parameters', node.cond.position())
+					}
+					val_type := next_fn.return_type.clear_flag(.optional)
+					node.cond_type = typ
+					node.kind = sym.kind
+					node.val_type = val_type
+					node.scope.update_var_type(node.val_var, val_type)
+				} else {
+					if sym.kind == .map && !(node.key_var.len > 0 && node.val_var.len > 0) {
+						c.error('declare a key and a value variable when ranging a map: `for key, val in map {`\n' +
+							'use `_` if you do not need the variable', node.pos)
+					}
+					if node.key_var.len > 0 {
+						key_type := match sym.kind {
+							.map { sym.map_info().key_type }
+							else { table.int_type }
+						}
+						node.key_type = key_type
+						node.scope.update_var_type(node.key_var, key_type)
+					}
+					mut value_type := c.table.value_type(typ)
+					if value_type == table.void_type || typ.has_flag(.optional) {
+						if typ != table.void_type {
+							c.error('for in: cannot index `${c.table.type_to_str(typ)}`',
+								node.cond.position())
+						}
+					}
+					if node.val_is_mut {
+						value_type = value_type.to_ptr()
+					}
+					node.cond_type = typ
+					node.kind = sym.kind
+					node.val_type = value_type
+					node.scope.update_var_type(node.val_var, value_type)
 				}
-				if node.val_is_mut {
-					value_type = value_type.to_ptr()
-				}
-				node.cond_type = typ
-				node.kind = sym.kind
-				node.val_type = value_type
-				node.scope.update_var_type(node.val_var, value_type)
 			}
 			c.check_loop_label(node.label, node.pos)
 			c.stmts(node.stmts)

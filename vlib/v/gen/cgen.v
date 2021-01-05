@@ -1305,6 +1305,27 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 			g.expr(it.cond)
 			g.writeln('.str[$i];')
 		}
+	} else if it.kind == .struct_ {
+		cond_type_sym := g.table.get_type_symbol(it.cond_type)
+		next_fn := cond_type_sym.find_method('next') or {
+			verror('`next` method not found')
+			return
+		}
+		ret_typ := next_fn.return_type
+		g.writeln('while (1) {')
+		t := g.new_tmp_var()
+		receiver_styp := g.typ(next_fn.params[0].typ)
+		fn_name := receiver_styp.replace_each(['*', '', '.', '__']) + '_next'
+		g.write('\t${g.typ(ret_typ)} $t = ${fn_name}(')
+		if !it.cond_type.is_ptr() {
+			g.write('&')
+		}
+		g.expr(it.cond)
+		g.writeln(');')
+		g.writeln('\tif (!${t}.ok) { break; }')
+		val := if it.val_var in ['', '_'] { g.new_tmp_var() } else { it.val_var }
+		val_styp := g.typ(it.val_type)
+		g.writeln('\t$val_styp $val = *($val_styp*)${t}.data;')
 	} else {
 		s := g.table.type_to_str(it.cond_type)
 		g.error('for in: unhandled symbol `$it.cond` of type `$s`', it.pos)
@@ -1320,7 +1341,8 @@ fn (mut g Gen) for_in(it ast.ForInStmt) {
 }
 
 // use instead of expr() when you need to cast to union sum type (can add other casts also)
-fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type table.Type, expected_type table.Type) {
+fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_type table.Type) {
+	got_type := g.table.mktyp(got_type_raw)
 	// cast to sum type
 	if expected_type != table.void_type {
 		expected_is_ptr := expected_type.is_ptr()
@@ -3157,7 +3179,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else {
 		a := (left_sym.name[0].is_capital() || left_sym.name.contains('.')) &&
-			left_sym.kind !in [.enum_, .function, .interface_, .sum_type]
+			left_sym.kind !in [.enum_, .function, .interface_, .sum_type] && left_sym.language != .c
 		b := left_sym.kind != .alias
 		c := left_sym.kind == .alias && (left_sym.info as table.Alias).language == .c
 		// Check if aliased type is a struct
@@ -4195,6 +4217,10 @@ fn (mut g Gen) return_statement(node ast.Return) {
 			if !g.fn_decl.return_type.is_ptr() && node.types[0].is_ptr() {
 				// Automatic Dereference for optional
 				g.write('*')
+				// Fixes returning a mutable receiver with interface as return type
+				if node.exprs[0] is ast.Ident && !g.is_amp {
+					g.write('&')
+				}
 			}
 			for i, expr in node.exprs {
 				g.expr(expr)
@@ -4529,7 +4555,17 @@ fn (mut g Gen) struct_init(struct_init ast.StructInit) {
 			if field.typ in info.embeds {
 				continue
 			}
-			g.zero_struct_field(field)
+			if struct_init.has_update_expr {
+				g.expr(struct_init.update_expr)
+				if struct_init.update_expr_type.is_ptr() {
+					g.write('->')
+				} else {
+					g.write('.')
+				}
+				g.write(field.name)
+			} else {
+				g.zero_struct_field(field)
+			}
 			if is_multiline {
 				g.writeln(',')
 			} else {

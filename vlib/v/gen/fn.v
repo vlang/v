@@ -788,7 +788,9 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 				exp_sym := g.table.get_type_symbol(expected_types[i])
 				// exp_styp := g.typ(expected_types[arg_no]) // g.table.get_type_symbol(expected_types[arg_no])
 				// styp := g.typ(arg.typ) // g.table.get_type_symbol(arg.typ)
-				if exp_sym.kind == .interface_ {
+				// NB: the second check avoids casting the interface into itself
+				// aka avoid 'I__Speaker_to_Interface_Speaker' thing for example
+				if exp_sym.kind == .interface_ && expected_types[i] != arg.typ {
 					g.interface_call(arg.typ, expected_types[i])
 					is_interface = true
 				}

@@ -104,11 +104,11 @@ fn new_clipboard() &Clipboard {
 }
 
 fn (cb &Clipboard) check_availability() bool {
-	return voidptr(cb.hwnd) != voidptr(0)
+	return cb.hwnd != C.HWND(C.NULL)
 }
 
 fn (cb &Clipboard) has_ownership() bool {
-	return voidptr(C.GetClipboardOwner()) == voidptr(cb.hwnd)
+	return C.GetClipboardOwner() == cb.hwnd
 }
 
 fn (mut cb Clipboard) clear() {
@@ -130,7 +130,7 @@ fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str,
 		text.len + 1, C.NULL, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
-	if voidptr(buf) != voidptr(0) {
+	if buf != C.HGLOBAL(C.NULL) {
 		mut locked := &u16(C.GlobalLock(buf))
 		C.MultiByteToWideChar(C.CP_UTF8, C.MB_ERR_INVALID_CHARS, text.str, text.len + 1,
 			locked, len_required)
@@ -151,7 +151,7 @@ fn (mut cb Clipboard) set_text(text string) bool {
 	} else {
 		// EmptyClipboard must be called to properly update clipboard ownership
 		C.EmptyClipboard()
-		if voidptr(C.SetClipboardData(C.CF_UNICODETEXT, buf)) == voidptr(0) {
+		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == C.HANDLE(C.NULL) {
 			println('SetClipboardData: Failed.')
 			C.CloseClipboard()
 			C.GlobalFree(buf)
@@ -169,7 +169,7 @@ fn (mut cb Clipboard) get_text() string {
 		return ''
 	}
 	h_data := C.GetClipboardData(C.CF_UNICODETEXT)
-	if voidptr(h_data) == voidptr(0) {
+	if h_data == C.HANDLE(C.NULL) {
 		C.CloseClipboard()
 		return ''
 	}

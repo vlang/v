@@ -831,10 +831,9 @@ pub fn (mut f Fmt) enum_decl(node ast.EnumDecl) {
 
 pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 	mut is_pe_amp_ce := false
-	mut ce := ast.CastExpr{}
 	if fexpr is ast.PrefixExpr {
 		if fexpr.right is ast.CastExpr && fexpr.op == .amp {
-			ce = fexpr.right as ast.CastExpr
+			mut ce := fexpr.right as ast.CastExpr
 			ce.typname = f.table.get_type_symbol(ce.typ).name
 			is_pe_amp_ce = true
 			f.expr(ce)
@@ -1615,6 +1614,14 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
+fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
+	if node.generic_type != 0 && node.generic_type != table.void_type {
+		f.write('<')
+		f.write(f.table.type_to_str(node.generic_type))
+		f.write('>')
+	}
+}
+
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
@@ -1670,7 +1677,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		f.expr(node.left)
-		f.write('.' + node.name + '(')
+		f.write('.' + node.name)
+		f.write_generic_if_require(node)
+		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
 		// if is_mut {
@@ -1691,11 +1700,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 			f.write('$name')
 		}
-		if node.generic_type != 0 && node.generic_type != table.void_type {
-			f.write('<')
-			f.write(f.table.type_to_str(node.generic_type))
-			f.write('>')
-		}
+		f.write_generic_if_require(node)
 		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
@@ -2016,7 +2021,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	if name == 'void' {
 		name = ''
 	}
-	if it.fields.len == 0 {
+	if it.fields.len == 0 && !it.has_update_expr {
 		// `Foo{}` on one line if there are no fields or comments
 		if it.pre_comments.len == 0 {
 			f.write('$name{}')
@@ -2030,6 +2035,11 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		// if name != '' {
 		f.write('$name{')
 		// }
+		if it.has_update_expr {
+			f.write('...')
+			f.expr(it.update_expr)
+			f.write(', ')
+		}
 		for i, field in it.fields {
 			f.prefix_expr_cast_expr(field.expr)
 			if i < it.fields.len - 1 {
@@ -2052,6 +2062,12 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 		f.indent++
 		short_args_loop: for {
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
+			if it.has_update_expr {
+				f.write('...')
+				f.expr(it.update_expr)
+				f.writeln('')
+				f.comments(it.update_expr_comments, inline: true, has_nl: true, level: .keep)
+			}
 			for i, field in it.fields {
 				f.write('$field.name: ')
 				f.prefix_expr_cast_expr(field.expr)
