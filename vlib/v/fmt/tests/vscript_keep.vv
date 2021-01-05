@@ -1,0 +1,4 @@
+#!/usr/local/bin/v run
+
+x := 5
+println(x)
