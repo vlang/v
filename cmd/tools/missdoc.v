@@ -46,52 +46,55 @@ fn report_undocumented_functions_in_path(opt Options, path string) {
 		}
 	}
 	collect(path, mut files, collect_fn)
-	for f in files {
-		contents := os.read_file(f) or { panic(err) }
-		lines := contents.split('\n')
-		// Skip test files
-		if f.ends_with('_test.v') {
+	for file in files {
+		if file.ends_with('_test.v') {
 			continue
 		}
-		mut info := []UndocumentedFN{}
-		for i, line in lines {
-			if line.starts_with('pub fn') ||
-				(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
-				// println('Match: $line')
-				if i > 0 && lines.len > 0 {
-					mut line_above := lines[i - 1]
-					if !line_above.starts_with('//') {
-						mut tags := []string{}
-						mut grab := true
-						for j := i - 1; j >= 0; j-- {
-							prev_line := lines[j]
-							if prev_line.contains('}') { // We've looked back to the above scope, stop here
-								break
-							} else if prev_line.starts_with('[') {
-								tags << collect_tags(prev_line)
-								continue
-							} else if prev_line.starts_with('//') { // Single-line comment
-								grab = false
-								break
-							}
+		report_undocumented_functions_in_file(opt, file)
+	}
+}
+
+fn report_undocumented_functions_in_file(opt Options, file string) {
+	contents := os.read_file(file) or { panic(err) }
+	lines := contents.split('\n')
+	mut info := []UndocumentedFN{}
+	for i, line in lines {
+		if line.starts_with('pub fn') ||
+			(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
+			// println('Match: $line')
+			if i > 0 && lines.len > 0 {
+				mut line_above := lines[i - 1]
+				if !line_above.starts_with('//') {
+					mut tags := []string{}
+					mut grab := true
+					for j := i - 1; j >= 0; j-- {
+						prev_line := lines[j]
+						if prev_line.contains('}') { // We've looked back to the above scope, stop here
+							break
+						} else if prev_line.starts_with('[') {
+							tags << collect_tags(prev_line)
+							continue
+						} else if prev_line.starts_with('//') { // Single-line comment
+							grab = false
+							break
 						}
-						if grab {
-							clean_line := line.all_before_last(' {')
-							info << UndocumentedFN{i + 1, clean_line, tags}
-						}
+					}
+					if grab {
+						clean_line := line.all_before_last(' {')
+						info << UndocumentedFN{i + 1, clean_line, tags}
 					}
 				}
 			}
 		}
-		if info.len > 0 {
-			for undocumented_fn in info {
-				tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 { '$undocumented_fn.tags' } else { '' }
-				if opt.deprecated {
-					println('$f:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
-				} else {
-					if 'deprecated' !in undocumented_fn.tags {
-						println('$f:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
-					}
+	}
+	if info.len > 0 {
+		for undocumented_fn in info {
+			tags_str := if opt.collect_tags && undocumented_fn.tags.len > 0 { '$undocumented_fn.tags' } else { '' }
+			if opt.deprecated {
+				println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
+			} else {
+				if 'deprecated' !in undocumented_fn.tags {
+					println('$file:$undocumented_fn.line:0:$undocumented_fn.signature $tags_str')
 				}
 			}
 		}
@@ -125,6 +128,10 @@ fn main() {
 		exit(0)
 	}
 	for path in os.args[1..] {
-		report_undocumented_functions_in_path(opt, path)
+		if os.is_file(path) {
+			report_undocumented_functions_in_file(opt, path)
+		} else {
+			report_undocumented_functions_in_path(opt, path)
+		}
 	}
 }
