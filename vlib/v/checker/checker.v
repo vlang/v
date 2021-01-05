@@ -1224,7 +1224,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 	}
 	/*
 	if left_type == table.byte_type && method_name == 'str' {
-		c.warn('byte str', call_expr.pos)
+		c.error('byte str', call_expr.pos)
 	}
 	*/
 	// TODO: remove this for actual methods, use only for compiler magic
