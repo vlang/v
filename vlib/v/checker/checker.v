@@ -2194,6 +2194,9 @@ pub fn (mut c Checker) const_decl(mut node ast.ConstDecl) {
 pub fn (mut c Checker) enum_decl(decl ast.EnumDecl) {
 	c.check_valid_pascal_case(decl.name, 'enum name', decl.pos)
 	mut seen := []i64{}
+	if decl.fields.len == 0 {
+		c.error('enum cannot be empty', decl.pos)
+	}
 	for i, field in decl.fields {
 		if !c.pref.experimental && util.contains_capital(field.name) {
 			// TODO C2V uses hundreds of enums with capitals, remove -experimental check once it's handled
