@@ -592,7 +592,7 @@ fn (mut v Builder) cc() {
 			v.pref.cleanup_files << response_file
 		}
 		$if windows {
-			if ccompiler.contains('tcc') {
+			if v.ccoptions.is_cc_tcc {
 				def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
 				v.pref.cleanup_files << '${def_name}.def'
 			}
