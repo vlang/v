@@ -434,9 +434,8 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 }
 
 fn html_tag_escape(str string) string {
-  return str.replace_each(["<", "&lt;", ">", "&gt;"])
+	return str.replace_each(['<', '&lt;', '>', '&gt;'])
 }
-
 
 fn get_sym_name(dn doc.DocNode) string {
 	sym_name := if dn.parent_name.len > 0 && dn.parent_name != 'void' {
