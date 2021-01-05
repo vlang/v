@@ -3840,7 +3840,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.write(')')
 		}
 		else {
-			sym := g.table.get_type_symbol(node.left_type)
+			sym := g.table.get_final_type_symbol(node.left_type)
 			left_is_ptr := node.left_type.is_ptr()
 			if sym.kind == .array {
 				info := sym.info as table.Array
