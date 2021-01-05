@@ -3201,10 +3201,18 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if node.method_name == 'html' {
 				return c.table.find_type_idx('vweb.Result')
-			} else {
-				return table.string_type
 			}
-			// return table.void_type
+			return table.string_type
+		}
+		ast.ComptimeSelector {
+			node.left_type = c.unwrap_generic(c.expr(node.left))
+			expr_type := c.unwrap_generic(c.expr(node.field_expr))
+			expr_sym := c.table.get_type_symbol(expr_type)
+			if expr_type != table.string_type {
+				c.error('expected `string` instead of `$expr_sym.name`', node.field_expr.position())
+			}
+			// TODO: return correct type
+			return table.void_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut node)

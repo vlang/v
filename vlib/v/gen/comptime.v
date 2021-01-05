@@ -7,6 +7,25 @@ import v.ast
 import v.table
 import v.util
 
+fn (mut g Gen) comptime_selector(node ast.ComptimeSelector) {
+	g.expr(node.left)
+	if node.left_type.is_ptr() {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	// check for field.name
+	if node.field_expr is ast.SelectorExpr {
+		if node.field_expr.expr is ast.Ident {
+			if node.field_expr.expr.name == g.comp_for_field_var && node.field_expr.field_name == 'name' {
+				g.write(g.comp_for_field_val.name)
+				return
+			}
+		}
+	}
+	g.expr(node.field_expr)
+}
+
 fn (mut g Gen) comptime_call(node ast.ComptimeCall) {
 	if node.is_vweb {
 		is_html := node.method_name == 'html'
@@ -314,17 +333,17 @@ fn (mut g Gen) comp_for(node ast.CompFor) {
 		}
 	} else if node.kind == .fields {
 		// TODO add fields
-		// TODO: temporary, remove this
-		sym_info := sym.info
-		if sym_info is table.Struct {
-			mut fields := sym_info.fields.filter(it.attrs.len == 0)
-			fields_with_attrs := sym_info.fields.filter(it.attrs.len > 0)
+		if sym.info is table.Struct {
+			mut fields := sym.info.fields.filter(it.attrs.len == 0)
+			fields_with_attrs := sym.info.fields.filter(it.attrs.len > 0)
 			fields << fields_with_attrs
 			if fields.len > 0 {
 				g.writeln('\tFieldData $node.val_var;')
 				g.writeln('\tmemset(&$node.val_var, 0, sizeof(FieldData));')
 			}
 			for field in fields {
+				g.comp_for_field_var = node.val_var
+				g.comp_for_field_val = field
 				g.writeln('\t// field $i')
 				g.writeln('\t${node.val_var}.name = _SLIT("$field.name");')
 				if field.attrs.len == 0 {

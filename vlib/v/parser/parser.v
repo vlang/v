@@ -1413,7 +1413,7 @@ fn (mut p Parser) scope_register_ab() {
 fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	p.next()
 	if p.tok.kind == .dollar {
-		return p.comptime_method_call(left)
+		return p.comptime_selector(left)
 	}
 	is_generic_call := p.is_generic_call()
 	name_pos := p.tok.position()

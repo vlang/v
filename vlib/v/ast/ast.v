@@ -10,7 +10,7 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr |
+	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector | ConcatExpr |
 	EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
 	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
 	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
@@ -1056,6 +1056,15 @@ pub mut:
 	val  string
 }
 
+pub struct ComptimeSelector {
+pub:
+	left       Expr
+	field_expr Expr
+pub mut:
+	left_type  table.Type
+	typ        table.Type
+}
+
 pub struct ComptimeCall {
 pub:
 	method_name string
@@ -1147,7 +1156,7 @@ pub fn (expr Expr) position() token.Position {
 		IfGuardExpr {
 			return expr.expr.position()
 		}
-		ComptimeCall {
+		ComptimeCall, ComptimeSelector {
 			return expr.left.position()
 		}
 		InfixExpr {
