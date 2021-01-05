@@ -5,8 +5,12 @@ fn test_clone() {
 	assert b[0] == 0
 	assert b[1] == 1
 	assert b[2] == 2
-	println(b[1].ascii_str())
+	assert b[1].str() == '1'
+	xx := byte(35)
+	assert xx.str() == '35'
+	assert xx.ascii_str() == '#'
 	println(typeof(`A`))
+	assert typeof(`A`) == 'rune'
 	x := rune(`A`)
 	assert x.str() == 'A'
 	assert typeof(x) == 'rune'
