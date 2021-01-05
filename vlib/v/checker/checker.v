@@ -3222,7 +3222,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 					return c.comptime_fields_type[expr_name]
 				}
 			}
-			c.error('compile time field access can only be used when iteration over `T.fields`',
+			c.error('compile time field access can only be used when iterating over `T.fields`',
 				node.field_expr.position())
 			return table.void_type
 		}
