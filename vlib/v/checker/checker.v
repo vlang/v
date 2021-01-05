@@ -89,7 +89,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
-				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
+				c.error('module name `$ast_import.mod` duplicate', ast_import.mod_pos)
 			}
 		}
 	}
