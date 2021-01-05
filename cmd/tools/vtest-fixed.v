@@ -125,8 +125,7 @@ fn main() {
 	if sanitize_undefined {
 		tsession.skip_files << skip_with_fsanitize_undefined
 	}
-	println(tsession.skip_files)
-	//
+	// println(tsession.skip_files)
 	if os.getenv('V_CI_MUSL').len > 0 {
 		tsession.skip_files << skip_on_musl
 	}
