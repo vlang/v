@@ -924,8 +924,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write("\$tmpl('$node.args_var')")
 				}
 			} else {
-				f.write('${node.left}.\$${node.method_name}($node.args_var)')
+				method_expr := if node.has_parens {
+					'(${node.method_name}($node.args_var))'
+				} else {
+					'${node.method_name}($node.args_var)'
+				}
+				f.write('${node.left}.$$method_expr')
 			}
+		}
+		ast.ComptimeSelector {
+			field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
+			f.write('${node.left}.$$field_expr')
 		}
 		ast.ConcatExpr {
 			for i, val in node.vals {

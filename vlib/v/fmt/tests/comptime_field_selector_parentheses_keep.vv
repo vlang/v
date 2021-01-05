@@ -1,0 +1,23 @@
+struct Foo {
+mut:
+	test string
+	name string
+}
+
+fn (f Foo) print() {
+	println('test')
+}
+
+fn test<T>() {
+	mut t := T{}
+	t.name = '2'
+	$for f in T.fields {
+		$if f.typ is string {
+			println(t.$(f.name))
+		}
+	}
+}
+
+fn main() {
+	test<Foo>()
+}
