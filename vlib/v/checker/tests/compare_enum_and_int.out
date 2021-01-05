@@ -1,4 +1,4 @@
-vlib/v/checker/tests/compare_enum_and_int_err.vv:7:16: error: cannot compare an `int` and `enum`
+vlib/v/checker/tests/compare_enum_and_int_err.vv:7:16: error: cannot compare an `int` and `enum`, use explicit type cast for `int` or `enum`  instead
     5 | fn main() {
     6 |     color := Color.red
     7 |     println(color == 0)
