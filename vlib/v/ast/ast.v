@@ -1292,7 +1292,13 @@ pub fn (node Node) position() token.Position {
 			}
 		}
 		File {
-			return token.Position{}
+			mut pos := token.Position{}
+			if node.stmts.len > 0 {
+				first_pos := node.stmts.first().position()
+				last_pos := node.stmts.last().position()
+				pos = first_pos.extend_with_last_line(last_pos, last_pos.line_nr)
+			}
+			return pos
 		}
 	}
 }
