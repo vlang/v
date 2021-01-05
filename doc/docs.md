@@ -729,6 +729,8 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+Cyclic module imports are not allowed, like in Go.
+
 ### Selective imports
 
 You can also import specific functions and types from modules directly:
