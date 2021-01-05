@@ -3213,7 +3213,8 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type := c.unwrap_generic(c.expr(node.field_expr))
 			expr_sym := c.table.get_type_symbol(expr_type)
 			if expr_type != table.string_type {
-				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)', node.field_expr.position())
+				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)',
+					node.field_expr.position())
 			}
 			if node.field_expr is ast.SelectorExpr {
 				expr_name := node.field_expr.expr.str()

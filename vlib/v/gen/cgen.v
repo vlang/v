@@ -109,10 +109,10 @@ mut:
 	inside_call                      bool
 	has_main                         bool
 	inside_const                     bool
-	comp_for_method                  string // $for method in T.methods {}
-	comp_for_field_var               string // $for field in T.fields {}; the variable name
+	comp_for_method                  string      // $for method in T.methods {}
+	comp_for_field_var               string      // $for field in T.fields {}; the variable name
 	comp_for_field_val               table.Field // value of the field variable
-	comp_for_field_type              table.Type // type of the field variable inferred from `$if field.typ is T {}`
+	comp_for_field_type              table.Type  // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]table.Type
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
