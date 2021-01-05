@@ -591,6 +591,12 @@ fn (mut v Builder) cc() {
 			v.pref.cleanup_files << v.out_name_c
 			v.pref.cleanup_files << response_file
 		}
+		$if windows {
+			if ccompiler.contains('tcc') {
+				def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
+				v.pref.cleanup_files << '${def_name}.def'
+			}
+		}
 		//
 		todo()
 		os.chdir(vdir)
