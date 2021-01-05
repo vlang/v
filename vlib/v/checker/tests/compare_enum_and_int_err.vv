@@ -1,0 +1,8 @@
+enum Color {
+	red
+}
+
+fn main() {
+	color := Color.red
+	println(color == 0)
+}
