@@ -213,7 +213,7 @@ pub fn (x Expr) str() string {
 			return '`$x.val`'
 		}
 		ComptimeSelector {
-			return '${x.left}.$${x.field_expr}'
+			return '${x.left}.$$x.field_expr'
 		}
 		EnumVal {
 			return '.$x.val'
