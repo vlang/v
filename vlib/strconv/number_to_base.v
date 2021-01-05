@@ -1,6 +1,6 @@
 module strconv
 
-const base_digits = '0123456789abcdefghijklmnopqrstuvwxyz'
+const (base_digits = '0123456789abcdefghijklmnopqrstuvwxyz')
 
 // format_int returns the string representation of the number n in base `radix`
 // for digit values > 10, this function uses the small latin leters a-z.
