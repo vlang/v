@@ -1,0 +1,14 @@
+struct Foo {
+	test int
+	name string
+}
+
+fn test<T>() {
+	mut t := T{}
+	name := 'test'
+	t.$name = '3'
+}
+
+fn main() {
+	test<Foo>()
+}
