@@ -5,10 +5,12 @@ import v.table
 import v.pref
 
 fn parse_text(text string) ast.File {
-	return parser.parse_text(text, '', table.new_table(), .skip_comments, pref.new_preferences(),
-		&ast.Scope{
+	tbl := table.new_table()
+	prefs := pref.new_preferences()
+	scope := &ast.Scope{
 		parent: 0
-	})
+	}
+	return parser.parse_text(text, '', tbl, .skip_comments, prefs, scope)
 }
 
 struct NodeByOffset {
