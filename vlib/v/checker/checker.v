@@ -4392,7 +4392,9 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
-					if (cond.left is ast.SelectorExpr || cond.left is ast.Type) && cond.right is ast.Type {
+					if (cond.left is ast.SelectorExpr ||
+						cond.left is ast.Type) &&
+						cond.right is ast.Type {
 						// $if method.@type is string
 					} else {
 						c.error('invalid `\$if` condition: $cond.left', cond.pos)
