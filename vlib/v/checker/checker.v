@@ -945,7 +945,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		right.kind in [.int, .any_int]) || (left.kind in [.int, .any_int] &&
 		right.kind == .enum_)) &&
 		infix_expr.op.is_relational() {
-		c.error('cannot compare an `int` and `enum`, use explicit type cast for `int` or `enum` instead', infix_expr.pos)
+		c.error('cannot compare an `int` and `enum`, use explicit type cast for `int` or `enum` instead',
+			infix_expr.pos)
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
 	if c.table.type_kind(left_type) == .sum_type {
