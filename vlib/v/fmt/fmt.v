@@ -927,6 +927,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				f.write('${node.left}.\$${node.method_name}($node.args_var)')
 			}
 		}
+		ast.ComptimeSelector {
+			f.write('${node.left}.${node.field_expr}')
+		}
 		ast.ConcatExpr {
 			for i, val in node.vals {
 				if i != 0 {
