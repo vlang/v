@@ -60,7 +60,9 @@ pub fn info() &LiveReloadInfo {
 	// started, and the structure LiveReloadInfo will not get updated.
 	// All its fields will be 0, but still safe to access.
 	mut x := &LiveReloadInfo{}
-	mut p := &u64(&C.g_live_info)
-	unsafe { *p = &u64(x) }        
+	unsafe { 
+		mut p := &u64(&C.g_live_info)
+		*p = &u64(x) 
+	}        
 	return x
 }
