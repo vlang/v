@@ -160,7 +160,7 @@ pub fn (c TcpConn) peer_ip() ?string {
 	buf := [44]byte{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
-	socket_error(C.getpeername(c.sock.handle, &C.sockaddr(&peeraddr), &speeraddr)) ?
+	socket_error(C.getpeername(c.sock.handle, unsafe {&C.sockaddr(&peeraddr)}, &speeraddr)) ?
 	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
@@ -190,7 +190,7 @@ pub fn listen_tcp(port int) ?TcpListener {
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := sizeof(C.sockaddr_in)
 	// cast to the correct type
-	sockaddr := &C.sockaddr(&addr)
+	sockaddr := unsafe {&C.sockaddr(&addr)}
 	socket_error(C.bind(s.handle, sockaddr, size)) ?
 	socket_error(C.listen(s.handle, 128)) ?
 	return TcpListener{
@@ -205,7 +205,7 @@ pub fn (l TcpListener) accept() ?TcpConn {
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
 	// cast to correct type
-	sock_addr := &C.sockaddr(&addr)
+	sock_addr := unsafe {&C.sockaddr(&addr)}
 	mut new_handle := C.accept(l.sock.handle, sock_addr, &size)
 	if new_handle <= 0 {
 		l.wait_for_accept() ?
@@ -344,7 +344,7 @@ pub fn (s TcpSocket) address() ?Addr {
 	mut addr := C.sockaddr_in{}
 	size := sizeof(C.sockaddr_in)
 	// cast to the correct type
-	sockaddr := &C.sockaddr(&addr)
+	sockaddr := unsafe {&C.sockaddr(&addr)}
 	C.getsockname(s.handle, sockaddr, &size)
 	return new_addr(sockaddr)
 }

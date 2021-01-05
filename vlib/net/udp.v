@@ -218,7 +218,7 @@ fn new_udp_socket(local_port int) ?UdpSocket {
 	size := sizeof(C.sockaddr_in)
 
 	// cast to the correct type
-	sockaddr := &C.sockaddr(&addr)
+	sockaddr := unsafe {&C.sockaddr(&addr)}
 
 	socket_error(C.bind(s.handle, sockaddr, size))?
 

@@ -40,7 +40,7 @@ fn new_addr(addr C.sockaddr) ?Addr {
 	}
 	mut saddr := buf.bytestr()
 
-	hport := (&C.sockaddr_in(&addr)).sin_port
+	hport := unsafe {&C.sockaddr_in(&addr)}.sin_port
 	port := C.ntohs(hport)
 
 	$if windows {
