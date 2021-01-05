@@ -1222,11 +1222,6 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 		}
 		// call_expr.generic_type = c.unwrap_generic(call_expr.generic_type)
 	}
-	/*
-	if left_type == table.byte_type && method_name == 'str' {
-		c.error('byte str', call_expr.pos)
-	}
-	*/
 	// TODO: remove this for actual methods, use only for compiler magic
 	// FIXME: Argument count != 1 will break these
 	if left_type_sym.kind == .array && method_name in array_builtin_methods {
@@ -3426,13 +3421,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
-	} else if !c.inside_unsafe && node.typ.is_ptr() &&
-		(node.expr_type.is_ptr() || node.expr_type == table.voidptr_type ||
-		(node.expr_type.is_number() && node.expr !is ast.IntegerLiteral)) {
-		// ignore &Type(0) for now
+	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr() {
 		ft := c.table.type_to_str(node.expr_type)
 		tt := c.table.type_to_str(node.typ)
-		c.warn('casting a `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
+		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)
@@ -5186,7 +5178,7 @@ fn (mut c Checker) verify_all_vweb_routes() {
 			if m.return_type == typ_vweb_result {
 				is_ok, nroute_attributes, nargs := c.verify_vweb_params_for_method(m)
 				if !is_ok {
-					f := unsafe { &ast.FnDecl(m.source_fn) }
+					f := &ast.FnDecl(m.source_fn)
 					if isnil(f) {
 						continue
 					}

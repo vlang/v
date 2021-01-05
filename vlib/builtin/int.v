@@ -441,18 +441,7 @@ pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 // str returns the contents of `byte` as a zero terminated `string`.
 // Example: assert byte(111).str() == 'o'
 pub fn (b byte) str() string {
-	// TODO
-	// return int(b).str_l(7)
-	mut str := string{
-		str: malloc(2)
-		len: 1
-	}
-	unsafe {
-		str.str[0] = b
-		str.str[1] = `\0`
-	}
-	// println(str)
-	return str
+	return int(b).str_l(7)
 }
 
 pub fn (b byte) ascii_str() string {
