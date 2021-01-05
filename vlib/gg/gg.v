@@ -180,7 +180,7 @@ pub fn (mut ctx Context) refresh_ui() {
 }
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
-	e := &sapp.Event(ce)
+	e := unsafe {&sapp.Event(ce)}
 	mut g := &Context(user_data)
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
