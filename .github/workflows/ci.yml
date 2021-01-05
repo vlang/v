@@ -147,6 +147,8 @@ jobs:
       - name: Build V
         run: |
           make CC=clang
+      - name: Install openssl
+        run: apk add openssl-dev
       - name: Test V fixed tests
         run: |
           v -silent test-fixed
