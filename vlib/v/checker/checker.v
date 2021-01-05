@@ -69,6 +69,7 @@ mut:
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
+	comptime_fields_type             map[string]table.Type
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -3209,9 +3210,14 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			expr_type := c.unwrap_generic(c.expr(node.field_expr))
 			expr_sym := c.table.get_type_symbol(expr_type)
 			if expr_type != table.string_type {
-				c.error('expected `string` instead of `$expr_sym.name`', node.field_expr.position())
+				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)', node.field_expr.position())
 			}
-			// TODO: return correct type
+			if node.field_expr is ast.SelectorExpr {
+				expr_name := node.field_expr.expr.str()
+				if expr_name in c.comptime_fields_type {
+					return c.comptime_fields_type[expr_name]
+				}
+			}
 			return table.void_type
 		}
 		ast.ConcatExpr {
@@ -4218,6 +4224,14 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
+			// smartcast field type on comptime if
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					se := branch.cond.left as ast.SelectorExpr
+					got_type := (branch.cond.right as ast.Type).typ
+					c.comptime_fields_type[se.expr.str()] = got_type
+				}
+			}
 			cur_skip_flags := c.skip_flags
 			if found_branch {
 				c.skip_flags = true
