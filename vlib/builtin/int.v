@@ -34,7 +34,10 @@ pub fn (nn int) str1() string {
 	return tos(buf + max - len, len)
 }
 */
-// ----- value to string functions -----
+/*
+*
+ ----- value to string functions -----
+*/
 /*
 // old function for reference
 pub fn ptr_str(ptr voidptr) string {
