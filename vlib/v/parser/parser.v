@@ -1048,6 +1048,30 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	}
 }
 
+fn (p Parser) is_generic_call() bool {
+	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
+		p.tok.lit[0].is_capital()
+	} else {
+		false
+	}
+	// use heuristics to detect `func<T>()` from `var < expr`
+	return !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
+		.name {
+			// maybe `f<int>`, `f<map[`
+			(p.peek_tok2.kind == .name &&
+				p.peek_tok3.kind == .gt) ||
+				(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
+		}
+		.lsbr {
+			// maybe `f<[]T>`, assume `var < []` is invalid
+			p.peek_tok3.kind == .rsbr
+		}
+		else {
+			false
+		}
+	})
+}
+
 pub fn (mut p Parser) name_expr() ast.Expr {
 	prev_tok_kind := p.prev_tok.kind
 	mut node := ast.Expr{}
@@ -1173,28 +1197,12 @@ pub fn (mut p Parser) name_expr() ast.Expr {
 	} else {
 		false
 	}
-	// use heuristics to detect `func<T>()` from `var < expr`
-	is_generic_call := !lit0_is_capital && p.peek_tok.kind == .lt && (match p.peek_tok2.kind {
-		.name {
-			// maybe `f<int>`, `f<map[`
-			(p.peek_tok2.kind == .name &&
-				p.peek_tok3.kind == .gt) ||
-				(p.peek_tok2.lit == 'map' && p.peek_tok3.kind == .lsbr)
-		}
-		.lsbr {
-			// maybe `f<[]T>`, assume `var < []` is invalid
-			p.peek_tok3.kind == .rsbr
-		}
-		else {
-			false
-		}
-	})
 	// p.warn('name expr  $p.tok.lit $p.peek_tok.str()')
 	same_line := p.tok.line_nr == p.peek_tok.line_nr
 	// `(` must be on same line as name token otherwise it's a ParExpr
 	if !same_line && p.peek_tok.kind == .lpar {
 		node = p.parse_ident(language)
-	} else if p.peek_tok.kind == .lpar || is_generic_call {
+	} else if p.peek_tok.kind == .lpar || p.is_generic_call() {
 		// foo(), foo<int>() or type() cast
 		mut name := p.tok.lit
 		if mod.len > 0 {
@@ -1407,6 +1415,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	if p.tok.kind == .dollar {
 		return p.comptime_method_call(left)
 	}
+	is_generic_call := p.is_generic_call()
 	name_pos := p.tok.position()
 	mut field_name := ''
 	// check if the name is on the same line as the dot
@@ -1427,7 +1436,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 	// TODO move to fn.v call_expr()
 	mut generic_type := table.void_type
 	mut generic_list_pos := p.tok.position()
-	if p.tok.kind == .lt && p.peek_tok.kind == .name && p.peek_tok2.kind == .gt {
+	if is_generic_call {
 		// `g.foo<int>(10)`
 		p.next() // `<`
 		generic_type = p.parse_type()
