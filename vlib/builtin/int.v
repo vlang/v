@@ -439,11 +439,13 @@ pub fn (nn voidptr) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 */
 // str returns the contents of `byte` as a zero terminated `string`.
-// Example: assert byte(111).str() == 'o'
+// Example: assert byte(111).str() == '111'
 pub fn (b byte) str() string {
 	return int(b).str_l(7)
 }
 
+// ascii_str returns the contents of `byte` as a zero terminated ASCII `string` character.
+// Example: assert byte(97).ascii_str() == 'a'
 pub fn (b byte) ascii_str() string {
 	mut str := string{
 		str: malloc(2)
