@@ -193,8 +193,6 @@ generate AST json
 
 ##  Module
 
-AST struct
-
 ```
 Module
 
@@ -212,12 +210,7 @@ import math { min, max }
 ```
 
 ## Const
-
-AST struct
-
-```
-Const
-```
+`ast.Const`
 
 example code
 
@@ -235,14 +228,7 @@ const (
 ```
 
 ## Enum
-
-```
-EnumDecl
-
-EnumField
-
-EnumVal
-```
+`ast.EnumDecl`, `ast.EnumField`, `ast.EnumVal`
 
 example code
 
@@ -285,12 +271,7 @@ fn main() {
 ## Variable
 
 ### Assign
-
-AST struct
-
-```
-AssignStmt
-```
+`ast.AssignStmt`
 
 example code
 
@@ -320,16 +301,7 @@ fn main() {
 ```
 
 ### Identifier
-
-AST struct
-
-```
-Ident
-
-IdentFn
-
-IdentVar
-```
+`ast.Ident`, `ast.IdentFn`, `ast.IdentVar`
 
 example code(todo: need more kind)
 
@@ -346,24 +318,8 @@ fn main() {
 ```
 
 ### Literal
-
-AST struct
-
-```v
-IntegerLiteral
-
-FloatLiteral
-
-StringLiteral
-
-StringLiteral
-
-StringInterLiteral
-
-CharLiteral
-
-BoolLiteral
-```
+`ast.IntegerLiteral`, `ast.FloatLiteral`, `ast.StringLiteral`, `ast.StringLiteral`,
+`ast.StringInterLiteral`, `ast.CharLiteral`, `ast.BoolLiteral`
 
 example code
 
@@ -385,12 +341,7 @@ fn main() {
 ```
 
 ### AsCast
-
-AST struct
-
-```v
-AsCast
-```
+`ast.AsCast`
 
 example code
 
@@ -407,12 +358,7 @@ fn main() {
 ```
 
 ### SizeOf
-
-AST struct
-
-```v
-SizeOf
-```
+`ast.SizeOf`
 
 example code
 
@@ -437,12 +383,7 @@ fn main() {
 ```
 
 ### TypeOf
-
-AST struct
-
-```v
-TypeOf
-```
+`ast.TypeOf`
 
 example code
 
@@ -474,12 +415,7 @@ fn main() {
 ```
 
 ### CastExpr
-
-AST struct
-
-```v
-CastExpr
-```
+`ast.CastExpr`
 
 example code ( todo: need more about string(buf,n) )
 
@@ -495,12 +431,7 @@ fn main() {
 ## Array
 
 ### ArrayInit
-
-AST struct
-
-```v
-ArrayInit
-```
+`ast.ArrayInit`
 
 example code
 
@@ -516,12 +447,7 @@ fn main() {
 ```
 
 ### IndexExpr
-
-AST struct
-
-```v
-IndexExpr
-```
+`ast.IndexExpr`
 
 example code
 
@@ -540,12 +466,7 @@ fn main() {
 ```
 
 ### RangeExpr
-
-AST struct
-
-```v
-RangeExpr
-```
+`ast.RangeExpr`
 
 example code
 
@@ -561,12 +482,7 @@ fn main() {
 ```
 
 ### ArrayDecompose
-
-AST struct
-
-```v
-ArrayDecompose
-```
+`ast.ArrayDecompose`
 
 example code
 
@@ -594,12 +510,7 @@ fn variadic_fn_b(a ...string) string {
 ## Map
 
 ### MapInit
-
-AST struct
-
-```v
-MapInit
-```
+`ast.MapInit`
 
 example code
 
@@ -622,12 +533,7 @@ fn main() {
 ## Operator
 
 ### PrefixExpr
-
-AST struct
-
-```v
-PrefixExpr
-```
+`ast.PrefixExpr`
 
 example code
 
@@ -645,12 +551,7 @@ fn main() {
 ```
 
 ### InfixExpr
-
-AST struct
-
-```v
-InfixExpr
-```
+`ast.InfixExpr`
 
 example code
 
@@ -671,12 +572,7 @@ fn main() {
 ```
 
 ### PostfixExpr
-
-AST struct
-
-```v
-PostfixExpr
-```
+`ast.PostfixExpr`
 
 example code
 
@@ -692,12 +588,7 @@ fn main() {
 ```
 
 ### SelectorExpr
-
-AST struct
-
-```v
-SelectorExpr
-```
+`ast.SelectorExpr`
 
 example code
 
@@ -727,12 +618,7 @@ fn main() {
 ```
 
 ### ParExpr
-
-AST struct
-
-```v
-ParExpr
-```
+`ast.ParExpr`
 
 example code
 
@@ -747,12 +633,7 @@ fn main() {
 ```
 
 ### ConcatExpr
-
-AST struct
-
-```v
-ConcatExpr
-```
+`ast.ConcatExpr`
 
 example code
 
@@ -767,18 +648,7 @@ a, b, c := match false {
 ## Function
 
 ### FnDecl
-
-AST struct
-
-```v
-FnDecl
-
-CallExpr
-
-CallArg
-
-Return
-```
+`ast.FnDecl`, `ast.CallExpr`, `ast.CallArg`, `ast.Return`
 
 example code
 
@@ -818,12 +688,7 @@ fn add_generic<T>(x T, y T) T {
 ```
 
 ### AnonFn
-
-AST struct
-
-```v
-AnonFn
-```
+`ast.AnonFn`
 
 example code
 
@@ -839,12 +704,7 @@ fn main() {
 ```
 
 ### DeferStmt
-
-AST struct
-
-```v
-DeferStmt
-```
+`ast.DeferStmt`
 
 example code
 
@@ -874,16 +734,7 @@ fn defer_fn2() {
 ## Struct
 
 ### StructDecl
-
-AST struct
-
-```v
-StructDecl
-
-StructField
-
-Embed
-```
+`ast.StructDecl`, `ast.StructField`, `ast.Embed`
 
 example code
 
@@ -951,16 +802,7 @@ fn main() {
 ```
 
 ### StructInit
-
-AST struct
-
-```v
-StructInit
-
-StructInitField
-
-StructInitEmbed
-```
+`ast.StructInit`, `ast.StructInitField`, `ast.StructInitEmbed`
 
 example code 
 
@@ -984,12 +826,7 @@ fn main(){
 ```
 
 ### Assoc
-
-AST struct
-
-```v
-Assoc
-```
+`ast.Assoc`
 
 example code
 
@@ -1019,12 +856,7 @@ fn main() {
 ```
 
 ## Interface
-
-AST struct
-
-```v
-InterfaceDecl
-```
+`ast.InterfaceDecl`
 
 example code
 
@@ -1040,20 +872,7 @@ interface Speaker { //comment 1
 ## Type
 
 ### Alias Type
-
-AST struct
-
-```v
-//Alias type declaration
-pub struct AliasTypeDecl {
-pub:
-	name        string
-	is_pub      bool
-	parent_type table.Type
-	pos         token.Position
-	comments    []Comment
-}
-```
+`ast.AliasTypeDecl`
 
 example code
 
@@ -1068,12 +887,7 @@ type Person = Human
 ```
 
 ### Function Type
-
-AST struct
-
-```v
-FnTypeDecl
-```
+`ast.FnTypeDecl`
 
 example code
 
@@ -1084,12 +898,7 @@ type Mid_fn = fn (int, string) int /*comment 1*/ //comment 2
 ```
 
 ### Sum  type
-
-AST struct
-
-```v
-SumTypeDecl
-```
+`ast.SumTypeDecl`
 
 example code
 
@@ -1107,12 +916,7 @@ type MySumtype = User | int | string //comment 1
 ## FlowControl
 
 ### Block
-
-AST struct
-
-```v
-Block
-```
+`ast.Block`
 
 example code
 
@@ -1133,14 +937,7 @@ fn my_fn() {
 ```
 
 ### if
-
-AST struct
-
-```v
-IfExpr
-
-IfBranch
-```
+`ast.IfExpr`, `ast.IfBranch`
 
 example code
 
@@ -1170,14 +967,7 @@ fn main() {
 ```
 
 ### match
-
-AST struct
-
-```v
-MatchExpr
-
-MatchBranch
-```
+`ast.MatchExpr`, `ast.MatchBranch`
 
 example code
 
@@ -1218,18 +1008,7 @@ pub fn (ms MySum) str() string {
 ```
 
 ### for
-
-AST struct
-
-```v
-ForCStmt
-
-ForInStmt
-
-ForStmt
-
-BranchStmt
-```
+`ast.ForCStmt`, `ast.ForInStmt`, `ast.ForStmt`, `ast.BranchStmt`
 
 example code
 
@@ -1306,14 +1085,7 @@ fn main() {
 ```
 
 ### goto
-
-AST struct
-
-```v
-GotoLabel
-
-GotoStmt
-```
+`ast.GotoLabel`, `ast.GotoStmt`
 
 example code
 
@@ -1330,14 +1102,7 @@ fn main() {
 ```
 
 ## Error handle
-
-AST struct
-
-```v
-OrExpr
-
-None
-```
+`ast.OrExpr`, `ast.None`
 
 example code
 
@@ -1374,14 +1139,7 @@ fn main() {
 ## Concurrent
 
 ### ChanInit
-
-AST struct
-
-```v
-ChanInit
-
-GoStmt
-```
+`ast.ChanInit`, `ast.GoStmt`
 
 example code
 
@@ -1410,14 +1168,7 @@ fn main() {
 ```
 
 ### SelectExpr
-
-AST struct
-
-```v
-SelectExpr
-
-SelectBranch
-```
+`ast.SelectExpr`, `ast.SelectBranch`
 
 example code
 
@@ -1457,26 +1208,10 @@ fn send(ch1 chan int, ch2 chan int) {
 ```
 
 ### LockExpr
-
-AST struct
-
-```v
-LockExpr
-```
-
-example code(todo)
-
-```v
-
-```
+TODO: `ast.LockExpr`
 
 ## Unsafe
-
-AST struct
-
-```v
-UnsafeExpr
-```
+`ast.UnsafeExpr`
 
 example code
 
@@ -1491,14 +1226,7 @@ fn main() {
 ```
 
 ## SQL
-
-AST struct
-
-```v
-SqlStmt
-
-SqlExpr
-```
+`ast.SqlStmt`, `ast.SqlExpr`
 
 example code
 
@@ -1567,12 +1295,7 @@ fn main() {
 ## Test
 
 ### AssertStmt
-
-AST struct
-
-```v
-AssertStmt
-```
+`ast.AssertStmt`
 
 example code
 
@@ -1586,14 +1309,7 @@ fn test_abc() {
 ## Compile time
 
 ### CompFor
-
-AST struct
-
-```v
-CompFor
-
-ComptimeCall
-```
+`ast.CompFor`, `ast.ComptimeCall`
 
 example code
 
@@ -1636,18 +1352,11 @@ fn main() {
 ## C Integration
 
 ### GlobalDecl
-
-AST struct
-
-```v
-GlobalDecl
-
-GlobalField
-```
+`ast.GlobalDecl`, `ast.GlobalField`
 
 example code
 
-```v
+```v failcompile
 module main
 
 // single
@@ -1668,36 +1377,24 @@ fn main() {
 ```
 
 ### HashStmt
-
-AST struct
-
-```v
-HashStmt
-```
+`ast.HashStmt`
 
 example code
 
 ```v
 module main
-    
-#include <stdio.h> 
 
+#include <stdio.h>
 #flag -lmysqlclient
 #flag linux -I/usr/include/mysql
 #include <mysql.h>
-
 fn main() {
-
 }
 ```
 
 ### Likely
 
-AST struct
-
-```v
-Likely
-```
+`ast.Likely`
 
 example code
 
@@ -1720,31 +1417,16 @@ fn main() {
 ```
 
 ### CTempVar
-
-AST struct
-
-```v
-CTempVar
-```
-
-example code(todo)
-
-```v
-
-```
+TODO: `ast.CTempVar`
 
 ## Comment
-
-AST struct
-
-```v
-Comment
-```
+`ast.Comment`
 
 example code
 
 ```v
 module main
+
 /*
 multi line comment
 multi line comment
@@ -1752,18 +1434,14 @@ multi line comment
 // signle line comment
 fn main() {
 	x := 1 // behind statement comment
+	println(x)
 }
 ```
 
 ## Other
 
 ### AtExpr
-
-AST struct
-
-```v
-AtExpr
-```
+`ast.AtExpr`
 
 example code
 
@@ -1779,6 +1457,6 @@ fn main() {
 	println(@LINE)
 	println(@COLUMN)
 	println(@VHASH)
-	println(@VMOD_FILE)
+	// println(@VMOD_FILE)
 }
 ```
