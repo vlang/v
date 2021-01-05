@@ -28,7 +28,7 @@ git clone https://github.com/vlang/v && cd v && make
 ### Windows:
 You need `git`, and a C compiler like `gcc` or `msvc`:
 ```bash
-git clone https://github.com/vlang/v 
+git clone https://github.com/vlang/v
 cd v
 make
 ```
@@ -1888,18 +1888,20 @@ if w is Mars {
 }
 ```
 `w` has type `Mars` inside the body of the `if` statement. This is
-known as *flow-sensitive typing*. You can also specify a variable name:
+known as *flow-sensitive typing*.
+If `w` is a mutable identifier, it would be unsafe if the compiler smart casts it without a warning.
+That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
-if w is Mars as mars {
-    assert typeof(w).name == 'World'
-    if mars.dust_storm() {
+if mut w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
         println('bad weather!')
     }
 }
 ```
-`w` keeps its original type. This form is necessary if `w` is a more
-complex expression than just a variable name.
+Otherwise `w` would keep its original type.
+> This works for both, simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
