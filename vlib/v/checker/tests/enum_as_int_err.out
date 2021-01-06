@@ -12,7 +12,7 @@ vlib/v/checker/tests/enum_as_int_err.vv:10:6: error: cannot assign `Color` to `i
       |         ^
    11 |     println(color == 0)
    12 | }
-vlib/v/checker/tests/enum_as_int_err.vv:11:16: error: cannot compare an `int` with `enum`, use explicit type cast for `int` or `enum` instead
+vlib/v/checker/tests/enum_as_int_err.vv:11:16: error: cannot compare an `int literal` with `Color`, use explicit type cast for `int` or `Color` instead
     9 |     color = 1
    10 |     foo = Color.red
    11 |     println(color == 0)
