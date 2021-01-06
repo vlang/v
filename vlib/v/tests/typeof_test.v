@@ -54,7 +54,7 @@ pub fn (ms MySumType) str() string {
 		int { return ms.str() }
 		f32 { return ms.str() }
 		// FooBar { return it.x.str() }
-		else { return 'unknown: ' + typeof(ms) }
+		else { return ms.type_name() }
 	}
 }
 
@@ -74,6 +74,10 @@ fn test_typeof_on_sumtypes() {
 	assert typeof(a).name == 'MySumType'
 	assert typeof(b).name == 'MySumType'
 	assert typeof(c).name == 'MySumType'
+	
+	assert a.str() == '32'
+	assert b.str() == '123.'
+	assert c.str() == 'FooBar'
 }
 
 //
