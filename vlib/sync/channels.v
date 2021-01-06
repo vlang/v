@@ -262,8 +262,11 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					ch.writesem_im.wait()
 				}
 				if C.atomic_load_u16(&ch.closed) != 0 {
-					ch.writesem_im.post()
-					return .closed
+					if have_swapped {
+						return .success
+					} else {
+						return .closed
+					}
 				}
 				if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
