@@ -337,6 +337,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
+	// we should not get here but the V compiler want's to see a return statement
+	assert false
+	return .success
 }
 
 [inline]
