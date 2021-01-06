@@ -28,14 +28,14 @@ pub fn smart_quote(str string, raw bool) string {
 		}
 		if pos + 1 < len {
 			unsafe {
-				next = str.str[pos + 1].str()
+				next = str.str[pos + 1].ascii_str()
 			}
 		}
 		mut current := str
 		mut toadd := str
 		if len > 1 {
 			unsafe {
-				current = str.str[pos].str()
+				current = str.str[pos].ascii_str()
 			}
 			toadd = current
 		}

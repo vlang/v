@@ -69,6 +69,7 @@ mut:
 	prevent_sum_type_unwrapping_once bool   // needed for assign new values to sum type, stopping unwrapping then
 	loop_label                       string // set when inside a labelled for loop
 	timers                           &util.Timers = util.new_timers(false)
+	comptime_fields_type             map[string]table.Type
 }
 
 pub fn new_checker(table &table.Table, pref &pref.Preferences) Checker {
@@ -977,6 +978,9 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 	match mut expr {
 		ast.CastExpr {
 			// TODO
+			return '', pos
+		}
+		ast.ComptimeSelector {
 			return '', pos
 		}
 		ast.Ident {
@@ -3201,10 +3205,26 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			}
 			if node.method_name == 'html' {
 				return c.table.find_type_idx('vweb.Result')
-			} else {
-				return table.string_type
 			}
-			// return table.void_type
+			return table.string_type
+		}
+		ast.ComptimeSelector {
+			node.left_type = c.unwrap_generic(c.expr(node.left))
+			expr_type := c.unwrap_generic(c.expr(node.field_expr))
+			expr_sym := c.table.get_type_symbol(expr_type)
+			if expr_type != table.string_type {
+				c.error('expected `string` instead of `$expr_sym.name` (e.g. `field.name`)',
+					node.field_expr.position())
+			}
+			if node.field_expr is ast.SelectorExpr {
+				expr_name := node.field_expr.expr.str()
+				if expr_name in c.comptime_fields_type {
+					return c.comptime_fields_type[expr_name]
+				}
+			}
+			c.error('compile time field access can only be used when iterating over `T.fields`',
+				node.field_expr.position())
+			return table.void_type
 		}
 		ast.ConcatExpr {
 			return c.concat_expr(mut node)
@@ -3401,6 +3421,10 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 		// variadic case can happen when arrays are converted into variadic
 		msg := if node.expr_type.has_flag(.optional) { 'an optional' } else { 'a variadic' }
 		c.error('cannot type cast $msg', node.pos)
+	} else if !c.inside_unsafe && node.typ.is_ptr() && node.expr_type.is_ptr() {
+		ft := c.table.type_to_str(node.expr_type)
+		tt := c.table.type_to_str(node.typ)
+		c.warn('casting `$ft` to `$tt` is only allowed in `unsafe` code', node.pos)
 	}
 	if node.has_arg {
 		c.expr(node.arg)
@@ -4210,6 +4234,16 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
+			// smartcast field type on comptime if
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					se := branch.cond.left
+					if se is ast.SelectorExpr {
+						got_type := (branch.cond.right as ast.Type).typ
+						c.comptime_fields_type[se.expr.str()] = got_type
+					}
+				}
+			}
 			cur_skip_flags := c.skip_flags
 			if found_branch {
 				c.skip_flags = true
@@ -4601,7 +4635,7 @@ fn (mut c Checker) check_index_type(typ_sym &table.TypeSymbol, index_type table.
 pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 	typ := c.expr(node.left)
 	node.left_type = typ
-	typ_sym := c.table.get_type_symbol(typ)
+	typ_sym := c.table.get_final_type_symbol(typ)
 	if typ_sym.kind !in [.array, .array_fixed, .string, .map] && !typ.is_ptr() && !(!typ_sym.name[0].is_capital() &&
 		typ_sym.name.ends_with('ptr')) && !typ.has_flag(.variadic) { // byteptr, charptr etc
 		c.error('type `$typ_sym.name` does not support indexing', node.pos)

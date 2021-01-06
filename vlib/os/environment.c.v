@@ -81,7 +81,7 @@ pub fn environ() map[string]string {
 		}
 		C.FreeEnvironmentStringsW(estrings)
 	} $else {
-		e := &charptr(C.environ)
+		e := unsafe { &charptr(C.environ) }
 		for i := 0; !isnil(unsafe { e[i] }); i++ {
 			eline := unsafe { cstring_to_vstring(byteptr(e[i])) }
 			eq_index := eline.index_byte(`=`)

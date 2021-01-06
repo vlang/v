@@ -383,7 +383,7 @@ pub fn (fs FlagParser) usage() string {
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
-				onames << '-$f.abbr.str()'
+				onames << '-$f.abbr.ascii_str()'
 			}
 			if f.name != '' {
 				if !f.val_desc.contains('<bool>') {

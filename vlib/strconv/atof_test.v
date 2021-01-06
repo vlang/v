@@ -62,8 +62,8 @@ fn test_atof() {
 
 	// special cases
 	mut f1 := f64(0.0)
-	mut ptr := &u64(&f1)
-	ptr = &u64(&f1)
+	mut ptr := unsafe {&u64(&f1)}
+	ptr = unsafe {&u64(&f1)}
 
 	// double_plus_zero
 	f1=0.0

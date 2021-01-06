@@ -924,8 +924,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write("\$tmpl('$node.args_var')")
 				}
 			} else {
-				f.write('${node.left}.\$${node.method_name}($node.args_var)')
+				method_expr := if node.has_parens {
+					'(${node.method_name}($node.args_var))'
+				} else {
+					'${node.method_name}($node.args_var)'
+				}
+				f.write('${node.left}.$$method_expr')
 			}
+		}
+		ast.ComptimeSelector {
+			field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
+			f.write('${node.left}.$$field_expr')
 		}
 		ast.ConcatExpr {
 			for i, val in node.vals {
@@ -1346,6 +1355,10 @@ struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if node.text.starts_with('#!') {
+		f.writeln(node.text)
+		return
+	}
 	if options.iembed {
 		x := node.text.trim_left('\x01')
 		if x.contains('\n') {

@@ -131,7 +131,7 @@ pub fn source_context(kind string, source string, column int, pos token.Position
 			mut pointerline := ''
 			for bchar in sline[..start_column] {
 				x := if bchar.is_space() { bchar } else { ` ` }
-				pointerline += x.str()
+				pointerline += x.ascii_str()
 			}
 			underline := if pos.len > 1 { '~'.repeat(end_column - start_column) } else { '^' }
 			pointerline += bold(color(kind, underline))

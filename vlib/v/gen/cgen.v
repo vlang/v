@@ -109,7 +109,10 @@ mut:
 	inside_call                      bool
 	has_main                         bool
 	inside_const                     bool
-	comp_for_method                  string // $for method in T {
+	comp_for_method                  string      // $for method in T.methods {}
+	comp_for_field_var               string      // $for field in T.fields {}; the variable name
+	comp_for_field_value             table.Field // value of the field variable
+	comp_for_field_type              table.Type  // type of the field variable inferred from `$if field.typ is T {}`
 	comptime_var_type_map            map[string]table.Type
 	// tmp_arg_vars_to_free  []string
 	// autofree_pregen       map[string]string
@@ -2314,7 +2317,7 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 	mut clone_fn := ''
 	mut free_fn := '&map_free_nop'
 	match key_typ.kind {
-		.byte, .bool, .i8, .char {
+		.byte, .i8, .char {
 			hash_fn = '&map_hash_int_1'
 			key_eq_fn = '&map_eq_int_1'
 			clone_fn = '&map_clone_int_1'
@@ -2329,7 +2332,15 @@ fn (mut g Gen) map_fn_ptrs(key_typ table.TypeSymbol) (string, string, string, st
 			key_eq_fn = '&map_eq_int_4'
 			clone_fn = '&map_clone_int_4'
 		}
-		.byteptr, .charptr, .voidptr, .u64, .i64 {
+		.voidptr {
+			ts := if g.pref.m64 {
+				&g.table.types[table.u64_type_idx]
+			} else {
+				&g.table.types[table.u32_type_idx]
+			}
+			return g.map_fn_ptrs(ts)
+		}
+		.u64, .i64 {
 			hash_fn = '&map_hash_int_8'
 			key_eq_fn = '&map_eq_int_8'
 			clone_fn = '&map_clone_int_8'
@@ -2482,6 +2493,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.ComptimeCall {
 			g.comptime_call(node)
+		}
+		ast.ComptimeSelector {
+			g.comptime_selector(node)
 		}
 		ast.Comment {}
 		ast.ConcatExpr {
@@ -3832,7 +3846,7 @@ fn (mut g Gen) index_expr(node ast.IndexExpr) {
 			g.write(')')
 		}
 		else {
-			sym := g.table.get_type_symbol(node.left_type)
+			sym := g.table.get_final_type_symbol(node.left_type)
 			left_is_ptr := node.left_type.is_ptr()
 			if sym.kind == .array {
 				info := sym.info as table.Array
