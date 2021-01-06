@@ -67,6 +67,7 @@ mut:
 	vlines_path                      string   // set to the proper path for generating #line directives
 	optionals                        []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals               []string // types for `x := <-ch or {...}`
+	chan_push_optionals              []string // types for `ch <- x or {...}`
 	shareds                          []int    // types with hidden mutex for which decl has been emitted
 	inside_ternary                   int      // ?: comma separated statements on a single line
 	inside_map_postfix               bool     // inside map++/-- postfix expr
@@ -550,6 +551,21 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 		return *($opt_el_type*)&_tmp2;
 	}
 	_tmp.ok = true; _tmp.is_none = false; _tmp.v_error = (string){.str=(byteptr)""}; _tmp.ecode = 0;
+	return _tmp;
+}')
+	}
+}
+
+fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
+	if styp !in g.chan_push_optionals {
+		g.chan_push_optionals << styp
+		g.channel_definitions.writeln('
+static inline Option_void __Option_${styp}_pushval($styp ch, $el_type e) {
+	if (sync__Channel_try_push_priv(ch, &e, false)) {
+		Option _tmp2 = v_error(_SLIT("channel closed"));
+		return *(Option_void*)&_tmp2;
+	}
+	Option_void _tmp = {.ok = true, .is_none = false, .v_error = (string){.str=(byteptr)""}, .ecode = 0};
 	return _tmp;
 }')
 	}
@@ -3167,12 +3183,25 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op == .arrow {
 		// chan <- val
+		gen_or := node.or_block.kind != .absent
 		styp := left_sym.cname
-		g.write('__${styp}_pushval(')
+		mut left_inf := left_sym.info as table.Chan
+		elem_type := left_inf.elem_type
+		tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+		if gen_or {
+			elem_styp := g.typ(elem_type)
+			g.register_chan_push_optional_call(elem_styp, styp)
+			g.write('Option_void $tmp_opt = __Option_${styp}_pushval(')
+		} else {
+			g.write('__${styp}_pushval(')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
+		if gen_or {
+			g.or_block(tmp_opt, node.or_block, table.void_type)
+		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&

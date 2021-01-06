@@ -532,6 +532,7 @@ pub mut:
 	left_type   table.Type
 	right_type  table.Type
 	auto_locked string
+	or_block    OrExpr
 }
 
 // ++, --
