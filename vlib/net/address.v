@@ -22,7 +22,7 @@ const (
 )
 
 fn new_addr(addr C.sockaddr) ?Addr {
-	addr_len := if addr.sa_family == SocketFamily.inet {
+	addr_len := if addr.sa_family == int(SocketFamily.inet) {
 		sizeof(C.sockaddr)
 	} else {
 		// TODO NOOOOOOOOOOOO
