@@ -12,6 +12,7 @@ import v.util.vtest
 const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
+	b2v_keep_path      = 'vlib/v/fmt/tests/bin2v_keep.vv'
 )
 
 fn test_fmt() {
@@ -35,6 +36,7 @@ fn test_fmt() {
 	input_files << expected_input_files
 	input_files = vtest.filter_vtest_only(input_files, basepath: vroot)
 	fmt_bench.set_total_expected_steps(input_files.len)
+	fill_bin2v_keep() or { eprintln('failed creating vbin2v_keep.vv') }
 	for istep, ipath in input_files {
 		fmt_bench.cstep = istep
 		fmt_bench.step()
@@ -69,10 +71,22 @@ fn test_fmt() {
 		fmt_bench.ok()
 		eprintln(fmt_bench.step_message_ok('$vrelpath'))
 	}
+	restore_bin2v_placeholder() or { eprintln('failed restoring vbin2v_keep.vv placeholder') }
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
 		exit(error_failed_tests)
 	}
+}
+
+fn fill_bin2v_keep() ? {
+	res := os.exec('v bin2v tutorials/img/hello.png tutorials/img/time.png') ?
+	os.write_file(b2v_keep_path, res.output) ?
+}
+
+fn restore_bin2v_placeholder() ? {
+	text := '// This is a placeholder file which will be filled with bin2v output before the test.
+// HINT: do NOT delete, move or rename this file!\n'
+	os.write_file(b2v_keep_path, text) ?
 }
