@@ -230,3 +230,19 @@ fn test_sub_expression() {
 	c := true || match 1 {0 {false} else {false}}
 	assert c
 }
+
+const (
+	one = 'one'
+)
+
+fn test_match_constant_string() {
+	
+
+match one {
+	one {
+		assert true
+	}
+	else {
+		assert false
+	}
+}
