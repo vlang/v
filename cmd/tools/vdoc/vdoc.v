@@ -440,7 +440,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, include_examples bool, 
 		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
 		for example in examples {
 			// hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre class="signature"><code class="example">$example</code></pre>')
+			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
 		}
 		dnw.writeln('</section>')
 	}
