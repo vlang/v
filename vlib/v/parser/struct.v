@@ -158,7 +158,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			field_start_pos := p.tok.position()
 			is_embed := ((p.tok.lit.len > 1 && p.tok.lit[0].is_capital()) ||
 				p.peek_tok.kind == .dot) &&
-				language == .v && ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
+				language == .v
+			is_on_top := ast_fields.len == 0 && !(is_field_mut || is_field_mut || is_field_global)
 			mut field_name := ''
 			mut typ := table.Type(0)
 			mut type_pos := token.Position{}
@@ -174,6 +175,11 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 					}
 				}
 				type_pos = type_pos.extend(p.prev_tok.position())
+				if !is_on_top {
+					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
+						type_pos)
+					return ast.StructDecl{}
+				}
 				sym := p.table.get_type_symbol(typ)
 				if typ in embed_types {
 					p.error_with_pos('cannot embed `$sym.name` more than once', type_pos)
