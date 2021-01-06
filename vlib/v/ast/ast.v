@@ -1311,7 +1311,7 @@ pub fn (node Node) children() []Node {
 			StringInterLiteral, Assoc, ArrayInit {
 				return node.exprs.map(Node(it))
 			}
-			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf {
+			SelectorExpr, PostfixExpr, UnsafeExpr, AsCast, ParExpr, IfGuardExpr, SizeOf, Likely, TypeOf, ArrayDecompose {
 				children << node.expr
 			}
 			LockExpr, OrExpr {
@@ -1366,6 +1366,9 @@ pub fn (node Node) children() []Node {
 			}
 			ConcatExpr {
 				return node.vals.map(Node(it))
+			}
+			ComptimeCall, ComptimeSelector {
+				children << node.left
 			}
 			else {}
 		}
