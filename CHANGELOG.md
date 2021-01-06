@@ -7,6 +7,7 @@
 - `byte.str()` has been fixed and works like with all other numbers. `byte.ascii_str()` has been added.
 - Smart cast in for loops: `for mut x is string {}`.
 - `[noinit]` struct attribute to disallow direct struct initialization with `Foo{}`.
+- Treating `enum` as `int` is deprecated and will be removed in 0.3.
 
 ## V 0.2.1
 *30 Dec 2020*

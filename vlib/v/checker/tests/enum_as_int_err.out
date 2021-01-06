@@ -1,0 +1,20 @@
+vlib/v/checker/tests/enum_as_int_err.vv:9:8: error: cannot assign `int literal` to `Color`, use explicit type cast for `int literal` instead
+    7 |     mut color := Color.red
+    8 |     mut foo := 1
+    9 |     color = 1
+      |           ^
+   10 |     foo = Color.red
+   11 |     println(color == 0)
+vlib/v/checker/tests/enum_as_int_err.vv:10:6: error: cannot assign `Color` to `int literal`, use explicit type cast for `Color` instead
+    8 |     mut foo := 1
+    9 |     color = 1
+   10 |     foo = Color.red
+      |         ^
+   11 |     println(color == 0)
+   12 | }
+vlib/v/checker/tests/enum_as_int_err.vv:11:16: error: cannot compare an `int` with `enum`, use explicit type cast for `int` or `enum` instead
+    9 |     color = 1
+   10 |     foo = Color.red
+   11 |     println(color == 0)
+      |                   ~~
+   12 | }
