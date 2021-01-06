@@ -3422,7 +3422,7 @@ fn (mut g Gen) match_expr_classic(node ast.MatchExpr, is_expr bool, cond_var str
 					g.write(' || ')
 				}
 				if type_sym.kind == .string {
-					if (expr as ast.StringLiteral).val == '' {
+					if expr is ast.StringLiteral && (expr as ast.StringLiteral).val == '' {
 						g.write('${cond_var}.len == 0')
 					} else {
 						g.write('string_eq(')
