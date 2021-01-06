@@ -308,7 +308,11 @@ fn escape(str string) string {
 fn (cfg DocConfig) gen_json(idx int) string {
 	dcs := cfg.docs[idx]
 	mut jw := strings.new_builder(200)
-	comments := if cfg.include_examples { dcs.head.merge_comments() } else { dcs.head.merge_comments_without_examples() }
+	comments := if cfg.include_examples {
+		dcs.head.merge_comments()
+	} else {
+		dcs.head.merge_comments_without_examples()
+	}
 	jw.write('{"module_name":"$dcs.head.name","description":"${escape(comments)}","contents":')
 	jw.write(json.encode(dcs.contents.keys().map(dcs.contents[it])))
 	jw.write(',"generator":"vdoc","time_generated":"$dcs.time_generated.str()"}')
@@ -435,7 +439,7 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, include_examples bool, 
 		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
 		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
 		for example in examples {
-			//hl_example := html_highlight(example, tb)
+			// hl_example := html_highlight(example, tb)
 			dnw.writeln('<pre class="signature"><code class="example">$example</code></pre>')
 		}
 		dnw.writeln('</section>')
@@ -617,7 +621,11 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('$dcs.head.content\n')
-	comments := if cfg.include_examples { dcs.head.merge_comments() } else { dcs.head.merge_comments_without_examples() }
+	comments := if cfg.include_examples {
+		dcs.head.merge_comments()
+	} else {
+		dcs.head.merge_comments_without_examples()
+	}
 	if comments.trim_space().len > 0 && !cfg.pub_only {
 		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
 	}
@@ -630,7 +638,11 @@ fn (cfg DocConfig) write_plaintext_content(contents []doc.DocNode, mut pw string
 		if cn.content.len > 0 {
 			pw.writeln(cn.content)
 			if cn.comments.len > 0 && !cfg.pub_only {
-				comments := if cfg.include_examples { cn.merge_comments() } else { cn.merge_comments_without_examples() }
+				comments := if cfg.include_examples {
+					cn.merge_comments()
+				} else {
+					cn.merge_comments_without_examples()
+				}
 				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
 			if cfg.show_loc {
@@ -647,7 +659,11 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	mut cw := strings.new_builder(200)
 	hw.writeln('# $dcs.head.content\n')
 	if dcs.head.comments.len > 0 {
-		comments := if cfg.include_examples { dcs.head.merge_comments() } else { dcs.head.merge_comments_without_examples() }
+		comments := if cfg.include_examples {
+			dcs.head.merge_comments()
+		} else {
+			dcs.head.merge_comments_without_examples()
+		}
 		hw.writeln('$comments\n')
 	}
 	if with_toc {
@@ -771,7 +787,11 @@ fn (mut cfg DocConfig) collect_search_index() {
 	for doc in cfg.docs {
 		mod := doc.head.name
 		cfg.search_module_index << mod
-		comments := if cfg.include_examples { doc.head.merge_comments() } else { doc.head.merge_comments_without_examples() }
+		comments := if cfg.include_examples {
+			doc.head.merge_comments()
+		} else {
+			doc.head.merge_comments_without_examples()
+		}
 		cfg.search_module_data << SearchModuleResult{
 			description: trim_doc_node_description(comments)
 			link: cfg.get_file_name(mod)
@@ -786,7 +806,11 @@ fn (mut cfg DocConfig) create_search_results(mod string, dn doc.DocNode) {
 	if dn.kind == .const_group {
 		return
 	}
-	comments := if cfg.include_examples { dn.merge_comments() } else { dn.merge_comments_without_examples() }
+	comments := if cfg.include_examples {
+		dn.merge_comments()
+	} else {
+		dn.merge_comments_without_examples()
+	}
 	dn_description := trim_doc_node_description(comments)
 	cfg.search_index << dn.name
 	cfg.search_data << SearchResult{

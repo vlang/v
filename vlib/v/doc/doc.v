@@ -267,9 +267,11 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 				if module_comment == '' {
 					continue
 				}
-				/*if d.head.comment != '' {
+				/*
+				if d.head.comment != '' {
 					d.head.comment += '\n'
-				}*/
+				}
+				*/
 				d.head.comments << preceeding_comments //+= module_comment
 			}
 			continue
@@ -278,10 +280,12 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			// the accumulated comments were interspersed before/between the imports;
 			// just add them all to the module comments:
 			if d.with_head {
-				//import_comments := merge_comments(preceeding_comments)
-				/*if d.head.comment != '' {
+				// import_comments := merge_comments(preceeding_comments)
+				/*
+				if d.head.comment != '' {
 					d.head.comment += '\n'
-				}*/
+				}
+				*/
 				d.head.comments << preceeding_comments //+= import_comments
 			}
 			preceeding_comments = []
@@ -314,7 +318,8 @@ pub fn (mut d Doc) file_ast(file_ast ast.File) map[string]DocNode {
 			// fixed-width symbol name at start of comment
 			if cmt.starts_with(node.name) && cmt.len > len && cmt[len] == ` ` {
 				cmt = '`${cmt[..len]}`' + cmt[len..]
-			}*/
+			}
+			*/
 			node.comments << preceeding_comments //= cmt
 		}
 		preceeding_comments = []

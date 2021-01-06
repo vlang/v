@@ -48,14 +48,14 @@ pub fn (cnts map[string]DocNode) arr() []DocNode {
 
 // merge_comments returns a `string` with the combined contents of `DocNode.comments`.
 pub fn (dc DocNode) merge_comments() string {
-	return doc.merge_doc_comments(dc.comments)
+	return merge_doc_comments(dc.comments)
 }
 
 // merge_comments_without_examples returns a `string` with the
 // combined contents of `DocNode.comments` - excluding any examples.
 pub fn (dc DocNode) merge_comments_without_examples() string {
 	sans_examples := dc.comments.filter(!it.is_example())
-	return doc.merge_doc_comments(sans_examples)
+	return merge_doc_comments(sans_examples)
 }
 
 // examples returns a `[]string` containing examples parsed from `DocNode.comments`.
