@@ -945,7 +945,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		right.kind in [.int, .any_int]) || (left.kind in [.int, .any_int] &&
 		right.kind == .enum_)) &&
 		infix_expr.op.is_relational() {
-		c.error('cannot compare an `int` and `enum`, use explicit type cast for `int` or `enum` instead',
+		c.warn('cannot compare an `int` with `enum`, use explicit type cast for `int` or `enum` instead',
 			infix_expr.pos)
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
@@ -2429,6 +2429,13 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
+		}
+		if ((left_sym.kind == .enum_ &&
+			right_sym.kind in [.any_int, .int]) ||
+			(right_sym.kind == .enum_ && left_sym.kind in [.any_int, .int])) &&
+			!is_decl {
+			c.warn('cannot assign `enum` to `int` and vice versa, use explicit type cast for `int` or `enum` instead',
+				assign_stmt.pos)
 		}
 		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign] &&
 			right_sym.kind == .array &&

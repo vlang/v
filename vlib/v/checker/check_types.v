@@ -89,6 +89,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 		return true
 	}
 	// allow enum value to be used as int
+	// TODO: remove this after 0.3 release and the related warning to it
 	if (got_type_sym.is_int() && exp_type_sym.kind == .enum_) ||
 		(exp_type_sym.is_int() && got_type_sym.kind == .enum_) {
 		return true
