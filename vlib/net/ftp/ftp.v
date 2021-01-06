@@ -171,6 +171,7 @@ fn new_dtp(msg string) ?DTP {
 	conn := net.dial_tcp('$ip:$port') or { return error('Cannot connect to the data channel') }
 	dtp := DTP{
 		conn: conn
+		reader: io.new_buffered_reader(reader: io.make_reader(conn))
 		ip: ip
 		port: port
 	}
@@ -178,7 +179,7 @@ fn new_dtp(msg string) ?DTP {
 }
 
 fn (mut ftp FTP) pasv() ?DTP {
-	ftp.write('PASV') or { }
+	ftp.write('PASV') ?
 	code, data := ftp.read() ?
 	$if debug {
 		println('pass: $data')
@@ -191,19 +192,19 @@ fn (mut ftp FTP) pasv() ?DTP {
 }
 
 pub fn (mut ftp FTP) dir() ?[]string {
-	mut dtp := ftp.pasv() or { return error('cannot establish data connection') }
-	ftp.write('LIST') or { }
+	mut dtp := ftp.pasv() or { return error('Cannot establish data connection') }
+	ftp.write('LIST') ?
 	code, _ := ftp.read() ?
 	if code == denied {
-		return error('LIST denied')
+		return error('`LIST` denied')
 	}
 	if code != open_data_connection {
-		return error('data channel empty')
+		return error('Data channel empty')
 	}
 	list_dir := dtp.read() ?
 	result, _ := ftp.read() ?
 	if result != close_data_connection {
-		println('LIST not ok')
+		println('`LIST` not ok')
 	}
 	dtp.close()
 	mut dir := []string{}
@@ -219,7 +220,7 @@ pub fn (mut ftp FTP) dir() ?[]string {
 
 pub fn (mut ftp FTP) get(file string) ?[]byte {
 	mut dtp := ftp.pasv() or { return error('Cannot stablish data connection') }
-	ftp.write('RETR $file') or { }
+	ftp.write('RETR $file') ?
 	code, _ := ftp.read() ?
 	if code == denied {
 		return error('Permission denied')
