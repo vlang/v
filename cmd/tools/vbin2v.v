@@ -118,7 +118,7 @@ fn main() {
 		exit(0)
 	}
 	context.files = real_files
-	if context.write_file != '' && !context.write_file.ends_with('.v') {
+	if context.write_file != '' && os.file_ext(context.write_file) !in ['.vv', '.v'] {
 		context.write_file += '.v'
 	}
 	mut file_byte_map := map[string][]byte{}
@@ -140,10 +140,10 @@ fn main() {
 		}
 		out_file.write_str(context.footer())
 	} else {
-		println(context.header())
+		print(context.header())
 		for bname, fbytes in file_byte_map {
-			println(context.file2v(bname, fbytes, max_bname))
+			print(context.file2v(bname, fbytes, max_bname))
 		}
-		println(context.footer())
+		print(context.footer())
 	}
 }
