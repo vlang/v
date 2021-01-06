@@ -2431,9 +2431,9 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			continue
 		}
 		if ((left_sym.kind == .enum_ &&
-			right_sym.kind in [.any_int, .int]) ||
-			(right_sym.kind == .enum_ && left_sym.kind in [.any_int, .int])) &&
-			!is_decl && (right_sym.language != .c || left_sym.language != .c) {
+			right_sym.kind in [.any_int, .int] && left_sym.language != .c) ||
+			(right_sym.kind == .enum_ && left_sym.kind in [.any_int, .int] && right_sym.language != .c)) &&
+			!is_decl {
 			c.warn('cannot assign `enum` to `int` and vice versa, use explicit type cast for `int` or `enum` instead',
 				assign_stmt.pos)
 		}
