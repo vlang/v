@@ -4122,6 +4122,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut nbranches_without_return := 0
 	mut should_skip := false // Whether the current branch should be skipped
 	mut found_branch := false // Whether a matching branch was found- skip the rest
+	mut is_comptime_t_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
@@ -4234,7 +4235,6 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 		}
 		if node.is_comptime { // Skip checking if needed
-			mut skip_checking := false
 			// smartcast field type on comptime if
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
@@ -4243,9 +4243,10 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 					if left is ast.SelectorExpr {
 						c.comptime_fields_type[left.expr.str()] = got_type
 					} else if left is ast.Type {
+						is_comptime_t_is_expr = true
 						left_type := c.unwrap_generic(left.typ)
 						if left_type != got_type {
-							skip_checking = true
+							should_skip = true
 						}
 					}
 				}
@@ -4259,9 +4260,9 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			} else {
 				found_branch = true // If a branch wasn't skipped, the rest must be
 			}
-			if (!c.skip_flags || c.pref.output_cross_c) && !skip_checking {
+			if !c.skip_flags || c.pref.output_cross_c {
 				c.stmts(branch.stmts)
-			} else if !skip_checking {
+			} else if !is_comptime_t_is_expr {
 				node.branches[i].stmts = []
 			}
 			c.skip_flags = cur_skip_flags
