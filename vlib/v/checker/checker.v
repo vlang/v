@@ -902,6 +902,7 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 					c.error('cannot push non-reference `$right.name` on `$left.name`',
 						right_pos)
 				}
+				c.stmts(infix_expr.or_block.stmts)
 			} else {
 				c.error('cannot push on non-channel `$left.name`', left_pos)
 			}

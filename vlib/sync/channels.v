@@ -153,6 +153,8 @@ pub fn (mut ch Channel) close() {
 		ch.write_subscriber.sem.post()
 	}
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
+	ch.writesem.post()
+	ch.writesem_im.post()
 }
 
 [inline]
@@ -209,6 +211,10 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 			ch.writesem.wait()
 		}
+		if C.atomic_load_u16(&ch.closed) != 0 {
+			ch.writesem.post()
+			return .closed
+		}
 		if ch.cap == 0 {
 			// try to advertise current object as readable
 			mut read_in_progress := false
@@ -254,6 +260,14 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					got_im_sem = false
 				} else {
 					ch.writesem_im.wait()
+				}
+				if C.atomic_load_u16(&ch.closed) != 0 {
+					if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
+						ch.writesem.post()
+						return .success
+					} else {
+						return .closed
+					}
 				}
 				if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
@@ -323,7 +337,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
-	// this should not happen
+	// we should not get here but the V compiler want's to see a return statement
 	assert false
 	return .success
 }
