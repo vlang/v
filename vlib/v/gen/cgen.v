@@ -67,6 +67,7 @@ mut:
 	vlines_path                      string   // set to the proper path for generating #line directives
 	optionals                        []string // to avoid duplicates TODO perf, use map
 	chan_pop_optionals               []string // types for `x := <-ch or {...}`
+	chan_push_optionals              []string // types for `ch <- x or {...}`
 	shareds                          []int    // types with hidden mutex for which decl has been emitted
 	inside_ternary                   int      // ?: comma separated statements on a single line
 	inside_map_postfix               bool     // inside map++/-- postfix expr
@@ -550,6 +551,21 @@ static inline $opt_el_type __Option_${styp}_popval($styp ch) {
 		return *($opt_el_type*)&_tmp2;
 	}
 	_tmp.ok = true; _tmp.is_none = false; _tmp.v_error = (string){.str=(byteptr)""}; _tmp.ecode = 0;
+	return _tmp;
+}')
+	}
+}
+
+fn (mut g Gen) register_chan_push_optional_call(el_type string, styp string) {
+	if styp !in g.chan_push_optionals {
+		g.chan_push_optionals << styp
+		g.channel_definitions.writeln('
+static inline Option_void __Option_${styp}_pushval($styp ch, ${el_type} e) {
+	if (sync__Channel_try_push_priv(ch, &e, false)) {
+		Option _tmp2 = v_error(_SLIT("channel closed"));
+		return *(Option_void*)&_tmp2;
+	}
+	Option_void _tmp = {.ok = true; .is_none = false; .v_error = (string){.str=(byteptr)""}; .ecode = 0};
 	return _tmp;
 }')
 	}
