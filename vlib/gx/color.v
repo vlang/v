@@ -183,6 +183,24 @@ pub fn (c Color) str() string {
 	return 'Color{$c.r, $c.g, $c.b, $c.a}'
 }
 
+pub fn (c Color) to_hex() int {
+	mut hex:=0x00000000
+	hex+=int(c.r) 	* 0x1000000
+	hex+=int(c.g)	* 0x10000 
+	hex+=int(c.b) 	* 0x100 
+	hex+=int(c.a)  	* 0x1
+	return hex	
+}
+ //used in some gpu systems
+pub fn (c Color) to_hex_swap() int {
+	mut hex:=0x00000000
+	hex+=int(c.r) 	* 0x1
+	hex+=int(c.g)	* 0x100
+	hex+=int(c.b) 	* 0x10000
+	hex+=int(c.a)  	* 0x1000000
+	return hex	
+}
+
 const (
 	string_colors = {
 		'black': black
