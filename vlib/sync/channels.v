@@ -153,6 +153,8 @@ pub fn (mut ch Channel) close() {
 		ch.write_subscriber.sem.post()
 	}
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
+	ch.writesem.post()
+	ch.writesem_im.post()
 }
 
 [inline]
@@ -208,6 +210,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 				return .not_ready
 			}
 			ch.writesem.wait()
+			if C.atomic_load_u16(&ch.closed) != 0 {
+				return .closed
+			}
 		}
 		if ch.cap == 0 {
 			// try to advertise current object as readable
@@ -254,6 +259,9 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					got_im_sem = false
 				} else {
 					ch.writesem_im.wait()
+					if C.atomic_load_u16(&ch.closed) != 0 {
+						return .closed
+					}
 				}
 				if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
