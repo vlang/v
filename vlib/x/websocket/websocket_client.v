@@ -333,11 +333,9 @@ pub fn (mut ws Client) close(code int, message string) ? {
 			close_frame[i + 2] = message[i]
 		}
 		ws.send_control_frame(.close, 'CLOSE', close_frame) ?
-		ws.send_close_event(code, message)
 		unsafe { close_frame.free() }
 	} else {
 		ws.send_control_frame(.close, 'CLOSE', []) ?
-		ws.send_close_event(code, '')
 	}
 	ws.fragments = []
 }
