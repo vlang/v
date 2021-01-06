@@ -565,7 +565,7 @@ static inline Option_void __Option_${styp}_pushval($styp ch, ${el_type} e) {
 		Option _tmp2 = v_error(_SLIT("channel closed"));
 		return *(Option_void*)&_tmp2;
 	}
-	Option_void _tmp = {.ok = true; .is_none = false; .v_error = (string){.str=(byteptr)""}; .ecode = 0};
+	Option_void _tmp = {.ok = true, .is_none = false, .v_error = (string){.str=(byteptr)""}, .ecode = 0};
 	return _tmp;
 }')
 	}
