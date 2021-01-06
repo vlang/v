@@ -5020,14 +5020,6 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 	g.write('}')
 }
 
-fn (mut g Gen) type_of_call_expr(node ast.Expr) string {
-	match node {
-		ast.CallExpr { return g.typ(node.return_type) }
-		else { return typeof(node) }
-	}
-	return ''
-}
-
 // `a in [1,2,3]` => `a == 1 || a == 2 || a == 3`
 fn (mut g Gen) in_optimization(left ast.Expr, right ast.ArrayInit) {
 	is_str := right.elem_type == table.string_type
