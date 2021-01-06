@@ -4122,6 +4122,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	mut nbranches_without_return := 0
 	mut should_skip := false // Whether the current branch should be skipped
 	mut found_branch := false // Whether a matching branch was found- skip the rest
+	mut is_comptime_t_is_expr := false // if `$if T is string`
 	for i in 0 .. node.branches.len {
 		mut branch := node.branches[i]
 		if branch.cond is ast.ParExpr {
@@ -4237,10 +4238,16 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			// smartcast field type on comptime if
 			if branch.cond is ast.InfixExpr {
 				if branch.cond.op == .key_is {
-					se := branch.cond.left
-					if se is ast.SelectorExpr {
-						got_type := (branch.cond.right as ast.Type).typ
-						c.comptime_fields_type[se.expr.str()] = got_type
+					left := branch.cond.left
+					got_type := (branch.cond.right as ast.Type).typ
+					if left is ast.SelectorExpr {
+						c.comptime_fields_type[left.expr.str()] = got_type
+					} else if left is ast.Type {
+						is_comptime_t_is_expr = true
+						left_type := c.unwrap_generic(left.typ)
+						if left_type != got_type {
+							should_skip = true
+						}
 					}
 				}
 			}
@@ -4255,7 +4262,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 			}
 			if !c.skip_flags || c.pref.output_cross_c {
 				c.stmts(branch.stmts)
-			} else {
+			} else if !is_comptime_t_is_expr {
 				node.branches[i].stmts = []
 			}
 			c.skip_flags = cur_skip_flags
@@ -4386,7 +4393,9 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 					return l && r // skip (return true) only if both should be skipped
 				}
 				.key_is, .not_is {
-					if cond.left is ast.SelectorExpr && cond.right is ast.Type {
+					if (cond.left is ast.SelectorExpr ||
+						cond.left is ast.Type) &&
+						cond.right is ast.Type {
 						// $if method.@type is string
 					} else {
 						c.error('invalid `\$if` condition: $cond.left', cond.pos)
