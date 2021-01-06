@@ -255,7 +255,7 @@ pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
+		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
 	}
 	match node {
 		ast.AssignStmt {
@@ -854,7 +854,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
-		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
+		eprintln('expr: ${node.position():-42} | node: ${node.type_name():-20} | $node.str()')
 	}
 	match mut node {
 		ast.CTempVar {
