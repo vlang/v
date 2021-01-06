@@ -356,6 +356,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	op := p.tok.kind
 	if op == .arrow {
+		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
 	// mut typ := p.
@@ -374,11 +375,47 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr)
 	}
+	mut or_stmts := []ast.Stmt{}
+	mut or_kind := ast.OrKind.absent
+	mut or_pos := p.tok.position()
+	// allow `x := <-ch or {...}` to handle closed channel
+	if op == .arrow {
+		if p.tok.kind == .key_orelse {
+			p.next()
+			p.open_scope()
+			p.scope.register(ast.Var{
+				name: 'errcode'
+				typ: table.int_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			p.scope.register(ast.Var{
+				name: 'err'
+				typ: table.string_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			or_kind = .block
+			or_stmts = p.parse_block_no_scope(false)
+			or_pos = or_pos.extend(p.prev_tok.position())
+			p.close_scope()
+		}
+		if p.tok.kind == .question {
+			p.next()
+			or_kind = .propagate
+		}
+		p.or_is_handled = false
+	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+			kind: or_kind
+			pos: or_pos
+		}
 	}
 }
 
