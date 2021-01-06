@@ -118,6 +118,8 @@ pub fn new_test_session(_vargs string) TestSession {
 	$if windows {
 		skip_files << 'examples/database/mysql.v'
 		skip_files << 'examples/x/websocket/ping.v' // requires OpenSSL
+		skip_files << 'examples/x/websocket/client-server/client.v' // requires OpenSSL
+		skip_files << 'examples/x/websocket/client-server/server.v' // requires OpenSSL
 	}
 	if github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
