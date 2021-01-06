@@ -337,9 +337,6 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
-	// this should not happen
-	assert false
-	return .success
 }
 
 [inline]
