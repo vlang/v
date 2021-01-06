@@ -121,6 +121,7 @@ mut:
 	is_vlib             bool
 	is_verbose          bool
 	include_readme      bool
+	include_examples    bool = true
 	open_docs           bool
 	server_port         int = 8046
 	inline_assets       bool
@@ -307,7 +308,12 @@ fn escape(str string) string {
 fn (cfg DocConfig) gen_json(idx int) string {
 	dcs := cfg.docs[idx]
 	mut jw := strings.new_builder(200)
-	jw.write('{"module_name":"$dcs.head.name","description":"${escape(dcs.head.comment)}","contents":')
+	comments := if cfg.include_examples {
+		dcs.head.merge_comments()
+	} else {
+		dcs.head.merge_comments_without_examples()
+	}
+	jw.write('{"module_name":"$dcs.head.name","description":"${escape(comments)}","contents":')
 	jw.write(json.encode(dcs.contents.keys().map(dcs.contents[it])))
 	jw.write(',"generator":"vdoc","time_generated":"$dcs.time_generated.str()"}')
 	return jw.str()
@@ -395,11 +401,12 @@ fn html_highlight(code string, tb &table.Table) string {
 	return buf.str()
 }
 
-fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string {
+fn doc_node_html(dd doc.DocNode, link string, head bool, include_examples bool, tb &table.Table) string {
 	mut dnw := strings.new_builder(200)
 	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 	head_tag := if head { 'h1' } else { 'h2' }
-	md_content := markdown.to_html(html_tag_escape(dd.comment))
+	comments := dd.merge_comments_without_examples()
+	md_content := markdown.to_html(html_tag_escape(comments))
 	hlighted_code := html_highlight(dd.content, tb)
 	node_class := if dd.kind == .const_group { ' const' } else { '' }
 	sym_name := get_sym_name(dd)
@@ -425,7 +432,19 @@ fn doc_node_html(dd doc.DocNode, link string, head bool, tb &table.Table) string
 		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
 	}
 	// do not mess with md_content further, its formatting is important, just output it 1:1 !
-	dnw.writeln('$md_content\n</section>')
+	dnw.writeln('$md_content\n')
+	// Write examples if any found
+	examples := dd.examples()
+	if include_examples && examples.len > 0 {
+		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
+		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
+		for example in examples {
+			// hl_example := html_highlight(example, tb)
+			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
+		}
+		dnw.writeln('</section>')
+	}
+	dnw.writeln('</section>')
 	dnw_str := dnw.str()
 	defer {
 		dnw.free()
@@ -499,12 +518,12 @@ fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.B
 	}
 	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
-		hw.write(doc_node_html(cn, src_link, false, dcs.table))
+		hw.write(doc_node_html(cn, src_link, false, cfg.include_examples, dcs.table))
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
 		child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
-		hw.write(doc_node_html(child, child_src_link, false, dcs.table))
+		hw.write(doc_node_html(child, child_src_link, false, cfg.include_examples, dcs.table))
 	}
 }
 
@@ -515,7 +534,7 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	dcs := cfg.docs[idx]
 	dcs_contents := dcs.contents.arr()
 	// generate toc first
-	contents.writeln(doc_node_html(dcs.head, '', true, dcs.table))
+	contents.writeln(doc_node_html(dcs.head, '', true, cfg.include_examples, dcs.table))
 	if is_module_readme(dcs.head) {
 		write_toc(dcs.head, mut symbols_toc)
 	}
@@ -602,8 +621,13 @@ fn (cfg DocConfig) gen_plaintext(idx int) string {
 	dcs := cfg.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('$dcs.head.content\n')
-	if dcs.head.comment.trim_space().len > 0 && !cfg.pub_only {
-		pw.writeln(dcs.head.comment.split_into_lines().map('    ' + it).join('\n'))
+	comments := if cfg.include_examples {
+		dcs.head.merge_comments()
+	} else {
+		dcs.head.merge_comments_without_examples()
+	}
+	if comments.trim_space().len > 0 && !cfg.pub_only {
+		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
 	}
 	cfg.write_plaintext_content(dcs.contents.arr(), mut pw)
 	return pw.str()
@@ -613,8 +637,13 @@ fn (cfg DocConfig) write_plaintext_content(contents []doc.DocNode, mut pw string
 	for cn in contents {
 		if cn.content.len > 0 {
 			pw.writeln(cn.content)
-			if cn.comment.len > 0 && !cfg.pub_only {
-				pw.writeln(cn.comment.trim_space().split_into_lines().map('    ' + it).join('\n'))
+			if cn.comments.len > 0 && !cfg.pub_only {
+				comments := if cfg.include_examples {
+					cn.merge_comments()
+				} else {
+					cn.merge_comments_without_examples()
+				}
+				pw.writeln(comments.trim_space().split_into_lines().map('    ' + it).join('\n'))
 			}
 			if cfg.show_loc {
 				pw.writeln('Location: $cn.file_path:$cn.pos.line\n')
@@ -629,8 +658,13 @@ fn (cfg DocConfig) gen_markdown(idx int, with_toc bool) string {
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
 	hw.writeln('# $dcs.head.content\n')
-	if dcs.head.comment.len > 0 {
-		hw.writeln('$dcs.head.comment\n')
+	if dcs.head.comments.len > 0 {
+		comments := if cfg.include_examples {
+			dcs.head.merge_comments()
+		} else {
+			dcs.head.merge_comments_without_examples()
+		}
+		hw.writeln('$comments\n')
 	}
 	if with_toc {
 		hw.writeln('## Contents')
@@ -648,7 +682,18 @@ fn (cfg DocConfig) write_markdown_content(contents []doc.DocNode, mut cw strings
 			cw.writeln('## $cn.name')
 		}
 		if cn.content.len > 0 {
-			cw.writeln('```v\n$cn.content\n```$cn.comment\n')
+			comments := cn.merge_comments_without_examples()
+			cw.writeln('```v\n$cn.content\n```\n$comments\n')
+			// Write examples if any found
+			examples := cn.examples()
+			if cfg.include_examples && examples.len > 0 {
+				example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
+				cw.writeln('$example_title\n```v\n')
+				for example in examples {
+					cw.writeln('$example\n')
+				}
+				cw.writeln('```\n')
+			}
 			cw.writeln('[\[Return to contents\]](#Contents)\n')
 		}
 		cfg.write_markdown_content(cn.children, mut cw, mut hw, indent + 1, with_toc)
@@ -742,8 +787,13 @@ fn (mut cfg DocConfig) collect_search_index() {
 	for doc in cfg.docs {
 		mod := doc.head.name
 		cfg.search_module_index << mod
+		comments := if cfg.include_examples {
+			doc.head.merge_comments()
+		} else {
+			doc.head.merge_comments_without_examples()
+		}
 		cfg.search_module_data << SearchModuleResult{
-			description: trim_doc_node_description(doc.head.comment)
+			description: trim_doc_node_description(comments)
 			link: cfg.get_file_name(mod)
 		}
 		for _, dn in doc.contents {
@@ -756,7 +806,12 @@ fn (mut cfg DocConfig) create_search_results(mod string, dn doc.DocNode) {
 	if dn.kind == .const_group {
 		return
 	}
-	dn_description := trim_doc_node_description(dn.comment)
+	comments := if cfg.include_examples {
+		dn.merge_comments()
+	} else {
+		dn.merge_comments_without_examples()
+	}
+	dn_description := trim_doc_node_description(comments)
 	cfg.search_index << dn.name
 	cfg.search_data << SearchResult{
 		prefix: if dn.parent_name != '' {
@@ -894,13 +949,16 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 	}
 	if cfg.include_readme {
 		readme_contents := cfg.get_readme(dir_path)
+		comment := doc.DocComment{
+			text: readme_contents
+		}
 		if cfg.output_type == .stdout {
 			println(markdown.to_plain(readme_contents))
 		} else if cfg.output_type == .html && cfg.is_multi {
 			cfg.docs << doc.Doc{
 				head: doc.DocNode{
 					name: 'README'
-					comment: readme_contents
+					comments: [comment]
 				}
 				time_generated: time.now()
 			}
@@ -932,7 +990,10 @@ fn (mut cfg DocConfig) generate_docs_from_file() {
 		if !is_local_and_single {
 			if cfg.is_multi || (!cfg.is_multi && cfg.include_readme) {
 				readme_contents := cfg.get_readme(dirpath)
-				dcs.head.comment = readme_contents
+				comment := doc.DocComment{
+					text: readme_contents
+				}
+				dcs.head.comments = [comment]
 			}
 			if cfg.pub_only {
 				for name, dc in dcs.contents {
@@ -1183,6 +1244,9 @@ fn main() {
 			'-no-timestamp' {
 				cfg.no_timestamp = true
 			}
+			'-no-examples' {
+				cfg.include_examples = false
+			}
 			'-readme' {
 				cfg.include_readme = true
 			}
@@ -1231,7 +1295,7 @@ fn main() {
 }
 
 fn is_module_readme(dn doc.DocNode) bool {
-	if dn.comment.len > 0 && dn.content == 'module $dn.name' {
+	if dn.comments.len > 0 && dn.content == 'module $dn.name' {
 		return true
 	}
 	return false
