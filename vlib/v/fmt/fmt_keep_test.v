@@ -83,8 +83,8 @@ fn test_fmt() {
 fn fill_bin2v_keep() ? {
 	img0 := os.join_path('tutorials', 'img', 'hello.png')
 	img1 := os.join_path('tutorials', 'img', 'time.png')
-	res := os.exec('v bin2v $img0 $img1') ?
-	os.write_file(b2v_keep_path, res.output) ?
+	os.rm(b2v_keep_path) ?
+	os.exec('v bin2v -w $b2v_keep_path $img0 $img1') ?
 }
 
 fn restore_bin2v_placeholder() ? {
