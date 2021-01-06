@@ -14,6 +14,24 @@ fn test_hex() {
     assert !short.eq(gx.white)
 }
 
+fn test_to_hex() {
+    // valid colors
+    a := 0x6c5ce7ff //normal hex    
+    b := 0xff6c5ce7 //swapped hex
+    c := gx.rgba(108, 92, 231, 255).to_hex
+    d := gx.rgba(108, 92, 231, 255).to_hex_swap //used in some gpu system
+    
+    assert a==c
+}
+fn test_to_hex_swap() {
+    // valid colors
+    a := 0x6c5ce7ff //normal hex    
+    b := 0xff6c5ce7 //swapped hex
+    c := gx.rgba(108, 92, 231, 255).to_hex
+    d := gx.rgba(108, 92, 231, 255).to_hex_swap //used in some gpu system    
+    assert d==b   
+}
+
 fn test_add() {
     a := gx.rgba(100, 100, 100, 100)
     b := gx.rgba(100, 100, 100, 100)
