@@ -941,9 +941,8 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
-	} else if ((left.kind == .enum_ &&
-		right.kind in [.int, .any_int]) || (left.kind in [.int, .any_int] &&
-		right.kind == .enum_)) &&
+	} else if ((left.kind == .enum_ && right.is_int()) ||
+		(left.is_int() && right.kind == .enum_)) &&
 		infix_expr.op.is_relational() {
 		c.warn('cannot compare an `int` with `enum`, use explicit type cast for `int` or `enum` instead',
 			infix_expr.pos)
