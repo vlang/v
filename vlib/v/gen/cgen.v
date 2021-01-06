@@ -3183,12 +3183,25 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op == .arrow {
 		// chan <- val
+		gen_or := node.or_block.kind != .absent
 		styp := left_sym.cname
-		g.write('__${styp}_pushval(')
+		mut left_inf := left_sym.info as table.Chan
+		elem_type := left_inf.elem_type
+		tmp_opt := if gen_or { g.new_tmp_var() } else { '' }
+		if gen_or {
+			elem_styp := g.typ(elem_type)
+			g.register_chan_push_optional_call(elem_styp, styp)
+			g.write('Option_void $tmp_opt = __Option_${styp}_pushval(')
+		} else {
+			g.write('__${styp}_pushval(')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		g.expr(node.right)
 		g.write(')')
+		if gen_or {
+			g.or_block(tmp_opt, node.or_block, table.void_type)
+		}
 	} else if unaliased_left.idx() in [table.u32_type_idx, table.u64_type_idx] && unaliased_right.is_signed() &&
 		node.op in [.eq, .ne, .gt, .lt, .ge, .le] {
 		bitsize := if unaliased_left.idx() == table.u32_type_idx &&
