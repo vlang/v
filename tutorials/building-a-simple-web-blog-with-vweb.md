@@ -198,8 +198,8 @@ import sqlite
 import vweb
 
 struct App {
-pub mut:
 	vweb vweb.Context
+mut:
 	db   sqlite.DB
 }
 ```
@@ -210,7 +210,7 @@ Modify the `init_once()` method we created earlier to connect to a database:
 
 ```v oksyntax
 pub fn (mut app App) init_once() {
-	app.db := sqlite.connect(':memory:') or { panic(err) }
+	app.db = sqlite.connect(':memory:') or { panic(err) }
 	app.db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
 	app.db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
 	app.db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
