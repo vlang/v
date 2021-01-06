@@ -1,27 +1,27 @@
 const n = 1000
 
-fn f(ch chan f64) {
-	mut s := 0.0
+fn f(ch chan int) {
+	mut s := 0
 	for _ in 0 .. n {
 		s += <-ch
 	}
-	assert s == f64(n * (n + 1) / 2)
+	assert s == n * (n + 1) / 2
 	ch.close()
 }
 
-fn do_send(ch chan f64, val f64) ?f64 {
+fn do_send(ch chan int, val int) ?int {
 	ch <- val ?
-	return val + 1.0
+	return val + 1
 }
 
 fn test_push_propargate() {
-	ch := chan f64{}
+	ch := chan int{}
 	go f(ch)
-	mut s := 1.0
+	mut s := 1
 	for {
 		s = do_send(ch, s) or {
 			break
 		}
 	}
-	assert s == f64(n + 1)
+	assert s == n + 1
 }
