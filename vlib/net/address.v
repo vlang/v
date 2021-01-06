@@ -9,6 +9,9 @@ pub:
 	port int
 }
 
+struct C.addrinfo {
+}
+
 pub fn (a Addr) str() string {
 	return '${a.saddr}:${a.port}'
 }
