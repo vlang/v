@@ -66,7 +66,8 @@ fn main() {}
 		}
 		// First visit must be ast.File
 		assert node is ast.File
-		// True means that the inspector must now inspect ast.File's children
+		// True means that the inspector must now
+		// inspect the ast.File's children
 		return true
 	})
 }
