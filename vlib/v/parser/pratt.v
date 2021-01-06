@@ -183,6 +183,10 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.lpar)
 			expr := p.expr(0)
 			p.check(.rpar)
+			if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+				p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+					spos)
+			}
 			node = ast.TypeOf{
 				expr: expr
 				pos: spos.extend(p.tok.position())
