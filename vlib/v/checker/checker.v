@@ -1085,11 +1085,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		else {
-			c.error('unexpected expression `${expr.type_name()}`', expr.position())
+			c.error('unexpected expression `$expr.type_name()`', expr.position())
 		}
 	}
 	if explicit_lock_needed {
-		c.error('`$to_lock` is `shared` and needs explicit lock for `${expr.type_name()}`',
+		c.error('`$to_lock` is `shared` and needs explicit lock for `$expr.type_name()`',
 			pos)
 		to_lock = ''
 	}
@@ -4418,7 +4418,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 							!different
 						}
 					} else {
-						c.error('invalid `\$if` condition: ${cond.left.type_name()}', cond.pos)
+						c.error('invalid `\$if` condition: $cond.left.type_name()', cond.pos)
 					}
 				}
 				else {

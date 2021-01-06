@@ -775,7 +775,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 			}
 			else {
-				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(), right.position())
+				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
+					right.position())
 			}
 		}
 		// }
