@@ -2430,12 +2430,15 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
 		}
-		if ((left_sym.kind == .enum_ &&
-			right_sym.kind in [.any_int, .int] && left_sym.language != .c) ||
-			(right_sym.kind == .enum_ && left_sym.kind in [.any_int, .int] && right_sym.language != .c)) &&
+		if ((left_sym.kind == .enum_ && right_sym.is_int() && left_sym.language != .c) ||
+			(right_sym.kind == .enum_ && left_sym.is_int() && right_sym.language != .c)) &&
 			!is_decl {
-			c.warn('cannot assign `enum` to `int` and vice versa, use explicit type cast for `int` or `enum` instead',
-				assign_stmt.pos)
+			msg := if left_sym.kind == .enum_ && right_sym.is_int() {
+				'cannot assign `$right_sym.name` to `$left_sym.name`, use explicit type cast for `int literal` instead'
+			} else {
+				'cannot assign `$right_sym.name` to `$left_sym.name literal`, use explicit type cast for `$right_sym.name` instead'
+			}
+			c.warn('$msg', assign_stmt.pos)
 		}
 		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign] &&
 			right_sym.kind == .array &&
