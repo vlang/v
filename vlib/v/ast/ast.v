@@ -1216,11 +1216,11 @@ pub fn (stmt Stmt) check_c_expr() ? {
 			if stmt.expr.is_expr() {
 				return
 			}
-			return error('unsupported statement (`${typeof(stmt.expr)}`)')
+			return error('unsupported statement (`${stmt.expr.type_name()}`)')
 		}
 		else {}
 	}
-	return error('unsupported statement (`${typeof(stmt)}`)')
+	return error('unsupported statement (`${stmt.type_name()}`)')
 }
 
 // CTempVar is used in cgen only, to hold nodes for temporary variables

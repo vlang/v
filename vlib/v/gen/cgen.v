@@ -807,7 +807,7 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) {
 				}
 				if stmt_pos.pos == 0 {
 					print('autofree: first stmt pos = 0. ')
-					println(typeof(stmt))
+					println(stmt.type_name())
 					return
 				}
 			}
@@ -1534,7 +1534,7 @@ fn (mut g Gen) gen_assert_single_expr(e ast.Expr, t table.Type) {
 			g.gen_expr_to_string(e, t)
 		}
 	}
-	g.write(' /* typeof: ' + typeof(e) + ' type: ' + t.str() + ' */ ')
+	g.write(' /* typeof: ' + e.type_name() + ' type: ' + t.str() + ' */ ')
 }
 
 fn (mut g Gen) write_fn_ptr_decl(func &table.FnType, ptr_name string) {
