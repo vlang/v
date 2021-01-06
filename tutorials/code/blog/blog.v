@@ -17,7 +17,7 @@ fn main() {
 
 /*
 pub fn (mut app App) index_text() vweb.Result {
-	app.vweb.text('Hello, world from vweb!')
+	app.text('Hello, world from vweb!')
 	return vweb.Result{}
 }
 
@@ -32,12 +32,10 @@ pub fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_once() {
-	app.db = sqlite.connect('blog.db') or { panic(err) }
-	app.db.exec('create table if not exists article (' +
-	'id integer primary key, ' + 
-	"title text default ''," +
-	"text text default ''" +
-	');')
+	app.db = sqlite.connect(':memory:') or { panic(err) }
+	app.db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
+	app.db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
+	app.db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
 }
 
 pub fn (mut app App) init() {

@@ -191,30 +191,6 @@ Now let's display some articles!
 We'll be using V's builtin ORM and a SQLite database.
 (V ORM will also support MySQL, Postgre, and SQL Server soon.)
 
-Create a SQLite file with the schema:
-```sql
-drop table if exists Article;
-
-create table Article (
-	id integer primary key,
-	title text default "",
-	text text default ""
-);
-
-insert into Article (title, text) values (
-	"Hello, world!",
-	"V is great."
-);
-
-insert into Article (title, text) values (
-	"Second post.",
-	"Hm... what should I write about?"
-);
-```
-
-Run the file with `sqlite3 blog.db < blog.sqlite`.
-
-
 Add a SQLite handle to `App`:
 
 ```v oksyntax
@@ -234,16 +210,17 @@ Modify the `init_once()` method we created earlier to connect to a database:
 
 ```v oksyntax
 pub fn (mut app App) init_once() {
-	db := sqlite.connect(':memory:') or { panic(err) }
-	db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
-	db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
-	db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
-	app.db = db
+	app.db := sqlite.connect(':memory:') or { panic(err) }
+	app.db.exec('create table `Article` (id integer primary key, title text default "", text text default "")')
+	app.db.exec('insert into Article (title, text) values ("Hello, world!", "V is great.")')
+	app.db.exec('insert into Article (title, text) values ("Second post.", "Hm... what should I write about?")')
 }
 ```
 
 Code in the `init_once()` function is run only once during app's startup, so we are going
-to have one DB connection for all requests.
+to have one DB connection for all requests. This example is using SQLite's
+[In-Memory](https://sqlite.org/inmemorydb.html) feature. To persist data long term as you
+would in a production environment use a [file](https://www.sqlite.org/onefile.html).
 
 Create a new file `article.v`:
 
@@ -363,8 +340,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	sql app.db {
 		insert article into Article
 	}
-	app.redirect('/')
-	return vweb.Result{}
+	return app.redirect('/')
 }
 ```
 
