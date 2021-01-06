@@ -1,6 +1,0 @@
-vlib/v/checker/tests/compare_enum_and_int_err.vv:7:16: warning: cannot compare an `int` with `enum`, use explicit type cast for `int` or `enum` instead
-    5 | fn main() {
-    6 |     color := Color.red
-    7 |     println(color == 0)
-      |                   ~~
-    8 | }
