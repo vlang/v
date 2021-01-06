@@ -60,8 +60,8 @@ pub fn resolve_addr(addr string, family SocketFamily, typ SocketType) ?Addr {
 	address, port := split_address(addr)?
 
 	mut hints := C.addrinfo{}
-	hints.ai_family = family
-	hints.ai_socktype = typ
+	hints.ai_family = int(family)
+	hints.ai_socktype = int(typ)
 	hints.ai_flags = C.AI_PASSIVE
 	hints.ai_protocol = 0
 	hints.ai_addrlen = 0
