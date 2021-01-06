@@ -9,12 +9,12 @@ fn new_tensor<T>(data BuildData) Tensor {
 fn test_generic_function_returning_type_starting_with_t() {
 	ft := new_tensor<f64>(x:123)
 	println(ft)
-    assert typeof(ft) == 'Tensor'
+    assert typeof(ft).name == 'Tensor'
     assert '$ft' == 'Tensor{\n    x: 123\n}'
     //
 	it := new_tensor<int>(x:456)
 	println(it)
-    assert typeof(it) == 'Tensor'
+    assert typeof(it).name == 'Tensor'
     assert '$it' == 'Tensor{\n    x: 456\n}'
 }
 

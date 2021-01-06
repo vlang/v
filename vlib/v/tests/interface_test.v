@@ -23,7 +23,7 @@ fn (c &Cat) speak(s string) {
 }
 
 fn (c Cat) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(c)}, breed:$c.breed'
+	return '$pet_name the ${typeof(c).name}, breed:$c.breed'
 }
 
 fn (mut c Cat) set_breed(new string) {
@@ -46,7 +46,7 @@ fn (d Dog) name() string {
 }
 
 fn (d Dog) name_detailed(pet_name string) string {
-	return '$pet_name the ${typeof(d)}, breed:$d.breed'
+	return '$pet_name the ${typeof(d).name}, breed:$d.breed'
 }
 
 fn (mut d Dog) set_breed(new string) {
@@ -71,7 +71,7 @@ fn perform_speak(a Animal) {
 		println(a.breed)
 	}
 	println(a.name())
-	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
 }
 
@@ -84,7 +84,7 @@ fn perform_speak_on_ptr(a &Animal) {
 		assert name == 'Dog'
 	}
 	println(a.name())
-	println('Got animal of type: ${typeof(a)}') // TODO: get implementation type (if possible)
+	println('Got animal of type: ${typeof(a).name}') // TODO: get implementation type (if possible)
 	assert a is Dog || a is Cat
 }
 
