@@ -236,13 +236,12 @@ const (
 )
 
 fn test_match_constant_string() {
-	
-
-match one {
-	one {
-		assert true
-	}
-	else {
-		assert false
+	match one {
+		one {
+			assert true
+		}
+		else {
+			assert false
+		}
 	}
 }
