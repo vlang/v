@@ -185,7 +185,7 @@ pub fn listen_tcp(port int) ?TcpListener {
 	s := new_tcp_socket() ?
 	validate_port(port) ?
 	mut addr := C.sockaddr_in{}
-	addr.sin_family = SocketFamily.inet
+	addr.sin_family = int(SocketFamily.inet)
 	addr.sin_port = C.htons(port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := sizeof(C.sockaddr_in)

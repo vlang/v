@@ -212,7 +212,7 @@ fn new_udp_socket(local_port int) ?UdpSocket {
 	validate_port(local_port)?
 
 	mut addr := C.sockaddr_in{}
-	addr.sin_family = SocketFamily.inet
+	addr.sin_family = int(SocketFamily.inet)
 	addr.sin_port = C.htons(local_port)
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := sizeof(C.sockaddr_in)
