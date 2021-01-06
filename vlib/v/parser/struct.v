@@ -176,7 +176,8 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				}
 				type_pos = type_pos.extend(p.prev_tok.position())
 				if !is_on_top {
-					p.error_with_pos('struct embedding must be declared at the beginning of the struct body', type_pos)
+					p.error_with_pos('struct embedding must be declared at the beginning of the struct body',
+						type_pos)
 					return ast.StructDecl{}
 				}
 				sym := p.table.get_type_symbol(typ)
