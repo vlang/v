@@ -1,9 +1,0 @@
-struct Context {}
-
-struct App {
-pub mut:
-	Context
-}
-
-fn main() {
-}
