@@ -346,7 +346,7 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}() { $node.stmts.len stmts }'
+			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
 		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'
