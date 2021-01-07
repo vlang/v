@@ -426,6 +426,9 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
 	for i, param in f.params {
+		if call_expr.args.len == 0 {
+			break
+		}
 		arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
 		if param.typ.has_flag(.generic) {
 			typ = arg.typ
