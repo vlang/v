@@ -45,10 +45,12 @@ pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
+			// TODO: remove this when parser allows type casting in match branches
+			int_error_code := int(error_ewouldblock) 
 			if sent < 0 {
 				code := error_code()
 				match code {
-					int(error_ewouldblock) {
+					int_error_code {
 						c.wait_for_write()
 						continue
 					}
@@ -82,8 +84,10 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		return res
 	}
 	code := error_code()
+	// TODO: remove this when parser allows type casting in match branches
+	int_error_code := int(error_ewouldblock) 
 	match code {
-		error_ewouldblock {
+		int_error_code {
 			c.wait_for_read() ?
 			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
 			$if trace_tcp ? {
