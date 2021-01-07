@@ -797,7 +797,7 @@ fn (mut app App) next_theme() {
 
 [inline]
 fn (mut app App) next_tile_format() {
-	app.tile_format = TileFormat(app.tile_format + 1)
+	app.tile_format = app.tile_format + TileFormat(1)
 	if app.tile_format == .end_ {
 		app.tile_format = .normal
 	}

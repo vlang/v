@@ -47,7 +47,7 @@ pub fn (f FieldType) str() string {
 		.type_longlong { 'longlong' }
 		.type_int24 { 'int24' }
 		.type_date { 'date' }
-		.type_date { 'time' }
+		.type_time { 'time' }
 		.type_datetime { 'datetime' }
 		.type_year { 'year' }
 		.type_newdate { 'newdate' }
@@ -58,7 +58,7 @@ pub fn (f FieldType) str() string {
 		.type_time2 { 'time2' }
 		.type_json { 'json' }
 		.type_newdecimal { 'newdecimal' }
-		.type_set { 'enum' }
+		.type_enum { 'enum' }
 		.type_set { 'set' }
 		.type_tiny_blob { 'tiny_blob' }
 		.type_medium_blob { 'medium_blob' }
