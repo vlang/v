@@ -257,7 +257,7 @@ fn (cmd Command) check_required_flags() {
 	}
 }
 
-fn (cmd Command) execute_help() {
+pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		help_cmd.execute(help_cmd)
