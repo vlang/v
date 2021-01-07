@@ -366,3 +366,16 @@ fn test_list_no_items() {
 	assert list.id == 1
 	assert list.items == []
 }
+
+struct Info {
+	id    int
+	items []string
+	maps  map[string]string
+}
+
+fn test_decode_null_object() {
+	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') or { panic(err) }
+	assert info.id == 22
+	assert '$info.items' == '[]'
+	assert '$info.maps' == '{}'
+}
