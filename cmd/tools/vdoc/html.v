@@ -11,10 +11,10 @@ import v.doc
 import v.pref
 
 const (
-	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
-	res_path        = os.resource_abs_path('resources')
-	favicons_path   = os.join_path(res_path, 'favicons')
-	html_content    = '<!DOCTYPE html>
+	css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
+	res_path      = os.resource_abs_path('resources')
+	favicons_path = os.join_path(res_path, 'favicons')
+	html_content  = '<!DOCTYPE html>
 <html lang="en">
 	<head>
 		<meta charset="UTF-8">
@@ -414,7 +414,6 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	mut symbols_toc := strings.new_builder(200)
 	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
-
 	dcs_contents := d.contents.arr()
 	// generate toc first
 	contents.writeln(doc_node_html(d.head, '', true, cfg.include_examples, d.table))

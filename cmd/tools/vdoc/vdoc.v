@@ -29,7 +29,7 @@ enum OutputType {
 }
 
 struct VDoc {
-	cfg                 Config [required]
+	cfg                 Config               [required]
 mut:
 	docs                []doc.Doc
 	assets              map[string]string
@@ -42,26 +42,27 @@ mut:
 
 struct Config {
 mut:
-	pub_only            bool = true
-	is_local            bool
-	local_filename      string
-	local_pos           int
-	show_loc            bool // for plaintext
-	serve_http          bool // for html
-	is_multi            bool
-	is_vlib             bool
-	is_verbose          bool
-	include_readme      bool
-	include_examples    bool = true
-	open_docs           bool
-	server_port         int = 8046
-	inline_assets       bool
-	no_timestamp        bool
-	output_path         string
-	output_type         OutputType = .unset
-	input_path          string
-	symbol_name         string
+	pub_only         bool = true
+	is_local         bool
+	local_filename   string
+	local_pos        int
+	show_loc         bool // for plaintext
+	serve_http       bool // for html
+	is_multi         bool
+	is_vlib          bool
+	is_verbose       bool
+	include_readme   bool
+	include_examples bool = true
+	open_docs        bool
+	server_port      int = 8046
+	inline_assets    bool
+	no_timestamp     bool
+	output_path      string
+	output_type      OutputType = .unset
+	input_path       string
+	symbol_name      string
 }
+
 //
 struct Output {
 mut:
@@ -174,10 +175,7 @@ fn (vd VDoc) render_parallel(out Output) {
 	mut work := sync.new_channel<ParallelDoc>(vd.docs.len)
 	mut wg := sync.new_waitgroup()
 	for i in 0 .. vd.docs.len {
-		p_doc := ParallelDoc{
-			vd.docs[i],
-			out
-		}
+		p_doc := ParallelDoc{vd.docs[i], out}
 		work.push(&p_doc)
 	}
 	work.close()
@@ -247,7 +245,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		ext := os.file_ext(out.path)
 		out.typ = set_output_type_from_str(ext.all_after('.'))
 	}
-
 	if cfg.include_readme && out.typ !in [.html, .stdout] {
 		eprintln('vdoc: Including README.md for doc generation is supported on HTML output, or when running directly in the terminal.')
 		exit(1)
@@ -389,7 +386,6 @@ fn (mut vd VDoc) generate_docs_from_file() {
 				os.cp(favicon_path, destination_path)
 			}
 		}
-
 	}
 }
 
@@ -525,14 +521,11 @@ fn main() {
 		exit(0)
 	}
 	args := os.args[2..].clone()
-
 	cfg := parse_arguments(args)
-
 	if cfg.input_path.len == 0 {
 		eprintln('vdoc: No input path found.')
 		exit(1)
 	}
-
 	// Config is immutable from this point on
 	mut vd := VDoc{
 		cfg: cfg
@@ -541,6 +534,5 @@ fn main() {
 		}
 	}
 	vd.vprintln('Setting output type to "$cfg.output_type"')
-
 	vd.generate_docs_from_file()
 }
