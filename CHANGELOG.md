@@ -5,7 +5,7 @@
 - Overloading of  `>`, `<`, `!=`, and `==` operators.
 - New struct updating syntax: `User{ ...u, name: 'new' }` to replace `{ u | name: 'new' }`.
 - `byte.str()` has been fixed and works like with all other numbers. `byte.ascii_str()` has been added.
-- Smart cast in for-loops: `for x is string {}`
+- Smart cast in for-loops: `for mut x is string {}`
 
 ## V 0.2.1
 *30 Dec 2020*
