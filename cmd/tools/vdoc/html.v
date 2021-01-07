@@ -1,14 +1,18 @@
 module main
 
-import io
-import net
+import os
 import net.urllib
+import strings
+import markdown
 import v.scanner
 import v.table
 import v.token
+import v.doc
+import v.pref
 
 const (
 	css_js_assets   = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
+	res_path        = os.resource_abs_path('resources')
 	favicons_path   = os.join_path(res_path, 'favicons')
 	html_content    = '<!DOCTYPE html>
 <html lang="en">
@@ -82,93 +86,6 @@ enum HighlightTokenTyp {
 	punctuation
 	string
 	symbol
-}
-
-fn (mut cfg DocConfig) serve_html() {
-	cfg.render_static()
-	docs := cfg.render()
-	dkeys := docs.keys()
-	if dkeys.len < 1 {
-		eprintln('no documentation created, the module has no `pub` functions')
-		exit(1)
-	}
-	def_name := docs.keys()[0]
-	server_url := 'http://localhost:' + cfg.server_port.str()
-	server := net.listen_tcp(cfg.server_port) or { panic(err) }
-	println('Serving docs on: $server_url')
-	if cfg.open_docs {
-		open_url(server_url)
-	}
-	content_type := match cfg.output_type {
-		.html { 'text/html' }
-		.markdown { 'text/markdown' }
-		.json { 'application/json' }
-		else { 'text/plain' }
-	}
-	server_context := VdocHttpServerContext{
-		docs: docs
-		content_type: content_type
-		default_filename: def_name
-	}
-	for {
-		mut conn := server.accept() or {
-			server.close() or { }
-			panic(err)
-		}
-		handle_http_connection(mut conn, server_context)
-		conn.close() or { eprintln('error closing the connection: $err') }
-	}
-}
-
-struct VdocHttpServerContext {
-	docs             map[string]string
-	content_type     string
-	default_filename string
-}
-
-fn handle_http_connection(mut con net.TcpConn, ctx &VdocHttpServerContext) {
-	mut reader := io.new_buffered_reader(reader: io.make_reader(con))
-	first_line := reader.read_line() or {
-		send_http_response(mut con, 501, ctx.content_type, 'bad request')
-		return
-	}
-	request_parts := first_line.split(' ')
-	if request_parts.len != 3 {
-		send_http_response(mut con, 501, ctx.content_type, 'bad request')
-		return
-	}
-	urlpath := request_parts[1]
-	filename := if urlpath == '/' {
-		ctx.default_filename.trim_left('/')
-	} else {
-		urlpath.trim_left('/')
-	}
-	if ctx.docs[filename].len == 0 {
-		send_http_response(mut con, 404, ctx.content_type, 'file not found')
-		return
-	}
-	send_http_response(mut con, 200, ctx.content_type, ctx.docs[filename])
-}
-
-fn send_http_response(mut con net.TcpConn, http_code int, content_type string, html string) {
-	content_length := html.len.str()
-	shttp_code := http_code.str()
-	mut http_response := strings.new_builder(20000)
-	http_response.write('HTTP/1.1 ')
-	http_response.write(shttp_code)
-	http_response.write(' OK\r\n')
-	http_response.write('Server: VDoc\r\n')
-	http_response.write('Content-Type: ')
-	http_response.write(content_type)
-	http_response.write('\r\n')
-	http_response.write('Content-Length: ')
-	http_response.write(content_length)
-	http_response.write('\r\n')
-	http_response.write('Connection: close\r\n')
-	http_response.write('\r\n')
-	http_response.write(html)
-	sresponse := http_response.str()
-	con.write_str(sresponse) or { eprintln('error sending http response: $err') }
 }
 
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
@@ -373,65 +290,64 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-
-fn (cfg DocConfig) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.Builder) {
-	base_dir := os.dir(os.real_path(cfg.input_path))
-	file_path_name := if cfg.is_multi {
+fn (vd VDoc) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.Builder) {
+	base_dir := os.dir(os.real_path(vd.cfg.input_path))
+	file_path_name := if vd.cfg.is_multi {
 		cn.file_path.replace('$base_dir/', '')
 	} else {
 		os.file_name(cn.file_path)
 	}
-	src_link := get_src_link(cfg.manifest.repo_url, file_path_name, cn.pos.line)
+	src_link := get_src_link(vd.cfg.manifest.repo_url, file_path_name, cn.pos.line)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
-		hw.write(doc_node_html(cn, src_link, false, cfg.include_examples, dcs.table))
+		hw.write(doc_node_html(cn, src_link, false, vd.cfg.include_examples, dcs.table))
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
-		child_src_link := get_src_link(cfg.manifest.repo_url, child_file_path_name, child.pos.line)
-		hw.write(doc_node_html(child, child_src_link, false, cfg.include_examples, dcs.table))
+		child_src_link := get_src_link(vd.cfg.manifest.repo_url, child_file_path_name, child.pos.line)
+		hw.write(doc_node_html(child, child_src_link, false, vd.cfg.include_examples, dcs.table))
 	}
 }
 
-fn (cfg DocConfig) gen_html(idx int) string {
+fn (vd VDoc) gen_html(idx int) string {
 	mut symbols_toc := strings.new_builder(200)
 	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
-	dcs := cfg.docs[idx]
+	dcs := vd.docs[idx]
 	dcs_contents := dcs.contents.arr()
 	// generate toc first
-	contents.writeln(doc_node_html(dcs.head, '', true, cfg.include_examples, dcs.table))
+	contents.writeln(doc_node_html(dcs.head, '', true, vd.cfg.include_examples, dcs.table))
 	if is_module_readme(dcs.head) {
 		write_toc(dcs.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		cfg.write_content(&cn, &dcs, mut contents)
+		vd.write_content(&cn, &dcs, mut contents)
 		write_toc(cn, mut symbols_toc)
 	} // write head
 	// write css
-	version := if cfg.manifest.version.len != 0 { cfg.manifest.version } else { '' }
-	header_name := if cfg.is_multi && cfg.docs.len > 1 {
-		os.file_name(os.real_path(cfg.input_path))
+	version := if vd.cfg.manifest.version.len != 0 { vd.cfg.manifest.version } else { '' }
+	header_name := if vd.cfg.is_multi && vd.docs.len > 1 {
+		os.file_name(os.real_path(vd.cfg.input_path))
 	} else {
 		dcs.head.name
 	}
 	// write nav1
-	if cfg.is_multi || cfg.docs.len > 1 {
+	if vd.cfg.is_multi || vd.docs.len > 1 {
 		mut submod_prefix := ''
-		for i, doc in cfg.docs {
+		for i, doc in vd.docs {
 			if i - 1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') {
 				continue
 			}
 			names := doc.head.name.split('.')
 			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
 			mut href_name := './${doc.head.name}.html'
-			if (cfg.is_vlib && doc.head.name == 'builtin' && !cfg.include_readme) ||
+			if (vd.cfg.is_vlib && doc.head.name == 'builtin' && !vd.cfg.include_readme) ||
 				doc.head.name == 'README' {
 				href_name = './index.html'
-			} else if submod_prefix !in cfg.docs.map(it.head.name) {
+			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
 			}
-			submodules := cfg.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
-			dropdown := if submodules.len > 0 { cfg.assets['arrow_icon'] } else { '' }
+			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
+			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
 			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
 			modules_toc.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">$submod_prefix</a></div>')
 			for j, cdoc in submodules {
@@ -457,43 +373,43 @@ fn (cfg DocConfig) gen_html(idx int) string {
 	modules_toc.free()
 	symbols_toc.free()
 	return html_content.replace('{{ title }}', dcs.head.name).replace('{{ head_name }}',
-		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', cfg.assets['light_icon']).replace('{{ dark_icon }}',
-		cfg.assets['dark_icon']).replace('{{ menu_icon }}', cfg.assets['menu_icon']).replace('{{ head_assets }}',
-		if cfg.inline_assets {
-		'\n${tabs[0]}<style>' + cfg.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + cfg.assets['normalize_css'] +
-			'</style>\n${tabs[0]}<script>' + cfg.assets['dark_mode_js'] + '</script>'
+		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
+		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
+		if vd.cfg.inline_assets {
+		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + vd.assets['normalize_css'] +
+			'</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
 	} else {
-		'\n${tabs[0]}<link rel="stylesheet" href="' + cfg.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
-			cfg.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + cfg.assets['dark_mode_js'] + '"></script>'
-	}).replace('{{ toc_links }}', if cfg.is_multi || cfg.docs.len > 1 {
+		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
+			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
+	}).replace('{{ toc_links }}', if vd.cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
-	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi &&
-		cfg.docs.len > 1 && dcs.head.name != 'README' {
+	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if vd.cfg.is_multi &&
+		vd.docs.len > 1 && dcs.head.name != 'README' {
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
-	}).replace('{{ footer_content }}', cfg.gen_footer_text(idx)).replace('{{ footer_assets }}',
-		if cfg.inline_assets {
-		'<script>' + cfg.assets['doc_js'] + '</script>'
+	}).replace('{{ footer_content }}', vd.gen_footer_text(idx)).replace('{{ footer_assets }}',
+		if vd.cfg.inline_assets {
+		'<script>' + vd.assets['doc_js'] + '</script>'
 	} else {
-		'<script src="' + cfg.assets['doc_js'] + '"></script>'
+		'<script src="' + vd.assets['doc_js'] + '"></script>'
 	})
 }
 
-fn (cfg DocConfig) gen_plaintext(idx int) string {
-	dcs := cfg.docs[idx]
+fn (vd VDoc) gen_plaintext(idx int) string {
+	dcs := vd.docs[idx]
 	mut pw := strings.new_builder(200)
 	pw.writeln('$dcs.head.content\n')
-	comments := if cfg.include_examples {
+	comments := if vd.cfg.include_examples {
 		dcs.head.merge_comments()
 	} else {
 		dcs.head.merge_comments_without_examples()
 	}
-	if comments.trim_space().len > 0 && !cfg.pub_only {
+	if comments.trim_space().len > 0 && !vd.cfg.pub_only {
 		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
 	}
-	cfg.write_plaintext_content(dcs.contents.arr(), mut pw)
+	vd.write_plaintext_content(dcs.contents.arr(), mut pw)
 	return pw.str()
 }
