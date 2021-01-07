@@ -176,6 +176,11 @@ fn (mut f MDFile) dump() {
 	}
 }
 
+fn get_fmt_exit_code(vfile string, vexe string) int {
+	res := os.exec('"$vexe" fmt -verify $vfile') or { return 1 }
+	return res.exit_code
+}
+
 fn (mut f MDFile) check_examples() (int, int) {
 	mut errors := 0
 	mut oks := 0
@@ -197,11 +202,11 @@ fn (mut f MDFile) check_examples() (int, int) {
 		mut acommands := e.command.split(' ')
 		nofmt := 'nofmt' in acommands
 		for command in acommands {
+			fmt_res := if nofmt { 0 } else { get_fmt_exit_code(vfile, vexe) }
 			match command {
 				'compile' {
 					res := os.system('"$vexe" -w -Wfatal-errors -o x.c $vfile')
 					os.rm('x.c') or { }
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile'))
@@ -218,7 +223,6 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'live' {
 					res := os.system('"$vexe" -w -Wfatal-errors -live -o x.c $vfile')
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, 'example failed to compile with -live'))
@@ -247,7 +251,6 @@ fn (mut f MDFile) check_examples() (int, int) {
 				}
 				'oksyntax' {
 					res := os.system('"$vexe" -w -Wfatal-errors -check-syntax $vfile')
-					fmt_res := if nofmt { 0 } else { os.system('"$vexe" fmt -verify $vfile') }
 					if res != 0 || fmt_res != 0 {
 						if res != 0 {
 							eprintln(eline(f.path, e.sline, 0, '`oksyntax` example with invalid syntax'))
