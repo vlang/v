@@ -348,6 +348,9 @@ pub fn (node Stmt) str() string {
 		FnDecl {
 			return 'fn ${node.name}() { $node.stmts.len stmts }'
 		}
+		StructDecl {
+			return 'struct $node.name { $node.fields.len fields }'
+		}
 		else {
 			return '[unhandled stmt str type: ${typeof(node)} ]'
 		}
