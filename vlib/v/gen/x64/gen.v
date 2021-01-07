@@ -622,7 +622,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
 			}
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + typeof(expr))
+				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
 			}
 		}
 	}
@@ -671,7 +671,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {}
 		else {
-			println('x64.stmt(): bad node: ' + typeof(node))
+			println('x64.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
@@ -704,7 +704,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {}
 		ast.StructInit {}
 		else {
-			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
+			println(term.red('x64.expr(): unhandled node: ' + node.type_name()))
 		}
 	}
 }
@@ -775,7 +775,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 			}
 			else {
-				g.error_with_pos('x64 assign_stmt unhandled expr: ' + typeof(right), right.position())
+				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
+					right.position())
 			}
 		}
 		// }

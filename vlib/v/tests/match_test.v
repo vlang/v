@@ -152,7 +152,7 @@ struct B1 {
 
 fn f(s Sum) string {
 	match s {
-		A1 { return typeof(s) }
+		A1 { return typeof(s).name }
 		B1 { return '' }
 	}
 	return ''
@@ -167,7 +167,7 @@ fn test_sum_type_name() {
 
 fn f_else(s Sum) string {
 	match s {
-		A1 { return typeof(s) }
+		A1 { return typeof(s).name }
 		else { return '' }
 	}
 }

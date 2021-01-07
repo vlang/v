@@ -536,8 +536,8 @@ fn test_bytes_to_string() {
 
 fn test_charptr() {
 	foo := charptr('VLANG'.str)
-	println(typeof(foo))
-	assert typeof(foo) == 'charptr'
+	println(typeof(foo).name)
+	assert typeof(foo).name == 'charptr'
 	assert unsafe { foo.vstring() } == 'VLANG'
 	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
 }
