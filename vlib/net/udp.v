@@ -68,7 +68,7 @@ pub fn (c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ? {
 
 	code := error_code()
 	match code {
-		error_ewouldblock {
+		int(error_ewouldblock) {
 			c.wait_for_write()?
 			socket_error(C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len))?
 		}
@@ -104,7 +104,7 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 
 	code := error_code()
 	match code {
-		error_ewouldblock {
+		int(error_ewouldblock) {
 			c.wait_for_read()?
 			// same setup as in tcp
 			res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from, &len))?

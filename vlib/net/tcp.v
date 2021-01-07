@@ -48,7 +48,7 @@ pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
 			if sent < 0 {
 				code := error_code()
 				match code {
-					error_ewouldblock {
+					int(error_ewouldblock) {
 						c.wait_for_write()
 						continue
 					}
