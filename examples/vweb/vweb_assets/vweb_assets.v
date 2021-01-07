@@ -37,8 +37,7 @@ pub fn (mut app App) index() vweb.Result {
 	title := 'VWeb Assets Example'
 	subtitle := 'VWeb can serve static assets too!'
 	message := 'It also has an Assets Manager that allows dynamically specifying which CSS and JS files to be used.'
-	$vweb.html()
-	return vweb.Result{}
+	return $vweb.html()
 }
 
 fn (mut app App) text() vweb.Result {
