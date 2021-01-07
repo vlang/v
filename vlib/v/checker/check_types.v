@@ -426,31 +426,33 @@ pub fn (mut c Checker) infer_fn_types(f table.Fn, mut call_expr ast.CallExpr) {
 	gt_name := 'T'
 	mut typ := table.void_type
 	for i, param in f.params {
-		arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
-		if param.typ.has_flag(.generic) {
-			typ = arg.typ
-			break
-		}
-		arg_sym := c.table.get_type_symbol(arg.typ)
-		param_type_sym := c.table.get_type_symbol(param.typ)
-		if arg_sym.kind == .array && param_type_sym.kind == .array {
-			mut arg_elem_info := arg_sym.info as table.Array
-			mut param_elem_info := param_type_sym.info as table.Array
-			mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
-			mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
-			for {
-				if arg_elem_sym.kind == .array &&
-					param_elem_sym.kind == .array && param_elem_sym.name != 'T' {
-					arg_elem_info = arg_elem_sym.info as table.Array
-					arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
-					param_elem_info = param_elem_sym.info as table.Array
-					param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
-				} else {
-					typ = arg_elem_info.elem_type
-					break
-				}
+		if call_expr.args.len > 0 {
+			arg := if i != 0 && call_expr.is_method { call_expr.args[i - 1] } else { call_expr.args[i] }
+			if param.typ.has_flag(.generic) {
+				typ = arg.typ
+				break
 			}
-			break
+			arg_sym := c.table.get_type_symbol(arg.typ)
+			param_type_sym := c.table.get_type_symbol(param.typ)
+			if arg_sym.kind == .array && param_type_sym.kind == .array {
+				mut arg_elem_info := arg_sym.info as table.Array
+				mut param_elem_info := param_type_sym.info as table.Array
+				mut arg_elem_sym := c.table.get_type_symbol(arg_elem_info.elem_type)
+				mut param_elem_sym := c.table.get_type_symbol(param_elem_info.elem_type)
+				for {
+					if arg_elem_sym.kind == .array &&
+						param_elem_sym.kind == .array && param_elem_sym.name != 'T' {
+						arg_elem_info = arg_elem_sym.info as table.Array
+						arg_elem_sym = c.table.get_type_symbol(arg_elem_info.elem_type)
+						param_elem_info = param_elem_sym.info as table.Array
+						param_elem_sym = c.table.get_type_symbol(param_elem_info.elem_type)
+					} else {
+						typ = arg_elem_info.elem_type
+						break
+					}
+				}
+				break
+			}
 		}
 	}
 	if typ == table.void_type {
