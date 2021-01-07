@@ -245,3 +245,26 @@ fn test_match_constant_string() {
 		}
 	}
 }
+
+type WithArray = []WithArray | int
+
+fn test_sumtype_with_array() {
+	fa := [WithArray(0)]
+	f := WithArray(fa)
+	match f {
+		[]WithArray {
+			assert true
+		}
+		int {
+			assert false
+		}
+	}
+	match f {
+		int {
+			assert false
+		}
+		[]WithArray {
+			assert true
+		}
+	}
+}

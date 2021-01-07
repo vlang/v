@@ -175,9 +175,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
+		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' &&
 			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital())) {
+			(p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()))) ||
+			p.tok.kind == .lsbr {
 			mut types := []table.Type{}
 			for {
 				// Sum type match
@@ -224,18 +225,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.check(.comma)
 			}
 		}
-		branch_last_pos := p.tok.position()
+		branch_last_pos := p.prev_tok.position()
 		// p.warn('match block')
 		p.inside_match_body = true
 		stmts := p.parse_block_no_scope(false)
 		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
-		pos := token.Position{
-			line_nr: branch_first_pos.line_nr
-			pos: branch_first_pos.pos
-			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
-		}
+		pos := branch_first_pos.extend(branch_last_pos)
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
