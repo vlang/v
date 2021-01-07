@@ -28,8 +28,6 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	t := c.table
 	got_idx := t.unalias_num_type(got).idx()
 	exp_idx := t.unalias_num_type(expected).idx()
-	// got_is_ptr := got.is_ptr()
-	exp_is_ptr := expected.is_ptr()
 	// exp_is_optional := expected.has_flag(.optional)
 	// got_is_optional := got.has_flag(.optional)
 	// if (exp_is_optional && !got_is_optional) || (!exp_is_optional && got_is_optional) {
@@ -37,6 +35,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	//}
 	// println('check: $got_type_sym.name, $exp_type_sym.name')
 	// # NOTE: use idxs here, and symbols below for perf
+	// got_is_ptr := got.is_ptr()
 	if got_idx == exp_idx {
 		// this is returning true even if one type is a ptr
 		// and the other is not, is this correct behaviour?
@@ -45,6 +44,7 @@ pub fn (mut c Checker) check_basic(got table.Type, expected table.Type) bool {
 	if got_idx == table.none_type_idx && expected.has_flag(.optional) {
 		return false
 	}
+	exp_is_ptr := expected.is_ptr()
 	// allow pointers to be initialized with 0. TODO: use none instead
 	if exp_is_ptr && got_idx == table.int_type_idx {
 		return true
@@ -260,6 +260,13 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 	if got == expected {
 		return true
+	}
+	got_is_ptr := got.is_ptr()
+	exp_is_ptr := expected.is_ptr()
+	if got_is_ptr && exp_is_ptr {
+		if got.nr_muls() != expected.nr_muls() {
+			return false
+		}
 	}
 	exp_idx := expected.idx()
 	got_idx := got.idx()
