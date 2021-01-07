@@ -56,7 +56,7 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			// break
 		}
 		mut cmt_content := cmt.text.trim_left('\x01')
-		if cmt_content.len == cmt.text.len || cmt.is_multi {
+		if cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
 			// if cmt_content.len == 0 {
