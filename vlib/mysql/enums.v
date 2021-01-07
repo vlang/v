@@ -67,6 +67,5 @@ pub fn (f FieldType) str() string {
 		.type_var_string { 'var_string' }
 		.type_string { 'string' }
 		.type_geometry { 'geometry' }
-		else { 'unknown' }
 	}
 }
