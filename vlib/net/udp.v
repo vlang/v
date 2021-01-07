@@ -93,7 +93,7 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 	// TODO: remove this when parser allows type casting in match branches
 	int_error_code := int(error_ewouldblock)
 	match code {
-		int_err_code {
+		int_error_code {
 			c.wait_for_read() ?
 			// same setup as in tcp
 			res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from,
