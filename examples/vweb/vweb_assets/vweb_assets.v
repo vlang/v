@@ -29,7 +29,7 @@ pub fn (mut app App) init_once() {
 pub fn (mut app App) init() {
 }
 
-pub fn (mut app App) index() {
+pub fn (mut app App) index() vweb.Result {
 	// We can dynamically specify which assets are to be used in template.
 	mut am := assets.new_manager()
 	am.add_css('assets/index.css')
@@ -38,6 +38,7 @@ pub fn (mut app App) index() {
 	subtitle := 'VWeb can serve static assets too!'
 	message := 'It also has an Assets Manager that allows dynamically specifying which CSS and JS files to be used.'
 	$vweb.html()
+	return vweb.Result{}
 }
 
 fn (mut app App) text() vweb.Result {
