@@ -56,15 +56,11 @@ pub fn (c UdpConn) write_to_ptr(addr Addr, b byteptr, len int) ? {
 		return none
 	}
 	code := error_code()
-	int_error_code := int(error_ewouldblock)
-	match code {
-		int_error_code {
-			c.wait_for_write() ?
-			socket_error(C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)) ?
-		}
-		else {
-			wrap_error(code) ?
-		}
+	if code == int(error_ewouldblock) {
+		c.wait_for_write() ?
+		socket_error(C.sendto(c.sock.handle, b, len, 0, &addr.addr, addr.len)) ?
+	} else {
+		wrap_error(code) ?
 	}
 	return none
 }
@@ -90,21 +86,16 @@ pub fn (c UdpConn) read(mut buf []byte) ?(int, Addr) {
 		return res, addr
 	}
 	code := error_code()
-	// TODO: remove this when parser allows type casting in match branches
-	int_error_code := int(error_ewouldblock)
-	match code {
-		int_error_code {
-			c.wait_for_read() ?
-			// same setup as in tcp
-			res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from,
-				&len)) ?
-			res2 := socket_error(res) ?
-			addr := new_addr(addr_from) ?
-			return res2, addr
-		}
-		else {
-			wrap_error(code) ?
-		}
+	if code == int(error_ewouldblock) {
+		c.wait_for_read() ?
+		// same setup as in tcp
+		res = wrap_read_result(C.recvfrom(c.sock.handle, buf.data, buf.len, 0, &addr_from,
+			&len)) ?
+		res2 := socket_error(res) ?
+		addr := new_addr(addr_from) ?
+		return res2, addr
+	} else {
+		wrap_error(code) ?
 	}
 	return none
 }

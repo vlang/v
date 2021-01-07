@@ -45,18 +45,13 @@ pub fn (c TcpConn) write_ptr(b byteptr, len int) ? {
 			ptr := ptr_base + total_sent
 			remaining := len - total_sent
 			mut sent := C.send(c.sock.handle, ptr, remaining, msg_nosignal)
-			// TODO: remove this when parser allows type casting in match branches
-			int_error_code := int(error_ewouldblock) 
 			if sent < 0 {
 				code := error_code()
-				match code {
-					int_error_code {
-						c.wait_for_write()
-						continue
-					}
-					else {
-						wrap_error(code) ?
-					}
+				if code == int(error_ewouldblock) {
+					c.wait_for_write()
+					continue
+				} else {
+					wrap_error(code) ?
 				}
 			}
 			total_sent += sent
@@ -84,20 +79,15 @@ pub fn (c TcpConn) read_ptr(buf_ptr byteptr, len int) ?int {
 		return res
 	}
 	code := error_code()
-	// TODO: remove this when parser allows type casting in match branches
-	int_error_code := int(error_ewouldblock) 
-	match code {
-		int_error_code {
-			c.wait_for_read() ?
-			res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
-			$if trace_tcp ? {
-				eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
-			}
-			return socket_error(res)
+	if code == int(error_ewouldblock) {
+		c.wait_for_read() ?
+		res = wrap_read_result(C.recv(c.sock.handle, buf_ptr, len, 0)) ?
+		$if trace_tcp ? {
+			eprintln('<<< TcpConn.read_ptr  | c.sock.handle: $c.sock.handle | buf_ptr: ${ptr_str(buf_ptr)} len: $len | res: $res')
 		}
-		else {
-			wrap_error(code) ?
-		}
+		return socket_error(res)
+	} else {
+		wrap_error(code) ?
 	}
 }
 
@@ -164,7 +154,7 @@ pub fn (c TcpConn) peer_ip() ?string {
 	buf := [44]byte{}
 	peeraddr := C.sockaddr_in{}
 	speeraddr := sizeof(peeraddr)
-	socket_error(C.getpeername(c.sock.handle, unsafe {&C.sockaddr(&peeraddr)}, &speeraddr)) ?
+	socket_error(C.getpeername(c.sock.handle, unsafe { &C.sockaddr(&peeraddr) }, &speeraddr)) ?
 	cstr := C.inet_ntop(C.AF_INET, &peeraddr.sin_addr, buf, sizeof(buf))
 	if cstr == 0 {
 		return error('net.peer_ip: inet_ntop failed')
@@ -194,7 +184,7 @@ pub fn listen_tcp(port int) ?TcpListener {
 	addr.sin_addr.s_addr = C.htonl(C.INADDR_ANY)
 	size := sizeof(C.sockaddr_in)
 	// cast to the correct type
-	sockaddr := unsafe {&C.sockaddr(&addr)}
+	sockaddr := unsafe { &C.sockaddr(&addr) }
 	socket_error(C.bind(s.handle, sockaddr, size)) ?
 	socket_error(C.listen(s.handle, 128)) ?
 	return TcpListener{
@@ -209,7 +199,7 @@ pub fn (l TcpListener) accept() ?TcpConn {
 	unsafe { C.memset(&addr, 0, sizeof(C.sockaddr_storage)) }
 	size := sizeof(C.sockaddr_storage)
 	// cast to correct type
-	sock_addr := unsafe {&C.sockaddr(&addr)}
+	sock_addr := unsafe { &C.sockaddr(&addr) }
 	mut new_handle := C.accept(l.sock.handle, sock_addr, &size)
 	if new_handle <= 0 {
 		l.wait_for_accept() ?
@@ -348,7 +338,7 @@ pub fn (s TcpSocket) address() ?Addr {
 	mut addr := C.sockaddr_in{}
 	size := sizeof(C.sockaddr_in)
 	// cast to the correct type
-	sockaddr := unsafe {&C.sockaddr(&addr)}
+	sockaddr := unsafe { &C.sockaddr(&addr) }
 	C.getsockname(s.handle, sockaddr, &size)
 	return new_addr(sockaddr)
 }
