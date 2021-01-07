@@ -1086,11 +1086,11 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 			return '', pos
 		}
 		else {
-			c.error('unexpected expression `${typeof(expr)}`', expr.position())
+			c.error('unexpected expression `$expr.type_name()`', expr.position())
 		}
 	}
 	if explicit_lock_needed {
-		c.error('`$to_lock` is `shared` and needs explicit lock for `${typeof(expr)}`',
+		c.error('`$to_lock` is `shared` and needs explicit lock for `$expr.type_name()`',
 			pos)
 		to_lock = ''
 	}
@@ -1547,7 +1547,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 	} else if fn_name == 'json.decode' && call_expr.args.len > 0 {
 		expr := call_expr.args[0].expr
 		if expr !is ast.Type {
-			typ := typeof(expr)
+			typ := expr.type_name()
 			c.error('json.decode: first argument needs to be a type, got `$typ`', call_expr.pos)
 			return table.void_type
 		}
@@ -4428,7 +4428,7 @@ fn (mut c Checker) comp_if_branch(cond ast.Expr, pos token.Position) bool {
 							!different
 						}
 					} else {
-						c.error('invalid `\$if` condition: ${typeof(cond.left)}', cond.pos)
+						c.error('invalid `\$if` condition: $cond.left.type_name()', cond.pos)
 					}
 				}
 				else {

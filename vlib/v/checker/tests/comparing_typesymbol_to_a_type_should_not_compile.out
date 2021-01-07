@@ -3,5 +3,5 @@ vlib/v/checker/tests/comparing_typesymbol_to_a_type_should_not_compile.vv:12:12:
    11 |     // the next line should produce at least a warning, or even an error, without an explicit cast:
    12 |     z := isym == table.string_type
       |               ~~
-   13 |     println(typeof(isym))
-   14 |     println(typeof(table.string_type))
+   13 |     println(typeof(isym).name)
+   14 |     println(typeof(table.string_type).name)

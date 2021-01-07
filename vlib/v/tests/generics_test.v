@@ -260,10 +260,10 @@ fn test_generic_struct() {
 	assert b.permission.name == 'superuser'
 	println('b.model.name: $b.model.name')
 	println('b.permission.name: $b.permission.name')
-	assert typeof(a.model) == 'User'
-	assert typeof(b.model) == 'Group'
-	println('typeof(a.model): ' + typeof(a.model))
-	println('typeof(b.model): ' + typeof(b.model))
+	assert typeof(a.model).name == 'User'
+	assert typeof(b.model).name == 'Group'
+	println('typeof(a.model): ' + typeof(a.model).name)
+	println('typeof(b.model): ' + typeof(b.model).name)
 	// mut x := new_repo<User>(DB{})
 	// x.model.name = 'joe2'
 	// println(x.model.name)

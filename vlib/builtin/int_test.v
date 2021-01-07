@@ -177,13 +177,13 @@ fn test_int_decl() {
 	x3 := -88955
 	x4 := 2000000000
 	x5 := -1999999999
-	assert typeof(x1) == 'int'
-	assert typeof(x2) == 'int'
-	assert typeof(x3) == 'int'
-	assert typeof(x4) == 'int'
-	assert typeof(x5) == 'int'
+	assert typeof(x1).name == 'int'
+	assert typeof(x2).name == 'int'
+	assert typeof(x3).name == 'int'
+	assert typeof(x4).name == 'int'
+	assert typeof(x5).name == 'int'
 	x7 := u64(-321314588900011)
-	assert typeof(x7) == 'u64'
+	assert typeof(x7).name == 'u64'
 }
 
 fn test_int_to_hex() {

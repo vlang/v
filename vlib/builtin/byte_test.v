@@ -9,14 +9,14 @@ fn test_clone() {
 	xx := byte(35)
 	assert xx.str() == '35'
 	assert xx.ascii_str() == '#'
-	println(typeof(`A`))
-	assert typeof(`A`) == 'rune'
+	println(typeof(`A`).name)
+	assert typeof(`A`).name == 'rune'
 	x := rune(`A`)
 	assert x.str() == 'A'
-	assert typeof(x) == 'rune'
+	assert typeof(x).name == 'rune'
 	//
 	y := `Z`
-	assert typeof(y) == 'rune'
+	assert typeof(y).name == 'rune'
 	assert y.str() == 'Z'
 	// assert b[1].str() == '1' TODO
 }

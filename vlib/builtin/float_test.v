@@ -5,34 +5,34 @@ fn test_float_decl() {
   x2 := -2e16
   x3 := 1e-15
   x4 := -9e-4
-  assert typeof(x1) == 'f64'
-  assert typeof(x2) == 'f64'
-  assert typeof(x3) == 'f64'
-  assert typeof(x4) == 'f64'
+  assert typeof(x1).name == 'f64'
+  assert typeof(x2).name == 'f64'
+  assert typeof(x3).name == 'f64'
+  assert typeof(x4).name == 'f64'
   x5 := 4e108
   x6 := -7e99
   x7 := 3e-205
   x8 := -6e-147
-  assert typeof(x5) == 'f64'
-  assert typeof(x6) == 'f64'
-  assert typeof(x7) == 'f64'
-  assert typeof(x8) == 'f64'
+  assert typeof(x5).name == 'f64'
+  assert typeof(x6).name == 'f64'
+  assert typeof(x7).name == 'f64'
+  assert typeof(x8).name == 'f64'
   x9 := 312874834.77
   x10 := -22399994.06
   x11 := 0.0000000019
   x12 := -0.00000000008
-  assert typeof(x9) == 'f64'
-  assert typeof(x10) == 'f64'
-  assert typeof(x11) == 'f64'
-  assert typeof(x12) == 'f64'
+  assert typeof(x9).name == 'f64'
+  assert typeof(x10).name == 'f64'
+  assert typeof(x11).name == 'f64'
+  assert typeof(x12).name == 'f64'
   x13 := 34234234809890890898903213154353453453253253243432413232228908902183918392183902432432438980380123021983901392183921389083913890389089031.0
   x14 := -39999999999999999999222212128182813294989082302832183928343325325233253242312331324392839238239829389038097438248932789371837218372837293.8
   x15 := 0.000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002
   x16 := -0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004
-  assert typeof(x13) == 'f64'
-  assert typeof(x14) == 'f64'
-  assert typeof(x15) == 'f64'
-  assert typeof(x16) == 'f64'
+  assert typeof(x13).name == 'f64'
+  assert typeof(x14).name == 'f64'
+  assert typeof(x15).name == 'f64'
+  assert typeof(x16).name == 'f64'
 }
 
 fn test_f32_equal_operator() {
