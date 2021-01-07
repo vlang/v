@@ -121,7 +121,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 	mut root := e.expr
 	for root is SelectorExpr {
 		// TODO: remove this line
-		selector_expr := root as  SelectorExpr
+		selector_expr := root as SelectorExpr
 		root = selector_expr.expr
 	}
 	return root as Ident

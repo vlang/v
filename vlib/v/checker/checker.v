@@ -3967,8 +3967,7 @@ fn (c Checker) smartcast_sumtype(expr ast.Expr, cur_type table.Type, to_type tab
 					}
 				}
 			}
-			if field := scope.find_struct_field(expr.expr_type,
-				expr.field_name) {
+			if field := scope.find_struct_field(expr.expr_type, expr.field_name) {
 				sum_type_casts << field.sum_type_casts
 			}
 			// smartcast either if the value is immutable or if the mut argument is explicitly given
@@ -4130,8 +4129,9 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 				left_type := c.expr(infix.left)
 				left_sym := c.table.get_type_symbol(left_type)
 				if is_variable {
-					if left_sym.kind in [.sum_type] {
-						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut node.scope)
+					if left_sym.kind == .sum_type {
+						c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
+							node.scope)
 					}
 				}
 			}
@@ -4220,7 +4220,8 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 								// TODO: needs to be removed
 								node.branches[i].smartcast = true
 							} else {
-								c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut branch.scope)
+								c.smartcast_sumtype(infix.left, infix.left_type, right_expr.typ, mut
+									branch.scope)
 							}
 						}
 					}
