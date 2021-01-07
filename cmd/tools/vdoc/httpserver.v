@@ -4,22 +4,25 @@ import io
 import net
 import strings
 
-fn (mut vd VDoc) serve_html() {
-	vd.render_static()
-	docs := vd.render()
+fn (mut vd VDoc) serve_html(out Output) {
+	cfg := vd.cfg
+	if out.typ == .html {
+		vd.render_static_html(true, out)
+	}
+	docs := vd.render(out)
 	dkeys := docs.keys()
 	if dkeys.len < 1 {
 		eprintln('no documentation created, the module has no `pub` functions')
 		exit(1)
 	}
 	def_name := docs.keys()[0]
-	server_url := 'http://localhost:' + vd.cfg.server_port.str()
-	server := net.listen_tcp(vd.cfg.server_port) or { panic(err) }
+	server_url := 'http://localhost:' + cfg.server_port.str()
+	server := net.listen_tcp(cfg.server_port) or { panic(err) }
 	println('Serving docs on: $server_url')
-	if vd.cfg.open_docs {
+	if cfg.open_docs {
 		open_url(server_url)
 	}
-	content_type := match vd.cfg.output_type {
+	content_type := match out.typ {
 		.html { 'text/html' }
 		.markdown { 'text/markdown' }
 		.json { 'application/json' }

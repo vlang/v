@@ -3,24 +3,23 @@ module main
 import strings
 import v.doc
 
-fn (vd VDoc) gen_markdown(idx int, with_toc bool) string {
-	dcs := vd.docs[idx]
+fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
 	mut hw := strings.new_builder(200)
 	mut cw := strings.new_builder(200)
-	hw.writeln('# $dcs.head.content\n')
-	if dcs.head.comments.len > 0 {
+	hw.writeln('# $d.head.content\n')
+	if d.head.comments.len > 0 {
 		comments := if vd.cfg.include_examples {
-			dcs.head.merge_comments()
+			d.head.merge_comments()
 		} else {
-			dcs.head.merge_comments_without_examples()
+			d.head.merge_comments_without_examples()
 		}
 		hw.writeln('$comments\n')
 	}
 	if with_toc {
 		hw.writeln('## Contents')
 	}
-	vd.write_markdown_content(dcs.contents.arr(), mut cw, mut hw, 0, with_toc)
-	footer_text := vd.gen_footer_text(idx)
+	vd.write_markdown_content(d.contents.arr(), mut cw, mut hw, 0, with_toc)
+	footer_text := gen_footer_text(d, !vd.cfg.no_timestamp)
 	cw.writeln('#### $footer_text')
 	return hw.str() + '\n' + cw.str()
 }

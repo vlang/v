@@ -88,6 +88,128 @@ enum HighlightTokenTyp {
 	symbol
 }
 
+struct SearchModuleResult {
+	description string
+	link        string
+}
+
+struct SearchResult {
+	prefix      string
+	badge       string
+	description string
+	link        string
+}
+
+fn (vd VDoc) render_search_index(out Output) {
+	mut js_search_index := strings.new_builder(200)
+	mut js_search_data := strings.new_builder(200)
+	js_search_index.write('var searchModuleIndex = [')
+	js_search_data.write('var searchModuleData = [')
+	for i, title in vd.search_module_index {
+		data := vd.search_module_data[i]
+		js_search_index.write('"$title",')
+		js_search_data.write('["$data.description","$data.link"],')
+	}
+	js_search_index.writeln('];')
+	js_search_index.write('var searchIndex = [')
+	js_search_data.writeln('];')
+	js_search_data.write('var searchData = [')
+	for i, title in vd.search_index {
+		data := vd.search_data[i]
+		js_search_index.write('"$title",')
+		// array instead of object to reduce file size
+		js_search_data.write('["$data.badge","$data.description","$data.link","$data.prefix"],')
+	}
+	js_search_index.writeln('];')
+	js_search_data.writeln('];')
+	out_file_path := os.join_path(out.path, 'search_index.js')
+	os.write_file(out_file_path, js_search_index.str() + js_search_data.str())
+}
+
+fn (mut vd VDoc) render_static_html(serve_via_http bool, out Output) {
+	vd.assets = {
+		'doc_css':       vd.get_resource(css_js_assets[0], true, out)
+		'normalize_css': vd.get_resource(css_js_assets[1], true, out)
+		'doc_js':        vd.get_resource(css_js_assets[2], !serve_via_http, out)
+		'dark_mode_js':  vd.get_resource(css_js_assets[3], !serve_via_http, out)
+		'light_icon':    vd.get_resource('light.svg', true, out)
+		'dark_icon':     vd.get_resource('dark.svg', true, out)
+		'menu_icon':     vd.get_resource('menu.svg', true, out)
+		'arrow_icon':    vd.get_resource('arrow.svg', true, out)
+	}
+}
+
+fn (vd VDoc) get_resource(name string, minify bool, out Output) string {
+	cfg := vd.cfg
+	path := os.join_path(res_path, name)
+	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
+	if minify {
+		if name.ends_with('.js') {
+			res = js_compress(res)
+		} else {
+			res = res.split_into_lines().map(it.trim_space()).join('')
+		}
+	}
+	// TODO: Make SVG inline for now
+	if cfg.inline_assets || path.ends_with('.svg') {
+		return res
+	} else {
+		output_path := os.join_path(out.path, name)
+		if !os.exists(output_path) {
+			println('Generating $out.typ in "$output_path"')
+			os.write_file(output_path, res)
+		}
+		return name
+	}
+}
+
+fn (mut vd VDoc) collect_search_index(out Output) {
+	cfg := vd.cfg
+	for doc in vd.docs {
+		mod := doc.head.name
+		vd.search_module_index << mod
+		comments := if cfg.include_examples {
+			doc.head.merge_comments()
+		} else {
+			doc.head.merge_comments_without_examples()
+		}
+		vd.search_module_data << SearchModuleResult{
+			description: trim_doc_node_description(comments)
+			link: vd.get_file_name(mod, out)
+		}
+		for _, dn in doc.contents {
+			vd.create_search_results(mod, dn, out)
+		}
+	}
+}
+
+fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
+	cfg := vd.cfg
+	if dn.kind == .const_group {
+		return
+	}
+	comments := if cfg.include_examples {
+		dn.merge_comments()
+	} else {
+		dn.merge_comments_without_examples()
+	}
+	dn_description := trim_doc_node_description(comments)
+	vd.search_index << dn.name
+	vd.search_data << SearchResult{
+		prefix: if dn.parent_name != '' {
+			'$dn.kind ($dn.parent_name)'
+		} else {
+			'$dn.kind '
+		}
+		description: dn_description
+		badge: mod
+		link: vd.get_file_name(mod, out) + '#' + get_node_id(dn)
+	}
+	for child in dn.children {
+		vd.create_search_results(mod, child, out)
+	}
+}
+
 fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	mut url := urllib.parse(repo_url) or { return '' }
 	if url.path.len <= 1 || file_name.len == 0 {
@@ -104,28 +226,6 @@ fn get_src_link(repo_url string, file_name string, line_nr int) string {
 	}
 	url.fragment = 'L$line_nr'
 	return url.str()
-}
-
-fn js_compress(str string) string {
-	mut js := strings.new_builder(200)
-	lines := str.split_into_lines()
-	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var',
-		': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
-	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&',
-		'else if', '===', '!==', 'else']
-	for line in lines {
-		mut trimmed := line.trim_space()
-		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) {
-			continue
-		}
-		for i in 0 .. rules.len - 1 {
-			trimmed = trimmed.replace(rules[i], clean[i])
-		}
-		js.write(trimmed)
-	}
-	js_str := js.str()
-	js.free()
-	return js_str
 }
 
 fn html_highlight(code string, tb &table.Table) string {
@@ -290,72 +390,74 @@ fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	toc.writeln('</li>')
 }
 
-fn (vd VDoc) write_content(cn &doc.DocNode, dcs &doc.Doc, mut hw strings.Builder) {
-	base_dir := os.dir(os.real_path(vd.cfg.input_path))
-	file_path_name := if vd.cfg.is_multi {
+fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
+	cfg := vd.cfg
+	base_dir := os.dir(os.real_path(cfg.input_path))
+	file_path_name := if cfg.is_multi {
 		cn.file_path.replace('$base_dir/', '')
 	} else {
 		os.file_name(cn.file_path)
 	}
-	src_link := get_src_link(vd.cfg.manifest.repo_url, file_path_name, cn.pos.line)
+	src_link := get_src_link(vd.manifest.repo_url, file_path_name, cn.pos.line)
 	if cn.content.len != 0 || (cn.name == 'Constants') {
-		hw.write(doc_node_html(cn, src_link, false, vd.cfg.include_examples, dcs.table))
+		hw.write(doc_node_html(cn, src_link, false, cfg.include_examples, d.table))
 	}
 	for child in cn.children {
 		child_file_path_name := child.file_path.replace('$base_dir/', '')
-		child_src_link := get_src_link(vd.cfg.manifest.repo_url, child_file_path_name, child.pos.line)
-		hw.write(doc_node_html(child, child_src_link, false, vd.cfg.include_examples, dcs.table))
+		child_src_link := get_src_link(vd.manifest.repo_url, child_file_path_name, child.pos.line)
+		hw.write(doc_node_html(child, child_src_link, false, cfg.include_examples, d.table))
 	}
 }
 
-fn (vd VDoc) gen_html(idx int) string {
+fn (vd VDoc) gen_html(d doc.Doc) string {
+	cfg := vd.cfg
 	mut symbols_toc := strings.new_builder(200)
 	mut modules_toc := strings.new_builder(200)
 	mut contents := strings.new_builder(200)
-	dcs := vd.docs[idx]
-	dcs_contents := dcs.contents.arr()
+
+	dcs_contents := d.contents.arr()
 	// generate toc first
-	contents.writeln(doc_node_html(dcs.head, '', true, vd.cfg.include_examples, dcs.table))
-	if is_module_readme(dcs.head) {
-		write_toc(dcs.head, mut symbols_toc)
+	contents.writeln(doc_node_html(d.head, '', true, cfg.include_examples, d.table))
+	if is_module_readme(d.head) {
+		write_toc(d.head, mut symbols_toc)
 	}
 	for cn in dcs_contents {
-		vd.write_content(&cn, &dcs, mut contents)
+		vd.write_content(&cn, &d, mut contents)
 		write_toc(cn, mut symbols_toc)
 	} // write head
 	// write css
-	version := if vd.cfg.manifest.version.len != 0 { vd.cfg.manifest.version } else { '' }
-	header_name := if vd.cfg.is_multi && vd.docs.len > 1 {
-		os.file_name(os.real_path(vd.cfg.input_path))
+	version := if vd.manifest.version.len != 0 { vd.manifest.version } else { '' }
+	header_name := if cfg.is_multi && vd.docs.len > 1 {
+		os.file_name(os.real_path(cfg.input_path))
 	} else {
-		dcs.head.name
+		d.head.name
 	}
 	// write nav1
-	if vd.cfg.is_multi || vd.docs.len > 1 {
+	if cfg.is_multi || vd.docs.len > 1 {
 		mut submod_prefix := ''
-		for i, doc in vd.docs {
-			if i - 1 >= 0 && doc.head.name.starts_with(submod_prefix + '.') {
+		for i, dc in vd.docs {
+			if i - 1 >= 0 && dc.head.name.starts_with(submod_prefix + '.') {
 				continue
 			}
-			names := doc.head.name.split('.')
-			submod_prefix = if names.len > 1 { names[0] } else { doc.head.name }
-			mut href_name := './${doc.head.name}.html'
-			if (vd.cfg.is_vlib && doc.head.name == 'builtin' && !vd.cfg.include_readme) ||
-				doc.head.name == 'README' {
+			names := dc.head.name.split('.')
+			submod_prefix = if names.len > 1 { names[0] } else { dc.head.name }
+			mut href_name := './${dc.head.name}.html'
+			if (cfg.is_vlib && dc.head.name == 'builtin' && !cfg.include_readme) ||
+				dc.head.name == 'README' {
 				href_name = './index.html'
 			} else if submod_prefix !in vd.docs.map(it.head.name) {
 				href_name = '#'
 			}
 			submodules := vd.docs.filter(it.head.name.starts_with(submod_prefix + '.'))
 			dropdown := if submodules.len > 0 { vd.assets['arrow_icon'] } else { '' }
-			active_class := if doc.head.name == dcs.head.name { ' active' } else { '' }
+			active_class := if dc.head.name == d.head.name { ' active' } else { '' }
 			modules_toc.write('<li class="open$active_class"><div class="menu-row">$dropdown<a href="$href_name">$submod_prefix</a></div>')
 			for j, cdoc in submodules {
 				if j == 0 {
 					modules_toc.write('<ul>')
 				}
 				submod_name := cdoc.head.name.all_after(submod_prefix + '.')
-				sub_selected_classes := if cdoc.head.name == dcs.head.name {
+				sub_selected_classes := if cdoc.head.name == d.head.name {
 					' class="active"'
 				} else {
 					''
@@ -372,44 +474,28 @@ fn (vd VDoc) gen_html(idx int) string {
 	symbols_toc_str := symbols_toc.str()
 	modules_toc.free()
 	symbols_toc.free()
-	return html_content.replace('{{ title }}', dcs.head.name).replace('{{ head_name }}',
+	return html_content.replace('{{ title }}', d.head.name).replace('{{ head_name }}',
 		header_name).replace('{{ version }}', version).replace('{{ light_icon }}', vd.assets['light_icon']).replace('{{ dark_icon }}',
 		vd.assets['dark_icon']).replace('{{ menu_icon }}', vd.assets['menu_icon']).replace('{{ head_assets }}',
-		if vd.cfg.inline_assets {
+		if cfg.inline_assets {
 		'\n${tabs[0]}<style>' + vd.assets['doc_css'] + '</style>\n${tabs[0]}<style>' + vd.assets['normalize_css'] +
 			'</style>\n${tabs[0]}<script>' + vd.assets['dark_mode_js'] + '</script>'
 	} else {
 		'\n${tabs[0]}<link rel="stylesheet" href="' + vd.assets['doc_css'] + '" />\n${tabs[0]}<link rel="stylesheet" href="' +
 			vd.assets['normalize_css'] + '" />\n${tabs[0]}<script src="' + vd.assets['dark_mode_js'] + '"></script>'
-	}).replace('{{ toc_links }}', if vd.cfg.is_multi || vd.docs.len > 1 {
+	}).replace('{{ toc_links }}', if cfg.is_multi || vd.docs.len > 1 {
 		modules_toc_str
 	} else {
 		symbols_toc_str
-	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if vd.cfg.is_multi &&
-		vd.docs.len > 1 && dcs.head.name != 'README' {
+	}).replace('{{ contents }}', contents.str()).replace('{{ right_content }}', if cfg.is_multi &&
+		vd.docs.len > 1 && d.head.name != 'README' {
 		'<div class="doc-toc"><ul>' + symbols_toc_str + '</ul></div>'
 	} else {
 		''
-	}).replace('{{ footer_content }}', vd.gen_footer_text(idx)).replace('{{ footer_assets }}',
-		if vd.cfg.inline_assets {
+	}).replace('{{ footer_content }}', gen_footer_text(d, !cfg.no_timestamp)).replace('{{ footer_assets }}',
+		if cfg.inline_assets {
 		'<script>' + vd.assets['doc_js'] + '</script>'
 	} else {
 		'<script src="' + vd.assets['doc_js'] + '"></script>'
 	})
-}
-
-fn (vd VDoc) gen_plaintext(idx int) string {
-	dcs := vd.docs[idx]
-	mut pw := strings.new_builder(200)
-	pw.writeln('$dcs.head.content\n')
-	comments := if vd.cfg.include_examples {
-		dcs.head.merge_comments()
-	} else {
-		dcs.head.merge_comments_without_examples()
-	}
-	if comments.trim_space().len > 0 && !vd.cfg.pub_only {
-		pw.writeln(comments.split_into_lines().map('    ' + it).join('\n'))
-	}
-	vd.write_plaintext_content(dcs.contents.arr(), mut pw)
-	return pw.str()
 }
