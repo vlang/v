@@ -210,186 +210,6 @@ fn (mut vd VDoc) create_search_results(mod string, dn doc.DocNode, out Output) {
 	}
 }
 
-fn get_src_link(repo_url string, file_name string, line_nr int) string {
-	mut url := urllib.parse(repo_url) or { return '' }
-	if url.path.len <= 1 || file_name.len == 0 {
-		return ''
-	}
-	url.path = url.path.trim_right('/') + match url.host {
-		'github.com' { '/blob/master/$file_name' }
-		'gitlab.com' { '/-/blob/master/$file_name' }
-		'git.sir.ht' { '/tree/master/$file_name' }
-		else { '' }
-	}
-	if url.path == '/' {
-		return ''
-	}
-	url.fragment = 'L$line_nr'
-	return url.str()
-}
-
-fn html_highlight(code string, tb &table.Table) string {
-	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
-		'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
-	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
-		lit := if typ in [.unone, .operator, .punctuation] {
-			tok.kind.str()
-		} else if typ == .string {
-			"'$tok.lit'"
-		} else if typ == .char {
-			'`$tok.lit`'
-		} else {
-			tok.lit
-		}
-		return if typ in [.unone, .name] {
-			lit
-		} else {
-			'<span class="token $typ">$lit</span>'
-		}
-	}
-	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
-	mut tok := s.scan()
-	mut next_tok := s.scan()
-	mut buf := strings.new_builder(200)
-	mut i := 0
-	for i < code.len {
-		if i == tok.pos {
-			mut tok_typ := HighlightTokenTyp.unone
-			match tok.kind {
-				.name {
-					if tok.lit in builtin || tb.known_type(tok.lit) {
-						tok_typ = .builtin
-					} else if next_tok.kind == .lcbr {
-						tok_typ = .symbol
-					} else if next_tok.kind == .lpar {
-						tok_typ = .function
-					} else {
-						tok_typ = .name
-					}
-				}
-				.comment {
-					tok_typ = .comment
-				}
-				.chartoken {
-					tok_typ = .char
-				}
-				.string {
-					tok_typ = .string
-				}
-				.number {
-					tok_typ = .number
-				}
-				.key_true, .key_false {
-					tok_typ = .boolean
-				}
-				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
-					tok_typ = .punctuation
-				}
-				else {
-					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
-						tok_typ = .keyword
-					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() ||
-						tok.kind.is_relational() || tok.kind.is_infix() {
-						tok_typ = .operator
-					}
-				}
-			}
-			buf.write(highlight_code(tok, tok_typ))
-			if next_tok.kind != .eof {
-				i = tok.pos + tok.len
-				tok = next_tok
-				next_tok = s.scan()
-			} else {
-				break
-			}
-		} else {
-			buf.write_b(code[i])
-			i++
-		}
-	}
-	return buf.str()
-}
-
-fn doc_node_html(dd doc.DocNode, link string, head bool, include_examples bool, tb &table.Table) string {
-	mut dnw := strings.new_builder(200)
-	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
-	head_tag := if head { 'h1' } else { 'h2' }
-	comments := dd.merge_comments_without_examples()
-	md_content := markdown.to_html(html_tag_escape(comments))
-	hlighted_code := html_highlight(dd.content, tb)
-	node_class := if dd.kind == .const_group { ' const' } else { '' }
-	sym_name := get_sym_name(dd)
-	mut node_id := get_node_id(dd)
-	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
-	if head && is_module_readme(dd) {
-		node_id = 'readme_$node_id'
-		hash_link = ' <a href="#$node_id">#</a>'
-	}
-	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
-	if dd.name.len > 0 {
-		if dd.kind == .const_group {
-			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
-		} else {
-			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dd.kind $sym_name$hash_link</$head_tag>')
-		}
-		if link.len != 0 {
-			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
-		}
-		dnw.write('</div>')
-	}
-	if !head && dd.content.len > 0 {
-		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
-	}
-	// do not mess with md_content further, its formatting is important, just output it 1:1 !
-	dnw.writeln('$md_content\n')
-	// Write examples if any found
-	examples := dd.examples()
-	if include_examples && examples.len > 0 {
-		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
-		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
-		for example in examples {
-			// hl_example := html_highlight(example, tb)
-			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
-		}
-		dnw.writeln('</section>')
-	}
-	dnw.writeln('</section>')
-	dnw_str := dnw.str()
-	defer {
-		dnw.free()
-	}
-	return dnw_str
-}
-
-fn html_tag_escape(str string) string {
-	return str.replace_each(['<', '&lt;', '>', '&gt;'])
-}
-
-fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
-	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
-	if toc_slug == '' && dn.children.len > 0 {
-		if dn.children[0].name == '' {
-			toc_slug = slug(dn.name)
-		} else {
-			toc_slug = slug(dn.name + '.' + dn.children[0].name)
-		}
-	}
-	if is_module_readme(dn) {
-		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
-	} else if dn.name != 'Constants' {
-		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
-		toc.writeln('        <ul>')
-		for child in dn.children {
-			cname := dn.name + '.' + child.name
-			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
-		}
-		toc.writeln('</ul>')
-	} else {
-		toc.write('<li class="open"><a href="#$toc_slug">$dn.name</a>')
-	}
-	toc.writeln('</li>')
-}
-
 fn (vd VDoc) write_content(cn &doc.DocNode, d &doc.Doc, mut hw strings.Builder) {
 	cfg := vd.cfg
 	base_dir := os.dir(os.real_path(cfg.input_path))
@@ -497,4 +317,206 @@ fn (vd VDoc) gen_html(d doc.Doc) string {
 	} else {
 		'<script src="' + vd.assets['doc_js'] + '"></script>'
 	})
+}
+
+fn get_src_link(repo_url string, file_name string, line_nr int) string {
+	mut url := urllib.parse(repo_url) or { return '' }
+	if url.path.len <= 1 || file_name.len == 0 {
+		return ''
+	}
+	url.path = url.path.trim_right('/') + match url.host {
+		'github.com' { '/blob/master/$file_name' }
+		'gitlab.com' { '/-/blob/master/$file_name' }
+		'git.sir.ht' { '/tree/master/$file_name' }
+		else { '' }
+	}
+	if url.path == '/' {
+		return ''
+	}
+	url.fragment = 'L$line_nr'
+	return url.str()
+}
+
+fn html_highlight(code string, tb &table.Table) string {
+	builtin := ['bool', 'string', 'i8', 'i16', 'int', 'i64', 'i128', 'byte', 'u16', 'u32', 'u64',
+		'u128', 'rune', 'f32', 'f64', 'any_int', 'any_float', 'byteptr', 'voidptr', 'any']
+	highlight_code := fn (tok token.Token, typ HighlightTokenTyp) string {
+		lit := if typ in [.unone, .operator, .punctuation] {
+			tok.kind.str()
+		} else if typ == .string {
+			"'$tok.lit'"
+		} else if typ == .char {
+			'`$tok.lit`'
+		} else {
+			tok.lit
+		}
+		return if typ in [.unone, .name] {
+			lit
+		} else {
+			'<span class="token $typ">$lit</span>'
+		}
+	}
+	mut s := scanner.new_scanner(code, .parse_comments, &pref.Preferences{})
+	mut tok := s.scan()
+	mut next_tok := s.scan()
+	mut buf := strings.new_builder(200)
+	mut i := 0
+	for i < code.len {
+		if i == tok.pos {
+			mut tok_typ := HighlightTokenTyp.unone
+			match tok.kind {
+				.name {
+					if tok.lit in builtin || tb.known_type(tok.lit) {
+						tok_typ = .builtin
+					} else if next_tok.kind == .lcbr {
+						tok_typ = .symbol
+					} else if next_tok.kind == .lpar {
+						tok_typ = .function
+					} else {
+						tok_typ = .name
+					}
+				}
+				.comment {
+					tok_typ = .comment
+				}
+				.chartoken {
+					tok_typ = .char
+				}
+				.string {
+					tok_typ = .string
+				}
+				.number {
+					tok_typ = .number
+				}
+				.key_true, .key_false {
+					tok_typ = .boolean
+				}
+				.lpar, .lcbr, .rpar, .rcbr, .lsbr, .rsbr, .semicolon, .colon, .comma, .dot {
+					tok_typ = .punctuation
+				}
+				else {
+					if token.is_key(tok.lit) || token.is_decl(tok.kind) {
+						tok_typ = .keyword
+					} else if tok.kind == .decl_assign || tok.kind.is_assign() || tok.is_unary() ||
+						tok.kind.is_relational() || tok.kind.is_infix() {
+						tok_typ = .operator
+					}
+				}
+			}
+			buf.write(highlight_code(tok, tok_typ))
+			if next_tok.kind != .eof {
+				i = tok.pos + tok.len
+				tok = next_tok
+				next_tok = s.scan()
+			} else {
+				break
+			}
+		} else {
+			buf.write_b(code[i])
+			i++
+		}
+	}
+	return buf.str()
+}
+
+fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &table.Table) string {
+	mut dnw := strings.new_builder(200)
+	link_svg := '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	head_tag := if head { 'h1' } else { 'h2' }
+	comments := dn.merge_comments_without_examples()
+	md_content := markdown.to_html(html_tag_escape(comments))
+	hlighted_code := html_highlight(dn.content, tb)
+	node_class := if dn.kind == .const_group { ' const' } else { '' }
+	sym_name := get_sym_name(dn)
+	mut node_id := get_node_id(dn)
+	mut hash_link := if !head { ' <a href="#$node_id">#</a>' } else { '' }
+	if head && is_module_readme(dn) {
+		node_id = 'readme_$node_id'
+		hash_link = ' <a href="#$node_id">#</a>'
+	}
+	dnw.writeln('${tabs[1]}<section id="$node_id" class="doc-node$node_class">')
+	if dn.name.len > 0 {
+		if dn.kind == .const_group {
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$sym_name$hash_link</$head_tag>')
+		} else {
+			dnw.write('${tabs[2]}<div class="title"><$head_tag>$dn.kind $sym_name$hash_link</$head_tag>')
+		}
+		if link.len != 0 {
+			dnw.write('<a class="link" rel="noreferrer" target="_blank" href="$link">$link_svg</a>')
+		}
+		dnw.write('</div>')
+	}
+	if !head && dn.content.len > 0 {
+		dnw.writeln('<pre class="signature"><code>$hlighted_code</code></pre>')
+	}
+	// do not mess with md_content further, its formatting is important, just output it 1:1 !
+	dnw.writeln('$md_content\n')
+	// Write examples if any found
+	examples := dn.examples()
+	if include_examples && examples.len > 0 {
+		example_title := if examples.len > 1 { 'Examples' } else { 'Example' }
+		dnw.writeln('<section class="doc-node examples"><h4>$example_title</h4>')
+		for example in examples {
+			// hl_example := html_highlight(example, tb)
+			dnw.writeln('<pre><code class="language-v">$example</code></pre>')
+		}
+		dnw.writeln('</section>')
+	}
+	dnw.writeln('</section>')
+	dnw_str := dnw.str()
+	defer {
+		dnw.free()
+	}
+	return dnw_str
+}
+
+fn html_tag_escape(str string) string {
+	return str.replace_each(['<', '&lt;', '>', '&gt;'])
+}
+
+fn js_compress(str string) string {
+	mut js := strings.new_builder(200)
+	lines := str.split_into_lines()
+	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var',
+		': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
+	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&',
+		'else if', '===', '!==', 'else']
+	for line in lines {
+		mut trimmed := line.trim_space()
+		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) {
+			continue
+		}
+		for i in 0 .. rules.len - 1 {
+			trimmed = trimmed.replace(rules[i], clean[i])
+		}
+		js.write(trimmed)
+	}
+	js_str := js.str()
+	js.free()
+	return js_str
+}
+
+fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
+	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
+	if toc_slug == '' && dn.children.len > 0 {
+		if dn.children[0].name == '' {
+			toc_slug = slug(dn.name)
+		} else {
+			toc_slug = slug(dn.name + '.' + dn.children[0].name)
+		}
+	}
+	if is_module_readme(dn) {
+		toc.write('<li class="open"><a href="#readme_$toc_slug">README</a>')
+	} else if dn.name != 'Constants' {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.kind $dn.name</a>')
+		toc.writeln('        <ul>')
+		for child in dn.children {
+			cname := dn.name + '.' + child.name
+			toc.writeln('<li><a href="#${slug(cname)}">$child.kind $child.name</a></li>')
+		}
+		toc.writeln('</ul>')
+	} else {
+		toc.write('<li class="open"><a href="#$toc_slug">$dn.name</a>')
+	}
+	toc.writeln('</li>')
 }

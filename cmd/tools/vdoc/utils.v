@@ -135,28 +135,6 @@ fn get_modules_list(path string, ignore_paths2 []string) []string {
 	return dirs
 }
 
-fn js_compress(str string) string {
-	mut js := strings.new_builder(200)
-	lines := str.split_into_lines()
-	rules := [') {', ' = ', ', ', '{ ', ' }', ' (', '; ', ' + ', ' < ', ' - ', ' || ', ' var',
-		': ', ' >= ', ' && ', ' else if', ' === ', ' !== ', ' else ']
-	clean := ['){', '=', ',', '{', '}', '(', ';', '+', '<', '-', '||', 'var', ':', '>=', '&&',
-		'else if', '===', '!==', 'else']
-	for line in lines {
-		mut trimmed := line.trim_space()
-		if trimmed.starts_with('//') || (trimmed.starts_with('/*') && trimmed.ends_with('*/')) {
-			continue
-		}
-		for i in 0 .. rules.len - 1 {
-			trimmed = trimmed.replace(rules[i], clean[i])
-		}
-		js.write(trimmed)
-	}
-	js_str := js.str()
-	js.free()
-	return js_str
-}
-
 fn gen_footer_text(d &doc.Doc, include_timestamp bool) string {
 	footer_text := 'Powered by vdoc.'
 	if !include_timestamp {
