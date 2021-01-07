@@ -43,8 +43,15 @@ mut:
 }
 
 fn (mut dtp DTP) read() ?[]byte {
-	mut data := []byte{len: 1024}
-	dtp.reader.read(mut data) ?
+	mut data := []byte{}
+	mut buf := []byte{len: 1024}
+	for {
+		len := dtp.reader.read(mut buf) or { break }
+		if len == 0 {
+			break
+		}
+		data << buf[..len]
+	}
 	return data
 }
 
@@ -163,22 +170,22 @@ pub fn (mut ftp FTP) cd(dir string) ? {
 	}
 }
 
-fn new_dtp(msg string) ?DTP {
+fn new_dtp(msg string) ?&DTP {
 	if !is_dtp_message_valid(msg) {
 		return error('Bad message')
 	}
 	ip, port := get_host_ip_from_dtp_message(msg)
-	conn := net.dial_tcp('$ip:$port') or { return error('Cannot connect to the data channel') }
-	dtp := DTP{
-		conn: conn
-		reader: io.new_buffered_reader(reader: io.make_reader(conn))
+	mut dtp := &DTP{
 		ip: ip
 		port: port
 	}
+	conn := net.dial_tcp('$ip:$port') or { return error('Cannot connect to the data channel') }
+	dtp.conn = conn
+	dtp.reader = io.new_buffered_reader(reader: io.make_reader(dtp.conn))
 	return dtp
 }
 
-fn (mut ftp FTP) pasv() ?DTP {
+fn (mut ftp FTP) pasv() ?&DTP {
 	ftp.write('PASV') ?
 	code, data := ftp.read() ?
 	$if debug {
