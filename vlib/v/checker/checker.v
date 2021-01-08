@@ -2037,7 +2037,8 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 		if !c.inside_unsafe {
 			if sym.info is table.Struct {
 				if sym.info.is_union && selector_expr.next_token !in token.assign_tokens {
-					c.warn('reading a union field (or its address) requires `unsafe`', selector_expr.pos)
+					c.warn('reading a union field (or its address) requires `unsafe`',
+						selector_expr.pos)
 				}
 			}
 		}
