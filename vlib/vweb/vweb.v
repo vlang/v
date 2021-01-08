@@ -72,6 +72,7 @@ pub struct Cookie {
 	http_only bool
 }
 
+[noinit]
 pub struct Result {
 }
 
