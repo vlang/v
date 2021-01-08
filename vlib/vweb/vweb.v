@@ -223,13 +223,12 @@ pub fn run_app<T>(mut app T, port int) {
 	// app.reset()
 	mut last_ip := ''
 	for {
-		is_chromium := app.Context.is_chromium
-		app.Context.is_chromium = false
 		mut conn := l.accept() or { panic('accept() failed') }
 		now_ip := conn.peer_ip() or { '' }
-		if !is_chromium || now_ip != last_ip {
+		if !app.Context.is_chromium || now_ip != last_ip {
 			handle_conn<T>(mut conn, mut app)
 		}
+		app.Context.is_chromium = false
 		last_ip = now_ip
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
