@@ -2744,7 +2744,8 @@ reference value unless the struct already defines its own initial value.
 
 Zero-value references, or nil pointers, will **NOT** be supported in the future,
 for now data structures such as Linked Lists or Binary Trees that rely on reference
-fields that can use the value `0` understanding it's unsafe and can casue a panic.
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
 
 ```v
 struct Node {
