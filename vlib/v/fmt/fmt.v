@@ -39,7 +39,6 @@ pub mut:
 	did_imports       bool
 	is_assign         bool
 	auto_imports      []string // automatically inserted imports that the user does not need to specify
-	auto_imports_keep []string // auto imports that should be imported explicitely as they are used explicitely
 	import_pos        int      // position of the imports in the resulting string for later autoimports insertion
 	used_imports      []string // to remove unused imports
 	is_debug          bool
@@ -216,7 +215,7 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			// TODO bring back once only unused imports are removed
 			// continue
 		}
-		if imp.mod in f.auto_imports && imp.mod !in f.auto_imports_keep {
+		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
 			continue
 		}
 		f.out_imports.write('import ')
@@ -1682,7 +1681,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// `time.now()` without `time imported` is processed as a method call with `time` being
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
-			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64', 'sync'] {
+			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
 				f.file.imports << ast.Import{
 					mod: node.left.name
 					alias: node.left.name
@@ -1690,9 +1689,6 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 				// for imp in f.file.imports {
 				// println(imp.mod)
 				// }
-				if node.left.name in f.auto_imports && node.left.name !in f.auto_imports_keep {
-					f.auto_imports_keep << node.left.name
-				}
 			}
 		}
 		f.expr(node.left)
