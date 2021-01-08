@@ -442,9 +442,9 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// }
 	p.next()
 	mut right := if op == .minus {
-		p.expr(token.Precedence.call)
+		p.expr(int(token.Precedence.call))
 	} else {
-		p.expr(token.Precedence.prefix)
+		p.expr(int(token.Precedence.prefix))
 	}
 	p.is_amp = false
 	if mut right is ast.CastExpr {

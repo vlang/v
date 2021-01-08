@@ -14,7 +14,7 @@ mut:
 
 fn main() {
 	mut color_action := C.sg_color_attachment_action{
-		action: C.SG_ACTION_CLEAR
+		action: gfx.Action(C.SG_ACTION_CLEAR)
 	}
 	color_action.val[0] = 0.3
 	color_action.val[1] = 0.3

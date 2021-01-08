@@ -1,0 +1,12 @@
+enum Color {
+	red
+	blue
+}
+
+fn main() {
+	mut color := Color.red
+	mut foo := 1
+	color = 1
+	foo = Color.red
+	println(color == 0)
+}

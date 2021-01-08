@@ -45,6 +45,7 @@ mut:
 	or_is_handled     bool         // ignore `or` in this expression
 	builtin_mod       bool         // are we in the `builtin` module?
 	mod               string       // current module name
+	is_manualfree     bool         // true when `[manualfree] module abc`, makes *all* fns in the current .v file, opt out of autofree
 	attrs             []table.Attr // attributes before next decl stmt
 	expr_mod          string       // for constructing full type names in parse_type()
 	scope             &ast.Scope
@@ -52,6 +53,7 @@ mut:
 	imports           map[string]string // alias => mod_name
 	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
+	auto_imports      []string // imports, the user does not need to specify
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
@@ -231,6 +233,7 @@ pub fn (mut p Parser) parse() ast.File {
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
+		auto_imports: p.auto_imports
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.global_scope
@@ -817,10 +820,12 @@ fn (mut p Parser) attributes() {
 }
 
 fn (mut p Parser) parse_attr() table.Attr {
+	apos := p.prev_tok.position()
 	if p.tok.kind == .key_unsafe {
 		p.next()
 		return table.Attr{
 			name: 'unsafe'
+			pos: apos.extend(p.tok.position())
 		}
 	}
 	mut is_ctdefine := false
@@ -862,6 +867,7 @@ fn (mut p Parser) parse_attr() table.Attr {
 		is_ctdefine: is_ctdefine
 		arg: arg
 		is_string_arg: is_string_arg
+		pos: apos.extend(p.tok.position())
 	}
 }
 
@@ -1670,10 +1676,16 @@ fn (mut p Parser) parse_number_literal() ast.Expr {
 }
 
 fn (mut p Parser) module_decl() ast.Module {
+	mut module_attrs := []table.Attr{}
+	if p.tok.kind == .lsbr {
+		p.attributes()
+		module_attrs = p.attrs
+	}
 	mut name := 'main'
 	is_skipped := p.tok.kind != .key_module
 	mut module_pos := token.Position{}
 	if !is_skipped {
+		p.attrs = []
 		module_pos = p.tok.position()
 		p.next()
 		mut pos := p.tok.position()
@@ -1710,8 +1722,22 @@ fn (mut p Parser) module_decl() ast.Module {
 	}
 	p.mod = full_mod
 	p.builtin_mod = p.mod == 'builtin'
+	if !is_skipped {
+		for ma in module_attrs {
+			match ma.name {
+				'manualfree' {
+					p.is_manualfree = true
+				}
+				else {
+					p.error_with_pos('unknown module attribute `[$ma.name]`', ma.pos)
+					return ast.Module{}
+				}
+			}
+		}
+	}
 	return ast.Module{
 		name: full_mod
+		attrs: module_attrs
 		is_skipped: is_skipped
 		pos: module_pos
 	}
@@ -2041,9 +2067,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.scanner.codegen('
 //
 $pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
-$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (int(flag)) } }
-$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(int(flag)) } }
-$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (int(flag)) } }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
 //
 ')
 	}
