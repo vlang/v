@@ -184,24 +184,16 @@ pub fn (c Color) str() string {
 }
 
 // rgba - convert a color value to an int in the RGBA order.
+[inline]
 pub fn (c Color) rgba() int {
-	mut res := int(0)
-	res += int(c.r) * 0x1000000
-	res += int(c.g) * 0x10000
-	res += int(c.b) * 0x100
-	res += int(c.a) * 0x1
-	return res
+	return (int(c.r) << 24) + (int(c.g) << 16) + (int(c.b) << 8) + int(c.a)
 }
 
-// abgr - convert a color value to an int in the ABGR order.
-// used in some gpu systems
+// abgr - convert a color value to an int in the ABGR order. 
+// Used in some GPU systems.
+[inline]
 pub fn (c Color) abgr() int {
-	mut res := int(0)
-	res += int(c.a) * 0x1000000
-	res += int(c.b) * 0x10000
-	res += int(c.g) * 0x100
-	res += int(c.r) * 0x1
-	return res
+	return (int(c.a) << 24) + (int(c.b) << 16) + (int(c.g) << 8) + int(c.r)
 }
 
 const (
