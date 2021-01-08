@@ -1658,6 +1658,12 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 		// builtin C.m*, C.s* only - temp
 		c.warn('function `$f.name` must be called from an `unsafe` block', call_expr.pos)
 	}
+	if f.is_generic {
+		sym := c.table.get_type_symbol(call_expr.generic_type)
+		if sym.kind == .placeholder {
+			c.error('unknown type `$sym.name`', call_expr.generic_list_pos)
+		}
+	}
 	if f.is_generic && f.return_type.has_flag(.generic) {
 		rts := c.table.get_type_symbol(f.return_type)
 		if rts.kind == .struct_ {
