@@ -53,8 +53,7 @@ pub fn (mut app App) simple() vweb.Result {
 }
 
 pub fn (mut app App) html_page() vweb.Result {
-	app.html('<h1>ok</h1>')
-	return vweb.Result{}
+	return app.html('<h1>ok</h1>')
 }
 
 // the following serve custom routes
@@ -63,8 +62,7 @@ pub fn (mut app App) settings(username string) vweb.Result {
 	if username !in known_users {
 		return app.not_found()
 	}
-	app.html('username: $username')
-	return vweb.Result{}
+	return app.html('username: $username')
 }
 
 ['/:user/:repo/settings']
@@ -72,8 +70,7 @@ pub fn (mut app App) user_repo_settings(username string, repository string) vweb
 	if username !in known_users {
 		return app.not_found()
 	}
-	app.html('username: $username | repository: $repository')
-	return vweb.Result{}
+	return app.html('username: $username | repository: $repository')
 }
 
 [post]
