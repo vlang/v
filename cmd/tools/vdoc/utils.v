@@ -1,7 +1,6 @@
 module main
 
 import os
-import strings
 import v.doc
 
 [inline]
