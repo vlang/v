@@ -100,8 +100,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-pub fn (mut ctx Context) html(s string) {
+pub fn (mut ctx Context) html(s string) Result {
 	ctx.send_response_to_client('text/html', s)
+	return Result{}
 }
 
 pub fn (mut ctx Context) text(s string) Result {
