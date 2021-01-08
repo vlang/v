@@ -36,7 +36,7 @@ make
 ### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
-V Android dependencies: V, Java JDK >= 8, Android SDK + NDK.
+V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
 
   1. Install dependencies (see [vab](https://github.com/vlang/vab))
   2. Plugin-in your Android device
