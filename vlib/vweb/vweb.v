@@ -14,6 +14,7 @@ import time
 pub const (
 	methods_with_form       = [http.Method.post, .put, .patch]
 	methods_without_first   = ['ost', 'ut', 'et', 'atch', 'ptions', 'elete', 'ead'] // needed for method checking as method parameter
+	chromium_head_names     = ['Chrome/', 'Chromium/', 'OPR/', 'Opera/']
 	header_server           = 'Server: VWeb\r\n'
 	header_connection_close = 'Connection: close\r\n'
 	headers_close           = '$header_server$header_connection_close\r\n'
@@ -41,6 +42,7 @@ pub const (
 
 pub struct Context {
 mut:
+	is_chromium       bool
 	content_type      string = 'text/plain'
 	status            string = '200 OK'
 pub:
@@ -219,9 +221,16 @@ pub fn run_app<T>(mut app T, port int) {
 		}
 	}
 	// app.reset()
+	mut last_ip := ''
 	for {
+		is_chromium := app.Context.is_chromium
+		app.Context.is_chromium = false
 		mut conn := l.accept() or { panic('accept() failed') }
-		handle_conn<T>(mut conn, mut app)
+		now_ip := conn.peer_ip() or { '' }
+		if !is_chromium || now_ip != last_ip {
+			handle_conn<T>(mut conn, mut app)
+		}
+		last_ip = now_ip
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
@@ -322,9 +331,19 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 		println('req.data="$req.data"')
 		// println('vweb action = "$action"')
 	}
+	// Chromium handler
+	user_agent := req.headers['User-Agent']
+	mut is_chromium := false
+	for typ in chromium_head_names {
+		if user_agent.contains(typ) {
+			is_chromium = true
+			break
+		}
+	}
 	// mut app := T{
 	app.Context = Context{
 		req: req
+		is_chromium: true
 		conn: conn
 		form: map[string]string{}
 		static_files: app.static_files
