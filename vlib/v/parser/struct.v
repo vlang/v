@@ -295,6 +295,7 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			is_union: is_union
 			is_ref_only: attrs.contains('ref_only')
 			generic_types: generic_types
+			attrs: attrs
 		}
 		is_public: is_pub
 	}

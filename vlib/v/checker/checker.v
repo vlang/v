@@ -504,6 +504,13 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		type_sym.language != .c {
 		c.error('type `$type_sym.name` is private', struct_init.pos)
 	}
+	if type_sym.kind == .struct_ {
+		info := type_sym.info as table.Struct
+		if info.attrs.len > 0 && info.attrs[0].name == 'noinit' && type_sym.mod != c.mod {
+			c.error('struct `$type_sym.name` is declared with a `[noinit]` attribute, so ' + 'it cannot be initialized with `$type_sym.name{}`',
+				struct_init.pos)
+		}
+	}
 	match type_sym.kind {
 		.placeholder {
 			c.error('unknown struct: $type_sym.name', struct_init.pos)
