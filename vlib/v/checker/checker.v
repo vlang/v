@@ -374,7 +374,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	}
 }
 
-pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
+pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
@@ -2956,7 +2956,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.sql_stmt(mut node)
 		}
 		ast.StructDecl {
-			c.struct_decl(node)
+			c.struct_decl(mut node)
 		}
 		ast.TypeDecl {
 			c.type_decl(node)
