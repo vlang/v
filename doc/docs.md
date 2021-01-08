@@ -33,7 +33,7 @@ cd v
 make
 ```
 
-### Android apps
+### Android
 Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
 
 V Android dependencies: V, Java JDK >= 8, Android SDK + NDK.
