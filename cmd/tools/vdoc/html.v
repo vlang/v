@@ -14,7 +14,7 @@ const (
 	css_js_assets = ['doc.css', 'normalize.css', 'doc.js', 'dark-mode.js']
 	res_path      = os.resource_abs_path('resources')
 	favicons_path = os.join_path(res_path, 'favicons')
-	link_svg = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
+	link_svg      = '<svg xmlns="http://www.w3.org/2000/svg" height="24" viewBox="0 0 24 24" width="24"><path d="M0 0h24v24H0z" fill="none"/><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></svg>'
 	html_content  = '<!DOCTYPE html>
 <html lang="en">
 	<head>
@@ -422,18 +422,16 @@ fn html_highlight(code string, tb &table.Table) string {
 
 fn doc_node_html(dn doc.DocNode, link string, head bool, include_examples bool, tb &table.Table) string {
 	mut dnw := strings.new_builder(200)
-
 	head_tag := if head { 'h1' } else { 'h2' }
 	comments := dn.merge_comments_without_examples()
 	// Allow README.md to go through unescaped except for script tags
 	escaped_html := if head && is_module_readme(dn) {
 		// Strip markdown [TOC] directives, since we generate our own.
-		stripped := comments.replace('[TOC]','')
+		stripped := comments.replace('[TOC]', '')
 		markdown_escape_script_tags(stripped)
 	} else {
 		html_tag_escape(comments)
 	}
-
 	md_content := markdown.to_html(escaped_html)
 	hlighted_code := html_highlight(dn.content, tb)
 	node_class := if dn.kind == .const_group { ' const' } else { '' }

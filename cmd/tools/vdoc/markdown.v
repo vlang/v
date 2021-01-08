@@ -4,7 +4,7 @@ import strings
 import v.doc
 
 fn markdown_escape_script_tags(str string) string {
-	return str.replace_each(['<script>','`','</script>','`'])
+	return str.replace_each(['<script>', '`', '</script>', '`'])
 }
 
 fn (vd VDoc) gen_markdown(d doc.Doc, with_toc bool) string {
