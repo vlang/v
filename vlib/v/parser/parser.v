@@ -52,6 +52,7 @@ mut:
 	imports           map[string]string // alias => mod_name
 	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
+	auto_imports      []string // imports, the user does not need to specify
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
@@ -231,6 +232,7 @@ pub fn (mut p Parser) parse() ast.File {
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
+		auto_imports: p.auto_imports
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.global_scope
