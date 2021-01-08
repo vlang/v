@@ -139,7 +139,7 @@ pub fn rgba(r byte, g byte, b byte, a byte) Color {
 	}
 }
 
-pub fn (c Color) +(c2 Color) Color {
+pub fn (c Color) + (c2 Color) Color {
 	return Color{
 		r: c.r + c2.r
 		g: c.g + c2.g
@@ -148,7 +148,7 @@ pub fn (c Color) +(c2 Color) Color {
 	}
 }
 
-pub fn (c Color) -(c2 Color) Color {
+pub fn (c Color) - (c2 Color) Color {
 	return Color{
 		r: c.r - c2.r
 		g: c.g - c2.g
@@ -157,7 +157,7 @@ pub fn (c Color) -(c2 Color) Color {
 	}
 }
 
-pub fn (c Color) *(c2 Color) Color {
+pub fn (c Color) * (c2 Color) Color {
 	return Color{
 		r: c.r * c2.r
 		g: c.g * c2.g
@@ -166,7 +166,7 @@ pub fn (c Color) *(c2 Color) Color {
 	}
 }
 
-pub fn (c Color) /(c2 Color) Color {
+pub fn (c Color) / (c2 Color) Color {
 	return Color{
 		r: c.r / c2.r
 		g: c.g / c2.g
@@ -183,11 +183,32 @@ pub fn (c Color) str() string {
 	return 'Color{$c.r, $c.g, $c.b, $c.a}'
 }
 
+// rgba8 - convert a color value to an int in the RGBA8 order.
+// see https://developer.apple.com/documentation/coreimage/ciformat
+[inline]
+pub fn (c Color) rgba8() int {
+	return (int(c.r) << 24) + (int(c.g) << 16) + (int(c.b) << 8) + int(c.a)
+}
+
+// bgra8 - convert a color value to an int in the BGRA8 order.
+// see https://developer.apple.com/documentation/coreimage/ciformat
+[inline]
+pub fn (c Color) bgra8() int {
+	return (int(c.b) << 24) + (int(c.g) << 16) + (int(c.r) << 8) + int(c.a)
+}
+
+// abgr8 - convert a color value to an int in the ABGR8 order. 
+// see https://developer.apple.com/documentation/coreimage/ciformat
+[inline]
+pub fn (c Color) abgr8() int {
+	return (int(c.a) << 24) + (int(c.b) << 16) + (int(c.g) << 8) + int(c.r)
+}
+
 const (
 	string_colors = {
 		'black': black
-		'blue': blue
-		'red': red
+		'blue':  blue
+		'red':   red
 	}
 )
 
