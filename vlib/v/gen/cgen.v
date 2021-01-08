@@ -5043,7 +5043,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('\treturn *($styp *)&$cvar_name;')
+			err_obj := g.new_tmp_var()
+			g.writeln('\t$styp $err_obj;')
+			g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+			g.writeln('\treturn $err_obj;')
 		}
 	}
 	g.write('}')
