@@ -1,0 +1,11 @@
+fn opt() ?string {
+	return "V"
+}
+
+fn make(s string) {
+	println("Making '${s}'")
+}
+
+fn main() {
+	make(opt()?)
+}

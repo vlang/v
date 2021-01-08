@@ -15,6 +15,10 @@ pub fn (mut c Checker) check_expected_call_arg(got table.Type, expected_ table.T
 		exp_info := exp_type_sym.info as table.Array
 		expected = exp_info.elem_type
 	}
+	if (got.has_flag(.optional) && !expected_.has_flag(.optional)) ||
+		(expected_.has_flag(.optional) && !got.has_flag(.optional) && c.check_types(got, expected)) {
+		return error('cannot use `${c.table.type_to_str(got)}` as `${c.table.type_to_str(expected)}`')
+	}
 	if c.check_types(got, expected) {
 		return
 	}

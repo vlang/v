@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unwrap_optional_function_argument_err.vv:10:7: error: cannot use `?string` as `string` in argument 1 to `make`
+    8 | 
+    9 | fn main() {
+   10 |     make(opt()?)
+      |          ~~~~~~
+   11 | }
