@@ -1,0 +1,7 @@
+fn decode<T>(raw_data string) ?T {
+}
+
+fn main() {
+	x := decode<Foo>('{"name": "test"}')?
+	println(x)
+}
