@@ -214,7 +214,7 @@ pub fn (mut s SSLConn) write(bytes []byte) ? {
 				} else if err_res == .ssl_error_zero_return {
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', err_res)
+				return error_with_code('Could not write SSL. ($err_res),err', int(err_res))
 			}
 			total_sent += sent
 		}

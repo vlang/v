@@ -2041,9 +2041,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.scanner.codegen('
 //
 $pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
-$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (int(flag)) } }
-$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(int(flag)) } }
-$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (int(flag)) } }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
 //
 ')
 	}

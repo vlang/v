@@ -941,13 +941,6 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
 			infix_expr.pos)
-	} else if ((left.kind == .enum_ && right.is_int()) ||
-		(left.is_int() && right.kind == .enum_)) &&
-		infix_expr.op.is_relational() {
-		enum_name := if left.kind == .enum_ { left.name } else { right.name }
-		int_name := if left.kind == .enum_ { right.name } else { left.name }
-		c.warn('cannot compare an `$int_name ` with `$enum_name`, use explicit type cast instead',
-			infix_expr.pos)
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
 	if c.table.type_kind(left_type) == .sum_type {
@@ -2430,16 +2423,6 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			// TODO fix this in C2V instead, for example cast enums to int before using `|` on them.
 			// TODO replace all c.pref.translated checks with `$if !translated` for performance
 			continue
-		}
-		if ((left_sym.kind == .enum_ && right_sym.is_int() && left_sym.language != .c) ||
-			(right_sym.kind == .enum_ && left_sym.is_int() && right_sym.language != .c)) &&
-			!is_decl {
-			msg := if left_sym.kind == .enum_ && right_sym.is_int() {
-				'cannot assign `$right_sym.name` to `$left_sym.name`, use explicit type cast for `int literal` instead'
-			} else {
-				'cannot assign `$right_sym.name` to `$left_sym.name literal`, use explicit type cast for `$right_sym.name` instead'
-			}
-			c.warn('$msg', assign_stmt.pos)
 		}
 		if left_sym.kind == .array && !c.inside_unsafe && assign_stmt.op in [.assign, .decl_assign] &&
 			right_sym.kind == .array &&
