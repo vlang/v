@@ -131,6 +131,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
+	attrs      []table.Attr
 	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
