@@ -18,8 +18,8 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
-		'cmd/tools/vdoc/vdoc.v',
 		'cmd/v/v.v',
+		'cmd/tools/vdoc/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',

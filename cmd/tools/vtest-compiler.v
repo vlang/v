@@ -34,7 +34,7 @@ fn v_test_compiler(vargs string) {
 			eprintln('v.c can be compiled without warnings. This is good :)')
 		}
 	}
-	building_tools_failed := testing.v_build_failing(vargs, 'cmd/tools')
+	building_tools_failed := os.system('"$vexe" build-tools') != 0
 	eprintln('')
 	testing.eheader('Testing all _test.v files...')
 	mut compiler_test_session := testing.new_test_session(vargs)
