@@ -193,6 +193,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	if mod.is_skipped {
 		return
 	}
+	f.attrs(mod.attrs)
 	f.writeln('module $mod.name\n')
 }
 

@@ -131,6 +131,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
+	attrs      []table.Attr
 	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
@@ -296,6 +297,7 @@ pub:
 	is_pub          bool
 	is_variadic     bool
 	is_anon         bool
+	is_manualfree   bool // true, when [manualfree] is used on a fn
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
