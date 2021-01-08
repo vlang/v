@@ -65,3 +65,18 @@ fn test_generic_t_is2() {
 	assert res == 'It\'s a string!'
 	assert res2 == GenericTIsTest{}
 }
+
+fn generic_t_is3<T>(raw_data string) ?T {
+	$if T is string {
+		return ''
+	}
+	return T{}
+}
+
+fn test_generic_t_is3() {
+	res := generic_t_is3<GenericTIsTest>('') or {
+		assert false
+		GenericTIsTest{}
+	}
+	assert res == GenericTIsTest{}
+}
