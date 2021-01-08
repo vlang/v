@@ -17,13 +17,24 @@ pub enum Level {
 }
 
 // tag returns the tag for log level `l` as a string.
-fn tag(l Level) string {
+fn tag_to_cli(l Level) string {
 	return match l {
 		.fatal { term.red('FATAL') }
 		.error { term.red('ERROR') }
 		.warn { term.yellow('WARN ') }
 		.info { term.white('INFO ') }
 		.debug { term.blue('DEBUG') }
+	}
+}
+
+// tag returns the tag for log level `l` as a string.
+fn tag_to_file(l Level) string {
+	return match l {
+		.fatal { 'FATAL' }
+		.error { 'ERROR' }
+		.warn { 'WARN ' }
+		.info { 'INFO ' }
+		.debug { 'DEBUG' }
 	}
 }
 
@@ -94,13 +105,13 @@ pub fn (mut l Log) close() {
 // log_file writes log line `s` with `level` to the log file.
 fn (mut l Log) log_file(s string, level Level) {
 	timestamp := time.now().format_ss()
-	e := tag(level)
+	e := tag_to_file(level)
 	l.ofile.writeln('$timestamp [$e] $s')
 }
 
 // log_cli writes log line `s` with `level` to stdout.
 fn (l &Log) log_cli(s string, level Level) {
-	f := tag(level)
+	f := tag_to_cli(level)
 	t := time.now()
 	println('[$f $t.format_ss()] $s')
 }
