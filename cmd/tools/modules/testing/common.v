@@ -143,6 +143,10 @@ pub fn (mut ts TestSession) init() {
 	ts.benchmark = benchmark.new_benchmark_no_cstep()
 }
 
+pub fn (mut ts TestSession) add(file string) {
+	ts.files << file
+}
+
 pub fn (mut ts TestSession) test() {
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
@@ -307,32 +311,38 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 	files := os.walk_ext(os.join_path(parent_dir, folder), '.v')
 	mut mains := []string{}
 	mut skipped := oskipped.clone()
-	for f in files {
-		if !f.contains('modules') && !f.contains('preludes') {
-			// $if !linux {
-			// run pg example only on linux
-			if f.contains('/pg/') {
-				continue
-			}
-			// }
-			if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
-				continue
-			}
-			$if windows {
-				// skip pico example on windows
-				if f.ends_with('examples\\pico\\pico.v') {
-					continue
-				}
-			}
-			c := os.read_file(f) or { panic(err) }
-			maxc := if c.len > 300 { 300 } else { c.len }
-			start := c[0..maxc]
-			if start.contains('module ') && !start.contains('module main') {
-				skipped_f := f.replace(os.join_path(parent_dir, ''), '')
-				skipped << skipped_f
-			}
-			mains << f
+	next_file: for f in files {
+		if f.contains('modules') || f.contains('preludes') {
+			continue
 		}
+		// $if !linux {
+		// run pg example only on linux
+		if f.contains('/pg/') {
+			continue
+		}
+		// }
+		if f.contains('life_gg') || f.contains('/graph.v') || f.contains('rune.v') {
+			continue
+		}
+		$if windows {
+			// skip pico example on windows
+			if f.ends_with('examples\\pico\\pico.v') {
+				continue
+			}
+		}
+		c := os.read_file(f) or { panic(err) }
+		maxc := if c.len > 300 { 300 } else { c.len }
+		start := c[0..maxc]
+		if start.contains('module ') && !start.contains('module main') {
+			skipped_f := f.replace(os.join_path(parent_dir, ''), '')
+			skipped << skipped_f
+		}
+		for skip_prefix in oskipped {
+			if f.starts_with(skip_prefix) {
+				continue next_file
+			}
+		}
+		mains << f
 	}
 	session.files << mains
 	session.skip_files << skipped
