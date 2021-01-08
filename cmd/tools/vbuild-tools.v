@@ -6,9 +6,11 @@ import v.util
 
 // NB: tools like vdoc are compiled in their own subfolder
 // => cmd/tools/vdoc/vdoc.exe
-// Usually, they have several top level .v files in the
-// subfolder. That is why these folders are initially skipped,
-// then added as a whole after the testing.prepare_test_session call.
+// Usually, they have several top level .v files in the subfolder,
+// that cannot be compiled separately, but instead, the whole folder,
+// should be compiled (v folder).
+// To implement that, these folders are initially skipped, then added
+// as a whole *after the testing.prepare_test_session call*.
 const tools_in_subfolders = ['vdoc']
 
 // non_packaged_tools are tools that should not be packaged with
