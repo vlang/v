@@ -343,7 +343,7 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	// mut app := T{
 	app.Context = Context{
 		req: req
-		is_chromium: true
+		is_chromium: is_chromium
 		conn: conn
 		form: map[string]string{}
 		static_files: app.static_files
