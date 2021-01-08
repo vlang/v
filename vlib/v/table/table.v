@@ -638,7 +638,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
-	typ_sym := t.get_type_symbol(typ)
+	typ_sym := t.get_final_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
 		// return typ.clear_flag(.variadic)

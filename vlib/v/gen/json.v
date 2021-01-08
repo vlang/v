@@ -222,7 +222,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 '
 	}
 	return '
-	if(root && !cJSON_IsArray(root)) {
+	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_array_$styp *)&err;
 	}
@@ -267,7 +267,7 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 '
 	}
 	return '
-	if(!cJSON_IsObject(root)) {
+	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_map_${styp}_$styp_v *)&err;
 	}

@@ -12,6 +12,7 @@ import v.util.vtest
 const (
 	error_missing_vexe = 1
 	error_failed_tests = 2
+	b2v_keep_path      = os.join_path('vlib', 'v', 'fmt', 'tests', 'bin2v_keep.vv')
 )
 
 fn test_fmt() {
@@ -28,6 +29,7 @@ fn test_fmt() {
 	tmpfolder := os.temp_dir()
 	diff_cmd := util.find_working_diff_command() or { '' }
 	mut fmt_bench := benchmark.new_benchmark()
+	fill_bin2v_keep() or { eprintln('failed creating vbin2v_keep.vv: $err') }
 	keep_input_files := os.walk_ext('vlib/v/fmt/tests', '_keep.vv')
 	expected_input_files := os.walk_ext('vlib/v/fmt/tests', '_expected.vv')
 	mut input_files := []string{}
@@ -69,10 +71,24 @@ fn test_fmt() {
 		fmt_bench.ok()
 		eprintln(fmt_bench.step_message_ok('$vrelpath'))
 	}
+	restore_bin2v_placeholder() or { eprintln('failed restoring vbin2v_keep.vv placeholder: $err') }
 	fmt_bench.stop()
 	eprintln(term.h_divider('-'))
 	eprintln(fmt_bench.total_message(fmt_message))
 	if fmt_bench.nfail > 0 {
 		exit(error_failed_tests)
 	}
+}
+
+fn fill_bin2v_keep() ? {
+	img0 := os.join_path('tutorials', 'img', 'hello.png')
+	img1 := os.join_path('tutorials', 'img', 'time.png')
+	os.rm(b2v_keep_path) ?
+	os.exec('v bin2v -w $b2v_keep_path $img0 $img1') ?
+}
+
+fn restore_bin2v_placeholder() ? {
+	text := '// This is a placeholder file which will be filled with bin2v output before the test.
+// HINT: do NOT delete, move or rename this file!\n'
+	os.write_file(b2v_keep_path, text) ?
 }

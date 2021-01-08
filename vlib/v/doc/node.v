@@ -45,3 +45,26 @@ pub fn (cnts map[string]DocNode) arr() []DocNode {
 	contents.sort_by_kind()
 	return contents
 }
+
+// merge_comments returns a `string` with the combined contents of `DocNode.comments`.
+pub fn (dc DocNode) merge_comments() string {
+	return merge_doc_comments(dc.comments)
+}
+
+// merge_comments_without_examples returns a `string` with the
+// combined contents of `DocNode.comments` - excluding any examples.
+pub fn (dc DocNode) merge_comments_without_examples() string {
+	sans_examples := dc.comments.filter(!it.is_example())
+	return merge_doc_comments(sans_examples)
+}
+
+// examples returns a `[]string` containing examples parsed from `DocNode.comments`.
+pub fn (dn DocNode) examples() []string {
+	mut output := []string{}
+	for comment in dn.comments {
+		if comment.is_example() {
+			output << comment.example()
+		}
+	}
+	return output
+}

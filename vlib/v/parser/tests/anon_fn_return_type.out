@@ -1,0 +1,6 @@
+vlib/v/parser/tests/anon_fn_return_type.vv:7:22: error: expected return type, not string "hi" for anonymous function
+    5 | _ = fn (name string) flag.Flag
+    6 | _ = fn (name string) flag.Flag {return {}}
+    7 | _ = fn (name string) "hi" + name
+      |                      ~~~~
+    8 |

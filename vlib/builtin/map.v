@@ -230,44 +230,44 @@ pub mut:
 }
 
 fn map_hash_string(pkey voidptr) u64 {
-	key := *&string(pkey)
+	key := *unsafe { &string(pkey) }
 	return hash.wyhash_c(key.str, u64(key.len), 0)
 }
 
 fn map_hash_int_1(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&byte(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &byte(pkey) }, 0)
 }
 
 fn map_hash_int_2(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u16(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u16(pkey) }, 0)
 }
 
 fn map_hash_int_4(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u32(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u32(pkey) }, 0)
 }
 
 fn map_hash_int_8(pkey voidptr) u64 {
-	return hash.wyhash64_c(*&u64(pkey), 0)
+	return hash.wyhash64_c(*unsafe { &u64(pkey) }, 0)
 }
 
 fn map_eq_string(a voidptr, b voidptr) bool {
-	return fast_string_eq(*&string(a), *&string(b))
+	return fast_string_eq(*unsafe { &string(a) }, *unsafe { &string(b) })
 }
 
 fn map_eq_int_1(a voidptr, b voidptr) bool {
-	return *&byte(a) == *&byte(b)
+	return unsafe { *&byte(a) == *&byte(b) }
 }
 
 fn map_eq_int_2(a voidptr, b voidptr) bool {
-	return *&u16(a) == *&u16(b)
+	return unsafe { *&u16(a) == *&u16(b) }
 }
 
 fn map_eq_int_4(a voidptr, b voidptr) bool {
-	return *&u32(a) == *&u32(b)
+	return unsafe { *&u32(a) == *&u32(b) }
 }
 
 fn map_eq_int_8(a voidptr, b voidptr) bool {
-	return *&u64(a) == *&u64(b)
+	return unsafe { *&u64(a) == *&u64(b) }
 }
 
 fn map_clone_string(dest voidptr, pkey voidptr) {
@@ -302,7 +302,7 @@ fn map_clone_int_8(dest voidptr, pkey voidptr) {
 }
 
 fn map_free_string(pkey voidptr) {
-	(*&string(pkey)).free()
+	(*unsafe { &string(pkey) }).free()
 }
 
 fn map_free_nop(_ voidptr) {

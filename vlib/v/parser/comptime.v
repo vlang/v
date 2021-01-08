@@ -263,53 +263,44 @@ fn os_from_string(os string) pref.OS {
 	return .linux
 }
 
-// `app.$action()` (`action` is a string)
-// `typ` is `App` in this example
-// fn (mut p Parser) comptime_method_call(typ table.Type) ast.ComptimeCall {
-fn (mut p Parser) comptime_method_call(left ast.Expr) ast.ComptimeCall {
+fn (mut p Parser) comptime_selector(left ast.Expr) ast.Expr {
 	p.check(.dollar)
-	method_name := p.check_name()
-	/*
-	mut j := 0
-	sym := p.table.get_type_symbol(typ)
-	if sym.kind != .struct_ {
-		p.error('not a struct')
+	mut has_parens := false
+	if p.tok.kind == .lpar {
+		p.check(.lpar)
+		has_parens = true
 	}
-	// info := sym.info as table.Struct
-	for method in sym.methods {
-		if method.return_type != table.void_type {
-			continue
+	if p.peek_tok.kind == .lpar {
+		method_name := p.check_name()
+		// `app.$action()` (`action` is a string)
+		if has_parens {
+			p.check(.rpar)
 		}
-		/*
-		receiver := method.args[0]
-		if !p.expr_var.ptr {
-			p.error('`$p.expr_var.name` needs to be a reference')
+		p.check(.lpar)
+		mut args_var := ''
+		if p.tok.kind == .name {
+			args_var = p.tok.lit
+			p.next()
 		}
-		amp := if receiver.is_mut && !p.expr_var.ptr { '&' } else { '' }
-		if j > 0 {
-			p.gen(' else ')
+		p.check(.rpar)
+		if p.tok.kind == .key_orelse {
+			p.check(.key_orelse)
+			p.check(.lcbr)
 		}
-		p.genln('if (string_eq($method_name, _STR("$method.name")) ) ' + '${typ.name}_$method.name ($amp $p.expr_var.name);')
-		*/
-		j++
+		return ast.ComptimeCall{
+			has_parens: has_parens
+			left: left
+			method_name: method_name
+			args_var: args_var
+		}
 	}
-	*/
-	p.check(.lpar)
-	mut args_var := ''
-	if p.tok.kind == .name {
-		args_var = p.tok.lit
-		p.next()
+	expr := p.expr(0)
+	if has_parens {
+		p.check(.rpar)
 	}
-	p.check(.rpar)
-	if p.tok.kind == .key_orelse {
-		p.check(.key_orelse)
-		// p.genln('else {')
-		p.check(.lcbr)
-		// p.statements()
-	}
-	return ast.ComptimeCall{
+	return ast.ComptimeSelector{
+		has_parens: has_parens
 		left: left
-		method_name: method_name
-		args_var: args_var
+		field_expr: expr
 	}
 }

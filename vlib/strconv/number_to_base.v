@@ -19,7 +19,7 @@ pub fn format_int(n i64, radix int) string {
 	}
 	mut res := ''
 	for n_copy != 0 {
-		res = base_digits[n_copy % radix].str() + res
+		res = base_digits[n_copy % radix].ascii_str() + res
 		n_copy /= radix
 	}
 	return '$sign$res'
@@ -38,7 +38,7 @@ pub fn format_uint(n u64, radix int) string {
 	mut res := ''
 	uradix := u64(radix)
 	for n_copy != 0 {
-		res = base_digits[n_copy % uradix].str() + res
+		res = base_digits[n_copy % uradix].ascii_str() + res
 		n_copy /= uradix
 	}
 	return res

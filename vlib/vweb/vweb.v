@@ -72,6 +72,7 @@ pub struct Cookie {
 	http_only bool
 }
 
+[noinit]
 pub struct Result {
 }
 
@@ -99,8 +100,9 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, res string) bo
 	return true
 }
 
-pub fn (mut ctx Context) html(s string) {
+pub fn (mut ctx Context) html(s string) Result {
 	ctx.send_response_to_client('text/html', s)
+	return Result{}
 }
 
 pub fn (mut ctx Context) text(s string) Result {
@@ -367,19 +369,14 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 	// mut url_words := vals[1][1..].split('/').filter(it != '')
 	x := vals[1][1..].split('/')
 	mut url_words := x.filter(it != '')
-	if url_words.len == 0 {
-		app.index()
-		return
-	} else {
-		// Parse URL query
-		if url_words.last().contains('?') {
-			words := url_words.last().after('?').split('&')
-			tmp_query := words.map(it.split('='))
-			url_words[url_words.len - 1] = url_words.last().all_before('?')
-			for data in tmp_query {
-				if data.len == 2 {
-					app.query[data[0]] = data[1]
-				}
+	// Parse URL query
+	if url_words.len > 0 && url_words.last().contains('?') {
+		words := url_words.last().after('?').split('&')
+		tmp_query := words.map(it.split('='))
+		url_words[url_words.len - 1] = url_words.last().all_before('?')
+		for data in tmp_query {
+			if data.len == 2 {
+				app.query[data[0]] = data[1]
 			}
 		}
 	}
@@ -420,15 +417,24 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 				route_words_a = attrs.filter(it.to_lower() != 'get').map(it[1..].split('/'))
 			}
 			if attrs.len == 0 || (attrs.len == 1 && route_words_a.len == 0) {
-				// No routing for this method. If it matches, call it and finish matching
-				// since such methods have a priority.
-				// For example URL `/register` matches route `/:user`, but `fn register()`
-				// should be called first.
-				if (req_method_str == '' &&
-					url_words[0] == method.name && url_words.len == 1) ||
-					(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1) {
+				if url_words.len > 0 {
+					// No routing for this method. If it matches, call it and finish matching
+					// since such methods have a priority.
+					// For example URL `/register` matches route `/:user`, but `fn register()`
+					// should be called first.
+					if (req_method_str == '' &&
+						url_words[0] == method.name && url_words.len == 1) ||
+						(req_method_str == req.method.str() && url_words[0] == method.name && url_words.len == 1) {
+						$if debug {
+							println('easy match method=$method.name')
+						}
+						app.$method(vars)
+						return
+					}
+				} else if method.name == 'index' {
+					// handle / to .index()
 					$if debug {
-						println('easy match method=$method.name')
+						println('route to .index()')
 					}
 					app.$method(vars)
 					return
@@ -436,12 +442,14 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 			} else {
 				mut req_method := []string{}
 				if route_words_a.len > 0 {
-					for route_words in route_words_a {
-						if route_words[0] in methods_without_first && route_words.len == 1 {
+					for route_words_ in route_words_a {
+						// cannot move to line initialize line because of C error with map(it.filter(it != ''))
+						route_words := route_words_.filter(it != '')
+						if route_words.len == 1 && route_words[0] in methods_without_first {
 							req_method << route_words[0]
 						}
 						if url_words.len == route_words.len ||
-							(url_words.len >= route_words.len - 1 && route_words.last().ends_with('...')) {
+							(url_words.len >= route_words.len - 1 && route_words.len > 0 && route_words.last().ends_with('...')) {
 							if req_method.len > 0 {
 								if req_method_str.to_lower()[1..] !in req_method {
 									continue
@@ -451,6 +459,10 @@ fn handle_conn<T>(mut conn net.TcpConn, mut app T) {
 							mut matching := false
 							mut unknown := false
 							mut variables := []string{cap: route_words.len}
+							if route_words.len == 0 && url_words.len == 0 {
+								// index route
+								matching = true
+							}
 							for i in 0 .. route_words.len {
 								if url_words.len == i {
 									variables << ''

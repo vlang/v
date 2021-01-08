@@ -256,7 +256,7 @@ pub fn (mut f Fmt) stmt_str(node ast.Stmt) string {
 
 pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	if f.is_debug {
-		eprintln('stmt: ${node.position():-42} | node: ${typeof(node):-20}')
+		eprintln('stmt: ${node.position():-42} | node: ${node.type_name():-20}')
 	}
 	match node {
 		ast.AssignStmt {
@@ -855,7 +855,7 @@ pub fn (mut f Fmt) prefix_expr_cast_expr(fexpr ast.Expr) {
 
 pub fn (mut f Fmt) expr(node ast.Expr) {
 	if f.is_debug {
-		eprintln('expr: ${node.position():-42} | node: ${typeof(node):-20} | $node.str()')
+		eprintln('expr: ${node.position():-42} | node: ${node.type_name():-20} | $node.str()')
 	}
 	match mut node {
 		ast.CTempVar {
@@ -925,8 +925,17 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.write("\$tmpl('$node.args_var')")
 				}
 			} else {
-				f.write('${node.left}.\$${node.method_name}($node.args_var)')
+				method_expr := if node.has_parens {
+					'(${node.method_name}($node.args_var))'
+				} else {
+					'${node.method_name}($node.args_var)'
+				}
+				f.write('${node.left}.$$method_expr')
 			}
+		}
+		ast.ComptimeSelector {
+			field_expr := if node.has_parens { '($node.field_expr)' } else { node.field_expr.str() }
+			f.write('${node.left}.$$field_expr')
 		}
 		ast.ConcatExpr {
 			for i, val in node.vals {
@@ -1349,6 +1358,10 @@ struct CommentsOptions {
 }
 
 pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
+	if node.text.starts_with('#!') {
+		f.writeln(node.text)
+		return
+	}
 	if options.iembed {
 		x := node.text.trim_left('\x01')
 		if x.contains('\n') {
@@ -1617,6 +1630,14 @@ pub fn (mut f Fmt) at_expr(node ast.AtExpr) {
 	f.write(node.name)
 }
 
+fn (mut f Fmt) write_generic_if_require(node ast.CallExpr) {
+	if node.generic_type != 0 && node.generic_type != table.void_type {
+		f.write('<')
+		f.write(f.table.type_to_str(node.generic_type))
+		f.write('>')
+	}
+}
+
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
@@ -1672,7 +1693,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 		}
 		f.expr(node.left)
-		f.write('.' + node.name + '(')
+		f.write('.' + node.name)
+		f.write_generic_if_require(node)
+		f.write('(')
 		f.call_args(node.args)
 		f.write(')')
 		// if is_mut {
@@ -1693,11 +1716,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			}
 			f.write('$name')
 		}
-		if node.generic_type != 0 && node.generic_type != table.void_type {
-			f.write('<')
-			f.write(f.table.type_to_str(node.generic_type))
-			f.write('>')
-		}
+		f.write_generic_if_require(node)
 		f.write('(')
 		f.call_args(node.args)
 		f.write(')')

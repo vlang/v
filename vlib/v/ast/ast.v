@@ -10,11 +10,11 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ConcatExpr |
-	EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr | IntegerLiteral |
-	Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr | PrefixExpr |
-	RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral | StringLiteral |
-	StructInit | Type | TypeOf | UnsafeExpr
+	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
+	ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr |
+	IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
+	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
+	StringLiteral | StructInit | Type | TypeOf | UnsafeExpr
 
 pub type Stmt = AssertStmt | AssignStmt | Block | BranchStmt | CompFor | ConstDecl | DeferStmt |
 	EnumDecl | ExprStmt | FnDecl | ForCStmt | ForInStmt | ForStmt | GlobalDecl | GoStmt |
@@ -120,6 +120,7 @@ pub mut:
 pub fn (e &SelectorExpr) root_ident() Ident {
 	mut root := e.expr
 	for root is SelectorExpr {
+		// TODO: remove this line
 		selector_expr := root as SelectorExpr
 		root = selector_expr.expr
 	}
@@ -532,6 +533,7 @@ pub mut:
 	left_type   table.Type
 	right_type  table.Type
 	auto_locked string
+	or_block    OrExpr
 }
 
 // ++, --
@@ -948,7 +950,7 @@ pub:
 	typ       table.Type // `string` TODO rename to `type_to_cast_to`
 	pos       token.Position
 pub mut:
-	typname   string
+	typname   string     // TypeSymbol.name
 	expr_type table.Type // `byteptr`
 	has_arg   bool
 	in_prexpr bool // is the parent node an ast.PrefixExpr
@@ -1056,8 +1058,19 @@ pub mut:
 	val  string
 }
 
+pub struct ComptimeSelector {
+pub:
+	has_parens bool // if $() is used, for vfmt
+	left       Expr
+	field_expr Expr
+pub mut:
+	left_type  table.Type
+	typ        table.Type
+}
+
 pub struct ComptimeCall {
 pub:
+	has_parens  bool // if $() is used, for vfmt
 	method_name string
 	left        Expr
 	is_vweb     bool
@@ -1147,7 +1160,7 @@ pub fn (expr Expr) position() token.Position {
 		IfGuardExpr {
 			return expr.expr.position()
 		}
-		ComptimeCall {
+		ComptimeCall, ComptimeSelector {
 			return expr.left.position()
 		}
 		InfixExpr {
@@ -1205,11 +1218,11 @@ pub fn (stmt Stmt) check_c_expr() ? {
 			if stmt.expr.is_expr() {
 				return
 			}
-			return error('unsupported statement (`${typeof(stmt.expr)}`)')
+			return error('unsupported statement (`$stmt.expr.type_name()`)')
 		}
 		else {}
 	}
-	return error('unsupported statement (`${typeof(stmt)}`)')
+	return error('unsupported statement (`$stmt.type_name()`)')
 }
 
 // CTempVar is used in cgen only, to hold nodes for temporary variables

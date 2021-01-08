@@ -1,22 +1,21 @@
 // Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
-
 module csv
 
 import strings
 
 struct Writer {
 mut:
-	sb strings.Builder
+	sb        strings.Builder
 pub mut:
-	use_crlf bool
+	use_crlf  bool
 	delimiter byte
 }
 
 pub fn new_writer() &Writer {
 	return &Writer{
-		delimiter: `,`,
+		delimiter: `,`
 		sb: strings.new_builder(200)
 	}
 }
@@ -30,34 +29,25 @@ pub fn (mut w Writer) write(record []string) ?bool {
 	for n, field_ in record {
 		mut field := field_
 		if n > 0 {
-			w.sb.write(w.delimiter.str())
+			w.sb.write(w.delimiter.ascii_str())
 		}
-
 		if !w.field_needs_quotes(field) {
 			w.sb.write(field)
 			continue
 		}
-
 		w.sb.write('"')
-
 		for field.len > 0 {
 			mut i := field.index_any('"\r\n')
 			if i < 0 {
 				i = field.len
 			}
-
 			w.sb.write(field[..i])
 			field = field[i..]
-
 			if field.len > 0 {
 				z := field[0]
 				match z {
-					`"` {
-						w.sb.write('""')
-					}
-					`\r`, `\n` {
-						w.sb.write(le)
-					}
+					`"` { w.sb.write('""') }
+					`\r`, `\n` { w.sb.write(le) }
 					else {}
 				}
 				field = field[1..]
@@ -65,7 +55,6 @@ pub fn (mut w Writer) write(record []string) ?bool {
 		}
 		w.sb.write('"')
 	}
-
 	w.sb.write(le)
 	return true
 }
@@ -76,12 +65,11 @@ pub fn (mut w Writer) write(record []string) ?bool {
 // 		w.write(record)
 // 	}
 // }
-
 fn (w &Writer) field_needs_quotes(field string) bool {
 	if field == '' {
 		return false
 	}
-	if field.contains(w.delimiter.str()) || (field.index_any('"\r\n') != -1) {
+	if field.contains(w.delimiter.ascii_str()) || (field.index_any('"\r\n') != -1) {
 		return true
 	}
 	return false

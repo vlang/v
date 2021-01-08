@@ -2,41 +2,41 @@ vlib/v/checker/tests/match_duplicate_branch.vv:15:3: error: match case `St1` is 
    13 |     match i {
    14 |         St1 { println('St1') }
    15 |         St1 { println('St1') }
-      |         ~~~~~
+      |         ~~~
    16 |         St2 { println('St2') }
    17 |     }
 vlib/v/checker/tests/match_duplicate_branch.vv:20:3: error: match case `St1` is handled more than once
    18 |     match i {
    19 |         St1 { println('St1') }
    20 |         St1 { println('St1') }
-      |         ~~~~~
+      |         ~~~
    21 |         else { println('else') }
    22 |     }
 vlib/v/checker/tests/match_duplicate_branch.vv:29:3: error: match case `green` is handled more than once
    27 |         .red { println('red') }
    28 |         .green { println('green') }
    29 |         .green { println('green') }
-      |         ~~~~~~~~
+      |         ~~~~~~
    30 |         .blue { println('blue') }
    31 |     }
 vlib/v/checker/tests/match_duplicate_branch.vv:34:3: error: match case `green` is handled more than once
    32 |     match c {
    33 |         .red, .green { println('red green') }
    34 |         .green { println('green') }
-      |         ~~~~~~~~
+      |         ~~~~~~
    35 |         else { println('else') }
    36 |     }
 vlib/v/checker/tests/match_duplicate_branch.vv:43:3: error: match case `2` is handled more than once
    41 |         1 { println('1') }
    42 |         2 { println('2') }
    43 |         2 { println('3') }
-      |         ~~~
+      |         ^
    44 |         else { println('else') }
    45 |     }
 vlib/v/checker/tests/match_duplicate_branch.vv:51:3: error: match case `3` is handled more than once
    49 |     match i {
    50 |         1...5 { println('1 to 5') }
    51 |         3 { println('3') }
-      |         ~~~
+      |         ^
    52 |         else { println('else') }
    53 |     }

@@ -145,6 +145,27 @@ fn test_if_global_flag_gets_set_in_subcommand() {
 	cmd.parse(['command', '-flag', 'value', 'subcommand'])
 }
 
+fn test_command_setup() {
+	mut cmd := cli.Command{
+		name: 'root'
+		commands: [
+			cli.Command{
+				name: 'child'
+				commands: [
+					cli.Command{
+						name: 'child-child'
+					},
+				]
+			},
+		]
+	}
+	assert isnil(cmd.commands[0].parent)
+	assert isnil(cmd.commands[0].commands[0].parent)
+	cmd.setup()
+	assert cmd.commands[0].parent.name == 'root'
+	assert cmd.commands[0].commands[0].parent.name == 'child'
+}
+
 // helper functions
 fn empty_func(cmd cli.Command) ? {
 }
