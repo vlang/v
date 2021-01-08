@@ -3,7 +3,6 @@ module websocket
 import net
 import x.openssl
 import log
-import sync
 import time
 import rand
 

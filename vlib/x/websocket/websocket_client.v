@@ -7,7 +7,6 @@ import x.openssl
 import net.urllib
 import time
 import log
-import sync
 import rand
 
 const (

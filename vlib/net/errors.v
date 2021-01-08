@@ -20,7 +20,7 @@ pub fn socket_error(potential_code int) ?int {
 		if potential_code < 0 {
 			last_error_int := C.WSAGetLastError()
 			last_error := wsa_error(last_error_int)
-			return error_with_code('net: socket error: ($last_error_int) $last_error', last_error)
+			return error_with_code('net: socket error: ($last_error_int) $last_error', int(last_error))
 		}
 	}
 	$else {

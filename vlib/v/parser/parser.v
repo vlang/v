@@ -53,6 +53,7 @@ mut:
 	imports           map[string]string // alias => mod_name
 	ast_imports       []ast.Import      // mod_names
 	used_imports      []string // alias
+	auto_imports      []string // imports, the user does not need to specify
 	imported_symbols  map[string]string
 	is_amp            bool // for generating the right code for `&Foo{}`
 	returns           bool
@@ -232,6 +233,7 @@ pub fn (mut p Parser) parse() ast.File {
 		mod: module_decl
 		imports: p.ast_imports
 		imported_symbols: p.imported_symbols
+		auto_imports: p.auto_imports
 		stmts: stmts
 		scope: p.scope
 		global_scope: p.global_scope
@@ -2065,9 +2067,9 @@ fn (mut p Parser) enum_decl() ast.EnumDecl {
 		p.scanner.codegen('
 //
 $pubfn (    e &$enum_name) has(flag $enum_name) bool { return      (int(*e) &  (int(flag))) != 0 }
-$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = int(*e) |  (int(flag)) } }
-$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = int(*e) & ~(int(flag)) } }
-$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = int(*e) ^  (int(flag)) } }
+$pubfn (mut e  $enum_name) set(flag $enum_name)      { unsafe{ *e = ${enum_name}(int(*e) |  (int(flag))) } }
+$pubfn (mut e  $enum_name) clear(flag $enum_name)    { unsafe{ *e = ${enum_name}(int(*e) & ~(int(flag))) } }
+$pubfn (mut e  $enum_name) toggle(flag $enum_name)   { unsafe{ *e = ${enum_name}(int(*e) ^  (int(flag))) } }
 //
 ')
 	}

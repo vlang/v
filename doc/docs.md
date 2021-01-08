@@ -2228,8 +2228,6 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
-import sync
-
 fn f(ch chan int) {
 	// ...
 }
@@ -2331,8 +2329,6 @@ if select {
 
 For special purposes there are some builtin properties and methods:
 ```v nofmt
-import sync
-
 struct Abc{x int}
 
 a := 2.13
