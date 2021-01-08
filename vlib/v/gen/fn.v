@@ -16,6 +16,15 @@ fn (mut g Gen) gen_fn_decl(it ast.FnDecl, skip bool) {
 		return
 	}
 	g.returned_var_name = ''
+	//
+	old_g_autofree := g.is_autofree
+	if it.is_manualfree {
+		g.is_autofree = false
+	}
+	defer {
+		g.is_autofree = old_g_autofree
+	}
+	//
 	// if g.fileis('vweb.v') {
 	// println('\ngen_fn_decl() $it.name $it.is_generic $g.cur_generic_type')
 	// }
@@ -263,12 +272,12 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	defer {
 		g.inside_call = false
 	}
-	gen_or := node.or_block.kind != .absent && !g.pref.autofree
+	gen_or := node.or_block.kind != .absent && !g.is_autofree
 	// if gen_or {
 	// g.writeln('/*start*/')
 	// }
 	is_gen_or_and_assign_rhs := gen_or && g.is_assign_rhs
-	cur_line := if is_gen_or_and_assign_rhs && !g.pref.autofree {
+	cur_line := if is_gen_or_and_assign_rhs && !g.is_autofree {
 		line := g.go_before_stmt(0)
 		g.out.write(tabs[g.indent])
 		line
@@ -290,8 +299,8 @@ fn (mut g Gen) call_expr(node ast.CallExpr) {
 	} else {
 		g.fn_call(node)
 	}
-	if gen_or { // && !g.pref.autofree {
-		if !g.pref.autofree {
+	if gen_or { // && !g.autofree {
+		if !g.is_autofree {
 			g.or_block(tmp_opt, node.or_block, node.return_type)
 		}
 		if is_gen_or_and_assign_rhs {
@@ -557,7 +566,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 			tmp2 = g.new_tmp_var()
 			g.writeln('Option_$typ $tmp2 = $fn_name ($json_obj);')
 		}
-		if !g.pref.autofree {
+		if !g.is_autofree {
 			g.write('cJSON_Delete($json_obj); //del')
 		}
 		g.write('\n$cur_line')
@@ -594,7 +603,7 @@ fn (mut g Gen) fn_call(node ast.CallExpr) {
 		// check if alias parent also not a string
 		if typ != table.string_type {
 			expr := node.args[0].expr
-			if g.autofree && !typ.has_flag(.optional) {
+			if g.is_autofree && !typ.has_flag(.optional) {
 				// Create a temporary variable so that the value can be freed
 				tmp := g.new_tmp_var()
 				// tmps << tmp
@@ -640,7 +649,7 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.autofree && !g.is_builtin_mod && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}
@@ -775,7 +784,7 @@ fn (mut g Gen) call_args(node ast.CallExpr) {
 		if is_variadic && i == expected_types.len - 1 {
 			break
 		}
-		use_tmp_var_autofree := g.autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
+		use_tmp_var_autofree := g.is_autofree && arg.typ == table.string_type && arg.is_tmp_autofree &&
 			!g.inside_const && !g.is_builtin_mod
 		// g.write('/* af=$arg.is_tmp_autofree */')
 		mut is_interface := false

@@ -2517,7 +2517,8 @@ Python, Go, or Java, except there's no heavy GC tracing everything or expensive 
 each object.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-noautofree`.
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its 
+memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3.

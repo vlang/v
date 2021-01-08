@@ -156,6 +156,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
+	is_manualfree := p.attrs.contains('manualfree')
 	is_deprecated := p.attrs.contains('deprecated')
 	is_direct_arr := p.attrs.contains('direct_array_access')
 	mut is_unsafe := p.attrs.contains('unsafe')
@@ -395,6 +396,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		stmts: stmts
 		return_type: return_type
 		params: params
+		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub

@@ -3,7 +3,6 @@
 module gen
 
 import v.table
-import v.pref
 import v.util
 
 fn (mut g Gen) gen_str_default(sym table.TypeSymbol, styp string, str_fn_name string) {
@@ -230,7 +229,7 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 		}
 	}
 	g.auto_str_funcs.writeln('\t\tstrings__Builder_write(&sb, x);')
-	if g.pref.autofree && typ != table.bool_type {
+	if g.is_autofree && typ != table.bool_type {
 		// no need to free "true"/"false" literals
 		g.auto_str_funcs.writeln('\t\tstring_free(&x);')
 	}
