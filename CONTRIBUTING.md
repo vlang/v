@@ -168,9 +168,8 @@ their status.
 
 ## Flags
 
-V allows you to pass custom flags using `-d my_flag` that can then be checked at compile time (see the documentation about [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if))
-There are numerous flags that can be passed to the compiler to help you when debugging.
-This is an exhaustive list of all flags that can be passed down to the compiler, and what they do.
+V allows you to pass custom flags using `-d my_flag` that can then be checked at compile time (see the documentation about [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
+There are numerous flags that can be passed when building the compiler with `v self` or when creating a copy of the compiler, that will help you when debugging. Beware that the flags must be passed when building the compiler, not the program, so for example `v -d time_parsing -o v_with_debug_options cmd/v` or `v -d trace_checker self`. Some flags can make the compiler very verbose, so it is recommended to create a copy of the compiler rather than replacing it with `v self`.
 
 | Flag | Usage |
 |------|-------|
@@ -179,7 +178,6 @@ This is an exhaustive list of all flags that can be passed down to the compiler,
 | `debug_codegen` | Prints automatically generated V code during the scanning phase |
 | `debug_interface_table` | Prints generated interfaces during C generation |
 | `debug_interface_type_implements` | Prints debug information when checking that a type implements in interface |
-| `noskip` | Forces not to skip any file when testing the compiler or vlib |
 | `print_vweb_template_expansions` | Prints vweb compiled HTML files |
 | `time_checking` | Prints the time spent checking files and other related informations |
 | `time_parsing` | Prints the time spent parsing files and other related informations |
