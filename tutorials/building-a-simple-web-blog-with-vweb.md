@@ -70,8 +70,7 @@ fn main() {
 }
 
 pub fn (mut app App) index() vweb.Result {
-	app.text('Hello, world from vweb!')
-	return vweb.Result{}
+	return app.text('Hello world from vweb!')
 }
 
 pub fn (app &App) init() {
@@ -110,8 +109,7 @@ import vweb
 import time
 
 fn (mut app App) time() vweb.Result {
-	app.text(time.now().format())
-	return vweb.Result{}
+	return app.text(time.now().format())
 }
 ```
 
@@ -329,8 +327,7 @@ pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
 	if title == '' || text == '' {
-		app.text('Empty text/title')
-		return vweb.Result{}
+		return app.text('Empty text/title')
 	}
 	article := Article{
 		title: title
@@ -367,8 +364,7 @@ import json
 
 pub fn (mut app App) articles() vweb.Result {
 	articles := app.find_all_articles()
-	app.json(json.encode(articles))
-	return vweb.Result{}
+	return app.json(json.encode(articles))
 }
 ```
 
