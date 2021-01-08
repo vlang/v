@@ -38,18 +38,26 @@ fn test_div() {
 	assert (a / b).eq(r)
 }
 
-fn test_rgba() {
-	assert gx.white.rgba() == -1
-	assert gx.black.rgba() == 255
-	assert gx.red.rgba() == -16776961
-	assert gx.green.rgba() == 16711935
-	assert gx.blue.rgba() == 65535
+fn test_rgba8() {
+	assert gx.white.rgba8() == -1
+	assert gx.black.rgba8() == 255
+	assert gx.red.rgba8() == -16776961
+	assert gx.green.rgba8() == 16711935
+	assert gx.blue.rgba8() == 65535
 }
 
-fn test_abgr() {
-	assert gx.white.abgr() == -1
-	assert gx.black.abgr() == -16777216
-	assert gx.red.abgr() == -16776961
-	assert gx.green.abgr() == -16711936
-	assert gx.blue.abgr() == -65536
+fn test_bgra8() {
+	assert gx.white.bgra8() == -1
+	assert gx.black.bgra8() == 255
+	assert gx.red.bgra8() == 65535
+	assert gx.green.bgra8() == 16711935
+	assert gx.blue.bgra8() == -16776961
+}
+
+fn test_abgr8() {
+	assert gx.white.abgr8() == -1
+	assert gx.black.abgr8() == -16777216
+	assert gx.red.abgr8() == -16776961
+	assert gx.green.abgr8() == -16711936
+	assert gx.blue.abgr8() == -65536
 }

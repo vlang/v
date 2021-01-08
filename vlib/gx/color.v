@@ -183,16 +183,24 @@ pub fn (c Color) str() string {
 	return 'Color{$c.r, $c.g, $c.b, $c.a}'
 }
 
-// rgba - convert a color value to an int in the RGBA order.
+// rgba8 - convert a color value to an int in the RGBA8 order.
+// see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
-pub fn (c Color) rgba() int {
+pub fn (c Color) rgba8() int {
 	return (int(c.r) << 24) + (int(c.g) << 16) + (int(c.b) << 8) + int(c.a)
 }
 
-// abgr - convert a color value to an int in the ABGR order. 
-// Used in some GPU systems.
+// bgra8 - convert a color value to an int in the BGRA8 order.
+// see https://developer.apple.com/documentation/coreimage/ciformat
 [inline]
-pub fn (c Color) abgr() int {
+pub fn (c Color) bgra8() int {
+	return (int(c.b) << 24) + (int(c.g) << 16) + (int(c.r) << 8) + int(c.a)
+}
+
+// abgr8 - convert a color value to an int in the ABGR8 order. 
+// see https://developer.apple.com/documentation/coreimage/ciformat
+[inline]
+pub fn (c Color) abgr8() int {
 	return (int(c.a) << 24) + (int(c.b) << 16) + (int(c.g) << 8) + int(c.r)
 }
 
