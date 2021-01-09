@@ -26,6 +26,8 @@ pub mut:
 	parsed_files        []ast.File
 	cached_msvc         MsvcResult
 	table               &table.Table
+	timers              &util.Timers = util.new_timers(false)
+	ccoptions           CcompilerOptions
 }
 
 pub fn new_builder(pref &pref.Preferences) Builder {
@@ -61,6 +63,7 @@ pub fn new_builder(pref &pref.Preferences) Builder {
 			100
 		}
 		cached_msvc: msvc
+		timers: util.new_timers(pref.show_timings || pref.is_verbose)
 	}
 	// max_nr_errors: pref.error_limit ?? 100 TODO potential syntax?
 }
@@ -171,7 +174,7 @@ pub fn (mut b Builder) resolve_deps() {
 
 // graph of all imported modules
 pub fn (b &Builder) import_graph() &depgraph.DepGraph {
-	builtins := util.builtin_module_parts
+	builtins := util.builtin_module_parts.clone()
 	mut graph := depgraph.new_dep_graph()
 	for p in b.parsed_files {
 		mut deps := []string{}
@@ -238,6 +241,17 @@ pub fn (b &Builder) find_module_path(mod string, fpath string) ?string {
 		module_lookup_paths << vmod_file_location.vmod_folder
 	}
 	module_lookup_paths << b.module_search_paths
+	// go up through parents looking for modules a folder.
+	// we need a proper solution that works most of the time. look at vdoc.get_parent_mod
+	if fpath.contains(os.path_separator + 'modules' + os.path_separator) {
+		parts := fpath.split(os.path_separator)
+		for i := parts.len - 2; i >= 0; i-- {
+			if parts[i] == 'modules' {
+				module_lookup_paths << parts[0..i + 1].join(os.path_separator)
+				break
+			}
+		}
+	}
 	for search_path in module_lookup_paths {
 		try_path := os.join_path(search_path, mod_path)
 		if b.pref.is_verbose {
@@ -275,7 +289,11 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.checker.nr_warnings > 0 && !b.pref.skip_warnings {
 		for i, err in b.checker.warnings {
-			kind := if b.pref.is_verbose { '$err.reporter warning #$b.checker.nr_warnings:' } else { 'warning:' }
+			kind := if b.pref.is_verbose {
+				'$err.reporter warning #$b.checker.nr_warnings:'
+			} else {
+				'warning:'
+			}
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
@@ -293,7 +311,11 @@ fn (b &Builder) print_warnings_and_errors() {
 	}
 	if b.checker.nr_errors > 0 {
 		for i, err in b.checker.errors {
-			kind := if b.pref.is_verbose { '$err.reporter error #$b.checker.nr_errors:' } else { 'error:' }
+			kind := if b.pref.is_verbose {
+				'$err.reporter error #$b.checker.nr_errors:'
+			} else {
+				'error:'
+			}
 			ferror := util.formatted_error(kind, err.message, err.file_path, err.pos)
 			eprintln(ferror)
 			if err.details.len > 0 {
@@ -317,7 +339,7 @@ fn (b &Builder) print_warnings_and_errors() {
 				for stmt in file.stmts {
 					if stmt is ast.FnDecl {
 						if stmt.name == fn_name {
-							fheader := stmt.stringify(b.table, 'main')
+							fheader := stmt.stringify(b.table, 'main', map[string]string{})
 							redefines << FunctionRedefinition{
 								fpath: file.path
 								fline: stmt.pos.line_nr
@@ -356,12 +378,10 @@ fn verror(s string) {
 	util.verror('builder error', s)
 }
 
-pub fn (mut b Builder) timing_message(msg string, ms i64) {
-	value := util.bold('$ms')
-	formatted_message := '$msg: $value ms'
-	if b.pref.show_timings {
-		println(formatted_message)
-	} else {
-		b.info(formatted_message)
-	}
+pub fn (mut b Builder) timing_start(label string) {
+	b.timers.start(label)
+}
+
+pub fn (mut b Builder) timing_measure(label string) {
+	b.timers.show(label)
 }

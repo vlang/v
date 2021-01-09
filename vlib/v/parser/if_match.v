@@ -28,7 +28,11 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 	mut prev_guard := false
 	for p.tok.kind in [.key_if, .key_else] {
 		p.inside_if = true
-		start_pos := if is_comptime { p.prev_tok.position().extend(p.tok.position()) } else { p.tok.position() }
+		start_pos := if is_comptime {
+			p.prev_tok.position().extend(p.tok.position())
+		} else {
+			p.tok.position()
+		}
 		if p.tok.kind == .key_else {
 			comments << p.eat_comments()
 			p.check(.key_else)
@@ -43,9 +47,9 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 				p.inside_if = false
 				end_pos := p.prev_tok.position()
 				body_pos := p.tok.position()
+				p.open_scope()
 				// only declare `err` if previous branch was an `if` guard
 				if prev_guard {
-					p.open_scope()
 					p.scope.register(ast.Var{
 						name: 'errcode'
 						typ: table.int_type
@@ -60,18 +64,13 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 					})
 				}
 				branches << ast.IfBranch{
-					stmts: if prev_guard {
-						p.parse_block_no_scope(false)
-					} else {
-						p.parse_block()
-					}
+					stmts: p.parse_block_no_scope(false)
 					pos: start_pos.extend(end_pos)
 					body_pos: body_pos.extend(p.tok.position())
 					comments: comments
+					scope: p.scope
 				}
-				if prev_guard {
-					p.close_scope()
-				}
+				p.close_scope()
 				comments = []
 				break
 			}
@@ -116,16 +115,19 @@ fn (mut p Parser) if_expr(is_comptime bool) ast.IfExpr {
 		end_pos := p.prev_tok.position()
 		body_pos := p.tok.position()
 		p.inside_if = false
-		stmts := p.parse_block()
-		if is_guard {
-			p.close_scope()
-		}
+		p.open_scope()
+		stmts := p.parse_block_no_scope(false)
 		branches << ast.IfBranch{
 			cond: cond
 			stmts: stmts
 			pos: start_pos.extend(end_pos)
 			body_pos: body_pos.extend(p.prev_tok.position())
 			comments: comments
+			scope: p.scope
+		}
+		p.close_scope()
+		if is_guard {
+			p.close_scope()
 		}
 		comments = p.eat_comments()
 		if is_comptime {
@@ -162,7 +164,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		p.check(.lcbr)
 	}
 	mut branches := []ast.MatchBranch{}
-	for {
+	for p.tok.kind != .eof {
 		branch_first_pos := p.tok.position()
 		comments := p.eat_comments() // comments before {}
 		mut exprs := []ast.Expr{}
@@ -173,9 +175,10 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 		if p.tok.kind == .key_else {
 			is_else = true
 			p.next()
-		} else if p.tok.kind == .name && !(p.tok.lit == 'C' &&
+		} else if (p.tok.kind == .name && !(p.tok.lit == 'C' &&
 			p.peek_tok.kind == .dot) && (p.tok.lit in table.builtin_type_names || p.tok.lit[0].is_capital() ||
-			(p.peek_tok.kind == .dot && p.peek_tok2.lit[0].is_capital())) {
+			(p.peek_tok.kind == .dot && p.peek_tok2.lit.len > 0 && p.peek_tok2.lit[0].is_capital()))) ||
+			p.tok.kind == .lsbr {
 			mut types := []table.Type{}
 			for {
 				// Sum type match
@@ -222,17 +225,14 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 				p.check(.comma)
 			}
 		}
-		branch_last_pos := p.tok.position()
+		branch_last_pos := p.prev_tok.position()
 		// p.warn('match block')
 		p.inside_match_body = true
 		stmts := p.parse_block_no_scope(false)
+		branch_scope := p.scope
 		p.close_scope()
 		p.inside_match_body = false
-		pos := token.Position{
-			line_nr: branch_first_pos.line_nr
-			pos: branch_first_pos.pos
-			len: branch_last_pos.pos - branch_first_pos.pos + branch_last_pos.len
-		}
+		pos := branch_first_pos.extend(branch_last_pos)
 		post_comments := p.eat_comments()
 		branches << ast.MatchBranch{
 			exprs: exprs
@@ -242,6 +242,7 @@ fn (mut p Parser) match_expr() ast.MatchExpr {
 			comments: comments
 			is_else: is_else
 			post_comments: post_comments
+			scope: branch_scope
 		}
 		if p.tok.kind == .rcbr || (is_else && no_lcbr) {
 			break

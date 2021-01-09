@@ -6,8 +6,7 @@ import benchmark
 import v.pref
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	v_test_compiler(args_string.all_before('test-compiler'))
 }
 
@@ -35,7 +34,7 @@ fn v_test_compiler(vargs string) {
 			eprintln('v.c can be compiled without warnings. This is good :)')
 		}
 	}
-	building_tools_failed := testing.v_build_failing(vargs, 'cmd/tools')
+	building_tools_failed := os.system('"$vexe" build-tools') != 0
 	eprintln('')
 	testing.eheader('Testing all _test.v files...')
 	mut compiler_test_session := testing.new_test_session(vargs)

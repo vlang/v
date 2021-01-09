@@ -54,13 +54,13 @@ fn convert_html_rgb_n(in_col string) u32 {
 	println("start: $start, end: $end")
 	mut res := u32(0)
 	if start >= 0 {
-		red_s, red_e := re.get_group("red")
+		red_s, red_e := re.get_group_bounds_by_name("red")
 		r := ("0x" + in_col[red_s..red_e]).int() << col_mul
 		
-		green_s, green_e := re.get_group("green")
+		green_s, green_e := re.get_group_bounds_by_name("green")
 		g := ("0x" + in_col[green_s..green_e]).int() << col_mul
 		
-		blue_s, blue_e := re.get_group("blue")
+		blue_s, blue_e := re.get_group_bounds_by_name("blue")
 		b := ("0x" + in_col[blue_s..blue_e]).int() << col_mul
 		
 		println("r: $r g: $g b: $b")

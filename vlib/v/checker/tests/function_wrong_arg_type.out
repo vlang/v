@@ -1,7 +1,7 @@
-vlib/v/checker/tests/function_wrong_arg_type.vv:7:10: error: invalid argument 1 to `f`: expected `int`, not `f64`
+vlib/v/checker/tests/function_wrong_arg_type.vv:7:9: error: cannot use `f64` as `int` in argument 1 to `f`
     5 | fn main() {
     6 |     a := 12.3
     7 |     q := f(a)
-      |             ^
+      |            ^
     8 |     println('$q')
     9 | }

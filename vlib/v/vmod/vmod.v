@@ -154,7 +154,7 @@ fn (mut mcache ModFileCacher) get_files(cfolder string) []string {
 	mut files := []string{}
 	if os.exists(cfolder) && os.is_dir(cfolder) {
 		if listing := os.ls(cfolder) {
-			files = listing
+			files = listing.clone()
 		}
 	}
 	mcache.folder_files[cfolder] = files

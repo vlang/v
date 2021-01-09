@@ -131,7 +131,7 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 			// NB: it is shortened here to just d. , just so that it fits, and so
 			// that the common error file:lineno: line format is enforced.
 			output = output.replace(' (discriminator', ': (d.')
-			eprintln('${output:-46s} | ${addr:14s} | $beforeaddr')
+			eprintln('${output:-55s} | ${addr:14s} | $beforeaddr')
 		}
 	}
 	return true
@@ -140,6 +140,6 @@ fn print_backtrace_skipping_top_frames_linux(skipframes int) bool {
 fn break_if_debugger_attached() {
 	unsafe {
 		mut ptr := &voidptr(0)
-		*ptr = 0
+		*ptr = voidptr(0)
 	}
 }

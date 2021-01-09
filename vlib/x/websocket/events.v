@@ -2,33 +2,33 @@ module websocket
 
 // MessageEventHandler represents a callback on a new message
 struct MessageEventHandler {
-	handler  SocketMessageFn // callback function
+	handler  SocketMessageFn  // callback function
 	handler2 SocketMessageFn2 // callback function with reference
-	is_ref   bool // true if has a reference object
+	is_ref   bool    // true if has a reference object
 	ref      voidptr // referenced object
 }
 
 // ErrorEventHandler represents a callback on error
 struct ErrorEventHandler {
-	handler  SocketErrorFn // callback function
+	handler  SocketErrorFn  // callback function
 	handler2 SocketErrorFn2 // callback function with reference
-	is_ref   bool // true if has a reference object
+	is_ref   bool    // true if has a reference object
 	ref      voidptr // referenced object
 }
 
 // OpenEventHandler represents a callback when connection is opened
 struct OpenEventHandler {
-	handler  SocketOpenFn // callback function
+	handler  SocketOpenFn  // callback function
 	handler2 SocketOpenFn2 // callback function with reference
-	is_ref   bool // true if has a reference object
+	is_ref   bool    // true if has a reference object
 	ref      voidptr // referenced object
 }
 
 // CloseEventHandler represents a callback on a closing event
 struct CloseEventHandler {
-	handler  SocketCloseFn // callback function
+	handler  SocketCloseFn  // callback function
 	handler2 SocketCloseFn2 // callback function with reference
-	is_ref   bool // true if has a reference object
+	is_ref   bool    // true if has a reference object
 	ref      voidptr // referenced object
 }
 

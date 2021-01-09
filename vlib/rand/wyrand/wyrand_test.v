@@ -1,6 +1,6 @@
 import math
 import rand.util
-import wyrand
+import rand.wyrand
 
 const (
 	range_limit = 40

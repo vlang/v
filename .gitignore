@@ -76,3 +76,4 @@ _docs
 # ignore vs databases
 *.suo
 *.VC.db
+*.rsp

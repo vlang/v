@@ -2,11 +2,11 @@ name: Periodic
 
 on:
   schedule:
-    - cron:  '31 1,12 * * *'
+    - cron:  '0 */2 * * *'
 
 jobs:
   network-tests-ubuntu:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     timeout-minutes: 30
     env:
         V_CI_PERIODIC: 1

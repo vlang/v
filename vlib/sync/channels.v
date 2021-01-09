@@ -153,6 +153,8 @@ pub fn (mut ch Channel) close() {
 		ch.write_subscriber.sem.post()
 	}
 	C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
+	ch.writesem.post()
+	ch.writesem_im.post()
 }
 
 [inline]
@@ -209,6 +211,10 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 			ch.writesem.wait()
 		}
+		if C.atomic_load_u16(&ch.closed) != 0 {
+			ch.writesem.post()
+			return .closed
+		}
 		if ch.cap == 0 {
 			// try to advertise current object as readable
 			mut read_in_progress := false
@@ -254,6 +260,14 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					got_im_sem = false
 				} else {
 					ch.writesem_im.wait()
+				}
+				if C.atomic_load_u16(&ch.closed) != 0 {
+					if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
+						ch.writesem.post()
+						return .success
+					} else {
+						return .closed
+					}
 				}
 				if have_swapped || C.atomic_compare_exchange_strong_ptr(&ch.adr_read, &src2, voidptr(0)) {
 					ch.writesem.post()
@@ -304,18 +318,16 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 					C.memcpy(wr_ptr, src, ch.objsize)
 				}
 				C.atomic_store_u16(status_adr, u16(BufferElemStat.written))
-				old_read_avail := C.atomic_fetch_add_u32(&ch.read_avail, 1)
+				C.atomic_fetch_add_u32(&ch.read_avail, 1)
 				ch.readsem.post()
-				if old_read_avail == 0 {
-					mut null16 := u16(0)
-					for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
-						null16 = u16(0)
-					}
-					if ch.read_subscriber != voidptr(0) {
-						ch.read_subscriber.sem.post()
-					}
-					C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
+				mut null16 := u16(0)
+				for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
+					null16 = u16(0)
 				}
+				if ch.read_subscriber != voidptr(0) {
+					ch.read_subscriber.sem.post()
+				}
+				C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 				return .success
 			} else {
 				if no_block {
@@ -325,7 +337,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 			}
 		}
 	}
-	// this should not happen
+	// we should not get here but the V compiler want's to see a return statement
 	assert false
 	return .success
 }
@@ -421,18 +433,16 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 					C.memcpy(dest, rd_ptr, ch.objsize)
 				}
 				C.atomic_store_u16(status_adr, u16(BufferElemStat.unused))
-				old_write_free := C.atomic_fetch_add_u32(&ch.write_free, 1)
+				C.atomic_fetch_add_u32(&ch.write_free, 1)
 				ch.writesem.post()
-				if old_write_free == 0 {
-					mut null16 := u16(0)
-					for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
-						null16 = u16(0)
-					}
-					if ch.write_subscriber != voidptr(0) {
-						ch.write_subscriber.sem.post()
-					}
-					C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
+				mut null16 := u16(0)
+				for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
+					null16 = u16(0)
 				}
+				if ch.write_subscriber != voidptr(0) {
+					ch.write_subscriber.sem.post()
+				}
+				C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 				return .success
 			}
 		}
@@ -515,20 +525,18 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 	mut subscr := []Subscription{len: channels.len}
 	sem := new_semaphore()
 	for i, ch in channels {
+		subscr[i].sem = sem
 		if dir[i] == .push {
 			mut null16 := u16(0)
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].sem = sem
 			subscr[i].prev = &ch.write_subscriber
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&ch.write_subscriber, &subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				unsafe {
-					subscr[i].nxt.prev = &subscr[i]
-				}
+				subscr[i].nxt.prev = &subscr[i].nxt
 			}
 			C.atomic_store_u16(&ch.write_sub_mtx, u16(0))
 		} else {
@@ -536,13 +544,12 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].sem = sem
 			subscr[i].prev = &ch.read_subscriber
 			unsafe {
 				subscr[i].nxt = C.atomic_exchange_ptr(&ch.read_subscriber, &subscr[i])
 			}
 			if voidptr(subscr[i].nxt) != voidptr(0) {
-				unsafe { subscr[i].nxt.prev = &subscr[i] }
+				subscr[i].nxt.prev = &subscr[i].nxt
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))
 		}
@@ -581,7 +588,8 @@ pub fn channel_select(mut channels []&Channel, dir []Direction, mut objrefs []vo
 		}
 		if timeout == 0 {
 			goto restore
-		} else if timeout > 0 {
+		}
+		if timeout > 0 {
 			remaining := timeout - stopwatch.elapsed()
 			if !sem.timed_wait(remaining) {
 				goto restore
@@ -598,8 +606,11 @@ restore:
 			for !C.atomic_compare_exchange_weak_u16(&ch.write_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = subscr[i].nxt
+			unsafe {
+				*subscr[i].prev = subscr[i].nxt
+			}
 			if subscr[i].nxt != 0 {
+				subscr[i].nxt.prev = subscr[i].prev
 				// just in case we have missed a semaphore during restore
 				subscr[i].nxt.sem.post()
 			}
@@ -609,8 +620,11 @@ restore:
 			for !C.atomic_compare_exchange_weak_u16(&ch.read_sub_mtx, &null16, u16(1)) {
 				null16 = u16(0)
 			}
-			subscr[i].prev = subscr[i].nxt
+			unsafe {
+				*subscr[i].prev = subscr[i].nxt
+			}
 			if subscr[i].nxt != 0 {
+				subscr[i].nxt.prev = subscr[i].prev
 				subscr[i].nxt.sem.post()
 			}
 			C.atomic_store_u16(&ch.read_sub_mtx, u16(0))

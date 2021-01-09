@@ -8,6 +8,7 @@ struct C.SYSTEM_INFO {
 }
 fn C.GetSystemInfo(&C.SYSTEM_INFO)
 
+// nr_cpus returns the number of virtual CPU cores found on the system.
 pub fn nr_cpus() int {
 	sinfo := C.SYSTEM_INFO{}
 	C.GetSystemInfo(&sinfo)

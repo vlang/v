@@ -1,0 +1,5 @@
+type Foo = Foo
+
+fn main() {
+    
+}

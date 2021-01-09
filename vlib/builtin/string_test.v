@@ -536,8 +536,8 @@ fn test_bytes_to_string() {
 
 fn test_charptr() {
 	foo := charptr('VLANG'.str)
-	println(typeof(foo))
-	assert typeof(foo) == 'charptr'
+	println(typeof(foo).name)
+	assert typeof(foo).name == 'charptr'
 	assert unsafe { foo.vstring() } == 'VLANG'
 	assert unsafe { foo.vstring_with_len(3) } == 'VLA'
 }
@@ -901,4 +901,11 @@ fn test_sorter() {
 	assert arr[1].i == 100
 	assert arr[2].s == 'ccc'
 	assert arr[2].i == 102
+}
+
+fn test_split_by_whitespace() {
+	assert 'a bcde'.split_by_whitespace() == ['a', 'bcde']
+	assert '  sss \t  ssss '.split_by_whitespace() == ['sss', 'ssss']
+	assert '\n xyz \t abc   def'.split_by_whitespace() == ['xyz', 'abc', 'def']
+	assert ''.split_by_whitespace() == []
 }

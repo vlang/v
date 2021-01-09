@@ -117,7 +117,7 @@ fn supports_escape_sequences(fd int) bool {
 // clear clears current terminal screen.
 pub fn clear() {
 	$if !windows {
-		C.printf('\x1b[2J')
-		C.printf('\x1b[H')
+		print('\x1b[2J')
+		print('\x1b[H')
 	}
 }

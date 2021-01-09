@@ -42,10 +42,9 @@ pub fn call_with_array_param(arr []Vtype) {
 	for t in arr {
 		carr << *t.p
 	}
-	// make it safe
-	a := carr
-	C.handle_array(a.data, a.len)
-	C.handle_array2(a.data, a.len)
+	// TODO: make it safe
+	C.handle_array(carr.data, carr.len)
+	C.handle_array2(carr.data, carr.len)
 }
 
 pub fn destroy_vtype(t Vtype) {

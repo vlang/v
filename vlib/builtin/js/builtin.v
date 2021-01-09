@@ -22,13 +22,13 @@ pub fn print(s any) {
 }
 
 pub fn eprintln(s any) {
-	JS.console.error(s)
+	JS.console.error(s.toString())
 }
 
 pub fn eprint(s any) {
 	// TODO
 	// $if js.node {
-		JS.process.stderr.write(s)
+		JS.process.stderr.write(s.toString())
 	// } $else {
 	//	panic('Cannot `eprint` in a browser, use `eprintln` instead')
 	// }

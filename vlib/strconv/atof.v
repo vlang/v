@@ -356,7 +356,7 @@ fn converter(mut pn PrepNumber) u64 {
 	mut r2 := u32(0) // 96-bit precision integer
 	mut r1 := u32(0)
 	mut r0 := u32(0)
-	mask28 := u32(0xF<<28)
+	mask28 := u32(u64(0xF)<<28)
 	mut result := u64(0)
 	// working on 3 u32 to have 96 bit precision
 	s0 = u32(pn.mantissa & u64(0x00000000FFFFFFFF))
@@ -539,6 +539,7 @@ pub fn atof64(s string) f64 {
 			res.u = double_minus_infinity
 		}
 		else {
-		}}
-	return res.f
+		}
+	}
+	return unsafe {res.f}
 }

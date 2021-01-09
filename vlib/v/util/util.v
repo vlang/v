@@ -9,12 +9,13 @@ import v.pref
 import v.vmod
 
 pub const (
-	v_version = '0.1.30'
+	v_version = '0.2.1'
 )
 
 // math.bits is needed by strconv.ftoa
 pub const (
 	builtin_module_parts = ['math.bits', 'strconv', 'strconv.ftoa', 'hash', 'strings', 'builtin']
+	bundle_modules       = ['clipboard', 'fontstash', 'gg', 'gx', 'sokol', 'ui']
 )
 
 pub const (
@@ -27,7 +28,7 @@ pub const (
 pub fn vhash() string {
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 
@@ -93,7 +94,7 @@ pub fn githash(should_get_from_filesystem bool) string {
 	}
 	mut buf := [50]byte{}
 	buf[0] = 0
-	unsafe {C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH)}
+	unsafe { C.snprintf(charptr(buf), 50, '%s', C.V_CURRENT_COMMIT_HASH) }
 	return tos_clone(buf)
 }
 
@@ -124,16 +125,24 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	set_vroot_folder(vroot)
 	tool_args := args_quote_paths(args)
 	tool_basename := os.real_path(os.join_path(vroot, 'cmd', 'tools', tool_name))
-	tool_exe := path_of_executable(tool_basename)
-	tool_source := tool_basename + '.v'
+	mut tool_exe := ''
+	mut tool_source := ''
+	if os.is_dir(tool_basename) {
+		tool_exe = path_of_executable(os.join_path(tool_basename, tool_name))
+		tool_source = tool_basename
+	} else {
+		tool_exe = path_of_executable(tool_basename)
+		tool_source = tool_basename + '.v'
+	}
 	tool_command := '"$tool_exe" $tool_args'
 	if is_verbose {
 		println('launch_tool vexe        : $vroot')
 		println('launch_tool vroot       : $vroot')
 		println('launch_tool tool_args   : $tool_args')
+		println('launch_tool tool_source : $tool_source')
 		println('launch_tool tool_command: $tool_command')
 	}
-	should_compile := should_recompile_tool(vexe, tool_source)
+	should_compile := should_recompile_tool(vexe, tool_source, tool_name, tool_exe)
 	if is_verbose {
 		println('launch_tool should_compile: $should_compile')
 	}
@@ -159,19 +168,35 @@ pub fn launch_tool(is_verbose bool, tool_name string, args []string) {
 	exit(os.system(tool_command))
 }
 
-// NB: should_recompile_tool/2 compares unix timestamps that have 1 second resolution
+// NB: should_recompile_tool/4 compares unix timestamps that have 1 second resolution
 // That means that a tool can get recompiled twice, if called in short succession.
 // TODO: use a nanosecond mtime timestamp, if available.
-pub fn should_recompile_tool(vexe string, tool_source string) bool {
-	sfolder := os.dir(tool_source)
-	tool_name := os.base(tool_source).replace('.v', '')
-	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
+pub fn should_recompile_tool(vexe string, tool_source string, tool_name string, tool_exe string) bool {
+	if os.is_dir(tool_source) {
+		source_files := os.walk_ext(tool_source, '.v')
+		mut newest_sfile := ''
+		mut newest_sfile_mtime := 0
+		for sfile in source_files {
+			mtime := os.file_last_mod_unix(sfile)
+			if mtime > newest_sfile_mtime {
+				newest_sfile_mtime = mtime
+				newest_sfile = sfile
+			}
+		}
+		single_file_recompile := should_recompile_tool(vexe, newest_sfile, tool_name,
+			tool_exe)
+		// eprintln('>>> should_recompile_tool: tool_source: $tool_source | $single_file_recompile | $newest_sfile')
+		return single_file_recompile
+	}
 	// TODO Caching should be done on the `vlib/v` level.
 	mut should_compile := false
 	if !os.exists(tool_exe) {
 		should_compile = true
 	} else {
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(vexe) {
+		mtime_vexe := os.file_last_mod_unix(vexe)
+		mtime_tool_exe := os.file_last_mod_unix(tool_exe)
+		mtime_tool_source := os.file_last_mod_unix(tool_source)
+		if mtime_tool_exe <= mtime_vexe {
 			// v was recompiled, maybe after v up ...
 			// rebuild the tool too just in case
 			should_compile = true
@@ -184,12 +209,28 @@ pub fn should_recompile_tool(vexe string, tool_source string) bool {
 				should_compile = false
 			}
 		}
-		if os.file_last_mod_unix(tool_exe) <= os.file_last_mod_unix(tool_source) {
+		if mtime_tool_exe <= mtime_tool_source {
 			// the user changed the source code of the tool, or git updated it:
 			should_compile = true
 		}
+		// GNU Guix and possibly other environments, have bit for bit reproducibility in mind,
+		// including filesystem attributes like modification times, so they set the modification
+		// times of executables to a small number like 0, 1 etc. In this case, we should not
+		// recompile even if other heuristics say that we should. Users in such environments,
+		// have to explicitly do: `v cmd/tools/vfmt.v`, and/or install v from source, and not
+		// use the system packaged one, if they desire to develop v itself.
+		if mtime_vexe < 1024 && mtime_tool_exe < 1024 {
+			should_compile = false
+		}
 	}
 	return should_compile
+}
+
+fn tool_source2name_and_exe(tool_source string) (string, string) {
+	sfolder := os.dir(tool_source)
+	tool_name := os.base(tool_source).replace('.v', '')
+	tool_exe := os.join_path(sfolder, path_of_executable(tool_name))
+	return tool_name, tool_exe
 }
 
 pub fn quote_path(s string) string {
@@ -258,16 +299,27 @@ pub fn imax(a int, b int) int {
 }
 
 pub fn replace_op(s string) string {
-	last_char := s[s.len - 1]
-	suffix := match last_char {
-		`+` { '_plus' }
-		`-` { '_minus' }
-		`*` { '_mult' }
-		`/` { '_div' }
-		`%` { '_mod' }
-		else { '' }
+	if s.len == 1 {
+		last_char := s[s.len - 1]
+		suffix := match last_char {
+			`+` { '_plus' }
+			`-` { '_minus' }
+			`*` { '_mult' }
+			`/` { '_div' }
+			`%` { '_mod' }
+			`<` { '_lt' }
+			`>` { '_gt' }
+			else { '' }
+		}
+		return s[..s.len - 1] + suffix
+	} else {
+		suffix := match s {
+			'==' { '_eq' }
+			'!=' { '_ne' }
+			else { '' }
+		}
+		return s[..s.len - 2] + suffix
 	}
-	return s[..s.len - 1] + suffix
 }
 
 pub fn join_env_vflags_and_os_args() []string {
@@ -393,7 +445,8 @@ pub fn prepare_tool_when_needed(source_name string) {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	stool := os.join_path(vroot, 'cmd', 'tools', source_name)
-	if should_recompile_tool(vexe, stool) {
+	tool_name, tool_exe := tool_source2name_and_exe(stool)
+	if should_recompile_tool(vexe, stool, tool_name, tool_exe) {
 		time.sleep_ms(1001) // TODO: remove this when we can get mtime with a better resolution
 		recompile_file(vexe, stool)
 	}
@@ -407,4 +460,8 @@ pub fn recompile_file(vexe string, file string) {
 		eprintln('could not recompile $file')
 		exit(2)
 	}
+}
+
+pub fn should_bundle_module(mod string) bool {
+	return mod in bundle_modules || (mod.contains('.') && mod.all_before('.') in bundle_modules)
 }

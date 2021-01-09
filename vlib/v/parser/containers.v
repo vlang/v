@@ -38,7 +38,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 	} else {
 		// [1,2,3] or [const]byte
-		for i := 0; p.tok.kind != .rsbr; i++ {
+		for i := 0; p.tok.kind !in [.rsbr, .eof]; i++ {
 			exprs << p.expr(0)
 			ecmnts << p.eat_comments()
 			if p.tok.kind == .comma {
@@ -152,8 +152,10 @@ fn (mut p Parser) map_init() ast.MapInit {
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
 	for p.tok.kind != .rcbr && p.tok.kind != .eof {
-		// p.check(.str)
 		key := p.expr(0)
+		if key is ast.FloatLiteral {
+			p.error_with_pos('maps do not support floating point keys yet', key.pos)
+		}
 		keys << key
 		p.check(.colon)
 		val := p.expr(0)

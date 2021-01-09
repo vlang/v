@@ -1,5 +1,5 @@
 import math
-import sys
+import rand.sys
 
 const (
 	range_limit = 40

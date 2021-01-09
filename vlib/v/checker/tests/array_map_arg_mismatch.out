@@ -1,0 +1,13 @@
+vlib/v/checker/tests/array_map_arg_mismatch.vv:3:4: error: expected 1 arguments, but got 0
+    1 | fn main() {
+    2 |     a := [1, 2, 3]
+    3 |     a.map()
+      |       ~~~~~
+    4 |     a.map(it * 2, 3)
+    5 | }
+vlib/v/checker/tests/array_map_arg_mismatch.vv:4:4: error: expected 1 arguments, but got 2
+    2 |     a := [1, 2, 3]
+    3 |     a.map()
+    4 |     a.map(it * 2, 3)
+      |       ~~~~~~~~~~~~~~
+    5 | }

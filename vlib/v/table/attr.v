@@ -3,14 +3,17 @@
 // that can be found in the LICENSE file.
 module table
 
+import v.token
+
 // e.g. `[unsafe]`
 pub struct Attr {
 pub:
 	name          string // [name]
-	is_string     bool // ['name']
-	is_ctdefine   bool // [if name]
+	is_string     bool   // ['name']
+	is_ctdefine   bool   // [if name]
 	arg           string // [name: arg]
-	is_string_arg bool // [name: 'arg']
+	is_string_arg bool   // [name: 'arg']
+	pos           token.Position
 }
 
 // no square brackets

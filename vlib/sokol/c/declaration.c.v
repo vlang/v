@@ -6,9 +6,11 @@ pub const (
 
 #flag -I @VROOT/thirdparty/sokol
 #flag -I @VROOT/thirdparty/sokol/util
+#flag freebsd -I /usr/local/include
 
 #flag darwin -fobjc-arc
 #flag linux -lX11 -lGL -lXcursor -lXi
+#flag freebsd -L/usr/local/lib -lX11 -lGL -lXcursor -lXi
 
 #flag windows -lgdi32
 
@@ -18,6 +20,7 @@ pub const (
 
 // OPENGL
 #flag linux -DSOKOL_GLCORE33
+#flag freebsd -DSOKOL_GLCORE33
 //#flag darwin -framework OpenGL -framework Cocoa -framework QuartzCore
 
 // D3D
@@ -33,6 +36,7 @@ pub const (
 #flag linux   -DSOKOL_NO_ENTRY
 #flag darwin  -DSOKOL_NO_ENTRY
 #flag windows -DSOKOL_NO_ENTRY
+#flag windows -DSOKOL_WIN32_FORCE_MAIN
 #flag freebsd -DSOKOL_NO_ENTRY
 #flag solaris -DSOKOL_NO_ENTRY
 // TODO end

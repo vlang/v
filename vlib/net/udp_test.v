@@ -1,12 +1,7 @@
 import net
-import time
 
 fn echo_server(_c net.UdpConn) {
 	mut c := _c
-	// arbitrary timeouts to ensure that it doesnt
-	// instantly throw its hands in the air and give up
-	c.set_read_timeout(10 * time.second)
-	c.set_write_timeout(10 * time.second)
 	for {
 		mut buf := []byte{ len: 100, init: 0 }
 		read, addr := c.read(mut buf) or {
@@ -23,12 +18,6 @@ fn echo_server(_c net.UdpConn) {
 fn echo() ? {
 	mut c := net.dial_udp('127.0.0.1:40003', '127.0.0.1:40001')?
 	defer { c.close() or { } }
-
-	// arbitrary timeouts to ensure that it doesnt
-	// instantly throw its hands in the air and give up
-	c.set_read_timeout(10 * time.second)
-	c.set_write_timeout(10 * time.second)
-
 	data := 'Hello from vlib/net!'
 
 	c.write_str(data)?

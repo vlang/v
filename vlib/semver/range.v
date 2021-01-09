@@ -61,14 +61,10 @@ fn parse_range(input string) ?Range {
 	mut comparator_sets := []ComparatorSet{}
 	for raw_comp_set in raw_comparator_sets {
 		if can_expand(raw_comp_set) {
-			s := expand_comparator_set(raw_comp_set) or {
-				return error(err)
-			}
+			s := expand_comparator_set(raw_comp_set) or { return error(err) }
 			comparator_sets << s
 		} else {
-			s := parse_comparator_set(raw_comp_set) or {
-				return error(err)
-			}
+			s := parse_comparator_set(raw_comp_set) or { return error(err) }
 			comparator_sets << s
 		}
 	}
@@ -78,12 +74,12 @@ fn parse_range(input string) ?Range {
 fn parse_comparator_set(input string) ?ComparatorSet {
 	raw_comparators := input.split(comparator_sep)
 	if raw_comparators.len > 2 {
-		return error('Invalid format of comparator set')
+		return error('Invalid format of comparator set for input "$input"')
 	}
 	mut comparators := []Comparator{}
 	for raw_comp in raw_comparators {
 		c := parse_comparator(raw_comp) or {
-			return error('Invalid comparator: $raw_comp')
+			return error('Invalid comparator "$raw_comp" in input "$input"')
 		}
 		comparators << c
 	}
@@ -110,9 +106,7 @@ fn parse_comparator(input string) ?Comparator {
 	} else {
 		raw_version = input
 	}
-	version := coerce_version(raw_version) or {
-		return none
-	}
+	version := coerce_version(raw_version) or { return none }
 	return Comparator{version, op}
 }
 
@@ -162,9 +156,7 @@ fn expand_comparator_set(input string) ?ComparatorSet {
 }
 
 fn expand_tilda(raw_version string) ?ComparatorSet {
-	min_ver := coerce_version(raw_version) or {
-		return none
-	}
+	min_ver := coerce_version(raw_version) or { return none }
 	mut max_ver := min_ver
 	if min_ver.minor == 0 && min_ver.patch == 0 {
 		max_ver = min_ver.increment(.major)
@@ -175,9 +167,7 @@ fn expand_tilda(raw_version string) ?ComparatorSet {
 }
 
 fn expand_caret(raw_version string) ?ComparatorSet {
-	min_ver := coerce_version(raw_version) or {
-		return none
-	}
+	min_ver := coerce_version(raw_version) or { return none }
 	mut max_ver := min_ver
 	if min_ver.major == 0 {
 		max_ver = min_ver.increment(.minor)
@@ -192,16 +182,12 @@ fn expand_hyphen(raw_range string) ?ComparatorSet {
 	if raw_versions.len != 2 {
 		return none
 	}
-	min_ver := coerce_version(raw_versions[0]) or {
-		return none
-	}
+	min_ver := coerce_version(raw_versions[0]) or { return none }
 	raw_max_ver := parse(raw_versions[1])
 	if raw_max_ver.is_missing(ver_major) {
 		return none
 	}
-	mut max_ver := raw_max_ver.coerce() or {
-		return none
-	}
+	mut max_ver := raw_max_ver.coerce() or { return none }
 	if raw_max_ver.is_missing(ver_minor) {
 		max_ver = max_ver.increment(.minor)
 		return make_comparator_set_ge_lt(min_ver, max_ver)
@@ -210,9 +196,7 @@ fn expand_hyphen(raw_range string) ?ComparatorSet {
 }
 
 fn expand_xrange(raw_range string) ?ComparatorSet {
-	min_ver := parse_xrange(raw_range) or {
-		return none
-	}
+	min_ver := parse_xrange(raw_range) or { return none }
 	if min_ver.major == 0 {
 		comparators := [
 			Comparator{min_ver, Operator.ge},

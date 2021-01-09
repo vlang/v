@@ -27,7 +27,7 @@ pub fn from(input string) ?Version {
 	}
 	raw_version := parse(input)
 	version := raw_version.validate() or {
-		return error('Invalid version format')
+		return error('Invalid version format for input "$input"')
 	}
 	return version
 }
@@ -71,9 +71,7 @@ pub fn (v1 Version) le(v2 Version) bool {
 
 // * Utilites.
 pub fn coerce(input string) ?Version {
-	ver := coerce_version(input) or {
-		return error('Invalid version: $input')
-	}
+	ver := coerce_version(input) or { return error('Invalid version for input "$input"') }
 	return ver
 }
 

@@ -30,6 +30,7 @@ const (
 		'build-examples',
 		'build-vbinaries',
 		'setup-freetype',
+		'wipe-cache',
 		'doc',
 		'doctor',
 	]
@@ -37,6 +38,17 @@ const (
 )
 
 fn main() {
+	mut timers_should_print := false
+	$if time_v ? {
+		timers_should_print = true
+	}
+	mut timers := util.new_timers(timers_should_print)
+	timers.start('v total')
+	defer {
+		timers.show('v total')
+	}
+	timers.start('v start')
+	timers.show('v start')
 	args := os.args[1..]
 	// args = 123
 	if args.len == 0 || args[0] in ['-', 'repl'] {
@@ -60,6 +72,10 @@ fn main() {
 		// println(args) // QTODO
 		// println('prefs= ')
 		// println(prefs) // QTODO
+	}
+	if prefs.use_cache && os.user_os() == 'windows' {
+		eprintln('-usecache is currently disabled on windows')
+		exit(1)
 	}
 	if command == 'test-vet' {
 		println('Please use `v test-cleancode` instead.')

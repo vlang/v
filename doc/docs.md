@@ -7,13 +7,45 @@ V is a statically typed compiled programming language designed for building main
 It's similar to Go and its design has also been influenced by Oberon, Rust, Swift,
 Kotlin, and Python.
 
-V is a very simple language. Going through this documentation will take you about half an hour,
+V is a very simple language. Going through this documentation will take you about an hour,
 and by the end of it you will have pretty much learned the entire language.
 
 The language promotes writing simple and clear code with minimal abstraction.
 
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
+
+## Install from source
+The major way to get the latest and greatest V, is to __install it from source__.
+It is __easy__, and it usually takes __only a few seconds__.
+
+### Linux, macOS, FreeBSD, etc:
+You need `git`, a C compiler like `gcc` or `clang`, and `make`:
+```bash
+git clone https://github.com/vlang/v && cd v && make
+```
+
+### Windows:
+You need `git`, and a C compiler like `gcc` or `msvc`:
+```bash
+git clone https://github.com/vlang/v
+cd v
+make
+```
+
+### Android
+Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
+
+V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
+
+  1. Install dependencies (see [vab](https://github.com/vlang/vab))
+  2. Plugin-in your Android device
+  3. Run:
+  ```bash
+  git clone https://github.com/vlang/vab && cd vab && v vab.v
+  ./vab --device auto run /path/to/v/examples/sokol/particles
+  ```
+For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
 
 ## Table of Contents
 
@@ -48,7 +80,6 @@ Anything you can do in other languages, you can do in V.
 
 </td><td width=33% valign=top>
 
-* [println and other builtin functions](#println-and-other-builtin-functions)
 * [Functions 2](#functions-2)
     * [Pure functions by default](#pure-functions-by-default)
     * [Mutable arguments](#mutable-arguments)
@@ -56,6 +87,8 @@ Anything you can do in other languages, you can do in V.
 * [References](#references)
 * [Modules](#modules)
 * [Constants](#constants)
+* [Builtin functions](#builtin-functions)
+* [Printing custom types](#custom-print-of-types)
 * [Types 2](#types-2)
     * [Interfaces](#interfaces)
     * [Enums](#enums)
@@ -73,9 +106,9 @@ Anything you can do in other languages, you can do in V.
 
 * [Writing documentation](#writing-documentation)
 * [Tools](#tools)
-    * [vfmt](#vfmt)
+    * [v fmt](#v-fmt)
     * [Profiling](#profiling)
-* [Advanced](#advanced)
+* [Advanced Topics](#advanced-topics)
     * [Memory-unsafe code](#memory-unsafe-code)
     * [Calling C functions from V](#calling-c-functions-from-v)
     * [Debugging generated C code](#debugging-generated-c-code)
@@ -84,7 +117,7 @@ Anything you can do in other languages, you can do in V.
     * [Compile-time reflection](#compile-time-reflection)
     * [Limited operator overloading](#limited-operator-overloading)
     * [Inline assembly](#inline-assembly)
-    * [Translating C/C++ to V](#translating-cc-to-v)
+    * [Translating C to V](#translating-c-to-v)
     * [Hot code reloading](#hot-code-reloading)
     * [Cross compilation](#cross-compilation)
     * [Cross-platform shell scripts in V](#cross-platform-shell-scripts-in-v)
@@ -129,9 +162,9 @@ See `v help` for all supported commands.
 
 From the example above, you can see that functions are declared with the `fn` keyword.
 The return type is specified after the function name.
-In this case `main` doesn't return anything, so the return type can be omitted.
+In this case `main` doesn't return anything, so there is no return type.
 
-As in many other languages (such as C, Go and Rust), `main` is the entry point of your program.
+As in many other languages (such as C, Go, and Rust), `main` is the entry point of your program.
 
 `println` is one of the few built-in functions.
 It prints the value passed to it to standard output.
@@ -209,6 +242,12 @@ fn sum(a ...int) int {
 println(sum())    // Output: 0
 println(sum(1))   //         1
 println(sum(2,3)) //         5
+
+// using array decomposition
+a := [2,3,4]
+println(sum(a...))  // <-- using postfix ... here. output: 9
+b := [5, 6, 7]
+println(sum(b...)) // output: 18
 ```
 
 ## Symbol visibility
@@ -317,7 +356,7 @@ import gg
 
 fn draw(ctx &gg.Context) {
     gg := ctx.parent.get_ui().gg
-    gg.draw_rect(...)
+    gg.draw_rect(10, 10, 100, 50)
 }
 ```
 
@@ -534,8 +573,7 @@ The type of an array is determined by the first element:
 * `[1, 2, 3]` is an array of ints (`[]int`).
 * `['a', 'b']` is an array of strings (`[]string`).
 
-If V is unable to infer the type of an array,
-the user can explicitly specify it for the first element: `[byte(16), 32, 64, 128]`.
+The user can explicitly specify the type for the first element: `[byte(16), 32, 64, 128]`.
 V arrays are homogeneous (all elements must have the same type).
 This means that code like `[1, 'a']` will not compile.
 
@@ -594,6 +632,13 @@ Note: The above code uses a [range `for`](#range-for) statement.
 
 All arrays can be easily printed with `println(arr)` and converted to a string
 with `s := arr.str()`.
+
+Copying the data from the array is done with `.clone()`:
+
+```v nofmt
+nums := [1, 2, 3]
+nums_copy := nums.clone()
+```
 
 Arrays can be efficiently filtered and mapped with the `.filter()` and
 `.map()` methods:
@@ -698,6 +743,8 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+Cyclic module imports are not allowed, like in Go.
+
 ### Selective imports
 
 You can also import specific functions and types from modules directly:
@@ -741,11 +788,12 @@ However, you _can_ redeclare a type.
 
 ```v
 import time
+import math
 
 type MyTime = time.Time
 
 fn (mut t MyTime) century() int {
-	return 1 + t.year % 100
+	return int(1.0 + math.trunc(f64(t.year) * 0.009999794661191))
 }
 
 fn main() {
@@ -865,7 +913,7 @@ It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x is casted to MyStruct even it's mutable
+	// x is casted to MyStruct even if it's mutable
 	// without the mut keyword that wouldn't work
 	println(x)
 }
@@ -958,7 +1006,7 @@ for key, value in m {
 }                              //         two -> 2
 ```
 
-Either key or value can be ignored by using a single underscore as the identifer.
+Either key or value can be ignored by using a single underscore as the identifier.
 ```v nofmt
 m := {'one':1, 'two':2}
 
@@ -1085,7 +1133,7 @@ s := match number {
 }
 ```
 
-A match expression returns the final expression from each branch.
+A match expression returns the value of the final expression from the matching branch.
 
 ```v
 enum Color {
@@ -1203,7 +1251,7 @@ mut:
 
 struct Button {
 	Widget
-	title  string
+	title string
 }
 
 mut button := Button{
@@ -1221,9 +1269,9 @@ button.widget.x = 3
 
 ```v
 struct Foo {
-	n   int // n is 0 by default
+	n   int    // n is 0 by default
 	s   string // s is '' by default
-	a   []int // a is `[]int{}` by default
+	a   []int  // a is `[]int{}` by default
 	pos int = -1 // custom default value
 }
 ```
@@ -1503,8 +1551,7 @@ fn main() {
 ## References
 
 ```v
-struct Foo {
-}
+struct Foo {}
 
 fn (foo Foo) bar_method() {
 	// ...
@@ -1613,9 +1660,23 @@ are no globals:
 println('Top cities: $top_cities.filter(.usa)')
 ```
 
-## println and other builtin functions
+## Builtin functions
 
-`println` is a simple yet powerful builtin function. It can print anything:
+Some functions are builtin like `println`. Here is the complete list:
+
+```v ignore
+fn print(s string) // print anything on sdtout
+fn println(s string) // print anything and a newline on sdtout
+
+fn eprint(s string) // same as print(), but use stderr
+fn eprintln(s string) // same as println(), but use stderr
+
+fn exit(code int) // terminate the program with a custom error code
+fn panic(s string) // print a message and backtraces on stderr, and terminate the program with error code 1
+fn print_backtrace() // print backtraces on stderr
+```
+
+`println` is a simple yet powerful builtin function, that can print anything:
 strings, numbers, arrays, maps, structs.
 
 ```v nofmt
@@ -1625,6 +1686,8 @@ println('hi') // "hi"
 println([1,2,3]) // "[1, 2, 3]"
 println(User{name:'Bob', age:20}) // "User{name:'Bob', age:20}"
 ```
+
+## Custom print of types
 
 If you want to define a custom print value for your type, simply define a
 `.str() string` method:
@@ -1646,18 +1709,6 @@ red := Color{
 	b: 0
 }
 println(red)
-```
-
-If you don't want to print a newline, use `print()` instead.
-
-The number of builtin functions is low. Other builtin functions are:
-
-
-```v ignore
-fn exit(exit_code int) // terminate the program
-fn panic(message string)
-fn print_backtrace()
-fn eprintln(s string) // same as println, but use stderr
 ```
 
 ## Modules
@@ -1696,6 +1747,7 @@ fn main() {
 ```
 
 * Module names should be short, under 10 characters.
+* Module names must use `snake_case`.
 * Circular imports are not allowed.
 * You can have as many .v files in a module as you want.
 * You can create modules anywhere.
@@ -1724,8 +1776,7 @@ struct Dog {
 	breed string
 }
 
-struct Cat {
-}
+struct Cat {}
 
 fn (d Dog) speak() string {
 	return 'woof'
@@ -1794,14 +1845,11 @@ A sum type instance can hold a value of several different types. Use the `type`
 keyword to declare a sum type:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1818,14 +1866,11 @@ To check whether a sum type instance holds a certain type, use `sum is Type`.
 To cast a sum type to one of its variants you can use `sum as Type`:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -1859,32 +1904,31 @@ if w is Mars {
 }
 ```
 `w` has type `Mars` inside the body of the `if` statement. This is
-known as *flow-sensitive typing*. You can also specify a variable name:
+known as *flow-sensitive typing*.
+If `w` is a mutable identifier, it would be unsafe if the compiler smart casts it without a warning.
+That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
-if w is Mars as mars {
-    assert typeof(w).name == 'World'
-    if mars.dust_storm() {
+if mut w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
         println('bad weather!')
     }
 }
 ```
-`w` keeps its original type. This form is necessary if `w` is a more
-complex expression than just a variable name.
+Otherwise `w` would keep its original type.
+> This works for both, simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
 You can also use `match` to determine the variant:
 
 ```v
-struct Moon {
-}
+struct Moon {}
 
-struct Mars {
-}
+struct Mars {}
 
-struct Venus {
-}
+struct Venus {}
 
 type World = Mars | Moon | Venus
 
@@ -2198,8 +2242,6 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
-import sync
-
 fn f(ch chan int) {
 	// ...
 }
@@ -2301,8 +2343,6 @@ if select {
 
 For special purposes there are some builtin properties and methods:
 ```v nofmt
-import sync
-
 struct Abc{x int}
 
 a := 2.13
@@ -2475,11 +2515,25 @@ option to see more details about the individual tests run.
 
 ## Memory management
 
-(Work in progress)
+V avoids doing unnecessary allocations in the first place by using value types,
+string buffers, promoting a simple abstraction-free code style.
 
-V doesn't use garbage collection or reference counting. The compiler cleans everything up
-during compilation. If your V program compiles, it's guaranteed that it's going
-to be leak free. For example:
+Most objects (~90-100%) are freed by V's autofree engine: the compiler inserts
+necessary free calls automatically during compilation. Remaining small percentage
+of objects is freed via reference counting.
+
+The developer doesn't need to change anything in their code. "It just works", like in
+Python, Go, or Java, except there's no heavy GC tracing everything or expensive RC for
+each object.
+
+For developers willing to have more low level control, autofree can be disabled with
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its 
+memory manually.
+
+Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
+default in V 0.3.
+
+For example:
 
 ```v
 import strings
@@ -2694,6 +2748,42 @@ surrounding code).
 
 * Note: This is work in progress.
 
+### Structs with reference fields
+
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
+
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
+
+```v
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
+}
+
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
+}
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
+```
+
 ## Calling C functions from V
 
 ```v
@@ -2714,7 +2804,7 @@ fn C.sqlite3_close(&C.sqlite3) int
 
 fn C.sqlite3_column_int(stmt &C.sqlite3_stmt, n int) int
 
-// ... you can also just define the type of parameter & leave out the C. prefix
+// ... you can also just define the type of parameter and leave out the C. prefix
 fn C.sqlite3_prepare_v2(&sqlite3, charptr, int, &&sqlite3_stmt, &charptr) int
 
 fn C.sqlite3_step(&sqlite3_stmt)
@@ -2726,8 +2816,10 @@ fn C.sqlite3_exec(db &sqlite3, sql charptr, FnSqlite3Callback voidptr, cb_arg vo
 fn C.sqlite3_free(voidptr)
 
 fn my_callback(arg voidptr, howmany int, cvalues &charptr, cnames &charptr) int {
-	for i in 0 .. howmany {
-		print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+	unsafe {
+		for i in 0 .. howmany {
+			print('| ${cstring_to_vstring(cnames[i])}: ${cstring_to_vstring(cvalues[i]):20} ')
+		}
 	}
 	println('|')
 	return 0
@@ -2738,9 +2830,10 @@ fn main() {
 	// passing a string literal to a C function call results in a C string, not a V string
 	C.sqlite3_open('users.db', &db)
 	// C.sqlite3_open(db_path.str, &db)
-	// you can also use `.str byteptr` field to convert a V string to a C char pointer
 	query := 'select count(*) from users'
 	stmt := &C.sqlite3_stmt(0)
+	// NB: you can also use the `.str` field of a V string,
+	// to get its C style zero terminated representation
 	C.sqlite3_prepare_v2(db, query.str, -1, &stmt, 0)
 	C.sqlite3_step(stmt)
 	nr_users := C.sqlite3_column_int(stmt, 0)
@@ -2848,11 +2941,12 @@ For example: `-cc gcc-9 -cflags -fsanitize=thread`.
 
 ### C types
 
-Ordinary zero terminated C strings can be converted to V strings with `string(cstring)`
-or `string(cstring, len)`.
+Ordinary zero terminated C strings can be converted to V strings with
+`unsafe { charptr(cstring).vstring() }` or if you know their length already with
+`unsafe { charptr(cstring).vstring_with_len(len) }`.
 
-NB: Each `string(...)` function does NOT create a copy of the `cstring`,
-so you should NOT free it after calling `string()`.
+NB: The .vstring() and .vstring_with_len() methods do NOT create a copy of the `cstring`,
+so you should NOT free it after calling the method `.vstring()`.
 If you need to make a copy of the C string (some libc APIs like `getenv` pretty much require that,
 since they return pointers to internal libc memory), you can use `cstring_to_vstring(cstring)`.
 
@@ -2894,6 +2988,8 @@ To see a detailed list of all flags that V supports,
 use `v help`, `v help build` and `v help build-c`.
 
 ## Conditional compilation
+
+### Compile time if
 
 ```v
 // Support for multiple conditions in one branch
@@ -2942,6 +3038,52 @@ Full list of builtin options:
 | `gnu`, `hpux`, `haiku`, `qnx` | `cplusplus`       | `big_endian`          | |
 | `solaris`, `linux_or_macos`   | | | |
 
+### Environment specific files
+
+If a file has an environment-specific suffix, it will only be compiled for that environment.
+
+- `.js.v` => will be used only by the JS backend. These files can contain JS. code.
+- `.c.v` => will be used only by the C backend. These files can contain C. code.
+- `.x64.v` => will be used only by V's x64 backend.
+- `_nix.c.v` => will be used only on Unix systems (non Windows).
+- `_${os}.c.v` => will be used only on the specific `os` system.
+For example, `_windows.c.v` will be used only when compiling on Windows, or with `-os windows`.
+- `_default.c.v` => will be used only if there is NOT a more specific platform file.
+For example, if you have both `file_linux.c.v` and `file_default.c.v`,
+and you are compiling for linux, then only `file_linux.c.v` will be used,
+and `file_default.c.v` will be ignored.
+
+Here is a more complete example:
+main.v:
+```v ignore
+module main
+fn main() { println(message) }
+```
+
+main_default.c.v:
+```v ignore
+module main
+const ( message = 'Hello world' )
+```
+
+main_linux.c.v:
+```v ignore
+module main
+const ( message = 'Hello linux' )
+```
+
+main_windows.c.v:
+```v ignore
+module main
+const ( message = 'Hello windows' )
+```
+
+With the example above:
+- when you compile for windows, you will get 'Hello windows'
+- when you compile for linux, you will get 'Hello linux'
+- when you compile for any other platform, you will get the
+non specific 'Hello world' message.
+
 ## Compile time pseudo variables
 
 V also gives your code access to a set of pseudo string variables,
@@ -2989,7 +3131,7 @@ but may impact the size of your executable.
 the compiler will translate array operations directly into C array operations -
 omiting bounds checking. This may save a lot of time in a function that iterates
 over an array but at the cost of making the function unsafe - unless
-the boundries will be checked by the user.
+the boundaries will be checked by the user.
 
 `if _likely_(bool expression) {` this hints the C compiler, that the passed
 boolean expression is very likely to be true, so it can generate assembly
@@ -3051,11 +3193,11 @@ fn (a Vec) str() string {
 	return '{$a.x, $a.y}'
 }
 
-fn (a Vec) +(b Vec) Vec {
+fn (a Vec) + (b Vec) Vec {
 	return Vec{a.x + b.x, a.y + b.y}
 }
 
-fn (a Vec) -(b Vec) Vec {
+fn (a Vec) - (b Vec) Vec {
 	return Vec{a.x - b.x, a.y - b.y}
 }
 
@@ -3075,9 +3217,11 @@ operator overloading is an important feature to have in order to improve readabi
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /, %` operators.
+- It's only possible to overload `+, -, *, /, %, <, >, ==, !=` operators.
+- `==` and `!=` are self generated by the compiler but can be overriden.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
+- When using `<`, `>`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
 
 ## Inline assembly
@@ -3095,39 +3239,49 @@ fn main() {
 }
 ```
 
-## Translating C/C++ to V
+## Translating C to V
 
-TODO: translating C to V will be available in V 0.3. C++ to V will be available later this year.
+TODO: translating C to V will be available in V 0.3.
 
-V can translate your C/C++ code to human readable V code.
-Let's create a simple program `test.cpp` first:
+V can translate your C code to human readable V code and generate V wrappers on top of C libraries.
 
-```cpp
-#include <vector>
-#include <string>
-#include <iostream>
+
+Let's create a simple program `test.c` first:
+
+```c
+#include "stdio.h"
 
 int main() {
-        std::vector<std::string> s;
-        s.push_back("V is ");
-        s.push_back("awesome");
-        std::cout << s.size() << std::endl;
+	for (int i = 0; i < 10; i++) {
+		printf("hello world\n");
+	}
         return 0;
 }
 ```
 
-Run `v translate test.cpp` and V will generate `test.v`:
+Run `v translate test.c`, and V will generate `test.v`:
 
 ```v
 fn main() {
-	mut s := []string{}
-	s << 'V is '
-	s << 'awesome'
-	println(s.len)
+	for i := 0; i < 10; i++ {
+		println('hello world')
+	}
 }
 ```
 
-An online C/C++ to V translator is coming soon.
+To generate a wrapper on top of a C library use this command:
+
+```bash
+v wrapper c_code/libsodium/src/libsodium
+```
+
+This will generate a directory `libsodium` with a V module.
+
+Example of a C2V generated libsodium wrapper:
+
+https://github.com/medvednikov/libsodium
+
+<br>
 
 When should you translate C code and when should you simply call C code from V?
 

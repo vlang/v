@@ -1,7 +1,6 @@
 module strings
 
-//import rand
-
+// import rand
 // random returns a random string with `n` characters
 /*
 pub fn random(n int) string {
@@ -12,4 +11,3 @@ pub fn random(n int) string {
 	return tos(buf)
 }
 */
-

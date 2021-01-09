@@ -1,4 +1,5 @@
 import json
+import time
 
 enum JobTitle {
 	manager
@@ -30,20 +31,23 @@ fn test_simple() {
 }
 
 fn bar<T>(payload string) ?Bar { // ?T doesn't work currently
-	result := json.decode(T, payload)?
+	result := json.decode(T, payload) ?
 	return result
 }
+
 struct Bar {
 	x string
 }
+
 fn test_generic() {
 	result := bar<Bar>('{"x":"test"}') or { Bar{} }
 	assert result.x == 'test'
 }
 
 struct User2 {
-	age  int
-	nums []int
+	age      int
+	nums     []int
+	reg_date time.Time
 }
 
 struct User {
@@ -57,13 +61,9 @@ struct User {
 
 fn test_parse_user() {
 	s := '{"age": 10, "nums": [1,2,3], "type": 1, "lastName": "Johnson", "IsRegistered": true, "pet_animals": {"name": "Bob", "animal": "Dog"}}'
-	u2 := json.decode(User2, s) or {
-		exit(1)
-	}
+	u2 := json.decode(User2, s) or { exit(1) }
 	println(u2)
-	u := json.decode(User, s) or {
-		exit(1)
-	}
+	u := json.decode(User, s) or { exit(1) }
 	println(u)
 	assert u.age == 10
 	assert u.last_name == 'Johnson'
@@ -74,6 +74,23 @@ fn test_parse_user() {
 	assert u.nums[2] == 3
 	assert u.typ == 1
 	assert u.pets == '{"name":"Bob","animal":"Dog"}'
+}
+
+fn test_encode_decode_time() {
+	user := User2{
+		age: 25
+		reg_date: time.new_time(year: 2020, month: 12, day: 22, hour: 7, minute: 23)
+	}
+	s := json.encode(user)
+	println(s)
+	assert s.contains('"reg_date":1608621780')
+	user2 := json.decode(User2, s) or {
+		assert false
+		return
+	}
+	assert user2.reg_date.str() == '2020-12-22 07:23:00'
+	println(user2)
+	println(user2.reg_date)
 }
 
 fn (mut u User) foo() string {
@@ -144,10 +161,10 @@ fn test_struct_in_struct() {
 fn test_encode_map() {
 	expected := '{"one":1,"two":2,"three":3,"four":4}'
 	numbers := {
-		'one': 1
-		'two': 2
+		'one':   1
+		'two':   2
 		'three': 3
-		'four': 4
+		'four':  4
 	}
 	out := json.encode(numbers)
 	println(out)
@@ -156,10 +173,10 @@ fn test_encode_map() {
 
 fn test_parse_map() {
 	expected := {
-		'one': 1
-		'two': 2
+		'one':   1
+		'two':   2
 		'three': 3
-		'four': 4
+		'four':  4
 	}
 	out := json.decode(map[string]int, '{"one":1,"two":2,"three":3,"four":4}') or {
 		assert false
@@ -258,7 +275,7 @@ fn test_nested_type() {
 	}
 }
 
-struct Foo<T> {
+struct Foo <T> {
 pub:
 	name string
 	data T
@@ -268,9 +285,7 @@ fn test_generic_struct() {
 	foo_int := Foo<int>{'bar', 12}
 	foo_enc := json.encode(foo_int)
 	assert foo_enc == '{"name":"bar","data":12}'
-	foo_dec := json.decode(Foo<int>, foo_enc) or {
-		exit(1)
-	}
+	foo_dec := json.decode(Foo<int>, foo_enc) or { exit(1) }
 	assert foo_dec.name == 'bar'
 	assert foo_dec.data == 12
 }
@@ -321,7 +336,7 @@ fn test_encode_alias_struct() {
 }
 
 struct List {
-	id int
+	id    int
 	items []string
 }
 
@@ -331,7 +346,7 @@ fn test_list() {
 		return
 	}
 	assert list.id == 1
-	assert list.items == ["1", "2"]
+	assert list.items == ['1', '2']
 }
 
 fn test_list_no_id() {
@@ -340,7 +355,7 @@ fn test_list_no_id() {
 		return
 	}
 	assert list.id == 0
-	assert list.items == ["1", "2"]
+	assert list.items == ['1', '2']
 }
 
 fn test_list_no_items() {
@@ -350,4 +365,17 @@ fn test_list_no_items() {
 	}
 	assert list.id == 1
 	assert list.items == []
+}
+
+struct Info {
+	id    int
+	items []string
+	maps  map[string]string
+}
+
+fn test_decode_null_object() {
+	info := json.decode(Info, '{"id": 22, "items": null, "maps": null}') or { panic(err) }
+	assert info.id == 22
+	assert '$info.items' == '[]'
+	assert '$info.maps' == '{}'
 }

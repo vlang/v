@@ -252,10 +252,10 @@ fn test_struct_literal_args() {
 	foo_config(10, {})
 	foo_config(10, n: 40)
 	foo_config(40, n: 30, def: 40)
-	
+
 	bar_config({}, 10)
 	bar_config({def:4}, 4)
-	
+
 	foo_user({
 		name: 'Peter'
 	})
@@ -349,3 +349,32 @@ fn test_fields_anon_fn_with_optional_void_return_type() {
 	}
 }
 
+struct Commands {
+    show []fn() string
+}
+
+fn a() string {
+    return 'HELLOW'
+}
+
+fn b() string {
+    return 'WOLLEH'
+}
+
+fn test_fields_array_of_fn() {
+    commands := Commands{show: [a, b]}
+    println(commands.show)
+	assert '$commands.show' == '[fn () string, fn () string]'
+}
+
+fn test_struct_update() {
+	c := Country{name: 'test'}
+	c2 := Country{
+		...c
+		capital: City{
+			name: 'city'
+		}
+	}
+	assert c2.capital.name == 'city'
+	assert c2.name == 'test'
+}

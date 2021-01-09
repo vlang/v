@@ -21,7 +21,7 @@ pub enum Kind {
 	number // 123
 	string // 'foo'
 	str_inter // 'name=$user.name'
-	chartoken // `A`
+	chartoken // `A` - rune
 	plus
 	minus
 	mul
@@ -172,7 +172,7 @@ fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
-		res[key] = t
+		res[key] = Kind(t)
 	}
 	return res
 }
@@ -311,15 +311,6 @@ pub fn (t Kind) is_assign() bool {
 	return t in assign_tokens
 }
 
-fn (t []Kind) contains(val Kind) bool {
-	for tt in t {
-		if tt == val {
-			return true
-		}
-	}
-	return false
-}
-
 pub fn (t Kind) str() string {
 	return token_str[int(t)]
 }
@@ -439,4 +430,16 @@ pub fn (kind Kind) is_prefix() bool {
 pub fn (kind Kind) is_infix() bool {
 	return kind in
 		[.plus, .minus, .mod, .mul, .div, .eq, .ne, .gt, .lt, .key_in, /*  */.key_as, .ge, .le, .logical_or, .xor, .not_in, .key_is, .not_is, /*  */.and, .dot, .pipe, .amp, .left_shift, .right_shift, .arrow]
+}
+
+// Pass table.builtin_type_names
+// Note: can't import table here due to circular module dependency
+pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
+	match tok.kind {
+		.name { return tok.lit[0].is_capital() || tok.lit in builtin_type_names }
+		// Note: return type (T1, T2) should be handled elsewhere
+		.amp, .key_fn, .lsbr, .question { return true }
+		else {}
+	}
+	return false
 }

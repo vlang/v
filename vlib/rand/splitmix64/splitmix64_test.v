@@ -1,5 +1,5 @@
 import math
-import splitmix64
+import rand.splitmix64
 import rand.util
 
 const (

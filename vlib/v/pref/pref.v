@@ -56,18 +56,18 @@ pub mut:
 	// verbosity           VerboseLevel
 	is_verbose          bool
 	// nofmt            bool   // disable vfmt
-	is_test             bool // `v test string_test.v`
-	is_script           bool // single file mode (`v program.v`), main function can be skipped
-	is_vsh              bool // v script (`file.vsh`) file, the `os` module should be made global
-	is_livemain         bool // main program that contains live/hot code
-	is_liveshared       bool // a shared library, that will be used in a -live main program
-	is_shared           bool // an ordinary shared library, -shared, no matter if it is live or not
-	is_prof             bool // benchmark every function
+	is_test             bool   // `v test string_test.v`
+	is_script           bool   // single file mode (`v program.v`), main function can be skipped
+	is_vsh              bool   // v script (`file.vsh`) file, the `os` module should be made global
+	is_livemain         bool   // main program that contains live/hot code
+	is_liveshared       bool   // a shared library, that will be used in a -live main program
+	is_shared           bool   // an ordinary shared library, -shared, no matter if it is live or not
+	is_prof             bool   // benchmark every function
 	profile_file        string // the profile results will be stored inside profile_file
-	profile_no_inline   bool // when true, [inline] functions would not be profiled
-	translated          bool // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
-	is_prod             bool // use "-O2"
-	obfuscate           bool // `v -obf program.v`, renames functions to "f_XXX"
+	profile_no_inline   bool   // when true, [inline] functions would not be profiled
+	translated          bool   // `v translate doom.v` are we running V code translated from C? allow globals, ++ expressions, etc
+	is_prod             bool   // use "-O2"
+	obfuscate           bool   // `v -obf program.v`, renames functions to "f_XXX"
 	is_repl             bool
 	is_run              bool
 	sanitize            bool // use Clang's new "-fsanitize" option
@@ -79,20 +79,20 @@ pub mut:
 	// which are sometimes easier to debug / inspect manually than the .tmp.c files by plain -g (when/if v line number generation breaks).
 	// use cached modules to speed up compilation.
 	use_cache           bool // = true
-	no_cache            bool
+	retry_compilation   bool = true
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
-	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
 	cflags              string // Additional options which will be passed to the C compiler.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
 	// You could pass several -cflags XXX arguments. They will be merged with each other.
 	// You can also quote several options at the same time: -cflags '-Os -fno-inline-small-functions'.
-	m64                 bool // true = generate 64-bit code, defaults to x64
-	ccompiler           string // the name of the C compiler used
+	m64                 bool         // true = generate 64-bit code, defaults to x64
+	ccompiler           string       // the name of the C compiler used
 	ccompiler_type      CompilerType // the type of the C compiler used
 	third_party_option  string
 	building_v          bool
-	autofree            bool
+	autofree            bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	compress            bool
 	// skip_builtin     bool   // Skips re-compilation of the builtin module
 	// to increase compilation time.
@@ -103,7 +103,7 @@ pub mut:
 	is_fmt              bool
 	is_vet              bool
 	is_bare             bool
-	no_preludes         bool // Prevents V from generating preludes in resulting .c files
+	no_preludes         bool   // Prevents V from generating preludes in resulting .c files
 	custom_prelude      string // Contents of custom V prelude that will be prepended before code in resulting .c files
 	lookup_path         []string
 	output_cross_c      bool
@@ -115,17 +115,17 @@ pub mut:
 	bundle_id           string
 	path                string // Path to file/folder to compile
 	// -d vfmt and -d another=0 for `$if vfmt { will execute }` and `$if another { will NOT get here }`
-	compile_defines     []string // just ['vfmt']
-	compile_defines_all []string // contains both: ['vfmt','another']
-	run_args            []string // `v run x.v 1 2 3` => `1 2 3`
-	printfn_list        []string // a list of generated function names, whose source should be shown, for debugging
-	print_v_files       bool // when true, just print the list of all parsed .v files then stop.
-	skip_running        bool // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
-	skip_warnings       bool // like C's "-w", forces warnings to be ignored.
-	warn_impure_v       bool // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
-	warns_are_errors    bool // -W, like C's "-Werror", treat *every* warning is an error
-	fatal_errors        bool // unconditionally exit after the first error with exit(1)
-	reuse_tmpc          bool // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
+	compile_defines     []string    // just ['vfmt']
+	compile_defines_all []string    // contains both: ['vfmt','another']
+	run_args            []string    // `v run x.v 1 2 3` => `1 2 3`
+	printfn_list        []string    // a list of generated function names, whose source should be shown, for debugging
+	print_v_files       bool        // when true, just print the list of all parsed .v files then stop.
+	skip_running        bool        // when true, do no try to run the produced file (set by b.cc(), when -o x.c or -o x.js)
+	skip_warnings       bool        // like C's "-w", forces warnings to be ignored.
+	warn_impure_v       bool        // -Wimpure-v, force a warning for JS.fn()/C.fn(), outside of .js.v/.c.v files. TODO: turn to an error by default
+	warns_are_errors    bool        // -W, like C's "-Werror", treat *every* warning is an error
+	fatal_errors        bool        // unconditionally exit after the first error with exit(1)
+	reuse_tmpc          bool        // do not use random names for .tmp.c and .tmp.c.rsp files, and do not remove them
 	use_color           ColorOutput // whether the warnings/errors should use ANSI color escapes.
 	is_parallel         bool
 	error_limit         int
@@ -134,7 +134,7 @@ pub mut:
 	experimental        bool // enable experimental features
 	show_timings        bool // show how much time each compiler stage took
 	is_ios_simulator    bool
-	is_apk              bool // build as Android .apk format
+	is_apk              bool     // build as Android .apk format
 	cleanup_files       []string // list of temporary *.tmp.c and *.tmp.c.rsp files. Cleaned up on successfull builds.
 	build_options       []string // list of options, that should be passed down to `build-module`, if needed for -usecache
 	cache_manager       vcache.CacheManager
@@ -213,6 +213,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.autofree = true
 				res.build_options << arg
 			}
+			'-manualfree' {
+				res.autofree = false
+				res.build_options << arg
+			}
 			'-compress' {
 				res.compress = true
 			}
@@ -220,12 +224,15 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.is_bare = true
 				res.build_options << arg
 			}
+			'-no-retry-compilation' {
+				res.retry_compilation = false
+			}
 			'-no-preludes' {
 				res.no_preludes = true
 				res.build_options << arg
 			}
 			'-prof', '-profile' {
-				res.profile_file = cmdline.option(current_args, '-profile', '-')
+				res.profile_file = cmdline.option(current_args, arg, '-')
 				res.is_prof = true
 				res.build_options << '$arg $res.profile_file'
 				i++
@@ -235,6 +242,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-prod' {
 				res.is_prod = true
+				res.build_options << arg
+			}
+			'-sanitize' {
+				res.sanitize = true
 				res.build_options << arg
 			}
 			'-simulator' {
@@ -272,7 +283,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				res.use_cache = true
 			}
 			'-nocache' {
-				res.no_cache = true
+				res.use_cache = false
 			}
 			'-prealloc' {
 				res.prealloc = true
@@ -377,6 +388,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 				i++
 			}
 			else {
+				if command == 'build' && (arg.ends_with('.v') || os.exists(command)) {
+					eprintln('Use `v $arg` instead.')
+					exit(1)
+				}
 				if arg[0] == `-` {
 					if arg[1..] in list_of_flags_with_param {
 						// skip parameter
@@ -387,6 +402,9 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					if command == '' {
 						command = arg
 						command_pos = i
+						if command == 'run' {
+							break
+						}
 					}
 					continue
 				}
@@ -395,7 +413,7 @@ pub fn parse_args(args []string) (&Preferences, string) {
 					command_pos = i
 					continue
 				}
-				if command !in ['', 'build', 'build-module'] {
+				if command !in ['', 'build-module'] {
 					// arguments for e.g. fmt should be checked elsewhere
 					continue
 				}
@@ -409,19 +427,13 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 		}
 	}
+	// res.use_cache = true
 	if command != 'doc' && res.out_name.ends_with('.v') {
 		eprintln('Cannot save output binary in a .v file.')
 		exit(1)
 	}
 	if command.ends_with('.v') || os.exists(command) {
 		res.path = command
-	} else if command == 'build' {
-		if command_pos + 2 != args.len {
-			eprintln('`v build` requires exactly one argument - either a single .v file, or a single folder/ containing several .v files')
-			exit(1)
-		}
-		res.path = args[command_pos + 1]
-		must_exist(res.path)
 	} else if command == 'run' {
 		res.is_run = true
 		if command_pos + 2 > args.len {
@@ -542,6 +554,7 @@ pub fn cc_from_string(cc_str string) CompilerType {
 
 fn parse_define(mut prefs Preferences, define string) {
 	define_parts := define.split('=')
+	prefs.build_options << '-d $define'
 	if define_parts.len == 1 {
 		prefs.compile_defines << define
 		prefs.compile_defines_all << define

@@ -16,6 +16,12 @@ fn main() {
 	// just to make it worse
 	b, c := a, 2
 	d := c // and an extra one
+	e := c
+	// more comments = more good
+	arr := [
+		/* block foo bar */ /* inline foo bar */
+		0,
+	]
 	// before arg comment
 	// after arg comment
 	println('this is a test')

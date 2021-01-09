@@ -18,12 +18,16 @@ const (
 		'nonexistant',
 	]
 	vfmt_verify_list                = [
-		'cmd/tools/vdoc.v'
 		'cmd/v/v.v',
+		'cmd/tools/vdoc/',
+		'vlib/arrays/',
+		'vlib/benchmark/',
+		'vlib/bitfield/',
 		'vlib/builtin/array.v',
-		'vlib/os/file.v',
+		'vlib/builtin/array_test.v',
+		'vlib/builtin/map.v',
 		'vlib/math/bits/bits.v',
-		'vlib/time/time.v',
+		'vlib/orm/',
 		'vlib/term/colors.v',
 		'vlib/term/term.v',
 		'vlib/v/ast/',
@@ -56,13 +60,21 @@ const (
 		'vlib/v/util/',
 		'vlib/v/vet/',
 		'vlib/v/vmod/',
+		'vlib/cli/',
+		'vlib/flag/',
 		'vlib/gg/gg.v',
+		'vlib/math/big/',
+		'vlib/os/',
+		'vlib/semver/',
+		'vlib/strings/',
+		'vlib/time/',
+		'vlib/vweb/',
+		'vlib/x/websocket/',
 	]
 )
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	pass_args := args_string.all_before('test-cleancode')
 	v_test_vetting(pass_args)
 }

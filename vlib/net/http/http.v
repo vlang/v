@@ -6,7 +6,6 @@ module http
 import net.urllib
 import net.http.chunked
 import net
-import time
 import io
 
 const (
@@ -54,21 +53,13 @@ pub fn new_request(method Method, url_ string, data string) ?Request {
 	return Request{
 		method: method
 		url: url
-		data: data	/*
-			headers: {
+		data: data
+		/*
+		headers: {
 			'Accept-Encoding': 'compress'
 		}
-			*/
+		*/
 	}
-}
-
-fn (methods []Method) contains(m Method) bool {
-	for method in methods {
-		if method == m {
-			return true
-		}
-	}
-	return false
 }
 
 pub fn get(url string) ?Response {
@@ -76,48 +67,33 @@ pub fn get(url string) ?Response {
 }
 
 pub fn post(url string, data string) ?Response {
-	return fetch_with_method(.post, url, {
-		data: data
-		headers: {
+	return fetch_with_method(.post, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
 pub fn post_json(url string, data string) ?Response {
-	return fetch_with_method(.post, url, {
-		data: data
-		headers: {
+	return fetch_with_method(.post, url, data: data, headers: {
 			'Content-Type': 'application/json'
-		}
-	})
+		})
 }
 
 pub fn post_form(url string, data map[string]string) ?Response {
-	return fetch_with_method(.post, url, {
-		headers: {
+	return fetch_with_method(.post, url, headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
-		}
-		data: url_encode_form_data(data)
-	})
+		}, data: url_encode_form_data(data))
 }
 
 pub fn put(url string, data string) ?Response {
-	return fetch_with_method(.put, url, {
-		data: data
-		headers: {
+	return fetch_with_method(.put, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
 pub fn patch(url string, data string) ?Response {
-	return fetch_with_method(.patch, url, {
-		data: data
-		headers: {
+	return fetch_with_method(.patch, url, data: data, headers: {
 			'Content-Type': content_type_default
-		}
-	})
+		})
 }
 
 pub fn head(url string) ?Response {
@@ -132,9 +108,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 	if _url == '' {
 		return error('http.fetch: empty url')
 	}
-	url := build_url_from_fetch(_url, config) or {
-		return error('http.fetch: invalid url $_url')
-	}
+	url := build_url_from_fetch(_url, config) or { return error('http.fetch: invalid url $_url') }
 	data := config.data
 	req := Request{
 		method: config.method
@@ -152,11 +126,7 @@ pub fn fetch(_url string, config FetchConfig) ?Response {
 }
 
 pub fn get_text(url string) string {
-	resp := fetch(url, {
-		method: .get
-	}) or {
-		return ''
-	}
+	resp := fetch(url, method: .get) or { return '' }
 	return resp.text
 }
 
@@ -224,9 +194,7 @@ pub fn parse_headers(lines []string) map[string]string {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is recevied
 pub fn (req &Request) do() ?Response {
-	mut url := urllib.parse(req.url) or {
-		return error('http.Request.do: invalid url $req.url')
-	}
+	mut url := urllib.parse(req.url) or { return error('http.Request.do: invalid url $req.url') }
 	mut rurl := url
 	mut resp := Response{}
 	mut no_redirects := 0
@@ -277,7 +245,7 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL) ?Res
 		return res
 	} else if scheme == 'http' {
 		// println('http_do( $nport, $method, $host_name, $path )')
-		res := req.http_do('$host_name:$nport', method, path)?
+		res := req.http_do('$host_name:$nport', method, path) ?
 		return res
 	}
 	return error('http.request.method_and_url_to_response: unsupported scheme: "$scheme"')
@@ -312,9 +280,7 @@ fn parse_response(resp string) Response {
 			break
 		}
 		i++
-		pos := h.index(':') or {
-			continue
-		}
+		pos := h.index(':') or { continue }
 		// if h.contains('Content-Type') {
 		// continue
 		// }
@@ -394,13 +360,12 @@ pub fn escape(s string) string {
 }
 
 fn (req &Request) http_do(host string, method Method, path string) ?Response {
-	host_name, _ := net.split_address(host)?
+	host_name, _ := net.split_address(host) ?
 	s := req.build_request_headers(method, host_name, path)
-	mut client := net.dial_tcp(host)?
+	mut client := net.dial_tcp(host) ?
 	// TODO this really needs to be exposed somehow
-	client.set_read_timeout(time.second * 30)
-	client.write(s.bytes())?
-	mut bytes := io.read_all(client)?
+	client.write(s.bytes()) ?
+	mut bytes := io.read_all(reader: client) ?
 	client.close()
 	return parse_response(bytes.bytestr())
 }

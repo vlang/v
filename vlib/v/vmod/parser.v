@@ -87,7 +87,7 @@ fn (mut s Scanner) create_string(q byte) string {
 			str += s.text[s.pos..s.pos + 1]
 			s.pos += 2
 		} else {
-			str += s.text[s.pos].str()
+			str += s.text[s.pos].ascii_str()
 			s.pos++
 		}
 	}
@@ -97,7 +97,7 @@ fn (mut s Scanner) create_string(q byte) string {
 fn (mut s Scanner) create_ident() string {
 	mut text := ''
 	for is_name_alpha(s.text[s.pos]) {
-		text += s.text[s.pos].str()
+		text += s.text[s.pos].ascii_str()
 		s.pos++
 	}
 	return text
@@ -138,13 +138,13 @@ fn (mut s Scanner) scan_all() {
 			continue
 		}
 		match c {
-			`{` { s.tokenize(.lcbr, c.str()) }
-			`}` { s.tokenize(.rcbr, c.str()) }
-			`[` { s.tokenize(.labr, c.str()) }
-			`]` { s.tokenize(.rabr, c.str()) }
-			`:` { s.tokenize(.colon, c.str()) }
-			`,` { s.tokenize(.comma, c.str()) }
-			else { s.tokenize(.unknown, c.str()) }
+			`{` { s.tokenize(.lcbr, c.ascii_str()) }
+			`}` { s.tokenize(.rcbr, c.ascii_str()) }
+			`[` { s.tokenize(.labr, c.ascii_str()) }
+			`]` { s.tokenize(.rabr, c.ascii_str()) }
+			`:` { s.tokenize(.colon, c.ascii_str()) }
+			`,` { s.tokenize(.comma, c.ascii_str()) }
+			else { s.tokenize(.unknown, c.ascii_str()) }
 		}
 		s.pos++
 	}

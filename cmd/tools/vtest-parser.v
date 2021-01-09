@@ -31,10 +31,13 @@ mut:
 	all_paths  []string // all files given to the supervisor process
 	path       string // the current path, given to a worker process
 	cut_index  int // the cut position in the source from context.path
+	max_index  int // the maximum index (equivalent to the file content length)
 	// parser context in the worker processes:
 	table      table.Table
 	scope      ast.Scope
 	pref       pref.Preferences
+	period_ms  int // print periodic progress
+	stop_print bool // stop printing the periodic progress
 }
 
 fn main() {
@@ -70,13 +73,18 @@ fn main() {
 		context.expand_all_paths()
 		mut fails := 0
 		mut panics := 0
+		sw := time.new_stopwatch({})
 		for path in context.all_paths {
+			filesw := time.new_stopwatch({})
+			context.start_printing()
 			new_fails, new_panics := context.process_whole_file_in_worker(path)
 			fails += new_fails
 			panics += new_panics
+			context.stop_printing()
+			context.info('File: ${path:-30} | new_fails: ${new_fails:5} | new_panics: ${new_panics:5} | Elapsed time: ${filesw.elapsed().milliseconds()}ms')
 		}
 		non_panics := fails - panics
-		println('Files processed: ${context.all_paths.len:5} | Errors found: ${fails:5} | Panics: ${panics:5} | Non panics: ${non_panics:5}')
+		context.info('Total files processed: ${context.all_paths.len:5} | Errors found: ${fails:5} | Panics: ${panics:5} | Non panics: ${non_panics:5} | Elapsed time: ${sw.elapsed().milliseconds()}ms')
 		if fails > 0 {
 			exit(1)
 		}
@@ -98,6 +106,7 @@ fn process_cli_args() &Context {
 	fp.skip_executable()
 	context.is_help = fp.bool('help', `h`, false, 'Show help/usage screen.')
 	context.is_verbose = fp.bool('verbose', `v`, false, 'Be more verbose.')
+	context.period_ms = fp.int('progress_ms', `s`, 500, 'print a status report periodically, the period is given in milliseconds.')
 	context.is_worker = fp.bool('worker', `w`, false, 'worker specific flag - is this a worker process, that can crash/panic.')
 	context.cut_index = fp.int('cut_index', `c`, 1, 'worker specific flag - cut index in the source file, everything before that will be parsed, the rest - ignored.')
 	context.timeout_ms = fp.int('timeout_ms', `t`, 250, 'worker specific flag - timeout in ms; a worker taking longer, will self terminate.')
@@ -140,11 +149,8 @@ fn yellow(msg string) string {
 	return term.yellow(msg)
 }
 
-fn italic(msg string) string {
-	if !support_color {
-		return msg
-	}
-	return term.italic(msg)
+fn (mut context Context) info(msg string) {
+	println(msg)
 }
 
 fn (mut context Context) log(msg string) {
@@ -184,6 +190,7 @@ fn (mut context Context) expand_all_paths() {
 }
 
 fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
+	context.path = path // needed for the progress bar
 	context.log('> context.process_whole_file_in_worker path: $path')
 	if !(os.is_file(path) && os.is_readable(path)) {
 		context.error('$path is not readable')
@@ -197,8 +204,10 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 	len := source.len - 1
 	mut fails := 0
 	mut panics := 0
+	context.max_index = len
 	for i in 0 .. len {
 		verbosity := if context.is_verbose { '-v' } else { '' }
+		context.cut_index = i // needed for the progress bar
 		cmd := '"$context.myself" $verbosity --worker --timeout_ms ${context.timeout_ms:5} --cut_index ${i:5} --path "$path" '
 		context.log(cmd)
 		res := os.exec(cmd) or { os.Result{
@@ -219,7 +228,7 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 			col := last_line.len
 			err := if is_panic { red('parser failure: panic') } else { red('parser failure: crash, ${ecode_details[res.exit_code.str()]}') }
 			path_to_line := bold('$path:$line:$col:')
-			err_line := italic(last_line.trim_left('\t'))
+			err_line := last_line.trim_left('\t')
 			println('$path_to_line $err')
 			println('\t$line | $err_line')
 			println('')
@@ -227,4 +236,30 @@ fn (mut context Context) process_whole_file_in_worker(path string) (int, int) {
 		}
 	}
 	return fails, panics
+}
+
+fn (mut context Context) start_printing() {
+	context.stop_print = false
+	println('\n')
+	go context.print_periodic_status()
+}
+
+fn (mut context Context) stop_printing() {
+	context.stop_print = true
+	time.sleep_ms(context.period_ms / 5)
+}
+
+fn (mut context Context) print_status() {
+	term.cursor_up(1)
+	eprint('\r  >   ${context.path:-30} | index: ${context.cut_index:5}/${context.max_index - 1:5}\n')
+}
+
+fn (mut context Context) print_periodic_status() {
+	for !context.stop_print {
+		context.print_status()
+		for i := 0; i < 10 && !context.stop_print; i++ {
+			time.sleep_ms(context.period_ms / 10)
+		}
+	}
+	context.print_status()
 }

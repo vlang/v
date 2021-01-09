@@ -8,7 +8,7 @@ import v.table
 
 fn (mut p Parser) for_stmt() ast.Stmt {
 	p.check(.key_for)
-	pos := p.tok.position()
+	mut pos := p.tok.position()
 	p.open_scope()
 	p.inside_for = true
 	if p.tok.kind == .key_match {
@@ -19,13 +19,16 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	// Infinite loop
 	if p.tok.kind == .lcbr {
 		p.inside_for = false
-		stmts := p.parse_block()
-		p.close_scope()
-		return ast.ForStmt{
+		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr - 1
+		for_stmt := ast.ForStmt{
 			stmts: stmts
 			pos: pos
 			is_inf: true
+			scope: p.scope
 		}
+		p.close_scope()
+		return for_stmt
 	} else if p.peek_tok.kind in [.decl_assign, .assign, .semicolon] || p.tok.kind == .semicolon {
 		// `for i := 0; i < 10; i++ {`
 		if p.tok.kind == .key_mut {
@@ -60,9 +63,9 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			has_inc = true
 		}
 		p.inside_for = false
-		stmts := p.parse_block()
-		p.close_scope()
-		return ast.ForCStmt{
+		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr - 1
+		for_c_stmt := ast.ForCStmt{
 			stmts: stmts
 			has_init: has_init
 			has_cond: has_cond
@@ -71,11 +74,14 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			cond: cond
 			inc: inc
 			pos: pos
+			scope: p.scope
 		}
+		p.close_scope()
+		return for_c_stmt
 	} else if p.peek_tok.kind in [.key_in, .comma] ||
 		(p.tok.kind == .key_mut && p.peek_tok2.kind in [.key_in, .comma]) {
-		// `for i in vals`, `for i in start .. end`
-		val_is_mut := p.tok.kind == .key_mut
+		// `for i in vals`, `for i in start .. end`, `for mut user in users`, `for i, mut user in users`
+		mut val_is_mut := p.tok.kind == .key_mut
 		if val_is_mut {
 			p.next()
 		}
@@ -85,6 +91,11 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		mut val_var_name := p.check_name()
 		if p.tok.kind == .comma {
 			p.next()
+			if p.tok.kind == .key_mut {
+				// `for i, mut user in users {`
+				p.next()
+				val_is_mut = true
+			}
 			key_var_name = val_var_name
 			val_var_pos = p.tok.position()
 			val_var_name = p.check_name()
@@ -146,10 +157,10 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			})
 		}
 		p.inside_for = false
-		stmts := p.parse_block()
+		stmts := p.parse_block_no_scope(false)
+		pos.last_line = p.prev_tok.line_nr - 1
 		// println('nr stmts=$stmts.len')
-		p.close_scope()
-		return ast.ForInStmt{
+		for_in_stmt := ast.ForInStmt{
 			stmts: stmts
 			cond: cond
 			key_var: key_var_name
@@ -158,16 +169,25 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 			is_range: is_range
 			pos: pos
 			val_is_mut: val_is_mut
+			scope: p.scope
 		}
+		p.close_scope()
+		return for_in_stmt
 	}
 	// `for cond {`
 	cond := p.expr(0)
 	p.inside_for = false
-	stmts := p.parse_block()
-	p.close_scope()
-	return ast.ForStmt{
+	// extra scope for the body
+	p.open_scope()
+	stmts := p.parse_block_no_scope(false)
+	pos.last_line = p.prev_tok.line_nr - 1
+	for_stmt := ast.ForStmt{
 		cond: cond
 		stmts: stmts
 		pos: pos
+		scope: p.scope
 	}
+	p.close_scope()
+	p.close_scope()
+	return for_stmt
 }

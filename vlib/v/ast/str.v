@@ -19,14 +19,14 @@ pub fn (node &FnDecl) modname() string {
 }
 
 // These methods are used only by vfmt, vdoc, and for debugging.
-pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
+pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]string) string {
 	mut f := strings.new_builder(30)
 	if node.is_pub {
 		f.write('pub ')
 	}
 	mut receiver := ''
 	if node.is_method {
-		mut styp := util.no_cur_mod(t.type_to_str(node.receiver.typ), cur_mod)
+		mut styp := util.no_cur_mod(t.type_to_code(node.receiver.typ), cur_mod)
 		m := if node.rec_mut { node.receiver.typ.share().str() + ' ' } else { '' }
 		if node.rec_mut {
 			styp = styp[1..] // remove &
@@ -43,13 +43,18 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 		receiver = '($node.receiver.name $m$name) '
 		*/
 	}
-	mut name := if node.is_anon { '' } else { node.name.after('.') }
-	if node.language == .c {
-		name = 'C.$name'
-	} else if node.language == .js {
-		name = 'JS.$name'
+	mut name := if node.is_anon { '' } else { node.name.after_char(`.`) }
+	if !node.is_method {
+		if node.language == .c {
+			name = 'C.$name'
+		} else if node.language == .js {
+			name = 'JS.$name'
+		}
 	}
 	f.write('fn $receiver$name')
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!='] {
+		f.write(' ')
+	}
 	if node.is_generic {
 		f.write('<T>')
 	}
@@ -79,6 +84,9 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 			}
 		}
 		s = util.no_cur_mod(s, cur_mod)
+		for mod, alias in m2a {
+			s = s.replace(mod, alias)
+		}
 		if should_add_type {
 			if !is_type_only {
 				f.write(' ')
@@ -94,9 +102,11 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string) string {
 	}
 	f.write(')')
 	if node.return_type != table.void_type {
-		// typ := t.type_to_str(node.typ)
-		// if typ.starts_with('
-		f.write(' ' + util.no_cur_mod(t.type_to_str(node.return_type), cur_mod))
+		mut rs := util.no_cur_mod(t.type_to_str(node.return_type), cur_mod)
+		for mod, alias in m2a {
+			rs = rs.replace(mod, alias)
+		}
+		f.write(' ' + rs)
 	}
 	return f.str()
 }
@@ -202,6 +212,9 @@ pub fn (x Expr) str() string {
 		CharLiteral {
 			return '`$x.val`'
 		}
+		ComptimeSelector {
+			return '${x.left}.$$x.field_expr'
+		}
 		EnumVal {
 			return '.$x.val'
 		}
@@ -275,7 +288,7 @@ pub fn (x Expr) str() string {
 		}
 		else {}
 	}
-	return '[unhandled expr type ${typeof(x)}]'
+	return '[unhandled expr type $x.type_name()]'
 }
 
 pub fn (a CallArg) str() string {
@@ -333,10 +346,13 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}() { $node.stmts.len stmts }'
+			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
+		}
+		StructDecl {
+			return 'struct $node.name { $node.fields.len fields }'
 		}
 		else {
-			return '[unhandled stmt str type: ${typeof(node)} ]'
+			return '[unhandled stmt str type: $node.type_name() ]'
 		}
 	}
 }

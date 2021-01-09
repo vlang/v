@@ -8,8 +8,6 @@ const (
 	known_failing_exceptions = [
 		'vlib/crypto/aes/const.v',
 		/* multiple narrow columns of []string turned to 1 long single column, otherwise works */
-		'vlib/vweb/vweb.v',
-		/* $for method in T.methods { => $for method in T(methods) { , `return // xx` => parse expr error */
 		'vlib/v/gen/js/tests/life.v',
 		/* error: unexpected `,`, expecting ), on JS.setInterval(fn () { show(game) game = step(game) }, 500) */
 		'vlib/builtin/js/builtin.v',
@@ -17,17 +15,17 @@ const (
 		'vlib/builtin/js/jsfns_node.js.v',
 		'vlib/builtin/js/jsfns.js.v',
 		'vlib/builtin/js/jsfns_browser.js.v',
-		'vlib/builtin/bare/linuxsys_bare.v',
 		/* error: expr(): bad token `asm`, on `asm {}` */
-		'vlib/picoev/picoev.v',
+		'vlib/builtin/bare/linuxsys_bare.v',
+		/* total chaos (duplicated code several times) in array_eq_test.v */
+		'vlib/builtin/array_eq_test.v',
 		/* the fn args are removed, then `cb fn (picohttpparser.Request, mut picohttpparser.Response)` can not be reparsed */
-		'vlib/os/os.v' /* os.v - `a := [ c'/bin/sh', c'-c', byteptr(cmd.str), 0 ]` */,
+		'vlib/picoev/picoev.v',
 	]
 )
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	v_test_formatting(args_string.all_before('test-fmt'))
 }
 

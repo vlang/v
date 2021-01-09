@@ -34,7 +34,7 @@ const (
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30,
 		31 + 28 + 31 + 30 + 31 + 30 + 31 + 31 + 30 + 31 + 30 + 31,
 	]
-	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thusday', 'Friday', 'Saturday', 'Sunday']
+	long_days          = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 )
 
 pub struct Time {
@@ -171,15 +171,22 @@ pub fn (t Time) unix_time_milli() u64 {
 	return t.unix * 1000 + u64(t.microsecond / 1000)
 }
 
+// add returns a new time that duration is added
+pub fn (t Time) add(d Duration) Time {
+	microseconds := i64(t.unix) * 1000 * 1000 + t.microsecond + d.microseconds()
+	unix := microseconds / (1000 * 1000)
+	micro := microseconds % (1000 * 1000)
+	return unix2(int(unix), int(micro))
+}
+
 // add_seconds returns a new time struct with an added number of seconds.
 pub fn (t Time) add_seconds(seconds int) Time {
-	// TODO Add(d time.Duration)
-	return unix(int(t.unix + u64(seconds)))
+	return t.add(seconds * second)
 }
 
 // add_days returns a new time struct with an added number of days.
 pub fn (t Time) add_days(days int) Time {
-	return unix(int(t.unix + u64(i64(days) * 3600 * 24)))
+	return t.add(days * 24 * hour)
 }
 
 // since returns a number of seconds elapsed since a given time.
@@ -366,11 +373,11 @@ pub type Duration = i64
 
 pub const (
 	nanosecond  = Duration(1)
-	microsecond = Duration(1000) * nanosecond
-	millisecond = Duration(1000) * microsecond
-	second      = Duration(1000) * millisecond
-	minute      = Duration(60) * second
-	hour        = Duration(60) * minute
+	microsecond = Duration(1000 * nanosecond)
+	millisecond = Duration(1000 * microsecond)
+	second      = Duration(1000 * millisecond)
+	minute      = Duration(60 * second)
+	hour        = Duration(60 * minute)
 	infinite    = Duration(-1)
 )
 
@@ -410,4 +417,11 @@ pub fn (d Duration) hours() f64 {
 	hr := d / hour
 	nsec := d % hour
 	return f64(hr) + f64(nsec) / (60 * 60 * 1e9)
+}
+
+// offset returns time zone UTC offset in seconds
+pub fn offset() int {
+	t := now()
+	local := t.local()
+	return int(local.unix - t.unix)
 }

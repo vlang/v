@@ -46,7 +46,6 @@ pub fn unix2(abs int, microsecond int) Time {
 	}
 }
 
-[inline]
 fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 	mut day_offset := day_offset_
 	// Move offset to year 2001 as it's the start of a new 400-year cycle
@@ -112,7 +111,6 @@ fn calculate_date_from_offset(day_offset_ int) (int, int, int) {
 	return year, estimated_month + 1, day_offset + 1
 }
 
-[inline]
 fn calculate_time_from_offset(second_offset_ int) (int, int, int) {
 	mut second_offset := second_offset_
 	if second_offset < 0 {

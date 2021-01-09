@@ -1,0 +1,7 @@
+vlib/v/parser/tests/invalid_fn_decl_script_err.vv:3:4: error: function declarations in script mode should be before all script statements
+    1 | mynum := 10
+    2 |
+    3 | fn main() {
+      |    ~~~~
+    4 |     println(mynum)
+    5 | }

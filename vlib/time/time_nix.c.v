@@ -18,13 +18,15 @@ struct C.tm {
 
 fn C.timegm(&tm) time_t
 
+// fn C.gmtime_r(&tm, &gbuf)
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
 fn make_unix_time(t C.tm) int {
 	return int(C.timegm(&t))
 }
 
-fn to_local_time(t Time) Time {
+// local returns t with the location set to local time.
+pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
 	C.localtime_r(time_t(&t.unix), &loc_tm)
 	return convert_ctime(loc_tm, t.microsecond)
@@ -66,7 +68,6 @@ fn vpc_now() u64 {
 // linux_now returns the local time with high precision for most os:es
 // this should be implemented properly with support for leap seconds.
 // It uses the realtime clock to get and converts it to local time
-[inline]
 fn linux_now() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
@@ -77,7 +78,6 @@ fn linux_now() Time {
 	return convert_ctime(loc_tm, int(ts.tv_nsec / 1000))
 }
 
-[inline]
 fn linux_utc() Time {
 	// get the high precision time as UTC realtime clock
 	// and use the nanoseconds part
@@ -110,8 +110,8 @@ pub fn (d Duration) timespec() C.timespec {
 	d_nsec := d % second
 	ts.tv_sec += d_sec
 	ts.tv_nsec += d_nsec
-	if ts.tv_nsec > second {
-		ts.tv_nsec -= second
+	if ts.tv_nsec > i64(second) {
+		ts.tv_nsec -= i64(second)
 		ts.tv_sec++
 	}
 	return ts

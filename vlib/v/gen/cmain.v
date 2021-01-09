@@ -40,9 +40,13 @@ fn (mut g Gen) gen_vlines_reset() {
 	}
 }
 
-fn (mut g Gen) gen_c_main_header() {
+fn (mut g Gen) gen_c_main_function_header() {
 	if g.pref.os == .windows {
 		if g.is_gui_app() {
+			$if msvc {
+				// This is kinda bad but I dont see a way that is better
+				g.writeln('#pragma comment(linker, "/SUBSYSTEM:WINDOWS")')
+			}
 			// GUI application
 			g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
 		} else {
@@ -52,6 +56,10 @@ fn (mut g Gen) gen_c_main_header() {
 	} else {
 		g.writeln('int main(int ___argc, char** ___argv){')
 	}
+}
+
+fn (mut g Gen) gen_c_main_header() {
+	g.gen_c_main_function_header()
 	if g.pref.os == .windows && g.is_gui_app() {
 		g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
 		g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
@@ -67,7 +75,7 @@ fn (mut g Gen) gen_c_main_header() {
 		g.writeln('')
 	}
 	if g.is_importing_os() {
-		if g.autofree {
+		if g.is_autofree {
 			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
 		}
 		if g.pref.os == .windows {
@@ -82,7 +90,7 @@ fn (mut g Gen) gen_c_main_header() {
 }
 
 pub fn (mut g Gen) gen_c_main_footer() {
-	if g.autofree {
+	if g.is_autofree {
 		g.writeln('\t_vcleanup();')
 	}
 	g.writeln('\treturn 0;')
@@ -91,7 +99,7 @@ pub fn (mut g Gen) gen_c_main_footer() {
 
 pub fn (mut g Gen) gen_c_android_sokol_main() {
 	// Weave autofree into sokol lifecycle callback(s)
-	if g.autofree {
+	if g.is_autofree {
 		g.writeln('// Wrapping cleanup/free callbacks for sokol to include _vcleanup()
 void (*_vsokol_user_cleanup_ptr)(void);
 void (*_vsokol_user_cleanup_cb_ptr)(void *);
@@ -118,7 +126,7 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	_vinit();
 	main__main();
 ')
-	if g.autofree {
+	if g.is_autofree {
 		g.writeln('	// Wrap user provided cleanup/free functions for sokol to be able to call _vcleanup()
 	if (g_desc.cleanup_cb) {
 		_vsokol_user_cleanup_ptr = g_desc.cleanup_cb;
@@ -140,11 +148,7 @@ pub fn (mut g Gen) write_tests_main() {
 	g.definitions.writeln('int g_test_fails = 0;')
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
 	main_fn_start_pos := g.out.len
-	$if windows {
-		g.writeln('int wmain() {')
-	} $else {
-		g.writeln('int main() {')
-	}
+	g.gen_c_main_function_header()
 	g.writeln('\t_vinit();')
 	g.writeln('')
 	all_tfuncs := g.get_all_test_function_names()
@@ -166,7 +170,7 @@ pub fn (mut g Gen) write_tests_main() {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
 	g.writeln('')
-	if g.autofree {
+	if g.is_autofree {
 		g.writeln('\t_vcleanup();')
 	}
 	g.writeln('\treturn g_test_fails > 0;')

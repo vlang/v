@@ -120,7 +120,9 @@ pub fn (t &Table) fn_type_source_signature(f &Fn) string {
 		}
 	}
 	sig += ')'
-	if f.return_type != void_type {
+	if f.return_type == ovoid_type {
+		sig += ' ?'
+	} else if f.return_type != void_type {
 		return_type_sym := t.get_type_symbol(f.return_type)
 		sig += ' $return_type_sym.name'
 	}
@@ -218,7 +220,7 @@ pub fn (t &Table) type_find_method(s &TypeSymbol, name string) ?Fn {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe {&t.types[ts.parent_idx]}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }
@@ -275,7 +277,7 @@ pub fn (t &Table) struct_find_field(s &TypeSymbol, name string) ?Field {
 		if ts.parent_idx == 0 {
 			break
 		}
-		ts = unsafe {&t.types[ts.parent_idx]}
+		ts = unsafe { &t.types[ts.parent_idx] }
 	}
 	return none
 }
@@ -299,7 +301,7 @@ pub fn (t &Table) get_type_symbol(typ Type) &TypeSymbol {
 	// println('get_type_symbol $typ')
 	idx := typ.idx()
 	if idx > 0 {
-		return unsafe {&t.types[idx]}
+		return unsafe { &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.
@@ -316,7 +318,7 @@ pub fn (t &Table) get_final_type_symbol(typ Type) &TypeSymbol {
 			alias_info := current_type.info as Alias
 			return t.get_final_type_symbol(alias_info.parent_type)
 		}
-		return unsafe {&t.types[idx]}
+		return unsafe { &t.types[idx] }
 	}
 	// this should never happen
 	panic('get_final_type_symbol: invalid type (typ=$typ idx=$idx). Compiler bug. This should never happen. Please create a GitHub issue.')
@@ -340,29 +342,6 @@ pub fn (t &Table) unalias_num_type(typ Type) Type {
 	return typ
 }
 
-// this will override or register builtin type
-// allows prexisitng types added in register_builtins
-// to be overriden with their real type info
-[inline]
-pub fn (mut t Table) register_builtin_type_symbol(typ TypeSymbol) int {
-	existing_idx := t.type_idxs[typ.name]
-	if existing_idx > 0 {
-		if existing_idx >= string_type_idx {
-			if existing_idx == string_type_idx {
-				existing_type := t.types[existing_idx]
-				t.types[existing_idx] = {
-					typ |
-					kind: existing_type.kind
-				}
-			} else {
-				t.types[existing_idx] = typ
-			}
-		}
-		return existing_idx
-	}
-	return t.register_type_symbol(typ)
-}
-
 [inline]
 pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 	// println('register_type_symbol( $typ.name )')
@@ -380,10 +359,21 @@ pub fn (mut t Table) register_type_symbol(typ TypeSymbol) int {
 				return existing_idx
 			}
 			else {
-				if ex_type.kind == typ.kind {
+				// builtin
+				// this will override the already registered builtin types
+				// with the actual v struct declaration in the source
+				if existing_idx >= string_type_idx && existing_idx <= map_type_idx {
+					if existing_idx == string_type_idx {
+						// existing_type := t.types[existing_idx]
+						t.types[existing_idx] = {
+							typ |
+							kind: ex_type.kind
+						}
+					} else {
+						t.types[existing_idx] = typ
+					}
 					return existing_idx
 				}
-				// panic('cannot register type `$typ.name`, another type with this name exists')
 				return -1
 			}
 		}
@@ -606,8 +596,17 @@ pub fn (mut t Table) find_or_register_multi_return(mr_typs []Type) int {
 
 pub fn (mut t Table) find_or_register_fn_type(mod string, f Fn, is_anon bool, has_decl bool) int {
 	name := if f.name.len == 0 { 'fn ${t.fn_type_source_signature(f)}' } else { f.name.clone() }
-	cname := if f.name.len == 0 { 'anon_fn_${t.fn_type_signature(f)}' } else { util.no_dots(f.name.clone()) }
+	cname := if f.name.len == 0 {
+		'anon_fn_${t.fn_type_signature(f)}'
+	} else {
+		util.no_dots(f.name.clone())
+	}
 	anon := f.name.len == 0 || is_anon
+	// existing
+	existing_idx := t.type_idxs[name]
+	if existing_idx > 0 && t.types[existing_idx].kind != .placeholder {
+		return existing_idx
+	}
 	return t.register_type_symbol(
 		kind: .function
 		name: name
@@ -639,10 +638,12 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
-	typ_sym := t.get_type_symbol(typ)
+	typ_sym := t.get_final_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
-		return typ.clear_flag(.variadic)
+		// return typ.clear_flag(.variadic)
+		array_info := typ_sym.info as Array
+		return array_info.elem_type
 	}
 	if typ_sym.kind == .array {
 		// Check index type
@@ -685,8 +686,9 @@ pub fn (t &Table) mktyp(typ Type) Type {
 	}
 }
 
-// Once we have a module format we can read from module file instead
-// this is not optimal
+// TODO: Once we have a module format we can read from module file instead
+// this is not optimal. it depends on the full import being in table.imports
+// already, we can instead lookup the module path and then work it out
 pub fn (table &Table) qualify_module(mod string, file_path string) string {
 	for m in table.imports {
 		// if m.contains('gen') { println('qm=$m') }
@@ -730,10 +732,26 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		if idx == 0 {
+		// Skip `any_int_type_idx` and `any_flt_type_idx` because they shouldn't be visible to the User.
+		if idx in [0, any_int_type_idx, any_flt_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)
 	}
 	return res
+}
+
+// has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
+// the given name consists of module and name (`mod.Name`)
+// it doesn't care about childs that are references
+pub fn (table &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
+	if ts.info is Struct {
+		for _, field in ts.info.fields {
+			sym := table.get_type_symbol(field.typ)
+			if !field.typ.is_ptr() && (sym.name == name || table.has_deep_child_no_ref(sym, name)) {
+				return true
+			}
+		}
+	}
+	return false
 }

@@ -95,7 +95,7 @@ pub fn (mut c Client) quit() ? {
 
 // expect_reply checks if the SMTP server replied with the expected reply code
 fn (c Client) expect_reply(expected ReplyCode) ? {
-	bytes := io.read_all(c.conn)?
+	bytes := io.read_all(reader: c.conn)?
 
 	str := bytes.bytestr().trim_space()
 	$if smtp_debug? {
@@ -105,7 +105,7 @@ fn (c Client) expect_reply(expected ReplyCode) ? {
 
 	if str.len >= 3 {
 		status := str[..3].int()
-		if status != expected {
+		if ReplyCode(status) != expected {
 			return error('Received unexpected status code $status, expecting $expected')
 		}
 	} else { return error('Recieved unexpected SMTP data: $str') }

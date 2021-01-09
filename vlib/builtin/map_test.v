@@ -5,7 +5,7 @@ const (
 )
 
 fn unique_strings(arr_len int, str_len int) []string {
-	mut arr := []string{}
+	mut arr := []string{cap: arr_len}
 	for arr.len < arr_len {
 		str := rand.string(str_len)
 		if str !in arr {
@@ -367,6 +367,17 @@ fn test_map_in_mut() {
 	assert m['one'] == 2
 }
 
+fn test_map_in() {
+	m := {
+		'Foo': 'bar'
+	}
+	if 'foo'.capitalize() in m {
+		println('ok')
+	} else {
+		assert false
+	}
+}
+
 fn mut_map_with_relation_op_in_fn(mut m map[string]int) {
 	if m['one'] == 1 {
 		m['three'] = 3
@@ -404,9 +415,9 @@ fn test_mut_map_with_relation_op_in_fn() {
 
 fn test_map_str_after_delete() {
 	mut m := {
-		'first': 1
+		'first':  1
 		'second': 2
-		'third': 3
+		'third':  3
 	}
 	osm := '$m'
 	m.delete('second')
@@ -425,4 +436,164 @@ fn test_modify_map_value() {
 	m1['bar'] *= -2
 	assert m1['foo'] == 8
 	assert m1['bar'] == 14
+}
+
+fn test_map_clone() {
+	mut nums := {
+		'foo': 1
+		'bar': 2
+	}
+	mut nums2 := nums.clone()
+	nums2['foo']++
+	nums2['bar'] *= 4
+	assert nums['foo'] == 1
+	assert nums['bar'] == 2
+	assert nums2['foo'] == 2
+	assert nums2['bar'] == 8
+}
+
+struct MValue {
+	name string
+	misc map[string]string
+}
+
+fn test_map_default_zero() {
+	m := map[string]MValue{}
+	v := m['unknown']
+	x := v.misc['x']
+	println(x)
+	assert x == ''
+}
+
+fn test_map_or() {
+	m := {
+		'first':  1
+		'second': 2
+		'third':  3
+	}
+	_ = m
+	// num := m['first'] or { return }
+}
+
+fn test_int_keys() {
+	mut m := map[int]int{}
+	m[3] = 9
+	m[4] = 16
+	assert m.len == 2
+	assert m[3] == 9
+	assert m[4] == 16
+	m[5] += 24
+	m[5]++
+	assert m[5] == 25
+	m2 := {3:9 4:16 5:25}
+	assert m2.len == 3
+	// clone
+	mc := m.clone()
+	same := mc == m
+	assert same
+	assert mc.len == 3
+	assert mc.keys() == [3,4,5]
+	mut all := []int{}
+	for k, v in mc {
+		assert m[k] == v
+		all << k
+		all << v
+	}
+	assert all == [3, 9, 4, 16, 5, 25]
+}
+
+fn test_voidptr_keys() {
+	mut m := map[voidptr]string{}
+	v := 5
+	m[&v] = 'var'
+	m[&m] = 'map'
+	assert m[&v] == 'var'
+	assert m[&m] == 'map'
+	assert m.len == 2
+}
+
+fn test_rune_keys() {
+	mut m := {`!`:2 `%`:3}
+	assert typeof(m).name == 'map[rune]int'
+	assert m[`!`] == 2
+	m[`@`] = 7
+	assert m.len == 3
+	println(m)
+	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
+	
+	mut a := []rune{}
+	for k, v in m {
+		a << k
+		a << rune(v) + `0`
+	}
+	assert a == [`!`, `2`, `%`, `3`, `@`, `7`]
+}
+
+fn test_eq() {
+	a := {
+		'a': 1
+		'b': 2
+	}
+	assert a == {
+		'a': 1
+		'b': 2
+	}
+	b := {
+		'a': [[1]]
+		'b': [[2]]
+	}
+	assert b == {
+		'a': [[1]]
+		'b': [[2]]
+	}
+	c := {
+		'a': {
+			'11': 1
+		}
+		'b': {
+			'22': 2
+		}
+	}
+	assert c == {
+		'a': {
+			'11': 1
+		}
+		'b': {
+			'22': 2
+		}
+	}
+	d := {
+		'a': MValue{
+			name: 'aa'
+			misc: {
+				'11': '1'
+			}
+		}
+		'b': MValue{
+			name: 'bb'
+			misc: {
+				'22': '2'
+			}
+		}
+	}
+	assert d == {
+		'a': MValue{
+			name: 'aa'
+			misc: {
+				'11': '1'
+			}
+		}
+		'b': MValue{
+			name: 'bb'
+			misc: {
+				'22': '2'
+			}
+		}
+	}
+}
+
+fn test_non_string_key_map_str() {
+	assert {23: 4}.str() == '{23: 4}'
+	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
+	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
 }

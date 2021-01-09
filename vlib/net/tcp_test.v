@@ -7,10 +7,6 @@ const (
 
 fn handle_conn(_c net.TcpConn) {
 	mut c := _c
-	// arbitrary timeouts to ensure that it doesnt
-	// instantly throw its hands in the air and give up
-	c.set_read_timeout(10 * time.second)
-	c.set_write_timeout(10 * time.second)
 	for {
 		mut buf := []byte{len: 100, init: 0}
 		read := c.read(mut buf) or {
@@ -39,10 +35,6 @@ fn echo() ? {
 	defer {
 		c.close() or { }
 	}
-	// arbitrary timeouts to ensure that it doesnt
-	// instantly throw its hands in the air and give up
-	c.set_read_timeout(10 * time.second)
-	c.set_write_timeout(10 * time.second)
 	data := 'Hello from vlib/net!'
 	c.write_str(data)?
 	mut buf := []byte{len: 4096}

@@ -94,6 +94,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 	mut comments := []ast.Comment{cap: left_comments.len + right_comments.len}
 	comments << left_comments
 	comments << right_comments
+	end_comments := p.eat_line_end_comments()
 	mut has_cross_var := false
 	if op == .decl_assign {
 		// a, b := a + 1, b
@@ -105,7 +106,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		for r in right {
 			has_cross_var = p.check_cross_variables(left, r)
 			if op !in [.assign, .decl_assign] {
-				p.error('unexpected $op.str(), expecting := or = or comma')
+				p.error_with_pos('unexpected $op.str(), expecting := or = or comma', pos)
 				return ast.Stmt{}
 			}
 			if has_cross_var {
@@ -187,6 +188,7 @@ fn (mut p Parser) partial_assign_stmt(left []ast.Expr, left_comments []ast.Comme
 		left: left
 		right: right
 		comments: comments
+		end_comments: end_comments
 		pos: pos
 		has_cross_var: has_cross_var
 		is_simple: p.inside_for && p.tok.kind == .lcbr

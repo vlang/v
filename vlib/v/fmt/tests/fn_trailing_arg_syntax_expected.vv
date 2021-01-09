@@ -1,0 +1,35 @@
+struct Bar {
+	x string
+	y int
+	b Baz
+}
+
+struct Baz {
+	x int
+}
+
+fn main() {
+	bar_func(x: 'this line is short enough', y: 13)
+	bar_func(
+		x: 'a very long content should cause vfmt to use multiple lines instead of one.'
+		y: 123456789
+	)
+	bar_func(
+		x: 'some string'
+		b: Baz{
+			x: 0
+		}
+	)
+	ui.row(
+		// stretch: true
+		margin: {
+			top: 10
+			left: 10
+			right: 10
+			bottom: 10
+		}
+	)
+}
+
+fn bar_func(bar Bar) {
+}

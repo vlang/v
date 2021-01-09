@@ -126,6 +126,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 		}
 		field_type := g.typ(field.typ)
 		field_sym := g.table.get_type_symbol(field.typ)
+		// First generate decoding
 		if field.attrs.contains('raw') {
 			dec.writeln('\tres.${c_name(field.name)} = tos4(cJSON_PrintUnformatted(' + 'js_get(root, "$name")));')
 		} else {
@@ -137,6 +138,10 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 				dec.writeln('\tres.${c_name(field.name)} = $dec_name (js_get(root, "$name"));')
 			} else if field_sym.kind == .enum_ {
 				dec.writeln('\tres.${c_name(field.name)} = json__decode_u64(js_get(root, "$name"));')
+			} else if field_sym.name == 'time.Time' {
+				// time struct requires special treatment
+				// it has to be decoded from a unix timestamp number
+				dec.writeln('\tres.${c_name(field.name)} = time__unix(json__decode_u64(js_get(root, "$name")));')
 			} else if field_sym.kind == .alias {
 				alias := field_sym.info as table.Alias
 				parent_type := g.typ(alias.parent_type)
@@ -162,6 +167,7 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 				dec.writeln('\tres.${c_name(field.name)} = *($field_type*) ${tmp}.data;')
 			}
 		}
+		// Encoding
 		mut enc_name := js_enc_name(field_type)
 		if !is_js_prim(field_type) {
 			if field_sym.kind == .alias {
@@ -172,7 +178,13 @@ fn (mut g Gen) gen_struct_enc_dec(type_info table.TypeInfo, styp string, mut enc
 		if field_sym.kind == .enum_ {
 			enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}));')
 		} else {
-			enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
+			if field_sym.name == 'time.Time' {
+				// time struct requires special treatment
+				// it has to be encoded as a unix timestamp number
+				enc.writeln('\tcJSON_AddItemToObject(o, "$name", json__encode_u64(val.${c_name(field.name)}.v_unix));')
+			} else {
+				enc.writeln('\tcJSON_AddItemToObject(o, "$name", ${enc_name}(val.${c_name(field.name)}));')
+			}
 		}
 	}
 }
@@ -189,9 +201,8 @@ fn js_dec_name(typ string) string {
 }
 
 fn is_js_prim(typ string) bool {
-	return typ == 'int' || typ == 'string' || typ == 'bool' || typ == 'f32' || typ == 'f64' ||
-		typ == 'i8' || typ == 'i16' || typ == 'i64' || typ == 'u16' || typ == 'u32' || typ == 'u64' ||
-		typ == 'byte'
+	return typ in
+		['int', 'string', 'bool', 'f32', 'f64', 'i8', 'i16', 'i64', 'u16', 'u32', 'u64', 'byte']
 }
 
 fn (mut g Gen) decode_array(value_type table.Type) string {
@@ -211,7 +222,7 @@ fn (mut g Gen) decode_array(value_type table.Type) string {
 '
 	}
 	return '
-	if(root && !cJSON_IsArray(root)) {
+	if(root && !cJSON_IsArray(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an array: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_array_$styp *)&err;
 	}
@@ -239,6 +250,8 @@ fn (mut g Gen) encode_array(value_type table.Type) string {
 fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 	styp := g.typ(key_type)
 	styp_v := g.typ(value_type)
+	key_type_symbol := g.table.get_type_symbol(key_type)
+	hash_fn, key_eq_fn, clone_fn, free_fn := g.map_fn_ptrs(key_type_symbol)
 	fn_name_v := js_dec_name(styp_v)
 	mut s := ''
 	if is_js_prim(styp_v) {
@@ -254,16 +267,17 @@ fn (mut g Gen) decode_map(key_type table.Type, value_type table.Type) string {
 '
 	}
 	return '
-	if(!cJSON_IsObject(root)) {
+	if(!cJSON_IsObject(root) && !cJSON_IsNull(root)) {
 		Option err = v_error( string_add(_SLIT("Json element is not an object: "), tos2(cJSON_PrintUnformatted(root))) );
 		return *(Option_map_${styp}_$styp_v *)&err;
 	}
-	res = new_map_1(sizeof($styp_v));
+	res = new_map_2(sizeof($styp), sizeof($styp_v), $hash_fn, $key_eq_fn, $clone_fn, $free_fn);
 	cJSON *jsval = NULL;
 	cJSON_ArrayForEach(jsval, root)
 	{
 		$s
-		map_set(&res, tos2( (byteptr) jsval->string ) , &val );
+		string key = tos2( (byteptr) jsval->string );
+		map_set_1(&res, &key, &val);
 	}
 '
 }
@@ -286,7 +300,7 @@ fn (mut g Gen) encode_map(key_type table.Type, value_type table.Type) string {
 	array_$styp $keys_tmp = map_keys(&val);
 	for (int i = 0; i < ${keys_tmp}.len; ++i) {
 		$key
-		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get(val, key, &($styp_v[]) { $zero } ) ) );
+		cJSON_AddItemToObject(o, (char*) key.str, $fn_name_v ( *($styp_v*) map_get_1(&val, &key, &($styp_v[]) { $zero } ) ) );
 	}
 	array_free(&$keys_tmp);
 '

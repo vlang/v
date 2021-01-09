@@ -143,7 +143,7 @@ fn mysubstr(s byteptr, from int, len int) string {
 }
 
 fn rw_callback(loop &C.picoev_loop, fd int, events int, cb_arg voidptr) {
-	mut p := &Picoev(cb_arg)
+	mut p := unsafe {&Picoev(cb_arg)}
 	if (events & C.PICOEV_TIMEOUT) != 0 {
 		close_conn(loop, fd)
 		p.idx[fd] = 0

@@ -4,8 +4,7 @@ import os
 import testing
 
 fn main() {
-	args := os.args
-	args_string := args[1..].join(' ')
+	args_string := os.args[1..].join(' ')
 	params := args_string.all_before('build-examples')
 	if testing.v_build_failing(params, 'examples') {
 		exit(1)

@@ -32,7 +32,7 @@ mut:
 	dw_reserved0          u32
 	dw_reserved1          u32
 	c_file_name           [260]u16 // max_path_len = 260
-	c_alternate_file_name [14]u16 // 14
+	c_alternate_file_name [14]u16  // 14
 	dw_file_type          u32
 	dw_creator_type       u32
 	w_finder_flags        u16
@@ -78,7 +78,7 @@ mut:
 fn init_os_args_wide(argc int, argv &byteptr) []string {
 	mut args := []string{}
 	for i in 0 .. argc {
-		args << string_from_wide(unsafe {&u16(argv[i])})
+		args << string_from_wide(unsafe { &u16(argv[i]) })
 	}
 	return args
 }
@@ -143,9 +143,7 @@ pub fn mkdir(path string) ?bool {
 // Ref - https://docs.microsoft.com/en-us/cpp/c-runtime-library/reference/get-osfhandle?view=vs-2019
 // get_file_handle retrieves the operating-system file handle that is associated with the specified file descriptor.
 pub fn get_file_handle(path string) HANDLE {
-	cfile := vfopen(path, 'rb') or {
-		return HANDLE(invalid_handle_value)
-	}
+	cfile := vfopen(path, 'rb') or { return HANDLE(invalid_handle_value) }
 	handle := HANDLE(C._get_osfhandle(fileno(cfile))) // CreateFile? - hah, no -_-
 	return handle
 }
@@ -341,7 +339,7 @@ pub:
 	context_record   &ContextRecord
 }
 
-pub type VectoredExceptionHandler = fn ( &ExceptionPointers) u32
+pub type VectoredExceptionHandler = fn (&ExceptionPointers) u32
 
 // This is defined in builtin because we use vectored exception handling
 // for our unhandled exception handler on windows
@@ -392,4 +390,8 @@ fn C._getpid() int
 [inline]
 pub fn getpid() int {
 	return C._getpid()
+}
+
+pub fn posix_set_permission_bit(path_s string, mode u32, enable bool) {
+	// windows has no concept of a permission mask, so do nothing
 }

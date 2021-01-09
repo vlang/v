@@ -61,7 +61,6 @@ fn vpc_now_darwin() u64 {
 // this should be implemented with native system calls eventually
 // but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
 // the microseconds seconds part and converts to local time
-[inline]
 fn darwin_now() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}
@@ -75,7 +74,6 @@ fn darwin_now() Time {
 // this should be implemented with native system calls eventually
 // but for now a bit tweaky. It uses the deprecated  gettimeofday clock to get
 // the microseconds seconds part and normal local time to get correct local time
-[inline]
 fn darwin_utc() Time {
 	// get the high precision time as UTC clock
 	tv := C.timeval{}

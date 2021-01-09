@@ -1,7 +1,6 @@
 module builder
 
 import os
-import time
 import v.pref
 import v.cflag
 
@@ -164,7 +163,11 @@ fn find_vs(vswhere_dir string, host_arch string) ?VsInstallation {
 fn find_msvc() ?MsvcResult {
 	$if windows {
 		processor_architecture := os.getenv('PROCESSOR_ARCHITECTURE')
-		vswhere_dir := if processor_architecture == 'x86' { '%ProgramFiles%' } else { '%ProgramFiles(x86)%' }
+		vswhere_dir := if processor_architecture == 'x86' {
+			'%ProgramFiles%'
+		} else {
+			'%ProgramFiles(x86)%'
+		}
 		host_arch := if processor_architecture == 'x86' { 'X86' } else { 'X64' }
 		wk := find_windows_kit_root(host_arch) or { return error('Unable to find windows sdk') }
 		vs := find_vs(vswhere_dir, host_arch) or { return error('Unable to find visual studio') }
@@ -211,6 +214,7 @@ pub fn (mut v Builder) cc_msvc() {
 		a << '/DNDEBUG'
 	} else {
 		a << '/MDd'
+		a << '/D_DEBUG'
 	}
 	if v.pref.is_debug {
 		// /Zi generates a .pdb
@@ -296,14 +300,13 @@ pub fn (mut v Builder) cc_msvc() {
 	// It is hard to see it at first, but the quotes above ARE balanced :-| ...
 	// Also the double quotes at the start ARE needed.
 	v.show_cc(cmd, out_name_cmd_line, args)
-	ticks := time.ticks()
+	v.timing_start('C msvc')
 	res := os.exec(cmd) or {
 		println(err)
 		verror('msvc error')
 		return
 	}
-	diff := time.ticks() - ticks
-	v.timing_message('C msvc', diff)
+	v.timing_measure('C msvc')
 	if v.pref.show_c_output {
 		v.show_c_compiler_output(res)
 	} else {
@@ -335,16 +338,28 @@ fn (mut v Builder) build_thirdparty_obj_file_with_msvc(path string, moduleflags 
 	defines := flags.defines.join(' ')
 	include_string := '-I "$msvc.ucrt_include_path" -I "$msvc.vs_include_path" -I "$msvc.um_include_path" -I "$msvc.shared_include_path" $inc_dirs'
 	// println('cfiles: $cfiles')
-	cmd := '"$msvc.full_cl_exe_path" /volatile:ms /DNDEBUG $defines $include_string /c $cfiles /Fo"$obj_path"'
+	mut oargs := []string{}
+	if v.pref.is_prod {
+		oargs << '/O2'
+		oargs << '/MD'
+		oargs << '/DNDEBUG'
+	} else {
+		oargs << '/MDd'
+		oargs << '/D_DEBUG'
+	}
+	str_oargs := oargs.join(' ')
+	cmd := '"$msvc.full_cl_exe_path" /volatile:ms $str_oargs $defines $include_string /c $cfiles /Fo"$obj_path"'
 	// NB: the quotes above ARE balanced.
-	// println('thirdparty cmd line: $cmd')
+	$if trace_thirdparty_obj_files ? {
+		println('>>> build_thirdparty_obj_file_with_msvc cmd: $cmd')
+	}
 	res := os.exec(cmd) or {
-		println('msvc: failed thirdparty object build cmd: $cmd')
+		println('msvc: failed to execute msvc compiler (to build a thirdparty object); cmd: $cmd')
 		verror(err)
 		return
 	}
 	if res.exit_code != 0 {
-		println('msvc: failed thirdparty object build cmd: $cmd')
+		println('msvc: failed to build a thirdparty object; cmd: $cmd')
 		verror(res.output)
 		return
 	}

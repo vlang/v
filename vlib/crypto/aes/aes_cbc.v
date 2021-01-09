@@ -44,33 +44,35 @@ pub fn (x &AesCbc) block_size() int {
 }
 
 pub fn (x &AesCbc) encrypt_blocks(mut dst_ []byte, src_ []byte) {
-	mut dst := *dst_
-	mut src := src_
-	if src.len % x.block_size != 0 {
-		panic('crypto.cipher: input not full blocks')
-	}
-	if dst.len < src.len {
-		panic('crypto.cipher: output smaller than input')
-	}
-	if subtle.inexact_overlap(dst[..src.len], src_) {
-		panic('crypto.cipher: invalid buffer overlap')
-	}
-	mut iv := x.iv
-	for src.len > 0 {
-		// Write the xor to dst, then encrypt in place.
-		cipher.xor_bytes(mut dst[..x.block_size], src[..x.block_size], iv)
-		x.b.encrypt(mut dst[..x.block_size], mut dst[..x.block_size])
-		// Move to the next block with this block as the next iv.
-		iv = dst[..x.block_size]
-		if x.block_size >= src.len {
-			src = []
-		} else {
-			src = src[x.block_size..]
+	unsafe {
+		mut dst := *dst_
+		mut src := src_
+		if src.len % x.block_size != 0 {
+			panic('crypto.cipher: input not full blocks')
 		}
-		dst = dst[x.block_size..]
+		if dst.len < src.len {
+			panic('crypto.cipher: output smaller than input')
+		}
+		if subtle.inexact_overlap(dst[..src.len], src_) {
+			panic('crypto.cipher: invalid buffer overlap')
+		}
+		mut iv := x.iv
+		for src.len > 0 {
+			// Write the xor to dst, then encrypt in place.
+			cipher.xor_bytes(mut dst[..x.block_size], src[..x.block_size], iv)
+			x.b.encrypt(mut dst[..x.block_size], mut dst[..x.block_size])
+			// Move to the next block with this block as the next iv.
+			iv = dst[..x.block_size]
+			if x.block_size >= src.len {
+				src = []
+			} else {
+				src = src[x.block_size..]
+			}
+			dst = dst[x.block_size..]
+		}
+		// Save the iv for the next crypt_blocks call.
+		copy(x.iv, iv)
 	}
-	// Save the iv for the next crypt_blocks call.
-	copy(x.iv, iv)
 }
 
 pub fn (mut x AesCbc) decrypt_blocks(mut dst []byte, src []byte) {

@@ -1,0 +1,15 @@
+struct Foo{}
+
+fn main() {
+    foo := Foo{}
+    _ := string(foo)
+    _ := int(foo)
+    _ := u64(foo)
+    _ := u32(foo)
+    _ := rune(foo)
+    _ := byte(foo)
+    _ := i8(foo)
+    _ := i64(foo)
+    _ := int(foo)
+}
+

@@ -1,5 +1,5 @@
-import musl
 import math
+import rand.musl
 import rand.util
 
 const (

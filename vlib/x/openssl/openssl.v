@@ -83,23 +83,46 @@ pub fn (mut s SSLConn) shutdown() ? {
 }
 
 // connect to server using open ssl
-pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn) ? {
+pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ? {
 	s.handle = tcp_conn.sock.handle
 	s.duration = tcp_conn.read_timeout()
-	// C.SSL_load_error_strings()
+
 	s.sslctx = C.SSL_CTX_new(C.SSLv23_client_method())
 	if s.sslctx == 0 {
 		return error("Couldn't get ssl context")
 	}
+
+	// TODO: Fix option to enable/disable checks for valid
+	//		 certificates to allow both secure and self signed
+	//		 for now the checks are not done at all to comply 
+	// 		 to current autobahn tests
+
+	// C.SSL_CTX_set_verify_depth(s.sslctx, 4)
+	// flags := C.SSL_OP_NO_SSLv2 | C.SSL_OP_NO_SSLv3 | C.SSL_OP_NO_COMPRESSION
+	// C.SSL_CTX_set_options(s.sslctx, flags)
+	// mut res := C.SSL_CTX_load_verify_locations(s.sslctx, 'random-org-chain.pem', 0)
+	
 	s.ssl = C.SSL_new(s.sslctx)
 	if s.ssl == 0 {
 		return error("Couldn't create OpenSSL instance.")
 	}
+
+	// preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
+	// mut res := C.SSL_set_cipher_list(s.ssl, preferred_ciphers.str)
+	// if res != 1 {
+	// 	println('http: openssl: cipher failed')
+	// }
+	
+	mut res := C.SSL_set_tlsext_host_name(s.ssl, hostname.str)
+	if res != 1 {
+		return error('cannot set host name')
+	}
+
 	if C.SSL_set_fd(s.ssl, tcp_conn.sock.handle) != 1 {
 		return error("Couldn't assign ssl to socket.")
 	}
 	for {
-		res := C.SSL_connect(s.ssl)
+		res = C.SSL_connect(s.ssl)
 		if res != 1 {
 			err_res := openssl.ssl_error(res, s.ssl)?
 			if err_res == .ssl_error_want_read {
@@ -157,13 +180,13 @@ pub fn (mut s SSLConn) socket_read_into_ptr(buf_ptr byteptr, len int) ?int {
 	return res
 }
 
-pub fn (mut s SSLConn) read_into(mut buffer []Byte) ?int {
+pub fn (mut s SSLConn) read_into(mut buffer []byte) ?int {
 	res := s.socket_read_into_ptr(byteptr(buffer.data), buffer.len)?
 	return res
 }
 
 // write number of bytes to SSL connection
-pub fn (mut s SSLConn) write(bytes []Byte) ? {
+pub fn (mut s SSLConn) write(bytes []byte) ? {
 	unsafe {
 		mut ptr_base := byteptr(bytes.data)
 		mut total_sent := 0
@@ -175,7 +198,7 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 				err_res := openssl.ssl_error(sent, s.ssl)?
 				if err_res == .ssl_error_want_read {
 					for {
-						ready := @select(s.handle, .read, s.duration)?
+						ready := @select(s.handle, .read, s.duration) ?
 						if ready {
 							break
 						}
@@ -191,7 +214,7 @@ pub fn (mut s SSLConn) write(bytes []Byte) ? {
 				} else if err_res == .ssl_error_zero_return {
 					return error('ssl write on closed connection') // Todo error_with_code close
 				}
-				return error_with_code('Could not write SSL. ($err_res),err', err_res)
+				return error_with_code('Could not write SSL. ($err_res),err', int(err_res))
 			}
 			total_sent += sent
 		}
@@ -216,7 +239,6 @@ fn @select(handle int, test Select, timeout time.Duration) ?bool {
 
     seconds := timeout.milliseconds() / 1000
     microseconds := timeout - (seconds * time.second)
-
     mut tt := C.timeval{
         tv_sec: u64(seconds)
         tv_usec: u64(microseconds)
