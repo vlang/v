@@ -9,21 +9,8 @@ import rand
 import v.pref
 import v.util
 
-fn get_vtmp_folder() string {
-	mut vtmp := os.getenv('VTMP')
-	if vtmp.len > 0 {
-		return vtmp
-	}
-	vtmp = os.join_path(os.temp_dir(), 'v')
-	if !os.exists(vtmp) || !os.is_dir(vtmp) {
-		os.mkdir_all(vtmp)
-	}
-	os.setenv('VTMP', vtmp, true)
-	return vtmp
-}
-
 fn (mut b Builder) get_vtmp_filename(base_file_name string, postfix string) string {
-	vtmp := get_vtmp_folder()
+	vtmp := util.get_vtmp_folder()
 	mut uniq := ''
 	if !b.pref.reuse_tmpc {
 		uniq = '.$rand.u64()'

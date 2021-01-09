@@ -82,11 +82,14 @@ fn main() {
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
 	os.chdir(vroot)
-	util.prepare_tool_when_needed(tool_source)
 	testing.eheader('Run `$tool_cmd` over most .v files')
 	mut test_session := testing.new_test_session('$vargs $tool_args')
 	test_session.files << flist
 	test_session.skip_files << slist
+	util.prepare_tool_when_needed(tool_source)
+	// note that util.prepare_tool_when_needed will put its temporary files
+	// in the VTMP from the test session too, so they will be cleaned up
+	// at the end
 	test_session.test()
 	eprintln(test_session.benchmark.total_message('running `$tool_cmd` over most .v files'))
 	return test_session
