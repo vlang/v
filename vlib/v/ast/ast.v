@@ -108,6 +108,7 @@ pub:
 	field_name      string
 	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
 	mut_pos         token.Position
+	next_token      token.Kind
 pub mut:
 	expr_type       table.Type // type of `Foo` in `Foo.bar`
 	typ             table.Type // type of the entire thing (`Foo.bar`)
@@ -131,6 +132,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
+	attrs      []table.Attr
 	pos        token.Position
 	is_skipped bool // module main can be skipped in single file programs
 }
@@ -296,6 +298,7 @@ pub:
 	is_pub          bool
 	is_variadic     bool
 	is_anon         bool
+	is_manualfree   bool // true, when [manualfree] is used on a fn
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -459,6 +462,7 @@ pub mut:
 	scope            &Scope
 	stmts            []Stmt   // all the statements in the source file
 	imports          []Import // all the imports
+	auto_imports     []string // imports that were implicitely added
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file

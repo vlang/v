@@ -146,6 +146,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 	} else {
 		''
 	}
+	mut comp_if_stmts_skip := false
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
@@ -188,7 +189,22 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			g.stmts(branch.stmts)
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					left := branch.cond.left
+					got_type := (branch.cond.right as ast.Type).typ
+					if left is ast.Type {
+						left_type := g.unwrap_generic(left.typ)
+						if left_type != got_type {
+							comp_if_stmts_skip = true
+						}
+					}
+				}
+			}
+			is_else := node.has_else && i == node.branches.len - 1
+			if !comp_if_stmts_skip || (comp_if_stmts_skip && is_else) {
+				g.stmts(branch.stmts)
+			}
 			if should_create_scope {
 				g.writeln('}')
 			}

@@ -33,6 +33,20 @@ cd v
 make
 ```
 
+### Android
+Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
+
+V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
+
+  1. Install dependencies (see [vab](https://github.com/vlang/vab))
+  2. Plugin-in your Android device
+  3. Run:
+  ```bash
+  git clone https://github.com/vlang/vab && cd vab && v vab.v
+  ./vab --device auto run /path/to/v/examples/sokol/particles
+  ```
+For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+
 ## Table of Contents
 
 <table>
@@ -2228,8 +2242,6 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
-import sync
-
 fn f(ch chan int) {
 	// ...
 }
@@ -2331,8 +2343,6 @@ if select {
 
 For special purposes there are some builtin properties and methods:
 ```v nofmt
-import sync
-
 struct Abc{x int}
 
 a := 2.13
@@ -2517,7 +2527,8 @@ Python, Go, or Java, except there's no heavy GC tracing everything or expensive 
 each object.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-noautofree`.
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its 
+memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3.
@@ -2736,6 +2747,42 @@ finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
 * Note: This is work in progress.
+
+### Structs with reference fields
+
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
+
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
+
+```v
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
+}
+
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
+}
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
+```
 
 ## Calling C functions from V
 

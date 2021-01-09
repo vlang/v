@@ -84,6 +84,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.mod2alias[sym.name] = sym.name
 		}
 	}
+	f.auto_imports = file.auto_imports
 }
 
 pub fn (mut f Fmt) write(s string) {
@@ -194,6 +195,7 @@ pub fn (mut f Fmt) mod(mod ast.Module) {
 	if mod.is_skipped {
 		return
 	}
+	f.attrs(mod.attrs)
 	f.writeln('module $mod.name\n')
 }
 
@@ -201,8 +203,8 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	if f.did_imports || imports.len == 0 {
 		return
 	}
-	// f.import_pos = f.out.len
 	f.did_imports = true
+	mut num_imports := 0
 	/*
 	if imports.len == 1 {
 		imp_stmt_str := f.imp_stmt_str(imports[0])
@@ -215,12 +217,16 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 			// TODO bring back once only unused imports are removed
 			// continue
 		}
-		// f.out_imports.write('\t')
-		// f.out_imports.writeln(f.imp_stmt_str(imp))
+		if imp.mod in f.auto_imports && imp.mod !in f.used_imports {
+			continue
+		}
 		f.out_imports.write('import ')
 		f.out_imports.writeln(f.imp_stmt_str(imp))
+		num_imports++
 	}
-	f.out_imports.writeln('')
+	if num_imports > 0 {
+		f.out_imports.writeln('')
+	}
 	// f.out_imports.writeln(')\n')
 	// }
 }
@@ -1561,6 +1567,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.penalties = []int{}
 		f.precedences = []int{}
 	}
+	f.or_expr(node.or_block)
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
@@ -1680,12 +1687,9 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 			// a `node.left` expression. Import `time` automatically.
 			// TODO fetch all available modules
 			if node.left.name in ['time', 'os', 'strings', 'math', 'json', 'base64'] {
-				if node.left.name !in f.auto_imports {
-					f.auto_imports << node.left.name
-					f.file.imports << ast.Import{
-						mod: node.left.name
-						alias: node.left.name
-					}
+				f.file.imports << ast.Import{
+					mod: node.left.name
+					alias: node.left.name
 				}
 				// for imp in f.file.imports {
 				// println(imp.mod)
