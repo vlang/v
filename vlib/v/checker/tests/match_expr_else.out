@@ -9,13 +9,13 @@ vlib/v/checker/tests/match_expr_else.vv:23:3: error: match expression is exhaust
    21 |             'f64'
    22 |         }
    23 |         else {
-      |         ~~~~~~
+      |         ~~~~
    24 |             'else'
    25 |         }
 vlib/v/checker/tests/match_expr_else.vv:34:3: error: `else` must be the last branch of `match`
    32 |             'string'
    33 |         }
    34 |         else {
-      |         ~~~~~~
+      |         ~~~~
    35 |             'else'
    36 |         }

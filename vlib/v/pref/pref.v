@@ -81,7 +81,6 @@ pub mut:
 	use_cache           bool // = true
 	retry_compilation   bool = true
 	is_stats            bool // `v -stats file_test.v` will produce more detailed statistics for the tests that were run
-	no_auto_free        bool // `v -nofree` disable automatic `free()` insertion for better performance in some applications  (e.g. compilers)
 	// TODO Convert this into a []string
 	cflags              string // Additional options which will be passed to the C compiler.
 	// For example, passing -cflags -Os will cause the C compiler to optimize the generated binaries for size.
@@ -92,7 +91,8 @@ pub mut:
 	ccompiler_type      CompilerType // the type of the C compiler used
 	third_party_option  string
 	building_v          bool
-	autofree            bool
+	autofree            bool // `v -manualfree` => false, `v -autofree` => true; false by default for now.
+	// Disabling `free()` insertion results in better performance in some applications (e.g. compilers)
 	compress            bool
 	// skip_builtin     bool   // Skips re-compilation of the builtin module
 	// to increase compilation time.
@@ -211,6 +211,10 @@ pub fn parse_args(args []string) (&Preferences, string) {
 			}
 			'-autofree' {
 				res.autofree = true
+				res.build_options << arg
+			}
+			'-manualfree' {
+				res.autofree = false
 				res.build_options << arg
 			}
 			'-compress' {

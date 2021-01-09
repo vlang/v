@@ -2,7 +2,7 @@ module walker
 
 import v.ast
 
-// Visitor's visit method is invoked by the walker in each node it encounters.
+// Visitor defines a visit method which is invoked by the walker in each node it encounters.
 pub interface Visitor {
 	visit(node ast.Node) ?
 }

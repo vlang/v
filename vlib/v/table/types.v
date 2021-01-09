@@ -603,6 +603,8 @@ pub fn (kinds []Kind) str() string {
 }
 
 pub struct Struct {
+pub:
+	attrs         []Attr
 pub mut:
 	embeds        []Type
 	fields        []Field

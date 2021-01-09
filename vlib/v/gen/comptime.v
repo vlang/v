@@ -146,6 +146,7 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 	} else {
 		''
 	}
+	mut comp_if_stmts_skip := false
 	for i, branch in node.branches {
 		start_pos := g.out.len
 		if i == node.branches.len - 1 && node.has_else {
@@ -188,7 +189,22 @@ fn (mut g Gen) comp_if(node ast.IfExpr) {
 			if should_create_scope {
 				g.writeln('{')
 			}
-			g.stmts(branch.stmts)
+			if branch.cond is ast.InfixExpr {
+				if branch.cond.op == .key_is {
+					left := branch.cond.left
+					got_type := (branch.cond.right as ast.Type).typ
+					if left is ast.Type {
+						left_type := g.unwrap_generic(left.typ)
+						if left_type != got_type {
+							comp_if_stmts_skip = true
+						}
+					}
+				}
+			}
+			is_else := node.has_else && i == node.branches.len - 1
+			if !comp_if_stmts_skip || (comp_if_stmts_skip && is_else) {
+				g.stmts(branch.stmts)
+			}
 			if should_create_scope {
 				g.writeln('}')
 			}
@@ -231,10 +247,18 @@ fn (mut g Gen) comp_if_expr(cond ast.Expr) {
 					g.comp_if_expr(cond.right)
 				}
 				.key_is, .not_is {
-					se := cond.left as ast.SelectorExpr
-					name := '${se.expr}.$se.field_name'
-					exp_type := g.comptime_var_type_map[name]
+					left := cond.left
+					mut name := ''
+					mut exp_type := table.Type(0)
 					got_type := (cond.right as ast.Type).typ
+					if left is ast.SelectorExpr {
+						name = '${left.expr}.$left.field_name'
+						exp_type = g.comptime_var_type_map[name]
+					} else if left is ast.Type {
+						name = left.str()
+						// this is only allowed for generics currently, otherwise blocked by checker
+						exp_type = g.unwrap_generic(left.typ)
+					}
 					g.write('$exp_type == $got_type')
 				}
 				.eq, .ne {

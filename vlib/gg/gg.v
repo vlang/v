@@ -145,8 +145,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
-	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
@@ -189,7 +189,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.key_down {
 			if g.config.keydown_fn != voidptr(0) {
 				kdfn := g.config.keydown_fn
-				kdfn(e.key_code, e.modifiers, g.config.user_data)
+				kdfn(e.key_code, sapp.Modifier(e.modifiers), g.config.user_data)
 			}
 		}
 		.char {

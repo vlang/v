@@ -2,6 +2,6 @@ vlib/v/checker/tests/match_else_last_expr.vv:4:3: error: `else` must be the last
     2 |     match 1 {
     3 |         1 { println('1') }
     4 |         else { println('else') }
-      |         ~~~~~~
+      |         ~~~~
     5 |         4 { println('4') }
     6 |     }

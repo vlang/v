@@ -288,7 +288,7 @@ pub fn (x Expr) str() string {
 		}
 		else {}
 	}
-	return '[unhandled expr type ${typeof(x)}]'
+	return '[unhandled expr type $x.type_name()]'
 }
 
 pub fn (a CallArg) str() string {
@@ -346,10 +346,13 @@ pub fn (node Stmt) str() string {
 			return node.expr.str()
 		}
 		FnDecl {
-			return 'fn ${node.name}() { $node.stmts.len stmts }'
+			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
+		}
+		StructDecl {
+			return 'struct $node.name { $node.fields.len fields }'
 		}
 		else {
-			return '[unhandled stmt str type: ${typeof(node)} ]'
+			return '[unhandled stmt str type: $node.type_name() ]'
 		}
 	}
 }

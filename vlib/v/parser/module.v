@@ -42,6 +42,9 @@ fn (mut p Parser) register_auto_import(alias string) {
 		}
 		p.ast_imports << node
 	}
+	if alias !in p.auto_imports {
+		p.auto_imports << alias
+	}
 	p.register_used_import(alias)
 }
 

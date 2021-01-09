@@ -31,6 +31,10 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = p.sql_expr()
 				p.inside_match = false
 			} else {
+				if p.inside_if && p.tok.lit == 'T' {
+					// $if T is string {}
+					p.expecting_type = true
+				}
 				node = p.name_expr()
 				p.is_stmt_ident = is_stmt_ident
 			}
@@ -183,6 +187,10 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.check(.lpar)
 			expr := p.expr(0)
 			p.check(.rpar)
+			if p.tok.kind != .dot && p.tok.line_nr == p.prev_tok.line_nr {
+				p.warn_with_pos('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+					spos)
+			}
 			node = ast.TypeOf{
 				expr: expr
 				pos: spos.extend(p.tok.position())
@@ -356,6 +364,7 @@ pub fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_iden
 fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 	op := p.tok.kind
 	if op == .arrow {
+		p.or_is_handled = true
 		p.register_auto_import('sync')
 	}
 	// mut typ := p.
@@ -374,11 +383,47 @@ fn (mut p Parser) infix_expr(left ast.Expr) ast.Expr {
 		1 {
 		p.vet_error('Use `var == value` instead of `var in [value]`', pos.line_nr)
 	}
+	mut or_stmts := []ast.Stmt{}
+	mut or_kind := ast.OrKind.absent
+	mut or_pos := p.tok.position()
+	// allow `x := <-ch or {...}` to handle closed channel
+	if op == .arrow {
+		if p.tok.kind == .key_orelse {
+			p.next()
+			p.open_scope()
+			p.scope.register(ast.Var{
+				name: 'errcode'
+				typ: table.int_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			p.scope.register(ast.Var{
+				name: 'err'
+				typ: table.string_type
+				pos: p.tok.position()
+				is_used: true
+			})
+			or_kind = .block
+			or_stmts = p.parse_block_no_scope(false)
+			or_pos = or_pos.extend(p.prev_tok.position())
+			p.close_scope()
+		}
+		if p.tok.kind == .question {
+			p.next()
+			or_kind = .propagate
+		}
+		p.or_is_handled = false
+	}
 	return ast.InfixExpr{
 		left: left
 		right: right
 		op: op
 		pos: pos
+		or_block: ast.OrExpr{
+			stmts: or_stmts
+			kind: or_kind
+			pos: or_pos
+		}
 	}
 }
 
@@ -397,9 +442,9 @@ fn (mut p Parser) prefix_expr() ast.PrefixExpr {
 	// }
 	p.next()
 	mut right := if op == .minus {
-		p.expr(token.Precedence.call)
+		p.expr(int(token.Precedence.call))
 	} else {
-		p.expr(token.Precedence.prefix)
+		p.expr(int(token.Precedence.prefix))
 	}
 	p.is_amp = false
 	if mut right is ast.CastExpr {

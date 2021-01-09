@@ -125,6 +125,7 @@ pub mut:
 pub fn (e &SelectorExpr) root_ident() Ident {
 	mut root := e.expr
 	for root is SelectorExpr {
+		// TODO: remove this line
 		selector_expr := root as SelectorExpr
 		root = selector_expr.expr
 	}
@@ -135,6 +136,7 @@ pub fn (e &SelectorExpr) root_ident() Ident {
 pub struct Module {
 pub:
 	name       string
+	attrs      []table.Attr
 	pos        token.Position
 	name_pos   token.Position // `name` in import name
 	is_skipped bool // module main can be skipped in single file programs
@@ -303,6 +305,7 @@ pub:
 	is_pub          bool
 	is_variadic     bool
 	is_anon         bool
+	is_manualfree   bool // true, when [manualfree] is used on a fn
 	receiver        Field
 	receiver_pos    token.Position // `(u User)` in `fn (u User) name()` position
 	is_method       bool
@@ -466,6 +469,7 @@ pub mut:
 	scope            &Scope
 	stmts            []Stmt   // all the statements in the source file
 	imports          []Import // all the imports
+	auto_imports     []string // imports that were implicitely added
 	imported_symbols map[string]string // used for `import {symbol}`, it maps symbol => module.symbol
 	errors           []errors.Error    // all the checker errors in the file
 	warnings         []errors.Warning  // all the checker warings in the file
@@ -540,6 +544,7 @@ pub mut:
 	left_type   table.Type
 	right_type  table.Type
 	auto_locked string
+	or_block    OrExpr
 }
 
 // ++, --
@@ -1224,11 +1229,11 @@ pub fn (stmt Stmt) check_c_expr() ? {
 			if stmt.expr.is_expr() {
 				return
 			}
-			return error('unsupported statement (`${typeof(stmt.expr)}`)')
+			return error('unsupported statement (`$stmt.expr.type_name()`)')
 		}
 		else {}
 	}
-	return error('unsupported statement (`${typeof(stmt)}`)')
+	return error('unsupported statement (`$stmt.type_name()`)')
 }
 
 // CTempVar is used in cgen only, to hold nodes for temporary variables

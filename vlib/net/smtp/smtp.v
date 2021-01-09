@@ -105,7 +105,7 @@ fn (c Client) expect_reply(expected ReplyCode) ? {
 
 	if str.len >= 3 {
 		status := str[..3].int()
-		if status != expected {
+		if ReplyCode(status) != expected {
 			return error('Received unexpected status code $status, expecting $expected')
 		}
 	} else { return error('Recieved unexpected SMTP data: $str') }
