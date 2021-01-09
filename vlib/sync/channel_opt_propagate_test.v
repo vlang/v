@@ -4,13 +4,13 @@ const (
 	num_iterations = 10000
 )
 
-fn get_val_from_chan(ch chan int) ?int {
+fn get_val_from_chan(ch chan i64) ?i64 {
 	r := <-ch ?
 	return r
 }
 
-// this function gets an array of channels for `int`
-fn do_rec_calc_send(chs []chan int, sem sync.Semaphore) {
+// this function gets an array of channels for `i64`
+fn do_rec_calc_send(chs []chan i64, sem sync.Semaphore) {
 	mut msg := ''
 	for {
 		mut s := get_val_from_chan(chs[0]) or {
@@ -25,10 +25,10 @@ fn do_rec_calc_send(chs []chan int, sem sync.Semaphore) {
 }
 
 fn test_channel_array_mut() {
-	mut chs := [chan int{}, chan int{cap: 10}]
+	mut chs := [chan i64{}, chan i64{cap: 10}]
 	sem := sync.new_semaphore()
 	go do_rec_calc_send(chs, sem)
-	mut t := int(100)
+	mut t := i64(100)
 	for _ in 0 .. num_iterations {
 		chs[0] <- t
 		t = <-chs[1]
