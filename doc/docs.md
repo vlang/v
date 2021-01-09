@@ -245,9 +245,9 @@ println(sum(2,3)) //         5
 
 // using array decomposition
 a := [2,3,4]
-println(sum(a...))  // <-- using postfix ... here. output: 9
+println(sum(...a))  // <-- using prefix ... here. output: 9
 b := [5, 6, 7]
-println(sum(b...)) // output: 18
+println(sum(...b)) // output: 18
 ```
 
 ## Symbol visibility

@@ -7,6 +7,7 @@
 - `byte.str()` has been fixed and works like with all other numbers. `byte.ascii_str()` has been added.
 - Smart cast in for loops: `for mut x is string {}`.
 - `[noinit]` struct attribute to disallow direct struct initialization with `Foo{}`.
+- Array decompose: `[1, 2, 3]...` is now `...[1, 2, 3]`
 - Treating `enum` as `int` is removed for strict type checking.
 - Support `[manualfree] fn f1(){}` and `[manualfree] module m1`, for functions doing their own memory management.
 

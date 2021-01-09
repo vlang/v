@@ -127,9 +127,13 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		}
 		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
-		mut e := p.expr(0)
+		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
 			p.next()
+			array_decompose = true
+		}
+		mut e := p.expr(0)
+		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e
 				pos: p.tok.position()
