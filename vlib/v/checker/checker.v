@@ -2399,6 +2399,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						}
 						*/
 					}
+					if is_decl && left.mod != 'builtin' {
+						full_name := '${left.mod}.$left.name'
+						if full_name in c.const_names {
+							c.error('duplicate variable name `$left.name`', left.pos)
+						}
+					}
 				}
 			}
 			ast.PrefixExpr {
