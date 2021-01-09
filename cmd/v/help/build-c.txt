@@ -67,3 +67,10 @@ These build flags are enabled on `build` and `run` as long as the backend is set
 
    -keepc
       Do not remove the temporary .tmp.c and .tmp.c.rsp files. Also do not use a random prefix for them, so they would be fixed and predictable.
+
+   -autofree
+      Free memory used in functions automatically.
+      
+   -manualfree
+      Do not free memory used in functions (the developer has to put x.free() and unsafe{free(x)} calls manually in this mode).
+      Some short lived applications, like compilers and other CLI tools are more performant without autofree.

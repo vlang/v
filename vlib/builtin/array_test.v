@@ -1,5 +1,3 @@
-import sync
-
 fn test_pointer() {
 	mut arr := []&int{}
 	a := 1

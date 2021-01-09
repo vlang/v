@@ -7,7 +7,7 @@ pub fn ssl_error(ret int, ssl voidptr) ?SSLError {
 		.ssl_error_syscall { return error_with_code('unrecoverable syscall ($res)', res) }
 		.ssl_error_ssl { return error_with_code('unrecoverable ssl protocol error ($res)',
 				res) }
-		else { return res }
+		else { return SSLError(res) }
 	}
 }
 
