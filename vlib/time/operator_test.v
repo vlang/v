@@ -221,8 +221,8 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_gt() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1 >= t2
-	assert t3 >= t4
+	assert t1.ge(t2)
+	assert t3.ge(t4)
 }
 
 fn test_time1_should_be_greater_or_equal_to_time2_when_eq() {
@@ -264,8 +264,8 @@ fn test_time1_should_be_greater_or_equal_to_time2_when_eq() {
 		second: 3
 		microsecond: 0
 	})
-	assert t1 >= t2
-	assert t3 >= t4
+	assert t1.ge(t2)
+	assert t3.ge(t4)
 }
 
 fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
@@ -307,8 +307,8 @@ fn test_time1_should_be_less_or_equal_to_time2_when_lt() {
 		second: 4
 		microsecond: 0
 	})
-	assert t1 <= t2
-	assert t3 <= t4
+	assert t1.le(t2)
+	assert t3.le(t4)
 }
 
 fn test_time1_should_be_less_or_equal_to_time2_when_eq() {
@@ -350,8 +350,8 @@ fn test_time1_should_be_less_or_equal_to_time2_when_eq() {
 		second: 3
 		microsecond: 0
 	})
-	assert t1 <= t2
-	assert t3 <= t4
+	assert t1.le(t2)
+	assert t3.le(t4)
 }
 
 fn test_time2_copied_from_time1_should_be_equal() {

@@ -52,7 +52,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		}
 	}
 	f.write('fn $receiver$name')
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!='] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>='. '<='] {
 		f.write(' ')
 	}
 	if node.is_generic {

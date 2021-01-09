@@ -24,9 +24,9 @@ pub fn (t1 Time) < (t2 Time) bool {
 	return false
 }
 
-// opeator `<=` returns true if provided time is less or equal to time
+// le returns true if provided time is less or equal to time
 [inline]
-pub fn (t1 Time) le (t2 Time) bool {
+pub fn (t1 Time) le(t2 Time) bool {
 	return t1 < t2 || t1 == t2
 }
 
@@ -39,9 +39,9 @@ pub fn (t1 Time) > (t2 Time) bool {
 	return false
 }
 
-// operator `>=` returns true if provided time is greater or equal to time
+// ge returns true if provided time is greater or equal to time
 [inline]
-pub fn (t1 Time) ge (t2 Time) bool {
+pub fn (t1 Time) ge(t2 Time) bool {
 	return t1 > t2 || t1 == t2
 }
 
@@ -51,8 +51,4 @@ pub fn (lhs Time) - (rhs Time) Duration {
 	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
 	rhs_micro := rhs.unix * 1000 * 1000 + u64(rhs.microsecond)
 	return (i64(lhs_micro) - i64(rhs_micro)) * microsecond
-}
-
-pub fn (t Time) >= (t1 Time) bool {
-	return true
 }
