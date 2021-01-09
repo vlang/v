@@ -6,10 +6,10 @@ module parser
 import v.ast
 import v.table
 
-fn (mut p Parser) array_init() ast.ArrayInit {
+fn (mut p Parser) array_init() ast.Expr {
 	first_pos := p.tok.position()
 	mut last_pos := p.tok.position()
-	p.check(.lsbr)
+	p.check(.lsbr) or { return p.error(err) }
 	// p.warn('array_init() exp=$p.expected_type')
 	mut array_type := table.void_type
 	mut elem_type := table.void_type
@@ -53,7 +53,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			_ = tcc_stack_bug
 		}
 		last_pos = p.tok.position()
-		p.check(.rsbr)
+		p.check(.rsbr) or { return p.error(err) }
 		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
 			// [100]byte
 			elem_type = p.parse_type()
@@ -67,12 +67,12 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 						p.error_with_pos('expected `init:`, not `$n`', pos)
 						return ast.ArrayInit{}
 					}
-					p.check(.colon)
+					p.check(.colon) or { return p.error(err) }
 					has_default = true
 					default_expr = p.expr(0)
 				}
 				last_pos = p.tok.position()
-				p.check(.rcbr)
+				p.check(.rcbr) or { return p.error(err) }
 			} else {
 				p.warn_with_pos('use e.g. `x := [1]Type{}` instead of `x := [1]Type`',
 					last_pos)
@@ -102,7 +102,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		p.next()
 		for p.tok.kind != .rcbr {
 			key := p.check_name()
-			p.check(.colon)
+			p.check(.colon) or { return p.error(err) }
 			match key {
 				'len' {
 					has_len = true
@@ -122,10 +122,10 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 				}
 			}
 			if p.tok.kind != .rcbr {
-				p.check(.comma)
+				p.check(.comma) or { return p.error(err) }
 			}
 		}
-		p.check(.rcbr)
+		p.check(.rcbr) or { return p.error(err) }
 	}
 	pos := first_pos.extend(last_pos)
 	return ast.ArrayInit{
@@ -147,7 +147,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 	}
 }
 
-fn (mut p Parser) map_init() ast.MapInit {
+fn (mut p Parser) map_init() ast.Expr {
 	pos := p.tok.position()
 	mut keys := []ast.Expr{}
 	mut vals := []ast.Expr{}
@@ -157,7 +157,7 @@ fn (mut p Parser) map_init() ast.MapInit {
 			p.error_with_pos('maps do not support floating point keys yet', key.pos)
 		}
 		keys << key
-		p.check(.colon)
+		p.check(.colon) or { return p.error(err) }
 		val := p.expr(0)
 		vals << val
 		if p.tok.kind == .comma {

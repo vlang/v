@@ -8,7 +8,7 @@ import v.table
 import v.token
 import v.util
 
-pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExpr {
+pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	// pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.Expr {
 	first_pos := p.tok.position()
 	mut fn_name := if language == .c {
@@ -36,7 +36,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 		p.next() // `<`
 		p.expr_mod = ''
 		generic_type = p.parse_type()
-		p.check(.gt) // `>`
+		p.check(.gt) or { return p.error(err) }
 		generic_list_pos = generic_list_pos.extend(p.prev_tok.position())
 		// In case of `foo<T>()`
 		// T is unwrapped and registered in the checker.
@@ -49,10 +49,10 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			p.table.register_fn_gen_type(full_generic_fn_name, generic_type)
 		}
 	}
-	p.check(.lpar)
+	p.check(.lpar) or { return p.error(err) }
 	args := p.call_args()
 	last_pos := p.tok.position()
-	p.check(.rpar)
+	p.check(.rpar) or { return p.error(err) }
 	// ! in mutable methods
 	if p.tok.kind == .not {
 		p.next()
@@ -109,13 +109,12 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	}
 }
 
-pub fn (mut p Parser) call_args() []ast.CallArg {
+pub fn (mut p Parser) call_args() []ast.Expr {
 	mut args := []ast.CallArg{}
 	start_pos := p.tok.position()
 	for p.tok.kind != .rpar {
 		if p.tok.kind == .eof {
-			p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
-			return []
+			return p.error_with_pos('unexpected eof reached, while parsing call argument', start_pos)
 		}
 		is_shared := p.tok.kind == .key_shared
 		is_atomic := p.tok.kind == .key_atomic
@@ -147,7 +146,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 			pos: pos
 		}
 		if p.tok.kind != .rpar {
-			p.check(.comma)
+			p.check(.comma) or { return p.error(err) }
 		}
 	}
 	return args
@@ -164,7 +163,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_pub {
 		p.next()
 	}
-	p.check(.key_fn)
+	p.check(.key_fn) or { return p.error(err) }
 	p.open_scope()
 	// C. || JS.
 	mut language := table.Language.v
@@ -176,7 +175,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	}
 	if language != .v {
 		p.next()
-		p.check(.dot)
+		p.check(.dot) or { return p.error(err) }
 		p.check_for_impure_v(language, p.tok.position())
 	}
 	// Receiver?
@@ -241,7 +240,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			is_mut: rec_mut
 			typ: rec_type
 		}
-		p.check(.rpar)
+		p.check(.rpar) or { return p.error(err) }
 	}
 	mut name := ''
 	if p.tok.kind == .name {
@@ -285,7 +284,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 	if is_generic {
 		p.next()
 		p.next()
-		p.check(.gt)
+		p.check(.gt) or { return p.error(err) }
 	}
 	// Args
 	args2, are_args_type_only, is_variadic := p.fn_args()
@@ -426,7 +425,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 
 fn (mut p Parser) anon_fn() ast.AnonFn {
 	pos := p.tok.position()
-	p.check(.key_fn)
+	p.check(.key_fn) or { return p.error(err) }
 	if p.pref.is_script && p.tok.kind == .name {
 		p.error_with_pos('function declarations in script mode should be before all script statements',
 			p.tok.position())
@@ -497,9 +496,9 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 }
 
 // part of fn declaration
-fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
-	p.check(.lpar)
-	mut args := []table.Param{}
+fn (mut p Parser) fn_args() ([]ast.Expr, bool, bool) {
+	p.check(.lpar) or { return p.error(err) }
+	mut args := []ast.Expr{}
 	mut is_variadic := false
 	// `int, int, string` (no names, just types)
 	argname := if p.tok.kind == .name && p.tok.lit.len > 0 && p.tok.lit[0].is_capital() {
@@ -670,11 +669,11 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 				return []table.Param{}, false, false
 			}
 			if p.tok.kind != .rpar {
-				p.check(.comma)
+				p.check(.comma) or { return p.error(err) }
 			}
 		}
 	}
-	p.check(.rpar)
+	p.check(.rpar) or { return p.error(err) }
 	return args, types_only, is_variadic
 }
 

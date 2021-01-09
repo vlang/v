@@ -408,20 +408,17 @@ fn (mut p Parser) next() {
 	*/
 }
 
-fn (mut p Parser) check(expected token.Kind) {
+fn (mut p Parser) check(expected token.Kind) ? {
 	p.name_error = false
-	// for p.tok.kind in [.line_comment, .mline_comment] {
-	// p.next()
-	// }
 	if p.tok.kind == expected {
 		p.next()
 	} else if p.tok.kind == .name {
-		p.error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
+		return error('unexpected name `$p.tok.lit`, expecting `$expected.str()`')
 	} else {
 		if expected == .name {
 			p.name_error = true
 		}
-		p.error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
+		return error('unexpected `$p.tok.kind.str()`, expecting `$expected.str()`')
 	}
 }
 

@@ -199,8 +199,11 @@ pub fn (x Expr) str() string {
 		AtExpr {
 			return '$x.val'
 		}
+		CallArg {
+			return x.str()
+		}
 		CallExpr {
-			sargs := args2str(x.args)
+			sargs := x.args.map(it.str()).join(', ')
 			if x.is_method {
 				return '${x.left.str()}.${x.name}($sargs)'
 			}
@@ -296,14 +299,6 @@ pub fn (a CallArg) str() string {
 		return 'mut $a.expr.str()'
 	}
 	return '$a.expr.str()'
-}
-
-pub fn args2str(args []CallArg) string {
-	mut res := []string{}
-	for a in args {
-		res << a.str()
-	}
-	return res.join(', ')
 }
 
 pub fn (node &BranchStmt) str() string {

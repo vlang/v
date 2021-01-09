@@ -10,7 +10,7 @@ import v.errors
 pub type TypeDecl = AliasTypeDecl | FnTypeDecl | SumTypeDecl
 
 pub type Expr = AnonFn | ArrayDecompose | ArrayInit | AsCast | Assoc | AtExpr | BoolLiteral |
-	CTempVar | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
+	CTempVar | CallArg | CallExpr | CastExpr | ChanInit | CharLiteral | Comment | ComptimeCall | ComptimeSelector |
 	ConcatExpr | EnumVal | FloatLiteral | Ident | IfExpr | IfGuardExpr | IndexExpr | InfixExpr |
 	IntegerLiteral | Likely | LockExpr | MapInit | MatchExpr | None | OrExpr | ParExpr | PostfixExpr |
 	PrefixExpr | RangeExpr | SelectExpr | SelectorExpr | SizeOf | SqlExpr | StringInterLiteral |
@@ -359,7 +359,7 @@ pub mut:
 	args               []CallArg
 	expected_arg_types []table.Type
 	language           table.Language
-	or_block           OrExpr
+	or_block           Expr // OrExpr | Error
 	left_type          table.Type // type of `user`
 	receiver_type      table.Type // User
 	return_type        table.Type
@@ -1337,7 +1337,7 @@ pub fn (node Node) children() []Node {
 			}
 			CallExpr {
 				children << node.left
-				children << Expr(node.or_block)
+				children << node.or_block
 			}
 			InfixExpr {
 				children << node.left

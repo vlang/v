@@ -2400,6 +2400,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.BoolLiteral {
 			g.write(node.val.str())
 		}
+		ast.CallArg {
+			
+		}
 		ast.CallExpr {
 			// if g.fileis('1.strings') {
 			// println('\ncall_expr()()')
