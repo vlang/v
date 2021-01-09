@@ -74,7 +74,16 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		p.error_with_pos('struct names must have more than one character', name_pos)
 		return ast.StructDecl{}
 	}
-	// println('struct decl $name')
+	mut orig_name := name
+	if language == .c {
+		name = 'C.$name'
+		orig_name = name
+	} else if language == .js {
+		name = 'JS.$name'
+		orig_name = name
+	} else {
+		name = p.prepend_mod(name)
+	}
 	mut ast_fields := []ast.StructField{}
 	mut fields := []table.Field{}
 	mut embed_types := []table.Type{}
@@ -213,7 +222,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				type_pos = p.prev_tok.position()
 				field_pos = field_start_pos.extend(type_pos)
 			}
-			// println(p.tok.position())
 			// Comments after type (same line)
 			comments << p.eat_comments()
 			if p.tok.kind == .lsbr {
@@ -226,8 +234,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 				if p.tok.kind == .assign {
 					// Default value
 					p.next()
-					// default_expr = p.tok.lit
-					// p.expr(0)
 					default_expr = p.expr(0)
 					match mut default_expr {
 						ast.EnumVal { default_expr.typ = typ }
@@ -275,13 +281,6 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 		last_line = p.tok.line_nr
 		p.check(.rcbr)
 	}
-	if language == .c {
-		name = 'C.$name'
-	} else if language == .js {
-		name = 'JS.$name'
-	} else {
-		name = p.prepend_mod(name)
-	}
 	t := table.TypeSymbol{
 		kind: .struct_
 		language: language
@@ -298,6 +297,10 @@ fn (mut p Parser) struct_decl() ast.StructDecl {
 			attrs: attrs
 		}
 		is_public: is_pub
+	}
+	if p.table.has_deep_child_no_ref(&t, name) {
+		p.error_with_pos('invalid recursive struct `$orig_name`', name_pos)
+		return ast.StructDecl{}
 	}
 	mut ret := 0
 	// println('reg type symbol $name mod=$p.mod')
