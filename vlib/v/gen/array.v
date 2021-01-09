@@ -342,6 +342,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 		ast.CallExpr {
 			if expr.name in ['map', 'filter'] {
+				is_embed_map_filter = true
 				g.stmt_path_pos << g.out.len
 			}
 			g.write('if (')
