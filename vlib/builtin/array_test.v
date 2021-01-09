@@ -1321,3 +1321,14 @@ fn test_array_of_multi_filter() {
 	assert nums.odds == [1, 3, 5]
 	assert nums.evens == [2, 4]
 }
+
+fn test_array_of_multi_map() {
+	arr := [1, 3, 5]
+	nums := Numbers{
+		odds: arr.map(it + 2)
+		evens: arr.map(it * 2)
+	}
+	println(nums)
+	assert nums.odds == [3, 5, 7]
+	assert nums.evens == [2, 6, 10]
+}
