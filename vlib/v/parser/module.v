@@ -42,6 +42,9 @@ fn (mut p Parser) register_auto_import(alias string) {
 		}
 		p.ast_imports << node
 	}
+	if alias !in p.auto_imports {
+		p.auto_imports << alias
+	}
 	p.register_used_import(alias)
 }
 
@@ -57,7 +60,7 @@ fn (mut p Parser) check_unused_imports() {
 		mod := import_m.mod
 		if !p.is_used_import(alias) {
 			mod_alias := if alias == mod { alias } else { '$alias ($mod)' }
-			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.pos)
+			p.warn_with_pos("module '$mod_alias' is imported but never used", import_m.mod_pos)
 		}
 	}
 }

@@ -10,7 +10,7 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:2:1: error: type `any_int` doesn't
     3 | 
     4 | struct Int {
 vlib/v/checker/tests/any_int_float_ban_err.vv:5:7: error: unknown type `any_int`.
-Did you mean `int`?
+Did you mean `any_float`?
     3 | 
     4 | struct Int {
     5 |     i any_int
@@ -18,7 +18,7 @@ Did you mean `int`?
     6 |     f any_float
     7 | }
 vlib/v/checker/tests/any_int_float_ban_err.vv:6:7: error: unknown type `any_float`.
-Did you mean `f64`?
+Did you mean `any_int`?
     4 | struct Int {
     5 |     i any_int
     6 |     f any_float
@@ -38,4 +38,10 @@ vlib/v/checker/tests/any_int_float_ban_err.vv:13:1: error: unknown type `any_int
    13 | fn foo2() any_int {
       | ~~~~~~~~~~~~~~~~~
    14 |     return 1
+   15 | }
+vlib/v/checker/tests/any_int_float_ban_err.vv:14:12: error: cannot use `int literal` as type `any_int` in return argument
+   12 | 
+   13 | fn foo2() any_int {
+   14 |     return 1
+      |            ^
    15 | }

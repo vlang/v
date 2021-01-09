@@ -1,0 +1,6 @@
+vlib/v/checker/tests/method_generic_infer_err.vv:9:7: error: could not infer generic type `T` in call to `func`
+    7 | fn main() {
+    8 |     data := Data{}
+    9 |     data.func()
+      |          ~~~~~~
+   10 | }

@@ -42,10 +42,10 @@ fn test_array_of_ints() {
 	assert '$c2' == '[11, 22, 33]'
 }
 
-fn test_array_of_bytes() {
+fn test_array_of_runes() {
 	aa := [`a`, `b`, `c`]
-	assert aa.str() == '[a, b, c]'
-	assert '$aa' == '[a, b, c]'
+	assert aa.str() == '[`a`, `b`, `c`]'
+	assert '$aa' == '[`a`, `b`, `c`]'
 }
 
 fn test_array_of_strings() {
@@ -72,10 +72,10 @@ fn test_map_of_floats() {
 	assert '$aa' == "{'a': 1.1, 'b': 2.2, 'c': 3.3}"
 }
 
-fn test_map_of_bytes() {
+fn test_map_of_runes() {
 	aa := {'a': `a`, 'b': `b`, 'c': `c`}
-	assert aa.str() == "{'a': a, 'b': b, 'c': c}"
-	assert '$aa' == "{'a': a, 'b': b, 'c': c}"
+	assert aa.str() == "{'a': `a`, 'b': `b`, 'c': `c`}"
+	assert '$aa' == "{'a': `a`, 'b': `b`, 'c': `c`}"
 }
 
 fn test_map_of_bools() {
@@ -128,10 +128,10 @@ fn test_fixed_array_of_ints() {
 	assert '$c2' == '[11, 22, 33]'
 }
 
-fn test_fixed_array_of_bytes() {
+fn test_fixed_array_of_runes() {
 	aa := [`a`, `b`, `c`]!!
-	assert aa.str() == '[a, b, c]'
-	assert '$aa' == '[a, b, c]'
+	assert aa.str() == '[`a`, `b`, `c`]'
+	assert '$aa' == '[`a`, `b`, `c`]'
 }
 
 fn test_fixed_array_of_strings() {

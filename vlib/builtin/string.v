@@ -44,7 +44,7 @@ NB: A V string should be/is immutable from the point of view of
 pub struct string {
 pub:
 	str    byteptr // points to a C style 0 terminated string of bytes.
-	len    int // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
+	len    int     // the length of the .str field, excluding the ending 0 byte. It is always equal to strlen(.str).
 mut:
 	is_lit int
 }
@@ -68,7 +68,7 @@ pub mut:
 // vstrlen returns the V length of the C string `s` (0 terminator is not counted).
 [unsafe]
 pub fn vstrlen(s byteptr) int {
-	return unsafe {C.strlen(charptr(s))}
+	return unsafe { C.strlen(charptr(s)) }
 }
 
 // tos converts a C string to a V string.
@@ -109,7 +109,7 @@ pub fn tos3(s charptr) string {
 	}
 	return string{
 		str: byteptr(s)
-		len: unsafe {C.strlen(s)}
+		len: unsafe { C.strlen(s) }
 	}
 }
 
@@ -134,7 +134,7 @@ pub fn tos_lit(s charptr) string {
 	eprintln('warning: `tos_lit` has been deprecated, use `_SLIT` instead')
 	return string{
 		str: byteptr(s)
-		len: unsafe {C.strlen(s)}
+		len: unsafe { C.strlen(s) }
 		is_lit: 1
 	}
 }
@@ -144,7 +144,7 @@ pub fn tos_lit(s charptr) string {
 pub fn (bp byteptr) vstring() string {
 	return string{
 		str: bp
-		len: unsafe {C.strlen(charptr(bp))}
+		len: unsafe { C.strlen(charptr(bp)) }
 	}
 }
 
@@ -162,7 +162,7 @@ pub fn (bp byteptr) vstring_with_len(len int) string {
 pub fn (cp charptr) vstring() string {
 	return string{
 		str: byteptr(cp)
-		len: unsafe {C.strlen(cp)}
+		len: unsafe { C.strlen(cp) }
 	}
 }
 
@@ -188,7 +188,7 @@ pub fn (a string) clone() string {
 		return ''
 	}
 	mut b := string{
-		str: unsafe {malloc(a.len + 1)}
+		str: unsafe { malloc(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -225,7 +225,7 @@ pub fn (s string) replace(rep string, with string) string {
 	// Get locations of all reps within this string
 	mut idxs := []int{}
 	defer {
-		unsafe {idxs.free()}
+		unsafe { idxs.free() }
 	}
 	mut idx := 0
 	for {
@@ -529,7 +529,7 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 				res << s.right(i)
 				break
 			}
-			res << ch.str()
+			res << ch.ascii_str()
 			i++
 		}
 		return res
@@ -567,8 +567,8 @@ pub fn (s string) split_into_lines() []string {
 	}
 	mut start := 0
 	for i := 0; i < s.len; i++ {
-		is_lf := unsafe {s.str[i]} == `\n`
-		is_crlf := i != s.len - 1 && unsafe {s.str[i] == `\r` && s.str[i + 1] == `\n`}
+		is_lf := unsafe { s.str[i] } == `\n`
+		is_crlf := i != s.len - 1 && unsafe { s.str[i] == `\r` && s.str[i + 1] == `\n` }
 		is_eol := is_lf || is_crlf
 		is_last := if is_crlf { i == s.len - 2 } else { i == s.len - 1 }
 		if is_eol || is_last {
@@ -651,7 +651,7 @@ pub fn (s string) index_old(p string) int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && unsafe {s.str[i + j] == p.str[j]} {
+		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
 			j++
 		}
 		if j == p.len {
@@ -671,7 +671,7 @@ pub fn (s string) index(p string) ?int {
 	mut i := 0
 	for i < s.len {
 		mut j := 0
-		for j < p.len && unsafe {s.str[i + j] == p.str[j]} {
+		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
 			j++
 		}
 		if j == p.len {
@@ -690,20 +690,20 @@ fn (s string) index_kmp(p string) int {
 	mut prefix := []int{len: p.len}
 	mut j := 0
 	for i := 1; i < p.len; i++ {
-		for unsafe {p.str[j] != p.str[i]} && j > 0 {
+		for unsafe { p.str[j] != p.str[i] } && j > 0 {
 			j = prefix[j - 1]
 		}
-		if unsafe {p.str[j] == p.str[i]} {
+		if unsafe { p.str[j] == p.str[i] } {
 			j++
 		}
 		prefix[i] = j
 	}
 	j = 0
 	for i in 0 .. s.len {
-		for unsafe {p.str[j] != s.str[i]} && j > 0 {
+		for unsafe { p.str[j] != s.str[i] } && j > 0 {
 			j = prefix[j - 1]
 		}
-		if unsafe {p.str[j] == s.str[i]} {
+		if unsafe { p.str[j] == s.str[i] } {
 			j++
 		}
 		if j == p.len {
@@ -716,7 +716,7 @@ fn (s string) index_kmp(p string) int {
 // index_any returns the position of any of the characters in the input string - if found.
 pub fn (s string) index_any(chars string) int {
 	for c in chars {
-		index := s.index(c.str()) or { continue }
+		index := s.index(c.ascii_str()) or { continue }
 		return index
 	}
 	return -1
@@ -730,7 +730,7 @@ pub fn (s string) last_index(p string) ?int {
 	mut i := s.len - p.len
 	for i >= 0 {
 		mut j := 0
-		for j < p.len && unsafe {s.str[i + j] == p.str[j]} {
+		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
 			j++
 		}
 		if j == p.len {
@@ -757,7 +757,7 @@ pub fn (s string) index_after(p string, start int) int {
 	for i < s.len {
 		mut j := 0
 		mut ii := i
-		for j < p.len && unsafe {s.str[ii] == p.str[j]} {
+		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
 			j++
 			ii++
 		}
@@ -773,7 +773,7 @@ pub fn (s string) index_after(p string, start int) int {
 // index_byte returns -1 if the byte can not be found.
 pub fn (s string) index_byte(c byte) int {
 	for i in 0 .. s.len {
-		if unsafe {s.str[i]} == c {
+		if unsafe { s.str[i] } == c {
 			return i
 		}
 	}
@@ -784,7 +784,7 @@ pub fn (s string) index_byte(c byte) int {
 // last_index_byte returns -1 if the byte is not found.
 pub fn (s string) last_index_byte(c byte) int {
 	for i := s.len - 1; i >= 0; i-- {
-		if unsafe {s.str[i] == c} {
+		if unsafe { s.str[i] == c } {
 			return i
 		}
 	}
@@ -825,7 +825,7 @@ pub fn (s string) contains(substr string) bool {
 // contains_any returns `true` if the string contains any chars in `chars`.
 pub fn (s string) contains_any(chars string) bool {
 	for c in chars {
-		if c.str() in s {
+		if c.ascii_str() in s {
 			return true
 		}
 	}
@@ -851,7 +851,7 @@ pub fn (s string) starts_with(p string) bool {
 		return false
 	}
 	for i in 0 .. p.len {
-		if unsafe {s.str[i] != p.str[i]} {
+		if unsafe { s.str[i] != p.str[i] } {
 			return false
 		}
 	}
@@ -923,7 +923,7 @@ pub fn (s string) capitalize() string {
 	if s.len == 0 {
 		return ''
 	}
-	return s[0].str().to_upper() + s[1..]
+	return s[0].ascii_str().to_upper() + s[1..]
 	// sl := s.to_lower()
 	// cap := sl[0].str().to_upper() + sl.right(1)
 	// return cap
@@ -1152,7 +1152,7 @@ pub fn (s string) ustring() ustring {
 		runes: __new_array(0, s.len, int(sizeof(int)))
 	}
 	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe {s.str[i]})
+		char_len := utf8_char_len(unsafe { s.str[i] })
 		res.runes << i
 		i += char_len - 1
 		res.len++
@@ -1176,7 +1176,7 @@ pub fn (s string) ustring_tmp() ustring {
 	res.runes.len = s.len
 	mut j := 0
 	for i := 0; i < s.len; i++ {
-		char_len := utf8_char_len(unsafe {s.str[i]})
+		char_len := utf8_char_len(unsafe { s.str[i] })
 		res.runes[j] = i
 		j++
 		i += char_len - 1
@@ -1226,14 +1226,14 @@ pub fn (u ustring) add(a ustring) ustring {
 	}
 	mut j := 0
 	for i := 0; i < u.s.len; i++ {
-		char_len := utf8_char_len(unsafe {u.s.str[i]})
+		char_len := utf8_char_len(unsafe { u.s.str[i] })
 		res.runes << j
 		i += char_len - 1
 		j += char_len
 		res.len++
 	}
 	for i := 0; i < a.s.len; i++ {
-		char_len := utf8_char_len(unsafe {a.s.str[i]})
+		char_len := utf8_char_len(unsafe { a.s.str[i] })
 		res.runes << j
 		i += char_len - 1
 		j += char_len
@@ -1555,7 +1555,7 @@ pub fn (s string) bytes() []byte {
 		return []
 	}
 	mut buf := []byte{len: s.len}
-	unsafe {C.memcpy(buf.data, s.str, s.len)}
+	unsafe { C.memcpy(buf.data, s.str, s.len) }
 	return buf
 }
 
@@ -1669,7 +1669,7 @@ pub fn (s string) split_by_whitespace() []string {
 		}
 		if is_space && is_in_word {
 			word_end = i
-			res << s[word_start .. word_end]
+			res << s[word_start..word_end]
 			is_in_word = false
 			word_end = 0
 			word_start = 0
@@ -1678,7 +1678,7 @@ pub fn (s string) split_by_whitespace() []string {
 	}
 	if is_in_word && word_start > 0 {
 		// collect the remainder word at the end
-		res << s[word_start .. s.len]
+		res << s[word_start..s.len]
 	}
 	return res
 }

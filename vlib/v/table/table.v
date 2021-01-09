@@ -638,7 +638,7 @@ pub fn (mut t Table) add_placeholder_type(name string, language Language) int {
 
 [inline]
 pub fn (t &Table) value_type(typ Type) Type {
-	typ_sym := t.get_type_symbol(typ)
+	typ_sym := t.get_final_type_symbol(typ)
 	if typ.has_flag(.variadic) {
 		// ...string => string
 		// return typ.clear_flag(.variadic)
@@ -739,4 +739,19 @@ pub fn (table &Table) known_type_names() []string {
 		res << table.type_to_str(idx)
 	}
 	return res
+}
+
+// has_deep_child_no_ref returns true if type is struct and has any child or nested child with the type of the given name
+// the given name consists of module and name (`mod.Name`)
+// it doesn't care about childs that are references
+pub fn (table &Table) has_deep_child_no_ref(ts &TypeSymbol, name string) bool {
+	if ts.info is Struct {
+		for _, field in ts.info.fields {
+			sym := table.get_type_symbol(field.typ)
+			if !field.typ.is_ptr() && (sym.name == name || table.has_deep_child_no_ref(sym, name)) {
+				return true
+			}
+		}
+	}
+	return false
 }

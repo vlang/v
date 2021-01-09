@@ -37,9 +37,9 @@ pub mut:
 	quote                       byte // which quote is used to denote current string: ' or "
 	inter_quote                 byte
 	line_ends                   []int // the positions of source lines ends   (i.e. \n signs)
-	nr_lines                    int // total number of lines in the source file that were scanned
-	is_vh                       bool // Keep newlines
-	is_fmt                      bool // Used for v fmt.
+	nr_lines                    int   // total number of lines in the source file that were scanned
+	is_vh                       bool  // Keep newlines
+	is_fmt                      bool  // Used for v fmt.
 	comments_mode               CommentsMode
 	is_inside_toplvl_statement  bool // *only* used in comments_mode: .toplevel_comments, toggled by parser
 	all_tokens                  []token.Token // *only* used in comments_mode: .toplevel_comments, contains all tokens
@@ -820,9 +820,9 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.ignore_line()
 				if nextc == `!` {
 					// treat shebang line (#!) as a comment
-					s.line_comment = s.text[start + 1..s.pos].trim_space()
+					comment := s.text[start - 1..s.pos].trim_space()
 					// s.fgenln('// shebang line "$s.line_comment"')
-					continue
+					return s.new_token(.comment, comment, comment.len + 2)
 				}
 				hash := s.text[start..s.pos].trim_space()
 				return s.new_token(.hash, hash, hash.len)
@@ -973,7 +973,7 @@ fn (mut s Scanner) text_scan() token.Token {
 				return s.end_of_file()
 			}
 		}
-		s.error('invalid character `$c.str()`')
+		s.error('invalid character `$c.ascii_str()`')
 		break
 	}
 	return s.end_of_file()

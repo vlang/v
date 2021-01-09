@@ -4,7 +4,7 @@ module flag
 pub struct Flag {
 pub:
 	name     string // name as it appears on command line
-	abbr     byte // shortcut
+	abbr     byte   // shortcut
 	usage    string // help message
 	val_desc string // something like '<arg>' that appears in usage,
 	// and also the default value, when the flag is not given
@@ -383,7 +383,7 @@ pub fn (fs FlagParser) usage() string {
 		for f in fs.flags {
 			mut onames := []string{}
 			if f.abbr != 0 {
-				onames << '-$f.abbr.str()'
+				onames << '-$f.abbr.ascii_str()'
 			}
 			if f.name != '' {
 				if !f.val_desc.contains('<bool>') {

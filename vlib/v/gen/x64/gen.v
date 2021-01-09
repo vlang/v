@@ -372,10 +372,10 @@ pub fn (mut g Gen) ret() {
 
 pub fn (mut g Gen) push(reg Register) {
 	if reg < .r8 {
-		g.write8(0x50 + reg)
+		g.write8(0x50 + int(reg))
 	} else {
 		g.write8(0x41)
-		g.write8(0x50 + reg - 8)
+		g.write8(0x50 + int(reg) - 8)
 	}
 	/*
 	match reg {
@@ -387,7 +387,7 @@ pub fn (mut g Gen) push(reg Register) {
 }
 
 pub fn (mut g Gen) pop(reg Register) {
-	g.write8(0x58 + reg)
+	g.write8(0x58 + int(reg))
 	// TODO r8...
 	g.println('pop $reg')
 }
@@ -395,7 +395,7 @@ pub fn (mut g Gen) pop(reg Register) {
 pub fn (mut g Gen) sub32(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x81)
-	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(0xe8 + int(reg)) // TODO rax is different?
 	g.write32(val)
 	g.println('sub32 $reg,$val.hex2()')
 }
@@ -403,7 +403,7 @@ pub fn (mut g Gen) sub32(reg Register, val int) {
 pub fn (mut g Gen) sub8(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x83)
-	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(0xe8 + int(reg)) // TODO rax is different?
 	g.write8(val)
 	g.println('sub8 $reg,$val.hex2()')
 }
@@ -411,7 +411,7 @@ pub fn (mut g Gen) sub8(reg Register, val int) {
 pub fn (mut g Gen) add(reg Register, val int) {
 	g.write8(0x48)
 	g.write8(0x81)
-	g.write8(0xe8 + reg) // TODO rax is different?
+	g.write8(0xe8 + int(reg)) // TODO rax is different?
 	g.write32(val)
 	g.println('add $reg,$val.hex2()')
 }
@@ -622,7 +622,7 @@ pub fn (mut g Gen) call_fn(node ast.CallExpr) {
 				g.mov_var_to_reg(fn_arg_registers[i], var_offset)
 			}
 			else {
-				verror('unhandled call_fn (name=$name) node: ' + typeof(expr))
+				verror('unhandled call_fn (name=$name) node: ' + expr.type_name())
 			}
 		}
 	}
@@ -671,7 +671,7 @@ fn (mut g Gen) stmt(node ast.Stmt) {
 		}
 		ast.StructDecl {}
 		else {
-			println('x64.stmt(): bad node: ' + typeof(node))
+			println('x64.stmt(): bad node: ' + node.type_name())
 		}
 	}
 }
@@ -704,7 +704,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		ast.StringLiteral {}
 		ast.StructInit {}
 		else {
-			println(term.red('x64.expr(): unhandled node: ' + typeof(node)))
+			println(term.red('x64.expr(): unhandled node: ' + node.type_name()))
 		}
 	}
 }
@@ -775,7 +775,8 @@ fn (mut g Gen) assign_stmt(node ast.AssignStmt) {
 				}
 			}
 			else {
-				g.error_with_pos('x64 assign_stmt unhandled expr: ' + typeof(right), right.position())
+				g.error_with_pos('x64 assign_stmt unhandled expr: ' + right.type_name(),
+					right.position())
 			}
 		}
 		// }

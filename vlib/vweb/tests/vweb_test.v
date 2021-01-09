@@ -7,8 +7,9 @@ import io
 
 const (
 	sport           = 12380
-	exit_after_time = 5000 // milliseconds
+	exit_after_time = 7000 // milliseconds
 	vexe            = os.getenv('VEXE')
+	vweb_logfile    = os.getenv('VWEB_LOGFILE')
 	vroot           = os.dir(vexe)
 	serverexe       = os.join_path(os.cache_dir(), 'vweb_test_server.exe')
 	tcp_r_timeout   = 30 * time.second
@@ -30,7 +31,13 @@ fn test_a_simple_vweb_app_can_be_compiled() {
 }
 
 fn test_a_simple_vweb_app_runs_in_the_background() {
-	suffix := $if windows { '' } $else { ' > /dev/null &' }
+	mut suffix := ''
+	$if !windows {
+		suffix = ' > /dev/null &'
+	}
+	if vweb_logfile != '' {
+		suffix = ' 2>> $vweb_logfile >> $vweb_logfile &'
+	}
 	server_exec_cmd := '$serverexe $sport $exit_after_time $suffix'
 	$if debug_net_socket_client ? {
 		eprintln('running:\n$server_exec_cmd')
@@ -53,7 +60,7 @@ fn assert_common_headers(received string) {
 }
 
 fn test_a_simple_tcp_client_can_connect_to_the_vweb_server() {
-	received := simple_tcp_client({}) or {
+	received := simple_tcp_client(path: '/') or {
 		assert err == ''
 		return
 	}
@@ -159,14 +166,23 @@ fn test_http_client_json_post() {
 		age: 123
 	}
 	json_for_ouser := json.encode(ouser)
-	x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
+	mut x := http.post_json('http://127.0.0.1:$sport/json_echo', json_for_ouser) or { panic(err) }
 	$if debug_net_socket_client ? {
-		eprintln('json response: $x')
+		eprintln('/json_echo endpoint response: $x')
 	}
 	assert x.headers['Content-Type'] == 'application/json'
 	assert x.text == json_for_ouser
 	nuser := json.decode(User, x.text) or { User{} }
 	assert '$ouser' == '$nuser'
+	//
+	x = http.post_json('http://127.0.0.1:$sport/json', json_for_ouser) or { panic(err) }
+	$if debug_net_socket_client ? {
+		eprintln('/json endpoint response: $x')
+	}
+	assert x.headers['Content-Type'] == 'application/json'
+	assert x.text == json_for_ouser
+	nuser2 := json.decode(User, x.text) or { User{} }
+	assert '$ouser' == '$nuser2'
 }
 
 fn test_http_client_shutdown_does_not_work_without_a_cookie() {
@@ -193,7 +209,7 @@ fn testsuite_end() {
 
 // utility code:
 struct SimpleTcpClientConfig {
-	retries int = 20
+	retries int    = 20
 	host    string = 'static.dev'
 	path    string = '/'
 	agent   string = 'v/net.tcp.v'

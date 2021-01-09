@@ -10,8 +10,8 @@ fn main() {
 	x := ityp == table.string_type
 	// the next line should produce at least a warning, or even an error, without an explicit cast:
 	z := isym == table.string_type
-	println(typeof(isym))
-	println(typeof(table.string_type))
+	println(typeof(isym).name)
+	println(typeof(table.string_type).name)
 	println(x)
 	println(z)
 }

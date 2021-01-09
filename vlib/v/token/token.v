@@ -172,7 +172,7 @@ fn build_keys() map[string]Kind {
 	mut res := map[string]Kind{}
 	for t in int(Kind.keyword_beg) + 1 .. int(Kind.keyword_end) {
 		key := token_str[t]
-		res[key] = t
+		res[key] = Kind(t)
 	}
 	return res
 }
@@ -437,7 +437,8 @@ pub fn (kind Kind) is_infix() bool {
 pub fn (tok &Token) can_start_type(builtin_type_names []string) bool {
 	match tok.kind {
 		.name { return tok.lit[0].is_capital() || tok.lit in builtin_type_names }
-		.amp, .lsbr, .question { return true }
+		// Note: return type (T1, T2) should be handled elsewhere
+		.amp, .key_fn, .lsbr, .question { return true }
 		else {}
 	}
 	return false

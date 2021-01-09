@@ -7,6 +7,7 @@ import json
 
 struct App {
 	vweb.Context
+mut:
 	db sqlite.DB
 }
 
@@ -31,8 +32,9 @@ pub fn (app &App) index() vweb.Result {
 }
 
 pub fn (mut app App) init_once() {
-	db := sqlite.connect('blog.db') or { panic(err) }
-	app.db = db
+	app.db = sqlite.connect('blog.db') or { panic(err) }
+	app.db.exec('create table if not exists article (' + 'id integer primary key, ' + "title text default ''," +
+		"text text default ''" + ');')
 }
 
 pub fn (mut app App) init() {
@@ -42,17 +44,19 @@ pub fn (mut app App) new() vweb.Result {
 	return $vweb.html()
 }
 
+[post]
+['/new_article']
 pub fn (mut app App) new_article() vweb.Result {
 	title := app.form['title']
 	text := app.form['text']
 	if title == '' || text == '' {
-		app.text('Empty text/title')
-		return vweb.Result{}
+		return app.text('Empty text/title')
 	}
 	article := Article{
 		title: title
 		text: text
 	}
+	println('posting article')
 	println(article)
 	sql app.db {
 		insert article into Article

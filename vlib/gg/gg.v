@@ -38,11 +38,11 @@ pub:
 	borderless_window     bool
 	always_on_top         bool
 	bg_color              gx.Color
-	init_fn               FNCb = voidptr(0)
-	frame_fn              FNCb = voidptr(0)
-	cleanup_fn            FNCb = voidptr(0)
-	fail_fn               FNFail = voidptr(0)
-	event_fn              FNEvent = voidptr(0)
+	init_fn               FNCb      = voidptr(0)
+	frame_fn              FNCb      = voidptr(0)
+	cleanup_fn            FNCb      = voidptr(0)
+	fail_fn               FNFail    = voidptr(0)
+	event_fn              FNEvent   = voidptr(0)
 	keydown_fn            FNKeyDown = voidptr(0)
 	// special case of event_fn
 	char_fn               FNChar = voidptr(0)
@@ -91,7 +91,7 @@ pub:
 }
 
 fn gg_init_sokol_window(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	desc := sapp.create_desc()
 	/*
 	desc := C.sg_desc{
@@ -145,8 +145,8 @@ fn gg_init_sokol_window(user_data voidptr) {
 	mut pipdesc := C.sg_pipeline_desc{}
 	unsafe { C.memset(&pipdesc, 0, sizeof(pipdesc)) }
 	pipdesc.blend.enabled = true
-	pipdesc.blend.src_factor_rgb = C.SG_BLENDFACTOR_SRC_ALPHA
-	pipdesc.blend.dst_factor_rgb = C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA
+	pipdesc.blend.src_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_SRC_ALPHA)
+	pipdesc.blend.dst_factor_rgb = gfx.BlendFactor(C.SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA)
 	g.timage_pip = sgl.make_pipeline(&pipdesc)
 	//
 	if g.config.init_fn != voidptr(0) {
@@ -159,7 +159,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 }
 
 fn gg_frame_fn(user_data voidptr) {
-	mut ctx := &Context(user_data)
+	mut ctx := unsafe { &Context(user_data) }
 	if ctx.config.frame_fn == voidptr(0) {
 		return
 	}
@@ -180,8 +180,8 @@ pub fn (mut ctx Context) refresh_ui() {
 }
 
 fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
-	e := &sapp.Event(ce)
-	mut g := &Context(user_data)
+	e := unsafe { &sapp.Event(ce) }
+	mut g := unsafe { &Context(user_data) }
 	if g.config.event_fn != voidptr(0) {
 		g.config.event_fn(e, g.config.user_data)
 	}
@@ -189,7 +189,7 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 		.key_down {
 			if g.config.keydown_fn != voidptr(0) {
 				kdfn := g.config.keydown_fn
-				kdfn(e.key_code, e.modifiers, g.config.user_data)
+				kdfn(e.key_code, sapp.Modifier(e.modifiers), g.config.user_data)
 			}
 		}
 		.char {
@@ -215,14 +215,14 @@ fn gg_event_fn(ce &C.sapp_event, user_data voidptr) {
 }
 
 fn gg_cleanup_fn(user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	if g.config.cleanup_fn != voidptr(0) {
 		g.config.cleanup_fn(g.config.user_data)
 	}
 }
 
 fn gg_fail_fn(msg charptr, user_data voidptr) {
-	mut g := &Context(user_data)
+	mut g := unsafe { &Context(user_data) }
 	vmsg := tos3(msg)
 	if g.config.fail_fn != voidptr(0) {
 		g.config.fail_fn(vmsg, g.config.user_data)

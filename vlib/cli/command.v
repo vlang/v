@@ -18,8 +18,8 @@ pub mut:
 	disable_help    bool
 	disable_version bool
 	disable_flags   bool
-	sort_flags      bool = true
-	sort_commands   bool = true
+	sort_flags      bool     = true
+	sort_commands   bool     = true
 	parent          &Command = 0
 	commands        []Command
 	flags           []Flag
@@ -87,6 +87,13 @@ pub fn (mut cmd Command) add_command(command Command) {
 	}
 	subcmd.parent = cmd
 	cmd.commands << subcmd
+}
+
+pub fn (mut cmd Command) setup() {
+	for mut subcmd in cmd.commands {
+		subcmd.parent = cmd
+		subcmd.setup()
+	}
 }
 
 pub fn (mut cmd Command) add_flags(flags []Flag) {
@@ -250,7 +257,7 @@ fn (cmd Command) check_required_flags() {
 	}
 }
 
-fn (cmd Command) execute_help() {
+pub fn (cmd Command) execute_help() {
 	if cmd.commands.contains('help') {
 		help_cmd := cmd.commands.get('help') or { return } // ignore error and handle command normally
 		help_cmd.execute(help_cmd)

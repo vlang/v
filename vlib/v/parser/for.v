@@ -177,6 +177,8 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 	// `for cond {`
 	cond := p.expr(0)
 	p.inside_for = false
+	// extra scope for the body
+	p.open_scope()
 	stmts := p.parse_block_no_scope(false)
 	pos.last_line = p.prev_tok.line_nr - 1
 	for_stmt := ast.ForStmt{
@@ -185,6 +187,7 @@ fn (mut p Parser) for_stmt() ast.Stmt {
 		pos: pos
 		scope: p.scope
 	}
+	p.close_scope()
 	p.close_scope()
 	return for_stmt
 }

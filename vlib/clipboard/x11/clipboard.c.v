@@ -255,19 +255,19 @@ fn (mut cb Clipboard) start_listener(){
 	mut to_be_requested := C.Atom(0)
 	for {
 		C.XNextEvent(cb.display, &event)
-		if event.@type == 0 {
+		if unsafe { event.@type  == 0  } {
 			println("error")
 		continue
         }
-		match event.@type {
+		match unsafe {event.@type} {
 			C.DestroyNotify {
-				if event.xdestroywindow.window == cb.window {
+				if unsafe { event.xdestroywindow.window == cb.window } {
 					// we are done
 					return 
 				}
 			}
 			C.SelectionClear {
-				if event.xselectionclear.window == cb.window && event.xselectionclear.selection == cb.selection {
+				if unsafe { event.xselectionclear.window == cb.window } && unsafe { event.xselectionclear.selection == cb.selection } {
 					cb.mutex.m_lock()
 					cb.is_owner = false
 					cb.text = ""
@@ -275,9 +275,9 @@ fn (mut cb Clipboard) start_listener(){
 				}
 			}
 			C.SelectionRequest {
-				if event.xselectionrequest.selection == cb.selection {
+				if unsafe { event.xselectionrequest.selection == cb.selection  } {
 					mut xsre := &C.XSelectionRequestEvent{ display: 0 }
-					xsre = &event.xselectionrequest
+					xsre = unsafe { &event.xselectionrequest }
 
 					mut xse := C.XSelectionEvent{
 						@type: C.SelectionNotify // 31
@@ -296,20 +296,20 @@ fn (mut cb Clipboard) start_listener(){
 				}
 			}
 			C.SelectionNotify {
-				if event.xselection.selection == cb.selection && event.xselection.property != C.Atom(C.None) {
-					if event.xselection.target == cb.get_atom(.targets) && !sent_request {
+				if unsafe { event.xselection.selection == cb.selection && event.xselection.property != C.Atom(C.None) } {
+					if unsafe { event.xselection.target == cb.get_atom(.targets) && !sent_request } {
 						sent_request = true
 						prop := read_property(cb.display, cb.window, cb.selection)
 						to_be_requested = cb.pick_target(prop)
 						if to_be_requested != C.Atom(0) {
 							C.XConvertSelection(cb.display, cb.selection, to_be_requested, cb.selection, cb.window, C.CurrentTime)
 						}
-					} else if event.xselection.target == to_be_requested {
+					} else if unsafe { event.xselection.target == to_be_requested } {
 						sent_request = false
 						to_be_requested = C.Atom(0)
 						cb.mutex.m_lock()
-						prop := read_property(event.xselection.display, event.xselection.requestor, event.xselection.property)
-						C.XDeleteProperty(event.xselection.display, event.xselection.requestor, event.xselection.property)
+						prop := unsafe{ read_property(event.xselection.display, event.xselection.requestor, event.xselection.property) }
+						unsafe{ C.XDeleteProperty(event.xselection.display, event.xselection.requestor, event.xselection.property) }
 						if cb.is_supported_target(prop.actual_type) {
 							cb.got_text = true
 							unsafe {

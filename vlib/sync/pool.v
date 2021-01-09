@@ -164,7 +164,7 @@ fn process_in_thread(mut pool PoolProcessor, task_id int) {
 pub fn (pool &PoolProcessor) get_string_item(idx int) string {
    // return *(&string(pool.items[idx]))
    // TODO: the below is a hack, remove it when v2 casting works again
-   return *(&string( pool.items[idx] ))
+   return *unsafe {&string( pool.items[idx] )}
 }
 
 // get_int_item - called by the worker callback.
@@ -172,7 +172,7 @@ pub fn (pool &PoolProcessor) get_string_item(idx int) string {
 // TODO: remove the need for this when vfmt becomes smarter.
 pub fn (pool &PoolProcessor) get_int_item(idx int) int {
 	item := pool.items[idx]
-	return *(&int(item))
+	return *unsafe {&int(item)}
 }
 
 // TODO: uncomment, when generics work again
@@ -241,14 +241,14 @@ pub fn (mut pool PoolProcessor) work_on_items_i(items []int) {
 pub fn (pool &PoolProcessor) get_results_s() []SResult {
 	mut res := []SResult{}
 	for i in 0 .. pool.results.len {
-		res << *(&SResult(pool.results[i]))
+		res << *unsafe {&SResult(pool.results[i])}
 	}
 	return res
 }
 pub fn (pool &PoolProcessor) get_results_i() []IResult {
 	mut res := []IResult{}
 	for i in 0 .. pool.results.len {
-		res << *(&IResult(pool.results[i]))
+		res << *unsafe {&IResult(pool.results[i])}
 	}
 	return res
 }

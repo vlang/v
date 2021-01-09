@@ -5,7 +5,7 @@ struct Foo {
 
 struct Bar {
 	f &Foo = &Foo(0)
-	d Foo = Foo{0}
+	d Foo  = Foo{0}
 }
 
 fn main() {

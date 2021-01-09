@@ -80,6 +80,10 @@ jobs:
            sudo apt-get install --quiet -y libssl-dev sqlite3 libsqlite3-dev valgrind
            sudo apt-get install --quiet -y libglfw3 libglfw3-dev  libfreetype6-dev  libxi-dev libxcursor-dev libasound2-dev
            ## sudo apt-get install --quiet -y libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev
+           ## The following is needed for examples/wkhtmltopdf.v
+           wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6-1/wkhtmltox_0.12.6-1.focal_amd64.deb
+           sudo apt-get install xfonts-75dpi xfonts-base
+           sudo dpkg -i wkhtmltox_0.12.6-1.focal_amd64.deb
     - name: Build v
       run: |
         echo $VFLAGS
@@ -96,6 +100,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: ./v -silent test-fixed
     - name: Test time functions in a timezone UTC-12
@@ -114,6 +122,11 @@ jobs:
       run: ./v build-tools
     - name: Test v binaries
       run: ./v build-vbinaries
+    - name: Test v tutorials
+      run: |
+        cd tutorials/code/blog
+        ../../../v .
+
 
   # Alpine docker pre-built container
   alpine-docker-musl-gcc:
@@ -181,6 +194,10 @@ jobs:
 #      run: ./v build-vbinaries
 ##    - name: Test v->js
 ##      run: ./v -o hi.js examples/hello_v_js.v && node hi.js
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: VJOBS=1 ./v -silent test-fixed
     - name: Build examples
@@ -258,6 +275,10 @@ jobs:
       run: |
         ./v -o v2 -usecache cmd/v
         ./v -usecache examples/tetris/tetris.v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -339,6 +360,10 @@ jobs:
       run: ./v -o v2 cmd/v && ./v2 -o v3 cmd/v && ./v3 -o v4 cmd/v
     - name: v self with -usecache
       run: ./v -o v2 -usecache cmd/v
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -silent test-fixed
@@ -479,6 +504,10 @@ jobs:
       - name: Build V
         run: |
           echo $VFLAGS && make -j4 && ./v -cg -o v cmd/v
+      - name: Verify `v test` works
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
       - name: Test V fixed tests
         run: |
           ./v -silent test-fixed
@@ -540,6 +569,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed
@@ -578,6 +611,10 @@ jobs:
     - name: v doctor
       run: |
         ./v doctor
+    - name: Verify `v test` works
+      run: |
+        ./v cmd/tools/test_if_v_test_system_works.v
+        ./cmd/tools/test_if_v_test_system_works
     - name: Fixed tests
       run: |
         ./v -cg cmd\tools\vtest-fixed.v
@@ -610,6 +647,10 @@ jobs:
         .\v.exe setup-freetype
         .\.github\workflows\windows-install-sqlite.bat
         ## .\.github\workflows\windows-install-sdl.bat
+    - name: Verify `v test` works
+      run: |
+        .\v.exe cmd/tools/test_if_v_test_system_works.v
+        .\cmd\tools\test_if_v_test_system_works.exe
     - name: Fixed tests
       run: |
         .\v.exe -silent test-fixed

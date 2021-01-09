@@ -35,3 +35,19 @@ fn test_generic_method_with_fixed_arg_type() {
 	res := person.show('bob', 10)
 	assert res == 'name: bob, data: 10'
 }
+
+struct Foo {}
+
+fn (v Foo) new<T>() T {
+	return T{}
+}
+
+fn test_generic_method_with_map_type() {
+	foo := Foo{}
+	assert foo.new<map[string]string>() == map[string]string{}
+}
+
+fn test_generic_method_with_array_type() {
+	foo := Foo{}
+	assert foo.new<[]string>() == []string{}
+}

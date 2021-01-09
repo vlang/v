@@ -3,6 +3,7 @@ module clipboard
 import time
 
 #include <windows.h>
+
 #include <winbase.h>	
 #define WM_SETCURSOR 0x0020
 // #define CopyCursor(pcur) ((HCURSOR)CopyIcon((HICON)(pcur)))

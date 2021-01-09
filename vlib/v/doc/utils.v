@@ -16,9 +16,33 @@ pub fn merge_comments(comments []ast.Comment) string {
 	return res.join('\n')
 }
 
-// get_comment_block_right_before merges all the comments starting from
+// ast_comment_to_doc_comment converts an `ast.Comment` node type to a `DocComment`
+pub fn ast_comment_to_doc_comment(ast_node ast.Comment) DocComment {
+	text := ast_node.text // TODO .trim_left('\x01') // BUG why are this byte here in the first place?
+	return DocComment{
+		text: text
+		is_multi: ast_node.is_multi
+		pos: DocPos{
+			line: ast_node.pos.line_nr - 1
+			col: 0 // ast_node.pos.pos - ast_node.text.len
+			len: text.len
+		}
+	}
+}
+
+// ast_comments_to_doc_comments converts an array of `ast.Comment` nodes to
+// an array of `DocComment` nodes
+pub fn ast_comments_to_doc_comments(ast_nodes []ast.Comment) []DocComment {
+	mut doc_comments := []DocComment{len: ast_nodes.len}
+	for ast_comment in ast_nodes {
+		doc_comments << ast_comment_to_doc_comment(ast_comment)
+	}
+	return doc_comments
+}
+
+// merge_doc_comments merges all the comments starting from
 // the last up to the first item of the array.
-pub fn get_comment_block_right_before(comments []ast.Comment) string {
+pub fn merge_doc_comments(comments []DocComment) string {
 	if comments.len == 0 {
 		return ''
 	}
@@ -26,13 +50,13 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 	mut last_comment_line_nr := 0
 	for i := comments.len - 1; i >= 0; i-- {
 		cmt := comments[i]
-		if last_comment_line_nr != 0 && cmt.pos.line_nr < last_comment_line_nr - 1 {
+		if last_comment_line_nr != 0 && cmt.pos.line < last_comment_line_nr - 1 {
 			// skip comments that are not part of a continuous block,
 			// located right above the top level statement.
 			// break
 		}
 		mut cmt_content := cmt.text.trim_left('\x01')
-		if cmt_content.len == cmt.text.len || cmt.is_multi {
+		if cmt.is_multi {
 			// ignore /* */ style comments for now
 			continue
 			// if cmt_content.len == 0 {
@@ -58,7 +82,7 @@ pub fn get_comment_block_right_before(comments []ast.Comment) string {
 		// eprintln('cmt: $cmt')
 		cseparator := if cmt_content.starts_with('```') { '\n' } else { ' ' }
 		comment = cmt_content + cseparator + comment
-		last_comment_line_nr = cmt.pos.line_nr
+		last_comment_line_nr = cmt.pos.line
 	}
 	return comment
 }

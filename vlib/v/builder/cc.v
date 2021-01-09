@@ -182,7 +182,7 @@ mut:
 fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	mut ccoptions := CcompilerOptions{}
 	//
-	mut debug_options := '-g3'
+	mut debug_options := '-g'
 	mut optimization_options := '-O2'
 	// arguments for the C compiler
 	// TODO : activate -Werror once no warnings remain
@@ -231,7 +231,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.is_cc_clang {
 		if ccoptions.debug_mode {
-			debug_options = '-g3 -O0'
+			debug_options = '-g -O0'
 		}
 		optimization_options = '-O3'
 		mut have_flto := true
@@ -244,7 +244,7 @@ fn (mut v Builder) setup_ccompiler_options(ccompiler string) {
 	}
 	if ccoptions.is_cc_gcc {
 		if ccoptions.debug_mode {
-			debug_options = '-g3 -no-pie'
+			debug_options = '-g -no-pie'
 		}
 		optimization_options = '-O3 -fno-strict-aliasing -flto'
 	}
@@ -590,6 +590,12 @@ fn (mut v Builder) cc() {
 		if !v.ccoptions.debug_mode {
 			v.pref.cleanup_files << v.out_name_c
 			v.pref.cleanup_files << response_file
+		}
+		$if windows {
+			if v.ccoptions.is_cc_tcc {
+				def_name := v.pref.out_name[0..v.pref.out_name.len - 4]
+				v.pref.cleanup_files << '${def_name}.def'
+			}
 		}
 		//
 		todo()

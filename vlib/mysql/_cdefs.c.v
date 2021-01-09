@@ -17,8 +17,8 @@ struct C.MYSQL_FIELD {
 	db               byteptr // Database for table
 	catalog          byteptr // Catalog for table
 	def              byteptr // Default value (set by mysql_list_fields)
-	length           int // Width of column (create length)
-	max_length       int // Max width for selected set
+	length           int     // Width of column (create length)
+	max_length       int     // Max width for selected set
 	name_length      u32
 	org_name_length  u32
 	table_length     u32

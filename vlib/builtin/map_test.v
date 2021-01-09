@@ -487,8 +487,12 @@ fn test_int_keys() {
 	assert m[5] == 25
 	m2 := {3:9 4:16 5:25}
 	assert m2.len == 3
+	// clone
 	mc := m.clone()
+	same := mc == m
+	assert same
 	assert mc.len == 3
+	assert mc.keys() == [3,4,5]
 	mut all := []int{}
 	for k, v in mc {
 		assert m[k] == v
@@ -514,6 +518,8 @@ fn test_rune_keys() {
 	assert m[`!`] == 2
 	m[`@`] = 7
 	assert m.len == 3
+	println(m)
+	assert '$m' == '{`!`: 2, `%`: 3, `@`: 7}'
 	
 	mut a := []rune{}
 	for k, v in m {
@@ -584,4 +590,10 @@ fn test_eq() {
 			}
 		}
 	}
+}
+
+fn test_non_string_key_map_str() {
+	assert {23: 4}.str() == '{23: 4}'
+	assert {`a`: 12, `b`: 13}.str() == '{`a`: 12, `b`: 13}'
+	assert {23: 'foo', 25: 'bar'}.str() == "{23: 'foo', 25: 'bar'}"
 }

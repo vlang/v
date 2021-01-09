@@ -474,7 +474,7 @@ enum CharClass_parse_state {
 
 fn (re RE) get_char_class(pc int) string {
 	buf := []byte{len:(re.cc.len)}
-	mut buf_ptr := &byte(&buf)
+	mut buf_ptr := unsafe {&byte(&buf)}
 
 	mut cc_i := re.prog[pc].cc_index
 	mut i := 0
@@ -2000,7 +2000,7 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 				// check if we must continue or pass to the next IST
 				if next_check_flag == true && re.prog[state.pc+1].ist != ist_prog_end {
 					//println("save the state!!")
-					re.state_list << StateObj {
+					mut dot_state := StateObj {
 						group_index: state.group_index
 						match_flag:  state.match_flag
 						match_index: state.match_index
@@ -2010,6 +2010,13 @@ pub fn (mut re RE) match_base(in_txt byteptr, in_txt_len int ) (int,int) {
 						char_len:    char_len
 						last_dot_pc: state.pc
 					}
+					// if we are mananging a .* stay on the same char on return
+					if re.prog[state.pc].rep_min == 0 {
+						dot_state.i -= char_len
+					}
+
+					re.state_list << dot_state
+					
 					m_state = .ist_quant_n
 					//println("dot_char stack len: ${re.state_list.len}")
 					continue

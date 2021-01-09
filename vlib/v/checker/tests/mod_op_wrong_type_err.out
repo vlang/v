@@ -12,42 +12,42 @@ vlib/v/checker/tests/mod_op_wrong_type_err.vv:4:14: error: float modulo not allo
       |                 ~~~
     5 |     println([1,2,3] % 1)
     6 |     println(1 % [1,2,3])
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:5:10: error: mismatched types `[]int` and `any_int`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:5:10: error: mismatched types `[]int` and `int literal`
     3 |     println(0.5 % 1)
     4 |     println(1 % 0.5)
     5 |     println([1,2,3] % 1)
       |             ~~~~~~~
     6 |     println(1 % [1,2,3])
     7 |     a := Aaa{}
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:6:14: error: mismatched types `any_int` and `[]int`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:6:14: error: mismatched types `int literal` and `[]int`
     4 |     println(1 % 0.5)
     5 |     println([1,2,3] % 1)
     6 |     println(1 % [1,2,3])
       |                 ~~~~~~~
     7 |     a := Aaa{}
     8 |     println(a % 1)
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:8:10: error: mismatched types `Aaa` and `any_int`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:8:10: error: mismatched types `Aaa` and `int literal`
     6 |     println(1 % [1,2,3])
     7 |     a := Aaa{}
     8 |     println(a % 1)
       |             ^
     9 |     println(1 % a)
    10 |     b := map[string]int
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:9:14: error: mismatched types `any_int` and `Aaa`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:9:14: error: mismatched types `int literal` and `Aaa`
     7 |     a := Aaa{}
     8 |     println(a % 1)
     9 |     println(1 % a)
       |                 ^
    10 |     b := map[string]int
    11 |     println(b % 1)
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:11:10: error: mismatched types `map[string]int` and `any_int`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:11:10: error: mismatched types `map[string]int` and `int literal`
     9 |     println(1 % a)
    10 |     b := map[string]int
    11 |     println(b % 1)
       |             ^
    12 |     println(1 % b)
    13 | }
-vlib/v/checker/tests/mod_op_wrong_type_err.vv:12:14: error: mismatched types `any_int` and `map[string]int`
+vlib/v/checker/tests/mod_op_wrong_type_err.vv:12:14: error: mismatched types `int literal` and `map[string]int`
    10 |     b := map[string]int
    11 |     println(b % 1)
    12 |     println(1 % b)

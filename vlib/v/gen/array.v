@@ -149,6 +149,7 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.write('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	g.write('\t$ret_elem_type ti = ')
 	expr := node.args[0].expr
 	match expr {
@@ -302,6 +303,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
+	g.stmt_path_pos << g.out.len
 	g.write('if (')
 	expr := node.args[0].expr
 	match expr {

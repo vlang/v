@@ -1,4 +1,4 @@
-vlib/v/checker/tests/array_insert_type_mismatch.vv:3:14: error: cannot insert `any_float` to `[]int`
+vlib/v/checker/tests/array_insert_type_mismatch.vv:3:14: error: cannot insert `float literal` to `[]int`
     1 | fn main() {
     2 |     mut a := [1, 2]
     3 |     a.insert(1, 2.3)

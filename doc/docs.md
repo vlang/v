@@ -15,6 +15,38 @@ The language promotes writing simple and clear code with minimal abstraction.
 Despite being simple, V gives the developer a lot of power.
 Anything you can do in other languages, you can do in V.
 
+## Install from source
+The major way to get the latest and greatest V, is to __install it from source__.
+It is __easy__, and it usually takes __only a few seconds__.
+
+### Linux, macOS, FreeBSD, etc:
+You need `git`, a C compiler like `gcc` or `clang`, and `make`:
+```bash
+git clone https://github.com/vlang/v && cd v && make
+```
+
+### Windows:
+You need `git`, and a C compiler like `gcc` or `msvc`:
+```bash
+git clone https://github.com/vlang/v
+cd v
+make
+```
+
+### Android
+Running V graphical apps on Android is also possible via [vab](https://github.com/vlang/vab).
+
+V Android dependencies: **V**, **Java JDK** >= 8, Android **SDK + NDK**.
+
+  1. Install dependencies (see [vab](https://github.com/vlang/vab))
+  2. Plugin-in your Android device
+  3. Run:
+  ```bash
+  git clone https://github.com/vlang/vab && cd vab && v vab.v
+  ./vab --device auto run /path/to/v/examples/sokol/particles
+  ```
+For more details and troubleshooting, please visit the [vab GitHub repository](https://github.com/vlang/vab).
+
 ## Table of Contents
 
 <table>
@@ -711,6 +743,8 @@ This may seem verbose at first, but it makes code much more readable
 and easier to understand - it's always clear which function from
 which module is being called. This is especially useful in large code bases.
 
+Cyclic module imports are not allowed, like in Go.
+
 ### Selective imports
 
 You can also import specific functions and types from modules directly:
@@ -879,7 +913,7 @@ It works like this:
 ```v oksyntax
 mut x := MySumType(MyStruct{123})
 if mut x is MyStruct {
-	// x is casted to MyStruct even it's mutable
+	// x is casted to MyStruct even if it's mutable
 	// without the mut keyword that wouldn't work
 	println(x)
 }
@@ -1235,9 +1269,9 @@ button.widget.x = 3
 
 ```v
 struct Foo {
-	n   int // n is 0 by default
+	n   int    // n is 0 by default
 	s   string // s is '' by default
-	a   []int // a is `[]int{}` by default
+	a   []int  // a is `[]int{}` by default
 	pos int = -1 // custom default value
 }
 ```
@@ -1870,18 +1904,20 @@ if w is Mars {
 }
 ```
 `w` has type `Mars` inside the body of the `if` statement. This is
-known as *flow-sensitive typing*. You can also specify a variable name:
+known as *flow-sensitive typing*.
+If `w` is a mutable identifier, it would be unsafe if the compiler smart casts it without a warning.
+That's why you have to declare a `mut` before the `is` expression:
 
 ```v ignore
-if w is Mars as mars {
-    assert typeof(w).name == 'World'
-    if mars.dust_storm() {
+if mut w is Mars {
+    assert typeof(w).name == 'Mars'
+    if w.dust_storm() {
         println('bad weather!')
     }
 }
 ```
-`w` keeps its original type. This form is necessary if `w` is a more
-complex expression than just a variable name.
+Otherwise `w` would keep its original type.
+> This works for both, simple variables and complex expressions like `user.name`
 
 #### Matching sum types
 
@@ -2206,8 +2242,6 @@ a property of the individual channel object. Channels can be passed to coroutine
 variables:
 
 ```v
-import sync
-
 fn f(ch chan int) {
 	// ...
 }
@@ -2309,8 +2343,6 @@ if select {
 
 For special purposes there are some builtin properties and methods:
 ```v nofmt
-import sync
-
 struct Abc{x int}
 
 a := 2.13
@@ -2495,7 +2527,8 @@ Python, Go, or Java, except there's no heavy GC tracing everything or expensive 
 each object.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-noautofree`.
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its 
+memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
 default in V 0.3.
@@ -2714,6 +2747,42 @@ finding the cause: look at the `unsafe` blocks (and how they interact with
 surrounding code).
 
 * Note: This is work in progress.
+
+### Structs with reference fields
+
+Structs with references require explicitly setting the initial value to a
+reference value unless the struct already defines its own initial value.
+
+Zero-value references, or nil pointers, will **NOT** be supported in the future,
+for now data structures such as Linked Lists or Binary Trees that rely on reference
+fields that can use the value `0`, understanding that it is unsafe, and that it can
+cause a panic.
+
+```v
+struct Node {
+	a &Node
+	b &Node = 0 // Auto-initialized to nil, use with caution!
+}
+
+// Reference fields must be initialized unless an initial value is declared.
+// Zero (0) is OK but use with caution, it's a nil pointer.
+foo := Node{
+	a: 0
+}
+bar := Node{
+	a: &foo
+}
+baz := Node{
+	a: 0
+	b: 0
+}
+qux := Node{
+	a: &foo
+	b: &bar
+}
+println(baz)
+println(qux)
+```
 
 ## Calling C functions from V
 
@@ -3148,11 +3217,11 @@ operator overloading is an important feature to have in order to improve readabi
 
 To improve safety and maintainability, operator overloading is limited:
 
-- It's only possible to overload `+, -, *, /, %, <, >` operators.
-- `==` and `!=` are self generated by the compiler.
+- It's only possible to overload `+, -, *, /, %, <, >, ==, !=` operators.
+- `==` and `!=` are self generated by the compiler but can be overriden.
 - Calling other functions inside operator functions is not allowed.
 - Operator functions can't modify their arguments.
-- When using `<` and `>`, the return type must be `bool`.
+- When using `<`, `>`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
 
 ## Inline assembly

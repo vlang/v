@@ -174,7 +174,7 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // TODO remove copy pasta, merge the functions
 pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, img_ &Image) {
 	if img_.id >= ctx.image_cache.len {
-		eprintln('gg: draw_image() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+		eprintln('gg: draw_image_flipped() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
 		return
 	}
 	img := ctx.image_cache[img_.id] // fetch the image from cache
@@ -206,4 +206,35 @@ pub fn (ctx &Context) draw_image_flipped(x f32, y f32, width f32, height f32, im
 pub fn (ctx &Context) draw_image_by_id(x f32, y f32, width f32, height f32, id int) {
 	img := ctx.image_cache[id]
 	ctx.draw_image(x, y, width, height, img)
+}
+
+pub fn (ctx &Context) draw_image_3d(x f32, y f32, z f32, width f32, height f32, img_ &Image) {
+	if img_.id >= ctx.image_cache.len {
+		eprintln('gg: draw_image_3d() bad img id $img_.id (img cache len = $ctx.image_cache.len)')
+		return
+	}
+	img := ctx.image_cache[img_.id] // fetch the image from cache
+	if !img.simg_ok {
+		return
+	}
+	u0 := f32(0.0)
+	v0 := f32(0.0)
+	u1 := f32(1.0)
+	v1 := f32(1.0)
+	x0 := f32(x) * ctx.scale
+	y0 := f32(y) * ctx.scale
+	x1 := f32(x + width) * ctx.scale
+	y1 := f32(y + height) * ctx.scale
+	//
+	sgl.load_pipeline(ctx.timage_pip)
+	sgl.enable_texture()
+	sgl.texture(img.simg)
+	sgl.begin_quads()
+	sgl.c4b(255, 255, 255, 255)
+	sgl.v3f_t2f(x0, y0, z, u0, v0)
+	sgl.v3f_t2f(x1, y0, z, u1, v0)
+	sgl.v3f_t2f(x1, y1, z, u1, v1)
+	sgl.v3f_t2f(x0, y1, z, u0, v1)
+	sgl.end()
+	sgl.disable_texture()
 }

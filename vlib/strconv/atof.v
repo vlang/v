@@ -539,6 +539,7 @@ pub fn atof64(s string) f64 {
 			res.u = double_minus_infinity
 		}
 		else {
-		}}
-	return res.f
+		}
+	}
+	return unsafe {res.f}
 }

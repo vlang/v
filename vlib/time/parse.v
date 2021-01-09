@@ -139,6 +139,5 @@ pub fn parse_iso8601(s string) ?Time {
 		unix_time += u64(unix_offset)
 	}
 	t = unix2(int(unix_time), t.microsecond)
-	// Convert the time to local time
-	return t.local()
+	return t
 }

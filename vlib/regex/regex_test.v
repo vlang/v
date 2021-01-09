@@ -124,6 +124,7 @@ match_test_suite = [
 	TestItem{"accccb deer", r"^(.*)$",0,11},
 	TestItem{"accccb deer", r"^a(.*)b d(.+)p",-1,0},
 	TestItem{"##.#....#.##.####...#.##", r".{18}[.#]",0,19},
+	TestItem{"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.", r'.*#[.#]{4}##[.#]{4}##[.#]{4}###',0,49},
 
 	// test bcksls chars
 	TestItem{"[ an s. s! ]( wi4ki:something )", r"\[.*\]\( *(\w*:*\w+) *\)",0,31},
@@ -270,6 +271,18 @@ find_all_test_suite = [
 		r"url *= *https?://.*"+'\n',
 		[5, 45],
 		['url = https://github.com/dario/pig.html\n']
+	},
+	Test_find_all{
+		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
+		r"#[.#]{4}##[.#]{4}##[.#]{4}###",
+		[29, 49],
+		['#....###...##...####']
+	},
+		Test_find_all{
+		"#.#......##.#..#..##........##....###...##...######.......#.....#..#......#...#........###.#..#.",
+		r".*#[.#]{4}##[.#]{4}##[.#]{4}###",
+		[0, 49],
+		['#.#......##.#..#..##........##....###...##...####']
 	}
 ]
 )
@@ -282,7 +295,9 @@ fn test_regex(){
 	// check capturing groups
 	for c,to in cgroups_test_suite {
 		// debug print
-		if debug { println("#$c [$to.src] q[$to.q] ($to.s, $to.e)") }
+		if debug {
+			println("$c [${to.src}] [q${to.q}] (${to.s}, ${to.e})") 
+		}
 
 		mut re := regex.regex_opt(to.q) or {
 			eprintln('err: $err')

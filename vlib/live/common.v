@@ -52,7 +52,7 @@ pub mut:
 // so that the user can set callbacks, read meta information, etc.
 pub fn info() &LiveReloadInfo {
 	if C.g_live_info != 0 {
-		return &LiveReloadInfo(C.g_live_info)
+		return unsafe {&LiveReloadInfo(C.g_live_info)}
 	}
 	// When the current program is not compiled with -live, simply
 	// return a new empty struct LiveReloadInfo in order to prevent
@@ -60,7 +60,9 @@ pub fn info() &LiveReloadInfo {
 	// started, and the structure LiveReloadInfo will not get updated.
 	// All its fields will be 0, but still safe to access.
 	mut x := &LiveReloadInfo{}
-	mut p := &u64(&C.g_live_info)
-	unsafe { *p = &u64(x) }        
+	unsafe { 
+		mut p := &u64(&C.g_live_info)
+		*p = &u64(x) 
+	}        
 	return x
 }

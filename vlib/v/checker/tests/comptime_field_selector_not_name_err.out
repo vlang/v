@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_field_selector_not_name_err.vv:10:7: error: expected `string` instead of `FieldData` (e.g. `field.name`)
+    8 |     $for f in T.fields {
+    9 |         $if f.typ is string {
+   10 |             t.$f = '3'
+      |                ^
+   11 |         }
+   12 |     }

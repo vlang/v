@@ -156,6 +156,7 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 fn (mut p Parser) fn_decl() ast.FnDecl {
 	p.top_level_statement_start()
 	start_pos := p.tok.position()
+	is_manualfree := p.is_manualfree || p.attrs.contains('manualfree')
 	is_deprecated := p.attrs.contains('deprecated')
 	is_direct_arr := p.attrs.contains('direct_array_access')
 	mut is_unsafe := p.attrs.contains('unsafe')
@@ -270,7 +271,8 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 			}
 		}
 	}
-	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt] && p.peek_tok.kind == .lpar {
+	if p.tok.kind in [.plus, .minus, .mul, .div, .mod, .gt, .lt, .eq, .ne] &&
+		p.peek_tok.kind == .lpar {
 		name = p.tok.kind.str() // op_to_fn_name()
 		if rec_type == table.void_type {
 			p.error_with_pos('cannot use operator overloading with normal functions',
@@ -394,6 +396,7 @@ fn (mut p Parser) fn_decl() ast.FnDecl {
 		stmts: stmts
 		return_type: return_type
 		params: params
+		is_manualfree: is_manualfree
 		is_deprecated: is_deprecated
 		is_direct_arr: is_direct_arr
 		is_pub: is_pub
@@ -442,12 +445,24 @@ fn (mut p Parser) anon_fn() ast.AnonFn {
 			is_arg: true
 		})
 	}
+	mut same_line := p.tok.line_nr == p.prev_tok.line_nr
 	mut return_type := table.void_type
-	if p.tok.kind.is_start_of_type() {
-		return_type = p.parse_type()
+	// lpar: multiple return types
+	if same_line {
+		if p.tok.kind.is_start_of_type() {
+			return_type = p.parse_type()
+		} else if p.tok.kind != .lcbr {
+			p.error_with_pos('expected return type, not $p.tok for anonymous function',
+				p.tok.position())
+		}
 	}
 	mut stmts := []ast.Stmt{}
 	no_body := p.tok.kind != .lcbr
+	same_line = p.tok.line_nr == p.prev_tok.line_nr
+	if no_body && same_line {
+		p.error_with_pos('unexpected `$p.tok.kind` after anonymous function signature, expecting `{`',
+			p.tok.position())
+	}
 	if p.tok.kind == .lcbr {
 		stmts = p.parse_block_no_scope(false)
 	}
@@ -493,7 +508,8 @@ fn (mut p Parser) fn_args() ([]table.Param, bool, bool) {
 		p.tok.lit
 	}
 	types_only := p.tok.kind in [.amp, .ellipsis, .key_fn] ||
-		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .rpar
+		(p.peek_tok.kind == .comma && p.table.known_type(argname)) || p.peek_tok.kind == .dot ||
+		p.peek_tok.kind == .rpar
 	// TODO copy pasta, merge 2 branches
 	if types_only {
 		// p.warn('types only')
