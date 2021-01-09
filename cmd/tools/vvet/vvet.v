@@ -4,7 +4,6 @@ module main
 
 import os
 import os.cmdline
-
 import v.vet
 import v.pref
 import v.parser
@@ -80,50 +79,63 @@ fn main() {
 	}
 }
 
-fn (mut vet Vet) error(msg string, line int, fix FixKind) {
+fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
 		line_nr: line
 	}
-	vet.errors << vet.Error{
+	v.errors << vet.Error{
 		message: msg
-		file_path: vet.file
+		file_path: v.file
 		pos: pos
 		kind: .error
 		fix: fix
 	}
 }
 
+fn (mut v Vet) warn(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line
+	}
+	v.errors << vet.Error{
+		message: msg
+		file_path: v.file
+		pos: pos
+		kind: .warning
+		fix: fix
+	}
+}
+
 // vet_file vets the file read from `path`.
-fn (mut vet Vet) vet_file(path string) {
-	vet.file = path
+fn (mut vt Vet) vet_file(path string) {
+	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	table := table.new_table()
 	vet_options.vprintln("vetting file '$path'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
-	vet.errors << errors
+	vt.errors << errors
 	// Scan each line in file for things to improve
-	source_lines := os.read_lines(vet.file) or { []string{} }
+	source_lines := os.read_lines(vt.file) or { []string{} }
 	for lnumber, line in source_lines {
-		vet_line(line, lnumber)
+		vt.vet_line(source_lines, line, lnumber)
 	}
 }
 
 // vet_line vets the contents of `line` from `vet.file`.
-fn (mut vet Vet) vet_line(line string, lnumber int) {
+fn (mut vet Vet) vet_line(lines []string, line string, lnumber int) {
 	// Vet public functions
 	if line.starts_with('pub fn') ||
 		(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
 		// Scan function declarations for missing documentation
 		is_pub_fn := line.starts_with('pub fn')
-		if lnumber > 0 && source_lines.len > 0 {
-			collect_tags := fn(line string) []string {
+		if lnumber > 0 {
+			collect_tags := fn (line string) []string {
 				mut cleaned := line.all_before('/')
 				cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
 				return cleaned.split(',')
 			}
-			ident_fn_name := fn(line string) string {
+			ident_fn_name := fn (line string) string {
 				mut fn_idx := line.index(' fn ') or { return '' }
 				mut skip := false
 				mut p_count := 0
@@ -140,7 +152,7 @@ fn (mut vet Vet) vet_line(line string, lnumber int) {
 					} else if char == ` ` {
 						continue
 					} else if char.is_letter() {
-						//fn_name += char.str()
+						// fn_name += char.str()
 						fn_name = line[i..].all_before('(')
 						break
 					}
@@ -150,12 +162,12 @@ fn (mut vet Vet) vet_line(line string, lnumber int) {
 				}
 				return fn_name
 			}
-			mut line_above := source_lines[lnumber - 1]
+			mut line_above := lines[lnumber - 1]
 			mut tags := []string{}
 			if !line_above.starts_with('//') {
 				mut grab := true
 				for j := lnumber - 1; j >= 0; j-- {
-					prev_line := source_lines[j]
+					prev_line := lines[j]
 					if prev_line.contains('}') { // We've looked back to the above scope, stop here
 						break
 					} else if prev_line.starts_with('[') {
@@ -169,14 +181,15 @@ fn (mut vet Vet) vet_line(line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						vet.error('Function documentation seems to be missing for "$clean_line".', lnumber, .doc)
+						vet.warn('Function documentation seems to be missing for "$clean_line".',
+							lnumber, .doc)
 					}
 				}
 			} else {
 				fn_name := ident_fn_name(line)
 				mut grab := true
 				for j := lnumber - 1; j >= 0; j-- {
-					prev_line := source_lines[j]
+					prev_line := lines[j]
 					if prev_line.contains('}') { // We've looked back to the above scope, stop here
 						break
 					} else if prev_line.starts_with('// $fn_name ') {
@@ -192,7 +205,8 @@ fn (mut vet Vet) vet_line(line string, lnumber int) {
 				if grab {
 					clean_line := line.all_before_last('{').trim(' ')
 					if is_pub_fn {
-						p.vet_error('A function name is missing from the documentation of "$clean_line".', lnumber, .doc)
+						vet.warn('A function name is missing from the documentation of "$clean_line".',
+							lnumber, .doc)
 					}
 				}
 			}

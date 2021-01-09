@@ -179,105 +179,12 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		global_scope: global_scope
 	}
 	p.set_path(path)
-<<<<<<< HEAD
 	if p.scanner.text.contains('\n  ') {
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
 				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
 					.vfmt)
-=======
-	// Scan each line in file for things to improve
-	source_lines := os.read_lines(path) or { []string{} }
-	for lnumber, line in source_lines {
-		if line.starts_with('  ') {
-			p.vet_error('Looks like you are using spaces for indentation.', lnumber)
-		} else if line.starts_with('pub fn') ||
-			(line.starts_with('fn ') && !(line.starts_with('fn C.') || line.starts_with('fn main'))) {
-			// Scan function declarations for missing documentation
-			is_pub_fn := line.starts_with('pub fn')
-			if lnumber > 0 && source_lines.len > 0 {
-				collect_tags := fn (line string) []string {
-					mut cleaned := line.all_before('/')
-					cleaned = cleaned.replace_each(['[', '', ']', '', ' ', ''])
-					return cleaned.split(',')
-				}
-				ident_fn_name := fn (line string) string {
-					mut fn_idx := line.index(' fn ') or { return '' }
-					mut skip := false
-					mut p_count := 0
-					mut fn_name := ''
-					for i := fn_idx + 4; i < line.len; i++ {
-						char := line[i]
-						if !skip && char == `(` {
-							p_count++
-							skip = true
-							continue
-						} else if skip && char == `)` {
-							skip = false
-							continue
-						} else if char == ` ` {
-							continue
-						} else if char.is_letter() {
-							// fn_name += char.str()
-							fn_name = line[i..].all_before('(')
-							break
-						}
-						if p_count > 1 {
-							break
-						}
-					}
-					return fn_name
-				}
-				mut line_above := source_lines[lnumber - 1]
-				mut tags := []string{}
-				if !line_above.starts_with('//') {
-					mut grab := true
-					for j := lnumber - 1; j >= 0; j-- {
-						prev_line := source_lines[j]
-						if prev_line.contains('}') { // We've looked back to the above scope, stop here
-							break
-						} else if prev_line.starts_with('[') {
-							tags << collect_tags(prev_line)
-							continue
-						} else if prev_line.starts_with('//') { // Single-line comment
-							grab = false
-							break
-						}
-					}
-					if grab {
-						clean_line := line.all_before_last('{').trim(' ')
-						if is_pub_fn {
-							p.vet_error('Function documentation seems to be missing for "$clean_line".',
-								lnumber)
-						}
-					}
-				} else {
-					fn_name := ident_fn_name(line)
-					mut grab := true
-					for j := lnumber - 1; j >= 0; j-- {
-						prev_line := source_lines[j]
-						if prev_line.contains('}') { // We've looked back to the above scope, stop here
-							break
-						} else if prev_line.starts_with('// $fn_name ') {
-							grab = false
-							break
-						} else if prev_line.starts_with('[') {
-							tags << collect_tags(prev_line)
-							continue
-						} else if prev_line.starts_with('//') { // Single-line comment
-							continue
-						}
-					}
-					if grab {
-						clean_line := line.all_before_last('{').trim(' ')
-						if is_pub_fn {
-							p.vet_error('A function name is missing from the documentation of "$clean_line".',
-								lnumber)
-						}
-					}
-				}
->>>>>>> run vfmt over parser.v
 			}
 		}
 	}
