@@ -4,7 +4,6 @@ module main
 
 import os
 import os.cmdline
-
 import v.vet
 import v.pref
 import v.parser
