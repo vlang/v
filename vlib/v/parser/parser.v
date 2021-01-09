@@ -1528,13 +1528,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		is_mut: is_mut
 		mut_pos: mut_pos
 		scope: p.scope
+		next_token: p.tok.kind
 	}
-	mut node := ast.Expr{}
-	node = sel_expr
 	if is_filter {
 		p.close_scope()
 	}
-	return node
+	return sel_expr
 }
 
 // `.green`
