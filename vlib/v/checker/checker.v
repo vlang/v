@@ -840,6 +840,40 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.gt, .lt, .ge, .le {
 			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
+			} else if left.kind == .struct_ {
+				if left.has_method(infix_expr.op.str()) {
+					if method := left.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = left_type
+					}
+				} else {
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							left_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', left_pos)
+					}
+				}
+			} else if right.kind == .struct_ {
+				if right.has_method(infix_expr.op.str()) {
+					if method := right.find_method(infix_expr.op.str()) {
+						return_type = method.return_type
+					} else {
+						return_type = right_type
+					}
+				} else {
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							right_pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', right_pos)
+					}
+				}
 			}
 		}
 		.left_shift {
@@ -5103,7 +5137,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
-				} else if node.name in ['<', '>', '==', '!='] && node.return_type != table.bool_type {
+				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
+					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				}
 			}

@@ -316,6 +316,8 @@ pub fn replace_op(s string) string {
 		suffix := match s {
 			'==' { '_eq' }
 			'!=' { '_ne' }
+			'<=' { '_le' }
+			'>=' { '_ge' }
 			else { '' }
 		}
 		return s[..s.len - 2] + suffix
