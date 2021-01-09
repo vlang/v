@@ -3328,6 +3328,10 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return node.typ
 		}
 		ast.TypeOf {
+			if node.is_old_syntax {
+				c.warn('use e.g. `typeof(expr).name` or `sum_type_instance.type_name()` instead',
+					node.pos)
+			}
 			node.expr_type = c.expr(node.expr)
 			return table.string_type
 		}

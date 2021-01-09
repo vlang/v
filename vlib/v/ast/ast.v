@@ -1030,10 +1030,11 @@ pub:
 
 pub struct TypeOf {
 pub:
-	expr      Expr
-	pos       token.Position
+	expr          Expr
+	pos           token.Position
+	is_old_syntax bool
 pub mut:
-	expr_type table.Type
+	expr_type     table.Type
 }
 
 pub struct Comment {

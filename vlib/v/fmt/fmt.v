@@ -1206,6 +1206,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('typeof(')
 			f.expr(node.expr)
 			f.write(')')
+			if node.is_old_syntax {
+				f.write('.name')
+			}
 		}
 		ast.Likely {
 			if node.is_likely {
