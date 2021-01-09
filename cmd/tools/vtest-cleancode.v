@@ -20,6 +20,7 @@ const (
 	vfmt_verify_list                = [
 		'cmd/v/v.v',
 		'cmd/tools/vdoc/',
+		'cmd/tools/vvet/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',
