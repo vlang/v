@@ -75,7 +75,7 @@ fn (mut vet_options VetOptions) vet_file(path string) {
 	prefs.is_vet = true
 	table := table.new_table()
 	vet_options.vprintln("vetting file '$path'...")
-	file_ast, errors := parser.parse_vet_file(path, table, prefs)
+	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vet_options.errors << errors
 }
