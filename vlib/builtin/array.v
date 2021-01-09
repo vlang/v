@@ -224,9 +224,7 @@ fn (a array) get(i int) voidptr {
 			panic('array.get: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe {
-		return byteptr(a.data) + i * a.element_size
-	}
+	return unsafe { a.get_unsafe(i) }
 }
 
 // first returns the first element of the array.
@@ -391,7 +389,7 @@ fn (mut a array) set(i int, val voidptr) {
 			panic('array.set: index out of range (i == $i, a.len == $a.len)')
 		}
 	}
-	unsafe { C.memcpy(byteptr(a.data) + a.element_size * i, val, a.element_size) }
+	unsafe { a.set_unsafe(i, val) }
 }
 
 fn (mut a array) push(val voidptr) {
