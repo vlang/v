@@ -19,7 +19,7 @@ mut:
 	node ast.Node
 }
 
-fn (mut n NodeByOffset) visit(node &ast.Node) ? {
+fn (mut n NodeByOffset) visit(node ast.Node) ? {
 	node_pos := node.position()
 	if n.pos >= node_pos.pos && n.pos <= node_pos.pos + node_pos.len && node !is ast.File {
 		n.node = node
@@ -34,7 +34,6 @@ module main
 struct Foo {
 	name string
 }
-fn main() {}
 	'
 	file := parse_text(source)
 	mut nbo := NodeByOffset{
@@ -49,10 +48,9 @@ fn main() {}
 fn test_inspect() {
 	source := '
 module main
-fn main() {}
 	'
 	file := parse_text(source)
-	walker.inspect(&file, voidptr(0), fn (node &ast.Node, data voidptr) bool {
+	walker.inspect(&file, voidptr(0), fn (node ast.Node, data voidptr) bool {
 		// Second visit must be ast.Stmt
 		if node is ast.Stmt {
 			if node !is ast.Module {
