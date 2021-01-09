@@ -1940,7 +1940,10 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				f.array_init_break << (last_line_nr < line_nr)
 			}
 		}
-		mut penalty := if f.array_init_break[f.array_init_depth - 1] { 0 } else { 3 }
+		is_same_line_comment := i > 0 &&
+			(expr is ast.Comment && line_nr == it.exprs[i - 1].position().line_nr)
+		line_break := f.array_init_break[f.array_init_depth - 1]
+		mut penalty := if line_break && !is_same_line_comment { 0 } else { 3 }
 		if penalty > 0 {
 			if i == 0 || it.exprs[i - 1] is ast.ArrayInit || it.exprs[i - 1] is ast.StructInit ||
 				it.exprs[i - 1] is ast.MapInit || it.exprs[i - 1] is ast.CallExpr {
@@ -1971,6 +1974,8 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 				if expr !is ast.Comment {
 					f.write(',')
 				}
+				f.writeln('')
+			} else if is_same_line_comment {
 				f.writeln('')
 			}
 		} else if expr !is ast.Comment {
