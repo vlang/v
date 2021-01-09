@@ -7,7 +7,6 @@ import os.cmdline
 import v.vet
 import v.pref
 import v.parser
-import v.util
 import v.table
 import v.token
 
@@ -30,8 +29,14 @@ fn (vet &Vet) vprintln(s string) {
 }
 
 fn main() {
-	args := util.join_env_vflags_and_os_args()
-	paths := cmdline.only_non_options(cmdline.options_after(args, ['vet']))
+	args := os.args.clone()
+	mut paths := cmdline.only_non_options(cmdline.options_after(args, ['vet']))
+	vtmp := os.getenv('VTMP')
+	if vtmp != '' {
+		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
+		paths = paths.filter(!it.starts_with(vtmp))
+	}
+	//
 	opt := Options{
 		is_verbose: '-verbose' in args || '-v' in args
 	}
@@ -65,16 +70,20 @@ fn main() {
 			}
 		}
 	}
-	if vet.errors.len > 0 {
-		for err in vet.errors.filter(it.kind == .error && it.fix == .vfmt) {
-			eprintln('$err.file_path:$err.pos.line_nr: $err.message')
-		}
+	//
+	warnings := vet.errors.filter(it.kind == .warning)
+	errors := vet.errors.filter(it.kind == .error)
+	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
+	for err in warnings {
+		eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+	}
+	for err in errors {
+		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
+	}
+	if errors_vfmt.len > 0 {
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
-		/*
-		for err in vet.errors.filter(it.kind == .warning) {
-			eprintln('$err.file_path:$err.pos.line_nr: err.message')
-		}
-		*/
+	}
+	if errors.len > 0 {
 		exit(1)
 	}
 }
