@@ -47,14 +47,11 @@ mut:
 	local_filename   string
 	local_pos        int
 	show_loc         bool // for plaintext
-	serve_http       bool // for html
 	is_multi         bool
 	is_vlib          bool
 	is_verbose       bool
 	include_readme   bool
 	include_examples bool = true
-	open_docs        bool
-	server_port      int = 8046
 	inline_assets    bool
 	no_timestamp     bool
 	output_path      string
@@ -336,14 +333,10 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		docs << vd.docs.filter(it.head.name != 'builtin')
 		vd.docs = docs
 	}
-	if cfg.serve_http {
-		vd.serve_html(out)
-		return
-	}
 	vd.vprintln('Rendering docs...')
 	if out.path.len == 0 || out.path == 'stdout' {
 		if out.typ == .html {
-			vd.render_static_html(cfg.serve_http, out)
+			vd.render_static_html(out)
 		}
 		outputs := vd.render(out)
 		if outputs.len == 0 {
@@ -370,7 +363,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			}
 		}
 		if out.typ == .html {
-			vd.render_static_html(cfg.serve_http, out)
+			vd.render_static_html(out)
 		}
 		vd.render_parallel(out)
 		println('Creating search index...')
@@ -433,9 +426,6 @@ fn parse_arguments(args []string) Config {
 				cfg.output_path = if opath == 'stdout' { opath } else { os.real_path(opath) }
 				i++
 			}
-			'-open' {
-				cfg.open_docs = true
-			}
 			'-pos' {
 				if !cfg.is_local {
 					eprintln('vdoc: `-pos` is only allowed with `-filename` flag.')
@@ -443,27 +433,6 @@ fn parse_arguments(args []string) Config {
 				}
 				cfg.local_pos = cmdline.option(current_args, '-pos', '').int()
 				i++
-			}
-			'-p' {
-				s_port := cmdline.option(current_args, '-p', '')
-				s_port_int := s_port.int()
-				if s_port.len == 0 {
-					eprintln('vdoc: No port number specified on "-p".')
-					exit(1)
-				}
-				if s_port != s_port_int.str() {
-					eprintln('vdoc: Invalid port number.')
-					exit(1)
-				}
-				cfg.server_port = s_port_int
-				i++
-			}
-			'-s' {
-				cfg.inline_assets = true
-				cfg.serve_http = true
-				if cfg.output_type == .unset {
-					cfg.output_type = .html
-				}
 			}
 			'-no-timestamp' {
 				cfg.no_timestamp = true
