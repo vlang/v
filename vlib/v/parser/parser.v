@@ -183,7 +183,8 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
-				p.vet_error('Looks like you are using spaces for indentation.', lnumber, .vfmt)
+				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
+					.vfmt)
 			}
 		}
 	}
