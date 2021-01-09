@@ -303,7 +303,6 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
 	g.write('if (')
 	expr := node.args[0].expr
 	match expr {
@@ -331,6 +330,7 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 		}
 	}
 	g.writeln(') array_push(&$tmp, &it); \n }')
+	g.stmt_path_pos << g.out.len
 	g.write(s)
 	g.write(' ')
 	g.write(tmp)

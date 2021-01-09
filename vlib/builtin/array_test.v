@@ -1305,3 +1305,19 @@ fn test_array_of_map_insert() {
 	println(x)
 	assert '$x' == "[{}, {}, {'123': 123}, {}]"
 }
+
+struct Numbers {
+	odds  []int
+	evens []int
+}
+
+fn test_array_of_multi_filter() {
+	arr := [1, 2, 3, 4, 5]
+	nums := Numbers{
+		odds: arr.filter(it % 2 == 1)
+		evens: arr.filter(it % 2 == 0)
+	}
+	println(nums)
+	assert nums.odds == [1, 3, 5]
+	assert nums.evens == [2, 4]
+}
