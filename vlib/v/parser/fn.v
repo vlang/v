@@ -92,6 +92,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]
 	}
+	comments := p.eat_line_end_comments()
 	return ast.CallExpr{
 		name: fn_name
 		args: args
@@ -106,6 +107,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			pos: or_pos
 		}
 		scope: p.scope
+		comments: comments
 	}
 }
 

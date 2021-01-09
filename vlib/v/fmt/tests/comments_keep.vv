@@ -43,4 +43,5 @@ fn main() {
 	//////
 	// /
 	// 123
+	println('hello world')
 }

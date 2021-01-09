@@ -363,6 +363,7 @@ pub mut:
 	free_receiver      bool // true if the receiver expression needs to be freed
 	scope              &Scope
 	from_embed_type    table.Type // holds the type of the embed that the method is called from
+	comments           []Comment
 }
 
 /*
