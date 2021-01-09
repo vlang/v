@@ -127,12 +127,12 @@ fn (vd VDoc) render_search_index(out Output) {
 	os.write_file(out_file_path, js_search_index.str() + js_search_data.str())
 }
 
-fn (mut vd VDoc) render_static_html(serve_via_http bool, out Output) {
+fn (mut vd VDoc) render_static_html(out Output) {
 	vd.assets = {
 		'doc_css':       vd.get_resource(css_js_assets[0], true, out)
 		'normalize_css': vd.get_resource(css_js_assets[1], true, out)
-		'doc_js':        vd.get_resource(css_js_assets[2], !serve_via_http, out)
-		'dark_mode_js':  vd.get_resource(css_js_assets[3], !serve_via_http, out)
+		'doc_js':        vd.get_resource(css_js_assets[2], true, out)
+		'dark_mode_js':  vd.get_resource(css_js_assets[3], true, out)
 		'light_icon':    vd.get_resource('light.svg', true, out)
 		'dark_icon':     vd.get_resource('dark.svg', true, out)
 		'menu_icon':     vd.get_resource('menu.svg', true, out)
