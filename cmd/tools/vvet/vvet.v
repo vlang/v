@@ -13,7 +13,7 @@ import os.cmdline
 struct VetOptions {
 	is_verbose bool
 mut:
-	errors     []string
+	errors     []vet.Error
 }
 
 fn (vet_options &VetOptions) vprintln(s string) {
@@ -56,10 +56,15 @@ fn main() {
 		}
 	}
 	if vet_options.errors.len > 0 {
-		for err in vet_options.errors {
-			eprintln(err)
+		for err in vet_options.errors.filter(it.kind == .error) {
+			eprintln('$err.file_path:$err.pos.line_nr: err.message')
 		}
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
+		/*
+		for err in vet_options.errors.filter(it.kind == .warning) {
+			eprintln('$err.file_path:$err.pos.line_nr: err.message')
+		}
+		*/
 		exit(1)
 	}
 }
@@ -70,6 +75,7 @@ fn (mut vet_options VetOptions) vet_file(path string) {
 	table := table.new_table()
 	vet_options.vprintln("vetting file '$path'...")
 	file_ast, errors := parser.parse_vet_file(path, table, prefs)
+	// Transfer errors from scanner and parser
 	vet_options.errors << errors
 	vet.vet(file_ast, table, true)
 }

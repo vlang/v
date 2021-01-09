@@ -6,7 +6,7 @@ fn test_vet() {
 	vexe := os.getenv('VEXE')
 	vroot := os.dir(vexe)
 	os.chdir(vroot)
-	test_dir := 'vlib/v/vet/tests'
+	test_dir := 'cmd/tools/vvet/tests'
 	tests := get_tests_in_dir(test_dir)
 	fails := check_path(vexe, test_dir, tests)
 	assert fails == 0
