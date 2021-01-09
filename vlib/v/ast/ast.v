@@ -113,6 +113,7 @@ pub:
 	field_name      string
 	is_mut          bool // is used for the case `if mut ident.selector is MyType {`, it indicates if the root ident is mutable
 	mut_pos         token.Position
+	next_token      token.Kind
 pub mut:
 	expr_type       table.Type // type of `Foo` in `Foo.bar`
 	typ             table.Type // type of the entire thing (`Foo.bar`)

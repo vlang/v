@@ -370,7 +370,7 @@ fn f64_to_decimal(mant u64, exp u64) Dec64 {
 // f64_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f64_to_str(f f64, n_digit int) string {
 	mut u1 := Uf64{}
-	unsafe { u1.f = f }
+	u1.f = f
 	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits64+expbits64)) != 0
@@ -395,7 +395,7 @@ pub fn f64_to_str(f f64, n_digit int) string {
 // f64_to_str return a string in scientific notation with max n_digit after the dot
 pub fn f64_to_str_pad(f f64, n_digit int) string {
 	mut u1 := Uf64{}
-	unsafe { u1.f = f }
+	u1.f = f
 	u := unsafe {u1.u}
 
 	neg   := (u>>(mantbits64+expbits64)) != 0

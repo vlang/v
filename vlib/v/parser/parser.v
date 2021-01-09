@@ -1054,7 +1054,7 @@ pub fn (mut p Parser) parse_ident(language table.Language) ast.Ident {
 	}
 }
 
-fn (p Parser) is_generic_call() bool {
+fn (p &Parser) is_generic_call() bool {
 	lit0_is_capital := if p.tok.kind != .eof && p.tok.lit.len > 0 {
 		p.tok.lit[0].is_capital()
 	} else {
@@ -1528,13 +1528,12 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		is_mut: is_mut
 		mut_pos: mut_pos
 		scope: p.scope
+		next_token: p.tok.kind
 	}
-	mut node := ast.Expr{}
-	node = sel_expr
 	if is_filter {
 		p.close_scope()
 	}
-	return node
+	return sel_expr
 }
 
 // `.green`

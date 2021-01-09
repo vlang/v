@@ -374,7 +374,7 @@ pub fn (mut c Checker) interface_decl(decl ast.InterfaceDecl) {
 	}
 }
 
-pub fn (mut c Checker) struct_decl(decl ast.StructDecl) {
+pub fn (mut c Checker) struct_decl(mut decl ast.StructDecl) {
 	if decl.language == .v && !c.is_builtin_mod {
 		c.check_valid_pascal_case(decl.name, 'struct name', decl.pos)
 	}
@@ -1061,9 +1061,6 @@ fn (mut c Checker) fail_if_immutable(expr ast.Expr) (string, token.Position) {
 					if to_lock != '' {
 						// No automatic lock for struct access
 						explicit_lock_needed = true
-					}
-					if struct_info.is_union && !c.inside_unsafe {
-						c.warn('accessing union fields requires `unsafe`', expr.pos)
 					}
 				}
 				.array, .string {
@@ -2028,6 +2025,7 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			has_field = true
 			field = f
 		} else {
+			// look for embedded field
 			if sym.info is table.Struct {
 				mut found_fields := []table.Field{}
 				mut embed_of_found_fields := []table.Type{}
@@ -2048,6 +2046,14 @@ pub fn (mut c Checker) selector_expr(mut selector_expr ast.SelectorExpr) table.T
 			}
 			if sym.kind == .aggregate {
 				unknown_field_msg = err
+			}
+		}
+		if !c.inside_unsafe {
+			if sym.info is table.Struct {
+				if sym.info.is_union && selector_expr.next_token !in token.assign_tokens {
+					c.warn('reading a union field (or its address) requires `unsafe`',
+						selector_expr.pos)
+				}
 			}
 		}
 	}
@@ -2956,7 +2962,7 @@ fn (mut c Checker) stmt(node ast.Stmt) {
 			c.sql_stmt(mut node)
 		}
 		ast.StructDecl {
-			c.struct_decl(node)
+			c.struct_decl(mut node)
 		}
 		ast.TypeDecl {
 			c.type_decl(node)
