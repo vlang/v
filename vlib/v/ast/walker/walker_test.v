@@ -13,38 +13,38 @@ fn parse_text(text string) ast.File {
 	return parser.parse_text(text, '', tbl, .skip_comments, prefs, scope)
 }
 
-// struct NodeByOffset {
-// 	pos  int
-// mut:
-// 	node ast.Node
-// }
+struct NodeByOffset {
+	pos  int
+mut:
+	node ast.Node
+}
 
-// fn (mut n NodeByOffset) visit(node ast.Node) ? {
-// 	node_pos := node.position()
-// 	if n.pos >= node_pos.pos && n.pos <= node_pos.pos + node_pos.len && node !is ast.File {
-// 		n.node = node
-// 		return none
-// 	}
-// 	return
-// }
+fn (mut n NodeByOffset) visit(node &ast.Node) ? {
+	node_pos := node.position()
+	if n.pos >= node_pos.pos && n.pos <= node_pos.pos + node_pos.len && node !is ast.File {
+		n.node = node
+		return none
+	}
+	return
+}
 
-// fn test_walk() {
-// 	source := '
-// module main
-// struct Foo {
-// 	name string
-// }
-// fn main() {}
-// 	'
-// 	file := parse_text(source)
-// 	mut nbo := NodeByOffset{
-// 		pos: 13
-// 	}
-// 	walker.walk(nbo, file)
-// 	assert nbo.node is ast.Stmt
-// 	stmt := nbo.node as ast.Stmt
-// 	assert stmt is ast.StructDecl
-// }
+fn test_walk() {
+	source := '
+module main
+struct Foo {
+	name string
+}
+fn main() {}
+	'
+	file := parse_text(source)
+	mut nbo := NodeByOffset{
+		pos: 13
+	}
+	walker.walk(nbo, file)
+	assert nbo.node is ast.Stmt
+	stmt := nbo.node as ast.Stmt
+	assert stmt is ast.StructDecl
+}
 
 fn test_inspect() {
 	source := '
@@ -52,7 +52,7 @@ module main
 fn main() {}
 	'
 	file := parse_text(source)
-	walker.inspect(file, voidptr(0), fn (node ast.Node, data voidptr) bool {
+	walker.inspect(&file, voidptr(0), fn (node &ast.Node, data voidptr) bool {
 		// Second visit must be ast.Stmt
 		if node is ast.Stmt {
 			if node !is ast.Module {
