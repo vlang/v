@@ -2,8 +2,6 @@
 // Use of this source code is governed by an MIT license that can be found in the LICENSE file.
 module vet
 
-import v.ast
-import v.table
 import v.token
 
 pub enum ErrorKind {
@@ -25,7 +23,4 @@ pub:
 	pos       token.Position // position in the file
 	kind      ErrorKind      [required]
 	fix       FixKind        [required]
-}
-
-pub fn vet(file ast.File, table &table.Table, is_debug bool) {
 }

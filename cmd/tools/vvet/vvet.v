@@ -34,7 +34,8 @@ fn main() {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if path.ends_with('_test.v') || (path.contains('/tests/') && !path.contains('vlib/v/vet/')) {
+		if path.ends_with('_test.v') ||
+			(path.contains('/tests/') && !path.contains('cmd/tools/vvet/tests/')) {
 			eprintln('skipping $path')
 			continue
 		}
@@ -57,7 +58,7 @@ fn main() {
 	}
 	if vet_options.errors.len > 0 {
 		for err in vet_options.errors.filter(it.kind == .error) {
-			eprintln('$err.file_path:$err.pos.line_nr: err.message')
+			eprintln('$err.file_path:$err.pos.line_nr: $err.message')
 		}
 		eprintln('NB: You can run `v fmt -w file.v` to fix these automatically')
 		/*
@@ -77,5 +78,4 @@ fn (mut vet_options VetOptions) vet_file(path string) {
 	file_ast, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vet_options.errors << errors
-	vet.vet(file_ast, table, true)
 }
