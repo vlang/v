@@ -4927,6 +4927,8 @@ fn (g &Gen) sort_structs(typesa []table.TypeSymbol) []table.TypeSymbol {
 	// sort graph
 	dep_graph_sorted := dep_graph.resolve()
 	if !dep_graph_sorted.acyclic {
+		// this should no longer be called since it's catched in the parser
+		// TODO: should it be removed?
 		verror('cgen.sort_structs(): the following structs form a dependency cycle:\n' + dep_graph_sorted.display_cycles() +
 			'\nyou can solve this by making one or both of the dependant struct fields references, eg: field &MyStruct' +
 			'\nif you feel this is an error, please create a new issue here: https://github.com/vlang/v/issues and tag @joe-conigliaro')
@@ -5043,7 +5045,10 @@ fn (mut g Gen) or_block(var_name string, or_block ast.OrExpr, return_type table.
 			g.write_defer_stmts()
 			// Now that option types are distinct we need a cast here
 			styp := g.typ(g.fn_decl.return_type)
-			g.writeln('\treturn *($styp *)&$cvar_name;')
+			err_obj := g.new_tmp_var()
+			g.writeln('\t$styp $err_obj;')
+			g.writeln('\tmemcpy(&$err_obj, &$cvar_name, sizeof(Option));')
+			g.writeln('\treturn $err_obj;')
 		}
 	}
 	g.write('}')

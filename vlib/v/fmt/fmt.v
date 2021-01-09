@@ -1564,6 +1564,7 @@ pub fn (mut f Fmt) infix_expr(node ast.InfixExpr) {
 		f.penalties = []int{}
 		f.precedences = []int{}
 	}
+	f.or_expr(node.or_block)
 }
 
 pub fn (mut f Fmt) if_expr(it ast.IfExpr) {
