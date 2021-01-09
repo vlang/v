@@ -129,21 +129,22 @@ fn (vd VDoc) render_search_index(out Output) {
 
 fn (mut vd VDoc) render_static_html(out Output) {
 	vd.assets = {
-		'doc_css':       vd.get_resource(css_js_assets[0], true, out)
-		'normalize_css': vd.get_resource(css_js_assets[1], true, out)
-		'doc_js':        vd.get_resource(css_js_assets[2], true, out)
-		'dark_mode_js':  vd.get_resource(css_js_assets[3], true, out)
-		'light_icon':    vd.get_resource('light.svg', true, out)
-		'dark_icon':     vd.get_resource('dark.svg', true, out)
-		'menu_icon':     vd.get_resource('menu.svg', true, out)
-		'arrow_icon':    vd.get_resource('arrow.svg', true, out)
+		'doc_css':       vd.get_resource(css_js_assets[0], out)
+		'normalize_css': vd.get_resource(css_js_assets[1], out)
+		'doc_js':        vd.get_resource(css_js_assets[2], out)
+		'dark_mode_js':  vd.get_resource(css_js_assets[3], out)
+		'light_icon':    vd.get_resource('light.svg', out)
+		'dark_icon':     vd.get_resource('dark.svg', out)
+		'menu_icon':     vd.get_resource('menu.svg', out)
+		'arrow_icon':    vd.get_resource('arrow.svg', out)
 	}
 }
 
-fn (vd VDoc) get_resource(name string, minify bool, out Output) string {
+fn (vd VDoc) get_resource(name string, out Output) string {
 	cfg := vd.cfg
 	path := os.join_path(res_path, name)
 	mut res := os.read_file(path) or { panic('vdoc: could not read $path') }
+	/*
 	if minify {
 		if name.ends_with('.js') {
 			res = js_compress(res)
@@ -151,6 +152,7 @@ fn (vd VDoc) get_resource(name string, minify bool, out Output) string {
 			res = res.split_into_lines().map(it.trim_space()).join('')
 		}
 	}
+	*/
 	// TODO: Make SVG inline for now
 	if cfg.inline_assets || path.ends_with('.svg') {
 		return res
@@ -482,6 +484,7 @@ fn html_tag_escape(str string) string {
 	return str.replace_each(['<', '&lt;', '>', '&gt;'])
 }
 
+/*
 fn js_compress(str string) string {
 	mut js := strings.new_builder(200)
 	lines := str.split_into_lines()
@@ -503,7 +506,7 @@ fn js_compress(str string) string {
 	js.free()
 	return js_str
 }
-
+*/
 fn write_toc(dn doc.DocNode, mut toc strings.Builder) {
 	mut toc_slug := if dn.name.len == 0 || dn.content.len == 0 { '' } else { slug(dn.name) }
 	if toc_slug == '' && dn.children.len > 0 {
