@@ -323,11 +323,11 @@ fn (mut app App) paint(event &tui.Event) {
 }
 
 fn (mut app App) draw_content() {
-	w_, mut h := app.tui.window_width / 2, app.tui.window_height - 8
-	if h > app.drawing.len {
-		h = app.drawing.len
+	w_, mut h_ := app.tui.window_width / 2, app.tui.window_height - 8
+	if h_ > app.drawing.len {
+		h_ = app.drawing.len
 	}
-	for row_idx, row in app.drawing[..h] {
+	for row_idx, row in app.drawing[..h_] {
 		app.tui.set_cursor_position(0, row_idx + 4)
 		mut last := tui.Color{0, 0, 0}
 		for cell in row[..w_] {
