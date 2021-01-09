@@ -111,10 +111,6 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 	return f.str()
 }
 
-pub fn (x &InfixExpr) str() string {
-	return '$x.left.str() $x.op.str() $x.right.str()'
-}
-
 // Expressions in string interpolations may have to be put in braces if they
 // are non-trivial, if they would interfere with the next character or if a
 // format specification is given. In the latter case
