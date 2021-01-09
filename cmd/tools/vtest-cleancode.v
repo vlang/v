@@ -5,18 +5,14 @@ import testing
 import v.util
 
 const (
-	vet_known_failing_exceptions    = [
-		'nonexistent',
-	]
+	vet_known_failing_exceptions    = []string{}
 	vet_folders                     = [
 		'vlib/sqlite',
 		'vlib/v',
 		'cmd/v',
 		'cmd/tools',
 	]
-	verify_known_failing_exceptions = [
-		'nonexistant',
-	]
+	verify_known_failing_exceptions = []string{}
 	vfmt_verify_list                = [
 		'cmd/v/v.v',
 		'cmd/tools/vdoc/',
@@ -74,6 +70,10 @@ const (
 	]
 )
 
+const vexe = os.getenv('VEXE')
+
+const vroot = os.dir(vexe)
+
 fn main() {
 	args_string := os.args[1..].join(' ')
 	pass_args := args_string.all_before('test-cleancode')
@@ -81,7 +81,7 @@ fn main() {
 }
 
 fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string, flist []string, slist []string) testing.TestSession {
-	testing.setup_new_vtmp_folder()
+	os.chdir(vroot)
 	util.prepare_tool_when_needed(tool_source)
 	testing.eheader('Run `$tool_cmd` over most .v files')
 	mut test_session := testing.new_test_session('$vargs $tool_args')

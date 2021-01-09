@@ -105,7 +105,6 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
-	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << 'examples/gg/gg2.v'
 		skip_files << 'examples/pico/pico.v'
