@@ -9,6 +9,7 @@ import v.token
 import v.table
 import v.pref
 import v.util
+import v.vet
 import v.errors
 import os
 import runtime
@@ -66,7 +67,7 @@ mut:
 	expecting_type    bool // `is Type`, expecting type
 	errors            []errors.Error
 	warnings          []errors.Warning
-	vet_errors        []string
+	vet_errors        []vet.Error
 	cur_fn_name       string
 	in_generic_params bool // indicates if parsing between `<` and `>` of a method/function
 	name_error        bool // indicates if the token is not a name or the name is on another line
@@ -160,7 +161,7 @@ pub fn parse_file(path string, table &table.Table, comments_mode scanner.Comment
 	return p.parse()
 }
 
-pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []string) {
+pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) (ast.File, []vet.Error) {
 	global_scope := &ast.Scope{
 		parent: 0
 	}
@@ -182,7 +183,8 @@ pub fn parse_vet_file(path string, table_ &table.Table, pref &pref.Preferences) 
 		source_lines := os.read_lines(path) or { []string{} }
 		for lnumber, line in source_lines {
 			if line.starts_with('  ') {
-				p.vet_error('Looks like you are using spaces for indentation.', lnumber)
+				p.vet_error('Looks like you are using spaces for indentation.', lnumber,
+					.vfmt)
 			}
 		}
 	}
@@ -953,8 +955,17 @@ pub fn (mut p Parser) warn_with_pos(s string, pos token.Position) {
 	}
 }
 
-pub fn (mut p Parser) vet_error(s string, line int) {
-	p.vet_errors << '$p.scanner.file_path:${line + 1}: $s'
+pub fn (mut p Parser) vet_error(msg string, line int, fix vet.FixKind) {
+	pos := token.Position{
+		line_nr: line + 1
+	}
+	p.vet_errors << vet.Error{
+		message: msg
+		file_path: p.scanner.file_path
+		pos: pos
+		kind: .error
+		fix: fix
+	}
 }
 
 fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {

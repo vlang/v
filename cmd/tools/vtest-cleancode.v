@@ -20,6 +20,7 @@ const (
 	vfmt_verify_list                = [
 		'cmd/v/v.v',
 		'cmd/tools/vdoc/',
+		'cmd/tools/vvet/',
 		'vlib/arrays/',
 		'vlib/benchmark/',
 		'vlib/bitfield/',
@@ -92,7 +93,7 @@ fn tsession(vargs string, tool_source string, tool_cmd string, tool_args string,
 }
 
 fn v_test_vetting(vargs string) {
-	vet_session := tsession(vargs, 'vvet.v', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
+	vet_session := tsession(vargs, 'vvet', 'v vet', 'vet', vet_folders, vet_known_failing_exceptions)
 	verify_session := tsession(vargs, 'vfmt.v', 'v fmt -verify', 'fmt -verify', vfmt_verify_list,
 		verify_known_failing_exceptions)
 	//
