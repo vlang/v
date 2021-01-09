@@ -321,7 +321,9 @@ pub fn (ctx &Context) draw_empty_rect(x f32, y f32, w f32, h f32, c gx.Color) {
 	}
 	sgl.end()
 }
-
+pub fn set_cursor(lpCursorName int) {
+	C.SetCursor(C.LoadCursor(C.NULL, lpCursorName))
+}
 pub fn (ctx &Context) draw_circle_line(x f32, y f32, r int, segments int, c gx.Color) {
 	if c.a != 255 {
 		sgl.load_pipeline(ctx.timage_pip)
