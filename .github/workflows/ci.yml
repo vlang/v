@@ -147,12 +147,15 @@ jobs:
       - name: Build V
         run: |
           make CC=clang
-      - name: Show environment
+      - name: Show PWD and Environment
         run: |
+          echo "PWD:"
+          pwd
+          echo "ENVIRONMENT"
           env
       - name: Test V fixed tests
         run: |
-          v -silent test-fixed
+          ./v -silent test-fixed
 
   macos:
     runs-on: macOS-latest

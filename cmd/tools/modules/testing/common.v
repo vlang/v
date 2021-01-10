@@ -127,10 +127,11 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
 	return TestSession{
 		vexe: vexe
-		vroot: os.dir(vexe)
+		vroot: vroot
 		skip_files: skip_files
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir
