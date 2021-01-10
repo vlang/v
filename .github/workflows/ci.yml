@@ -147,6 +147,9 @@ jobs:
       - name: Build V
         run: |
           make CC=clang
+      - name: Show environment
+        run: |
+          env
       - name: Test V fixed tests
         run: |
           v -silent test-fixed
