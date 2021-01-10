@@ -78,7 +78,7 @@ mut:
 	stmt_path_pos                    []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos                    bool  // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt                     bool
-	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree    
+	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	indent                           int
 	empty_line                       bool
 	is_test                          bool
@@ -3022,12 +3022,15 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write(')')
 	} else if node.op in [.eq, .ne] &&
 		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
-		info := left_sym.info as table.ArrayFixed
-		et := info.elem_type
-		if !et.is_ptr() && !et.is_pointer() && !et.is_number() && et.idx() !in [table.bool_type_idx, table.char_type_idx] {
-			verror('`==` on fixed array only supported with POD element types ATM')
+		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
+		if node.op == .eq {
+			g.write('${ptr_typ}_arr_eq(')
+		} else if node.op == .ne {
+			g.write('!${ptr_typ}_arr_eq(')
 		}
-		g.write('(memcmp(')
+		if node.left_type.is_ptr() {
+			g.write('*')
+		}
 		g.expr(node.left)
 		g.write(', ')
 		if node.right is ast.ArrayInit {
@@ -3035,13 +3038,6 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.write('($s)')
 		}
 		g.expr(node.right)
-		g.write(', sizeof(')
-		g.expr(node.left)
-		if node.op == .eq {
-			g.write(')) == 0')
-		} else if node.op == .ne {
-			g.write(')) != 0')
-		}
 		g.write(')')
 	} else if node.op in [.eq, .ne] && left_sym.kind == .map && right_sym.kind == .map {
 		ptr_typ := g.gen_map_equality_fn(left_type)
