@@ -19,34 +19,35 @@ const (
 
 pub struct Fmt {
 pub mut:
-	table             &table.Table
-	out_imports       strings.Builder
-	out               strings.Builder
-	out_save          strings.Builder
-	indent            int
-	empty_line        bool
-	line_len          int
-	buffering         bool     // expressions will be analyzed later by adjust_complete_line() before finally written
-	expr_bufs         []string // and stored here in the meantime (expr_bufs.len-1 = penalties.len = precedences.len)
-	penalties         []int    // how hard should it be to break line after each expression
-	precedences       []int    // operator/parenthese precedences for operator at end of each expression
-	par_level         int      // how many parentheses are put around the current expression
-	array_init_break  []bool   // line breaks after elements in hierarchy level of multi dimensional array
-	array_init_depth  int      // current level of hierarchie in array init
-	single_line_if    bool
-	cur_mod           string
-	file              ast.File
-	did_imports       bool
-	is_assign         bool
-	auto_imports      []string // automatically inserted imports that the user does not need to specify
-	import_pos        int      // position of the imports in the resulting string for later autoimports insertion
-	used_imports      []string // to remove unused imports
-	is_debug          bool
-	mod2alias         map[string]string // for `import time as t`, will contain: 'time'=>'t'
-	use_short_fn_args bool
-	it_name           string // the name to replace `it` with
-	inside_lambda     bool
-	is_mbranch_expr   bool // math a { x...y { } }
+	table              &table.Table
+	out_imports        strings.Builder
+	out                strings.Builder
+	out_save           strings.Builder
+	indent             int
+	empty_line         bool
+	line_len           int
+	buffering          bool     // expressions will be analyzed later by adjust_complete_line() before finally written
+	expr_bufs          []string // and stored here in the meantime (expr_bufs.len-1 = penalties.len = precedences.len)
+	penalties          []int    // how hard should it be to break line after each expression
+	precedences        []int    // operator/parenthese precedences for operator at end of each expression
+	par_level          int      // how many parentheses are put around the current expression
+	array_init_break   []bool   // line breaks after elements in hierarchy level of multi dimensional array
+	array_init_depth   int      // current level of hierarchie in array init
+	single_line_if     bool
+	cur_mod            string
+	file               ast.File
+	did_imports        bool
+	is_assign          bool
+	auto_imports       []string // automatically inserted imports that the user forgot to specify
+	import_pos         int      // position of the imports in the resulting string for later autoimports insertion
+	used_imports       []string // to remove unused imports
+	is_debug           bool
+	mod2alias          map[string]string // for `import time as t`, will contain: 'time'=>'t'
+	use_short_fn_args  bool
+	single_line_fields bool   // should struct fields be on a single line
+	it_name            string // the name to replace `it` with
+	inside_lambda      bool
+	is_mbranch_expr    bool // math a { x...y { } }
 }
 
 pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
@@ -1263,6 +1264,7 @@ pub fn (mut f Fmt) wrap_long_line(penalty_idx int, add_indent bool) bool {
 }
 
 pub fn (mut f Fmt) call_args(args []ast.CallArg) {
+	f.single_line_fields = true
 	for i, arg in args {
 		if arg.is_mut {
 			f.write(arg.share.str() + ' ')
@@ -1275,6 +1277,7 @@ pub fn (mut f Fmt) call_args(args []ast.CallArg) {
 			f.write(', ')
 		}
 	}
+	f.single_line_fields = false
 }
 
 pub fn (mut f Fmt) or_expr(or_block ast.OrExpr) {
@@ -1646,8 +1649,8 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	old_short_arg_state := f.use_short_fn_args
 	f.use_short_fn_args = false
 	if node.args.len > 0 && node.args.last().expr is ast.StructInit {
-		struct_typ := (node.args.last().expr as ast.StructInit).typ
-		if struct_typ == table.void_type {
+		struct_expr := node.args.last().expr as ast.StructInit
+		if struct_expr.typ == table.void_type {
 			f.use_short_fn_args = true
 		}
 	}
@@ -2068,17 +2071,23 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 	} else {
 		use_short_args := f.use_short_fn_args
 		f.use_short_fn_args = false
-		mut multiline_short_args := it.pre_comments.len > 0
+		mut single_line_fields := f.single_line_fields
+		f.single_line_fields = false
+		if it.pos.line_nr < it.pos.last_line || it.pre_comments.len > 0 {
+			single_line_fields = false
+		}
 		if !use_short_args {
-			f.writeln('$name{')
-		} else {
-			if multiline_short_args {
-				f.writeln('')
+			f.write('$name{')
+			if single_line_fields {
+				f.write(' ')
 			}
 		}
-		init_start := f.out.len
-		f.indent++
-		short_args_loop: for {
+		fields_start := f.out.len
+		fields_loop: for {
+			if !single_line_fields {
+				f.writeln('')
+				f.indent++
+			}
 			f.comments(it.pre_comments, inline: true, has_nl: true, level: .keep)
 			if it.has_update_expr {
 				f.write('...')
@@ -2090,7 +2099,7 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 				f.write('$field.name: ')
 				f.prefix_expr_cast_expr(field.expr)
 				f.comments(field.comments, inline: true, has_nl: false, level: .indent)
-				if use_short_args && !multiline_short_args {
+				if single_line_fields {
 					if i < it.fields.len - 1 {
 						f.write(', ')
 					}
@@ -2098,21 +2107,25 @@ pub fn (mut f Fmt) struct_init(it ast.StructInit) {
 					f.writeln('')
 				}
 				f.comments(field.next_comments, inline: false, has_nl: true, level: .keep)
-				if use_short_args && !multiline_short_args &&
+				if single_line_fields &&
 					(field.comments.len > 0 ||
 					field.next_comments.len > 0 || !expr_is_single_line(field.expr) || f.line_len > max_len.last()) {
-					multiline_short_args = true
-					f.out.go_back_to(init_start)
-					f.line_len = init_start
+					single_line_fields = false
+					f.out.go_back_to(fields_start)
+					f.line_len = fields_start
 					f.remove_new_line()
-					f.writeln('')
-					continue short_args_loop
+					continue fields_loop
 				}
 			}
 			break
 		}
-		f.indent--
+		if !single_line_fields {
+			f.indent--
+		}
 		if !use_short_args {
+			if single_line_fields {
+				f.write(' ')
+			}
 			f.write('}')
 		}
 	}
