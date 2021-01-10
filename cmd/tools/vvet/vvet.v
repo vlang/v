@@ -28,26 +28,28 @@ fn (vet &Vet) vprintln(s string) {
 	println(s)
 }
 
-const is_force = '-force' in os.args
+const vet_options = cmdline.options_after(os.args, ['vet'])
 
-const is_verbose = '-verbose' in os.args || '-v' in os.args
+const is_force = '-force' in vet_options
 
-const show_warnings = '-hide-warnings' !in os.args
+const is_verbose = '-verbose' in vet_options || '-v' in vet_options
+
+const show_warnings = '-hide-warnings' !in vet_options
 
 fn main() {
-	mut paths := cmdline.only_non_options(cmdline.options_after(os.args, ['vet']))
-	vtmp := os.getenv('VTMP')
-	if vtmp != '' {
-		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
-		paths = paths.filter(!it.starts_with(vtmp))
-	}
-	//
 	opt := Options{
 		is_verbose: is_verbose
 	}
 	mut vet := Vet{
 		opt: opt
 	}
+	mut paths := cmdline.only_non_options(vet_options)
+	vtmp := os.getenv('VTMP')
+	if vtmp != '' {
+		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
+		paths = paths.filter(!it.starts_with(vtmp))
+	}
+	//
 	for path in paths {
 		if !os.exists(path) {
 			eprintln('File/folder $path does not exist')
