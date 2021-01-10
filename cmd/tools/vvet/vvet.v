@@ -48,8 +48,7 @@ fn main() {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if path.ends_with('_test.v') ||
-			(path.contains('/tests/') && !path.contains('cmd/tools/vvet/tests/')) {
+		if path.ends_with('_test.v') || path.contains('/tests/') {
 			eprintln('skipping $path')
 			continue
 		}
@@ -90,7 +89,7 @@ fn main() {
 
 fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
-		line_nr: line
+		line_nr: line + 1
 	}
 	v.errors << vet.Error{
 		message: msg
@@ -103,7 +102,7 @@ fn (mut v Vet) error(msg string, line int, fix vet.FixKind) {
 
 fn (mut v Vet) warn(msg string, line int, fix vet.FixKind) {
 	pos := token.Position{
-		line_nr: line
+		line_nr: line + 1
 	}
 	v.errors << vet.Error{
 		message: msg

@@ -1,5 +1,4 @@
-vlib/v/vet/tests/module_file_test.vv:7: Function documentation seems to be missing for "pub fn foo() string".
-vlib/v/vet/tests/module_file_test.vv:13: A function name is missing from the documentation of "pub fn bar() string".
-vlib/v/vet/tests/module_file_test.vv:35: Function documentation seems to be missing for "pub fn (f Foo) foo() string".
-vlib/v/vet/tests/module_file_test.vv:46: A function name is missing from the documentation of "pub fn (f Foo) fooo() string".
-NB: You can run `v fmt -w file.v` to fix these automatically
+cmd/tools/vvet/tests/module_file_test.vv:7: warning: Function documentation seems to be missing for "pub fn foo() string".
+cmd/tools/vvet/tests/module_file_test.vv:13: warning: A function name is missing from the documentation of "pub fn bar() string".
+cmd/tools/vvet/tests/module_file_test.vv:35: warning: Function documentation seems to be missing for "pub fn (f Foo) foo() string".
+cmd/tools/vvet/tests/module_file_test.vv:46: warning: A function name is missing from the documentation of "pub fn (f Foo) fooo() string".
