@@ -744,7 +744,7 @@ Cyclic module imports are not allowed, like in Go.
 
 You can also import specific functions and types from modules directly:
 
-```v nofmt
+```v
 import os { input }
 import crypto.sha256 { sum }
 import time { Time }
