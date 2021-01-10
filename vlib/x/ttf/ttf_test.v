@@ -28,7 +28,7 @@ fn save_raw_data_as_array(buf_bin []byte, file_name string) {
 	os.write_file_array(file_name, buf.buf)
 }
 
-fn main() {
+fn test_main() {
 	mut tf := ttf.TTF_File{}
 	if create_data == true {
 		tf.buf = os.read_bytes(font_path) or { panic(err) }
