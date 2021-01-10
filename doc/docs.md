@@ -213,9 +213,9 @@ or thinking about the order of files and declarations.
 
 ### Returning multiple values
 
-```v nofmt
+```v
 fn foo() (int, int) {
-    return 2, 3
+	return 2, 3
 }
 
 a, b := foo()
@@ -226,21 +226,21 @@ c, _ := foo() // ignore values using `_`
 
 ### Variable number of arguments
 
-```v nofmt
+```v
 fn sum(a ...int) int {
-    mut total := 0
-    for x in a {
-        total += x
-    }
-    return total
+	mut total := 0
+	for x in a {
+		total += x
+	}
+	return total
 }
-println(sum())    // Output: 0
-println(sum(1))   //         1
-println(sum(2,3)) //         5
 
+println(sum()) // 0
+println(sum(1)) // 1
+println(sum(2, 3)) // 5
 // using array decomposition
-a := [2,3,4]
-println(sum(...a))  // <-- using prefix ... here. output: 9
+a := [2, 3, 4]
+println(sum(...a)) // <-- using prefix ... here. output: 9
 b := [5, 6, 7]
 println(sum(...b)) // output: 18
 ```
@@ -402,12 +402,11 @@ negative values).
 
 ### Strings
 
-```v nofmt
+```v
 name := 'Bob'
 println(name.len)
 println(name[0]) // indexing gives a byte B
 println(name[1..3]) // slicing gives a string 'ob'
-
 windows_newline := '\r\n' // escape special characters like in C
 assert windows_newline.len == 2
 ```
@@ -436,7 +435,7 @@ Both single and double quotes can be used to denote strings. For consistency,
 
 For raw strings, prepend `r`. Raw strings are not escaped:
 
-```v nofmt
+```v
 s := r'hello\nworld'
 println(s) // "hello\nworld"
 ```
@@ -445,7 +444,7 @@ println(s) // "hello\nworld"
 
 Basic interpolation syntax is pretty simple - use `$` before a variable name.
 The variable will be converted to a string and embedded into the literal:
-```v nofmt
+```v
 name := 'Bob'
 println('Hello, $name!') // Hello, Bob!
 ```
@@ -456,24 +455,24 @@ Format specifiers similar to those in C's `printf()` are also supported.
 `f`, `g`, `x`, etc. are optional and specify the output format.
 The compiler takes care of the storage size, so there is no `hd` or `llu`.
 
-```v nofmt
+```v
 x := 123.4567
 println('x = ${x:4.2f}')
-println('[${x:10}]')       // pad with spaces on the left
+println('[${x:10}]') // pad with spaces on the left
 println('[${int(x):-10}]') // pad with spaces on the right
 ```
 
 ### String operators
 
-```v nofmt
+```v
 name := 'Bob'
 bobby := name + 'by' // + is used to concatenate strings
 println(bobby) // "Bobby"
-
 mut s := 'hello '
 s += 'world' // `+=` is used to append to a string
 println(s) // "hello world"
 ```
+
 All operators in V must have values of the same type on both sides.
 You cannot concatenate an integer to a string:
 
@@ -519,10 +518,10 @@ All of these will be assigned the same value, 123. They will all have type
 
 V also supports writing numbers with `_` as separator:
 
-```v nofmt
+```v
 num := 1_000_000 // same as 1000000
 three := 0b0_11 // same as 0b11
-float_num := 3_122.55  // same as 3122.55
+float_num := 3_122.55 // same as 3122.55
 hexa := 0xF_F // same as 255
 oct := 0o17_3 // same as 0o173
 ```
@@ -547,19 +546,16 @@ will have the type of `f64`.
 
 ### Arrays
 
-```v nofmt
+```v
 mut nums := [1, 2, 3]
 println(nums) // "[1, 2, 3]"
 println(nums[1]) // "2"
 nums[1] = 5
 println(nums) // "[1, 5, 3]"
-
 println(nums[0..2]) // slicing gives an array "[1, 5]"
-
 println(nums.len) // "3"
 nums = [] // The array is now empty
 println(nums.len) // "0"
-
 // Declare an empty array:
 users := []int{}
 ```
@@ -578,15 +574,13 @@ See [Access modifiers](#access-modifiers).
 
 #### Array operations
 
-```v nofmt
+```v
 mut nums := [1, 2, 3]
 nums << 4
 println(nums) // "[1, 2, 3, 4]"
-
 // append array
 nums << [5, 6, 7]
 println(nums) // "[1, 2, 3, 4, 5, 6, 7]"
-
 mut names := ['John']
 names << 'Peter'
 names << 'Sam'
@@ -613,12 +607,12 @@ arr := []int{len: 5, init: -1}
 Setting the capacity improves performance of insertions,
 as it reduces the number of reallocations needed:
 
-```v nofmt
-mut numbers := []int{ cap: 1000 }
+```v
+mut numbers := []int{cap: 1000}
 println(numbers.len) // 0
 // Now appending elements won't reallocate
 for i in 0 .. 1000 {
-    numbers << i
+	numbers << i
 }
 ```
 Note: The above code uses a [range `for`](#range-for) statement.
@@ -630,7 +624,7 @@ with `s := arr.str()`.
 
 Copying the data from the array is done with `.clone()`:
 
-```v nofmt
+```v
 nums := [1, 2, 3]
 nums_copy := nums.clone()
 ```
@@ -638,7 +632,7 @@ nums_copy := nums.clone()
 Arrays can be efficiently filtered and mapped with the `.filter()` and
 `.map()` methods:
 
-```v nofmt
+```v
 nums := [1, 2, 3, 4, 5, 6]
 even := nums.filter(it % 2 == 0)
 println(even) // [2, 4, 6]
@@ -647,7 +641,6 @@ even_fn := nums.filter(fn (x int) bool {
 	return x % 2 == 0
 })
 println(even_fn)
-
 words := ['hello', 'world']
 upper := words.map(it.to_upper())
 println(upper) // ['HELLO', 'WORLD']
@@ -665,15 +658,15 @@ println(upper_fn) // ['HELLO', 'WORLD']
 Arrays can have more than one dimension.
 
 2d array example:
-```v nofmt
-mut a := [][]int{len:2, init: []int{len:3}}
+```v
+mut a := [][]int{len: 2, init: []int{len: 3}}
 a[0][1] = 2
 println(a) // [[0, 2, 0], [0, 0, 0]]
 ```
 
 3d array example:
-```v nofmt
-mut a := [][][]int{len:2, init: [][]int{len:3, init: []int{len:2}}}
+```v
+mut a := [][][]int{len: 2, init: [][]int{len: 3, init: []int{len: 2}}}
 a[0][1][1] = 2
 println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 ```
@@ -685,32 +678,35 @@ are used when providing a custom sorting condition.
 
 ```v nofmt
 mut numbers := [1, 3, 2]
-numbers.sort()      // 1, 2, 3
+numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
 ```
 
 ```v nofmt
-struct User { age int  name string }
+struct User {
+	age  int
+	name string
+}
+
 mut users := [User{21, 'Bob'}, User{20, 'Zarkon'}, User{25, 'Alice'}]
-users.sort(a.age < b.age)   // sort by User.age int field
+users.sort(a.age < b.age) // sort by User.age int field
 users.sort(a.name > b.name) // reverse sort by User.name string field
 ```
 
 ### Maps
 
-```v nofmt
-mut m := map[string]int // Only maps with string keys are allowed for now
+```v
+mut m := map[string]int{} // Only maps with string keys are allowed for now
 m['one'] = 1
 m['two'] = 2
 println(m['one']) // "1"
 println(m['bad_key']) // "0"
 println('bad_key' in m) // Use `in` to detect whether such key exists
 m.delete('two')
-
 // Short syntax
 numbers := {
-    'one': 1
-    'two': 2
+	'one': 1
+	'two': 2
 }
 ```
 
@@ -835,22 +831,24 @@ println(s)
 You can check the current type of a sum type using `is` and its negated form `!is`.
 
 You can do it either in an `if`:
-```v nofmt
+```v
 struct Abc {
-    val string
+	val string
 }
+
 struct Xyz {
-    foo string
+	foo string
 }
+
 type Alphabet = Abc | Xyz
 
 x := Alphabet(Abc{'test'}) // sum type
 if x is Abc {
-    // x is automatically casted to Abc and can be used here
-    println(x)
+	// x is automatically casted to Abc and can be used here
+	println(x)
 }
 if x !is Abc {
-    println('Not Abc')
+	println('Not Abc')
 }
 ```
 or using `match`:
@@ -926,11 +924,13 @@ match mut x {
 
 `in` allows to check whether an array or a map contains an element.
 
-```v nofmt
+```v
 nums := [1, 2, 3]
 println(1 in nums) // true
-
-m := {'one': 1, 'two': 2}
+m := {
+	'one': 1
+	'two': 2
+}
 println('one' in m) // true
 ```
 
@@ -966,15 +966,17 @@ V has only one looping keyword: `for`, with several forms.
 
 #### Array `for`
 
-```v nofmt
+```v
 numbers := [1, 2, 3, 4, 5]
 for num in numbers {
-    println(num)
+	println(num)
 }
 names := ['Sam', 'Peter']
 for i, name in names {
-    println('$i) $name')  // Output: 0) Sam
-}                         //         1) Peter
+	println('$i) $name')
+	// Output: 0) Sam
+	//         1) Peter
+}
 ```
 
 The `for value in arr` form is used for going through elements of an array.
@@ -983,7 +985,7 @@ If an index is required, an alternative form `for index, value in arr` can be us
 Note, that the value is read-only.
 If you need to modify the array while looping, you have to use indexing:
 
-```v nofmt
+```v
 mut numbers := [0, 1, 2]
 for i, _ in numbers {
 	numbers[i]++
@@ -994,26 +996,36 @@ When an identifier is just a single underscore, it is ignored.
 
 #### Map `for`
 
-```v nofmt
-m := {'one':1, 'two':2}
+```v
+m := {
+	'one': 1
+	'two': 2
+}
 for key, value in m {
-    println("$key -> $value")  // Output: one -> 1
-}                              //         two -> 2
+	println('$key -> $value')
+	// Output: one -> 1
+	//         two -> 2
+}
 ```
 
 Either key or value can be ignored by using a single underscore as the identifier.
-```v nofmt
-m := {'one':1, 'two':2}
-
+```v
+m := {
+	'one': 1
+	'two': 2
+}
 // iterate over keys
 for key, _ in m {
-    println(key)  // Output: one
-}                 //         two
-
+	println(key)
+	// Output: one
+	//         two
+}
 // iterate over values
 for _, value in m {
-    println(value)  // Output: 1
-}                   //         2
+	println(value)
+	// Output: 1
+	//         2
+}
 ```
 
 #### Range `for`
@@ -1029,7 +1041,7 @@ from `low` up to *but not including* `high`.
 
 #### Condition `for`
 
-```v nofmt
+```v
 mut sum := 0
 mut i := 0
 for i <= 100 {
@@ -1045,7 +1057,7 @@ Again, there are no parentheses surrounding the condition, and the braces are al
 
 #### Bare `for`
 
-```v nofmt
+```v
 mut num := 0
 for {
 	num += 2
@@ -1196,19 +1208,17 @@ fn read_log() {
 
 ## Structs
 
-```v nofmt
+```v
 struct Point {
-    x int
-    y int
+	x int
+	y int
 }
 
 mut p := Point{
-    x: 10
-    y: 20
+	x: 10
+	y: 20
 }
-
 println(p.x) // Struct fields are accessed using a dot
-
 // Alternative literal syntax for structs with 3 fields or fewer
 p = Point{10, 20}
 assert p.x == 10
@@ -1405,19 +1415,22 @@ no need in getters/setters or properties.
 
 ### Methods
 
-```v nofmt
+```v
 struct User {
-    age int
+	age int
 }
 
 fn (u User) can_register() bool {
-    return u.age > 16
+	return u.age > 16
 }
 
-user := User{age: 10}
+user := User{
+	age: 10
+}
 println(user.can_register()) // "false"
-
-user2 := User{age: 20}
+user2 := User{
+	age: 20
+}
 println(user2.can_register()) // "true"
 ```
 
@@ -1814,20 +1827,21 @@ For more information, see [Dynamic casts](#dynamic-casts).
 
 ### Enums
 
-```v nofmt
+```v
 enum Color {
-    red green blue
+	red
+	green
+	blue
 }
 
 mut color := Color.red
 // V knows that `color` is a `Color`. No need to use `color = Color.green` here.
 color = .green
 println(color) // "green"
-
 match color {
-    .red { println('the color was red') }
-    .green { println('the color was green') }
-    .blue { println('the color was blue') }
+	.red { println('the color was red') }
+	.green { println('the color was green') }
+	.blue { println('the color was blue') }
 }
 ```
 
@@ -2092,7 +2106,7 @@ The third method is to provide a default value at the end of the `or` block.
 In case of an error, that value would be assigned instead,
 so it must have the same type as the content of the `Option` being handled.
 
-```v nofmt
+```v
 fn do_something(s string) ?string {
 	if s == 'foo' {
 		return 'foo'
@@ -2153,7 +2167,7 @@ runtime parameter types. This is why `find_by_id` can omit `<T>`, because the
 receiver argument `r` uses a generic type `T`.
 
 Another example:
-```v nofmt
+```v
 fn compare<T>(a T, b T) int {
 	if a < b {
 		return -1
@@ -2168,12 +2182,10 @@ fn compare<T>(a T, b T) int {
 println(compare(1, 0)) // Outputs: 1
 println(compare(1, 1)) //          0
 println(compare(1, 2)) //         -1
-
 // compare<string>
 println(compare('1', '0')) // Outputs: 1
 println(compare('1', '1')) //          0
 println(compare('1', '2')) //         -1
-
 // compare<f64>
 println(compare(1.1, 1.0)) // Outputs: 1
 println(compare(1.1, 1.1)) //          0
@@ -2227,8 +2239,8 @@ Channels can be buffered or unbuffered and it is possible to `select` from multi
 Channels have the type `chan objtype`. An optional buffer length can specified as the `cap` property
 in the declaration:
 
-```v nofmt
-ch := chan int{}          // unbuffered - "synchronous"
+```v
+ch := chan int{} // unbuffered - "synchronous"
 ch2 := chan f64{cap: 100} // buffer length 100
 ```
 
@@ -2251,18 +2263,17 @@ fn main() {
 Objects can be pushed to channels using the arrow operator. The same operator can be used to
 pop objects from the other end:
 
-```v nofmt
-import sync
-
+```v
 mut ch := chan int{}
 mut ch2 := chan f64{}
 n := 5
 x := 7.3
-ch <- n    // push
+ch <- n
+// push
 ch2 <- x
 mut y := f64(0.0)
-m := <-ch  // pop creating new variable
-y = <-ch2  // pop into existing variable
+m := <-ch // pop creating new variable
+y = <-ch2 // pop into existing variable
 ```
 
 A channel can be closed to indicate that no further objects can be pushed. Any attempt
@@ -2337,19 +2348,19 @@ if select {
 #### Special Channel Features
 
 For special purposes there are some builtin properties and methods:
-```v nofmt
-struct Abc{x int}
+```v
+struct Abc {
+	x int
+}
 
 a := 2.13
 mut ch := chan f64{}
-
-res := ch.try_push(a)      // try to perform `ch <- a`
+res := ch.try_push(a) // try to perform `ch <- a`
 println(res)
-l := ch.len                // number of elements in queue
-c := ch.cap                // maximum queue length
+l := ch.len // number of elements in queue
+c := ch.cap // maximum queue length
 println(l)
 println(c)
-
 // mut b := Abc{}
 // mut ch2 := chan f64{}
 // res2 := ch2.try_pop(mut b) // try to perform `b = <-ch2
@@ -2522,7 +2533,7 @@ Python, Go, or Java, except there's no heavy GC tracing everything or expensive 
 each object.
 
 For developers willing to have more low level control, autofree can be disabled with
-`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its 
+`-manualfree`, or by adding a `[manualfree]` on each function that wants manage its
 memory manually.
 
 Note: right now autofree is hidden behind the -autofree flag. It will be enabled by
@@ -2588,36 +2599,45 @@ V's ORM provides a number of benefits:
 - Readability and simplicity. (You don't need to manually parse the results of a query and
     then manually construct objects from the parsed results.)
 
-```v nofmt
+```v
 import sqlite
-struct Customer { // struct name has to be the same as the table name (for now)
-    id int // a field named `id` of integer type must be the first field
-    name string
-    nr_orders int
-    country string
+
+struct Customer {
+	// struct name has to be the same as the table name (for now)
+	id        int // a field named `id` of integer type must be the first field
+	name      string
+	nr_orders int
+	country   string
 }
 
-db := sqlite.connect('customers.db')?
-
+db := sqlite.connect('customers.db') ?
 // select count(*) from Customer
-nr_customers := sql db { select count from Customer }
+nr_customers := sql db {
+	select count from Customer
+}
 println('number of all customers: $nr_customers')
-
 // V syntax can be used to build queries
 // db.select returns an array
-uk_customers := sql db { select from Customer where country == 'uk' && nr_orders > 0 }
+uk_customers := sql db {
+	select from Customer where country == 'uk' && nr_orders > 0
+}
 println(uk_customers.len)
 for customer in uk_customers {
-    println('$customer.id - $customer.name')
+	println('$customer.id - $customer.name')
 }
-
 // by adding `limit 1` we tell V that there will be only one object
-customer := sql db { select from Customer where id == 1 limit 1 }
+customer := sql db {
+	select from Customer where id == 1 limit 1
+}
 println('$customer.id - $customer.name')
-
 // insert a new customer
-new_customer := Customer{name: 'Bob', nr_orders: 10}
-sql db { insert new_customer into Customer }
+new_customer := Customer{
+	name: 'Bob'
+	nr_orders: 10
+}
+sql db {
+	insert new_customer into Customer
+}
 ```
 
 For more examples, see <a href='https://github.com/vlang/v/blob/master/vlib/orm/orm_test.v'>vlib/orm/orm_test.v</a>.
