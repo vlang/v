@@ -23,4 +23,5 @@ fn main() {
     println(User{3, 4})
     println(User{3, 4} - Foo{3, 3})
     println(User{3, 2} < User{2, 4})
+    println(User{3, 4} < Foo{3, 4})
 }
