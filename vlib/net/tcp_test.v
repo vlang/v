@@ -1,5 +1,4 @@
 import net
-import time
 
 const (
 	test_port = 45123
