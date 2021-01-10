@@ -66,7 +66,6 @@ fn (mut tf_skl TTF_render_Sokol) format_texture(){
 }
 
 pub
-//fn (mut tf_skl TTF_render_Sokol) create_text(tf &TTF_File, in_txt string, in_font_size f32){
 fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32){
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
@@ -104,7 +103,6 @@ fn (mut tf_skl TTF_render_Sokol) create_text(in_txt string, in_font_size f32){
 }
 
 pub
-//fn (mut tf_skl TTF_render_Sokol) create_text_block(tf TTF_File, in_txt string, in_w int, in_h int, in_font_size f32){
 fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, in_h int, in_font_size f32){
 	scale_reduct := tf_skl.scale_reduct
 	device_dpi := tf_skl.device_dpi
