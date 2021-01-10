@@ -1,0 +1,7 @@
+vlib/v/checker/tests/var_duplicate_const.vv:8:2: error: duplicate of a const name `age`
+    6 |
+    7 | fn main() {
+    8 |     age := 30
+      |     ~~~
+    9 |     println(age)
+   10 | }

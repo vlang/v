@@ -67,14 +67,14 @@ pub fn uname() Uname {
 }
 
 fn init_os_args(argc int, argv &&byte) []string {
-	mut args := []string{}
+	mut args_ := []string{}
 	// mut args := []string(make(0, argc, sizeof(string)))
 	// mut args := []string{len:argc}
 	for i in 0 .. argc {
 		// args [i] = argv[i].vstring()
-		unsafe { args << byteptr(argv[i]).vstring() }
+		unsafe { args_ << byteptr(argv[i]).vstring() }
 	}
-	return args
+	return args_
 }
 
 pub fn ls(path string) ?[]string {

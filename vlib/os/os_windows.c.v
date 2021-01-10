@@ -76,11 +76,11 @@ mut:
 }
 
 fn init_os_args_wide(argc int, argv &byteptr) []string {
-	mut args := []string{}
+	mut args_ := []string{}
 	for i in 0 .. argc {
-		args << string_from_wide(unsafe { &u16(argv[i]) })
+		args_ << string_from_wide(unsafe { &u16(argv[i]) })
 	}
-	return args
+	return args_
 }
 
 pub fn ls(path string) ?[]string {

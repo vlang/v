@@ -2416,6 +2416,12 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						}
 						*/
 					}
+					if is_decl {
+						full_name := '${left.mod}.$left.name'
+						if full_name in c.const_names {
+							c.error('duplicate of a const name `$left.name`', left.pos)
+						}
+					}
 				}
 			}
 			ast.PrefixExpr {

@@ -18,21 +18,21 @@ fn get_vexe_path() string {
 	}
 	me := os.executable()
 	eprintln('me: $me')
-	mut vexe := os.join_path(os.dir(os.dir(os.dir(me))), 'v')
+	mut vexe_ := os.join_path(os.dir(os.dir(os.dir(me))), 'v')
 	if os.user_os() == 'windows' {
-		vexe += '.exe'
+		vexe_ += '.exe'
 	}
-	return vexe
+	return vexe_
 }
 
 fn new_tdir() string {
-	tdir := os.join_path(os.temp_dir(), rand.ulid())
-	if os.exists(tdir) {
-		os.rmdir(tdir)
+	tdir_ := os.join_path(os.temp_dir(), rand.ulid())
+	if os.exists(tdir_) {
+		os.rmdir(tdir_)
 	}
-	os.mkdir(tdir)
+	os.mkdir(tdir_)
 	C.atexit(cleanup_tdir)
-	return tdir
+	return tdir_
 }
 
 fn cleanup_tdir() {
