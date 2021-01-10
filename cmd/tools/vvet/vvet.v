@@ -28,14 +28,14 @@ fn (vet &Vet) vprintln(s string) {
 	println(s)
 }
 
-fn should_skip(path string) bool {
-	return path.ends_with('_test.v') ||
-		(path.contains('/tests/') && !path.contains('cmd/tools/vvet/tests/'))
-}
+const is_force = '-force' in os.args
+
+const is_verbose = '-verbose' in os.args || '-v' in os.args
+
+const show_warnings = '-hide-warnings' !in os.args
 
 fn main() {
-	args := os.args.clone()
-	mut paths := cmdline.only_non_options(cmdline.options_after(args, ['vet']))
+	mut paths := cmdline.only_non_options(cmdline.options_after(os.args, ['vet']))
 	vtmp := os.getenv('VTMP')
 	if vtmp != '' {
 		// `v test-cleancode` passes also `-o tmpfolder` as well as all options in VFLAGS
@@ -43,7 +43,7 @@ fn main() {
 	}
 	//
 	opt := Options{
-		is_verbose: '-verbose' in args || '-v' in args
+		is_verbose: is_verbose
 	}
 	mut vet := Vet{
 		opt: opt
@@ -53,24 +53,34 @@ fn main() {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if should_skip(path) {
-			eprintln('skipping $path')
-			continue
-		}
 		if path.ends_with('.v') || path.ends_with('.vv') {
-			vet.vet_file(path)
-		} else if os.is_dir(path) {
-			vet.vprintln("vetting folder '$path'...")
+			if path.contains('cmd/tools/vvet/tests/') {
+				if is_force || paths.len == 1 {
+					vet.vet_file(path, true)
+					continue
+				} else {
+					// The .vv files in that folder, are regression tests
+					// for `v vet` itself and thus are known to fail in
+					// a predictable way. They are run 1 by 1 by vet_test.v.
+					// They *should be skipped*, when run by more general
+					// invocations like for example `v vet cmd/tools`
+					eprintln("skipping vvet regression file: '$path' ...")
+					continue
+				}
+			}
+		}
+		if os.is_dir(path) {
+			vet.vprintln("vetting folder: '$path' ...")
 			vfiles := os.walk_ext(path, '.v')
 			vvfiles := os.walk_ext(path, '.vv')
 			mut files := []string{}
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if should_skip(file) {
+				if !is_force && file.ends_with('.vv') && file.contains('cmd/tools/vvet/tests/') {
 					continue
 				}
-				vet.vet_file(file)
+				vet.vet_file(file, false)
 			}
 		}
 	}
@@ -78,8 +88,10 @@ fn main() {
 	warnings := vet.errors.filter(it.kind == .warning)
 	errors := vet.errors.filter(it.kind == .error)
 	errors_vfmt := vet.errors.filter(it.kind == .error && it.fix == .vfmt)
-	for err in warnings {
-		eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+	if show_warnings {
+		for err in warnings {
+			eprintln('$err.file_path:$err.pos.line_nr: warning: $err.message')
+		}
 	}
 	for err in errors {
 		eprintln('$err.file_path:$err.pos.line_nr: error: $err.message')
@@ -119,7 +131,14 @@ fn (mut v Vet) warn(msg string, line int, fix vet.FixKind) {
 }
 
 // vet_file vets the file read from `path`.
-fn (mut vt Vet) vet_file(path string) {
+fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
+	if path.contains('/tests/') && !is_regression_test {
+		// skip all /tests/ files, since usually their content is not
+		// important enough to be documented/vetted, and they may even
+		// contain intentionally invalid code.
+		eprintln("skipping test file: '$path' ...")
+		return
+	}
 	vt.file = path
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
