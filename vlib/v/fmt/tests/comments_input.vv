@@ -7,6 +7,15 @@ fn mr_fun() (int, int) {
 }
 
 fn main() {
+	/* block1
+	*/
+	/*
+	block2 */
+	/*
+
+	block3
+
+	*/
 	a := /* this is a comment */ 1
 	b, c := /* and another comment */ a, /* just to make it worse */ 2
 	d := c // and an extra one

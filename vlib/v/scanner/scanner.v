@@ -959,7 +959,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim_space()
+						comment := s.text[start..(s.pos - 1)].trim(' ')
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode
