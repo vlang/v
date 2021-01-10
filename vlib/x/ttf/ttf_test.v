@@ -11,7 +11,7 @@
 * TODO: 
 * - manage text directions R to L
 **********************************************************************/
-import ttf
+import x.ttf
 import os
 
 const (
@@ -54,12 +54,11 @@ fn main() {
 	bmp.init_filler()
 	bmp.draw_text("Test Text")
 
+	mut test_buf := get_raw_data(test_data)
 	if create_data == true {
 		bmp.save_as_ppm("test_ttf.ppm")
 		bmp.save_raw_data("test_ttf.bin")
-		test_buf := os.read_bytes("test_ttf.bin") or { panic(err) }
-	} else {
-		test_buf := get_raw_data(test_data)
+		test_buf = os.read_bytes("test_ttf.bin") or { panic(err) }
 	}
 	
 	ram_buf := bmp.get_raw_bytes()
