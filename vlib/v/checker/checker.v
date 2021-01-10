@@ -512,7 +512,7 @@ pub fn (mut c Checker) struct_init(mut struct_init ast.StructInit) table.Type {
 		}
 	}
 	if type_sym.name.len == 1 && !c.cur_fn.is_generic {
-		c.error('unknown struct name `$type_sym.name`', struct_init.pos)
+		c.error('unknown struct `$type_sym.name`', struct_init.pos)
 	}
 	match type_sym.kind {
 		.placeholder {
