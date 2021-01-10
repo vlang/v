@@ -13,4 +13,6 @@ jobs:
     - name: Build V
       run: make
     - name: Check markdown line length & code examples
-      run: ./v run cmd/tools/check-md.v -all
+      run: ./v run cmd/tools/check-md.v -hide-warnings -all
+    ## NB: -hide-warnings is used here, so that the output is less noisy,
+    ## thus real errors are easier to spot.

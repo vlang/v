@@ -130,14 +130,9 @@ For more details and troubleshooting, please visit the [vab GitHub repository](h
 </table>
 
 <!--
-There are several special keywords, which you can put after the code fences for v.
-These are:
-   compile      - default, you do not need to specify it. cmd/tools/check-md.v compile the example.
-   ignore       - ignore the example, useful for examples that just use the syntax highlighting
-   failcompile  - known failing compilation. Useful for examples demonstrating compiler errors.
-   oksyntax     - it should parse, it may not compile. Useful for partial examples.
-   badsyntax    - known bad syntax, it should not even parse
-   wip          - like ignore; a planned feature; easy to search.
+NB: there are several special keywords, which you can put after the code fences for v:
+compile, ignore, failcompile, oksyntax, badsyntax, wip
+For more details, do: `v run cmd/tools/check-md.v`
 -->
 
 ## Hello World
