@@ -28,6 +28,11 @@ fn (vet &Vet) vprintln(s string) {
 	println(s)
 }
 
+fn should_skip(path string) bool {
+	return path.ends_with('_test.v') ||
+		(path.contains('/tests/') && !path.contains('cmd/tools/vvet/tests/'))
+}
+
 fn main() {
 	args := os.args.clone()
 	mut paths := cmdline.only_non_options(cmdline.options_after(args, ['vet']))
@@ -48,7 +53,7 @@ fn main() {
 			eprintln('File/folder $path does not exist')
 			continue
 		}
-		if path.ends_with('_test.v') || path.contains('/tests/') {
+		if should_skip(path) {
 			eprintln('skipping $path')
 			continue
 		}
@@ -62,7 +67,7 @@ fn main() {
 			files << vfiles
 			files << vvfiles
 			for file in files {
-				if file.ends_with('_test.v') || file.contains('/tests/') { // TODO copy pasta
+				if should_skip(file) {
 					continue
 				}
 				vet.vet_file(file)
