@@ -168,8 +168,18 @@ their status.
 
 ## Flags
 
-V allows you to pass custom flags using `-d my_flag` that can then be checked at compile time (see the documentation about [compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
-There are numerous flags that can be passed when building the compiler with `v self` or when creating a copy of the compiler, that will help you when debugging. Beware that the flags must be passed when building the compiler, not the program, so for example `v -d time_parsing -o v_with_debug_options cmd/v` or `v -d trace_checker self`. Some flags can make the compiler very verbose, so it is recommended to create a copy of the compiler rather than replacing it with `v self`.
+V allows you to pass custom flags using `-d my_flag` that can then be checked
+at compile time (see the documentation about
+[compile-time if](https://github.com/vlang/v/blob/master/doc/docs.md#compile-time-if)).
+There are numerous flags that can be passed when building the compiler 
+with `v self` or when creating a copy of the compiler, that will help 
+you when debugging.
+
+Beware that the flags must be passed when building the compiler, 
+not the program, so do for example: `v -d time_parsing cmd/v` or
+`v -d trace_checker self`.
+Some flags can make the compiler very verbose, so it is recommended
+to create a copy of the compiler rather than replacing it with `v self`.
 
 | Flag | Usage |
 |------|-------|
