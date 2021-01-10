@@ -1,0 +1,6 @@
+vlib/v/checker/tests/unknown_struct_name.vv:4:7: error: unknown struct `F`
+    2 |
+    3 | fn main() {
+    4 |     _ := F{}
+      |          ~~~
+    5 | }
