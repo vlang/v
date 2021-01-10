@@ -3005,11 +3005,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		}
 	} else if node.op in [.eq, .ne] && left_sym.kind == .array && right_sym.kind == .array {
 		ptr_typ := g.gen_array_equality_fn(left_type)
-		if node.op == .eq {
-			g.write('${ptr_typ}_arr_eq(')
-		} else if node.op == .ne {
+		if node.op == .ne {
 			g.write('!${ptr_typ}_arr_eq(')
 		}
+		g.write('${ptr_typ}_arr_eq(')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
@@ -3023,11 +3022,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 	} else if node.op in [.eq, .ne] &&
 		left_sym.kind == .array_fixed && right_sym.kind == .array_fixed {
 		ptr_typ := g.gen_fixed_array_equality_fn(left_type)
-		if node.op == .eq {
-			g.write('${ptr_typ}_arr_eq(')
-		} else if node.op == .ne {
-			g.write('!${ptr_typ}_arr_eq(')
+		if node.op == .ne {
+			g.write('!')
 		}
+		g.write('${ptr_typ}_arr_eq(')
 		if node.left_type.is_ptr() {
 			g.write('*')
 		}
