@@ -143,7 +143,7 @@ fn (mut vt Vet) vet_file(path string, is_regression_test bool) {
 	mut prefs := pref.new_preferences()
 	prefs.is_vet = true
 	table := table.new_table()
-	vet_options.vprintln("vetting file '$path'...")
+	vt.vprintln("vetting file '$path'...")
 	_, errors := parser.parse_vet_file(path, table, prefs)
 	// Transfer errors from scanner and parser
 	vt.errors << errors
