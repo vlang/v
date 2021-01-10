@@ -3,7 +3,7 @@ import gx
 import sokol.sapp
 import sokol.sgl
 
-import ttf
+import x.ttf
 import os
 //import math
 
