@@ -54,7 +54,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 		}
 		last_pos = p.tok.position()
 		p.check(.rsbr)
-		if exprs.len == 1 && p.tok.kind in [.name, .amp] && p.tok.line_nr == line_nr {
+		if exprs.len == 1 && p.tok.kind in [.name, .amp, .lsbr] && p.tok.line_nr == line_nr {
 			// [100]byte
 			elem_type = p.parse_type()
 			is_fixed = true

@@ -92,6 +92,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 	if fn_name in p.imported_symbols {
 		fn_name = p.imported_symbols[fn_name]
 	}
+	comments := p.eat_line_end_comments()
 	return ast.CallExpr{
 		name: fn_name
 		args: args
@@ -106,6 +107,7 @@ pub fn (mut p Parser) call_expr(language table.Language, mod string) ast.CallExp
 			pos: or_pos
 		}
 		scope: p.scope
+		comments: comments
 	}
 }
 
@@ -125,9 +127,13 @@ pub fn (mut p Parser) call_args() []ast.CallArg {
 		}
 		mut comments := p.eat_comments()
 		arg_start_pos := p.tok.position()
-		mut e := p.expr(0)
+		mut array_decompose := false
 		if p.tok.kind == .ellipsis {
 			p.next()
+			array_decompose = true
+		}
+		mut e := p.expr(0)
+		if array_decompose {
 			e = ast.ArrayDecompose{
 				expr: e
 				pos: p.tok.position()

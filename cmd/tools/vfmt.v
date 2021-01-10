@@ -40,6 +40,7 @@ const (
 		['haiku', '_haiku.v'],
 		['qnx', '_qnx.v'],
 	]
+	vtmp_folder                  = util.get_vtmp_folder()
 )
 
 fn main() {
@@ -174,7 +175,7 @@ fn (foptions &FormatOptions) format_file(file string) {
 	formatted_content := fmt.fmt(file_ast, table, foptions.is_debug)
 	file_name := os.file_name(file)
 	ulid := rand.ulid()
-	vfmt_output_path := os.join_path(os.temp_dir(), 'vfmt_${ulid}_$file_name')
+	vfmt_output_path := os.join_path(vtmp_folder, 'vfmt_${ulid}_$file_name')
 	os.write_file(vfmt_output_path, formatted_content)
 	if foptions.is_verbose {
 		eprintln('fmt.fmt worked and $formatted_content.len bytes were written to $vfmt_output_path .')

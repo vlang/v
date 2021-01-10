@@ -37,6 +37,8 @@ const (
 	res_changed_file    = os.join_path(os.temp_dir(), 'CHANGED.txt')
 	res_another_file    = os.join_path(os.temp_dir(), 'ANOTHER.txt')
 	res_stop_file       = os.join_path(os.temp_dir(), 'STOP.txt')
+	cleanup_files       = [tmp_file, source_file, genexe_file, output_file, res_original_file,
+		res_changed_file, res_another_file, res_stop_file]
 	live_program_source = "
 module main
 
@@ -158,6 +160,9 @@ fn testsuite_end() {
 	assert histogram['ORIGINAL'] > 0
 	assert histogram['CHANGED'] + histogram['ANOTHER'] > 0
 	// assert histogram['END'] > 0
+	for tfile in cleanup_files {
+		os.rm(tfile)
+	}
 }
 
 fn change_source(new string) {
@@ -190,8 +195,8 @@ fn setup_cycles_environment() {
 	mut max_live_cycles := 1000
 	mut max_wait_cycles := 400
 	if os.user_os() == 'macos' {
-//		max_live_cycles *= 5
-//		max_wait_cycles *= 5
+		//		max_live_cycles *= 5
+		//		max_wait_cycles *= 5
 	}
 	os.setenv('LIVE_CYCLES', '$max_live_cycles', true)
 	os.setenv('WAIT_CYCLES', '$max_wait_cycles', true)

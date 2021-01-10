@@ -1237,8 +1237,8 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		ast.ArrayDecompose {
-			f.expr(node.expr)
 			f.write('...')
+			f.expr(node.expr)
 		}
 	}
 }
@@ -1407,7 +1407,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 pub fn (mut f Fmt) comments(comments []ast.Comment, options CommentsOptions) {
 	for i, c in comments {
 		if !f.out.last_n(1)[0].is_space() {
-			f.write('\t')
+			f.write(' ')
 		}
 		if options.level == .indent {
 			f.indent++
@@ -1723,6 +1723,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 		f.write(')')
 		f.or_expr(node.or_block)
 	}
+	f.comments(node.comments, has_nl: false)
 	f.use_short_fn_args = old_short_arg_state
 }
 
