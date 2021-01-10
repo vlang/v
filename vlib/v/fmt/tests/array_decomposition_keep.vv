@@ -4,5 +4,5 @@ fn varargs(a ...int) {
 
 fn main() {
 	a := [1, 2, 3]
-	varargs(a...)
+	varargs(...a)
 }

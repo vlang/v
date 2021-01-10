@@ -1306,6 +1306,11 @@ fn test_array_of_map_insert() {
 	assert '$x' == "[{}, {}, {'123': 123}, {}]"
 }
 
+fn test_multi_fixed_array_init() {
+	a := [3][3]int{}
+	assert '$a' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
+}
+
 struct Numbers {
 	odds  []int
 	evens []int

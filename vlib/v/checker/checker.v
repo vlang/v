@@ -90,7 +90,7 @@ pub fn (mut c Checker) check(ast_file &ast.File) {
 	for i, ast_import in ast_file.imports {
 		for j in 0 .. i {
 			if ast_import.mod == ast_file.imports[j].mod {
-				c.error('module name `$ast_import.mod` duplicate', ast_import.pos)
+				c.error('module name `$ast_import.mod` duplicate', ast_import.mod_pos)
 			}
 		}
 	}
@@ -840,6 +840,17 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		.gt, .lt, .ge, .le {
 			if left.kind in [.array, .array_fixed] && right.kind in [.array, .array_fixed] {
 				c.error('only `==` and `!=` are defined on arrays', infix_expr.pos)
+			} else if left.kind == .struct_ && right.kind == .struct_ {
+				if !(left.has_method(infix_expr.op.str()) && right.has_method(infix_expr.op.str())) {
+					left_name := c.table.type_to_str(left_type)
+					right_name := c.table.type_to_str(right_type)
+					if left_name == right_name {
+						c.error('operation `$left_name` $infix_expr.op.str() `$right_name` does not exist, please define it',
+							infix_expr.pos)
+					} else {
+						c.error('mismatched types `$left_name` and `$right_name`', infix_expr.pos)
+					}
+				}
 			}
 		}
 		.left_shift {
@@ -940,6 +951,9 @@ pub fn (mut c Checker) infix_expr(mut infix_expr ast.InfixExpr) table.Type {
 		infix_expr.op !in [.plus, .eq, .ne, .lt, .gt, .le, .ge] {
 		// TODO broken !in
 		c.error('string types only have the following operators defined: `==`, `!=`, `<`, `>`, `<=`, `>=`, and `+`',
+			infix_expr.pos)
+	} else if left.kind == .enum_ && right.kind == .enum_ && infix_expr.op !in [.ne, .eq] {
+		c.error('only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed',
 			infix_expr.pos)
 	}
 	// sum types can't have any infix operation except of "is", is is checked before and doesn't reach this
@@ -5103,7 +5117,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			} else {
 				if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
-				} else if node.name in ['<', '>', '==', '!='] && node.return_type != table.bool_type {
+				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
+					node.return_type != table.bool_type {
 					c.error('operator comparison methods should return `bool`', node.pos)
 				}
 			}

@@ -43,6 +43,14 @@ fn (a Vec) != (b Vec) bool {
 	return !(a == b)
 }
 
+fn (a Vec) >= (b Vec) bool {
+	return a > b || a == b
+}
+
+fn (a Vec) <= (b Vec) bool {
+	return a < b || a == b
+}
+
 fn test_operator_overloading_with_string_interpolation() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
@@ -68,6 +76,8 @@ fn test_operator_overloading_with_string_interpolation() {
 	////// /////
 	assert b > a == true
 	assert a < b == true
+	assert b >= a == true
+	assert a <= b == true
 	assert (Vec{2, 3} == Vec{3, 2}) == true
 	assert (Vec{2, 3} != Vec{3, 2}) == false
 	////// /////
