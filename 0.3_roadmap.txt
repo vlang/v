@@ -9,7 +9,9 @@
 - thread safe maps
 - C2V translator
 - doom.v
-- rune type, replace `ustring` with `[]rune`, fix `byte.str()`
++ rune type
+- replace `ustring` with `[]rune`
++ fix `byte.str()`
 + maps with non-string keys
 + iOS/Android support
 - parallel parser (and maybe checker/gen?)
