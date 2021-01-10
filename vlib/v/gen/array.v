@@ -149,15 +149,16 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.write('\t$inp_elem_type it = (($inp_elem_type*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
-	g.write('\t$ret_elem_type ti = ')
+	mut is_embed_map_filter := false
 	expr := node.args[0].expr
 	match expr {
 		ast.AnonFn {
+			g.write('\t$ret_elem_type ti = ')
 			g.gen_anon_fn_decl(expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
+			g.write('\t$ret_elem_type ti = ')
 			if expr.kind == .function {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
@@ -172,13 +173,25 @@ fn (mut g Gen) gen_array_map(node ast.CallExpr) {
 				g.expr(node.args[0].expr)
 			}
 		}
+		ast.CallExpr {
+			if expr.name in ['map', 'filter'] {
+				is_embed_map_filter = true
+				g.stmt_path_pos << g.out.len
+			}
+			g.write('\t$ret_elem_type ti = ')
+			g.expr(node.args[0].expr)
+		}
 		else {
+			g.write('\t$ret_elem_type ti = ')
 			g.expr(node.args[0].expr)
 		}
 	}
 	g.writeln(';')
 	g.writeln('\tarray_push(&$tmp, &ti);')
 	g.writeln('}')
+	if !is_embed_map_filter {
+		g.stmt_path_pos << g.out.len
+	}
 	g.write(s)
 	g.write(tmp)
 	g.inside_lambda = false
@@ -303,15 +316,16 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 	i := g.new_tmp_var()
 	g.writeln('for (int $i = 0; $i < ${tmp}_len; ++$i) {')
 	g.writeln('  $elem_type_str it = (($elem_type_str*) ${tmp}_orig.data)[$i];')
-	g.stmt_path_pos << g.out.len
-	g.write('if (')
+	mut is_embed_map_filter := false
 	expr := node.args[0].expr
 	match expr {
 		ast.AnonFn {
+			g.write('if (')
 			g.gen_anon_fn_decl(expr)
 			g.write('${expr.decl.name}(it)')
 		}
 		ast.Ident {
+			g.write('if (')
 			if expr.kind == .function {
 				g.write('${c_name(expr.name)}(it)')
 			} else if expr.kind == .variable {
@@ -326,11 +340,23 @@ fn (mut g Gen) gen_array_filter(node ast.CallExpr) {
 				g.expr(node.args[0].expr)
 			}
 		}
+		ast.CallExpr {
+			if expr.name in ['map', 'filter'] {
+				is_embed_map_filter = true
+				g.stmt_path_pos << g.out.len
+			}
+			g.write('if (')
+			g.expr(node.args[0].expr)
+		}
 		else {
+			g.write('if (')
 			g.expr(node.args[0].expr)
 		}
 	}
 	g.writeln(') array_push(&$tmp, &it); \n }')
+	if !is_embed_map_filter {
+		g.stmt_path_pos << g.out.len
+	}
 	g.write(s)
 	g.write(' ')
 	g.write(tmp)

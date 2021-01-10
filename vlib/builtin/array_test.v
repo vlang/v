@@ -1310,3 +1310,30 @@ fn test_multi_fixed_array_init() {
 	a := [3][3]int{}
 	assert '$a' == '[[0, 0, 0], [0, 0, 0], [0, 0, 0]]'
 }
+
+struct Numbers {
+	odds  []int
+	evens []int
+}
+
+fn test_array_of_multi_filter() {
+	arr := [1, 2, 3, 4, 5]
+	nums := Numbers{
+		odds: arr.filter(it % 2 == 1)
+		evens: arr.filter(it % 2 == 0)
+	}
+	println(nums)
+	assert nums.odds == [1, 3, 5]
+	assert nums.evens == [2, 4]
+}
+
+fn test_array_of_multi_map() {
+	arr := [1, 3, 5]
+	nums := Numbers{
+		odds: arr.map(it + 2)
+		evens: arr.map(it * 2)
+	}
+	println(nums)
+	assert nums.odds == [3, 5, 7]
+	assert nums.evens == [2, 6, 10]
+}
