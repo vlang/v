@@ -71,6 +71,9 @@ pub fn fmt(file ast.File, table &table.Table, is_debug bool) string {
 	// for comment in file.comments { println('$comment.line_nr $comment.text')	}
 	f.imports(f.file.imports) // now that we have all autoimports, handle them
 	res := f.out.str().trim_space() + '\n'
+	if res.len == 1 {
+		return f.out_imports.str().trim_space() + '\n'
+	}
 	bounded_import_pos := util.imin(res.len, f.import_pos)
 	return res[..bounded_import_pos] + f.out_imports.str() + res[bounded_import_pos..] // + '\n'
 }
@@ -210,7 +213,6 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 		f.out_imports.writeln('import ${imp_stmt_str}\n')
 	} else if imports.len > 1 {
 	*/
-	// f.out_imports.writeln('import (')
 	for imp in imports {
 		if imp.mod !in f.used_imports {
 			// TODO bring back once only unused imports are removed
@@ -226,8 +228,6 @@ pub fn (mut f Fmt) imports(imports []ast.Import) {
 	if num_imports > 0 {
 		f.out_imports.writeln('')
 	}
-	// f.out_imports.writeln(')\n')
-	// }
 }
 
 pub fn (f Fmt) imp_stmt_str(imp ast.Import) string {
