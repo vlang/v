@@ -237,7 +237,7 @@ fn build_token_str() []string {
 	s[Kind.question] = '?'
 	s[Kind.left_shift] = '<<'
 	s[Kind.right_shift] = '>>'
-	s[Kind.comment] = '// comment'
+	s[Kind.comment] = 'comment'
 	s[Kind.nl] = 'NLL'
 	s[Kind.dollar] = '$'
 	s[Kind.at] = '@'
