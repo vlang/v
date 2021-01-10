@@ -15,7 +15,7 @@ pub fn (t1 Time) ne(t2 Time) bool {
 	return !t1.eq(t2)
 }
 
-// lt returns true if provided time is less than time.
+// operator `<` returns true if provided time is less than time.
 [inline]
 pub fn (t1 Time) lt(t2 Time) bool {
 	if t1.unix < t2.unix || (t1.unix == t2.unix && t1.microsecond < t2.microsecond) {
@@ -45,7 +45,7 @@ pub fn (t1 Time) ge(t2 Time) bool {
 	return t1.gt(t2) || t1.eq(t2)
 }
 
-// Time subtract using eperator overloading
+// Time subtract using operator overloading.
 [inline]
 pub fn (lhs Time) - (rhs Time) Duration {
 	lhs_micro := lhs.unix * 1000 * 1000 + u64(lhs.microsecond)
