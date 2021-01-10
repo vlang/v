@@ -64,7 +64,7 @@ language, very similar to the way it is right now.
 ```bash
 git clone https://github.com/vlang/v
 cd v
-make
+make -tcc
 ```
 
 That's it! Now you have a V executable at `[path to V repo]/v`.
