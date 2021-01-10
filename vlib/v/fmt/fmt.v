@@ -1369,7 +1369,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		x := node.text.trim_left('\x01')
 		if x.contains('\n') {
 			f.writeln('/*')
-			f.writeln(x)
+			f.writeln(x.trim_space())
 			f.write('*/')
 		} else {
 			f.write('/* ${x.trim(' ')} */')
@@ -1394,7 +1394,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 		f.write(out_s)
 		return
 	}
-	lines := node.text.split_into_lines()
+	lines := node.text.trim_space().split_into_lines()
 	f.writeln('/*')
 	for line in lines {
 		f.writeln(line)
