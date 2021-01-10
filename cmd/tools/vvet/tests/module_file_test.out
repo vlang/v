@@ -1,0 +1,4 @@
+cmd/tools/vvet/tests/module_file_test.vv:7: warning: Function documentation seems to be missing for "pub fn foo() string".
+cmd/tools/vvet/tests/module_file_test.vv:13: warning: A function name is missing from the documentation of "pub fn bar() string".
+cmd/tools/vvet/tests/module_file_test.vv:35: warning: Function documentation seems to be missing for "pub fn (f Foo) foo() string".
+cmd/tools/vvet/tests/module_file_test.vv:46: warning: A function name is missing from the documentation of "pub fn (f Foo) fooo() string".

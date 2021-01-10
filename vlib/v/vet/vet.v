@@ -11,6 +11,7 @@ pub enum ErrorKind {
 
 pub enum FixKind {
 	unknown
+	doc
 	vfmt
 }
 
