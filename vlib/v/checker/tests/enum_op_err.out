@@ -1,0 +1,13 @@
+vlib/v/checker/tests/enum_op_err.vv:8:20: error: only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed
+    6 | 
+    7 | fn main() {
+    8 |     println(Color.red > Color.green)
+      |                       ^
+    9 |     println(Color.red + Color.green)
+   10 | }
+vlib/v/checker/tests/enum_op_err.vv:9:20: error: only `==` and `!=` are defined on `enum`, use an explicit cast to `int` if needed
+    7 | fn main() {
+    8 |     println(Color.red > Color.green)
+    9 |     println(Color.red + Color.green)
+      |                       ^
+   10 | }
