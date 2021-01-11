@@ -10,6 +10,7 @@
 - Array decompose: `[1, 2, 3]...` is now `...[1, 2, 3]`
 - Treating `enum` as `int` and operations on `enum` except `==` and `!=` are removed for strict type checking.
 - Support `[manualfree] fn f1(){}` and `[manualfree] module m1`, for functions doing their own memory management.
+- Allow usage of `<` and `>` operators for struct in `array.sort` method for arrays, i.e. `arr.sort(a < b)`.
 
 ## V 0.2.1
 *30 Dec 2020*
