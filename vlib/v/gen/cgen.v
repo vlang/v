@@ -78,7 +78,7 @@ mut:
 	stmt_path_pos                    []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos                    bool  // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt                     bool
-	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree    
+	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	indent                           int
 	empty_line                       bool
 	is_test                          bool
@@ -1464,12 +1464,12 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		}
 	}
 	g.inside_ternary++
-	g.write('if (')
-	g.expr(a.expr)
-	g.write(')')
-	g.decrement_inside_ternary()
 	if g.is_test {
-		g.writeln('{')
+		g.write('if (')
+		g.expr(a.expr)
+		g.write(')')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
 		g.writeln('\tg_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
@@ -1481,14 +1481,18 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t// TODO')
 		g.writeln('\t// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
-		return
+	} else {
+		g.write('if (!(')
+		g.expr(a.expr)
+		g.write('))')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
+		metaname_panic := g.gen_assert_metainfo(a)
+		g.writeln('\t__print_assert_failure(&$metaname_panic);')
+		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
+		g.writeln('\texit(1);')
+		g.writeln('}')
 	}
-	g.writeln(' {} else {')
-	metaname_panic := g.gen_assert_metainfo(a)
-	g.writeln('\t__print_assert_failure(&$metaname_panic);')
-	g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
-	g.writeln('\texit(1);')
-	g.writeln('}')
 }
 
 fn cnewlines(s string) string {
