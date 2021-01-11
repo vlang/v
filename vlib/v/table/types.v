@@ -264,8 +264,8 @@ pub fn (typ Type) is_unsigned() bool {
 }
 
 [inline]
-pub fn (typ Type) is_any_int() bool {
-	return typ.idx() == any_int_type_idx
+pub fn (typ Type) is_int_literal() bool {
+	return typ.idx() == int_literal_type_idx
 }
 
 [inline]
@@ -304,18 +304,18 @@ pub const (
 	chan_type_idx    = 23
 	sizet_type_idx   = 24
 	any_type_idx     = 25
-	any_flt_type_idx = 26
-	any_int_type_idx = 27
+	float_literal_type_idx = 26
+	int_literal_type_idx = 27
 )
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx, rune_type_idx]
+		u16_type_idx, u32_type_idx, u64_type_idx, int_literal_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
-	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx]
+	float_type_idxs            = [f32_type_idx, f64_type_idx, float_literal_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, any_flt_type_idx,
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, int_literal_type_idx, float_literal_type_idx,
 		rune_type_idx,
 	]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
@@ -348,13 +348,13 @@ pub const (
 	map_type     = new_type(map_type_idx)
 	chan_type    = new_type(chan_type_idx)
 	any_type     = new_type(any_type_idx)
-	any_flt_type = new_type(any_flt_type_idx)
-	any_int_type = new_type(any_int_type_idx)
+	float_literal_type = new_type(float_literal_type_idx)
+	int_literal_type = new_type(int_literal_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
-		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
+		'u32', 'u64', 'int_literal', 'f32', 'f64', 'float_literal', 'string', 'ustring', 'char', 'byte', 'bool',
 		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
 )
 
@@ -414,8 +414,8 @@ pub enum Kind {
 	enum_
 	function
 	interface_
-	any_float
-	any_int
+	float_literal
+	int_literal
 	aggregate
 }
 
@@ -518,12 +518,12 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 	t.register_type_symbol(kind: .size_t, name: 'size_t', cname: 'size_t', mod: 'builtin')
 	t.register_type_symbol(kind: .any, name: 'any', cname: 'any', mod: 'builtin')
 	t.register_type_symbol(
-		kind: .any_float
+		kind: .float_literal
 		name: 'float literal'
-		cname: 'any_float'
+		cname: 'float_literal'
 		mod: 'builtin'
 	)
-	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
+	t.register_type_symbol(kind: .int_literal, name: 'int literal', cname: 'int_literal', mod: 'builtin')
 }
 
 [inline]
@@ -533,12 +533,12 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_int]
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .int_literal]
 }
 
 [inline]
 pub fn (t &TypeSymbol) is_float() bool {
-	return t.kind in [.f32, .f64, .any_float]
+	return t.kind in [.f32, .f64, .float_literal]
 }
 
 [inline]
@@ -563,10 +563,10 @@ pub fn (k Kind) str() string {
 		.u16 { 'u16' }
 		.u32 { 'u32' }
 		.u64 { 'u64' }
-		.any_int { 'any_int' }
+		.int_literal { 'int_literal' }
 		.f32 { 'f32' }
 		.f64 { 'f64' }
-		.any_float { 'any_float' }
+		.float_literal { 'float_literal' }
 		.string { 'string' }
 		.char { 'char' }
 		.bool { 'bool' }
@@ -714,7 +714,7 @@ pub fn (table &Table) type_to_str(t Type) string {
 // type name in code (for builtin)
 pub fn (table &Table) type_to_code(t Type) string {
 	match t {
-		any_int_type, any_flt_type { return table.get_type_symbol(t).kind.str() }
+		int_literal_type, float_literal_type { return table.get_type_symbol(t).kind.str() }
 		else { return table.type_to_str_using_aliases(t, map[string]string{}) }
 	}
 }
@@ -724,7 +724,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.any_int, .any_float {
+		.int_literal, .float_literal {
 			res = sym.name
 		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {
