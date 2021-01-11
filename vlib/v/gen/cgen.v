@@ -1482,9 +1482,9 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
 	} else {
-		g.write('if (!')
+		g.write('if (!(')
 		g.expr(a.expr)
-		g.write(')')
+		g.write('))')
 		g.decrement_inside_ternary()
 		g.writeln(' {')
 		metaname_panic := g.gen_assert_metainfo(a)
