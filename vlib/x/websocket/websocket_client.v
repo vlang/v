@@ -1,5 +1,6 @@
 // websocket module implements websocket client and a websocket server
 // attribution: @thecoderr the author of original websocket client
+[manualfree]
 module websocket
 
 import net
@@ -103,7 +104,9 @@ pub fn (mut ws Client) connect() ? {
 
 // listen listens and processes incoming messages
 pub fn (mut ws Client) listen() ? {
-	ws.logger.info('Starting client listener, server($ws.is_server)...')
+	mut log := 'Starting client listener, server($ws.is_server)...'
+	ws.logger.info(log)
+	log.free()
 	defer {
 		ws.logger.info('Quit client listener, server($ws.is_server)...')
 		if ws.state == .open {
@@ -125,7 +128,9 @@ pub fn (mut ws Client) listen() ? {
 		ws.debug_log('got message: $msg.opcode')
 		match msg.opcode {
 			.text_frame {
-				ws.debug_log('read: text')
+				log = 'read: text'
+				ws.debug_log(log)
+				log.free()
 				ws.send_message_event(msg)
 				unsafe { msg.free() }
 			}
@@ -157,7 +162,9 @@ pub fn (mut ws Client) listen() ? {
 				}
 			}
 			.close {
-				ws.debug_log('read: close')
+				log = 'read: close'
+				ws.debug_log(log)
+				log.free()
 				defer {
 					ws.manage_clean_close()
 				}
@@ -219,7 +226,7 @@ pub fn (mut ws Client) pong() ? {
 
 // write_ptr writes len bytes provided a byteptr with a websocket messagetype
 pub fn (mut ws Client) write_ptr(bytes byteptr, payload_len int, code OPCode) ? {
-	ws.debug_log('write_ptr code: $code')
+	// ws.debug_log('write_ptr code: $code')
 	if ws.state != .open || ws.conn.sock.handle < 1 {
 		// todo: send error here later
 		return error('trying to write on a closed socket!')
@@ -402,12 +409,14 @@ fn (mut ws Client) send_control_frame(code OPCode, frame_typ string, payload []b
 // parse_uri parses the url to a Uri
 fn parse_uri(url string) ?&Uri {
 	u := urllib.parse(url) ?
-	v := u.request_uri().split('?')
+	request_uri := u.request_uri()
+	v := request_uri.split('?')
 	mut port := u.port()
+	uri := u.str()
 	if port == '' {
-		port = if u.str().starts_with('ws://') {
+		port = if uri.starts_with('ws://') {
 			'80'
-		} else if u.str().starts_with('wss://') {
+		} else if uri.starts_with('wss://') {
 			'443'
 		} else {
 			u.port()
