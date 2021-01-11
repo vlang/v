@@ -574,7 +574,9 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 				if i < sum_type_names.len - 1 {
 					f.write(' | ')
 				}
-				f.wrap_long_line(2, true)
+				if i < sum_type_names.len - 1 {
+					f.wrap_long_line(2, true)
+				}
 			}
 			// f.write(sum_type_names.join(' | '))
 			comments << node.comments
