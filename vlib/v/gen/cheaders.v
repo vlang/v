@@ -306,7 +306,7 @@ static inline bool _us64_lt(uint64_t a, int64_t b) { return a < INT64_MAX && (in
 byte* g_str_buf;
 int load_so(byteptr);
 void reload_so();
-void _vinit();
+void _vinit(int ___argc, voidptr ___argv);
 void _vcleanup();
 #define sigaction_size sizeof(sigaction);
 #define _ARR_LEN(a) ( (sizeof(a)) / (sizeof(a[0])) )

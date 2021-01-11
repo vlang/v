@@ -316,6 +316,8 @@ pub fn replace_op(s string) string {
 		suffix := match s {
 			'==' { '_eq' }
 			'!=' { '_ne' }
+			'<=' { '_le' }
+			'>=' { '_ge' }
 			else { '' }
 		}
 		return s[..s.len - 2] + suffix
@@ -460,6 +462,19 @@ pub fn recompile_file(vexe string, file string) {
 		eprintln('could not recompile $file')
 		exit(2)
 	}
+}
+
+pub fn get_vtmp_folder() string {
+	mut vtmp := os.getenv('VTMP')
+	if vtmp.len > 0 {
+		return vtmp
+	}
+	vtmp = os.join_path(os.temp_dir(), 'v')
+	if !os.exists(vtmp) || !os.is_dir(vtmp) {
+		os.mkdir_all(vtmp)
+	}
+	os.setenv('VTMP', vtmp, true)
+	return vtmp
 }
 
 pub fn should_bundle_module(mod string) bool {

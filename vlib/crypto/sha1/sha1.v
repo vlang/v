@@ -54,6 +54,7 @@ pub fn new() &Digest {
 	return d
 }
 
+[manualfree]
 pub fn (mut d Digest) write(p_ []byte) int {
 	nn := p_.len
 	unsafe {

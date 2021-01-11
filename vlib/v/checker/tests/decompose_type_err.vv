@@ -1,5 +1,5 @@
 fn varargs(a ...int) { println(a) }
 
 fn main() {
-	varargs(123...)
+	varargs(...123)
 }

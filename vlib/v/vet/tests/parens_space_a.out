@@ -1,2 +1,0 @@
-vlib/v/vet/tests/parens_space_a.vv:1: Looks like you are adding a space after `(`
-NB: You can run `v fmt -w file.v` to fix these automatically

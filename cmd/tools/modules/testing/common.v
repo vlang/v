@@ -105,7 +105,6 @@ pub fn (mut ts TestSession) print_messages() {
 
 pub fn new_test_session(_vargs string) TestSession {
 	mut skip_files := []string{}
-	skip_files << '_non_existing_'
 	$if solaris {
 		skip_files << 'examples/gg/gg2.v'
 		skip_files << 'examples/pico/pico.v'
@@ -123,13 +122,16 @@ pub fn new_test_session(_vargs string) TestSession {
 	}
 	if github_job != 'ubuntu-tcc' {
 		skip_files << 'examples/wkhtmltopdf.v' // needs installation of wkhtmltopdf from https://github.com/wkhtmltopdf/packaging/releases
+		// the ttf_test.v is not interactive, but needs X11 headers to be installed, which is done only on ubuntu-tcc for now
+		skip_files << 'vlib/x/ttf/ttf_test.v'
 	}
 	vargs := _vargs.replace('-progress', '').replace('-progress', '')
 	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
 	return TestSession{
 		vexe: vexe
-		vroot: os.dir(vexe)
+		vroot: vroot
 		skip_files: skip_files
 		vargs: vargs
 		vtmp_dir: new_vtmp_dir

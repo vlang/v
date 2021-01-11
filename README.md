@@ -13,7 +13,9 @@
 </div>
 <div align="center">
 
+<!--
 [![Build Status][WorkflowBadge]][WorkflowUrl]
+-->
 [![Sponsor][SponsorBadge]][SponsorUrl]
 [![Patreon][PatreonBadge]][PatreonUrl]
 [![Discord][DiscordBadge]][DiscordUrl]

@@ -49,6 +49,12 @@ fn (mut g Gen) gen_c_main_function_header() {
 			}
 			// GUI application
 			g.writeln('int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, LPWSTR cmd_line, int show_cmd){')
+			g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
+			g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
+			g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
+			g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
+			g.writeln('\tint ___argc;')
+			g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
 		} else {
 			// Console application
 			g.writeln('int wmain(int ___argc, wchar_t* ___argv[], wchar_t* ___envp[]){')
@@ -60,29 +66,11 @@ fn (mut g Gen) gen_c_main_function_header() {
 
 fn (mut g Gen) gen_c_main_header() {
 	g.gen_c_main_function_header()
-	if g.pref.os == .windows && g.is_gui_app() {
-		g.writeln('\tLPWSTR full_cmd_line = GetCommandLineW(); // NB: do not use cmd_line')
-		g.writeln('\ttypedef LPWSTR*(WINAPI *cmd_line_to_argv)(LPCWSTR, int*);')
-		g.writeln('\tHMODULE shell32_module = LoadLibrary(L"shell32.dll");')
-		g.writeln('\tcmd_line_to_argv CommandLineToArgvW = (cmd_line_to_argv)GetProcAddress(shell32_module, "CommandLineToArgvW");')
-		g.writeln('\tint ___argc;')
-		g.writeln('\twchar_t** ___argv = CommandLineToArgvW(full_cmd_line, &___argc);')
-	}
-	g.writeln('\t_vinit();')
+	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	if g.pref.is_prof {
 		g.writeln('')
 		g.writeln('\tatexit(vprint_profile_stats);')
 		g.writeln('')
-	}
-	if g.is_importing_os() {
-		if g.is_autofree {
-			g.writeln('free(_const_os__args.data); // empty, inited in _vinit()')
-		}
-		if g.pref.os == .windows {
-			g.writeln('\t_const_os__args = os__init_os_args_wide(___argc, ___argv);')
-		} else {
-			g.writeln('\t_const_os__args = os__init_os_args(___argc, (byteptr*)___argv);')
-		}
 	}
 	if g.pref.is_livemain {
 		g.generate_hotcode_reloading_main_caller()
@@ -123,7 +111,7 @@ void (_vsokol_cleanup_userdata_cb)(void* user_data) {
 sapp_desc sokol_main(int argc, char* argv[]) {
 	(void)argc; (void)argv;
 
-	_vinit();
+	_vinit(argc, (voidptr)argv);
 	main__main();
 ')
 	if g.is_autofree {
@@ -142,21 +130,24 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 	g.writeln('}')
 }
 
-pub fn (mut g Gen) write_tests_main() {
+pub fn (mut g Gen) write_tests_definitions() {
 	g.includes.writeln('#include <setjmp.h> // write_tests_main')
 	g.definitions.writeln('int g_test_oks = 0;')
 	g.definitions.writeln('int g_test_fails = 0;')
 	g.definitions.writeln('jmp_buf g_jump_buffer;')
+}
+
+pub fn (mut g Gen) gen_c_main_for_tests() {
 	main_fn_start_pos := g.out.len
-	g.gen_c_main_function_header()
-	g.writeln('\t_vinit();')
 	g.writeln('')
+	g.gen_c_main_function_header()
+	g.writeln('\t_vinit(___argc, (voidptr)___argv);')
 	all_tfuncs := g.get_all_test_function_names()
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests bt = main__start_testing($all_tfuncs.len, _SLIT("$g.pref.path"));')
 	}
+	g.writeln('')
 	for t in all_tfuncs {
-		g.writeln('')
 		if g.pref.is_stats {
 			g.writeln('\tmain__BenchedTests_testing_step_start(&bt, _SLIT("$t"));')
 		}
@@ -169,7 +160,6 @@ pub fn (mut g Gen) write_tests_main() {
 	if g.pref.is_stats {
 		g.writeln('\tmain__BenchedTests_end_testing(&bt);')
 	}
-	g.writeln('')
 	if g.is_autofree {
 		g.writeln('\t_vcleanup();')
 	}

@@ -10,6 +10,15 @@ fn mr_fun() (int, int) {
 }
 
 fn main() {
+	/*
+	block1
+	*/
+	/*
+	block2
+	*/
+	/*
+	block3
+	*/
 	// this is a comment
 	a := 1
 	// and another comment

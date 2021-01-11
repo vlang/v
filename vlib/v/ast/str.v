@@ -52,7 +52,7 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		}
 	}
 	f.write('fn $receiver$name')
-	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!='] {
+	if name in ['+', '-', '*', '/', '%', '<', '>', '==', '!=', '>=', '<='] {
 		f.write(' ')
 	}
 	if node.is_generic {
@@ -109,10 +109,6 @@ pub fn (node &FnDecl) stringify(t &table.Table, cur_mod string, m2a map[string]s
 		f.write(' ' + rs)
 	}
 	return f.str()
-}
-
-pub fn (x &InfixExpr) str() string {
-	return '$x.left.str() $x.op.str() $x.right.str()'
 }
 
 // Expressions in string interpolations may have to be put in braces if they
@@ -347,6 +343,9 @@ pub fn (node Stmt) str() string {
 		}
 		FnDecl {
 			return 'fn ${node.name}( $node.params.len params ) { $node.stmts.len stmts }'
+		}
+		EnumDecl {
+			return 'enum $node.name { $node.fields.len fields }'
 		}
 		StructDecl {
 			return 'struct $node.name { $node.fields.len fields }'

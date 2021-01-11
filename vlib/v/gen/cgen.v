@@ -36,7 +36,7 @@ mut:
 	typedefs2                        strings.Builder
 	type_definitions                 strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
 	definitions                      strings.Builder // typedefs, defines etc (everything that goes to the top of the file)
-	inits                            map[string]strings.Builder // contents of `void _vinit(){}`
+	inits                            map[string]strings.Builder // contents of `void _vinit/2{}`
 	cleanups                         map[string]strings.Builder // contents of `void _vcleanup(){}`
 	gowrappers                       strings.Builder // all go callsite wrappers
 	stringliterals                   strings.Builder // all string literals (they depend on tos3() beeing defined
@@ -78,7 +78,7 @@ mut:
 	stmt_path_pos                    []int // positions of each statement start, for inserting C statements before the current statement
 	skip_stmt_pos                    bool  // for handling if expressions + autofree (since both prepend C statements)
 	right_is_opt                     bool
-	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree    
+	is_autofree                      bool // false, inside the bodies of fns marked with [manualfree], otherwise === g.pref.autofree
 	indent                           int
 	empty_line                       bool
 	is_test                          bool
@@ -224,7 +224,7 @@ pub fn cgen(files []ast.File, table &table.Table, pref &pref.Preferences) string
 		// anon fn may include assert and thus this needs
 		// to be included before any test contents are written
 		if g.is_test && !tests_inited {
-			g.write_tests_main()
+			g.write_tests_definitions()
 			tests_inited = true
 		}
 		g.stmts(file.stmts)
@@ -421,7 +421,9 @@ pub fn (mut g Gen) finish() {
 	if g.pref.is_livemain || g.pref.is_liveshared {
 		g.generate_hotcode_reloader_code()
 	}
-	if !g.pref.is_test {
+	if g.pref.is_test {
+		g.gen_c_main_for_tests()
+	} else {
 		g.gen_c_main()
 	}
 }
@@ -1462,12 +1464,12 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		}
 	}
 	g.inside_ternary++
-	g.write('if (')
-	g.expr(a.expr)
-	g.write(')')
-	g.decrement_inside_ternary()
 	if g.is_test {
-		g.writeln('{')
+		g.write('if (')
+		g.expr(a.expr)
+		g.write(')')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
 		g.writeln('\tg_test_oks++;')
 		metaname_ok := g.gen_assert_metainfo(a)
 		g.writeln('\tmain__cb_assertion_ok(&$metaname_ok);')
@@ -1479,14 +1481,18 @@ fn (mut g Gen) gen_assert_stmt(original_assert_statement ast.AssertStmt) {
 		g.writeln('\t// TODO')
 		g.writeln('\t// Maybe print all vars in a test function if it fails?')
 		g.writeln('}')
-		return
+	} else {
+		g.write('if (!(')
+		g.expr(a.expr)
+		g.write('))')
+		g.decrement_inside_ternary()
+		g.writeln(' {')
+		metaname_panic := g.gen_assert_metainfo(a)
+		g.writeln('\t__print_assert_failure(&$metaname_panic);')
+		g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
+		g.writeln('\texit(1);')
+		g.writeln('}')
 	}
-	g.writeln(' {} else {')
-	metaname_panic := g.gen_assert_metainfo(a)
-	g.writeln('\t__print_assert_failure(&$metaname_panic);')
-	g.writeln('\tv_panic(_SLIT("Assertion failed..."));')
-	g.writeln('\texit(1);')
-	g.writeln('}')
 }
 
 fn cnewlines(s string) string {
@@ -3230,7 +3236,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .any_int, .int]
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne] &&
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
 			((a && b && e) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
@@ -4397,13 +4403,20 @@ fn (mut g Gen) const_decl_simple_define(name string, val string) {
 }
 
 fn (mut g Gen) const_decl_init_later(mod string, name string, val string, typ table.Type) {
-	// Initialize more complex consts in `void _vinit(){}`
+	// Initialize more complex consts in `void _vinit/2{}`
 	// (C doesn't allow init expressions that can't be resolved at compile time).
 	styp := g.typ(typ)
-	//
 	cname := '_const_$name'
 	g.definitions.writeln('$styp $cname; // inited later')
-	g.inits[mod].writeln('\t$cname = $val;')
+	if cname == '_const_os__args' {
+		if g.pref.os == .windows {
+			g.inits[mod].writeln('\t_const_os__args = os__init_os_args_wide(___argc, (byteptr*)___argv);')
+		} else {
+			g.inits[mod].writeln('\t_const_os__args = os__init_os_args(___argc, (byte**)___argv);')
+		}
+	} else {
+		g.inits[mod].writeln('\t$cname = $val;')
+	}
 	if g.is_autofree {
 		if styp.starts_with('array_') {
 			g.cleanups[mod].writeln('\tarray_free(&$cname);')
@@ -4697,14 +4710,8 @@ fn (mut g Gen) write_init_function() {
 		return
 	}
 	fn_vinit_start_pos := g.out.len
-	needs_constructor := g.pref.is_shared && g.pref.os != .windows
-	if needs_constructor {
-		g.writeln('__attribute__ ((constructor))')
-		g.writeln('void _vinit() {')
-		g.writeln('static bool once = false; if (once) {return;} once = true;')
-	} else {
-		g.writeln('void _vinit() {')
-	}
+	// ___argv is declared as voidptr here, because that unifies the windows/unix logic
+	g.writeln('void _vinit(int ___argc, voidptr ___argv) {')
 	if g.is_autofree {
 		// Pre-allocate the string buffer
 		// s_str_buf_size := os.getenv('V_STRBUF_MB')
@@ -4749,6 +4756,17 @@ fn (mut g Gen) write_init_function() {
 		if g.pref.printfn_list.len > 0 && '_vcleanup' in g.pref.printfn_list {
 			println(g.out.after(fn_vcleanup_start_pos))
 		}
+	}
+	needs_constructor := g.pref.is_shared && g.pref.os != .windows
+	if needs_constructor {
+		// shared libraries need a way to call _vinit/2. For that purpose,
+		// provide a constructor, ensuring that all constants are initialized just once.
+		// NB: os.args in this case will be [].
+		g.writeln('__attribute__ ((constructor))')
+		g.writeln('void _vinit_caller() {')
+		g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+		g.writeln('\t_vinit(0,0);')
+		g.writeln('}')
 	}
 }
 

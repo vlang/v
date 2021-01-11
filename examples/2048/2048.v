@@ -950,12 +950,12 @@ fn main() {
 	$if android {
 		font_path = 'fonts/RobotoMono-Regular.ttf'
 	}
-	mut window_title := 'V 2048'
+	mut window_title_ := 'V 2048'
 	// TODO: Make emcc a real platform ifdef
 	$if emscripten ? {
 		// in emscripten, sokol uses `window_title` as the selector to the canvas it'll render to,
 		// and since `document.querySelector('V 2048')` isn't valid JS, we use `canvas` instead
-		window_title = 'canvas'
+		window_title_ = 'canvas'
 	}
 	app.perf = &Perf{}
 	app.gg = gg.new_context({
@@ -964,7 +964,7 @@ fn main() {
 		height: default_window_height
 		sample_count: 8 // higher quality curves
 		create_window: true
-		window_title: window_title
+		window_title: window_title_
 		frame_fn: frame
 		event_fn: on_event
 		init_fn: init

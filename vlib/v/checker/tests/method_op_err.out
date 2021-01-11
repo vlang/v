@@ -24,4 +24,18 @@ vlib/v/checker/tests/method_op_err.vv:24:24: error: infix expr: cannot use `Foo`
    23 |     println(User{3, 4})
    24 |     println(User{3, 4} - Foo{3, 3})
       |                        ^
-   25 | }
+   25 |     println(User{3, 2} < User{2, 4})
+   26 |     println(User{3, 4} < Foo{3, 4})
+vlib/v/checker/tests/method_op_err.vv:25:24: error: operation `User` < `User` does not exist, please define it
+   23 |     println(User{3, 4})
+   24 |     println(User{3, 4} - Foo{3, 3})
+   25 |     println(User{3, 2} < User{2, 4})
+      |                        ^
+   26 |     println(User{3, 4} < Foo{3, 4})
+   27 | }
+vlib/v/checker/tests/method_op_err.vv:26:24: error: mismatched types `User` and `Foo`
+   24 |     println(User{3, 4} - Foo{3, 3})
+   25 |     println(User{3, 2} < User{2, 4})
+   26 |     println(User{3, 4} < Foo{3, 4})
+      |                        ^
+   27 | }

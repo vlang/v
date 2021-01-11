@@ -1,6 +1,5 @@
 import io
 import net
-import time
 import strings
 
 const (

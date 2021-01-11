@@ -1,3 +1,4 @@
+[manualfree]
 module websocket
 
 import encoding.base64

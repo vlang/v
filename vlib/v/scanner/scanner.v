@@ -7,6 +7,7 @@ import os
 import v.token
 import v.pref
 import v.util
+import v.vet
 import v.errors
 
 const (
@@ -46,9 +47,9 @@ pub mut:
 	tidx                        int
 	eofs                        int
 	pref                        &pref.Preferences
-	vet_errors                  []string
 	errors                      []errors.Error
 	warnings                    []errors.Warning
+	vet_errors                  []vet.Error
 }
 
 /*
@@ -690,14 +691,14 @@ fn (mut s Scanner) text_scan() token.Token {
 			`(` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos + 1] == ` ` {
-					s.vet_error('Looks like you are adding a space after `(`')
+					s.vet_error('Looks like you are adding a space after `(`', .vfmt)
 				}
 				return s.new_token(.lpar, '', 1)
 			}
 			`)` {
 				// TODO `$if vet {` for performance
 				if s.pref.is_vet && s.text[s.pos - 1] == ` ` {
-					s.vet_error('Looks like you are adding a space before `)`')
+					s.vet_error('Looks like you are adding a space before `)`', .vfmt)
 				}
 				return s.new_token(.rpar, '', 1)
 			}
@@ -958,7 +959,7 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim_space()
+						comment := s.text[start..(s.pos - 1)].trim(' ')
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode
@@ -1259,8 +1260,17 @@ pub fn (mut s Scanner) error(msg string) {
 	}
 }
 
-fn (mut s Scanner) vet_error(msg string) {
-	s.vet_errors << '$s.file_path:$s.line_nr: $msg'
+fn (mut s Scanner) vet_error(msg string, fix vet.FixKind) {
+	ve := vet.Error{
+		message: msg
+		file_path: s.file_path
+		pos: token.Position{
+			line_nr: s.line_nr
+		}
+		kind: .error
+		fix: fix
+	}
+	s.vet_errors << ve
 }
 
 pub fn verror(s string) {

@@ -24,9 +24,9 @@ pub fn (t1 Time) < (t2 Time) bool {
 	return false
 }
 
-// le returns true if provided time is less or equal to time
+// operator `<=` returns true if provided time is less or equal to time
 [inline]
-pub fn (t1 Time) le(t2 Time) bool {
+pub fn (t1 Time) <= (t2 Time) bool {
 	return t1 < t2 || t1 == t2
 }
 
@@ -39,9 +39,9 @@ pub fn (t1 Time) > (t2 Time) bool {
 	return false
 }
 
-// ge returns true if provided time is greater or equal to time
+// operator `>=` returns true if provided time is greater or equal to time
 [inline]
-pub fn (t1 Time) ge(t2 Time) bool {
+pub fn (t1 Time) >= (t2 Time) bool {
 	return t1 > t2 || t1 == t2
 }
 

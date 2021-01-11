@@ -9,8 +9,10 @@
 - thread safe maps
 - C2V translator
 - doom.v
-- rune type, replace `ustring` with `[]rune`, fix `byte.str()`
-- maps with non-string keys
++ rune type
+- replace `ustring` with `[]rune`
++ fix `byte.str()`
++ maps with non-string keys
 + iOS/Android support
 - parallel parser (and maybe checker/gen?)
 - `recover()` from panics
@@ -19,9 +21,10 @@
 - interface embedding
 - interfaces: allow struct fields (not just methods)
 - vfmt: fix common errors automatically to save time (make vars mutable and vice versa, add missing imports etc)
-- method expressions with an explicit receiver as the first argument
+- method expressions with an explicit receiver as the first argument: `fn handle(f OnClickFn) { f() } button := Button{} handle(btn.click)`
 + short generics syntax (`foo(5)` instead of `foo<int>(5)`)
 - fix all remaining generics issues
 - merge v.c and v_win.c
 - more advanced errors, not just `error('message')`
 - VLS for autocomplete, refactoring, go to definition etc
+- Recursive structs via optionals: `struct Node { next ?Node }`

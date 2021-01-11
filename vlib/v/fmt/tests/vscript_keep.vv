@@ -1,4 +1,7 @@
 #!/usr/local/bin/v run
 
 x := 5
-println(x)
+println(x) // comment after
+println('b')
+// comment between
+println('c')

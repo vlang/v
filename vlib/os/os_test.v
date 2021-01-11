@@ -7,6 +7,10 @@ const (
 	tfolder = os.join_path(os.temp_dir(), 'v', 'tests', 'os_test')
 )
 
+// os.args has to be *already initialized* with the program's argc/argv at this point
+// thus it can be used for other consts too:
+const args_at_start = os.args.clone()
+
 fn testsuite_begin() {
 	eprintln('testsuite_begin, tfolder = $tfolder')
 	os.rmdir_all(tfolder)
@@ -14,6 +18,9 @@ fn testsuite_begin() {
 	os.mkdir_all(tfolder)
 	os.chdir(tfolder)
 	assert os.is_dir(tfolder)
+	// println('args_at_start: $args_at_start')
+	assert args_at_start.len > 0
+	assert args_at_start == os.args
 }
 
 fn testsuite_end() {
