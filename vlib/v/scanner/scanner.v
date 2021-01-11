@@ -959,7 +959,10 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						if !comment.contains('\n') {
+							comment = '\x01' + comment
+						}
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode

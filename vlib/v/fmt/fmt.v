@@ -690,7 +690,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				continue
 			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* $comment.text */ '.len
+				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
 			}
 		}
 		if comments_len + field.name.len > max {
@@ -730,7 +730,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		// Handle comments between field name and type
 		mut comments_len := 0
 		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
 			comments_len += comment_text.len
 			f.write(comment_text)
 			comm_idx++
@@ -1381,7 +1381,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	}
 	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
+		mut s := node.text.trim_left('\x01')
 		mut out_s := '//'
 		if s != '' {
 			match s[0] {
