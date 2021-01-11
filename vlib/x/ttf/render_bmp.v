@@ -548,7 +548,7 @@ fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 
 		i+= c_len
 	}
-  return res
+	return res
 }
 
 pub 
@@ -612,7 +612,7 @@ fn (mut bmp BitMap) get_bbox(in_string string) (int, int){
 
 		i+= c_len
 	}
-    
+
 	//dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	//buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
 	return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
@@ -686,11 +686,11 @@ fn (mut bmp BitMap) draw_text(in_string string) (int, int){
 			w += width + div_space_cw
 
 	    i+= c_len
-    }
-    
-    //dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
-    //buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
-    return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
+	}
+
+	//dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
+	//buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
+	return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
 
 pub
@@ -774,29 +774,29 @@ fn (mut bmp BitMap) draw_glyph(index u16) (int, int){
 			//dprintln("count == glyph.contour_ends[count]")
 			if s == 2 { // final point was off-curve. connect to start
 				
-                mut start_point := glyph.points[contour_start]
-                start_point.x, start_point.y = bmp.trf_ch(start_point)
-                if point.on_curve {
+				mut start_point := glyph.points[contour_start]
+				start_point.x, start_point.y = bmp.trf_ch(start_point)
+				if point.on_curve {
 					//ctx.quadraticCurveTo(prev.x + x, prev.y + y,
-                    //        point.x + x, point.y + y);
-			//bmp.line(x0, y0, start_point.x + in_x, start_point.y + in_y, u32(0x00FF0000))
-			
-			bmp.quadratic(x0, y0, start_point.x, start_point.y , 
-			//	start_point.x + in_x, start_point.y + in_y, u32(0xFF00FF00))
-				start_point.x, start_point.y, color)            
+					//point.x + x, point.y + y);
+					//bmp.line(x0, y0, start_point.x + in_x, start_point.y + in_y, u32(0x00FF0000))
+				
+					bmp.quadratic(x0, y0, start_point.x, start_point.y , 
+					//	start_point.x + in_x, start_point.y + in_y, u32(0xFF00FF00))
+						start_point.x, start_point.y, color)            
 				} else {
 					//ctx.quadraticCurveTo(prev.x + x, prev.y + y,
-                    //        (prev.x + point.x) / 2 + x,
-                    //        (prev.y + point.y) / 2 + y);
-                    
-                    //bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
-                    bmp.quadratic(x0, y0, start_point.x, start_point.y, 
-			(point.x + start_point.x)/2,
-			(point.y + start_point.y)/2,
-			//u32(0xFF000000))              
+					//        (prev.x + point.x) / 2 + x,
+					//        (prev.y + point.y) / 2 + y);
+
+					//bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
+					bmp.quadratic(x0, y0, start_point.x, start_point.y, 
+						(point.x + start_point.x)/2,
+						(point.y + start_point.y)/2,
+						//u32(0xFF000000))              
 						color)
 				}
-			}else{
+			} else {
 				// last point not in a curve
 				//bmp.line(point.x, point.y, sp_x, sp_y, u32(0x00FF0000))
 				bmp.line(point.x, point.y, sp_x, sp_y, color)
