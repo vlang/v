@@ -421,6 +421,8 @@ pub enum Kind {
 	interface_
 	any_float
 	any_int
+	int_literal
+	float_literal
 	aggregate
 }
 
