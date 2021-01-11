@@ -28,7 +28,7 @@ pub type ScopeObject = ConstField | GlobalField | Var
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
 	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
-
+	
 
 pub struct Type {
 pub:
@@ -1065,7 +1065,7 @@ pub mut:
 pub struct AtExpr {
 pub:
 	name string
-	left        Expr
+	left Expr
 	pos  token.Position
 	kind token.AtKind
 pub mut:

@@ -52,16 +52,14 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 		}
 		.at {
 			match p.peek_tok.kind {
-				.lpar {
-					node = p.at_comp_call()
-				}
-				else {
-					node = p.at()
-				}/*
+				.lpar { node = p.at_comp_call() }
+				else { node = p.at() }
+				/*
 				else {
 					p.error_with_pos('unexpected `@`', p.peek_tok.position())
 					return ast.Expr{}
-				}*/
+				}
+				*/
 			}
 		}
 		.dollar {

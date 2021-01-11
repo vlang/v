@@ -3516,8 +3516,8 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			mut path := node.val
 			// Validate that the path exists and is actually a file.
 			if path == '' {
-				c.error('please supply a valid relative or absolute file path to the embedded file', node.pos)
-
+				c.error('please supply a valid relative or absolute file path to the embedded file',
+					node.pos)
 			}
 			// The file doesn't exist or is a relative path
 			if !os.is_file(path) {

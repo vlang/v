@@ -134,7 +134,7 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 		g.write('_SLIT("$val")')
 	} else if node.kind == .embed_file {
 		g.write('// embed_file here')
-	}else {
+	} else {
 		val := node.val.replace('\\', '\\\\')
 		g.write('_SLIT("$val")')
 	}

@@ -184,8 +184,8 @@ fn (mut p Parser) comp_for() ast.CompFor {
 
 // @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
 fn (mut p Parser) at() ast.AtExpr {
-	//p.check(.at)
-	//name := p.check_name()
+	// p.check(.at)
+	// name := p.check_name()
 	name := p.tok.lit
 	kind := match name {
 		'@FN' { token.AtKind.fn_name }
