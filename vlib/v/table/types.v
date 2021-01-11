@@ -265,7 +265,7 @@ pub fn (typ Type) is_unsigned() bool {
 
 [inline]
 pub fn (typ Type) is_any_int() bool {
-	return typ.idx() == any_int_type_idx || typ.idx() == int_literal_type_idx
+	return typ.idx() == any_int_type_idx
 }
 
 [inline]
@@ -279,88 +279,83 @@ pub fn (typ Type) is_string() bool {
 }
 
 pub const (
-	void_type_idx          = 1
-	voidptr_type_idx       = 2
-	byteptr_type_idx       = 3
-	charptr_type_idx       = 4
-	i8_type_idx            = 5
-	i16_type_idx           = 6
-	int_type_idx           = 7
-	i64_type_idx           = 8
-	byte_type_idx          = 9
-	u16_type_idx           = 10
-	u32_type_idx           = 11
-	u64_type_idx           = 12
-	f32_type_idx           = 13
-	f64_type_idx           = 14
-	char_type_idx          = 15
-	bool_type_idx          = 16
-	none_type_idx          = 17
-	string_type_idx        = 18
-	ustring_type_idx       = 19
-	rune_type_idx          = 20
-	array_type_idx         = 21
-	map_type_idx           = 22
-	chan_type_idx          = 23
-	sizet_type_idx         = 24
-	any_type_idx           = 25
-	any_flt_type_idx       = 26
-	any_int_type_idx       = 27
-	int_literal_type_idx   = 28
-	float_literal_type_idx = 29
+	void_type_idx    = 1
+	voidptr_type_idx = 2
+	byteptr_type_idx = 3
+	charptr_type_idx = 4
+	i8_type_idx      = 5
+	i16_type_idx     = 6
+	int_type_idx     = 7
+	i64_type_idx     = 8
+	byte_type_idx    = 9
+	u16_type_idx     = 10
+	u32_type_idx     = 11
+	u64_type_idx     = 12
+	f32_type_idx     = 13
+	f64_type_idx     = 14
+	char_type_idx    = 15
+	bool_type_idx    = 16
+	none_type_idx    = 17
+	string_type_idx  = 18
+	ustring_type_idx = 19
+	rune_type_idx    = 20
+	array_type_idx   = 21
+	map_type_idx     = 22
+	chan_type_idx    = 23
+	sizet_type_idx   = 24
+	any_type_idx     = 25
+	any_flt_type_idx = 26
+	any_int_type_idx = 27
 )
 
 pub const (
 	integer_type_idxs          = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx, int_literal_type_idx, rune_type_idx]
+		u16_type_idx, u32_type_idx, u64_type_idx, any_int_type_idx, rune_type_idx]
 	signed_integer_type_idxs   = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx]
 	unsigned_integer_type_idxs = [byte_type_idx, u16_type_idx, u32_type_idx, u64_type_idx]
-	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx, float_literal_type_idx]
+	float_type_idxs            = [f32_type_idx, f64_type_idx, any_flt_type_idx]
 	number_type_idxs           = [i8_type_idx, i16_type_idx, int_type_idx, i64_type_idx, byte_type_idx,
-		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, int_literal_type_idx,
-		any_flt_type_idx, float_literal_type_idx, rune_type_idx]
+		u16_type_idx, u32_type_idx, u64_type_idx, f32_type_idx, f64_type_idx, any_int_type_idx, any_flt_type_idx,
+		rune_type_idx,
+	]
 	pointer_type_idxs          = [voidptr_type_idx, byteptr_type_idx, charptr_type_idx]
 	string_type_idxs           = [string_type_idx, ustring_type_idx]
 )
 
 pub const (
-	void_type          = new_type(void_type_idx)
-	ovoid_type         = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
-	voidptr_type       = new_type(voidptr_type_idx)
-	byteptr_type       = new_type(byteptr_type_idx)
-	charptr_type       = new_type(charptr_type_idx)
-	i8_type            = new_type(i8_type_idx)
-	int_type           = new_type(int_type_idx)
-	i16_type           = new_type(i16_type_idx)
-	i64_type           = new_type(i64_type_idx)
-	byte_type          = new_type(byte_type_idx)
-	u16_type           = new_type(u16_type_idx)
-	u32_type           = new_type(u32_type_idx)
-	u64_type           = new_type(u64_type_idx)
-	f32_type           = new_type(f32_type_idx)
-	f64_type           = new_type(f64_type_idx)
-	char_type          = new_type(char_type_idx)
-	bool_type          = new_type(bool_type_idx)
-	none_type          = new_type(none_type_idx)
-	string_type        = new_type(string_type_idx)
-	ustring_type       = new_type(ustring_type_idx)
-	rune_type          = new_type(rune_type_idx)
-	array_type         = new_type(array_type_idx)
-	map_type           = new_type(map_type_idx)
-	chan_type          = new_type(chan_type_idx)
-	any_type           = new_type(any_type_idx)
-	any_flt_type       = new_type(any_flt_type_idx)
-	any_int_type       = new_type(any_int_type_idx)
-	int_literal_type   = new_type(int_literal_type_idx)
-	float_literal_type = new_type(float_literal_type_idx)
+	void_type    = new_type(void_type_idx)
+	ovoid_type   = new_type(void_type_idx).set_flag(.optional) // the return type of `fn () ?`
+	voidptr_type = new_type(voidptr_type_idx)
+	byteptr_type = new_type(byteptr_type_idx)
+	charptr_type = new_type(charptr_type_idx)
+	i8_type      = new_type(i8_type_idx)
+	int_type     = new_type(int_type_idx)
+	i16_type     = new_type(i16_type_idx)
+	i64_type     = new_type(i64_type_idx)
+	byte_type    = new_type(byte_type_idx)
+	u16_type     = new_type(u16_type_idx)
+	u32_type     = new_type(u32_type_idx)
+	u64_type     = new_type(u64_type_idx)
+	f32_type     = new_type(f32_type_idx)
+	f64_type     = new_type(f64_type_idx)
+	char_type    = new_type(char_type_idx)
+	bool_type    = new_type(bool_type_idx)
+	none_type    = new_type(none_type_idx)
+	string_type  = new_type(string_type_idx)
+	ustring_type = new_type(ustring_type_idx)
+	rune_type    = new_type(rune_type_idx)
+	array_type   = new_type(array_type_idx)
+	map_type     = new_type(map_type_idx)
+	chan_type    = new_type(chan_type_idx)
+	any_type     = new_type(any_type_idx)
+	any_flt_type = new_type(any_flt_type_idx)
+	any_int_type = new_type(any_int_type_idx)
 )
 
 pub const (
 	builtin_type_names = ['void', 'voidptr', 'charptr', 'byteptr', 'i8', 'i16', 'int', 'i64', 'u16',
 		'u32', 'u64', 'any_int', 'f32', 'f64', 'any_float', 'string', 'ustring', 'char', 'byte', 'bool',
-		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune', 'int_literal',
-		'float_literal',
-	]
+		'none', 'array', 'array_fixed', 'map', 'chan', 'any', 'struct', 'mapnode', 'size_t', 'rune']
 )
 
 pub struct MultiReturn {
@@ -529,13 +524,6 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	)
 	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
-	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
-	t.register_type_symbol(
-		kind: .any_float
-		name: 'float literal'
-		cname: 'any_float'
-		mod: 'builtin'
-	)
 }
 
 [inline]
