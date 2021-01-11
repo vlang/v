@@ -515,6 +515,13 @@ fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 		}
 		
 		c_index := bmp.tf.map_code(int(char))
+		// Glyph not found
+		if c_index == 0 {
+			w += int(space_cw * bmp.space_cw)
+			i += c_len
+			continue
+		}
+
 		ax , ay := bmp.tf.next_kern(c_index)
 		//dprintln("char_index: $c_index ax: $ax ay: $ay")
 
@@ -548,7 +555,7 @@ fn (mut bmp BitMap) get_chars_bbox(in_string string) []int {
 
 		i+= c_len
 	}
-  return res
+	return res
 }
 
 pub 
@@ -581,6 +588,12 @@ fn (mut bmp BitMap) get_bbox(in_string string) (int, int){
 		}
 		
 		c_index := bmp.tf.map_code(int(char))
+		// Glyph not found
+		if c_index == 0 {
+			w += int(space_cw * bmp.space_cw)
+			i += c_len
+			continue
+		}
 		ax , ay := bmp.tf.next_kern(c_index)
 		//dprintln("char_index: $c_index ax: $ax ay: $ay")
 
@@ -612,7 +625,7 @@ fn (mut bmp BitMap) get_bbox(in_string string) (int, int){
 
 		i+= c_len
 	}
-    
+
 	//dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
 	//buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
 	return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
@@ -623,6 +636,25 @@ fn (mut bmp BitMap) get_bbox(in_string string) (int, int){
 * TTF draw glyph
 *
 ******************************************************************************/
+fn (mut bmp BitMap) draw_notdef_glyph(in_x int, in_w int) {
+	mut p := Point{in_x, 0, false}
+	x1 , y1 := bmp.trf_txt(p)
+	// init ch_matrix
+	bmp.ch_matrix[0] = bmp.tr_matrix[0] * bmp.scale * bmp.scale_x
+	bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
+	bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
+	bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
+	bmp.ch_matrix[6] = int(x1)
+	bmp.ch_matrix[7] = int(y1)
+	x,y := bmp.trf_ch(p)
+	
+	y_h := fabs(bmp.tf.y_max-bmp.tf.y_min)* bmp.scale * 0.5
+
+	bmp.box(int(x), int(y), int(x - in_w), int(y - y_h), bmp.color)
+	bmp.line(int(x), int(y), int(x - in_w ), int(y - y_h), bmp.color)
+	bmp.line(int(x - in_w ), int(y), int(x), int(y - y_h), bmp.color)
+}
+
 pub
 fn (mut bmp BitMap) draw_text(in_string string) (int, int){
 	mut w := 0
@@ -652,45 +684,52 @@ fn (mut bmp BitMap) draw_text(in_string string) (int, int){
 			char = u16(tmp_char)
 		}
 		
-	    c_index := bmp.tf.map_code(int(char))
-	    ax , ay := bmp.tf.next_kern(c_index)
-	    //dprintln("char_index: $c_index ax: $ax ay: $ay")
+		c_index := bmp.tf.map_code(int(char))
+		// Glyph not found
+		if c_index == 0 {
+			bmp.draw_notdef_glyph(w, int(space_cw * bmp.space_cw))
+			w += int(space_cw * bmp.space_cw)
+			i += c_len
+			continue
+		}
 
-	    cw, _ := bmp.tf.get_horizontal_metrics(u16(char))
-			//cw, lsb := bmp.tf.get_horizontal_metrics(u16(char))
-	    //dprintln("metrics: [${u16(char):c}] cw:$cw lsb:$lsb")
-	    
-	    //----- Draw_Glyph transformations -----
-	    mut x0 := w + int(ax * bmp.scale)
-	    mut y0 := 0 + int(ay * bmp.scale)
-	    
-			p := Point{x0,y0,false}
-	    x1 , y1 := bmp.trf_txt(p)
-	    // init ch_matrix
-	    bmp.ch_matrix[0] = bmp.tr_matrix[0] * bmp.scale * bmp.scale_x
-	    bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
-	    bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
-	    bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
-	    bmp.ch_matrix[6] = int(x1)
-	    bmp.ch_matrix[7] = int(y1)
+		ax , ay := bmp.tf.next_kern(c_index)
+		//dprintln("char_index: $c_index ax: $ax ay: $ay")
 
-	    x_min, x_max := bmp.draw_glyph(c_index)
-	    // x_min := 1
-			// x_max := 2
-			//-----------------
+		cw, _ := bmp.tf.get_horizontal_metrics(u16(char))
+		//cw, lsb := bmp.tf.get_horizontal_metrics(u16(char))
+		//dprintln("metrics: [${u16(char):c}] cw:$cw lsb:$lsb")
 
-			mut width := int( (abs(x_max + x_min) + ax) * bmp.scale)
-			if bmp.use_font_metrics {
-				width = int((cw+ax) * bmp.scale)
-	    }
-			w += width + div_space_cw
+		//----- Draw_Glyph transformations -----
+		mut x0 := w + int(ax * bmp.scale)
+		mut y0 := 0 + int(ay * bmp.scale)
 
-	    i+= c_len
-    }
-    
-    //dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
-    //buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
-    return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
+		p := Point{x0,y0,false}
+		x1 , y1 := bmp.trf_txt(p)
+		// init ch_matrix
+		bmp.ch_matrix[0] = bmp.tr_matrix[0] * bmp.scale * bmp.scale_x
+		bmp.ch_matrix[1] = bmp.tr_matrix[1] * bmp.scale * bmp.scale_x
+		bmp.ch_matrix[3] = bmp.tr_matrix[3] * -bmp.scale * bmp.scale_y
+		bmp.ch_matrix[4] = bmp.tr_matrix[4] * -bmp.scale * bmp.scale_y
+		bmp.ch_matrix[6] = int(x1)
+		bmp.ch_matrix[7] = int(y1)
+
+		x_min, x_max := bmp.draw_glyph(c_index)
+		// x_min := 1
+		// x_max := 2
+		//-----------------
+
+		mut width := int( (abs(x_max + x_min) + ax) * bmp.scale)
+		if bmp.use_font_metrics {
+			width = int((cw+ax) * bmp.scale)
+		}
+		w += width + div_space_cw
+		i+= c_len
+	}
+
+	//dprintln("y_min: $bmp.tf.y_min y_max: $bmp.tf.y_max res: ${int((bmp.tf.y_max - bmp.tf.y_min)*buf.scale)} width: ${int( (cw) * buf.scale)}")
+	//buf.box(0,y_base - int((bmp.tf.y_min)*buf.scale), int( (x_max) * buf.scale), y_base-int((bmp.tf.y_max)*buf.scale), u32(0xFF00_0000) )
+	return w , int(abs(int(bmp.tf.y_max - bmp.tf.y_min)) * bmp.scale)
 }
 
 pub
@@ -759,13 +798,13 @@ fn (mut bmp BitMap) draw_glyph(index u16) (int, int){
 			} else {
 				//dprintln("HERE2")
 				// ctx.quadraticCurveTo(prev.x + x, prev.y + y,
-	            //            (prev.x + point.x) / 2 + x,
-	            //            (prev.y + point.y) / 2 + y);
-	            
-	            //bmp.line(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, color2)
-	            //bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color2)
-	            bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color)
-	            x0 = (prev.x + point.x)/2
+				//            (prev.x + point.x) / 2 + x,
+				//            (prev.y + point.y) / 2 + y);
+
+				//bmp.line(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, color2)
+				//bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color2)
+				bmp.quadratic(x0, y0, (prev.x + point.x)/2, (prev.y + point.y)/2, prev.x, prev.y, color)
+				x0 = (prev.x + point.x)/2
 				y0 = (prev.y + point.y)/2
 			}
 		}
@@ -774,29 +813,29 @@ fn (mut bmp BitMap) draw_glyph(index u16) (int, int){
 			//dprintln("count == glyph.contour_ends[count]")
 			if s == 2 { // final point was off-curve. connect to start
 				
-                mut start_point := glyph.points[contour_start]
-                start_point.x, start_point.y = bmp.trf_ch(start_point)
-                if point.on_curve {
+				mut start_point := glyph.points[contour_start]
+				start_point.x, start_point.y = bmp.trf_ch(start_point)
+				if point.on_curve {
 					//ctx.quadraticCurveTo(prev.x + x, prev.y + y,
-                    //        point.x + x, point.y + y);
-			//bmp.line(x0, y0, start_point.x + in_x, start_point.y + in_y, u32(0x00FF0000))
-			
-			bmp.quadratic(x0, y0, start_point.x, start_point.y , 
-			//	start_point.x + in_x, start_point.y + in_y, u32(0xFF00FF00))
-				start_point.x, start_point.y, color)            
+					//point.x + x, point.y + y);
+					//bmp.line(x0, y0, start_point.x + in_x, start_point.y + in_y, u32(0x00FF0000))
+				
+					bmp.quadratic(x0, y0, start_point.x, start_point.y , 
+					//	start_point.x + in_x, start_point.y + in_y, u32(0xFF00FF00))
+						start_point.x, start_point.y, color)            
 				} else {
 					//ctx.quadraticCurveTo(prev.x + x, prev.y + y,
-                    //        (prev.x + point.x) / 2 + x,
-                    //        (prev.y + point.y) / 2 + y);
-                    
-                    //bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
-                    bmp.quadratic(x0, y0, start_point.x, start_point.y, 
-			(point.x + start_point.x)/2,
-			(point.y + start_point.y)/2,
-			//u32(0xFF000000))              
+					//        (prev.x + point.x) / 2 + x,
+					//        (prev.y + point.y) / 2 + y);
+
+					//bmp.line(x0, y0, start_point.x, start_point.y, u32(0x00FF0000)
+					bmp.quadratic(x0, y0, start_point.x, start_point.y, 
+						(point.x + start_point.x)/2,
+						(point.y + start_point.y)/2,
+						//u32(0xFF000000))              
 						color)
 				}
-			}else{
+			} else {
 				// last point not in a curve
 				//bmp.line(point.x, point.y, sp_x, sp_y, u32(0x00FF0000))
 				bmp.line(point.x, point.y, sp_x, sp_y, color)

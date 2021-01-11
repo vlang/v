@@ -24,10 +24,10 @@ import strings
 ******************************************************************************/
 struct Segment {
 mut:
-    id_range_offset u32
-    start_code      u16
-    end_code        u16
-    id_delta        u16
+	id_range_offset u32
+	start_code      u16
+	end_code        u16
+	id_delta        u16
 }
 
 struct TrueTypeCmap {
@@ -220,8 +220,8 @@ fn (mut tf TTF_File) glyph_count() u16{
 	old_pos := tf.pos
 	tf.pos = tf.tables["maxp"].offset + 4
 	count := tf.get_u16()
-    tf.pos = old_pos
-    return count
+	tf.pos = old_pos
+	return count
 }
 
 pub
@@ -474,22 +474,21 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph){
 		simple_glyph := tf.read_glyph(component.glyph_index)
 		if simple_glyph.valid_glyph {
 			point_offset := in_glyph.points.len
-            for i in 0..simple_glyph.contour_ends.len {
-		in_glyph.contour_ends << u16(simple_glyph.contour_ends[i] + point_offset)
-            }
+			for i in 0..simple_glyph.contour_ends.len {
+				in_glyph.contour_ends << u16(simple_glyph.contour_ends[i] + point_offset)
+			}
 
-            for p in simple_glyph.points {
-		mut x := f32(p.x)
-		mut y := f32(p.y)
-		x = component.matrix[0] * x + component.matrix[1] * y + component.matrix[4]
-		y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]            	
-		in_glyph.points << Point{
-			x: int(x)
-			y: int(y)
-			on_curve: p.on_curve
-		}
-		
-            }
+			for p in simple_glyph.points {
+				mut x := f32(p.x)
+				mut y := f32(p.y)
+				x = component.matrix[0] * x + component.matrix[1] * y + component.matrix[4]
+				y = component.matrix[2] * x + component.matrix[3] * y + component.matrix[5]            	
+				in_glyph.points << Point{
+					x: int(x)
+					y: int(y)
+					on_curve: p.on_curve
+				}
+			}
 		}
 		tf.pos = old_pos
 	}
@@ -501,7 +500,7 @@ fn (mut tf TTF_File) read_compound_glyph(mut in_glyph Glyph){
 	}
 
 	// ok we have a valid glyph
-    in_glyph.valid_glyph = true
+	in_glyph.valid_glyph = true
 }
 
 /******************************************************************************
@@ -695,9 +694,9 @@ fn (mut tf TTF_File) read_head_table() {
 	tf.y_max               = tf.get_i16()
 	tf.mac_style           = tf.get_u16()
 	tf.lowest_rec_ppem     = tf.get_u16()
-    tf.font_direction_hint = tf.get_i16()
-    tf.index_to_loc_format = tf.get_i16()
-    tf.glyph_data_format   = tf.get_i16()
+	tf.font_direction_hint = tf.get_i16()
+	tf.index_to_loc_format = tf.get_i16()
+	tf.glyph_data_format   = tf.get_i16()
 }
 
 /******************************************************************************
@@ -721,36 +720,36 @@ fn (mut tf TTF_File) read_name_table() {
 		/*platform_specific_id :=*/ tf.get_u16()
 		/*language_id          :=*/ tf.get_u16()
 		name_id              := tf.get_u16()
-        length               := tf.get_u16()
-        offset               := tf.get_u16()
+		length               := tf.get_u16()
+		offset               := tf.get_u16()
 
-        old_pos              := tf.pos
-        tf.pos = table_offset + string_offset + offset
+		old_pos              := tf.pos
+		tf.pos = table_offset + string_offset + offset
 
-        mut name := ""
-        if platform_id == 0 || platform_id == 3 {
+		mut name := ""
+		if platform_id == 0 || platform_id == 3 {
 			name = tf.get_unicode_string(length)
-	} else {
-            name = tf.get_string(length)
-        }
-        //dprintln("Name [${platform_id} / ${platform_specific_id}] id:[$name_id] language:[$language_id] [$name]")
-        tf.pos = old_pos
+		} else {
+			name = tf.get_string(length)
+		}
+		//dprintln("Name [${platform_id} / ${platform_specific_id}] id:[$name_id] language:[$language_id] [$name]")
+		tf.pos = old_pos
 
-        match name_id {
-		1 {
-			tf.font_family = name
+		match name_id {
+			1 {
+				tf.font_family = name
+			}
+			2 {
+				tf.font_sub_family = name
+			}
+			4 {
+				tf.full_name  = name
+			}
+			6 {
+				tf.postscript_name = name
+			}
+			else {}
 		}
-		2 {
-			tf.font_sub_family = name
-		}
-		4 {
-			tf.full_name  = name
-		}
-		6 {
-			tf.postscript_name = name
-		}
-		else {}
-        }
 	}
 }
 
@@ -767,24 +766,24 @@ fn (mut tf TTF_File) read_cmap_table() {
 
 	version           := tf.get_u16() // must be 0
 	assert version == 0
-    number_sub_tables := tf.get_u16()
+	number_sub_tables := tf.get_u16()
 
 	// tables must be sorted by platform id and then platform specific
-    // encoding.
-    for _ in 0..number_sub_tables {
-	// platforms are:
-        // 0 - Unicode -- use specific id 6 for full coverage. 0/4 common.
-        // 1 - Macintosh (Discouraged)
-        // 2 - reserved
-        // 3 - Microsoft
-        platform_id          := tf.get_u16()
+	// encoding.
+	for _ in 0..number_sub_tables {
+		// platforms are:
+		// 0 - Unicode -- use specific id 6 for full coverage. 0/4 common.
+		// 1 - Macintosh (Discouraged)
+		// 2 - reserved
+		// 3 - Microsoft
+		platform_id          := tf.get_u16()
 		platform_specific_id := tf.get_u16()
 		offset               := tf.get_u32()
 		dprintln("CMap platform_id=${platform_id} specific_id=${platform_specific_id} offset=${offset}")
-        if platform_id == 3 && platform_specific_id <= 1 {
-            tf.read_cmap(table_offset + offset)
-        }
-    }
+		if platform_id == 3 && platform_specific_id <= 1 {
+			tf.read_cmap(table_offset + offset)
+		}
+	}
 }
 
 fn (mut tf TTF_File) read_cmap(offset u32) {
@@ -817,17 +816,17 @@ fn (mut tf TTF_File) read_cmap(offset u32) {
 ******************************************************************************/
 fn (mut tf TTF_File) map_code(char_code int) u16{
 	mut index := 0
-    for i in 0..tf.cmaps.len {
-	mut cmap := tf.cmaps[i]
-	if cmap.format == 0 {
-		//dprintln("format 0")
-		index = cmap.map_0(char_code)
-	} else if cmap.format == 4 {
-		//dprintln("format 4")
-		index = cmap.map_4(char_code, mut tf)
+	for i in 0..tf.cmaps.len {
+		mut cmap := tf.cmaps[i]
+		if cmap.format == 0 {
+			//dprintln("format 0")
+			index = cmap.map_0(char_code)
+		} else if cmap.format == 4 {
+			//dprintln("format 4")
+			index = cmap.map_4(char_code, mut tf)
+		}
 	}
-    }
-    return u16(index)
+	return u16(index)
 }
 
 fn (mut tm TrueTypeCmap) init_0(mut tf TTF_File) {
@@ -851,45 +850,45 @@ fn (mut tm TrueTypeCmap) init_4(mut tf TTF_File) {
 	tm.format = 4
 
 	// 2x segcount
-    seg_count      := tf.get_u16() >> 1
-    /*search_range   :=*/ tf.get_u16()
-    /*entry_selector :=*/ tf.get_u16()
-    /*range_shift    :=*/ tf.get_u16()
+	seg_count      := tf.get_u16() >> 1
+	/*search_range   :=*/ tf.get_u16()
+	/*entry_selector :=*/ tf.get_u16()
+	/*range_shift    :=*/ tf.get_u16()
 
 
-    // Ending character code for each segment, last is 0xffff
-    for _ in 0..seg_count {
+	// Ending character code for each segment, last is 0xffff
+	for _ in 0..seg_count {
 	tm.segments << Segment{0, 0, tf.get_u16(), 0}
-    }
+	}
 
-    // reservePAD
-    tf.get_u16()
+	// reservePAD
+	tf.get_u16()
 
-    // starting character code for each segment
-    for i in 0..seg_count {
+	// starting character code for each segment
+	for i in 0..seg_count {
 	tm.segments[i].start_code = tf.get_u16()
-    }
+	}
 
-    // Delta for all character codes in segment
-    for i in 0..seg_count {
+	// Delta for all character codes in segment
+	for i in 0..seg_count {
 	tm.segments[i].id_delta = tf.get_u16()
-    }
+	}
 
-    // offset in bytes to glyph indexArray, or 0
-    for i in 0..seg_count {
+	// offset in bytes to glyph indexArray, or 0
+	for i in 0..seg_count {
 		ro := u32(tf.get_u16())
 		if ro != 0 {
 		tm.segments[i].id_range_offset = tf.pos - 2 + ro
 		} else {
 		tm.segments[i].id_range_offset = 0
 		}
-    }
+	}
 /*
-    // DEBUG LOG
-    for i in 0..seg_count {
+	// DEBUG LOG
+	for i in 0..seg_count {
 	seg := tm.segments[i]
 	dprintln("    segments[$i] = $seg.start_code $seg.end_code $seg.id_delta $seg.id_range_offset")
-    }
+	}
 */
 }
 
@@ -935,21 +934,21 @@ fn (mut tf TTF_File) read_hhea_table() {
 	/*version :=*/ tf.get_fixed() // 0x00010000
 	
 	tf.ascent                  = tf.get_fword()
-    tf.descent                 = tf.get_fword()
-    tf.line_gap                = tf.get_fword()
-    tf.advance_width_max       = tf.get_ufword()
-    tf.min_left_side_bearing   = tf.get_fword()
-    tf.min_right_side_bearing  = tf.get_fword()
-    tf.x_max_extent            = tf.get_fword()
-    tf.caret_slope_rise        = tf.get_i16()
-    tf.caret_slope_run         = tf.get_i16()
-    tf.caret_offset            = tf.get_fword()
-    tf.get_i16() // reserved
-    tf.get_i16() // reserved
-    tf.get_i16() // reserved
-    tf.get_i16() // reserved
-    tf.metric_data_format      = tf.get_i16()
-    tf.num_of_long_hor_metrics = tf.get_u16()
+	tf.descent                 = tf.get_fword()
+	tf.line_gap                = tf.get_fword()
+	tf.advance_width_max       = tf.get_ufword()
+	tf.min_left_side_bearing   = tf.get_fword()
+	tf.min_right_side_bearing  = tf.get_fword()
+	tf.x_max_extent            = tf.get_fword()
+	tf.caret_slope_rise        = tf.get_i16()
+	tf.caret_slope_run         = tf.get_i16()
+	tf.caret_offset            = tf.get_fword()
+	tf.get_i16() // reserved
+	tf.get_i16() // reserved
+	tf.get_i16() // reserved
+	tf.get_i16() // reserved
+	tf.metric_data_format      = tf.get_i16()
+	tf.num_of_long_hor_metrics = tf.get_u16()
 }
 
 /******************************************************************************
@@ -959,11 +958,11 @@ fn (mut tf TTF_File) read_hhea_table() {
 ******************************************************************************/
 struct Kern0Table {
 mut:
-    swap       bool
-    offset     u32
-    n_pairs    int
-    kmap       map[u32]i16
-    old_index  int = -1
+	swap       bool
+	offset     u32
+	n_pairs    int
+	kmap       map[u32]i16
+	old_index  int = -1
 }
 
 fn (mut kt Kern0Table) reset() {
@@ -1027,23 +1026,23 @@ fn (mut tf TTF_File) read_kern_table() {
 
 	dprintln("Kern Table version: $version Kern nTables: $n_tables")
 
-    for _ in 0..n_tables{
-	st_version := tf.get_u16() // sub table version
-	length     := tf.get_u16()
-	coverage   := tf.get_u16()
-	format     := coverage >> 8
-	cross      := coverage & 4
-	vertical   := (coverage & 0x1) == 0
-	dprintln("Kerning subtable version [$st_version] format [$format] length [$length] coverage: [${coverage.hex()}]")
-	if format == 0 {
-		dprintln("kern format: 0")
-		kern := tf.create_kern_table0(vertical, cross != 0)
-		tf.kern << kern
-	} else {
-		dprintln("Unknown format -- skip")
-		tf.pos = tf.pos + length
+	for _ in 0..n_tables{
+		st_version := tf.get_u16() // sub table version
+		length     := tf.get_u16()
+		coverage   := tf.get_u16()
+		format     := coverage >> 8
+		cross      := coverage & 4
+		vertical   := (coverage & 0x1) == 0
+		dprintln("Kerning subtable version [$st_version] format [$format] length [$length] coverage: [${coverage.hex()}]")
+		if format == 0 {
+			dprintln("kern format: 0")
+			kern := tf.create_kern_table0(vertical, cross != 0)
+			tf.kern << kern
+		} else {
+			dprintln("Unknown format -- skip")
+			tf.pos = tf.pos + length
+		}
 	}
-    }
 }
 
 fn (mut tf TTF_File) reset_kern() {
