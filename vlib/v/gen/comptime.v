@@ -132,7 +132,9 @@ fn (mut g Gen) comp_at(node ast.AtExpr) {
 	if node.kind == .vmod_file {
 		val := cnewlines(node.val.replace('\r', ''))
 		g.write('_SLIT("$val")')
-	} else {
+	} else if node.kind == .embed_file {
+		g.write('// embed_file here')
+	}else {
 		val := node.val.replace('\\', '\\\\')
 		g.write('_SLIT("$val")')
 	}

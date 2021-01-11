@@ -28,7 +28,7 @@ pub type ScopeObject = ConstField | GlobalField | Var
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
 	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
-	
+
 
 pub struct Type {
 pub:
@@ -1061,10 +1061,11 @@ pub mut:
 	return_type table.Type
 }
 
-// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
+// @FN, @STRUCT, @MOD, @embed_file etc. See full list in token.valid_at_tokens
 pub struct AtExpr {
 pub:
 	name string
+	left        Expr
 	pos  token.Position
 	kind token.AtKind
 pub mut:

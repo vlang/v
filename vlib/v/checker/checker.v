@@ -3512,6 +3512,32 @@ fn (mut c Checker) at_expr(mut node ast.AtExpr) table.Type {
 			}
 			node.val = c.vmod_file_content
 		}
+		.embed_file {
+			mut path := node.val
+			// Validate that the path exists and is actually a file.
+			if path == '' {
+				c.error('please supply a valid relative or absolute file path to the embedded file', node.pos)
+
+			}
+			// The file doesn't exist or is a relative path
+			if !os.is_file(path) {
+				// ... it there, but not a file
+				if os.exists(path) {
+					c.error('embedded file "$path" is not a file', node.pos)
+				}
+				// ... look relative to the source file
+				dir := os.dir(c.file.path)
+				path = os.join_path(dir, path)
+				if !os.is_file(path) {
+					if os.exists(path) {
+						// ... it there, but not a file
+						c.error('embedded file "$path" is not a file', node.pos)
+					} else {
+						c.error('embedded file "$path" not found', node.pos)
+					}
+				}
+			}
+		}
 		.unknown {
 			c.error('unknown @ identifier: ${node.name}. Available identifiers: $token.valid_at_tokens',
 				node.pos)

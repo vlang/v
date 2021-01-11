@@ -778,15 +778,21 @@ fn (mut s Scanner) text_scan() token.Token {
 				if s.is_fmt {
 					return s.new_token(.name, '@' + name, name.len + 1)
 				}
+				// @embed_file etc. See full list in token.valid_at_call_tokens
+				if '@' + name in token.valid_at_call_tokens {
+					return s.new_token(.at, '@' + name, name.len + 1)
+				}
 				// @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
 				if '@' + name in token.valid_at_tokens {
 					return s.new_token(.at, '@' + name, name.len + 1)
 				}
 				if !token.is_key(name) {
-					mut at_error_msg := '@ must be used before keywords or compile time variables (e.g. `@type string` or `@FN`)'
+					mut at_error_msg := '@ must be used before keywords, compile time variables or calls (e.g. `@type string`, `@FN` or `@embed_file(...)`)'
 					// If name is all uppercase, the user is probably looking for a compile time variable ("at-token")
 					if name.is_upper() {
 						at_error_msg += '\nAvailable compile time variables:\n$token.valid_at_tokens'
+					} else {
+						at_error_msg += '\nAvailable compile time calls:\n$token.valid_at_call_tokens'
 					}
 					s.error(at_error_msg)
 				}

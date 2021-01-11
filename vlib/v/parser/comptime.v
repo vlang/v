@@ -184,6 +184,8 @@ fn (mut p Parser) comp_for() ast.CompFor {
 
 // @FN, @STRUCT, @MOD etc. See full list in token.valid_at_tokens
 fn (mut p Parser) at() ast.AtExpr {
+	//p.check(.at)
+	//name := p.check_name()
 	name := p.tok.lit
 	kind := match name {
 		'@FN' { token.AtKind.fn_name }
@@ -202,6 +204,31 @@ fn (mut p Parser) at() ast.AtExpr {
 		name: name
 		pos: p.tok.position()
 		kind: kind
+	}
+}
+
+// at_comp_call parses for compile time "at" calls.
+// E.g. `f := @embed_file('...')`
+fn (mut p Parser) at_comp_call() ast.AtExpr {
+	name := p.tok.lit
+	p.check(.at)
+	if name != '@embed_file' {
+		p.error('"$name" is not supported, only $token.valid_at_call_tokens`.')
+		return ast.AtExpr{}
+	}
+	p.check(.lpar)
+	mut path := p.tok.lit
+	p.check(.string)
+	p.check(.rpar)
+	// The file in `path` exists at this point in time
+	if p.pref.is_verbose {
+		println('>>> embedding file "$path"')
+	}
+	return ast.AtExpr{
+		name: name
+		pos: p.tok.position()
+		val: path
+		kind: token.AtKind.embed_file
 	}
 }
 

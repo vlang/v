@@ -44,6 +44,7 @@ pub enum Kind {
 	hash
 	dollar
 	at // @
+	at_call // @.name('')
 	str_dollar
 	left_shift
 	right_shift
@@ -132,6 +133,7 @@ const (
 	nr_tokens     = int(Kind._end_)
 )
 
+// AtKind defines a type for compile time value embedding.
 // @FN => will be substituted with the name of the current V function
 // @MOD => will be substituted with the name of the current V module
 // @STRUCT => will be substituted with the name of the current V struct
@@ -145,7 +147,8 @@ const (
 // println( 'file: ' + @FILE + ' | line: ' + @LINE + ' | fn: ' + @MOD + '.' + @FN)
 // ... which is useful while debugging/tracing
 //
-// @VROOT is special and handled in places like '#include ...'
+// @VROOT is special and handled in places like '#include ...
+// @embed_file('<path/to/file>') => embeds the bytes from `file` into executable.
 // @<type> is allowed for keyword variable names. E.g. 'type'
 pub enum AtKind {
 	unknown
@@ -158,12 +161,14 @@ pub enum AtKind {
 	column_nr
 	vhash
 	vmod_file
+	embed_file
 }
 
 const (
 	valid_at_tokens = ['@FN', '@MOD', '@STRUCT', '@VEXE', '@FILE', '@LINE', '@COLUMN', '@VHASH',
-		'@VMOD_FILE',
+		'@VMOD_FILE'
 	]
+	valid_at_call_tokens = ['@embed_file']
 )
 
 // build_keys genereates a map with keywords' string values:
