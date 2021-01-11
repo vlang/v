@@ -371,6 +371,8 @@ rune // represents a Unicode code point
 
 f32 f64
 
+any_int, any_float // internal intermediate types of number literals
+
 byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 
 any // similar to C's void* and Go's interface{}
@@ -397,21 +399,6 @@ An `int` value for example can be automatically promoted to `f64`
 or `i64` but not to `f32` or `u32`. (`f32` would mean precision
 loss for large values and `u32` would mean loss of the sign for
 negative values).
-
-Literals like `123` or `4.56` are treated in a special way. They do
-not lead to type promotions, however they default to `int` and `f64`
-respectively, when their type has to be decided:
-
-```v ignore
-u := u16(12)
-v := 13 + u    // v is of type `u16` - no promotion
-x := f32(45.6)
-y := x + 3.14  // x is of type `f32` - no promotion
-a := 75        // a is of type `int` - default for int literal
-b := 14.7      // b is of type `f64` - default for float literal
-c := u + a     // c is of type `int` - automatic promotion of `u`'s value
-d := b + x     // d is of type `f64` - automatic promotion of `x`'s value 
-```
 
 ### Strings
 

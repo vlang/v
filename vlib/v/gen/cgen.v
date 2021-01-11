@@ -3235,7 +3235,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		d := !b &&
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
-		e := right_sym.kind !in [.voidptr, .int_literal, .int]
+		e := right_sym.kind !in [.voidptr, .any_int, .int]
 		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
 			((a && b && e) || c || d) {
 			// Overloaded operators
