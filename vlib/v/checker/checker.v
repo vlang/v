@@ -5114,7 +5114,8 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			c.error('.str() methods should have 0 arguments', node.pos)
 		}
 	}
-	if node.language == .v && node.is_method && node.name in ['+', '-', '*', '%', '/', '<', '>', '==', '!='] {
+	if node.language == .v && node.is_method && node.name in
+		['+', '-', '*', '%', '/', '<', '>', '==', '!=', '>=', '<='] {
 		if node.params.len != 2 {
 			c.error('operator methods should have exactly 1 argument', node.pos)
 		} else {
@@ -5124,7 +5125,11 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 				c.error('operator methods are only allowed for struct and type alias',
 					node.pos)
 			} else {
-				if node.receiver.typ != node.params[1].typ {
+				if node.rec_mut {
+					c.error('receiver cannot be `mut` for operator overloading', node.receiver_pos)
+				} else if node.params[1].is_mut {
+					c.error('argument cannot be `mut` for operator overloading', node.pos)
+				} else if node.receiver.typ != node.params[1].typ {
 					c.error('both sides of an operator must be the same type', node.pos)
 				} else if node.name in ['<', '>', '==', '!=', '>=', '<='] &&
 					node.return_type != table.bool_type {

@@ -19,6 +19,14 @@ fn (u User) > (u1 User) User {
     return User{}
 }
 
+fn (mut u User) * (u1 User) User {
+    return User{}
+}
+
+fn (u User) / (mut u1 User) User {
+    return User{}
+}
+
 fn main() {
     println(User{3, 4})
     println(User{3, 4} - Foo{3, 3})
