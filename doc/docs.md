@@ -371,7 +371,7 @@ rune // represents a Unicode code point
 
 f32 f64
 
-any_int, any_float // internal intermediate types of number literals
+int_literal, float_literal // internal intermediate types of number literals
 
 byteptr, voidptr, charptr, size_t // these are mostly used for C interoperability
 

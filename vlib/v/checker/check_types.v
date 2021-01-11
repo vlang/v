@@ -217,7 +217,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 	idx_hi := type_hi.idx()
 	idx_lo := type_lo.idx()
 	// the following comparisons rely on the order of the indices in atypes.v
-	if idx_hi == table.any_int_type_idx {
+	if idx_hi == table.int_literal_type_idx {
 		return type_lo
 	} else if idx_hi == table.any_flt_type_idx {
 		if idx_lo in table.float_type_idxs {
@@ -276,7 +276,7 @@ pub fn (mut c Checker) check_types(got table.Type, expected table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if expected.is_ptr() || expected.is_pointer() {
-		if got == table.any_int_type {
+		if got == table.int_literal_type {
 			return true
 		}
 	}
@@ -320,13 +320,13 @@ pub fn (mut c Checker) symmetric_check(left table.Type, right table.Type) bool {
 	// allow direct int-literal assignment for pointers for now
 	// maybe in the future optionals should be used for that
 	if right.is_ptr() || right.is_pointer() {
-		if left == table.any_int_type {
+		if left == table.int_literal_type {
 			return true
 		}
 	}
 	// allow direct int-literal assignment for pointers for now
 	if left.is_ptr() || left.is_pointer() {
-		if right == table.any_int_type {
+		if right == table.int_literal_type {
 			return true
 		}
 	}
@@ -338,7 +338,7 @@ pub fn (c &Checker) get_default_fmt(ftyp table.Type, typ table.Type) byte {
 		return `s`
 	} else if typ.is_float() {
 		return `g`
-	} else if typ.is_signed() || typ.is_any_int() {
+	} else if typ.is_signed() || typ.is_int_literal() {
 		return `d`
 	} else if typ.is_unsigned() {
 		return `u`
@@ -399,7 +399,7 @@ pub fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) table.T
 			}
 			if (typ.is_unsigned() && fmt !in [`u`, `x`, `X`, `o`, `c`]) ||
 				(typ.is_signed() && fmt !in [`d`, `x`, `X`, `o`, `c`]) ||
-				(typ.is_any_int() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
+				(typ.is_int_literal() && fmt !in [`d`, `c`, `x`, `X`, `o`, `u`, `x`, `X`, `o`]) ||
 				(typ.is_float() && fmt !in [`E`, `F`, `G`, `e`, `f`, `g`]) ||
 				(typ.is_pointer() && fmt !in [`p`, `x`, `X`]) ||
 				(typ.is_string() && fmt != `s`) ||
