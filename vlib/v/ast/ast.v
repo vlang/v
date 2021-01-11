@@ -1,4 +1,4 @@
-// Copyright (c) 2019-2020 Alexander Medvednikov. All rights reserved.
+// Copyright (c) 2019-2021 Alexander Medvednikov. All rights reserved.
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 module ast
@@ -28,7 +28,7 @@ pub type ScopeObject = ConstField | GlobalField | Var
 // TOOD: replace table.Param
 pub type Node = ConstField | EnumField | Expr | Field | File | GlobalField | IfBranch |
 	MatchBranch | ScopeObject | SelectBranch | Stmt | StructField | StructInitField | table.Param
-	
+
 
 pub struct Type {
 pub:
