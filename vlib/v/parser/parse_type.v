@@ -336,10 +336,10 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 				'bool' {
 					return table.bool_type
 				}
-				'any_float' {
+				'any_float', 'float_literal' {
 					return table.any_flt_type
 				}
-				'any_int' {
+				'any_int', 'int_literal' {
 					return table.any_int_type
 				}
 				else {
