@@ -1416,7 +1416,7 @@ fn (mut g JsGen) greater_typ(left table.Type, right table.Type) table.Type {
 		if table.f32_type_idx in lr {
 			return table.Type(table.f32_type_idx)
 		}
-		return table.Type(table.any_flt_type)
+		return table.Type(table.flt_lit_type)
 	}
 	should_int := (l in table.integer_type_idxs && r in table.integer_type_idxs)
 	if should_int {

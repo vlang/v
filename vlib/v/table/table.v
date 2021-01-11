@@ -680,7 +680,7 @@ pub fn (t &Table) value_type(typ Type) Type {
 [inline]
 pub fn (t &Table) mktyp(typ Type) Type {
 	match typ {
-		any_flt_type { return f64_type }
+		flt_lit_type { return f64_type }
 		int_literal_type { return int_type }
 		else { return typ }
 	}
@@ -732,8 +732,8 @@ pub fn (table &Table) sumtype_has_variant(parent Type, variant Type) bool {
 pub fn (table &Table) known_type_names() []string {
 	mut res := []string{}
 	for _, idx in table.type_idxs {
-		// Skip `int_literal_type_idx` and `any_flt_type_idx` because they shouldn't be visible to the User.
-		if idx in [0, int_literal_type_idx, any_flt_type_idx] {
+		// Skip `int_literal_type_idx` and `flt_lit_type_idx` because they shouldn't be visible to the User.
+		if idx in [0, int_literal_type_idx, flt_lit_type_idx] {
 			continue
 		}
 		res << table.type_to_str(idx)

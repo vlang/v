@@ -3264,7 +3264,7 @@ pub fn (mut c Checker) expr(node ast.Expr) table.Type {
 			return c.enum_val(mut node)
 		}
 		ast.FloatLiteral {
-			return table.any_flt_type
+			return table.flt_lit_type
 		}
 		ast.Ident {
 			// c.checked_ident = node.name
@@ -3390,7 +3390,7 @@ pub fn (mut c Checker) cast_expr(mut node ast.CastExpr) table.Type {
 			node.pos)
 	}
 	if to_type_sym.kind == .sum_type {
-		if node.expr_type in [table.int_literal_type, table.any_flt_type] {
+		if node.expr_type in [table.int_literal_type, table.flt_lit_type] {
 			node.expr_type = c.promote_num(node.expr_type, if node.expr_type == table.int_literal_type {
 				table.int_type
 			} else {
@@ -4318,7 +4318,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 						node.is_expr = true
 						node.typ = last_expr.typ
 						continue
-					} else if node.typ in [table.any_flt_type, table.int_literal_type] {
+					} else if node.typ in [table.flt_lit_type, table.int_literal_type] {
 						if node.typ == table.int_literal_type {
 							if last_expr.typ.is_int() || last_expr.typ.is_float() {
 								node.typ = last_expr.typ
@@ -4331,7 +4331,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 							}
 						}
 					}
-					if last_expr.typ in [table.any_flt_type, table.int_literal_type] {
+					if last_expr.typ in [table.flt_lit_type, table.int_literal_type] {
 						if last_expr.typ == table.int_literal_type {
 							if node.typ.is_int() || node.typ.is_float() {
 								continue
@@ -4380,7 +4380,7 @@ pub fn (mut c Checker) if_expr(mut node ast.IfExpr) table.Type {
 	// if only untyped literals were given default to int/f64
 	if node.typ == table.int_literal_type {
 		node.typ = table.int_type
-	} else if node.typ == table.any_flt_type {
+	} else if node.typ == table.flt_lit_type {
 		node.typ = table.f64_type
 	}
 	if expr_required && !node.has_else {

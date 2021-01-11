@@ -219,7 +219,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 	// the following comparisons rely on the order of the indices in atypes.v
 	if idx_hi == table.int_literal_type_idx {
 		return type_lo
-	} else if idx_hi == table.any_flt_type_idx {
+	} else if idx_hi == table.flt_lit_type_idx {
 		if idx_lo in table.float_type_idxs {
 			return type_lo
 		} else {
@@ -232,7 +232,7 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 			} else {
 				return type_hi
 			}
-		} else { // f64, any_flt
+		} else { // f64, flt_lit
 			return type_hi
 		}
 	} else if idx_lo >= table.byte_type_idx { // both operands are unsigned
