@@ -1,15 +1,15 @@
-type Foo = any_int | any_float
-type Fo2 = any_int
+type Foo = int_literal | float_literal
+type Fo2 = int_literal
 
 struct Int {
-    i any_int
-    f any_float
+    i int_literal
+    f float_literal
 }
 
-fn foo(i any_int) any_int {
+fn foo(i int_literal) int_literal {
     return i
 }
 
-fn foo2() any_int {
+fn foo2() int_literal {
     return 1
 } 
