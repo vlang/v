@@ -162,9 +162,9 @@ pub fn (nn u32) str() string {
 	// return tos(buf + index, (max-index))
 }
 
-// str returns the value of the `int_literal` as a `string`.
+// str returns the value of the `any_int` as a `string`.
 [inline]
-pub fn (n int_literal) str() string {
+pub fn (n any_int) str() string {
 	return i64(n).str()
 }
 
@@ -399,9 +399,9 @@ pub fn (nn i64) hex() string {
 	return u64(nn).hex()
 }
 
-// hex returns the value of the `int_literal` as a hexadecimal `string`.
+// hex returns the value of the `any_int` as a hexadecimal `string`.
 // Note that the output is ***not*** zero padded.
-pub fn (nn int_literal) hex() string {
+pub fn (nn any_int) hex() string {
 	return u64(nn).hex()
 }
 
@@ -434,7 +434,7 @@ pub fn (nn u64) hex_full() string {
 
 /*
 pub fn (nn i64) hex_full() string { return u64_to_hex(u64(nn), 16) }
-pub fn (nn int_literal) hex_full() string { return u64_to_hex(nn, 16) }
+pub fn (nn any_int) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (nn voidptr) hex_full() string { return u64_to_hex(nn, 16) }
 pub fn (nn byteptr) hex_full() string { return u64_to_hex(nn, 16) }
 */

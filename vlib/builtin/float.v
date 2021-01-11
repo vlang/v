@@ -20,9 +20,9 @@ pub fn (x f64) str() string {
 	}
 }
 
-// str returns the value of the `float_literal` as a `string`.
+// str returns the value of the `any_float` as a `string`.
 [inline]
-pub fn (d float_literal) str() string {
+pub fn (d any_float) str() string {
 	return f64(d).str()
 }
 
