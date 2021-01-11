@@ -35,14 +35,14 @@ pub struct TypeSymbol {
 pub:
 	parent_idx int
 pub mut:
-	info       TypeInfo
-	kind       Kind
-	name       string // the internal & source name of the type, i.e. `[5]int`.
-	cname      string // the name with no dots for use in the generated C code
-	methods    []Fn
-	mod        string
-	is_public  bool
-	language   Language
+	info      TypeInfo
+	kind      Kind
+	name      string // the internal & source name of the type, i.e. `[5]int`.
+	cname     string // the name with no dots for use in the generated C code
+	methods   []Fn
+	mod       string
+	is_public bool
+	language  Language
 }
 
 // max of 8
@@ -604,7 +604,7 @@ pub fn (kinds []Kind) str() string {
 
 pub struct Struct {
 pub:
-	attrs         []Attr
+	attrs []Attr
 pub mut:
 	embeds        []Type
 	fields        []Field
@@ -644,7 +644,7 @@ pub struct Aggregate {
 mut:
 	fields []Field // used for faster lookup inside the module
 pub:
-	types  []Type
+	types []Type
 }
 
 // NB: FExpr here is a actually an ast.Expr .
@@ -654,7 +654,7 @@ pub type FExpr = byteptr | voidptr
 
 pub struct Field {
 pub:
-	name             string
+	name string
 pub mut:
 	typ              Type
 	default_expr     FExpr
@@ -676,15 +676,15 @@ fn (f &Field) equals(o &Field) bool {
 
 pub struct Array {
 pub:
-	nr_dims   int
+	nr_dims int
 pub mut:
 	elem_type Type
 }
 
 pub struct ArrayFixed {
 pub:
-	nr_dims   int
-	size      int
+	nr_dims int
+	size    int
 pub mut:
 	elem_type Type
 }

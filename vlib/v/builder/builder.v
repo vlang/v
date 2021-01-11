@@ -12,15 +12,15 @@ import v.depgraph
 
 pub struct Builder {
 pub:
-	compiled_dir        string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
-	module_path         string
+	compiled_dir string // contains os.real_path() of the dir of the final file beeing compiled, or the dir itself when doing `v .`
+	module_path  string
 mut:
-	pref                &pref.Preferences
-	checker             checker.Checker
-	global_scope        &ast.Scope
-	out_name_c          string
-	out_name_js         string
-	max_nr_errors       int = 100
+	pref          &pref.Preferences
+	checker       checker.Checker
+	global_scope  &ast.Scope
+	out_name_c    string
+	out_name_js   string
+	max_nr_errors int = 100
 pub mut:
 	module_search_paths []string
 	parsed_files        []ast.File

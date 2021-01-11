@@ -16,7 +16,7 @@ const (
 
 // Client represents websocket client
 pub struct Client {
-	is_server         bool
+	is_server bool
 mut:
 	ssl_conn          &openssl.SSLConn // secure connection used when wss is used
 	flags             []Flag     // flags used in handshake
@@ -26,9 +26,9 @@ mut:
 	open_callbacks    []OpenEventHandler    // all callbacks on_open
 	close_callbacks   []CloseEventHandler   // all callbacks on_close
 pub:
-	is_ssl            bool   // true if secure socket is used
-	uri               Uri    // uri of current connection
-	id                string // unique id of client
+	is_ssl bool   // true if secure socket is used
+	uri    Uri    // uri of current connection
+	id     string // unique id of client
 pub mut:
 	conn              net.TcpConn // underlying TCP socket connection
 	nonce_size        int = 16 // size of nounce used for masking

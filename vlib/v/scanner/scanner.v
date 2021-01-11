@@ -19,17 +19,17 @@ const (
 
 pub struct Scanner {
 pub mut:
-	file_path                   string
-	text                        string
-	pos                         int
-	line_nr                     int
-	last_nl_pos                 int // for calculating column
-	is_inside_string            bool
-	is_inter_start              bool // for hacky string interpolation TODO simplify
-	is_inter_end                bool
-	is_enclosed_inter           bool
-	is_debug                    bool
-	line_comment                string
+	file_path         string
+	text              string
+	pos               int
+	line_nr           int
+	last_nl_pos       int // for calculating column
+	is_inside_string  bool
+	is_inter_start    bool // for hacky string interpolation TODO simplify
+	is_inter_end      bool
+	is_enclosed_inter bool
+	is_debug          bool
+	line_comment      string
 	// prev_tok                 TokenKind
 	is_started                  bool
 	is_print_line_on_error      bool

@@ -19,7 +19,7 @@ struct Fragment {
 struct Frame {
 mut:
 	// length of the websocket header part
-	header_len  int = 2
+	header_len int = 2
 	// size of total frame
 	frame_size  int = 2
 	fin         bool    // true if final fragment of message

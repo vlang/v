@@ -17,7 +17,7 @@ pub mut:
 	required    bool
 	value       string
 mut:
-	found       bool
+	found bool
 }
 
 pub fn (flags []Flag) get_all_found() []Flag {

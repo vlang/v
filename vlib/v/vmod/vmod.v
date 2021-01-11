@@ -23,7 +23,7 @@ pub struct ModFileAndFolder {
 pub:
 	// vmod_file contains the full path of the found 'v.mod' file, or ''
 	// if no 'v.mod' file was found in file_path_dir, or in its parent folders.
-	vmod_file   string
+	vmod_file string
 	// vmod_folder contains the file_path_dir, if there is no 'v.mod' file in
 	// *any* of the parent folders, otherwise it is the first parent folder,
 	// where a v.mod file was found.
@@ -33,7 +33,7 @@ pub:
 [ref_only]
 pub struct ModFileCacher {
 mut:
-	cache        map[string]ModFileAndFolder
+	cache map[string]ModFileAndFolder
 	// folder_files caches os.ls(key)
 	folder_files map[string][]string
 }

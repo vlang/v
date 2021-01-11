@@ -41,11 +41,11 @@ pub const (
 
 pub struct Context {
 mut:
-	content_type      string = 'text/plain'
-	status            string = '200 OK'
+	content_type string = 'text/plain'
+	status       string = '200 OK'
 pub:
-	req               http.Request
-	conn              net.TcpConn
+	req  http.Request
+	conn net.TcpConn
 	// TODO Response
 pub mut:
 	static_files      map[string]string
