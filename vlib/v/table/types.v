@@ -421,8 +421,6 @@ pub enum Kind {
 	interface_
 	any_float
 	any_int
-	int_literal
-	float_literal
 	aggregate
 }
 
@@ -531,11 +529,11 @@ pub fn (mut t Table) register_builtin_type_symbols() {
 		mod: 'builtin'
 	)
 	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
-	t.register_type_symbol(kind: .int_literal, name: 'int literal', cname: 'int_literal', mod: 'builtin')
+	t.register_type_symbol(kind: .any_int, name: 'int literal', cname: 'any_int', mod: 'builtin')
 	t.register_type_symbol(
-		kind: .float_literal
+		kind: .any_float
 		name: 'float literal'
-		cname: 'float_literal'
+		cname: 'any_float'
 		mod: 'builtin'
 	)
 }
@@ -547,12 +545,12 @@ pub fn (t &TypeSymbol) is_pointer() bool {
 
 [inline]
 pub fn (t &TypeSymbol) is_int() bool {
-	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_int, .int_literal]
+	return t.kind in [.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .any_int]
 }
 
 [inline]
 pub fn (t &TypeSymbol) is_float() bool {
-	return t.kind in [.f32, .f64, .any_float, .float_literal]
+	return t.kind in [.f32, .f64, .any_float]
 }
 
 [inline]
@@ -601,8 +599,6 @@ pub fn (k Kind) str() string {
 		.generic_struct_inst { 'generic_struct_inst' }
 		.rune { 'rune' }
 		.aggregate { 'aggregate' }
-		.float_literal { 'float_literal' }
-		.int_literal { 'int_literal' }
 	}
 	return k_str
 }
@@ -740,7 +736,7 @@ pub fn (table &Table) type_to_str_using_aliases(t Type, import_aliases map[strin
 	sym := table.get_type_symbol(t)
 	mut res := sym.name
 	match sym.kind {
-		.any_int, .any_float, .int_literal, .float_literal {
+		.any_int, .any_float {
 			res = sym.name
 		}
 		.i8, .i16, .int, .i64, .byte, .u16, .u32, .u64, .f32, .f64, .char, .rune, .string, .bool, .none_, .byteptr, .voidptr, .charptr {

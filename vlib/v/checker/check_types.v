@@ -217,9 +217,9 @@ fn (c &Checker) promote_num(left_type table.Type, right_type table.Type) table.T
 	idx_hi := type_hi.idx()
 	idx_lo := type_lo.idx()
 	// the following comparisons rely on the order of the indices in atypes.v
-	if idx_hi == table.any_int_type_idx {
+	if idx_hi == table.any_int_type_idx || idx_hi == table.int_literal_type_idx {
 		return type_lo
-	} else if idx_hi == table.any_flt_type_idx {
+	} else if idx_hi == table.any_flt_type_idx || idx_hi == table.float_literal_type_idx {
 		if idx_lo in table.float_type_idxs {
 			return type_lo
 		} else {
