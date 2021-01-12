@@ -3248,7 +3248,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
 		if node.op in
-			[.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge, .plus_assign] &&
+			[.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
 			((a && b && e) || c || d) {
 			// Overloaded operators
 			g.write(g.typ(if !d {
