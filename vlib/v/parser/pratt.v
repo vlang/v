@@ -159,7 +159,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			p.next() // sizeof
 			p.check(.lpar)
 			is_known_var := p.mark_var_as_used(p.tok.lit)
-			if is_known_var || !p.tok.kind.is_start_of_type() {
+			// assume mod. prefix leads to a type
+			if is_known_var || !(p.known_import(p.tok.lit) || p.tok.kind.is_start_of_type()) {
 				expr := p.expr(0)
 				node = ast.SizeOf{
 					is_type: false
@@ -167,6 +168,7 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 					pos: pos
 				}
 			} else {
+				p.register_used_import(p.tok.lit)
 				save_expr_mod := p.expr_mod
 				p.expr_mod = ''
 				sizeof_type := p.parse_type()

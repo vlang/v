@@ -1,4 +1,5 @@
 import math
+import flag
 
 struct S1 {
 	p voidptr
@@ -19,4 +20,5 @@ fn test_sizeof() {
 	assert sizeof(S1) in [u32(4), 8]
 	s := S2{}
 	assert sizeof(s.i) == 4
+	assert sizeof(flag.Flag) > 4
 }
