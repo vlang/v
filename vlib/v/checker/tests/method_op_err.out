@@ -19,23 +19,37 @@ vlib/v/checker/tests/method_op_err.vv:18:1: error: operator comparison methods s
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    19 |     return User{}
    20 | }
-vlib/v/checker/tests/method_op_err.vv:24:24: error: infix expr: cannot use `Foo` (right expression) as `User`
-   22 | fn main() {
-   23 |     println(User{3, 4})
-   24 |     println(User{3, 4} - Foo{3, 3})
+vlib/v/checker/tests/method_op_err.vv:22:9: error: receiver cannot be `mut` for operator overloading
+   20 | }
+   21 | 
+   22 | fn (mut u User) * (u1 User) User {
+      |         ~~~~~~
+   23 |     return User{}
+   24 | }
+vlib/v/checker/tests/method_op_err.vv:26:1: error: argument cannot be `mut` for operator overloading
+   24 | }
+   25 | 
+   26 | fn (u User) / (mut u1 User) User {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   27 |     return User{}
+   28 | }
+vlib/v/checker/tests/method_op_err.vv:32:24: error: infix expr: cannot use `Foo` (right expression) as `User`
+   30 | fn main() {
+   31 |     println(User{3, 4})
+   32 |     println(User{3, 4} - Foo{3, 3})
       |                        ^
-   25 |     println(User{3, 2} < User{2, 4})
-   26 |     println(User{3, 4} < Foo{3, 4})
-vlib/v/checker/tests/method_op_err.vv:25:24: error: operation `User` < `User` does not exist, please define it
-   23 |     println(User{3, 4})
-   24 |     println(User{3, 4} - Foo{3, 3})
-   25 |     println(User{3, 2} < User{2, 4})
+   33 |     println(User{3, 2} < User{2, 4})
+   34 |     println(User{3, 4} < Foo{3, 4})
+vlib/v/checker/tests/method_op_err.vv:33:24: error: operation `User` < `User` does not exist, please define it
+   31 |     println(User{3, 4})
+   32 |     println(User{3, 4} - Foo{3, 3})
+   33 |     println(User{3, 2} < User{2, 4})
       |                        ^
-   26 |     println(User{3, 4} < Foo{3, 4})
-   27 | }
-vlib/v/checker/tests/method_op_err.vv:26:24: error: mismatched types `User` and `Foo`
-   24 |     println(User{3, 4} - Foo{3, 3})
-   25 |     println(User{3, 2} < User{2, 4})
-   26 |     println(User{3, 4} < Foo{3, 4})
+   34 |     println(User{3, 4} < Foo{3, 4})
+   35 | }
+vlib/v/checker/tests/method_op_err.vv:34:24: error: mismatched types `User` and `Foo`
+   32 |     println(User{3, 4} - Foo{3, 3})
+   33 |     println(User{3, 2} < User{2, 4})
+   34 |     println(User{3, 4} < Foo{3, 4})
       |                        ^
-   27 | }
+   35 | }
