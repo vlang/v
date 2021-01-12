@@ -2547,12 +2547,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				else { 'unknown op' }
 			}
 			left_name := c.table.type_to_str(left_type)
-			if left_sym.has_method(extracted_op) {
-				if method := left_sym.find_method(extracted_op) {
-					if method.return_type != left_type {
-						c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
-							assign_stmt.pos)
-					}
+			if method := left_sym.find_method(extracted_op) {
+				if method.return_type != left_type {
+					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
+						assign_stmt.pos)
 				}
 			} else {
 				right_name := c.table.type_to_str(right_type)
