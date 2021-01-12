@@ -2741,6 +2741,9 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			1)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
+		if array_init.has_default {
+			c.expr(array_init.default_expr)
+		}
 	}
 	return array_init.typ
 }

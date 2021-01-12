@@ -35,6 +35,13 @@ fn (mut g Gen) array_init(it ast.ArrayInit) {
 					g.write(', ')
 				}
 			}
+		} else if it.has_default {
+			g.expr(it.default_expr)
+			info := type_sym.info as table.ArrayFixed
+			for _ in 1 .. info.size {
+				g.write(', ')
+				g.expr(it.default_expr)
+			}
 		} else {
 			g.write('0')
 		}
