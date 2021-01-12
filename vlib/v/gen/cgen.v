@@ -1919,6 +1919,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				''
 			}
 			mut str_add := false
+			mut struct_op := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
@@ -1932,6 +1933,13 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.is_assign_lhs = false
 				g.is_assign_rhs = true
 				str_add = true
+			}
+			if left_sym.kind == .struct_ && right_sym.kind == .struct_ && assign_stmt.op in [.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+				g.expr(left)
+				//styp_ := g.typ(left)
+				new_op := (assign_stmt.op.str()[0]).str()
+				g.write(' = ${styp}_${util.replace_op(new_op)}(')
+				struct_op = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
@@ -1969,9 +1977,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add {
+			} else if !g.is_array_set && !str_add && !struct_op {
 				g.write(' $op ')
-			} else if str_add {
+			} else if str_add || struct_op {
 				g.write(', ')
 			}
 			mut cloned := false
@@ -2049,7 +2057,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('.data')
 				}
 			}
-			if str_add {
+			if str_add || struct_op {
 				g.write(')')
 			}
 			if g.is_array_set {
@@ -3230,16 +3238,23 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 			g.typ((left_sym.info as table.Alias).parent_type).split('__').last()[0].is_capital()
 		// Do not generate operator overloading with these `right_sym.kind`.
 		e := right_sym.kind !in [.voidptr, .int_literal, .int]
-		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge] &&
+		if node.op in [.plus, .minus, .mul, .div, .mod, .lt, .gt, .eq, .ne, .le, .ge, .plus_assign] &&
 			((a && b && e) || c || d) {
 			// Overloaded operators
+			println(' operator ')
+			g.write('// operator ${node.op}')
 			g.write(g.typ(if !d {
 				left_type
 			} else {
 				(left_sym.info as table.Alias).parent_type
 			}))
 			g.write('_')
-			g.write(util.replace_op(node.op.str()))
+			if node.op == .plus_assign {
+				g.write(util.replace_op('+'))
+			}
+			else {
+				g.write(util.replace_op(node.op.str()))
+			}
 			g.write('(')
 			g.expr(node.left)
 			g.write(', ')

@@ -2494,10 +2494,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 							right.position())
 					}
-				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
 				} else if right is ast.IntegerLiteral {
