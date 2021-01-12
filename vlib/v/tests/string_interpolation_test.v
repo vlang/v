@@ -182,8 +182,12 @@ struct Bb {
 	b Aa
 }
 
-fn (x Bb) f() Aa {
+fn (x Bb) f1() Aa {
 	return x.b
+}
+
+fn (x Bb) f2(i int) Aa {
+	return Aa{ a: x.b.a + i }
 }
 
 fn test_method_interpolation() {
@@ -192,8 +196,10 @@ fn test_method_interpolation() {
 			a: 2
 		}
 	}
-	assert '>${y.f().a}<' == '>2<'
-	assert '>$y.f().a<' == '>2<'
+	assert '>${y.f1().a}<' == '>2<'
+	assert '>$y.f1().a<' == '>2<'
+	assert '>${y.f2(1).a}<' == '>3<'
+	assert '>$y.f2(1).a<' == '>3<'
 }
 
 fn f(i int) int {
@@ -201,6 +207,6 @@ fn f(i int) int {
 }
 
 fn test_call() {
-	s := '${f(4)}'
-	assert s == '4'
+	assert '${f(4)}' == '4'
+	assert '$f(4)' == '4'
 }

@@ -27,6 +27,7 @@ pub mut:
 	is_inside_string  bool
 	is_inter_start    bool // for hacky string interpolation TODO simplify
 	is_inter_end      bool
+	inter_par_depth   int
 	is_enclosed_inter bool
 	line_comment      string
 	// prev_tok                 TokenKind
@@ -603,10 +604,11 @@ fn (mut s Scanner) text_scan() token.Token {
 				s.warn('unknown escape sequence \\${s.look_ahead(2)}')
 			}
 			if s.is_inter_start && next_char == `(` {
+				s.inter_par_depth++
 				if s.look_ahead(2) != `)` {
 					s.warn('use `\${f(expr)}` instead of `\$f(expr)`')
 				}
-			} else if s.is_inter_start && next_char != `.` {
+			} else if s.is_inter_start && next_char != `.` && s.inter_par_depth == 0 {
 				s.is_inter_end = true
 				s.is_inter_start = false
 			}
@@ -637,11 +639,14 @@ fn (mut s Scanner) text_scan() token.Token {
 		// Handle `'$fn()'`
 		if c == `)` && s.is_inter_start {
 			next_char := s.look_ahead(1)
+			s.inter_par_depth--
 			if next_char != `.` {
-				s.is_inter_end = true
-				s.is_inter_start = false
-				if next_char == s.quote {
-					s.is_inside_string = false
+				if s.inter_par_depth == 0 {
+					s.is_inter_end = true
+					s.is_inter_start = false
+					if next_char == s.quote {
+						s.is_inside_string = false
+					}
 				}
 				return s.new_token(.rpar, '', 1)
 			}
