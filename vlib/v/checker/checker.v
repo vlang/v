@@ -5165,13 +5165,6 @@ fn (mut c Checker) fn_decl(mut node ast.FnDecl) {
 			node.stmts << ast.Return{
 				pos: node.pos
 			}
-		} else {
-			node.stmts << ast.Return{
-				pos: node.pos
-				exprs: [ast.Expr(ast.None{
-					pos: node.pos
-				})]
-			}
 		}
 	}
 	c.stmts(node.stmts)
