@@ -1975,10 +1975,6 @@ fn land(w World) {
 
 `match` must have a pattern for each variant or have an `else` branch.
 
-There are two ways to access the cast variant inside a match branch:
-- the shadowed match variable
-- using `as` to specify a variable name
-
 ```v ignore
 struct Moon {}
 struct Mars {}
@@ -1997,20 +1993,8 @@ fn pass_time(w World) {
         Mars { w.shiver() }
         else {}
     }
-    // using `as` to specify a name for each value
-    match w as var {
-        Mars  { var.shiver() }
-        Venus { var.sweat() }
-        else {
-            // w is of type World
-            assert w is Moon
-        }
-    }
 }
 ```
-
-Note: shadowing only works when the match expression is a variable.
-It will not work on struct fields, array indexes, or map keys.
 
 ### Option/Result types and error handling
 
