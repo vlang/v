@@ -1284,7 +1284,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				table.FnType { ret_type = arg_sym.info.func.return_type }
 				else { ret_type = arg_type }
 			}
-			call_expr.return_type = c.table.find_or_register_array(ret_type, 1)
+			call_expr.return_type = c.table.find_or_register_array(ret_type)
 		} else if method_name == 'filter' {
 			// check fn
 			c.check_map_and_filter(false, elem_typ, call_expr)
@@ -1309,7 +1309,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 			}
 			'keys' {
 				info := left_type_sym.info as table.Map
-				typ := c.table.find_or_register_array(info.key_type, 1)
+				typ := c.table.find_or_register_array(info.key_type)
 				ret_type = table.Type(typ)
 			}
 			else {}
@@ -1492,7 +1492,7 @@ pub fn (mut c Checker) call_method(mut call_expr ast.CallExpr) table.Type {
 				elem_info := return_sym.info as table.Array
 				elem_sym := c.table.get_type_symbol(elem_info.elem_type)
 				if elem_sym.name == 'T' {
-					idx := c.table.find_or_register_array(call_expr.generic_type, 1)
+					idx := c.table.find_or_register_array(call_expr.generic_type)
 					return table.new_type(idx)
 				}
 			}
@@ -1825,7 +1825,7 @@ pub fn (mut c Checker) call_fn(mut call_expr ast.CallExpr) table.Type {
 					break
 				}
 			}
-			idx := c.table.find_or_register_array(call_expr.generic_type, dims)
+			idx := c.table.find_or_register_array_with_dims(call_expr.generic_type, dims)
 			typ := table.new_type(idx)
 			call_expr.return_type = typ
 			return typ
@@ -2706,11 +2706,10 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 			}
 		}
 		if array_init.is_fixed {
-			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len,
-				1)
+			idx := c.table.find_or_register_array_fixed(elem_type, array_init.exprs.len)
 			array_init.typ = table.new_type(idx)
 		} else {
-			idx := c.table.find_or_register_array(elem_type, 1)
+			idx := c.table.find_or_register_array(elem_type)
 			array_init.typ = table.new_type(idx)
 		}
 		array_init.elem_type = elem_type
@@ -2737,8 +2736,7 @@ pub fn (mut c Checker) array_init(mut array_init ast.ArrayInit) table.Type {
 				c.error('expecting `int` for fixed size', array_init.pos)
 			}
 		}
-		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size,
-			1)
+		idx := c.table.find_or_register_array_fixed(array_init.elem_type, fixed_size)
 		array_type := table.new_type(idx)
 		array_init.typ = array_type
 	}
@@ -4716,7 +4714,7 @@ pub fn (mut c Checker) index_expr(mut node ast.IndexExpr) table.Type {
 		// fixed_array[1..2] => array
 		if typ_sym.kind == .array_fixed {
 			elem_type := c.table.value_type(typ)
-			idx := c.table.find_or_register_array(elem_type, 1)
+			idx := c.table.find_or_register_array(elem_type)
 			return table.new_type(idx)
 		}
 		return typ.set_nr_muls(0)

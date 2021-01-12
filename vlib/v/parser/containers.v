@@ -32,7 +32,7 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 			elem_type = p.parse_type()
 			// this is set here because it's a known type, others could be the
 			// result of expr so we do those in checker
-			idx := p.table.find_or_register_array(elem_type, 1)
+			idx := p.table.find_or_register_array(elem_type)
 			array_type = table.new_type(idx)
 			has_type = true
 		}
