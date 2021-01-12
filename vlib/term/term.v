@@ -30,7 +30,8 @@ pub fn can_show_color_on_stderr() bool {
 // If colors are not allowed, returns a given string.
 pub fn ok_message(s string) string {
 	return if can_show_color_on_stdout() {
-		green(s)
+		msg := ' $s '
+		green(msg)
 	} else {
 		s
 	}
@@ -40,7 +41,8 @@ pub fn ok_message(s string) string {
 // If colors are not allowed, returns a given string.
 pub fn fail_message(s string) string {
 	return if can_show_color_on_stdout() {
-		bold(bg_red(white(s)))
+		msg := ' $s '
+		inverse(bold(red(msg)))
 	} else {
 		s
 	}
