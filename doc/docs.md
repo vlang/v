@@ -3238,7 +3238,8 @@ To improve safety and maintainability, operator overloading is limited:
 - Operator functions can't modify their arguments.
 - When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
-- Assignment operators (`*=`, `+=`, `/=`, etc) are auto generated when the operators are defined though they must return the same type.
+- Assignment operators (`*=`, `+=`, `/=`, etc) 
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 
