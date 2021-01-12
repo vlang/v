@@ -177,6 +177,7 @@ pub fn (mut ws Client) read_next_message() ?Message {
 		}
 		return msg
 	}
+	return none
 }
 
 // payload_from_fragments returs the whole paylaod from fragmented message

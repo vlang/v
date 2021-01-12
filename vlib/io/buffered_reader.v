@@ -113,4 +113,5 @@ pub fn (mut r BufferedReader) read_line() ?string {
 		line << r.buf[r.offset..i]
 		r.offset = i
 	}
+	return none
 }

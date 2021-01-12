@@ -177,6 +177,7 @@ pub fn (mut pc PkgConfig) extend(pcdep &PkgConfig) ?string {
 			pc.libs_private << lib
 		}
 	}
+	return none
 }
 
 fn (mut pc PkgConfig) load_requires() {
