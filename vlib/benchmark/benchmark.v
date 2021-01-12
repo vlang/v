@@ -199,9 +199,9 @@ pub fn (b &Benchmark) total_message(msg string) string {
 	if b.nskip > 0 {
 		tmsg += term.bold(term.yellow('$b.nskip skipped')) + ', '
 	}
-	tmsg += '$b.ntotal total'
+	tmsg += '$b.ntotal total\n'
 	time := '${b.bench_timer.elapsed().microseconds() / 1000} ms'
-	tmsg += '\n${term.bold('Time:')}       $time\n'
+	tmsg += '${term.bold('Time:')}       $time\n'
 	tmsg += term.gray(msg)
 	return tmsg
 }
