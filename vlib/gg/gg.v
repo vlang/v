@@ -25,36 +25,36 @@ pub type FNChar = fn (c u32, x voidptr)
 
 pub struct Config {
 pub:
-	width                 int
-	height                int
-	use_ortho             bool
-	retina                bool
-	resizable             bool
-	user_data             voidptr
-	font_size             int
-	create_window         bool
+	width         int
+	height        int
+	use_ortho     bool
+	retina        bool
+	resizable     bool
+	user_data     voidptr
+	font_size     int
+	create_window bool
 	// window_user_ptr voidptr
-	window_title          string
-	borderless_window     bool
-	always_on_top         bool
-	bg_color              gx.Color
-	init_fn               FNCb      = voidptr(0)
-	frame_fn              FNCb      = voidptr(0)
-	cleanup_fn            FNCb      = voidptr(0)
-	fail_fn               FNFail    = voidptr(0)
-	event_fn              FNEvent   = voidptr(0)
-	keydown_fn            FNKeyDown = voidptr(0)
+	window_title      string
+	borderless_window bool
+	always_on_top     bool
+	bg_color          gx.Color
+	init_fn           FNCb      = voidptr(0)
+	frame_fn          FNCb      = voidptr(0)
+	cleanup_fn        FNCb      = voidptr(0)
+	fail_fn           FNFail    = voidptr(0)
+	event_fn          FNEvent   = voidptr(0)
+	keydown_fn        FNKeyDown = voidptr(0)
 	// special case of event_fn
-	char_fn               FNChar = voidptr(0)
+	char_fn FNChar = voidptr(0)
 	// special case of event_fn
-	move_fn               FNMove = voidptr(0)
+	move_fn FNMove = voidptr(0)
 	// special case of event_fn
-	click_fn              FNMove = voidptr(0)
+	click_fn FNMove = voidptr(0)
 	// special case of event_fn
 	// wait_events       bool // set this to true for UIs, to save power
-	fullscreen            bool
-	scale                 f32 = 1.0
-	sample_count          int
+	fullscreen   bool
+	scale        f32 = 1.0
+	sample_count int
 	// vid needs this
 	// init_text bool
 	font_path             string
@@ -63,7 +63,7 @@ pub:
 }
 
 pub struct Context {
-	render_text   bool
+	render_text bool
 mut:
 	// a cache with all images created by the user. used for sokol image init and to save space
 	// (so that the user can store image ids, not entire Image objects)
@@ -71,17 +71,17 @@ mut:
 	needs_refresh bool = true
 	ticks         int
 pub mut:
-	scale         f32 = 1.0
+	scale f32 = 1.0
 	// will get set to 2.0 for retina, will remain 1.0 for normal
-	width         int
-	height        int
-	clear_pass    C.sg_pass_action
-	window        C.sapp_desc
-	timage_pip    C.sgl_pipeline
-	config        Config
-	ft            &FT
-	font_inited   bool
-	ui_mode       bool // do not redraw everything 60 times/second, but only when the user requests
+	width       int
+	height      int
+	clear_pass  C.sg_pass_action
+	window      C.sapp_desc
+	timage_pip  C.sgl_pipeline
+	config      Config
+	ft          &FT
+	font_inited bool
+	ui_mode     bool // do not redraw everything 60 times/second, but only when the user requests
 }
 
 pub struct Size {

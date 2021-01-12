@@ -13,8 +13,8 @@ import strings
 import v.table
 
 pub struct Gen {
-	out_name             string
-	pref                 &pref.Preferences // Preferences shared from V struct
+	out_name string
+	pref     &pref.Preferences // Preferences shared from V struct
 mut:
 	table                &table.Table
 	buf                  []byte

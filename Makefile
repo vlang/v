@@ -71,10 +71,7 @@ endif
 endif
 endif
 
-# note that a branch may not exist yet for the user's system configuration,
-# in that case they'll get an error from git while cloning it.
-# TODO: print a pretty error ourselves in that case, and ask the user to open a feature request
-TCCBRANCH := thirdparty-$(TCCOS)-$(TCCARCH)
+.PHONY: all clean fresh_vc fresh_tcc
 
 all: latest_vc latest_tcc
 ifdef WIN32
@@ -118,6 +115,7 @@ else
 endif
 
 fresh_vc:
+	rm -rf $(VC)
 	$(GITFASTCLONE) $(VCREPO) $(VC)
 
 latest_tcc: $(TMPTCC)/.git/config
@@ -131,7 +129,13 @@ endif
 
 fresh_tcc:
 	rm -rf $(TMPTCC)
-	$(GITFASTCLONE) --branch $(TCCBRANCH) $(TCCREPO) $(TMPTCC)
+# Check wether a TCC branch exists for the user's system configuration.
+ifneq (,$(findstring thirdparty-$(TCCOS)-$(TCCARCH), $(shell git ls-remote --heads $(TCCREPO) | sed 's/^[a-z0-9]*\trefs.heads.//')))
+	$(GITFASTCLONE) --branch thirdparty-$(TCCOS)-$(TCCARCH) $(TCCREPO) $(TMPTCC)
+else
+	@echo 'Pre-built TCC not available for thirdparty-$(TCCOS)-$(TCCARCH) at $(TCCREPO), will use the system compiler: $(CC)'
+	$(GITFASTCLONE) --branch thirdparty-unknown-unknown $(TCCREPO) $(TMPTCC)
+endif
 
 $(TMPTCC)/.git/config:
 	$(MAKE) fresh_tcc

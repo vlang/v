@@ -14,7 +14,7 @@ fn parse_text(text string) ast.File {
 }
 
 struct NodeByOffset {
-	pos  int
+	pos int
 mut:
 	node ast.Node
 }

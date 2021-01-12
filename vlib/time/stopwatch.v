@@ -11,8 +11,8 @@ pub struct StopWatch {
 mut:
 	elapsed u64
 pub mut:
-	start   u64
-	end     u64
+	start u64
+	end   u64
 }
 
 pub fn new_stopwatch(opts StopWatchOptions) StopWatch {

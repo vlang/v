@@ -1,9 +1,9 @@
 module os
 
 pub struct File {
-	cfile     voidptr // Using void* instead of FILE*
+	cfile voidptr // Using void* instead of FILE*
 pub:
-	fd        int
+	fd int
 pub mut:
 	is_opened bool
 }

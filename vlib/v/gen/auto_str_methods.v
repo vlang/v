@@ -204,7 +204,12 @@ fn (mut g Gen) gen_str_for_array(info table.Array, styp string, str_fn_name stri
 	if sym.kind == .function {
 		g.auto_str_funcs.writeln('\t\tstring x = ${elem_str_fn_name}();')
 	} else {
-		g.auto_str_funcs.writeln('\t\t$field_styp it = (*($field_styp*)array_get(a, i));')
+		if sym.kind == .array_fixed {
+			g.auto_str_funcs.writeln('\t\t$field_styp it;')
+			g.auto_str_funcs.writeln('\t\tmemcpy(*($field_styp*)it, (byte*)array_get(a, i), sizeof($field_styp));')
+		} else {
+			g.auto_str_funcs.writeln('\t\t$field_styp it = *($field_styp*)array_get(a, i);')
+		}
 		if sym.kind == .struct_ && !sym_has_str_method {
 			if is_elem_ptr {
 				g.auto_str_funcs.writeln('\t\tstring x = indent_${elem_str_fn_name}(*it, indent_count);')

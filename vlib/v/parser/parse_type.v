@@ -336,11 +336,11 @@ pub fn (mut p Parser) parse_any_type(language table.Language, is_ptr bool, check
 				'bool' {
 					return table.bool_type
 				}
-				'any_float' {
-					return table.any_flt_type
+				'float_literal' {
+					return table.float_literal_type
 				}
-				'any_int' {
-					return table.any_int_type
+				'int_literal' {
+					return table.int_literal_type
 				}
 				else {
 					if name.len == 1 && name[0].is_capital() {
