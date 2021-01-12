@@ -158,10 +158,8 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 			pos := p.tok.position()
 			p.next() // sizeof
 			p.check(.lpar)
-			if !p.tok.can_start_type(table.builtin_type_names) {
-				if p.tok.kind == .name {
-					p.mark_var_as_used(p.tok.lit)
-				}
+			is_known_var := p.mark_var_as_used(p.tok.lit)
+			if is_known_var || !p.tok.kind.is_start_of_type() {
 				expr := p.expr(0)
 				node = ast.SizeOf{
 					is_type: false
@@ -176,7 +174,6 @@ pub fn (mut p Parser) expr(precedence int) ast.Expr {
 				node = ast.SizeOf{
 					is_type: true
 					typ: sizeof_type
-					type_name: p.table.get_type_symbol(sizeof_type).name
 					pos: pos
 				}
 			}
