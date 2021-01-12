@@ -1121,9 +1121,9 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
-			sym := f.table.get_type_symbol(node.typ)
+			f.write('sizeof(')
 			if node.is_type {
-				f.write('sizeof(')
+				sym := f.table.get_type_symbol(node.typ)
 				if sym.name != '' {
 					if f.is_external_name(sym.name) {
 						f.write(sym.name)
@@ -1133,12 +1133,10 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 				} else {
 					f.write(f.table.type_to_str(node.typ))
 				}
-				f.write(')')
 			} else {
-				f.write('sizeof(')
 				f.expr(node.expr)
-				f.write(')')
 			}
+			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
