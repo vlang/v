@@ -52,7 +52,7 @@ pub fn fail_message(s string) string {
 // If colors are not allowed, returns a given string.
 pub fn warn_message(s string) string {
 	return if can_show_color_on_stdout() {
-		bright_yellow(s)
+		bright_yellow(' $s ')
 	} else {
 		s
 	}
