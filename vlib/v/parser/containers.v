@@ -78,15 +78,16 @@ fn (mut p Parser) array_init() ast.ArrayInit {
 					last_pos)
 			}
 		} else {
-			if p.tok.kind == .not {
+			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
 				last_pos = p.tok.position()
-				p.next()
-			}
-			if p.tok.kind == .not {
-				last_pos = p.tok.position()
-				p.next()
 				is_fixed = true
 				has_val = true
+				p.next()
+			}
+			if p.tok.kind == .not && p.tok.line_nr == p.prev_tok.line_nr {
+				last_pos = p.tok.position()
+				p.warn_with_pos('use e.g. `[1, 2, 3]!` instead of `[1, 2, 3]!!`', last_pos)
+				p.next()
 			}
 		}
 	}
