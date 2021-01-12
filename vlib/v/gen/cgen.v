@@ -1939,7 +1939,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				right_sym.kind == .struct_ && assign_stmt.op in
 				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
 				g.expr(left)
-				new_op := match assign_stmt.op {
+				extracted_op := match assign_stmt.op {
 					.plus_assign { '+' }
 					.minus_assign { '-' }
 					.div_assign { '/' }
@@ -1947,7 +1947,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					.mult_assign { '*' }
 					else { 'unknown op' }
 				}
-				g.write(' = ${styp}_${util.replace_op(new_op)}(')
+				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
 				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
