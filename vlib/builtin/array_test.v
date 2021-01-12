@@ -1339,7 +1339,7 @@ fn test_array_of_multi_map() {
 }
 
 fn test_multi_fixed_array_with_default_init() {
-	a := [3][3]int{init:[3]int{init: 10}}
+	a := [3][3]int{init: [3]int{init: 10}}
 	println(a)
 	assert a == [[10, 10, 10]!!, [10, 10, 10]!!, [10, 10, 10]!!]!!
 }
