@@ -10,6 +10,7 @@ import strings
 import v.util
 
 const (
+	bs      = '\\'
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
 	]
@@ -1185,15 +1186,28 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		ast.StringLiteral {
+			use_double_quote := node.val.contains("'") && !node.val.contains('"')
 			if node.is_raw {
 				f.write('r')
 			} else if node.language == table.Language.c {
 				f.write('c')
 			}
-			if node.val.contains("'") && !node.val.contains('"') {
-				f.write('"$node.val"')
+			if node.is_raw {
+				if use_double_quote {
+					f.write('"$node.val"')
+				} else {
+					f.write("'$node.val'")
+				}
 			} else {
-				f.write("'$node.val'")
+				unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
+					'$bs"', '"'])
+				if use_double_quote {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+					f.write('"$s"')
+				} else {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+					f.write("'$s'")
+				}
 			}
 		}
 		ast.StringInterLiteral {
