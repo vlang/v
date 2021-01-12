@@ -20,19 +20,17 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	}
 	filepath := if use_relative_paths { i.fpath } else { os.real_path(i.fpath) }
 	final_filepath := if use_color {
-		term.gray(filepath + ':${i.line_nr+1}')
+		term.gray(filepath + ':${i.line_nr+1}:')
 	} else {
-		filepath + ':${i.line_nr+1}'
+		filepath + ':${i.line_nr+1}:'
 	}
-	mut final_funcname := i.fn_name.replace('main.', '').replace('__', '.')
+	mut final_funcname := 'fn ' + i.fn_name.replace('main.', '').replace('__', '.')
 	if use_color {
 		final_funcname = term.red('✗ ' + final_funcname)
 	}
 	final_src := if use_color { term.dim('assert ${term.bold(i.src)}') } else { 'assert ' + i.src }
-	eprintln('$final_funcname ($final_filepath)')
-	eprintln('')
+	eprintln('$final_filepath $final_funcname')
 	eprintln('    $final_src')
-	eprintln('')
 	if i.op.len > 0 && i.op != 'call' {
 		mut lvtitle := '    Left value:'
 		mut rvtitle := '    Right value:'
@@ -48,8 +46,8 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		eprintln('      $slvalue')
 		eprintln(rvtitle)
 		eprintln('      $srvalue')
-		eprintln('')
 	}
+    eprintln('')
 }
 
 fn cb_assertion_ok(i &VAssertMetaInfo) {
