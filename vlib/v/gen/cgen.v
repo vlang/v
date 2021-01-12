@@ -2703,21 +2703,7 @@ fn (mut g Gen) expr(node ast.Expr) {
 		}
 		ast.SizeOf {
 			node_typ := g.unwrap_generic(node.typ)
-			sym := g.table.get_type_symbol(node_typ)
-			mut styp := sym.name
-			if styp.starts_with('C.') {
-				styp = styp[2..]
-			}
-			if sym.name == '' || node.typ.has_flag(.generic) {
-				styp = g.typ(node_typ)
-			} else {
-				if sym.kind == .struct_ {
-					info := sym.info as table.Struct
-					if !info.is_typedef {
-						styp = 'struct ' + styp
-					}
-				}
-			}
+			styp := g.typ(node_typ)
 			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
 		ast.SqlExpr {
