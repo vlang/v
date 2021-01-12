@@ -3,6 +3,17 @@ module main
 import os
 import term
 
+const use_color = term.can_show_color_on_stderr()
+
+const use_relative_paths = can_use_relative_paths()
+
+fn can_use_relative_paths() bool {
+	return match os.getenv('VERROR_PATHS') {
+		'absolute' { false }
+		else { true }
+	}
+}
+
 // //////////////////////////////////////////////////////////////////
 // / This file will get compiled as part of the main program,
 // / for a _test.v file.
@@ -13,16 +24,10 @@ import term
 // //////////////////////////////////////////////////////////////////
 // TODO copy pasta builtin.v fn ___print_assert_failure
 fn cb_assertion_failed(i &VAssertMetaInfo) {
-	use_color := term.can_show_color_on_stderr()
-	use_relative_paths := match os.getenv('VERROR_PATHS') {
-		'absolute' { false }
-		else { true }
-	}
 	filepath := if use_relative_paths { i.fpath } else { os.real_path(i.fpath) }
-	final_filepath := if use_color {
-		term.gray(filepath + ':${i.line_nr+1}:')
-	} else {
-		filepath + ':${i.line_nr+1}:'
+	mut final_filepath := filepath + ':${i.line_nr + 1}:'
+	if use_color {
+		final_filepath = term.gray(final_filepath)
 	}
 	mut final_funcname := 'fn ' + i.fn_name.replace('main.', '').replace('__', '.')
 	if use_color {
@@ -47,13 +52,14 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		eprintln(rvtitle)
 		eprintln('      $srvalue')
 	}
-    eprintln('')
+	eprintln('')
 }
 
 fn cb_assertion_ok(i &VAssertMetaInfo) {
 	// prints for every assertion instead of per test function
 	// TODO: needs to be changed
-	/*use_color := term.can_show_color_on_stderr()
+	/*
+	use_color := term.can_show_color_on_stderr()
 	use_relative_paths := match os.getenv('VERROR_PATHS') {
 		'absolute' { false }
 		else { true }
@@ -68,5 +74,6 @@ fn cb_assertion_ok(i &VAssertMetaInfo) {
 	if use_color {
 		final_funcname = term.green('✓ ' + final_funcname)
 	}
-	println('$final_funcname ($final_filepath)')*/
+	println('$final_funcname ($final_filepath)')
+	*/
 }
