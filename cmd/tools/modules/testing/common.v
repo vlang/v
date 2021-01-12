@@ -276,7 +276,7 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n${r.output.trim_space()}'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()
