@@ -42,7 +42,7 @@ pub fn ok_message(s string) string {
 pub fn fail_message(s string) string {
 	return if can_show_color_on_stdout() {
 		msg := ' $s '
-		inverse(bold(red(msg)))
+		inverse(bg_white(bold(red(msg))))
 	} else {
 		s
 	}
