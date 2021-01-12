@@ -589,9 +589,55 @@ pub fn (mut f Fmt) type_decl(node ast.TypeDecl) {
 	f.writeln('\n')
 }
 
+[inline]
+fn abs(v int) int {
+	return if v >= 0 {
+		v
+	} else {
+		-v
+	}
+}
+
 const (
 	threshold_to_align_struct = 8
 )
+
+struct StructFieldAlignInfo {
+mut:
+	first_line   int
+	last_line    int
+	max_type_len int
+	max_len      int
+}
+
+fn (mut list []StructFieldAlignInfo) add_new_info(len int, type_len int, line int) {
+	list << StructFieldAlignInfo{
+		first_line: line
+		last_line: line
+		max_type_len: type_len
+		max_len: len
+	}
+}
+
+[direct_array_access]
+fn (mut list []StructFieldAlignInfo) add_info(len int, type_len int, line int) {
+	if list.len == 0 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	i := list.len - 1
+	if line - list[i].last_line > 1 {
+		list.add_new_info(len, type_len, line)
+		return
+	}
+	list[i].last_line = line
+	if len > list[i].max_len {
+		list[i].max_len = len
+	}
+	if type_len > list[i].max_type_len {
+		list[i].max_type_len = type_len
+	}
+}
 
 struct CommentAndExprAlignInfo {
 mut:
@@ -607,15 +653,6 @@ fn (mut list []CommentAndExprAlignInfo) add_new_info(attrs_len int, type_len int
 		max_type_len: type_len
 		first_line: line
 		last_line: line
-	}
-}
-
-[inline]
-fn abs(v int) int {
-	return if v >= 0 {
-		v
-	} else {
-		-v
 	}
 }
 
@@ -667,8 +704,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		return
 	}
 	f.writeln(' {')
-	mut max := 0
-	mut max_type_len := 0
+	mut field_aligns := []StructFieldAlignInfo{}
 	mut comment_aligns := []CommentAndExprAlignInfo{}
 	mut default_expr_aligns := []CommentAndExprAlignInfo{}
 	mut field_types := []string{cap: node.fields.len}
@@ -678,9 +714,6 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			ft = f.short_module(ft)
 		}
 		field_types << ft
-		if ft.len > max_type_len {
-			max_type_len = ft.len
-		}
 		attrs_len := inline_attrs_len(field.attrs)
 		end_pos := field.pos.pos + field.pos.len
 		mut comments_len := 0 // Length of comments between field name and type
@@ -695,9 +728,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				comments_len += '/* $comment.text */ '.len
 			}
 		}
-		if comments_len + field.name.len > max {
-			max = comments_len + field.name.len
-		}
+		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
 		if field.has_default_expr {
 			default_expr_aligns.add_info(attrs_len, field_types[i].len, field.pos.line_nr)
 		}
@@ -706,6 +737,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		styp := f.table.type_to_str(embed.typ)
 		f.writeln('\t$styp')
 	}
+	mut field_align_i := 0
 	mut comment_align_i := 0
 	mut default_expr_align_i := 0
 	for i, field in node.fields {
@@ -737,13 +769,17 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 			f.write(comment_text)
 			comm_idx++
 		}
-		f.write(strings.repeat(` `, max - field.name.len - comments_len))
+		mut field_align := field_aligns[field_align_i]
+		if field_align.last_line < field.pos.line_nr {
+			field_align_i++
+			field_align = field_aligns[field_align_i]
+		}
+		f.write(strings.repeat(` `, field_align.max_len - field.name.len - comments_len))
 		f.write(field_types[i])
-		after_type_pad_len := max_type_len - field_types[i].len
 		attrs_len := inline_attrs_len(field.attrs)
 		has_attrs := field.attrs.len > 0
 		if has_attrs {
-			f.write(strings.repeat(` `, after_type_pad_len))
+			f.write(strings.repeat(` `, field_align.max_type_len - field_types[i].len))
 			f.inline_attrs(field.attrs)
 		}
 		if field.has_default_expr {

@@ -2426,10 +2426,10 @@ struct Foo {
 }
 
 struct User {
-	name      string
-	age       int
+	name string
+	age  int
 	// Use the `skip` attribute to skip certain fields
-	foo       Foo    [skip]
+	foo Foo [skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string [json: lastName]
 }

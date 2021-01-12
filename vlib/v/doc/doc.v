@@ -41,11 +41,11 @@ pub fn (sk SymbolKind) str() string {
 }
 
 pub struct Doc {
-	prefs           &pref.Preferences = new_vdoc_preferences()
+	prefs &pref.Preferences = new_vdoc_preferences()
 pub mut:
-	base_path       string
-	table           &table.Table    = &table.Table{}
-	checker         checker.Checker = checker.Checker{
+	base_path string
+	table     &table.Table    = &table.Table{}
+	checker   checker.Checker = checker.Checker{
 	table: 0
 	cur_fn: 0
 	pref: 0

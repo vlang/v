@@ -31,34 +31,34 @@ const (
 )
 
 pub struct Checker {
-	pref                             &pref.Preferences // Preferences shared from V struct
+	pref &pref.Preferences // Preferences shared from V struct
 pub mut:
-	table                            &table.Table
-	file                             &ast.File = 0
-	nr_errors                        int
-	nr_warnings                      int
-	errors                           []errors.Error
-	warnings                         []errors.Warning
-	error_lines                      []int // to avoid printing multiple errors for the same line
-	expected_type                    table.Type
-	expected_or_type                 table.Type  // fn() or { 'this type' } eg. string. expected or block type
-	cur_fn                           &ast.FnDecl // current function
-	const_decl                       string
-	const_deps                       []string
-	const_names                      []string
-	global_names                     []string
-	locked_names                     []string // vars that are currently locked
-	rlocked_names                    []string // vars that are currently read-locked
-	in_for_count                     int      // if checker is currently in a for loop
+	table            &table.Table
+	file             &ast.File = 0
+	nr_errors        int
+	nr_warnings      int
+	errors           []errors.Error
+	warnings         []errors.Warning
+	error_lines      []int // to avoid printing multiple errors for the same line
+	expected_type    table.Type
+	expected_or_type table.Type  // fn() or { 'this type' } eg. string. expected or block type
+	cur_fn           &ast.FnDecl // current function
+	const_decl       string
+	const_deps       []string
+	const_names      []string
+	global_names     []string
+	locked_names     []string // vars that are currently locked
+	rlocked_names    []string // vars that are currently read-locked
+	in_for_count     int      // if checker is currently in a for loop
 	// checked_ident  string // to avoid infinite checker loops
-	returns                          bool
-	scope_returns                    bool
-	mod                              string // current module name
-	is_builtin_mod                   bool   // are we in `builtin`?
-	inside_unsafe                    bool
-	inside_const                     bool
-	skip_flags                       bool // should `#flag` and `#include` be skipped
-	cur_generic_type                 table.Type
+	returns          bool
+	scope_returns    bool
+	mod              string // current module name
+	is_builtin_mod   bool   // are we in `builtin`?
+	inside_unsafe    bool
+	inside_const     bool
+	skip_flags       bool // should `#flag` and `#include` be skipped
+	cur_generic_type table.Type
 mut:
 	expr_level                       int  // to avoid infinite recursion segfaults due to compiler bugs
 	inside_sql                       bool // to handle sql table fields pseudo variables

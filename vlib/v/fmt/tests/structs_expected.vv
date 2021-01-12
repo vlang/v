@@ -8,13 +8,13 @@ struct User {
 }
 
 struct Foo {
-	field1        int    // f1
-	field2        string // f2
+	field1 int    // f1
+	field2 string // f2
 pub:
 	public_field1 int // f1
 	public_field2 f64 // f2
 mut:
-	mut_field     string
+	mut_field string
 pub mut:
 	pub_mut_field string
 }
@@ -38,9 +38,9 @@ mut:
 	9
 10
 	*/
-	somefield2 /* 11 */       int // 12
+	somefield2 /* 11 */ int // 12
 pub:
-	somefield3                int
+	somefield3 int
 	/*
 	13
 14

@@ -12,11 +12,11 @@ const (
 
 struct AssetManager {
 mut:
-	css       []Asset
-	js        []Asset
+	css []Asset
+	js  []Asset
 pub mut:
 	// when true assets will be minified
-	minify    bool
+	minify bool
 	// the directory to store the cached/combined files
 	cache_dir string
 }
