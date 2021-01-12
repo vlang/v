@@ -129,6 +129,9 @@ pub fn new_test_session(_vargs string) TestSession {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
+	if term.can_show_color_on_stderr() {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	return TestSession{
 		vexe: vexe
 		vroot: vroot

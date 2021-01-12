@@ -26,14 +26,19 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 	} else {
 		filepath
 	}
-	final_funcname := i.fn_name.replace('main.', '').replace('__', '.')
-	final_src := if use_color { term.gray('assert ${term.bold(i.src)}') } else { 'assert ' + i.src }
+	mut final_funcname := i.fn_name.replace('main.', '').replace('__', '.')
+	if use_color {
+		final_funcname = term.red(final_funcname)
+	}
+	final_src := if use_color { term.dim('assert ${term.bold(i.src)}') } else { 'assert ' + i.src }
 	eprintln('')
-	eprintln('$final_filepath:${i.line_nr+1}: ${term.red(final_funcname)}')
+	eprintln('$final_filepath:${i.line_nr+1}: $final_funcname')
 	eprintln('')
 	eprintln('    $final_src')
 	eprintln('')
 	if i.op.len > 0 && i.op != 'call' {
+		mut lvtitle := '    Left value:'
+		mut rvtitle := '    Right value:'
 		mut slvalue := '$i.lvalue'
 		mut srvalue := '$i.rvalue'
 		// lpostfix := if slvalue == i.llabel { '.' } else { '<= `$i.llabel`' }
@@ -41,10 +46,12 @@ fn cb_assertion_failed(i &VAssertMetaInfo) {
 		if use_color {
 			slvalue = term.yellow(slvalue)
 			srvalue = term.yellow(srvalue)
+			lvtitle = term.gray(lvtitle)
+			rvtitle = term.gray(rvtitle)
 		}
-		eprintln(term.dim('    Left value:'))
+		eprintln(lvtitle)
 		eprintln('      $slvalue')
-		eprintln(term.dim('    Right value:'))
+		eprintln(rvtitle)
 		eprintln('      $slvalue')
 	}
 }
