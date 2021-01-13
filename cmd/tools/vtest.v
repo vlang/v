@@ -7,15 +7,7 @@ import testing
 fn main() {
 	args := os.args.clone()
 	if os.args.last() == 'test' {
-		println('Usage:')
-		println('   A)')
-		println('      v test folder/ : run all v tests in the given folder.')
-		println('      v -stats test folder/ : the same, but print more stats.')
-		println('   B)')
-		println('      v test file_test.v : run test functions in a given test file.')
-		println('      v -stats test file_test.v : as above, but with more stats.')
-		println('   NB: you can also give many and mixed folder/ file_test.v arguments after test.')
-		println('')
+		show_usage()
 		return
 	}
 	args_to_executable := args[1..]
@@ -37,7 +29,9 @@ fn main() {
 			ts.files << os.walk_ext(targ.trim_right(os.path_separator), '_test.v')
 			continue
 		}
-		println('Unrecognized test file $targ .')
+		eprintln('\nUnrecognized test file `$targ` .\n `v test` can only be used with folders and/or _test.v files.\n')
+		show_usage()
+		exit(1)
 	}
 	testing.header('Testing...')
 	ts.test()
@@ -45,4 +39,16 @@ fn main() {
 	if ts.failed {
 		exit(1)
 	}
+}
+
+fn show_usage() {
+	println('Usage:')
+	println('   A)')
+	println('      v test folder/ : run all v tests in the given folder.')
+	println('      v -stats test folder/ : the same, but print more stats.')
+	println('   B)')
+	println('      v test file_test.v : run test functions in a given test file.')
+	println('      v -stats test file_test.v : as above, but with more stats.')
+	println('   NB: you can also give many and mixed folder/ file_test.v arguments after `v test` .')
+	println('')
 }
