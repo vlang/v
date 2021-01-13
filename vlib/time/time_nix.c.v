@@ -44,6 +44,7 @@ mut:
 // the first arg is defined in include/bits/types.h as `__S32_TYPE`, which is `int`
 fn C.clock_gettime(int, &C.timespec)
 
+// sys_mono_now returns a *monotonically increasing time*, NOT a time adjusted for daylight savings, location etc.
 pub fn sys_mono_now() u64 {
 	$if macos {
 		return sys_mono_now_darwin()

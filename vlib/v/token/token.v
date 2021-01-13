@@ -53,11 +53,11 @@ pub enum Kind {
 	decl_assign // :=
 	plus_assign // +=
 	minus_assign // -=
-	div_assign
-	mult_assign
-	xor_assign
-	mod_assign
-	or_assign
+	div_assign // /=
+	mult_assign // *=
+	xor_assign // ^=
+	mod_assign // %=
+	or_assign // |=
 	and_assign
 	right_shift_assign
 	left_shift_assign // {}  () []

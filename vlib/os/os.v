@@ -35,7 +35,7 @@ pub fn cp_all(src string, dst string, overwrite bool) ? {
 	source_path := real_path(src)
 	dest_path := real_path(dst)
 	if !exists(source_path) {
-		return error("Source path doesn\'t exist")
+		return error("Source path doesn't exist")
 	}
 	// single file copy
 	if !is_dir(source_path) {

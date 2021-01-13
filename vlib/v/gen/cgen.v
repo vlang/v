@@ -1438,7 +1438,7 @@ fn (mut g Gen) expr_with_cast(expr ast.Expr, got_type_raw table.Type, expected_t
 
 // cestring returns a V string, properly escaped for embeddeding in a C string literal.
 fn cestring(s string) string {
-	return s.replace('\\', '\\\\').replace('"', "\'")
+	return s.replace('\\', '\\\\').replace('"', "'")
 }
 
 // ctoslit returns a '_SLIT("$s")' call, where s is properly escaped.
@@ -1919,6 +1919,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				''
 			}
 			mut str_add := false
+			mut op_overloaded := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
@@ -1932,6 +1933,22 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.is_assign_lhs = false
 				g.is_assign_rhs = true
 				str_add = true
+			}
+			// Assignment Operator Overloading
+			if left_sym.kind == .struct_ &&
+				right_sym.kind == .struct_ && assign_stmt.op in
+				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+				g.expr(left)
+				extracted_op := match assign_stmt.op {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mod_assign { '%' }
+					.mult_assign { '*' }
+					else { 'unknown op' }
+				}
+				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
@@ -1969,9 +1986,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add {
+			} else if !g.is_array_set && !str_add && !op_overloaded {
 				g.write(' $op ')
-			} else if str_add {
+			} else if str_add || op_overloaded {
 				g.write(', ')
 			}
 			mut cloned := false
@@ -2049,7 +2066,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('.data')
 				}
 			}
-			if str_add {
+			if str_add || op_overloaded {
 				g.write(')')
 			}
 			if g.is_array_set {
@@ -2702,29 +2719,9 @@ fn (mut g Gen) expr(node ast.Expr) {
 			g.select_expr(node)
 		}
 		ast.SizeOf {
-			if node.is_type {
-				node_typ := g.unwrap_generic(node.typ)
-				mut styp := node.type_name
-				if styp.starts_with('C.') {
-					styp = styp[2..]
-				}
-				if node.type_name == '' || node.typ.has_flag(.generic) {
-					styp = g.typ(node_typ)
-				} else {
-					sym := g.table.get_type_symbol(node_typ)
-					if sym.kind == .struct_ {
-						info := sym.info as table.Struct
-						if !info.is_typedef {
-							styp = 'struct ' + styp
-						}
-					}
-				}
-				g.write('/*SizeOfType*/ sizeof(${util.no_dots(styp)})')
-			} else {
-				g.write('/*SizeOfVar*/ sizeof(')
-				g.expr(node.expr)
-				g.write(')')
-			}
+			node_typ := g.unwrap_generic(node.typ)
+			styp := g.typ(node_typ)
+			g.write('/*SizeOf*/ sizeof(${util.no_dots(styp)})')
 		}
 		ast.SqlExpr {
 			g.sql_select_expr(node)
@@ -3034,6 +3031,10 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		g.write('${ptr_typ}_arr_eq(')
 		if node.left_type.is_ptr() {
 			g.write('*')
+		}
+		if node.left is ast.ArrayInit {
+			s := g.typ(left_type)
+			g.write('($s)')
 		}
 		g.expr(node.left)
 		g.write(', ')
@@ -5385,6 +5386,12 @@ fn (mut g Gen) go_stmt(node ast.GoStmt) {
 	tmp := g.new_tmp_var()
 	expr := node.call_expr as ast.CallExpr
 	mut name := expr.name // util.no_dots(expr.name)
+	// TODO: fn call is duplicated. merge with fn_call().
+	if expr.generic_type != table.void_type && expr.generic_type != 0 {
+		// Using _T_ to differentiate between get<string> and get_string
+		// `foo<int>()` => `foo_T_int()`
+		name += '_T_' + g.typ(expr.generic_type)
+	}
 	if expr.is_method {
 		receiver_sym := g.table.get_type_symbol(expr.receiver_type)
 		name = receiver_sym.name + '_' + name

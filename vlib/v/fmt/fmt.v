@@ -10,6 +10,7 @@ import strings
 import v.util
 
 const (
+	bs      = '\\'
 	tabs    = ['', '\t', '\t\t', '\t\t\t', '\t\t\t\t', '\t\t\t\t\t', '\t\t\t\t\t\t', '\t\t\t\t\t\t\t',
 		'\t\t\t\t\t\t\t\t',
 	]
@@ -725,7 +726,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 				continue
 			}
 			if comment.pos.pos > field.pos.pos {
-				comments_len += '/* $comment.text */ '.len
+				comments_len += '/* ${comment.text.trim_left('\x01')} */ '.len
 			}
 		}
 		field_aligns.add_info(comments_len + field.name.len, ft.len, field.pos.line_nr)
@@ -764,7 +765,7 @@ pub fn (mut f Fmt) struct_decl(node ast.StructDecl) {
 		// Handle comments between field name and type
 		mut comments_len := 0
 		for comm_idx < comments.len && comments[comm_idx].pos.pos < end_pos {
-			comment_text := '/* ${comments[comm_idx].text} */ ' // TODO handle in a function
+			comment_text := '/* ${comments[comm_idx].text.trim_left('\x01')} */ ' // TODO handle in a function
 			comments_len += comment_text.len
 			f.write(comment_text)
 			comm_idx++
@@ -1121,23 +1122,22 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write(node.field_name)
 		}
 		ast.SizeOf {
+			f.write('sizeof(')
 			if node.is_type {
-				f.write('sizeof(')
-				if node.type_name != '' {
-					if f.is_external_name(node.type_name) {
-						f.write(node.type_name)
+				sym := f.table.get_type_symbol(node.typ)
+				if sym.name != '' {
+					if f.is_external_name(sym.name) {
+						f.write(sym.name)
 					} else {
-						f.write(f.short_module(node.type_name))
+						f.write(f.short_module(sym.name))
 					}
 				} else {
 					f.write(f.table.type_to_str(node.typ))
 				}
-				f.write(')')
 			} else {
-				f.write('sizeof(')
 				f.expr(node.expr)
-				f.write(')')
 			}
+			f.write(')')
 		}
 		ast.SqlExpr {
 			// sql app.db { select from Contributor where repo == id && user == 0 }
@@ -1185,34 +1185,43 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 			f.write('}')
 		}
 		ast.StringLiteral {
+			use_double_quote := node.val.contains("'") && !node.val.contains('"')
 			if node.is_raw {
 				f.write('r')
 			} else if node.language == table.Language.c {
 				f.write('c')
 			}
-			if node.val.contains("'") && !node.val.contains('"') {
-				f.write('"$node.val"')
+			if node.is_raw {
+				if use_double_quote {
+					f.write('"$node.val"')
+				} else {
+					f.write("'$node.val'")
+				}
 			} else {
-				f.write("'$node.val'")
+				unescaped_val := node.val.replace('$bs$bs', '\x01').replace_each(["$bs'", "'",
+					'$bs"', '"'])
+				if use_double_quote {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', '"', '$bs"'])
+					f.write('"$s"')
+				} else {
+					s := unescaped_val.replace_each(['\x01', '$bs$bs', "'", "$bs'"])
+					f.write("'$s'")
+				}
 			}
 		}
 		ast.StringInterLiteral {
 			// TODO: this code is very similar to ast.Expr.str()
-			mut contains_single_quote := false
+			mut quote := "'"
 			for val in node.vals {
 				if val.contains("'") {
-					contains_single_quote = true
+					quote = '"'
 				}
 				if val.contains('"') {
-					contains_single_quote = false
+					quote = "'"
 					break
 				}
 			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
+			f.write(quote)
 			for i, val in node.vals {
 				f.write(val)
 				if i >= node.exprs.len {
@@ -1229,11 +1238,7 @@ pub fn (mut f Fmt) expr(node ast.Expr) {
 					f.expr(node.exprs[i])
 				}
 			}
-			if contains_single_quote {
-				f.write('"')
-			} else {
-				f.write("'")
-			}
+			f.write(quote)
 		}
 		ast.StructInit {
 			f.struct_init(node)
@@ -1419,7 +1424,7 @@ pub fn (mut f Fmt) comment(node ast.Comment, options CommentsOptions) {
 	}
 	if !node.text.contains('\n') {
 		is_separate_line := !options.inline || node.text.starts_with('\x01')
-		mut s := if node.text.starts_with('\x01') { node.text[1..] } else { node.text }
+		mut s := node.text.trim_left('\x01')
 		mut out_s := '//'
 		if s != '' {
 			match s[0] {
@@ -2036,7 +2041,7 @@ pub fn (mut f Fmt) array_init(it ast.ArrayInit) {
 	// `[100]byte`
 	if it.is_fixed {
 		if it.has_val {
-			f.write('!!')
+			f.write('!')
 			return
 		}
 		f.write(f.table.type_to_str(it.elem_type))

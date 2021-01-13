@@ -474,9 +474,9 @@ pub fn (a []string) str() string {
 	sb.write('[')
 	for i in 0 .. a.len {
 		val := a[i]
-		sb.write("\'")
+		sb.write("'")
 		sb.write(val)
-		sb.write("\'")
+		sb.write("'")
 		if i < a.len - 1 {
 			sb.write(', ')
 		}

@@ -129,6 +129,9 @@ pub fn new_test_session(_vargs string) TestSession {
 	vexe := pref.vexe_path()
 	vroot := os.dir(vexe)
 	new_vtmp_dir := setup_new_vtmp_folder()
+	if term.can_show_color_on_stderr() {
+		os.setenv('VCOLORS', 'always', true)
+	}
 	return TestSession{
 		vexe: vexe
 		vroot: vroot
@@ -273,7 +276,8 @@ fn worker_trunner(mut p sync.PoolProcessor, idx int, thread_id int) voidptr {
 			ts.failed = true
 			ts.benchmark.fail()
 			tls_bench.fail()
-			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output\n'))
+			ending_newline := if r.output.ends_with('\n') { '\n' } else { '' }
+			ts.append_message(.fail, tls_bench.step_message_fail('$relative_file\n$r.output.trim_space()$ending_newline'))
 		} else {
 			ts.benchmark.ok()
 			tls_bench.ok()

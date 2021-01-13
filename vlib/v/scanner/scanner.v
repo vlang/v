@@ -28,7 +28,6 @@ pub mut:
 	is_inter_start    bool // for hacky string interpolation TODO simplify
 	is_inter_end      bool
 	is_enclosed_inter bool
-	is_debug          bool
 	line_comment      string
 	// prev_tok                 TokenKind
 	is_started                  bool
@@ -959,7 +958,10 @@ fn (mut s Scanner) text_scan() token.Token {
 					}
 					s.pos++
 					if s.should_parse_comment() {
-						comment := s.text[start..(s.pos - 1)].trim(' ')
+						mut comment := s.text[start..(s.pos - 1)].trim(' ')
+						if !comment.contains('\n') {
+							comment = '\x01' + comment
+						}
 						return s.new_token(.comment, comment, comment.len + 4)
 					}
 					// Skip if not in fmt mode
@@ -1151,7 +1153,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "\'" {
+	return if c == "'" {
 		'\\' + c
 	} else {
 		c
@@ -1170,29 +1172,6 @@ fn (s &Scanner) expect(want string, start_pos int) bool {
 		}
 	}
 	return true
-}
-
-fn (mut s Scanner) debug_tokens() {
-	s.pos = 0
-	s.is_started = false
-	s.is_debug = true
-	fname := s.file_path.all_after_last(os.path_separator)
-	println('\n===DEBUG TOKENS $fname===')
-	for {
-		tok := s.scan()
-		tok_kind := tok.kind
-		lit := tok.lit
-		print(tok_kind.str())
-		if lit != '' {
-			println(' `$lit`')
-		} else {
-			println('')
-		}
-		if tok_kind == .eof {
-			println('============ END OF DEBUG TOKENS ==================')
-			break
-		}
-	}
 }
 
 [inline]

@@ -410,7 +410,7 @@ y := x + 3.14  // x is of type `f32` - no promotion
 a := 75        // a is of type `int` - default for int literal
 b := 14.7      // b is of type `f64` - default for float literal
 c := u + a     // c is of type `int` - automatic promotion of `u`'s value
-d := b + x     // d is of type `f64` - automatic promotion of `x`'s value 
+d := b + x     // d is of type `f64` - automatic promotion of `x`'s value
 ```
 
 ### Strings
@@ -689,7 +689,7 @@ println(a) // [[[0, 0], [0, 2], [0, 0]], [[0, 0], [0, 0], [0, 0]]]
 Sorting arrays of all kinds is very simple and intuitive. Special variables `a` and `b`
 are used when providing a custom sorting condition.
 
-```v nofmt
+```v
 mut numbers := [1, 3, 2]
 numbers.sort() // 1, 2, 3
 numbers.sort(a > b) // 3, 2, 1
@@ -2982,12 +2982,26 @@ To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
 
 To debug issues in the generated C code, you can pass these flags:
 
+- `-g` - produces a less optimized executable with more debug information in it.
+    V will enforce line numbers from the .v files in the stacktraces, that the
+    executable will produce on panic. It is usually better to pass -g, unless
+    you are writing low level code, in which case use the next option `-cg`.
 - `-cg` - produces a less optimized executable with more debug information in it.
+	The executable will use C source line numbers in this case. It is frequently
+    used in combination with `-keepc`, so that you can inspect the generated
+    C program in case of panic, or so that your debugger (`gdb`, `lldb` etc.)
+    can show you the generated C source code.
 - `-showcc` - prints the C command that is used to build the program.
+- `-show-c-output` - prints the output, that your C compiler produced
+    while compiling your program.
+- `-keepc` - do not delete the generated C source code file after a successful
+    compilation. Also keep using the same file path, so it is more stable,
+    and easier to keep opened in an editor/IDE.
 
-For the best debugging experience, you can pass all of them at the same time:
-`v -cg -showcc yourprogram.v`,
-then just run your debugger (gdb/lldb) or IDE on the produced executable `yourprogram`.
+For best debugging experience if you are writing a low level wrapper for an existing
+C library, you can pass several of these flags at the same time:
+`v -keepc -cg -showcc yourprogram.v`, then just run your debugger (gdb/lldb) or IDE
+on the produced executable `yourprogram`.
 
 If you just want to inspect the generated C code,
 without further compilation, you can also use the `-o` flag (e.g. `-o file.c`).
@@ -3216,8 +3230,11 @@ fn (a Vec) - (b Vec) Vec {
 fn main() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
+	mut c := Vec{1, 2}
 	println(a + b) // "{6, 8}"
 	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
 }
 ```
 
@@ -3235,6 +3252,8 @@ To improve safety and maintainability, operator overloading is limited:
 - Operator functions can't modify their arguments.
 - When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc)
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 

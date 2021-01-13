@@ -997,9 +997,11 @@ fn split_host_port(hostport string) (string, string) {
 	mut host := hostport
 	mut port := ''
 	colon := host.last_index_byte(`:`)
-	if colon != -1 && valid_optional_port(host[colon..]) {
-		port = host[colon + 1..]
-		host = host[..colon]
+	if colon != -1 {
+		if valid_optional_port(host[colon..]) {
+			port = host[colon + 1..]
+			host = host[..colon]
+		}
 	}
 	if host.starts_with('[') && host.ends_with(']') {
 		host = host[1..host.len - 1]

@@ -1500,6 +1500,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 		//
 		end_pos := p.prev_tok.position()
 		pos := name_pos.extend(end_pos)
+		comments := p.eat_line_end_comments()
 		mcall_expr := ast.CallExpr{
 			left: left
 			name: field_name
@@ -1514,6 +1515,7 @@ fn (mut p Parser) dot_expr(left ast.Expr) ast.Expr {
 				pos: or_pos
 			}
 			scope: p.scope
+			comments: comments
 		}
 		if is_filter || field_name == 'sort' {
 			p.close_scope()

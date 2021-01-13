@@ -240,7 +240,13 @@ fn (mut g Gen) fn_args(args []table.Param, is_variadic bool) ([]string, []string
 				g.definitions.write(')')
 			}
 		} else {
-			s := arg_type_name + ' ' + caname
+			// TODO: combine two operations into one once ternary in expression is fixed
+			mut s := if arg_type_sym.kind == .array_fixed {
+				arg_type_name.trim('*')
+			} else {
+				arg_type_name
+			}
+			s += ' ' + caname
 			g.write(s)
 			g.definitions.write(s)
 			fargs << caname
@@ -341,7 +347,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 		g.write('${c_name(receiver_type_name)}_name_table[')
 		g.expr(node.left)
 		dot := if node.left_type.is_ptr() { '->' } else { '.' }
-		g.write('${dot}_interface_idx].${node.name}(')
+		mname := c_name(node.name)
+		g.write('${dot}_interface_idx].${mname}(')
 		g.expr(node.left)
 		g.write('${dot}_object')
 		if node.args.len > 0 {
@@ -649,7 +656,8 @@ fn (mut g Gen) autofree_call_pregen(node ast.CallExpr) {
 	// g.writeln('// autofree_call_pregen()')
 	// Create a temporary var before fn call for each argument in order to free it (only if it's a complex expression,
 	// like `foo(get_string())` or `foo(a + b)`
-	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 && !node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
+	mut free_tmp_arg_vars := g.is_autofree && !g.is_builtin_mod && node.args.len > 0 &&
+		!node.args[0].typ.has_flag(.optional) // TODO copy pasta checker.v
 	if !free_tmp_arg_vars {
 		return
 	}

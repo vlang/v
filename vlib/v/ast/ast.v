@@ -1022,11 +1022,11 @@ pub mut:
 
 pub struct SizeOf {
 pub:
-	is_type   bool
-	typ       table.Type
-	type_name string
-	expr      Expr
-	pos       token.Position
+	is_type bool
+	expr    Expr // checker uses this to set typ
+	pos     token.Position
+pub mut:
+	typ table.Type
 }
 
 pub struct Likely {
