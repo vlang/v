@@ -18,9 +18,7 @@ pub:
 }
 
 pub fn (ed EmbeddedData) str() string {
-	return 'embed.EmbeddedData{
-    len: $ed.len
-}'
+	return 'embed.EmbeddedData{ len: $ed.len, path: "$ed.path" }'
 }
 
 pub fn (mut ed EmbeddedData) data() byteptr {
