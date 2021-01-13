@@ -135,12 +135,13 @@ pub fn (t &Table) is_same_method_as(f &Fn, func &Fn) string {
 		return 'expected return type `$s`'
 	}
 	if f.params.len != func.params.len {
-		return 'expected ${f.params.len} parameters'
+		return 'expected $f.params.len parameter(s), not $func.params.len'
 	}
 	for i in 1 .. f.params.len {
 		if f.params[i].typ != func.params[i].typ {
-			s := t.type_to_str(f.params[i].typ)
-			return 'type of parameter $i is not `$s`'
+			exps := t.type_to_str(f.params[i].typ)
+			gots := t.type_to_str(func.params[i].typ)
+			return 'expected `$exps`, not `$gots` for parameter $i'
 		}
 	}
 	return ''
