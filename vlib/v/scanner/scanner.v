@@ -1154,7 +1154,7 @@ fn (mut s Scanner) ident_char() string {
 		}
 	}
 	// Escapes a `'` character
-	return if c == "\'" {
+	return if c == "'" {
 		'\\' + c
 	} else {
 		c
