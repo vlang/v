@@ -189,20 +189,20 @@ pub fn (b &Benchmark) step_message_skip(msg string) string {
 
 // total_message returns a string with total summary of the benchmark run.
 pub fn (b &Benchmark) total_message(msg string) string {
-	mut tmsg := '$msg\n                 ok, fail, skip, total = ' + term.ok_message('${b.nok:5d}') +
-		', ' + if b.nfail > 0 { term.red('${b.nfail:5d}') } else { '${b.nfail:5d}' } + ', ' + if b.nskip >
-		0 { term.bright_yellow('${b.nskip:5d}') } else { '${b.nskip:5d}' } + ', ' + '${b.ntotal:5d}'
-	if b.verbose {
-		tmsg = '<=== total time spent $tmsg'
+	mut tmsg := '${term.bold('Summary:')} '
+	if b.nfail > 0 {
+		tmsg += term.bold(term.red('$b.nfail failed')) + ', '
 	}
-	mut spaces := '    '
-	if b.nexpected_steps > 1 {
-		// NB: the formula below accounts for the progress bar [step/total]
-		str_steps := '$b.nexpected_steps'
-		x := 4 + str_steps.len * 2 + 5
-		spaces = ' '.repeat(x)
+	if b.nok > 0 {
+		tmsg += term.bold(term.green('$b.nok passed')) + ', '
 	}
-	return spaces + b.tdiff_in_ms(tmsg, b.bench_timer.elapsed().microseconds())
+	if b.nskip > 0 {
+		tmsg += term.bold(term.yellow('$b.nskip skipped')) + ', '
+	}
+	tmsg += '$b.ntotal total. ${term.bold('Runtime:')} ${b.bench_timer.elapsed().microseconds() /
+		1000} ms.\n'
+	tmsg += term.gray(msg)
+	return tmsg
 }
 
 // total_duration returns the duration in ms.
