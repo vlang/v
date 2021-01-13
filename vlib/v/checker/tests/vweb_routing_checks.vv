@@ -2,6 +2,8 @@ import vweb
 
 struct App {
 	vweb.Context
+pub mut:
+	dataptr &App = voidptr(0)
 }
 
 pub fn (mut app App) no_attributes(a string) vweb.Result {
@@ -32,6 +34,10 @@ pub fn (app App) init_once() {
 }
 
 pub fn (app App) init() {
+	//
+}
+
+pub fn (mut app App) uninit() {
 	//
 }
 

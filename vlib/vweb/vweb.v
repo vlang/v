@@ -218,15 +218,12 @@ pub fn run_app<T>(mut app T, port int) {
 			// check routes for validity
 		}
 	}
-
-
 	// app.reset()
 	for {
 		mut conn := l.accept() or { panic('accept() failed') }
 		mut session := *app
 		session.dataptr = voidptr(app)
 		go handle_conn<T>(mut &conn, mut &session, mut app)
-
 		// app.vweb.page_gen_time = time.ticks() - t
 		// eprintln('handle conn() took ${time.ticks()-t}ms')
 		// message := readall(conn)
