@@ -33,23 +33,44 @@ vlib/v/checker/tests/method_op_err.vv:26:1: error: argument cannot be `mut` for 
       | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
    27 |     return User{}
    28 | }
-vlib/v/checker/tests/method_op_err.vv:32:24: error: infix expr: cannot use `Foo` (right expression) as `User`
-   30 | fn main() {
-   31 |     println(User{3, 4})
-   32 |     println(User{3, 4} - Foo{3, 3})
+vlib/v/checker/tests/method_op_err.vv:36:24: error: infix expr: cannot use `Foo` (right expression) as `User`
+   34 | fn main() {
+   35 |     println(User{3, 4})
+   36 |     println(User{3, 4} - Foo{3, 3})
       |                        ^
-   33 |     println(User{3, 2} < User{2, 4})
-   34 |     println(User{3, 4} < Foo{3, 4})
-vlib/v/checker/tests/method_op_err.vv:33:24: error: operation `User` < `User` does not exist, please define it
-   31 |     println(User{3, 4})
-   32 |     println(User{3, 4} - Foo{3, 3})
-   33 |     println(User{3, 2} < User{2, 4})
+   37 |     println(User{3, 2} < User{2, 4})
+   38 |     println(User{3, 4} < Foo{3, 4})
+vlib/v/checker/tests/method_op_err.vv:37:24: error: operation `User` < `User` does not exist, please define it
+   35 |     println(User{3, 4})
+   36 |     println(User{3, 4} - Foo{3, 3})
+   37 |     println(User{3, 2} < User{2, 4})
       |                        ^
-   34 |     println(User{3, 4} < Foo{3, 4})
-   35 | }
-vlib/v/checker/tests/method_op_err.vv:34:24: error: mismatched types `User` and `Foo`
-   32 |     println(User{3, 4} - Foo{3, 3})
-   33 |     println(User{3, 2} < User{2, 4})
-   34 |     println(User{3, 4} < Foo{3, 4})
+   38 |     println(User{3, 4} < Foo{3, 4})
+   39 |     mut u := User{3, 4}
+vlib/v/checker/tests/method_op_err.vv:38:24: error: mismatched types `User` and `Foo`
+   36 |     println(User{3, 4} - Foo{3, 3})
+   37 |     println(User{3, 2} < User{2, 4})
+   38 |     println(User{3, 4} < Foo{3, 4})
       |                        ^
-   35 | }
+   39 |     mut u := User{3, 4}
+   40 |     u += 12
+vlib/v/checker/tests/method_op_err.vv:40:10: error: cannot assign to `u`: expected `User`, not `int literal`
+   38 |     println(User{3, 4} < Foo{3, 4})
+   39 |     mut u := User{3, 4}
+   40 |     u += 12
+      |          ~~
+   41 |     u %= User{1, 3}
+   42 |     u += User{2, 3}
+vlib/v/checker/tests/method_op_err.vv:41:5: error: operator %= not defined on left operand type `User`
+   39 |     mut u := User{3, 4}
+   40 |     u += 12
+   41 |     u %= User{1, 3}
+      |     ^
+   42 |     u += User{2, 3} 
+   43 | }
+vlib/v/checker/tests/method_op_err.vv:42:7: error: operator `+` must return `User` to be used as an assignment operator
+   40 |     u += 12
+   41 |     u %= User{1, 3}
+   42 |     u += User{2, 3} 
+      |       ~~
+   43 | }

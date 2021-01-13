@@ -1919,6 +1919,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				''
 			}
 			mut str_add := false
+			mut op_overloaded := false
 			if var_type == table.string_type_idx && assign_stmt.op == .plus_assign {
 				if left is ast.IndexExpr {
 					// a[0] += str => `array_set(&a, 0, &(string[]) {string_add(...))})`
@@ -1932,6 +1933,22 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				g.is_assign_lhs = false
 				g.is_assign_rhs = true
 				str_add = true
+			}
+			// Assignment Operator Overloading
+			if left_sym.kind == .struct_ &&
+				right_sym.kind == .struct_ && assign_stmt.op in
+				[.plus_assign, .minus_assign, .div_assign, .mult_assign, .mod_assign] {
+				g.expr(left)
+				extracted_op := match assign_stmt.op {
+					.plus_assign { '+' }
+					.minus_assign { '-' }
+					.div_assign { '/' }
+					.mod_assign { '%' }
+					.mult_assign { '*' }
+					else { 'unknown op' }
+				}
+				g.write(' = ${styp}_${util.replace_op(extracted_op)}(')
+				op_overloaded = true
 			}
 			if right_sym.kind == .function && is_decl {
 				if is_inside_ternary && is_decl {
@@ -1969,9 +1986,9 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 				if is_decl {
 					g.writeln(';')
 				}
-			} else if !g.is_array_set && !str_add {
+			} else if !g.is_array_set && !str_add && !op_overloaded {
 				g.write(' $op ')
-			} else if str_add {
+			} else if str_add || op_overloaded {
 				g.write(', ')
 			}
 			mut cloned := false
@@ -2049,7 +2066,7 @@ fn (mut g Gen) gen_assign_stmt(assign_stmt ast.AssignStmt) {
 					g.write('.data')
 				}
 			}
-			if str_add {
+			if str_add || op_overloaded {
 				g.write(')')
 			}
 			if g.is_array_set {

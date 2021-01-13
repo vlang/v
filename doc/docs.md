@@ -3216,8 +3216,11 @@ fn (a Vec) - (b Vec) Vec {
 fn main() {
 	a := Vec{2, 3}
 	b := Vec{4, 5}
+	mut c := Vec{1, 2}
 	println(a + b) // "{6, 8}"
 	println(a - b) // "{-2, -2}"
+	c += a
+	println(c) // "{3, 5}"
 }
 ```
 
@@ -3235,6 +3238,8 @@ To improve safety and maintainability, operator overloading is limited:
 - Operator functions can't modify their arguments.
 - When using `<`, `>`, `>=`, `<=`, `==` and `!=` operators, the return type must be `bool`.
 - Both arguments must have the same type (just like with all operators in V).
+- Assignment operators (`*=`, `+=`, `/=`, etc) 
+are auto generated when the operators are defined though they must return the same type.
 
 ## Inline assembly
 

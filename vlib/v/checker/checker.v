@@ -2494,10 +2494,10 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 						c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 							right.position())
 					}
-				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !left_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('operator `$assign_stmt.op` not defined on left operand type `$left_sym.name`',
 						left.position())
-				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr] {
+				} else if !right_sym.is_number() && left_sym.kind !in [.byteptr, .charptr, .struct_] {
 					c.error('invalid right operand: $left_sym.name $assign_stmt.op $right_sym.name',
 						right.position())
 				} else if right is ast.IntegerLiteral {
@@ -2513,11 +2513,11 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 			}
 			.mult_assign, .div_assign {
 				if !left_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
 					c.error('operator $assign_stmt.op.str() not defined on left operand type `$left_sym.name`',
 						left.position())
 				} else if !right_sym.is_number() &&
-					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() {
+					!c.table.get_final_type_symbol(left_type_unwrapped).is_int() && left_sym.kind != .struct_ {
 					c.error('operator $assign_stmt.op.str() not defined on right operand type `$right_sym.name`',
 						right.position())
 				}
@@ -2534,6 +2534,33 @@ pub fn (mut c Checker) assign_stmt(mut assign_stmt ast.AssignStmt) {
 				}
 			}
 			else {}
+		}
+		if assign_stmt.op in
+			[.plus_assign, .minus_assign, .mod_assign, .mult_assign, .div_assign] &&
+			left_sym.kind == .struct_ && right_sym.kind == .struct_ {
+			extracted_op := match assign_stmt.op {
+				.plus_assign { '+' }
+				.minus_assign { '-' }
+				.div_assign { '/' }
+				.mod_assign { '%' }
+				.mult_assign { '*' }
+				else { 'unknown op' }
+			}
+			left_name := c.table.type_to_str(left_type)
+			if method := left_sym.find_method(extracted_op) {
+				if method.return_type != left_type {
+					c.error('operator `$extracted_op` must return `$left_name` to be used as an assignment operator',
+						assign_stmt.pos)
+				}
+			} else {
+				right_name := c.table.type_to_str(right_type)
+				if left_name == right_name {
+					c.error('operation `$left_name` $extracted_op `$right_name` does not exist, please define it',
+						assign_stmt.pos)
+				} else {
+					c.error('mismatched types `$left_name` and `$right_name`', assign_stmt.pos)
+				}
+			}
 		}
 		if !is_blank_ident && right_sym.kind != .placeholder && left_sym.kind != .interface_ {
 			// Dual sides check (compatibility check)
