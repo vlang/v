@@ -267,163 +267,49 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 	}
 	match node {
 		ast.AssignStmt {
-			f.comments(node.comments, {})
-			for i, left in node.left {
-				if left is ast.Ident {
-					var_info := left.var_info()
-					if var_info.is_static {
-						f.write('static ')
-					}
-					f.expr(left)
-				} else {
-					f.expr(left)
-				}
-				if i < node.left.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.is_assign = true
-			f.write(' $node.op.str() ')
-			for i, val in node.right {
-				f.prefix_expr_cast_expr(val)
-				if i < node.right.len - 1 {
-					f.write(', ')
-				}
-			}
-			f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
-			if !f.single_line_if {
-				f.writeln('')
-			}
-			f.is_assign = false
+			f.assign_stmt(node)
 		}
 		ast.AssertStmt {
-			f.write('assert ')
-			f.expr(node.expr)
-			f.writeln('')
+			f.assert_stmt(node)
 		}
 		ast.Block {
-			if node.is_unsafe {
-				f.write('unsafe ')
-			}
-			f.write('{')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.block(node)
 		}
 		ast.BranchStmt {
 			f.writeln(node.str())
 		}
 		ast.CompFor {
-			typ := f.no_cur_mod(f.table.type_to_str(node.typ))
-			f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.comp_for(node)
 		}
 		ast.ConstDecl {
 			f.const_decl(node)
 		}
 		ast.DeferStmt {
-			f.write('defer {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.defer_stmt(node)
 		}
 		ast.EnumDecl {
 			f.enum_decl(node)
 		}
 		ast.ExprStmt {
-			f.comments(node.comments, {})
-			f.expr(node.expr)
-			if !f.single_line_if {
-				f.writeln('')
-			}
+			f.expr_stmt(node)
 		}
 		ast.FnDecl {
 			f.fn_decl(node)
 		}
 		ast.ForCStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			if node.has_init {
-				f.single_line_if = true // to keep all for ;; exprs on the same line
-				f.stmt(node.init)
-				f.single_line_if = false
-			}
-			f.write('; ')
-			f.expr(node.cond)
-			f.write('; ')
-			f.stmt(node.inc)
-			f.remove_new_line()
-			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_c_stmt(node)
 		}
 		ast.ForInStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			if node.key_var != '' {
-				f.write(node.key_var)
-			}
-			if node.val_var != '' {
-				if node.key_var != '' {
-					f.write(', ')
-				}
-				if node.val_is_mut {
-					f.write('mut ')
-				}
-				f.write(node.val_var)
-			}
-			f.write(' in ')
-			f.expr(node.cond)
-			if node.is_range {
-				f.write(' .. ')
-				f.expr(node.high)
-			}
-			f.write(' {')
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_in_stmt(node)
 		}
 		ast.ForStmt {
-			if node.label.len > 0 {
-				f.write('$node.label: ')
-			}
-			f.write('for ')
-			f.expr(node.cond)
-			if node.is_inf {
-				f.write('{')
-			} else {
-				f.write(' {')
-			}
-			if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
-				f.writeln('')
-				f.stmts(node.stmts)
-			}
-			f.writeln('}')
+			f.for_stmt(node)
 		}
 		ast.GlobalDecl {
 			f.global_decl(node)
 		}
 		ast.GoStmt {
-			f.write('go ')
-			f.expr(node.call_expr)
-			f.writeln('')
+			f.go_stmt(node)
 		}
 		ast.GotoLabel {
 			f.writeln('$node.name:')
@@ -445,55 +331,10 @@ pub fn (mut f Fmt) stmt(node ast.Stmt) {
 			f.mod(node)
 		}
 		ast.Return {
-			f.comments(node.comments, {})
-			f.write('return')
-			if node.exprs.len > 1 {
-				// multiple returns
-				f.write(' ')
-				for i, expr in node.exprs {
-					f.expr(expr)
-					if i < node.exprs.len - 1 {
-						f.write(', ')
-					}
-				}
-			} else if node.exprs.len == 1 {
-				// normal return
-				f.write(' ')
-				f.expr(node.exprs[0])
-			}
-			f.writeln('')
+			f.return_stmt(node)
 		}
 		ast.SqlStmt {
-			f.write('sql ')
-			f.expr(node.db_expr)
-			f.writeln(' {')
-			match node.kind {
-				.insert {
-					f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
-				}
-				.update {
-					f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
-					for i, col in node.updated_columns {
-						f.write('$col = ')
-						f.expr(node.update_exprs[i])
-						if i < node.updated_columns.len - 1 {
-							f.write(', ')
-						} else {
-							f.write(' ')
-						}
-						f.wrap_long_line(2, true)
-					}
-					f.write('where ')
-					f.expr(node.where_expr)
-					f.writeln('')
-				}
-				.delete {
-					f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
-					f.expr(node.where_expr)
-					f.writeln('')
-				}
-			}
-			f.writeln('}')
+			f.sql_stmt(node)
 		}
 		ast.StructDecl {
 			f.struct_decl(node)
@@ -2385,4 +2226,211 @@ fn (f Fmt) get_modname_prefix(mname string) (string, string) {
 	after_ref := mname.all_after_last('&')
 	modname := if after_rbc.len < after_ref.len { after_rbc } else { after_ref }
 	return modname, mname.trim_suffix(modname)
+}
+
+pub fn (mut f Fmt) assign_stmt(node ast.AssignStmt) {
+	f.comments(node.comments, {})
+	for i, left in node.left {
+		if left is ast.Ident {
+			var_info := left.var_info()
+			if var_info.is_static {
+				f.write('static ')
+			}
+			f.expr(left)
+		} else {
+			f.expr(left)
+		}
+		if i < node.left.len - 1 {
+			f.write(', ')
+		}
+	}
+	f.is_assign = true
+	f.write(' $node.op.str() ')
+	for i, val in node.right {
+		f.prefix_expr_cast_expr(val)
+		if i < node.right.len - 1 {
+			f.write(', ')
+		}
+	}
+	f.comments(node.end_comments, has_nl: false, inline: true, level: .keep)
+	if !f.single_line_if {
+		f.writeln('')
+	}
+	f.is_assign = false
+}
+
+pub fn (mut f Fmt) assert_stmt(node ast.AssertStmt) {
+	f.write('assert ')
+	f.expr(node.expr)
+	f.writeln('')
+}
+
+pub fn (mut f Fmt) block(node ast.Block) {
+	if node.is_unsafe {
+		f.write('unsafe ')
+	}
+	f.write('{')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) comp_for(node ast.CompFor) {
+	typ := f.no_cur_mod(f.table.type_to_str(node.typ))
+	f.write('\$for $node.val_var in ${typ}.$node.kind.str() {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) defer_stmt(node ast.DeferStmt) {
+	f.write('defer {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) expr_stmt(node ast.ExprStmt) {
+	f.comments(node.comments, {})
+	f.expr(node.expr)
+	if !f.single_line_if {
+		f.writeln('')
+	}
+}
+
+pub fn (mut f Fmt) for_c_stmt(node ast.ForCStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	if node.has_init {
+		f.single_line_if = true // to keep all for ;; exprs on the same line
+		f.stmt(node.init)
+		f.single_line_if = false
+	}
+	f.write('; ')
+	f.expr(node.cond)
+	f.write('; ')
+	f.stmt(node.inc)
+	f.remove_new_line()
+	f.write(' {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) for_in_stmt(node ast.ForInStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	if node.key_var != '' {
+		f.write(node.key_var)
+	}
+	if node.val_var != '' {
+		if node.key_var != '' {
+			f.write(', ')
+		}
+		if node.val_is_mut {
+			f.write('mut ')
+		}
+		f.write(node.val_var)
+	}
+	f.write(' in ')
+	f.expr(node.cond)
+	if node.is_range {
+		f.write(' .. ')
+		f.expr(node.high)
+	}
+	f.write(' {')
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) for_stmt(node ast.ForStmt) {
+	if node.label.len > 0 {
+		f.write('$node.label: ')
+	}
+	f.write('for ')
+	f.expr(node.cond)
+	if node.is_inf {
+		f.write('{')
+	} else {
+		f.write(' {')
+	}
+	if node.stmts.len > 0 || node.pos.line_nr < node.pos.last_line {
+		f.writeln('')
+		f.stmts(node.stmts)
+	}
+	f.writeln('}')
+}
+
+pub fn (mut f Fmt) go_stmt(node ast.GoStmt) {
+	f.write('go ')
+	f.expr(node.call_expr)
+	f.writeln('')
+}
+
+pub fn (mut f Fmt) return_stmt(node ast.Return) {
+	f.comments(node.comments, {})
+	f.write('return')
+	if node.exprs.len > 1 {
+		// multiple returns
+		f.write(' ')
+		for i, expr in node.exprs {
+			f.expr(expr)
+			if i < node.exprs.len - 1 {
+				f.write(', ')
+			}
+		}
+	} else if node.exprs.len == 1 {
+		// normal return
+		f.write(' ')
+		f.expr(node.exprs[0])
+	}
+	f.writeln('')
+}
+
+pub fn (mut f Fmt) sql_stmt(node ast.SqlStmt) {
+	f.write('sql ')
+	f.expr(node.db_expr)
+	f.writeln(' {')
+	match node.kind {
+		.insert {
+			f.writeln('\tinsert $node.object_var_name into ${util.strip_mod_name(node.table_name)}')
+		}
+		.update {
+			f.write('\tupdate ${util.strip_mod_name(node.table_name)} set ')
+			for i, col in node.updated_columns {
+				f.write('$col = ')
+				f.expr(node.update_exprs[i])
+				if i < node.updated_columns.len - 1 {
+					f.write(', ')
+				} else {
+					f.write(' ')
+				}
+				f.wrap_long_line(2, true)
+			}
+			f.write('where ')
+			f.expr(node.where_expr)
+			f.writeln('')
+		}
+		.delete {
+			f.write('\tdelete from ${util.strip_mod_name(node.table_name)} where ')
+			f.expr(node.where_expr)
+			f.writeln('')
+		}
+	}
+	f.writeln('}')
 }
