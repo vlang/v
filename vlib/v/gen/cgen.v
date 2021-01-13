@@ -2935,6 +2935,7 @@ fn (mut g Gen) infix_expr(node ast.InfixExpr) {
 		node.right_type
 	}
 	if unaliased_left == table.ustring_type_idx && node.op != .key_in && node.op != .not_in {
+		overloaded_fn := '${g.typ(left_type)}_${util.replace_op(node.op.str())}('
 		fn_name := match node.op {
 			.plus { 'ustring_add(' }
 			.eq { 'ustring_eq(' }
