@@ -16,7 +16,7 @@ fn (mut g Gen) gen_embedded_data() {
 	*/
 	for i, path in g.embedded_files {
 		fbytes := os.read_bytes(path) or { panic('Error while embedding file: $err') }
-		g.embedded_data.write('static const unsigned byte _v_embed_blob_$i[$fbytes.len] = {\n    ')
+		g.embedded_data.write('static const unsigned char _v_embed_blob_$i[$fbytes.len] = {\n    ')
 		for j := 0; j < fbytes.len; j++ {
 			b := fbytes[j].hex()
 			if j == fbytes.len - 1 {
