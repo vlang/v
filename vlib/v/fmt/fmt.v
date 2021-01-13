@@ -1291,6 +1291,16 @@ pub fn (mut f Fmt) as_cast(node ast.AsCast) {
 	f.write(' as $type_str')
 }
 
+pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
+	f.write(f.table.type_to_str(node.typ) + '(')
+	f.expr(node.expr)
+	if node.has_arg {
+		f.write(', ')
+		f.expr(node.arg)
+	}
+	f.write(')')
+}
+
 pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	f.writeln('{')
 	// f.indent++
@@ -1303,16 +1313,6 @@ pub fn (mut f Fmt) assoc(node ast.Assoc) {
 	}
 	// f.indent--
 	f.write('}')
-}
-
-pub fn (mut f Fmt) cast_expr(node ast.CastExpr) {
-	f.write(f.table.type_to_str(node.typ) + '(')
-	f.expr(node.expr)
-	if node.has_arg {
-		f.write(', ')
-		f.expr(node.arg)
-	}
-	f.write(')')
 }
 
 pub fn (mut f Fmt) comptime_call(node ast.ComptimeCall) {
